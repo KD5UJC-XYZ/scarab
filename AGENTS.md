@@ -145,9 +145,9 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
 ## Before you hand back
 
 - Name the level of your change and run its gates, no more
-  ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)): at least `check`
-  (formatting, `-Werror`, every module's tests, scalafix), plus one scenario per area touched. A
-  documentation-only change (level 0) needs only that its relative links resolve, and a design document
+  ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)): for level 1 and above, `check`
+  (formatting, `-Werror`, every module's tests, scalafix); for level 2 and above, also one scenario per area touched.
+  A documentation-only change (level 0) needs relative-link checks and non-sbt preflight, and a design document
   or ADR also has its reference claims checked against the pinned source
   ([CONTRIBUTING.md](CONTRIBUTING.md#levels)). Soak, repeats and the long network replays are nightly
   CI's, not yours, unless your stage's design names them as its jump gate.
@@ -161,9 +161,11 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   state ([FMT-2](docs/design-rules.md#fmt-2)); regenerating a fixture is a storage format change (FMT-1).
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
   never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
-- Before reporting a change ready, and again after every rebase or merge of its base, run
-  `scripts/preflight --check` and report its result (its header says which CI checks it runs); a PR is
-  not ready while it fails.
+- Before reporting a change ready, and again after every rebase or merge of its base,
+  run `scripts/preflight` for documentation-only changes (level 0), or `scripts/preflight --check` for
+  level 1 and above, and report its result. Plain preflight runs the non-sbt checks; `--check` also runs
+  the Scala build and tests. Do not add `--check` for a documentation-only change. A mixed change follows
+  the highest applicable level; a PR is not ready while its required checks fail.
 - After a rebase, re-check every factual claim your change makes against the new base, not only that
   it builds.
 - Get the [independent review](CONTRIBUTING.md#independent-review) before a pull request leaves draft.
