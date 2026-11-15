@@ -621,18 +621,24 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       coordinator.session(0).use { session =>
         for
           estimate <- Ref.of[IO, FetchGsv.PeerGsv](initial)
-          _ <- session.measured(estimate.get)
+          reads <- Ref.of[IO, Int](0)
+          _ <- session.measured(reads.update(_ + 1) *> estimate.get)
           _ <- session.follows(Vector(first, second), initial)
           _ <- coordinator.step
           request <- session.requested.map(_.getOrElse(fail("expected request")))
           before <- coordinator.diagnostics
           _ <- estimate.set(slow)
+          // A decision samples the slower estimate; the request in flight keeps its own limits.
+          _ <- coordinator.step
           sampled <- coordinator.diagnostics
           _ <- session.received(request, first.hash)
           after <- coordinator.diagnostics
           _ <- estimate.set(slow.copy(sampleTimePicos = 2000))
+          _ <- coordinator.step
           resampled <- coordinator.diagnostics
+          read <- reads.get
         yield
+          assertEquals(read, 3, "each decision sampled the estimate")
           assertEquals(before.head.busy, false)
           assertEquals(sampled.head.busy, false)
           assertEquals(request.limits, initial.window)

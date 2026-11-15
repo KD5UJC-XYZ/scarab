@@ -8,9 +8,10 @@ import xyz.kd5ujc.scarab.network.selection.FetchGsv
 
 import FetchTesting.*
 
-/** A session's GSV estimate is read by the decisions themselves, as the reference reads the peers'
-  * GSVs in its decision snapshot (network c45735a5 BlockFetch/State.hs:418–421): nothing copies it
-  * between decisions, and nothing but a decision reads it.
+/** A session's registered GSV estimate is read by the decisions themselves, once each, as the
+  * reference reads the peers' GSVs in its decision snapshot (network c45735a5
+  * BlockFetch/State.hs:418–421): no loop polls it between decisions. Header announcements still
+  * carry the estimate the session read when it announced, under the same newest-sample rule.
   */
 class FetchPerformanceSamplingSuite extends FailsOnUncaught:
   private val incumbentModel = FetchGsv.fromSample(0, FetchGsv.PicosPerSecond / 5)
