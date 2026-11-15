@@ -105,6 +105,17 @@ Meanings and units worth knowing before building a dashboard:
   metric for the transaction bytes it serves: the `txSubmission.*` counters of ouroboros-network
   `c45735a5` (`ouroboros-network/tracing/Ouroboros/Network/Tracing/TxSubmission.hs` 95-111) count what
   the receiving side requests and receives, so the name is ours.
+- `cardano_node_metrics_peerSelection_churn<Action>_duration_real` are twelve gauges, one for each step of a churn
+  round: the seconds the last step of that kind took to meet its targets, set as the reference sets them on
+  `TraceChurnAction` (`ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection/Governor/TracePeerSelection.hs`
+  385-388, ouroboros-network `c45735a5`), in seconds as precise as the clock. `<Action>` is the reference's
+  `ChurnAction` constructor (`DecreasedActivePeers`, `IncreasedKnownBigLedgerPeers`, ...) written straight after
+  `churn`, as that code builds the name; the reference's own metric documentation of them (`metricsDocFor`,
+  649-656) shows a dot there and only the six decreases, but a running cardano-node 11.1.3 exports the names
+  without it. A step that times out (`TraceChurnTimeout`) sets nothing, so a gauge is absent until its step first
+  meets its targets and keeps that duration through later timeouts; `scarab_peer_selection_churn_steps_total{step,result}` counts both
+  outcomes. The reference writes a `_real` series without a `# TYPE` line (trace-dispatcher keeps it as a label);
+  ours are gauges, as `density_real` is.
 - `jvm_gc_collection_seconds_total` is the time the JVM reports for each collector (a counter, in seconds, as
   precise as the JVM's own millisecond count); `jvm_memory_bytes_max{area="nonheap"}` is -1 when the JVM sets no
   limit.
@@ -144,15 +155,30 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   and remaining periods; `scarab_opcert_counter` is written when forging starts and after every reload that installs
   credentials, and `forging_enabled_int` with each `blockForgingUpdate` (at start, and at a reload that enables
   or disables forging), as the reference writes it (`Tracers/Startup.hs` 301-307).
+- `cardano_node_metrics_txsProcessedNum_counter`: ours counts the transactions added to the mempool; the
+  reference counts those its mempool removes after a change of the ledger (`TraceMempoolRemoveTxs`, cardano-node
+  11.1.3 `Tracers/Consensus.hs` 1149-1152). This is a gap, tracked in [#1037](https://github.com/KD5UJC-XYZ/scarab/issues/1037).
 
-**Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
-`served_header_counter` and `served_block_latest_counter` (what the node served to peers; the `sessions` of
-`GET /connections` count the headers our hot sessions received, not those served), `utxoSize_int` and `delegMapSize_int` (see
-`scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
-`tipBlock` and `basicInfo`, the `blockfetchclient_*` series (see
-`scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and
-`Forge_adoption_thread_died_counter`, whose trace cannot happen here (the forged block is adopted in the
-forging fiber itself).
+**Not exported** (cardano-node 11.1.3 has them; each one's meaning at the pin is in [#1037](https://github.com/KD5UJC-XYZ/scarab/issues/1037), roadmap J3e):
+`cardano_node_metrics_served_block_counter`, `served_header_counter`, `ChainSync_HeadersServed_counter` and
+`served_block_latest_int` (what the node served to peers; the `sessions` of `GET /connections` count the headers
+our hot sessions received, not those served), `utxoSize_int` and `delegMapSize_int` (see
+`scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration_int`
+and `txsSyncDurationTotal_counter`, `GSM_state_int` (see `scarab_gsm_state`),
+`connectionManager_fullDuplexConns_int` and `connectionManager_unidirectionalConns_int`, the
+`localInboundGovernor_*_int` gauges of the node-to-client side, the `submissions_*_counter` counters of the
+transaction-submission server, `tipBlock`, `basicInfo`, `cardano_build_info` and the `cardano_version_*` and
+`haskell_compiler_*` gauges (see `scarab_build_info`), and the `blockfetchclient_*` series (see
+`scarab_blockfetch_seconds`). These need an event Scarab does not have: the seventeen `txSubmission_*_int`
+gauges, among them the wait counters `txIdBlockingWaitMs`, `txPipelineWaitMs` and `txSubmissionWaitMs`, which
+the reference exports only with `TxSubmissionLogicVersion: TxSubmissionLogicV2` (with the default V1 logic it
+never emits them); Scarab implements the V1 logic. Also `txsMempoolTimeoutSoft_counter` and
+`txsMempoolTimeoutHard_counter` (Scarab's mempool has no validation timeout), the `rpc_request_*_counter`
+counters (no gRPC server) and the Peras object-diffusion series. Not applicable: the GHC runtime's `RTS_*`,
+`rts_gc_*`, `Mem_*` and `Stat_*`, and `Forge_adoption_thread_died_counter`, whose trace cannot happen here (the
+forged block is adopted in the forging fiber itself). The network packages of the next release add the
+`peerSelection_churn_hot_*` and `peerSelection_churn_bigLedger_*` gauges, computed from the scores of each hot
+demotion; they come with the re-pin of the network ([#1002](https://github.com/KD5UJC-XYZ/scarab/issues/1002)).
 
 The full list follows, in the order of the catalogue
 (`node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/Catalogue.scala`); `DocsSuite` fails when this
@@ -317,6 +343,18 @@ section and the catalogue differ.
 | `cardano_node_metrics_peerSelection_WarmBootstrapPeersPromotions_int` | gauge |  | Number of warm bootstrap peers being promoted. | same name; in the source of 11.1.3, not scraped |
 | `cardano_node_metrics_peerSelection_ActiveBootstrapPeers_int` | gauge |  | Number of active bootstrap peers. | same name; in the source of 11.1.3, not scraped |
 | `cardano_node_metrics_peerSelection_ActiveBootstrapPeersDemotions_int` | gauge |  | Number of active bootstrap peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_churnDecreasedActiveBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the active big ledger peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedActiveBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that increased the active big ledger peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnDecreasedEstablishedBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the established big ledger peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnDecreasedKnownBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the known big ledger peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedKnownBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that increased the known big ledger peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnIncreasedEstablishedBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that increased the established big ledger peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnDecreasedActivePeers_duration_real` | gauge |  | Seconds the last churn step that decreased the active peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedActivePeers_duration_real` | gauge |  | Seconds the last churn step that increased the active peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnDecreasedEstablishedPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the established peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnDecreasedKnownPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the known peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedKnownPeers_duration_real` | gauge |  | Seconds the last churn step that increased the known peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnIncreasedEstablishedPeers_duration_real` | gauge |  | Seconds the last churn step that increased the established peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
 
 ### Storage
 

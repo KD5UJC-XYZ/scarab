@@ -915,6 +915,94 @@ object Catalogue:
     MetricName("scarab_peer_selection_churn_wait_seconds"),
     "How long the churn governor sleeps before its next round, as last decided."
   )
+
+  /** The duration of the last churn step of each kind that met its targets, in seconds: the
+    * reference's `DoubleM ("peerSelection.churn" <> pack (show action) <> ".duration")` of
+    * `TraceChurnAction`
+    * (`ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection/Governor/TracePeerSelection.hs`
+    * 385-388, ouroboros-network `c45735a5`), the action written without a dot after `churn`, and
+    * trace-dispatcher's `_real` suffix. A step that times out (`TraceChurnTimeout`) sets nothing.
+    */
+  def churnDuration(step: Churn.Step): GaugeDef[Unit] = step match
+    case Churn.Step.DecreaseActiveBig =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnDecreasedActiveBigLedgerPeers_duration_real"
+        ),
+        "Seconds the last churn step that decreased the active big ledger peers took to meet its target."
+      )
+    case Churn.Step.IncreaseActiveBig =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnIncreasedActiveBigLedgerPeers_duration_real"
+        ),
+        "Seconds the last churn step that increased the active big ledger peers took to meet its target."
+      )
+    case Churn.Step.DecreaseEstablishedBig =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnDecreasedEstablishedBigLedgerPeers_duration_real"
+        ),
+        "Seconds the last churn step that decreased the established big ledger peers took to meet its target."
+      )
+    case Churn.Step.DecreaseKnownBig =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnDecreasedKnownBigLedgerPeers_duration_real"
+        ),
+        "Seconds the last churn step that decreased the known big ledger peers took to meet its target."
+      )
+    case Churn.Step.IncreaseKnownBig =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnIncreasedKnownBigLedgerPeers_duration_real"
+        ),
+        "Seconds the last churn step that increased the known big ledger peers took to meet its target."
+      )
+    case Churn.Step.IncreaseEstablishedBig =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnIncreasedEstablishedBigLedgerPeers_duration_real"
+        ),
+        "Seconds the last churn step that increased the established big ledger peers took to meet its target."
+      )
+    case Churn.Step.DecreaseActive =>
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_churnDecreasedActivePeers_duration_real"),
+        "Seconds the last churn step that decreased the active peers took to meet its target."
+      )
+    case Churn.Step.IncreaseActive =>
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_churnIncreasedActivePeers_duration_real"),
+        "Seconds the last churn step that increased the active peers took to meet its target."
+      )
+    case Churn.Step.DecreaseEstablished =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnDecreasedEstablishedPeers_duration_real"
+        ),
+        "Seconds the last churn step that decreased the established peers took to meet its target."
+      )
+    case Churn.Step.DecreaseKnown =>
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_churnDecreasedKnownPeers_duration_real"),
+        "Seconds the last churn step that decreased the known peers took to meet its target."
+      )
+    case Churn.Step.IncreaseKnown =>
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_churnIncreasedKnownPeers_duration_real"),
+        "Seconds the last churn step that increased the known peers took to meet its target."
+      )
+    case Churn.Step.IncreaseEstablished =>
+      GaugeDef(
+        MetricName(
+          "cardano_node_metrics_peerSelection_churnIncreasedEstablishedPeers_duration_real"
+        ),
+        "Seconds the last churn step that increased the established peers took to meet its target."
+      )
+
+  /** The twelve churn duration gauges, in the order of a round. */
+  val churnDurations: List[GaugeDef[Unit]] = Churn.Step.values.toList.map(churnDuration)
   val peerMetricsBoard = GaugeDef(
     MetricName("scarab_peer_selection_peer_metrics_board_size"),
     "Slots held by the peer metrics boards (at most 180 each): the headers and the blocks whose first arrival is recorded.",
@@ -1182,4 +1270,4 @@ object Catalogue:
     processResident,
     processOpenFds,
     processStart
-  ) ++ peerSelectionGauges.map(_._1)
+  ) ++ peerSelectionGauges.map(_._1) ++ churnDurations

@@ -336,6 +336,74 @@ class EventMetricsSuite extends CatsEffectSuite:
     }
   }
 
+  test(
+    "a churn step that meets its targets sets its own duration gauge, in seconds; a timeout sets none"
+  ) {
+    fixture.flatMap { (metrics, em) =>
+      def churned(t: Churn.Trace) = em.peerSelection(Output.Churned(t))
+      for
+        _ <- churned(Churn.Trace.Action(Churn.Step.DecreaseActive, 2500.millis, -4))
+        _ <- churned(Churn.Trace.Action(Churn.Step.IncreaseKnownBig, 1234567.nanos, 3))
+        _ <- churned(Churn.Trace.Timeout(Churn.Step.IncreaseKnown, 80.seconds, 0))
+        first <- metrics.snapshot
+        _ <- churned(Churn.Trace.Action(Churn.Step.DecreaseActive, 750.millis, -1))
+        _ <- churned(Churn.Trace.Timeout(Churn.Step.DecreaseActive, 300.seconds, 0))
+        last <- metrics.snapshot
+      yield
+        assertEquals(
+          gauge(first, Catalogue.churnDuration(Churn.Step.DecreaseActive), ()),
+          Some(2.5),
+          "the duration of the step that met its target"
+        )
+        assertEquals(
+          gauge(first, Catalogue.churnDuration(Churn.Step.IncreaseKnownBig), ()),
+          Some(0.001234567),
+          "the duration is not truncated to milliseconds"
+        )
+        assertEquals(
+          gauge(first, Catalogue.churnDuration(Churn.Step.IncreaseKnown), ()),
+          None,
+          "a step that only timed out has no series"
+        )
+        val others = Churn.Step.values.toList
+          .filterNot(Set(Churn.Step.DecreaseActive, Churn.Step.IncreaseKnownBig))
+          .filter(step => gauge(first, Catalogue.churnDuration(step), ()).isDefined)
+        assertEquals(others, Nil, "no other step's gauge is set")
+        assertEquals(
+          gauge(last, Catalogue.churnDuration(Churn.Step.DecreaseActive), ()),
+          Some(0.75),
+          "the last step that met its target, not the timeout after it"
+        )
+    }
+  }
+
+  test("each churn step has the reference's gauge name: the action's constructor after `churn`") {
+    val reference = Map(
+      Churn.Step.DecreaseActiveBig -> "DecreasedActiveBigLedgerPeers",
+      Churn.Step.IncreaseActiveBig -> "IncreasedActiveBigLedgerPeers",
+      Churn.Step.DecreaseEstablishedBig -> "DecreasedEstablishedBigLedgerPeers",
+      Churn.Step.DecreaseKnownBig -> "DecreasedKnownBigLedgerPeers",
+      Churn.Step.IncreaseKnownBig -> "IncreasedKnownBigLedgerPeers",
+      Churn.Step.IncreaseEstablishedBig -> "IncreasedEstablishedBigLedgerPeers",
+      Churn.Step.DecreaseActive -> "DecreasedActivePeers",
+      Churn.Step.IncreaseActive -> "IncreasedActivePeers",
+      Churn.Step.DecreaseEstablished -> "DecreasedEstablishedPeers",
+      Churn.Step.DecreaseKnown -> "DecreasedKnownPeers",
+      Churn.Step.IncreaseKnown -> "IncreasedKnownPeers",
+      Churn.Step.IncreaseEstablished -> "IncreasedEstablishedPeers"
+    )
+    Churn.Step.values.foreach { step =>
+      assertEquals(
+        Some(Catalogue.churnDuration(step).name.value),
+        reference
+          .get(step)
+          .map(action => s"cardano_node_metrics_peerSelection_churn${action}_duration_real"),
+        step.toString
+      )
+    }
+    assertEquals(Catalogue.churnDurations.map(_.name).distinct.size, Churn.Step.values.size)
+  }
+
   test("two sinks of one trait both receive every event, the first before the second") {
     import EventSink.alongside
     for

@@ -230,8 +230,9 @@ final class EventMetrics[F[_]: Sync] private (
     case Output.Churned(trace) =>
       trace match
         case Churn.Trace.Mode(_) => metrics.inc(churnRounds)
-        case Churn.Trace.Action(step, _, _) =>
-          metrics.inc(churnSteps, (step, ChurnResultLabel.Reached))
+        case Churn.Trace.Action(step, took, _) =>
+          metrics.inc(churnSteps, (step, ChurnResultLabel.Reached)) *>
+            metrics.set(churnDuration(step), took.toNanos / 1e9)
         case Churn.Trace.Timeout(step, _, _) =>
           metrics.inc(churnSteps, (step, ChurnResultLabel.TimedOut))
         case Churn.Trace.Wait(delay) => metrics.set(churnWaitSeconds, delay.toMillis / 1000.0)
