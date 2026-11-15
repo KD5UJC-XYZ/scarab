@@ -465,6 +465,18 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Not yet: the upgrade and downgrade of the parameters, which need Babbage's record; `eraPParams`, the
     parameters' descriptions; the update as Plutus data; and the reference's order of the parameters
     and of an update. Each is on #85's checklist.
+- **Conway's rules, first predicates** (`ledger/.../era/rules/`): eight of the predicates Babbage's UTXO runs,
+  as Conway's runs it (`babbageUtxoValidation`, `Babbage/Rules/Utxo.hs:325-411`), each the reference's function
+  generic in its era over its classes: `disjointRefInputs`, `validateOutsideValidityIntervalUTxO`,
+  `validateInputSetEmptyUTxO`, `validateBadInputsUTxO` (with `allInputsTxBodyF`), `validateWrongNetwork`,
+  `validateWrongNetworkWithdrawal`, `validateWrongNetworkInTxBody` and `validateTooManyCollateralInputs`.
+  - They report the node's flat failures, so each verdict is compared with the flat predicate's: on every
+    transaction of the recorded Conway refusal corpora (`ConwayUtxoChecksSuite`), five of the eight refuse
+    somewhere; the other three refuse on cases crafted from a recorded one, an empty input set, spent
+    reference inputs at version 10 and a collateral maximum of zero.
+  - The predicates whose failures carry outputs (the output sizes and the bootstrap attributes) wait for each
+    era's failure types (§3.4); the fee, the value conserved and the collateral wait for the UTxO class
+    (`EraUTxO`) and the certificate state's.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

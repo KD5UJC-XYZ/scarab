@@ -472,6 +472,8 @@ object ConwayTxBody:
       override def totalCollateral(body: ConwayTxBody): Option[Coin] = body.totalCollateral
       override def sizedCollateralReturn(body: ConwayTxBody): Option[Sized[ConwayTxOut]] =
         body.collateralReturn
+      // `allInputsTxBodyF = babbageAllInputsTxBodyF`, `Conway/TxBody.hs:344`, cardano-ledger f649f975
+      override def allInputs(body: ConwayTxBody): SortedSet[TxIn] = allInputsBabbage(body)
       // `withTopTxLevelOnly`, `Conway/TxBody.hs:453`, cardano-ledger f649f975
       override def allSizedOutputs[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]

@@ -812,6 +812,23 @@
     },
     {
       "module": "ledger",
+      "path": "ledger/era/rules",
+      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules; their verdicts are compared with the flat rules' (#85, stage 2)",
+      "entryPoints": [
+        "ShelleyUtxo",
+        "AllegraUtxo",
+        "AlonzoUtxo",
+        "BabbageUtxo"
+      ],
+      "suites": [
+        "ConwayUtxoChecksSuite"
+      ],
+      "docs": [
+        "docs/design/era-typed-transactions.md"
+      ]
+    },
+    {
+      "module": "ledger",
       "path": "ledger/injection",
       "responsibility": "Pure native streaming JSON mechanism for genesis injection files; file/hash wiring remains separate",
       "entryPoints": [

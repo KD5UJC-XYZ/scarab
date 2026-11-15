@@ -48,6 +48,11 @@ trait EraTxBody[E <: EraTag]:
     */
   def certs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[TxCert[E]]
 
+  /** `allInputsTxBodyF` (`Core.hs:260-263`, cardano-ledger f649f975): every input of a top-level
+    * body the UTxO set must hold, whether or not the transaction spends it.
+    */
+  def allInputs(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn]
+
 /** The protocol-parameter update of a body, up to Babbage (`ShelleyEraTxBody`, whose instances end
   * at Babbage: `AtMostEra "Babbage"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs:97`,
   * cardano-ledger f649f975).
@@ -128,6 +133,12 @@ trait BabbageEraTxBody[E <: EraTag] extends AlonzoEraTxBody[E]:
     * outputs and then the collateral return of a top-level body, which an era's instance gives at
     * the top level.
     */
+  /** `babbageAllInputsTxBodyF` (`Babbage/TxBody.hs:231-239`, cardano-ledger f649f975): the spent,
+    * collateral and reference inputs, which an era's instance gives from Babbage.
+    */
+  protected final def allInputsBabbage(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn] =
+    inputs(body)(using top) ++ collateralInputs(body) ++ referenceInputs(body)(using top)
+
   protected final def allSizedOutputsBabbage(
       body: TxBody[TxLevel.Top, E]
   ): Vector[Sized[TxOut[E]]] =

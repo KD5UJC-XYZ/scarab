@@ -110,6 +110,24 @@
    "structure": "same",
    "digest": "7e770cd35f293564"
   },
+  "class ledger.era.UTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "UTxO",
+     "lines": [
+      92,
+      92
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "each output at its era's type",
+   "digest": "051df68e56c4b27a"
+  },
   "class ledger.era.conway.ConwayPParams": {
    "upstream": [
     {
@@ -376,6 +394,23 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "22f981a570de8d96"
+  },
+  "def ledger.era.BabbageEraTxBody#allInputsBabbage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "symbol": "babbageAllInputsTxBodyF",
+     "lines": [
+      231,
+      238
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "f29e67b2e5fc4a09"
   },
   "def ledger.era.CoinPerByte.apply": {
    "upstream": [
@@ -1661,6 +1696,23 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "45eca22e6d6f5b39"
+  },
+  "def ledger.era.EraTxBody#allInputs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "allInputsTxBodyF",
+     "lines": [
+      263,
+      263
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "19b86fc3f375de5e"
   },
   "def ledger.era.HKDFunctor#fromNoUpdate": {
    "upstream": [
@@ -3608,6 +3660,174 @@
    "note": "the class's generic default over the record's group tags",
    "digest": "ccea185cf6e3779d"
   },
+  "def ledger.era.rules.AllegraUtxo.validateOutsideValidityIntervalUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs",
+     "symbol": "validateOutsideValidityIntervalUTxO",
+     "lines": [
+      230,
+      237
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "f6afcc8d98a28479"
+  },
+  "def ledger.era.rules.AlonzoUtxo.validateTooManyCollateralInputs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateTooManyCollateralInputs",
+     "lines": [
+      470,
+      481
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "7e50399f3b91fa2c"
+  },
+  "def ledger.era.rules.AlonzoUtxo.validateWrongNetworkInTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateWrongNetworkInTxBody",
+     "lines": [
+      436,
+      446
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "92b56b501bb96906"
+  },
+  "def ledger.era.rules.BabbageUtxo.disjointRefInputs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "symbol": "disjointRefInputs",
+     "lines": [
+      200,
+      214
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "110bbb3394b19fb3"
+  },
+  "def ledger.era.rules.ShelleyUtxo.validateBadInputsUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "validateBadInputsUTxO",
+     "lines": [
+      461,
+      469
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "e229cb2e842898a1"
+  },
+  "def ledger.era.rules.ShelleyUtxo.validateInputSetEmptyUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "validateInputSetEmptyUTxO",
+     "lines": [
+      428,
+      435
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "82dc8580ac124963"
+  },
+  "def ledger.era.rules.ShelleyUtxo.validateWrongNetwork": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "validateWrongNetwork",
+     "lines": [
+      474,
+      485
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "17be9b6cfea31805"
+  },
+  "def ledger.era.rules.ShelleyUtxo.validateWrongNetworkWithdrawal": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "validateWrongNetworkWithdrawal",
+     "lines": [
+      490,
+      501
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "931bb7e8262a35ea"
+  },
   "given ledger.era.AlonzoEraPParams.conway": {
    "upstream": [
     {
@@ -4975,6 +5195,24 @@
    "definitions": [
     "type ledger.era.Identity",
     "type ledger.era.StrictMaybe"
+   ]
+  },
+  {
+   "reason": "the reading of the outputs the node keeps as an era's UTxO, refused only for an output a damaged store holds; the reference keeps the UTxO at its era's type and has no counterpart (#85)",
+   "definitions": [
+    "def ledger.era.conway.ConwayUTxO.fromStored",
+    "object ledger.era.conway.ConwayUTxO"
+   ]
+  },
+  {
+   "reason": "the era-typed predicates' adapters to the node's flat failure types (UtxoFailure under PredicateFailure, and Network as the wire value they carry), until each era's failures are named (§3.4 of docs/design/era-typed-transactions.md), and the objects that stand for the reference's Rules/Utxo modules",
+   "definitions": [
+    "def ledger.era.rules.failure",
+    "def ledger.era.rules.wire",
+    "object ledger.era.rules.AllegraUtxo",
+    "object ledger.era.rules.AlonzoUtxo",
+    "object ledger.era.rules.BabbageUtxo",
+    "object ledger.era.rules.ShelleyUtxo"
    ]
   }
  ]
