@@ -6,7 +6,8 @@ import io.circe.{Decoder, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** An explicit decoder version. [[DecoderVersion.at]] builds one of an era's range, `ProtVerLow` to
@@ -201,6 +202,333 @@ class DecoderVersionSuite extends FunSuite:
         TxBody.decode(raw, era, at12),
         Left(LedgerDecodeError.Empty(DecodeField.Mint))
       )
+  }
+
+  // Version-12 record branches at cardano-ledger f649f975:
+  // Plutus/ExUnits.hs:195-230; Conway/Governance/Procedures.hs:182-190,456-466,522-534,985-995;
+  // BaseTypes.hs:996-1004; Alonzo/TxAuxData.hs:217-257.
+  test("redeemer execution units accept indefinite pairs only from version 12") {
+    val raw = hex("a105a182000082009f0000ff")
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      assertEquals(
+        Witnesses.decode(raw, era, at11),
+        Left(LedgerDecodeError.IndefiniteLength(DecodeField.ExUnits))
+      )
+      assertEquals(
+        Witnesses.decode(raw, era, at12).map(_.redeemers),
+        Right(Vector(Redeemer(0, 0, hex("00"), ExUnits.zero)))
+      )
+      assertEquals(
+        Witnesses.decode(hex("a105a182000082009f00ff"), era, at12),
+        Left(LedgerDecodeError.ArrayLength(DecodeField.ExUnits, 2, 1))
+      )
+  }
+
+  private val zeroHash = "00" * 32
+  private val reward = "581de0" + "00" * 28
+  private val anchor = "82605820" + zeroHash
+  private val expectedAnchor = Anchor("", hex(zeroHash))
+  private val expectedAccount =
+    RewardAccount.decode(hex("e0" + "00" * 28)).fold(e => fail(e.toString), identity)
+
+  private def proposalBody(proposal: String): Bytes = hex("a40080018002001481" + proposal)
+  private def proposal(action: String, anch: String = anchor): String =
+    "8400" + reward + action + anch
+
+  test("proposal procedures, action IDs, constitutions and anchors follow version 12") {
+    val id = "9f5820" + zeroHash + "00ff"
+    val previous = Some(GovActionId(hex(zeroHash), 0))
+    val cases = Vector(
+      (
+        "9f00" + reward + "8106" + anchor + "ff",
+        DecodeField.ProposalProcedure,
+        GovAction.Info,
+        expectedAnchor
+      ),
+      (
+        proposal("8203" + id),
+        DecodeField.GovernanceActionId,
+        GovAction.NoConfidence(previous),
+        expectedAnchor
+      ),
+      (
+        proposal("8400" + id + "a0f6"),
+        DecodeField.GovernanceActionId,
+        GovAction.ParameterChange(previous, ConwayParamUpdate.empty, None),
+        expectedAnchor
+      ),
+      (
+        proposal("8301" + id + "820900"),
+        DecodeField.GovernanceActionId,
+        GovAction.HardFork(previous, 9, 0),
+        expectedAnchor
+      ),
+      (
+        proposal("8504" + id + "80a0d81e820101"),
+        DecodeField.GovernanceActionId,
+        GovAction.UpdateCommittee(previous, Set.empty, Map.empty, Rational.one),
+        expectedAnchor
+      ),
+      (
+        proposal("8305" + id + "82" + anchor + "f6"),
+        DecodeField.GovernanceActionId,
+        GovAction.NewConstitution(previous, None, expectedAnchor),
+        expectedAnchor
+      ),
+      (
+        proposal("8305f69f" + anchor + "f6ff"),
+        DecodeField.Constitution,
+        GovAction.NewConstitution(None, None, expectedAnchor),
+        expectedAnchor
+      ),
+      (
+        proposal("8106", "9f605820" + zeroHash + "ff"),
+        DecodeField.Anchor,
+        GovAction.Info,
+        expectedAnchor
+      ),
+      (
+        proposal("8305f6829f605820" + zeroHash + "fff6"),
+        DecodeField.Anchor,
+        GovAction.NewConstitution(None, None, expectedAnchor),
+        expectedAnchor
+      )
+    )
+    for (encoded, site, action, anch) <- cases do
+      val raw = proposalBody(encoded)
+      assertEquals(
+        TxBody.decode(raw, Era.Conway, at11),
+        Left(LedgerDecodeError.IndefiniteLength(site))
+      )
+      assertEquals(
+        TxBody.decode(raw, Era.Conway, at12).map(_.proposals),
+        Right(Vector(Proposal(0, expectedAccount, action, anch)))
+      )
+      assertEquals(TxBody.decode(raw, Era.Conway), TxBody.decode(raw, Era.Conway, at11))
+  }
+
+  test("voting action IDs, voting procedures and their anchors follow version 12") {
+    val id = "825820" + zeroHash + "00"
+    val cases = Vector(
+      ("9f5820" + zeroHash + "00ff", "8201f6", DecodeField.GovernanceActionId, None),
+      (id, "9f01f6ff", DecodeField.VotingProcedure, None),
+      (id, "82019f605820" + zeroHash + "ff", DecodeField.Anchor, Some(expectedAnchor))
+    )
+    for (actionId, procedure, site, anch) <- cases do
+      val raw = hex("a400800180020013a18204581c" + "00" * 28 + "a1" + actionId + procedure)
+      assertEquals(
+        TxBody.decode(raw, Era.Conway, at11),
+        Left(
+          LedgerDecodeError.Voting(
+            VotingProcedures.DecodeError.InvalidStructure(LedgerDecodeError.IndefiniteLength(site))
+          )
+        )
+      )
+      assertEquals(
+        TxBody.decode(raw, Era.Conway, at12).map(_.votes),
+        Right(
+          Vector(
+            Voter.Pool(hex("00" * 28)) -> Vector(
+              GovActionId(hex(zeroHash), 0) -> VotingProcedure(Vote.Yes, anch)
+            )
+          )
+        )
+      )
+  }
+
+  test("certificate anchors follow version 12") {
+    val raw = hex("a40080018002000481830f8200581c" + "00" * 28 + "9f605820" + zeroHash + "ff")
+    assertEquals(
+      TxBody.decode(raw, Era.Conway, at11),
+      Left(LedgerDecodeError.IndefiniteLength(DecodeField.Anchor))
+    )
+    assertEquals(
+      TxBody.decode(raw, Era.Conway, at12).map(_.certificates),
+      Right(
+        Vector(Certificate.CommitteeResign(Credential.Key(hex("00" * 28)), Some(expectedAnchor)))
+      )
+    )
+  }
+
+  private def legacyUpdate(era: Era, update: String): Bytes =
+    val prefix = if era == Era.Shelley then "a50080018002000300" else "a4008001800200"
+    hex(prefix + "0682a1581c" + "00" * 28 + update + "00")
+
+  private def proposedParams(body: TxBody): Vector[ConwayParam] =
+    body.proposals.flatMap { p =>
+      p.action match
+        case GovAction.ParameterChange(_, update, _) => update.params
+        case _                                       => Vector.empty
+    }
+
+  test("parameter prices and both execution-unit limits accept indefinite records from 12") {
+    val zero = ExUnits.zero
+    val one = Rational.one
+    val cases = Vector(
+      (19, "9fd81e820101d81e820101ff", DecodeField.Prices, ConwayParam.Prices(one, one)),
+      (20, "9f0000ff", DecodeField.MaxTxExUnits, ConwayParam.MaxTxExUnits(zero)),
+      (21, "9f0000ff", DecodeField.MaxBlockExUnits, ConwayParam.MaxBlockExUnits(zero))
+    )
+    for (key, encoded, site, expected) <- cases do
+      val update = "a1" + f"$key%02x" + encoded
+      for era <- Vector(Era.Alonzo, Era.Babbage) do
+        val raw = legacyUpdate(era, update)
+        assertEquals(TxBody.decode(raw, era, at11), Left(LedgerDecodeError.IndefiniteLength(site)))
+        assertEquals(
+          TxBody.decode(raw, era, at12).map(_.update),
+          Right(Some(Update(Map(hex("00" * 28) -> ParamUpdate(Map(key -> hex(encoded)))), 0)))
+        )
+      val raw = proposalBody(proposal("8400f6" + update + "f6"))
+      assertEquals(
+        TxBody.decode(raw, Era.Conway, at11),
+        Left(LedgerDecodeError.IndefiniteLength(site))
+      )
+      assertEquals(
+        TxBody.decode(raw, Era.Conway, at12).map(proposedParams),
+        Right(Vector(expected))
+      )
+  }
+
+  // BoundedRatio switches from decodeInteger to Word64 components before reduction:
+  // BaseTypes.hs:416-427; Binary/Decoding/DecCBOR.hs:214-225 at f649f975.
+  private def unsignedFailure(site: DecodeSite, encoded: String): LedgerDecodeError =
+    LedgerDecodeError.Expected(site, LedgerDecodeError.Shape.Unsigned, node(hex(encoded)).value)
+
+  test("bounded rational components are unsigned at 12 in pool margins and committee quorums") {
+    val negative = "d81e822020"
+    val registration =
+      "8a03581c" + "00" * 28 + "5820" + zeroHash + "0000" + negative + reward + "8080f6"
+    for era <- Shelley do
+      val prefix = if era == Era.Shelley then "a50080018002000300" else "a4008001800200"
+      val raw = hex(prefix + "0481" + registration)
+      assertEquals(
+        TxBody
+          .decode(raw, era, at11)
+          .map(_.certificates.collect { case Certificate.RegisterPool(params) =>
+            params.margin
+          }),
+        Right(Vector(Rational.one))
+      )
+      assertEquals(
+        TxBody.decode(raw, era, at12),
+        Left(unsignedFailure(DecodeField.PoolMargin, "20"))
+      )
+    val raw = proposalBody(proposal("8504f680a0" + negative))
+    assertEquals(
+      TxBody.decode(raw, Era.Conway, at11).map(_.proposals.map(_.action)),
+      Right(Vector(GovAction.UpdateCommittee(None, Set.empty, Map.empty, Rational.one)))
+    )
+    assertEquals(
+      TxBody.decode(raw, Era.Conway, at12),
+      Left(unsignedFailure(DecodeField.Quorum, "20"))
+    )
+  }
+
+  test("bounded rationals in every parameter path use the supplied version") {
+    val ratio = "d81e822020"
+    val one = Rational.one
+    val zero = Rational.zero
+    val pool =
+      PoolVotingThresholds.fromVector(Vector.fill(5)(one)).fold(e => fail(e.toString), identity)
+    val drep =
+      DRepVotingThresholds.fromVector(Vector.fill(10)(one)).fold(e => fail(e.toString), identity)
+    val cases = Vector(
+      (9, ratio, DecodeField.A0, ConwayParam.A0(one)),
+      (10, ratio, DecodeField.Rho, ConwayParam.Rho(one)),
+      (11, ratio, DecodeField.Tau, ConwayParam.Tau(one)),
+      (19, "82" + ratio + "d81e820001", DecodeField.PriceMem, ConwayParam.Prices(one, zero)),
+      (19, "82d81e820001" + ratio, DecodeField.PriceSteps, ConwayParam.Prices(zero, one)),
+      (25, "85" + ratio * 5, DecodeField.PoolVotingThresholds, ConwayParam.PoolThresholds(pool)),
+      (26, "8a" + ratio * 10, DecodeField.DRepVotingThresholds, ConwayParam.DRepThresholds(drep)),
+      (
+        33,
+        ratio,
+        DecodeField.MinFeeRefScriptCostPerByte,
+        ConwayParam.MinFeeRefScriptCostPerByte(one)
+      )
+    )
+    for (key, encoded, site, expected) <- cases do
+      val keyBytes = if key < 24 then f"$key%02x" else "18" + f"$key%02x"
+      val update = "a1" + keyBytes + encoded
+      val raw = proposalBody(proposal("8400f6" + update + "f6"))
+      // The previous decoder's exact typed values are also the stored reader's contract.
+      assertEquals(
+        ConwayParamUpdate.decodeStored(node(hex(update))).map(_.params),
+        Right(Vector(expected))
+      )
+      assertEquals(
+        TxBody.decode(raw, Era.Conway, at11).map(proposedParams),
+        Right(Vector(expected))
+      )
+      assertEquals(TxBody.decode(raw, Era.Conway, at12), Left(unsignedFailure(site, "20")))
+      val legacyEras = Shelley.filter(e =>
+        e != Era.Conway && (key < 19 || e.ordinal >= Era.Alonzo.ordinal) && key < 25
+      )
+      for era <- legacyEras do
+        val body = legacyUpdate(era, update)
+        assertEquals(
+          TxBody.decode(body, era, at11).map(_.update),
+          Right(Some(Update(Map(hex("00" * 28) -> ParamUpdate(Map(key -> hex(encoded)))), 0)))
+        )
+        assertEquals(TxBody.decode(body, era, at12), Left(unsignedFailure(site, "20")))
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo) do
+      val raw = legacyUpdate(era, "a10c" + ratio)
+      assertEquals(
+        TxBody.decode(raw, era, at11).map(_.update),
+        Right(Some(Update(Map(hex("00" * 28) -> ParamUpdate(Map(12 -> hex(ratio)))), 0)))
+      )
+      assertEquals(TxBody.decode(raw, era, at12), Left(unsignedFailure(DecodeField.D, "20")))
+  }
+
+  test("version-12 rational components refuse bignums even when reduction would fit") {
+    val big = "c249010000000000000000"
+    val raw = proposalBody(proposal("8400f6a109d81e82" + big + big + "f6"))
+    assertEquals(
+      TxBody.decode(raw, Era.Conway, at11).map(proposedParams),
+      Right(Vector(ConwayParam.A0(Rational.one)))
+    )
+    assertEquals(TxBody.decode(raw, Era.Conway, at12), Left(unsignedFailure(DecodeField.A0, big)))
+    val valid = proposalBody(proposal("8400f6a109d81e9f0101fff6"))
+    for v <- Vector(at11, at12) do
+      assertEquals(
+        TxBody.decode(valid, Era.Conway, v).map(proposedParams),
+        Right(Vector(ConwayParam.A0(Rational.one)))
+      )
+  }
+
+  test("auxiliary list records and Plutus V4 are accepted from version 12") {
+    given ByteStrings = ByteStrings.of(at12)
+    assertEquals(
+      AuxiliaryScripts
+        .read(hex("d90103a1058140"), at12.value)
+        .map(_.map(s => (s.language, s.code, s.hash))),
+      Right(
+        Vector(
+          (
+            PlutusLanguage.V4,
+            hex(""),
+            hex("65fc709a5e019b8aba76f6977c1c8770e4b36fa76f434efc588747b7")
+          )
+        )
+      )
+    )
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      def tx(aux: String) = hex("84a3008001800200a0f5" + aux)
+      val indefinite = "9fa080ff"
+      assertEquals(
+        Tx.fromEnvelope(tx(indefinite), era, at11),
+        Left(LedgerDecodeError.IndefiniteLength(DecodeField.AuxiliaryData))
+      )
+      assertEquals(
+        Tx.fromEnvelope(tx(indefinite), era, at12).map(_.auxiliary),
+        Right(Some(hex(indefinite)))
+      )
+      val v4 = "d90103a1058140"
+      assertEquals(
+        Tx.fromEnvelope(tx(v4), era, at11),
+        Left(LedgerDecodeError.UnknownTag(DecodeField.AuxiliaryField, 5))
+      )
+      assertEquals(Tx.fromEnvelope(tx(v4), era, at12).map(_.auxiliary), Right(Some(hex(v4))))
   }
 
   test("witness script languages remain tied to the era at explicit versions") {

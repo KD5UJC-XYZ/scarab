@@ -302,7 +302,7 @@ object Certificate:
       vrf <- CborRead.bytesN(xs(1), 32, DecodeField.PoolVrf)
       pledge <- CborRead.uint(xs(2), DecodeField.PoolPledge)
       cost <- CborRead.uint(xs(3), DecodeField.PoolCost)
-      margin <- CborRead.rational(xs(4), DecodeField.PoolMargin, CborRead.Bound.Unit)
+      margin <- CborRead.rational(xs(4), DecodeField.PoolMargin, CborRead.Bound.Unit, version)
       account <- CborRead.bytes(xs(5), DecodeField.PoolRewardAccount).flatMap(RewardAccount.decode)
       owners <- CborRead.set(xs(6), DecodeField.PoolOwners, version)(
         CborRead.bytesN(_, 28, DecodeField.PoolOwner)
@@ -416,7 +416,7 @@ object TxBody:
         for
           key <- CborRead.bytesN(k, 28, DecodeField.GenesisKeyHash)
           fs <- CborRead.map(v, DecodeField.ParameterUpdate)
-          update <- ParamUpdate.read(fs, era, CostModelDecode.Format.of(version))
+          update <- ParamUpdate.read(fs, era, version)
         yield key -> update
       }
       epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
@@ -859,8 +859,8 @@ object Witnesses:
     * (`Alonzo/TxWits.hs:550-597`, f649f975), the same reader as a parameter's
     * ([[ConwayParam.exUnits]]).
     */
-  private def exUnits(n: Node): Either[LedgerDecodeError, ExUnits] =
-    ConwayParam.exUnits(n, DecodeField.ExUnits, ConwayParam.Records.Body)
+  private def exUnits(n: Node, version: DecoderVersion): Either[LedgerDecodeError, ExUnits] =
+    ConwayParam.exUnits(n, DecodeField.ExUnits, ConwayParam.Records.at(version))
 
   /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. The
     * ledger keeps redeemers in a map keyed by purpose, so of several entries for the same
@@ -892,7 +892,7 @@ object Witnesses:
             value <- CborRead.definite(v, DecodeField.RedeemerValue) *>
               CborRead.arrayN(v, 2, DecodeField.RedeemerValue)
             _ <- Data.read(value(0), DecodeField.Redeemer)
-            units <- exUnits(value(1))
+            units <- exUnits(value(1), version)
           yield Redeemer(purpose._1, purpose._2, value(0).original, units)
         }
       case _ if version.atLeast(12) =>
@@ -907,7 +907,7 @@ object Witnesses:
               xs <- CborRead.arrayN(r, 4, DecodeField.Redeemer)
               purpose <- Redeemer.purpose(xs(0), xs(1), era)
               _ <- Data.read(xs(2), DecodeField.Redeemer)
-              units <- exUnits(xs(3))
+              units <- exUnits(xs(3), version)
             yield Redeemer(purpose._1, purpose._2, xs(2).original, units)
           })
     all.flatMap(CborRead.nonEmpty(_, DecodeField.Redeemers, version.atLeast(9))).map { rs =>

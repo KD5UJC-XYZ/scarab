@@ -61,7 +61,7 @@ object ParamUpdate:
   def read(
       fields: Vector[(Node, Node)],
       rules: Rules,
-      costModels: CostModelDecode.Format
+      version: DecoderVersion
   )(using ByteStrings): Either[LedgerDecodeError, ParamUpdate] =
     fields
       .foldLeftM(Map.empty[Int, Bytes]) { case (acc, (k, v)) =>
@@ -75,7 +75,7 @@ object ParamUpdate:
           key <- Option
             .when(index.isValidInt && rules.keys.keys.contains(index.toInt))(index.toInt)
             .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, index))
-          _ <- value(key, v, rules, costModels)
+          _ <- value(key, v, rules, version)
         yield acc.updated(key, CborRead.kept(v))
       }
       .map(ParamUpdate(_))
@@ -86,12 +86,12 @@ object ParamUpdate:
   def read(
       fields: Vector[(Node, Node)],
       era: Era,
-      costModels: CostModelDecode.Format
+      version: DecoderVersion
   )(using ByteStrings): Either[LedgerDecodeError, ParamUpdate] =
     Rules
       .of(era)
       .toRight(LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, Set(6)))
-      .flatMap(read(fields, _, costModels))
+      .flatMap(read(fields, _, version))
 
   /** The value of `key`, one of the era's update keys, read at its field's type. The keys every
     * Shelley-based era shares are read as Conway reads them ([[ConwayParam.everyEra]]). The others
@@ -102,16 +102,17 @@ object ParamUpdate:
     * `ppMinUTxOValue`, 481-488), a `CompactForm Coin`, one `Word64`. The cost models of 18 are
     * checked by the rule of the decoder version of the era ([[CostModelDecode]]).
     */
-  private def value(key: Int, v: Node, rules: Rules, costModels: CostModelDecode.Format)(using
+  private def value(key: Int, v: Node, rules: Rules, version: DecoderVersion)(using
       ByteStrings
   ): Either[LedgerDecodeError, Unit] = key match
-    case 12              => CborRead.rational(v, DecodeField.D, CborRead.Bound.Unit).void
+    case 12              => CborRead.rational(v, DecodeField.D, CborRead.Bound.Unit, version).void
     case 13              => Nonce.decode(v, Nonce.NeutralFields.Exact).void
     case 14              => protocolVersion(v, rules.maxMajor).void
     case 15              => Unsigned.read[Unsigned.Width.W64](v, DecodeField.MinUTxOValue).void
-    case CostModelsField => CostModelDecode.decode(v, costModels).void
+    case CostModelsField => CostModelDecode.decode(v, CostModelDecode.Format.of(version)).void
     case _ =>
-      ConwayParam.everyEra
+      ConwayParam
+        .everyEra(version)
         .get(BigInt(key))
         .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, BigInt(key)))
         .flatMap(_(v))

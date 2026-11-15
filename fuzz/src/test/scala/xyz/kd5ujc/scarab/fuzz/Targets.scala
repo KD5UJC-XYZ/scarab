@@ -963,6 +963,24 @@ object Targets:
         }
       ),
       Target(
+        "block-decoder-version-12",
+        () => Corpus.blocks ++ Corpus.sampledEras("block", "alonzo") ++ Corpus.tricky,
+        probe("block-decoder-version-12") { b =>
+          val decoded = Block.decodeShelley(b, _ => DecoderVersion.Dijkstra)
+          seen("block-decoder-version-12", decoded.isRight)
+          decoded.foreach {
+            case block: Block.Shelley =>
+              req(
+                Header.fromRaw(block.era, block.header.raw, DecoderVersion.Dijkstra) ==
+                  Right(block.header),
+                "an explicit-version block and its header disagree"
+              )
+              block.transactions.foreach(t => Tx.fromBlock(t, block.era, DecoderVersion.Dijkstra))
+            case _ => ()
+          }
+        }
+      ),
+      Target(
         "header-envelope",
         () =>
           Corpus.headerEnvelopes ++ Corpus.sampled("chainsync-header:header", 60) ++ Corpus.tricky,
