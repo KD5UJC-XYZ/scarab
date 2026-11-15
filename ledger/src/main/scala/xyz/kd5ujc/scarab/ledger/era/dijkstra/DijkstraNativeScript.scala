@@ -17,20 +17,33 @@ import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTimelock
   * (`DijkstraRequireGuard (Credential Guard)`, `Scripts.hs:270-277`), so it is a type of its own,
   * and no Conway time lock can hold a guard.
   *
-  * Each level keeps the bytes it was read from, a window of one copy the script owns, so a
-  * sub-script read from a script has its own bytes and a script as deep as a block holds one copy
-  * of them. Equal, and ordered, by the hash of its bytes (`instance Eq (DijkstraNativeScript era)`,
-  * `Scripts.hs:331-337`, which compares the memoized hashes): by its bytes. Made only by
-  * [[DijkstraNativeScript.decode]] and [[DijkstraNativeScript.translate]].
+  * What a level memoizes depends on how it was made, as in the reference
+  * ([[DijkstraNativeScript.Memo]]): a script read from bytes memoizes them, but its sub-scripts are
+  * read with no bytes (`decodeNoBytesDijkstraNativeScript`, `MemoBytes t mempty def`,
+  * `Scripts.hs:321-325`), so a decoded sub-script's original bytes are empty and its memoized hash
+  * is the default; a translated script is built through the constructors, each level memoizing its
+  * own new encoding (`mkMemoizedEra`). Equal, and ordered, by the memoized hash (`instance Eq
+  * (DijkstraNativeScript era)`, `Scripts.hs:331-337`): two scripts with bytes by their bytes, any
+  * two decoded sub-scripts equal, and a decoded sub-script unequal to a script with bytes. Made
+  * only by [[DijkstraNativeScript.decode]] and [[DijkstraNativeScript.translate]].
   *
-  * @param raw
-  *   the script's encoding as it arrived, or as Dijkstra encodes a translated one
+  * @param memo
+  *   what the level memoizes: its bytes, or none for a decoded sub-script
   * @param form
-  *   the constructor and its fields, the sub-scripts each with their own bytes
+  *   the constructor and its fields, with the sub-scripts
   */
-final class DijkstraNativeScript private (val raw: Bytes, val form: DijkstraNativeScript.Form):
-  /** `hashScript`: blake2b-224 of the native tag `0` and the bytes (`alonzoScriptPrefixTag`,
-    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:574-580`, cardano-ledger 9df9f98c).
+final class DijkstraNativeScript private (
+    val memo: DijkstraNativeScript.Memo,
+    val form: DijkstraNativeScript.Form
+):
+  /** `originalBytes`: the memoized bytes, empty for a decoded sub-script. */
+  def raw: Bytes = memo match
+    case DijkstraNativeScript.Memo.Of(bytes) => bytes
+    case DijkstraNativeScript.Memo.NoBytes   => Bytes.empty
+
+  /** `hashScript`: blake2b-224 of the native tag `0` and the original bytes
+    * (`alonzoScriptPrefixTag`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:574-580`,
+    * cardano-ledger 9df9f98c), of the tag alone for a decoded sub-script.
     */
   lazy val hash: Bytes = Blake2b.hash224.hash(DijkstraNativeScript.nativeTag ++ raw)
 
@@ -94,16 +107,27 @@ final class DijkstraNativeScript private (val raw: Bytes, val form: DijkstraNati
         DijkstraNativeScript.Form.TimeStart(_) | DijkstraNativeScript.Form.TimeExpire(_) =>
       None
 
+  // the memoized hash compared: the bytes', or the default for no bytes, which no bytes hash to
   override def equals(that: Any): Boolean = that match
-    case o: DijkstraNativeScript => raw == o.raw
+    case o: DijkstraNativeScript => memo == o.memo
     case _                       => false
-  override def hashCode(): Int = raw.hashCode
+  override def hashCode(): Int = memo.hashCode
 
   // the bytes, not the tree: a script nests as deep as a block is long
-  override def toString: String = s"DijkstraNativeScript(${raw.size} bytes)"
+  override def toString: String = memo match
+    case DijkstraNativeScript.Memo.Of(bytes) => s"DijkstraNativeScript(${bytes.size} bytes)"
+    case DijkstraNativeScript.Memo.NoBytes   => "DijkstraNativeScript(no bytes)"
 
 object DijkstraNativeScript:
   private val nativeTag: Bytes = Bytes(Vector(0.toByte))
+
+  /** What a level of a script memoizes (`MemoBytes`, `libs/cardano-ledger-core/src/Cardano/Ledger/
+    * MemoBytes/Internal.hs`, cardano-ledger 9df9f98c): its bytes, or, for a sub-script read from
+    * bytes, none (`MemoBytes t mempty def`, `Scripts.hs:321-325`).
+    */
+  enum Memo derives CanEqual:
+    case Of(bytes: Bytes)
+    case NoBytes
 
   /** `DijkstraNativeScriptRaw` (`Scripts.hs:270-277`, cardano-ledger 9df9f98c). */
   enum Form:
@@ -132,8 +156,21 @@ object DijkstraNativeScript:
     read(n).leftMap(EraTxError.Decode(_))
 
   private[dijkstra] def read(n: Node): Either[LedgerDecodeError, DijkstraNativeScript] =
+    readWith(Kept.NoBytes)(n)
+
+  /** What a level read from bytes keeps: its bytes, or none. */
+  private enum Kept:
+    case Bytes
+    case NoBytes
+
+  /** The script of `n`, its root memoizing its bytes and its sub-scripts what `subScripts` says. */
+  private def readWith(subScripts: Kept)(
+      n: Node
+  ): Either[LedgerDecodeError, DijkstraNativeScript] =
     val owned = Owned(n.original)
-    TreeFold.foldE[Node, DijkstraNativeScript, LedgerDecodeError](n)(level(owned))
+    TreeFold.foldE[(Node, Kept), DijkstraNativeScript, LedgerDecodeError]((n, Kept.Bytes))(
+      level(owned, subScripts)
+    )
 
   /** A Conway native script carried into Dijkstra (`upgradeTimelock`, `Scripts.hs:436-444`,
     * cardano-ledger 9df9f98c): rebuilt through the constructors, each of which memoizes a fresh
@@ -141,12 +178,13 @@ object DijkstraNativeScript:
     * bytes and a new hash. The encoding is the one the Leios build's translation writes
     * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript.upgradeTimelock]]), read back here so each
     * level has its bytes; Dijkstra reads every Conway script, so a refusal is a defect of the
-    * encoder.
+    * encoder. Every level memoizes its encoding, the sub-scripts too, as the constructors that
+    * build it do; each is a window of the root's, which embeds them.
     */
   def translate(t: ConwayTimelock): Either[EraTxError, DijkstraNativeScript] =
     CborRead
       .decode(xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript.upgradeTimelock(t.rep.script))
-      .flatMap(read)
+      .flatMap(readWith(Kept.Bytes))
       .leftMap(EraTxError.TranslationReadBack(_))
 
   /** The root's bytes copied once, and each level's bytes as a window of the copy: a level's bytes
@@ -160,21 +198,24 @@ object DijkstraNativeScript:
         copy.slice(from, from + level.size)
       else level.compact
 
-  private def level(owned: Owned)(
-      node: Node
+  private def level(owned: Owned, subScripts: Kept)(
+      at: (Node, Kept)
   ): Either[
     LedgerDecodeError,
-    TreeFold.Step[Node, DijkstraNativeScript, LedgerDecodeError]
+    TreeFold.Step[(Node, Kept), DijkstraNativeScript, LedgerDecodeError]
   ] =
     import V12.given
-    def leaf(form: Form) =
-      TreeFold.Step.Leaf(new DijkstraNativeScript(owned.of(node.original), form))
+    val (node, kept) = at
+    val memo = kept match
+      case Kept.Bytes   => Memo.Of(owned.of(node.original))
+      case Kept.NoBytes => Memo.NoBytes
+    def leaf(form: Form) = TreeFold.Step.Leaf(new DijkstraNativeScript(memo, form))
     def branch(subs: Vector[Node])(form: Vector[DijkstraNativeScript] => Form) =
-      TreeFold.Step.Branch[Node, DijkstraNativeScript, LedgerDecodeError](
-        subs,
-        scripts => Right(new DijkstraNativeScript(owned.of(node.original), form(scripts)))
+      TreeFold.Step.Branch[(Node, Kept), DijkstraNativeScript, LedgerDecodeError](
+        subs.map((_, subScripts)),
+        scripts => Right(new DijkstraNativeScript(memo, form(scripts)))
       )
-    V12.sum[TreeFold.Step[Node, DijkstraNativeScript, LedgerDecodeError]](
+    V12.sum[TreeFold.Step[(Node, Kept), DijkstraNativeScript, LedgerDecodeError]](
       node,
       DecodeField.NativeScript
     ) {

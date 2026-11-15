@@ -205,11 +205,37 @@ class DijkstraNativeScriptSuite extends FunSuite:
     assertEquals(expire.getTimeStart, None)
   }
 
-  test("a sub-script has its own bytes, a window of the script's") {
-    val sub = "8200581c" + "11" * 28
-    val script =
-      ours(hex("82019f" + sub + "8204" + "00" + "ff")).fold(e => fail(e.toString), identity)
-    assertEquals(script.getRequireAllOf.map(_.map(_.raw.hex)), Some(Vector(sub, "820400")))
+  // What the Leios build's ledger gives for `[1, [[4, 0], [5, 0]]]`, read at version 12, and for
+  // the same script read at Conway's version 9 and carried in by `upgradeTimelock`, as a probe of
+  // the pinned image printed them on 2026-11-15 (`originalBytes`, `hashScript`, `==`).
+  private val decodedNoBytesHash = "0d94e174732ef9aae73f395ab44507bfa983d65023c11a951f0c32e4"
+
+  test("a decoded sub-script has no bytes, as the reference reads it, and equals any other") {
+    val script = ours(hex("820182820400820500")).fold(e => fail(e.toString), identity)
+    val subs = script.getRequireAllOf.getOrElse(fail("not all-of"))
+    assertEquals(script.raw, hex("820182820400820500"))
+    assertEquals(subs.map(_.raw), Vector(Bytes.empty, Bytes.empty))
+    assertEquals(subs.map(_.hash.hex), Vector(decodedNoBytesHash, decodedNoBytesHash))
+    // `[4, 0]` and `[5, 0]` compare equal: their memoized hashes are both the default
+    assertEquals(subs(0), subs(1))
+    assertEquals(subs.map(_.getTimeStart), Vector(Some(BigInt(0)), None))
+    // a script with bytes is unequal to a decoded sub-script
+    assertNotEquals(ours(hex("820400")).fold(e => fail(e.toString), identity), subs(0))
+  }
+
+  test("a translated script's sub-scripts each memoize their own encoding") {
+    given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Conway))
+    val conway = CborRead
+      .decode(hex("82019f820400820500ff"))
+      .left
+      .map(_.toString)
+      .flatMap(xyz.kd5ujc.scarab.ledger.era.conway.ConwayTimelock.decode(_).left.map(_.toString))
+      .fold(e => fail(e), identity)
+    val translated = DijkstraNativeScript.translate(conway).fold(e => fail(e.toString), identity)
+    assertEquals(translated.raw, hex("820182820400820500"))
+    val subs = translated.getRequireAllOf.getOrElse(fail("not all-of"))
+    assertEquals(subs.map(_.raw.hex), Vector("820400", "820500"))
+    assertNotEquals(subs(0), subs(1))
   }
 
   test("a script as deep as a block reads on a small stack") {
