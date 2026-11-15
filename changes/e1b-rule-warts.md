@@ -1,7 +1,7 @@
 ### Changed (build)
 
 - Three warts of the design rules' own, in a `warts` project that every module's compiler loads, refuse in the
-  main sources of every module but `tools`: a reading of the system clock (EFF-6); an `unsafeRun*` (EFF-5);
+  main sources of every module but `tools` and `warts`, generated code excluded: a reading of the system clock (EFF-6); an `unsafeRun*` (EFF-5);
   `sys.error`, `require`, `assume`, `assert`, and a `raiseError` (or `fromEither` of a `Left`) of a
   `Throwable` made to be raised or of a domain error, which goes through cats-mtl `Raise` (ERR-4); floating point in the ledger and consensus
   packages (ARI-1); and a decision on a String's contents (STR-3), outside the parsers listed in
