@@ -246,3 +246,13 @@ class SystemTimeAndUnsafeRunSuite extends munit.FunSuite:
       (rejected[IO](true), matched[IO](0), forwarded[IO](new IllegalStateException("given"), true))
     }
     assertEquals(kinds(r), List("raise-constructed", "raise-constructed"))
+
+  test("fromEither of a union whose members include an Either of a domain error, in either order"):
+    val r = WartTestTraverser(SystemTimeAndUnsafeRun) {
+      val a = (e: Either[java.io.IOException, Unit] | Either[Boom, Unit]) => IO.fromEither(e)
+      val b = (e: Either[Boom, Unit] | Either[java.io.IOException, Unit]) => IO.fromEither(e)
+      val c = (e: Either[java.io.IOException, Unit] | Either[IllegalStateException, Unit]) =>
+        IO.fromEither(e)
+      (a, b, c)
+    }
+    assertEquals(kinds(r), List.fill(2)("raise-domain-error"))

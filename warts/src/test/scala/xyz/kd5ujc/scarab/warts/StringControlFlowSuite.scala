@@ -250,3 +250,24 @@ class StringControlFlowSuite extends munit.FunSuite:
       (sameLabel(Label("a"), Label("b")), isMain(Label("a"), Label("b")))
     }
     assertEquals(kinds(r), List("string-equality"))
+
+  test("a branch that only reads the tested String is not a form of it; an alias of its path is"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final case class Cell(text: String)
+      def quota(role: Cell, privileged: Cell, regular: Cell): Int =
+        (if role.text == "admin" then (role.text, privileged.text)._2
+         else (role.text, regular.text)._2).toInt
+      def joined(role: Cell, other: Cell): String =
+        if role.text.isEmpty || role.text == "x" then role.text + other.text else role.text
+      def trimmed(role: Cell): String =
+        val same: Cell = role
+        if role.text.endsWith(".") then same.text.dropRight(1) else same.text
+      def dotted(value: String): String = if value.endsWith(".") then value else s"$value."
+      (
+        quota(Cell("a"), Cell("1"), Cell("2")),
+        joined(Cell("a"), Cell("b")),
+        trimmed(Cell("a")),
+        dotted("a")
+      )
+    }
+    assertEquals(kinds(r), List("string-equality", "string-equality"))

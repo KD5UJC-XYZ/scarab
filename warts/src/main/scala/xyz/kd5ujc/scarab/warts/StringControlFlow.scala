@@ -17,8 +17,9 @@ import org.wartremover.{WartTraverser, WartUniverse}
   *     a literal: the type's own equality; a comparison with a literal, and the other kinds, are
   *     sites there;
   *   - the condition of an `if`, and a `match`, whose value is a `String` and whose every branch is
-  *     built from a String the condition reads (`if node.contains('.') then node else
-  *     node.take(8)`): it chooses between forms of the same text;
+  *     built on a String the condition reads by the String's own operations (`if node.contains('.')
+  *     then node else node.take(8)`; an immutable alias of the path counts as the path): it chooses
+  *     between forms of the same text;
   *   - the lookup of an upsert, `m.updated(k, … m.get(k) …)` with the same path `m` and key `k`,
   *     which is `updatedWith`;
   *   - a macro implementation (a definition that takes `Quotes`), which runs in the compiler;
@@ -27,7 +28,10 @@ import org.wartremover.{WartTraverser, WartUniverse}
   *
   * Not seen: an eta-expanded `s.equals`; in an equality definition, a comparison with a constant
   * that is not a literal; and a lookup by a raw `String` in a map keyed by an opaque type, in its
-  * scope.
+  * scope. The text-form rule reads a branch's syntax, not its data flow: a branch built on the
+  * tested String through a function of our own (`camel(name) + "s"`) is not a form of it, and so a
+  * site, and a decision that hides another value in a non-String argument of a String method is not
+  * seen.
   *
   * A definition that carries the wart's full name in `@SuppressWarnings` is skipped with all it
   * holds; a call to it is checked as any other, its arguments too.
@@ -152,22 +156,75 @@ object StringControlFlow extends WartTraverser:
               foldOverTree(found ++ stable(r).toList, tree)(owner)
             case _ => foldOverTree(found, tree)(owner)
 
-      /** An `if` whose value is a `String` and whose branches are each built from a String its
-        * condition reads (`if node.contains('.') then node else node.take(8)`): it chooses between
-        * forms of the same text.
+      /** The immutable `val` s bound to a stable path (`val same = role`), so that a path through
+        * one is the path it names.
         */
-      private def textForm(cond: Term, branches: List[Term]): Boolean =
-        val read = stringsRead.foldTree(Set.empty, cond)(Symbol.noSymbol)
-        read.nonEmpty && branches.forall(b =>
-          stringsRead.foldTree(Set.empty, b)(Symbol.noSymbol).exists(read)
-        )
+      private def aliasesOf(root: Tree, owner: Symbol): Map[Symbol, List[Symbol]] =
+        val accumulator = new TreeAccumulator[Map[Symbol, List[Symbol]]]:
+          def foldTree(found: Map[Symbol, List[Symbol]], tree: Tree)(
+              o: Symbol
+          ): Map[Symbol, List[Symbol]] =
+            tree match
+              case v @ ValDef(_, _, Some(rhs)) if !v.symbol.flags.is(Flags.Mutable) =>
+                foldOverTree(stable(rhs).fold(found)(path => found + (v.symbol -> path)), tree)(o)
+              case _ => foldOverTree(found, tree)(o)
+        accumulator.foldTree(Map.empty, root)(owner)
+
+      /** A path with its root alias replaced by the path the alias names, as long as there is one.
+        */
+      @scala.annotation.tailrec
+      private def canonical(aliases: Map[Symbol, List[Symbol]], fuel: Int)(
+          path: List[Symbol]
+      ): List[Symbol] =
+        path.lastOption.flatMap(aliases.get) match
+          case Some(named) if fuel > 0 => canonical(aliases, fuel - 1)(path.init ++ named)
+          case _                       => path
+
+      private def textual(t: Term): Boolean = isString(t) || t.tpe.widen <:< stringOps
+
+      private def interpolated(a: Term): List[Term] =
+        Trees.strip(a) match
+          case Repeated(elems, _) => elems
+          case other              => List(other)
+
+      /** Whether the String value of `t` is built on one of `paths` by the String's own operations:
+        * the path itself, a method of `String` or `StringOps` called on such a value with arguments
+        * that are not other Strings (literals and such values are), or an interpolation of such
+        * values.
+        */
+      private def builtOn(context: Context, paths: Set[List[Symbol]])(t: Term): Boolean =
+        val term = Trees.strip(t)
+        def own(args: List[Term]): Boolean =
+          args.forall(a => !isString(a) || isLiteral(a) || builtOn(context, paths)(a))
+        stable(term).map(canonical(context.aliases, 8)).exists(paths) || (term match
+          case Select(q, _) if textual(q) => builtOn(context, paths)(q)
+          case Apply(Select(q, _), args) if textual(q) =>
+            builtOn(context, paths)(q) && own(args)
+          case Apply(TypeApply(Select(q, _), _), args) if textual(q) =>
+            builtOn(context, paths)(q) && own(args)
+          case Apply(_, List(x)) if term.tpe.widen <:< stringOps && isString(x) =>
+            builtOn(context, paths)(x)
+          case Apply(Select(sc, _), args) if sc.tpe.widen <:< TypeRepr.of[StringContext] =>
+            val parts = args.flatMap(interpolated)
+            parts.exists(builtOn(context, paths)) && own(parts)
+          case _ => false)
+
+      /** An `if` or `match` whose value is a `String` and whose every branch is built on a String
+        * its condition reads (`if node.contains('.') then node else node.take(8)`): it chooses
+        * between forms of the same text.
+        */
+      private def textForm(context: Context)(cond: Term, branches: List[Term]): Boolean =
+        val read =
+          stringsRead.foldTree(Set.empty, cond)(Symbol.noSymbol).map(canonical(context.aliases, 8))
+        read.nonEmpty && branches.forall(builtOn(context, read))
 
       /** Where a site is: in the body of an equality definition, and in the value of an upsert of a
         * map by a key (both as stable paths).
         */
       private final case class Context(
           equality: Boolean,
-          upserts: Set[(List[Symbol], List[Symbol])]
+          upserts: Set[(List[Symbol], List[Symbol])],
+          aliases: Map[Symbol, List[Symbol]]
       )
 
       private def kind(context: Context)(tree: Tree): Option[String] = tree match
@@ -185,7 +242,7 @@ object StringControlFlow extends WartTraverser:
           Some("regex-match")
         case m @ Match(scrutinee, cases)
             if isString(scrutinee) && cases.exists(c => stringPattern(c.pattern)) &&
-              !(isString(m) && textForm(scrutinee, cases.map(_.rhs))) =>
+              !(isString(m) && textForm(context)(scrutinee, cases.map(_.rhs))) =>
           Some("string-match")
         case Apply(Select(recv, m), key :: _)
             if lookups(m) && stringKeyed(recv) && !isLiteral(key) =>
@@ -215,7 +272,7 @@ object StringControlFlow extends WartTraverser:
               case d: DefDef if !context.equality && equalityDefinition(d) =>
                 walk(context.copy(equality = true)).traverseTree(d)(owner)
               case i @ If(cond, thenp, elsep)
-                  if isString(i) && textForm(cond, List(thenp, elsep)) =>
+                  if isString(i) && textForm(context)(cond, List(thenp, elsep)) =>
                 traverseTree(thenp)(owner)
                 traverseTree(elsep)(owner)
               case Updated(map, key, value) if stringKeyed(map) =>
@@ -232,4 +289,5 @@ object StringControlFlow extends WartTraverser:
                 super.traverseTree(tree)(owner)
 
       override def traverseTree(tree: Tree)(owner: Symbol): Unit =
-        walk(Context(equality = false, upserts = Set.empty)).traverseTree(tree)(owner)
+        walk(Context(equality = false, upserts = Set.empty, aliases = aliasesOf(tree, owner)))
+          .traverseTree(tree)(owner)

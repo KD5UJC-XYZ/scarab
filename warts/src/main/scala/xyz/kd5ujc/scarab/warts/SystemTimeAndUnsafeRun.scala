@@ -82,18 +82,17 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
 
       private val throwable = TypeRepr.of[Throwable]
 
-      /** The left type of an `Either`, also of a union or intersection that has one (the type of
-        * `if b then Left(e) else Right(())` is `Left[…] | Right[…]`).
+      /** The left types of an `Either`, also of every member of a union or intersection (the type
+        * of `if b then Left(e) else Right(())` is `Left[…] | Right[…]`).
         */
-      private def eitherLeft(t: TypeRepr): Option[TypeRepr] =
+      private def eitherLefts(t: TypeRepr): List[TypeRepr] =
         t.widen.dealias match
-          case OrType(a, b) =>
-            eitherLeft(a).filterNot(_ =:= TypeRepr.of[Nothing]).orElse(eitherLeft(b))
-          case AndType(a, b) => eitherLeft(a).orElse(eitherLeft(b))
+          case OrType(a, b)  => eitherLefts(a) ++ eitherLefts(b)
+          case AndType(a, b) => eitherLefts(a) ++ eitherLefts(b)
           case other =>
             other.baseType(TypeRepr.of[Either[Any, Any]].typeSymbol) match
-              case AppliedType(_, List(left, _)) => Some(left)
-              case _                             => None
+              case AppliedType(_, List(left, _)) => List(left)
+              case _                             => Nil
 
       /** How the value of `t` came to be, given the `val`s known to hold a made `Throwable`. */
       private def raised(made: Set[Symbol])(t: Term): Raised =
@@ -110,7 +109,7 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
         * `Either`.
         */
       private def candidate(t: TypeRepr): Boolean =
-        t <:< throwable || Trees.isOurs(t) || eitherLeft(t).isDefined
+        t <:< throwable || Trees.isOurs(t) || eitherLefts(t).nonEmpty
 
       /** The `val` s of a tree that hold a `Throwable`, or one of ours, made for it, or an `Either`
         * whose left side is one.
@@ -182,11 +181,12 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
         * one of ours.
         */
       private def raisedValue(made: Set[Symbol])(t: Term): Raised =
-        eitherLeft(t.tpe) match
-          case Some(left) =>
+        eitherLefts(t.tpe) match
+          case Nil => raised(made)(t)
+          case lefts =>
             t match
-              case LeftOf(e)               => raised(made)(e)
-              case _ if Trees.isOurs(left) => Raised.Domain
+              case LeftOf(e)                          => raised(made)(e)
+              case _ if lefts.exists(Trees.isOurs(_)) => Raised.Domain
               case _ =>
                 Trees.strip(t) match
                   case If(_, a, b) => worst(raisedValue(made)(a), raisedValue(made)(b))
@@ -194,7 +194,6 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
                     cases.map(c => raisedValue(made)(c.rhs)).foldLeft(Raised.PassedOn)(worst)
                   case r: Ref if made(r.symbol) => Raised.Constructed
                   case _                        => Raised.PassedOn
-          case None => raised(made)(t)
 
       private def report(made: Set[Symbol])(values: List[Term]): Option[(String, String)] =
         values
