@@ -55,9 +55,8 @@ trait LedgerFileCodecs extends ConsensusCodecs:
   /** `AnnTip` of the Cardano chain (`HardFork/Combinator/Serialisation/SerialiseDisk.hs:100-108`,
     * an `NS`): `[era index, the era's tip]`. A Shelley-based tip is `[slot, hash, block number]`
     * (`HeaderValidation.hs:657-671`, ouroboros-consensus 82ecba32), Byron's has the boundary-block
-    * flag after them (`:673-697`).
-    * Note the order of the hash and the block number, which is not the ledger tip's (`ShelleyTip`:
-    * slot, block number, hash).
+    * flag after them (`:673-697`). Note the order of the hash and the block number, which is not
+    * the ledger tip's (`ShelleyTip`: slot, block number, hash).
     */
   given annTip: Codec[AnnTip] = new Codec[AnnTip]:
     def decode(n: Node): Decoded[AnnTip] =

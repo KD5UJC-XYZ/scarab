@@ -20,9 +20,8 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
   * registration before protocol version 5, B22) is reported on the node's network, as the reference
   * reports it (`queryPoolParameters` and `mkQueryPoolStateResult`, `Api/State/Query.hs:485-525`,
   * cardano-ledger f649f975, through `stakePoolStateToStakePoolParams`); its future parameters are
-  * reported as registered.
-  * The state is the mirror, which keeps the account's credential only, so the registered pool has
-  * no other network to be on; the future parameters keep theirs.
+  * reported as registered. The state is the mirror, which keeps the account's credential only, so
+  * the registered pool has no other network to be on; the future parameters keep theirs.
   */
 class PoolNetworkQuerySuite extends FunSuite:
   private val network = NtcGolden.queryEnv.mirror.network

@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 /** The immutable ledger's hard-fork history for GDD's slotToGenesisWindow query.
   *
-  * Mirrors State/Infra.hs:194-305 (ouroboros-consensus 82ecba32) reconstructSummary and
+  * Mirrors State/Infra.hs:194-304 (ouroboros-consensus 82ecba32) reconstructSummary and
   * History/Qry.hs EGenesisWindow: a known transition exposes exactly one future era; an unknown
   * transition exposes the current era only up to the epoch-rounded safe horizon. The synthetic open
   * Byron span is never used.

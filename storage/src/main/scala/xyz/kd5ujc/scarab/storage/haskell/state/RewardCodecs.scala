@@ -41,8 +41,7 @@ trait RewardCodecs extends SnapshotCodecs:
   given nonMyopic(using ProtVer): Codec[NonMyopic] =
     Record.of[NonMyopic]((mapOf(keyHash[StakePool], likelihood), coin))
 
-  /** `RewardType` (`Rewards.hs:50-52`, cardano-ledger f649f975): the word 0 (member) or 1
-    * (leader).
+  /** `RewardType` (`Rewards.hs:50-52`, cardano-ledger f649f975): the word 0 (member) or 1 (leader).
     */
   given rewardType: Codec[RewardType] = new Codec[RewardType]:
     def decode(n: Node): Decoded[RewardType] = n.value match

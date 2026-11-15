@@ -616,8 +616,9 @@ object Mux:
                     case Left(reason)   => F.pure(Left(NetworkError.MuxWrite(reason)))
                     case Right(encoded) =>
                       // Egress.hs:189–213 (ouroboros-network c45735a5) rotates after one SDU.
-                      // Socket.hs:190–230 gives each actual write one budget per SDU: a stalled
-                      // first SDU gets no later SDU's time.
+                      // Socket.hs:190–230 gives each actual write one budget per SDU, and a write
+                      // of several SDUs one budget for each of them (`writeSocketMany`,
+                      // Socket.hs:219–225).
                       val perSdu =
                         if lane.protocol == Protocols.Handshake then config.handshakeSduTimeout
                         else config.sduTimeout

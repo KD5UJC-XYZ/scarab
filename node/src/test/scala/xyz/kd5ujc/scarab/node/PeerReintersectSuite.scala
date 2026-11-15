@@ -175,7 +175,7 @@ class PeerReintersectSuite extends FailsOnUncaught:
       session(headers, Some(0)).map { run =>
         assertEquals(run.offered.size, 2)
         assertEquals(run.offered(1), Vector(headers(0).point, ChainSync.Point.Origin))
-        // the pipe is drained before the new FindIntersect (drainThePipe, Client.hs:1500,
+        // the pipe is drained before the new FindIntersect (drainThePipe, Client.hs:1504,
         // ouroboros-consensus 82ecba32)
         assertEquals(run.outstandingAtReintersection, Some(0))
         val events = run.events.fold(f => fail(s"session ended: $f"), identity)

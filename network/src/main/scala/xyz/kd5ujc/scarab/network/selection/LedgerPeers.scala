@@ -101,10 +101,10 @@ trait Kind[K <: LedgerKind]:
 
 object Kind:
   /** Ordinary ledger peers: weighted by the square root of the stake, to flatten the distribution
-    * (`recomputeRelativeStake` for `SingAllLedgerPeers`, `API/LedgerPeers/Utils.hs:80-89`); the
-    * root is taken as the reference takes it, as a `Double` (`Utils.hs:84-87`, ouroboros-network
-    * 1.2.0.0: "we care about precision in the order of 1 block per year and for that a Double is
-    * good enough").
+    * (`recomputeRelativeStake` for `SingAllLedgerPeers`,
+    * `PeerSelection/LedgerPeers/Utils.hs:80-89`); the root is taken as the reference takes it, as a
+    * `Double` (`Utils.hs:84-87`, ouroboros-network 1.2.0.0: "we care about precision in the order
+    * of 1 block per year and for that a Double is good enough").
     */
   given Kind[LedgerKind.All] with
     def weight(stake: Rational): Rational = LedgerPeerStake.sqrtThroughDouble(stake)
@@ -210,9 +210,9 @@ enum StakeSource:
 final case class ChosenStake[R](maps: StakeMaps[R], cachedSlot: Option[BigInt], source: StakeSource)
 
 /** What the worker holds between requests: the maps, the slot of the snapshot they were made from,
-  * and when they were made (`go rng oldTs peerMap bigPeerMap cachedSlot`,
-  * `LedgerPeers.hs:255-263`, ouroboros-network 1.2.0.0). `stamp` is none before the first refresh,
-  * which the reference spells `Time 0`.
+  * and when they were made (`go rng oldTs peerMap bigPeerMap cachedSlot`, `LedgerPeers.hs:255-263`,
+  * ouroboros-network 1.2.0.0). `stamp` is none before the first refresh, which the reference spells
+  * `Time 0`.
   */
 final case class LedgerPeersCache[R](
     maps: StakeMaps[R],

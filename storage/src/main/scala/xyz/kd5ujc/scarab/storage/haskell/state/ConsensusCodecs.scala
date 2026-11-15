@@ -38,7 +38,7 @@ trait ConsensusCodecs extends EpochStateCodecs:
       BigInt(t.afterVoting.toLong)
     )
 
-  /** `PerasCertRound` (`SupportsPeras.hs:85` (ouroboros-consensus 82ecba32), a `Word64`). */
+  /** `PerasRoundNo` (`SupportsPeras.hs:85`, ouroboros-consensus 82ecba32, a `Word64`). */
   given perasRound: Codec[PerasRoundNo] = word64.imap(PerasRoundNo(_))(_.word)
 
   /** The fourth field of the Shelley ledger state in this codec's layout
@@ -162,10 +162,9 @@ trait ConsensusCodecs extends EpochStateCodecs:
         out.break()
 
   /** `PBftState` (`Protocol/PBFT/State.hs:300-317`, ouroboros-consensus 82ecba32): `[1, {genesis
-    * key: [slots, newest first]}]`.
-    * The signers in the window are written grouped by key and the counts not at all, so they are
-    * recomputed on reading (`computeCounts`, `uninvert`); a state whose counts are not those of its
-    * window is not writable.
+    * key: [slots, newest first]}]`. The signers in the window are written grouped by key and the
+    * counts not at all, so they are recomputed on reading (`computeCounts`, `uninvert`); a state
+    * whose counts are not those of its window is not writable.
     */
   given pbftState: Codec[PBftState] =
     val keyed = plainMapOf(keyHash[Genesis], signerSlots)
