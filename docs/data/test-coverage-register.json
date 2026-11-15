@@ -1345,6 +1345,24 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/node/LeiosGenesisReferenceSuite.scala"
       ],
       "candidateRequired": false
+    },
+    {
+      "id": "leios-epoch-tick",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "Conway's TICK on the Leios layout as the Leios testnet's build runs it (cardano-ledger 9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/NewEpoch.hs:153-184, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs, eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/PoolReap.hs:119-155): NEWEPOCH with no pool distribution, SNAP's mark, set and go with the committee, POOLREAP's keyless re-registration and retirement, and the pulsing reward update, from the state Conway's genesis injection gives for the Leios testnet's genesis files, the pool keyed or not, across three epoch boundaries. The seeded re-registrations and retirements are set directly, not by transactions. Not Dijkstra's EPOCH, POOL (unit-tested only), blocks or the consensus layer's parts.",
+      "assertion": "LeiosEpochReferenceSuite decodes each native input state in the Leios layout, checks it reads back to its bytes and the node's globals for the testnet's configuration against the native tick's, ticks it with Tick to each recorded slot and requires the complete bytes of the snapshots and pool states and the SHA-256 of the state as the Leios writer writes it after every tick; scripts/oracle/leios-epoch/run.py refuses an image whose ledger and cardano-base sources differ from the pinned files.",
+      "rationale": "An epoch boundary is where a Leios-layout state could gain a part of the 11.1 layout (the pool distribution, a pool's voting key); the corpus fails when NEWEPOCH or POOLREAP writes one, or when the voting key a re-registration leaves differs from the native one.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+      "resolution": "Refresh only by recording a new corpus with scripts/oracle/leios-epoch/run.py --record against the pinned Leios image.",
+      "evidence": [
+        "fixtures/reference/leios-epoch/cases.jsonl",
+        "scripts/oracle/leios-epoch/run.py",
+        "scripts/oracle/leios-epoch/Main.hs",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/LeiosEpochReferenceSuite.scala"
+      ],
+      "candidateRequired": false
     }
   ]
 }
