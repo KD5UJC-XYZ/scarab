@@ -1478,11 +1478,12 @@ object Peer:
                     import xyz.kd5ujc.scarab.network.selection.ChainSyncJumping.Instruction
                     pendingRestart.getAndSet(None).flatMap {
                       case Some(_) => restartWith(control)
-                      case None =>
+                      case None    =>
+                        // The ownGate branch: instructions are taken only once the session holds
+                        // its gate, as the reference's client loop exists only with its
+                        // KnownIntersectionState
                         F.race(
                           drainRequested.get.flatMap(_.get),
-                          // instructions are taken only once the session holds its gate, as the
-                          // reference's client loop exists only with its KnownIntersectionState
                           ownGate *> pendingJump
                             .getAndSet(None)
                             .flatMap(_.fold(control.next)(F.pure))

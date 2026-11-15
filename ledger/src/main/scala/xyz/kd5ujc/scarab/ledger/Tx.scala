@@ -795,11 +795,11 @@ object Witnesses:
           )(_.hash)
             .map(_.distinctBy(_.hash))
         )
+      // Keep every witness for `BootstrapWitness.set`: dropping a repeated copy first would change
+      // which witness of a root is the last
       bootstrap <- f
         .get(2)
         .traverse(
-          // Keep every witness for `BootstrapWitness.set`:
-          // dropping a repeated copy first would change which witness of a root is the last
           list(_, DecodeField.BootstrapWitnesses)
             .flatMap(_.traverse { w =>
               CborRead.arrayN(w, 4, DecodeField.BootstrapWitness).flatMap { xs =>

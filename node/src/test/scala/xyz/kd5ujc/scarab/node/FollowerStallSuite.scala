@@ -244,6 +244,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             _ <- peers.serve(first, stalled) *> peers.serve(second, healthy)
             manager <- ConnectionManager.create[IO](noTimeWait)
             last = forged.headers.last
+            // heightSnapshot: A reconnecting peer intersects with the chain we have adopted, as in
+            // the node.
             hot = OutboundPeers.Hot[IO](
               magic = magic,
               network = NodeToNode.Settings(chainSync =
@@ -256,7 +258,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 byronEpochSlots = ForgedChain.geometry.byron.epochSlots
               ),
               follow = (peer, track) => follower.session(peer, track),
-              // A reconnecting peer intersects with the chain we have adopted, as in the node.
               heightSnapshot = ChainSyncHeights.of(chainRef),
               headers = None,
               transactions = None,
@@ -735,6 +736,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         first = InMemoryPeers.address(1)
         _ <- peers.serve(first, good)
         manager <- ConnectionManager.create[IO](noTimeWait)
+        // follow: the session meets a decoder that throws, as `Peer` does at its decode sites
         hot = OutboundPeers.Hot[IO](
           magic = magic,
           network = NodeToNode.Settings(),
@@ -744,7 +746,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             readAhead = 8,
             byronEpochSlots = ForgedChain.geometry.byron.epochSlots
           ),
-          // the session meets a decoder that throws, as `Peer` does at its decode sites
           follow = (_, _) => Peer.decodingInput[IO, Unit](site)(throw cause),
           heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
           headers = None,

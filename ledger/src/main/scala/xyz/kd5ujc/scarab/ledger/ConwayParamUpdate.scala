@@ -264,6 +264,8 @@ object ConwayParam:
     * 12, where every era up to Conway reads it (`mkField Nothing`, `Core/PParams.hs:284-293`), so a
     * pre-Conway update reads its value here too.
     */
+  // Key 19: `Prices` below decoder version 12 (`ExUnits.hs:222-231`): a `RecD` record of two
+  // `NonNegativeInterval` s.
   private def shared(records: Records): Map[BigInt, Read] = Map[Int, Read](
     0 -> word[W64](DecodeField.MinFeeA)(TxFeePerByte(_)),
     1 -> word[W64](DecodeField.MinFeeB)(TxFeeFixed(_)),
@@ -279,8 +281,6 @@ object ConwayParam:
     11 -> ratio(DecodeField.Tau, CborRead.Bound.Unit, records)(Tau(_)),
     16 -> word[W64](DecodeField.MinPoolCost)(MinPoolCost(_)),
     17 -> word[W64](DecodeField.CoinsPerUTxO)(CoinsPerUTxOByte(_)),
-    // `Prices` below decoder version 12 (`ExUnits.hs:222-231`): a `RecD` record of two
-    // `NonNegativeInterval` s.
     19 -> (n =>
       records
         .record(n, 2, DecodeField.Prices)

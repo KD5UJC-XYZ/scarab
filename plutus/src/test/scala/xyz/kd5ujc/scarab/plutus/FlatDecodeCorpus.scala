@@ -132,6 +132,7 @@ object FlatDecodeCorpus:
     Probe(id, Bytes.fromArray(cborByteString(end(bits))), AllProtocols)
 
   /** A minimal filler, a longer one, none, one that ends inside a byte, and bytes after it. */
+  // cbor-remainder: after the CBOR byte string, not inside it: V1 and V2 keep these as a remainder
   lazy val fillers: Vector[Probe] = Vector(
     ending("filler-minimal", _.bytes),
     ending("filler-trailing-zero-byte", _.bytes :+ 0x00.toByte),
@@ -156,7 +157,6 @@ object FlatDecodeCorpus:
         b.zeros()
         b.packed
     ),
-    // after the CBOR byte string, not inside it: V1 and V2 keep these as a remainder
     Probe(
       "cbor-remainder",
       Bytes.fromArray(cborByteString(flat((1, 0, 0), unit)) :+ 0x00.toByte),

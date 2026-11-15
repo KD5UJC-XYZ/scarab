@@ -48,6 +48,10 @@ class NoVerdictBlocksSuite extends FunSuite:
 
   test("whether a cause is judged again: a total match on the cause") {
     import BlockNoVerdict.Recovery.{Deterministic, Passing}
+    // the own evaluator (`--plutus-vm scarab`): an exception or a library that failed may pass,
+    // what this build lacks does not
+    // HashedOutsideGroup and DetachedMlResult: a library that answered what it cannot does so again
+    // for the same input and build
     val cases = List(
       evaluation(BackendFailure.Defect(new OutOfMemoryError("heap"))) -> Passing,
       evaluation(
@@ -64,8 +68,6 @@ class NoVerdictBlocksSuite extends FunSuite:
       evaluation(
         BackendFailure.CostingUnmirrored(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
       ) -> Deterministic,
-      // the own evaluator (`--plutus-vm scarab`): an exception or a library that failed may pass,
-      // what this build lacks does not
       evaluation(BackendFailure.Uplc(Unavailability.Thrown(new IllegalStateException("x")))) ->
         Passing,
       evaluation(
@@ -76,7 +78,6 @@ class NoVerdictBlocksSuite extends FunSuite:
           )
         )
       ) -> Passing,
-      // a library that answered what it cannot does so again for the same input and build
       evaluation(
         BackendFailure.Uplc(
           Unavailability.BuiltinDefect(

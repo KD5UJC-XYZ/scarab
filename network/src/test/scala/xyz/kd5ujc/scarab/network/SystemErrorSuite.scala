@@ -21,12 +21,12 @@ class SystemErrorSuite extends FunSuite:
     )
 
   test("a stale socket that cannot be removed: the trace's error and the message, as captured") {
+    // EISDIR: a directory at the path
+    // EACCES: a file in a directory the node may not write
+    // EPERM: another user's file in a sticky directory
     val captured = List(
-      // a directory at the path
       ("/w/isdir", Errno.EISDIR, "/w/isdir: removeLink: inappropriate type (Is a directory)"),
-      // a file in a directory the node may not write
       ("/w/ro/sock", Errno.EACCES, "/w/ro/sock: removeLink: permission denied (Permission denied)"),
-      // another user's file in a sticky directory
       (
         "/w/sticky/sock",
         Errno.EPERM,

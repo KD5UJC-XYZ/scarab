@@ -52,10 +52,10 @@ private[selection] object Events:
             case FailureClass.Transient => delayFor(count)
             // the peer's standing as it was, at least the base delay: not a busy reconnection
             case FailureClass.NotThePeers => delayFor(count.max(1))
+          // clearFailAt: a failure of the node's own code leaves the peer's pending reset as it was
           val moved = r.copy(
             status = Status.Cold(Some(now + delay)),
             failCount = count,
-            // a failure of the node's own code leaves the peer's pending reset as it was
             clearFailAt = if failure == FailureClass.NotThePeers then r.clearFailAt else None
           )
           Reported(st.copy(peers = st.peers.updated(peer, moved)), Some(delay), false)

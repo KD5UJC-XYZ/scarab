@@ -211,13 +211,14 @@ object ByronTestKit:
     val updates = Cb.arr(Cb.arr(proposal), Cb.arr())
     val delegation = Cb.arr()
     val body = Cb.arr(Cb.indef(transaction.raw), Cb.arr(), delegation, updates)
+    // The second argument is an SSC proof as `dropSscProof` reads it: tag 3 (certificates) and one
+    // hash
     val proof = Cb.arr(
       Cb.arr(
         Cb.uint(1),
         Cb.bytes(ByronTx.merkleRoot(Vector(transaction.tx.raw))),
         Cb.bytes(blake.hash(Cb.indef(transaction.rawWitnesses)))
       ),
-      // an SSC proof as `dropSscProof` reads it: tag 3 (certificates) and one hash
       Cb.arr(Cb.uint(3), Cb.bytes(blake.hash(Cb.arr()))),
       Cb.bytes(blake.hash(delegation)),
       Cb.bytes(blake.hash(updates))

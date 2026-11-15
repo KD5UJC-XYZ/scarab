@@ -127,23 +127,39 @@ class WireSkipEquivalenceSuite extends munit.FunSuite:
   }
 
   test("hand-made items: indefinite strings, simple values and reserved heads") {
+    // "5f4161416262ff": indefinite byte string of two chunks
+    // "7f6161ff": indefinite text string
+    // "7f61ff": a one-byte text chunk whose byte is not UTF-8, and no break after it
+    // "7f62c328ff": invalid UTF-8 in a chunk
+    // "5f6161ff": a text chunk in a byte string
+    // "9f01029f03ffff": nested indefinite arrays
+    // "bf0102ff": indefinite map
+    // "bf01ff": indefinite map with a key and no value
+    // "f818": extended simple value below 32
+    // "f820": extended simple value 32
+    // "fc": reserved simple value
+    // "ff": a break where an item belongs
+    // "1c": reserved argument
+    // "c1c2c301": nested tags
+    // "9b0000000100000000": an array longer than the limits
+    // "fb3ff0000000000000": a double
     val cases = Vector(
-      "5f4161416262ff", // indefinite byte string of two chunks
-      "7f6161ff", // indefinite text string
-      "7f61ff", // a one-byte text chunk whose byte is not UTF-8, and no break after it
-      "7f62c328ff", // invalid UTF-8 in a chunk
-      "5f6161ff", // a text chunk in a byte string
-      "9f01029f03ffff", // nested indefinite arrays
-      "bf0102ff", // indefinite map
-      "bf01ff", // indefinite map with a key and no value
-      "f818", // extended simple value below 32
-      "f820", // extended simple value 32
-      "fc", // reserved simple value
-      "ff", // a break where an item belongs
-      "1c", // reserved argument
-      "c1c2c301", // nested tags
-      "9b0000000100000000", // an array longer than the limits
-      "fb3ff0000000000000" // a double
+      "5f4161416262ff",
+      "7f6161ff",
+      "7f61ff",
+      "7f62c328ff",
+      "5f6161ff",
+      "9f01029f03ffff",
+      "bf0102ff",
+      "bf01ff",
+      "f818",
+      "f820",
+      "fc",
+      "ff",
+      "1c",
+      "c1c2c301",
+      "9b0000000100000000",
+      "fb3ff0000000000000"
     )
     val inputs = cases.map(h => Bytes.fromHex(h).fold(e => fail(e.toString), identity))
     assertEquals(differences(inputs, WireCorpus.Streaming), Vector.empty)

@@ -136,9 +136,9 @@ final class CostsSuite extends munit.FunSuite:
       Costs.scaleLinearly(SatInt(9), SatInt(2), endless(1)).take(3).map(_.toLong),
       Vector(9L, 2, 2)
     )
+    // Expected values: 0, then x_i^2 + 2 x_i r with r = 0, 1, 2: 1, 3, 5
     assertEquals(
       Costs.scaleQuadratically(SatInt(0), SatInt(0), SatInt(1), endless(1)).take(4).map(_.toLong),
-      // 0, then x_i^2 + 2 x_i r with r = 0, 1, 2: 1, 3, 5
       Vector(0L, 1, 3, 5)
     )
     assertEquals(

@@ -132,6 +132,8 @@ final class ExtendedCorpusSuite extends munit.FunSuite:
 
 object ExtendedCorpusSuite:
   /** The cases below the builtins' directories at plutus 1.70.0.0, by how they agree. */
+  // An `Int` (`readBit`, `shiftByteString` and `rotateByteString` in E) or a `Word8`
+  // (`replicateByte`) out of its range: the unlifting's failure, not the denotation's.
   val Counts: Map[String, Int] = Map(
     "Result" -> 476,
     "NotRun" -> 1,
@@ -141,8 +143,6 @@ object ExtendedCorpusSuite:
     "failure: ExpMod" -> 22,
     "failure: SignatureInput" -> 20,
     "failure: ArrayIndexOutOfBounds" -> 2,
-    // An `Int` (`readBit`, `shiftByteString` and `rotateByteString` in E) or a `Word8`
-    // (`replicateByte`) out of its range: the unlifting's failure, not the denotation's.
     "failure: unlifting Operational readBit" -> 2,
     "failure: unlifting Operational shiftByteString" -> 2,
     "failure: unlifting Operational rotateByteString" -> 2,

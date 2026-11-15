@@ -28,11 +28,11 @@ final class GenesisGovernor[F[_]: Async] private (
   private def fingerprint(
       s: State[F]
   ): InputFingerprint =
+    // Each established TCP connection has one hot activation. Keep grouped registrations rather
+    // than silently overwriting metadata if a model deliberately violates that rule.
     (
       s.phase,
       Option.when(s.phase == Gsm.Phase.Syncing)(
-        // Each established TCP connection has one hot activation. Keep grouped registrations
-        // rather than silently overwriting metadata if a model deliberately violates that rule.
         SortedMap.from(
           s.peers.values.toVector.groupMap(_.orderKey)(peer => peer.latestSlot -> peer.idling)
         )

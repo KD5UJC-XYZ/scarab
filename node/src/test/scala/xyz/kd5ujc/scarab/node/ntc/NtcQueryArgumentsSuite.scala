@@ -155,12 +155,12 @@ class NtcQueryArgumentsSuite extends FunSuite:
 
   test("a query's envelopes are definite lists: an indefinite one is refused at each level") {
     // GetEpochNo [1] at each level, each written indefinite in turn
+    // The last case: GetCBOR's own list
     Vector(
       "9f0082008206" + "8101" + "ff",
       "82009f008206" + "8101" + "ff",
       "820082009f06" + "8101" + "ff",
       "820082008206" + "9f01ff",
-      // GetCBOR's own list
       "820082008206" + "9f09" + "8101" + "ff"
     ).foreach { raw =>
       assert(

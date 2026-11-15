@@ -358,14 +358,19 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
   test("ForgingStats counts as the reference does, the overcount of missed slots included") {
     import ForgeTrace.*
     val origin = xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin
+    // NodeNotLeader(10): the first: lastSlot was zero, nothing missed
+    // NodeNotLeader(11): consecutive
+    // NodeCannotForge(13): lastSlot stays 12
+    // NodeNotLeader(16): 16 - 12 = 4 missed, for the three slots 13, 14 and 15
+    // NodeIsLeader(18): a leader slot after a gap counts nothing
     val steps = Vector(
-      NodeNotLeader(10), // the first: lastSlot was zero, nothing missed
-      NodeNotLeader(11), // consecutive
+      NodeNotLeader(10),
+      NodeNotLeader(11),
       NodeIsLeader(12),
       ForgedBlock(12, origin, Bytes(Vector(1)), 0, None),
-      NodeCannotForge(13, CannotForge.KeyNotUsableYet(1, 2)), // lastSlot stays 12
-      NodeNotLeader(16), // 16 - 12 = 4 missed, for the three slots 13, 14 and 15
-      NodeIsLeader(18), // a leader slot after a gap counts nothing
+      NodeCannotForge(13, CannotForge.KeyNotUsableYet(1, 2)),
+      NodeNotLeader(16),
+      NodeIsLeader(18),
       NodeNotLeader(19)
     )
     assertEquals(steps.foldLeft(ForgingStats())(_.step(_)), ForgingStats(1, 2, 1, 19, 4))

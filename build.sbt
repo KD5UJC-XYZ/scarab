@@ -171,6 +171,11 @@ val scalusPrepared = ScalusPatch.requirePrepared(Dependencies.V.scalus)
 // and budget, with no Scalus on its class path. `checkUplcClasspath` (part of `check`) fails the build
 // when a Scalus artifact reaches it, and `NoScalusSuite` checks the test JVM's own class path.
 lazy val checkUplcClasspath = taskKey[Unit]("Fail if a Scalus artifact is on the uplc class path")
+// Libraries.catsParse: The textual syntax of UPLC (`uplc.text.UplcParser`), which the node itself
+// never reads.
+// Test / unmanagedResourceDirectories: The vendored plutus reference corpus (`plutus-reference`)
+// and the Wycheproof vectors, read as test resources without a dependency on `plutus`, whose class
+// path carries Scalus (`LocalProject`, as `plutus` itself depends on this project).
 lazy val uplc = scarab("uplc")
   .dependsOn(
     codec % "compile->compile;test->test",
@@ -180,12 +185,8 @@ lazy val uplc = scarab("uplc")
     libraryDependencies ++= Seq(
       Libraries.cats,
       Libraries.catsMtl,
-      // The textual syntax of UPLC (`uplc.text.UplcParser`), which the node itself never reads.
       Libraries.catsParse
     ),
-    // The vendored plutus reference corpus (`plutus-reference`) and the Wycheproof vectors, read as test
-    // resources without a dependency on `plutus`, whose class path carries Scalus (`LocalProject`, as
-    // `plutus` itself depends on this project).
     Test / unmanagedResourceDirectories += (LocalProject("plutus") / baseDirectory).value / "src/test/resources",
     checkUplcClasspath := {
       val reached = ((Compile / dependencyClasspath).value ++ (Test / dependencyClasspath).value)
@@ -309,6 +310,14 @@ lazy val reproducibleCheck = taskKey[Unit]("Compare two clean builds of a frozen
 
 // Tagless-final node: wiring, mempool, forger, relay, node-to-client, the query server, the CLI.
 // BuildInfo records the build identity reported by the `started` log event.
+// excludeDependencies: http4s-core 0.23.37 declares log4s, but no class on the runtime classpath
+// refers to it (#214): http4s logs through log4cats, which `EmberServerBuilder.default` builds over
+// SLF4J (LibraryLogs).
+// assembly / packageOptions: The node calls native code (the local socket's unlink through the FFM
+// linker, the Plutus crypto's JNI library); `java -jar` reads this attribute in place of
+// `--enable-native-access=ALL-UNNAMED`, so the JDK does not warn on the first such call.
+// Compile / run / javaOptions: From a classpath the JAR's Enable-Native-Access attribute does not
+// apply, so the node run this way needs the flags itself (docker/candidate.Dockerfile; issue 589)
 lazy val node = scarab("node")
   .enablePlugins(BuildInfoPlugin)
   .dependsOn(
@@ -342,8 +351,6 @@ lazy val node = scarab("node")
       Libraries.slf4jApi,
       Libraries.dnsjava
     ),
-    // http4s-core 0.23.37 declares log4s, but no class on the runtime classpath refers to it (#214):
-    // http4s logs through log4cats, which `EmberServerBuilder.default` builds over SLF4J (LibraryLogs).
     excludeDependencies += Libraries.unusedLog4s,
     runtimeClasspathFile := {
       val output = target.value / "runtime-classpath.txt"
@@ -359,9 +366,6 @@ lazy val node = scarab("node")
     assembly / mainClass := (Compile / mainClass).value,
     assembly / assemblyJarName := s"scarab-node-${version.value}-assembly.jar",
     assemblyRepeatableBuild := true,
-    // The node calls native code (the local socket's unlink through the FFM linker, the Plutus
-    // crypto's JNI library); `java -jar` reads this attribute in place of
-    // `--enable-native-access=ALL-UNNAMED`, so the JDK does not warn on the first such call.
     assembly / packageOptions += Package.ManifestAttributes(
       "Multi-Release" -> "true",
       "Enable-Native-Access" -> "ALL-UNNAMED"
@@ -416,8 +420,6 @@ lazy val node = scarab("node")
       (metadata +: notices) ++ texts
     }.taskValue,
     Compile / run / fork := true,
-    // From a classpath the JAR's Enable-Native-Access attribute does not apply, so the node run this way needs
-    // the flags itself (docker/candidate.Dockerfile; issue 589)
     Compile / run / javaOptions ++= jdk25Flags
   )
 

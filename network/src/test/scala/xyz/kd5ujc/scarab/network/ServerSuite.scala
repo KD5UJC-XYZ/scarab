@@ -361,6 +361,8 @@ class ServerSuite extends FailsOnUncaught:
                   TxSubmission2.Message.Init
                 )
                 .fold(e => fail(e.message), identity)
+              // The settle branch: every fiber has done all it can, and the responder has not
+              // replied
               reply <- channel.send(init) *> IO
                 .race(
                   channel
@@ -368,7 +370,6 @@ class ServerSuite extends FailsOnUncaught:
                       TxSubmission2.decodePrefix(TxSubmission2.State.Idle, ChainSync.Role.Server, _)
                     )
                     .map(Some(_)),
-                  // every fiber has done all it can, and the responder has not replied
                   settle.as(Option.empty[TxSubmission2.Message])
                 )
                 .map(_.merge)

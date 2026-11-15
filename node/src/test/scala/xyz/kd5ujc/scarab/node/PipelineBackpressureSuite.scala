@@ -177,6 +177,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                   NodeToNode.Settings().pipelining(pipelineWindow.high)
                 )
                 .use { connection =>
+                  // observe: each block's download completes in the fetch client's receive path
                   Peer
                     .over[IO](
                       connection,
@@ -188,7 +189,6 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                         pipelineWindow = pipelineWindow
                       ),
                       chain = Peer.Chain.Praos(check),
-                      // each block's download completes in the fetch client's receive path
                       observe = Some {
                         case Peer.Observation.Fetched(_) => fetched
                         case _                           => IO.unit
