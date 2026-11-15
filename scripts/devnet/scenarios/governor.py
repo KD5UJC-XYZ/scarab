@@ -192,23 +192,26 @@ def met_durations(events, step):
 
 
 def check_churn_durations(samples, before, after, failures, summary):
-    """The reference's churn duration gauges against the log read `before` and `after` the scrape: a step that met
-    its targets before the scrape has its gauge, at the duration of one such step of the log (in seconds, to the
-    millisecond the log keeps), and a step that never met them has none (a timeout sets nothing)."""
+    """The reference's churn duration gauges against the log read `before` and `after` the scrape (`after` extends
+    `before`). The node sets a gauge before it logs the step, so a gauge is the duration of the last step of its
+    kind that met its targets before the scrape, or of one that met them while the scrape ran (in seconds, to the
+    millisecond the log keeps); a step that never met them has none (a timeout sets nothing)."""
     present = {}
     for step in STEPS:
         name = churn_duration_gauge(step)
         got = value(samples, name)
-        logged = met_durations(after, step)
+        earlier = met_durations(before, step)
+        accepted = earlier[-1:] + met_durations(after[len(before):], step)
         if got is None:
-            if met_durations(before, step):
+            if earlier:
                 failures.append(f"{name} is absent although {step} met its targets before the scrape")
             continue
         present[step] = got
-        if not logged:
+        if not accepted:
             failures.append(f"{name} is {got} but no {step} step met its targets in the log")
-        elif not any(t - 1e-9 <= got < t + 0.001 + 1e-9 for t in logged):
-            failures.append(f"{name} is {got}, the duration of no {step} step of the log: {logged[-3:]}")
+        elif not any(t - 1e-9 <= got < t + 0.001 + 1e-9 for t in accepted):
+            failures.append(f"{name} is {got}, not the duration of the last {step} step that met its targets: "
+                            f"{accepted}")
     if not present:
         failures.append("no churn duration gauge is exported")
     summary["churnDurationGauges"] = present

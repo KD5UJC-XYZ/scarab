@@ -55,10 +55,26 @@ class GovernorScenarioTest(unittest.TestCase):
                    ("cardano_node_metrics_peerSelection_churnIncreasedKnownPeers_duration_real", ()): 80.0}
         failures = []
         governor.check_churn_durations(samples, log, log, failures, {})
-        self.assertTrue(any("churnDecreasedActivePeers" in f and "no DecreaseActive step" in f for f in failures),
+        self.assertTrue(any("churnDecreasedActivePeers" in f and "not the duration of the last" in f for f in failures),
                         failures)
         self.assertTrue(any("churnIncreasedKnownPeers" in f and "no IncreaseKnown step met" in f for f in failures),
                         failures)
+
+    def test_a_churn_duration_gauge_left_at_an_earlier_step_fails(self):
+        log = [self.churn("DecreaseActive", "step", 2.5), self.churn("DecreaseActive", "step", 0.75)]
+        samples = {("cardano_node_metrics_peerSelection_churnDecreasedActivePeers_duration_real", ()): 2.5}
+        failures = []
+        governor.check_churn_durations(samples, log, log, failures, {})
+        self.assertTrue(any("not the duration of the last DecreaseActive step" in f for f in failures), failures)
+
+    def test_a_churn_duration_gauge_of_a_step_met_during_the_scrape_passes(self):
+        before = [self.churn("DecreaseActive", "step", 2.5)]
+        after = before + [self.churn("DecreaseActive", "step", 0.75)]
+        for got in (2.5, 0.75):
+            samples = {("cardano_node_metrics_peerSelection_churnDecreasedActivePeers_duration_real", ()): got}
+            failures = []
+            governor.check_churn_durations(samples, before, after, failures, {})
+            self.assertEqual(failures, [], got)
 
     def test_a_missing_churn_duration_gauge_fails_only_for_a_step_met_before_the_scrape(self):
         before = [self.churn("DecreaseActive", "step", 2.5)]
