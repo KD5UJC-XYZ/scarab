@@ -186,6 +186,12 @@ class UplcTest(unittest.TestCase):
         once = uplc_report([vector("a", "one", None, protocol="10.0")])
         self.assertEqual(score.uplc(once, expected[:2]), score.Score(1, 2), "one reported vector meets one expectation")
 
+    def test_a_reported_vector_meets_one_of_two_identical_expectations(self):
+        twice = (vector("a", "ok", {"cpu": 1, "mem": 2}), vector("a", "ok", {"cpu": 1, "mem": 2}))
+        self.assertEqual(score.uplc(uplc_report([vector("a", "ok", {"cpu": 1, "mem": 2})]), twice), score.Score(1, 2))
+        self.assertEqual(score.uplc(uplc_report([vector("a", "ok", {"cpu": 1, "mem": 2})] * 2), twice),
+                         score.Score(2, 2))
+
 
 class LedgerTest(unittest.TestCase):
     """9dc68a75 scenarios/ledger-rules/build.py:46-60 and 93-107."""
