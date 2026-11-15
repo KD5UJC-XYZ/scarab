@@ -6,7 +6,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.LocalTxMonitor
+import xyz.kd5ujc.scarab.protocol.{LocalTxMonitor, ProtocolError}
 import xyz.kd5ujc.scarab.protocol.LocalTxMonitor.{Kind, Message, State}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.collection.immutable.SortedMap
@@ -46,14 +46,15 @@ object LocalTxMonitorServer:
     */
   final case class Held(tx: Bytes, measure: TxMeasure)
 
-  /** A frozen view of the mempool. `has` answers membership for an era-wrapped transaction id item;
-    * `identity` is equal for two snapshots exactly when the protocol cannot tell them apart (same
-    * slot, same transactions in the same order).
+  /** A frozen view of the mempool. `has` answers membership for an era-wrapped transaction id item,
+    * or refuses an item that is not an id as the reference's codec refuses it; `identity` is equal
+    * for two snapshots exactly when the protocol cannot tell them apart (same slot, same
+    * transactions in the same order).
     */
   final case class Snapshot(
       slot: BigInt,
       txs: Vector[Held],
-      has: Bytes => Boolean,
+      has: Bytes => Either[ProtocolError, Boolean],
       capacity: TxMeasure,
       identity: (BigInt, Vector[Bytes])
   ):
@@ -125,9 +126,15 @@ object LocalTxMonitorServer:
         case Message.NextTx =>
           send(State.Busy(Kind.NextTx), Message.ReplyNextTx(remaining.headOption.map(_.tx))) *>
             serving(snapshot, remaining.drop(1))
+        // An id the snapshot refuses ends the connection as a refusal of the codec's would: the
+        // reference reads the id in its codec (`decodeTxId`), so it never answers one.
         case Message.HasTx(txId) =>
-          send(State.Busy(Kind.HasTx), Message.ReplyHasTx(snapshot.has(txId))) *>
-            serving(snapshot, remaining)
+          snapshot
+            .has(txId)
+            .fold(
+              refused => NetworkError.Decode(id, refused).raise[F, Unit],
+              has => send(State.Busy(Kind.HasTx), Message.ReplyHasTx(has))
+            ) *> serving(snapshot, remaining)
         case Message.GetSizes =>
           send(State.Busy(Kind.GetSizes), Message.ReplyGetSizes(snapshot.sizes)) *>
             serving(snapshot, remaining)

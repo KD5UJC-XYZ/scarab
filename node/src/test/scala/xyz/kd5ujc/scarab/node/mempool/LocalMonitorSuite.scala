@@ -1,9 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
+import cats.syntax.all.*
+import cats.mtl.Handle
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.{LocalTxMonitorServer, Settled}
+import xyz.kd5ujc.scarab.ledger.state.{Hash32, ShelleyBasedEra, VocabError}
+import xyz.kd5ujc.scarab.network.{
+  Bearer,
+  HandshakeClient,
+  LocalTxMonitorServer,
+  LocalTxSubmissionServer,
+  Mux,
+  MuxChannel,
+  NetworkError,
+  NodeToClientServer,
+  Settled
+}
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.Snapshot
+import xyz.kd5ujc.scarab.protocol.{Era, Handshake, LocalTxMonitor, ProtocolError, Protocols}
+import xyz.kd5ujc.scarab.protocol.ChainSync.Role
+import xyz.kd5ujc.scarab.protocol.LocalTxMonitor.{Kind, Message, State}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -35,12 +52,162 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       snap.txs.map(_.tx),
       Vector(LocalMonitor.wrapTx(t1), LocalMonitor.wrapTx(t2))
     )
-    assert(snap.has(LocalMonitor.wrapId(id1)))
-    assert(snap.has(LocalMonitor.wrapId(id2)))
-    assert(!snap.has(LocalMonitor.wrapId(Bytes(Vector.fill(32)(7.toByte)))))
-    // an id of another era is never held
-    assert(!snap.has(Bytes(Vector(0x82, 0x05, 0x41, 0x01).map(_.toByte))))
-    assert(!snap.has(Bytes(Vector(0x01))))
+    assertEquals(snap.has(LocalMonitor.wrapId(id1)), Right(true))
+    assertEquals(snap.has(LocalMonitor.wrapId(id2)), Right(true))
+    assertEquals(snap.has(LocalMonitor.wrapId(Bytes(Vector.fill(32)(7.toByte)))), Right(false))
+  }
+
+  private def hex(s: String): Bytes = Bytes.fromHex(s).toOption.get
+  private def refused(cause: GenTxId.Refusal) = Left(ProtocolError.UndecodableTxId(cause))
+
+  /** `[era, h'id']`, an id of a Shelley-based era. */
+  private def tagged(era: Int, id: Bytes): Bytes = hex(f"82$era%02x5820") ++ id
+
+  /** `[0, [constructor, h'hash']]`, one of Byron's four ids. */
+  private def byron(constructor: Int, hash: Bytes): Bytes =
+    hex(f"820082$constructor%02x5820") ++ hash
+
+  test("a held transaction is found under every era's tag, and under Byron's four ids") {
+    val (t1, id1) = pay(1)
+    val snap = LocalMonitor.snapshot(held(t1))
+    (1 to 7).foreach(era => assertEquals(snap.has(tagged(era, id1)), Right(true), s"era $era"))
+    (0 to 3).foreach(c => assertEquals(snap.has(byron(c, id1)), Right(true), s"Byron $c"))
+  }
+
+  test("an id that no held transaction has answers false under every tag") {
+    val (t1, _) = pay(1)
+    val snap = LocalMonitor.snapshot(held(t1))
+    val absent = Bytes(Vector.fill(32)(7.toByte))
+    (1 to 7).foreach(era => assertEquals(snap.has(tagged(era, absent)), Right(false), s"era $era"))
+    (0 to 3).foreach(c => assertEquals(snap.has(byron(c, absent)), Right(false), s"Byron $c"))
+    assertEquals(LocalMonitor.snapshot(pool()).has(tagged(6, absent)), Right(false))
+  }
+
+  property("membership is the hash's, whatever era or Byron id names it") {
+    val (t1, id1) = pay(1)
+    val held1 = Set(id1)
+    val anyId = Gen.oneOf(
+      Gen.const(id1),
+      Gen.listOfN(32, Gen.choose(0, 255)).map(bs => Bytes(bs.map(_.toByte).toVector))
+    )
+    val names = Gen.oneOf(
+      Gen.choose(1, 7).map(era => (id: Bytes) => tagged(era, id)),
+      Gen.choose(0, 3).map(c => (id: Bytes) => byron(c, id))
+    )
+    val snap = LocalMonitor.snapshot(held(t1))
+    forAll(anyId, names) { (id, name) =>
+      assertEquals(snap.has(name(id)), Right(held1(id)))
+    }
+  }
+
+  test("an id the era's decoder refuses is refused with where it stops") {
+    val (t1, id1) = pay(1)
+    val snap = LocalMonitor.snapshot(held(t1))
+    val h = id1.hex
+    val short = "11" * 28
+    // a 28-byte id in Conway
+    assertEquals(
+      snap.has(hex(s"8206581c$short")),
+      refused(
+        GenTxId.Refusal
+          .HashLength(Era.Conway, VocabError.WrongHashLength(VocabError.Kind.Hash32, 32, 28))
+      )
+    )
+    // a bare id in Byron, whose decoder reads a list of its constructor and hash
+    assertEquals(snap.has(hex(s"82005820$h")), refused(GenTxId.Refusal.ByronEnvelope))
+    // an era past the last, and an era index that is not a Word8
+    assertEquals(snap.has(hex(s"82085820$h")), refused(GenTxId.Refusal.UnknownEra(8)))
+    assertEquals(snap.has(hex(s"821901005820$h")), refused(GenTxId.Refusal.EraIndex))
+    assertEquals(snap.has(hex(s"82205820$h")), refused(GenTxId.Refusal.EraIndex))
+    // the envelope: an indefinite list, three items, no list
+    assertEquals(snap.has(hex(s"9f065820${h}ff")), refused(GenTxId.Refusal.EraEnvelope))
+    assertEquals(snap.has(hex(s"83065820${h}00")), refused(GenTxId.Refusal.EraEnvelope))
+    assertEquals(snap.has(hex(s"5820$h")), refused(GenTxId.Refusal.EraEnvelope))
+    // Byron: a fifth constructor, a constructor past a Word8, a short hash, an indefinite list
+    assertEquals(snap.has(hex(s"820082045820$h")), refused(GenTxId.Refusal.UnknownByronTag(4)))
+    assertEquals(snap.has(hex(s"8200821901005820$h")), refused(GenTxId.Refusal.ByronTag))
+    assertEquals(
+      snap.has(hex(s"82008200581c$short")),
+      refused(
+        GenTxId.Refusal
+          .HashLength(Era.Byron, VocabError.WrongHashLength(VocabError.Kind.Hash32, 32, 28))
+      )
+    )
+    assertEquals(snap.has(hex(s"82009f005820${h}ff")), refused(GenTxId.Refusal.ByronEnvelope))
+    // a chunked id, below decoder version 12 (Byron at 1, Conway at 9)
+    val chunked = s"5f5810${h.take(32)}5810${h.drop(32)}ff"
+    assertEquals(
+      snap.has(hex(s"82008200$chunked")),
+      refused(GenTxId.Refusal.IndefiniteBytes(Era.Byron))
+    )
+    assertEquals(
+      snap.has(hex(s"8206$chunked")),
+      refused(GenTxId.Refusal.IndefiniteBytes(Era.Conway))
+    )
+    assertEquals(
+      snap.has(hex(s"8201$chunked")),
+      refused(GenTxId.Refusal.IndefiniteBytes(Era.Shelley))
+    )
+    // not a byte string: text, a tagged string
+    assertEquals(snap.has(hex("82066141")), refused(GenTxId.Refusal.ExpectedBytes(Era.Conway)))
+    assertEquals(
+      snap.has(hex(s"8206d8185820$h")),
+      refused(GenTxId.Refusal.ExpectedBytes(Era.Conway))
+    )
+    // a float or a simple value is refused where the reference's decoder meets it: after the era
+    assertEquals(snap.has(hex("8206f93c00")), refused(GenTxId.Refusal.ExpectedBytes(Era.Conway)))
+    assertEquals(snap.has(hex("8206f7")), refused(GenTxId.Refusal.ExpectedBytes(Era.Conway)))
+    assertEquals(snap.has(hex("8208f93c00")), refused(GenTxId.Refusal.UnknownEra(8)))
+    assertEquals(snap.has(hex("82f93c005820" + h)), refused(GenTxId.Refusal.EraIndex))
+    // text that is not UTF-8 is not a well-formed item
+    snap.has(hex("820661ff")) match
+      case Left(ProtocolError.UndecodableTxId(GenTxId.Refusal.Malformed(_))) => ()
+      case other => fail(s"text that is not UTF-8 is malformed: $other")
+  }
+
+  test(
+    "an id in the forms the reference's decoders also read: any width of a head, chunked from 12"
+  ) {
+    val (t1, id1) = pay(1)
+    val snap = LocalMonitor.snapshot(held(t1))
+    val h = id1.hex
+    // the era index and the list length at a wider head than needed
+    assertEquals(snap.has(hex(s"8218065820$h")), Right(true))
+    assertEquals(snap.has(hex(s"9802065820$h")), Right(true))
+    assertEquals(snap.has(hex(s"82008218005820$h")), Right(true))
+    // Dijkstra reads at version 12, where a chunked byte string is read with its chunks joined
+    assertEquals(snap.has(hex(s"82075f5810${h.take(32)}5810${h.drop(32)}ff")), Right(true))
+  }
+
+  test("the decoded id keeps its era and Byron's constructor; the hash is what is compared") {
+    val id = Bytes(Vector.fill(32)(0x11.toByte))
+    val hash = Hash32.fromBytes(id).toOption.get
+    assertEquals(
+      GenTxId.decode(tagged(6, id)),
+      Right(GenTxId.Shelley(ShelleyBasedEra.SConway, hash))
+    )
+    assertEquals(
+      GenTxId.decode(tagged(7, id)),
+      Right(GenTxId.Shelley(ShelleyBasedEra.SDijkstra, hash))
+    )
+    assertEquals(
+      GenTxId.decode(tagged(1, id)),
+      Right(GenTxId.Shelley(ShelleyBasedEra.SShelley, hash))
+    )
+    assertEquals(GenTxId.decode(byron(0, id)), Right(GenTxId.Byron(ByronGenTxId.ByronTxId(hash))))
+    assertEquals(GenTxId.decode(byron(1, id)), Right(GenTxId.Byron(ByronGenTxId.ByronDlgId(hash))))
+    assertEquals(
+      GenTxId.decode(byron(2, id)),
+      Right(GenTxId.Byron(ByronGenTxId.ByronUpdateProposalId(hash)))
+    )
+    assertEquals(
+      GenTxId.decode(byron(3, id)),
+      Right(GenTxId.Byron(ByronGenTxId.ByronUpdateVoteId(hash)))
+    )
+    assertEquals(
+      GenTxId.decode(byron(3, id)).map(_.hash),
+      GenTxId.decode(tagged(5, id)).map(_.hash)
+    )
   }
 
   test("the wire forms: [6, #6.24(tx)] and [6, h'id']") {
@@ -49,10 +216,113 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       LocalMonitor.wrapId(Bytes(Vector.fill(32)(0x11.toByte))).hex,
       "82065820" + "11" * 32
     )
-    assertEquals(
-      LocalMonitor.unwrapId(LocalMonitor.wrapId(Bytes(Vector.fill(32)(0x11.toByte)))).map(_.hex),
-      Some("11" * 32)
+  }
+
+  /** One node-to-client connection to a LocalTxMonitor server of `snapshot`: the client acquires
+    * it, asks `HasTx` of each of `answered` and reads the replies, then asks it of `refused` and
+    * waits for the server to end. The replies, and how the server ended; a reply to `refused` fails
+    * the test. The server runs in a fiber of the connection's scope, cancelled when it closes.
+    */
+  private def refusedOnTheWire(
+      snapshot: Snapshot,
+      answered: Vector[Bytes],
+      refused: Bytes
+  ): IO[(Vector[Message], Either[NetworkError, LocalTxSubmissionServer.End])] =
+    val magic = 42L
+    val source = new LocalTxMonitorServer.Source[IO]:
+      def acquire = IO.pure(snapshot)
+      def awaitChange(seen: Snapshot) = IO.never
+    def send(ch: MuxChannel[IO], state: State, m: Message)(using Handle[IO, NetworkError]) =
+      IO.fromEither(
+        LocalTxMonitor.encode(state, Role.Client, m).left.map(e => RuntimeException(e.message))
+      ).flatMap(ch.send)
+    def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
+      ch.recv(LocalTxMonitor.MaxMessageBytes)(LocalTxMonitor.decodePrefix(state, Role.Server, _))
+    // the reply the server should not send, or none once the client sees the connection end
+    def reply(ch: MuxChannel[IO]): IO[Option[Message]] =
+      Handle
+        .allow[NetworkError](receive(ch, State.Busy(Kind.HasTx)).map(Option(_)))
+        .rescue(_ => IO.pure(None))
+    val connection = Resource.eval(Bearer.inMemory[IO]()).flatMap { (clientEnd, serverEnd) =>
+      Handle
+        .allow[NetworkError](
+          NodeToClientServer
+            .accept(
+              serverEnd,
+              magic,
+              _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              txMonitor = Some(source)
+            )
+            .map(Right(_): Either[NetworkError, LocalTxSubmissionServer.End])
+        )
+        .rescue(e => IO.pure(Left(e)))
+        .background
+        .map(joined => (clientEnd, joined.flatMap(_.embedNever)))
+    }
+    connection.use { (clientEnd, server) =>
+      Handle
+        .allow[NetworkError] {
+          Mux.resource(clientEnd, Set(0, 9), Mux.Config()).use { mux =>
+            for
+              hs <- mux.channel(0)
+              _ <- HandshakeClient.run(
+                hs,
+                Vector(23).map(v => v -> Handshake.Data(magic)),
+                suite = Handshake.Suite.NodeToClient
+              )
+              ch <- mux.channel(9)
+              _ <- send(ch, State.Idle, Message.Acquire)
+              _ <- receive(ch, State.Acquiring)
+              replies <- answered.traverse(item =>
+                send(ch, State.Acquired, Message.HasTx(item)) *>
+                  receive(ch, State.Busy(Kind.HasTx))
+              )
+              _ <- send(ch, State.Acquired, Message.HasTx(refused))
+              _ <- ch.flush
+              first <- IO.race(server, reply(ch))
+              ended <- first match
+                case Left(ended)         => IO.pure(ended)
+                case Right(None)         => server
+                case Right(Some(answer)) => IO(fail(s"a refused id was answered: $answer"))
+            yield (replies, ended)
+          }
+        }
+        .rescue(e => IO.raiseError(RuntimeException(e.message)))
+    }
+
+  test(
+    "on the wire, a held id is found under another era's tag; a refused id ends the connection"
+  ) {
+    val (t1, id1) = pay(1)
+    val snap = LocalMonitor.snapshot(held(t1))
+    val h = id1.hex
+    // a 28-byte id in Conway, a bare id in Byron, an era past the last
+    val shapes = Vector(
+      hex("8206581c" + "11" * 28) -> GenTxId.Refusal.HashLength(
+        Era.Conway,
+        VocabError.WrongHashLength(VocabError.Kind.Hash32, 32, 28)
+      ),
+      hex(s"82005820$h") -> GenTxId.Refusal.ByronEnvelope,
+      hex(s"82085820$h") -> GenTxId.Refusal.UnknownEra(8)
     )
+    shapes.traverse { (shape, refusal) =>
+      refusedOnTheWire(
+        snap,
+        Vector(tagged(5, id1), byron(0, id1), tagged(6, Bytes(Vector.fill(32)(7.toByte)))),
+        shape
+      ).map((replies, ended) =>
+        assertEquals(
+          replies,
+          Vector(Message.ReplyHasTx(true), Message.ReplyHasTx(true), Message.ReplyHasTx(false))
+        )
+        assertEquals(
+          ended,
+          Left(
+            NetworkError.Decode(Protocols.LocalTxMonitor, ProtocolError.UndecodableTxId(refusal))
+          )
+        )
+      )
+    }.void
   }
 
   test(
@@ -132,7 +402,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       yield
         assertEquals(first.txs.size, 0)
         assertEquals(second.txs.size, 1)
-        assert(second.has(LocalMonitor.wrapId(id1)))
+        assertEquals(second.has(LocalMonitor.wrapId(id1)), Right(true))
         assertEquals(second.slot, BigInt(1001))
         // the transaction still applies at the new tip, only the slot moved
         assertEquals(third.slot, BigInt(1002))

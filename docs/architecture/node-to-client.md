@@ -59,7 +59,10 @@ answer.
 `AwaitAcquire` has the wire form of `Acquire`, `[1]`, and the state tells them apart; `GetMeasures`, tag 11,
 is answered on every version as the reference's codec does). The server asks a `Source` for a `Snapshot`
 (slot, transactions in arrival order with their measures, membership, capacity) and serves `NextTx`, `HasTx`,
-`GetSizes` and `GetMeasures` from that frozen value; `AwaitAcquire` waits until the pool's slot or
+`GetSizes` and `GetMeasures` from that frozen value; membership reads the id with its era's decoder
+(`GenTxId.decode`) and compares the hash alone, as the hard-fork combinator's order does, and an id the
+decoder refuses ends the connection with the protocol's decode error (`ProtocolError.UndecodableTxId`);
+`AwaitAcquire` waits until the pool's slot or
 transactions differ (`Mempool.awaitChange`, woken by `add` and by `sync`). `LocalMonitor` is the reference's
 server in numbers: the snapshot's slot is the one after the tip; a transaction counts for its ledger size (the
 serialised transaction without the `is_valid` byte, `sizeTxF`) plus 4 bytes, its execution units and the bytes
@@ -71,7 +74,7 @@ unit)` (the reference's override rule, and 2 without one). Scarab does not wrap 
 reference's `Word32` arithmetic does; `GetSizes` sends a capacity or a size above 2^32 - 1 as 2^32 - 1, and a
 measure is an integer of any size, so a reply always encodes ([approved deviation](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)). `GetSizes` describes the whole snapshot,
 `GetMeasures` only the transactions `NextTx` has not handed out (the reference's quirk). A transaction is
-`[6, #6.24(tx)]`, an id `[6, h'32 bytes']`.
+`[6, #6.24(tx)]`, and an id is asked for as `[era, id]` in that era's form.
 
 **Local ChainSync** (mini-protocol 5) is the `ChainSyncServer` of node-to-node with the payload
 `#6.24(block)` (`CardanoBlockFetch.payloadCodec`, the block as stored, `[era, block]`) and the node-to-client

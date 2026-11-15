@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.network
 import xyz.kd5ujc.scarab.protocol.ProtocolError
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.Handle
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.protocol.{
   CardanoBlockFetch,
   ChainSync,
@@ -33,7 +33,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     Snapshot(
       slot,
       txs.map(n => Held(txItem(n), TxMeasure(10 + n, n * 2, n * 3, n))),
-      item => txs.exists(n => idItem(n) == item),
+      item => Right(txs.exists(n => idItem(n) == item)),
       capacity,
       (BigInt(slot), txs.map(txItem))
     )
@@ -145,7 +145,13 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
   test("GetSizes saturates a capacity or a size above a Word32; the measures are exact") {
     def snapshot(capacity: Long, sizes: Vector[Long]): Snapshot =
       val held = sizes.zipWithIndex.map((b, i) => Held(txItem(i), TxMeasure(b, 0, 0, 0)))
-      Snapshot(0, held, _ => false, TxMeasure(capacity, 0, 0, capacity), (BigInt(0), Vector.empty))
+      Snapshot(
+        0,
+        held,
+        _ => Right(false),
+        TxMeasure(capacity, 0, 0, capacity),
+        (BigInt(0), Vector.empty)
+      )
     // at 2^32 - 1, as it is
     assertEquals(
       snapshot(4294967295L, Vector(4294967295L)).sizes,
@@ -320,6 +326,66 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     }
   }
 
+  test("an id the snapshot refuses ends the connection with the protocol's decode error") {
+    val refusal = ProtocolError.UndecodableTxId(LocalTxMonitorServerSuite.ToyRefusal.NotAnId)
+    val refusing = snapshot(7, Vector(1)).copy(has = _ => Left(refusal))
+    val source = new LocalTxMonitorServer.Source[IO]:
+      def acquire = IO.pure(refusing)
+      def awaitChange(seen: Snapshot) = IO.never
+    // the server runs in a fiber of the connection's scope, cancelled when it closes
+    val connection = Resource.eval(Bearer.inMemory[IO]()).flatMap { (clientEnd, serverEnd) =>
+      Handle
+        .allow[NetworkError](
+          NodeToClientServer
+            .accept(
+              serverEnd,
+              magic,
+              _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              txMonitor = Some(source)
+            )
+            .map(Right(_): Either[NetworkError, LocalTxSubmissionServer.End])
+        )
+        .rescue(e => IO.pure(Left(e)))
+        .background
+        .map(joined => (clientEnd, joined.flatMap(_.embedNever)))
+    }
+    // a reply to the refused id, or none once the client sees the connection end
+    def reply(ch: MuxChannel[IO]): IO[Option[Message]] =
+      Handle
+        .allow[NetworkError](monitorReceive(ch, State.Busy(Kind.HasTx)).map(Option(_)))
+        .rescue(_ => IO.pure(None))
+    connection.use { (clientEnd, server) =>
+      Handle
+        .allow[NetworkError] {
+          Mux.resource(clientEnd, Set(0, 9), Mux.Config()).use { mux =>
+            for
+              hs <- mux.channel(0)
+              _ <- HandshakeClient.run(
+                hs,
+                Vector(23).map(v => v -> Handshake.Data(magic)),
+                suite = Handshake.Suite.NodeToClient
+              )
+              ch <- mux.channel(9)
+              _ <- monitorSend(ch, State.Idle, Message.Acquire)
+              acquired <- monitorReceive(ch, State.Acquiring)
+              _ <- monitorSend(ch, State.Acquired, Message.HasTx(idItem(1)))
+              _ <- ch.flush
+              first <- IO.race(server, reply(ch))
+              ended <- first match
+                case Left(ended)         => IO.pure(ended)
+                case Right(None)         => server
+                case Right(Some(answer)) => IO(fail(s"a refused id was answered: $answer"))
+            yield (acquired, ended)
+          }
+        }
+        .rescue(e => IO.raiseError(RuntimeException(e.message)))
+        .map { (acquired, ended) =>
+          assertEquals(acquired, Message.Acquired(7))
+          assertEquals(ended, Left(NetworkError.Decode(Protocols.LocalTxMonitor, refusal)))
+        }
+    }
+  }
+
   test("local ChainSync serves whole blocks larger than the node-to-node message bound") {
     val size = 150000
     connected(None, Some(chainSource(3, size))) { (_, ch) =>
@@ -354,3 +420,8 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
       )
     }
   }
+
+object LocalTxMonitorServerSuite:
+  /** A refusal of a toy id decoder. */
+  enum ToyRefusal extends DomainError:
+    case NotAnId

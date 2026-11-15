@@ -6,9 +6,12 @@ Both protocols are spoken directly (mini-protocols 9 and 5), on top of the conne
 `ntcquery.LocalStateQuery`, so the raw CBOR of each answer can be compared byte for byte:
 
   * LocalTxMonitor: one acquired snapshot is walked on both nodes (sizes, measures, every
-    transaction, membership of each held id and of an absent one, the measures again after the
+    transaction, membership of each held id under its own era's tag and Babbage's, of the first under
+    a Byron id and chunked under Dijkstra's tag, and of an absent one, the measures again after the
     transactions were handed out). The two snapshots are comparable when they have the same slot and
-    the same transactions in the same order; then every answer must be equal.
+    the same transactions in the same order; then every answer must be equal. Apart from the walk,
+    each transaction id an era's decoder refuses must end the connection on both nodes, and the
+    unusual ids both decoders take must get equal answers (`has_tx_ids`).
   * local ChainSync: both nodes are followed from one point; the whole blocks they send (the raw
     `#6.24(bytes)` item) must be equal for every block both sent.
 """
@@ -57,6 +60,20 @@ class Session(ntcquery.LocalStateQuery):
 
     def has_tx(self, txid, era=6):
         return self.request(MONITOR, [7, [era, txid]])[1]
+
+    def send_has_item(self, item):
+        """Send `HasTx` of an id item given as raw CBOR, as written, without reading the reply."""
+        self._send(MONITOR, b"\x82\x07" + item)
+
+    def has_reply(self):
+        """The raw reply to the `HasTx` sent last."""
+        self._recv(MONITOR)
+        return self.last_raw
+
+    def has_item(self, item):
+        """`HasTx` of an id item given as raw CBOR, sent as written."""
+        self.send_has_item(item)
+        return self.has_reply()
 
     def sizes(self):
         return self.request(MONITOR, [9])[1]
@@ -192,10 +209,101 @@ def snapshot_transcript(session):
     out["ids"] = ids
     for i, ident in enumerate(ids):
         step(f"has {i}", session.has_tx(ident))
+        # the reference compares ids by their hash, whatever the era (#924)
+        step(f"has {i} in Babbage", session.has_tx(ident, era=5))
+    if ids:
+        step("has 0 as a Byron transaction id", session.request(MONITOR, [7, [0, [0, ids[0]]]])[1])
+        step("has 0 chunked in Dijkstra", session.has_item(b"\x82\x07" + chunked(ids[0])))
     step("sizes after the walk", session.sizes())
     step("measures after the walk", session.measures())
     session.release_snapshot()
     return out
+
+
+def chunked(data):
+    """`data` as an indefinite (chunked) byte string of two chunks."""
+    half = len(data) // 2
+    return b"\x5f" + enc(data[:half]) + enc(data[half:]) + b"\xff"
+
+
+# Transaction ids of `MsgHasTx` that the eras' decoders refuse (#924): the hard-fork combinator's
+# `decodeNS` reads a definite list of two and a `Word8` era index of one of the eight eras; Byron's
+# `decodeByronGenTxId` a definite list of a constructor from 0 to 3 and a definite string of 32
+# bytes; a Shelley-based era a string of 32 bytes, chunked only in Dijkstra (decoder version 12)
+# (ouroboros-consensus 82ecba32 `HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:369-374`,
+# `Common.hs:420-426`, `Byron/Ledger/Mempool.hs:368-379`, `Shelley/Node/Serialisation.hs:346-351`).
+# Each must end the connection on both nodes. Raw bytes, so that every form is sent as written.
+ABSENT_ID = b"\x11" * 32
+REFUSED_IDS = {
+    "conway-28-byte-id": b"\x82\x06\x58\x1c" + b"\x11" * 28,
+    "byron-bare-id": b"\x82\x00\x58\x20" + ABSENT_ID,
+    "era-8": b"\x82\x08\x58\x20" + ABSENT_ID,
+    "era-256": b"\x82\x19\x01\x00\x58\x20" + ABSENT_ID,
+    "indefinite-envelope": b"\x9f\x06\x58\x20" + ABSENT_ID + b"\xff",
+    "byron-constructor-4": b"\x82\x00\x82\x04\x58\x20" + ABSENT_ID,
+    "byron-28-byte-hash": b"\x82\x00\x82\x00\x58\x1c" + b"\x11" * 28,
+    "byron-chunked-hash": b"\x82\x00\x82\x00" + chunked(ABSENT_ID),
+    "conway-chunked-id": b"\x82\x06" + chunked(ABSENT_ID),
+}
+# Ids in forms both decoders read, compared byte for byte: cborg reads an integer and a list length at
+# any width of their head, and Dijkstra a chunked string.
+ACCEPTED_IDS = {
+    "dijkstra-chunked-id": b"\x82\x07" + chunked(ABSENT_ID),
+    "wide-era-index": b"\x82\x18\x06\x58\x20" + ABSENT_ID,
+    "wide-list-length": b"\x98\x02\x06\x58\x20" + ABSENT_ID,
+    "byron-update-vote-id": b"\x82\x00\x82\x03\x58\x20" + ABSENT_ID,
+}
+
+
+def _has_closes(opener, item):
+    """Whether `HasTx` of `item`, on a fresh connection with an acquired snapshot, ends the connection.
+    Only an end met while reading the reply, after the snapshot was acquired and the whole request
+    written, counts as closed. A failure at any earlier stage (opening, acquiring, or writing the
+    request, which a node can only refuse once it has it) is reported with that stage and fails the
+    probe. The opener's session deadline bounds a node that neither answers nor closes."""
+    stage = "open"
+    try:
+        with opener() as session:
+            stage = "acquire"
+            session.acquire_snapshot()
+            stage = "send"
+            session.send_has_item(item)
+            stage = "reply"
+            try:
+                return {"closed": False, "reply": session.has_reply().hex()}
+            except (EOFError, ConnectionResetError, BrokenPipeError):
+                return {"closed": True}
+    except ntcquery.Deadline as e:
+        return {"closed": False, "timedOut": True, "stage": stage, "error": repr(e)}
+    except (EOFError, OSError, RuntimeError, AssertionError) as e:
+        return {"closed": False, "stage": stage, "error": repr(e)}
+
+
+def has_tx_ids(open_h, open_s):
+    """(report, failures): the ids of `ACCEPTED_IDS` get equal answers from both nodes, each of
+    `REFUSED_IDS` ends a connection of its own on both, and the Scala node answers afterwards."""
+    report, failures = {"accepted": {}, "refused": {}}, []
+    with open_h() as h, open_s() as s:
+        h.acquire_snapshot()
+        s.acquire_snapshot()
+        for label, item in ACCEPTED_IDS.items():
+            rh, rs = h.has_item(item), s.has_item(item)
+            report["accepted"][label] = {"reference": rh.hex(), "scala": rs.hex()}
+            if rh != rs:
+                failures.append(f"HasTx {label}: reference {rh.hex()}, scala {rs.hex()}")
+        h.release_snapshot()
+        s.release_snapshot()
+    for label, item in REFUSED_IDS.items():
+        row = {"reference": _has_closes(open_h, item), "scala": _has_closes(open_s, item)}
+        report["refused"][label] = row
+        if not all(result["closed"] for result in row.values()):
+            failures.append(f"HasTx {label} did not end the connection on both nodes: {row}")
+    with open_s() as s:
+        s.acquire_snapshot()
+        report["healthyAfterRefusals"] = s.has_tx(ABSENT_ID) == b"\x82\x08\xf4"
+    if not report["healthyAfterRefusals"]:
+        failures.append("HasTx: the Scala node did not answer after the refused ids")
+    return report, failures
 
 
 def compare_snapshots(h, s):
@@ -226,8 +334,23 @@ def monitor_rounds(h_session, s_session, until, every=0.02, stats=None, stop=Non
             for label, rh, rs in diffs:
                 stats["differences"].append({"step": label, "slot": h["slot"], "reference": rh.hex(),
                                              "scala": rs.hex()})
+            count_held_found(stats, h, s)
         time.sleep(every)
     return stats
+
+
+def count_held_found(stats, h, s):
+    """For each way a held id is asked for (its own era's tag, Babbage's, as a Byron id, chunked in
+    Dijkstra), how often both nodes were asked and how often both answered true: what the walk shows
+    of the reference's membership beyond the two nodes agreeing."""
+    found = stats.setdefault("heldFound", {})
+    for (label, rh), (_, rs) in zip(h["steps"], s["steps"]):
+        parts = label.split(" ", 2)
+        if parts[0] != "has" or not parts[1].isdigit():
+            continue
+        row = found.setdefault(parts[2] if len(parts) > 2 else "in its own era", {"asked": 0, "bothTrue": 0})
+        row["asked"] += 1
+        row["bothTrue"] += rh == rs == b"\x82\x08\xf5"
 
 
 def await_wakes(h_session, s_session, trigger, timeout=60):

@@ -3,10 +3,11 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.Async
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.{Held, Snapshot}
 import xyz.kd5ujc.scarab.node.ntc.CborOut
+import xyz.kd5ujc.scarab.protocol.ProtocolError
 
 /** The mempool as the node-to-client LocalTxMonitor sees it (ouroboros-consensus
   * `Ouroboros.Consensus.MiniProtocol.LocalTxMonitor.Server`): a frozen snapshot of the held
@@ -28,22 +29,26 @@ object LocalMonitor:
       w.array(2).uint(Era).tag(24).bytes(raw); ()
     }
 
-  /** `[era, h'id']`: the transaction id as `LocalTxMonitor` takes and returns it. */
+  /** `[era, h'id']`: a Conway transaction id as `LocalTxMonitor` takes it. */
   def wrapId(id: Bytes): Bytes =
     CborOut.build { w =>
       w.array(2).uint(Era).bytes(id); ()
     }
 
-  /** The id inside a wrapped one, if the era is Conway (another era's id is never held). */
-  def unwrapId(item: Bytes): Option[Bytes] =
-    Cbor.decode(item).toOption.flatMap { root =>
-      root.value match
-        case Value.Arr(Vector(era, id)) =>
-          (era.value, id.value) match
-            case (Value.UInt(e), Value.ByteString(b)) if e == BigInt(Era) => Some(b)
-            case _                                                        => None
-        case _ => None
-    }
+  /** `HasTx`: whether a held transaction has the id `item` names, read as the reference reads it
+    * ([[GenTxId.decode]]). The reference answers with `Set.member` over the ids of its snapshot
+    * (`snapshotHasTx`, lines 549 and 583-586 of
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Impl/Common.hs`,
+    * ouroboros-consensus 82ecba32), whose order compares the hash alone ([[GenTxId.hash]]): a held
+    * transaction is found under any era's tag, and under any of Byron's four ids with its hash,
+    * though the pool holds Conway transactions only. An id the era's decoder refuses fails the
+    * reference's codec (`decodeTxId` of `MsgHasTx`,
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:135-137`,
+    * ouroboros-network c45735a5), which ends the connection: here a refusal of the decode, which
+    * the server raises as one.
+    */
+  def has(held: Set[Bytes])(item: Bytes): Either[ProtocolError, Boolean] =
+    GenTxId.decode(item).bimap(ProtocolError.UndecodableTxId(_), id => held(id.hash.bytes))
 
   /** The snapshot of a pool state. Pure. */
   def snapshot(state: MempoolState): Snapshot =
@@ -52,7 +57,7 @@ object LocalMonitor:
     Snapshot(
       state.tipSlot + 1,
       state.entries.map(e => Held(wrapTx(e.raw), Capacity.measure(e))),
-      item => unwrapId(item).exists(held),
+      has(held),
       state.capacity,
       (state.tipSlot + 1, ids)
     )

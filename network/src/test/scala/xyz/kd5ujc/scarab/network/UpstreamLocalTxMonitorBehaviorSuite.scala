@@ -159,7 +159,7 @@ class UpstreamLocalTxMonitorBehaviorSuite extends FailsOnUncaught:
         val snapshot = Snapshot(
           ordered.head.slot,
           held,
-          ids.toSet,
+          id => Right(ids.contains(id)),
           capacity,
           (ordered.head.slot, txs)
         )

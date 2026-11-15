@@ -18,12 +18,7 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody}
-import xyz.kd5ujc.scarab.node.mempool.{
-  LocalMonitor,
-  LocalSubmission,
-  MempoolState,
-  RelayedTransactions
-}
+import xyz.kd5ujc.scarab.node.mempool.{GenTxId, LocalSubmission, MempoolState, RelayedTransactions}
 import xyz.kd5ujc.scarab.node.AnnouncedHeaders
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
@@ -948,6 +943,24 @@ object Targets:
   )(era: Era): () => Vector[Array[Byte]] = () =>
     fixtures(era) ++ Corpus.sampled(s"${era.toString.toLowerCase}:$rule", 40) ++ Corpus.tricky
 
+  /** Transaction ids of a LocalTxMonitor `MsgHasTx`: `[era, h'32 bytes']` and `[era, chunked]` for
+    * each of the eight eras, and Byron's `[0, [constructor, h'32 bytes']]` for constructors 0 to 4.
+    */
+  private def txIdSeeds: Vector[Array[Byte]] =
+    val hash = Array.tabulate[Byte](32)(i => (i * 7 + 1).toByte)
+    val chunked = Array[Byte](0x5f, 0x50) ++ hash.take(16) ++ Array[Byte](0x50) ++
+      hash.drop(16) ++ Array[Byte](0xff.toByte)
+    val eras = (0 to 7).toVector.flatMap { era =>
+      Vector(
+        Array[Byte](0x82.toByte, era.toByte, 0x58, 0x20) ++ hash,
+        Array[Byte](0x82.toByte, era.toByte) ++ chunked
+      )
+    }
+    val byron = (0 to 4).toVector.map(c =>
+      Array[Byte](0x82.toByte, 0x00, 0x82.toByte, c.toByte, 0x58, 0x20) ++ hash
+    )
+    eras ++ byron
+
   private val node: Vector[Target] =
     Vector(
       Target(
@@ -1082,8 +1095,12 @@ object Targets:
           } ++ Corpus.tricky,
         probe("tx-local-submission-unwrap") { b =>
           seen("tx-local-submission-unwrap", LocalSubmission.unwrap(b).isRight)
-          LocalMonitor.unwrapId(b)
         }
+      ),
+      Target(
+        "ntc-tx-id",
+        () => txIdSeeds ++ Corpus.tricky,
+        probe("ntc-tx-id") { b => seen("ntc-tx-id", GenTxId.decode(b).isRight) }
       ),
       Target(
         "ntc-query",
