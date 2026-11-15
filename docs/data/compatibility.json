@@ -1180,6 +1180,24 @@
       "page": "docs/compatibility/ledger-url-length.md"
     },
     {
+      "id": "ledger-decoder-version",
+      "component": "Ledger: explicit decoder versions",
+      "status": "implemented",
+      "summary": "The era decoders take an explicit decoder version and read at it as given, as decodeFull' takes any Version; DecoderVersion.at builds one of an era's ProtVerLow to ProtVerHigh; without one they read at eraProtVerLow, as consensus reads a block",
+      "evidence": {
+        "suites": [
+          "DecoderVersionSuite",
+          "BootstrapDuplicatesReferenceSuite",
+          "BootstrapChainCodesReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/bootstrap-duplicates/cases.jsonl",
+          "fixtures/reference/bootstrap-chain-codes/cases.jsonl"
+        ]
+      },
+      "page": "docs/compatibility/ledger-decoder-version.md"
+    },
+    {
       "id": "ledger-plutus-data-decoding",
       "component": "Ledger: Plutus Data read at decode (#721)",
       "status": "implemented",

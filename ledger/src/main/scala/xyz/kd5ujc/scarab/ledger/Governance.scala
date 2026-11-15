@@ -215,7 +215,7 @@ object Proposal:
           case (Some(0), 4) =>
             (
               GovActionId.optional(xs(1)),
-              ConwayParamUpdate.decode(xs(2)),
+              ConwayParamUpdate.decode(xs(2), version),
               optionalHash(xs(3))
             ).mapN(GovAction.ParameterChange(_, _, _))
           case (Some(1), 3) =>

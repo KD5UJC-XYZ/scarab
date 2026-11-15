@@ -28,7 +28,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * witness twice, two vkey witnesses of one key), and witness sets read at each decoder version
   * from the era's to 12, with the witnesses the unchanged released decoders kept and the verdict of
   * `validateVerifiedWits`. Scarab's decoders must keep the same witnesses, in the order of the
-  * reference's set for the bootstrap witnesses, and its signature check give the same verdict.
+  * reference's set for the bootstrap witnesses, and its signature check give the same verdict. A
+  * line is read by Scarab at its recorded decoder version, including versions outside its era.
   */
 class BootstrapDuplicatesReferenceSuite extends FunSuite:
   import BootstrapDuplicatesReferenceSuite.*
@@ -76,11 +77,16 @@ class BootstrapDuplicatesReferenceSuite extends FunSuite:
       )
   }
 
-  for row <- rows if DecoderVersion.of(row.era).value == row.version do
+  private val versions =
+    Era.values.flatMap(e => DecoderVersion.range(e).versions).map(v => v.value -> v).toMap
+
+  for row <- rows do
     test(row.name) {
-      scarab(row) match
+      val version = versions.getOrElse(row.version, fail(s"unknown decoder version ${row.version}"))
+      scarab(row, version) match
         case Left(refused) =>
-          fail(s"the reference accepts it (${row.failure}), Scarab refused it: $refused")
+          assert(!row.accepted, s"the reference accepts it; Scarab refused it: $refused")
+          assertEquals(refused, LedgerDecodeError.DuplicateElement(DecodeField.BootstrapWitnesses))
         case Right(read) =>
           assert(row.accepted, s"the reference refuses it (${row.failure}); Scarab read it")
           read.tx.foreach { tx =>
@@ -176,11 +182,12 @@ object BootstrapDuplicatesReferenceSuite:
   /** `encCBOR` of a vkey witness: the list of its key and signature. */
   def encoded(w: (Bytes, Bytes)): Bytes = Bytes(Vector(0x82.toByte)) ++ bstr(w._1) ++ bstr(w._2)
 
-  def scarab(row: Row): Either[LedgerDecodeError, Read] =
+  /** What Scarab reads from a line at its recorded `version`. */
+  def scarab(row: Row, version: DecoderVersion): Either[LedgerDecodeError, Read] =
     row.kind match
-      case Kind.Witnesses => Witnesses.decode(row.raw, row.era).map(Read(_, None))
+      case Kind.Witnesses => Witnesses.decode(row.raw, row.era, version).map(Read(_, None))
       case Kind.Transaction =>
-        Tx.fromEnvelope(row.raw, row.era).map(t => Read(t.witnesses, Some(t)))
+        Tx.fromEnvelope(row.raw, row.era, version).map(t => Read(t.witnesses, Some(t)))
 
   private given Decoder[Row] = Decoder.instance { c =>
     def unknown(what: String) = io.circe.DecodingFailure(s"unknown $what", c.history)

@@ -412,8 +412,8 @@ object DetachedRecords:
   object Shapes:
     private def since(era: Era, first: Era): Boolean = era.ordinal >= first.ordinal
 
-    /** Whether the era's decoder version reads any `RecD` record of a block: below 12. */
-    private def recorded(era: Era): Boolean = !DecoderVersion.of(era).atLeast(12)
+    /** Whether a decoder version reads any `RecD` record of a block: below 12. */
+    private def recorded(version: DecoderVersion): Boolean = !version.atLeast(12)
 
     /** `decodeNullStrictMaybe`. */
     private def nullable(shape: Shape): Shape = ByToken {
@@ -492,10 +492,13 @@ object DetachedRecords:
       case _       => Nil
     }
 
-    /** A body (`SparseKeyed` over the era's `bodyFields`). */
-    def body(era: Era): Shape =
+    /** A body (`SparseKeyed` over the era's `bodyFields`), read at the era's decoder version. */
+    def body(era: Era): Shape = body(era, DecoderVersion.of(era))
+
+    /** [[body]] at a decoder version of the era. */
+    def body(era: Era, version: DecoderVersion): Shape =
       val conway = since(era, Era.Conway)
-      if !recorded(era) then Item
+      if !recorded(version) then Item
       else
         Keyed {
           case 1                             => ListOf(output(era))
@@ -515,8 +518,11 @@ object DetachedRecords:
     /** A witness set: from Alonzo its redeemers (5), a list, and from Conway (decoder version 9) a
       * map of purpose to data and units (`Alonzo/TxWits.hs:549-597`).
       */
-    def witnesses(era: Era): Shape =
-      if !recorded(era) then Item
+    def witnesses(era: Era): Shape = witnesses(era, DecoderVersion.of(era))
+
+    /** [[witnesses]] at a decoder version of the era. */
+    def witnesses(era: Era, version: DecoderVersion): Shape =
+      if !recorded(version) then Item
       else witnessesBelow12(era)
 
     private def witnessesBelow12(era: Era): Shape =
@@ -547,25 +553,32 @@ object DetachedRecords:
       * set, an optional validity flag and the auxiliary data or null (`Alonzo/Tx.hs:532-553`);
       * before, the `RecD` record `ShelleyTx` (`Shelley/Tx.hs:184-192`).
       */
-    def transaction(era: Era): Shape =
-      if !recorded(era) then Item
+    def transaction(era: Era): Shape = transaction(era, DecoderVersion.of(era))
+
+    /** [[transaction]] at a decoder version of the era. */
+    def transaction(era: Era, version: DecoderVersion): Shape =
+      val auxiliary = auxiliaryDataAt(version.value)
+      if !recorded(version) then Item
       else if since(era, Era.Alonzo) then
         Fields(
-          List(body(era), witnesses(era)),
+          List(body(era, version), witnesses(era, version)),
           ByToken {
             case Token.Bool | Token.Null => Item
-            case _                       => auxiliaryData(era)
+            case _                       => auxiliary
           }
         )
-      else Record(List(body(era), witnesses(era), nullable(auxiliaryData(era))))
+      else Record(List(body(era, version), witnesses(era, version), nullable(auxiliary)))
 
     /** A header of a Shelley-based era: from Babbage the Praos `HeaderRaw` and its `HeaderBody` are
       * `RecD` records (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`),
       * the body's operational certificate and protocol version lists read by `decodeRecordNamed`
       * and so not records; a TPraos header to Alonzo holds none (`TPraos/BlockHeader.hs:193-241`).
       */
-    def header(era: Era): Shape =
-      if !recorded(era) then Item
+    def header(era: Era): Shape = header(era, DecoderVersion.of(era))
+
+    /** [[header]] at a decoder version of the era. */
+    def header(era: Era, version: DecoderVersion): Shape =
+      if !recorded(version) then Item
       else if since(era, Era.Babbage) then Record(List(Record(List.fill(10)(Item)), Item))
       else Item
 
@@ -573,18 +586,21 @@ object DetachedRecords:
       * [[header]], then the bodies, the witness sets, the auxiliary data by index and the invalid
       * transactions (`Block.hs:104-115`, `Alonzo/BlockBody/Internal.hs:215-240`).
       */
-    val block: Shape = Sum(tag =>
+    val block: Shape = blockAt(DecoderVersion.of)
+
+    /** [[block]] with each era read at the decoder version `version` names for it. */
+    def blockAt(version: Era => DecoderVersion): Shape = Sum(tag =>
       // A Dijkstra block, `[header, [txs, leios_cert / nil, peras_cert / nil]]`, is read at decoder
       // version 12, where it holds no `RecD` record (above); a Byron block holds none either
-      Era.fromBlockTag(BigInt(tag)).filter(e => e != Era.Byron && recorded(e)) match
+      Era.fromBlockTag(BigInt(tag)).filter(e => e != Era.Byron && recorded(version(e))) match
         case Some(era) =>
           List(
             Fields(
               List(
-                header(era),
-                ListOf(body(era)),
-                ListOf(witnesses(era)),
-                MapOf(Item, auxiliaryData(era))
+                header(era, version(era)),
+                ListOf(body(era, version(era))),
+                ListOf(witnesses(era, version(era))),
+                MapOf(Item, auxiliaryDataAt(version(era).value))
               ),
               Item
             )

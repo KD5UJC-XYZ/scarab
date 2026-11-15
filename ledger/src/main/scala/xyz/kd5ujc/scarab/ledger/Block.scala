@@ -74,20 +74,45 @@ object Block:
 
   /** Decode a block; `byronEpochSlots` (10k of the Byron genesis) only matters for Byron blocks. */
   def decode(raw: Bytes, byronEpochSlots: BigInt): Either[ChainError, Block] =
-    decodeWith(raw, Some(byronEpochSlots))
+    decodeWith(raw, Some(byronEpochSlots), DecoderVersion.of, DetachedRecords.Shapes.block)
+
+  /** [[decode]] with the block read at the decoder version `version` names for its era, as given.
+    */
+  def decode(
+      raw: Bytes,
+      byronEpochSlots: BigInt,
+      version: Era => DecoderVersion
+  ): Either[ChainError, Block] =
+    decodeWith(raw, Some(byronEpochSlots), version, DetachedRecords.Shapes.blockAt(version))
 
   /** Decode a block of a Shelley-based era; a Byron block is an error. */
-  def decodeShelley(raw: Bytes): Either[ChainError, Block] = decodeWith(raw, None)
+  def decodeShelley(raw: Bytes): Either[ChainError, Block] =
+    decodeWith(raw, None, DecoderVersion.of, DetachedRecords.Shapes.block)
+
+  /** [[decodeShelley]] with the block read at the decoder version `version` names for its era, as
+    * given.
+    */
+  def decodeShelley(raw: Bytes, version: Era => DecoderVersion): Either[ChainError, Block] =
+    decodeWith(raw, None, version, DetachedRecords.Shapes.blockAt(version))
 
   /** A block whose transactions hold a `RecD` record written as an empty indefinite list is read as
     * the reference reads it, its parts spanning the fields after the list ([[DetachedRecords]]).
     */
-  private def decodeWith(raw: Bytes, byronEpochSlots: Option[BigInt]): Either[ChainError, Block] =
-    DetachedRecords.read(raw, limits, DetachedRecords.Shapes.block)(e =>
-      fail(LedgerDecodeError.Syntax(e))
-    )(read(_, byronEpochSlots))
+  private def decodeWith(
+      raw: Bytes,
+      byronEpochSlots: Option[BigInt],
+      version: Era => DecoderVersion,
+      shape: DetachedRecords.Shape
+  ): Either[ChainError, Block] =
+    DetachedRecords.read(raw, limits, shape)(e => fail(LedgerDecodeError.Syntax(e)))(
+      read(_, byronEpochSlots, version)
+    )
 
-  private def read(root: Node, byronEpochSlots: Option[BigInt]): Either[ChainError, Block] =
+  private def read(
+      root: Node,
+      byronEpochSlots: Option[BigInt],
+      at: Era => DecoderVersion
+  ): Either[ChainError, Block] =
     for
       outer <- array(root, 2)
       tag <- outer(0).value match
@@ -113,7 +138,7 @@ object Block:
         // `[header, [txs, leios_cert / nil, peras_cert / nil]]`, read as the Leios testnet's build
         // reads it: the envelope again (a definite list), then the block at decoder version 12
         case Era.Dijkstra => LeiosBlock.read(root).map(Dijkstra(_))
-        case _            => shelley(era, outer(1))
+        case _            => shelley(era, at(era), outer(1))
     yield block
 
   private def byron(
@@ -134,11 +159,11 @@ object Block:
       n.original.size
     )
 
-  private def shelley(era: Era, n: Node): Either[ChainError, Block] =
+  private def shelley(era: Era, version: DecoderVersion, n: Node): Either[ChainError, Block] =
     for
       parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
-      header <- Header.fromRaw(era, parts(0).original)
-      body <- segregated(parts, era)
+      header <- Header.fromRaw(era, parts(0).original, version)
+      body <- segregated(parts, era, version)
     yield Shelley(era, header, body.transactions, body.size, body.hash, body.segments)
 
   /** The transactions of a block body in the segregated layout of Shelley to Conway (`[header,
@@ -154,7 +179,8 @@ object Block:
 
   private[ledger] def segregated(
       parts: Vector[Node],
-      era: Era
+      era: Era,
+      version: DecoderVersion
   ): Either[ChainError, SegregatedBody] =
     for
       bodies <- list(parts(1))
@@ -167,7 +193,7 @@ object Block:
       aux <- parts(3).value match
         case Value.Map(entries) =>
           for
-            _ <- auxiliaryKeys(entries.map(_._1), DecoderVersion.of(era))
+            _ <- auxiliaryKeys(entries.map(_._1), version)
             kvs <- entries.traverse { case (k, v) => index(k, bodies.size).map(_ -> v.original) }
           yield kvs.toMap
         case _ =>

@@ -6,8 +6,8 @@ import xyz.kd5ujc.scarab.codec.Node
 
 /** The cost-model map of protocol-parameter field 18 as the reference decodes it from a transaction
   * (`CostModels.hs` `decodeCostModels`, cardano-ledger `f649f975`, lines 302-337 and 426-440). The
-  * decoder version of the era selects the rule, and a map the reference refuses is refused here
-  * when the transaction is decoded, not when the update is applied.
+  * supplied decoder version selects the rule, and a map the reference refuses is refused here when
+  * the transaction is decoded, not when the update is applied.
   *
   * The result is the language tag to the parameters in the order given, which is what
   * `ProtocolParams.costModels` holds: the reference keeps the original values of a known language
@@ -37,6 +37,10 @@ object CostModelDecode:
       * `decodeMapByKey`, `Decoder.hs:810-824`).
       */
     case Open
+
+  object Format:
+    /** `decodeCostModels`, `Plutus/CostModels.hs:311-317`, cardano-ledger f649f975. */
+    def of(version: DecoderVersion): Format = if version.atLeast(9) then Open else Legacy
 
   /** Parameters of a language when it was added (`costModelInitParamCount`,
     * `CostModels.hs:233-241`), for the languages the legacy rule reads.

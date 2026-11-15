@@ -22,7 +22,9 @@ import xyz.kd5ujc.scarab.protocol.Era
   * codes, and a witness read alone at each decoder version from 2 to 12, with what the unchanged
   * released decoders did with each and the address roots they computed. Scarab's decoders, the ones
   * a block's transactions and a submission go through, must give the same verdict, keep the chain
-  * code as written and compute the same address root.
+  * code as written and compute the same address root. A witness alone read at a version of an era's
+  * range that is not the era's own (6, 8, 10, 11) is read by that era's decoder at that version
+  * ([[DecoderVersion.at]]).
   */
 class BootstrapChainCodesReferenceSuite extends FunSuite:
   import BootstrapChainCodesReferenceSuite.*
@@ -118,6 +120,7 @@ object BootstrapChainCodesReferenceSuite:
     case Decode(cause: LedgerDecodeError)
     case Chain(cause: ChainError)
     case Syntax(cause: Cbor.Error)
+    case Version(cause: DecoderVersion.OutOfRange)
     case NotShelleyBased
     case NoEra
 
@@ -138,10 +141,14 @@ object BootstrapChainCodesReferenceSuite:
   /** The chain code the generator writes for `length` (`bootstrap_chain_code_cases.py`). */
   def chainCode(length: Int): Bytes = Bytes(Vector.fill(length)(0x92.toByte))
 
-  /** Whether an era of Scarab reads the line: a witness alone read at a version no era reads at (6,
-    * 8, 10, 11) is the reference's alone.
+  /** The era whose decoder reads the line: its own, or for a witness alone read at a version that
+    * is no era's own (6, 8, 10, 11), the era whose range holds the version.
     */
-  def readable(row: Row): Boolean = row.era.isDefined
+  def eraOf(row: Row): Option[Era] =
+    row.era.orElse(Shelley.find(DecoderVersion.range(_).contains(row.version)))
+
+  /** Whether an era of Scarab reads the line. */
+  def readable(row: Row): Boolean = eraOf(row).isDefined
 
   /** `{2: [witness]}`: a witness set holding the one bootstrap witness of a line read alone. */
   private def holding(witness: Bytes): Bytes =
@@ -151,7 +158,7 @@ object BootstrapChainCodesReferenceSuite:
     * alone in a witness set of the era read at its version, Dijkstra's for version 12.
     */
   def scarab(row: Row): Either[Refused, Vector[BootstrapWitness]] =
-    row.era.toRight(Refused.NoEra).flatMap { era =>
+    eraOf(row).toRight(Refused.NoEra).flatMap { era =>
       (row.kind, era) match
         case (Kind.Alone, Era.Dijkstra) =>
           Cbor
@@ -162,7 +169,12 @@ object BootstrapChainCodesReferenceSuite:
               _.bootstraps.map(b => BootstrapWitness(b.key, b.signature, b.chainCode, b.attributes))
             )
         case (Kind.Alone, _) =>
-          Witnesses.decode(holding(row.raw), era).bimap(Refused.Decode(_), _.bootstrap)
+          DecoderVersion
+            .at(era, row.version)
+            .leftMap(Refused.Version(_))
+            .flatMap(
+              Witnesses.decode(holding(row.raw), era, _).bimap(Refused.Decode(_), _.bootstrap)
+            )
         case (Kind.Witnesses, _) =>
           Witnesses.decode(row.raw, era).bimap(Refused.Decode(_), _.bootstrap)
         case (Kind.Transaction, _) =>
