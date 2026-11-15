@@ -6,7 +6,7 @@ import cats.mtl.Stateful
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
-import xyz.kd5ujc.scarab.network.selection.PeerMetrics
+import xyz.kd5ujc.scarab.network.selection.{ChurnMode, HotScore, PeerMetrics}
 
 /** Both client directions use the reference's remote-address-keyed earliest-arrival board. */
 class PeerMetricsObserverSuite extends FailsOnUncaught:
@@ -54,7 +54,7 @@ class PeerMetricsObserverSuite extends FailsOnUncaught:
       result <- board.get
     yield
       assertEquals(result.sizes, (2, 2))
-      assertEquals(result.hotScores.keySet, Set("inbound", "outbound"))
+      assertEquals(HotScore.of(ChurnMode.Initial, result).keySet, Set("inbound", "outbound"))
       assertEquals(result.upstreamness, Map("inbound" -> 1, "outbound" -> 1))
       assertEquals(result.fetchynessBlocks, Map("inbound" -> 1, "outbound" -> 1))
   }

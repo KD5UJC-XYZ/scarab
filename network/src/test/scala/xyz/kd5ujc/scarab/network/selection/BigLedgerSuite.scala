@@ -230,6 +230,33 @@ class BigLedgerSuite extends FunSuite:
     assertEquals(count(jobs) { case Job.Deactivate(_) => () }, 2)
   }
 
+  test("hot big ledger peers are demoted by the score of the churn mode") {
+    val st = withPeers(
+      start(targets(establishedBig = 3, activeBig = 1, knownBig = 3)),
+      1 -> big(Status.Hot),
+      2 -> big(Status.Hot),
+      3 -> big(Status.Hot)
+    )
+    def demoted(mode: ChurnMode) =
+      PeerSelection.decide(st, t0, PeerMetricsSuite.disagreeing, mode) match
+        case Step.Act(d) =>
+          (
+            d.jobs.collect { case Job.Deactivate(p) => p }.toSet,
+            d.traces.collect { case Trace.DemoteBigLedger(Temperature.Hot, _, _, _, scores) =>
+              scores
+            }
+          )
+        case other => fail(s"expected a demotion in $mode, got $other")
+    assertEquals(
+      demoted(ChurnMode.Praos(FetchMode.Deadline)),
+      (Set(2, 3), List(Map(1 -> Some(5L), 2 -> Some(1L), 3 -> Some(1L))))
+    )
+    assertEquals(
+      demoted(ChurnMode.Praos(FetchMode.BulkSync)),
+      (Set(1, 3), List(Map(1 -> Some(300L), 2 -> Some(5000L), 3 -> Some(0L))))
+    )
+  }
+
   // ------------------------------------------------------------------ a population of its own
 
   test(

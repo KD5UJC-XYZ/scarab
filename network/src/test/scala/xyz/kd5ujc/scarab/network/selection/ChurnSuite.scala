@@ -21,6 +21,38 @@ class ChurnSuite extends ScalaCheckSuite:
 
   // ------------------------------------------------------------------ decrease
 
+  test("the churn mode is the fetch mode as mkReadFetchMode reads it (FetchMode.hs 19-32)") {
+    val table = for
+      consensus <- ConsensusMode.values.toList
+      judgement <- LedgerStateJudgement.values.toList
+      praos <- FetchMode.values.toList
+    yield (consensus, judgement, praos) -> ChurnMode.read(consensus, judgement, praos)
+    // in Praos the Praos fetch mode decides, in Genesis the judgement alone
+    assertEquals(
+      table.toMap,
+      Map(
+        (ConsensusMode.PraosMode, LedgerStateJudgement.TooOld, FetchMode.BulkSync) ->
+          ChurnMode.Praos(FetchMode.BulkSync),
+        (ConsensusMode.PraosMode, LedgerStateJudgement.TooOld, FetchMode.Deadline) ->
+          ChurnMode.Praos(FetchMode.Deadline),
+        (ConsensusMode.PraosMode, LedgerStateJudgement.YoungEnough, FetchMode.BulkSync) ->
+          ChurnMode.Praos(FetchMode.BulkSync),
+        (ConsensusMode.PraosMode, LedgerStateJudgement.YoungEnough, FetchMode.Deadline) ->
+          ChurnMode.Praos(FetchMode.Deadline),
+        (ConsensusMode.GenesisMode, LedgerStateJudgement.TooOld, FetchMode.BulkSync) ->
+          ChurnMode.Genesis,
+        (ConsensusMode.GenesisMode, LedgerStateJudgement.TooOld, FetchMode.Deadline) ->
+          ChurnMode.Genesis,
+        (ConsensusMode.GenesisMode, LedgerStateJudgement.YoungEnough, FetchMode.BulkSync) ->
+          ChurnMode.Praos(FetchMode.Deadline),
+        (ConsensusMode.GenesisMode, LedgerStateJudgement.YoungEnough, FetchMode.Deadline) ->
+          ChurnMode.Praos(FetchMode.Deadline)
+      )
+    )
+    // before the churn governor first writes one (`churnModeVar`, consensus Node.hs 603)
+    assertEquals(ChurnMode.Initial, ChurnMode.Praos(FetchMode.Deadline))
+  }
+
   test("decrease: 20% or at least one, never below zero (692-697)") {
     val table = List(0 -> 0, 1 -> 0, 2 -> 1, 4 -> 3, 5 -> 4, 9 -> 8, 10 -> 8, 20 -> 16, 100 -> 80)
     table.foreach((n, expected) => assertEquals(Churn.decrease(n), expected, s"decrease $n"))

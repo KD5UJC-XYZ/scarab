@@ -26,7 +26,8 @@ class ChurnLoopSuite extends CatsEffectSuite:
   /** What the loop did, with the virtual time it did it at. */
   private final case class Log(
       requests: Vector[(FiniteDuration, Targets)],
-      traces: Vector[(FiniteDuration, Churn.Trace)]
+      traces: Vector[(FiniteDuration, Churn.Trace)],
+      modes: Vector[(FiniteDuration, ChurnMode)]
   )
 
   /** The counters follow the targets at once, except that the increases stay short when `stuck`. */
@@ -41,7 +42,8 @@ class ChurnLoopSuite extends CatsEffectSuite:
       syncTargets: Targets = Targets.sync,
       intervals: Churn.Intervals = Churn.Intervals(),
       responseDelay: FiniteDuration = Duration.Zero,
-      changingJudgement: Option[Ref[IO, LedgerStateJudgement]] = None
+      changingJudgement: Option[Ref[IO, LedgerStateJudgement]] = None,
+      fetchModeAt: Option[FiniteDuration => FetchMode] = None
   ): IO[Log] =
     for
       targetState <- ChurnTargets.create[IO](
@@ -59,6 +61,7 @@ class ChurnLoopSuite extends CatsEffectSuite:
       responses <- Queue.unbounded[IO, Churn.Proposal]
       requests <- Ref.of[IO, Vector[(FiniteDuration, Targets)]](Vector.empty)
       traces <- Ref.of[IO, Vector[(FiniteDuration, Churn.Trace)]](Vector.empty)
+      modes <- Ref.of[IO, Vector[(FiniteDuration, ChurnMode)]](Vector.empty)
       world = new ChurnWorld[IO]:
         def counters: IO[GovernorState.Counters] = targetState.counters
         def awaitCounters(
@@ -66,7 +69,7 @@ class ChurnLoopSuite extends CatsEffectSuite:
         ): IO[GovernorState.Counters] =
           targetState.awaitCounters(predicate)
         def localHot: IO[Int] = IO.pure(2)
-        def fetchMode: IO[FetchMode] = mode.get
+        def fetchMode: IO[FetchMode] = fetchModeAt.fold(mode.get)(IO.monotonic.map(_))
         def judgement: IO[LedgerStateJudgement] =
           changingJudgement.fold(IO.pure(ledgerJudgement))(_.get)
         def requested: IO[Churn.Proposal] = targetState.requested
@@ -81,6 +84,8 @@ class ChurnLoopSuite extends CatsEffectSuite:
             yield ()
           }
         def request(t: Churn.Proposal): IO[Unit] = updateTargets(_ => t).void
+        def setChurnMode(m: ChurnMode): IO[Unit] =
+          IO.monotonic.flatMap(now => modes.update(_ :+ (now -> m)))
       given Ask[IO, ChurnLoop.Config] = Ask.const[IO, ChurnLoop.Config](
         ChurnLoop.Config(
           base,
@@ -120,7 +125,8 @@ class ChurnLoopSuite extends CatsEffectSuite:
       _ <- IO.race(IO.race(ChurnLoop.run[IO](world), responder), IO.sleep(horizon))
       r <- requests.get
       t <- traces.get
-    yield Log(r, t)
+      m <- modes.get
+    yield Log(r, t, m)
 
   private def embed[A](io: IO[A]): IO[A] = TestControl.executeEmbed(io)
 
@@ -147,16 +153,74 @@ class ChurnLoopSuite extends CatsEffectSuite:
           consensusMode = ConsensusMode.GenesisMode,
           ledgerJudgement = LedgerStateJudgement.TooOld
         )
-      yield assertEquals(
-        log.requests.take(2).map(_._2),
+      yield
+        assertEquals(
+          log.requests.take(2).map(_._2),
+          Vector(
+            Churn.head(
+              Churn.Context(Regime.Kind.Default, 2, Targets.sync, ConsensusMode.GenesisMode)
+            ),
+            Targets.sync
+          )
+        )
+        // `mkReadFetchMode`: a Genesis node whose ledger is too old churns in the Genesis mode
+        assertEquals(
+          log.modes,
+          Vector(Duration.Zero -> ChurnMode.Genesis, 3.seconds -> ChurnMode.Genesis)
+        )
+    )
+  }
+
+  test(
+    "the churn mode is written before each set of targets and at the start of a round (updateChurnMode)"
+  ) {
+    embed(for
+      mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
+      // the round comes at 10 s and takes no time; the next is due at 20 s
+      log <- run(
+        15.seconds,
+        mode = mode,
+        intervals = Churn.Intervals(10.seconds, Duration.Zero, 10.seconds, Duration.Zero)
+      )
+    yield
+      val deadline = ChurnMode.Praos(FetchMode.Deadline)
+      // the head start (Churn.hs 177, 201), the round (565), and its twelve steps (242)
+      assertEquals(
+        log.modes,
+        Vector(Duration.Zero -> deadline, 3.seconds -> deadline) ++
+          Vector.fill(13)(10.seconds -> deadline)
+      )
+      assertEquals(
+        log.traces.collect { case (at, Churn.Trace.Mode(m)) => at -> m },
+        Vector(10.seconds -> deadline)
+      ))
+  }
+
+  test("a change of the fetch mode during the sleep reaches the churn mode with the next round") {
+    embed(for
+      mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
+      log <- run(
+        15.seconds,
+        mode = mode,
+        intervals = Churn.Intervals(10.seconds, Duration.Zero, 10.seconds, Duration.Zero),
+        fetchModeAt = Some(at => if at < 5.seconds then FetchMode.Deadline else FetchMode.BulkSync)
+      )
+    yield
+      val bulk = ChurnMode.Praos(FetchMode.BulkSync)
+      // nothing is written while the loop sleeps from 3 s to 10 s, so a hot demotion in that time
+      // still ranks by the deadline scores
+      assertEquals(
+        log.modes.takeWhile(_._1 < 10.seconds),
         Vector(
-          Churn.head(
-            Churn.Context(Regime.Kind.Default, 2, Targets.sync, ConsensusMode.GenesisMode)
-          ),
-          Targets.sync
+          Duration.Zero -> ChurnMode.Praos(FetchMode.Deadline),
+          3.seconds -> ChurnMode.Praos(FetchMode.Deadline)
         )
       )
-    )
+      assertEquals(log.modes.dropWhile(_._1 < 10.seconds), Vector.fill(13)(10.seconds -> bulk))
+      assertEquals(
+        log.traces.collect { case (at, Churn.Trace.Mode(m)) => at -> m },
+        Vector(10.seconds -> bulk)
+      ))
   }
 
   test(

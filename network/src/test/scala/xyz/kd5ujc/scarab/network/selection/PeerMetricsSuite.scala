@@ -182,10 +182,10 @@ class PeerMetricsSuite extends ScalaCheckSuite:
       .reportFetch(2, 10, 1, 1.second)
       .reportHeader(3, 12, 3.seconds)
       .reportHeader(4, 13, 4.seconds)
-    val scores = m.hotScores
+    val scores = HotScore.of(ChurnMode.Initial, m)
     // 1 scores 2, 2 scores 1, 3 and 4 score 1 and joined later than 2
-    assertEquals(scores(1).value, 2)
-    assertEquals(scores(2).value, 1)
+    assertEquals(scores(1).value, 2L)
+    assertEquals(scores(2).value, 1L)
     val candidates = scala.collection.immutable.SortedSet(1, 2, 3, 4, 5)
     val (picked, _) =
       Picks.hotDemotion(candidates, 5, Rng(1), p => scores.getOrElse(p, HotScore.Unknown))
@@ -193,10 +193,78 @@ class PeerMetricsSuite extends ScalaCheckSuite:
     assertEquals(picked, List(5, 2, 3, 4, 1))
   }
 
+  // ------------------------------------------------------------------ the scores by churn mode
+
+  private val deadline = ChurnMode.Praos(FetchMode.Deadline)
+  private val bulkSync = ChurnMode.Praos(FetchMode.BulkSync)
+
+  import PeerMetricsSuite.disagreeing
+
+  private def values(mode: ChurnMode, m: PeerMetrics[Int]): Map[Int, Long] =
+    HotScore.of(mode, m).map((p, s) => p -> s.value)
+
+  test(
+    "the hot score is upstreamyness plus fetchynessBlocks in deadline mode, fetchynessBytes while syncing"
+  ) {
+    // cardano-diffusion c5117705 Cardano/Network/Diffusion/Policies.hs 37-51
+    assertEquals(values(deadline, disagreeing), Map(1 -> 5L, 2 -> 1L, 3 -> 1L))
+    assertEquals(values(bulkSync, disagreeing), Map(1 -> 300L, 2 -> 5000L, 3 -> 0L))
+    assertEquals(values(ChurnMode.Genesis, disagreeing), values(bulkSync, disagreeing))
+    for mode <- List(deadline, bulkSync, ChurnMode.Genesis) do
+      assertEquals(
+        HotScore.of(mode, disagreeing).map((p, s) => p -> s.joinedAt),
+        disagreeing.joinedAt.map((p, j) => p -> Some(j)),
+        s"the tie-break of every score in $mode is the slot the peer joined at"
+      )
+  }
+
+  test("the churn mode decides which of two hot peers is demoted") {
+    val candidates = scala.collection.immutable.SortedSet(1, 2, 3)
+    def picked(mode: ChurnMode) =
+      val scores = HotScore.of(mode, disagreeing)
+      Picks.hotDemotion(candidates, 2, Rng(1), p => scores.getOrElse(p, HotScore.Unknown))._1
+    // 3 scores 1 and joined at 12, before 2 (1, joined at 13); by bytes 3 has none
+    assertEquals(picked(deadline), List(3, 2))
+    assertEquals(picked(bulkSync), List(3, 1))
+    assertEquals(picked(ChurnMode.Genesis), List(3, 1))
+  }
+
+  test(
+    "a peer with headers only, gone from the registry, has a deadline score but no bytes score"
+  ) {
+    // 9 joins at 10 with a header; when the boards' oldest slot reaches 10 it leaves the registry
+    // (`afterSlot`, PeerMetric.hs 335-350), keeps its header, and delivered no block
+    val m = PeerMetrics
+      .empty[Int]()
+      .reportHeader(9, 10, 1.second)
+      .reportFetch(2, 11, 50, 2.seconds)
+      .reportFetch(2, 12, 50, 2.seconds)
+    assertEquals(m.joinedAt, Map(2 -> 11L))
+    assertEquals(HotScore.of(deadline, m), Map(9 -> HotScore(1, None), 2 -> HotScore(2, Some(11))))
+    assertEquals(HotScore.of(bulkSync, m), Map(2 -> HotScore(100, Some(11))))
+    // so in bulk sync it ranks as unknown, below every peer that is known, and traces no score
+    assertEquals(
+      Picks.hotDemotionScores(List(9, 2), HotScore.of(bulkSync, m).get),
+      Map(9 -> None, 2 -> Some(100L))
+    )
+    assertEquals(
+      Picks.hotDemotionScores(List(9, 2), HotScore.of(deadline, m).get),
+      Map(9 -> Some(1L), 2 -> Some(2L))
+    )
+  }
+
+  test("a bytes score above Int.MaxValue is exact (64-bit Int in fetchynessBytesImpl)") {
+    val m = PeerMetrics
+      .empty[Int]()
+      .reportFetch(1, 10, 4294967295L, 1.second)
+      .reportFetch(1, 11, 4294967295L, 1.second)
+    assertEquals(HotScore.of(bulkSync, m).get(1).map(_.value), Some(8589934590L))
+  }
+
   property("a lower score is never demoted after a higher one") {
     forAll(script, Gen.choose(0L, 1000L)) { (reports, seed) =>
       val m = run(reports).last
-      val scores = m.hotScores
+      val scores = HotScore.of(ChurnMode.Initial, m)
       val peers = scala.collection.immutable.SortedSet.from(scores.keys)
       val (picked, _) = Picks.hotDemotion(peers, peers.size, Rng(seed), scores)
       picked.map(scores).sliding(2).forall {
@@ -221,7 +289,7 @@ class PeerMetricsSuite extends ScalaCheckSuite:
               .empty[Int]()
               .reportHeaders(1, slots, 1.second)
               .reportFetches(2, slots.map(_ -> 1000L), 1.second)
-            val scores = m.hotScores
+            val scores = HotScore.of(ChurnMode.Initial, m)
             val peers = scala.collection.immutable.SortedSet.from(1 to 1000)
             val (picked, _) =
               Picks.hotDemotion(peers, 500, Rng(3L), p => scores.getOrElse(p, HotScore.Unknown))
@@ -239,3 +307,19 @@ class PeerMetricsSuite extends ScalaCheckSuite:
         assertEquals(picked, 500)
       case Left(e) => fail(s"the metrics need a deep stack: $e")
   }
+
+object PeerMetricsSuite:
+  /** Peer 1 was first with two headers and three small blocks, peer 2 with one large block, peer 3
+    * with one header: by blocks peer 2 is the least useful of 1 and 2, by bytes peer 1 is. The
+    * scores: `upstreamyness + fetchynessBlocks` 5, 1 and 1, `fetchynessBytes` 300, 5000 and 0; the
+    * peers joined at slots 11, 13 and 12.
+    */
+  val disagreeing: PeerMetrics[Int] = PeerMetrics
+    .empty[Int]()
+    .reportHeader(1, 10, 1.second)
+    .reportHeader(1, 11, 1.second)
+    .reportFetch(1, 10, 100, 2.seconds)
+    .reportFetch(1, 11, 100, 2.seconds)
+    .reportFetch(1, 12, 100, 2.seconds)
+    .reportFetch(2, 13, 5000, 2.seconds)
+    .reportHeader(3, 12, 1.second)

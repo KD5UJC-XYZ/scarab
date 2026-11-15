@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
 import xyz.kd5ujc.scarab.network.{ConnectionEnd, ConnectionEvent}
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode}
+import xyz.kd5ujc.scarab.network.selection.{Churn, ChurnMode, FetchMode}
 import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, Output, Peer}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.forge.{
@@ -311,7 +311,7 @@ class EventMetricsSuite extends CatsEffectSuite:
   ) {
     fixture.flatMap { (metrics, em) =>
       for
-        _ <- em.peerSelection(Output.Churned(Churn.Trace.Mode(FetchMode.Deadline)))
+        _ <- em.peerSelection(Output.Churned(Churn.Trace.Mode(ChurnMode.Praos(FetchMode.Deadline))))
         _ <- em.peerSelection(
           Output.Churned(Churn.Trace.Action(Churn.Step.DecreaseActive, 2.seconds, -4))
         )

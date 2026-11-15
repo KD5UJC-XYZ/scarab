@@ -167,11 +167,11 @@ final case class GovernorConfig(
   * arrive on the same queue from the connections, the Genesis State Machine and the regime of
   * targets.
   *
-  * The peer metrics (`Ask`) are read once per pass and given to the decision function, which ranks
-  * the hot peers for demotion by them. Each pass applies the events that are waiting, then asks the
-  * decision function; a decision is committed (state, traces, jobs) and the pass starts again; when
-  * nothing applies the loop waits for an event or for the time the decision function named,
-  * whichever comes first.
+  * The peer metrics and the churn mode the churn governor last wrote (`Ask`) are read once per pass
+  * and given to the decision function, which ranks the hot peers for demotion by them. Each pass
+  * applies the events that are waiting, then asks the decision function; a decision is committed
+  * (state, traces, jobs) and the pass starts again; when nothing applies the loop waits for an
+  * event or for the time the decision function named, whichever comes first.
   */
 object PeerGovernor:
 
@@ -201,7 +201,8 @@ object PeerGovernor:
       config: Ask[F, GovernorConfig],
       raise: Raise[F, GovernorError],
       out: Tell[F, Output[A]],
-      metrics: Ask[F, PeerMetrics[A]]
+      metrics: Ask[F, PeerMetrics[A]],
+      churn: Ask[F, ChurnMode]
   ): F[Nothing] =
     Ref
       .of[F, Set[Time]](Set.empty)
@@ -239,7 +240,8 @@ object PeerGovernor:
       config: Ask[F, GovernorConfig],
       raise: Raise[F, GovernorError],
       out: Tell[F, Output[A]],
-      metrics: Ask[F, PeerMetrics[A]]
+      metrics: Ask[F, PeerMetrics[A]],
+      churn: Ask[F, ChurnMode]
   ): F[Nothing] =
     val F = Temporal[F]
     given Monad[F] = F
@@ -634,9 +636,12 @@ object PeerGovernor:
         st <- state.get
         _ <- PeerSelection.abort(st, at).traverse_(raise.raise[GovernorError, Unit](_))
         scores <- metrics.ask[PeerMetrics[A]]
+        // the hot-demotion pick reads the churn mode where it reads the metrics (`Policies.hs`
+        // 33-36 at cardano-diffusion c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167)
+        mode <- churn.ask[ChurnMode]
         policy <- config.reader(_.policy)
         inbound <- sharing.fold(F.pure(Map.empty[A, Boolean]))(_.inbound)
-        loop <- PeerSelection.decide(st, at, scores, policy, inbound) match
+        loop <- PeerSelection.decide(st, at, scores, mode, policy, inbound) match
           case Step.Act(decision) => commit(decision) *> publish(before, at)
           case Step.Idle(settled, wakeAt) =>
             for

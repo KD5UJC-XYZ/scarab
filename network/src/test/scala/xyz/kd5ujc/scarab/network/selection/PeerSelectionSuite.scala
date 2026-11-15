@@ -449,9 +449,42 @@ class PeerSelectionSuite extends FunSuite:
         }
         assertEquals(
           scores,
-          List(Map(1 -> Some(10), 2 -> Some(10), 3 -> Some(1), 4 -> None, 5 -> None))
+          List(Map(1 -> Some(10L), 2 -> Some(10L), 3 -> Some(1L), 4 -> None, 5 -> None))
         )
       case other => fail(s"expected a demotion, got $other")
+  }
+
+  test("above the active target the churn mode decides which score ranks the hot peers") {
+    val targets = Targets.validated(0, 150, 10, 1, 0, 0, 0).toOption.get
+    val base = start(Nil, targets)
+    val peers = (1 to 3).foldLeft(base.peers)((m, p) =>
+      m.updated(p, PeerRecord.cold(Origin.Public).copy(status = Status.Hot))
+    )
+    val st = base.copy(peers = peers, targets = targets)
+    def demoted(mode: ChurnMode) =
+      PeerSelection.decide(st, t0, PeerMetricsSuite.disagreeing, mode) match
+        case Step.Act(d) =>
+          (
+            d.jobs.collect { case Job.Deactivate(p) => p }.toSet,
+            d.traces.collect { case Trace.Demote(Temperature.Hot, _, false, _, _, scores) =>
+              scores
+            }
+          )
+        case other => fail(s"expected a demotion in $mode, got $other")
+    // deadline: upstreamyness + fetchynessBlocks (cardano-diffusion c5117705 Policies.hs 37-41)
+    assertEquals(
+      demoted(ChurnMode.Praos(FetchMode.Deadline)),
+      (Set(2, 3), List(Map(1 -> Some(5L), 2 -> Some(1L), 3 -> Some(1L))))
+    )
+    // bulk sync and Genesis: fetchynessBytes (43-51)
+    val bytes = (Set(1, 3), List(Map(1 -> Some(300L), 2 -> Some(5000L), 3 -> Some(0L))))
+    assertEquals(demoted(ChurnMode.Praos(FetchMode.BulkSync)), bytes)
+    assertEquals(demoted(ChurnMode.Genesis), bytes)
+    // the mode before the churn governor writes one is deadline
+    assertEquals(
+      PeerSelection.decide(st, t0, PeerMetricsSuite.disagreeing),
+      PeerSelection.decide(st, t0, PeerMetricsSuite.disagreeing, ChurnMode.Initial)
+    )
   }
 
   test(

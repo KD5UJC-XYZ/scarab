@@ -4,6 +4,43 @@ package xyz.kd5ujc.scarab.network.selection
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Rational
 
+/** The churn mode (`ChurnMode`, `Cardano/Network/PeerSelection/Churn.hs` 55-63 at cardano-diffusion
+  * c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167): the fetch mode as the churn governor last read it.
+  * The hot-demotion pick ranks by it ([[HotScore.of]]), so that a pick sees the value the churn
+  * actions of the same moment see, not the fetch mode of the instant (`Churn.hs` 58-59).
+  *
+  * The reference's `FetchMode` is `GenesisFetchMode | PraosFetchMode PraosFetchMode`
+  * (`Ouroboros/Network/BlockFetch/ConsensusInterface.hs` 34-58 at ouroboros-network
+  * c45735a56c567fa977969173d18943bac6bb3821); Scarab's [[FetchMode]] is its `PraosFetchMode`, which
+  * `Praos` wraps.
+  */
+enum ChurnMode:
+  case Praos(mode: FetchMode)
+  case Genesis
+
+object ChurnMode:
+  /** The mode before the churn governor first writes one: `churnModeVar` starts as
+    * `ChurnMode (PraosFetchMode FetchModeDeadline)` (`Ouroboros/Consensus/Node.hs` 603 at
+    * ouroboros-consensus 82ecba329d7d054340bf707d44fe6e9ac27cec40).
+    */
+  val Initial: ChurnMode = Praos(FetchMode.Deadline)
+
+  /** The fetch mode the churn governor reads (`mkReadFetchMode`, `Cardano/Network/FetchMode.hs`
+    * 19-32 at cardano-diffusion c5117705): in Genesis mode the ledger state judgement alone
+    * decides, deadline once the ledger is young enough and Genesis while it is too old; in Praos
+    * mode it is the Praos fetch mode `praos` (`readFetchModeDefault`, [[FetchMode.of]]).
+    */
+  def read(
+      consensusMode: ConsensusMode,
+      judgement: LedgerStateJudgement,
+      praos: FetchMode
+  ): ChurnMode = consensusMode match
+    case ConsensusMode.GenesisMode =>
+      judgement match
+        case LedgerStateJudgement.YoungEnough => Praos(FetchMode.Deadline)
+        case LedgerStateJudgement.TooOld      => Genesis
+    case ConsensusMode.PraosMode => Praos(praos)
+
 /** The churn governor's arithmetic: which targets each step of a round asks for, how long it waits
   * for the counters to meet them, and how long the round sleeps. Pure; the effect that runs it is
   * `ChurnLoop` in `node`.
@@ -336,7 +373,7 @@ object Churn:
     * and by how much its counter changed.
     */
   enum Trace:
-    case Mode(mode: FetchMode)
+    case Mode(mode: ChurnMode)
     case Action(step: Step, took: FiniteDuration, change: Int)
     case Timeout(step: Step, took: FiniteDuration, change: Int)
     case Wait(delay: FiniteDuration)

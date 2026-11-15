@@ -10,9 +10,10 @@ import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
 
 /** What the churn governor reads of the node and writes to the governor: the counters of the
-  * governor, the hot valency of the local roots, the fetch mode, the targets last asked for, and
-  * the request for new targets (the reference's `peerSelectionVar`, `readCounters`,
-  * `getLocalRootHotTarget` and `readFetchMode`).
+  * governor, the hot valency of the local roots, the fetch mode, the targets last asked for, the
+  * request for new targets and the churn mode the hot-demotion pick ranks by (the reference's
+  * `peerSelectionVar`, `readCounters`, `getLocalRootHotTarget`, `readFetchMode` and
+  * `churnModeVar`).
   */
 trait ChurnWorld[F[_]]:
   def counters: F[GovernorState.Counters]
@@ -26,6 +27,11 @@ trait ChurnWorld[F[_]]:
       change: Churn.Proposal => Churn.Proposal
   ): F[(GovernorState.Counters, Churn.Proposal)]
 
+  /** `writeTVar churnModeVar` (`Churn.hs` 220): the governor ranks hot peers by this mode until the
+    * next write.
+    */
+  def setChurnMode(mode: ChurnMode): F[Unit]
+
 /** The churn governor (`peerChurnGovernor`, `Cardano/Network/PeerSelection/Churn.hs` 125-654): it
   * does not move peers, it changes the targets the governor works towards, one set at a time in the
   * twelve steps of [[Churn]], and waits after each for the counters to meet them or for a timeout.
@@ -34,10 +40,13 @@ trait ChurnWorld[F[_]]:
   * Genesis or Praos deadline mode, 900 s plus up to 60 s in Praos bulk sync.
   *
   * The arithmetic is [[Churn]]; this is the effect that runs it. It is the one writer of the
-  * governor's requested targets. Like the reference, it leaves them unchanged while sleeping.
-  * Capabilities: the world through the algebra [[ChurnWorld]], the settings through `Ask`, the
-  * trace through `Tell`. Randomness is the pure generator, threaded through the loop. It never
-  * returns.
+  * governor's requested targets. Like the reference, it leaves them unchanged while sleeping. It is
+  * also the one writer of the churn mode ([[ChurnWorld.setChurnMode]]): where the reference calls
+  * `updateChurnMode` (`Churn.hs` 177, 201, 242, 565), before each set of targets it asks for and at
+  * the start of each round, never while it sleeps, so that a change of the fetch mode during the
+  * sleep reaches the hot-demotion pick only with the next round. Capabilities: the world through
+  * the algebra [[ChurnWorld]], the settings through `Ask`, the trace through `Tell`. Randomness is
+  * the pure generator, threaded through the loop. It never returns.
   */
 object ChurnLoop:
 
@@ -66,21 +75,37 @@ object ChurnLoop:
     val F = Temporal[F]
     val clock = PicosClock.system[F]
     config.ask[Config].flatMap { cfg =>
+      /** `updateChurnMode` (`Churn.hs` 217-221): the fetch mode as a churn mode, written for the
+        * hot-demotion pick before it is used.
+        */
+      def updateChurnMode(
+          current: Config,
+          mode: FetchMode,
+          judgement: LedgerStateJudgement
+      ): F[ChurnMode] =
+        val churnMode = ChurnMode.read(current.consensusMode, judgement, mode)
+        world.setChurnMode(churnMode).as(churnMode)
+
+      /** What a set of targets is computed from; it updates the churn mode, as the reference's
+        * transactions that compute targets do (`Churn.hs` 176-181, 200-204, 241-251).
+        */
       def context: F[Churn.Context] =
         config.ask[Config].flatMap { current =>
-          (world.fetchMode, world.localHot, world.judgement)
-            .mapN { (mode, hot, judgement) =>
-              Churn.Context(
-                if current.consensusMode == ConsensusMode.GenesisMode then Regime.Kind.Default
-                else current.regime(mode),
-                hot,
-                Churn.targetsFor(
-                  current.consensusMode,
-                  judgement,
-                  current.base,
-                  current.syncTargets
-                ),
-                current.consensusMode
+          (world.fetchMode, world.localHot, world.judgement).tupled
+            .flatMap { (mode, hot, judgement) =>
+              updateChurnMode(current, mode, judgement).as(
+                Churn.Context(
+                  if current.consensusMode == ConsensusMode.GenesisMode then Regime.Kind.Default
+                  else current.regime(mode),
+                  hot,
+                  Churn.targetsFor(
+                    current.consensusMode,
+                    judgement,
+                    current.base,
+                    current.syncTargets
+                  ),
+                  current.consensusMode
+                )
               )
             }
         }
@@ -120,10 +145,14 @@ object ChurnLoop:
           )
         yield achieved.updated(s, change.abs)
 
+      // a round begins with `updateChurnMode` and its trace (`Churn.hs` 565-566)
       def round: F[Unit] =
         for
-          mode <- world.fetchMode
-          _ <- out.tell(Churn.Trace.Mode(mode))
+          current <- config.ask[Config]
+          read <- (world.fetchMode, world.judgement).tupled
+          (mode, judgement) = read
+          churnMode <- updateChurnMode(current, mode, judgement)
+          _ <- out.tell(Churn.Trace.Mode(churnMode))
           _ <- Churn.round.foldLeftM(Map.empty[Churn.Step, Int])(step).void
         yield ()
 
@@ -141,6 +170,7 @@ object ChurnLoop:
         done <- F.tailRecM[(Rng, FiniteDuration), Nothing]((Rng(cfg.seed), head)) {
           (rng, elapsed) =>
             for
+              // `fuzzyDelay` reads the fetch mode and writes no churn mode (`Churn.hs` 661-668)
               mode <- world.fetchMode
               (delay, rng1) = Churn.drawDelay(
                 cfg.consensusMode,

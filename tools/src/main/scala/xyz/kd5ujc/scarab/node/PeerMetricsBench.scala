@@ -5,7 +5,7 @@ import cats.effect.{IO, Ref}
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.network.selection.PeerMetrics
+import xyz.kd5ujc.scarab.network.selection.{ChurnMode, HotScore, PeerMetrics}
 
 /** The cost of the observation callbacks that feed the peer metrics (G1.2), on the per-header and
   * per-block path of a hot session. Not part of `check`: inside the JDK build container, run
@@ -86,7 +86,7 @@ object PeerMetricsBench:
       val m = warm
       report(
         "hotScores, 20 peers (once per governor pass that demotes)",
-        measure(1)(m.hotScores.size.toLong)
+        measure(1)(HotScore.of(ChurnMode.Initial, m).size.toLong)
       )
       println()
     println(s"checksum $sink")

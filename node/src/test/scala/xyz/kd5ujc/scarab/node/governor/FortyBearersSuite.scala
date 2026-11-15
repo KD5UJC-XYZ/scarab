@@ -263,16 +263,20 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   .timeout(60.seconds)
                 // Adoption can wake the test before the fetch client reports its completed range.
                 _ <- settle
-                boards <- net.metrics.get.map(_.sizes)
-                scores <- net.metrics.get.map(_.hotScores)
-              yield (mode, boards, scores)
+                board <- net.metrics.get
+                churn <- net.churnMode.get
+              yield (mode, board, churn)
             }
           }
       yield
-        val (mode, boards, scores) = result
+        val (mode, board, churn) = result
+        val boards = board.sizes
+        val scores = HotScore.of(churn, board)
         // both boards hold slots, and some peer was first with something
         assert(boards._1 > 0 && boards._2 > 0, s"boards $boards")
         assert(scores.values.exists(_.value > 0), scores.toString)
+        // the churn governor wrote the mode it read at its head start: far behind, bulk sync
+        if !deadline then assertEquals(churn, ChurnMode.Praos(FetchMode.BulkSync))
         mode
     }
 

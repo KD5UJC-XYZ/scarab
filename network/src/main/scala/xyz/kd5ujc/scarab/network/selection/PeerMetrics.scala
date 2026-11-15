@@ -5,9 +5,9 @@ import scala.collection.immutable.SortedMap
 
 /** The peer metrics board: which peer presented each of the last 180 slots first, as a header
   * (upstreamness) and as a block (fetchy-ness). This is the feedback from the chain to the
-  * governor: the hot-demotion pick ranks hot peers by `upstreamness + fetchynessBlocks`
-  * ([[PeerMetrics.hotScores]]), so that a churn round that lowers the active target drops the peers
-  * that were never first.
+  * governor: the hot-demotion pick ranks hot peers by `upstreamness + fetchynessBlocks` in deadline
+  * mode and by `fetchynessBytes` while syncing ([[HotScore.of]]), so that a churn round that lowers
+  * the active target drops the peers that were never first.
   *
   * A port of `Ouroboros.Network.PeerSelection.PeerMetric` (ouroboros-network 1.2.0.0,
   * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerMetric.hs`; the lines below are those
@@ -105,17 +105,6 @@ final class PeerMetrics[A] private (
 
   /** The slot at which each peer joined the board (`joinedPeerMetricAt`, 399-415). */
   def joinedAt: Map[A, Long] = registry
-
-  /** The hot-demotion score of every peer the metrics know (`Policies.hs` `hotDemotionPolicy`
-    * 127-147 at the tag): `upstreamness + fetchynessBlocks`, and the slot the peer joined at as the
-    * tie-break. A peer that is not here ranks as [[HotScore.Unknown]], below every peer that is
-    * (`Map.findWithDefault (0, Nothing)`).
-    */
-  def hotScores: Map[A, HotScore] =
-    val total = upstreamness.foldLeft(fetchynessBlocks) { case (m, (p, n)) =>
-      m.updated(p, m.getOrElse(p, 0) + n)
-    }
-    total.map((p, v) => p -> HotScore(v, registry.get(p)))
 
   /** The number of slots on the headers board and on the fetched board. */
   def sizes: (Int, Int) = (headerBoard.size, fetchBoard.size)
