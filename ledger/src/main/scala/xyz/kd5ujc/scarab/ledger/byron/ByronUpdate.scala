@@ -306,7 +306,7 @@ object ByronUpdate:
       )
     yield st.registeredProtocol.updated(p.id, ProtocolProposal(p.version, proposed))
 
-  // The two lookups by application name are kept sites of STR-3 (#386). The reference's name is a type of its
+  // The two lookups by application name are kept sites of STR-3 (#1035). The reference's name is a type of its
   // own (`newtype ApplicationName`, `Cardano/Chain/Update/ApplicationName.hs:41-43`, cardano-ledger f649f975);
   // here it is the `String` key of the update state, as the persisted sidecar holds it, and a type for it
   // would change the sidecar codec's shape, so it waits for a format change (FMT-1).

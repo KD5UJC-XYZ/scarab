@@ -13,8 +13,8 @@ final class CborOut private ():
 
   private def byte(b: Int): Unit = out.write(b)
 
-  // A kept site of ERR-4 (#82): an argument outside uint64 is a defect of the caller, which writes the values
-  // of typed results, and the writer has no error channel.
+  // A kept site of ERR-4 (#1035): an argument outside uint64 is a defect of the caller, and the writer has no
+  // error channel. Not every caller bounds what it writes: GenesisConfig passes the genesis integers unchecked.
   @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   def head(major: Int, n: BigInt): CborOut =
     require(n >= 0 && n.bitLength <= 64, "CBOR argument outside uint64")

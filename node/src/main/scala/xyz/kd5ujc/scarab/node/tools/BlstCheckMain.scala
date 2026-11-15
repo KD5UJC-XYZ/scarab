@@ -86,7 +86,7 @@ object BlstCheckMain extends IOApp:
       )
     yield if ok then ExitCode.Success else ExitCode(1)
 
-  // A kept site of ERR-4 (#82): the program texts are constants of this command, so a parse failure is a
+  // A kept site of ERR-4 (#1035): the program texts are constants of this command, so a parse failure is a
   // defect of the command, which ends it.
   @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   private def program(body: String): Bytes =
@@ -139,25 +139,32 @@ object BlstCheckMain extends IOApp:
   private def hex(s: String): Array[Byte] =
     s.grouped(2).map(java.lang.Integer.parseInt(_, 16).toByte).toArray
 
-  /** Operations per second of each, over about two seconds after a one second warm-up.
-    *
-    * The timed region of the command's `bench` (FUN-2 (e), EFF-6): `Clock[F]` would add allocation
-    * to the loop it times. A certificate of the bench's own keys that does not verify is a defect
-    * of the bench (a kept site of ERR-4).
+  /** Operations per second of `op`, over about two seconds after a one second warm-up. The timed
+    * region of the command's `bench` (FUN-2 (e), EFF-6): `Clock[F]` would add allocation to the
+    * loop it times.
     */
   @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+  private def rate(name: String)(op: () => Unit): (String, Long) =
+    def loop(budgetNanos: Long): Long =
+      val start = System.nanoTime()
+      @tailrec def run(n: Long): Long =
+        if System.nanoTime() - start < budgetNanos then
+          op()
+          run(n + 1)
+        else n
+      (run(0L) * 1000000000L) / (System.nanoTime() - start)
+    loop(1000000000L)
+    name -> loop(2000000000L)
+
+  /** A certificate of the bench's own keys, verified in the timed loop; one that does not verify is
+    * a defect of the bench, which ends the command (a kept site of ERR-4).
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+  private def verified(members: Committee, hash: RbHash, cert: Certificate): Unit =
+    Certificate.verify(members, Weight.zero, hash, cert).fold(e => sys.error(e.toString), _ => ())
+
+  /** Operations per second of each, over about two seconds after a one second warm-up. */
   private def benchmark: List[(String, Long)] =
-    def rate(name: String)(op: () => Unit): (String, Long) =
-      def loop(budgetNanos: Long): Long =
-        val start = System.nanoTime()
-        @tailrec def run(n: Long): Long =
-          if System.nanoTime() - start < budgetNanos then
-            op()
-            run(n + 1)
-          else n
-        (run(0L) * 1000000000L) / (System.nanoTime() - start)
-      loop(1000000000L)
-      name -> loop(2000000000L)
     val g1 = hex(g1Hex)
     val g2 = hex(g2Hex)
     val p1 = new P1(g1).to_affine()
@@ -196,9 +203,5 @@ object BlstCheckMain extends IOApp:
       rate("G2 uncompress")(() => new P2(g2).to_affine()),
       rate("pairing")(() => PT.finalverify(new PT(p2, p1), new PT(p2, p1)))
     ) ++ certificate.toOption.toList.map { (members, hash, cert) =>
-      rate(s"Leios certificate of $seats seats")(() =>
-        Certificate
-          .verify(members, Weight.zero, hash, cert)
-          .fold(e => sys.error(e.toString), _ => ())
-      )
+      rate(s"Leios certificate of $seats seats")(() => verified(members, hash, cert))
     }

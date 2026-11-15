@@ -23,19 +23,26 @@ import xyz.kd5ujc.scarab.codec.Rational
 @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
 opaque type LogWeight = Float
 
-@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
+// Each member below is a kept site of ARI-1: it holds a `Float`, as `LogWeight` is one.
 object LogWeight:
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   def apply(value: Float): LogWeight = value
 
-  extension (w: LogWeight) def float: Float = w
+  extension (w: LogWeight)
+    @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
+    def float: Float = w
 
   /** `normalizeLikelihood` (`PoolRank.hs:121-123`, cardano-ledger f649f975): every weight less the
     * least; empty is itself (Haskell's `minimum` is partial there).
     */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   def normalise(ws: Vector[LogWeight]): Vector[LogWeight] =
     ws.minOption(using Ordering.Float.IeeeOrdering).fold(ws)(least => ws.map(_ - least))
 
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   given Eq[LogWeight] = Eq.instance((a, b) => a == b)
+
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   given Show[LogWeight] = Show.show(_.toString)
 
 /** `Likelihood` (`Shelley/PoolRank.hs:101-103` (cardano-ledger f649f975), a `StrictSeq LogWeight`):

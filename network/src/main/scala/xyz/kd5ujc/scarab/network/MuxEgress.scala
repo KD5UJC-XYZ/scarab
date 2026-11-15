@@ -163,7 +163,7 @@ private[network] object MuxEgress:
       }
 
   /** A limit that is not positive is refused with an `IllegalArgumentException`: a kept site of
-    * ERR-4 (#82), since `Mux` checks the configured payload size as a typed `MuxSetup` error but
+    * ERR-4 (#1035), since `Mux` checks the configured payload size as a typed `MuxSetup` error but
     * not this budget, and `MuxEgressSuite` pins the exception.
     *
     * @param limit
