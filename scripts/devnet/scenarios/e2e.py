@@ -595,5 +595,7 @@ def e2e(args):
                 docker("rm", "-f", c, check=False)
         if summary["verdict"] == "incomplete":
             print(f"INCOMPLETE: no failure, and not a pass: {'; '.join(incomplete)}", flush=True)
-    # a run whose only outcome is an incomplete gate exits 0, as a run without failures always has
+    # a run whose only outcome is an incomplete gate exits 0, held by the battery's ratchet: an incomplete set that
+    # grows, or a row treated as answered that falls back, is a failure (`ntceras.ratchet`), so only the expected
+    # incomplete rows exit 0
     sys.exit(0 if not failures else 1)
