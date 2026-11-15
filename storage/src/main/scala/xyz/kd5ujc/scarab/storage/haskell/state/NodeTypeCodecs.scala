@@ -244,6 +244,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       ConwayParamUpdate.decodeStored(n).left.map(why => DecodeError.at(n, Kind.Domain(why)))
     def encode(a: ConwayParamUpdate, out: Writer): Unit =
       ConwayCodecs.parameterUpdate.encode(a, out)
+    override def check(a: ConwayParamUpdate): Option[ConstraintViolation] =
+      ConwayCodecs.parameterUpdate.check(a)
 
   given govActionId: Codec[GovActionId] =
     Record.of[GovActionId]((hash32Bytes, word16))
@@ -273,8 +275,9 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     * the `ProtVer` whole, a `Version` major (at most `MaxVersion`, 13) and a `Word32` minor, and
     * then a major above `succVersion (ProtVerHigh era)` refused (`BaseTypes.hs:243-263`): 12 for a
     * Conway state, whose version is 9 to 11, and 13 from version 12
-    * (`Internal/Definition/Era.hs:132-141`). `EncCBOR` writes the held value without the
-    * transaction writer's validity checks.
+    * (`Internal/Definition/Era.hs:132-141`). `EncCBOR` writes the held value; `check` refuses only
+    * what the reference's types cannot hold ([[ConwayCodecs.govActionBounds]]), not the transaction
+    * writer's rules.
     */
   given govAction(using v: ProtVer): Codec[GovAction] = new Codec[GovAction]:
     private val policy = nullable(hash28)
@@ -350,6 +353,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         previous.encode(prev, out); constitution.encode(Constitution(anchor, script), out)
       case GovAction.Info =>
         out.arrayHead(1); out.uint(6L)
+    override def check(a: GovAction): Option[ConstraintViolation] = ConwayCodecs.govActionBounds(a)
 
   /** `ProposalProcedure` (`Procedures.hs:537-543`): the deposit, the account the deposit returns
     * to, the action and its anchor.

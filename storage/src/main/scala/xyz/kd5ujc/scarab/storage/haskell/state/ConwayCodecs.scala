@@ -441,40 +441,49 @@ object ConwayCodecs:
         parameterUpdate.encode(update, out)
         policy.encode(pol, out)
       case (other, out) => state.govAction.encode(other, out)
-    } { a =>
-      // `nullable` checks nothing of its own: the value inside it is checked here
-      def ids(prev: Option[GovActionId]) = prev.flatMap(state.govActionId.check)
-      def script(pol: Option[Bytes]) = pol.flatMap(hash28.check)
-      a match
-        case GovAction.ParameterChange(prev, update, pol) =>
-          first(ids(prev), parameterUpdate.check(update), script(pol))
-        case GovAction.HardFork(prev, major, minor) =>
-          first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
-        case GovAction.TreasuryWithdrawals(ws, pol) =>
-          // a `Map AccountAddress Coin` (`Procedures.hs:830-834`, cardano-ledger f649f975): an account once
-          val repeated = Codec.refuse(
-            ws.map(_._1).distinct.size != ws.size,
-            "TreasuryWithdrawals",
-            "each account once",
-            ws.size
-          )
-          first(
-            ws.iterator.flatMap((to, amount) => account(to).orElse(coin(amount))).nextOption(),
-            repeated,
-            script(pol)
-          )
-        case GovAction.NoConfidence(prev) => ids(prev)
-        case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
-          first(
-            ids(prev),
-            removed.iterator.flatMap(credential).nextOption(),
-            added.iterator.flatMap((c, e) => credential(c).orElse(word(64).check(e))).nextOption(),
-            unitInterval.check(quorum)
-          )
-        case GovAction.NewConstitution(prev, guardrails, constitution) =>
-          first(ids(prev), script(guardrails), anchor(Some(constitution)))
-        case GovAction.Info => None
+    } {
+      case a @ GovAction.TreasuryWithdrawals(ws, _) =>
+        // a `Map AccountAddress Coin` (`Procedures.hs:830-834`, cardano-ledger f649f975): an account once
+        val repeated = Codec.refuse(
+          ws.map(_._1).distinct.size != ws.size,
+          "TreasuryWithdrawals",
+          "each account once",
+          ws.size
+        )
+        govActionBounds(a).orElse(repeated)
+      case a => govActionBounds(a)
     }
+
+  /** What the reference's types of a `GovAction` hold (`Procedures.hs:815-855`, cardano-ledger
+    * f649f975): a `Version` major of at most 13 and a `Word32` minor, `Coin` s and epochs of a
+    * `Word64`, a quorum in 0..1, hashes of their size. The state writer checks these alone; a
+    * transaction's action is also checked by [[govAction]].
+    */
+  def govActionBounds(a: GovAction)(using ProtVer): Option[ConstraintViolation] =
+    // `nullable` checks nothing of its own: the value inside it is checked here
+    def ids(prev: Option[GovActionId]) = prev.flatMap(state.govActionId.check)
+    def script(pol: Option[Bytes]) = pol.flatMap(hash28.check)
+    a match
+      case GovAction.ParameterChange(prev, update, pol) =>
+        first(ids(prev), parameterUpdate.check(update), script(pol))
+      case GovAction.HardFork(prev, major, minor) =>
+        first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
+      case GovAction.TreasuryWithdrawals(ws, pol) =>
+        first(
+          ws.iterator.flatMap((to, amount) => account(to).orElse(coin(amount))).nextOption(),
+          script(pol)
+        )
+      case GovAction.NoConfidence(prev) => ids(prev)
+      case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
+        first(
+          ids(prev),
+          removed.iterator.flatMap(credential).nextOption(),
+          added.iterator.flatMap((c, e) => credential(c).orElse(word(64).check(e))).nextOption(),
+          unitInterval.check(quorum)
+        )
+      case GovAction.NewConstitution(prev, guardrails, constitution) =>
+        first(ids(prev), script(guardrails), anchor(Some(constitution)))
+      case GovAction.Info => None
 
   /** `EncCBOR (ProposalProcedure era)` (`Procedures.hs:537-544`, cardano-ledger f649f975):
     * `[deposit, return account, action, anchor]`, the action by [[govAction]].

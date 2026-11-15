@@ -777,8 +777,9 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     )
   }
 
-  test("golden: hard fork versions are written from values; transaction checks stay separate") {
-    // cardano-ledger f649f975, BaseTypes.hs:211-214, 236-243; Procedures.hs:824-829, 936-937.
+  test("golden: hard fork versions are written from values and refused outside ProtVer's types") {
+    // cardano-ledger f649f975, BaseTypes.hs:211-214, 236-243; Procedures.hs:824-829, 936-937;
+    // Binary/Version.hs:63 (`MaxVersion`).
     val codec = govAction(using version(10))
     val max = (BigInt(1) << 32) - 1
     assertEquals(
@@ -794,17 +795,16 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     Vector(BigInt(-1), max + 1, BigInt(1) << 64).foreach { minor =>
       val action = xyz.kd5ujc.scarab.ledger.GovAction.HardFork(None, 12, minor)
       val refusal = ConstraintViolation("unsigned integer", s"0..$max", minor.toString)
-      assertEquals(codec.check(action), None)
+      assertEquals(codec.check(action), Some(refusal), "a Word32 minor cannot hold it")
+      assertEquals(codec.write(action), Left(refusal))
       assertEquals(transaction.check(action), Some(refusal))
       assertEquals(transaction.write(action), Left(refusal))
     }
     Vector(BigInt(-1), BigInt(14)).foreach { major =>
       val action = xyz.kd5ujc.scarab.ledger.GovAction.HardFork(None, major, 0)
-      assertEquals(codec.check(action), None)
-      assertEquals(
-        transaction.write(action),
-        Left(ConstraintViolation("unsigned integer", "0..13", major.toString))
-      )
+      val refusal = ConstraintViolation("unsigned integer", "0..13", major.toString)
+      assertEquals(codec.write(action), Left(refusal), "a Version major is at most MaxVersion")
+      assertEquals(transaction.write(action), Left(refusal))
     }
   }
 

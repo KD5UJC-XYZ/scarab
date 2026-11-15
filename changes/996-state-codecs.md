@@ -1,6 +1,8 @@
 ### Fixed (state codecs, #996)
 
-- Conway parameter updates now write definite maps of decoded field values in reference order.
-  Pool relays and metadata are re-encoded from their values in state exports and query answers,
-  sharing the transaction encoders without their validity checks. Governance state writes its
-  held values without transaction validation, preserving node-to-client debug answers.
+- The ledger-state export and the node-to-client answers write values, as the reference's
+  `EncCBOR` does, instead of the bytes a transaction arrived with: Conway parameter updates as
+  definite maps of their field values in reference order, pool relays and metadata from their
+  values, and governance actions from their values. A governance action outside what the
+  reference's types hold (such as a hard-fork minor version beyond `Word32`) is refused instead
+  of being truncated; the transaction writer's own rules are not applied to held state.
