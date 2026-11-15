@@ -24,9 +24,10 @@ ERA_CONWAY = 6
 # in `decodeShelleyQuery` (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Query.hs`
 # 916-998, ouroboros-consensus 82ecba32). The Scala node refuses the same ones (`NtcQuery.shelleyLeaf`).
 CONWAY_ONLY = frozenset({23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39})
-# The block queries the Scala node answers in an era before Conway: the ledger states, the chain-dependent state and
-# the UTxO (`QueryAnswers.inEveryEra`). It decodes the others there and ends the connection without an answer.
-ANSWERED_BEFORE_CONWAY = frozenset({6, 7, 8, 12, 13, 15})
+# The block queries the Scala node answers in an era before Conway: the ledger states, the chain-dependent state, the
+# UTxO and the reward provenance (`QueryAnswers.inEveryEra`). It decodes the others there and ends the connection
+# without an answer.
+ANSWERED_BEFORE_CONWAY = frozenset({6, 7, 8, 12, 13, 14, 15})
 # Below this node-to-client version the protocol parameters and the genesis configuration have their legacy encodings
 # (`currentPParamsEnDecoding`, `genesisConfigEnDecoding`, Query.hs 1098-1125, ouroboros-consensus 82ecba32:
 # ShelleyNodeToClientVersion13 is V21); the battery asks them at V20 besides the version both nodes agree on.

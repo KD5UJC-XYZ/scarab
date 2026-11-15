@@ -39,7 +39,7 @@ class BatteryTest(unittest.TestCase):
         digest = hashlib.sha256()
         for label, query, implemented in ntcqueries.battery(universe()):
             digest.update(label.encode() + b"\0" + cbor.enc(query) + bytes([implemented]))
-        self.assertEqual(digest.hexdigest(), "8b9b3a3d58d9aacda3bb322c6720e737313d23b4863c0456264487eebef2a5d7")
+        self.assertEqual(digest.hexdigest(), "ba0a0a090db62b2cc2e7e3833f8485dbea0aabae0b882c725b43b95bcb10493f")
         self.assertEqual(cbor.enc([q for _, q, _ in ntcqueries.battery(universe())]),
                          cbor.enc([q for _, q, _ in ntcqueries.battery(universe(), ntcqueries.ERA_CONWAY)]))
 
@@ -71,7 +71,8 @@ class BatteryTest(unittest.TestCase):
             "top:GetSystemStart", "top:GetChainBlockNo", "top:GetChainPoint", "hfc:GetInterpreter",
             "hfc:GetCurrentEra", "GetUTxOWhole", "GetUTxOByAddress", "GetUTxOByAddress/none", "GetUTxOByTxIn",
             "GetCBOR/GetUTxOWhole", "DebugChainDepState", "GetCBOR/DebugChainDepState", "DebugEpochState",
-            "DebugNewEpochState", "GetCBOR/DebugEpochState", "GetCBOR/DebugNewEpochState"})
+            "DebugNewEpochState", "GetCBOR/DebugEpochState", "GetCBOR/DebugNewEpochState", "GetRewardProvenance",
+            "GetCBOR/GetRewardProvenance"})
         # the queries `requireCG` guards are implemented as the refusal both decoders make before Conway
         self.assertEqual(implemented - answered,
                          {label for label, query, _ in forms if ntcqueries.conway_only(ntcqueries.inner_of(query), 4)})
@@ -237,6 +238,8 @@ class SamePointTest(unittest.TestCase):
         outcomes = {(row.label, row.version): ntcqueries.judge(row)[0] for row in rnd.rows}
         self.assertFalse([k for k, o in outcomes.items() if o.fails])
         self.assertIs(outcomes[("GetUTxOByTxIn", 23)], Outcome.MATCHED)
+        self.assertIs(outcomes[("GetRewardProvenance", 23)], Outcome.MATCHED)
+        self.assertIs(outcomes[("GetCBOR/GetRewardProvenance", 23)], Outcome.MATCHED)
         self.assertIs(outcomes[("GetEpochNo", 23)], Outcome.INCOMPLETE)
         self.assertIs(outcomes[("GetConstitution", 23)], Outcome.REFUSED_BY_BOTH)
         self.assertIs(outcomes[("GetGenesisConfig", 20)], Outcome.INCOMPLETE)
