@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Tree}
 
 import Handshake.*
 
@@ -370,4 +370,53 @@ class HandshakeSuite extends munit.FunSuite:
     }
     assertEquals(tooDeep, Left(DecodeError(ProtocolError.HandshakeByteLimitExceeded)))
     assertEquals(unwritten, Left(ProtocolError.HandshakeByteLimitExceeded))
+  }
+
+  test(
+    "deep tags, maps and indefinite arrays decode, encode, compare and render on a small stack"
+  ) {
+    def nested(depth: Int)(level: Term => Term): Term =
+      (0 until depth).foldLeft[Term](Term.Integer(0))((inner, _) => level(inner))
+    // the selected version's data of an accepted message, and how to build it
+    val shapes: Vector[(String, String, () => Term)] = Vector(
+      ("arrays", "81" * 5000 + "00", () => nested(5000)(t => Term.Arr(Vector(t)))),
+      ("tags", "c1" * 5000 + "00", () => nested(5000)(Term.Tag(1, _))),
+      (
+        "maps",
+        "a100" * 2500 + "00",
+        () => nested(2500)(t => Term.Map(Vector(Term.Integer(0) -> t)))
+      ),
+      (
+        "indefinite arrays",
+        "9f" * 2500 + "00" + "ff" * 2500,
+        () => nested(2500)(t => Term.Arr(Vector(t), definite = false))
+      )
+    )
+    final case class Outcome(
+        decoded: Boolean,
+        written: Option[Either[ProtocolError, Bytes]],
+        equal: Boolean,
+        hashed: Boolean,
+        rendered: Int
+    )
+    val outcomes = onSmallStack {
+      shapes.map { (_, hex, build) =>
+        val wire = bytes("83010e" + hex)
+        val read = decode(ntn, State.Confirm, wire)
+        Outcome(
+          read == Right(Message.Accept(14, build())),
+          read.toOption.map(encode(ntn, _)),
+          build() == build() && build() != Term.Integer(0),
+          build().hashCode == build().hashCode,
+          build().toString.length
+        )
+      }
+    }
+    shapes.zip(outcomes).foreach { case ((name, hex, _), outcome) =>
+      assert(outcome.decoded, s"$name: decodes to the term built")
+      assertEquals(outcome.written, Some(Right(bytes("83010e" + hex))), name)
+      assert(outcome.equal, s"$name: structural equality")
+      assert(outcome.hashed, s"$name: equal terms hash alike")
+      assert(outcome.rendered <= Tree.DefaultRenderLimit + 3, s"$name: rendering is truncated")
+    }
   }
