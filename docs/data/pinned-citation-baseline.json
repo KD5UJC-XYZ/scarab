@@ -98,7 +98,7 @@
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala": 1,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": 14,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": 1,
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": 11,
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": 9,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": 6,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Wire.scala": 9,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsValue.scala": 4,
