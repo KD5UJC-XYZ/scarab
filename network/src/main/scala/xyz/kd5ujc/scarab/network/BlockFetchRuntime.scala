@@ -44,7 +44,7 @@ object BlockFetchRuntime:
 
     /** As [[requestRangeStreaming]] for a range of `blocks` blocks, its local block budget: the
       * requested fragment's length, which the reference enforces by matching each block with the
-      * next requested header (BlockFetch/Client.hs:239–258).
+      * next requested header (BlockFetch/Client.hs:239–258, ouroboros-network c45735a5).
       */
     def requestBlocks(from: P, to: P, blocks: Int)(
         onBlock: B => F[Either[NetworkError, Unit]],

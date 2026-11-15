@@ -19,7 +19,9 @@ import NetworkError.RuntimeViolation
   * tip, and payload values remain codec-owned.
   */
 object ChainSyncRuntime:
-  /** Both intersection outcomes retain the advertised server tip (Client.hs:1310–1341). */
+  /** Both intersection outcomes retain the advertised server tip (Client.hs:1310–1341,
+    * ouroboros-consensus 82ecba32).
+    */
   enum Intersection[+Q, +T]:
     case Found(point: Q, remoteTip: T)
     case NotFound(remoteTip: T)

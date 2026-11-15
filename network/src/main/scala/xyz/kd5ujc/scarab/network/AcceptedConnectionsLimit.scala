@@ -43,9 +43,10 @@ object AcceptedConnectionsLimit:
     case SoftDelay(delay: DiffTime)
     case HardLimit(limit: Word32)
 
-  /** The reference's `getRateLimitDecision` (`RateLimiting.hs:67-93`): below the soft limit
-    * nothing; at or above the hard limit wait for a drop below it; between the two a delay linear
-    * in the excess over the soft limit, in [[DiffTime]] arithmetic, so no intermediate overflows.
+  /** The reference's `getRateLimitDecision` (`RateLimiting.hs:67-93`, ouroboros-network c45735a5):
+    * below the soft limit nothing; at or above the hard limit wait for a drop below it; between the
+    * two a delay linear in the excess over the soft limit, in [[DiffTime]] arithmetic, so no
+    * intermediate overflows.
     */
   def decision(numberOfConnections: Int, limit: AcceptedConnectionsLimit): RateLimitDelay =
     val hard = limit.acceptedConnectionsHardLimit.toLong
@@ -73,11 +74,12 @@ object AcceptedConnectionsLimit:
         F.sleep(chunk.nanos).as(Left(nanos - chunk))
     }
 
-  /** The reference's `runConnectionRateLimits` (`RateLimiting.hs:99-134`): read the number of
-    * inbound connections of `connections` and carry out the decision. At the hard limit it waits
-    * until the number drops below it, and at least `acceptedConnectionsDelay`, so that the last
-    * slot is not taken again and again by a connection that fails at once. `events` receives the
-    * reference's three traces (`AcceptConnectionsPolicyTrace`).
+  /** The reference's `runConnectionRateLimits` (`RateLimiting.hs:99-134`, ouroboros-network
+    * c45735a5): read the number of inbound connections of `connections` and carry out the decision.
+    * At the hard limit it waits until the number drops below it, and at least
+    * `acceptedConnectionsDelay`, so that the last slot is not taken again and again by a connection
+    * that fails at once. `events` receives the reference's three traces
+    * (`AcceptConnectionsPolicyTrace`).
     */
   def rateLimit[F[_]: Temporal](
       connections: ConnectionManager[F],

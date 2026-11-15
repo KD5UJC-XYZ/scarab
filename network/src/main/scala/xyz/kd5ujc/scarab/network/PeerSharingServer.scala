@@ -18,8 +18,8 @@ import NetworkError.RuntimeViolation
   * is shared (the policy is [[selection.PeerShare]]).
   *
   * The driver keeps the protocol whatever the source does: an answer is cut to the amount asked
-  * for, since a longer one is a protocol error (`Type.hs:80-82`), and to what fits the 5760 bytes
-  * of a message.
+  * for, since a longer one is a protocol error (`Type.hs:80-82`, ouroboros-network c45735a5), and
+  * to what fits the 5760 bytes of a message.
   */
 object PeerSharingServer:
   /** The peers to tell about, given how many were asked for. */

@@ -13,7 +13,7 @@ enum PeerOperation:
 
 /** The complete action failure crosses the governor job boundary as a value. A mux abort has one
   * cause in today's API; this aggregate must not be projected to that single cause at the action
-  * boundary (PeerStateActions.hs:994–1104).
+  * boundary (PeerStateActions.hs:994–1104, ouroboros-network c45735a5).
   */
 enum PeerActionError extends DomainError:
   case ConnectionFailure(error: NetworkError)

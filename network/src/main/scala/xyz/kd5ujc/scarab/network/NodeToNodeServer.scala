@@ -145,7 +145,7 @@ object NodeToNodeServer:
           TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).void
         ).foreverM[Unit]
       ).background
-      // cardano-diffusion NodeToNode.hs:310: KeepAlive uses StartOnDemandAny.
+      // cardano-diffusion c5117705 NodeToNode.hs:310: KeepAlive uses StartOnDemandAny.
       // restarted on demand when the client ends it, as the reference's inbound governor restarts
       // its responders, when the connection counts them
       _ <- guarded("keep-alive")(
@@ -296,9 +296,9 @@ object NodeToNodeServer:
         .mapN(new Responders(_, _, _, _))
 
   /** What the inbound governor knows of the peer's side of a connection (`RemoteState`,
-    * `InboundGovernor/State.hs:250-288`): idle since `since` with its timer running, using the
-    * connection with or without a hot responder, or idle and kept because our outbound side uses
-    * it.
+    * `InboundGovernor/State.hs:250-288`, ouroboros-network c45735a5): idle since `since` with its
+    * timer running, using the connection with or without a hot responder, or idle and kept because
+    * our outbound side uses it.
     */
   private enum RemoteState:
     case Idle(since: FiniteDuration)

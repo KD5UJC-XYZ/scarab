@@ -130,9 +130,9 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
   test(
     "the server-side idle deadlines are the reference's: timeLimits* of the 11.1.3 network packages"
   ):
-    // TimeLimits.hs:59-60 with defaultChainSyncIdleTimeout 3373
+    // TimeLimits.hs:59-60 (cardano-diffusion c5117705) with defaultChainSyncIdleTimeout 3373
     assertEquals(ChainSyncServer.Settings().idle, ProtocolDeadline.After(3373.seconds))
-    // BlockFetch/Codec.hs:65: BFIdle waitForever
+    // BlockFetch/Codec.hs:65 (ouroboros-network c45735a5): BFIdle waitForever
     assertEquals(BlockFetchServer.Settings().idle, ProtocolDeadline.Unbounded)
     // node-to-client: runPeer, no time limits
     assertEquals(ChainSyncServer.NodeToClient.idle, ProtocolDeadline.Unbounded)

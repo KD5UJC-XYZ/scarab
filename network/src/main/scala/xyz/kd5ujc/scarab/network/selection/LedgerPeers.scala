@@ -27,7 +27,9 @@ object PoolStake:
   def apply(share: Rational): PoolStake = share
   extension (s: PoolStake) def share: Rational = s
 
-/** The accumulated share of a pool and all the pools before it (`AccPoolStake`, `Type.hs:499`). */
+/** The accumulated share of a pool and all the pools before it (`AccPoolStake`, `Type.hs:499`,
+  * ouroboros-network 1.2.0.0).
+  */
 opaque type AccPoolStake = Rational
 
 object AccPoolStake:
@@ -36,7 +38,7 @@ object AccPoolStake:
 
 /** The two populations a draw can be from: all ledger peers, or the big ledger peers. A phantom
   * type, so that a stake map of one kind is not drawn with the weighting of the other
-  * (`LedgerPeersKind`, `Type.hs:89`).
+  * (`LedgerPeersKind`, `Type.hs:89`, ouroboros-network 1.2.0.0).
   */
 sealed trait LedgerKind
 
@@ -51,8 +53,8 @@ final case class LedgerPool[R](stake: PoolStake, relays: NonEmptyVector[R])
 
 /** The pools of one kind keyed by their accumulated stake, so that a uniform number picks a pool in
   * proportion to its stake: the entry with the smallest key at or above the number (`Map.lookupGE`,
-  * `LedgerPeers.hs:115-121`). As `Map.fromList`, a key given twice (pools without stake follow a
-  * pool that holds the last of it) keeps the last pool.
+  * `LedgerPeers.hs:115-121`, ouroboros-network 1.2.0.0). As `Map.fromList`, a key given twice
+  * (pools without stake follow a pool that holds the last of it) keeps the last pool.
   */
 final class StakeMap[K <: LedgerKind, R] private (
     private val byAccumulated: TreeMap[Rational, LedgerPool[R]]
@@ -100,8 +102,9 @@ trait Kind[K <: LedgerKind]:
 object Kind:
   /** Ordinary ledger peers: weighted by the square root of the stake, to flatten the distribution
     * (`recomputeRelativeStake` for `SingAllLedgerPeers`, `API/LedgerPeers/Utils.hs:80-89`); the
-    * root is taken as the reference takes it, as a `Double` (`Utils.hs:84-87`: "we care about
-    * precision in the order of 1 block per year and for that a Double is good enough").
+    * root is taken as the reference takes it, as a `Double` (`Utils.hs:84-87`, ouroboros-network
+    * 1.2.0.0: "we care about precision in the order of 1 block per year and for that a Double is
+    * good enough").
     */
   given Kind[LedgerKind.All] with
     def weight(stake: Rational): Rational = LedgerPeerStake.sqrtThroughDouble(stake)
@@ -115,7 +118,7 @@ object Kind:
     def select[R](maps: StakeMaps[R]): StakeMap[LedgerKind.Big, R] = maps.big
 
 /** The two maps the ledger peers worker keeps (`peerMap` and `bigPeerMap`,
-  * `LedgerPeers.hs:259-260`).
+  * `LedgerPeers.hs:259-260`, ouroboros-network 1.2.0.0).
   */
 final case class StakeMaps[R](all: StakeMap[LedgerKind.All, R], big: StakeMap[LedgerKind.Big, R]):
   def isEmpty: Boolean = all.isEmpty && big.isEmpty
@@ -127,18 +130,23 @@ final case class StakeMaps[R](all: StakeMap[LedgerKind.All, R], big: StakeMap[Le
 object StakeMaps:
   def empty[R]: StakeMaps[R] = StakeMaps(StakeMap.empty, StakeMap.empty)
 
-/** Where the ledger peers may be taken from (`AfterSlot`, `Type.hs:477`). */
+/** Where the ledger peers may be taken from (`AfterSlot`, `Type.hs:477`, ouroboros-network
+  * 1.2.0.0).
+  */
 enum AfterSlot:
   case Always
   case After(slot: BigInt)
 
-  /** The slot as a number: 0 for `Always` (`stakeMapWithSlotOverSource`, `LedgerPeers.hs:436-438`).
+  /** The slot as a number: 0 for `Always` (`stakeMapWithSlotOverSource`, `LedgerPeers.hs:436-438`,
+    * ouroboros-network 1.2.0.0).
     */
   def slotNo: BigInt = this match
     case Always   => BigInt(0)
     case After(s) => s
 
-/** `UseLedgerPeers` (`Type.hs:471`): the setting of `useLedgerAfterSlot` in the topology. */
+/** `UseLedgerPeers` (`Type.hs:471`, ouroboros-network 1.2.0.0): the setting of `useLedgerAfterSlot`
+  * in the topology.
+  */
 enum UseLedgerPeers:
   case Disabled
   case Use(after: AfterSlot)
@@ -147,7 +155,9 @@ enum UseLedgerPeers:
     case Disabled => false
     case Use(_)   => true
 
-/** The ledger's answer to a request for its peers (`LedgerPeers`, `LedgerPeers.hs:77-84`). */
+/** The ledger's answer to a request for its peers (`LedgerPeers`, `LedgerPeers.hs:77-84`,
+  * ouroboros-network 1.2.0.0).
+  */
 enum LedgerSupply[R]:
   /** The node is before the configured slot: no peers from the ledger yet. */
   case BeforeSlot()
@@ -155,9 +165,10 @@ enum LedgerSupply[R]:
   /** The pools with usable relays and their shares of the stake. */
   case Pools(pools: Vector[LedgerPool[R]])
 
-/** A snapshot of the big ledger peers (`LedgerPeerSnapshot BigLedgerPeers`, `Type.hs:113-126`): the
-  * file named by `peerSnapshotFile`. Version 1 and 2 of the file give the slot; version 23 gives
-  * the point of the block the snapshot was taken at and the network magic.
+/** A snapshot of the big ledger peers (`LedgerPeerSnapshot BigLedgerPeers`, `Type.hs:113-126`,
+  * ouroboros-network 1.2.0.0): the file named by `peerSnapshotFile`. Version 1 and 2 of the file
+  * give the slot; version 23 gives the point of the block the snapshot was taken at and the network
+  * magic.
   */
 final case class SnapshotPool[R](
     accumulated: AccPoolStake,
@@ -200,8 +211,8 @@ final case class ChosenStake[R](maps: StakeMaps[R], cachedSlot: Option[BigInt], 
 
 /** What the worker holds between requests: the maps, the slot of the snapshot they were made from,
   * and when they were made (`go rng oldTs peerMap bigPeerMap cachedSlot`,
-  * `LedgerPeers.hs:255-263`). `stamp` is none before the first refresh, which the reference spells
-  * `Time 0`.
+  * `LedgerPeers.hs:255-263`, ouroboros-network 1.2.0.0). `stamp` is none before the first refresh,
+  * which the reference spells `Time 0`.
   */
 final case class LedgerPeersCache[R](
     maps: StakeMaps[R],
@@ -212,7 +223,9 @@ final case class LedgerPeersCache[R](
 object LedgerPeersCache:
   def empty[R]: LedgerPeersCache[R] = LedgerPeersCache(StakeMaps.empty, None, None)
 
-/** An answer to a request for peers (`ledgerPeersThread`, `LedgerPeers.hs:308-357`). */
+/** An answer to a request for peers (`ledgerPeersThread`, `LedgerPeers.hs:308-357`,
+  * ouroboros-network 1.2.0.0).
+  */
 enum LedgerAnswer[R]:
   /** Both maps are empty: the request falls back to the public roots (`putResp Nothing`). */
   case FallBackToPublicRoots()
@@ -233,19 +246,23 @@ enum LedgerAnswer[R]:
   * the node's job.
   */
 object LedgerPeerStake:
-  /** Big ledger peers hold 90% of the stake (`bigLedgerPeerQuota`, `Utils.hs:27-28`). */
+  /** Big ledger peers hold 90% of the stake (`bigLedgerPeerQuota`, `Utils.hs:27-28`,
+    * ouroboros-network 1.2.0.0).
+    */
   val BigQuota: AccPoolStake = AccPoolStake(Rational(9, 10))
 
-  /** How often the governor asks again: the `ttl` of an answer (`LedgerPeers.hs:315`). */
+  /** How often the governor asks again: the `ttl` of an answer (`LedgerPeers.hs:315`,
+    * ouroboros-network 1.2.0.0).
+    */
   val ReRequestInterval: FiniteDuration = 5.seconds
 
   /** The lifetime of the cached list while it is empty and ledger peers are on
-    * (`short_PEER_LIST_LIFE_TIME`, `LedgerPeers.hs:217-218`).
+    * (`short_PEER_LIST_LIFE_TIME`, `LedgerPeers.hs:217-218`, ouroboros-network 1.2.0.0).
     */
   val EmptyLifetime: FiniteDuration = 30.seconds
 
   /** The lifetime otherwise: close to 30 minutes, and prime (`long_PEER_LIST_LIFE_TIME`,
-    * `LedgerPeers.hs:222-223`).
+    * `LedgerPeers.hs:222-223`, ouroboros-network 1.2.0.0).
     */
   val PopulatedLifetime: FiniteDuration = 1847.seconds
 
@@ -254,9 +271,9 @@ object LedgerPeerStake:
   // ------------------------------------------------------------------------------ weights
 
   /** `fromRational`, the square root, `toRational`: the weight of an ordinary ledger peer
-    * (`Utils.hs:87`). The conversion to a `Double` rounds to nearest from a 40-digit quotient,
-    * which differs from GHC's exact `fromRational` only for a stake within 1e-40 of a rounding tie;
-    * the way back is exact.
+    * (`Utils.hs:87`, ouroboros-network 1.2.0.0). The conversion to a `Double` rounds to nearest
+    * from a 40-digit quotient, which differs from GHC's exact `fromRational` only for a stake
+    * within 1e-40 of a rounding tie; the way back is exact.
     */
   def sqrtThroughDouble(stake: Rational): Rational =
     if stake.numerator.signum <= 0 then Rational.zero
@@ -272,8 +289,8 @@ object LedgerPeerStake:
     Rational.fromDecimal(BigDecimal(new JBigDecimal(root)))
 
   /** The pools with the weight of the kind `K`, made to sum to one (`recomputeRelativeStake`,
-    * `Utils.hs:62-78`). The reference divides by the total and fails when it is zero; no pool has
-    * any weight then, and none is returned.
+    * `Utils.hs:62-78`, ouroboros-network 1.2.0.0). The reference divides by the total and fails
+    * when it is zero; no pool has any weight then, and none is returned.
     */
   def recompute[K <: LedgerKind, R](pools: Vector[LedgerPool[R]])(using
       k: Kind[K]
@@ -285,8 +302,8 @@ object LedgerPeerStake:
 
   // ------------------------------------------------------------------------------ the maps
 
-  /** The map of all ledger peers (`accPoolStake`, `LedgerPeers.hs:123-140`): weighted by the square
-    * root of the stake, accumulated in the order given.
+  /** The map of all ledger peers (`accPoolStake`, `LedgerPeers.hs:123-140`, ouroboros-network
+    * 1.2.0.0): weighted by the square root of the stake, accumulated in the order given.
     */
   def weighted[R](pools: Vector[LedgerPool[R]]): StakeMap[LedgerKind.All, R] =
     val (_, entries) =
@@ -299,9 +316,9 @@ object LedgerPeerStake:
     StakeMap.fromEntries(entries)
 
   /** The pools that hold the first 90% of the stake, largest first, each with the stake accumulated
-    * up to and including it (`accumulateBigLedgerStake`, `Utils.hs:34-57`). A pool is kept while
-    * the stake before it is at most the quota, so the pool that crosses the quota is kept and, when
-    * the stake reaches the quota exactly, so is the next one.
+    * up to and including it (`accumulateBigLedgerStake`, `Utils.hs:34-57`, ouroboros-network
+    * 1.2.0.0). A pool is kept while the stake before it is at most the quota, so the pool that
+    * crosses the quota is kept and, when the stake reaches the quota exactly, so is the next one.
     */
   def accumulated[R](pools: Vector[LedgerPool[R]]): Vector[(AccPoolStake, LedgerPool[R])] =
     // `sortOn (Down . fst)` is stable: pools of equal stake keep their order
@@ -319,7 +336,9 @@ object LedgerPeerStake:
         case _ => out
     go(sorted, Rational.zero, Vector.empty)
 
-  /** The map of big ledger peers (`accBigPoolStakeMap`, `LedgerPeers.hs:144-149`). */
+  /** The map of big ledger peers (`accBigPoolStakeMap`, `LedgerPeers.hs:144-149`, ouroboros-network
+    * 1.2.0.0).
+    */
   def accumulate[R](pools: Vector[LedgerPool[R]]): StakeMap[LedgerKind.Big, R] =
     StakeMap.fromEntries(accumulated(pools))
 
@@ -329,7 +348,7 @@ object LedgerPeerStake:
 
   /** Both maps from a snapshot of the big ledger peers: the big map is the snapshot as it is, and
     * the ordinary map is made from the same pools (`stakeMapWithSlotOverSource`,
-    * `LedgerPeers.hs:429-431`).
+    * `LedgerPeers.hs:429-431`, ouroboros-network 1.2.0.0).
     */
   def fromSnapshot[R](snapshot: LedgerPeerSnapshot[R]): StakeMaps[R] =
     StakeMaps(
@@ -345,7 +364,7 @@ object LedgerPeerStake:
     * `Int` (`LedgerPeers.hs` 188 and 207, [[Rng.uniformR]]), which takes no word for a pool of one
     * relay. A number that finds no pool still counts as a draw. When the map of all ledger peers is
     * empty nothing is drawn and the generator is returned as it came, whatever the kind
-    * (`LedgerPeers.hs:169`).
+    * (`LedgerPeers.hs:169`, ouroboros-network 1.2.0.0).
     */
   def draw[K <: LedgerKind, R](maps: StakeMaps[R], count: Int, rng: Rng)(using
       k: Kind[K]
@@ -377,7 +396,8 @@ object LedgerPeerStake:
   // ------------------------------------------------------------------------------ the source
 
   /** Whether the ledger may be asked for peers at the latest slot it has (`getLedgerPeers`,
-    * `LedgerPeers.hs:97-113`): always with `Always`, else when the ledger is at or past the slot.
+    * `LedgerPeers.hs:97-113`, ouroboros-network 1.2.0.0): always with `Always`, else when the
+    * ledger is at or past the slot.
     */
   def supply[R](
       after: AfterSlot,
@@ -390,7 +410,8 @@ object LedgerPeerStake:
 
   /** Whether a snapshot is used instead of the ledger. The snapshot must be at a block, not at the
     * origin; at or after the ledger's slot (the origin counts as 0); and at or after
-    * `useLedgerAfterSlot` (`Always` counts as 0): `LedgerPeers.hs:419-438`.
+    * `useLedgerAfterSlot` (`Always` counts as 0): `LedgerPeers.hs:419-438` (ouroboros-network
+    * 1.2.0.0).
     */
   def snapshotBeatsLedger[R](
       snapshot: LedgerPeerSnapshot[R],
@@ -404,10 +425,11 @@ object LedgerPeerStake:
       Option.when(s >= ledgerAt && s >= after.slotNo)(s)
     case WithOrigin.Origin => None
 
-  /** Choose the source of the maps (`stakeMapWithSlotOverSource`, `LedgerPeers.hs:403-445`): the
-    * snapshot when it beats the ledger (the maps already built from the same snapshot are kept, by
-    * its slot); else the ledger's pools when it supplies them; else nothing. When the snapshot is
-    * chosen, both maps are built from it, the map of all ledger peers too.
+  /** Choose the source of the maps (`stakeMapWithSlotOverSource`, `LedgerPeers.hs:403-445`,
+    * ouroboros-network 1.2.0.0): the snapshot when it beats the ledger (the maps already built from
+    * the same snapshot are kept, by its slot); else the ledger's pools when it supplies them; else
+    * nothing. When the snapshot is chosen, both maps are built from it, the map of all ledger peers
+    * too.
     */
   def stakeMapWithSlotOverSource[R](
       ledgerSlot: WithOrigin[BigInt],
@@ -428,20 +450,22 @@ object LedgerPeerStake:
   // ------------------------------------------------------------------------------ the cache
 
   /** How long the cached list lives: 30 s while the map of ledger peers is empty and ledger peers
-    * are on, else 1847 s (`LedgerPeers.hs:270-272`).
+    * are on, else 1847 s (`LedgerPeers.hs:270-272`, ouroboros-network 1.2.0.0).
     */
   def lifetime[R](cache: LedgerPeersCache[R], use: UseLedgerPeers): FiniteDuration =
     if cache.maps.all.isEmpty && use.isEnabled then EmptyLifetime else PopulatedLifetime
 
   /** Whether the cache is to be rebuilt at `now` (a monotonic time): it was never built, or its age
-    * is more than its lifetime (`age > peerListLifeTime`, `LedgerPeers.hs:276-278`).
+    * is more than its lifetime (`age > peerListLifeTime`, `LedgerPeers.hs:276-278`,
+    * ouroboros-network 1.2.0.0).
     */
   def expired[R](cache: LedgerPeersCache[R], use: UseLedgerPeers, now: FiniteDuration): Boolean =
     cache.stamp.forall(made => now - made > lifetime(cache, use))
 
-  /** The cache after a request at `now` (`LedgerPeers.hs:277-306`): kept while it lives; else
-    * emptied when ledger peers are off, else rebuilt from the chosen source and stamped `now` (also
-    * when the result is empty, so an empty list is asked for again after 30 s).
+  /** The cache after a request at `now` (`LedgerPeers.hs:277-306`, ouroboros-network 1.2.0.0): kept
+    * while it lives; else emptied when ledger peers are off, else rebuilt from the chosen source
+    * and stamped `now` (also when the result is empty, so an empty list is asked for again after 30
+    * s).
     */
   def refresh[R](
       cache: LedgerPeersCache[R],

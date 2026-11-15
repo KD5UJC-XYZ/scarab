@@ -345,7 +345,9 @@ object Mux:
       Raise[F, NetworkError]
   ): Resource[F, Mux[F]] = open(bearer, protocols, config, handshake = false)
 
-  /** Native ConnectionHandler.hs:335–381: raw handshake SDUs precede application dispatch. */
+  /** Native ConnectionHandler.hs:335–381 (ouroboros-network c45735a5): raw handshake SDUs precede
+    * application dispatch.
+    */
   def handshakeResource[F[_]: Async](
       bearer: Bearer[F],
       protocols: Set[Int],
@@ -472,8 +474,9 @@ object Mux:
         case Some(input) =>
           input.finished.tryGet.flatMap {
             case None =>
-              // Native network-mux Types.hs:305–308 bearerAsChannel receives msBlob only;
-              // protocol and direction checks begin with the negotiated application.
+              // Native network-mux Types.hs:305–308 (ouroboros-network c45735a5) bearerAsChannel
+              // receives msBlob only; protocol and direction checks begin with the negotiated
+              // application.
               input.feed(sdu.payload)(
                 inbound((Protocols.Handshake, config.role)).offer(sdu.payload)
               )
@@ -481,8 +484,9 @@ object Mux:
           }
 
       val closedByPeer = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
-      // Socket.hs:74–110 reads exactly one SDU. Decoder acknowledgement may pause the
-      // handshake; no following SDU's deadline starts until the next logical read begins.
+      // Socket.hs:74–110 (ouroboros-network c45735a5) reads exactly one SDU. Decoder
+      // acknowledgement may pause the handshake; no following SDU's deadline starts until the next
+      // logical read begins.
       def readHeader(
           held: Bytes,
           available: Bytes,
@@ -611,8 +615,9 @@ object Mux:
                   frames match
                     case Left(reason)   => F.pure(Left(NetworkError.MuxWrite(reason)))
                     case Right(encoded) =>
-                      // Egress.hs:189–213 rotates after one SDU. Socket.hs:190–230 gives each
-                      // actual write one budget per SDU: a stalled first SDU gets no later SDU's time.
+                      // Egress.hs:189–213 (ouroboros-network c45735a5) rotates after one SDU.
+                      // Socket.hs:190–230 gives each actual write one budget per SDU: a stalled
+                      // first SDU gets no later SDU's time.
                       val perSdu =
                         if lane.protocol == Protocols.Handshake then config.handshakeSduTimeout
                         else config.sduTimeout

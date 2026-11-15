@@ -86,8 +86,8 @@ class UpstreamMuxStarvationSuite extends FailsOnUncaught:
       )
     }.toVector
 
-  // Test.Mux.hs:1107–1130: take100, discard initial protocol run, collapse the next
-  // initial run and final run, then require adjacent protocol numbers to differ.
+  // Test.Mux.hs:1107–1130 (ouroboros-network c45735a5): take100, discard initial protocol run,
+  // collapse the next initial run and final run, then require adjacent protocol numbers to differ.
   private def overlap(trace: Vector[Int]): Vector[Int] =
     val prefix = trace.take(100)
     val rest = prefix.headOption.fold(Vector.empty[Int])(first => prefix.dropWhile(_ == first))

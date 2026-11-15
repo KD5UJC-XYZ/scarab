@@ -8,7 +8,9 @@ import xyz.kd5ujc.scarab.protocol.PeerSharing.{Address, Amount}
 
 import PeerShare.*
 
-/** The server policy of peer sharing (`PeerSharing.hs:203-237`, `KnownPeers.hs:580-592`). */
+/** The server policy of peer sharing (`PeerSharing.hs:203-237`, `KnownPeers.hs:580-592`,
+  * ouroboros-network c45735a5).
+  */
 class PeerShareSuite extends munit.ScalaCheckSuite:
   private def amount(n: Int): Amount = Amount.from(n).getOrElse(fail(s"amount $n"))
   private def addr(i: Int): Address =
@@ -79,7 +81,8 @@ class PeerShareSuite extends munit.ScalaCheckSuite:
   }
 
   property("a peer added or removed changes the answer by at most one peer") {
-    // "a newly added or removed peer can at most lead to one new peer being shared" (PeerSharing.hs:200-202)
+    // "a newly added or removed peer can at most lead to one new peer being shared"
+    // (PeerSharing.hs:200-202, ouroboros-network c45735a5)
     Prop.forAll(Gen.long, Gen.choose(0, 49)) { (salt, drop) =>
       val without = everyone.patch(drop, Nil, 1)
       val before = answer(salt, amount(10), everyone).toSet
@@ -94,8 +97,8 @@ class PeerShareSuite extends munit.ScalaCheckSuite:
     val (first, afterFirst) = start.at(100.seconds)
     assertEquals(afterFirst.reSaltAt, 923.seconds)
     // The reference stores the advanced generator and the later requests of the interval read the
-    // first draw of that one (`PeerSharing.hs:219-227`), so they share a salt of their own, which
-    // is not the salt of the request that re-salted. Mirrored as it is.
+    // first draw of that one (`PeerSharing.hs:219-227`, ouroboros-network c45735a5), so they share
+    // a salt of their own, which is not the salt of the request that re-salted. Mirrored as it is.
     val (held, afterHeld) = afterFirst.at(900.seconds)
     assertNotEquals(held, first)
     assertEquals(afterHeld, afterFirst)
