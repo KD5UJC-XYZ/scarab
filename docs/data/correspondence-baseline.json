@@ -5580,7 +5580,6 @@
    "def protocol.PeerSharingEngine.Writer#head": null,
    "def protocol.PeerSharingEngine.Writer#raw": null,
    "def protocol.PeerSharingEngine.Writer#result": null,
-   "def protocol.PeerSharingEngine.arity": null,
    "def protocol.PeerSharingEngine.decodePeer": null,
    "def protocol.PeerSharingEngine.decodePrefix": null,
    "def protocol.PeerSharingEngine.encode": null,

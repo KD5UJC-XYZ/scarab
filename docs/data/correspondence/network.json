@@ -97,16 +97,25 @@
      "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
      "symbol": "decodeMsg",
      "lines": [
-      62,
-      75
+      58,
+      77
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "symbol": "decodeListWith",
+     "lines": [
+      86,
+      93
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "the outer array's declared length must match the message here; the reference reads and ignores it",
-   "digest": "8e8040c3046fd913"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the length of the message's array is read and ignored (a definite array whose length cborg's decodeListLen holds in an Int), then the key as a word; in StIdle 0 is MsgShareRequest with its Word8 amount and 2 is MsgDone, in StBusy 1 is MsgSharePeers with a definite or indefinite list of peers (decodeListWith), and any other key is refused. Agency, which the reference has in its state tokens, is the same table checked at run time; the byte limit its Cursor applies while reading is the driver's (runDecoderWithLimit, framework Driver/Limits.hs:295-331, with byteLimitsPeerSharing)",
+   "digest": "2ccdf6e799463953"
   },
   "enum protocol.ChainSync.Message": {
    "upstream": [
@@ -295,18 +304,27 @@
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
      "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs",
-     "symbol": "decodeListLen",
+     "symbol": "encodeRemoteAddress",
+     "lines": [
+      29,
+      42
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs",
+     "symbol": "decodeRemoteAddress",
      "lines": [
       49,
       65
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "an address's declared length must be 3 or 6 here (its private address reader); the reference reads and ignores it",
-   "digest": "916d2007d053b7ca"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its private address reader is decodeRemoteAddress: the address's length is read and ignored, then its tag as a word (0 or 1, any other refused), then one or four Word32 and the port as a Word16; its private writer is encodeRemoteAddress, [0, word32, port] and [1, word32 x 4, port]. The rest converts between the facade's messages and PeerSharingEngine's",
+   "digest": "0537deef26ecce66"
   },
   "object protocol.TxSubmission2": {
    "upstream": [

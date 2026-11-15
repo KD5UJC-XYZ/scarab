@@ -28,11 +28,11 @@ import ChainSync.DecodeResult
   *     (decode; the port is a Word16, 15-19);
   *   - the CDDL: `cardano-diffusion/protocols/cddl/specs/peer-sharing-v14.cddl`.
   *
-  * Where this decoder is stricter than the reference: the reference reads the length of the outer
-  * array and of an address and ignores it (`decodeListLen`), so a message whose declared length is
-  * wrong is read as if it were right. Here the arity must match the message (2, 2 or 1, and 3 or 6
-  * for an address), as the CDDL says. Everything the reference accepts and the CDDL allows is
-  * accepted: unsigned integers in any definite width, definite and indefinite lists of peers.
+  * As the reference, the decoder reads the length of the outer array and of an address and ignores
+  * it (`decodeListLen`, `Codec.hs:63`, and `PeerSelection/PeerSharing/Codec.hs:51`), so a message
+  * whose declared length is wrong is read as if it were right: the fields read are those its key
+  * (or an address's tag) names. A length cborg cannot hold in an `Int` is refused, as there.
+  * Unsigned integers in any definite width and definite and indefinite lists of peers are accepted.
   */
 object PeerSharing:
   val MiniProtocolId: Int = 10
@@ -156,9 +156,6 @@ object PeerSharing:
     /** The key is not a message of this state (`unexpected key` in the reference). */
     case UnexpectedKey(state: State, key: BigInt)
 
-    /** The array of the message or of the address has not the arity the CDDL gives it. */
-    case Arity(expected: Int, found: BigInt)
-
     /** A field outside its CDDL range (`word8`, `word32`, `word16`). */
     case OutOfRange(field: Field, value: BigInt)
 
@@ -184,7 +181,6 @@ object PeerSharing:
       case Terminal             => "PeerSharing is terminal"
       case WrongAgency(s, r)    => s"illegal PeerSharing message in $s from $r"
       case UnexpectedKey(s, k)  => s"unexpected PeerSharing key $k in $s"
-      case Arity(e, f)          => s"PeerSharing array of arity $f, expected $e"
       case OutOfRange(field, v) => s"PeerSharing $field outside its range: $v"
       case Unexpected(e, b) => s"PeerSharing expected $e, found initial byte 0x${"%02x".format(b)}"
       case ReservedHead(b)  => s"PeerSharing reserved or indefinite head 0x${"%02x".format(b)}"
@@ -240,22 +236,23 @@ object PeerSharing:
       Vector(w, x, y, z).foreach(q => writer.head(0, q.value))
       writer.head(0, p.value.toLong)
 
+  /** `decodeRemoteAddress` (`PeerSelection/PeerSharing/Codec.hs:49-65`, ouroboros-network
+    * c45735a5): the address's length is read and ignored, then its tag names its fields.
+    */
   private def readAddress(c: PeerSharingEngine.Cursor): PeerSharingEngine.Parse[Address] =
     def word() = c.ranged(Field.Word32, BigInt(Word32.Max)).map(Word32.trusted)
     def port() = c.ranged(Field.Port, BigInt(Port.Max)).map(Port.trusted)
     for
-      n <- c.definiteArray()
+      _ <- c.definiteArray()
       tag <- c.ranged(Field.AddressTag, BigInt(1))
       decoded <- tag match
         case 0 =>
           for
-            _ <- PeerSharingEngine.arity(n, 3)
             a <- word()
             p <- port()
           yield Address.V4(a, p)
         case _ =>
           for
-            _ <- PeerSharingEngine.arity(n, 6)
             a <- word()
             b <- word()
             d <- word()
