@@ -760,7 +760,7 @@
       "issues": [
         168
       ],
-      "notes": "Retain the negotiated node-to-client version through query sessions, and support the legacy pool queries and genesis encoding before V21. REF-04 also enforced the reference client codec's constructor-version table at the server; #924 removed that refusal: as the reference's server, it refuses no query for the negotiated version. `QueryVersionSuite` and the `ntc` version matrix cover every advertised V16–V23, including the V20/V21 boundary and latest internal `GetCBOR` encoding."
+      "notes": "Retain the negotiated node-to-client version through query sessions, and support the legacy pool queries and genesis encoding before V21. REF-04 also enforced the reference client codec's constructor-version table at the server; #924 removed that refusal: as the reference's server, it refuses no Shelley block query for the negotiated version. `QueryVersionSuite` and the `ntc` version matrix cover every advertised V16–V23, including the V20/V21 boundary and latest internal `GetCBOR` encoding."
     },
     {
       "id": "F2",
@@ -962,7 +962,7 @@
       "issues": [
         34
       ],
-      "notes": "Protocol versions: typed `NtnVersion` and `NtcVersion`; node-to-node 14 and 15 offered by default as cardano-node 11.1.3 does, 16 (the Peras flag) with `ExperimentalProtocolsEnabled`; negotiation tested over every pair of offered sets and flags; node-to-client 16 to 23 is the reference's whole range. The negotiated NtC version selects answer encodings (REF-04, [#168](https://github.com/KD5UJC-XYZ/scarab/issues/168)); it decides no query's availability (#924). Follow-ups: X8 (the Leios mini-protocols 18 and 19 in the multiplexer), [#174](https://github.com/KD5UJC-XYZ/scarab/issues/174) (LeiosFetch wire change upstream)."
+      "notes": "Protocol versions: typed `NtnVersion` and `NtcVersion`; node-to-node 14 and 15 offered by default as cardano-node 11.1.3 does, 16 (the Peras flag) with `ExperimentalProtocolsEnabled`; negotiation tested over every pair of offered sets and flags; node-to-client 16 to 23 is the reference's whole range. The negotiated NtC version selects answer encodings (REF-04, [#168](https://github.com/KD5UJC-XYZ/scarab/issues/168)); it decides no Shelley block query's availability (#924). Follow-ups: X8 (the Leios mini-protocols 18 and 19 in the multiplexer), [#174](https://github.com/KD5UJC-XYZ/scarab/issues/174) (LeiosFetch wire change upstream)."
     },
     {
       "id": "G5",
