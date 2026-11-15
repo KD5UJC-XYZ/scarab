@@ -572,6 +572,46 @@ class DecoderVersionSuite extends FunSuite:
         )
   }
 
+  for era <- Vector(Era.Allegra, Era.Mary) do
+    test(s"$era auxiliary data retains detached RecD fields at version 12") {
+      val auxiliary = hex("9fffa080")
+      val parts = Block.Transaction(hex("a3008001800200"), hex("a0"), Some(auxiliary), true)
+      val envelope = hex("83a3008001800200a09fffa080")
+      val block = DetachedRecordsReferenceSuite.block(
+        era,
+        hex("81") ++ parts.body ++ hex("81") ++ parts.witnesses ++ hex("a100") ++ auxiliary
+      )
+      def transactions(decoded: Block): Vector[Block.Transaction] = decoded match
+        case b: Block.Shelley => b.transactions
+        case _                => Vector.empty
+
+      assertEquals(Tx.fromBlock(parts, era).map(_.auxiliary), Right(Some(auxiliary)))
+      assertEquals(Tx.fromEnvelope(envelope, era).map(_.auxiliary), Right(Some(auxiliary)))
+      assertEquals(Block.decodeShelley(block).map(transactions), Right(Vector(parts)))
+      for version <- Vector(DecoderVersion.of(era), at11, at12) do
+        given ByteStrings = ByteStrings.of(version)
+        assertEquals(
+          AuxiliaryScripts.read(auxiliary, era, version.value),
+          Right(Vector.empty),
+          s"${version.value}: auxiliary"
+        )
+        assertEquals(
+          Tx.fromBlock(parts, era, version).map(_.auxiliary),
+          Right(Some(auxiliary)),
+          s"${version.value}: block parts"
+        )
+        assertEquals(
+          Tx.fromEnvelope(envelope, era, version).map(_.auxiliary),
+          Right(Some(auxiliary)),
+          s"${version.value}: envelope"
+        )
+        assertEquals(
+          Block.decodeShelley(block, _ => version).map(transactions),
+          Right(Vector(parts)),
+          s"${version.value}: whole block"
+        )
+    }
+
   test("historical auxiliary types refuse tag 259 and V4 even at version 12") {
     for
       era <- Vector(Era.Shelley, Era.Allegra, Era.Mary)

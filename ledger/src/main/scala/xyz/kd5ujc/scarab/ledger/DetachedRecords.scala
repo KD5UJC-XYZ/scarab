@@ -393,11 +393,10 @@ object DetachedRecords:
                     entered.record.fold(found)(_ :: found)
                   )
 
-  /** The shapes of the reference's decoders below decoder version 12, era by era (cardano-ledger
-    * f649f975), along every path of a block or a transaction that reaches a `RecD` record. Every
-    * other item is [[Shape.Item]].
+  /** The shapes of the reference's decoders, era by era (cardano-ledger f649f975), along every path
+    * of a block or a transaction that reaches a `RecD` record. Every other item is [[Shape.Item]].
     *
-    * From version 12, Dijkstra's, every record a block or a transaction holds is read by
+    * From version 12, Dijkstra's, the shared version-dependent records are read by
     * `decodeRecordNamed` around its fields, so none is detached: `ifDecoderVersionAtLeast
     * (natVersion
     * @12)`
@@ -406,14 +405,17 @@ object DetachedRecords:
     *   `ExUnits` and `Prices` (`Plutus/ExUnits.hs:210, 237`), `Anchor` (`BaseTypes.hs:1005`), and
     *   `GovActionId`, `VotingProcedure`, `ProposalProcedure`, `Committee`, `GovAction` and
     *   `Constitution` (`Conway/Governance/Procedures.hs:183, 497, 569, 638, 937, 1046`), all
-    *   cardano-ledger 9df9f98c, and Dijkstra's own transaction decoders use no `RecD`. So an era
-    *   read at version 12 has the shape [[Shape.Item]] throughout.
+    *   cardano-ledger 9df9f98c, and Dijkstra's own transaction decoders use no `RecD`. Allegra and
+    *   Mary auxiliary data still uses `RecD` at every version (`Allegra/TxAuxData.hs:205-210`,
+    *   `Mary/TxAuxData.hs:27-28`, f649f975), so its enclosing shapes must still reach it.
     */
   object Shapes:
     private def since(era: Era, first: Era): Boolean = era.ordinal >= first.ordinal
 
-    /** Whether a decoder version reads any `RecD` record of a block: below 12. */
+    /** Whether a decoder version uses `RecD` for the shared version-dependent records. */
     private def recorded(version: DecoderVersion): Boolean = !version.atLeast(12)
+
+    private def allegraAuxiliary(era: Era): Boolean = era == Era.Allegra || era == Era.Mary
 
     /** `decodeNullStrictMaybe`. */
     private def nullable(shape: Shape): Shape = ByToken {
@@ -540,9 +542,9 @@ object DetachedRecords:
       */
     def auxiliaryData(era: Era): Shape = auxiliaryDataAt(era, DecoderVersion.of(era).value)
 
-    /** [[auxiliaryData]] at a decoder version: `RecD` permits detached fields below 12. */
+    /** [[auxiliaryData]] at a decoder version: Allegra and Mary retain `RecD` at every version. */
     def auxiliaryDataAt(era: Era, version: BigInt): Shape =
-      if since(era, Era.Allegra) && version < 12 then
+      if allegraAuxiliary(era) || (since(era, Era.Allegra) && version < 12) then
         ByToken {
           case Token.List => pair
           case _          => Item
@@ -558,7 +560,7 @@ object DetachedRecords:
     /** [[transaction]] at a decoder version of the era. */
     def transaction(era: Era, version: DecoderVersion): Shape =
       val auxiliary = auxiliaryDataAt(era, version.value)
-      if !recorded(version) then Item
+      if !recorded(version) && !allegraAuxiliary(era) then Item
       else if since(era, Era.Alonzo) then
         Fields(
           List(body(era, version), witnesses(era, version)),
@@ -592,7 +594,9 @@ object DetachedRecords:
     def blockAt(version: Era => DecoderVersion): Shape = Sum(tag =>
       // A Dijkstra block, `[header, [txs, leios_cert / nil, peras_cert / nil]]`, is read at decoder
       // version 12, where it holds no `RecD` record (above); a Byron block holds none either
-      Era.fromBlockTag(BigInt(tag)).filter(e => e != Era.Byron && recorded(version(e))) match
+      Era
+        .fromBlockTag(BigInt(tag))
+        .filter(e => e != Era.Byron && (recorded(version(e)) || allegraAuxiliary(e))) match
         case Some(era) =>
           List(
             Fields(
