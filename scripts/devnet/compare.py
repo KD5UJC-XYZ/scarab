@@ -503,7 +503,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
     `other-connect`, `other-acquire`, `other-query`, `judge`), the point selected by then, the refusal, the bounds
     and the kind (`failure_kind`): a refusal past the bounds (`exhausted`), a point too old, a reply the protocol
     does not allow, a failed query, a closed connection, a deadline or a defect of the harness. None is retried into
-    a success. Returns {"slot", "point", "anchor", "other", "answers": {label: result}, "acquisitions"},
+    a success. Returns {"slot", "point", "era" (the acquired state's), "anchor", "other", "answers": {label: result}, "acquisitions"},
     {"error", "kind", ...} or {"skipped"}. A difference keeps both answers in the run dir (`whole-state`, the
     follower's own). Never raises."""
     root = util.data_root(name)
@@ -516,7 +516,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
     reselections = (1 if attempts > 1 else 0) if reselections is None else reselections
     other_node = "reference" if anchor == "scala" else "scala"
     identity = {"anchor": anchor, "other": other_node, **({} if site.key is None else {"follower": site.key})}
-    history, now = [], {"stage": None, "point": None, "queries": None}
+    history, now = [], {"stage": None, "point": None, "queries": None, "era": None}
 
     def scala():
         return ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60)
@@ -549,7 +549,9 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
             if point is None:
                 raise AtOrigin("the anchor is at Origin: no block to compare a state at")
             now["stage"] = "anchor-query"
-            queries = now["queries"] = queries_of(ntcquery.acquired_shelley_era(session))
+            index = ntcquery.acquired_shelley_era(session)
+            now["era"] = eraview.ERA_NAMES[index]
+            queries = now["queries"] = queries_of(index)
             return point, {label: ask_raw(session, q) for label, q in queries.items()}
 
     def at(pick, attempt, point):
@@ -570,7 +572,8 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
             return {label: ask_raw(session, q) for label, q in now["queries"].items()}
 
     def failed(error, **more):
-        return {"error": repr(error)[:300], "kind": failure_kind(error), **identity, "stage": now["stage"],
+        return {"error": repr(error)[:300], "kind": failure_kind(error), **identity,
+                **({} if now["era"] is None else {"era": now["era"]}), "stage": now["stage"],
                 "point": point_json(now["point"]), "refusal": acquire_refusal(error),
                 "bounds": {"attempts": attempts, "reselections": reselections}, **more, "acquisitions": history}
 
@@ -606,14 +609,14 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
                 result["firstDifference"] = first_difference(expected[label], got[label])
                 dump = site.directory(root, "whole-state")
                 dump.mkdir(exist_ok=True)
-                stem = dump / f"{era}-{slot}-{label}"
+                stem = dump / f"{now['era']}-{slot}-{label}"
                 stem.with_suffix(".reference").write_bytes(expected[label])
                 stem.with_suffix(".scala").write_bytes(got[label])
                 result["kept"] = str(stem)
             answers[label] = result
     except (Exception, SystemExit) as e:  # one boundary: a malformed reply or a defect keeps the evidence it had
         return failed(e)
-    return {"slot": slot, "point": point_json(point), **identity, "answers": answers, "acquisitions": history}
+    return {"slot": slot, "point": point_json(point), "era": now["era"], **identity, "answers": answers, "acquisitions": history}
 
 
 def lsq(name):
@@ -661,22 +664,26 @@ def compare_pre_conway_followers(name, era, sites, attempts=10):
         if all(scala is None for scala in states.values()):
             continue
         evidence = reference.pop("_evidence", None)  # what the comparison exercised, not compared
+        acquired = reference.pop("_era", None)  # the era of the state that was compared
         reference["ppup"], reference_encodings = eraview.proposal_values(reference["ppup"])
         for site, scala in states.items():
             if scala is not None:
-                judged[site] = pre_conway_sample(tip, reference, reference_encodings, evidence, scala)
+                judged[site] = pre_conway_sample(tip, reference, reference_encodings, evidence, scala, acquired)
     return [judged.get(site) or Sample({"error": "no stable comparison within the attempts"}) for site in sites]
 
 
-def pre_conway_sample(tip, reference, reference_encodings, evidence, scala):
+def pre_conway_sample(tip, reference, reference_encodings, evidence, scala, acquired=None):
     """The Sample of one follower's `/state` (`scala`) against the reference view of a pre-Conway block `tip`
-    (its proposals already in `eraview.proposal_values` form, their original encodings `reference_encodings`)."""
+    (its proposals already in `eraview.proposal_values` form, their original encodings `reference_encodings`).
+    `acquired` is the name of the era of that state; the result carries it as `acquiredEra`, and the tally counts the
+    comparison under it."""
     scala_view = {k: v for k, v in scala.items() if k in reference}
     scala_view["params"] = {k: v for k, v in scala_view["params"].items()
                             if k in reference["params"]}
     scala_view["ppup"], scala_encodings = eraview.proposal_values(scala_view["ppup"])
     differences = diff(reference, scala_view)
-    return Sample({"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
+    return Sample({**({} if acquired is None else {"acquiredEra": acquired}),
+                   "tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
                    "scalaOnlyKeys": scala_only(scala, reference),
                    "scalaOnlyParams": scala_only(scala.get("params", {}), reference["params"]),
                    "evidence": {**(evidence or {}),
@@ -714,6 +721,7 @@ class Comparisons:
         """Tally one `whole_state` result: each query's answer, or its skip or error for every query. An error keeps
         where it happened (stage, point, refusal, the acquisitions) in `errorDetails`."""
         answers = result.get("answers") or {q: result for q in WHOLE_QUERIES}
+        era = result.get("era", era)
         refused = any(a.get("outcome") == "refused" for a in result.get("acquisitions", []))
         with self.lock:
             for query, answer in answers.items():
@@ -830,7 +838,7 @@ def compare_era(name, era, label, comparisons, agreement=None):
         import traceback
         samples = [Sample({"error": repr(e), "traceback": traceback.format_exc()[-1500:]}) for _ in sites]
     for tally, sample in zip(comparisons, samples):
-        tally.record(era, label, sample.result)
+        tally.record(sample.result.get("acquiredEra", era), label, sample.result)
     if agreement is not None:
         agreement.record(era, label, samples)
     for tally in comparisons:

@@ -122,11 +122,17 @@ SHELLEY_BASED = range(1, 7)  # the indexes of Shelley..Conway in a hard-fork blo
 
 def acquired_era(session):
     """The era of the state `session` has acquired (`GetCurrentEra`): the index a block query of that state names."""
-    return session.query_raw(CURRENT_ERA)
+    session.query_raw(CURRENT_ERA)
+    raw = session.last_raw
+    era, end = _uint(raw, result_offset(raw))
+    if end != len(raw):
+        raise MalformedReply(f"not an era: {bytes(raw).hex()[:200]}")
+    return era
 
 
 def acquired_shelley_era(session):
-    """`acquired_era`, which must be a Shelley-based era (`SHELLEY_BASED`); a `RuntimeError` otherwise."""
+    """`acquired_era`, which must be a Shelley-based era (`SHELLEY_BASED`); a `RuntimeError` otherwise. The era is
+    read from the reply's own bytes, which must be an unsigned integer (`MalformedReply` otherwise)."""
     era = acquired_era(session)
     if era not in SHELLEY_BASED:
         raise RuntimeError(f"the acquired state is of era {era!r}, not a Shelley-based era")

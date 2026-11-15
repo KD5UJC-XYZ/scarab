@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """`eraview.reference_pre_conway` asks the era of the state that was acquired, not the caller's (no devnet)."""
+import json
 import pathlib
 import sys
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from devnet import eraview, ntcquery  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+from devnet import cbor, compare, eraview, ntcquery  # noqa: E402
 
 
 class Stop(Exception):
@@ -18,8 +21,12 @@ class FakeSession:
     def __init__(self, acquired):
         self.acquired, self.named = acquired, []
 
+    def acquire(self, point=None):
+        pass
+
     def query_raw(self, query):
         if query == ntcquery.CURRENT_ERA:
+            self.last_raw = cbor.enc([4, self.acquired])
             return self.acquired
         raise AssertionError(query)
 
@@ -46,6 +53,58 @@ class AcquiredEraTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             eraview.reference_pre_conway("alonzo", session, {})
         self.assertEqual(session.named, [])
+
+    def test_a_conway_state_is_not_given_a_pre_conway_view(self):
+        session = FakeSession(eraview.ERA_INDEX["conway"])
+        with self.assertRaises(RuntimeError) as raised:
+            eraview.reference_pre_conway("babbage", session, {})
+        self.assertIn("mismatch", str(raised.exception))
+        self.assertEqual(session.named, [])
+
+    def test_a_babbage_round_that_acquires_a_conway_state_is_skipped_as_the_chain_having_left_babbage(self):
+        context = unittest.mock.MagicMock()
+        context.__enter__.return_value = FakeSession(eraview.ERA_INDEX["conway"])
+        with patch.object(compare, "protocol_parameters", return_value={}), \
+                patch.object(compare, "lsq", return_value=context), patch.object(compare.time, "sleep"):
+            samples = compare.compare_pre_conway_followers("n", "babbage", (compare.SINGLE_FOLLOWER,))
+        self.assertEqual(samples[0].result, {"skipped": "the chain left babbage while querying"})
+
+    def test_an_era_reply_that_is_a_simple_value_is_not_an_era(self):
+        class Simple(FakeSession):
+            def query_raw(self, query):
+                self.last_raw = bytes.fromhex("8204e6")  # [4, simple(6)], which the decoder reads as 6
+                return 6
+        with self.assertRaises(ntcquery.MalformedReply):
+            ntcquery.acquired_era(Simple(6))
+        with self.assertRaises(ntcquery.MalformedReply):
+            ntcquery.acquired_shelley_era(Simple(6))
+
+
+class TallyTest(unittest.TestCase):
+    def tally(self):
+        import tempfile
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        return compare.Comparisons(pathlib.Path(self.dir.name))
+
+    def test_a_whole_state_of_a_conway_state_counts_for_conway_whatever_the_callers_era(self):
+        tally = self.tally()
+        result = {"slot": 1, "era": "conway", "answers": {q: {"matched": True} for q in compare.WHOLE_QUERIES}}
+        tally.record_whole("babbage", "x", result)
+        for query in compare.WHOLE_QUERIES:
+            self.assertEqual(tally.whole[query]["conway"]["matched"], 1, query)
+            self.assertEqual(tally.whole[query]["babbage"]["matched"], 0, query)
+
+    def test_a_projection_of_a_state_in_a_later_era_counts_for_that_era(self):
+        tally = self.tally()
+        reference = {"epoch": 1, "utxo": {}, "params": {}, "ppup": {"current": {}, "future": {}},
+                     "mir": {"reserves": {}, "treasury": {}, "deltaReserves": 0, "deltaTreasury": 0},
+                     "rewardUpdate": None}
+        scala = json.loads(json.dumps(reference))
+        sample = compare.pre_conway_sample({"slot": 1, "hash": "a"}, reference, {}, None, scala, "babbage")
+        self.assertEqual(sample.result["acquiredEra"], "babbage")
+        tally.record(sample.result.get("acquiredEra", "alonzo"), "x", sample.result)
+        self.assertEqual((tally.per_era["babbage"]["matched"], tally.per_era["alonzo"]["matched"]), (1, 0))
 
 
 if __name__ == "__main__":

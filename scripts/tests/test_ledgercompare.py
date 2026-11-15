@@ -249,6 +249,7 @@ class WholeStateAnchorTest(unittest.TestCase):
 
             def query_raw(self, query):
                 if query == ntcquery.CURRENT_ERA:
+                    self.last_raw = cbor.enc([4, test.acquired_era])
                     return test.acquired_era
                 point = [test.tip, b"\x07" * 32]
                 self.last_raw = cbor.enc([4, point])
@@ -281,6 +282,7 @@ class WholeStateAnchorTest(unittest.TestCase):
         self.assertNotIn("error", result)
         eras = {(side, query[1][1][0]) for side, query in self.sent}
         self.assertEqual(eras, {("scala", 6), ("reference", 6)})
+        self.assertEqual(result["era"], "conway")
 
     def test_the_reference_anchor_asks_the_reference_first_and_the_scala_node_at_its_point(self):
         result = self.run_whole(anchor="reference")
@@ -367,6 +369,7 @@ class WholeStateForkTest(unittest.TestCase):
 
             def query_raw(self, query):
                 if query == ntcquery.CURRENT_ERA:
+                    self.last_raw = cbor.enc([4, 6])
                     return 6
                 answered = test.point(test.tip) if point is ... else point
                 self.last_raw = cbor.enc([4, answered])

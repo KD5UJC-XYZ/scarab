@@ -13,6 +13,7 @@ from . import eratx
 from . import ntcquery
 
 ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "conway": 6}
+ERA_NAMES = {i: e for e, i in ERA_INDEX.items()}
 
 Q_LEDGER_TIP, Q_UTXO_WHOLE, Q_NEW_EPOCH_STATE, Q_CHAIN_DEP_STATE = 0, 7, 12, 13
 
@@ -187,6 +188,8 @@ def reference_pre_conway(era, session, protocol_params):
     of the state that was acquired, as the era battery does (`ntcquery.acquired_shelley_era`), so that a round across
     an era boundary compares one era on both nodes; `era` is the caller's era and is not asked."""
     index = ntcquery.acquired_shelley_era(session)
+    if index >= ERA_INDEX["conway"]:
+        raise RuntimeError(f"era mismatch: the acquired state is of era {ERA_NAMES[index]}, not a pre-Conway one")
     tip = session.ledger_query(index, [Q_LEDGER_TIP])
     nes = session.ledger_query(index, [Q_NEW_EPOCH_STATE])
     utxo = session.ledger_query(index, [Q_UTXO_WHOLE])
@@ -243,6 +246,7 @@ def reference_pre_conway(era, session, protocol_params):
         "params": params_view(protocol_params, index),
         "protocolState": chain_dep_state(dep, index),
     }
+    view["_era"] = ERA_NAMES[index]
     if evidence:
         view["_evidence"] = {"rewardUpdate": evidence}
     return {"slot": tip[0], "hash": tip[1].hex()}, view
