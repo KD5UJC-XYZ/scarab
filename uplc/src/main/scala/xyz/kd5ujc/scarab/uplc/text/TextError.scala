@@ -28,9 +28,9 @@ enum Kinded:
     case _                      => None
 
 /** Why a BLS12-381 literal is no point of its group: the checks of `uncompress`
-  * (`PlutusCore/Crypto/BLS12_381/G1.hs:148-149`, `G2.hs` likewise), which calls cardano-base's
-  * `blsUncompress` (not vendored): the length of a compressed point, blst's decoding, and the
-  * subgroup.
+  * (`PlutusCore/Crypto/BLS12_381/G1.hs:148-149`, `G2.hs` likewise, plutus 1.70.0.0), which calls
+  * cardano-base's `blsUncompress` (not vendored): the length of a compressed point, blst's
+  * decoding, and the subgroup.
   */
 enum PointProblem:
   case WrongLength(expected: Int, actual: Int)
@@ -40,46 +40,62 @@ enum PointProblem:
 
 /** Why a text is not a program of the textual syntax. Each case is a refusal of the reference's
   * parser (`UntypedPlutusCore/Parser.hs` and the modules of `PlutusCore/Parser`); any of them is a
-  * `parse/decode error` to the conformance runner (`PlutusConformance/Common.hs:374-382`).
+  * `parse/decode error` to the conformance runner (`PlutusConformance/Common.hs:374-382`, plutus
+  * 1.70.0.0).
   */
 enum TextError:
   /** The text does not follow the grammar; `expected` is what cats-parse looked for at `offset`. */
   case Syntax(offset: Int, expected: NonEmptyList[Parser.Expectation])
 
-  /** A character of a string literal that `readLitChar` does not read (`Builtin.hs:86-87`), or the
-    * end of the text before the closing quote.
+  /** A character of a string literal that `readLitChar` does not read (`Builtin.hs:86-87`, plutus
+    * 1.70.0.0), or the end of the text before the closing quote.
     */
   case CharacterLiteral(offset: Int)
 
-  /** `(builtin f)` where `f` names no builtin (`UnknownBuiltinFunction`, `Builtin.hs:55-63`). */
+  /** `(builtin f)` where `f` names no builtin (`UnknownBuiltinFunction`, `Builtin.hs:55-63`, plutus
+    * 1.70.0.0).
+    */
   case UnknownBuiltin(name: String)
 
-  /** `constr` in a program before version 1.1.0 (`UntypedPlutusCore/Parser.hs:79`). */
+  /** `constr` in a program before version 1.1.0 (`UntypedPlutusCore/Parser.hs:79`, plutus
+    * 1.70.0.0).
+    */
   case ConstrBeforeV110(version: ProgramVersion)
 
-  /** `case` in a program before version 1.1.0 (`UntypedPlutusCore/Parser.hs:92`). */
+  /** `case` in a program before version 1.1.0 (`UntypedPlutusCore/Parser.hs:92`, plutus 1.70.0.0).
+    */
   case CaseBeforeV110(version: ProgramVersion)
 
-  /** A `constr` tag above `maxBound :: Word64` (`UntypedPlutusCore/Parser.hs:80-84`). */
+  /** A `constr` tag above `maxBound :: Word64` (`UntypedPlutusCore/Parser.hs:80-84`, plutus
+    * 1.70.0.0).
+    */
   case ConstrTagTooLarge(tag: BigInt)
 
-  /** A type operator applied to an argument of the wrong kind (`Type.hs:101`). */
+  /** A type operator applied to an argument of the wrong kind (`Type.hs:101`, plutus 1.70.0.0). */
   case KindMismatch(function: Kinded, argument: Kinded)
 
-  /** A constant whose type is an operator, not of kind `*` (`checkStar`, `Builtin.hs:44-46`). */
+  /** A constant whose type is an operator, not of kind `*` (`checkStar`, `Builtin.hs:44-46`, plutus
+    * 1.70.0.0).
+    */
   case NotOfKindStar(kinded: Kinded)
 
-  /** A `bls12_381_mlresult` constant, which has no literal (`Builtin.hs:169-170`). */
+  /** A `bls12_381_mlresult` constant, which has no literal (`Builtin.hs:169-170`, plutus 1.70.0.0).
+    */
   case MlResultLiteral
 
-  /** A `bls12_381_G1_element` literal that is no point of G1 (`Builtin.hs:138-143`). */
+  /** A `bls12_381_G1_element` literal that is no point of G1 (`Builtin.hs:138-143`, plutus
+    * 1.70.0.0).
+    */
   case InvalidG1(bytes: Bytes, problem: PointProblem)
 
-  /** A `bls12_381_G2_element` literal that is no point of G2 (`Builtin.hs:145-150`). */
+  /** A `bls12_381_G2_element` literal that is no point of G2 (`Builtin.hs:145-150`, plutus
+    * 1.70.0.0).
+    */
   case InvalidG2(bytes: Bytes, problem: PointProblem)
 
-  /** A `value` literal the parser refuses (`conValue`, `Builtin.hs:177-220`): a key longer than 32
-    * bytes, an empty token list, a zero or out-of-bounds quantity, or keys out of order.
+  /** A `value` literal the parser refuses (`conValue`, `Builtin.hs:177-220`, plutus 1.70.0.0): a
+    * key longer than 32 bytes, an empty token list, a zero or out-of-bounds quantity, or keys out
+    * of order.
     */
   case InvalidValue(problem: Value.Invalid)
 
@@ -95,7 +111,7 @@ enum TextError:
 
 /** Why a text is not a closed program: it does not parse, or it parses with a free variable. The
   * conformance runner reports either as `parse/decode error`
-  * (`PlutusConformance/Common.hs:374-382`, `CekEvaluator.hs:54-57`).
+  * (`PlutusConformance/Common.hs:374-382`, `CekEvaluator.hs:54-57`, plutus 1.70.0.0).
   */
 enum ProgramError:
   case Unparsable(error: TextError)

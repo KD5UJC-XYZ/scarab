@@ -128,9 +128,9 @@ object HaskellChar:
       false
     case _ => true
 
-  /** The body of the literal of `codePoints` (`PrettyConst.hs:112-121` and base's `showLitChar`),
-    * with `\&` where an escape would otherwise run into the next character: after a numeric escape
-    * followed by a digit, and after `\SO` followed by `H` (`protectEsc`).
+  /** The body of the literal of `codePoints` (`PrettyConst.hs:112-121` and base's `showLitChar`,
+    * plutus 1.70.0.0), with `\&` where an escape would otherwise run into the next character: after
+    * a numeric escape followed by a digit, and after `\SO` followed by `H` (`protectEsc`).
     */
   def escaped(codePoints: IndexedSeq[Int]): String =
     codePoints.indices.map { i =>

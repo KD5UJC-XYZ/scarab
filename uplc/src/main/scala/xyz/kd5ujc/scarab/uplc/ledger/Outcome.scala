@@ -26,20 +26,22 @@ enum VerboseMode:
   * raises it (it is declared and rendered only, `Eval.hs:67,81`).
   */
 enum EvaluationError:
-  /** `CekError`: the machine failed (`processLogsAndErrors`, `Eval.hs:313`). */
+  /** `CekError`: the machine failed (`processLogsAndErrors`, `Eval.hs:313`, plutus 1.70.0.0). */
   case Cek(failure: CekFailure)
 
-  /** `DeBruijnError`: the scope check of the applied term refused it (`Eval.hs:129-130`). */
+  /** `DeBruijnError`: the scope check of the applied term refused it (`Eval.hs:129-130`, plutus
+    * 1.70.0.0).
+    */
   case DeBruijn(error: FreeVariableError)
 
   /** `CodecError` with `PlutusCoreLanguageNotAvailableError`: the program's version is not one the
-    * language has at the protocol (`Eval.hs:123-127`), which the evaluation checks, not the decoder
-    * (Note [Checking the Plutus Core language version], `Eval.hs:323-328`).
+    * language has at the protocol (`Eval.hs:123-127`, plutus 1.70.0.0), which the evaluation
+    * checks, not the decoder (Note [Checking the Plutus Core language version], `Eval.hs:323-328`).
     */
   case Codec(refusal: Availability.Refusal)
 
   /** `InvalidReturnValue`: a script of a language after V2 returned something other than `()`
-    * (`Eval.hs:314-320`).
+    * (`Eval.hs:314-320`, plutus 1.70.0.0).
     */
   case InvalidReturnValue
 
@@ -90,7 +92,7 @@ enum Unavailability:
   case Variant(variant: SemanticsVariant)
 
   /** The context has no machine for the variant of the protocol: the reference's internal error of
-    * `toMachineParameters` (`Common/Eval.hs:132-139`).
+    * `toMachineParameters` (`Common/Eval.hs:132-139`, plutus 1.70.0.0).
     */
   case NoMachine(language: PlutusLanguage, protocol: ProtocolMajor)
 
@@ -118,14 +120,14 @@ sealed trait LedgerOutcome:
   def failedAt: Option[Stage]
 
 object LedgerOutcome:
-  /** `deserialiseScript` refused the script (`Common/SerialisedScript.hs:244-278`), which the
-    * ledger does in phase 1.
+  /** `deserialiseScript` refused the script (`Common/SerialisedScript.hs:244-278`, plutus
+    * 1.70.0.0), which the ledger does in phase 1.
     */
   final case class Refused(error: ScriptDecodeError) extends LedgerOutcome:
     def failedAt: Option[Stage] = Some(Stage.Decode)
 
 /** What an evaluation gives: the reference's `(LogOutput, Either EvaluationError ExBudget)`
-  * (`Common/Eval.hs:268,295`), or no verdict ([[ScriptResult.Unavailable]]).
+  * (`Common/Eval.hs:268,295`, plutus 1.70.0.0), or no verdict ([[ScriptResult.Unavailable]]).
   */
 sealed trait ScriptResult extends LedgerOutcome
 
