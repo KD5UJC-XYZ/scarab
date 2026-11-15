@@ -2,8 +2,11 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-import cats.effect.{IO, Ref}
+import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
+import com.comcast.ip4s.Port
+import java.net.Socket
+import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import munit.CatsEffectSuite
 import org.http4s.circe.jsonOf
@@ -35,6 +38,44 @@ class QueryServerSuite extends CatsEffectSuite:
         reads
           .update(r => r.copy(points = r.points :+ point))
           .as(Option.when(point == retained)(setup.mirrorStart))
+
+  test("the bound server answers on its loopback port, over the HTTP servers' network") {
+    // A raw request that asks the server to close: an idle keep-alive connection would hold the
+    // server's graceful stop for its shutdown timeout.
+    def get(port: Int): IO[Option[String]] =
+      Resource
+        .make(IO.blocking {
+          val socket = new Socket("127.0.0.1", port)
+          socket.setSoTimeout(10000)
+          socket
+        })(socket => IO.blocking(socket.close()))
+        .use { socket =>
+          IO.blocking {
+            socket.getOutputStream.write(
+              "GET /tip HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+                .getBytes(StandardCharsets.US_ASCII)
+            )
+            socket.getOutputStream.flush()
+            new String(
+              socket.getInputStream.readAllBytes(),
+              StandardCharsets.US_ASCII
+            ).linesIterator
+              .nextOption()
+          }
+        }
+    for
+      reads <- Ref.of[IO, Reads](Reads(0, Vector.empty))
+      ephemeral <- IO.fromOption(Port.fromInt(0))(new IllegalStateException("port 0"))
+      answered <- QueryServer
+        .resource(view(reads), QueryListen.Loopback(ephemeral))(failure =>
+          IO(fail(s"unexpected fatal: $failure"))
+        )
+        .use(_.flatTraverse(server => get(server.address.getPort)))
+      observed <- reads.get
+    yield
+      assertEquals(answered, Some("HTTP/1.1 200 OK"), "GET /tip on the bound port")
+      assertEquals(observed.tips, 1, "it read the tip once")
+  }
 
   test("malformed or partial explicit points return 400 without reading a state") {
     val malformed = List(

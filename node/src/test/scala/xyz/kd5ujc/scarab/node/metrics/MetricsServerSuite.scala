@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.metrics
 
-import cats.effect.{IO, Resource}
+import cats.effect.{Deferred, IO, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, Port, SocketAddress}
-import java.net.{Socket, URI}
+import java.io.InputStream
+import java.net.{Socket, SocketException, SocketTimeoutException, URI}
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.nio.charset.StandardCharsets
 import munit.CatsEffectSuite
+import scala.annotation.tailrec
+import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.node.MetricsServer
 import xyz.kd5ujc.scarab.storage.StorageEvent
 
@@ -57,47 +60,109 @@ class MetricsServerSuite extends CatsEffectSuite:
     }
   }
 
-  /** A raw connection to the listener: `sent` is written as is, and reads give up after 10 s. */
-  private def raw(port: Int, sent: String): IO[Socket] =
-    IO.blocking {
+  /** The metrics server's shutdown timeout is 1 s; Ember's request header timeout, 5 s, must not be
+    * what ends a connection when the server stops.
+    */
+  private val ShutdownBound = 4.seconds
+  private val Request = "GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n"
+
+  /** The server on an ephemeral port, until the second value is run: it stops the server and gives
+    * the time stopping took. Released, it stops the server if the test did not.
+    */
+  private def running: Resource[IO, (Int, IO[FiniteDuration])] =
+    Resource
+      .make(
+        for
+          ready <- Deferred[IO, Int]
+          stop <- Deferred[IO, Unit]
+          serving <- server.use(port => ready.complete(port) *> stop.get).start
+          port <- ready.get
+        yield (port, stop, serving)
+      )((_, stop, serving) => stop.complete(()).void *> serving.join.void)
+      .map((port, stop, serving) =>
+        (port, (stop.complete(()) *> serving.joinWithNever).timed.map(_._1))
+      )
+
+  /** A raw connection to the listener, closed whatever happens; its reads give up after 10 s. */
+  private def connection(port: Int): Resource[IO, Socket] =
+    Resource.make(IO.blocking {
       val socket = new Socket("127.0.0.1", port)
       socket.setSoTimeout(10000)
-      socket.getOutputStream.write(sent.getBytes(StandardCharsets.US_ASCII))
-      socket.getOutputStream.flush()
       socket
+    })(socket => IO.blocking(socket.close()))
+
+  private def send(socket: Socket, text: String): IO[Unit] =
+    IO.blocking {
+      socket.getOutputStream.write(text.getBytes(StandardCharsets.US_ASCII))
+      socket.getOutputStream.flush()
     }
 
-  /** Every byte until the server ends the connection, or the failure that ended it. */
-  private def rest(socket: Socket): IO[Either[Throwable, String]] =
-    IO.blocking(
-      new String(socket.getInputStream.readAllBytes(), StandardCharsets.US_ASCII)
-    ).attempt
+  @tailrec
+  private def head(in: InputStream, read: Vector[Byte]): String =
+    if read.takeRight(4) == Vector[Byte](13, 10, 13, 10) then
+      new String(read.toArray, StandardCharsets.US_ASCII)
+    else
+      in.read() match
+        case -1   => new String(read.toArray, StandardCharsets.US_ASCII)
+        case byte => head(in, read :+ byte.toByte)
 
-  test("the server stops with an idle keep-alive connection open, and ends it") {
-    server.allocated.flatMap { (port, release) =>
-      for
-        socket <- raw(port, "GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n")
-        first <- IO.blocking(socket.getInputStream.read())
-        _ <- release
-        after <- rest(socket)
-        _ <- IO.blocking(socket.close())
-      yield
-        assert(first > 0, "the request was answered before the server stopped")
-        assert(after.isRight || after.left.exists(_.isInstanceOf[java.net.SocketException]))
+  /** One whole response: its status line and the length of the body its headers state, read. */
+  private def response(socket: Socket): IO[(String, Int)] =
+    IO.blocking {
+      val in = socket.getInputStream
+      val lines = head(in, Vector.empty).linesIterator.toVector
+      val length = lines.collectFirst {
+        case line if line.toLowerCase.startsWith("content-length:") =>
+          line.drop("content-length:".length).trim.toIntOption.getOrElse(0)
+      }
+      (lines.headOption.getOrElse(""), in.readNBytes(length.getOrElse(0)).length)
+    }
+
+  /** What follows until the server ends the connection: nothing (an end of stream) or a reset. A
+    * read that times out is not an end.
+    */
+  private def ended(socket: Socket): IO[Either[String, Unit]] =
+    IO.blocking(socket.getInputStream.readAllBytes()).attempt.map {
+      case Right(rest) if rest.isEmpty     => Right(())
+      case Right(rest)                     => Left(s"${rest.length} more bytes")
+      case Left(_: SocketTimeoutException) => Left("still open after 10 s")
+      case Left(_: SocketException)        => Right(())
+      case Left(other)                     => Left(other.toString)
+    }
+
+  test(
+    "the server stops within its shutdown timeout with an idle keep-alive connection, and ends it"
+  ) {
+    running.use { (port, stopping) =>
+      connection(port).use { socket =>
+        for
+          _ <- send(socket, Request)
+          first <- response(socket)
+          took <- stopping
+          end <- ended(socket)
+        yield
+          assertEquals(first._1, "HTTP/1.1 200 OK", "the request was answered before the stop")
+          assert(first._2 > 0, "with its whole body")
+          assert(took < ShutdownBound, s"the server took $took to stop")
+          assertEquals(end, Right(()), "the idle connection was ended")
+      }
     }
   }
 
-  test("the server stops with a request half sent, and ends that connection") {
-    server.allocated.flatMap { (port, release) =>
-      for
-        socket <- raw(port, "GET /metrics HTTP/1.1\r\nHost: loc")
-        _ <- release
-        after <- rest(socket)
-        _ <- IO.blocking(socket.close())
-      yield assert(
-        after.isRight || after.left.exists(_.isInstanceOf[java.net.SocketException]),
-        s"the connection ended rather than timing out: $after"
-      )
+  test("the server stops within its shutdown timeout with a request half sent, and ends it") {
+    running.use { (port, stopping) =>
+      connection(port).use { socket =>
+        for
+          _ <- send(socket, Request)
+          first <- response(socket)
+          _ <- send(socket, "GET /metrics HTTP/1.1\r\nHost: loc")
+          took <- stopping
+          end <- ended(socket)
+        yield
+          assertEquals(first._1, "HTTP/1.1 200 OK", "the connection was accepted and served")
+          assert(took < ShutdownBound, s"the server took $took to stop")
+          assertEquals(end, Right(()), "the connection with a half-sent request was ended")
+      }
     }
   }
 
