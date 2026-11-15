@@ -177,11 +177,13 @@ class DeepQuerySuite extends FailsOnUncaught:
 
   test("unsupported and malformed deep queries return typed failures on a small stack") {
     onSmallStack {
-      // GetProposedPParamsUpdates, outside the version contract at the latest version
-      val query = decoded(nested(4))
-      assertEquals(QueryAnswers.utxoNeeds(view, query), QueryAnswers.UtxoNeeds.Nothing)
+      // GetEpochNo of a state before Conway, which the node decodes but does not answer: every
+      // query of Conway is answered at every version (#924)
+      val early = QueryView(Point.Origin, None, shelleyState)
+      val query = decoded(nested(1, era = Era.Shelley))
+      assertEquals(QueryAnswers.utxoNeeds(early, query), QueryAnswers.UtxoNeeds.Nothing)
       assertEquals(
-        QueryAnswers.answerOrWhy(env, view, Map.empty, query),
+        QueryAnswers.answerOrWhy(env, early, Map.empty, query),
         Left(Unanswered.Unsupported)
       )
       assert(NtcQuery.decode(nested(99)).left.exists {

@@ -51,8 +51,9 @@ object NtnVersion:
 /** The node-to-client protocol versions, as the reference's `NodeToClientVersion` as consensus
   * 4.2.1.0 supports them (`supportedNodeToClientVersions`, `Cardano/Node.hs` 444 to 454): 16 to 23,
   * on the wire with bit 15 set. The version data is the same for all (magic and the query flag).
-  * LocalStateQuery retains the selected version for query support and result encoding; `GetCBOR`
-  * alone intentionally uses the latest internal result encoding (see docs/compatibility.md).
+  * LocalStateQuery retains the selected version for the encoding of its results, the one thing the
+  * version selects there; `GetCBOR` alone intentionally uses the latest internal result encoding
+  * (see docs/compatibility.md).
   */
 enum NtcVersion(val number: Int):
   case V16 extends NtcVersion(16)

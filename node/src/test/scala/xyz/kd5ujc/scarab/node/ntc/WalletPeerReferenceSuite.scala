@@ -162,6 +162,37 @@ class WalletPeerReferenceSuite extends FunSuite:
     }
   }
 
+  // The reference answers each of these queries at every version and writes it alike at each, but
+  // for the old ledger-peer snapshot: it drops SRV relays below version 22
+  // (`encodeLedgerPeerSnapshot (ledgerPeerSnapshotSupportsSRV v)`, `Shelley/Ledger/Query.hs:1042`,
+  // `NetworkProtocolVersion.hs:41-44`, ouroboros-consensus 82ecba32; `LedgerPeers/Type.hs:309-353`,
+  // ouroboros-network c45735a5). Inside `GetCBOR` it is written at the latest version.
+  private def sameEncoding(label: String, recorded: NtcVersion): Vector[NtcVersion] =
+    if label != "LedgerPeerSnapshot-legacy" then NtcVersion.All
+    else NtcVersion.All.filter(v => (v.number >= 22) == (recorded.number >= 22))
+
+  fixtures.foreach { fixture =>
+    fixture.queries.foreach { entry =>
+      val c = entry.hcursor
+      val label = c.get[String]("label").fold(e => fail(e.message), identity)
+      val versionNumber = c.get[Int]("version").fold(e => fail(e.message), identity)
+      test(s"${fixture.name}: $label at NTC $versionNumber is the answer at each version alike") {
+        val recorded = NtcVersion
+          .fromNumber(versionNumber)
+          .getOrElse(fail(s"unknown NTC version $versionNumber"))
+        val request = hex(c.get[String]("requestHex").fold(e => fail(e.message), identity))
+        val expected = hex(c.get[String]("replyHex").fold(e => fail(e.message), identity))
+        sameEncoding(label, recorded).foreach { version =>
+          val query = NtcQuery.decode(request, version).fold(e => fail(s"$version: $e"), identity)
+          val answer = QueryAnswers
+            .answerOrWhy(fixture.env, fixture.view, Map.empty, query, version)
+            .fold(e => fail(s"$version: $e"), identity)
+          assertEquals(CborOut.build(_.array(2).uint(4).raw(answer)), expected, s"$version")
+        }
+      }
+    }
+  }
+
   test("native fixtures contain both nonempty relays and genuinely nonzero member rewards") {
     val peers = fixtures.find(_.name == "peer-relays").getOrElse(fail("missing peer fixture"))
     assert(
