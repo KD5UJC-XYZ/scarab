@@ -38,6 +38,14 @@ python3 -I -B scripts/conformance/run.py ledger-rules uplc-conformance cbor-deco
 5. It writes the report, compressed, beside a `.provenance.json` (commit, inputs and pins, tool and arguments,
    image, checks, timings; no host name or path) and `summary.json`.
 
+The workflow also runs `scripts/conformance/summarize.py --out <dir>`. Its `cbor-outcomes.md` is the job summary;
+`cbor-outcomes.json` retains matched and mismatched counts by era and rule, source identities and every mismatched
+sample's name. A successfully generated report may contain disagreements: the summary says **MISMATCHES**, emits
+a workflow warning and keeps those results visible. It does not add a merge gate or prevent publishing an honest
+report. Missing or invalid report evidence is **INCOMPLETE**, never a conformance pass.
+With `--previous <earlier-run-dir>`, the summarizer identifies new and resolved disagreements only when dataset,
+protocol version and sample identities agree. Without comparable evidence that number is unknown, not zero.
+
 A report names its commit, so the checkout must have no uncommitted or untracked changes (`--allow-dirty` runs
 anyway, and `publish.py` then refuses the report). Each run takes a fresh `--out`: the runner refuses one that
 already holds reports, so that `publish.py` takes only that run's. The exit status is 1 if a scenario failed. `--dry-run` prints

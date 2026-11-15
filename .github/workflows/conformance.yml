@@ -78,6 +78,11 @@ jobs:
       - name: Summary
         if: ${{ always() }}
         run: |
+          # Missing CBOR evidence is visible, but must not prevent publication of other honest reports.
+          if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance"; then
+            echo '::warning::CBOR conformance evidence is incomplete; see the job summary'
+          fi
+          cat "$RUNNER_TEMP/conformance/cbor-outcomes.md" >> "$GITHUB_STEP_SUMMARY"
           if [ -f "$RUNNER_TEMP/conformance/summary.json" ]; then
             { echo '```json'; cat "$RUNNER_TEMP/conformance/summary.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -91,6 +96,8 @@ jobs:
             ${{ runner.temp }}/conformance/*.json.gz
             ${{ runner.temp }}/conformance/*.provenance.json
             ${{ runner.temp }}/conformance/summary.json
+            ${{ runner.temp }}/conformance/cbor-outcomes.json
+            ${{ runner.temp }}/conformance/cbor-outcomes.md
             ${{ runner.temp }}/conformance/work/**/*.log
           retention-days: 30
           if-no-files-found: error
