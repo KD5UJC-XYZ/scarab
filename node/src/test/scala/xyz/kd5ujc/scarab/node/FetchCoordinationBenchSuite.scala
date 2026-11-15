@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
-import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchGsv, FetchMode}
+import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, Fetched, FetchGsv, FetchMode}
 import scala.concurrent.duration.*
 
 /** Controlled virtual transport characterization, not a live-network throughput benchmark. Both
@@ -102,7 +102,8 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
     for
       stats <- Ref.of[IO, Observation](Observation())
       fetched <- Ref.of[IO, Set[Bytes]](Set.empty)
-      coordinator <- FetchCoordinator.create[IO](config, Some(IO.pure(local)), Some(fetched.get))
+      coordinator <- FetchCoordinator
+        .create[IO](config, Some(IO.pure(local)), Some(fetched.get.map(Fetched.of)))
       began <- IO.monotonic
       _ <- peers
         .traverse(p =>

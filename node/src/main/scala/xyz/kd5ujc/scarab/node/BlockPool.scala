@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, PeerError, Validation
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.genesis.DiffusionPunishment
 import xyz.kd5ujc.scarab.consensus.ChainSelection
-import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchMode}
+import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, Fetched, FetchMode}
 import scala.concurrent.duration.*
 
 /** The blocks that peer sessions fetched ahead of the rules, by header hash, shared by the sessions
@@ -439,7 +439,7 @@ final class BlockPool[F[_]: Async] private (
     reap *> (source match
       case Source.Session(origin) => slots.get.map(_.origins.contains(origin))
       case Source.Recovered =>
-        (slots.get, recovered.traverse(_.hashes)).mapN { (current, durable) =>
+        (slots.get, recovered.traverse(_.holds)).mapN { (current, durable) =>
           current.entries.contains(hash) || current.processed.contains(hash) || durable.exists(
             _(hash)
           )
@@ -702,13 +702,15 @@ object BlockPool:
   /** The received log, through callbacks that return readable original bytes and own their
     * infrastructure error scope.
     *
+    * @param holds
+    *   whether the log offers a block (held and not refused), from its state read once
     * @param get
     *   a block the log may still offer: none once a validation refusal suppressed it
     * @param original
     *   a block the log holds, refused or not: what a processed block's body is read back from
     */
   final case class Recovered[F[_]](
-      hashes: F[Set[Bytes]],
+      holds: F[Bytes => Boolean],
       get: Bytes => F[Option[Bytes]],
       original: Bytes => F[Option[Bytes]],
       invalidate: Bytes => F[Unit]
@@ -818,10 +820,16 @@ object BlockPool:
               policy.maxRequestsPerPeer
             ),
             selection,
+            // What BlockFetch reads as fetched, from the pool and the log read once per decision:
+            // a body received, a block processed, or one the log offers.
             Some(
-              (slots.get, recovered.traverse(_.hashes)).mapN { (current, durable) =>
-                current.entries.collect { case (hash, Slot.Done(_, _, _)) => hash }.toSet ++
-                  current.processed.keySet ++ durable.getOrElse(Set.empty)
+              (slots.get, recovered.traverse(_.holds)).mapN { (current, durable) =>
+                Fetched(hash =>
+                  current.entries.get(hash).exists {
+                    case Slot.Done(_, _, _) => true
+                    case _                  => false
+                  } || current.processed.contains(hash) || durable.exists(_(hash))
+                )
               }
             ),
             policy.peerSalt

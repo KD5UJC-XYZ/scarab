@@ -60,6 +60,11 @@ trait ReceivedBlocks[F[_]]:
   def refs: F[Vector[BlockRef]]
   def hashes: F[Set[Bytes]]
 
+  /** Whether a block is held and not refused, answered from the state read once: the membership
+    * [[hashes]] would list, without building that set.
+    */
+  def holds: F[Bytes => Boolean]
+
   /** A validation refusal suppresses this body's reuse until the next full validation on open. Like
     * the reference's in-memory invalid-block set, this is not a peer identity persisted across node
     * lifetimes.
@@ -255,6 +260,11 @@ object ReceivedBlocks:
 
       def hashes: F[Set[Bytes]] =
         (index.get, invalid.get).mapN((known, refused) => known.keySet -- refused)
+
+      def holds: F[Bytes => Boolean] =
+        (index.get, invalid.get).mapN((known, refused) =>
+          hash => known.contains(hash) && !refused(hash)
+        )
 
       def invalidate(hash: Bytes): F[Unit] = invalid.update(_ + hash)
 

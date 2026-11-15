@@ -39,7 +39,7 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
       refused: Ref[IO, Set[Bytes]]
   ): BlockPool.Recovered[IO] =
     BlockPool.Recovered(
-      stored.get.map(_.keySet),
+      stored.get.map(held => hash => held.contains(hash)),
       h => (stored.get, refused.get).mapN((s, r) => s.get(h).filterNot(_ => r(h))),
       h => stored.get.map(_.get(h)),
       h => refused.update(_ + h)

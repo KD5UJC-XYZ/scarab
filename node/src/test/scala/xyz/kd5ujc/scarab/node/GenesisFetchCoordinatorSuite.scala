@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.Fixtures
 import xyz.kd5ujc.scarab.network.{FailsOnUncaught, Settled}
-import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
+import xyz.kd5ujc.scarab.network.selection.{Fetched, GenesisBlockFetch, Gsm}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
 import FetchTesting.*
@@ -24,7 +24,7 @@ class GenesisFetchCoordinatorSuite extends FailsOnUncaught:
         fetched <- Ref.of[IO, Set[Bytes]](Set.empty)
         demoted <- Ref.of[IO, Vector[Long]](Vector.empty)
         coordinator <- FetchCoordinator
-          .create[IO](selection = Some(IO.pure(local)), fetched = Some(fetched.get))
+          .create[IO](selection = Some(IO.pure(local)), fetched = Some(fetched.get.map(Fetched.of)))
         _ <- coordinator.installGenesis(
           FetchCoordinator.GenesisControl(
             IO.monotonic.map(t =>

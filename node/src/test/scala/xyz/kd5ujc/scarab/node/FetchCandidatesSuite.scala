@@ -11,11 +11,13 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 class FetchCandidatesSuite extends FunSuite:
   private val flavor = ChainSelection.Tiebreaker.Restricted(5)
   private val originView = SelectView(-1, 0, None, 0, None)
-  private def local(headers: Vector[Header]): ChainSelection.Local =
-    ChainSelection.Local(
-      Point.Origin,
-      originView,
-      headers.map(h => ChainSelection.LocalBlock(h.point, SelectView.of(h)))
+  private def local(headers: Vector[Header]): FetchCandidates.Selected =
+    FetchCandidates.Selected.of(
+      ChainSelection.Local(
+        Point.Origin,
+        originView,
+        headers.map(h => ChainSelection.LocalBlock(h.point, SelectView.of(h)))
+      )
     )
 
   test("extension requests only headers beyond the latest shared point") {
@@ -64,10 +66,12 @@ class FetchCandidatesSuite extends FunSuite:
 
   test("an older base can intersect a retained header after the immutable anchor moved") {
     val chain = Fixtures.chain(6)
-    val selected = ChainSelection.Local(
-      chain(2).point,
-      SelectView.of(chain(2)),
-      Vector(ChainSelection.LocalBlock(chain(3).point, SelectView.of(chain(3))))
+    val selected = FetchCandidates.Selected.of(
+      ChainSelection.Local(
+        chain(2).point,
+        SelectView.of(chain(2)),
+        Vector(ChainSelection.LocalBlock(chain(3).point, SelectView.of(chain(3))))
+      )
     )
     assertEquals(
       FetchCandidates.select(flavor, selected, ChainSelection.Candidate(Point.Origin, chain)),
@@ -83,7 +87,7 @@ class FetchCandidatesSuite extends FunSuite:
         flavor,
         local(Vector.empty),
         ChainSelection.Candidate(Point.Origin, chain),
-        fetched
+        h => fetched(h.point)
       ),
       Right(
         FetchCandidates.Selection(
@@ -98,7 +102,7 @@ class FetchCandidatesSuite extends FunSuite:
         flavor,
         local(Vector.empty),
         ChainSelection.Candidate(Point.Origin, chain),
-        chain.map(_.point).toSet
+        h => chain.map(_.point).toSet(h.point)
       ),
       Left(Refusal.AlreadyFetched)
     )
@@ -110,7 +114,10 @@ class FetchCandidatesSuite extends FunSuite:
       Header
         .UnsizedByron(Bytes.empty, Bytes(Vector(99.toByte)), true, 1, 0, 101, 10, Some(anchor.hash))
         .withSizeHint(FetchTesting.sizeHint(1))
-    val selected = ChainSelection.Local(anchor.point, SelectView.of(anchor), Vector.empty)
+    val selected =
+      FetchCandidates.Selected.of(
+        ChainSelection.Local(anchor.point, SelectView.of(anchor), Vector.empty)
+      )
     assert(
       FetchCandidates.plausible(
         flavor,

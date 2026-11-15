@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
-import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, FetchGsv, FetchMode}
+import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, Fetched, FetchGsv, FetchMode}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import scala.concurrent.duration.*
 
@@ -86,7 +86,10 @@ class FetchCoordinationLawsSuite extends FailsOnUncaught:
   test("per-block progress keeps a full window busy until its low watermark is reached") {
     Ref.of[IO, Set[Bytes]](Set.empty).flatMap { cache =>
       FetchCoordinator
-        .create[IO](BlockFetchPolicy.Config(maxRequestsPerPeer = 2), fetched = Some(cache.get))
+        .create[IO](
+          BlockFetchPolicy.Config(maxRequestsPerPeer = 2),
+          fetched = Some(cache.get.map(Fetched.of))
+        )
         .flatMap { coordinator =>
           coordinator.session(0).use { session =>
             val measured = FetchGsv.fromSample(0, FetchGsv.PicosPerSecond / 10)
@@ -129,7 +132,10 @@ class FetchCoordinationLawsSuite extends FailsOnUncaught:
   test("range completion returns request credit before the request has finished") {
     Ref.of[IO, Set[Bytes]](Set.empty).flatMap { cache =>
       FetchCoordinator
-        .create[IO](BlockFetchPolicy.Config(maxRequestsPerPeer = 1), fetched = Some(cache.get))
+        .create[IO](
+          BlockFetchPolicy.Config(maxRequestsPerPeer = 1),
+          fetched = Some(cache.get.map(Fetched.of))
+        )
         .flatMap { coordinator =>
           coordinator.session(0).use { session =>
             for
@@ -159,7 +165,7 @@ class FetchCoordinationLawsSuite extends FailsOnUncaught:
       FetchCoordinator
         .create[IO](
           BlockFetchPolicy.Config(bulkConcurrency = 1, deadlineConcurrency = 2),
-          fetched = Some(cache.get)
+          fetched = Some(cache.get.map(Fetched.of))
         )
         .flatMap { coordinator =>
           (coordinator.session(0), coordinator.session(1), coordinator.session(2)).tupled.use {

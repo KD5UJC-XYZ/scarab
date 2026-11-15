@@ -71,6 +71,27 @@ class BlockPoolSuite extends FailsOnUncaught:
       assertEquals(held, 1)
   }
 
+  test("BlockFetch reads a filled body as fetched, and an open or released claim as not") {
+    for
+      pool <- BlockPool.create[IO]
+      seen <- (pool.session, pool.fetchCoordinator.session(0)).tupled.use { (claims, fetcher) =>
+        for
+          _ <- claims.claim(Vector(hash(1), hash(2)))
+          open <- fetcher.hasBody(hash(1))
+          _ <- claims.fill(Vector(hash(1) -> block(1)))
+          _ <- claims.release(Vector(hash(2)))
+          filled <- fetcher.hasBody(hash(1))
+          released <- fetcher.hasBody(hash(2))
+          never <- fetcher.hasBody(hash(9))
+        yield (open, filled, released, never)
+      }
+    yield
+      assertEquals(seen._1, false, "an open claim is not fetched")
+      assertEquals(seen._2, true, "a filled body is fetched")
+      assertEquals(seen._3, false, "a released claim is not fetched")
+      assertEquals(seen._4, false, "a block nobody claimed is not fetched")
+  }
+
   test("a session waiting for a block that another one is fetching gets it") {
     for
       pool <- BlockPool.create[IO]
@@ -332,7 +353,7 @@ class BlockPoolSuite extends FailsOnUncaught:
         BlockPool.FetchPolicy(),
         IO.pure(local),
         BlockPool.Recovered(
-          persisted.get.map(_.keySet),
+          persisted.get.map(held => hash => held.contains(hash)),
           h => persisted.get.map(_.get(h)),
           h => persisted.get.map(_.get(h)),
           h => persisted.update(_ - h)
@@ -400,7 +421,7 @@ class BlockPoolSuite extends FailsOnUncaught:
         BlockPool.FetchPolicy(),
         IO.pure(local),
         BlockPool.Recovered(
-          durable.get.map(_.keySet),
+          durable.get.map(held => hash => held.contains(hash)),
           h => durable.get.map(_.get(h)),
           h => durable.get.map(_.get(h)),
           h => durable.update(_ - h)

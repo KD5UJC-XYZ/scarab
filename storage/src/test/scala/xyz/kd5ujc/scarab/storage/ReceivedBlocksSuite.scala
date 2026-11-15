@@ -60,6 +60,45 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
     }
   }
 
+  test("holds answers what hashes lists, from the state it read") {
+    tempDir.use { dir =>
+      ok {
+        val first = block(1)
+        val fork = first._1.copy(hash = hash(100)) -> block(100)._2
+        val later = block(2)
+        ReceivedBlocks.open[IO](dir).use { store =>
+          for
+            _ <- store.put(first._1, first._2)
+            _ <- store.put(fork._1, fork._2)
+            _ <- store.invalidate(first._1.hash)
+            listed <- store.hashes
+            held <- store.holds
+            _ <- store.put(later._1, later._2)
+            fresh <- store.holds
+            asked = Vector(first._1.hash, fork._1.hash, later._1.hash, hash(200))
+            _ <- IO(
+              assertEquals(
+                asked.filter(held),
+                asked.filter(listed),
+                "the read before the put answers as hashes did"
+              )
+            )
+            _ <- IO(
+              assertEquals(asked.filter(held), Vector(fork._1.hash), "refused and later are out")
+            )
+            _ <- IO(
+              assertEquals(
+                asked.filter(fresh),
+                Vector(fork._1.hash, later._1.hash),
+                "a new read sees the put"
+              )
+            )
+          yield ()
+        }
+      }
+    }
+  }
+
   test("restart retains both received forks independently of selection") {
     tempDir.use { dir =>
       ok {

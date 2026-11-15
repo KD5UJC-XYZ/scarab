@@ -14,6 +14,17 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
   * any additional downloaded blocks retained outside that chain.
   */
 private[node] object FetchCandidates:
+
+  /** The selected chain of one decision with the set of its points, built once for every candidate
+    * that decision weighs: the intersection, plausibility and fetched checks all ask it.
+    */
+  final class Selected private (val local: ChainSelection.Local, points: Set[Point]):
+    def holds(point: Point): Boolean = points(point)
+
+  object Selected:
+    def of(local: ChainSelection.Local): Selected =
+      new Selected(local, local.blocks.map(_.point).toSet + local.anchor)
+
   final case class Selection(
       intersection: Point,
       suffix: Vector[Header],
@@ -22,20 +33,24 @@ private[node] object FetchCandidates:
     def headers: Vector[Header] = missing.flatten
 
   /** The combined native boundary declines a detached chain at the plausibility stage first. */
+  /** @param alreadyFetched
+    *   Whether a header's block is downloaded outside the selected chain; the selected chain's own
+    *   blocks always count as fetched.
+    */
   def select(
       tiebreaker: ChainSelection.Tiebreaker,
-      local: ChainSelection.Local,
+      selected: Selected,
       candidate: ChainSelection.Candidate,
-      alreadyFetched: Set[Point] = Set.empty
+      alreadyFetched: Header => Boolean = _ => false
   ): Either[Refusal, Selection] =
-    if !plausible(tiebreaker, local, candidate) then Left(Refusal.ChainNotPlausible)
+    if !plausible(tiebreaker, selected, candidate) then Left(Refusal.ChainNotPlausible)
     else
-      suffix(local, candidate).flatMap { (intersection, headers) =>
-        val fetched = alreadyFetched ++ local.blocks.map(_.point) + local.anchor
+      suffix(selected, candidate).flatMap { (intersection, headers) =>
         val (completed, current) = headers.foldLeft(
           (Vector.empty[Vector[Header]], Vector.empty[Header])
         ) { case ((done, run), header) =>
-          if fetched(header.point) then (if run.nonEmpty then done :+ run else done, Vector.empty)
+          if alreadyFetched(header) || selected.holds(header.point) then
+            (if run.nonEmpty then done :+ run else done, Vector.empty)
           else (done, run :+ header)
         }
         val missing = if current.nonEmpty then completed :+ current else completed
@@ -48,28 +63,28 @@ private[node] object FetchCandidates:
     */
   def plausible(
       tiebreaker: ChainSelection.Tiebreaker,
-      local: ChainSelection.Local,
+      selected: Selected,
       candidate: ChainSelection.Candidate
   ): Boolean =
-    intersection(local, candidate).isDefined && candidate.headers.lastOption.exists { tip =>
+    val local = selected.local
+    intersection(selected, candidate).isDefined && candidate.headers.lastOption.exists { tip =>
       if local.blocks.isEmpty then tip.point != local.anchor
       else ChainSelection.prefersCandidate(tiebreaker, local.tipView, SelectView.of(tip))
     }
 
   /** Latest common point, bounded by the selected immutable anchor. */
   def suffix(
-      local: ChainSelection.Local,
+      selected: Selected,
       candidate: ChainSelection.Candidate
   ): Either[Refusal, (Point, Vector[Header])] =
-    intersection(local, candidate).toRight(Refusal.IntersectionTooDeep).map { (point, count) =>
+    intersection(selected, candidate).toRight(Refusal.IntersectionTooDeep).map { (point, count) =>
       (point, candidate.headers.drop(count))
     }
 
   private def intersection(
-      local: ChainSelection.Local,
+      selected: Selected,
       candidate: ChainSelection.Candidate
   ): Option[(Point, Int)] =
-    val selected = local.blocks.map(_.point).toSet + local.anchor
-    candidate.headers.lastIndexWhere(h => selected(h.point)) match
-      case -1 => Option.when(selected(candidate.base))(candidate.base -> 0)
+    candidate.headers.lastIndexWhere(h => selected.holds(h.point)) match
+      case -1 => Option.when(selected.holds(candidate.base))(candidate.base -> 0)
       case i  => Some(candidate.headers(i).point -> (i + 1))
