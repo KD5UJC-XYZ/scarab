@@ -163,6 +163,8 @@ class CborOutcomesTest(unittest.TestCase):
         self.assertIn("- cron: '17 8 * * *'", workflow)
         self.assertIn("CBOR_DECODING: ${{ github.event_name == 'schedule' || inputs.cbor-decoding }}", workflow)
         self.assertIn('if: ${{ inputs.publish }}', workflow)
+        self.assertIn('--event schedule --status success', workflow)
+        self.assertIn('--previous "$RUNNER_TEMP/conformance-previous"', workflow)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: conformance-reports
@@ -77,11 +78,24 @@ jobs:
             --out "$RUNNER_TEMP/conformance" --inputs "$RUNNER_TEMP/conformance-inputs" \
             --image scarab-jdk:local --build-image --owner "conformance-$GITHUB_RUN_ID"
 
+      - name: Read the previous nightly CBOR report when available
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous_run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow conformance.yml --branch main \
+            --event schedule --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty') || previous_run=
+          if [ -n "$previous_run" ]; then
+            gh run download "$previous_run" --repo "$GITHUB_REPOSITORY" --name "conformance-reports-$previous_run" \
+              --dir "$RUNNER_TEMP/conformance-previous" || echo 'Previous CBOR evidence unavailable; comparison will say unknown'
+          fi
+
       - name: Summary
         if: ${{ always() }}
         run: |
           # Missing CBOR evidence is visible, but must not prevent publication of other honest reports.
-          if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance"; then
+          if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance" \
+            --previous "$RUNNER_TEMP/conformance-previous"; then
             echo '::warning::CBOR conformance evidence is incomplete; see the job summary'
           fi
           if [ -f "$RUNNER_TEMP/conformance/cbor-outcomes.md" ]; then

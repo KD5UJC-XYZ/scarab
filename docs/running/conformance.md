@@ -51,8 +51,9 @@ protocol version and sample identities agree. Without comparable evidence that n
 The existing workflow runs `cbor-decoding` nightly, with both complete pinned era corpora and all normalisation
 vectors. It does not publish reports automatically or add a required PR check. The job's summary gives the
 conformance verdict; a successful report-generation job alone is not a conformance pass. Reports, provenance,
-outcome summaries and diagnostic logs have bounded workflow-artifact retention. The first run has no earlier
-comparison; local comparisons can use two retained run directories with `summarize.py --previous`.
+outcome summaries and diagnostic logs have bounded workflow-artifact retention. The workflow reads the most recent
+successful nightly run's artifact for comparison. A first run, expired/missing artifact or incompatible corpus
+gives an unknown comparison; local comparisons can use two retained run directories with `summarize.py --previous`.
 
 The detector's historical positive control is [#550](https://github.com/KD5UJC-XYZ/scarab/issues/550), fixed by
 [#628](https://github.com/KD5UJC-XYZ/scarab/pull/628): an anchor URL above 128 UTF-8 bytes was accepted. The pinned
