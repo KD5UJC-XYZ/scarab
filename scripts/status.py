@@ -11,7 +11,7 @@
     python3 scripts/status.py --check              the triage check: exit 1 and list each issue that breaks
                                                    the labelling rules of docs/process.md, open or closed
     python3 scripts/status.py --check --from p.json the check over the output of
-                                                   `gh api --paginate --slurp 'repos/{owner}/{repo}/issues?state=all'`
+                                                   `gh api --paginate 'repos/{owner}/{repo}/issues?state=all'`
     python3 scripts/status.py --issue 567          what a session needs before it works on issue 567: its state,
                                                    labels and milestone, its roadmap id (or those of the issues it
                                                    cites), the decisions of docs/decisions.md that cite it, the
@@ -82,7 +82,7 @@ PRIORITIES = ("P0", "P1", "P2")
 STATUSES = ("idea", "backlog", "in-progress", "blocked", "parked", "needs-owner")
 MILESTONES = ("reference-parity", "mainnet-evidence", "leios-dijkstra")
 WITHOUT_MILESTONE = frozenset({"idea", "parked"})
-CHECK_COMMAND = ["gh", "api", "--paginate", "--slurp", "repos/{owner}/{repo}/issues?state=all&per_page=100"]
+CHECK_COMMAND = ["gh", "api", "--paginate", "repos/{owner}/{repo}/issues?state=all&per_page=100"]
 OWNER_DECISION = "owner-decision"
 # A row of docs/decisions.md: the date the decision was taken, the issues it came from, then the decision.
 DECISION_ROW = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|")
@@ -241,18 +241,40 @@ def render_check(violations: list[Violation], issues: int) -> str:
 
 
 def without_pull_requests(pages: list) -> list[dict]:
-    """The issues of `gh api --paginate --slurp` pages (or of one flat list), without the pull requests."""
+    """The issues of `gh api --paginate` pages (or of one flat list), without the pull requests."""
     flat = [item for page in pages for item in (page if isinstance(page, list) else [page])]
     return [item for item in flat if "pull_request" not in item]
 
 
+def read_issue_pages(text: str) -> list[dict]:
+    """Read consecutive JSON arrays from gh --paginate, or a saved flat/nested array."""
+    decoder = json.JSONDecoder()
+    pages = []
+    remaining = text.lstrip()
+    try:
+        while remaining:
+            page, end = decoder.raw_decode(remaining)
+            if not isinstance(page, list):
+                raise ValueError("expected an issue array")
+            pages.extend(page)
+            remaining = remaining[end:].lstrip()
+        if not text.strip():
+            raise ValueError("empty response")
+        issues = without_pull_requests(pages)
+        if any(not isinstance(item, dict) for item in issues):
+            raise ValueError("expected issue objects")
+        return issues
+    except (ValueError, TypeError) as error:
+        raise GhFailure(f"invalid paginated issue response: {error}") from error
+
+
 def fetch_for_check(source: Path | None, run=subprocess.run) -> list[dict]:
     if source is not None:
-        return without_pull_requests(json.loads(source.read_text(encoding="utf-8")))
+        return read_issue_pages(source.read_text(encoding="utf-8"))
     done = run(CHECK_COMMAND, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         raise GhFailure(done.stderr.strip())
-    return without_pull_requests(json.loads(done.stdout))
+    return read_issue_pages(done.stdout)
 
 
 def run_check(source: Path | None, as_json: bool, now: datetime, run=subprocess.run,
