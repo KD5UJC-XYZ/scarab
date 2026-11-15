@@ -552,6 +552,43 @@ object ConwayCodecs:
       )
     }
 
+  /** The redeemer set's `RedeemersRaw` encoder (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/
+    * TxWits.hs:144-169`, cardano-ledger f649f975): a list of [[redeemer]] below version 9, a map
+    * from `[tag, index]` to `[data, ex_units]` from 9. Both are definite up to 23 entries and
+    * indefinite above (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/
+    * Encoder.hs:363-368, 402-408, 431-443, 458-468`). Both visit keys in tag then index order
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:201-213, 269-278`). Repeated keys keep
+    * the last value, as the reference's decoder builds its map with `Map.fromList`
+    * (`TxWits.hs:561-580`). Every input element is checked by [[redeemer]].
+    *
+    * This must never be used for hashing: the script integrity hash covers the witness set's
+    * original `Witnesses.redeemersRaw` bytes (BYT-1), as `Redeemers` retains `MemoBytes`
+    * (`TxWits.hs:174-179, 600-601`), not this re-encoding.
+    */
+  def redeemers(using v: ProtVer): Codec[Vector[Redeemer]] =
+    writer[Vector[Redeemer]]("a redeemer set") { (rs, out) =>
+      val ordered = rs
+        .map(r => (r.tag, r.index) -> r)
+        .toMap
+        .values
+        .toVector
+        .sortBy(r => (r.tag, r.index))
+      if v.atLeast(9) then
+        out.variableMap(ordered.size) {
+          ordered.foreach { r =>
+            out.arrayHead(2)
+            out.uint(r.tag.toLong)
+            out.uint(r.index)
+            out.arrayHead(2)
+            out.raw(r.data)
+            out.arrayHead(2)
+            out.integer(r.exUnits.mem)
+            out.integer(r.exUnits.steps)
+          }
+        }
+      else out.variableArray(ordered.size)(ordered.foreach(redeemer.encode(_, out)))
+    }(rs => rs.iterator.flatMap(redeemer.check).nextOption())
+
   /** `EncCBOR (WitVKey kr)` (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs:70-74`,
     * cardano-ledger f649f975): `[vkey, signature]`, the key and the signature as their raw bytes.
     */
