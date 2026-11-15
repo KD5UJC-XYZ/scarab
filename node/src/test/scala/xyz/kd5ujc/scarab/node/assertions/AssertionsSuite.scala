@@ -179,7 +179,8 @@ class AssertionsSuite extends FailsOnUncaught:
 
   test("concurrent calls record the first true and the first false evaluation of each property") {
     val properties: Vector[Property.Sometimes | Property.Unreachable] =
-      Property.Sometimes.values.toVector ++ Property.Unreachable.values.toVector
+      (Property.Sometimes.values.toVector: Vector[Property.Sometimes | Property.Unreachable]) ++
+        Property.Unreachable.values.toVector
     val calls = Gen.listOfN(
       200,
       Gen.zip(Gen.oneOf(properties), Gen.oneOf(true, false))
