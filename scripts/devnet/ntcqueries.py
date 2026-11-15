@@ -25,15 +25,16 @@ ERA_CONWAY = 6
 # 916-998, ouroboros-consensus 82ecba32). The Scala node refuses the same ones (`NtcQuery.shelleyLeaf`).
 CONWAY_ONLY = frozenset({23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39})
 # The block queries the Scala node answers in an era before Conway: the ledger states, the chain-dependent state, the
-# UTxO and the reward provenance (`QueryAnswers.inEveryEra`). It decodes the others there and ends the connection
-# without an answer.
-ANSWERED_BEFORE_CONWAY = frozenset({6, 7, 8, 12, 13, 14, 15})
+# UTxO, the reward provenance and the queries that read nothing of the era's own (the ledger tip, the epoch, the
+# proposed parameter updates, the genesis configuration, the chain account state and the maximum major protocol
+# version; `QueryAnswers.inEveryEra`). It decodes the others there and ends the connection without an answer.
+ANSWERED_BEFORE_CONWAY = frozenset({0, 1, 4, 6, 7, 8, 11, 12, 13, 14, 15, 29, 38})
 # The ratchet of the e2e era battery (`ntceras.ratchet`): the block queries whose forms are expected incomplete before
 # Conway, those of the battery's queries the Scala node does not have there yet; none in Conway. Every form of a
 # query is expected as its query is (`expected_incomplete`), at every version and in every era before Conway. A form
 # of another query that is incomplete fails the run, and a form of these that is compared and matched is reported,
 # so that its query leaves this set. It only shrinks: a query leaves it when the Scala node answers it before Conway.
-INCOMPLETE_BEFORE_CONWAY = frozenset({0, 1, 2, 3, 10, 11, 16, 17, 18, 19, 20, 22, 24, 29, 34, 36, 37, 38})
+INCOMPLETE_BEFORE_CONWAY = frozenset({2, 3, 10, 16, 17, 18, 19, 20, 22, 24, 34, 36, 37})
 # Below this node-to-client version the protocol parameters and the genesis configuration have their legacy encodings
 # (`currentPParamsEnDecoding`, `genesisConfigEnDecoding`, Query.hs 1098-1125, ouroboros-consensus 82ecba32:
 # ShelleyNodeToClientVersion13 is V21); the battery asks them at V20 besides the version both nodes agree on.
@@ -178,6 +179,7 @@ def battery(u, era=ERA_CONWAY):
     add("GetLedgerTip", [0])
     add("GetEpochNo", [1])
     add("GetCurrentPParams", [3])
+    add("GetProposedPParamsUpdates", [4])
     add("GetUTxOWhole", [7])
     add("GetUTxOByAddress", [6, eset(u.addresses[:2], era)])
     add("GetUTxOByAddress/none", [6, eset([b"\x61" + b"\x00" * 28], era)])
@@ -244,6 +246,12 @@ def battery(u, era=ERA_CONWAY):
     add("GetCBOR/GetLedgerPeerSnapshot", [9, [34, 0]])
     add("GetCBOR/GetLedgerPeerSnapshot/big", [9, [34, 1]])
     add("GetCBOR/GetLedgerPeerSnapshot/legacy", [9, [34]])
+    add("GetCBOR/GetLedgerTip", [9, [0]])
+    add("GetCBOR/GetEpochNo", [9, [1]])
+    add("GetCBOR/GetProposedPParamsUpdates", [9, [4]])
+    add("GetCBOR/GetGenesisConfig", [9, [11]])
+    add("GetCBOR/GetAccountState", [9, [29]])
+    add("GetCBOR/GetMaxMajorProtocolVersion", [9, [38]])
     return q
 
 
