@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.storage
 
 import cats.effect.IO
 import cats.syntax.all.*
+import fs2.Chunk
 import fs2.io.file.{Files, Path}
 import java.util.Locale
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -238,6 +239,119 @@ class FileNameLocaleSuite extends CatsEffectSuite:
           assertEquals(listed.toList, names, clue)
           assertEquals(files.toList, names.sorted, clue)
           assertEquals(restored, names.headOption.map(_ -> snapshot(4)), clue)
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- names in a locale's digits
+
+  /** `name` with its ASCII digits written from `zero`, as `%d` wrote them under a locale whose
+    * digits start there before the numbers of names were written in the root locale.
+    */
+  private def inDigits(zero: Char)(name: String): String =
+    name.map(c => if c >= '0' && c <= '9' then (zero + (c - '0')).toChar else c)
+
+  /** Persian (`fa-IR`) and Arabic-Indic (`ar-EG`) zeros. */
+  private val zeros = List('\u06f0', '\u0660')
+
+  /** Rename every file of `dir` as [[inDigits]] does. */
+  private def relabel(dir: Path, zero: Char): IO[Unit] =
+    listing(dir).flatMap(_.traverse_ { name =>
+      val renamed = inDigits(zero)(name)
+      Files.forAsync[IO].move(dir / name, dir / renamed).whenA(renamed != name)
+    })
+
+  /** Each file of `dir` and its bytes. */
+  private def contents(dir: Path): IO[Map[String, Bytes]] =
+    listing(dir)
+      .flatMap(_.traverse { name =>
+        Files
+          .forAsync[IO]
+          .readAll(dir / name)
+          .compile
+          .to(Chunk)
+          .map(c => name -> Bytes.wrap(c.toArray))
+      })
+      .map(_.toMap)
+
+  test("an immutable store whose names hold a locale's digits is refused and left as it was") {
+    zeros.traverse_ { zero =>
+      tempDir.use { dir =>
+        for
+          _ <- writeImmutable(dir)
+          _ <- relabel(dir, zero)
+          before <- contents(dir)
+          opened <- attempt(FileImmutableStore.open[IO](dir, chunkSlots).use(_ => IO.unit))
+          preflight <- attempt(FileImmutableStore.preflightReadOnly[IO](dir, chunkSlots))
+          first <- attempt(FileImmutableStore.firstBlockReadOnly[IO](dir))
+          after <- contents(dir)
+        yield
+          val refused: Left[StorageError, Nothing] = Left(
+            StorageError.Corrupt(
+              dir.toString,
+              FileNameProblem.LocaleDigits(inDigits(zero)("00000.index"))
+            )
+          )
+          assertEquals(opened, refused, "open")
+          assertEquals(preflight, refused, "the read-only preflight")
+          assertEquals(first, refused, "the read-only first block")
+          assertEquals(after, before, "the files and their bytes")
+      }
+    }
+  }
+
+  test("a chunk file in a locale's digits beside an ASCII store is refused by every reader") {
+    zeros.traverse_ { zero =>
+      tempDir.use { dir =>
+        val stray = inDigits(zero)("00002.chunk")
+        for
+          _ <- writeImmutable(dir)
+          _ <- Files
+            .forAsync[IO]
+            .writeAll(dir / stray)
+            .apply(fs2.Stream.emits(Array[Byte](1, 2)))
+            .compile
+            .drain
+          before <- contents(dir)
+          opened <- attempt(FileImmutableStore.open[IO](dir, chunkSlots).use(_ => IO.unit))
+          preflight <- attempt(FileImmutableStore.preflightReadOnly[IO](dir, chunkSlots))
+          first <- attempt(FileImmutableStore.firstBlockReadOnly[IO](dir))
+          after <- contents(dir)
+        yield
+          val refused: Left[StorageError, Nothing] =
+            Left(StorageError.Corrupt(dir.toString, FileNameProblem.LocaleDigits(stray)))
+          assertEquals(preflight, refused, "the read-only preflight")
+          assertEquals(first, refused, "the read-only first block")
+          assertEquals(opened, refused, "open")
+          assertEquals(after, before, "the files and their bytes")
+      }
+    }
+  }
+
+  test("a volatile log whose names hold a locale's digits is refused and left as it was") {
+    zeros.traverse_ { zero =>
+      tempDir.use { dir =>
+        for
+          _ <- ok(VolatileStore.open[IO](dir, perFile).use { (store, _) =>
+            (0 until 5).toList.map(block(_)).traverse_((ref, raw) => store.append(ref, raw))
+          })
+          _ <- relabel(dir, zero)
+          before <- contents(dir)
+          opened <- attempt(VolatileStore.open[IO](dir, perFile).use(_ => IO.unit))
+          // the received-block log is opened by its index
+          indexed <- attempt(VolatileStore.openIndex[IO](dir, perFile).use(_ => IO.unit))
+          after <- contents(dir)
+        yield
+          // the log reads its files in the order they are listed: the refusal names any of them
+          val renamed = before.keySet
+          List("open" -> opened, "openIndex" -> indexed).foreach { (how, result) =>
+            result match
+              case Left(StorageError.Corrupt(what, FileNameProblem.LocaleDigits(name))) =>
+                assertEquals(what, dir.toString, how)
+                assert(renamed.contains(name), s"$how: $name is not a file of the log")
+              case other => fail(s"$how: expected a refusal of a locale's digits, got $other")
+          }
+          assertEquals(after, before, "the files and their bytes")
       }
     }
   }

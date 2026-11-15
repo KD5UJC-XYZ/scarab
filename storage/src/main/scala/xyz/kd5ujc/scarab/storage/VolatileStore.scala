@@ -294,20 +294,25 @@ object VolatileStore:
 
     final class Current(val seq: Int, val channel: FileChannel)
 
-    /** Read the existing files; returns what was found and what was repaired. */
-    val scan: F[Scanned[A]] =
+    /** The log's files and their numbers, in order of number (files of one number in the order they
+      * are listed), read before any file is changed: a name that holds a locale's digits refuses
+      * the log as it is ([[FileNameProblem.LocaleDigits]]).
+      */
+    val listed: F[Vector[(Int, String)]] =
       guard(root.toString) {
         Files.createDirectories(root)
-        val names = {
-          Using.resource(Files.list(root)) { s =>
-            s.iterator.asScala
-              .map(_.getFileName.toString)
-              .filter(_.endsWith(Suffix))
-              .flatMap(n => n.stripSuffix(Suffix).toIntOption.map(_ -> n))
-              .toVector
-              .sortBy(_._1)
-          }
-        }
+        Using.resource(Files.list(root))(_.iterator.asScala.map(_.getFileName.toString).toVector)
+      }.flatMap(
+        _.traverse(n => FileNumber.numberOf(Suffix)(n).map(_.map(_ -> n)))
+          .fold(
+            StorageError.Corrupt(root.toString, _).raise[F, Vector[(Int, String)]],
+            numbered => F.pure(numbered.flatten.sortBy(_._1))
+          )
+      )
+
+    /** Read the existing files; returns what was found and what was repaired. */
+    val scan: F[Scanned[A]] = listed.flatMap { names =>
+      guard(root.toString) {
         val scanned = names.foldLeft(Scanned.empty[A]) { case (acc, (seq, name)) =>
           val path = root.resolve(name)
           if acc.damaged then
@@ -347,6 +352,7 @@ object VolatileStore:
         if scanned.cut > 0 || scanned.removed > 0 then syncDir()
         scanned
       }
+    }
 
     Resource
       .make(

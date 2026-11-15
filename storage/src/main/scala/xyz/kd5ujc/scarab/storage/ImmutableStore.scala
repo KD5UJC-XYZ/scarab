@@ -181,6 +181,18 @@ object FileImmutableStore:
           )
         }
 
+  /** The chunk numbers of the files among `names` named `<chunk><suffix>`, in order. A name that
+    * holds a locale's digits refuses the store in `dir` ([[FileNameProblem.LocaleDigits]]).
+    */
+  private def chunksNamed(
+      dir: Path,
+      names: Seq[String],
+      suffix: String
+  ): Either[StorageError, Vector[Int]] =
+    names.sorted.toVector
+      .traverse(FileNumber.numberOf(suffix))
+      .bimap(StorageError.Corrupt(dir.toString, _), _.flatten.sorted)
+
   /** Validate immutable format headers without opening the recovery-capable store. Identity
     * adoption calls this before publishing a new identity, so an unknown or incompatible database
     * remains byte-for-byte untouched.
@@ -194,22 +206,18 @@ object FileImmutableStore:
     AtomicFile.guard[F, Boolean](format.toString)(JFiles.exists(format.toNioPath)).flatMap {
       exists => if exists then formatMigration.detect(format).void else Sync[F].unit
     } *> AtomicFile
-      .guard[F, List[Int]](dir.toString) {
+      .guard[F, List[String]](dir.toString) {
         if !JFiles.isDirectory(dir.toNioPath) then Nil
         else
           Using.resource(JFiles.list(dir.toNioPath)) { stream =>
             import scala.jdk.CollectionConverters.*
-            stream
-              .iterator()
-              .asScala
-              .toList
-              .flatMap { file =>
-                val name = file.getFileName.toString
-                Option.when(name.endsWith(".index"))(name.stripSuffix(".index").toIntOption).flatten
-              }
-              .sorted
+            stream.iterator().asScala.map(_.getFileName.toString).toList
           }
       }
+      .flatMap(names =>
+        (chunksNamed(dir, names, ".index"), chunksNamed(dir, names, ".chunk")).tupled
+          .fold(_.raise[F, Vector[Int]], (indexed, _) => indexed.pure[F])
+      )
       .flatMap(_.traverse_ { chunk =>
         val index = dir / s"${FileNumber.padded(chunk, 5)}.index"
         AtomicFile.guard[F, Long](index.toString)(JFiles.size(index.toNioPath)).flatMap { size =>
@@ -320,28 +328,23 @@ object FileImmutableStore:
             import scala.jdk.CollectionConverters.*
             stream.iterator().asScala.map(_.getFileName.toString).toList
           }
-        val chunks = names
-          .collect {
-            case name if name.endsWith(".index") => name.stripSuffix(".index").toIntOption
-          }
-          .flatten
-          .sorted
-        val indexed = chunks.toSet
-        val orphanedData = names.exists { name =>
-          name.endsWith(".chunk") &&
-          name.stripSuffix(".chunk").toIntOption.exists(chunk => !indexed.contains(chunk))
+        (chunksNamed(dir, names, ".index"), chunksNamed(dir, names, ".chunk")).tupled.flatMap {
+          (chunks, data) =>
+            val indexed = chunks.toSet
+            if data.exists(chunk => !indexed.contains(chunk)) then
+              Left(StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry))
+            else
+              cats
+                .Monad[[A] =>> Either[StorageError, A]]
+                .tailRecM[List[Int], Option[Bytes]](chunks.toList) {
+                  case Nil => Right(Right(None))
+                  case chunk :: rest =>
+                    readChunk(root, chunk).flatMap {
+                      case found @ Some(_) => Right(Right(found))
+                      case None            => Right(Left(rest))
+                    }
+                }
         }
-        if orphanedData then
-          Left(StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry))
-        else
-          cats.Monad[[A] =>> Either[StorageError, A]].tailRecM[List[Int], Option[Bytes]](chunks) {
-            case Nil => Right(Right(None))
-            case chunk :: rest =>
-              readChunk(root, chunk).flatMap {
-                case found @ Some(_) => Right(Right(found))
-                case None            => Right(Left(rest))
-              }
-          }
 
     AtomicFile
       .guard[F, Either[StorageError, Option[Bytes]]](dir.toString)(scan)
@@ -471,6 +474,11 @@ object FileImmutableStore:
     val setup: F[(Vector[Int], Option[BlockRef], ImmutableStore.OpenReport, Option[Current[F]])] =
       for
         _ <- guard(dir.toString)(files.createDirectories(dir))
+        // The numbered files, read before any file is written or removed: a name that holds a
+        // locale's digits refuses the store as it is.
+        names <- guard(dir.toString)(files.list(dir).map(_.fileName.toString).compile.toVector)
+        numbered <- chunksNamed(dir, names, ".index").fold(fail[Vector[Int]](_), F.pure)
+        data <- chunksNamed(dir, names, ".chunk").fold(fail[Vector[Int]](_), F.pure)
         formatFile = dir / "format"
         format = formatMigration[F](chunkSlots)
         present <- files.exists(formatFile)
@@ -482,16 +490,8 @@ object FileImmutableStore:
               formatFile,
               s"$FormatText chunkSlots=$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
             )
-        names <- guard(dir.toString)(files.list(dir).map(_.fileName.toString).compile.toVector)
-        numbered = names
-          .collect { case n if n.endsWith(".index") => n.stripSuffix(".index").toIntOption }
-          .flatten
-          .sorted
         // Data files without an index are leftovers of a crash during chunk creation.
-        stray = names
-          .collect { case n if n.endsWith(".chunk") => n.stripSuffix(".chunk").toIntOption }
-          .flatten
-          .filterNot(numbered.contains)
+        stray = data.filterNot(numbered.contains)
         _ <- stray.traverse_(c => files.deleteIfExists(dataPath(c)))
         // Version 1 databases: the indexes first, the format file last, each file atomically; a
         // crash in between leaves every file whole at one version and the next open finishes.
