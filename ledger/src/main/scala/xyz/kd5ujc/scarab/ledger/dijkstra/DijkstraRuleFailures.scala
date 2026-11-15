@@ -31,8 +31,8 @@ import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 // (`ToGroup mm`, `Conway/Rules/Gov.hs:269-270`). The arms of the reference that are `error "Impossible"` have no
 // case here.
 
-/** `DijkstraBbodyPredFailure` (`Rules/Bbody.hs:79-88` (cardano-ledger 9df9f98c), encoded at
-  * 109-117).
+/** `DijkstraBbodyPredFailure` (`Rules/Bbody.hs:88-97` (cardano-ledger 9df9f98c), encoded at
+  * 118-129).
   */
 enum DijkstraBbodyFailure(val tag: Int):
   case WrongBlockBodySize(mismatch: Mismatch[BigInt]) extends DijkstraBbodyFailure(0)
