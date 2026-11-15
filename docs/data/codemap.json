@@ -682,7 +682,7 @@
     {
       "module": "ledger",
       "path": "ledger/era",
-      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, and what the eras share (output and script representations, certificate parts)",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), and the protocol parameters as higher-kinded data",
       "entryPoints": [
         "Tx",
         "TxOut",
@@ -698,10 +698,16 @@
         "EraTxAuxData",
         "EraScript",
         "NativeScriptRep",
-        "BabbageTxOutRep"
+        "BabbageTxOutRep",
+        "EraPParams",
+        "PParams",
+        "PParamsUpdate",
+        "PParamsHKD",
+        "HKDFunctor"
       ],
       "suites": [
         "EraCoreSuite",
+        "EraPParamsSuite",
         "EraConwaySuite",
         "EraTxSuite",
         "EraValueSuite"
@@ -743,7 +749,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/conway",
-      "responsibility": "Conway's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Babbage; its certificate, purpose, witness set, auxiliary data, body and transaction, made by its decoders",
+      "responsibility": "Conway's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Babbage; its protocol-parameter record; its certificate, purpose, witness set, auxiliary data, body and transaction, made by its decoders",
       "entryPoints": [
         "ConwayTx",
         "ConwayTxBody",
@@ -752,12 +758,15 @@
         "ConwayTxCert",
         "ConwayPlutusPurpose",
         "ConwayScript",
-        "ConwayTxOut"
+        "ConwayTxOut",
+        "ConwayPParams"
       ],
       "suites": [
         "EraCoreSuite",
         "EraConwaySuite",
-        "EraTxSuite"
+        "EraTxSuite",
+        "EraPParamsSuite",
+        "ConwayPParamsStateSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

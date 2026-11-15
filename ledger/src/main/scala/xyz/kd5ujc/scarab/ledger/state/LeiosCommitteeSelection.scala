@@ -29,6 +29,11 @@ object EpochInterval:
   /** The interval of one epoch, by which a mark snapshot's committee is ahead of it. */
   val one: EpochInterval = 1L
 
+  /** `EpochInterval` of a `Word32`: every word is an interval. */
+  def fromWord32(
+      w: xyz.kd5ujc.scarab.ledger.Unsigned[xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32]
+  ): EpochInterval = w.value.toLong
+
   def fromBigInt(n: BigInt): Either[LeiosCommitteeError, EpochInterval] =
     Either.cond(
       n >= 0 && n <= Max,
