@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.network.ProtocolResults.Control
 import xyz.kd5ujc.scarab.network.selection.{
   BlockFetchPolicy,
+  Fetched,
   FetchGsv,
   FetchMode,
   GenesisBlockFetch,
@@ -33,7 +34,7 @@ final class FetchCoordinator[F[_]: Async] private (
     state: Ref[F, FetchCoordinator.State[F]],
     config: BlockFetchPolicy.Config,
     selection: Option[F[ChainSelection.Local]],
-    fetched: Option[F[Set[Bytes]]],
+    fetched: Option[F[Fetched]],
     salt: Long,
     genesis: Ref[F, Option[FetchCoordinator.GenesisControl[F]]],
     decisions: Mutex[F],
@@ -209,7 +210,7 @@ final class FetchCoordinator[F[_]: Async] private (
           .modify { before =>
             val snapshot = before.copy(
               selected = local,
-              fetched = cached.getOrElse(Set.empty),
+              fetched = cached.getOrElse(Fetched.none),
               genesisContext = control.map(_._2),
               demotions = Vector.empty
             )
@@ -370,7 +371,7 @@ final class FetchCoordinator[F[_]: Async] private (
       }
     }
 
-  private def hasBody(hash: Bytes): F[Boolean] = fetched.sequence.map(_.exists(_(hash)))
+  private def hasBody(hash: Bytes): F[Boolean] = fetched.sequence.map(_.exists(_.contains(hash)))
 
   private def changed: F[F[Unit]] = state.get.map(_.signal.get)
 
@@ -380,7 +381,7 @@ final class FetchCoordinator[F[_]: Async] private (
         fetched.sequence.flatMap { cached =>
           val claimed =
             s.peers.valuesIterator.exists(p => p.active.values.exists(_.claimed(hash)))
-          if cached.exists(_(hash)) || !claimed then F.pure(Right(()))
+          if cached.exists(_.contains(hash)) || !claimed then F.pure(Right(()))
           else s.signal.get.as(Left(()))
         }
       }
@@ -439,6 +440,7 @@ final class FetchCoordinator[F[_]: Async] private (
       ordered.indexWhere(other => compareTips(h, other) == 0).max(0)
     }
     val useGenesis = s.genesisContext.exists(_.phase != Gsm.Phase.CaughtUp)
+    val selected = s.selected.map(FetchCandidates.Selected.of)
     val candidates = peers.map { (id, peer) =>
       val flight = peer.active.values.toVector
       val remaining = flight.flatMap(_.remaining)
@@ -450,8 +452,8 @@ final class FetchCoordinator[F[_]: Async] private (
       // (Decision/Genesis.hs).
       val chain = candidateOf(peer)
       val chosen =
-        s.selected.fold[Either[BlockFetchPolicy.Refusal, Vector[Header]]](
-          Right(chain.headers.filterNot(h => s.fetched(h.hash)))
+        selected.fold[Either[BlockFetchPolicy.Refusal, Vector[Header]]](
+          Right(chain.headers.filterNot(h => s.fetched.contains(h.hash)))
         ) { local =>
           if useGenesis then
             if !FetchCandidates.plausible(restriction, local, chain) then
@@ -459,12 +461,7 @@ final class FetchCoordinator[F[_]: Async] private (
             else FetchCandidates.suffix(local, chain).map(_._2)
           else
             FetchCandidates
-              .select(
-                restriction,
-                local,
-                chain,
-                chain.headers.filter(h => s.fetched(h.hash)).map(_.point).toSet
-              )
+              .select(restriction, local, chain, h => s.fetched.contains(h.hash))
               .map(_.headers)
         }
       BlockFetchPolicy.Candidate(
@@ -656,7 +653,7 @@ object FetchCoordinator:
       peers: Map[Long, PeerState[F]],
       mode: FetchMode = FetchMode.BulkSync,
       selected: Option[ChainSelection.Local] = None,
-      fetched: Set[Bytes] = Set.empty,
+      fetched: Fetched = Fetched.none,
       genesisContext: Option[GenesisContext] = None,
       genesisState: GenesisBlockFetch.State[Long] = GenesisBlockFetch.State[Long](),
       demotions: Vector[Long] = Vector.empty
@@ -737,7 +734,7 @@ object FetchCoordinator:
   def create[F[_]: Async](
       config: BlockFetchPolicy.Config = BlockFetchPolicy.Config(),
       selection: Option[F[ChainSelection.Local]] = None,
-      fetched: Option[F[Set[Bytes]]] = None,
+      fetched: Option[F[Fetched]] = None,
       salt: Long = 0L
   ): F[FetchCoordinator[F]] =
     (

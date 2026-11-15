@@ -9,6 +9,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.selection.{
   BlockFetchPolicy,
+  Fetched,
   FetchGsv,
   FetchMode,
   GenesisBlockFetch
@@ -116,7 +117,7 @@ class UpstreamGenesisBlockFetchSuite extends FunSuite:
         starved,
         field[Vector[Json]](row, "candidates").map(candidate),
         field[BigInt](row, "grace"),
-        field[Vector[String]](row, "fetched").map(bytes).toSet
+        Fetched.of(field[Vector[String]](row, "fetched").map(bytes).toSet)
       )
       assertEquals(actual.state, state(field[Json](row, "after")))
       assertEquals(actual.decisions, field[Vector[Json]](row, "decisions").map(decision))

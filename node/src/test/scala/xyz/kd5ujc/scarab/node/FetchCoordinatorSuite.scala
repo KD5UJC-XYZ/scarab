@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{Fixtures, Header}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.{
   BlockFetchPolicy,
+  Fetched,
   FetchGsv,
   FetchMode,
   GenesisBlockFetch,
@@ -51,7 +52,9 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
     Ref
       .of[IO, Set[Bytes]](Set.empty)
       .flatMap(cache =>
-        FetchCoordinator.create[IO](config, fetched = Some(cache.get)).map(cache -> _)
+        FetchCoordinator
+          .create[IO](config, fetched = Some(cache.get.map(Fetched.of)))
+          .map(cache -> _)
       )
 
   test("native fetch priority ranks equal-height Conway tips beyond the eligibility restriction") {
@@ -244,7 +247,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
     TestControl.executeEmbed {
       for
         cached <- Ref.of[IO, Set[Bytes]](Set.empty)
-        coordinator <- FetchCoordinator.create[IO](fetched = Some(cached.get))
+        coordinator <- FetchCoordinator.create[IO](fetched = Some(cached.get.map(Fetched.of)))
         _ <- coordinator.session(7).use { session =>
           for
             _ <- session.follows(Vector(header(1)))
@@ -273,7 +276,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
     for
       coordinator <- FetchCoordinator.create[IO](
         selection = Some(IO.pure(origin)),
-        fetched = Some(IO.pure(Set(headers.head.hash)))
+        fetched = Some(IO.pure(Fetched.of(Set(headers.head.hash))))
       )
       _ <- coordinator.installGenesis(syncing())
       requested <- coordinator.session(0).use { session =>
@@ -371,7 +374,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       selected <- Ref.of[IO, ChainSelection.Local](origin)
       cached <- Ref.of[IO, Set[Bytes]](Set.empty)
       coordinator <- FetchCoordinator
-        .create[IO](selection = Some(selected.get), fetched = Some(cached.get))
+        .create[IO](selection = Some(selected.get), fetched = Some(cached.get.map(Fetched.of)))
       _ <- coordinator.installGenesis(syncing())
       result <- (coordinator.session(0), coordinator.session(1)).tupled.use { (older, better) =>
         for

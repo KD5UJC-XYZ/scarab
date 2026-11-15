@@ -496,6 +496,14 @@ object UtxoView:
 /** Loopback HTTP query service: `GET /tip`, `GET /state?slot=S&hash=H[&utxo=summary|full]`,
   * `GET /metrics` and the others below.
   */
+/** The network of the node's HTTP servers ([[QueryServer]], [[MetricsServer]]): the JDK's
+  * asynchronous channels, so that none of their sockets is registered with the runtime's integrated
+  * selector, which the node's other connections, on blocking sockets, do not use. With them
+  * registered there, the compute workers of a near-idle node polled about 200,000 times a second
+  * while they waited for timers (#1024).
+  */
+private[node] def httpNetwork[F[_]: Async]: Network[F] = Network.forAsync[F]
+
 object QueryServer:
   /** The most entries `GET /state?utxo=full` serialises: the answer is built in memory, so a larger
     * set is refused (HTTP 413).
@@ -513,7 +521,7 @@ object QueryServer:
     * @param listen
     *   Where the server listens; with [[QueryListen.Off]] nothing is bound and no route exists.
     */
-  def resource[F[_]: Async: Network, S](
+  def resource[F[_]: Async, S](
       view: ChainView[F, S],
       listen: QueryListen,
       utxoStore: Option[xyz.kd5ujc.scarab.storage.UtxoStore[F]] = None,
@@ -526,7 +534,7 @@ object QueryServer:
       case QueryListen.Off => Resource.pure(None)
       case QueryListen.Loopback(port) =>
         EmberServerBuilder
-          .default[F]
+          .default[F](using Async[F], httpNetwork[F])
           .withHost(ipv4"127.0.0.1")
           .withPort(port)
           .withHttpApp(
@@ -662,7 +670,7 @@ object MetricsServer:
       )
     )
 
-  def resource[F[_]: Async: Network](
+  def resource[F[_]: Async](
       address: SocketAddress[Host],
       scrape: F[String]
   ): Resource[F, Server] =
@@ -672,7 +680,7 @@ object MetricsServer:
       scrape.flatMap(respond(dsl, _))
     }
     EmberServerBuilder
-      .default[F]
+      .default[F](using Async[F], httpNetwork[F])
       .withHost(address.host)
       .withPort(address.port)
       .withHttpApp(routes.orNotFound)

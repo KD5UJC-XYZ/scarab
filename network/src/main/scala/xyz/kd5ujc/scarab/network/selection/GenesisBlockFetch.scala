@@ -32,7 +32,7 @@ object GenesisBlockFetch:
       starvation: Starvation,
       candidates: Vector[Candidate[P]],
       gracePicos: BigInt = DefaultGracePicos,
-      fetched: Set[Bytes] = Set.empty
+      fetched: Fetched = Fetched.none
   ): Result[P] =
     val starvedAt = starvation match
       case Starvation.Ongoing       => nowPicos
@@ -60,7 +60,8 @@ object GenesisBlockFetch:
     best match
       case None => Result(before, rejected, demoted)
       case Some(candidate) =>
-        val missing = BlockFetchPolicy.filterFragments(candidate.fragments, h => !fetched(h.hash))
+        val missing =
+          BlockFetchPolicy.filterFragments(candidate.fragments, h => !fetched.contains(h.hash))
         missing.flatMap(_.headers).headOption match
           case None =>
             Result(

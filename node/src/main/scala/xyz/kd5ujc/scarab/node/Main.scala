@@ -1552,7 +1552,7 @@ object Main extends IOApp:
           fetchPolicy,
           follower.fetchSelection,
           BlockPool.Recovered[IO](
-            received.hashes,
+            received.holds,
             readBack(received.get),
             readBack(received.original),
             received.invalidate
