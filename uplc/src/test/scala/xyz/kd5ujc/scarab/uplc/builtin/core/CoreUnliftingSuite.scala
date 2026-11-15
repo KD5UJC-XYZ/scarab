@@ -104,8 +104,8 @@ final class CoreUnliftingSuite extends munit.FunSuite:
       )
   }
 
-  // The `ensurable` branches (`Builtins.hs:2788-2793`) that read a `CInteger` or `CByteString`:
-  // the 35 builtins of `fixtures/reference/plutus-unlifting-bounds/README.md`.
+  // The `ensurable` branches (`Builtins.hs:2788-2793`, plutus 1.70.0.0) that read a `CInteger` or
+  // `CByteString`: the 35 builtins of `fixtures/reference/plutus-unlifting-bounds/README.md`.
   test("variants D and E bound 35 builtins with CInteger or CByteString, A to C none") {
     def onChain(v: CoreVariant) = DefaultFun.values.toVector.filter(f =>
       CoreUnlifting
@@ -120,7 +120,7 @@ final class CoreUnliftingSuite extends munit.FunSuite:
   }
 
   // The `Int`, `Word8` and `Word64` arguments, by variant (`Builtins.hs:1258-1350,1745-1759,
-  // 2184-2266,2395-2409`).
+  // 2184-2266,2395-2409`, plutus 1.70.0.0).
   test("the fixed-width bounds of every variant") {
     import DefaultFun.*
     import UnliftingBound.{Int as I, Word64 as W64, Word8 as W8}
@@ -188,7 +188,8 @@ final class CoreUnliftingSuite extends munit.FunSuite:
     )
   }
 
-  // `SomeConstant` reads any constant (`KnownType.hs:488-490`); the shape is the denotation's.
+  // `SomeConstant` reads any constant (`KnownType.hs:488-490`, plutus 1.70.0.0); the shape is the
+  // denotation's.
   test("a polymorphic parameter takes a constant of any shape; an opaque one any value") {
     assert(CoreUnlifting(CoreVariant.E)(DefaultFun.FstPair, Vector(int(1))).isRight, "fstPair")
     assert(
@@ -257,7 +258,8 @@ final class CoreUnliftingSuite extends munit.FunSuite:
     )
   }
 
-  // `Default/Universe/Cardano.hs:9-19`: [-2^262143, 2^262143 - 1] and 65,536 bytes.
+  // `Default/Universe/Cardano.hs:9-19` of plutus 1.70.0.0: [-2^262143, 2^262143 - 1] and 65,536
+  // bytes.
   test("the CInteger and CByteString bounds are inclusive") {
     val max = BigInt(2).pow(262143) - 1
     val min = -BigInt(2).pow(262143)
@@ -309,10 +311,10 @@ final class CoreUnliftingSuite extends munit.FunSuite:
     )
   }
 
-  // `readKnownAsInteger` (`Universe.hs:585-607`) names the integer and the type (`Int` reads as
-  // an `Int64`, line 615-617); the `CInteger` and `CByteString` instances name neither
-  // (`Universe.hs:889-926`). The `MonadError BuiltinResult` instance logs an operational message
-  // only (`Builtin/Result.hs:198-220`).
+  // `readKnownAsInteger` (`Universe.hs:585-607`, plutus 1.70.0.0) names the integer and the type
+  // (`Int` reads as an `Int64`, line 615-617); the `CInteger` and `CByteString` instances name
+  // neither (`Universe.hs:889-926`). The `MonadError BuiltinResult` instance logs an operational
+  // message only (`Builtin/Result.hs:198-220`).
   test("an operational unlifting failure logs the reference's message, a structural one nothing") {
     def logOf(v: CoreVariant, f: DefaultFun, args: Probe*) =
       CoreUnlifting(v)(f, args.toVector).left.toOption.flatMap(_.message)

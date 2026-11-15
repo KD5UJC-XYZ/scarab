@@ -14,22 +14,22 @@ import scala.annotation.tailrec
   * nothing on the machine's hottest path.
   */
 sealed abstract class Env[+A]:
-  /** `cons` (`SkewBinary.hs:70-77`): two leading trees of one size become the children of a new
-    * root.
+  /** `cons` (`SkewBinary.hs:70-77`, plutus 1.70.0.0): two leading trees of one size become the
+    * children of a new root.
     */
   def cons[B >: A](x: B): Env[B] = this match
     case Env.Trees(w1, t1, Env.Trees(w2, t2, rest)) if w1 == w2 =>
       Env.Trees((w1 << 1) | 1L, Env.Node(x, t1, t2), rest)
     case _ => Env.Trees(1L, Env.Leaf(x), this)
 
-  /** `contIndexOne` (`SkewBinary.hs:128-130`): the element at the 1-based `index`, which is read as
-    * an unsigned 64-bit word; index 0 and an index past the end are absent.
+  /** `contIndexOne` (`SkewBinary.hs:128-130`, plutus 1.70.0.0): the element at the 1-based `index`,
+    * which is read as an unsigned 64-bit word; index 0 and an index past the end are absent.
     */
   def indexOne(index: Long): Env.Lookup[A] =
     // A word of 2^63 or more is a negative `Long` and longer than any list.
     if index <= 0L then Env.Absent else Env.indexZero(this, index - 1L)
 
-  /** The number of elements (`length`, `SkewBinary.hs:165-168`). */
+  /** The number of elements (`length`, `SkewBinary.hs:165-168`, plutus 1.70.0.0). */
   def length: Long = Env.length(this, 0L)
 
 object Env:
@@ -41,7 +41,9 @@ object Env:
 
   case object Absent extends Lookup[Nothing]
 
-  /** A complete binary tree; its size is kept by the spine (`SkewBinary.hs:32-34`). */
+  /** A complete binary tree; its size is kept by the spine (`SkewBinary.hs:32-34`, plutus
+    * 1.70.0.0).
+    */
   sealed abstract class Tree[+A] extends Lookup[A]:
     def value: A
 
@@ -53,13 +55,13 @@ object Env:
   /** `BHead`: a tree of `width` elements before the rest of the list. */
   private final case class Trees[+A](width: Long, tree: Tree[A], rest: Env[A]) extends Env[A]
 
-  /** `findTree` (`SkewBinary.hs:109-113`); `index` is not negative. */
+  /** `findTree` (`SkewBinary.hs:109-113`, plutus 1.70.0.0); `index` is not negative. */
   @tailrec private def indexZero[A](env: Env[A], index: Long): Lookup[A] = env match
     case Empty                       => Absent
     case Trees(w, t, _) if index < w => indexTree(w, index, t)
     case Trees(w, _, rest)           => indexZero(rest, index - w)
 
-  /** `indexTree` (`SkewBinary.hs:117-125`). */
+  /** `indexTree` (`SkewBinary.hs:117-125`, plutus 1.70.0.0). */
   @tailrec private def indexTree[A](size: Long, offset: Long, tree: Tree[A]): Lookup[A] =
     tree match
       case node: Node[A] if offset == 0L => node

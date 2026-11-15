@@ -9,8 +9,9 @@ package xyz.kd5ujc.scarab.uplc
 final case class ProgramVersion private (major: BigInt, minor: BigInt, patch: BigInt):
 
   /** Whether the Flat decoder admits `constr` and `case` in a program of this version:
-    * `version >= plcVersion110` (`UntypedPlutusCore/Core/Instance/Flat.hs:168,182`). The ledger's
-    * own check is membership in [[Availability.programVersions]] (`Common/Eval.hs:125`).
+    * `version >= plcVersion110` (`UntypedPlutusCore/Core/Instance/Flat.hs:168,182`, plutus
+    * 1.70.0.0). The ledger's own check is membership in [[Availability.programVersions]]
+    * (`Common/Eval.hs:125`).
     */
   def allowsConstrAndCase: Boolean =
     summon[Ordering[ProgramVersion]].gteq(this, ProgramVersion.V1_1_0)
@@ -24,7 +25,7 @@ object ProgramVersion:
       new ProgramVersion(major, minor, patch)
     )
 
-  /** `plcVersion100` and `plcVersion110` (`Version.hs:62-67`). */
+  /** `plcVersion100` and `plcVersion110` (`Version.hs:62-67`, plutus 1.70.0.0). */
   val V1_0_0: ProgramVersion = new ProgramVersion(1, 0, 0)
   val V1_1_0: ProgramVersion = new ProgramVersion(1, 1, 0)
 

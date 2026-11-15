@@ -28,7 +28,7 @@ enum FreeVariableError:
 object Scope:
 
   /** `checkScope`: the first free index in the reference's order (pre-order, the function before
-    * the argument, `Scope.hs:52`), on the heap, so as deep as the term.
+    * the argument, `Scope.hs:52`, plutus 1.70.0.0), on the heap, so as deep as the term.
     */
   def check(term: Term): Either[FreeVariableError, Unit] =
     // the term to check and the number of `lam` around it (the reference's `lvl`, a `Word`)
@@ -37,7 +37,7 @@ object Scope:
         case Nil => Right(())
         case (t, level) :: rest =>
           t.unfix match
-            // `i > 0 && fromIntegral i <= lvl`, unsigned (`Scope.hs:38-44`)
+            // `i > 0 && fromIntegral i <= lvl`, unsigned (`Scope.hs:38-44`, plutus 1.70.0.0)
             case TermF.Var(name) =>
               val i = name.index.bits
               if i != 0L && java.lang.Long.compareUnsigned(i, level) <= 0 then go(rest)

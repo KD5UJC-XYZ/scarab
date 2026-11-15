@@ -19,8 +19,8 @@ import xyz.kd5ujc.scarab.uplc.{Availability, Constant, DefaultUni, PlutusData, S
   */
 object ConstantDecoder:
 
-  /** The constant at `at` (`Flat.hs:148-156`): its type, refused unless it has kind `*`, then by
-    * `admit` (the ledger's bound on its size), then its value.
+  /** The constant at `at` (`Flat.hs:148-156`, plutus 1.70.0.0): its type, refused unless it has
+    * kind `*`, then by `admit` (the ledger's bound on its size), then its value.
     */
   def read(
       input: Input,
@@ -34,9 +34,10 @@ object ConstantDecoder:
     }
 
   /** The reader of the values of a type: the `compile` of `decodeDefaultUniValue`
-    * (`Universe.hs:166-186`). Each knows the type its values report ([[Plan.uni]]), built from the
-    * shared values' own types as the fold builds the plan from the leaves up, so that a list
-    * compares its elements' types with it in time that does not grow with the shared parts.
+    * (`Universe.hs:166-186`, plutus 1.70.0.0). Each knows the type its values report
+    * ([[Plan.uni]]), built from the shared values' own types as the fold builds the plan from the
+    * leaves up, so that a list compares its elements' types with it in time that does not grow with
+    * the shared parts.
     */
   enum Plan(val uni: DefaultUni):
     /** A type made only of units (`Pure`): its one value, of no bits. */
@@ -77,7 +78,7 @@ object ConstantDecoder:
         case Layer.Items(e, _) => f(e, lb)
         case Layer.Pair(x, y)  => f(x, cats.Eval.defer(f(y, lb)))
 
-  /** `compile` (`Universe.hs:169-186`): pairs of shared values are shared. */
+  /** `compile` (`Universe.hs:169-186`, plutus 1.70.0.0): pairs of shared values are shared. */
   def plan(uni: DefaultUni): Plan =
     Schemes.hylo[Layer, DefaultUni, Plan](uni)(
       {
@@ -130,7 +131,8 @@ object ConstantDecoder:
           case Open.First(b) :: below      => go(Step.Read(b, from), Open.Second(c) :: below)
           case Open.Second(first) :: below => go(Step.Give(Constant.Pair(first, c), from), below)
           case Open.Items(e, read, array, start) :: below =>
-            // `goZero` (`Strict.hs:76-86`): an element of no bits is the same for every bit.
+            // `goZero` (`Strict.hs:76-86`, plutus 1.70.0.0): an element of no bits is the same for
+            // every bit.
             if read.isEmpty && from == start then
               repeated(input, from, c) match
                 case Left(err) => Left(err)
@@ -170,8 +172,8 @@ object ConstantDecoder:
     val list = Constant.List.of(element.uni, read).left.map(FlatError.IllTypedElements(_))
     if array then list.map(_.toArray) else list
 
-  /** A value of a type that is not a list, an array or a pair (`compile other`, `Universe.hs:186`):
-    * the type's own Flat decoder.
+  /** A value of a type that is not a list, an array or a pair (`compile other`, `Universe.hs:186`,
+    * plutus 1.70.0.0): the type's own Flat decoder.
     */
   private def leaf(input: Input, at: Long, uni: DefaultUni): Either[FlatError, Got[Constant]] =
     uni match
@@ -201,11 +203,11 @@ object ConstantDecoder:
 
   private type Entries = Vector[(Value.Key, Vector[(Value.Key, Value.Quantity)])]
 
-  /** A `value` constant (`Value.hs:223-232`): a list of currencies, each a key and a list of
-    * tokens, each a key and an amount. A key is refused as soon as it is read when it is longer
-    * than 32 bytes (`K`, `Value.hs:103-108`), an amount when it is outside 128 bits (`Quantity`,
-    * `Value.hs:137-144`); the order, emptiness and zero checks of `buildValueWith` run on the whole
-    * list.
+  /** A `value` constant (`Value.hs:223-232`, plutus 1.70.0.0): a list of currencies, each a key and
+    * a list of tokens, each a key and an amount. A key is refused as soon as it is read when it is
+    * longer than 32 bytes (`K`, `Value.hs:103-108`), an amount when it is outside 128 bits
+    * (`Quantity`, `Value.hs:137-144`); the order, emptiness and zero checks of `buildValueWith` run
+    * on the whole list.
     */
   private def valueOf(input: Input, at: Long): Either[FlatError, Got[Value]] =
     def key(from: Long): Either[FlatError, Got[Value.Key]] =

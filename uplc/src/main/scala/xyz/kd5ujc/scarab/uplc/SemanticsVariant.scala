@@ -36,8 +36,8 @@ object SemanticsVariant:
   /** The variants an evaluation context of `language` holds machine parameters for: the `semVars`
     * list of `mkDynEvaluationContext` in the same files (V1 and V2 line 51, V3 line 48). The
     * context fills the default cost model of each of them with the same on-chain parameters
-    * (`Common/Eval.hs:209-219`), so these are the cost-model shapes a language's parameters must
-    * fit.
+    * (`Common/Eval.hs:209-219`, plutus 1.70.0.0), so these are the cost-model shapes a language's
+    * parameters must fit.
     */
   def ofContext(language: PlutusLanguage): Vector[SemanticsVariant] = language.evaluatedAs match
     case PlutusLanguage.V1 | PlutusLanguage.V2 => Vector(A, B, D)

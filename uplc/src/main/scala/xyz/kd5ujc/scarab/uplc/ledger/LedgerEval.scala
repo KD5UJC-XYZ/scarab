@@ -54,11 +54,11 @@ object LedgerEval:
       Unavailability.UnsupportedProtocol(protocol)
     )
 
-  /** `mkTermToEvaluate` (`Eval.hs:107-130`), in its order: the term applied to the arguments as
-    * `data` constants, first argument innermost (`mkIterAppNoAnn`, `Eval.hs:120-121`); then the
-    * program's version, which must be one the language has at the protocol (`Eval.hs:123-127`,
-    * [[SerialisedScript.forEvaluation]]); then the scope of the applied term (`Eval.hs:129-130`,
-    * [[Scope.check]]).
+  /** `mkTermToEvaluate` (`Eval.hs:107-130`, plutus 1.70.0.0), in its order: the term applied to the
+    * arguments as `data` constants, first argument innermost (`mkIterAppNoAnn`, `Eval.hs:120-121`);
+    * then the program's version, which must be one the language has at the protocol
+    * (`Eval.hs:123-127`, [[SerialisedScript.forEvaluation]]); then the scope of the applied term
+    * (`Eval.hs:129-130`, [[Scope.check]]).
     */
   def mkTermToEvaluate(
       language: PlutusLanguage,
@@ -75,9 +75,10 @@ object LedgerEval:
       _ <- Scope.check(applied).leftMap(EvaluationError.DeBruijn(_))
     yield applied
 
-  /** `evaluateTerm` (`Eval.hs:228-241`): the machine of the protocol (`toMachineParameters`) on a
-    * term, with every log kept (`logEmitter`); [[VerboseMode.Quiet]] drops them afterwards, which
-    * changes nothing else. Protocol 12 and later gives no verdict here too.
+  /** `evaluateTerm` (`Eval.hs:228-241`, plutus 1.70.0.0): the machine of the protocol
+    * (`toMachineParameters`) on a term, with every log kept (`logEmitter`); [[VerboseMode.Quiet]]
+    * drops them afterwards, which changes nothing else. Protocol 12 and later gives no verdict here
+    * too.
     */
   def evaluateTerm(
       mode: BudgetMode,
@@ -89,8 +90,9 @@ object LedgerEval:
       supported(protocol).flatMap(_ => context.at(protocol)).map(CekMachine.run(_, mode, term))
     )(Left(_))
 
-  /** `evaluateScriptRestricting` (`Eval.hs:253-274`): the script applied to `args` and run within
-    * `budget`; on success the budget spent, `budget` less what is left (`Eval.hs:274`).
+  /** `evaluateScriptRestricting` (`Eval.hs:253-274`, plutus 1.70.0.0): the script applied to `args`
+    * and run within `budget`; on success the budget spent, `budget` less what is left
+    * (`Eval.hs:274`).
     *
     * @param language
     *   the script's ledger language; a V4 script is evaluated as V3
@@ -109,8 +111,8 @@ object LedgerEval:
       run(language, protocol, verbose, context, BudgetMode.Restricting(budget), script, args)
     )(ScriptResult.Unavailable(_))
 
-  /** `evaluateScriptCounting` (`Eval.hs:282-301`): the script applied to `args` and run with no
-    * limit; on success the budget it spent.
+  /** `evaluateScriptCounting` (`Eval.hs:282-301`, plutus 1.70.0.0): the script applied to `args`
+    * and run with no limit; on success the budget it spent.
     */
   def evaluateScriptCounting(
       language: PlutusLanguage,
@@ -125,9 +127,10 @@ object LedgerEval:
     )
 
   /** A script as the ledger holds it, from its bytes: `deserialiseScript`
-    * (`Common/SerialisedScript.hs:244-278`, [[SerialisedScript.deserialiseScript]]), which the
-    * ledger runs in phase 1, then the evaluation in `mode` ([[evaluateScriptRestricting]],
-    * [[evaluateScriptCounting]]). Protocol 12 and later gives no verdict, the decoding included.
+    * (`Common/SerialisedScript.hs:244-278`, [[SerialisedScript.deserialiseScript]], plutus
+    * 1.70.0.0), which the ledger runs in phase 1, then the evaluation in `mode`
+    * ([[evaluateScriptRestricting]], [[evaluateScriptCounting]]). Protocol 12 and later gives no
+    * verdict, the decoding included.
     *
     * @param script
     *   the script's bytes: a CBOR byte string around the Flat program
@@ -149,9 +152,9 @@ object LedgerEval:
     )(ScriptResult.Unavailable(_))
 
   /** The ledger's admission of a script, `deserialiseScript` (`Common/SerialisedScript.hs:244-278`,
-    * [[SerialisedScript.deserialiseScript]]), which the ledger runs in phase 1 for the scripts of a
-    * transaction: the program, or the reference's refusal, or no verdict (protocol 12 and later, or
-    * a defect).
+    * [[SerialisedScript.deserialiseScript]], plutus 1.70.0.0), which the ledger runs in phase 1 for
+    * the scripts of a transaction: the program, or the reference's refusal, or no verdict (protocol
+    * 12 and later, or a defect).
     */
   def deserialiseScript(
       language: PlutusLanguage,
@@ -174,7 +177,8 @@ object LedgerEval:
 
   /** The evaluation behind the public functions, which catch what it throws. The reference looks
     * the machine up only once the term is checked (`evaluateTerm` is forced after
-    * `mkTermToEvaluate`, `Eval.hs:270-272`), so a missing machine comes after a refused term.
+    * `mkTermToEvaluate`, `Eval.hs:270-272`, plutus 1.70.0.0), so a missing machine comes after a
+    * refused term.
     */
   private def run(
       language: PlutusLanguage,
@@ -194,10 +198,10 @@ object LedgerEval:
     yield processLogsAndErrors(language, verbose, CekMachine.run(machine, mode, term))
     result.merge
 
-  /** `processLogsAndErrors` (`Eval.hs:303-321`): the logs are kept whatever the result; a failure
-    * of the machine fails the script, unless it is a defect here; `()` succeeds in every language,
-    * and any other result only in V1 and V2 (`Eval.hs:314-320`). The result is never discharged to
-    * a term: the rule needs only whether it is the constant `()`.
+  /** `processLogsAndErrors` (`Eval.hs:303-321`, plutus 1.70.0.0): the logs are kept whatever the
+    * result; a failure of the machine fails the script, unless it is a defect here; `()` succeeds
+    * in every language, and any other result only in V1 and V2 (`Eval.hs:314-320`). The result is
+    * never discharged to a term: the rule needs only whether it is the constant `()`.
     */
   private def processLogsAndErrors(
       language: PlutusLanguage,
@@ -277,8 +281,8 @@ object PlutusV1:
   ): ScriptResult =
     LedgerEval.evaluateScriptRestricting(language, protocol, verbose, context, budget, script, args)
 
-/** `PlutusLedgerApi.V2` (`V2.hs:167-218`): the common functions at PlutusV2, arguments
-  * `[datum, redeemer, context]`.
+/** `PlutusLedgerApi.V2` (`V2.hs:167-218`, plutus 1.70.0.0): the common functions at PlutusV2,
+  * arguments `[datum, redeemer, context]`.
   */
 object PlutusV2:
   val language: PlutusLanguage = PlutusLanguage.V2
@@ -313,9 +317,9 @@ object PlutusV2:
   ): ScriptResult =
     LedgerEval.evaluateScriptRestricting(language, protocol, verbose, context, budget, script, args)
 
-/** `PlutusLedgerApi.V3` (`V3.hs:200-253`): the common functions at PlutusV3, with the script
-  * context as the one argument (`V3.hs:229-230,252-253`). The node evaluates a V4 script through
-  * these ([[PlutusLanguage.evaluatedAs]]).
+/** `PlutusLedgerApi.V3` (`V3.hs:200-253`, plutus 1.70.0.0): the common functions at PlutusV3, with
+  * the script context as the one argument (`V3.hs:229-230,252-253`). The node evaluates a V4 script
+  * through these ([[PlutusLanguage.evaluatedAs]]).
   */
 object PlutusV3:
   val language: PlutusLanguage = PlutusLanguage.V3

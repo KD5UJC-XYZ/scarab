@@ -27,8 +27,8 @@ enum Costs:
     case Last(cost)    => cost
     case Cons(cost, _) => cost
 
-  /** `sumCostStream` (`CostStream.hs:71-79`): the costs added from the first, saturating. It forces
-    * the whole stream.
+  /** `sumCostStream` (`CostStream.hs:71-79`, plutus 1.70.0.0): the costs added from the first,
+    * saturating. It forces the whole stream.
     */
   def sum: SatInt =
     @tailrec def go(total: SatInt, costs: Costs): SatInt = costs match
@@ -38,7 +38,7 @@ enum Costs:
       case Last(cost)       => cost
       case Cons(cost, rest) => go(cost, rest.value)
 
-  /** `mapCostStream` (`CostStream.hs:83-91`). */
+  /** `mapCostStream` (`CostStream.hs:83-91`, plutus 1.70.0.0). */
   def map(f: SatInt => SatInt): Costs = this match
     case Last(cost)       => Last(f(cost))
     case Cons(cost, rest) => Cons(f(cost), rest.map(_.map(f)))
@@ -70,18 +70,21 @@ object Costs:
       case (Some(rest), cost) => Some(Cons(cost, Eval.now(rest)))
     }
 
-  /** `unconsCost` (`CostStream.hs:46-48`): the first cost and the rest, if there is one. */
+  /** `unconsCost` (`CostStream.hs:46-48`, plutus 1.70.0.0): the first cost and the rest, if there
+    * is one.
+    */
   private def uncons(costs: Costs): (SatInt, Option[Eval[Costs]]) = costs match
     case Last(cost)       => (cost, None)
     case Cons(cost, rest) => (cost, Some(rest))
 
-  /** `reconsCost` (`CostStream.hs:53-55`). */
+  /** `reconsCost` (`CostStream.hs:53-55`, plutus 1.70.0.0). */
   private def recons(cost: SatInt, rest: Option[Eval[Costs]]): Costs =
     rest.fold(Last(cost))(Cons(cost, _))
 
-  /** `addCostStream` (`CostStream.hs:94-106`): two single costs add up to one; otherwise the two
-    * streams are interleaved, one element from each in turn starting with the left, and once the
-    * side whose turn it is has given its last element the other follows whole (`addCostStreamGo`).
+  /** `addCostStream` (`CostStream.hs:94-106`, plutus 1.70.0.0): two single costs add up to one;
+    * otherwise the two streams are interleaved, one element from each in turn starting with the
+    * left, and once the side whose turn it is has given its last element the other follows whole
+    * (`addCostStreamGo`).
     */
   def add(left: Costs, right: => Costs): Costs = left match
     case Last(l) =>
@@ -99,10 +102,10 @@ object Costs:
     case Last(cost)       => Cons(cost, other)
     case Cons(cost, rest) => Cons(cost, other.map(interleave(_, rest)))
 
-  /** `minCostStream` (`CostStream.hs:110-132`): two single costs give their minimum; otherwise the
-    * first cost of each side is compared, the smaller emitted and the difference put back in front
-    * of the side that had the larger, until either side runs out (`minCostStreamGo`). The result
-    * may be longer than either side.
+  /** `minCostStream` (`CostStream.hs:110-132`, plutus 1.70.0.0): two single costs give their
+    * minimum; otherwise the first cost of each side is compared, the smaller emitted and the
+    * difference put back in front of the side that had the larger, until either side runs out
+    * (`minCostStreamGo`). The result may be longer than either side.
     */
   def min(left: Costs, right: Costs): Costs = (left, right) match
     case (Last(l), Last(r)) => Last(l.min(r))
@@ -124,13 +127,14 @@ object Costs:
       yield (l, r).mapN(minGo)
     )
 
-  /** `scaleLinearly` (`CostingFun/Core.hs:318-321`): every cost times `slope`, with `intercept`
-    * added in front ([[add]]: folded into a single cost, or before a longer stream).
+  /** `scaleLinearly` (`CostingFun/Core.hs:318-321`, plutus 1.70.0.0): every cost times `slope`,
+    * with `intercept` added in front ([[add]]: folded into a single cost, or before a longer
+    * stream).
     */
   def scaleLinearly(intercept: SatInt, slope: SatInt, costs: Costs): Costs =
     add(Last(intercept), costs.map(slope * _))
 
-  /** `scaleLinearlyTwoVariables` (`CostingFun/Core.hs:617-625`). */
+  /** `scaleLinearlyTwoVariables` (`CostingFun/Core.hs:617-625`, plutus 1.70.0.0). */
   def scaleLinearlyTwoVariables(
       intercept: SatInt,
       slope1: SatInt,
@@ -140,9 +144,10 @@ object Costs:
   ): Costs =
     add(Last(intercept), add(costs1.map(slope1 * _), costs2.map(slope2 * _)))
 
-  /** `scaleQuadratically` (`CostingFun/Core.hs:332-347`): `c0 + c1 x + c2 x^2` over a stream whose
-    * costs add up to `x`, each cost `x_i` becoming `2 c2 x_i r + c2 x_i x_i + c1 x_i` where `r` is
-    * the sum of the costs before it, and `c0` added in front.
+  /** `scaleQuadratically` (`CostingFun/Core.hs:332-347`, plutus 1.70.0.0): `c0 + c1 x + c2 x^2`
+    * over a stream whose costs add up to `x`, each cost `x_i` becoming
+    * `2 c2 x_i r + c2 x_i x_i + c1 x_i` where `r` is the sum of the costs before it, and `c0` added
+    * in front.
     */
   def scaleQuadratically(c0: SatInt, c1: SatInt, c2: SatInt, costs: Costs): Costs =
     def f(x: SatInt, r: SatInt): SatInt = SatInt(2) * c2 * x * r + c2 * x * x + c1 * x
@@ -151,8 +156,9 @@ object Costs:
       case Cons(x, rest) => Cons(f(x, r), rest.map(go(r + x, _)))
     add(Last(c0), go(SatInt.zero, costs))
 
-  /** `zipCostStream` (`ExBudgetStream.hs:190-208`): CPU and memory costs paired element by element
-    * into the machine's budgets; the shorter side is taken as zeros after its last element.
+  /** `zipCostStream` (`ExBudgetStream.hs:72-77`, plutus 1.70.0.0): CPU and memory costs paired
+    * element by element into the machine's budgets; the shorter side is taken as zeros after its
+    * last element.
     */
   def zip(cpu: Costs, memory: Costs): CostStream = (cpu, memory) match
     case (Last(c), Last(m)) => CostStream.Last(ExBudget(c, m))
@@ -166,7 +172,9 @@ object Costs:
       CostStream.Cons(ExBudget(c, m), cs.map(budgets(_ -> SatInt.zero)))
     case (Cons(c, cs), Cons(m, ms)) => CostStream.Cons(ExBudget(c, m), (cs, ms).mapN(zipGo))
 
-  /** `costToExBudgetStream` (`ExBudgetStream.hs:176-181`): each cost made a budget by `budget`. */
+  /** `costToExBudgetStream` (`ExBudgetStream.hs:44-49`, plutus 1.70.0.0): each cost made a budget
+    * by `budget`.
+    */
   private def budgets(budget: SatInt => (SatInt, SatInt))(costs: Costs): CostStream = costs match
     case Last(cost) =>
       val (c, m) = budget(cost)

@@ -29,13 +29,13 @@ final case class Checks(
 object Checks:
   private val pass: Either[Availability.Refusal, Unit] = Right(())
 
-  /** None, as for an `UnrestrictedProgram` (`Flat.hs:288-305`). */
+  /** None, as for an `UnrestrictedProgram` (`Flat.hs:288-305`, plutus 1.70.0.0). */
   val unrestricted: Checks = Checks(_ => pass, _ => pass, _ => pass)
 
   /** Those of the ledger's decoder for a script of `language` at `protocol` (`scriptCBORDecoder`,
-    * `PlutusLedgerApi/Common/SerialisedScript.hs:195-234`): the builtins available to the language
-    * it is evaluated as (`builtinsAvailableIn`) and the bounds of `maxBoundsByPV` on a constant's
-    * type and the fields of a `constr`, computed once for the whole program.
+    * `PlutusLedgerApi/Common/SerialisedScript.hs:195-234`, plutus 1.70.0.0): the builtins available
+    * to the language it is evaluated as (`builtinsAvailableIn`) and the bounds of `maxBoundsByPV`
+    * on a constant's type and the fields of a `constr`, computed once for the whole program.
     */
   def ledger(language: PlutusLanguage, protocol: ProtocolMajor): Checks =
     val available = Availability.builtins(language, protocol)
@@ -65,9 +65,9 @@ object Checks:
 object FlatDecoder:
 
   /** The program the bytes encode (`unflatWith (decodeProgram ...)`): the version, three naturals
-    * (`PlutusCore/FlatInstances.hs:177-179`), the term, then the filler that ends the input
-    * (`postAlignedDecoder`, `PlutusCore/Flat/Filler.hs:77-81`) on its last bit (`strictDecoder`,
-    * `PlutusCore/Flat/Decoder/Run.hs:19-24`).
+    * (`PlutusCore/FlatInstances.hs:177-179`, plutus 1.70.0.0), the term, then the filler that ends
+    * the input (`postAlignedDecoder`, `PlutusCore/Flat/Filler.hs:77-81`) on its last bit
+    * (`strictDecoder`, `PlutusCore/Flat/Decoder/Run.hs:19-24`).
     */
   def program(bytes: Bytes, checks: Checks): Either[FlatError, Program] =
     val input = Input(bytes)
@@ -98,7 +98,8 @@ object FlatDecoder:
     case Read(at: Long)
     case Give(term: Term, at: Long)
 
-  /** `decodeTerm` (`Flat.hs:141-186`): the term at `at` of a program of `version`. */
+  /** `decodeTerm` (`Flat.hs:141-186`, plutus 1.70.0.0): the term at `at` of a program of `version`.
+    */
   def term(
       input: Input,
       at: Long,

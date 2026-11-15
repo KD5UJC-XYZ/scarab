@@ -10,18 +10,21 @@ import xyz.kd5ujc.scarab.uplc.{Constant, DefaultUni, PlutusData, ProtocolMajor, 
   * (`plutus-conformance/src/PlutusConformance/CekEvaluator.hs:46-61`).
   */
 enum CaserBuiltin:
-  /** `unavailableCaserBuiltin`: every constant is refused (`Case.hs:63-67`). */
+  /** `unavailableCaserBuiltin`: every constant is refused (`Case.hs:63-67`, plutus 1.70.0.0). */
   case Unavailable(protocol: ProtocolMajor)
 
-  /** `caseBuiltinNoData`: casing on every supported type but `Data` (`Universe.hs:1011-1017`). */
+  /** `caseBuiltinNoData`: casing on every supported type but `Data` (`Universe.hs:1011-1017`,
+    * plutus 1.70.0.0).
+    */
   case WithoutData
 
-  /** `caseBuiltin` of `DefaultUni`: `caseBuiltinDefault caseBuiltinData` (`Universe.hs:1036-1038`).
+  /** `caseBuiltin` of `DefaultUni`: `caseBuiltinDefault caseBuiltinData` (`Universe.hs:1036-1038`,
+    * plutus 1.70.0.0).
     */
   case WithData
 
-  /** `caseBuiltinDefault` (`PlutusCore/Default/Universe.hs:966-1008`): the branch a constant
-    * selects and the constants it is applied to, or why there is none.
+  /** `caseBuiltinDefault` (`PlutusCore/Default/Universe.hs:966-1008`, plutus 1.70.0.0): the branch
+    * a constant selects and the constants it is applied to, or why there is none.
     */
   def select(scrutinee: Constant, branches: Vector[Term]): CaserBuiltin.Selection =
     import CaserBuiltin.Selection.*
@@ -32,7 +35,8 @@ enum CaserBuiltin:
       case _ =>
         scrutinee match
           case Constant.Unit => if len == 1 then Branch(branches(0)) else outOfBounds
-          // One branch is allowed when the scrutinee is `False` (`Universe.hs:979-985`).
+          // One branch is allowed when the scrutinee is `False` (`Universe.hs:979-985`,
+          // plutus 1.70.0.0).
           case Constant.Bool(false) =>
             if len == 1 || len == 2 then Branch(branches(0)) else outOfBounds
           case Constant.Bool(true) => if len == 2 then Branch(branches(1)) else outOfBounds
@@ -50,9 +54,8 @@ enum CaserBuiltin:
             if len == 1 then Applied(branches(0), l :: r :: Nil) else outOfBounds
           case other => Refused(CaseBuiltinError.UnsupportedType(other.typeOf))
 
-  /** The handler of `Data`: refusal without it, `caseBuiltinData` with it
-    * (`Universe.hs:1019-1034`): a `Constr` selects the branch of its tag, applied to its fields as
-    * a list.
+  /** The handler of `Data`: refusal without it, `caseBuiltinData` with it (`Universe.hs:1019-1034`,
+    * plutus 1.70.0.0): a `Constr` selects the branch of its tag, applied to its fields as a list.
     */
   private def caseData(
       data: PlutusData,
@@ -71,15 +74,15 @@ enum CaserBuiltin:
       case _ => Refused(CaseBuiltinError.DataUnsupported)
 
 object CaserBuiltin:
-  /** `defaultCaserBuiltinFor` (`PlutusLedgerApi/Common/Eval.hs:142-146`): unavailable before van
-    * Rossem (protocol 11), without `Data` before Dijkstra (12).
+  /** `defaultCaserBuiltinFor` (`PlutusLedgerApi/Common/Eval.hs:142-146`, plutus 1.70.0.0):
+    * unavailable before van Rossem (protocol 11), without `Data` before Dijkstra (12).
     */
   def forProtocol(protocol: ProtocolMajor): CaserBuiltin =
     if protocol.value < ProtocolMajor.VanRossem.value then Unavailable(protocol)
     else if protocol.value < ProtocolMajor.Dijkstra.value then WithoutData
     else WithData
 
-  /** `HeadSpine`'s three cases (`PlutusCore/Builtin/KnownType.hs:339-343`). */
+  /** `HeadSpine`'s three cases (`PlutusCore/Builtin/KnownType.hs:339-343`, plutus 1.70.0.0). */
   enum Selection:
     /** `HeadOnly`: the branch, applied to nothing. */
     case Branch(branch: Term)

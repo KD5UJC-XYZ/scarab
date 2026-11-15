@@ -55,7 +55,7 @@ final class BuiltinCosting private (
       case LessThanInteger       => two(m.lessThanInteger, universe, universe)
       case LessThanEqualsInteger => two(m.lessThanEqualsInteger, universe, universe)
       case AppendByteString      => two(m.appendByteString, universe, universe)
-      // `Integer` in A, B and D, `Word8` in C and E (`Builtins.hs:1258-1308`).
+      // `Integer` in A, B and D, `Word8` in C and E (`Builtins.hs:1258-1308`, plutus 1.70.0.0).
       case ConsByteString           => two(m.consByteString, refined.consByteStringByte, universe)
       case SliceByteString          => three(m.sliceByteString, one, one, universe)
       case LengthOfByteString       => single(m.lengthOfByteString, universe)
@@ -71,7 +71,8 @@ final class BuiltinCosting private (
         three(m.verifyEcdsaSecp256k1Signature, universe, universe, universe)
       case VerifySchnorrSecp256k1Signature =>
         three(m.verifySchnorrSecp256k1Signature, universe, universe, universe)
-      // `Text` in A to C, `TextCostedByByteLength` in D and E (`Builtins.hs:1507-1587`).
+      // `Text` in A to C, `TextCostedByByteLength` in D and E (`Builtins.hs:1507-1587`,
+      // plutus 1.70.0.0).
       case AppendString => two(m.appendString, refined.text, refined.text)
       case EqualsString => two(m.equalsString, refined.text, refined.text)
       case EncodeUtf8   => single(m.encodeUtf8, refined.text)
@@ -88,7 +89,7 @@ final class BuiltinCosting private (
       case NullList     => single(m.nullList, universe)
       case ChooseData =>
         six(m.chooseData, universe, universe, universe, universe, universe, universe)
-      // `Integer` in A to C, `Word64` in D and E (`Builtins.hs:1745-1758`).
+      // `Integer` in A to C, `Word64` in D and E (`Builtins.hs:1745-1758`, plutus 1.70.0.0).
       case ConstrData               => two(m.constrData, refined.constrDataTag, universe)
       case MapData                  => single(m.mapData, universe)
       case ListData                 => single(m.listData, universe)
@@ -123,7 +124,7 @@ final class BuiltinCosting private (
       case Bls12_381_finalVerify    => two(m.bls12_381_finalVerify, universe, universe)
       case Keccak_256               => single(m.keccak_256, universe)
       case Blake2b_224              => single(m.blake2b_224, universe)
-      // The width is `NumBytesCostedAsNumWords` (`Builtins.hs:2093-2101`).
+      // The width is `NumBytesCostedAsNumWords` (`Builtins.hs:2093-2101`, plutus 1.70.0.0).
       case IntegerToByteString  => three(m.integerToByteString, universe, words, universe)
       case ByteStringToInteger  => two(m.byteStringToInteger, universe, universe)
       case AndByteString        => three(m.andByteString, universe, universe, universe)
@@ -133,7 +134,8 @@ final class BuiltinCosting private (
       case ReadBit              => two(m.readBit, universe, one)
       case WriteBits            => three(m.writeBits, universe, universe, universe)
       case ReplicateByte        => two(m.replicateByte, words, one)
-      // `IntegerCostedLiterally` in A to C, `Int` in D and E (`Builtins.hs:2237-2266`).
+      // `IntegerCostedLiterally` in A to C, `Int` in D and E (`Builtins.hs:2237-2266`,
+      // plutus 1.70.0.0).
       case ShiftByteString             => two(m.shiftByteString, universe, refined.shift)
       case RotateByteString            => two(m.rotateByteString, universe, refined.shift)
       case CountSetBits                => single(m.countSetBits, universe)
@@ -156,7 +158,7 @@ final class BuiltinCosting private (
       case MultiIndexArray             => two(m.multiIndexArray, universe, universe)
       case Policies                    => single(m.policies, outerSize)
       case AssetCount                  => single(m.assetCount, totalSize)
-      // No cost-model entry: `unimplementedCostingFun` (`Builtins.hs:2513-2526`).
+      // No cost-model entry: `unimplementedCostingFun` (`Builtins.hs:2513-2526`, plutus 1.70.0.0).
       case KeepPolicies => unimplemented(universe, universe)
       case DropPolicies => unimplemented(universe, universe)
 
@@ -188,8 +190,8 @@ object BuiltinCosting:
     case SemanticsVariant.E => Some(Refinements(one, textBytes, one, one))
     case SemanticsVariant.F | SemanticsVariant.G => None
 
-  /** `makeUnimplementedCostingFun` (`CostingFun/Core.hs:128-132`): 100,000,000,000 CPU and memory
-    * whatever the arguments.
+  /** `makeUnimplementedCostingFun` (`CostingFun/Core.hs:128-132`, plutus 1.70.0.0): 100,000,000,000
+    * CPU and memory whatever the arguments.
     */
   val Unimplemented: Long = 100000000000L
 

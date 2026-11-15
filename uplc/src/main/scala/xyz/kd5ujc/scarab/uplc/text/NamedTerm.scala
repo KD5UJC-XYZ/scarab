@@ -23,9 +23,9 @@ import xyz.kd5ujc.scarab.uplc.{
   */
 final case class Name(text: String, unique: Long)
 
-/** One layer of a term with names, as the parser reads it (`UntypedPlutusCore/Parser.hs:41`): the
-  * reference's `Term Name DefaultUni DefaultFun`, which [[NamedTerm.deBruijn]] turns into a
-  * [[Term]] with de Bruijn indices. Every case but the variable and the binder is that of
+/** One layer of a term with names, as the parser reads it (`UntypedPlutusCore/Parser.hs:41`, plutus
+  * 1.70.0.0): the reference's `Term Name DefaultUni DefaultFun`, which [[NamedTerm.deBruijn]] turns
+  * into a [[Term]] with de Bruijn indices. Every case but the variable and the binder is that of
   * [[TermF]].
   */
 enum NamedTermF[+R]:
@@ -85,17 +85,17 @@ final case class NamedProgram(version: ProgramVersion, term: NamedTerm):
   def deBruijn: Either[FreeVariable, Program] = NamedTerm.deBruijn(term).map(Program(version, _))
 
 /** A variable that no enclosing `lam` binds: `FreeUnique`
-  * (`PlutusCore/DeBruijn/Internal.hs:340-341`). The conformance runner reports a program with one
-  * as a decode error (`PlutusConformance/CekEvaluator.hs:54-57`).
+  * (`PlutusCore/DeBruijn/Internal.hs:340-341`, plutus 1.70.0.0). The conformance runner reports a
+  * program with one as a decode error (`PlutusConformance/CekEvaluator.hs:54-57`).
   */
 final case class FreeVariable(name: Name)
 
 object NamedTerm:
-  /** The binders in scope: the reference's `LevelInfo` (`DeBruijn/Internal.hs:226-248`), the
-    * current level and the level at which each unique was bound. A `lam` binds its unique at the
-    * current level and its body is one level deeper; a variable bound at level `l` and used at
-    * level `c` has index `c - l` (`getIndex`, `Internal.hs:265-279`). Binding a unique again
-    * shadows it.
+  /** The binders in scope: the reference's `LevelInfo` (`DeBruijn/Internal.hs:226-248`, plutus
+    * 1.70.0.0), the current level and the level at which each unique was bound. A `lam` binds its
+    * unique at the current level and its body is one level deeper; a variable bound at level `l`
+    * and used at level `c` has index `c - l` (`getIndex`, `Internal.hs:265-279`). Binding a unique
+    * again shadows it.
     */
   private final case class Scope(level: Int, levels: Map[Long, Int]):
     def bind(name: Name): Scope = Scope(level + 1, levels.updated(name.unique, level))
@@ -104,9 +104,9 @@ object NamedTerm:
 
   private val top: Scope = Scope(0, Map.empty)
 
-  /** `deBruijnTerm` (`UntypedPlutusCore/DeBruijn.hs:46-97`) as an unfold of the term and its scope:
-    * the variables are resolved in the order the reference visits them, so the free variable
-    * reported is its first.
+  /** `deBruijnTerm` (`UntypedPlutusCore/DeBruijn.hs:46-97`, plutus 1.70.0.0) as an unfold of the
+    * term and its scope: the variables are resolved in the order the reference visits them, so the
+    * free variable reported is its first.
     */
   def deBruijn(term: NamedTerm): Either[FreeVariable, Term] =
     Schemes.anaM[TermF, [x] =>> Either[FreeVariable, x], (NamedTerm, Scope)]((term, top)) {

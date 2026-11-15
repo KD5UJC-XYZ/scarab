@@ -15,7 +15,7 @@ sealed abstract class CekValue:
     case _         => false
   override def hashCode(): Int = System.identityHashCode(this)
 
-/** The values (`Cek/Internal.hs:289-316`). */
+/** The values (`Cek/Internal.hs:289-316`, plutus 1.70.0.0). */
 object CekValue:
   /** `VCon`: a constant. */
   final case class VCon(constant: Constant) extends CekValue:
@@ -31,9 +31,9 @@ object CekValue:
 
   /** `VBuiltin`: a partial application of a builtin. The reference keeps the application's term
     * lazily and a `BuiltinRuntime` that says what the builtin expects next
-    * (`Cek/Internal.hs:298-312`); this keeps where the application is in the builtin's
-    * [[xyz.kd5ujc.scarab.uplc.Signature]] (every `force` comes before the first argument) and the
-    * arguments, and builds the term only when it is discharged.
+    * (`Cek/Internal.hs:298-312`, plutus 1.70.0.0); this keeps where the application is in the
+    * builtin's [[xyz.kd5ujc.scarab.uplc.Signature]] (every `force` comes before the first argument)
+    * and the arguments, and builds the term only when it is discharged.
     *
     * @param forces
     *   the `force` s applied so far
@@ -81,7 +81,9 @@ object CekValue:
     private val unapplied: Vector[VBuiltin] =
       DefaultFun.values.toVector.map(f => VBuiltin(f, 0, Nil, 0))
 
-    /** The value of the term `builtin f` (`Cek/Internal.hs:858-862`), one per builtin. */
+    /** The value of the term `builtin f` (`Cek/Internal.hs:858-862`, plutus 1.70.0.0), one per
+      * builtin.
+      */
     def of(function: DefaultFun): VBuiltin = unapplied(function.ordinal)
 
   /** `VConstr`: a constructor's tag and its fields, in order. */
@@ -94,15 +96,16 @@ object CekValue:
       case _       => None
     def ofConstant(constant: Constant): CekValue = VCon(constant)
 
-  /** `dischargeCekValue` (`Cek/Internal.hs:657-704`): the value as a term, every variable that its
-    * environments bind replaced by the term of its value. An unfold over [[Seed]], so it runs in
-    * constant stack ([[Schemes.ana]]) however deep the value and its environments are.
+  /** `dischargeCekValue` (`Cek/Internal.hs:657-704`, plutus 1.70.0.0): the value as a term, every
+    * variable that its environments bind replaced by the term of its value. An unfold over
+    * [[Seed]], so it runs in constant stack ([[Schemes.ana]]) however deep the value and its
+    * environments are.
     */
   def discharge(value: CekValue): Term = Schemes.ana[TermF, Seed](Seed.Value(value))(layer)
 
   /** The term of a partial builtin application with `argument` applied after the others: the cause
-    * the reference gives an application to a builtin that expects none
-    * (`Cek/Internal.hs:996-1006`).
+    * the reference gives an application to a builtin that expects none (`Cek/Internal.hs:996-1006`,
+    * plutus 1.70.0.0).
     */
   def dischargeApplied(function: VBuiltin, argument: CekValue): Term =
     discharge(function.applied(argument))
@@ -113,8 +116,8 @@ object CekValue:
   private enum Seed:
     case Value(value: CekValue)
 
-    /** `goValEnv env shift term` (`Cek/Internal.hs:676-704`): `shift` counts the lambdas entered
-      * since the environment was captured.
+    /** `goValEnv env shift term` (`Cek/Internal.hs:676-704`, plutus 1.70.0.0): `shift` counts the
+      * lambdas entered since the environment was captured.
       */
     case Body(env: Env[CekValue], shift: Long, term: Term)
 
@@ -129,8 +132,8 @@ object CekValue:
     case Seed.Spine(f, _, Nil)                    => TermF.Builtin(f)
     case Seed.Body(env, shift, term)              => bodyLayer(env, shift, term)
 
-  /** `goValue` (`Cek/Internal.hs:661-672`). The body of a `lam` is discharged under one more
-    * binder; a builtin application is its spine.
+  /** `goValue` (`Cek/Internal.hs:661-672`, plutus 1.70.0.0). The body of a `lam` is discharged
+    * under one more binder; a builtin application is its spine.
     */
   private def valueLayer(value: CekValue): TermF[Seed] = value match
     case VCon(c)                      => TermF.Constant(c)
@@ -139,8 +142,9 @@ object CekValue:
     case VBuiltin(f, forces, args, _) => layer(Seed.Spine(f, forces, args))
     case VConstr(tag, fields) => TermF.Constr(tag, fields.iterator.map(Seed.Value(_)).toVector)
 
-  /** `go` of `goValEnv` (`Cek/Internal.hs:681-704`): a variable bound inside the term stays; one
-    * bound by the environment is replaced by its value; one bound by neither stays free.
+  /** `go` of `goValEnv` (`Cek/Internal.hs:681-704`, plutus 1.70.0.0): a variable bound inside the
+    * term stays; one bound by the environment is replaced by its value; one bound by neither stays
+    * free.
     */
   private def bodyLayer(env: Env[CekValue], shift: Long, term: Term): TermF[Seed] =
     term.unfix match

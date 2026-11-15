@@ -82,7 +82,7 @@ object ReferenceCorpus:
     case EvaluationFailure
 
     /** `parse/decode error`: the program does not parse, or names a free variable
-      * (`PlutusConformance/CekEvaluator.hs:54-57`).
+      * (`PlutusConformance/CekEvaluator.hs:54-57`, plutus 1.70.0.0).
       */
     case ParseError
 
@@ -166,9 +166,9 @@ object ReferenceCorpus:
   val NoFlatFiles: Vector[String] = Vector("builtin/parser", "term/parser")
 
   /** What the runner recorded for a case run on its `.flat` file: the `.flat.expected` file, read
-    * as `decodeFlatExpected` reads it (`Common.hs:347-354`), with the `.budget.expected` budget,
-    * which the two formats share (`Common.hs:257-259`). A failure is the same text as in
-    * `.uplc.expected`, compared byte for byte before anything is decoded.
+    * as `decodeFlatExpected` reads it (`Common.hs:347-354`, plutus 1.70.0.0), with the
+    * `.budget.expected` budget, which the two formats share (`Common.hs:257-259`). A failure is the
+    * same text as in `.uplc.expected`, compared byte for byte before anything is decoded.
     */
   enum FlatExpected:
     /** The program evaluates to the program `result` encodes, spending `budget`. */

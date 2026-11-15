@@ -93,8 +93,8 @@ final class CekMachineSuite extends munit.FunSuite:
 
   test("an argument that does not unlift costs nothing and fails, structurally") {
     // [(builtin addInteger) (con integer 1) (con bool True)]: the five steps stay counted and are
-    // never spent; the application costs nothing (`builtinRuntimeFailure`, Runtime.hs:110-111),
-    // so only the start-up is spent.
+    // never spent; the application costs nothing (`builtinRuntimeFailure`, Runtime.hs:110-111,
+    // plutus 1.70.0.0), so only the start-up is spent.
     val report = counting(app(builtin(DefaultFun.AddInteger), int(1), bool(true)))
     assertEquals(
       errorOf(report),
@@ -305,7 +305,7 @@ final class CekMachineSuite extends munit.FunSuite:
       errorOf(counting(caseOf(int(-1), int(10)))),
       CekError.CaseBuiltin(CaseBuiltinError.OutOfBounds(Constant.Integer(-1), 1))
     )
-    // One branch is enough for False, not for True (`Universe.hs:979-985`).
+    // One branch is enough for False, not for True (`Universe.hs:979-985`, plutus 1.70.0.0).
     assertEquals(constantOf(counting(caseOf(bool(false), int(10)))), Constant.Integer(10))
     assertEquals(constantOf(counting(caseOf(bool(true), int(10), int(11)))), Constant.Integer(11))
     assertEquals(
@@ -417,7 +417,7 @@ final class CekMachineSuite extends munit.FunSuite:
   test("an operational unlifting failure is operational, and costs nothing") {
     // An unlifting that refuses every argument as out of its bounds, as the variants' bounds do
     // (`Int`, `Word64`, ...): `CekEvaluationFailure`, not `UnliftingMachineError`
-    // (`builtinErrorToEvaluationError`, `Cek/Internal.hs:519-523`).
+    // (`builtinErrorToEvaluationError`, `Cek/Internal.hs:519-523`, plutus 1.70.0.0).
     val outOfBounds = UnliftingFailure(
       ErrorClass.Operational,
       UnliftingCause.OutOfBounds(0, xyz.kd5ujc.scarab.uplc.builtin.UnliftingBound.CInteger)
@@ -434,7 +434,7 @@ final class CekMachineSuite extends munit.FunSuite:
     )
     assertEquals(errorOf(report).errorClass, ErrorClass.Operational)
     assertEquals(report.budget.spent, ExBudget.of(50, 50))
-    // Its message is the application's log line (`Builtin/Result.hs:198-220`).
+    // Its message is the application's log line (`Builtin/Result.hs:198-220`, plutus 1.70.0.0).
     assertEquals(report.logs, Vector("Integer out of bounds"))
   }
 

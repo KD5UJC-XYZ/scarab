@@ -13,25 +13,25 @@ import xyz.kd5ujc.scarab.uplc.text.{Evaluation, UplcPrinter}
   * The runner shows each as `parse/decode error`.
   */
 enum FlatRefusal:
-  /** An empty file, which the runner does not decode (`Common.hs:386-387`). */
+  /** An empty file, which the runner does not decode (`Common.hs:386-387`, plutus 1.70.0.0). */
   case Empty
 
-  /** `unflat` refuses the bytes as an `UnrestrictedProgram` (`Common.hs:571-575`): the decoder with
-    * no check on builtins, constant types or `constr` fields (`UntypedPlutusCore/Core/
-    * Instance/Flat.hs:288-305`), which still refuses `constr` and `case` before version 1.1.0
-    * (`Flat.hs:167-185`).
+  /** `unflat` refuses the bytes as an `UnrestrictedProgram` (`Common.hs:571-575`, plutus 1.70.0.0):
+    * the decoder with no check on builtins, constant types or `constr` fields
+    * (`UntypedPlutusCore/Core/ Instance/Flat.hs:288-305`), which still refuses `constr` and `case`
+    * before version 1.1.0 (`Flat.hs:167-185`).
     */
   case Undecodable(error: FlatError)
 
   /** A variable that no enclosing `lam` binds, anywhere in the term: `unDeBruijnProgram`
-    * (`Common.hs:550-554,567-568`) converts the whole term, the fields of a `constr` and the whole
-    * of a `case` included (`UntypedPlutusCore/DeBruijn.hs:100-125`).
+    * (`Common.hs:550-554,567-568`, plutus 1.70.0.0) converts the whole term, the fields of a
+    * `constr` and the whole of a `case` included (`UntypedPlutusCore/DeBruijn.hs:100-125`).
     */
   case FreeVariable(index: DeBruijn)
 
 /** How a case run on its Flat file departs from the runner's expectation. The runner checks the
-  * result and the budget as two tests (`discoverTests`, `Common.hs:232-238`), so a case can have a
-  * mismatch of each.
+  * result and the budget as two tests (`discoverTests`, `Common.hs:232-238`, plutus 1.70.0.0), so a
+  * case can have a mismatch of each.
   */
 enum FlatMismatch[+R]:
   /** The reference reads the program; this decoder does not. */
@@ -41,13 +41,13 @@ enum FlatMismatch[+R]:
   case Accepted(program: Program)
 
   /** The expected result does not decode as a program, so it cannot be compared: the runner's
-    * golden file then holds the decoder's error (`decodeFlatExpected`, `Common.hs:352-354`), which
-    * no evaluation matches.
+    * golden file then holds the decoder's error (`decodeFlatExpected`, `Common.hs:352-354`, plutus
+    * 1.70.0.0), which no evaluation matches.
     */
   case UnreadableExpectation(refusal: FlatRefusal)
 
-  /** The result differs from the decoded expectation (`compareAlphaEq`, `Common.hs:438-440`): a
-    * different version or de Bruijn term.
+  /** The result differs from the decoded expectation (`compareAlphaEq`, `Common.hs:438-440`, plutus
+    * 1.70.0.0): a different version or de Bruijn term.
     */
   case Result(expected: Program, actual: Program)
 
@@ -96,8 +96,9 @@ final case class FlatReport[R](verdicts: Vector[(String, List[FlatMismatch[R]])]
   */
 object FlatConformance:
 
-  /** The program the runner reads from Flat bytes (`getInputProg Flat`, `Common.hs:383-398`). It
-    * also reads a `.flat.expected` result this way (`decodeFlatExpected`, `Common.hs:352-354`).
+  /** The program the runner reads from Flat bytes (`getInputProg Flat`, `Common.hs:383-398`, plutus
+    * 1.70.0.0). It also reads a `.flat.expected` result this way (`decodeFlatExpected`,
+    * `Common.hs:352-354`).
     */
   def program(bytes: Bytes): Either[FlatRefusal, Program] =
     if bytes.isEmpty then Left(FlatRefusal.Empty)
@@ -109,10 +110,10 @@ object FlatConformance:
         .flatMap(p => freeVariable(p.term).map(FlatRefusal.FreeVariable(_)).toLeft(p))
 
   /** The first variable of `term`, in pre-order, that no enclosing `lam` binds. A `lam` binds at
-    * the level outside it (`declareBinder`, `PlutusCore/DeBruijn/Internal.hs:240-243`) and its body
-    * is one level in (`withScope`, 247-248); index `i` names level `current - i` (`ixToLevel`,
-    * 372-373), so it is bound when `0 < i <= current`, unsigned. The walk keeps its stack on the
-    * heap, so it is as deep as the term.
+    * the level outside it (`declareBinder`, `PlutusCore/DeBruijn/Internal.hs:240-243`, plutus
+    * 1.70.0.0) and its body is one level in (`withScope`, 247-248); index `i` names level
+    * `current - i` (`ixToLevel`, 372-373), so it is bound when `0 < i <= current`, unsigned. The
+    * walk keeps its stack on the heap, so it is as deep as the term.
     */
   def freeVariable(term: Term): Option[DeBruijn] =
     @tailrec def go(pending: List[(Term, Long)]): Option[DeBruijn] = pending match
@@ -135,7 +136,7 @@ object FlatConformance:
 
   /** The mismatches of case `c` under `evaluate`; none when it conforms. A refused program is
     * `parse/decode error` and a failed evaluation `evaluation failure` (`getTestedValue`,
-    * `Common.hs:403-417`); the result is compared as `compareAlphaEq` compares
+    * `Common.hs:403-417`, plutus 1.70.0.0); the result is compared as `compareAlphaEq` compares
     * (`Common.hs:423-473`) and the budget as the budget test does (`testForBudget`,
     * `Common.hs:257-267`).
     */
@@ -158,7 +159,8 @@ object FlatConformance:
               case Evaluation.Failed              => List(FlatMismatch.UnexpectedFailure)
               case Evaluation.Unavailable(reason) => List(FlatMismatch.Unavailable(reason))
               case Evaluation.Evaluated(t, b)     =>
-                // the result keeps the version of the program (`CekEvaluator.hs:59-61`)
+                // the result keeps the version of the program (`CekEvaluator.hs:59-61`,
+                // plutus 1.70.0.0)
                 val actual = Program(p.version, t)
                 Option.when(actual != expected)(FlatMismatch.Result(expected, actual)).toList ++
                   Option.when(b != budget)(FlatMismatch.Budget(budget, b)).toList

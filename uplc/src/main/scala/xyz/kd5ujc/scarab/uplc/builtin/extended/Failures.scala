@@ -17,7 +17,8 @@ private[extended] def showWord8s(bytes: Bytes): String =
   bytes.value.map(b => (b & 0xff).toString).mkString("[", ",", "]")
 
 /** The scheme of a signature builtin, named as its failures name it (`loc` in
-  * `PlutusCore/Crypto/Ed25519.hs:43-44` and `PlutusCore/Crypto/Secp256k1.hs:64-65,105-106`).
+  * `PlutusCore/Crypto/Ed25519.hs:43-44` and `PlutusCore/Crypto/Secp256k1.hs:64-65,105-106`, plutus
+  * 1.70.0.0).
   */
 enum SignatureScheme:
   case Ed25519, EcdsaSecp256k1, SchnorrSecp256k1
@@ -28,17 +29,17 @@ enum SignatureScheme:
     case SchnorrSecp256k1 => "Schnorr SECP256k1 signature verification"
 
 /** An argument of a signature builtin that does not deserialise: the builtin fails
-  * (`failWithMessage`, `PlutusCore/Crypto/Utils.hs:30-33`). A signature that deserialises but does
-  * not verify is the answer `False`, never one of these.
+  * (`failWithMessage`, `PlutusCore/Crypto/Utils.hs:30-33`, plutus 1.70.0.0). A signature that
+  * deserialises but does not verify is the answer `False`, never one of these.
   */
 enum SignatureInputFailure extends LogLines:
-  /** `Ed25519.hs:34`, `Secp256k1.hs:55,98`. */
+  /** `Ed25519.hs:34`, `Secp256k1.hs:55,98` of plutus 1.70.0.0. */
   case InvalidVerificationKey(scheme: SignatureScheme)
 
-  /** `Ed25519.hs:36`, `Secp256k1.hs:57,100`. */
+  /** `Ed25519.hs:36`, `Secp256k1.hs:57,100` of plutus 1.70.0.0. */
   case InvalidSignature(scheme: SignatureScheme)
 
-  /** ECDSA only: a message that is not 32 bytes (`Secp256k1.hs:59`). */
+  /** ECDSA only: a message that is not 32 bytes (`Secp256k1.hs:59`, plutus 1.70.0.0). */
   case InvalidMessageHash
 
   def lines: Vector[String] = this match
@@ -51,37 +52,38 @@ enum SignatureInputFailure extends LogLines:
   * lines the reference emits before it fails.
   */
 enum BitwiseFailure extends LogLines:
-  /** `integerToByteString` (`Bitwise.hs:92-96`). */
+  /** `integerToByteString` (`Bitwise.hs:92-96`, plutus 1.70.0.0). */
   case NegativeLength(length: BigInt)
 
-  /** `integerToByteString` (`Bitwise.hs:99-105`). */
+  /** `integerToByteString` (`Bitwise.hs:99-105`, plutus 1.70.0.0). */
   case LengthTooLong(length: BigInt)
 
   /** `integerToByteString` with length 0 and an input of more than 8192 bytes
-    * (`Bitwise.hs:110-120`).
+    * (`Bitwise.hs:110-120`, plutus 1.70.0.0).
     */
   case InputTooLong(bytesRequired: BigInt)
 
-  /** `integerToByteString` of a negative integer (`Bitwise.hs:127-133`). */
+  /** `integerToByteString` of a negative integer (`Bitwise.hs:127-133`, plutus 1.70.0.0). */
   case NegativeInput(input: BigInt)
 
-  /** `integerToByteString` of an integer longer than the length asked for (`Bitwise.hs:134-140`).
+  /** `integerToByteString` of an integer longer than the length asked for (`Bitwise.hs:134-140`,
+    * plutus 1.70.0.0).
     */
   case NotEnoughDigits(input: BigInt, length: BigInt)
 
-  /** `readBit` (`Bitwise.hs:514-521`). */
+  /** `readBit` (`Bitwise.hs:514-521`, plutus 1.70.0.0). */
   case ReadBitOutOfBounds(index: BigInt)
 
-  /** `writeBits` (`Bitwise.hs:536-539`). */
+  /** `writeBits` (`Bitwise.hs:536-539`, plutus 1.70.0.0). */
   case WriteBitsOutOfBounds(index: BigInt)
 
-  /** `writeBits` of variants D and E (`Default/Builtins.hs:2206-2214`). */
+  /** `writeBits` of variants D and E (`Default/Builtins.hs:2206-2214`, plutus 1.70.0.0). */
   case WriteBitsInputTooLong(length: Int)
 
-  /** `replicateByte` (`Bitwise.hs:578-580`). */
+  /** `replicateByte` (`Bitwise.hs:578-580`, plutus 1.70.0.0). */
   case ReplicateNegativeLength(length: BigInt)
 
-  /** `replicateByte` (`Bitwise.hs:581-587`). */
+  /** `replicateByte` (`Bitwise.hs:581-587`, plutus 1.70.0.0). */
   case ReplicateLengthTooLong(length: BigInt)
 
   def lines: Vector[String] = this match
@@ -119,12 +121,12 @@ enum BitwiseFailure extends LogLines:
         s"Length requested: $n"
       )
 
-/** The failures of `multiIndexArray` (`PlutusCore/Arrays.hs:48-69`). */
+/** The failures of `multiIndexArray` (`PlutusCore/Arrays.hs:48-69`, plutus 1.70.0.0). */
 enum ArrayFailure extends LogLines:
-  /** More than 1024 indices (`Arrays.hs:56-61`, `maximumIndexCount` 34-35). */
+  /** More than 1024 indices (`Arrays.hs:56-61`, `maximumIndexCount` 34-35, plutus 1.70.0.0). */
   case TooManyIndices
 
-  /** `Arrays.hs:65-68`. */
+  /** `Arrays.hs:65-68` of plutus 1.70.0.0. */
   case IndexOutOfBounds(index: BigInt)
 
   def lines: Vector[String] = this match
@@ -133,19 +135,19 @@ enum ArrayFailure extends LogLines:
     case IndexOutOfBounds(i) => Vector("multiIndexArray: array index out of bounds", s"Index: $i")
 
 /** The failures of `expModInteger` (`Default/Builtins.hs:2314-2326` and
-  * `PlutusCore/Crypto/ExpMod.hs:17-35`).
+  * `PlutusCore/Crypto/ExpMod.hs:17-35`, plutus 1.70.0.0).
   */
 enum ExpModFailure extends LogLines:
-  /** `Builtins.hs:2322`. */
+  /** `Builtins.hs:2322` of plutus 1.70.0.0. */
   case NegativeModulus
 
-  /** A modulus of 0 or of more than 8191 bits (`ExpMod.hs:19`). */
+  /** A modulus of 0 or of more than 8191 bits (`ExpMod.hs:19`, plutus 1.70.0.0). */
   case InvalidModulus
 
-  /** `ExpMod.hs:24,30,32-34`. */
+  /** `ExpMod.hs:24,30,32-34` of plutus 1.70.0.0. */
   case NotInvertible(base: BigInt, modulus: BigInt)
 
-  /** A base or exponent outside `[-2^8191, 2^8191 - 1]` (`ExpMod.hs:26,49-50`). */
+  /** A base or exponent outside `[-2^8191, 2^8191 - 1]` (`ExpMod.hs:26,49-50`, plutus 1.70.0.0). */
   case OutOfBounds
 
   def lines: Vector[String] = this match
@@ -155,7 +157,7 @@ enum ExpModFailure extends LogLines:
     case OutOfBounds         => Vector("expMod: out of bounds")
 
 /** Why `unValueData` refuses its argument (`PlutusCore/Value.hs:557-586` and `buildValueWith`,
-  * 637-694).
+  * 637-694, plutus 1.70.0.0).
   */
 enum UnValueDataCause:
   case NonMap, NonB, NonI, InvalidQuantity
@@ -175,31 +177,31 @@ enum UnValueDataCause:
 
 /** The failures of the `Value` builtins (`PlutusCore/Value.hs`). */
 enum ValueFailure extends LogLines:
-  /** `insertCoin` (`Value.hs:349`). */
+  /** `insertCoin` (`Value.hs:349`, plutus 1.70.0.0). */
   case InvalidCurrency(currency: Bytes)
 
-  /** `insertCoin` (`Value.hs:350`). */
+  /** `insertCoin` (`Value.hs:350`, plutus 1.70.0.0). */
   case InvalidToken(token: Bytes)
 
-  /** `insertCoin` (`Value.hs:351`). */
+  /** `insertCoin` (`Value.hs:351`, plutus 1.70.0.0). */
   case QuantityOutOfBounds(amount: BigInt)
 
-  /** `valueContains` (`Value.hs:489`). */
+  /** `valueContains` (`Value.hs:489`, plutus 1.70.0.0). */
   case FirstValueNegative
 
-  /** `valueContains` (`Value.hs:490`). */
+  /** `valueContains` (`Value.hs:490`, plutus 1.70.0.0). */
   case SecondValueNegative
 
-  /** `unionValue` (`Value.hs:526`). */
+  /** `unionValue` (`Value.hs:526`, plutus 1.70.0.0). */
   case UnionOutOfBounds
 
-  /** `valueData` (`Value.hs:540-549`). */
+  /** `valueData` (`Value.hs:540-549`, plutus 1.70.0.0). */
   case ValueDataTooLarge
 
-  /** `unValueData` (`Value.hs:557-586`, 663-691). */
+  /** `unValueData` (`Value.hs:557-586`, 663-691, plutus 1.70.0.0). */
   case UnValueData(cause: UnValueDataCause)
 
-  /** `scaleValue` (`Value.hs:619-628`). */
+  /** `scaleValue` (`Value.hs:619-628`, plutus 1.70.0.0). */
   case ScaleOutOfBounds(factor: BigInt, quantity: BigInt)
 
   def lines: Vector[String] = this match

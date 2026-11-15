@@ -17,9 +17,11 @@ import xyz.kd5ujc.scarab.uplc.DefaultFun.*
   */
 object Availability:
 
-  /** The batches of builtins in the order they were released (`Versions.hs:156-313`). */
+  /** The batches of builtins in the order they were released (`Versions.hs:156-313`, plutus
+    * 1.70.0.0).
+    */
   enum Batch(val builtins: Vector[DefaultFun]):
-    /** `Versions.hs:156-209`. */
+    /** `Versions.hs:156-209` of plutus 1.70.0.0. */
     case Batch1
         extends Batch(
           Vector(
@@ -77,14 +79,14 @@ object Availability:
           )
         )
 
-    /** `Versions.hs:212-214`. */
+    /** `Versions.hs:212-214` of plutus 1.70.0.0. */
     case Batch2 extends Batch(Vector(SerialiseData))
 
-    /** `Versions.hs:217-219`. */
+    /** `Versions.hs:217-219` of plutus 1.70.0.0. */
     case Batch3
         extends Batch(Vector(VerifyEcdsaSecp256k1Signature, VerifySchnorrSecp256k1Signature))
 
-    /** `Versions.hs:226-247`. */
+    /** `Versions.hs:226-247` of plutus 1.70.0.0. */
     case Batch4a
         extends Batch(
           Vector(
@@ -110,10 +112,10 @@ object Availability:
           )
         )
 
-    /** `Versions.hs:263-265`. */
+    /** `Versions.hs:263-265` of plutus 1.70.0.0. */
     case Batch4b extends Batch(Vector(IntegerToByteString, ByteStringToInteger))
 
-    /** `Versions.hs:272-286`. */
+    /** `Versions.hs:272-286` of plutus 1.70.0.0. */
     case Batch5
         extends Batch(
           Vector(
@@ -132,7 +134,7 @@ object Availability:
           )
         )
 
-    /** `Versions.hs:291-307`. */
+    /** `Versions.hs:291-307` of plutus 1.70.0.0. */
     case Batch6
         extends Batch(
           Vector(
@@ -153,13 +155,14 @@ object Availability:
           )
         )
 
-    /** Implemented but approved for no protocol version (`Versions.hs:311-313`). */
+    /** Implemented but approved for no protocol version (`Versions.hs:311-313`, plutus 1.70.0.0).
+      */
     case Batch7
         extends Batch(Vector(MultiIndexArray, Policies, AssetCount, KeepPolicies, DropPolicies))
 
   /** When a feature arrives: at a protocol version, or at `futurePV`
-    * (`ProtocolVersions.hs:124-125`, `MajorProtocolVersion maxBound`). The reference's
-    * `collectUpTo` includes a `futurePV` feature when asked at `maxBound` itself
+    * (`ProtocolVersions.hs:124-125`, `MajorProtocolVersion maxBound`, plutus 1.70.0.0). The
+    * reference's `collectUpTo` includes a `futurePV` feature when asked at `maxBound` itself
     * (`Common/Versions.hs:127-135`); this model's protocol versions stop well below that (see
     * [[ProtocolMajor]]), so here no protocol version reaches it.
     */
@@ -174,7 +177,9 @@ object Availability:
   import Batch.*
   import Arrival.*
 
-  /** `builtinsIntroducedIn` (`Versions.hs:320-351`), for plutus's own ledger language. */
+  /** `builtinsIntroducedIn` (`Versions.hs:320-351`, plutus 1.70.0.0), for plutus's own ledger
+    * language.
+    */
   def introductions(language: PlutusLanguage): Vector[(Arrival, Vector[Batch])] = language match
     case PlutusLanguage.V1 =>
       Vector(
@@ -211,7 +216,9 @@ object Availability:
         Future -> Vector(Batch7)
       )
 
-  /** `plcVersionsIntroducedIn` (`Versions.hs:362-382`), for plutus's own ledger language. */
+  /** `plcVersionsIntroducedIn` (`Versions.hs:362-382`, plutus 1.70.0.0), for plutus's own ledger
+    * language.
+    */
   def versionIntroductions(language: PlutusLanguage): Vector[(Arrival, Vector[ProgramVersion])] =
     language match
       case PlutusLanguage.V1 | PlutusLanguage.V2 =>
@@ -226,15 +233,17 @@ object Availability:
       case PlutusLanguage.V4 =>
         Vector(At(ProtocolMajor.Dijkstra) -> Vector(ProgramVersion.V1_0_0, ProgramVersion.V1_1_0))
 
-  /** `ledgerLanguageIntroducedIn` (`Versions.hs:109-114`); for V4 also the ledger's own guard. */
+  /** `ledgerLanguageIntroducedIn` (`Versions.hs:109-114`, plutus 1.70.0.0); for V4 also the
+    * ledger's own guard.
+    */
   def languageIntroducedIn(language: PlutusLanguage): ProtocolMajor = language match
     case PlutusLanguage.V1 => ProtocolMajor.Alonzo
     case PlutusLanguage.V2 => ProtocolMajor.Vasil
     case PlutusLanguage.V3 => ProtocolMajor.Chang
     case PlutusLanguage.V4 => ProtocolMajor.Dijkstra
 
-  /** `builtinsAvailableIn` (`Versions.hs:355-356`) of the language a script of `language` is
-    * evaluated as.
+  /** `builtinsAvailableIn` (`Versions.hs:355-356`, plutus 1.70.0.0) of the language a script of
+    * `language` is evaluated as.
     */
   def builtins(language: PlutusLanguage, protocol: ProtocolMajor): Set[DefaultFun] =
     introductions(language.evaluatedAs)
@@ -246,16 +255,18 @@ object Availability:
   def allows(language: PlutusLanguage, protocol: ProtocolMajor, fun: DefaultFun): Boolean =
     builtins(language, protocol).contains(fun)
 
-  /** `plcVersionsAvailableIn` (`Versions.hs:386-387`) of the language a script is evaluated as. */
+  /** `plcVersionsAvailableIn` (`Versions.hs:386-387`, plutus 1.70.0.0) of the language a script is
+    * evaluated as.
+    */
   def programVersions(language: PlutusLanguage, protocol: ProtocolMajor): Set[ProgramVersion] =
     versionIntroductions(language.evaluatedAs)
       .collect { case (arrival, vs) if arrival.reachedBy(protocol) => vs }
       .flatten
       .toSet
 
-  /** The bounds of `maxBoundsByPV` (`Versions.hs:389-399`): the number of tags of a constant's type
-    * ([[DefaultUni.size]]) and of fields of a `constr`. Before protocol 11 neither is bounded (the
-    * reference's `maxBound`, which no script reaches).
+  /** The bounds of `maxBoundsByPV` (`Versions.hs:389-399`, plutus 1.70.0.0): the number of tags of
+    * a constant's type ([[DefaultUni.size]]) and of fields of a `constr`. Before protocol 11
+    * neither is bounded (the reference's `maxBound`, which no script reaches).
     */
   final case class MaxBounds(typeTags: Option[Int], constrFields: Option[Int])
 
@@ -265,31 +276,33 @@ object Availability:
 
   /** Why a script is refused before it runs. */
   enum Refusal:
-    /** `LedgerLanguageNotAvailableError` (`SerialisedScript.hs:256-259`). */
+    /** `LedgerLanguageNotAvailableError` (`SerialisedScript.hs:256-259`, plutus 1.70.0.0). */
     case LanguageNotAvailable(
         language: PlutusLanguage,
         introducedIn: ProtocolMajor,
         protocol: ProtocolMajor
     )
 
-    /** `checkBuiltin` (`SerialisedScript.hs:216-225`). */
+    /** `checkBuiltin` (`SerialisedScript.hs:216-225`, plutus 1.70.0.0). */
     case BuiltinNotAvailable(fun: DefaultFun, language: PlutusLanguage, protocol: ProtocolMajor)
 
-    /** `checkConstant` (`SerialisedScript.hs:207-214`): a constant's type has more tags than
-      * allowed.
+    /** `checkConstant` (`SerialisedScript.hs:207-214`, plutus 1.70.0.0): a constant's type has more
+      * tags than allowed.
       */
     case ConstantTypeTooLarge(typeTags: Int, bound: Int, protocol: ProtocolMajor)
 
-    /** `checkConstr` (`SerialisedScript.hs:227-234`). */
+    /** `checkConstr` (`SerialisedScript.hs:227-234`, plutus 1.70.0.0). */
     case ConstrTooManyFields(fields: Int, bound: Int, protocol: ProtocolMajor)
 
-    /** `constr` in a program older than 1.1.0 (`Flat.hs:167-171`). */
+    /** `constr` in a program older than 1.1.0 (`Flat.hs:167-171`, plutus 1.70.0.0). */
     case ConstrBeforeVersion(version: ProgramVersion)
 
-    /** `case` in a program older than 1.1.0 (`Flat.hs:181-184`). */
+    /** `case` in a program older than 1.1.0 (`Flat.hs:181-184`, plutus 1.70.0.0). */
     case CaseBeforeVersion(version: ProgramVersion)
 
-    /** `PlutusCoreLanguageNotAvailableError` (`Eval.hs:124-127`), a phase-2 failure. */
+    /** `PlutusCoreLanguageNotAvailableError` (`Eval.hs:124-127`, plutus 1.70.0.0), a phase-2
+      * failure.
+      */
     case ProgramVersionNotAvailable(
         version: ProgramVersion,
         language: PlutusLanguage,

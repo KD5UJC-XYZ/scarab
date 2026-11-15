@@ -33,24 +33,28 @@ object Model:
       )
       .getConst
 
-/** `s * x + I` (`OneVariableLinearFunction`, `CostingFun/Core.hs:378-383`). */
+/** `s * x + I` (`OneVariableLinearFunction`, `CostingFun/Core.hs:378-383`, plutus 1.70.0.0). */
 final case class Linear[A](intercept: A, slope: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[Linear[B]] =
     (f(s"$path-intercept", intercept), f(s"$path-slope", slope)).mapN(Linear(_, _))
 
-/** `s1 * x + s2 * y + I` (`TwoVariableLinearFunction`, `CostingFun/Core.hs:386-392`). */
+/** `s1 * x + s2 * y + I` (`TwoVariableLinearFunction`, `CostingFun/Core.hs:386-392`, plutus
+  * 1.70.0.0).
+  */
 final case class Linear2[A](intercept: A, slope1: A, slope2: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[Linear2[B]] =
     (f(s"$path-intercept", intercept), f(s"$path-slope1", slope1), f(s"$path-slope2", slope2))
       .mapN(Linear2(_, _, _))
 
-/** `c0 + c1*x + c2*x^2` (`OneVariableQuadraticFunction`, `CostingFun/Core.hs:395-401`). */
+/** `c0 + c1*x + c2*x^2` (`OneVariableQuadraticFunction`, `CostingFun/Core.hs:395-401`, plutus
+  * 1.70.0.0).
+  */
 final case class Quadratic[A](c0: A, c1: A, c2: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[Quadratic[B]] =
     (f(s"$path-c0", c0), f(s"$path-c1", c1), f(s"$path-c2", c2)).mapN(Quadratic(_, _, _))
 
 /** `max minimum (c00 + c10*x + c01*y + c20*x^2 + c11*x*y + c02*y^2)`
-  * (`TwoVariableQuadraticFunction`, `CostingFun/Core.hs:412-443`).
+  * (`TwoVariableQuadraticFunction`, `CostingFun/Core.hs:412-443`, plutus 1.70.0.0).
   */
 final case class Quadratic2[A](minimum: A, c00: A, c10: A, c01: A, c20: A, c11: A, c02: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[Quadratic2[B]] =
@@ -64,7 +68,9 @@ final case class Quadratic2[A](minimum: A, c00: A, c10: A, c01: A, c20: A, c11: 
       f(s"$path-c02", c02)
     ).mapN(Quadratic2(_, _, _, _, _, _, _))
 
-/** The cost of `expModInteger` (`ExpModCostingFunction`, `CostingFun/Core.hs:447-480`). */
+/** The cost of `expModInteger` (`ExpModCostingFunction`, `CostingFun/Core.hs:447-480`, plutus
+  * 1.70.0.0).
+  */
 final case class ExpMod[A](coefficient00: A, coefficient11: A, coefficient12: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[ExpMod[B]] =
     (
@@ -73,14 +79,16 @@ final case class ExpMod[A](coefficient00: A, coefficient11: A, coefficient12: A)
       f(s"$path-coefficient12", coefficient12)
     ).mapN(ExpMod(_, _, _))
 
-/** `s * (x - y) + I`, at least `minimum` (`ModelSubtractedSizes`, `CostingFun/Core.hs:490-496`). */
+/** `s * (x - y) + I`, at least `minimum` (`ModelSubtractedSizes`, `CostingFun/Core.hs:490-496`,
+  * plutus 1.70.0.0).
+  */
 final case class Subtracted[A](intercept: A, slope: A, minimum: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[Subtracted[B]] =
     (f(s"$path-intercept", intercept), f(s"$path-slope", slope), f(s"$path-minimum", minimum))
       .mapN(Subtracted(_, _, _))
 
 /** A constant off the diagonal, linear on it (`ModelConstantOrLinear`,
-  * `CostingFun/Core.hs:502-508`).
+  * `CostingFun/Core.hs:502-508`, plutus 1.70.0.0).
   */
 final case class ConstantOrLinear[A](constant: A, intercept: A, slope: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[ConstantOrLinear[B]] =
@@ -88,7 +96,7 @@ final case class ConstantOrLinear[A](constant: A, intercept: A, slope: A):
       .mapN(ConstantOrLinear(_, _, _))
 
 /** `c10*x + c01*y + c11*(x*y) + c00` (`TwoVariableWithInteractionFunction`,
-  * `CostingFun/Core.hs:527-550`).
+  * `CostingFun/Core.hs:527-550`, plutus 1.70.0.0).
   */
 final case class Interaction[A](c00: A, c10: A, c01: A, c11: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[Interaction[B]] =
@@ -96,24 +104,27 @@ final case class Interaction[A](c00: A, c10: A, c01: A, c11: A):
       .mapN(Interaction(_, _, _, _))
 
 private object Run:
-  /** `evaluateTwoVariableQuadraticFunction` (`CostingFun/Core.hs:424-443`), in its order of
-    * operations: saturating addition is not associative.
+  /** `evaluateTwoVariableQuadraticFunction` (`CostingFun/Core.hs:424-443`, plutus 1.70.0.0), in its
+    * order of operations: saturating addition is not associative.
     */
   def quadratic2(q: Quadratic2[SatInt], x: SatInt, y: SatInt): SatInt =
     q.minimum.max(q.c00 + q.c10 * x + q.c01 * y + q.c20 * x * x + q.c11 * x * y + q.c02 * y * y)
 
-  /** `evaluateExpModCostingFunction` (`CostingFun/Core.hs:460-480`): 50% more when `a` is larger
-    * than the modulus.
+  /** `evaluateExpModCostingFunction` (`CostingFun/Core.hs:460-480`, plutus 1.70.0.0): 50% more when
+    * `a` is larger than the modulus.
     */
   def expMod(e: ExpMod[SatInt], aa: SatInt, ee: SatInt, mm: SatInt): SatInt =
     val cost0 = e.coefficient00 + e.coefficient11 * ee * mm + e.coefficient12 * ee * mm * mm
     if aa <= mm then cost0 else cost0 + cost0.dividedBy(2L)
 
-  /** `evaluateTwoVariableWithInteractionFunction` (`CostingFun/Core.hs:536-550`). */
+  /** `evaluateTwoVariableWithInteractionFunction` (`CostingFun/Core.hs:536-550`, plutus 1.70.0.0).
+    */
   def interaction(f: Interaction[SatInt], x: SatInt, y: SatInt): SatInt =
     f.c10 * x + f.c01 * y + f.c11 * (x * y) + f.c00
 
-/** `ModelOneArgument` (`CostingFun/Core.hs:232-237`), run by `runOneArgumentModel` (349-359). */
+/** `ModelOneArgument` (`CostingFun/Core.hs:232-237`, plutus 1.70.0.0), run by `runOneArgumentModel`
+  * (349-359).
+  */
 enum OneArgument[A]:
   case ConstantCost(cost: A)
   case LinearInX(f: Linear[A])
@@ -143,7 +154,9 @@ object OneArgument:
       case LinearInX(Linear(i, s))             => Costs.scaleLinearly(i, s, x)
       case QuadraticInX(Quadratic(c0, c1, c2)) => Costs.scaleQuadratically(c0, c1, c2, x)
 
-/** `ModelTwoArguments` (`CostingFun/Core.hs:568-588`), run by `runTwoArgumentModel` (627-737). */
+/** `ModelTwoArguments` (`CostingFun/Core.hs:568-588`, plutus 1.70.0.0), run by
+  * `runTwoArgumentModel` (627-737).
+  */
 enum TwoArguments[A]:
   case ConstantCost(cost: A)
   case LinearInX(f: Linear[A])
@@ -259,7 +272,8 @@ object TwoArguments:
       case QuadraticInXAndY(q)                 => Costs.Last(Run.quadratic2(q, x.sum, y.sum))
       case WithInteractionInXAndY(f)           => Costs.Last(Run.interaction(f, x.sum, y.sum))
 
-/** `ModelThreeArguments` (`CostingFun/Core.hs:741-753`), run by `runThreeArgumentModel` (761-821).
+/** `ModelThreeArguments` (`CostingFun/Core.hs:741-753`, plutus 1.70.0.0), run by
+  * `runThreeArgumentModel` (761-821).
   */
 enum ThreeArguments[A]:
   case ConstantCost(cost: A)
@@ -320,7 +334,9 @@ object ThreeArguments:
       case QuadraticInYAndZ(q)               => Costs.Last(Run.quadratic2(q, y.sum, z.sum))
       case ExpModCost(e)                     => Costs.Last(Run.expMod(e, x.sum, y.sum, z.sum))
 
-/** `ModelFourArguments` (`CostingFun/Core.hs:844-848`), run by `runFourArgumentModel` (856-868). */
+/** `ModelFourArguments` (`CostingFun/Core.hs:844-848`, plutus 1.70.0.0), run by
+  * `runFourArgumentModel` (856-868).
+  */
 enum FourArguments[A]:
   case ConstantCost(cost: A)
   case LinearInU(f: Linear[A])
@@ -346,7 +362,8 @@ object FourArguments:
       case ConstantCost(c)         => Costs.Last(c)
       case LinearInU(Linear(i, s)) => Costs.scaleLinearly(i, s, u)
 
-/** `ModelFiveArguments` (`CostingFun/Core.hs:893-896`): a constant only (904-913). */
+/** `ModelFiveArguments` (`CostingFun/Core.hs:893-896`, plutus 1.70.0.0): a constant only (904-913).
+  */
 enum FiveArguments[A]:
   case ConstantCost(cost: A)
 
@@ -365,7 +382,8 @@ object FiveArguments:
     def run: Costs = model match
       case ConstantCost(c) => Costs.Last(c)
 
-/** `ModelSixArguments` (`CostingFun/Core.hs:940-943`): a constant only (951-961). */
+/** `ModelSixArguments` (`CostingFun/Core.hs:940-943`, plutus 1.70.0.0): a constant only (951-961).
+  */
 enum SixArguments[A]:
   case ConstantCost(cost: A)
 
@@ -384,9 +402,8 @@ object SixArguments:
     def run: Costs = model match
       case ConstantCost(c) => Costs.Last(c)
 
-/** The CPU and memory costing functions of one builtin (`CostingFun`,
-  * `CostingFun/Core.hs:100-105`), written in the cost model under the builtin's name as `cpu` and
-  * `memory`.
+/** The CPU and memory costing functions of one builtin (`CostingFun`, `CostingFun/Core.hs:100-105`,
+  * plutus 1.70.0.0), written in the cost model under the builtin's name as `cpu` and `memory`.
   */
 final case class CostingFun[M[_], A](cpu: M[A], memory: M[A]):
   def traverse[G[_]: Applicative, B](name: String)(f: (String, A) => G[B])(using

@@ -10,10 +10,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * compute these functions of that integer.
   */
 object Bitwise:
-  /** `maximumInputLength` (`Bitwise.hs:81-82`). */
+  /** `maximumInputLength` (`Bitwise.hs:81-82`, plutus 1.70.0.0). */
   val MaximumInputLength: Int = 4096
 
-  /** `maximumOutputLength` (`Bitwise.hs:85-86`). */
+  /** `maximumOutputLength` (`Bitwise.hs:85-86`, plutus 1.70.0.0). */
   val MaximumOutputLength: Int = 8192
 
   /** The byte string as a big-endian unsigned integer. */
@@ -27,9 +27,9 @@ object Bitwise:
   /** GHC's `integerLog2`: the floor of the base-2 logarithm, 0 for a non-positive integer. */
   private def integerLog2(n: BigInt): BigInt = if n.signum <= 0 then 0 else n.bitLength - 1
 
-  /** `integerToByteString` (`Bitwise.hs:90-140`, `unsafeIntegerToByteString` 157-301): `input` in
-    * `length` bytes (the fewest that hold it when `length` is 0), big-endian when `bigEndian`. Zero
-    * in `length` 0 is the empty byte string.
+  /** `integerToByteString` (`Bitwise.hs:90-140`, `unsafeIntegerToByteString` 157-301, plutus
+    * 1.70.0.0): `input` in `length` bytes (the fewest that hold it when `length` is 0), big-endian
+    * when `bigEndian`. Zero in `length` 0 is the empty byte string.
     */
   def integerToByteString(
       bigEndian: Boolean,
@@ -49,15 +49,15 @@ object Bitwise:
         val be = bytesOf(input, size)
         Right(if bigEndian then be else Bytes.wrap(be.toArray.reverse))
 
-  /** `byteStringToInteger` (`Bitwise.hs:312-332`): the unsigned integer, big-endian when
-    * `bigEndian`.
+  /** `byteStringToInteger` (`Bitwise.hs:312-332`, plutus 1.70.0.0): the unsigned integer,
+    * big-endian when `bigEndian`.
     */
   def byteStringToInteger(bigEndian: Boolean, bytes: Bytes): BigInt =
     if bigEndian then unsigned(bytes) else BigInt(1, bytes.toArray.reverse)
 
-  /** `andByteString`, `orByteString`, `xorByteString` (`Bitwise.hs:406-490`): the bytes are
-    * combined from index 0; with `pad` the result is as long as the longer argument, whose
-    * remaining bytes are kept, otherwise as long as the shorter.
+  /** `andByteString`, `orByteString`, `xorByteString` (`Bitwise.hs:406-490`, plutus 1.70.0.0): the
+    * bytes are combined from index 0; with `pad` the result is as long as the longer argument,
+    * whose remaining bytes are kept, otherwise as long as the shorter.
     */
   def combine(pad: Boolean, x: Bytes, y: Bytes)(op: (Int, Int) => Int): Bytes =
     val (shorter, longer) = if x.size < y.size then (x, y) else (y, x)
@@ -66,10 +66,10 @@ object Bitwise:
     val size = if pad then l.length else s.length
     Bytes.wrap(Array.tabulate(size)(i => if i < s.length then op(s(i), l(i)).toByte else l(i)))
 
-  /** `complementByteString` (`Bitwise.hs:493-509`). */
+  /** `complementByteString` (`Bitwise.hs:493-509`, plutus 1.70.0.0). */
   def complement(bytes: Bytes): Bytes = Bytes.wrap(bytes.toArray.map(b => (~b).toByte))
 
-  /** `readBit` (`Bitwise.hs:512-529`). */
+  /** `readBit` (`Bitwise.hs:512-529`, plutus 1.70.0.0). */
   def readBit(bytes: Bytes, index: BigInt): Either[BitwiseFailure, Boolean] =
     if index.signum < 0 || index >= BigInt(bytes.size) * 8 then
       Left(BitwiseFailure.ReadBitOutOfBounds(index))
@@ -77,9 +77,9 @@ object Bitwise:
       val i = index.toInt
       Right(bytes.lift(bytes.size - 1 - i / 8).exists(b => ((b >> (i % 8)) & 1) == 1))
 
-  /** `writeBits` (`Bitwise.hs:532-571`): every index set to `bit`, in order; the first index out of
-    * bounds fails. Variants D and E first refuse an input of more than [[MaximumInputLength]] bytes
-    * (`Default/Builtins.hs:2199-2214`).
+  /** `writeBits` (`Bitwise.hs:532-571`, plutus 1.70.0.0): every index set to `bit`, in order; the
+    * first index out of bounds fails. Variants D and E first refuse an input of more than
+    * [[MaximumInputLength]] bytes (`Default/Builtins.hs:2199-2214`).
     */
   def writeBits(
       bytes: Bytes,
@@ -106,14 +106,14 @@ object Bitwise:
             masks.get(at).fold(b)(m => if bit then b | m else b & ~m).toByte
           }))
 
-  /** `replicateByte` (`Bitwise.hs:576-590`). */
+  /** `replicateByte` (`Bitwise.hs:576-590`, plutus 1.70.0.0). */
   def replicateByte(length: BigInt, byte: Int): Either[BitwiseFailure, Bytes] =
     if length.signum < 0 then Left(BitwiseFailure.ReplicateNegativeLength(length))
     else if length > MaximumOutputLength then Left(BitwiseFailure.ReplicateLengthTooLong(length))
     else Right(Bytes.wrap(Array.fill(length.toInt)(byte.toByte)))
 
-  /** `shiftByteString` (`Bitwise.hs:596-612`, 689-760): towards higher bit indices for a positive
-    * `move`, zeros shifted in; all zeros once the move reaches the length in bits.
+  /** `shiftByteString` (`Bitwise.hs:596-612`, 689-760, plutus 1.70.0.0): towards higher bit indices
+    * for a positive `move`, zeros shifted in; all zeros once the move reaches the length in bits.
     */
   def shift(bytes: Bytes, move: BigInt): Bytes =
     val bitLength = BigInt(bytes.size) * 8
@@ -124,8 +124,8 @@ object Bitwise:
       val shifted = if move.signum > 0 then n << move.toInt else n >> (-move).toInt
       bytesOf(shifted & ((BigInt(1) << bitLength.toInt) - 1), bytes.size)
 
-  /** `rotateByteString` (`Bitwise.hs:619-638`, 762-801): by `move` modulo the length in bits,
-    * towards higher bit indices.
+  /** `rotateByteString` (`Bitwise.hs:619-638`, 762-801, plutus 1.70.0.0): by `move` modulo the
+    * length in bits, towards higher bit indices.
     */
   def rotate(bytes: Bytes, move: BigInt): Bytes =
     if bytes.isEmpty then bytes
@@ -138,9 +138,10 @@ object Bitwise:
         val mask = (BigInt(1) << bitLength) - 1
         bytesOf(((n << k) | (n >> (bitLength - k))) & mask, bytes.size)
 
-  /** `countSetBits` (`Bitwise.hs:804-836`). */
+  /** `countSetBits` (`Bitwise.hs:804-836`, plutus 1.70.0.0). */
   def countSetBits(bytes: Bytes): Int = bytes.foldLeft(0)((n, b) => n + Integer.bitCount(b & 0xff))
 
-  /** `findFirstSetBit` (`Bitwise.hs:838-917`): the lowest index of a set bit, -1 if there is none.
+  /** `findFirstSetBit` (`Bitwise.hs:838-917`, plutus 1.70.0.0): the lowest index of a set bit, -1
+    * if there is none.
     */
   def findFirstSetBit(bytes: Bytes): Int = unsigned(bytes).lowestSetBit

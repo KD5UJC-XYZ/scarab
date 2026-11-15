@@ -12,7 +12,8 @@ enum CoreVariant:
   case A, B, C, D, E
 
   /** Whether the variant reads the on-chain bounded types `CInteger` and `CByteString` (and
-    * `Word64` for `constrData`): `ensurable` (`Builtins.hs:2788-2793`), true for D and E.
+    * `Word64` for `constrData`): `ensurable` (`Builtins.hs:2788-2793`, plutus 1.70.0.0), true for D
+    * and E.
     */
   def ensurable: Boolean = this match
     case D | E     => true

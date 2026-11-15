@@ -25,7 +25,8 @@ final class SerialiseDataSuite extends munit.FunSuite:
       .filterNot(_.startsWith("#"))
       .map(_.split("\t").toVector)
 
-  // The heads of `encodeData` (`Data.hs:146-198`), the lists of `serialise`'s `defaultEncodeList`.
+  // The heads of `encodeData` (`Data.hs:146-198`, plutus 1.70.0.0), the lists of `serialise`'s
+  // `defaultEncodeList`.
   test("the encoding of each constructor of Data") {
     assertEquals(hex(I(0)), "00")
     assertEquals(hex(I(23)), "17")

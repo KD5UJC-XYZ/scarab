@@ -66,7 +66,8 @@ enum Verdict:
     case Ran(Outcome.InvalidReturnValue, _, _) => Some("InvalidReturnValue")
     case Ran(Outcome.Failed(e), _, _)          => Some(Verdict.constructor(e))
 
-/** How a run of the machine ends for the ledger (`processLogsAndErrors`, `Common/Eval.hs:303-321`).
+/** How a run of the machine ends for the ledger (`processLogsAndErrors`, `Common/Eval.hs:303-321`,
+  * plutus 1.70.0.0).
   */
 enum Outcome:
   case Success
@@ -87,8 +88,8 @@ final case class ProfileContext(
 object Verdict:
 
   /** The reference's name of a machine error (`MachineError`, `PlutusCore/Evaluation/Machine/
-    * Exception.hs:43-63`; `CekUserError`, `Cek/Internal.hs:497-505`), as the error is classed by
-    * `builtinErrorToEvaluationError` (`Cek/Internal.hs:519-523`).
+    * Exception.hs:43-63`; `CekUserError`, `Cek/Internal.hs:497-505`, plutus 1.70.0.0), as the error
+    * is classed by `builtinErrorToEvaluationError` (`Cek/Internal.hs:519-523`).
     */
   def constructor(error: CekError): String = error match
     case CekError.NonPolymorphicInstantiation   => "NonPolymorphicInstantiationMachineError"

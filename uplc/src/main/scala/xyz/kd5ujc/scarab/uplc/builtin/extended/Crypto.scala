@@ -54,9 +54,9 @@ type Verified = Either[SignatureInputFailure | LibraryDefect, Boolean]
   * the `plutus` tests) and checked by the conformance corpus and the Wycheproof vectors.
   */
 object Signatures:
-  /** `verifyEd25519Signature` (`Ed25519.hs:23-44`) through [[StrictEd25519]]: a key of 32 bytes and
-    * a signature of 64, anything else failing; the verdict is libsodium's non-COMPAT
-    * `crypto_sign_verify_detached`.
+  /** `verifyEd25519Signature` (`Ed25519.hs:23-44`, plutus 1.70.0.0) through [[StrictEd25519]]: a
+    * key of 32 bytes and a signature of 64, anything else failing; the verdict is libsodium's
+    * non-COMPAT `crypto_sign_verify_detached`.
     */
   def verifyEd25519(publicKey: Bytes, message: Bytes, signature: Bytes): Verified =
     StrictEd25519.verify(publicKey, signature, message) match
@@ -98,11 +98,11 @@ object Signatures:
   private def guarded(body: => Boolean): Verified =
     Either.catchNonFatal(body).leftMap(LibraryDefect.Thrown(_))
 
-  /** `verifyEcdsaSecp256k1Signature` (`Secp256k1.hs:44-68`): a 33-byte compressed key (prefix 2 or
-    * 3, `x < p`, on the curve: `secp256k1_ec_pubkey_parse`), a 64-byte `r || s` with `r, s < n`
-    * (`secp256k1_ecdsa_signature_parse_compact`), a 32-byte message; then `secp256k1_ecdsa_verify`,
-    * which answers `False` for `r = 0`, `s = 0` or `s > n / 2` (it verifies normalised signatures
-    * only) and otherwise checks `x(u1 G + u2 Q) = r (mod n)`.
+  /** `verifyEcdsaSecp256k1Signature` (`Secp256k1.hs:44-68`, plutus 1.70.0.0): a 33-byte compressed
+    * key (prefix 2 or 3, `x < p`, on the curve: `secp256k1_ec_pubkey_parse`), a 64-byte `r || s`
+    * with `r, s < n` (`secp256k1_ecdsa_signature_parse_compact`), a 32-byte message; then
+    * `secp256k1_ecdsa_verify`, which answers `False` for `r = 0`, `s = 0` or `s > n / 2` (it
+    * verifies normalised signatures only) and otherwise checks `x(u1 G + u2 Q) = r (mod n)`.
     */
   def verifyEcdsa(publicKey: Bytes, message: Bytes, signature: Bytes): Verified =
     val prefix = publicKey.headOption.map(_ & 0xff)
@@ -154,8 +154,8 @@ object Signatures:
     sha.doFinal(out, 0)
     new BigInteger(1, out)
 
-  /** `verifySchnorrSecp256k1Signature` (`Secp256k1.hs:87-109`): a 32-byte x-only key that lifts to
-    * a point (`secp256k1_xonly_pubkey_parse`), a 64-byte signature; then
+  /** `verifySchnorrSecp256k1Signature` (`Secp256k1.hs:87-109`, plutus 1.70.0.0): a 32-byte x-only
+    * key that lifts to a point (`secp256k1_xonly_pubkey_parse`), a 64-byte signature; then
     * `secp256k1_schnorrsig_verify` (BIP-340, any message length): `False` for `r >= p` or `s >= n`,
     * otherwise `R = s G - e P` must be finite, of even `y`, with `x(R) = r`.
     */
@@ -182,9 +182,11 @@ object Signatures:
               point.getAffineXCoord.toBigInteger == r
             }
 
-/** `expModInteger` (`Default/Builtins.hs:2314-2326` and `PlutusCore/Crypto/ExpMod.hs:17-50`). */
+/** `expModInteger` (`Default/Builtins.hs:2314-2326` and `PlutusCore/Crypto/ExpMod.hs:17-50`, plutus
+  * 1.70.0.0).
+  */
 object ExpMod:
-  /** `maxBoundI`, `minBoundI`, `maxBoundN` (`ExpMod.hs:37-47`). */
+  /** `maxBoundI`, `minBoundI`, `maxBoundN` (`ExpMod.hs:37-47`, plutus 1.70.0.0). */
   val Max: BigInt = (BigInt(1) << 8191) - 1
   val Min: BigInt = -(BigInt(1) << 8191)
 

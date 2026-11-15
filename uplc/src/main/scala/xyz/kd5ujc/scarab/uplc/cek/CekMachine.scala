@@ -18,13 +18,13 @@ final case class MachineParameters(costs: MachineCosts, builtins: Builtins, case
 
 /** How an evaluation budgets (`ExBudgetMode`, `Cek/ExBudgetMode.hs`). */
 enum BudgetMode:
-  /** `counting` (`ExBudgetMode.hs:50-73`): the budget spent, summed with saturation; it never
-    * fails.
+  /** `counting` (`ExBudgetMode.hs:50-73`, plutus 1.70.0.0): the budget spent, summed with
+    * saturation; it never fails.
     */
   case Counting
 
-  /** `restricting` (`ExBudgetMode.hs:126-172`): the budget left, each charge subtracted with
-    * saturation; the charge that makes a component negative fails the evaluation.
+  /** `restricting` (`ExBudgetMode.hs:126-172`, plutus 1.70.0.0): the budget left, each charge
+    * subtracted with saturation; the charge that makes a component negative fails the evaluation.
     */
   case Restricting(limit: ExBudget)
 
@@ -35,23 +35,27 @@ enum BudgetState:
   case Restricted(limit: ExBudget, remaining: ExBudget)
 
   /** The budget spent: the counted sum, or the limit less what is left (`minusExBudget`,
-    * `PlutusCore/Evaluation/Machine/ExBudget.hs:192-193`), as the ledger reports it
-    * (`PlutusLedgerApi/Common/Eval.hs:274`).
+    * `PlutusCore/Evaluation/Machine/ExBudget.hs:192-193`, plutus 1.70.0.0), as the ledger reports
+    * it (`PlutusLedgerApi/Common/Eval.hs:274`).
     */
   def spent: ExBudget = this match
     case Counted(total) => total
     case Restricted(limit, remaining) =>
       ExBudget(limit.cpu - remaining.cpu, limit.memory - remaining.memory)
 
-/** The result of an evaluation, the reference's `CekResult` (`Cek/Internal.hs:174-177`). */
+/** The result of an evaluation, the reference's `CekResult` (`Cek/Internal.hs:174-177`, plutus
+  * 1.70.0.0).
+  */
 sealed abstract class CekResult
 
 object CekResult:
   final case class Failure(failure: CekFailure) extends CekResult
 
-  /** A value: the ledger distinguishes a constant (`Common/Eval.hs:316-322`). */
+  /** A value: the ledger distinguishes a constant (`Common/Eval.hs:316-322`, plutus 1.70.0.0). */
   sealed abstract class Success extends CekResult:
-    /** The value discharged to a term (`cekResultToEither`, `Cek/Internal.hs:192-197`). */
+    /** The value discharged to a term (`cekResultToEither`, `Cek/Internal.hs:192-197`, plutus
+      * 1.70.0.0).
+      */
     def term: Term
 
   /** `CekSuccessConstant`. */
@@ -64,7 +68,9 @@ object CekResult:
   final case class SuccessNonConstant(value: CekValue) extends Success:
     lazy val term: Term = CekValue.discharge(value)
 
-/** Everything an evaluation produces, the reference's `CekReport` (`Cek/Internal.hs:180-187`). */
+/** Everything an evaluation produces, the reference's `CekReport` (`Cek/Internal.hs:180-187`,
+  * plutus 1.70.0.0).
+  */
 final case class CekReport(result: CekResult, budget: BudgetState, logs: Vector[String])
 
 /** A successful evaluation at the boundary of [[CekMachine.evaluate]]. */
@@ -83,13 +89,14 @@ final case class CekFailed(failure: CekFailure, budget: BudgetState)
   * ([[CekMachine.evaluate]]).
   */
 object CekMachine:
-  /** `defaultSlippage` (`Cek/Internal.hs:420-421`), which `runCekM` sets as `?cekSlippage`
-    * (`Cek/Internal.hs:798`): the machine spends its counted steps once they reach this many.
+  /** `defaultSlippage` (`Cek/Internal.hs:420-421`, plutus 1.70.0.0), which `runCekM` sets as
+    * `?cekSlippage` (`Cek/Internal.hs:798`): the machine spends its counted steps once they reach
+    * this many.
     */
   val Slippage: Int = 200
 
-  /** `runCekDeBruijn` (`Cek/Internal.hs:1093-1103`): spend the start-up cost, then compute the term
-    * in the empty environment with no frame. Logs are always kept (`logEmitter`).
+  /** `runCekDeBruijn` (`Cek/Internal.hs:1093-1103`, plutus 1.70.0.0): spend the start-up cost, then
+    * compute the term in the empty environment with no frame. Logs are always kept (`logEmitter`).
     */
   def run(parameters: MachineParameters, mode: BudgetMode, term: Term): CekReport =
     Run(parameters, mode).start(term)
@@ -119,10 +126,10 @@ object CekMachine:
     case Halt(report: CekReport)
 
   /** The step counter (`Cek/StepCounter.hs`; Note [Structure of the step counter],
-    * `Cek/Internal.hs:381-388`): one counter per [[StepKind]] and the total, each below
-    * [[Slippage]], so a byte each. The counters of the first eight kinds are the bytes of a `Long`
-    * (kind `k` at bits `8k`); that of the ninth, `Case`, is the low byte of an `Int` whose second
-    * byte is the total.
+    * `Cek/Internal.hs:381-388`, plutus 1.70.0.0): one counter per [[StepKind]] and the total, each
+    * below [[Slippage]], so a byte each. The counters of the first eight kinds are the bytes of a
+    * `Long` (kind `k` at bits `8k`); that of the ninth, `Case`, is the low byte of an `Int` whose
+    * second byte is the total.
     */
   private val LowKinds = 8
   private val TotalIncrement = 1 << 8
@@ -140,7 +147,7 @@ object CekMachine:
       val initial = mode match
         case BudgetMode.Restricting(limit) => limit
         case BudgetMode.Counting           => ExBudget.zero
-      // `unCekBudgetSpender ?cekBudgetSpender BStartup` (`Cek/Internal.hs:1102`)
+      // `unCekBudgetSpender ?cekBudgetSpender BStartup` (`Cek/Internal.hs:1102`, plutus 1.70.0.0)
       val started = spend(initial, parameters.costs.startup)
       if exhausted(started) then outOfBudget(started, Nil)
       else loop(Context.NoFrame, Env.empty, term, started, 0L, 0, Nil)
@@ -162,10 +169,10 @@ object CekMachine:
       control match
         case value: CekValue =>
           ctx match
-            // `returnCek NoFrame` (`Cek/Internal.hs:892-894`)
+            // `returnCek NoFrame` (`Cek/Internal.hs:892-894`, plutus 1.70.0.0)
             case Context.NoFrame => finish(value, budget, low, high, logs)
 
-            // `forceEvaluate` (`Cek/Internal.hs:958-977`)
+            // `forceEvaluate` (`Cek/Internal.hs:958-977`, plutus 1.70.0.0)
             case Context.Force(next) =>
               value match
                 case VDelay(body, closure) => loop(next, closure, body, budget, low, high, logs)
@@ -176,11 +183,12 @@ object CekMachine:
                     case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
                     case Step.Halt(report)        => report
 
-            // `returnCek (FrameAwaitFunTerm ..)` (`Cek/Internal.hs:898-899`)
+            // `returnCek (FrameAwaitFunTerm ..)` (`Cek/Internal.hs:898-899`, plutus 1.70.0.0)
             case Context.AwaitFunTerm(argEnv, argument, next) =>
               loop(Context.AwaitArg(value, next), argEnv, argument, budget, low, high, logs)
 
-            // `returnCek (FrameAwaitArg ..)`, `applyEvaluate` (`Cek/Internal.hs:903-904,986-1008`)
+            // `returnCek (FrameAwaitArg ..)`, `applyEvaluate` (`Cek/Internal.hs:903-904,986-1008`,
+            // plutus 1.70.0.0)
             case Context.AwaitArg(function, next) =>
               function match
                 case VLamAbs(body, closure) =>
@@ -193,7 +201,8 @@ object CekMachine:
                     case Step.Halt(report)        => report
 
             // `returnCek (FrameAwaitFunValueN ..)` and `(FrameAwaitFunConN ..)`
-            // (`Cek/Internal.hs:906-921`): the first argument is applied, the rest wait.
+            // (`Cek/Internal.hs:906-921`, plutus 1.70.0.0): the first argument is applied, the rest
+            // wait.
             case Context.AwaitFunValues(first, rest, after) =>
               val next = rest match
                 case Nil       => after
@@ -206,7 +215,7 @@ object CekMachine:
                     case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
                     case Step.Halt(report)        => report
 
-            // `returnCek (FrameConstr ..)` (`Cek/Internal.hs:923-929`)
+            // `returnCek (FrameConstr ..)` (`Cek/Internal.hs:923-929`, plutus 1.70.0.0)
             case Context.Constr(fieldEnv, tag, fields, todo, done, next) =>
               if todo < fields.size then
                 loop(
@@ -220,12 +229,12 @@ object CekMachine:
                 )
               else loop(next, env, VConstr(tag, (value :: done).reverse), budget, low, high, logs)
 
-            // `returnCek (FrameCases ..)` (`Cek/Internal.hs:931-950`)
+            // `returnCek (FrameCases ..)` (`Cek/Internal.hs:931-950`, plutus 1.70.0.0)
             case Context.Cases(branchEnv, branches, next) =>
               value match
                 case VConstr(tag, fields) =>
                   // A tag of 2^63 or more is a negative `Long`, past every branch
-                  // (`Cek/Internal.hs:936-938`).
+                  // (`Cek/Internal.hs:936-938`, plutus 1.70.0.0).
                   val i = tag.bits
                   if i >= 0L && i < branches.size then
                     fields match
@@ -256,7 +265,8 @@ object CekMachine:
                         high,
                         logs
                       )
-                    // `headSpine h [] = HeadOnly h` (`PlutusCore/Builtin/KnownType.hs:355`)
+                    // `headSpine h [] = HeadOnly h` (`PlutusCore/Builtin/KnownType.hs:355`,
+                    // plutus 1.70.0.0)
                     case CaserBuiltin.Selection.Applied(branch, Nil) =>
                       loop(next, branchEnv, branch, budget, low, high, logs)
                     case CaserBuiltin.Selection.Refused(error) =>
@@ -267,11 +277,12 @@ object CekMachine:
         case term: Fix[TermF] =>
           val layer = term.unfix
           val kind = kindOf(layer)
-          // `computeCek` on `error` throws before it counts a step (`Cek/Internal.hs:874-875`).
+          // `computeCek` on `error` throws before it counts a step (`Cek/Internal.hs:874-875`,
+          // plutus 1.70.0.0).
           if kind < 0 then fail(CekError.ErrorTerm, Some(Cause(Term.error)), budget, logs)
           else
-            // `stepAndMaybeSpend` (`Cek/Internal.hs:1030-1043`): count the step and, once the
-            // total reaches the slippage, spend every counter before the step acts.
+            // `stepAndMaybeSpend` (`Cek/Internal.hs:1030-1043`, plutus 1.70.0.0): count the step
+            // and, once the total reaches the slippage, spend every counter before the step acts.
             val counted = if kind < LowKinds then low + (1L << (kind << 3)) else low
             val tallied =
               if kind < LowKinds then high + TotalIncrement else high + TotalIncrement + 1
@@ -282,7 +293,7 @@ object CekMachine:
               val low1 = if due then 0L else counted
               val high1 = if due then 0 else tallied
               layer match
-                // `Cek/Internal.hs:833-836`, `lookupVarName` (`1082-1088`)
+                // `Cek/Internal.hs:833-836` of plutus 1.70.0.0, `lookupVarName` (`1082-1088`)
                 case TermF.Var(index) =>
                   env.indexOne(index.index.bits) match
                     case found: Env.Tree[CekValue] =>
@@ -294,18 +305,18 @@ object CekMachine:
                         spent,
                         logs
                       )
-                // `Cek/Internal.hs:838-840`
+                // `Cek/Internal.hs:838-840` of plutus 1.70.0.0
                 case TermF.Constant(c) => loop(ctx, env, VCon(c), spent, low1, high1, logs)
-                // `Cek/Internal.hs:842-844`
+                // `Cek/Internal.hs:842-844` of plutus 1.70.0.0
                 case TermF.LamAbs(body) =>
                   loop(ctx, env, VLamAbs(body, env), spent, low1, high1, logs)
-                // `Cek/Internal.hs:846-848`
+                // `Cek/Internal.hs:846-848` of plutus 1.70.0.0
                 case TermF.Delay(body) =>
                   loop(ctx, env, VDelay(body, env), spent, low1, high1, logs)
-                // `Cek/Internal.hs:850-852`
+                // `Cek/Internal.hs:850-852` of plutus 1.70.0.0
                 case TermF.Force(body) =>
                   loop(Context.Force(ctx), env, body, spent, low1, high1, logs)
-                // `Cek/Internal.hs:854-856`
+                // `Cek/Internal.hs:854-856` of plutus 1.70.0.0
                 case TermF.Apply(function, argument) =>
                   loop(
                     Context.AwaitFunTerm(env, argument, ctx),
@@ -316,10 +327,10 @@ object CekMachine:
                     high1,
                     logs
                   )
-                // `Cek/Internal.hs:858-862`
+                // `Cek/Internal.hs:858-862` of plutus 1.70.0.0
                 case TermF.Builtin(function) =>
                   loop(ctx, env, VBuiltin.of(function), spent, low1, high1, logs)
-                // `Cek/Internal.hs:864-868`
+                // `Cek/Internal.hs:864-868` of plutus 1.70.0.0
                 case TermF.Constr(tag, fields) =>
                   if fields.isEmpty then loop(ctx, env, VConstr(tag, Nil), spent, low1, high1, logs)
                   else
@@ -332,13 +343,13 @@ object CekMachine:
                       high1,
                       logs
                     )
-                // `Cek/Internal.hs:870-872`
+                // `Cek/Internal.hs:870-872` of plutus 1.70.0.0
                 case TermF.Case(scrutinee, branches) =>
                   loop(Context.Cases(env, branches, ctx), env, scrutinee, spent, low1, high1, logs)
                 case TermF.Error => fail(CekError.ErrorTerm, Some(Cause(Term.error)), budget, logs)
 
-    /** The step kind of a term (`StepKind`, `Cek/Internal.hs:208-217`), -1 for `error`, which is
-      * not a step.
+    /** The step kind of a term (`StepKind`, `Cek/Internal.hs:208-217`, plutus 1.70.0.0), -1 for
+      * `error`, which is not a step.
       */
     private def kindOf(layer: TermF[Term]): Int = layer match
       case TermF.Var(_)       => StepKind.Variable.ordinal
@@ -353,7 +364,7 @@ object CekMachine:
       case TermF.Error        => -1
 
     /** `forceEvaluate` of anything but a `delay` and a builtin that takes the `force` unsaturated
-      * (`Cek/Internal.hs:963-977`).
+      * (`Cek/Internal.hs:963-977`, plutus 1.70.0.0).
       */
     private def forceOther(
         next: Context,
@@ -374,7 +385,7 @@ object CekMachine:
       case _ =>
         Step.Halt(fail(CekError.NonPolymorphicInstantiation, Some(Cause.of(value)), budget, logs))
 
-    /** `applyEvaluate` of anything but a `lam` (`Cek/Internal.hs:995-1008`). */
+    /** `applyEvaluate` of anything but a `lam` (`Cek/Internal.hs:995-1008`, plutus 1.70.0.0). */
     private def applyOther(
         next: Context,
         function: CekValue,
@@ -396,9 +407,9 @@ object CekMachine:
       case _ =>
         Step.Halt(fail(CekError.NonFunctionalApplication, Some(Cause.of(function)), budget, logs))
 
-    /** `evalBuiltinApp` (`Cek/Internal.hs:1052-1075`): a partial application is a value; a
-      * saturated one spends its cost, element by element, before its result is computed, then emits
-      * the result's logs and returns its value or fails.
+    /** `evalBuiltinApp` (`Cek/Internal.hs:1052-1075`, plutus 1.70.0.0): a partial application is a
+      * value; a saturated one spends its cost, element by element, before its result is computed,
+      * then emits the result's logs and returns its value or fails.
       */
     private def evalBuiltinApp(
         next: Context,
@@ -425,9 +436,9 @@ object CekMachine:
                 )
               )
 
-    /** `spendBudgets` (`Cek/Internal.hs:1061-1064`): each element in order, the rest of the stream
-      * forced only once the element before it is spent, stopping at the element that overspends;
-      * the rest of the stream after it is never computed.
+    /** `spendBudgets` (`Cek/Internal.hs:1061-1064`, plutus 1.70.0.0): each element in order, the
+      * rest of the stream forced only once the element before it is spent, stopping at the element
+      * that overspends; the rest of the stream after it is never computed.
       */
     private def spendStream(budget: ExBudget, cost: CostStream): ExBudget =
       @tailrec def go(b: ExBudget, stream: CostStream): ExBudget = stream match
@@ -437,8 +448,8 @@ object CekMachine:
           if exhausted(after) then after else go(after, rest.value)
       go(budget, cost)
 
-    /** `spendAccumulatedBudget` (`Cek/Internal.hs:1011-1027`): for each [[StepKind]] in order, its
-      * count times its cost, stopping at the kind that overspends.
+    /** `spendAccumulatedBudget` (`Cek/Internal.hs:1011-1027`, plutus 1.70.0.0): for each
+      * [[StepKind]] in order, its count times its cost, stopping at the kind that overspends.
       */
     private def flush(budget: ExBudget, low: Long, high: Int): ExBudget =
       @tailrec def go(b: ExBudget, kind: Int): ExBudget =
@@ -450,19 +461,19 @@ object CekMachine:
           if exhausted(after) then after else go(after, kind + 1)
       go(budget, 0)
 
-    /** The spender of the mode (`ExBudgetMode.hs:55-57,146-165`). */
+    /** The spender of the mode (`ExBudgetMode.hs:55-57,146-165`, plutus 1.70.0.0). */
     private def spend(budget: ExBudget, cost: ExBudget): ExBudget =
       if restricting then ExBudget(budget.cpu - cost.cpu, budget.memory - cost.memory)
       else budget + cost
 
     /** A restricting budget is negative only once a charge has overspent it, which fails the
-      * evaluation (`ExBudgetMode.hs:155-165`).
+      * evaluation (`ExBudgetMode.hs:155-165`, plutus 1.70.0.0).
       */
     private def exhausted(budget: ExBudget): Boolean =
       restricting && (budget.cpu < SatInt.zero || budget.memory < SatInt.zero)
 
-    /** `returnCek NoFrame` (`Cek/Internal.hs:892-894`): spend the counted steps, then the value is
-      * the result.
+    /** `returnCek NoFrame` (`Cek/Internal.hs:892-894`, plutus 1.70.0.0): spend the counted steps,
+      * then the value is the result.
       */
     private def finish(
         value: CekValue,

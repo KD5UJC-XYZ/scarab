@@ -111,7 +111,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
     for v <- variants do assertEquals(CoreDenotations(v).keySet, core, s"$v")
   }
 
-  // `Builtins.hs:1099-1143`
+  // `Builtins.hs:1099-1143` of plutus 1.70.0.0
   test("addInteger, subtractInteger and multiplyInteger are exact") {
     val big = BigInt(2).pow(200) + 3
     assertEquals(in(AddInteger, int(big), int(-big)), integer(0))
@@ -120,7 +120,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
   }
 
   // `div` and `mod` round towards negative infinity, `quot` and `rem` towards zero
-  // (`Builtins.hs:1144-1203`, Haskell's `Integral Integer`).
+  // (`Builtins.hs:1144-1203`, Haskell's `Integral Integer`, plutus 1.70.0.0).
   test("the four divisions on every combination of signs") {
     val cases = Vector(
       (7, 2, 3, 1, 3, 1),
@@ -165,7 +165,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
     }
   }
 
-  // `nonZeroSecondArg` (`Builtins.hs:248-266`)
+  // `nonZeroSecondArg` (`Builtins.hs:248-266`, plutus 1.70.0.0)
   test("a division by zero fails with the reference's log line, in every variant") {
     for
       v <- variants
@@ -177,7 +177,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
         case other => fail(s"$f in $v: $other")
   }
 
-  // `Builtins.hs:1204-1240`
+  // `Builtins.hs:1204-1240` of plutus 1.70.0.0
   test("the integer comparisons") {
     assertEquals(in(EqualsInteger, int(-3), int(-3)), truth(true))
     assertEquals(in(LessThanInteger, int(-3), int(-3)), truth(false))
@@ -190,7 +190,8 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
     )
   }
 
-  // `Builtins.hs:1242-1308`; the cases of `builtin/semantics/consByteString` in the corpus.
+  // `Builtins.hs:1242-1308` of plutus 1.70.0.0; the cases of `builtin/semantics/consByteString` in
+  // the corpus.
   test("consByteString keeps the low byte in A, B and D and reads a Word8 in C and E") {
     val tail = "686543616b654973414c6965"
     for v <- variants do
@@ -230,7 +231,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
     assertEquals(in(LessThanEqualsByteString, bytes("0100"), bytes("01")), truth(false))
   }
 
-  // `BS.take n (BS.drop start xs)` (`Builtins.hs:1309-1323`)
+  // `BS.take n (BS.drop start xs)` (`Builtins.hs:1309-1323`, plutus 1.70.0.0)
   test("sliceByteString clamps the start and the length to the byte string") {
     val xs = bytes("0102030405")
     assertEquals(in(SliceByteString, int(1), int(2), xs), byteString("0203"))
@@ -245,7 +246,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
     )
   }
 
-  // `BS.indexMaybe` and `fail "Index out of bounds"` (`Builtins.hs:1331-1350`)
+  // `BS.indexMaybe` and `fail "Index out of bounds"` (`Builtins.hs:1331-1350`, plutus 1.70.0.0)
   test(
     "indexByteString reads an unsigned byte and fails past either end with the reference's log"
   ) {
@@ -258,7 +259,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
         case other => fail(s"$n: $other")
   }
 
-  // `Builtins.hs:1507-1610`
+  // `Builtins.hs:1507-1610` of plutus 1.70.0.0
   test("the string builtins, and decodeUtf8 refusing what is not well-formed UTF-8") {
     assertEquals(
       in(AppendString, string("λ"), string("x")),
@@ -282,7 +283,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
         case other => fail(s"$what: $other")
   }
 
-  // `Builtins.hs:1612-1637`: the opaque arguments are passed as they are.
+  // `Builtins.hs:1612-1637` of plutus 1.70.0.0: the opaque arguments are passed as they are.
   test("ifThenElse, chooseUnit and trace pass their opaque argument through; trace logs its text") {
     val other = Probe.Lambda("y")
     assertEquals(
@@ -297,7 +298,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
     assertEquals(run(A, Trace, string("hello"), lambda), Outcome.Success(lambda, Vector("hello")))
   }
 
-  // `Builtins.hs:1638-1661`
+  // `Builtins.hs:1638-1661` of plutus 1.70.0.0
   test("fstPair and sndPair; any other constant is a structural error with no log") {
     val p = con(Constant.Pair(Constant.Bool(true), Constant.ByteString(hexBytes("012345"))))
     assertEquals(in(FstPair, p), truth(true))
@@ -317,7 +318,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
   private val ints = con(list(DefaultUni.Integer, Constant.Integer(1), Constant.Integer(2)))
   private val noInts = con(list(DefaultUni.Integer))
 
-  // `Builtins.hs:1663-1730` and `builtin/semantics/mkCons` of the corpus.
+  // `Builtins.hs:1663-1730` of plutus 1.70.0.0 and `builtin/semantics/mkCons` of the corpus.
   test("the list builtins") {
     val other = Probe.Lambda("y")
     assertEquals(run(A, ChooseList, noInts, lambda, other), Outcome.Success(lambda, Vector.empty))
@@ -373,7 +374,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
         case other => fail(s"$f: $other")
   }
 
-  // `drop` of an `IntegerCostedLiterally` (`Builtins.hs:2328-2376`)
+  // `drop` of an `IntegerCostedLiterally` (`Builtins.hs:2328-2376`, plutus 1.70.0.0)
   test("dropList saturates both ways and keeps the element type") {
     val three =
       con(list(DefaultUni.Integer, Constant.Integer(1), Constant.Integer(2), Constant.Integer(3)))
@@ -396,7 +397,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
 
   private val d = PlutusData.Constr(3, Vector(PlutusData.I(1), PlutusData.B(hexBytes("ab"))))
 
-  // `Builtins.hs:1732-1884`
+  // `Builtins.hs:1732-1884` of plutus 1.70.0.0
   test("the Data builtins") {
     val branches = (1 to 5).map(i => Probe.Lambda(s"$i"))
     val shapes = Vector(
@@ -472,7 +473,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
         case other => fail(s"$f: $other")
   }
 
-  // Derived `Eq` (`PlutusCore/Data.hs:42-49`): entries in order, repeats kept.
+  // Derived `Eq` (`PlutusCore/Data.hs:42-49`, plutus 1.70.0.0): entries in order, repeats kept.
   test("equalsData compares map entries in order") {
     val ab =
       PlutusData.Map(Vector(PlutusData.I(1) -> PlutusData.I(1), PlutusData.I(2) -> PlutusData.I(2)))

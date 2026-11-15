@@ -33,21 +33,24 @@ import xyz.kd5ujc.scarab.uplc.{
   */
 object UplcParser:
 
-  /** The program `text` with its names (`parseProgram`, `UntypedPlutusCore/Parser.hs:152-156`). */
+  /** The program `text` with its names (`parseProgram`, `UntypedPlutusCore/Parser.hs:152-156`,
+    * plutus 1.70.0.0).
+    */
   def parseProgram(text: String): Either[TextError, NamedProgram] =
     Machine(text).program.parse(text) match
       case Left(error)         => Left(TextError.Syntax(error.failedAtOffset, error.expected))
       case Right((_, outcome)) => outcome
 
   /** The closed program `text`, with de Bruijn indices: what the conformance runner evaluates
-    * (`PlutusConformance/Common.hs:374-382`, `CekEvaluator.hs:54-57`).
+    * (`PlutusConformance/Common.hs:374-382`, `CekEvaluator.hs:54-57`, plutus 1.70.0.0).
     */
   def program(text: String): Either[ProgramError, Program] =
     parseProgram(text)
       .leftMap(ProgramError.Unparsable(_))
       .flatMap(_.deBruijn.leftMap(ProgramError.Open(_)))
 
-  // Characters, as Haskell classifies them (`PlutusCore/Name/Unique.hs:75-87`, `Data.Char`).
+  // Characters, as Haskell classifies them (`PlutusCore/Name/Unique.hs:75-87`, `Data.Char`,
+  // plutus 1.70.0.0).
   private def isAsciiAlpha(c: Char): Boolean = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
   private def isDigit(c: Char): Boolean = c >= '0' && c <= '9'
   private def isIdentifierStart(c: Char): Boolean = isAsciiAlpha(c) || c == '_'
@@ -64,9 +67,9 @@ object UplcParser:
     c == ' ' || (c >= 0x9 && c <= 0xd) || c == 0xa0 ||
       (c > 0x377 && Character.getType(c) == Character.SPACE_SEPARATOR)
 
-  // `whitespace` (`ParserCommon.hs:89-90`): spaces, `--` line comments and nested `{- -}` block
-  // comments. A block comment is read by a loop over its depth (`skipBlockCommentNested`: the end
-  // first, then a nested comment, then any character).
+  // `whitespace` (`ParserCommon.hs:89-90`, plutus 1.70.0.0): spaces, `--` line comments and nested
+  // `{- -}` block comments. A block comment is read by a loop over its depth
+  // (`skipBlockCommentNested`: the end first, then a nested comment, then any character).
   private val blockComment: P[Unit] =
     val token: P[Int] =
       P.oneOf(List(P.string("-}").as(-1), P.string("{-").as(1), P.anyChar.as(0)))
@@ -98,29 +101,31 @@ object UplcParser:
   // `Lex.decimal` into an unbounded number.
   private val decimal: P[BigInt] = Numbers.digits.map(BigInt(_))
 
-  // `conInteger = Lex.signed whitespace (lexeme Lex.decimal)` (`Builtin.hs:66-67`).
+  // `conInteger = Lex.signed whitespace (lexeme Lex.decimal)` (`Builtin.hs:66-67`,
+  // plutus 1.70.0.0).
   private val integer: P[BigInt] =
     val sign: P[BigInt => BigInt] =
       P.char('+').as((n: BigInt) => n) | P.char('-').as((n: BigInt) => -n)
     ((sign <* ws).?.with1 ~ (decimal <* ws)).map((s, n) => s.fold(n)(_(n)))
 
-  // `many hexByte` (`Builtin.hs:70-78`): an odd digit fails after consuming.
+  // `many hexByte` (`Builtin.hs:70-78`, plutus 1.70.0.0): an odd digit fails after consuming.
   private val hexBytes: P0[Bytes] =
     (P.charWhere(isHexDigit) ~ P.charWhere(isHexDigit)).rep0
       .map(pairs => Bytes.wrap(pairs.map((h, l) => Integer.parseInt(s"$h$l", 16).toByte).toArray))
 
-  // `conBS` (`Builtin.hs:77-78`) and `con0xBS` (`Builtin.hs:135-136`).
+  // `conBS` (`Builtin.hs:77-78`, plutus 1.70.0.0) and `con0xBS` (`Builtin.hs:135-136`).
   private val bytestring: P[Bytes] = P.char('#') *> hexBytes <* ws
   private val bytes0x: P[Bytes] = P.string("0x") *> hexBytes <* ws
 
-  // `version` (`ParserCommon.hs:206-212`).
+  // `version` (`ParserCommon.hs:206-212`, plutus 1.70.0.0).
   private val version: P[ProgramVersion] =
     ((decimal <* P.char('.')) ~ (decimal <* P.char('.')) ~ decimal <* ws).mapFilter {
       case ((major, minor), patch) => ProgramVersion.of(major, minor, patch)
     }
 
-  // `name` (`ParserCommon.hs:215-236`): an identifier or a back-quoted one, then an explicit unique
-  // (`-` and a decimal, read into a wrapping `Int`) when one follows; all under `try`.
+  // `name` (`ParserCommon.hs:215-236`, plutus 1.70.0.0): an identifier or a back-quoted one, then
+  // an explicit unique (`-` and a decimal, read into a wrapping `Int`) when one follows; all under
+  // `try`.
   private val identifier: P[String] =
     (P.charWhere(isIdentifierStart) ~ P.charsWhile0(isIdentifierChar)).string |
       (P.char('`') *> P.charsWhile(isQuotedIdentifierChar) <* P.char('`'))
@@ -129,8 +134,8 @@ object UplcParser:
   private val name: P[(String, Option[Long])] = (identifier ~ explicitUnique).backtrack
 
   /** The uniques given so far to names written without one (`uniqueForName`,
-    * `ParserCommon.hs:240-248`): one per text, fresh from 0 in the order of first use
-    * (`freshUnique`, `PlutusCore/Quote.hs:51-52,108-112`).
+    * `ParserCommon.hs:240-248`, plutus 1.70.0.0): one per text, fresh from 0 in the order of first
+    * use (`freshUnique`, `PlutusCore/Quote.hs:51-52,108-112`).
     */
   private final case class Names(byText: Map[String, Long], fresh: Long):
     def resolve(text: String, explicit: Option[Long]): (Names, Name) =
@@ -169,8 +174,9 @@ object UplcParser:
     sealed trait K[A]:
       def receive(value: A, names: Names): P0[Step]
 
-    // `program` (`UntypedPlutusCore/Parser.hs:133-141`): the version is known to every term in it.
-    // A `def`, so that the machine is complete before the parser that runs it is built.
+    // `program` (`UntypedPlutusCore/Parser.hs:133-141`, plutus 1.70.0.0): the version is known to
+    // every term in it. A `def`, so that the machine is complete before the parser that runs it is
+    // built.
     def program: P0[Outcome] =
       (ws.with1 *> openParen *> symbol("program") *> version).flatMap { v =>
         val run = Monad[P0].tailRecM[State, Outcome](
@@ -182,7 +188,7 @@ object UplcParser:
         run
       }
 
-    // ---- terms (`UntypedPlutusCore/Parser.hs:43-130`) ----
+    // ---- terms (`UntypedPlutusCore/Parser.hs:43-130`, plutus 1.70.0.0) ----
 
     // `term`: an application, a keyword in parentheses, or a variable; `withSpan` reads the spaces
     // after each.
@@ -310,7 +316,7 @@ object UplcParser:
       def receive(c: Con, names: Names): P0[Step] =
         closeParen.as(back(NamedTerm.constant(c), next, names))
 
-    // ---- types (`PlutusCore/Parser/Type.hs:93-158`) ----
+    // ---- types (`PlutusCore/Parser/Type.hs:93-158`, plutus 1.70.0.0) ----
 
     // `defaultUni`: every alternative is under `try`, so a type that fails to read fails without
     // consuming, but no other alternative then succeeds, and the constant around it fails.
@@ -351,7 +357,7 @@ object UplcParser:
           TypeGoal.arguments(_, next, names)
         )
 
-    // ---- constants (`PlutusCore/Parser/Builtin.hs:101-170`) ----
+    // ---- constants (`PlutusCore/Parser/Builtin.hs:101-170`, plutus 1.70.0.0) ----
 
     /** A constant of type `t`; `parens` is `ExpectParens`, which only `data` reads. */
     final case class ConstantGoal(t: DefaultUni, parens: Boolean) extends Goal[Con]:
@@ -438,7 +444,7 @@ object UplcParser:
         if parens then closeParen.as(back(Con.Data(d), next, names))
         else P.pure(back(Con.Data(d), next, names))
 
-    // ---- data (`conDataNoParens`, `Builtin.hs:119-131`) ----
+    // ---- data (`conDataNoParens`, `Builtin.hs:119-131`, plutus 1.70.0.0) ----
 
     case object DataGoal extends Goal[PlutusData]:
       def start(k: K[PlutusData], names: Names): P[Step] =
@@ -497,7 +503,7 @@ object UplcParser:
           closeBracket.as(back(PlutusData.Map(all), next, names))
         )
 
-    // ---- string literals (`conText`, `Builtin.hs:86-87`) ----
+    // ---- string literals (`conText`, `Builtin.hs:86-87`, plutus 1.70.0.0) ----
 
     // `manyTill charLiteral (char '"')`: the closing quote is tried first; each character is read
     // by `readLitChar` on the ten code points ahead.
@@ -528,7 +534,7 @@ object UplcParser:
         }
       }
 
-    // ---- value literals (`conValue`, `Builtin.hs:177-220`) ----
+    // ---- value literals (`conValue`, `Builtin.hs:177-220`, plutus 1.70.0.0) ----
 
     // The entries in their written order; the bounds and emptiness checks of `parsePair`, then
     // `buildValueWith`'s order checks, are made once all are read.

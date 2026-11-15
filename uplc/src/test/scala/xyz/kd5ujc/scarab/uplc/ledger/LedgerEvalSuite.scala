@@ -100,7 +100,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
   private val one = PlutusData.I(1)
   private val two = PlutusData.I(2)
 
-  // `Eval.hs:118-121`: `mkIterAppNoAnn t (fmap (mkConstant ()) args)`
+  // `Eval.hs:118-121` of plutus 1.70.0.0: `mkIterAppNoAnn t (fmap (mkConstant ()) args)`
   test("mkTermToEvaluate applies the arguments as data constants, the first innermost") {
     val body = lam(lam(unit))
     assertEquals(
@@ -134,7 +134,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
     )
   }
 
-  // `Eval.hs:123-130`: the version is checked first, then the scope
+  // `Eval.hs:123-130` of plutus 1.70.0.0: the version is checked first, then the scope
   test("the program's version is checked before the scope: setup, not scope") {
     val open = v110(v(1))
     // V1 has program version 1.1.0 from protocol 11 only (`plcVersionsAvailableIn`)
@@ -150,7 +150,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
     assertEquals(failure(restricting(V1, open, protocol = pv11)).stage, Stage.Scope)
   }
 
-  // `UntypedPlutusCore/Check/Scope.hs:37-55`
+  // `UntypedPlutusCore/Check/Scope.hs:37-55` of plutus 1.70.0.0
   test("the scope check: an index must be at least 1 and at most the number of lam around it") {
     def free(i: Long) = Left(FreeVariableError.FreeIndex(Word64.fromBits(i)))
     assertEquals(Scope.check(v(1)), free(1))
@@ -185,7 +185,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
       case other                         => fail(s"expected an open term, got $other")
   }
 
-  // `Eval.hs:314-320`
+  // `Eval.hs:314-320` of plutus 1.70.0.0
   test("V3: a result other than () fails the script; V1 and V2 accept any result") {
     val unitResult = v100(lam(unit))
     val integer = v100(lam(int(1)))
@@ -324,7 +324,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
       case other => fail(s"expected the language refusal, got $other")
   }
 
-  // `Eval.hs:239`: `Quiet` evaluates with `noEmitter`
+  // `Eval.hs:239` of plutus 1.70.0.0: `Quiet` evaluates with `noEmitter`
   test(
     "Verbose keeps the logs, of a success and of a failure; Quiet keeps none and spends the same"
   ) {
@@ -353,7 +353,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
       case other => fail(s"expected a failure, got $other")
   }
 
-  // `Eval.hs:269-274,296-301`
+  // `Eval.hs:269-274,296-301` of plutus 1.70.0.0
   test(
     "restricting reports the limit less what is left, counting what is spent; one unit less fails"
   ) {
@@ -377,7 +377,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
     )
   }
 
-  // `defaultCaserBuiltinFor` (`Eval.hs:141-146`)
+  // `defaultCaserBuiltinFor` (`Eval.hs:141-146`, plutus 1.70.0.0)
   test("case on a constant: refused before protocol 11, without Data before 12") {
     val onInteger = v110(lam(caseOf(int(0), unit)))
     cekError(restricting(V3, onInteger, Vector(one), protocol = pv10)) match
@@ -491,7 +491,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
       evaluateWith(empty, adding),
       ScriptResult.Unavailable(Unavailability.NoMachine(V3, pv11))
     )
-    // `toMachineParameters` is forced after `mkTermToEvaluate` (`Eval.hs:270-272`)
+    // `toMachineParameters` is forced after `mkTermToEvaluate` (`Eval.hs:270-272`, plutus 1.70.0.0)
     assertEquals(
       failure(evaluateWith(empty, v100(v(1)))),
       EvaluationError.DeBruijn(FreeVariableError.FreeIndex(Word64.fromBits(1)))

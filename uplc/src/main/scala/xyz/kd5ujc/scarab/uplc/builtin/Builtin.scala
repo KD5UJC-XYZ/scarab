@@ -28,8 +28,8 @@ enum ErrorClass:
   case Structural, Operational
 
 /** Why an argument does not unlift (`UnliftingError`, wrapped as `UnliftingEvaluationError`,
-  * `PlutusCore/Builtin/Result.hs:46-56`). The unlifting owns the cases; it may add ones the
-  * reference distinguishes.
+  * `PlutusCore/Builtin/Result.hs:46-56`, plutus 1.70.0.0). The unlifting owns the cases; it may add
+  * ones the reference distinguishes.
   *
   * @param position
   *   the argument's position, from 0
@@ -44,35 +44,36 @@ enum UnliftingCause:
   case OutOfBounds(position: Int, bound: UnliftingBound)
 
   /** An integer outside the range of a fixed-width Haskell type (`Int`, `Word8`, `Word64`), whose
-    * message names the integer: `readKnownAsInteger` (`PlutusCore/Default/Universe.hs:585-607`).
-    * The bounds of `CInteger` and `CByteString`, whose messages name no value, are [[OutOfBounds]].
+    * message names the integer: `readKnownAsInteger` (`PlutusCore/Default/Universe.hs:585-607`,
+    * plutus 1.70.0.0). The bounds of `CInteger` and `CByteString`, whose messages name no value,
+    * are [[OutOfBounds]].
     */
   case NotWithinBounds(position: Int, bound: UnliftingBound, value: BigInt)
 
   /** A `SomeConstant` argument that should be a list and is not: the structural error the
     * denotations of the list builtins raise after their cost is spent ("Expected a list but got
-    * something else", `PlutusCore/Default/Builtins.hs:1663-1730,2328-2393`).
+    * something else", `PlutusCore/Default/Builtins.hs:1663-1730,2328-2393`, plutus 1.70.0.0).
     */
   case ExpectedList(position: Int, actual: DefaultUni)
 
   /** A `SomeConstant` argument that should be a pair and is not (`fstPair`, `sndPair`,
-    * `Builtins.hs:1638-1661`).
+    * `Builtins.hs:1638-1661`, plutus 1.70.0.0).
     */
   case ExpectedPair(position: Int, actual: DefaultUni)
 
   /** A `SomeConstant` argument that should be an array and is not ("Expected an array but got
-    * something else", `Builtins.hs:2378-2408,2482-2497`).
+    * something else", `Builtins.hs:2378-2408,2482-2497`, plutus 1.70.0.0).
     */
   case ExpectedArray(position: Int, actual: DefaultUni)
 
   /** `mkCons` of a value whose type is not the list's element type ("The type of the value does not
-    * match the type of elements in the list", `Builtins.hs:1677-1694`).
+    * match the type of elements in the list", `Builtins.hs:1677-1694`, plutus 1.70.0.0).
     */
   case ElementMismatch(element: DefaultUni, value: DefaultUni)
 
   /** A call with the wrong number of arguments. The reference cannot make one (a runtime is applied
-    * only when saturated, `PlutusCore/Builtin/Meaning.hs:234-330`), so this is a defect of the
-    * caller, not a case of the reference.
+    * only when saturated, `PlutusCore/Builtin/Meaning.hs:234-330`, plutus 1.70.0.0), so this is a
+    * defect of the caller, not a case of the reference.
     */
   case Arity(expected: Int, actual: Int)
 
@@ -81,7 +82,7 @@ enum UnliftingBound:
   case Int64, Word64, Int, Word8, CInteger, CByteString
 
   /** The name `typeRep` shows for the type the bound reads through: an `Int` reads as an `Int64`
-    * (`PlutusCore/Default/Universe.hs:615-617`).
+    * (`PlutusCore/Default/Universe.hs:615-617`, plutus 1.70.0.0).
     */
   def typeName: String = this match
     case Int | Int64 => "Int64"
@@ -93,7 +94,7 @@ enum UnliftingBound:
 final case class UnliftingFailure(errorClass: ErrorClass, cause: UnliftingCause):
   /** The log line of the failure: `throwError` puts the message of every operational unlifting
     * error into the logs, a structural one gets none (`MonadError BuiltinError BuiltinResult`,
-    * `PlutusCore/Builtin/Result.hs:198-220`).
+    * `PlutusCore/Builtin/Result.hs:198-220`, plutus 1.70.0.0).
     */
   def message: Option[String] = errorClass match
     case ErrorClass.Structural => None
@@ -108,28 +109,30 @@ final case class UnliftingFailure(errorClass: ErrorClass, cause: UnliftingCause)
 
 /** Why a denotation fails once its arguments are unlifted and its cost is spent
   * (`BuiltinEvaluationFailure`, whose message the reference emits as a log line,
-  * `PlutusCore/Builtin/Result.hs:53-56`). The builtins own the cases and add the ones they need;
-  * each case renders the reference's message in [[EvaluationFailure.message]].
+  * `PlutusCore/Builtin/Result.hs:53-56`, plutus 1.70.0.0). The builtins own the cases and add the
+  * ones they need; each case renders the reference's message in [[EvaluationFailure.message]].
   */
 enum EvaluationFailure:
-  /** `nonZeroSecondArg` (`Default/Builtins.hs:262-265`). */
+  /** `nonZeroSecondArg` (`Default/Builtins.hs:262-265`, plutus 1.70.0.0). */
   case DivisionByZero
 
-  /** `indexByteString` (`Default/Builtins.hs:1338,1346`). */
+  /** `indexByteString` (`Default/Builtins.hs:1338,1346`, plutus 1.70.0.0). */
   case ByteStringIndexOutOfBounds(index: BigInt, size: Int)
 
-  /** `indexArray` (`Default/Builtins.hs:2401`). */
+  /** `indexArray` (`Default/Builtins.hs:2401`, plutus 1.70.0.0). */
   case ArrayIndexOutOfBounds(index: BigInt, size: Int)
 
-  /** `headList`, `tailList` (`Default/Builtins.hs:1701,1714`). */
+  /** `headList`, `tailList` (`Default/Builtins.hs:1701,1714`, plutus 1.70.0.0). */
   case EmptyList
 
   /** `unConstrData`, `unMapData`, `unListData`, `unIData`, `unBData`
-    * (`Default/Builtins.hs:1794,1805,1816,1827,1838`).
+    * (`Default/Builtins.hs:1794,1805,1816,1827,1838`, plutus 1.70.0.0).
     */
   case UnexpectedData(expected: DataShape)
 
-  /** `decodeUtf8` of bytes that are not well-formed UTF-8 (`Default/Builtins.hs:1595,1606`). */
+  /** `decodeUtf8` of bytes that are not well-formed UTF-8 (`Default/Builtins.hs:1595,1606`, plutus
+    * 1.70.0.0).
+    */
   case InvalidUtf8
 
   /** A BLS12-381 builtin (`PlutusCore/Crypto/BLS12_381/G1.hs`, `G2.hs`). */
@@ -156,11 +159,12 @@ enum EvaluationFailure:
     */
   case Defect(function: DefaultFun, defect: extended.LibraryDefect)
 
-  /** `multiIndexArray` (`PlutusCore/Arrays.hs:48-69`). */
+  /** `multiIndexArray` (`PlutusCore/Arrays.hs:48-69`, plutus 1.70.0.0). */
   case ArrayIndices(failure: extended.ArrayFailure)
 
   /** The text the reference emits as a log line for this failure (its argument to `fail`, which
-    * `BuiltinResult` turns into a log, `Builtin/Result.hs:88-90`), or none where it emits none.
+    * `BuiltinResult` turns into a log, `Builtin/Result.hs:88-90`, plutus 1.70.0.0), or none where
+    * it emits none.
     */
   def message: Option[String] = this match
     case DivisionByZero                   => Some("Cannot divide by zero")
@@ -212,7 +216,7 @@ object Outcome:
 
   /** A denotation's failure with the reference's log line: every denotation fails through this, and
     * the machine emits an outcome's logs exactly once, before it raises (`evalBuiltinApp`,
-    * `Cek/Internal.hs:1066-1073`).
+    * `Cek/Internal.hs:1066-1073`, plutus 1.70.0.0).
     */
   def failed[V](failure: EvaluationFailure): Outcome[V] =
     Failure(BuiltinFailure.Evaluation(failure), failure.logs)
@@ -229,7 +233,8 @@ trait Denotations:
 
 /** Unlifting under one semantics variant: every argument against the builtin's [[Signature]] and
   * the variant's bounds, in argument order, the first failure winning. The reference unlifts at
-  * full saturation, before it costs (`toMonoF`, `PlutusCore/Builtin/Meaning.hs:304-330`).
+  * full saturation, before it costs (`toMonoF`, `PlutusCore/Builtin/Meaning.hs:304-330`, plutus
+  * 1.70.0.0).
   */
 trait Unlifting:
   def apply[V](function: DefaultFun, arguments: Vector[V])(using
@@ -249,7 +254,7 @@ trait Costing:
 /** A saturated application ready for the machine: spend `cost`, element by element, then run
   * `result`. The result is a function because the reference computes it only after the cost is
   * spent (`BuiltinCostedResult ExBudgetStream ~(BuiltinResult val)`,
-  * `PlutusCore/Builtin/Runtime.hs:32-35`).
+  * `PlutusCore/Builtin/Runtime.hs:32-35`, plutus 1.70.0.0).
   */
 final case class Prepared[V](cost: CostStream, result: () => Outcome[V])
 
@@ -261,9 +266,9 @@ final case class Builtins(
     costing: Costing
 ):
   /** A saturated application, in the reference's order (`toMonoF`, `Meaning.hs:247-262,304-330`;
-    * `evalBuiltinApp`, `Cek/Internal.hs:1052-1074`): unlift every argument; if one fails, the
-    * application costs nothing and fails ([[CostStream.free]]), logging the message of an
-    * operational unlifting error ([[UnliftingFailure.message]]); otherwise its cost is computed
+    * `evalBuiltinApp`, `Cek/Internal.hs:1052-1074`, plutus 1.70.0.0): unlift every argument; if one
+    * fails, the application costs nothing and fails ([[CostStream.free]]), logging the message of
+    * an operational unlifting error ([[UnliftingFailure.message]]); otherwise its cost is computed
     * from the unlifted arguments, and its denotation runs only when the machine has spent that
     * cost.
     */

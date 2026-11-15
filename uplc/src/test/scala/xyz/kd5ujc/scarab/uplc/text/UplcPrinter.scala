@@ -146,7 +146,7 @@ object UplcPrinter:
     case DefaultUni.Pair(a, b)           => Group("(pair ", Vector(OfType(a), OfType(b)), " ", ")")
 
   // `PrettyConst`: lists and arrays in brackets, pairs in parentheses, their elements without the
-  // parentheses that `data` takes alone (`NoParens`, `PrettyConst.hs:127-141`).
+  // parentheses that `data` takes alone (`NoParens`, `PrettyConst.hs:127-141`, plutus 1.70.0.0).
   private def value(c: Con, parens: Boolean): Layout[Seed] = c match
     case Con.Integer(n)    => Atom(n.toString)
     case Con.ByteString(b) => Atom(s"#${b.hex}")
@@ -158,7 +158,8 @@ object UplcPrinter:
     case Con.Data(d)                 => data(d)
     case Con.Bls12_381_G1_Element(e) => Atom(s"0x${e.compressed.hex}")
     case Con.Bls12_381_G2_Element(e) => Atom(s"0x${e.compressed.hex}")
-    // No literal reads it back (`Builtin.hs:169-170`); the reference prints the field element.
+    // No literal reads it back (`Builtin.hs:169-170`, plutus 1.70.0.0); the reference prints the
+    // field element.
     case Con.Bls12_381_MlResult(m) => Atom(s"0x${m.raw.hex}")
     case Con.Value(v)              => Atom(valueText(v))
     case l: Con.List               => Group("[", l.items.map(OfValue(_, parens = false)), ", ", "]")
@@ -166,7 +167,7 @@ object UplcPrinter:
     case Con.Pair(x, y) =>
       Group("(", Vector(OfValue(x, parens = false), OfValue(y, parens = false)), ", ", ")")
 
-  // `PrettyBy ConstConfig Data` (`PrettyConst.hs:155-161`).
+  // `PrettyBy ConstConfig Data` (`PrettyConst.hs:155-161`, plutus 1.70.0.0).
   private def data(d: PlutusData): Layout[Seed] = d match
     case PlutusData.Constr(i, fs) => Group(s"Constr $i [", fs.map(OfData(_)), ", ", "]")
     case PlutusData.Map(kvs)      => Group("Map [", kvs.map(OfEntry(_, _)), ", ", "]")
@@ -174,8 +175,8 @@ object UplcPrinter:
     case PlutusData.I(n)          => Atom(s"I $n")
     case PlutusData.B(b)          => Atom(s"B #${b.hex}")
 
-  // `PrettyBy ConstConfig Value` (`PrettyConst.hs:163-170`): the list of currencies and tokens. Its
-  // depth is fixed.
+  // `PrettyBy ConstConfig Value` (`PrettyConst.hs:163-170`, plutus 1.70.0.0): the list of
+  // currencies and tokens. Its depth is fixed.
   private def valueText(v: Value): String =
     v.toList
       .map { (currency, tokens) =>

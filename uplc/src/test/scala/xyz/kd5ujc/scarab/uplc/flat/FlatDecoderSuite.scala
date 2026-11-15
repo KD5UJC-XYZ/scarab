@@ -81,7 +81,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(FlatDecoder.program(FlatWriter.flat(program), Checks.unrestricted), Right(program))
   }
 
-  // `postAlignedDecoder` and `strictDecoder` (`Filler.hs:77-81`, `Decoder/Run.hs:19-24`)
+  // `postAlignedDecoder` and `strictDecoder` (`Filler.hs:77-81`, `Decoder/Run.hs:19-24`,
+  // plutus 1.70.0.0)
   test("the filler after the program: any number of zeros, its 1 on the last bit of the input") {
     val body = v100 + error
     assert(decodeRaw(packed(body + "0001")).isRight)
@@ -92,7 +93,7 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(decodeRaw(Array.empty), Left(FlatError.NotEnoughSpace(0, 8)))
   }
 
-  // `Flat Version` (`FlatInstances.hs:177-179`): three naturals of any size
+  // `Flat Version` (`FlatInstances.hs:177-179`, plutus 1.70.0.0): three naturals of any size
   test("version components are naturals of any width") {
     val wide = BigInt(1) + (BigInt(1) << 70)
     val decoded = decodeBits(natural(wide) + natural(0) + natural(1) + error)
@@ -103,7 +104,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     )
   }
 
-  // `Flat.hs:167-185`: the version gate comes before the tag of `constr` and before anything of `case`
+  // `Flat.hs:167-185` of plutus 1.70.0.0: the version gate comes before the tag of `constr` and
+  // before anything of `case`
   test("constr and case before 1.1.0 are refused before anything after their tag is read") {
     assertEquals(
       decodeRaw(packed(v100 + bits(8, 4) + "1111")),
@@ -117,7 +119,7 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(term(bits(9, 4) + error + "0"), Right(Term.caseOf(Term.error, Vector.empty)))
   }
 
-  // `dWord64` (`Strict.hs:165-184`, `lastStep` 228-239)
+  // `dWord64` (`Strict.hs:165-184`, `lastStep` 228-239, plutus 1.70.0.0)
   test("Word64: ten groups at most, the tenth holding bit 63 alone, padding accepted") {
     def delayed(groupBytes: Int*): Either[FlatError, Term] =
       term(bits(1, 4) + bits(0, 4) + groups(groupBytes*))
@@ -148,12 +150,12 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(term(bits(2, 4) + bits(0, 4) + natural(7)), Right(Term.lam(variable(7))))
   }
 
-  // `decodeTerm`'s last case (`Flat.hs:186`)
+  // `decodeTerm`'s last case (`Flat.hs:186`, plutus 1.70.0.0)
   test("term tags 10 to 15 have no term") {
     (10 to 15).foreach(t => assertEquals(term(bits(t, 4)), Left(FlatError.UnknownTermTag(t))))
   }
 
-  // `decode` of `DefaultFun` (`Default/Builtins.hs:2676-2784`)
+  // `decode` of `DefaultFun` (`Default/Builtins.hs:2676-2784`, plutus 1.70.0.0)
   test("builtin tags 0 to 105 name the builtins; 106 to 127 none") {
     DefaultFun.values.foreach(f =>
       assertEquals(term(bits(7, 4) + bits(f.flatTag, 7)), Right(Term.builtin(f)))
@@ -184,7 +186,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     )
   }
 
-  // `decodeKindedUniFlat` and `checkStar` (`FlatInstances.hs:129-135`, `Flat.hs:148-153`)
+  // `decodeKindedUniFlat` and `checkStar` (`FlatInstances.hs:129-135`, `Flat.hs:148-153`,
+  // plutus 1.70.0.0)
   test("a type header that is not one well-kinded type of kind * is refused before its value") {
     import TypeHeader.{Failure, Kinded}
     def header(tags: Int*): Either[FlatError, Constant] = constantOf(tags, _ => "")
@@ -222,7 +225,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     )
   }
 
-  // `G1.hs:86-90`, `G2.hs:72-76`, `Pairing.hs:56-58`: the value's decoder fails, not the type
+  // `G1.hs:86-90`, `G2.hs:72-76`, `Pairing.hs:56-58` of plutus 1.70.0.0: the value's decoder fails,
+  // not the type
   test("BLS12-381 values have no Flat decoding, but an empty list of them decodes") {
     assertEquals(
       constantOf(Seq(9), _ => ""),
@@ -250,7 +254,7 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     )
   }
 
-  // `dZigZag`/`zagZig` over `dNatural` (`Strict.hs:113-114`, `ZigZag.hs`)
+  // `dZigZag`/`zagZig` over `dNatural` (`Strict.hs:113-114`, `ZigZag.hs`, plutus 1.70.0.0)
   test("integers are zig-zag naturals, of any width and with padded groups") {
     def int(bits: String): Either[FlatError, Constant] = constantOf(Seq(0), _ => bits)
     assertEquals(int(natural(0)), Right(Constant.Integer(0)))
@@ -264,7 +268,7 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(int(groups(0x80)), Left(FlatError.NotEnoughSpace(24 + 4 + 6 + 8, 8)))
   }
 
-  // `dByteString` and `getChunksInfo` (`Strict.hs:317-318`, `Prim.hs:441-459`)
+  // `dByteString` and `getChunksInfo` (`Strict.hs:317-318`, `Prim.hs:441-459`, plutus 1.70.0.0)
   test("byte strings: a filler, a byte boundary, then chunks of any length") {
     val content = Array[Byte](1, 2, 3)
     val chunks = bits(1, 8) + bits(1, 8) + bits(2, 8) + bits(2, 8) + bits(3, 8) + bits(0, 8)
@@ -285,7 +289,7 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     )
   }
 
-  // `dUTF8` (`Strict.hs:293-299`): `decodeUtf8'` refuses what is not UTF-8
+  // `dUTF8` (`Strict.hs:293-299`, plutus 1.70.0.0): `decodeUtf8'` refuses what is not UTF-8
   test("string constants must be UTF-8") {
     def string(raw: Array[Byte]): Either[FlatError, Constant] =
       constantOf(Seq(2), at => byteString(at, raw))
@@ -302,7 +306,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     )
   }
 
-  // `FlatViaSerialise` (`FlatViaSerialise.hs:32-39`): the first CBOR item, what follows dropped
+  // `FlatViaSerialise` (`FlatViaSerialise.hs:32-39`, plutus 1.70.0.0): the first CBOR item, what
+  // follows dropped
   test("data constants: the first CBOR item of the byte string") {
     def data(cbor: String): Either[FlatError, Constant] =
       constantOf(Seq(8), at => byteString(at, hex(cbor)))
@@ -342,7 +347,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
   private def k(bytes: Int*): Array[Byte] = bytes.map(_.toByte).toArray
   private def key(bytes: Int*): Value.Key = Value.Key(Bytes.wrap(k(bytes*))).getOrElse(fail("key"))
 
-  // `Flat Value`, `K`, `Quantity` and `buildValueWith` (`Value.hs:103-108`, 137-144, 223-232, 637-694)
+  // `Flat Value`, `K`, `Quantity` and `buildValueWith` (`Value.hs:103-108`, 137-144, 223-232,
+  // 637-694, plutus 1.70.0.0)
   test("value constants: keys and amounts checked as read, then the order of the whole") {
     import Value.Invalid
     val long = Array.fill[Byte](33)(1)
@@ -393,7 +399,7 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(value(), Right(Constant.Value(Value.empty)))
   }
 
-  // `decodeListWith`'s `goZero` (`Strict.hs:60-88`): an element of no bits repeats
+  // `decodeListWith`'s `goZero` (`Strict.hs:60-88`, plutus 1.70.0.0): an element of no bits repeats
   test("lists and arrays of elements of no bits") {
     val units = constantOf(Seq(7, 5, 3), _ => "1" * 1000 + "0")
     assertEquals(units.map { case l: Constant.List => l.items.size; case _ => -1 }, Right(1000))
@@ -409,7 +415,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(constantOf(Seq(7, 5, 3), _ => "1" * 3), Left(FlatError.NotEnoughSpace(48, 1)))
   }
 
-  // `compile` (`Universe.hs:166-186`): the reference builds the value of a part of no bits once
+  // `compile` (`Universe.hs:166-186`, plutus 1.70.0.0): the reference builds the value of a part of
+  // no bits once
   test("a part of a type made of units is one value, shared by every value that holds it") {
     // a script of about 16 KiB: a list of 40,000 pairs of a bool and a pair of units 2,500 deep
     val depth = 2500
@@ -426,7 +433,8 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assert(shared.forall(_ eq shared(0)), "the unit part is one value")
   }
 
-  // `maxBoundsByPV` (`Versions.hs:389-399`) through `scriptCBORDecoder` (`SerialisedScript.hs:207-234`)
+  // `maxBoundsByPV` (`Versions.hs:389-399`, plutus 1.70.0.0) through `scriptCBORDecoder`
+  // (`SerialisedScript.hs:207-234`)
   test("the ledger's bounds: 32 type tags and 1024 constr fields from protocol 11") {
     def fields(n: Int): String = bits(8, 4) + natural(0) + ("1" + error) * n + "0"
     val pv11 = Checks.ledger(PlutusLanguage.V3, ProtocolMajor.VanRossem)

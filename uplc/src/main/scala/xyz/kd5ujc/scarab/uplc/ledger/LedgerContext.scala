@@ -22,9 +22,9 @@ import xyz.kd5ujc.scarab.uplc.cost.{
   */
 final case class VariantMachine(variant: SemanticsVariant, costs: MachineCosts, builtins: Builtins)
 
-/** The reference's `EvaluationContext` (`PlutusLedgerApi/Common/Eval.hs:175-195`): a language's
-  * machines, one per semantics variant of its context, made once from the ledger's cost-model list
-  * and looked up by protocol at each evaluation.
+/** The reference's `EvaluationContext` (`PlutusLedgerApi/Common/Eval.hs:175-195`, plutus 1.70.0.0):
+  * a language's machines, one per semantics variant of its context, made once from the ledger's
+  * cost-model list and looked up by protocol at each evaluation.
   *
   * Every language's context takes `defaultCaserBuiltinFor` as its caser
   * (`V1/EvaluationContext.hs:50`, V2 the same, `V3/EvaluationContext.hs:47`), which is
@@ -36,10 +36,10 @@ final case class VariantMachine(variant: SemanticsVariant, costs: MachineCosts, 
   */
 final case class LedgerContext(language: PlutusLanguage, machines: Vector[VariantMachine]):
 
-  /** `toMachineParameters` (`Eval.hs:132-139`): the machine of the protocol's variant with the
-    * protocol's caser. The reference stops with an internal error where the variant has no machine;
-    * that cannot happen to a context made by [[LedgerContext.make]], whose variants are those of
-    * [[SemanticsVariant.ofContext]].
+  /** `toMachineParameters` (`Eval.hs:132-139`, plutus 1.70.0.0): the machine of the protocol's
+    * variant with the protocol's caser. The reference stops with an internal error where the
+    * variant has no machine; that cannot happen to a context made by [[LedgerContext.make]], whose
+    * variants are those of [[SemanticsVariant.ofContext]].
     */
   def at(protocol: ProtocolMajor): Either[Unavailability, MachineParameters] =
     val variant = SemanticsVariant.of(language, protocol)
@@ -51,10 +51,11 @@ final case class LedgerContext(language: PlutusLanguage, machines: Vector[Varian
 object LedgerContext:
 
   /** `mkEvaluationContext` of V1, V2 and V3 (`V1/EvaluationContext.hs:40-58`, V2 the same,
-    * `V3/EvaluationContext.hs:37-54`), with V4 as V3 ([[PlutusLanguage.evaluatedAs]]): the list
-    * tagged with the language's parameter names, the costs of every variant of its context
-    * ([[EvaluationContext.build]]), and then the builtins of each. The warnings are the reference's
-    * (`CostModelApplyWarn`); a refusal is a defect here, as the reference refuses no list.
+    * `V3/EvaluationContext.hs:37-54`, plutus 1.70.0.0), with V4 as V3
+    * ([[PlutusLanguage.evaluatedAs]]): the list tagged with the language's parameter names, the
+    * costs of every variant of its context ([[EvaluationContext.build]]), and then the builtins of
+    * each. The warnings are the reference's (`CostModelApplyWarn`); a refusal is a defect here, as
+    * the reference refuses no list.
     */
   def make(
       language: PlutusLanguage,
@@ -78,7 +79,7 @@ object LedgerContext:
   /** The machine of one variant: its unlifting, the denotations of every builtin and its costing. A
     * builtin without a denotation here makes no machine: the reference evaluates every builtin a
     * program names, whatever its language and protocol (the decoder alone checks availability,
-    * `Common/SerialisedScript.hs:216-225`).
+    * `Common/SerialisedScript.hs:216-225`, plutus 1.70.0.0).
     */
   def machine(costs: VariantCosts): Either[Unavailability, VariantMachine] =
     val variant = costs.variant

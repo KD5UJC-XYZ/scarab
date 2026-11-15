@@ -21,11 +21,11 @@ object ExBudget:
   def of(cpu: Long, memory: Long): ExBudget = ExBudget(SatInt(cpu), SatInt(memory))
 
 /** The cost of one builtin application as the machine spends it, `ExBudgetStream`
-  * (`PlutusCore/Evaluation/Machine/ExBudgetStream.hs:15-29`): a non-empty stream of budgets with
-  * strict elements and a lazy tail. The machine spends each element, checking it against the limit,
-  * before it forces the rest (`evalBuiltinApp`, `Cek/Internal.hs:1059-1064`), so a budget that runs
-  * out stops the costing as well: a measure that is long to compute (a shared `Data` graph unfolds
-  * to exponentially many nodes) is computed only as far as the budget allows.
+  * (`PlutusCore/Evaluation/Machine/ExBudgetStream.hs:15-29`, plutus 1.70.0.0): a non-empty stream
+  * of budgets with strict elements and a lazy tail. The machine spends each element, checking it
+  * against the limit, before it forces the rest (`evalBuiltinApp`, `Cek/Internal.hs:1059-1064`), so
+  * a budget that runs out stops the costing as well: a measure that is long to compute (a shared
+  * `Data` graph unfolds to exponentially many nodes) is computed only as far as the budget allows.
   */
 enum CostStream:
   case Last(budget: ExBudget)
@@ -65,16 +65,18 @@ object CostStream:
       .getOrElse(Last(head))
 
   /** The zero cost of an application whose unlifting failed (`builtinRuntimeFailure`,
-    * `PlutusCore/Builtin/Runtime.hs:111`).
+    * `PlutusCore/Builtin/Runtime.hs:111`, plutus 1.70.0.0).
     */
   val free: CostStream = Last(ExBudget.zero)
 
-/** A step of the CEK machine, charged at its own cost (`StepKind`, `Cek/Internal.hs:208-217`). */
+/** A step of the CEK machine, charged at its own cost (`StepKind`, `Cek/Internal.hs:208-217`,
+  * plutus 1.70.0.0).
+  */
 enum StepKind:
   case Constant, Variable, LamAbs, Apply, Delay, Force, Builtin, Constr, Case
 
 /** The machine's costs per step and its start-up cost (`CekMachineCostsBase`,
-  * `Cek/CekMachineCosts.hs:46-60`), read from the cost model by the costing.
+  * `Cek/CekMachineCosts.hs:46-60`, plutus 1.70.0.0), read from the cost model by the costing.
   *
   * @param step
   *   the cost of one step of each kind (`cekStepCost`, `Cek/Internal.hs:221`)

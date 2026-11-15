@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
 }
 
 /** The Haskell value a monomorphic parameter of a denotation reads from its constant
-  * (`readKnownConstant`, `PlutusCore/Builtin/KnownType.hs:310-323`).
+  * (`readKnownConstant`, `PlutusCore/Builtin/KnownType.hs:310-323`, plutus 1.70.0.0).
   */
 private[core] trait Reader[A]:
   /** The parameter's type, which a constant of another type is reported against. */
@@ -128,7 +128,7 @@ private[core] object Reading:
     * unlifting error found again here logs as the unlifting's would ([[UnliftingFailure.message]]):
     * the message of an operational one, nothing for a structural one, which is what the shape
     * checks of the polymorphic builtins raise (`throwError` in `BuiltinResult`,
-    * `PlutusCore/Builtin/Result.hs:198-220`).
+    * `PlutusCore/Builtin/Result.hs:198-220`, plutus 1.70.0.0).
     */
   def outcome[V](result: Either[BuiltinFailure, Done[V]]): Outcome[V] = result match
     case Right(Done(value, logs))           => Outcome.Success(value, logs)

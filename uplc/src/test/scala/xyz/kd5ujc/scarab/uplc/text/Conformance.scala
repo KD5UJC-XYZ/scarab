@@ -13,7 +13,9 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
   *   why the evaluator cannot evaluate a program yet (a builtin not implemented, say), its own type
   */
 enum Evaluation[+R]:
-  /** The machine returns `result` having spent `budget` (counting, `CekEvaluator.hs:59-61`). */
+  /** The machine returns `result` having spent `budget` (counting, `CekEvaluator.hs:59-61`, plutus
+    * 1.70.0.0).
+    */
   case Evaluated(result: Term, budget: ExBudget)
 
   /** The machine fails, whatever the cause (`EvalFailure`). */
@@ -23,7 +25,8 @@ enum Evaluation[+R]:
   case Unavailable(reason: R)
 
 /** How a case departs from the reference's expectation. The runner checks the result and the budget
-  * as two tests (`discoverTests`, `Common.hs:232-238`), so a case can have a mismatch of each.
+  * as two tests (`discoverTests`, `Common.hs:232-238`, plutus 1.70.0.0), so a case can have a
+  * mismatch of each.
   */
 enum Mismatch[+R]:
   /** The reference reads and closes the program; this parser does not. */
@@ -36,8 +39,8 @@ enum Mismatch[+R]:
   case UnreadableExpectation(error: ProgramError)
 
   /** The result differs from the expected one up to the names of variables (`compareAlphaEq`,
-    * `Common.hs:438-440`; `Eq (Term Name)`, `UntypedPlutusCore/Core/Instance/Eq.hs:24-28`): equal
-    * versions and equal de Bruijn terms.
+    * `Common.hs:438-440`; `Eq (Term Name)`, `UntypedPlutusCore/Core/Instance/Eq.hs:24-28`, plutus
+    * 1.70.0.0): equal versions and equal de Bruijn terms.
     */
   case Result(expected: Program, actual: Program)
 
@@ -111,7 +114,8 @@ object Conformance:
               case Evaluation.Failed              => List(Mismatch.UnexpectedFailure)
               case Evaluation.Unavailable(reason) => List(Mismatch.Unavailable(reason))
               case Evaluation.Evaluated(t, b)     =>
-                // the result keeps the version of the program (`CekEvaluator.hs:61`)
+                // the result keeps the version of the program (`CekEvaluator.hs:61`,
+                // plutus 1.70.0.0)
                 val actual = Program(p.version, t)
                 Option.when(actual != expected)(Mismatch.Result(expected, actual)).toList ++
                   Option.when(b != budget)(Mismatch.Budget(budget, b)).toList
