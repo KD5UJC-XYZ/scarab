@@ -746,12 +746,14 @@
           "GenesisStartSuite",
           "DuplicateWithdrawalsLedgerSuite",
           "NativeJsonSuite",
-          "InjectionJsonSuite"
+          "InjectionJsonSuite",
+          "GenesisSecurityParamSuite"
         ],
         "issues": [
           488,
           496,
-          499
+          499,
+          1027
         ],
         "paths": [
           "fixtures/devnet/lsq/genesis",
