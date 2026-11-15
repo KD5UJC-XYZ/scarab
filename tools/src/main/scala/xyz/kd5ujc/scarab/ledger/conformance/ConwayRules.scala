@@ -318,22 +318,14 @@ object ConwayRules:
       case _: Block.Dijkstra | _: Block.Byron => Left(Unwritten.NoEncoder)
     }
 
-  /** `script`, written by [[ConwayCodecs.script]] from its language and the bytes its hash is over:
-    * a Plutus script's bytes, which the decoded script keeps, or a native script's own encoding,
-    * the second item of the sample, taken only when [[Script.hash]] is over it.
+  /** `script`, written by [[ConwayCodecs.script]] from the script as decoded, which keeps the bytes
+    * its hash is over: a Plutus script's bytes, or a native script's own encoding
+    * ([[Script.encoding]], [[Script.plutus]]).
     */
   private def scriptRule: DatasetRule =
     DatasetRule("Script.decode", Reach.Direct, Writing.Encoder("ConwayCodecs.script"))(b =>
-      tree(At.item)(b).flatMap(n => ledger(Script.decode(n, newest)).tupleLeft(n.original))
-    ) { (original, script) =>
-      val payload = script.kind match
-        case ScriptKind.Native => Step.at(original, List(Index(1)))
-        case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 =>
-          script.plutus.toRight(Unwritten.NotKept)
-      payload
-        .flatMap(hashedOver(script))
-        .flatMap(p => written(ConwayCodecs.script)(ConwayCodecs.ScriptPayload(script.kind, p)))
-    }
+      tree(At.item)(b).flatMap(n => ledger(Script.decode(n, newest)))
+    )(written(ConwayCodecs.script))
 
   /** `metadatum`, read as the value of label 0 of a transaction's auxiliary data. It is written by
     * [[ConwayCodecs.metadatum]] from the value that [[Metadatum.decode]] reads at [[version]] from

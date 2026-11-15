@@ -138,7 +138,7 @@ object TxOutMemPack:
       out.address,
       out.value,
       out.datum,
-      Some(Script.nativeOf(original, script)),
+      Some(Script.nativeOf(original, script).withoutBytes),
       valueCbor.size
     )
 
@@ -160,6 +160,9 @@ object TxOutMemPack:
         valueCbor.size
       )
 
+  /** An output's reference script, kept as an output keeps it ([[Script.withoutBytes]]), so the
+    * output read again from its encoding is equal to this one.
+    */
   private def refScript(s: RefScript): Result[Script] = s.kind match
     case ScriptKind.Native =>
       CborRead
@@ -167,9 +170,12 @@ object TxOutMemPack:
         .leftMap(Failure.ScriptRefused(_))
         // a reference script, Babbage's: a time lock
         .flatMap(n =>
-          Script.native(n, NativeScript.Form.Timelock).leftMap(Failure.ScriptRefused(_))
+          Script
+            .native(n, NativeScript.Form.Timelock)
+            .map(_.withoutBytes)
+            .leftMap(Failure.ScriptRefused(_))
         )
-    case plutus => Right(Script.plutus(plutus, s.bytes).copy(plutus = None))
+    case plutus => Right(Script.plutus(plutus, s.bytes).withoutBytes)
 
   // ---- the constructors
 

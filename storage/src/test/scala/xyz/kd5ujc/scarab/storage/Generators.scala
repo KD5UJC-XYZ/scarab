@@ -95,7 +95,16 @@ object Gens extends LowPriorityGens:
   given rewardAccount: Gens[RewardAccount] = auto
   given value: Gens[Value] = auto
   given datum: Gens[Datum] = auto
-  given script: Gens[Script] = auto
+  // The four fields the script codec persists (`NodeCodecs.script`): a native script's encoding is
+  // never held where scripts are stored, an output's reference script keeping no bytes (#998).
+  given script: Gens[Script] = of(
+    for
+      kind <- Gens[ScriptKind]
+      hash <- Gens[Bytes]
+      native <- Gens[Option[NativeScript]]
+      plutus <- Gens[Option[Bytes]]
+    yield Script(kind, hash, native, plutus)
+  )
   given txIn: Gens[TxIn] = auto
   given txOut: Gens[TxOut] = auto
   given drep: Gens[DRep] = auto

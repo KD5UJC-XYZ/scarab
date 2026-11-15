@@ -24,7 +24,7 @@ class FlatEndingSuite extends FunSuite:
       .toMap ++ c.tx.witnesses.scriptsByHash
   private val code =
     scripts.values
-      .collectFirst { case Script(ScriptKind.PlutusV2, _, _, Some(bytes)) => bytes }
+      .collectFirst { case Script(ScriptKind.PlutusV2, _, _, Some(bytes), _) => bytes }
       .getOrElse(fail("fixture has no Plutus V2 script with its bytes"))
   private val flat =
     PlutusScriptBytes.flatOf(code.toArray).getOrElse(fail("fixture script is not a byte string"))
