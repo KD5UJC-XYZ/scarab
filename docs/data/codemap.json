@@ -1179,7 +1179,9 @@
         "AssertionsFailure"
       ],
       "suites": [
-        "AssertionsSuite"
+        "AssertionsSuite",
+        "NodeAssertionsSuite",
+        "ForgerAssertionsSuite"
       ],
       "docs": [
         "docs/adr/0017-fibers-end-with-values.md"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.node.WorkerTesting
@@ -57,6 +58,7 @@ import StorageTestKit.*
   * plus a replay of the stored blocks, and recovery survives lost or damaged snapshots.
   */
 class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   override def munitIOTimeout: Duration = 3.minutes
 
   private val fixtures = java.nio.file.Path.of("fixtures/eras")

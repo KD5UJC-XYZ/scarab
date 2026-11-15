@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Made, Property}
+import io.circe.syntax.*
 import cats.effect.{Deferred, IO, Ref, Resource, Outcome}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise, Stateful}
@@ -60,8 +62,10 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       recovered: Vector[BlockPool.Delivered] = Vector.empty,
       unavailable: Map[Bytes, xyz.kd5ujc.scarab.plutus.BackendFailure] = Map.empty,
       verdict: Header => IO[Verdict] = _ => IO.pure(Verdict.Valid),
-      backstop: FiniteDuration = 5.seconds
+      backstop: FiniteDuration = 5.seconds,
+      assertions: Assertions[IO] = Assertions.noop[IO]
   )(use: Node => IO[Unit]): IO[Unit] =
+    given Assertions[IO] = assertions
     for
       state <- Ref.of[IO, VolatileChain[BigInt]](initial.getOrElse(VolatileChain.genesis(k, -1)))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
@@ -178,6 +182,79 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         }
       yield ()
     }
+  }
+
+  // #1032: the follower asserts each commit from its typed rollback: a switch to a fork, a rollback
+  // of more than one block, and of more than k / 2 blocks
+  test("a commit asserts whether it switched to a fork and how far it rolled back (#1032)") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      left <- checked(forks._1, 3)
+      right <- checked(forks._2, 4)
+      collected <- Collecting.create
+      (assertions, made) = collected
+      _ <- node(Set.empty, assertions = assertions) { n =>
+        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+          for
+            _ <- add(sender, left)
+            _ <- n.pool.admissions.reprocess
+            _ <- add(sender, right)
+            _ <- n.pool.admissions.reprocess
+            tip <- n.state.get.map(_.tip)
+            _ <- IO(assertEquals(tip, right.last.header.point))
+          yield ()
+        }
+      }
+      asserted <- made
+    yield
+      val rollbacks = Set[Property](
+        Property.Sometimes.ForkSwitched,
+        Property.Sometimes.RolledBackMoreThanOne,
+        Property.Sometimes.RolledBackMoreThanHalfK
+      )
+      val (switch, extensions) = asserted.filter(m => rollbacks(m.property)).partition(_.condition)
+      // the left chain's commits extend the tip: each says so, false, with no depth
+      assert(extensions.nonEmpty, asserted.toString)
+      assert(extensions.forall(_.details("depth").contains(0.asJson)), extensions.toString)
+      // the switch to the right chain rolls back the left's three blocks, past 5 / 2
+      assertEquals(switch.map(_.property).toSet, rollbacks)
+      switch.foreach { m =>
+        assertEquals(m.details("depth"), Some(3.asJson), m.toString)
+        assertEquals(m.details("k"), Some(5.asJson), m.toString)
+      }
+  }
+
+  // #1032: a block without a verdict is asserted unreachable, from the follower's typed event
+  test("a block without a verdict is asserted unreachable (#1032)") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      collected <- Collecting.create
+      (assertions, made) = collected
+      _ <- node(
+        Set.empty,
+        unavailable = Map(
+          bodies(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure
+            .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+        ),
+        assertions = assertions
+      ) { n =>
+        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+          add(sender, bodies) *> n.pool.admissions.reprocess
+        }
+      }
+      asserted <- made
+    yield assertEquals(
+      asserted.collect { case Made(Property.Unreachable.BlockNoVerdict, false, details) =>
+        (details("block"), details("attempt"))
+      },
+      Vector(
+        (
+          Some(xyz.kd5ujc.scarab.ledger.Points.show(bodies(1).header.point).asJson),
+          Some(1.asJson)
+        )
+      )
+    )
   }
 
   // issue 567: a withheld block is not judged again when selection runs again
@@ -590,6 +667,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       bodies <- checked(chain, 1)
       state <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(5, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+      given Assertions[IO] = Assertions.noop[IO]
       pool <- BlockPool.create[IO]
       _ <- pool.seedRecoveredHeaders(bodies)
       follower <- Follower.create[IO, BigInt](

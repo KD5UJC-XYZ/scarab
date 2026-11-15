@@ -8,6 +8,8 @@ import cats.mtl.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
+import io.circe.{Encoder, JsonObject}
+import io.circe.syntax.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.{
   NetworkError,
@@ -19,6 +21,7 @@ import xyz.kd5ujc.scarab.network.{
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 import Capacity.fits
@@ -149,6 +152,18 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
+  /** What the assertion of a drop reports: the transaction, why it left and for what cause. */
+  private final case class Drop(id: Bytes, reason: Rejection, cause: DropCause)
+
+  private object Drop:
+    given Encoder.AsObject[Drop] = Encoder.AsObject.instance(d =>
+      JsonObject(
+        "tx" -> d.id.hex.asJson,
+        "reason" -> d.reason.message.asJson,
+        "cause" -> d.cause.productPrefix.asJson
+      )
+    )
+
   /** How a peer's transaction ends its TxSubmission2 session, when it does: no verdict on it, so
     * the connection closes and the node goes on. A crypto provider or the evaluator that fails on
     * it closes the connection with the failure; a decoder that threw is the connection's input
@@ -199,7 +214,7 @@ object Mempool:
       utxoStore: Option[UtxoStore[F]] = None,
       environment: Option[Ask[F, MempoolEnv]] = None,
       tipHash: Option[Bytes] = None
-  ): F[Mempool[F]] =
+  )(using assertions: Assertions[F]): F[Mempool[F]] =
     for
       state <- Ref.of[F, MempoolState](
         MempoolState.empty(ledger, tipSlot, capacityOverride, tipHash)
@@ -212,9 +227,16 @@ object Mempool:
       private val F = Async[F]
       private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
 
-      /** A held transaction left the pool, for `cause`. */
+      /** A held transaction left the pool: said, and asserted when the pool's revalidation dropped
+        * it.
+        */
       private def leaves(entry: Entry, reason: Rejection, cause: DropCause): F[Unit] =
-        events.emit(MempoolEvent.Dropped(entry.id, reason, cause))
+        events.emit(MempoolEvent.Dropped(entry.id, reason, cause)) *>
+          assertions.sometimes(
+            Property.Sometimes.MempoolDropsOnRevalidation,
+            cause == DropCause.Revalidation,
+            Drop(entry.id, reason, cause)
+          )
 
       /** A submission's turn: `remoteFifo` then `allFifo` for a peer, `allFifo` alone for a local
         * client (`implAddTx`'s two FIFOs). A one-permit `Semaphore` is a `Mutex` that also counts

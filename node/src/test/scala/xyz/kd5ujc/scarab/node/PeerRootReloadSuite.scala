@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.mtl.Handle
@@ -18,6 +19,7 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * until assertions release them: success cannot come from a lookup timeout or a wall-clock race.
   */
 class PeerRootReloadSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   import PeerNetwork.given
 
   private val oldConfig = RootConfig(false, DiffusionMode.InitiatorOnly, Provenance.Outbound, false)

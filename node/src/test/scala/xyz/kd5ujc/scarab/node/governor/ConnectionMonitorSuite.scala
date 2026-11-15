@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.effect.testkit.TestControl
@@ -28,8 +29,10 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
       event: Event[Int],
       deactivationFailure: Option[PeerStateActions.Failure] = None,
       initialStatus: Status = Status.Hot,
-      preceding: List[Event[Int]] = Nil
+      preceding: List[Event[Int]] = Nil,
+      assertions: Assertions[IO] = Assertions.noop[IO]
   ) =
+    given Assertions[IO] = assertions
     TestControl.executeEmbed(Supervisor[IO](await = false).use { supervisor =>
       val initial = GovernorState
         .initial[Int](1L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
@@ -151,6 +154,37 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
       Event.Observed(1, Observation.HotEnded(Some(10.seconds)), Some(BigInt(0)), Some(BigInt(1)))
     )
       .map { case (result, _) => assertEquals(result, Some(Status.Warm(120.seconds))) }
+  }
+
+  // #1032: the governor's commit asserts the demotion it traces, with its typed return reason
+  test("a hot return whose chain no longer intersects is asserted where the governor commits it") {
+    for
+      collected <- Collecting.create
+      (assertions, made) = collected
+      observed <- observe(
+        1,
+        PeerStateActions.Monitoring(PeerStateActions.Status.Warm, Some(120.seconds)),
+        Event.Observed(
+          1,
+          Observation.HotEnded(Some(120.seconds), Some(ReturnReason.NoMoreIntersection)),
+          Some(BigInt(0)),
+          Some(BigInt(1))
+        ),
+        assertions = assertions
+      )
+      asserted <- made
+    yield
+      assertEquals(observed._1, Some(Status.Warm(120.seconds)))
+      // with targets of zero the governor may then close the warm peer, a commanded demotion
+      assertEquals(
+        asserted
+          .filterNot(_.property == Property.Sometimes.PeerDemoted)
+          .map(m => (m.property, m.condition)),
+        Vector(
+          Property.Sometimes.PeerDemotedAsynchronously -> true,
+          Property.Sometimes.PeerNoLongerIntersects -> true
+        )
+      )
   }
 
   test("a retained Cold read completes release even if the queued notification saw Cooling") {

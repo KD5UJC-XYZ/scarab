@@ -29,7 +29,10 @@ import cats.effect.std.Mutex
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import io.circe.{Encoder, JsonObject}
+import io.circe.syntax.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.consensus.{BlockNoVerdict, ChainSelection, NoVerdictRetry, SelectView}
 import xyz.kd5ujc.scarab.storage.ChainPersistence
@@ -94,7 +97,8 @@ final class Follower[F[_]: Async, S] private (
     selectionChanged: Ref[F, F[Unit]],
     invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
 )(using
-    chain: Stateful[F, VolatileChain[S]]
+    chain: Stateful[F, VolatileChain[S]],
+    assertions: Assertions[F]
 ):
   private val F = Async[F]
 
@@ -498,7 +502,7 @@ final class Follower[F[_]: Async, S] private (
             withheldBlocks.record(withheld.header, withheld.cause).flatMap { (attempt, retry) =>
               events.emit(
                 FollowerEvent.NoVerdict(withheld.header.point, withheld.cause, attempt, retry)
-              )
+              ) *> unjudged(withheld.header.point, withheld.cause, attempt)
             }
           }
         case Left(refused: Refused) =>
@@ -592,6 +596,7 @@ final class Follower[F[_]: Async, S] private (
       _ <- events
         .emit(FollowerEvent.RolledBack(original.tip, to, depth))
         .whenA(depth > 0)
+      _ <- switched(original, to, depth)
       _ <- steps.traverse_ { a =>
         for
           _ <- views.record(a.ref.hash, a.view)
@@ -608,6 +613,28 @@ final class Follower[F[_]: Async, S] private (
       )
       _ <- onTip.traverse_(_(steps.last.after, steps.map(_.raw).toVector))
     yield ()
+
+  /** A commit, asserted: whether it switched to a fork (it rolled back), rolled back more than one
+    * block, or more than half of the chain's `k` blocks (`2 * depth > k`).
+    */
+  private def switched(original: VolatileChain[S], to: ChainSync.Point, depth: Int): F[Unit] =
+    def rollback = Follower.Rollback(original.tip, to, depth, original.k)
+    assertions.sometimes(Property.Sometimes.ForkSwitched, depth > 0, rollback) *>
+      assertions.sometimes(Property.Sometimes.RolledBackMoreThanOne, depth > 1, rollback) *>
+      assertions.sometimes(
+        Property.Sometimes.RolledBackMoreThanHalfK,
+        2 * depth > original.k,
+        rollback
+      )
+
+  /** A block's validation that ended without a verdict ([[FollowerEvent.NoVerdict]]), asserted
+    * unreachable.
+    */
+  private def unjudged(block: ChainSync.Point, cause: BlockNoVerdict, attempt: Int): F[Unit] =
+    assertions.unreachable(
+      Property.Unreachable.BlockNoVerdict,
+      Follower.Unjudged(block, cause, attempt)
+    )
 
   /** Adopt a block this node has just forged. It goes through the node's block rules like any other
     * block. If it extends our tip it is adopted. If the tip has moved on (a block of the same
@@ -656,8 +683,9 @@ final class Follower[F[_]: Async, S] private (
                 // no verdict of ours on our own block: it is withheld as a peer's would be, and
                 // the forger handles it as a refusal (R3, issue 567, #584)
                 case Left(Judged.NoVerdict(cause)) =>
-                  events
-                    .emit(FollowerEvent.NoVerdict(header.point, cause, 1, NoVerdictRetry.Never))
+                  (events.emit(
+                    FollowerEvent.NoVerdict(header.point, cause, 1, NoVerdictRetry.Never)
+                  ) *> unjudged(header.point, cause, 1))
                     .as(Follower.Adoption.NoVerdict(cause).asLeft[S])
                 case Right(next) => F.pure(next.asRight[Follower.Adoption])
               }
@@ -690,6 +718,33 @@ final class Follower[F[_]: Async, S] private (
     }
 
 object Follower:
+  /** What a commit's assertions report: the tip it left, the point it rolled back to, how many
+    * blocks that was and the chain's `k`.
+    */
+  private final case class Rollback(from: ChainSync.Point, to: ChainSync.Point, depth: Int, k: Int)
+
+  private object Rollback:
+    given Encoder.AsObject[Rollback] = Encoder.AsObject.instance(r =>
+      JsonObject(
+        "from" -> Points.show(r.from).asJson,
+        "to" -> Points.show(r.to).asJson,
+        "depth" -> r.depth.asJson,
+        "k" -> r.k.asJson
+      )
+    )
+
+  /** What the assertion of a block without a verdict reports. */
+  private final case class Unjudged(block: ChainSync.Point, cause: BlockNoVerdict, attempt: Int)
+
+  private object Unjudged:
+    given Encoder.AsObject[Unjudged] = Encoder.AsObject.instance(u =>
+      JsonObject(
+        "block" -> Points.show(u.block).asJson,
+        "reason" -> u.cause.message.asJson,
+        "attempt" -> u.attempt.asJson
+      )
+    )
+
   trait OnTip[F[_], S]:
     def apply(chain: VolatileChain[S], raws: Vector[Bytes])(using Raise[F, NodeError]): F[Unit]
 
@@ -798,7 +853,8 @@ object Follower:
       compute: Option[Compute[F]] = None,
       chainGate: Option[Mutex[F]] = None
   )(using
-      Stateful[F, VolatileChain[S]]
+      Stateful[F, VolatileChain[S]],
+      Assertions[F]
   ): F[Follower[F, S]] =
     Stateful[F, VolatileChain[S]].get.flatMap { initial =>
       val selected = ChainSelection.Local.of(

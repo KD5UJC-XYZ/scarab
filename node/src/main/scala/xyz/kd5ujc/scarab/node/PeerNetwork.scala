@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GovernorFault, NodeError, PeerEr
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.storage.ImmutableStore
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 
 /** The outbound peer network of the node: the governor ([[PeerGovernor]]), the connections it moves
   * between temperatures ([[OutboundPeers]]), the Genesis State Machine ([[GsmRunner]]) that tells
@@ -337,7 +338,8 @@ object PeerNetwork:
       peerMetrics: Option[Ref[F, PeerMetrics[Addr]]] = None
   )(using
       node: Handle[F, NodeError],
-      dnsResource: Resource[F, PeerDns[F]]
+      dnsResource: Resource[F, PeerDns[F]],
+      assertions: Assertions[F]
   ): Resource[F, Running[F, Addr]] =
     val F = Async[F]
     val base: Targets = settings.targets

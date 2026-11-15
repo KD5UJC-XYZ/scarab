@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.ledger.ChainError
@@ -92,6 +93,7 @@ object ForgedChainSetup:
 
 /** Forging under `geometry`; [[ForgedChain]] is the default geometry's. */
 class ForgedChainSetup(val geometry: EpochGeometry):
+  private given Assertions[IO] = Assertions.noop[IO]
   val config: PraosConfig = PraosConfig(
     geometry,
     slotsPerKesPeriod = 100,

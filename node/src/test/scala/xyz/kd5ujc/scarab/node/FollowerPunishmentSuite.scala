@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -15,6 +16,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
   * add-block queue does, and each announced body reaches the pool as `Peer.over` delivers it.
   */
 class FollowerPunishmentSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private enum Action:
     case Add(header: Header, raw: Bytes)
     case Rollback(point: ChainSync.Point)

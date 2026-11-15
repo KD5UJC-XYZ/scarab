@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import cats.mtl.Handle
@@ -30,6 +31,7 @@ import TxKit.*
 
 /** The mempool as LocalTxMonitor reports it, against the rules the reference's server applies. */
 class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaCheckSuite:
+  private given Assertions[IO] = Assertions.noop[IO]
   private given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError] with
     def functor = cats.Functor[IO]
     def raise[E <: xyz.kd5ujc.scarab.ledger.StorageError, A](error: E): IO[A] = IO(

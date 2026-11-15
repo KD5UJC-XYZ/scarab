@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.IO
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
@@ -16,6 +17,7 @@ import xyz.kd5ujc.scarab.node.forge.BlockBuilder
   * `fixtures/reference/plutus-boundaries`) over a Conway ledger that holds their inputs.
   */
 class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private given cats.mtl.Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))

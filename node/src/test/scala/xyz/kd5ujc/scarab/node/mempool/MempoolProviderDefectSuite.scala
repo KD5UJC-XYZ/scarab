@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import cats.effect.{IO, Ref}
 import cats.mtl.{Ask, Handle, Raise}
 import munit.CatsEffectSuite
@@ -19,6 +20,7 @@ import TxKit.*
   * its static checks (`reapplyTx`), so it verifies no witness and the provider is not asked.
   */
 class MempoolProviderDefectSuite extends CatsEffectSuite:
+  private given Assertions[IO] = Assertions.noop[IO]
   private val boom = new IllegalStateException("provider broke")
   private val defect = ProviderDefect.Ed25519(VerificationError.ImplementationFailure(boom))
 
@@ -91,7 +93,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     */
   private def revalidated(
       revalidate: Mempool[IO] => IO[Unit]
-  ): IO[(MempoolState, MempoolState, Vector[MempoolEvent])] =
+  )(using Assertions[IO]): IO[(MempoolState, MempoolState, Vector[MempoolEvent])] =
     val (t1, _) = pay(1)
     val (t2, _) = pay(2)
     for
@@ -132,6 +134,35 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     }
   }
 
+  // #1032: a withdrawal is a drop the pool's revalidation did not make: asserted false
+  test("a withdrawn transaction is asserted as a drop that is not a revalidation's (#1032)") {
+    val (_, id1) = pay(1)
+    val reason = Rejection.Ledger(
+      LedgerFailure.StateOutOfRange(
+        id1,
+        xyz.kd5ujc.scarab.ledger.state.VocabError
+          .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin, BigInt(1) << 64)
+      )
+    )
+    Collecting.create
+      .flatMap { (assertions, made) =>
+        given Assertions[IO] = assertions
+        revalidated(m => m.withdraw(Map(id1 -> reason)).void) *> made
+      }
+      .map(asserted =>
+        assertEquals(
+          asserted.map(m => (m.property, m.condition, m.details("cause"))),
+          Vector(
+            (
+              Property.Sometimes.MempoolDropsOnRevalidation,
+              false,
+              Some(io.circe.Json.fromString("Withdrawal"))
+            )
+          )
+        )
+      )
+  }
+
   // issue 584: a transaction the forger had no verdict on leaves the pool with its reason
   test("withdraw drops the named transactions with their reasons, not as removed") {
     val (_, id1) = pay(1)
@@ -145,10 +176,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     )
     revalidated(m => m.withdraw(Map(id1 -> reason)).void).map { (_, after, events) =>
       assertEquals(after.entries.map(_.id), Vector(id2))
-      assertEquals(
-        dropped(events),
-        Vector(MempoolEvent.Dropped(id1, reason, DropCause.Withdrawal))
-      )
+      assertEquals(dropped(events), Vector(MempoolEvent.Dropped(id1, reason, DropCause.Withdrawal)))
       assert(!events.exists(_.isInstanceOf[MempoolEvent.Removed]), events.toString)
       // the summary counts the withdrawn one among the dropped
       assertEquals(

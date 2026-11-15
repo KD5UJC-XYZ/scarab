@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Random}
@@ -48,6 +49,7 @@ import scala.concurrent.duration.*
   * publication fails) and an exception that is not ours.
   */
 class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   override def munitIOTimeout: FiniteDuration = 30.seconds
 
   private val geometry =

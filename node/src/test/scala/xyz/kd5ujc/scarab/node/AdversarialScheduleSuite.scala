@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
@@ -35,6 +36,7 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * bearers; adversarial behavior is a bounded wrapper around one real ChainServer response path.
   */
 class AdversarialScheduleSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   // the scenario reconnects to a peer at once; the time-wait is ConnectionManagerSuite's subject
   private val noTimeWait =
     xyz.kd5ujc.scarab.network.ConnectionManager

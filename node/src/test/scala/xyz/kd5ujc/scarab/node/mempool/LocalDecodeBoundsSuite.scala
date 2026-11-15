@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.IO
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -19,6 +20,8 @@ import TxKit.head
   * is read, so that the ledger, not the decoder, answers it (#749).
   */
 class LocalDecodeBoundsSuite extends CatsEffectSuite:
+  private given Assertions[IO] = Assertions.noop[IO]
+
   /** The 1,100,000 items of a metadatum list, more than a mebibyte in all. */
   private val Items = 1100000
 

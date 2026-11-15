@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
@@ -20,6 +21,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
   * scripted transport controls batching; original forged headers and blocks remain intact.
   */
 class PeerFetchRollbackSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   override def munitIOTimeout: FiniteDuration = 60.seconds
 
   for streaming <- List(false, true) do

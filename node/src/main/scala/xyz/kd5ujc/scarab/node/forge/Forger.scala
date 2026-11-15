@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
-import xyz.kd5ujc.scarab.ledger.ForgeError
+import xyz.kd5ujc.scarab.ledger.{ForgeError, ValidationError}
 import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
@@ -32,6 +32,9 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.Fibers
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
+import io.circe.{Encoder, JsonObject}
+import io.circe.syntax.*
 
 /** Whether the node forges, as the reference's `BlockForgingUpdate` trace says it: its type
   * `EnabledBlockForging` (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Startup.hs` 166-174),
@@ -210,7 +213,8 @@ final class Forger[F[_]: Async, S](
 )(using
     chain: Stateful[F, VolatileChain[S]],
     read: ChainRead[S],
-    clock: TxClock[S]
+    clock: TxClock[S],
+    assertions: Assertions[F]
 ):
   private val F = Async[F]
   private val geometry = config.geometry
@@ -333,6 +337,9 @@ final class Forger[F[_]: Async, S](
             case Some((last, at)) if slot <= last =>
               if !Duration.between(instant, at).minus(Forger.MaxClockRewind).isPositive then
                 clockTrace(ClockTrace.SystemClockMovedBack(at, instant)) *>
+                  Forger
+                    .earlyWake(geometry, at, instant)
+                    .traverse_(assertions.unreachable(Property.Unreachable.ClockWokeEarly, _)) *>
                   untilNext(slot, instant, 0.millis) *>
                   loop(Some(Some(last) -> instant))
               else
@@ -379,6 +386,12 @@ final class Forger[F[_]: Async, S](
         .whenA(on)
     } *> watch
 
+  /** A block forged in `slot`, asserted: that Scarab forges, and whether with transactions. */
+  private def forged(slot: BigInt, block: Forger.Built): F[Unit] =
+    def made = Forger.Made(slot, block.header.hash, block.body.ids.size)
+    assertions.sometimes(Property.Sometimes.Forged, true, made) *>
+      assertions.sometimes(Property.Sometimes.ForgedWithTransactions, block.body.ids.nonEmpty, made)
+
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
     stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
 
@@ -392,6 +405,7 @@ final class Forger[F[_]: Async, S](
   ): Step[A] =
     EitherT.left(
       stats.defect(epoch) *> events.emit(ForgeEvent.Defect(slot, d, ids)) *>
+        assertions.unreachable(Property.Unreachable.ForgeDefect, Forger.Defective(slot, d)) *>
         mempool.removeTxsEvenIfValid(ids.toSet).void.whenA(ids.nonEmpty)
     )
 
@@ -513,6 +527,7 @@ final class Forger[F[_]: Async, S](
           )
         )
       )
+      _ <- perform(forged(slot, block))
       adoption <- perform(follower.adoptForged(block.header, block.raw))
       _ <- adoption match
         case Follower.Adoption.Adopted(ref) =>
@@ -535,6 +550,12 @@ final class Forger[F[_]: Async, S](
         case Follower.Adoption.Invalid(e) =>
           val ids = chosen.map(_._1.id).toSet
           say(ForgeTrace.ForgedInvalidBlock(slot, block.header.hash, e)) *>
+            perform(
+              assertions.unreachable(
+                Property.Unreachable.ForgedInvalid,
+                Forger.Refused(slot, block.header.hash, e)
+              )
+            ) *>
             perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
         // No verdict on it (the evaluator or a crypto provider failed on it, a quantity of the state
         // is out of range, or the rules threw; in the reference an exception in the linked forging
@@ -836,6 +857,79 @@ object Forger:
     */
   private[forge] val MaxClockRewind: Duration = Duration.ofSeconds(20)
 
+  /** A reading traced as the clock moved back that is a wake before the slot the loop waited for,
+    * not a clock that moved back (#629, #1032): later than the previous reading (the time moves
+    * on), and more than 1 µs but less than 1 ms before the start of the slot after the previous
+    * reading's, which is the one the loop waited for. A wait floored to the microsecond
+    * ([[untilNext]]) can end less than 1 µs early; a reading earlier than the previous one is a
+    * clock that really moved back. It is the typed form of the Antithesis trial driver's detector
+    * of the trace, which read the log for the same readings.
+    */
+  private[forge] def earlyWake(
+      geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry,
+      previous: Instant,
+      now: Instant
+  ): Option[EarlyWake] =
+    val awaited = geometry.slotStart(geometry.slotAt(previous) + 1)
+    val early = Duration.between(now, awaited)
+    Option.when(
+      now.isAfter(previous) && early.compareTo(EarlyWake.Least) > 0 &&
+        early.compareTo(EarlyWake.Most) < 0
+    )(EarlyWake(previous, now, awaited))
+
+  /** A wake `awaited - now` before the slot start the loop waited for (see [[earlyWake]]). */
+  private[forge] final case class EarlyWake(previous: Instant, now: Instant, awaited: Instant)
+
+  private[forge] object EarlyWake:
+    /** A wait floored to the microsecond ends less than this early. */
+    val Least: Duration = Duration.ofNanos(1000)
+
+    /** #629's floor to the millisecond ended a wait less than this early. */
+    val Most: Duration = Duration.ofMillis(1)
+
+    given Encoder.AsObject[EarlyWake] = Encoder.AsObject.instance(w =>
+      JsonObject(
+        "prevTime" -> w.previous.toString.asJson,
+        "newTime" -> w.now.toString.asJson,
+        "slotStart" -> w.awaited.toString.asJson,
+        "earlyNanos" -> Duration.between(w.now, w.awaited).toNanos.asJson
+      )
+    )
+
+  /** What the assertions of a forged block report: its slot, hash and number of transactions. */
+  private final case class Made(slot: BigInt, hash: Bytes, txs: Int)
+
+  private object Made:
+    given Encoder.AsObject[Made] = Encoder.AsObject.instance(m =>
+      JsonObject("slot" -> m.slot.asJson, "hash" -> m.hash.hex.asJson, "txs" -> m.txs.asJson)
+    )
+
+  /** What the assertion of a forged block our own rules refuse reports. */
+  private final case class Refused(slot: BigInt, hash: Bytes, reason: ValidationError)
+
+  private object Refused:
+    given Encoder.AsObject[Refused] = Encoder.AsObject.instance(r =>
+      JsonObject(
+        "slot" -> r.slot.asJson,
+        "hash" -> r.hash.hex.asJson,
+        "reason" -> r.reason.message.asJson
+      )
+    )
+
+  /** What the assertion of a forge defect reports. */
+  private final case class Defective(slot: BigInt, defect: ForgeDefect)
+
+  private object Defective:
+    given Encoder.AsObject[Defective] = Encoder.AsObject.instance { d =>
+      val detail = d.defect match
+        case ForgeDefect.BodySize(actual, maximum) =>
+          List("bodySize" -> actual.asJson, "maxBodySize" -> maximum.asJson)
+        case ForgeDefect.BlockDecode(cause) => List("cause" -> cause.message.asJson)
+      JsonObject.fromIterable(
+        List("slot" -> d.slot.asJson, "kind" -> d.defect.productPrefix.asJson) ++ detail
+      )
+    }
+
   /** What a failed tick of the tip's state to `slot` is: the ledger view of this slot is
     * unavailable, and the slot ends without a block. A quantity of the state outside its vocabulary
     * type is no exception: the reference's `compactCoinOrError` throws in the forging thread, which
@@ -945,7 +1039,8 @@ object Forger:
   )(using
       Stateful[F, VolatileChain[S]],
       ChainRead[S],
-      TxClock[S]
+      TxClock[S],
+      Assertions[F]
   ): F[Forger[F, S]] =
     (
       Ref.of[F, Option[Crossed]](None),

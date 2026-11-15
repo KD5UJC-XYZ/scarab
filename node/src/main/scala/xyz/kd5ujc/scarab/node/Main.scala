@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.plutus.{
 }
 import xyz.kd5ujc.scarab.ledger.{
   Block,
+  ClockProblem,
   ConfigError,
   ConfigProblem,
   NativeLibraryError,
@@ -90,7 +91,9 @@ import xyz.kd5ujc.scarab.node.forge.{
   KeyGuard,
   PoolCredentials
 }
-import xyz.kd5ujc.scarab.node.assertions.Assertions
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
+import io.circe.{Encoder, JsonObject}
+import io.circe.syntax.*
 import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
 import xyz.kd5ujc.scarab.node.metrics.{
@@ -527,14 +530,15 @@ object Main extends IOApp:
           def logged(event: NodeEvent) = Log[IO].emit(event)
           // released once the run is over, the start's failure included, so that what the node
           // asserted last is written
-          assertions(options.assertionsFile).surround(
+          assertions(options.assertionsFile).use { case given Assertions[IO] =>
             Handle
               .allow[NodeError](follow(options))
               .rescue { error =>
                 val (event, code) = startupFailure(error)
-                logged(event) *> failedStart(error.message).as(code)
+                startupFatal(error).traverse_(stopped) *>
+                  logged(event) *> failedStart(error.message).as(code)
               }
-          )
+          }
         }
 
   /** The node's Antithesis assertions: with `--assertions-file`, recorded to that file, appended
@@ -554,10 +558,67 @@ object Main extends IOApp:
     * node has no verdict on, and the node stops.
     */
   private[scarab] def startupFailure(error: NodeError): (NodeEvent, ExitCode) =
+    startupFatal(error).fold((NodeEvent.Failed(error), ExitCode(1)))(faulted)
+
+  /** The fault a failed start stops the node for, as a fault of the run would: none for an error
+    * that only fails the start.
+    */
+  private[node] def startupFatal(error: NodeError): Option[Fatal] =
     SessionEnd.of(error) match
-      case SessionEnd.Unavailable(unavailable) => faulted(Fatal.Unavailable(unavailable))
-      case SessionEnd.Unverifiable(defect)     => faulted(Fatal.Unverifiable(defect))
-      case _                                   => (NodeEvent.Failed(error), ExitCode(1))
+      case SessionEnd.Unavailable(unavailable) => Some(Fatal.Unavailable(unavailable))
+      case SessionEnd.Unverifiable(defect)     => Some(Fatal.Unverifiable(defect))
+      case SessionEnd.Returned | SessionEnd.NoMoreIntersection |
+          SessionEnd.RolledBackPastIntersection(_) | SessionEnd.Failed(_) | SessionEnd.Rejected(_) |
+          SessionEnd.Storage(_) | SessionEnd.Internal(_) | SessionEnd.Defect(_) |
+          SessionEnd.Cancelled | SessionEnd.Stopped(_) =>
+        None
+
+  /** The node stops on `fault`: asserted unreachable, except for the stop for a clock moved back
+    * further than the forger's rewind limit ([[ClockProblem.SystemClockMovedBack]]), which
+    * cardano-node makes too. It is left out by its typed cause. The run's faults and the start's
+    * come here, where they are logged as `fatal`.
+    */
+  private[node] def stopped(fault: Fatal)(using Assertions[IO]): IO[Unit] = fault match
+    case Fatal.Internal(ClockProblem.SystemClockMovedBack(_, _)) => IO.unit
+    case Fatal.Unavailable(_) | Fatal.Storage(_) | Fatal.Internal(_) | Fatal.Defect(_) |
+        Fatal.Unverifiable(_) =>
+      Assertions[IO].unreachable(Property.Unreachable.StoppedOnFault, Stop(fault))
+
+  /** What the assertion of a stop reports: the fault, as the `fatal` line gives it. */
+  private final case class Stop(fault: Fatal)
+
+  private object Stop:
+    given Encoder.AsObject[Stop] = Encoder.AsObject.instance(s =>
+      JsonObject(
+        "kind" -> s.fault.productPrefix.asJson,
+        "message" -> s.fault.message.asJson,
+        "exitCode" -> FaultExitCode(s.fault).code.asJson
+      )
+    )
+
+  /** A ledger snapshot written, asserted from the storage's typed event. */
+  private[node] def snapshots(using Assertions[IO]): StorageEvents[IO] = new StorageEvents[IO]:
+    def emit(event: StorageEvent): IO[Unit] = event match
+      case StorageEvent.SnapshotWritten(name, anchor, bytes, _) =>
+        Assertions[IO].sometimes(
+          Property.Sometimes.SnapshotWritten,
+          true,
+          JsonObject(
+            "name" -> name.asJson,
+            "slot" -> anchor.map(_.slot).asJson,
+            "bytes" -> bytes.asJson
+          )
+        )
+      case StorageEvent.FormatMigrated(_) | StorageEvent.ImmutableOpened(_) |
+          StorageEvent.SnapshotSkipped(_, _) | StorageEvent.SnapshotRestored(_, _) |
+          StorageEvent.SnapshotUnbound(_, _) | StorageEvent.SnapshotFailed(_) |
+          StorageEvent.SnapshotRefused(_, _, _) | StorageEvent.ReplayStarted(_, _) |
+          StorageEvent.ReplayProgress(_, _, _) | StorageEvent.ReplayFinished(_, _, _) |
+          StorageEvent.NetworkRecorded(_, _, _) | StorageEvent.VolatileOpened(_) |
+          StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) |
+          StorageEvent.SnapshotDeleted(_) | StorageEvent.SnapshotNotDeleted(_, _) |
+          StorageEvent.CheckpointNotDeleted(_, _) =>
+        IO.unit
 
   private def faulted(fatal: Fatal): (NodeEvent, ExitCode) =
     (NodeEvent.Faulted(fatal), FaultExitCode(fatal))
@@ -764,7 +825,8 @@ object Main extends IOApp:
 
   private def follow(requested: Options)(using
       Handle[IO, NodeError],
-      Log[IO]
+      Log[IO],
+      Assertions[IO]
   ): IO[ExitCode] =
     def admitted[A](result: Either[ConfigError, A]): IO[A] =
       result.fold(e => Handle[IO, NodeError].raise[NodeError, A](e), IO.pure)
@@ -849,7 +911,7 @@ object Main extends IOApp:
       credentials: Option[PoolCredentials],
       layout: ReferenceLayout,
       listening: Option[Listening]
-  )(using Handle[IO, NodeError], Log[IO]): IO[ExitCode] =
+  )(using Handle[IO, NodeError], Log[IO], Assertions[IO]): IO[ExitCode] =
     val ownership = options.db.fold(Resource.unit[IO])(db =>
       xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
     )
@@ -1030,7 +1092,8 @@ object Main extends IOApp:
       hangup: StartupHangup
   )(using
       handle: Handle[IO, NodeError],
-      log: Log[IO]
+      log: Log[IO],
+      assertions: Assertions[IO]
   ): IO[ExitCode] =
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     val run =
@@ -1072,7 +1135,8 @@ object Main extends IOApp:
 
   /** The run's instruments, in the order the run makes them. */
   private def instrumented(run: Startup, background: IO[Unit] => IO[Unit])(using
-      Log[IO]
+      Log[IO],
+      Assertions[IO]
   ): IO[Instruments] =
     import run.{options, scheduling}
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
@@ -1092,7 +1156,7 @@ object Main extends IOApp:
         // shutdown snapshot is taken) with an exit code of its own
         faulted <- Deferred[IO, Fatal]
         fatalReporter <- FatalReporter.create[IO](
-          fault => logged(NodeEvent.Faulted(fault)),
+          fault => stopped(fault) *> logged(NodeEvent.Faulted(fault)),
           fault => faulted.complete(fault).void
         )
         watchdog <- StallWatchdog.create[IO](
@@ -1191,12 +1255,16 @@ object Main extends IOApp:
       Ask[IO, ConsensusMirrorEnv],
       SnapshotFormat[IO, MirrorState],
       Handle[IO, NodeError],
-      Log[IO]
+      Log[IO],
+      Assertions[IO]
   ): Resource[IO, Storage[MirrorState]] =
     import run.{genesis, options, scheduling, setup}
     val k = setup.chainStoreK.blocks
     val storageEvents =
-      Log.sink[StorageEvents, StorageEvent, IO].alongside(instruments.measured.storage)
+      Log
+        .sink[StorageEvents, StorageEvent, IO]
+        .alongside(instruments.measured.storage)
+        .alongside(snapshots)
     options.db.fold(
       Resource.pure[IO, Storage[MirrorState]](
         Storage(
@@ -1264,7 +1332,7 @@ object Main extends IOApp:
       instruments: Instruments,
       rules: Rules,
       opened: Storage[MirrorState]
-  )(using Handle[IO, NodeError], Log[IO], Metrics[IO]): IO[RunEnd] =
+  )(using Handle[IO, NodeError], Log[IO], Metrics[IO], Assertions[IO]): IO[RunEnd] =
     import run.{genesis, setup}
     // A chain whose Byron span is derived learns the first Shelley epoch when it enters
     // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
@@ -1311,7 +1379,7 @@ object Main extends IOApp:
       rules: Rules,
       opened: Storage[MirrorState],
       globals: xyz.kd5ujc.scarab.ledger.LedgerGlobals
-  )(using Handle[IO, NodeError], Log[IO], Metrics[IO]): IO[Chain] =
+  )(using Handle[IO, NodeError], Log[IO], Metrics[IO], Assertions[IO]): IO[Chain] =
     import run.{genesis, options, scheduling, setup, store}
     import instruments.{collectors, fatalSink, measured}
     import opened.{anchor, persistence, resumed, state}
@@ -1617,7 +1685,8 @@ object Main extends IOApp:
       Metrics[IO],
       Stateful[IO, VolatileChain[MirrorState]],
       Ask[IO, consensus.ChainSelection.Local],
-      Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]
+      Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem],
+      Assertions[IO]
   ): IO[Connections] =
     import run.{genesis, options, scheduling, setup}
     import instruments.{collectors, fatalSink, measured}
@@ -1825,7 +1894,8 @@ object Main extends IOApp:
       Handle[IO, NodeError],
       Log[IO],
       Metrics[IO],
-      Stateful[IO, VolatileChain[MirrorState]]
+      Stateful[IO, VolatileChain[MirrorState]],
+      Assertions[IO]
   ): IO[Services] =
     import run.{credentials, genesis, options, setup, store}
     import instruments.{collectors, fatalSink, measured, watchdog}

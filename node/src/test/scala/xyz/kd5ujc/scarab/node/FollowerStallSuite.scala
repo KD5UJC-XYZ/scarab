@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import xyz.kd5ujc.scarab.consensus.{
   Anchor,
@@ -58,6 +59,7 @@ import scala.concurrent.duration.*
   * stayed open and blocked the other session).
   */
 class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   // the scenario reconnects to a peer at once; the time-wait is ConnectionManagerSuite's subject
   private val noTimeWait =
     xyz.kd5ujc.scarab.network.ConnectionManager

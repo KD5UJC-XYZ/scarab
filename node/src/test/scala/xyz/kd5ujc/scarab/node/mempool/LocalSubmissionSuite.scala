@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Functor
 import cats.effect.{Deferred, IO, Ref, Resource}
@@ -18,6 +19,8 @@ import TxKit.*
   * over a Unix socket into a real mempool.
   */
 class LocalSubmissionSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
+
   /** The socket paths of these tests are fresh: a local socket error fails the test. */
   private given Raise[IO, DiffusionFailure] with
     def functor: Functor[IO] = Functor[IO]

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.mtl.{Ask, Handle, Stateful, Tell}
@@ -20,6 +21,7 @@ import xyz.kd5ujc.scarab.node.{
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 class ActivationTrustSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   test("a queued activation retains its selected local-root trust across a reload") {
     Supervisor[IO](await = false).use { supervisor =>
       val config = RootConfig(false, DiffusionMode.InitiatorOnly, Provenance.Outbound, true)
