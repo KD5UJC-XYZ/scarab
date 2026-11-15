@@ -366,3 +366,16 @@ class StringControlFlowSuite extends munit.FunSuite:
       (Box("a").deep, Box("b").looped)
     }
     assertEquals(kinds(r), List("string-predicate"))
+
+  test("a value saved from a by-name parameter is not its path; from a by-value one it is"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final class Cell(val text: String)
+      def quota(cell: => Cell): Int =
+        val saved = cell
+        (if cell.text == "admin" then saved.text else saved.text.take(1)).toInt
+      def fixedQuota(cell: Cell): Int =
+        val saved = cell
+        (if cell.text == "admin" then saved.text else saved.text.take(1)).toInt
+      (quota(Cell("1")), fixedQuota(Cell("1")))
+    }
+    assertEquals(kinds(r), List("string-equality"))

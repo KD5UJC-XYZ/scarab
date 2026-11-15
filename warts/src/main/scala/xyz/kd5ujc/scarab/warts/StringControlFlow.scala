@@ -31,7 +31,10 @@ import org.wartremover.{WartTraverser, WartUniverse}
   * scope. The text-form rule reads a branch's syntax, not its data flow: a branch built on the
   * tested String through a function of our own (`camel(name) + "s"`) is not a form of it, and so a
   * site, and a decision that hides another value in a non-String argument of a String method is not
-  * seen.
+  * seen. An accessor that `export` makes counts as a method, so a form of the text through one
+  * stays a site. Aliases are expanded without sharing, so a chain in which each alias names the one
+  * before it twice takes work exponential in its length; it still ends, and the tree has no such
+  * chain.
   *
   * A definition that carries the wart's full name in `@SuppressWarnings` is skipped with all it
   * holds; a call to it is checked as any other, its arguments too.
@@ -165,16 +168,35 @@ object StringControlFlow extends WartTraverser:
         owner.flags.is(Flags.Final) || owner.flags.is(Flags.Module) ||
         (owner.flags.is(Flags.Sealed) && owner.children.isEmpty)
 
-      /** Whether each step of a path is a value that does not change once read: a class's `this`, a
-        * parameter, a `val` or an object, not a method or a `var`.
+      /** The by-name parameters `root` declares, evaluated again at each use. A by-name parameter
+        * is read only in the definition that declares it, so `root` holds every one a path of it
+        * reads.
         */
-      private def steady(path: List[Symbol]): Boolean =
-        path.forall(s => s.isClassDef || !(s.flags.is(Flags.Method) || s.flags.is(Flags.Mutable)))
+      private def byNameOf(root: Tree, owner: Symbol): Set[Symbol] =
+        val accumulator = new TreeAccumulator[Set[Symbol]]:
+          def foldTree(found: Set[Symbol], tree: Tree)(o: Symbol): Set[Symbol] =
+            tree match
+              case v @ ValDef(_, tpt, _) =>
+                tpt.tpe match
+                  case _: ByNameType => foldOverTree(found + v.symbol, tree)(o)
+                  case _             => foldOverTree(found, tree)(o)
+              case _ => foldOverTree(found, tree)(o)
+        accumulator.foldTree(Set.empty, root)(owner)
+
+      /** Whether each step of a path is a value that does not change once read: a class's `this`, a
+        * by-value parameter, a `val` or an object, not a method, a `var` or one of `byName`, which
+        * is evaluated again at each use (Scala's own stability check refuses it too).
+        */
+      private def steady(byName: Set[Symbol])(path: List[Symbol]): Boolean =
+        path.forall(s =>
+          s.isClassDef || !(s.flags.is(Flags.Method) || s.flags.is(Flags.Mutable) || byName(s))
+        )
 
       /** The immutable `val` s bound to a stable path of such values (`val same = role`) that no
         * override can replace, so that a path through one is the path it names.
         */
       private def aliasesOf(root: Tree, owner: Symbol): Map[Symbol, List[Symbol]] =
+        val byName = byNameOf(root, owner)
         val accumulator = new TreeAccumulator[Map[Symbol, List[Symbol]]]:
           def foldTree(found: Map[Symbol, List[Symbol]], tree: Tree)(
               o: Symbol
@@ -182,7 +204,7 @@ object StringControlFlow extends WartTraverser:
             tree match
               case v @ ValDef(_, _, Some(rhs))
                   if !v.symbol.flags.is(Flags.Mutable) && fixed(v.symbol) =>
-                val named = stable(rhs).filter(steady)
+                val named = stable(rhs).filter(steady(byName))
                 foldOverTree(named.fold(found)(path => found + (v.symbol -> path)), tree)(o)
               case _ => foldOverTree(found, tree)(o)
         accumulator.foldTree(Map.empty, root)(owner)
