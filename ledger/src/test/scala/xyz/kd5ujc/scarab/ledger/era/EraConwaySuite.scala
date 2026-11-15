@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Block,
@@ -39,24 +38,15 @@ class EraConwaySuite extends munit.FunSuite:
   // every block of the fixtures from Shelley on (`[era, block]`, era 2 to 7), each of which must
   // decode, so a regression that loses one fails here rather than shrinking the corpus
   private lazy val conwayBlocks: Vector[Block.Shelley] =
-    Vector(
-      "fixtures/eras/blocks.hex",
-      "fixtures/preview/conway.hex",
-      "fixtures/preview/conway-governance.hex"
-    ).flatMap { f =>
-      Files
-        .readString(Path.of(f))
-        .linesIterator
-        .zipWithIndex
-        .map((l, i) => (s"$f:${i + 1}", l.trim.split("\\s+").last))
-        .filter((_, hex) => hex.nonEmpty && !hex.startsWith("8200") && !hex.startsWith("8201"))
-        .map { (at, hex) =>
-          val raw = Bytes.fromHex(hex).fold(e => fail(s"$at: $e"), identity)
-          Block.decodeShelley(raw) match
-            case Right(b: Block.Shelley) => b
-            case other                   => fail(s"$at: not a Shelley-based block: $other")
-        }
-    }.filter(_.era == Era.Conway)
+    EraCorpus
+      .shelleyBlocks(
+        Vector(
+          "fixtures/eras/blocks.hex",
+          "fixtures/preview/conway.hex",
+          "fixtures/preview/conway-governance.hex"
+        )
+      )
+      .filter(_.era == Era.Conway)
 
   private lazy val transactions: Vector[Block.Transaction] = conwayBlocks.flatMap(_.transactions)
 

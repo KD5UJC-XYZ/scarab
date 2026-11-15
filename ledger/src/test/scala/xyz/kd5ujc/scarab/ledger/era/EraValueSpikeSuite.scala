@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, TxBody as FlatTxBody}
 import xyz.kd5ujc.scarab.ledger.era.allegra.AllegraTxOut
@@ -15,15 +14,7 @@ import xyz.kd5ujc.scarab.protocol.Era
   */
 class EraValueSpikeSuite extends munit.FunSuite:
   private lazy val blocks: Vector[Block.Shelley] =
-    Files
-      .readString(Path.of("fixtures/eras/blocks.hex"))
-      .linesIterator
-      .map(_.trim)
-      .filter(_.nonEmpty)
-      .flatMap(h => Bytes.fromHex(h).toOption)
-      .flatMap(raw => Block.decodeShelley(raw).toOption)
-      .collect { case b: Block.Shelley => b }
-      .toVector
+    EraCorpus.shelleyBlocks(Vector("fixtures/eras/blocks.hex"))
 
   private def outputsOf(era: Era): Vector[xyz.kd5ujc.scarab.ledger.TxOut] =
     blocks

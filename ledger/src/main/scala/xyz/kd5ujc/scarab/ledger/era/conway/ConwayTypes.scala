@@ -165,7 +165,7 @@ object ConwayScript:
     override def fromPlutusScript(plutus: ConwayPlutusScript): ConwayScript =
       AlonzoScriptRep.PlutusScript(plutus)
 
-    // `ConwayEraScript ConwayEra`, `Conway/Scripts.hs:131-141`, cardano-ledger f649f975
+    // `ConwayEraScript ConwayEra`, `Conway/Scripts.hs:145-154`, cardano-ledger f649f975
     override def mkVotingPurpose[F[_, _]](
         voter: F[Unsigned[Unsigned.Width.W32], Voter]
     ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayVoting(voter)

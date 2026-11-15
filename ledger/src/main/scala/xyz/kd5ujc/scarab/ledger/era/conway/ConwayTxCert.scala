@@ -139,7 +139,7 @@ object ConwayTxCert:
           case PoolCert.RegPool(_)           => None
         }
 
-      // `lookupRegStakeTxCert`, `Conway/TxCert.hs:221-226`, cardano-ledger f649f975
+      // `lookupRegStakeTxCert` and `lookupUnRegStakeTxCert`, `Conway/TxCert.hs:135-144`, cardano-ledger f649f975
       override def lookupRegStakeTxCert(cert: ConwayTxCert): Option[Credential] =
         deleg(cert).flatMap {
           case ConwayDelegCert.ConwayRegCert(c, _)         => Some(c)

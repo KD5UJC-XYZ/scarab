@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
@@ -130,19 +129,14 @@ class EraCoreSuite extends munit.FunSuite:
 
   // recorded blocks with Babbage and Conway transactions
   private lazy val blocks: Vector[Block.Shelley] =
-    Vector(
-      "fixtures/eras/blocks.hex",
-      "fixtures/preview/babbage-mint.hex",
-      "fixtures/preview/conway.hex",
-      "fixtures/preview/conway-governance.hex"
+    EraCorpus.shelleyBlocks(
+      Vector(
+        "fixtures/eras/blocks.hex",
+        "fixtures/preview/babbage-mint.hex",
+        "fixtures/preview/conway.hex",
+        "fixtures/preview/conway-governance.hex"
+      )
     )
-      .flatMap(f => Files.readString(Path.of(f)).linesIterator)
-      .map(_.trim.split("\\s+").last)
-      .filter(_.nonEmpty)
-      .flatMap(h => Bytes.fromHex(h).toOption)
-      .flatMap(raw => Block.decodeShelley(raw).toOption)
-      .collect { case b: Block.Shelley => b }
-      .toVector
 
   test(
     "recorded outputs read into their era, their reference scripts with the flat output's hash"

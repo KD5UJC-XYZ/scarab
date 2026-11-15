@@ -53,7 +53,9 @@ trait EraTxBody[E <: EraTag]:
   * cardano-ledger f649f975).
   */
 trait ShelleyEraTxBody[E <: EraTag] extends EraTxBody[E]:
-  /** The certificates' class (the superclass `ShelleyEraTxCert era`, `Shelley/TxBody.hs:97`). */
+  /** The certificates' class (the superclass `ShelleyEraTxCert era`, `Shelley/TxBody.hs:97`,
+    * cardano-ledger f649f975).
+    */
   override def certsOf: ShelleyEraTxCert[E]
 
   def update(body: TxBody[TxLevel.Top, E]): Option[Update]
