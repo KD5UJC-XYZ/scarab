@@ -102,7 +102,10 @@ network faults, in a third or more of the timelines, and as often with a cardano
 Scarab is a JAR assembled from a commit (`node/assembly` in `scarab-jdk:local`). It runs on the Java 25 runtime of
 `docker/candidate.Dockerfile`, and the image's label records the commit. The JAR is linked into
 `/opt/antithesis/catalog/`, and the node starts from the classpath `/opt/scarab/*`, so Antithesis instruments it for
-coverage and thread pausing.
+coverage and thread pausing. `scarab/scarab-node.sh` turns cats-effect's fiber tracing off
+(`-Dcats.effect.tracing.mode=none`), in this harness only: its default cost s1 about 18% of its CPU in a local probe,
+which slows the platform's simulation of the whole cluster. The price is that s1's error stack traces have no fiber
+frames and a stall dump no fiber snapshot. A node run elsewhere keeps the default (#1024).
 
 ## `pool/config-k200`: the same cluster at k = 200
 
