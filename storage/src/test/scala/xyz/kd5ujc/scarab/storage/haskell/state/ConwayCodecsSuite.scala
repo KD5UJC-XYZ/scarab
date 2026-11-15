@@ -708,6 +708,141 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     )
   }
 
+  private val beforeRedeemerMap = DecoderVersion.high(Era.Babbage)
+
+  private def redeemerSet(v: DecoderVersion): Codec[Vector[Redeemer]] =
+    ConwayCodecs.redeemers(using ProtVer(Word64.fromUnsigned(v.value.toLong), Word64.zero))
+
+  private def checkRedeemerSet(
+      v: DecoderVersion,
+      input: Vector[Redeemer],
+      expectedHex: String,
+      expected: Vector[Redeemer]
+  ): Unit =
+    val encoded = written(redeemerSet(v))(input)
+    same(expectedHex)(encoded)
+    val decoded = Witnesses.decode(hex("a105") ++ encoded, Era.Conway, v)
+    assertEquals(decoded.map(_.redeemers), Right(expected))
+    assertEquals(decoded.map(_.redeemersRaw), Right(Some(hex(expectedHex))))
+
+  test("redeemer sets switch from list to map at version 9, ordered by tag then index") {
+    val spending = Redeemer(0, 1, hex("1800"), ExUnits(0, 1))
+    val laterSpending = Redeemer(0, 256, hex("9f01ff"), ExUnits(24, 256))
+    val minting = Redeemer(1, 0, hex("d87980"), ExUnits(2, 3))
+    val proposing = Redeemer(5, 0, hex("00"), ExUnits(4, 5))
+    val input = Vector(proposing, laterSpending, minting, spending)
+    val expected = Vector(spending, laterSpending, minting, proposing)
+    checkRedeemerSet(
+      beforeRedeemerMap,
+      input,
+      "84 8400011800820001 84001901009f01ff821818190100 840100d87980820203 84050000820405",
+      expected
+    )
+    val mapHex =
+      "a4 820001821800820001 8200190100829f01ff821818190100 82010082d87980820203 8205008200820405"
+    checkRedeemerSet(version, input, mapHex, expected)
+    checkRedeemerSet(DecoderVersion.high(Era.Conway), input, mapHex, expected)
+  }
+
+  test("redeemer sets are definite at 23 entries and indefinite at 24 in both forms") {
+    // TxWits.hs:157-169 and Encoding/Encoder.hs:431-468, cardano-ledger f649f975.
+    // The container becomes indefinite; index 24 itself needs the longer integer head 1818.
+    val listEntries = """
+      84000100820000 84000200820000 84000300820000 84000400820000
+      84000500820000 84000600820000 84000700820000 84000800820000
+      84000900820000 84000a00820000 84000b00820000 84000c00820000
+      84000d00820000 84000e00820000 84000f00820000 84001000820000
+      84001100820000 84001200820000 84001300820000 84001400820000
+      84001500820000 84001600820000 84001700820000
+    """
+    val mapEntries = """
+      8200018200820000 8200028200820000 8200038200820000 8200048200820000
+      8200058200820000 8200068200820000 8200078200820000 8200088200820000
+      8200098200820000 82000a8200820000 82000b8200820000 82000c8200820000
+      82000d8200820000 82000e8200820000 82000f8200820000 8200108200820000
+      8200118200820000 8200128200820000 8200138200820000 8200148200820000
+      8200158200820000 8200168200820000 8200178200820000
+    """
+    val expected = (1 to 24).toVector.map(i => Redeemer(0, BigInt(i), hex("00"), ExUnits(0, 0)))
+    val first23 = expected.take(23)
+    checkRedeemerSet(beforeRedeemerMap, first23.reverse, "97" + listEntries, first23)
+    checkRedeemerSet(version, first23.reverse, "b7" + mapEntries, first23)
+    checkRedeemerSet(
+      beforeRedeemerMap,
+      expected.reverse,
+      "9f" + listEntries + "8400181800820000 ff",
+      expected
+    )
+    checkRedeemerSet(
+      version,
+      expected.reverse,
+      "bf" + mapEntries + "820018188200820000 ff",
+      expected
+    )
+  }
+
+  test("redeemer sets keep the last value for a repeated key in both forms") {
+    val first = Redeemer(0, 0, hex("01"), ExUnits(1, 2))
+    val last = Redeemer(0, 0, hex("9f02ff"), ExUnits(3, 4))
+    val other = Redeemer(1, 0, hex("00"), ExUnits(0, 0))
+    val input = Vector(first, other, last)
+    val expected = Vector(last, other)
+    checkRedeemerSet(
+      beforeRedeemerMap,
+      input,
+      "82 8400009f02ff820304 84010000820000",
+      expected
+    )
+    checkRedeemerSet(version, input, "a2 820000829f02ff820304 8201008200820000", expected)
+    // Framing counts distinct keys: 24 inputs, only one map entry / list element.
+    checkRedeemerSet(
+      beforeRedeemerMap,
+      Vector.fill(24)(last),
+      "81 8400009f02ff820304",
+      Vector(last)
+    )
+    checkRedeemerSet(version, Vector.fill(24)(last), "a1 820000829f02ff820304", Vector(last))
+  }
+
+  test("the empty redeemer map is writable even though the version 9 witness decoder refuses it") {
+    same("80")(written(redeemerSet(beforeRedeemerMap))(Vector.empty))
+    same("a0")(written(redeemerSet(version))(Vector.empty))
+    assertEquals(
+      Witnesses.decode(hex("a10580"), Era.Conway, beforeRedeemerMap).map(_.redeemers),
+      Right(Vector.empty[Redeemer])
+    )
+    // RedeemersRaw can hold an empty Map (TxWits.hs:144-145, 229-230, cardano-ledger f649f975);
+    // the witness decoder requires non-empty from version 9 (TxWits.hs:576-582), not the encoder.
+    assertEquals(
+      Witnesses.decode(hex("a105a0"), Era.Conway, version),
+      Left(LedgerDecodeError.Empty(DecodeField.Redeemers))
+    )
+  }
+
+  test("redeemer sets reuse every single-redeemer refusal in both forms") {
+    val valid = Redeemer(0, 0, hex("00"), ExUnits(0, 0))
+    val invalid = Vector(
+      valid.copy(tag = -1),
+      valid.copy(tag = 6),
+      valid.copy(index = BigInt(-1)),
+      valid.copy(index = BigInt(1) << 32),
+      valid.copy(data = Bytes.empty),
+      valid.copy(data = hex("f5")),
+      valid.copy(data = hex("0000")),
+      valid.copy(exUnits = ExUnits(-1, 0)),
+      valid.copy(exUnits = ExUnits(0, -1))
+    )
+    Vector(beforeRedeemerMap, version).foreach { v =>
+      invalid.foreach { r =>
+        val refusal = ConwayCodecs.redeemer.check(r)
+        assert(refusal.nonEmpty, s"single redeemer must refuse $r")
+        assertEquals(redeemerSet(v).check(Vector(valid, r)), refusal)
+        assertEquals(redeemerSet(v).write(Vector(valid, r)).left.toOption, refusal)
+        assertEquals(redeemerSet(v).check(Vector(r, valid)), refusal)
+      }
+    }
+  }
+
   // ------------------------------------- written by hand after samples of the cardano-cbor-dataset
 
   test("by hand, after dataset samples: an indefinite delegation is written definite") {
