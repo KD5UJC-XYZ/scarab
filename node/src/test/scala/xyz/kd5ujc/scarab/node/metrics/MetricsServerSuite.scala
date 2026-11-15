@@ -8,14 +8,14 @@ import java.io.InputStream
 import java.net.{Socket, SocketException, SocketTimeoutException, URI}
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.nio.charset.StandardCharsets
-import munit.CatsEffectSuite
 import scala.annotation.tailrec
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.MetricsServer
 import xyz.kd5ujc.scarab.storage.StorageEvent
 
 /** The endpoint answers a scrape with the text format and nothing else. */
-class MetricsServerSuite extends CatsEffectSuite:
+class MetricsServerSuite extends FailsOnUncaught:
   private def get(port: Int, path: String): IO[HttpResponse[String]] =
     IO.blocking(
       HttpClient
@@ -66,22 +66,22 @@ class MetricsServerSuite extends CatsEffectSuite:
   private val ShutdownBound = 4.seconds
   private val Request = "GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n"
 
-  /** The server on an ephemeral port, until the second value is run: it stops the server and gives
-    * the time stopping took. Released, it stops the server if the test did not.
+  /** The server on an ephemeral port, until the second value is run, which stops it and returns
+    * when it has. Released, it stops the server if the test did not, and fails rather than wait
+    * more than 10 s for it; a server that ends before it listens fails the test at once.
     */
-  private def running: Resource[IO, (Int, IO[FiniteDuration])] =
-    Resource
-      .make(
-        for
-          ready <- Deferred[IO, Int]
-          stop <- Deferred[IO, Unit]
-          serving <- server.use(port => ready.complete(port) *> stop.get).start
-          port <- ready.get
-        yield (port, stop, serving)
-      )((_, stop, serving) => stop.complete(()).void *> serving.join.void)
-      .map((port, stop, serving) =>
-        (port, (stop.complete(()) *> serving.joinWithNever).timed.map(_._1))
+  private def running: Resource[IO, (Int, IO[Unit])] =
+    for
+      ready <- Resource.eval(Deferred[IO, Int])
+      stop <- Resource.eval(Deferred[IO, Unit])
+      serving <- Resource.make(server.use(port => ready.complete(port) *> stop.get).start)(
+        serving => (stop.complete(()) *> serving.join).void.timeout(10.seconds)
       )
+      port <- Resource.eval(
+        IO.race(serving.joinWithNever, ready.get)
+          .flatMap(_.fold(_ => IO.raiseError(new IllegalStateException("no listener")), IO.pure))
+      )
+    yield (port, stop.complete(()) *> serving.joinWithNever)
 
   /** A raw connection to the listener, closed whatever happens; its reads give up after 10 s. */
   private def connection(port: Int): Resource[IO, Socket] =
@@ -106,16 +106,21 @@ class MetricsServerSuite extends CatsEffectSuite:
         case -1   => new String(read.toArray, StandardCharsets.US_ASCII)
         case byte => head(in, read :+ byte.toByte)
 
-  /** One whole response: its status line and the length of the body its headers state, read. */
-  private def response(socket: Socket): IO[(String, Int)] =
+  /** One response: its status line, the body length its headers state, and the length read. */
+  private final case class Answer(status: String, stated: Int, read: Int):
+    def whole: Boolean = stated > 0 && read == stated
+
+  private def response(socket: Socket): IO[Answer] =
     IO.blocking {
       val in = socket.getInputStream
       val lines = head(in, Vector.empty).linesIterator.toVector
-      val length = lines.collectFirst {
-        case line if line.toLowerCase.startsWith("content-length:") =>
-          line.drop("content-length:".length).trim.toIntOption.getOrElse(0)
-      }
-      (lines.headOption.getOrElse(""), in.readNBytes(length.getOrElse(0)).length)
+      val stated = lines
+        .collectFirst {
+          case line if line.toLowerCase.startsWith("content-length:") =>
+            line.drop("content-length:".length).trim.toIntOption.getOrElse(0)
+        }
+        .getOrElse(0)
+      Answer(lines.headOption.getOrElse(""), stated, in.readNBytes(stated).length)
     }
 
   /** How a connection the server should end turned out. */
@@ -145,13 +150,12 @@ class MetricsServerSuite extends CatsEffectSuite:
         for
           _ <- send(socket, Request)
           first <- response(socket)
-          took <- stopping
-          end <- ended(socket)
+          stopped <- (stopping *> ended(socket)).timed
         yield
-          assertEquals(first._1, "HTTP/1.1 200 OK", "the request was answered before the stop")
-          assert(first._2 > 0, "with its whole body")
-          assert(took < ShutdownBound, s"the server took $took to stop")
-          assertEquals(end, End.Ended, "the idle connection was ended")
+          assertEquals(first.status, "HTTP/1.1 200 OK", "the request was answered before the stop")
+          assert(first.whole, s"with its whole body: $first")
+          assert(stopped._1 < ShutdownBound, s"stopping and ending took ${stopped._1}")
+          assertEquals(stopped._2, End.Ended, "the idle connection was ended")
       }
     }
   }
@@ -159,16 +163,18 @@ class MetricsServerSuite extends CatsEffectSuite:
   test("the server stops within its shutdown timeout with a request half sent, and ends it") {
     running.use { (port, stopping) =>
       connection(port).use { socket =>
+        // The partial request goes to a connection the server accepted and served; nothing shows
+        // whether its bytes were read before the stop, only that the connection was open.
         for
           _ <- send(socket, Request)
           first <- response(socket)
           _ <- send(socket, "GET /metrics HTTP/1.1\r\nHost: loc")
-          took <- stopping
-          end <- ended(socket)
+          stopped <- (stopping *> ended(socket)).timed
         yield
-          assertEquals(first._1, "HTTP/1.1 200 OK", "the connection was accepted and served")
-          assert(took < ShutdownBound, s"the server took $took to stop")
-          assertEquals(end, End.Ended, "the connection with a half-sent request was ended")
+          assertEquals(first.status, "HTTP/1.1 200 OK", "the connection was accepted and served")
+          assert(first.whole, s"with its whole body: $first")
+          assert(stopped._1 < ShutdownBound, s"stopping and ending took ${stopped._1}")
+          assertEquals(stopped._2, End.Ended, "the connection with a half-sent request was ended")
       }
     }
   }
