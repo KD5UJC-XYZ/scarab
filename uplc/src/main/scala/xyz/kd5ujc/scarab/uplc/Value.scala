@@ -23,32 +23,36 @@ final case class Value private (
   val negativeAmounts: Int =
     entries.valuesIterator.map(_.valuesIterator.count(_.amount.signum < 0)).sum
 
-  /** The entries in ascending order (`toList`, `Value.hs:295-297`). */
+  /** The entries in ascending order (`toList`, `Value.hs:295-297`, plutus 1.70.0.0). */
   def toList: Vector[(Value.Key, Vector[(Value.Key, Value.Quantity)])] =
     entries.toVector.map((currency, tokens) => currency -> tokens.toVector)
 
 object Value:
-  /** A currency symbol or token name: the reference's `K`, at most 32 bytes (`Value.hs:87-101`). */
+  /** A currency symbol or token name: the reference's `K`, at most 32 bytes (`Value.hs:87-101`,
+    * plutus 1.70.0.0).
+    */
   opaque type Key = Bytes
 
   object Key:
     val MaxLength: Int = 32
 
-    /** `k` (`Value.hs:99-101`). */
+    /** `k` (`Value.hs:99-101`, plutus 1.70.0.0). */
     def apply(bytes: Bytes): Option[Key] = Option.when(bytes.size <= MaxLength)(bytes)
 
     extension (k: Key) def bytes: Bytes = k
 
     given Ordering[Key] = summon[Ordering[Bytes]]
 
-  /** A quantity: the reference's `Quantity`, a signed 128-bit integer (`Value.hs:123-162`). */
+  /** A quantity: the reference's `Quantity`, a signed 128-bit integer (`Value.hs:123-162`, plutus
+    * 1.70.0.0).
+    */
   opaque type Quantity = BigInt
 
   object Quantity:
     val MinValue: Quantity = -(BigInt(1) << 127)
     val MaxValue: Quantity = (BigInt(1) << 127) - 1
 
-    /** `quantity` (`Value.hs:157-161`). */
+    /** `quantity` (`Value.hs:157-161`, plutus 1.70.0.0). */
     def apply(amount: BigInt): Option[Quantity] =
       Option.when(amount >= MinValue && amount <= MaxValue)(amount)
 
@@ -57,7 +61,8 @@ object Value:
     given Ordering[Quantity] = Ordering.BigInt
 
   /** Why a list of entries is not a value. The cases are the failures of `buildValueWith`
-    * (`Value.hs:630-694`), with `k` and `quantity` for keys and amounts that are not yet typed.
+    * (`Value.hs:630-694`, plutus 1.70.0.0), with `k` and `quantity` for keys and amounts that are
+    * not yet typed.
     */
   enum Invalid:
     case KeyTooLong(bytes: Bytes)
@@ -69,12 +74,12 @@ object Value:
 
   val empty: Value = new Value(SortedMap.empty)
 
-  /** `buildValueWith` (`Value.hs:637-694`): the value of `outer`, whose entries `currency` and
-    * `token` convert, in order, refused unless currency symbols and token names are strictly
-    * ascending, every inner map is non-empty and no quantity is zero. A conversion's failure is
-    * returned where the reference fails it, interleaved with those checks: an outer entry is
-    * converted before it is compared with the previous one, and its inner entries one by one before
-    * the emptiness check.
+  /** `buildValueWith` (`Value.hs:637-694`, plutus 1.70.0.0): the value of `outer`, whose entries
+    * `currency` and `token` convert, in order, refused unless currency symbols and token names are
+    * strictly ascending, every inner map is non-empty and no quantity is zero. A conversion's
+    * failure is returned where the reference fails it, interleaved with those checks: an outer
+    * entry is converted before it is compared with the previous one, and its inner entries one by
+    * one before the emptiness check.
     *
     * @param invalid
     *   the error for a structural failure of the entries
@@ -120,17 +125,18 @@ object Value:
                     case Right(ts) => go(rest, Some(c), acc :+ (c -> SortedMap.from(ts)))
     go(outer.toList, None, Vector.empty)
 
-  /** `buildValueWith` over typed entries, as the text parser calls it
-    * (`Parser/Builtin.hs:177-179`).
+  /** `buildValueWith` over typed entries, as the text parser calls it (`Parser/Builtin.hs:177-179`,
+    * plutus 1.70.0.0).
     */
   def build(outer: Seq[(Key, Seq[(Key, Quantity)])]): Either[Invalid, Value] =
     buildWith[Invalid, (Key, Seq[(Key, Quantity)]), (Key, Quantity)](outer)(Right(_), Right(_))(
       identity
     )
 
-  /** The Flat and CBOR decoders of `Value` (`Value.hs:210-233`): every key and amount is read, and
-    * typed by `k` and `quantity`, before `buildValueWith` sees the list, so a key too long or an
-    * amount out of bounds anywhere is refused before any order or emptiness check.
+  /** The Flat and CBOR decoders of `Value` (`Value.hs:210-233`, plutus 1.70.0.0): every key and
+    * amount is read, and typed by `k` and `quantity`, before `buildValueWith` sees the list, so a
+    * key too long or an amount out of bounds anywhere is refused before any order or emptiness
+    * check.
     */
   def decoded(outer: Seq[(Bytes, Seq[(Bytes, BigInt)])]): Either[Invalid, Value] =
     def key(b: Bytes): Either[Invalid, Key] = Key(b).toRight(Invalid.KeyTooLong(b))
@@ -152,9 +158,9 @@ object Value:
       }
     typed.flatMap(build)
 
-  /** `pack` (`Value.hs:246-248` with `normalize`, 334-336): the value of a nested map with every
-    * zero quantity and then every empty inner map dropped. The builtins that compute a value use
-    * it.
+  /** `pack` (`Value.hs:246-248` with `normalize`, 334-336, plutus 1.70.0.0): the value of a nested
+    * map with every zero quantity and then every empty inner map dropped. The builtins that compute
+    * a value use it.
     */
   def pack(nested: SortedMap[Key, SortedMap[Key, Quantity]]): Value =
     new Value(

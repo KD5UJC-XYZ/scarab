@@ -61,10 +61,10 @@ object DefaultUni:
       case Array(_)             => "Array"
 
   extension (u: DefaultUni)
-    /** The reference's `defaultUniSize` (`Universe.hs:161-164`): an application counts itself and
-      * its operator, so `List(a)` is `size(a) + 2` and `Pair(a, b)` is `size(a) + size(b) + 3`. It
-      * is the number of tags of the type's Flat encoding, which the ledger bounds from protocol 11
-      * (`Common/SerialisedScript.hs:207-214`).
+    /** The reference's `defaultUniSize` (`Universe.hs:161-164`, plutus 1.70.0.0): an application
+      * counts itself and its operator, so `List(a)` is `size(a) + 2` and `Pair(a, b)` is
+      * `size(a) + size(b) + 3`. It is the number of tags of the type's Flat encoding, which the
+      * ledger bounds from protocol 11 (`Common/SerialisedScript.hs:207-214`).
       */
     def size: Int =
       @tailrec def go(pending: scala.List[DefaultUni], total: Int): Int = pending match

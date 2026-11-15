@@ -105,6 +105,7 @@ object Term:
   def caseOf(scrutinee: Term, branches: Vector[Term]): Term = Fix(TermF.Case(scrutinee, branches))
 
 /** A program: a term and the version of Plutus Core it declares
-  * (`UntypedPlutusCore/Core/Type.hs:119-125`; the annotation is `()` on the chain and not kept).
+  * (`UntypedPlutusCore/Core/Type.hs:119-125`; the annotation is `()` on the chain and not kept,
+  * plutus 1.70.0.0).
   */
 final case class Program(version: ProgramVersion, term: Term)
