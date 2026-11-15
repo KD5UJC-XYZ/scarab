@@ -117,12 +117,17 @@ sealed class EraFacts[E <: EraTag](val l: EraRead[E]):
   def conway: Option[ConwayFacts] = None
 
 object EraFacts:
-  /** The view of a ledger state, in the era its witness names. */
+  /** The view of a ledger state, in the era its witness names: Conway's own in Conway, and in every
+    * other era, Dijkstra too, the parts every era has (a Dijkstra state answers the queries of
+    * every era, not Conway's).
+    */
   def of(in: InEra): EraFacts[?] = in match
     case InEra.Of(era, l) =>
       era match
         case ShelleyBasedEra.SConway => new ConwayFacts(l)
-        case _                       => new EraFacts(l)
+        case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+            ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SDijkstra =>
+          new EraFacts(l)
 
 /** What the queries of the Conway era read of its ledger state, besides what every era's do. */
 final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](conwayRead):
