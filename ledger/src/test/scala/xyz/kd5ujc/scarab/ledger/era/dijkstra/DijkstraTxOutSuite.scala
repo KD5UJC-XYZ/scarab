@@ -210,6 +210,24 @@ class DijkstraTxOutSuite extends FunSuite:
     }
   }
 
+  test("a translated output's native reference script keeps its sub-scripts' encodings") {
+    // `{0: address, 1: coin, 3: 24(<<[0, [1, [_ [4, 0], [5, 0]]]]>>)}`
+    val raw = hex(
+      "a300" + "581d61" + "00" * 28 + "01" + "1a000f4240" + "03" + "d8184c" + "8200" +
+        "82019f820400820500ff"
+    )
+    val out = DijkstraTxOut.translate(conwayOutput(raw)).fold(e => fail(e.toString), _.rep)
+    val native = out.scriptRef
+      .flatMap(DijkstraScript.instance.getNativeScript)
+      .getOrElse(fail("no native script"))
+    assertEquals(native.raw.hex, "820182820400820500")
+    val subs = native.getRequireAllOf.getOrElse(fail("not all-of"))
+    assertEquals(subs.map(_.raw.hex), Vector("820400", "820500"))
+    assertNotEquals(subs(0), subs(1))
+    // the output's bytes hold the new encoding of the script
+    assert(out.raw.hex.contains("820182820400820500"), out.raw.hex)
+  }
+
   // ---- the families
 
   test("the era's families reduce at Dijkstra to its types") {

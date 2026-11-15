@@ -105,10 +105,16 @@ object DijkstraTxOut:
         script
       )
     }
-    CborRead
-      .decode(upgraded.raw, V12.nestedLimits)
-      .flatMap(read)
-      .leftMap(EraTxError.TranslationReadBack(_))
+    for
+      read <- CborRead
+        .decode(upgraded.raw, V12.nestedLimits)
+        .flatMap(read)
+        .leftMap(EraTxError.TranslationReadBack(_))
+      // the script is `upgradeScript`'s, as `upgradeBabbageTxOut` keeps it (cardano-ledger
+      // 9df9f98c `eras/conway/impl/src/Cardano/Ledger/Conway/TxOut.hs:68-81`): a native one's
+      // sub-scripts memoize their encodings, which a script read from the bytes would not
+      script <- out.rep.scriptRef.traverse(DijkstraScript.translate)
+    yield read.copy(scriptRef = script)
 
   extension (out: DijkstraTxOut)
     /** The shared representation, read only. */
