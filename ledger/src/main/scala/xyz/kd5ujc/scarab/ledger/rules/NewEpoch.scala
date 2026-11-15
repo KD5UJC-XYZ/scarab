@@ -65,10 +65,22 @@ object NewEpoch:
               bprev = before.bcur,
               bcur = BlocksMade.empty,
               ru = None,
-              layout = NewEpochState.Layout.Node11_1(before.es.snapshots.markPoolDistr)
+              layout = boundaryLayout(before)
             )
           )
         yield ()
+
+  /** The layout part of the state after the boundary, in the layout of the state before it. The
+    * 11.1 layout's pool distribution is the one of the `mark` snapshot before EPOCH
+    * (`ssStakeMarkPoolDistr`); the Leios layout has no `nesPd` (cardano-ledger 9df9f98c
+    * `Shelley/Rules/NewEpoch.hs:147-175`, `Conway/Rules/NewEpoch.hs:153-184`: the boundary sets the
+    * epoch, the blocks, the epoch state and the reward update only).
+    */
+  private def boundaryLayout[E <: EraTag](before: NewEpochState[E]): NewEpochState.Layout =
+    before.layout match
+      case NewEpochState.Layout.Node11_1(_) =>
+        NewEpochState.Layout.Node11_1(before.es.snapshots.markPoolDistr)
+      case NewEpochState.Layout.Leios => NewEpochState.Layout.Leios
 
   /** The existing future-parameter prediction branch, corresponding to
     * `Conway/Rules/NewEpoch.hs:160-166` at cardano-ledger

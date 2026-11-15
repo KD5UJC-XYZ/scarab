@@ -72,9 +72,11 @@ object PoolReap:
           pools.get(id) match
             case None          => Right(pools)
             case Some(current) =>
-              // the 11.1 layout's pool state: POOLREAP on the Leios layout is #826's
+              // `mkStakePoolState e SNothing` (9df9f98c `Shelley/Rules/PoolReap.hs:140-155`), in the
+              // layout of the pool's state: in the Leios layout a re-registered pool holds no key
+              val blsKey = PoolBlsKey.certified(current.blsKey.stateLayout)
               Convert
-                .poolState(params, PoolBlsKey.Node11_1, current.deposit, current.delegators)
+                .poolState(params, blsKey, current.deposit, current.delegators)
                 .map(pools.updated(id, _))
         }
     activated.map { pools =>
