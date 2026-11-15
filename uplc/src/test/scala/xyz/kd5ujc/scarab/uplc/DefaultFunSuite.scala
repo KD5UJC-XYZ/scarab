@@ -147,9 +147,9 @@ final class DefaultFunSuite extends munit.FunSuite:
   test(
     "the builtins with no case in builtin/semantics of the corpus are batch 7 and serialiseData"
   ) {
-    // Batch 7 is released at no protocol version (Versions.hs:311-313); serialiseData has no
-    // evaluation case in the upstream corpus of either release. Both are facts of the corpus, kept
-    // here so that a change to it shows.
+    // Batch 7 is released at no protocol version (Versions.hs:311-313, plutus 1.70.0.0);
+    // serialiseData has no evaluation case in the upstream corpus of either release. Both are facts
+    // of the corpus, kept here so that a change to it shows.
     for release <- ReferenceCorpus.Releases do
       val programs = ReferenceCorpus.view(release).collect {
         case (path, file)

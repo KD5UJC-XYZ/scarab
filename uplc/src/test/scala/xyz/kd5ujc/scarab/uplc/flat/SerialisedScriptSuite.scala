@@ -23,7 +23,8 @@ final class SerialisedScriptSuite extends munit.FunSuite:
     assertEquals(deserialise(PlutusLanguage.V3, 11, script), Right(program))
   }
 
-  // `SerialisedScript.hs:256-259`, with the ledger's own guard for V4 (`Availability.languageIntroducedIn`)
+  // `SerialisedScript.hs:256-259` of plutus 1.70.0.0, with the ledger's own guard for V4
+  // (`Availability.languageIntroducedIn`)
   test("a language before the protocol that introduces it is refused first") {
     assertEquals(
       deserialise(PlutusLanguage.V3, 8, Bytes.empty),
@@ -57,8 +58,9 @@ final class SerialisedScriptSuite extends munit.FunSuite:
     )
   }
 
-  // `decodeBytes` through `decodeViaFlatWith` (`SerialiseViaFlat.hs:28-32`); probes `outer-*` of
-  // `fixtures/reference/plutus-flat-decode` pin the 8-byte length and the indefinite string
+  // `decodeBytes` through `decodeViaFlatWith` (`SerialiseViaFlat.hs:28-32`, plutus 1.70.0.0);
+  // probes `outer-*` of `fixtures/reference/plutus-flat-decode` pin the 8-byte length and the
+  // indefinite string
   test("the script is a definite-length CBOR byte string, its length in any width") {
     val wide =
       Bytes.wrap(Array(0x5b.toByte) ++ Array.fill[Byte](7)(0) ++ Array(flat.length.toByte) ++ flat)
@@ -85,7 +87,7 @@ final class SerialisedScriptSuite extends munit.FunSuite:
     )
   }
 
-  // `SerialisedScript.hs:262-264`
+  // `SerialisedScript.hs:262-264` of plutus 1.70.0.0
   test("bytes after the CBOR byte string: kept by V1 and V2, refused by V3 and V4") {
     val trailing = script ++ hex("00ff")
     (5 to 11).foreach(pv =>
@@ -112,7 +114,8 @@ final class SerialisedScriptSuite extends munit.FunSuite:
     )
   }
 
-  // `builtinsAvailableIn` (`Versions.hs:320-356`) through `checkBuiltin` (`SerialisedScript.hs:216-225`)
+  // `builtinsAvailableIn` (`Versions.hs:320-356`, plutus 1.70.0.0) through `checkBuiltin`
+  // (`SerialisedScript.hs:216-225`)
   test("builtins are those of the language and protocol, a V4 script's those of V3") {
     def using(fun: DefaultFun): Bytes =
       FlatWriter.script(Program(ProgramVersion.V1_0_0, Term.builtin(fun)))
@@ -137,7 +140,8 @@ final class SerialisedScriptSuite extends munit.FunSuite:
     assert(deserialise(PlutusLanguage.V4, 12, using(DefaultFun.DropPolicies)).isLeft)
   }
 
-  // `Eval.hs:124-127`: the program's version is checked when it is evaluated, not when decoded
+  // `Eval.hs:124-127` of plutus 1.70.0.0: the program's version is checked when it is evaluated,
+  // not when decoded
   test("a 1.1.0 program decodes in V1 before protocol 11 and is refused for evaluation") {
     val newer = Program(ProgramVersion.V1_1_0, Term.constr(Word64.Zero, Vector.empty))
     val bytes = FlatWriter.script(newer)

@@ -94,7 +94,8 @@ final class UplcParserSuite extends ScalaCheckSuite:
     }
   }
 
-  // ---- string escapes: base's `lexChar` through megaparsec's `charLiteral` (Builtin.hs:86-87) ----
+  // ---- string escapes: base's `lexChar` through megaparsec's `charLiteral` (Builtin.hs:86-87,
+  // plutus 1.70.0.0) ----
 
   test("single-character, control and ASCII escapes; \\SOH before its prefix \\SO") {
     assertEquals(
@@ -303,7 +304,8 @@ final class UplcParserSuite extends ScalaCheckSuite:
     "a former builtin name is not an alias: only the printed names are read (Builtin.hs:36-37)"
   ) {
     // `cachedBuiltin` maps `display fn` of each builtin; `VerifyEd25519Signature` was formerly
-    // `verifySignature` (`PlutusCore/Default/Builtins.hs:115`), which the parser does not keep
+    // `verifySignature` (`PlutusCore/Default/Builtins.hs:115`, plutus 1.70.0.0), which the parser
+    // does not keep
     assertEquals(
       program("(builtin verifyEd25519Signature)").map(_.term),
       Right(Term.builtin(DefaultFun.VerifyEd25519Signature))
@@ -314,7 +316,7 @@ final class UplcParserSuite extends ScalaCheckSuite:
     )
   }
 
-  // ---- printing (PrettyConst.hs:112-121) ----
+  // ---- printing (PrettyConst.hs:112-121, plutus 1.70.0.0) ----
 
   test("a numeric escape before a digit, and \\SO before H, are followed by \\&") {
     val t = Text

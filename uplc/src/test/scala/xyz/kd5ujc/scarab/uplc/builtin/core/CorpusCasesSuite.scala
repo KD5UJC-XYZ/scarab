@@ -116,7 +116,7 @@ final class CorpusCasesSuite extends munit.FunSuite:
   }
 
   // The results of D and E are plain `Integer` and `ByteString`, not bounded
-  // (`Builtins.hs:1099-1257`).
+  // (`Builtins.hs:1099-1257`, plutus 1.70.0.0).
   test("the results of the on-chain variants are not bounded, only their arguments") {
     val max = BigInt(2).pow(262143) - 1
     for v <- Vector(CoreVariant.D, CoreVariant.E) do

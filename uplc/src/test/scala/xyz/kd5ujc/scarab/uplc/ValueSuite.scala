@@ -45,7 +45,8 @@ final class ValueSuite extends munit.FunSuite:
       Value.build(Seq(k("a") -> Seq(k("x") -> q(0)))),
       Left(Invalid.ZeroQuantity(k("a"), k("x")))
     )
-    // The token check comes before the zero check of the same entry (Value.hs:681-691).
+    // The token check comes before the zero check of the same entry (Value.hs:681-691,
+    // plutus 1.70.0.0).
     assertEquals(
       Value.build(Seq(k("a") -> Seq(k("y") -> q(1), k("x") -> q(0)))),
       Left(Invalid.TokenNamesNotAscending(k("a"), k("y"), k("x")))

@@ -9,8 +9,8 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.Probe
 import ExtendedTesting.*
 
 /** Batch 7 (`multiIndexArray`, `policies`, `assetCount`, `keepPolicies`, `dropPolicies`,
-  * `Default/Builtins.hs:2482-2527`, `PlutusCore/Arrays.hs`, `PlutusCore/Value.hs:419-475`), which
-  * no protocol from 5 to 11 makes available and the corpus has no case of.
+  * `Default/Builtins.hs:2482-2527`, `PlutusCore/Arrays.hs`, `PlutusCore/Value.hs:419-475`, plutus
+  * 1.70.0.0), which no protocol from 5 to 11 makes available and the corpus has no case of.
   */
 final class Batch7Suite extends munit.FunSuite:
   private def key(hex: String): Value.Key =

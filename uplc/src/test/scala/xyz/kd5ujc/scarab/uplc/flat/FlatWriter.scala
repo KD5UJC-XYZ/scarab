@@ -7,10 +7,9 @@ import xyz.kd5ujc.scarab.uplc.*
 
 /** A Flat encoder for tests, written from the reference's encoders (`encodeTerm` and
   * `encodeProgram`, `UntypedPlutusCore/Core/Instance/Flat.hs:120-131`, 231; `encodeUni`,
-  * `PlutusCore/Default/Universe.hs:1068-1081`; the primitive encoders of
-  * `PlutusCore/Flat/Encoder`), and the bits of hand-made inputs the canonical encoder cannot
-  * produce. Bits are a string of `0` and `1`; a term is written from a work list, so a deep one
-  * does not recurse.
+  * `PlutusCore/Default/Universe.hs:1068-1081`; the primitive encoders of `PlutusCore/Flat/Encoder`,
+  * plutus 1.70.0.0), and the bits of hand-made inputs the canonical encoder cannot produce. Bits
+  * are a string of `0` and `1`; a term is written from a work list, so a deep one does not recurse.
   */
 object FlatWriter:
   def bits(value: BigInt, width: Int): String =
