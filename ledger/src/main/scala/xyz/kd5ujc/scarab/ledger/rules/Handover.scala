@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronOut}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
-import xyz.kd5ujc.scarab.protocol.StateLayout
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 
 /** `FromByronTranslationContext` (`Shelley/Translation.hs:46`): what the Shelley genesis gives the
   * ledger state that the chain enters Shelley with: the genesis delegations, the protocol
@@ -31,6 +31,12 @@ final case class FromByron(
   * not carried (`translateUTxOByronToShelley`).
   */
 object Handover:
+
+  /** The layout the hand-over builds `build` 's state in, or the refusal of a build whose layout is
+    * not implemented yet ([[TickFailure.LayoutNotYet]]), which the setup refuses before any rule.
+    */
+  def layoutOf(build: ReferenceBuild): Either[TickFailure, StateLayout] =
+    StateLayout.of(build).leftMap(TickFailure.LayoutNotYet(_))
 
   /** The state in `layout`, the layout of the build the node mirrors: in the Leios layout the empty
     * snapshots and the new-epoch state are that layout's (`emptySnapShots`, cardano-ledger 9df9f98c

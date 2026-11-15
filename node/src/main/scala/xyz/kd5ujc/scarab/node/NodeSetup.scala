@@ -385,7 +385,12 @@ object NodeSetup:
       dijkstra <- names.dijkstra
         .zip(dijkstraBytes)
         .traverse((name, bytes) => json(name, bytes).flatMap(DijkstraGenesis.read))
-      injections <- GenesisInjections.read(StateLayout.of(build))(files)
+      // the genesis state is built in the build's layout: a build whose layout is not implemented
+      // yet is refused here, before anything reads or writes a state of it
+      layout <- StateLayout
+        .of(build)
+        .leftMap(e => ConfigError(ConfigProblem.ReferenceBuildNotYet(e)))
+      injections <- GenesisInjections.read(layout)(files)
       globals <- GenesisState
         .globals(files, genesis)
         .map(_.copy(dijkstra = dijkstra, referenceBuild = build))

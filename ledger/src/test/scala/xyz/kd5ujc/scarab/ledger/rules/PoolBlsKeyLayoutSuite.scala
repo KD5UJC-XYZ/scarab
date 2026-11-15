@@ -5,7 +5,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet}
 
 /** The voting key of a pool that POOL registers before Dijkstra, by the layout of the build the
   * node mirrors: none in the Leios layout (`mkStakePoolState cEpoch SNothing` of parameters with
@@ -30,7 +30,7 @@ class PoolBlsKeyLayoutSuite extends FunSuite:
   private val pp = TestLedger.params(10)
   private val initial = Empty.ledgerState[Conway](pp).cert.pState
 
-  private def registered(build: ReferenceBuild): Vector[PoolBlsKey] =
+  private def judged(build: ReferenceBuild) =
     val globals =
       TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(referenceBuild = build))
     JudgedSts(Pool)(LedgerFailure.Rejected(id, _))(
@@ -38,7 +38,10 @@ class PoolBlsKeyLayoutSuite extends FunSuite:
       CertEnv(id, pp, 5, None, Map.empty),
       initial,
       PoolCert.RegPool(params)
-    ).fold(e => fail(e.toString), _.stakePools.values.toVector.map(_.blsKey))
+    )
+
+  private def registered(build: ReferenceBuild): Vector[PoolBlsKey] =
+    judged(build).fold(e => fail(e.toString), _.stakePools.values.toVector.map(_.blsKey))
 
   test("a pool POOL registers in Conway holds no voting key in the Leios layout") {
     assertEquals(registered(ReferenceBuild.LeiosB004fe0c), Vector(PoolBlsKey.Leios(None)))
@@ -46,4 +49,13 @@ class PoolBlsKeyLayoutSuite extends FunSuite:
 
   test("a pool POOL registers in the 11.1 layout has no voting-key field") {
     assertEquals(registered(ReferenceBuild.Default), Vector(PoolBlsKey.Node11_1))
+  }
+
+  test(
+    "a build whose layout is not implemented yet is a defect, not a verdict, which setup refuses"
+  ) {
+    assertEquals(
+      judged(ReferenceBuild.Release11_2).map(_.stakePools.size),
+      Left(LedgerFailure.LayoutNotYet(ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2)))
+    )
   }

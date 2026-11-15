@@ -131,6 +131,25 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
         )
       )
     )
+    // 11.2 is a known build whose layout no codec reads yet: neither 11.1's nor the Leios codec
+    val next =
+      SnapshotV10.framed(
+        ReferenceBuild.Release11_2,
+        binding,
+        sidecar,
+        Bytes.wrap(Array(0xff.toByte))
+      )
+    assertEquals(SnapshotV10.recordedOf(next), Right("11.2"))
+    assertEquals(
+      SnapshotV10.decode(env, ReferenceLayout.Release11_1, next).map(_.anchor),
+      Left(
+        StorageError.ReferenceBuildMismatch(
+          "snapshot",
+          ReferenceBuild.Release11_2,
+          ReferenceBuild.Release11_1
+        )
+      )
+    )
     val unknown = SnapshotV10.Magic ++ Array(4.toByte) ++ "11.9".getBytes("US-ASCII") ++
       v10.drop(SnapshotV10.Magic.length + 5)
     assertEquals(

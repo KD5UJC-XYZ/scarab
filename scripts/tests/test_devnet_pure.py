@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import types
 import unittest
 from unittest.mock import patch
@@ -883,8 +884,250 @@ class ReferenceImageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             bad = pathlib.Path(d) / "x.tar.gz"
             bad.write_bytes(b"not the archive")
-            with self.assertRaises(ValueError):
-                pri.verify_archive(bad)
+            for release in pri.RELEASES.values():
+                with self.assertRaises(ValueError, msg=release.version):
+                    pri.verify_archive(bad, release)
+
+    def test_the_default_release_is_the_top_level_pins_and_every_release_is_complete(self):
+        import prepare_reference_image as pri
+        default = pri.RELEASES[pri.DEFAULT_RELEASE]
+        self.assertEqual(pri.DEFAULT_RELEASE, "11.1.3", "the nightly builds the default release")
+        self.assertEqual((default.archive_name, default.archive_url, default.archive_sha256, default.archive_size,
+                          default.binary_hashes),
+                         (pri.ARCHIVE_NAME, pri.ARCHIVE_URL, pri.ARCHIVE_SHA256, pri.ARCHIVE_SIZE, pri.BINARY_HASHES))
+        self.assertEqual(sorted(pri.RELEASES), ["11.1.3", "11.2.1"])
+        for version, release in pri.RELEASES.items():
+            self.assertEqual(release.version, version)
+            self.assertEqual(release.tag, f"cardano-reference-{version}:local")
+            self.assertTrue(release.archive_url.endswith(f"/releases/download/{version}/{release.archive_name}"),
+                            release.archive_url)
+            self.assertRegex(release.archive_sha256, r"^[0-9a-f]{64}$", version)
+            self.assertGreater(release.archive_size, 0, version)
+            self.assertEqual(sorted(release.binary_hashes), ["cardano-cli", "cardano-node", "cardano-testnet"], version)
+            for name, digest in release.binary_hashes.items():
+                self.assertRegex(digest, r"^[0-9a-f]{64}$", f"{version} {name}")
+
+
+class ReleaseVerificationTest(unittest.TestCase):
+    """verify_archive and extract_binaries against synthetic releases, so that each check is the one that decides."""
+
+    @staticmethod
+    def release(version, archive, binaries):
+        import hashlib
+        import prepare_reference_image as pri
+        return pri.Release(version, hashlib.sha256(archive).hexdigest(), len(archive),
+                           {n: hashlib.sha256(b).hexdigest() for n, b in binaries.items()})
+
+    @staticmethod
+    def tarball(path, binaries):
+        import io as stdio
+        import tarfile
+        with tarfile.open(path, "w:gz") as archive:
+            for name, data in binaries.items():
+                info = tarfile.TarInfo("./bin/" + name)
+                info.size = len(data)
+                archive.addfile(info, stdio.BytesIO(data))
+        return path.read_bytes()
+
+    def test_an_archive_verifies_against_its_own_release_only(self):
+        import prepare_reference_image as pri
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / "a.tar.gz"
+            path.write_bytes(b"the archive of release A")
+            a = self.release("1.0.0", path.read_bytes(), {})
+            b = self.release("2.0.0", b"the archive of the second release", {})
+            pri.verify_archive(path, a)
+            with self.assertRaisesRegex(ValueError, "size mismatch"):
+                pri.verify_archive(path, b)
+            same_size = self.release("3.0.0", b"the archive of release C", {})
+            self.assertEqual(same_size.archive_size, a.archive_size)
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                pri.verify_archive(path, same_size)
+
+    def test_a_corrupted_archive_of_the_pinned_size_fails_the_checksum(self):
+        import prepare_reference_image as pri
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / "a.tar.gz"
+            path.write_bytes(b"the archive of release A")
+            pinned = self.release("1.0.0", path.read_bytes(), {})
+            path.write_bytes(b"the archive of release X")
+            self.assertEqual(path.stat().st_size, pinned.archive_size)
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                pri.verify_archive(path, pinned)
+
+    def test_the_executables_are_written_when_each_matches_the_selected_release(self):
+        import prepare_reference_image as pri
+        binaries = {"cardano-node": b"node A", "cardano-cli": b"cli A", "cardano-testnet": b"testnet A"}
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            archive = root / "a.tar.gz"
+            self.tarball(archive, binaries)
+            out = root / "bin"
+            out.mkdir()
+            pri.extract_binaries(archive, self.release("1.0.0", b"", binaries), out)
+            for name, data in binaries.items():
+                self.assertEqual((out / name).read_bytes(), data, name)
+                self.assertEqual((out / name).stat().st_mode & 0o777, 0o755, name)
+            other = dict(binaries, **{"cardano-cli": b"cli B"})
+            with self.assertRaisesRegex(ValueError, "unexpected official binary: cardano-cli"):
+                pri.extract_binaries(archive, self.release("2.0.0", b"", other), root)
+
+    def test_a_missing_executable_is_refused(self):
+        import prepare_reference_image as pri
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            archive = root / "a.tar.gz"
+            self.tarball(archive, {"cardano-node": b"node A"})
+            wanted = self.release("1.0.0", b"", {"cardano-node": b"node A", "cardano-cli": b"cli A"})
+            with self.assertRaisesRegex(ValueError, "missing/duplicate binary: cardano-cli"):
+                pri.extract_binaries(archive, wanted, root)
+
+
+class ExtractionContainerTest(unittest.TestCase):
+    """`up --node-image` copies a binary out of a created container: named and labelled as the devnet's, and removed
+    however the block ends."""
+
+    def fake(self, create=None, cp=None, rm=None):
+        calls = []
+
+        def docker(*args, check=True, **_):
+            calls.append(args)
+            hook = {"create": create, "cp": cp, "rm": rm}.get(args[0])
+            outcome = hook(args) if hook is not None else None
+            return outcome if outcome is not None else subprocess.CompletedProcess(args, 0, "c0ffee\n", "")
+        return calls, docker
+
+    def test_the_container_has_the_known_name_and_the_devnets_labels_and_is_removed(self):
+        from cleanup import container_labels
+        calls, docker = self.fake()
+        with patch.object(cluster, "docker", docker):
+            with cluster.created_container("repin0", "ref:11", 2) as created:
+                self.assertEqual(created, "repin0-extract-2")
+        labels = container_labels("devnet", "repin0")
+        self.assertEqual(calls[0], ("create", "--pull=never", "--name", "repin0-extract-2", *labels, "ref:11", "/bin/true"))
+        self.assertEqual(calls[-1], ("rm", "-f", "repin0-extract-2"))
+
+    def test_an_interruption_before_create_returns_still_removes_the_named_container(self):
+        def interrupted(_):
+            raise KeyboardInterrupt
+        calls, docker = self.fake(create=interrupted)
+        with patch.object(cluster, "docker", docker):
+            with self.assertRaises(KeyboardInterrupt):
+                with cluster.created_container("repin0", "ref:11", 2):
+                    self.fail("the block must not run when the creation was interrupted")
+        self.assertEqual(calls[-1], ("rm", "-f", "repin0-extract-2"))
+
+    def test_an_interruption_during_the_copy_removes_the_container_and_propagates(self):
+        def interrupted(_):
+            raise KeyboardInterrupt
+        calls, docker = self.fake(cp=interrupted)
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "docker", docker):
+            with self.assertRaises(KeyboardInterrupt):
+                cluster.install_node_images("repin0", pathlib.Path(d), {2: "ref:11"})
+        self.assertEqual([c[0] for c in calls], ["create", "cp", "rm"])
+        self.assertEqual(calls[-1], ("rm", "-f", "repin0-extract-2"))
+
+    def test_sigterm_inside_the_block_removes_the_container_and_exits_143(self):
+        program = textwrap.dedent("""
+            import json, os, signal, subprocess, sys
+            sys.path.insert(0, sys.argv[1])
+            from devnet import cluster
+            log = open(sys.argv[2], "w")
+            def docker(*args, check=True, **_):
+                log.write(json.dumps(args) + "\\n"); log.flush()
+                return subprocess.CompletedProcess(args, 0, "", "")
+            cluster.docker = docker
+            with cluster.created_container("repin0", "ref:11", 2):
+                os.kill(os.getpid(), signal.SIGTERM)
+                log.write(json.dumps(["after the signal"]) + "\\n")
+        """)
+        with tempfile.TemporaryDirectory() as d:
+            calls = pathlib.Path(d) / "calls.jsonl"
+            done = subprocess.run([sys.executable, "-c", program, str(pathlib.Path(__file__).resolve().parents[1]),
+                                   str(calls)], capture_output=True, text=True, timeout=60)
+            recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+        self.assertEqual(done.returncode, 143, done.stderr)
+        self.assertEqual([c[0] for c in recorded], ["create", "rm"], "the block stops at the signal, then the removal")
+        self.assertEqual(recorded[-1], ["rm", "-f", "repin0-extract-2"])
+
+    def test_a_removal_that_raises_reports_itself_and_keeps_the_blocks_own_error(self):
+        def raises(_):
+            raise OSError("docker went away")
+        calls, docker = self.fake(rm=raises)
+        out = io.StringIO()
+        with patch.object(cluster, "docker", docker):
+            with self.assertRaisesRegex(SystemExit, "the copy failed"):
+                with cluster.created_container("repin0", "ref:11", 2, out=out):
+                    raise SystemExit("the copy failed")
+        self.assertIn("repin0-extract-2", out.getvalue())
+        self.assertIn("docker went away", out.getvalue())
+        self.assertIn("cleanup.py --owner repin0 --apply", out.getvalue())
+
+    def test_a_failed_removal_is_reported_and_a_missing_container_is_not(self):
+        def refused(args):
+            return subprocess.CompletedProcess(args, 1, "", "permission denied")
+        out = io.StringIO()
+        with patch.object(cluster, "docker", self.fake(rm=refused)[1]):
+            with cluster.created_container("repin0", "ref:11", 2, out=out):
+                pass
+        self.assertIn("permission denied", out.getvalue())
+        self.assertIn("cleanup.py --owner repin0 --apply", out.getvalue())
+
+        def missing(args):
+            return subprocess.CompletedProcess(args, 1, "", "Error response from daemon: No such container: x")
+        quiet = io.StringIO()
+        with patch.object(cluster, "docker", self.fake(rm=missing)[1]):
+            with cluster.created_container("repin0", "ref:11", 2, out=quiet):
+                pass
+        self.assertEqual(quiet.getvalue(), "", "a container that is already gone is not a failure")
+
+    def test_each_image_is_copied_beside_the_dispatcher(self):
+        def copy(args):
+            pathlib.Path(args[2]).write_bytes(b"node")
+        calls, docker = self.fake(cp=copy)
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "docker", docker):
+            target = cluster.install_node_images("repin0", pathlib.Path(d), {1: "ref:a", 3: "ref:b"})
+            self.assertEqual((target / "1" / "cardano-node").read_bytes(), b"node")
+            self.assertEqual((target / "3" / "cardano-node").read_bytes(), b"node")
+            self.assertEqual((target / "cardano-node").read_text(), cluster.node_dispatcher({1: "ref:a", 3: "ref:b"}))
+            self.assertEqual((target / "cardano-node").stat().st_mode & 0o777, 0o755)
+        self.assertEqual([(c[0], c[-1]) for c in calls if c[0] == "rm"],
+                         [("rm", "repin0-extract-1"), ("rm", "repin0-extract-3")])
+
+    def test_down_removes_a_leftover_extraction_container(self):
+        calls, docker = self.fake()
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "docker", docker), \
+                patch.object(cluster, "data_root", lambda name: pathlib.Path(d) / name):
+            cluster.down(types.SimpleNamespace(name="repin0"), quiet=True)
+        removed = [c[-1] for c in calls if c[:2] == ("rm", "-f")]
+        for pool in (1, 2, 3):
+            self.assertIn(f"repin0-extract-{pool}", removed)
+
+
+class NodeImageTest(unittest.TestCase):
+    def test_an_image_alone_names_every_pool_and_n_equals_one_pool(self):
+        self.assertEqual(cluster.node_images(None), {})
+        self.assertEqual(cluster.node_images(["ref:11"]), {1: "ref:11", 2: "ref:11", 3: "ref:11"})
+        self.assertEqual(cluster.node_images(["2=ref:11"]), {2: "ref:11"})
+        self.assertEqual(cluster.node_images(["ref:a", "3=ref:b"]), {1: "ref:a", 2: "ref:a", 3: "ref:b"},
+                         "a later value for a pool replaces an earlier one")
+
+    def test_a_pool_outside_the_cluster_or_an_empty_image_is_refused(self):
+        for value in ("4=ref:11", "0=ref:11", "x=ref:11", "=ref:11", "2=", ""):
+            with self.assertRaises(ValueError, msg=value):
+                cluster.node_images([value])
+
+    def test_the_dispatcher_runs_each_named_pool_on_its_copy_and_anything_else_on_the_image_node(self):
+        script = cluster.node_dispatcher({2: "ref:11"})
+        lines = script.splitlines()
+        self.assertEqual(lines[0], "#!/bin/sh")
+        self.assertIn('  *node-data/node2/*) exec /opt/node-bin/2/cardano-node "$@" ;;', lines)
+        self.assertFalse(any("node-data/node1/" in line or "node-data/node3/" in line for line in lines),
+                         "pools without an image need no arm")
+        self.assertEqual(lines[-1], 'exec /opt/reference/bin/cardano-node "$@"',
+                         "--version and the pools without an image run the image's own node")
+        self.assertEqual(cluster.node_path(2, {2: "ref:11"}), "/opt/node-bin/2/cardano-node")
+        self.assertEqual(cluster.node_path(1, {2: "ref:11"}), "/opt/reference/bin/cardano-node")
 
 
 class RestartScenarioTest(unittest.TestCase):

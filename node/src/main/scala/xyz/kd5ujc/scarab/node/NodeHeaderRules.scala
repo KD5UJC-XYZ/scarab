@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.ledger.rules.{FromByron, Handover}
 import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, WithOrigin}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead}
-import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** Header-first state across the Byron/Shelley boundary. The pending Shelley state is distinct from
   * the active PBFT state; a translated ledger forecast is shared until a real Shelley anchor
@@ -261,7 +261,8 @@ final class NodeHeaderRules[S](
             // mkInitialShelleyForecast ignores the Byron UTxO: only genesis parameters,
             // delegations and an empty pool distribution enter this forecast.
             nes <- Handover
-              .toShelley(context, epoch, Map.empty, StateLayout.of(glob.referenceBuild))
+              .layoutOf(glob.referenceBuild)
+              .flatMap(Handover.toShelley(context, epoch, Map.empty, _))
               .leftMap(BlockFailure.Tick(_))
           yield (
             first,

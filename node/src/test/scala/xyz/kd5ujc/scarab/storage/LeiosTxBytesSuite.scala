@@ -154,8 +154,9 @@ class LeiosTxBytesSuite extends CatsEffectSuite:
 
   test("the total after a block is written with the state and read back from the snapshot") {
     val after = stepped(start, block(0, plain, withAux, invalid))
-    val format =
-      SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c))
+    val layout =
+      ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c).fold(e => fail(e.message), identity)
+    val format = SnapshotV10.format[IO](SnapshotCheck.Full, layout)
     val snapshot = StateSnapshot(
       StateMirror.anchorOf(after.ext.headerState.tip),
       after,

@@ -5,7 +5,10 @@ import json
 import os
 import pathlib
 import shutil
+import signal
 import subprocess
+import sys
+import threading
 import time
 from datetime import datetime, timezone
 from . import util
@@ -13,22 +16,129 @@ from cleanup import container_labels
 from .util import ALL_FOLLOWERS, ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
 
 
-def start_reference(name):
+# Where `up --node-image` mounts the other images' `cardano-node` binaries and the script that picks one per pool.
+NODE_BIN = "/opt/node-bin"
+OWN_NODE = "/opt/reference/bin/cardano-node"
+POOLS = (1, 2, 3)
+
+
+def start_reference(name, node_bin=None):
+    """The reference container. With `node_bin` (a directory of `install_node_images`), mounted read-only at NODE_BIN,
+    `CARDANO_NODE` is its dispatcher, so the pools it names run another release's node; the tools are the image's."""
+    mount = [] if node_bin is None else ["-v", f"{node_bin}:{NODE_BIN}:ro"]
+    node = OWN_NODE if node_bin is None else f"{NODE_BIN}/cardano-node"
     docker("run", "-d", "--name", ref(name), "--pull=never", *container_labels("devnet", name),
            "--cpus=3", "--memory=6g", "--user", USER,
-           "--tmpfs", f"/work:rw,exec,size=2g,uid={os.getuid()},gid={os.getgid()}",
+           "--tmpfs", f"/work:rw,exec,size=2g,uid={os.getuid()},gid={os.getgid()}", *mount,
            "-e", "PATH=/opt/reference/bin:/usr/local/bin:/usr/bin:/bin",
            "-e", "CARDANO_CLI=/opt/reference/bin/cardano-cli",
-           "-e", "CARDANO_NODE=/opt/reference/bin/cardano-node",
+           "-e", f"CARDANO_NODE={node}",
            "--entrypoint", "/bin/sh", REFERENCE_IMAGE, "-c", "sleep infinity")
+
+
+def node_images(values, pools=POOLS):
+    """`up --node-image` values as {pool: image}: `IMAGE` names every pool, `N=IMAGE` pool N; a later value for a
+    pool replaces an earlier one. Raises ValueError for a pool outside `pools` or an empty image."""
+    chosen = {}
+    for value in values or ():
+        pool, named, image = value.partition("=")
+        if not named:
+            pool, image = "", value
+        if not image or (named and pool not in {str(p) for p in pools}):
+            raise ValueError(f"--node-image {value!r}: expected IMAGE or N=IMAGE with N one of {list(pools)}")
+        chosen.update({p: image for p in pools} if not named else {int(pool): image})
+    return chosen
+
+
+def node_path(pool, images):
+    """The `cardano-node` that pool `pool` runs inside the reference container."""
+    return f"{NODE_BIN}/{pool}/cardano-node" if pool in images else OWN_NODE
+
+
+def node_dispatcher(images):
+    """The `CARDANO_NODE` script of a cluster whose pools in `images` run another image's node. cardano-testnet starts
+    each pool with its directory `node-data/node<N>/` among the arguments; anything else, `--version` among it, runs
+    the image's own node, so cardano-testnet writes the configuration of its own release."""
+    arms = [f'  *node-data/node{pool}/*) exec {node_path(pool, images)} "$@" ;;' for pool in sorted(images)]
+    return "\n".join(["#!/bin/sh", 'case "$*" in', *arms, "esac", f'exec {OWN_NODE} "$@"', ""])
+
+
+def extraction_container(name, pool):
+    """The name of the container `up --node-image` copies pool `pool`'s `cardano-node` out of."""
+    return f"{name}-extract-{pool}"
+
+
+@contextlib.contextmanager
+def terminated_as_exit():
+    """Within the block, SIGTERM raises SystemExit(143), so that `finally` clauses run instead of the process ending
+    at once; the previous handler is put back after. Only the main thread can set a handler; elsewhere nothing
+    changes."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def stop(signum, _frame):
+        raise SystemExit(128 + signum)
+    previous = signal.signal(signal.SIGTERM, stop)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def remove_container(container, image, name, out=None):
+    """Remove `container` if it exists. A failure, an exception of the removal itself included, is reported on `out`
+    and not raised, so that it never replaces the error that ended the block; the container's label lets
+    `cleanup.py --owner name` remove it later."""
+    try:
+        removed = docker("rm", "-f", container, check=False)
+        gone = removed.returncode == 0 or "No such container" in removed.stderr
+        problem = None if gone else removed.stderr.strip()
+    except (OSError, subprocess.SubprocessError) as error:
+        problem = repr(error)
+    if problem:
+        print(f"container {container} of {image} was not removed ({problem}); "
+              f"`python3 scripts/cleanup.py --owner {name} --apply` removes it", file=out or sys.stderr, flush=True)
+
+
+@contextlib.contextmanager
+def created_container(name, image, pool, out=None):
+    """A container of `image` that never runs, named `extraction_container(name, pool)` and labelled as devnet
+    `name`'s. It is created inside the guarded block under that known name, so an interruption at any point (before
+    `docker create` returns included) or a SIGTERM still removes it; `down` removes one that a SIGKILL left."""
+    container = extraction_container(name, pool)
+    with terminated_as_exit():
+        try:
+            docker("create", "--pull=never", "--name", container, *container_labels("devnet", name), image, "/bin/true")
+            yield container
+        finally:
+            remove_container(container, image, name, out)
+
+
+def install_node_images(name, root, images):
+    """Copy the `cardano-node` of each image in `images` ({pool: image}) to `root/node-bin/<pool>/`, beside the
+    dispatcher, and return that directory, to mount at NODE_BIN."""
+    target = root / "node-bin"
+    for pool, image in images.items():
+        (target / str(pool)).mkdir(parents=True)
+        with created_container(name, image, pool) as created:
+            docker("cp", f"{created}:{OWN_NODE}", str(target / str(pool) / "cardano-node"))
+    put = target / "cardano-node"
+    put.write_text(node_dispatcher(images))
+    put.chmod(0o755)
+    return target
 
 
 def up(args):
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
+    try:
+        images = node_images(getattr(args, "node_image", None))
+    except ValueError as error:
+        raise SystemExit(str(error))
     (root / "genesis").mkdir(parents=True)
-    start_reference(args.name)
+    start_reference(args.name, install_node_images(args.name, root, images) if images else None)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--output {ENV} > /work/create-env.log 2>&1")
     adapt_reference_config(args.name, f"{ENV}/configuration.yaml")
@@ -48,7 +158,10 @@ def up(args):
                     raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/{f}"],
                                          capture_output=True, check=True).stdout
                     (root / "genesis" / f).write_bytes(raw)
-                print(json.dumps({"up": True, "ports": ports, "tip": tip, "root": str(root)}))
+                nodes = {n: in_ref(args.name, f"{node_path(n, images)} --version").stdout.splitlines()[0]
+                         for n in POOLS}
+                (root / "nodes.json").write_text(json.dumps(nodes))
+                print(json.dumps({"up": True, "ports": ports, "tip": tip, "root": str(root), "nodes": nodes}))
                 return
         except (SystemExit, json.JSONDecodeError):
             pass
@@ -641,7 +754,9 @@ def keep_native_evidence(name, root):
 
 def down(args, quiet=False):
     # every Scala node a run may have started: its only follower, or one per evaluator (`util.FollowerSite`)
-    for c in (*(site.container(args.name) for site in ALL_FOLLOWERS), f"{args.name}-cli", ref(args.name)):
+    # and the containers `up --node-image` copies binaries out of, should a SIGKILL have left one
+    for c in (*(site.container(args.name) for site in ALL_FOLLOWERS), f"{args.name}-cli", ref(args.name),
+              *(extraction_container(args.name, pool) for pool in POOLS)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)
     if not quiet:

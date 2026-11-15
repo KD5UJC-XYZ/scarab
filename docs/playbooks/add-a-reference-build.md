@@ -58,7 +58,8 @@ as 4.2.1.0 does (`ntc/GenesisConfig.scala`).
 
 1. **The value.** A case of `ReferenceBuild` in
    [`ReferenceBuild.scala`](../../protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala):
-   its name, its stability (`Stable` or `Unstable`) and its pins (node release tag or commit,
+   its name, its stability (`Stable`, `PreRelease` for a line whose pinned release upstream publishes as a
+   pre-release, or `Unstable`) and its pins (node release tag or commit,
    cardano-ledger, cardano-ledger-binary and ouroboros-consensus commits), with a Scaladoc that cites
    them. `ReferenceBuild.Default` moves only with the owner's decision.
 2. **The pins.** Each revision in `docs/data/reference-pins.json`, with `ReferenceBuild.scala` among
@@ -77,6 +78,11 @@ as 4.2.1.0 does (`ntc/GenesisConfig.scala`).
    - an object of the codecs (`LedgerFileCodecs` with its `stateLayout`, as `HaskellStateCodecs` and
      `LeiosStateCodecs` in `HaskellStateCodecs.scala`) and its case in `HaskellLedgerFile.codecs`;
    - round trips on `state` files of that build, and the refusal of them by every other layout.
+
+   Until that layout exists, `StateLayout.of` refuses the value (`ReferenceBuildNotYet.Layout`):
+   it is named and parsed, the node's setup refuses it (the genesis state is built in the build's
+   layout), and `follow`, `import-ledger-snapshot` and `export-ledger-snapshot` refuse it at start,
+   as `11.2` is refused until its layout lands.
 
    The snapshot format does not change: V10 records the name as text.
 4. **The rules.** The value also selects the ledger and consensus rules. `NodeSetup` sets it on

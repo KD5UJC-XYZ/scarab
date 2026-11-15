@@ -61,6 +61,12 @@ enum TickFailure derives Eq, Show:
     */
   case LeiosCommittee(cause: xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError)
 
+  /** The hand-over to Shelley for a reference build whose `state` layout this build does not
+    * implement yet ([[xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet.Layout]]). The setup refuses
+    * such a build (`NodeSetup`), so the rules never meet it.
+    */
+  case LayoutNotYet(cause: xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet)
+
 object TickFailure:
   private given Eq[VocabError] = Eq.fromUniversalEquals
   private given Show[VocabError] = Show.fromToString
@@ -68,5 +74,7 @@ object TickFailure:
   private given Show[TxIn] = Show.fromToString
   private given Eq[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Eq.fromUniversalEquals
   private given Show[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Show.fromToString
+  private given Eq[xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet] = Eq.fromUniversalEquals
+  private given Show[xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet] = Show.show(_.message)
   private given Eq[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError] = Eq.fromUniversalEquals
   private given Show[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError] = Show.fromToString

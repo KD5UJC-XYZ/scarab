@@ -40,7 +40,8 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
       given ShelleyBasedEra[e] = i.era
       EraLedger.curPParams(i.state.nes.es.ls.utxo.gov)
     case _ => fail("expected a Shelley-based genesis state")
-  private val leios = ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c)
+  private val leios =
+    ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c).fold(e => fail(e.message), identity)
 
   private def read(name: String): Bytes =
     Bytes.wrap(JFiles.readAllBytes(fixture.resolve(s"conway-195/$name")))

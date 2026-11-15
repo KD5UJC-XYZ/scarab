@@ -685,7 +685,7 @@ cardano-ledger 9df9f98c, ouroboros-consensus 2416493b). Parsing the flag string 
 selects a layout (`StateLayout`, in `protocol` since step b); several builds may share one. A
 layout's codec (`ReferenceLayout`) is the only way to a snapshot format, an import or an export. In
 step a the Leios build was refused at start for want of its layout's codec; since step b
-(section 14) `ReferenceLayout.of` is total, and `follow` refuses the Leios build with
+(section 14) `ReferenceLayout.of` gives the Leios build its codec, and `follow` refuses the Leios build with
 `ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(...))` until its rules exist, after it
 has logged `referenceBuild` with the pins and, for an unstable build without
 `ExperimentalHardForksEnabled`, `unstableReferenceBuild`. The naming rule and every place a new
@@ -822,7 +822,7 @@ and `LeiosStateCodecs` the Leios build's. Each record that differs branches on i
 never written in the other: `HaskellLedgerFile.encode` returns `StateNotWritable`. There is no
 conversion. Records that do not differ are shared.
 
-**The setting.** `ReferenceLayout.of` is total; `import-ledger-snapshot` and
+**The setting.** `ReferenceLayout.of` gives this build its codec; `import-ledger-snapshot` and
 `export-ledger-snapshot` take `leios-b004fe0c` and add or strip the envelope as for `11.1`.
 `follow` refuses it (`ReferenceBuildFlag.follows`) until step c. The rules this build runs produce
 values of the 11.1 layout; running them on a Leios state is step c's to change.
@@ -833,3 +833,19 @@ refused by the 11.1 layout; the first Dijkstra state is refused at its telescope
 state and past bounds read (`LeiosLayoutSuite`, `LeiosLayoutImportSuite`, the `leios-*` fuzz
 targets). Only Conway is checked on reference bytes; the other eras on the diff of the sources and
 on property laws.
+
+## 15. The 11.2 build, named (re-pin stage 0)
+
+The [ADR 0001 amendment of 2026-11-14](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-the-newest-release-re-pinned-in-stages)
+makes cardano-node 11.2.1 the reference target and keeps both release lines. `ReferenceBuild.Release11_2`
+(`11.2`, pre-release, pinned at 11.2.1: cardano-ledger 29a7d656, ouroboros-consensus 808e4005) is named,
+parsed and listed in the help, and V10 would record it as `0431312e32`, but its `state` layout is
+not implemented: it is neither 11.1's nor the Leios build's. `StateLayout.of` and
+`ReferenceLayout.of` refuse it (`ReferenceBuildNotYet.Layout`), so `follow`,
+`import-ledger-snapshot` and `export-ledger-snapshot` all stop at start before they read or write
+any state. The node's setup refuses it, because the genesis state is built in the build's layout
+(`NodeSetup`); the two snapshot commands log `referenceBuild` with its pins, then refuse it. No
+snapshot can be recorded under `11.2`, and a file that records it is not read by the 11.1 or the
+Leios codec. The default stays `11.1`. The layout is a later stage of the
+re-pin, which adds a `StateLayout` case and its codecs as [the playbook](../playbooks/add-a-reference-build.md)
+lists them.

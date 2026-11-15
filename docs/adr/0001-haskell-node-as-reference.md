@@ -89,3 +89,51 @@ Record the evidence and any applicable owner decision in the compatibility regis
 request's deviations table. If the effect on interoperability or the scope of an existing decision
 is unclear, ask the owner before changing the boundary behavior. The approval requirement in the
 2026-10-25 amendment continues to apply.
+
+## Amendment (2026-11-14): the newest release, re-pinned in stages
+
+The owner decided on 2026-11-14 which release of `cardano-node` is the reference, and how Scarab
+moves to it. [The decision](#decision) names no release, so no words of it are superseded. The stages are tracked in
+[#1002](https://github.com/KD5UJC-XYZ/scarab/issues/1002).
+
+- **The newest release.** The reference is the newest release of `cardano-node`, a pre-release
+  included, and never a release with known bugs: Scarab takes upstream's fixes and improvements.
+  The target is therefore cardano-node 11.2.1 in place of 11.1.3. Its release on GitHub is marked
+  as a pre-release, which its release notes say is not yet recommended for use on mainnet; the
+  owner accepted that.
+- **Re-pinned in stages, area by area.** The pins move one area at a time (networking; consensus and
+  the node; ledger and Plutus), each in a stage of its own that amends the ADRs of its area that name
+  11.1.3 or its packages (ADR 0008 for networking and ADR 0027 for Plutus among them). Until an
+  area's stage lands, that area's pins stay at 11.1.3's, and its code, citations, fixtures, and the
+  ADRs and decisions that name 11.1.3, stay in force. [`docs/data/reference-pins.json`](../data/reference-pins.json)
+  registers both sets of pins.
+- **Both reference builds are kept.** `--reference-build` keeps `11.1` (cardano-node 11.1.3), which
+  reads 11.1.3 databases and state files and works with 11.1.3 peers, and gains `11.2` (cardano-node
+  11.2.1), following [the playbook](../playbooks/add-a-reference-build.md). The default stays `11.1`
+  until the later stages land; moving it is the owner's decision. Until then `11.2` is named and parsed,
+  and every command refuses it at start, because its `state` layout is not read or written yet.
+- **Node-to-client versions 16 to 22 stay offered.** cardano-node 11.2.1 offers node-to-client
+  version 23 only: `NodeToClientVersion` has the one constructor `NodeToClientV_23`
+  (cardano-diffusion 1.3.0.1, ouroboros-network 4646039f
+  `cardano-diffusion/api/lib/Cardano/Network/NodeToClient/Version.hs` 70-75, and its codec at 84-95),
+  and its release notes list the removal of versions 16 to 22 among the changes of 11.2.0. Scarab
+  keeps offering 16 to 22 beside 23, for backwards compatibility. This is an approved deviation from
+  11.2.1, in force once node-to-client follows 11.2.1. At versions 16 to 22, which 11.2.1 does not
+  define, a query is answered as the cardano-node 11.1.3 server answers it at that version; the
+  [decisions register](../decisions.md#networking-and-local-clients) records it (#1002, 2026-11-15).
+
+The target's revisions are those of the packages cardano-node 11.2.1 links, at the versions its
+binary's link line names and the commits the CHaP metadata of each package records (typed-protocols,
+which is released on Hackage only, at the commit of its version bump):
+
+| Area | Packages | Revision |
+|---|---|---|
+| Node | cardano-node 11.2.1 | tag `11.2.1` at `90bc1cd9` |
+| Ledger | the cardano-ledger packages | `29a7d656`, where each has the library source it was released from |
+| Consensus | ouroboros-consensus 5.4.0.0 | `808e4005` |
+| Networking | network-mux 1.0.0.0, ouroboros-network 2.0.0.0, cardano-diffusion 1.3.0.1 | `4646039f` |
+| Networking | typed-protocols 1.2.2.0 | `4493962e` |
+| Plutus | plutus 1.71.0.0 | `261766ad` |
+| Cryptography | cardano-base 0.1.7.1, cardano-crypto-class 2.6.0.0, cardano-crypto-leios 0.3.0.0 | `5813d211`, `12168e4b`, `242f1ebd` |
+| Configuration | cardano-config 2.2.3.0 | `6ab54503` |
+| KES agent | kes-agent 1.4.0.0 | `44fdcec8` |

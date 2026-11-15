@@ -31,12 +31,13 @@ final case class LedgerSnapshotSettings(
 )
 
 object LedgerSnapshotSettings:
-  /** The selected binary's Mithril policy: consensus 82ecba32 `Snapshots.hs:665-683` and 2416493b
-    * `Snapshots.hs:673-691`.
+  /** The selected binary's Mithril policy: consensus 82ecba32 `Snapshots.hs:665-683`, 808e4005
+    * `Snapshots.hs:672-690` and 2416493b `Snapshots.hs:673-691`.
     */
   def defaults(build: ReferenceBuild): LedgerSnapshotSettings = build match
-    case ReferenceBuild.Release11_1   => LedgerSnapshotSettings()
-    case ReferenceBuild.LeiosB004fe0c => LedgerSnapshotSettings(maximumDelaySeconds = 21600)
+    case ReferenceBuild.Release11_1 => LedgerSnapshotSettings()
+    case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+      LedgerSnapshotSettings(maximumDelaySeconds = 21600)
 
 /** POM.hs:518-608 at cardano-node b004fe0c. These describe the reference backend, not Scarab's
   * store. Explicit settings are retained and reported as unused.

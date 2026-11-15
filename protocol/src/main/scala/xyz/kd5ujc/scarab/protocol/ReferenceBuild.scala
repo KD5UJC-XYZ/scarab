@@ -46,6 +46,26 @@ enum ReferenceBuild(
         )
       )
 
+  /** The cardano-node 11.2 release line, pinned at its release 11.2.1, which upstream publishes as
+    * a pre-release (the reference target since the owner's decision of 2026-11-14, ADR 0001):
+    * cardano-ledger 29a7d65663f476909981d2757da2b07f16d21040, where the library source of every
+    * ledger package 11.2.1 links is the one it was released from, cardano-ledger-binary 1.10.1.0's
+    * among them, and ouroboros-consensus 808e400545729b1246ba4393c69326ec4a04a730 (5.4.0.0). Its
+    * `state` layout is not read or written yet, so every command refuses it at start
+    * ([[ReferenceBuildNotYet.Layout]]).
+    */
+  case Release11_2
+      extends ReferenceBuild(
+        "11.2",
+        ReferenceBuild.Stability.PreRelease,
+        ReferenceBuild.Pins(
+          "11.2.1",
+          "29a7d65663f476909981d2757da2b07f16d21040",
+          "29a7d65663f476909981d2757da2b07f16d21040",
+          "808e400545729b1246ba4393c69326ec4a04a730"
+        )
+      )
+
   /** The build of the public Leios testnet (release rc-2026w44, #711): cardano-node
     * b004fe0c50913dcdaa827a98e68a43d0ccce152a (branch leios-prototype), with cardano-ledger
     * 9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c (its binary package included) and ouroboros-consensus
@@ -81,12 +101,19 @@ object ReferenceBuild:
     /** A release line of `cardano-node`. */
     case Stable
 
+    /** A release line whose pinned release upstream publishes as a pre-release, not yet recommended
+      * for mainnet. It becomes [[Stable]] when the line's stable release is pinned; the name, which
+      * snapshots record, stays.
+      */
+    case PreRelease
+
     /** A prototype build that can change or go away at any time. */
     case Unstable
 
     def label: String = this match
-      case Stable   => "stable"
-      case Unstable => "unstable"
+      case Stable     => "stable"
+      case PreRelease => "pre-release"
+      case Unstable   => "unstable"
 
   /** The pinned revisions of a build. `node` is a release tag for a stable build and the full
     * commit for an unstable one; `ledger`, `binary` (cardano-ledger-binary, which can come from
@@ -112,11 +139,18 @@ final case class UnknownReferenceBuild(text: String) extends DomainError:
   * #826 that implements it.
   */
 enum ReferenceBuildNotYet extends DomainError:
+  /** The layout of the `state` file that `build` writes, which this build does not read or write
+    * yet: no command reads or writes the reference's state, or follows the rules, of `build`.
+    */
+  case Layout(build: ReferenceBuild)
+
   /** The ledger and consensus rules of `build`, which `follow` would run: #826 step c. Its `state`
     * layout is read and written (`import-ledger-snapshot`, `export-ledger-snapshot`).
     */
   case Rules(build: ReferenceBuild)
 
   def message: String = this match
+    case Layout(build) =>
+      s"the reference build ${build.describe} is not implemented yet: this build does not read or write its ledger state layout, nor follow its rules"
     case Rules(build) =>
       s"the reference build ${build.describe} is not implemented yet: this build reads and writes its ledger state layout, but does not follow its rules"

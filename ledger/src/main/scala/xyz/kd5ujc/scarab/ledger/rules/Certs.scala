@@ -29,7 +29,6 @@ import xyz.kd5ujc.scarab.ledger.{
   TxDefect
 }
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.protocol.StateLayout
 
 // CERTS and the rules under it for Conway: `Conway/Rules/Certs.hs`, `Cert.hs`, `Deleg.hs`,
 // `GovCert.hs` and (the Shelley rule, in every era) `Shelley/Rules/Pool.hs`. They run on the
@@ -503,12 +502,13 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
                 // `ppPoolDepositCompactL` (`Shelley/Rules/Pool.hs:275`): a `CompactForm Coin` of the
                 // parameters
                 deposit <- Refuse.state[F, CompactCoin](id, CompactCoin.fromBigInt(pp.poolDeposit))
+                layout <- Refuse.layout[F](globals.ledger.referenceBuild)
                 // `mkStakePoolState cEpoch SNothing` (9df9f98c `Shelley/Rules/Pool.hs:262-266`),
                 // in the layout of the build: in the Leios layout the new pool holds no voting key
                 pool <- Refuse.vocab[F, StakePoolState](
                   Convert.poolState(
                     params,
-                    PoolBlsKey.certified(StateLayout.of(globals.ledger.referenceBuild)),
+                    PoolBlsKey.certified(layout),
                     deposit,
                     Sorted.emptySet[Credential[Staking]]
                   )

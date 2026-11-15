@@ -38,6 +38,20 @@
   {
    "name": "cardano-node",
    "repository": "IntersectMBO/cardano-node",
+   "version": "11.2.1",
+   "revision": "90bc1cd9380a78a63091ff673f8c5693152c8f60",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-node/releases/tag/{version}",
+   "role": "Reference node release 11.2.1 (a pre-release; tag 11.2.1 at this commit), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands: the checksum-pinned release archive behind the image cardano-reference-11.2.1:local, and the release of the 11.2 reference build.",
+   "dependents": [
+    "scripts/prepare_reference_image.py",
+    "docs/reference-image.md",
+    "docs/adr/0001-haskell-node-as-reference.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "cardano-node",
+   "repository": "IntersectMBO/cardano-node",
    "version": "10.7.0",
    "urlPattern": "https://github.com/IntersectMBO/cardano-node/releases/tag/{version}",
    "role": "Release notes cited by the reference-build naming rule: a full chain replay required inside the 10.x line (TablesCodecVersion1).",
@@ -65,7 +79,7 @@
    "repository": "IntersectMBO/cardano-ledger",
    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
    "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
-   "role": "Conway governance/certificate conformance corpus and wallet-query encoders.",
+   "role": "The ledger of cardano-node 11.1.3 and the 11.1 reference build's ledger pin: CHaP builds cardano-ledger-conway 1.23.0.0, cardano-ledger-core 1.21.0.0, cardano-ledger-alonzo 1.16.0.0, cardano-ledger-babbage 1.14.0.0, cardano-ledger-mary 1.11.0.0, cardano-ledger-dijkstra 0.3.0.0, cardano-ledger-api 1.14.0.0, cardano-protocol 0.1.0.0, cardano-protocol-tpraos 1.6.0.0 and small-steps 1.1.4.0 from this commit. The other ledger packages 11.1.3 links come from other commits: cardano-ledger-binary 1.9.1.0 from 048b78d2, cardano-ledger-shelley 1.19.0.1 from 4c81e909, cardano-ledger-allegra 1.10.1.0 from 0372ead6, cardano-data 1.3.1.0 from ab2525cf, and cardano-ledger-byron 1.3.0.0 and cardano-crypto-wrapper 1.7.0.0 from 30a3e666. Also the revision of the Conway governance/certificate conformance corpus and the wallet-query encoders.",
    "dependents": [
     "node/src/test/resources/upstream/conway-govcert/manifest.json",
     "fixtures/reference/wallet-queries/manifest.json",
@@ -81,6 +95,18 @@
    "dependents": [
     "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
     "docs/playbooks/add-a-reference-build.md"
+   ]
+  },
+  {
+   "name": "cardano-ledger",
+   "repository": "IntersectMBO/cardano-ledger",
+   "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
+   "role": "The ledger of cardano-node 11.2.1 and the 11.2 reference build's ledger and cardano-ledger-binary pin, the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands. CHaP builds the ledger packages 11.2.1 links from 54e24ba4858b5f5cb4c5f6f0adfa3d7cae669b7a (master, 2026-10-01; cardano-ledger-api 1.15.0.0, cardano-ledger-allegra 1.10.2.0 and others) and the release-branch commits after it: 36e72ca413863854c7c6b72fb0d45fd4d74359b7 (cardano-ledger-binary 1.10.1.0), 95b369053fd32422695a81fb7d5289d6dd35eee2 (cardano-ledger-conway 1.24.0.1, cardano-ledger-core 1.23.0.0 and others) and this commit (cardano-ledger-mary 1.11.1.1); cardano-ledger-byron 1.3.0.0, unchanged since 11.1.3, from 30a3e666b84f9d056f464b3a00c56ab0c5bccacd. Each of those packages has the same library source (`src`) here as at its own commit, so this one revision is cited for all; other files of a package (its cabal file, changelog, goldens) can differ.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/UtxoTests.scala"
    ]
   },
   {
@@ -196,6 +222,28 @@
   {
    "name": "ouroboros-network",
    "repository": "IntersectMBO/ouroboros-network",
+   "version": "2.0.0.0",
+   "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
+   "role": "network-mux 1.0.0.0, ouroboros-network 2.0.0.0 and cardano-diffusion 1.3.0.1 (tags network-mux-1.0.0.0, ouroboros-network-2.0.0.0 and cardano-diffusion-1.3.0.1, all at this commit), as cardano-node 11.2.1 links them: the network target of the re-pin, the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md"
+   ]
+  },
+  {
+   "name": "typed-protocols",
+   "repository": "input-output-hk/typed-protocols",
+   "version": "1.2.2.0",
+   "revision": "4493962e3f79e2b0b0024fd055cc308c6fcc729f",
+   "urlPattern": "https://github.com/input-output-hk/typed-protocols/commit/{revision}",
+   "role": "typed-protocols 1.2.2.0 as cardano-node 11.2.1 links it (released on Hackage only, from this commit, which has no tag), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md"
+   ]
+  },
+  {
+   "name": "ouroboros-network",
+   "repository": "IntersectMBO/ouroboros-network",
    "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
    "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the network layer of that node, recorded with the others; nothing is mirrored from it yet.",
@@ -213,6 +261,19 @@
    "dependents": [
     "fixtures/reference/genesis-density/manifest.json",
     "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
+   "version": "5.4.0.0",
+   "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
+   "role": "ouroboros-consensus 5.4.0.0 (tag release-ouroboros-consensus-5.4.0.0 at this commit) with its protocol, cardano, diffusion, lsm and tracing sublibraries, as cardano-node 11.2.1 links it: the 11.2 reference build's consensus pin and its Mithril snapshot defaults, the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "node/src/main/scala/xyz/kd5ujc/scarab/node/LedgerDbSettings.scala"
    ]
   },
   {
@@ -306,9 +367,10 @@
    "version": "1.71.0.0",
    "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
    "urlPattern": "https://github.com/IntersectMBO/plutus/commit/{revision}",
-   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the plutus-core and plutus-ledger-api 1.71.0.0 its node binary links (CHaP index-state 2026-10-09), which define PlutusV4, case on Data and the protocol 12 semantics variants.",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the plutus-core and plutus-ledger-api 1.71.0.0 its node binary links (CHaP index-state 2026-10-09), which define PlutusV4, case on Data and the protocol 12 semantics variants. Also the plutus-core and plutus-ledger-api cardano-node 11.2.1 links, the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
    "dependents": [
-    "plutus/src/test/resources/plutus-reference/releases.json"
+    "plutus/src/test/resources/plutus-reference/releases.json",
+    "docs/adr/0001-haskell-node-as-reference.md"
    ]
   },
   {
@@ -399,10 +461,11 @@
    "version": "1.4.0.0",
    "revision": "44fdcec892e2868053f964cad87fc32c590c81e4",
    "urlPattern": "https://github.com/input-output-hk/kes-agent/tree/kes-agent-{version}",
-   "role": "Citation source for the KES agent design's file paths: the newest tagged source, outside cardano-node 11.1.3's kes-agent ^>=1.3 range; its wire-relevant files match 1.3.0.0's. Not built or run.",
+   "role": "Citation source for the KES agent design's file paths: the newest tagged source, outside cardano-node 11.1.3's kes-agent ^>=1.3 range; its wire-relevant files match 1.3.0.0's. Not built or run. Also the kes-agent cardano-node 11.2.1 links (the version CHaP records at this commit), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
    "dependents": [
     "docs/design/kes-agent.md",
-    "docs/adr/0024-adopt-the-upstream-kes-agent.md"
+    "docs/adr/0024-adopt-the-upstream-kes-agent.md",
+    "docs/adr/0001-haskell-node-as-reference.md"
    ]
   },
   {
@@ -415,6 +478,48 @@
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/OCertRules.scala",
     "fixtures/sum6/README.md",
     "docs/compatibility/consensus-praos-headers.md"
+   ]
+  },
+  {
+   "name": "cardano-base",
+   "repository": "IntersectMBO/cardano-base",
+   "version": "0.1.7.1",
+   "revision": "5813d21182c91fa00f8e799a787ef1759d469b26",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-base/commit/{revision}",
+   "role": "cardano-base 0.1.7.1 as cardano-node 11.2.1 links it (CHaP builds it from this commit, which has no tag), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md"
+   ]
+  },
+  {
+   "name": "cardano-base",
+   "repository": "IntersectMBO/cardano-base",
+   "revision": "12168e4b32b44d30dd401010ccd969accaf2add7",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-base/commit/{revision}",
+   "role": "cardano-crypto-class 2.6.0.0 as cardano-node 11.2.1 links it (CHaP builds it from this commit, which has no tag), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md"
+   ]
+  },
+  {
+   "name": "cardano-base",
+   "repository": "IntersectMBO/cardano-base",
+   "revision": "242f1ebde40b137ac024d8b68265e2935e0eba14",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-base/commit/{revision}",
+   "role": "cardano-crypto-leios 0.3.0.0 as cardano-node 11.2.1 links it (CHaP builds it from this commit, which has no tag), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md"
+   ]
+  },
+  {
+   "name": "cardano-config",
+   "repository": "IntersectMBO/cardano-config",
+   "version": "2.2.3.0",
+   "revision": "6ab54503e3ca6912cddb746185053b530b491a11",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-config/commit/{revision}",
+   "role": "cardano-config 2.2.3.0, the configuration reader cardano-node 11.2.1 links and 11.1.3 does not (CHaP builds it from this commit; the repository has no tag for 2.2.3.0), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands.",
+   "dependents": [
+    "docs/adr/0001-haskell-node-as-reference.md"
    ]
   },
   {
