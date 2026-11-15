@@ -137,8 +137,9 @@ final class In(source: InputStream, limit: Long):
   *
   * Codecs are composed: products encode their fields in order, sums a variant index then the
   * variant, containers a count then the elements. Case classes and enums are derived from their
-  * `Mirror` (see [[Codec.auto]]); only types with private constructors or recursion need an
-  * explicit instance.
+  * `Mirror` (see [[Codec.auto]]); an explicit instance is for a type with a private constructor or
+  * recursion, or one whose persisted layout is kept apart from its fields (`NodeCodecs.script` and
+  * `NodeCodecs.byronVersion` keep the layout they were written in).
   */
 trait Codec[A]:
   def write(out: Out, a: A): Unit

@@ -130,6 +130,66 @@ class CodecSuite extends ScalaCheckSuite:
     }
   }
 
+  // `Script` is written field by field (#998): its four fields in their declared order, with the
+  // shape their derivation gave them. The shape and every byte below are what the derived codec
+  // wrote; the shape is part of each sidecar fingerprint further down, through an output's script.
+  private def spaced(s: String): String = s.replace(" ", "")
+  private val scriptHash = Bytes(Vector.tabulate(28)(i => (0xb0 + i).toByte))
+  private val keyHash = Bytes(Vector.tabulate(28)(i => (0x10 + i).toByte))
+  private val plutusBytes = Bytes(Vector(0x46, 0x01, 0x00, 0x00, 0x22, 0x00, 0x11).map(_.toByte))
+  private val nestedNative = NativeScript.AllOf(
+    Vector(
+      NativeScript.Sig(keyHash),
+      NativeScript.AnyOf(Vector(NativeScript.InvalidBefore(0))),
+      NativeScript.NOfK(1, Vector(NativeScript.InvalidHereafter((BigInt(1) << 64) - 1)))
+    )
+  )
+  private val nestedNativeBytes =
+    spaced(s"00 1c${hex(scriptHash.toArray)} 01 0103 001c${hex(keyHash.toArray)} 0201 040100") +
+      spaced("03 0101 01 05 0900ffffffffffffffff 00")
+
+  test("scripts keep the layout and schema of their four derived fields") {
+    assertEquals(
+      Codec[Script].shape,
+      "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3},hash:Bytes," +
+        "native:Option[NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|" +
+        "AnyOf(Vector[NativeScript])|NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|" +
+        "InvalidHereafter(BigInt)}],plutus:Option[Bytes])"
+    )
+    val hash = hex(scriptHash.toArray)
+    val scripts = Vector(
+      Script(ScriptKind.Native, scriptHash, Some(nestedNative)) -> nestedNativeBytes,
+      Script(ScriptKind.PlutusV1, scriptHash, None, Some(plutusBytes)) ->
+        spaced(s"01 1c$hash 00 01 0746010000220011"),
+      Script(ScriptKind.PlutusV1, scriptHash, None) -> spaced(s"01 1c$hash 00 00"),
+      Script(ScriptKind.PlutusV2, scriptHash, None, Some(plutusBytes)) ->
+        spaced(s"02 1c$hash 00 01 0746010000220011"),
+      Script(ScriptKind.PlutusV2, scriptHash, None) -> spaced(s"02 1c$hash 00 00"),
+      Script(ScriptKind.PlutusV3, scriptHash, None, Some(plutusBytes)) ->
+        spaced(s"03 1c$hash 00 01 0746010000220011"),
+      Script(ScriptKind.PlutusV3, scriptHash, None) -> spaced(s"03 1c$hash 00 00")
+    )
+    scripts.foreach { (script, expected) =>
+      assertEquals(hex(Codec.encode(script)), expected, script)
+      assertEquals(Codec.decode[Script](Codec.encode(script)), Right(script))
+    }
+  }
+
+  test("an output built with a reference script is stored by the codec, its script as before") {
+    val address = Address
+      .decode(Bytes(0x61.toByte +: keyHash.value), Address.Mode.Stored)
+      .fold(e => fail(e.message), identity)
+    val script = Script(ScriptKind.Native, scriptHash, Some(nestedNative))
+    val built = TxOut(Bytes.empty, address, Value.coin(2000000), Datum.NoDatum, Some(script), 0)
+    val encoded =
+      spaced(s"00 1d61${hex(keyHash.toArray)} 00 01 001c${hex(keyHash.toArray)} 00 00") +
+        spaced("031e8480 00 00 01") + nestedNativeBytes + "00"
+    assertEquals(hex(Codec.encode(built)), encoded)
+    // no original encoding: the stored value is the codec's (tag 0)
+    assertEquals(hex(UtxoStore.Coding.encodeValue(built)), "00" + encoded)
+    assertEquals(UtxoStore.Coding.decodeValue(UtxoStore.Coding.encodeValue(built)), Right(built))
+  }
+
   test("golden: primitives and containers") {
     assertEquals(hex(Codec.encode(BigInt(0))), "0100")
     assertEquals(hex(Codec.encode(BigInt(-1))), "01ff")
