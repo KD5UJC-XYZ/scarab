@@ -118,9 +118,13 @@ object RewardSet:
 
   extension (s: RewardSet) def rewards: SortedSet[Reward] = s
 
-  // Structural equality of the members. Within a set the ordering already collapsed what it
-  // does not tell apart, so what is left is compared whole.
-  given Eq[RewardSet] = Eq.fromUniversalEquals
+  // `Eq (Set a)` of containers 0.6.7, the version cardano-node 11.1.3 links
+  // (`Data/Set/Internal.hs:1221-1222`): the sizes, then the members in ascending order, each whole
+  // by the derived `Eq Reward`, which counts the amount (`Rewards.hs:73`, cardano-ledger f649f975).
+  // Not the sorted set's own `equals`, which finds members by `Reward.ordering` and so does not see
+  // the amount.
+  given Eq[RewardSet] =
+    Eq.instance((a, b) => a.size == b.size && a.iterator.corresponds(b)(Eq[Reward].eqv))
   given Show[RewardSet] = Show.show(s => s"RewardSet(${s.toList.map(_.show).mkString(", ")})")
 
 /** `RewardUpdate` (`Shelley/RewardUpdate.hs:111-117` (cardano-ledger f649f975), encoding `125-132`:

@@ -5,7 +5,7 @@ import cats.kernel.laws.discipline.EqTests
 import cats.syntax.all.*
 import monocle.law.discipline.{IsoTests, LensTests, PrismTests}
 import munit.DisciplineSuite
-import org.scalacheck.{Arbitrary, Cogen}
+import org.scalacheck.{Arbitrary, Cogen, Gen}
 import scala.collection.immutable.SortedMap
 import scala.compiletime.testing.typeCheckErrors
 import xyz.kd5ujc.scarab.codec.Rational
@@ -67,6 +67,22 @@ class EpochStateSuite extends DisciplineSuite:
   checkAll("Eq[EpochState[Conway]]", EqTests[EpochState[Conway]].eqv)
   checkAll("Eq[NewEpochState[Conway]]", EqTests[NewEpochState[Conway]].eqv)
   checkAll("Eq[NewEpochState[Babbage]]", EqTests[NewEpochState[Babbage]].eqv)
+  // Reward sets of one or two rewards of one pool, either type and two amounts: two of them often
+  // hold the same type and pool with different amounts, and three are often equal. The cogen shows
+  // the members whole in ascending order, which is what `Eq[RewardSet]` compares, so two sets it
+  // counts as equal perturb a seed alike.
+  checkAll(
+    "Eq[RewardSet]", {
+      val pool = key[StakePool](1)
+      val reward = Gen
+        .zip(Gen.oneOf(RewardType.values.toSeq), Gen.oneOf(coin(1), coin(2)))
+        .map(Reward(_, pool, _))
+      given Arbitrary[RewardSet] =
+        Arbitrary(Gen.choose(1, 2).flatMap(Gen.listOfN(_, reward)).map(RewardSet(_)))
+      given Cogen[RewardSet] = cogenShow
+      EqTests[RewardSet].eqv
+    }
+  )
 
   // isomorphisms: the two records that are exactly a pair or a map
   checkAll("BlocksMade.iso", IsoTests(BlocksMade.iso))
@@ -161,6 +177,71 @@ class EpochStateSuite extends DisciplineSuite:
     assertEquals(twice.rewards.size, 1)
     assert(Reward.ordering.compare(member1, member1.copy(rewardAmount = coin(99))) == 0)
     assert(member1 =!= member1.copy(rewardAmount = coin(99)))
+  }
+
+  test("reward sets are equal when their members are, amounts included, as the reference's") {
+    val p1 = key[StakePool](1)
+    val p2 = key[StakePool](2)
+    def member(pool: KeyHash[StakePool], n: Long) = Reward(RewardType.MemberReward, pool, coin(n))
+    def leader(pool: KeyHash[StakePool], n: Long) = Reward(RewardType.LeaderReward, pool, coin(n))
+    val one = RewardSet(List(member(p1, 1)))
+    val two = RewardSet(List(member(p1, 2)))
+    assert(one =!= two, "member rewards of one pool with the amounts 1 and 2")
+    assert(
+      RewardSet(List(leader(p1, 1))) =!= RewardSet(List(leader(p1, 2))),
+      "leader rewards of one pool with the amounts 1 and 2"
+    )
+    val pair = RewardSet(List(leader(p2, 3), member(p1, 4)))
+    assert(
+      pair =!= RewardSet(List(leader(p2, 3), member(p1, 5))),
+      "two rewards, of which the member reward differs in its amount"
+    )
+    assert(pair === RewardSet(List(member(p1, 4), leader(p2, 3))), "the same two, in either order")
+    assert(one =!= RewardSet(List(member(p1, 1), leader(p1, 1))), "one member and two")
+    assert(RewardSet.empty === RewardSet(Nil), "two empty sets")
+    assertEquals(
+      one.firstDifference(two).map(d => (d.path.render, d.left, d.right)),
+      Some(("", one.show, two.show)),
+      "the difference of the two sets, shown with their amounts"
+    )
+  }
+
+  test("a reward update, pulsing or complete, differs where only a reward amount does") {
+    val pool = key[StakePool](1)
+    val account = Credential.KeyHashObj[Staking](key[Staking](3))
+    def rewards(n: Long) =
+      Sorted.map(List(account -> RewardSet(List(Reward(RewardType.LeaderReward, pool, coin(n))))))
+    val update = RewardUpdate.empty.copy(rs = rewards(1))
+    val changed = RewardUpdate.empty.copy(rs = rewards(2))
+    val at = s"[${account.show}]"
+    assert(update =!= changed, "the reward updates")
+    assertEquals(update.firstDifference(changed).map(_.path.render), Some(s"rs$at"))
+    val complete: PulsingRewUpdate = PulsingRewUpdate.Complete(update)
+    val completeChanged: PulsingRewUpdate = PulsingRewUpdate.Complete(changed)
+    assert(complete =!= completeChanged, "the completed updates")
+    assertEquals(
+      complete.firstDifference(completeChanged).map(_.path.render),
+      Some(s"update.rs$at")
+    )
+    val seed = org.scalacheck.rng.Seed(1057L)
+    val params = Gen.Parameters.default
+    val snapshot = Arbitrary.arbitrary[RewardSnapShot].pureApply(params, seed)
+    val pulser = Arbitrary.arbitrary[RewardPulser].pureApply(params, seed)
+    def pulsing(leaders: Long, recent: Long): PulsingRewUpdate =
+      PulsingRewUpdate.Pulsing(
+        snapshot.copy(leaders = rewards(leaders)),
+        pulser.copy(answer = pulser.answer.copy(recent = rewards(recent)))
+      )
+    assert(pulsing(1, 1) =!= pulsing(2, 1), "the pulsing updates, by their leader rewards")
+    assertEquals(
+      pulsing(1, 1).firstDifference(pulsing(2, 1)).map(_.path.render),
+      Some(s"snapshot.leaders$at")
+    )
+    assert(pulsing(1, 1) =!= pulsing(1, 2), "the pulsing updates, by their recent rewards")
+    assertEquals(
+      pulsing(1, 1).firstDifference(pulsing(1, 2)).map(_.path.render),
+      Some(s"pulser.answer.recent$at")
+    )
   }
 
   test("the total active stake is the sum, and one lovelace when there is none") {
