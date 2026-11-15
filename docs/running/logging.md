@@ -106,7 +106,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `stateDump` | `Node.StateDump` | Info | `slot`, `hash`, `epoch`, `millis` |
 | `stateDumpRefused` | `Node.StateDumpRefused` | Warning | `slot`, `hash`, `epoch`, `error` |
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
-| `error` | `Node.Error` | Error | `kind`, `message` |
+| `error` | `Node.Error` | Error | `kind`, `message`; the run stops on the error, except for `kind` `Unwritable`: the file of `--assertions-file` could not be opened or written, which is said once, and the node goes on without its assertions |
 | `socketConfigError` | `Node.SocketConfigError` | Error | `error`, the reference's `show` of its `LocalSocketError`: what was at the `--local-socket` path could not be removed (a directory, a directory the node may not write, ...); the node does not start and exits with 1 |
 | `fatal` | `Node.Fatal` | Error | `kind` (`storage`, `internal`, `defect` or `unavailable`), `message`, `exitCode` |
 | `finished` | `Node.Finished` | Notice | `tip`, `retained` |

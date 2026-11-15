@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport, PlutusVm}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, ShelleyGenesis, StorageError}
+import xyz.kd5ujc.scarab.node.assertions.AssertionsFailure
 import xyz.kd5ujc.scarab.node.{
   BuildInfo,
   Fatal,
@@ -127,6 +128,11 @@ enum NodeEvent:
 
   /** The run stops on an error. */
   case Failed(error: NodeError)
+
+  /** The assertions file of `--assertions-file` could not be written: the node goes on without its
+    * assertions ([[xyz.kd5ujc.scarab.node.assertions.Assertions.recording]]).
+    */
+  case AssertionsFailed(file: java.nio.file.Path, failure: AssertionsFailure)
 
   /** A session ended in a way no peer policy handles, and the node stops with its own exit code
     * ([[xyz.kd5ujc.scarab.node.FailurePolicy.disposition]], issue 154).
@@ -500,6 +506,12 @@ object NodeEvent:
       )
     case Failed(e) =>
       EventKind.Error.line("kind" -> e.productPrefix.asJson, "message" -> e.message.asJson)
+    case AssertionsFailed(file, failure) =>
+      EventKind.Error.line(
+        "kind" -> failure.productPrefix.asJson,
+        "message" ->
+          s"--assertions-file $file: ${failure.message}; the node goes on without its assertions".asJson
+      )
     case Faulted(fault) =>
       EventKind.Fatal.line(
         "kind" -> (fault match

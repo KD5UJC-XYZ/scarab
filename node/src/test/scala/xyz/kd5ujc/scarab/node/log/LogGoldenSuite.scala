@@ -60,6 +60,13 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- plutusCryptoReports.traverse_(r => node(NodeEvent.PlutusCrypto(r)))
         _ <- errors.traverse_(e => node(NodeEvent.Failed(e)))
         _ <- node(
+          NodeEvent.AssertionsFailed(
+            Path.of("/out/sdk.jsonl"),
+            xyz.kd5ujc.scarab.node.assertions.AssertionsFailure
+              .Unwritable(new java.io.IOException("No space left on device"))
+          )
+        )
+        _ <- node(
           NodeEvent.ReceivedBlockDiscarded(
             hash,
             StorageError.Corrupt("received block", xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)

@@ -1170,6 +1170,23 @@
     },
     {
       "module": "node",
+      "path": "node/assertions",
+      "responsibility": "Antithesis assertions from inside the node: the typed capability, its closed catalogue of properties, the fallback SDK's lines and the recording interpreter (--assertions-file)",
+      "entryPoints": [
+        "Assertions",
+        "Property",
+        "SdkLine",
+        "AssertionsFailure"
+      ],
+      "suites": [
+        "AssertionsSuite"
+      ],
+      "docs": [
+        "docs/adr/0017-fibers-end-with-values.md"
+      ]
+    },
+    {
+      "module": "node",
       "path": "node/forge",
       "responsibility": "Block production: leadership, hot keys, KES files, block builder, forger",
       "entryPoints": [
