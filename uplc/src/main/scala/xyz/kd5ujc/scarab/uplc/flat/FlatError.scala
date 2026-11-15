@@ -5,11 +5,11 @@ import xyz.kd5ujc.scarab.uplc.{Availability, Constant, DefaultUni, PlutusData, V
 
 /** Why the reference's Flat decoder refuses a program, one case per `fail` and per exception of the
   * decoders of plutus 1.70.0.0 (`507cab8c`) that a script reaches. The reference's messages are
-  * strings inside `DecodeException` (`PlutusCore/Flat/Decoder/Types.hs:192-197`); each case names
+  * strings inside `DecodeException` (`PlutusCore/Flat/Decoder/Types.hs:117-122`); each case names
   * the one it stands for. Positions count bits from the start of the Flat bytes.
   */
 enum FlatError:
-  /** `notEnoughSpace` (`Decoder/Types.hs:201-202`): the input ends before the `needed` bits a read
+  /** `notEnoughSpace` (`Decoder/Types.hs:126-127`): the input ends before the `needed` bits a read
     * asks for at `at` (`ensureBits`, `Decoder/Prim.hs:171-172`; `dBool`, `Prim.hs:200-211`).
     */
   case NotEnoughSpace(at: Long, needed: Long)

@@ -33,7 +33,7 @@ object TypeHeader:
     * (`Universe/Core.hs:479-492`).
     */
   enum Failure:
-    /** A tag with no type (`withDecodedUni`'s `empty`, `Universe.hs:1100`). */
+    /** A tag with no type (`withDecodedUni`'s `empty`, `Universe.hs:1106`). */
     case UnknownTag(tag: Int)
 
     /** An application whose function is not an operator expecting a type of kind `*`

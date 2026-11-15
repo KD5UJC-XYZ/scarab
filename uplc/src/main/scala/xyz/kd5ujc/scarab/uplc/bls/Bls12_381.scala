@@ -49,7 +49,7 @@ enum BlsFailure:
   case Uncompress(group: Group, error: BlstError)
 
   /** A domain separation tag of more than 255 bytes (`G1.hs:177-181`, `G2.hs:135-139`): `show` of
-    * `HashToCurveDstTooBig` (`PlutusCore/Crypto/BLS12_381/Error.hs:31-32`).
+    * `HashToCurveDstTooBig` (`PlutusCore/Crypto/BLS12_381/Error.hs:8-10`).
     */
   case DstTooBig(group: Group, length: Int)
 
@@ -313,7 +313,7 @@ object Bls12_381:
     private def target(m: MlResult): Either[BlsDefect, PT] =
       m.target.toRight(BlsDefect.DetachedMlResult)
 
-    /** `millerLoop` (`Pairing.hs:68-69`): blst's `blst_miller_loop`. */
+    /** `millerLoop` (`Pairing.hs:75-76`): blst's `blst_miller_loop`. */
     def millerLoop(a: G1Element, b: G2Element): Either[BlsDefect, MlResult] =
       guarded(
         MlResult.ofTarget(
@@ -321,7 +321,7 @@ object Bls12_381:
         )
       )
 
-    /** `mulMlResult` (`Pairing.hs:71-72`): blst's `blst_fp12_mul`. */
+    /** `mulMlResult` (`Pairing.hs:78-79`): blst's `blst_fp12_mul`. */
     def mulMlResult(a: MlResult, b: MlResult): Either[BlsDefect, MlResult] =
       for
         x <- target(a)
@@ -329,7 +329,7 @@ object Bls12_381:
         product <- guarded(MlResult.ofTarget(x.dup().mul(y)))
       yield product
 
-    /** `finalVerify` (`Pairing.hs:74-75`): blst's `blst_fp12_finalverify`. */
+    /** `finalVerify` (`Pairing.hs:81-82`): blst's `blst_fp12_finalverify`. */
     def finalVerify(a: MlResult, b: MlResult): Either[BlsDefect, Boolean] =
       for
         x <- target(a)

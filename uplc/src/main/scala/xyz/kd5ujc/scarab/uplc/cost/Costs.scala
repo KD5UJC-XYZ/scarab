@@ -151,7 +151,7 @@ object Costs:
       case Cons(x, rest) => Cons(f(x, r), rest.map(go(r + x, _)))
     add(Last(c0), go(SatInt.zero, costs))
 
-  /** `zipCostStream` (`ExBudgetStream.hs:190-208`): CPU and memory costs paired element by element
+  /** `zipCostStream` (`ExBudgetStream.hs:72-77`): CPU and memory costs paired element by element
     * into the machine's budgets; the shorter side is taken as zeros after its last element.
     */
   def zip(cpu: Costs, memory: Costs): CostStream = (cpu, memory) match
@@ -166,7 +166,7 @@ object Costs:
       CostStream.Cons(ExBudget(c, m), cs.map(budgets(_ -> SatInt.zero)))
     case (Cons(c, cs), Cons(m, ms)) => CostStream.Cons(ExBudget(c, m), (cs, ms).mapN(zipGo))
 
-  /** `costToExBudgetStream` (`ExBudgetStream.hs:176-181`): each cost made a budget by `budget`. */
+  /** `costToExBudgetStream` (`ExBudgetStream.hs:44-49`): each cost made a budget by `budget`. */
   private def budgets(budget: SatInt => (SatInt, SatInt))(costs: Costs): CostStream = costs match
     case Last(cost) =>
       val (c, m) = budget(cost)
