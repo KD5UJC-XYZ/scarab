@@ -485,7 +485,9 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
     node acquires exactly that point, so both answers are of one state. The sampled point is judged on its bytes
     (`ntcquery.chain_point`): anything but a block point ends the comparison, Origin too (valid protocol data, `[]`,
     but no block to compare a state at). Every reply is judged on its bytes as well (`ntcquery.acquire_reply`,
-    `ntcquery.result_offset`). `scala_socket` is the Scala node's node-to-client socket
+    `ntcquery.result_offset`). The queries ask the era of the state that was acquired at the anchor, as the era battery
+    does (`ntcquery.acquired_shelley_era`), so that a round across an era boundary compares one era on both nodes;
+    `era` is the caller's era and is not asked. `scala_socket` is the Scala node's node-to-client socket
     (`scala-sock/node.socket` of the run dir by default, the socket directory of the follower `site`).
 
     The acquisitions are bounded. The other node is asked for a point at most `attempts` times, `SAME_POINT_PAUSE`
@@ -508,11 +510,13 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
     scala_socket = pathlib.Path(scala_socket) if scala_socket else site.directory(root, "scala-sock") / "node.socket"
     if not scala_socket.exists():
         return {"skipped": "the Scala node has no node-to-client socket"}
-    queries = {label: [0, [0, [ERA_INDEX[era], [q]]]] for label, (q, _) in WHOLE_QUERIES.items()}
+    def queries_of(index):
+        return {label: [0, [0, [index, [q]]]] for label, (q, _) in WHOLE_QUERIES.items()}
+
     reselections = (1 if attempts > 1 else 0) if reselections is None else reselections
     other_node = "reference" if anchor == "scala" else "scala"
     identity = {"anchor": anchor, "other": other_node, **({} if site.key is None else {"follower": site.key})}
-    history, now = [], {"stage": None, "point": None}
+    history, now = [], {"stage": None, "point": None, "queries": None}
 
     def scala():
         return ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60)
@@ -545,6 +549,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
             if point is None:
                 raise AtOrigin("the anchor is at Origin: no block to compare a state at")
             now["stage"] = "anchor-query"
+            queries = now["queries"] = queries_of(ntcquery.acquired_shelley_era(session))
             return point, {label: ask_raw(session, q) for label, q in queries.items()}
 
     def at(pick, attempt, point):
@@ -562,7 +567,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
                 raise
             history.append({**row, "outcome": "acquired"})
             now["stage"] = "other-query"
-            return {label: ask_raw(session, q) for label, q in queries.items()}
+            return {label: ask_raw(session, q) for label, q in now["queries"].items()}
 
     def failed(error, **more):
         return {"error": repr(error)[:300], "kind": failure_kind(error), **identity, "stage": now["stage"],

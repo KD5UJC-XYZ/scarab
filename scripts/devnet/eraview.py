@@ -183,8 +183,10 @@ def _cbor_value(v):
 
 
 def reference_pre_conway(era, session, protocol_params):
-    """The comparable view of the acquired state. `session` is an acquired LocalStateQuery."""
-    index = ERA_INDEX[era]
+    """The comparable view of the acquired state. `session` is an acquired LocalStateQuery. Its queries ask the era
+    of the state that was acquired, as the era battery does (`ntcquery.acquired_shelley_era`), so that a round across
+    an era boundary compares one era on both nodes; `era` is the caller's era and is not asked."""
+    index = ntcquery.acquired_shelley_era(session)
     tip = session.ledger_query(index, [Q_LEDGER_TIP])
     nes = session.ledger_query(index, [Q_NEW_EPOCH_STATE])
     utxo = session.ledger_query(index, [Q_UTXO_WHOLE])

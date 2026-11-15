@@ -541,7 +541,6 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
     def scala(version=None):
         return ntcquery.LocalStateQuery(None, scala_socket, MAGIC, host=True, version=version, until=expires)
 
-    current_era = [0, [2, [1]]]
     gate = threading.BoundedSemaphore(SCALA_CONNECTIONS)
     sets = []
     try:
@@ -563,8 +562,8 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
                 main.live[0].acquire(point)
             except ntcquery.AcquireRefused as e:
                 raise PointLost(f"the reference refused {point!r}: {e.failure}") from e
-            era, scala_era = main.live[0].query_raw(current_era), probe.query_raw(current_era)
-            if era != scala_era or era not in range(1, ERA_CONWAY + 1):
+            era, scala_era = ntcquery.acquired_era(main.live[0]), ntcquery.acquired_era(probe)
+            if era != scala_era or era not in ntcquery.SHELLEY_BASED:
                 raise Incomparable(f"at {point!r} the reference's state is of era {era!r}, the Scala node's of {scala_era!r}")
             version = main.live[0].agreed_version
             if probe.agreed_version != version:
