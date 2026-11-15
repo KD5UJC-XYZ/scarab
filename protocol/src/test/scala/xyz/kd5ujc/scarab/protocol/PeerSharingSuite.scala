@@ -20,8 +20,9 @@ class PeerSharingSuite extends munit.ScalaCheckSuite:
       case Decoding.Failed(error) => error
       case other                  => fail(s"expected Failed for $hex, got $other")
 
-  // Literal fixtures written from the pinned codec (Codec.hs:42-93, PeerSharing/Codec.hs:29-65), not
-  // produced by this encoder: a peer list is indefinite unless empty, integers are the shortest form.
+  // Literal fixtures written from the pinned codec (ouroboros-network c45735a5, Codec.hs:42-93,
+  // PeerSharing/Codec.hs:29-65), not produced by this encoder: a peer list is indefinite unless
+  // empty, integers are the shortest form.
   private val loopback = v4(0x7f000001L, 3001)
   private val loopback6 = v6(0, 0, 0, 1, 3001)
   private val literals: Vector[(String, State, Role, Message, State)] = Vector(

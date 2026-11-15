@@ -38,9 +38,10 @@ private[protocol] object LeiosFetchDecoder:
         yield window -> bitmap
     }.map(TxBitmaps(_))
 
-  /** `decodeLeiosEb` (`LeiosDemoTypes.hs:1301-1310`): `decodeMapLen`, a definite map, whose count
-    * must be between 1 and `maxTxsPerEb` before any entry is read; each entry a transaction hash of
-    * 32 bytes (`decodeFixedSized` of `TxHash`, `PackedBytes 32`) and a `Word32` size.
+  /** `decodeLeiosEb` (`LeiosDemoTypes.hs:1301-1310`, ouroboros-consensus 2416493b): `decodeMapLen`,
+    * a definite map, whose count must be between 1 and `maxTxsPerEb` before any entry is read; each
+    * entry a transaction hash of 32 bytes (`decodeFixedSized` of `TxHash`, `PackedBytes 32`) and a
+    * `Word32` size.
     */
   private val block: Decoder[Message] =
     definite(5, LeiosWireError.BadField(2, LeiosField.EndorserBlock)).flatMap { n =>

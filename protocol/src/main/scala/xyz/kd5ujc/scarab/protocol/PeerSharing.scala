@@ -37,8 +37,9 @@ import ChainSync.DecodeResult
 object PeerSharing:
   val MiniProtocolId: Int = 10
 
-  /** 4 * 1440 (`Codec.hs:127-128`): a TCP segment of 1440 bytes and an initial window of 4, so that
-    * the request and the response take one round trip. The limit applies to each state.
+  /** 4 * 1440 (`Codec.hs:127-128`, ouroboros-network c45735a5): a TCP segment of 1440 bytes and an
+    * initial window of 4, so that the request and the response take one round trip. The limit
+    * applies to each state.
     */
   val UpstreamMessageBytes: Int = 4 * 1440
 
@@ -194,8 +195,8 @@ object PeerSharing:
 
   /** A message the peer sent that the protocol forbids although it decoded. */
   enum Violation:
-    /** More peers came back than were asked for (`Type.hs:80-82`; the client checks at
-      * `PeerSharing.hs:126-131`).
+    /** More peers came back than were asked for (`Type.hs:80-82`, ouroboros-network c45735a5; the
+      * client checks at `PeerSharing.hs:126-131`).
       */
     case TooManyPeers(requested: Amount, received: Int)
 

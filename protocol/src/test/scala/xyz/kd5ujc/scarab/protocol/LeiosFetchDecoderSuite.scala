@@ -120,7 +120,8 @@ class LeiosFetchDecoderSuite extends FunSuite:
       decodePrefix(State.Block, bs(0x82, 0x1a, 0, 1, 0, 0)),
       Left(LeiosWireError.UnknownTag(BigInt(65536)))
     )
-    // `enforceSize 2` of the point refuses a list of one before its field (`LeiosDemoTypes.hs:208-211`)
+    // `enforceSize 2` of the point refuses a list of one before its field
+    // (`LeiosDemoTypes.hs:208-211`, ouroboros-consensus 2416493b)
     assertEquals(
       decodePrefix(State.Idle, bs(0x82, 1, 0x81)),
       Left(LeiosWireError.BadField(1, LeiosField.Point))

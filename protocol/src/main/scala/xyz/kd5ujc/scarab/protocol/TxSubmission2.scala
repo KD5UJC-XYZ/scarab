@@ -106,8 +106,9 @@ object TxSubmission2:
   private[scarab] def codec(reader: TransactionReader): TxSubmission2Engine.Codec[Bytes, Bytes] =
     TxSubmission2Engine.codec(profile(reader), advertisedSize, bodyId(_)(using reader))
 
-  /** TxSubmission2/Codec.hs:50-63: Init and Idle use smallByteLimit. The remaining active states
-    * retain the stricter local eight-transaction profile rather than upstream's 2500000 bytes.
+  /** TxSubmission2/Codec.hs:50-63 (ouroboros-network c45735a5): Init and Idle use smallByteLimit.
+    * The remaining active states retain the stricter local eight-transaction profile rather than
+    * upstream's 2500000 bytes.
     */
   def maxMessageBytes(state: State): Int = state match
     case State.Init | State.Idle  => 65535

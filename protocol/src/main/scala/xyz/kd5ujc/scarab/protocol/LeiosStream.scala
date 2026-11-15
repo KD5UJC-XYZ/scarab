@@ -100,14 +100,15 @@ private[protocol] object LeiosStream:
     definite(4, error).flatMap(n => check(n == size, error))
 
   /** `decodeFixedSized` of a `PackedBytes n` (`Cardano.Binary.FixedSizeCodec`: `decodeBytes`, then
-    * the length), or `decodeRbHash` (`Leios/Types.hs:127-133`): a definite byte string of exactly
-    * `size` bytes.
+    * the length), or `decodeRbHash` (`Leios/Types.hs:127-133`, ouroboros-consensus 2416493b): a
+    * definite byte string of exactly `size` bytes.
     */
   private[protocol] def fixed(size: Int, error: LeiosWireError): Decoder[Bytes] =
     bytes(error).flatMap(b => check(b.size == size, error).as(b))
 
-  /** `decodeLeiosPoint` (`LeiosDemoTypes.hs:208-211`): `enforceSize 2`, the slot a `Word64`, the
-    * endorser block hash `decodeEbHash`, 32 bytes (`Leios/Types.hs:105-106`).
+  /** `decodeLeiosPoint` (`LeiosDemoTypes.hs:208-211`, ouroboros-consensus 2416493b): `enforceSize
+    * 2`, the slot a `Word64`, the endorser block hash `decodeEbHash`, 32 bytes
+    * (`Leios/Types.hs:105-106`).
     */
   private[protocol] def point(tag: Int): Decoder[EbPoint] =
     for

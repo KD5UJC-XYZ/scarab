@@ -21,10 +21,10 @@ private[protocol] object LeiosNotifyDecoder:
   private def malformed(index: Int, fault: CborFault): LeiosWireError =
     LeiosWireError.BadVote(index, BlsError.MalformedCbor(fault))
 
-  /** `decodeLeiosVote` (`LeiosDemoTypes.hs:1379-1390`): `enforceSize 3`, the announcing ranking
-    * block hash (`decodeRbHash`, 32 bytes, `Leios/Types.hs:127-133`), the seat a `Word16` of any
-    * head width, and the signature `decodeFixedSized` (48 bytes, decompressed and checked in the
-    * subgroup, the identity included: [[Signature.decoded]]).
+  /** `decodeLeiosVote` (`LeiosDemoTypes.hs:1379-1390`, ouroboros-consensus 2416493b): `enforceSize
+    * 3`, the announcing ranking block hash (`decodeRbHash`, 32 bytes, `Leios/Types.hs:127-133`),
+    * the seat a `Word16` of any head width, and the signature `decodeFixedSized` (48 bytes,
+    * decompressed and checked in the subgroup, the identity included: [[Signature.decoded]]).
     */
   private def vote(index: Int): Decoder[(Vote, Bytes)] =
     for
