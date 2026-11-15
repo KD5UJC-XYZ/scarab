@@ -76,35 +76,38 @@ abstract class TimelockScripts[E <: EraTag] extends AllegraEraScript[E]:
   protected def timelock(native: NativeScript[E]): Timelock
   protected def ofTimelock(t: Timelock): NativeScript[E]
 
+  // Each reader names every native form, so a new form fails to compile until each handles it.
+  import FlatNativeScript.{AllOf, AnyOf, InvalidBefore, InvalidHereafter, NOfK, Sig}
+
   final override def getRequireSignature(native: NativeScript[E]): Option[Bytes] =
     timelock(native).script match
-      case FlatNativeScript.Sig(h) => Some(h)
-      case _                       => None
+      case Sig(h)                                                                    => Some(h)
+      case AllOf(_) | AnyOf(_) | NOfK(_, _) | InvalidBefore(_) | InvalidHereafter(_) => None
   final override def getRequireAllOf(native: NativeScript[E]): Option[Vector[NativeScript[E]]] =
     val t = timelock(native)
     t.script match
-      case FlatNativeScript.AllOf(_) => Some(t.children.map(ofTimelock))
-      case _                         => None
+      case AllOf(_) => Some(t.children.map(ofTimelock))
+      case Sig(_) | AnyOf(_) | NOfK(_, _) | InvalidBefore(_) | InvalidHereafter(_) => None
   final override def getRequireAnyOf(native: NativeScript[E]): Option[Vector[NativeScript[E]]] =
     val t = timelock(native)
     t.script match
-      case FlatNativeScript.AnyOf(_) => Some(t.children.map(ofTimelock))
-      case _                         => None
+      case AnyOf(_) => Some(t.children.map(ofTimelock))
+      case Sig(_) | AllOf(_) | NOfK(_, _) | InvalidBefore(_) | InvalidHereafter(_) => None
   final override def getRequireMOf(
       native: NativeScript[E]
   ): Option[(BigInt, Vector[NativeScript[E]])] =
     val t = timelock(native)
     t.script match
-      case FlatNativeScript.NOfK(n, _) => Some((n, t.children.map(ofTimelock)))
-      case _                           => None
+      case NOfK(n, _) => Some((n, t.children.map(ofTimelock)))
+      case Sig(_) | AllOf(_) | AnyOf(_) | InvalidBefore(_) | InvalidHereafter(_) => None
   final override def getTimeStart(native: NativeScript[E]): Option[BigInt] =
     timelock(native).script match
-      case FlatNativeScript.InvalidBefore(slot) => Some(slot)
-      case _                                    => None
+      case InvalidBefore(slot)                                             => Some(slot)
+      case Sig(_) | AllOf(_) | AnyOf(_) | NOfK(_, _) | InvalidHereafter(_) => None
   final override def getTimeExpire(native: NativeScript[E]): Option[BigInt] =
     timelock(native).script match
-      case FlatNativeScript.InvalidHereafter(slot) => Some(slot)
-      case _                                       => None
+      case InvalidHereafter(slot)                                       => Some(slot)
+      case Sig(_) | AllOf(_) | AnyOf(_) | NOfK(_, _) | InvalidBefore(_) => None
 
 /** The instances of each era, the one place that lists the eras having each script class. */
 object EraScript:

@@ -109,10 +109,11 @@ object ConwayTxAuxData:
               ).mapN((m, n, v1, v2, v3) => (m, n, SortedMap.from(Vector(v1, v2, v3).flatten)))
             }
         }
-      case other =>
+      case Value.UInt(_) | Value.NInt(_) | Value.ByteString(_) | Value.Text(_) | Value.Bool(_) |
+          Value.Null | Value.Simple(_) | Value.Float(_, _) =>
         Left(
           LedgerDecodeError
-            .Expected(DecodeField.AuxiliaryData, LedgerDecodeError.Shape.ArrayOrMap, other)
+            .Expected(DecodeField.AuxiliaryData, LedgerDecodeError.Shape.ArrayOrMap, node.value)
         )
 
   private def metadata(
