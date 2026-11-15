@@ -131,16 +131,24 @@ class StringControlFlowSuite extends munit.FunSuite:
     }
     assertEquals(kinds(r), List("string-predicate", "string-equality"))
 
-  test("a decision whose value is a String decides only what is written"):
+  test(
+    "a choice between forms of the text it reads is not a site; another String-valued decision is"
+  ):
     val r = WartTestTraverser(StringControlFlow) {
       def short(node: String): String = if node.contains('.') then node else node.take(8)
+      def absolute(name: String): String = name match
+        case "." => name
+        case _   => name + "."
       def label(mode: String): String = mode match
         case "a" => "first"
         case _   => "other"
       def count(node: String): Int = if node.contains('.') then 1 else 8
-      (short("a"), label("a"), count("a"))
+      def quota(role: String): Int =
+        val amount: String = if role == "admin" then "1000" else "1"
+        amount.toInt
+      (short("a"), absolute("a"), label("a"), count("a"), quota("a"))
     }
-    assertEquals(kinds(r), List("string-predicate"))
+    assertEquals(kinds(r), List("string-match", "string-predicate", "string-equality"))
 
   test("the lookup of an upsert is not a site; a lookup in another map is"):
     val r = WartTestTraverser(StringControlFlow) {
@@ -160,5 +168,55 @@ class StringControlFlowSuite extends munit.FunSuite:
         label == "x" && q.reflect.Symbol.noSymbol.isNoSymbol
       def runtime(label: String): Boolean = label == "x"
       (field(_: String)(using _: scala.quoted.Quotes), runtime("x"))
+    }
+    assertEquals(kinds(r), List("string-equality"))
+
+  test("in an equality definition, a comparison with a literal is a site"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final case class Principal(role: String)
+      def mayTransfer(a: Principal, b: Principal): Boolean =
+        a.role == "admin" || b.role == "auditor"
+      List(Principal("a")).sortWith((a, b) => a.role == "x" && b.role.nonEmpty)
+      mayTransfer(Principal("a"), Principal("b"))
+    }
+    assertEquals(kinds(r), List.fill(3)("string-equality"))
+
+  test("a lookup in another map that the same field names is not an upsert"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final case class Holder(table: Map[String, Int])
+      def merge(a: Holder, b: Holder, key: String): Map[String, Int] =
+        a.table.updated(key, b.table.getOrElse(key, 0))
+      def upsert(a: Holder, key: String): Map[String, Int] =
+        a.table.updated(key, a.table.getOrElse(key, 0) + 1)
+      (merge(Holder(Map.empty), Holder(Map.empty), "k"), upsert(Holder(Map.empty), "k"))
+    }
+    assertEquals(kinds(r), List("string-keyed-lookup"))
+
+  test("an opaque value compared with a raw String is a site"):
+    val r = WartTestTraverser(StringControlFlow) {
+      object Keys:
+        opaque type Key = String
+        def matches(a: Key, raw: String): Boolean = a == raw
+      Keys
+    }
+    assertEquals(kinds(r), List("string-equality"))
+
+  test("the cats === is a site"):
+    val r = WartTestTraverser(StringControlFlow) {
+      import cats.syntax.all.*
+      def permitted(s: String): Boolean = s === "admin"
+      ((s: String) => s =!= "guest", permitted("a"))
+    }
+    assertEquals(kinds(r), List.fill(2)("string-equality"))
+
+  test("an equality with Any is a site"):
+    val r = WartTestTraverser(StringControlFlow)((s: String, other: Any) => s.equals(other))
+    assertEquals(kinds(r), List("string-equality"))
+
+  test("the arguments of a call to a definition kept by @SuppressWarnings are checked"):
+    val r = WartTestTraverser(StringControlFlow) {
+      @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.StringControlFlow"))
+      def kept(b: Boolean): Boolean = b
+      kept("a" == "b".reverse)
     }
     assertEquals(kinds(r), List("string-equality"))

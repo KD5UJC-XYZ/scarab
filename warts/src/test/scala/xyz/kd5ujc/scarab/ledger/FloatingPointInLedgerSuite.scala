@@ -62,3 +62,26 @@ class FloatingPointInLedgerSuite extends munit.FunSuite:
       (mirrored(1), unmarked(1))
     }
     assertEquals(kinds(r), List("floating-term"))
+
+  test("a floating-point literal or stable identifier in a pattern is a site"):
+    val r = WartTestTraverser(FloatingPointInLedger) {
+      val tenth = 0.1
+      def literal(value: Any): Boolean = value match
+        case 0.1 => true
+        case _   => false
+      def stable(value: Any): Boolean = value match
+        case `tenth` => true
+        case _       => false
+      (literal(1), stable(1))
+    }
+    // `tenth`'s declaration and literal, then the literal pattern and the stable identifier
+    assertEquals(kinds(r), List("floating-type", "floating-term", "floating-term", "floating-term"))
+
+  test("the arguments of a call to a definition kept by @SuppressWarnings are checked"):
+    val r = WartTestTraverser(FloatingPointInLedger) {
+      @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
+      def kept(x: Double): Long = x.toLong
+      def unmarked(n: Int): Long = kept(n * 0.5)
+      unmarked(1)
+    }
+    assertEquals(kinds(r), List("floating-term"))

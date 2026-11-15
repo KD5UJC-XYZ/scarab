@@ -7,28 +7,32 @@ import org.wartremover.{WartTraverser, WartUniverse}
   * errors.
   *
   *   - `wall-clock`: `System.currentTimeMillis` and `nanoTime`, every `now` of a `java.time` type,
-  *     `Clock.system*`, `InstantSource.system`, `Calendar.getInstance`, `Deadline.now` and
-  *     `new java.util.Date()`.
+  *     `Clock.system*` and `Clock.tick*`, `InstantSource.system`, `Calendar.getInstance`,
+  *     `Deadline.now` and `new java.util.Date()`, written or imported.
   *   - `unsafe-run`: a method whose name starts with `unsafeRun` or `unsafeTo` on an `IO`, a
-  *     `SyncIO` or a `Dispatcher`.
+  *     `SyncIO` or a `Dispatcher`, written or imported.
   *   - `sys-error`, `predef-require`, `predef-assume`, `predef-assert`.
   *   - `raise-constructed`: `raiseError`, `raiseWhen` or `raiseUnless` (on any receiver, through
-  *     the cats syntax, or unqualified), or the `fromOption` of `ApplicativeError`, `IO` or
-  *     `SyncIO`, of a `Throwable` made for it: by `new`, by a factory (any method call, or a
-  *     reference to a method), or held by a `val` bound to one; inside a block, an `if` or a
-  *     `match` too.
-  *   - `raise-domain-error`: the same methods, and `fromEither`, of a value whose type is one of
-  *     ours (defined under `xyz.kd5ujc.scarab`), or of an `Either` whose left side is: a domain
-  *     error is raised through cats-mtl `Raise`, never as an exception.
+  *     the cats syntax, or unqualified), or the `fromOption` and `fromEither` of
+  *     `ApplicativeError`, `IO` or `SyncIO`, of a `Throwable` made for it: by `new`, by a factory
+  *     (any method call, or a reference to a method), held by a `val` bound to one, or in a `Left`
+  *     made for `fromEither`; inside a block, an `if` or a `match` too.
+  *   - `raise-domain-error`: the same methods of a value whose type is one of ours (defined under
+  *     `xyz.kd5ujc.scarab`), or of an `Either` whose left side is: a domain error is raised through
+  *     cats-mtl `Raise`, never as an exception.
   *
   * A `Throwable` that is passed on as it came (a parameter, a pattern's binder, a field such as a
   * defect's `cause`) may be raised again: that is how a defect reaches the runtime.
   *
-  * Not seen: a `Throwable` made in one method and raised in another through a parameter; the
-  * raising forms not listed (`liftTo`, `ensure`, `ensureOr`, `rethrow`, `adaptError`); and an
-  * assertion the typer folds to a constant `true`. `Predef.assert` is a transparent inline method,
-  * so the typer has replaced the call with its body before this wart runs: the site is an `Inlined`
-  * from `Predef` whose body calls `Scala3RunTime.assertFailed`.
+  * Not seen: a `Throwable` made in one method and raised in another through a parameter, or through
+  * an eta-expanded `raiseError`; the raising forms not listed (`liftTo`, `ensure`, `ensureOr`,
+  * `rethrow`, `adaptError`); a clock read through a library that reads it itself; and an assertion
+  * the typer folds to a constant `true`. `Predef.assert` is a transparent inline method, so the
+  * typer has replaced the call with its body before this wart runs: the site is an `Inlined` from
+  * `Predef` whose body calls `Scala3RunTime.assertFailed`.
+  *
+  * A definition that carries the wart's full name in `@SuppressWarnings` is skipped with all it
+  * holds; a call to it is checked as any other, its arguments too.
   */
 object SystemTimeAndUnsafeRun extends WartTraverser:
 
@@ -38,6 +42,9 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
     "java.time.Clock.systemUTC",
     "java.time.Clock.systemDefaultZone",
     "java.time.Clock.system",
+    "java.time.Clock.tickMillis",
+    "java.time.Clock.tickSeconds",
+    "java.time.Clock.tickMinutes",
     "java.time.InstantSource.system",
     "java.util.Calendar.getInstance",
     "scala.concurrent.duration.Deadline.now"
@@ -94,17 +101,18 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
       /** Whether `t` is a value a raising method could raise: a `Throwable`, one of ours, or an
         * `Either`.
         */
-      private def candidate(t: Term): Boolean =
-        t.tpe <:< throwable || Trees.isOurs(t.tpe) || eitherLeft(t.tpe).isDefined
+      private def candidate(t: TypeRepr): Boolean =
+        t <:< throwable || Trees.isOurs(t) || eitherLeft(t).isDefined
 
-      /** The `val`s of a tree that hold a `Throwable`, or one of ours, made for it. */
+      /** The `val` s of a tree that hold a `Throwable`, or one of ours, made for it, or an `Either`
+        * whose left side is one.
+        */
       private def madeVals(root: Tree, owner: Symbol): Set[Symbol] =
         val accumulator = new TreeAccumulator[Set[Symbol]]:
           def foldTree(found: Set[Symbol], tree: Tree)(o: Symbol): Set[Symbol] =
             tree match
               case v @ ValDef(_, tpt, Some(rhs))
-                  if (tpt.tpe <:< throwable || Trees
-                    .isOurs(tpt.tpe)) && raised(found)(rhs) != Raised.PassedOn =>
+                  if candidate(tpt.tpe) && raisedValue(found)(rhs) != Raised.PassedOn =>
                 foldOverTree(found + v.symbol, tree)(o)
               case _ => foldOverTree(found, tree)(o)
         accumulator.foldTree(Set.empty, root)(owner)
@@ -147,16 +155,41 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
               true
             case _ => foldOverTree(found, tree)(owner))
 
-      /** An `Either` is raised for its left side, which is a domain error when it is one of ours;
-        * how the `Either` was made does not matter.
+      /** The value of `Left(e)`, or of the cats syntax `e.asLeft`, whatever the type arguments. */
+      private object LeftOf:
+        def unapply(t: Term): Option[Term] =
+          (Trees.strip(t), Trees.callee(Trees.strip(t))) match
+            case (Apply(_, List(e)), Some(r))
+                if r.symbol.name == "apply" && Trees.plainName(
+                  r.symbol.maybeOwner
+                ) == "scala.util.Left" =>
+              Some(e)
+            case (_, Some(s @ Select(Apply(_, List(e)), "asLeft")))
+                if Trees.plainName(s.symbol.maybeOwner).startsWith("cats.syntax.") =>
+              Some(e)
+            case _ => None
+
+      /** An `Either` is raised for its left side: a `Left` made here is raised as its value is, a
+        * `val` bound to one is made, and any other `Either` is a domain error when its left side is
+        * one of ours.
         */
       private def raisedValue(made: Set[Symbol])(t: Term): Raised =
         eitherLeft(t.tpe) match
-          case Some(left) => if Trees.isOurs(left) then Raised.Domain else Raised.PassedOn
-          case None       => raised(made)(t)
+          case Some(left) =>
+            t match
+              case LeftOf(e)               => raised(made)(e)
+              case _ if Trees.isOurs(left) => Raised.Domain
+              case _ =>
+                Trees.strip(t) match
+                  case r: Ref if made(r.symbol) => Raised.Constructed
+                  case _                        => Raised.PassedOn
+          case None => raised(made)(t)
 
       private def report(made: Set[Symbol])(values: List[Term]): Option[(String, String)] =
-        values.filter(candidate).map(raisedValue(made)).foldLeft(Raised.PassedOn)(worst) match
+        values
+          .filter(v => candidate(v.tpe))
+          .map(raisedValue(made))
+          .foldLeft(Raised.PassedOn)(worst) match
           case Raised.Domain      => Some("raise-domain-error" -> Rules.Err4)
           case Raised.Constructed => Some("raise-constructed" -> Rules.Err4)
           case Raised.PassedOn    => None
@@ -183,7 +216,7 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
         new u.Traverser(SystemTimeAndUnsafeRun.this):
           override def traverseTree(tree: Tree)(owner: Symbol): Unit =
             tree match
-              case t if hasWartAnnotation(t) => ()
+              case d: Definition if hasWartAnnotation(d) => ()
               case _ =>
                 kind(made)(tree).foreach((k, rule) => error(tree.pos, s"$k: $rule"))
                 super.traverseTree(tree)(owner)

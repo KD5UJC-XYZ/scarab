@@ -53,9 +53,10 @@ class SystemTimeAndUnsafeRunSuite extends munit.FunSuite:
       val j = java.util.Calendar.getInstance()
       val k = new java.util.Date()
       val l = scala.concurrent.duration.Deadline.now
-      (a, b, c, d, e, f, g, h, i, j, k, l)
+      val m = java.time.Clock.tickMillis(java.time.ZoneOffset.UTC)
+      (a, b, c, d, e, f, g, h, i, j, k, l, m)
     }
-    assertEquals(kinds(r), List.fill(12)("wall-clock"))
+    assertEquals(kinds(r), List.fill(13)("wall-clock"))
 
   test("a clock passed in, and a date of a given time, are not sites"):
     val r = WartTestTraverser(SystemTimeAndUnsafeRun) {
@@ -203,3 +204,28 @@ class SystemTimeAndUnsafeRunSuite extends munit.FunSuite:
       (measured, Probe.start, unmarked)
     }
     assertEquals(kinds(r), List("wall-clock"))
+
+  test("fromEither of a Left made here, held in a val, or of a domain error widened to Throwable"):
+    val r = WartTestTraverser(SystemTimeAndUnsafeRun) {
+      val held: Either[Throwable, Unit] = Left(new IllegalStateException("held"))
+      val a = IO.fromEither[Unit](Left(new IllegalArgumentException("made here")))
+      val b = IO.fromEither[Unit](held)
+      val c = IO.fromEither[Unit](Left(Boom(1): Throwable))
+      val d = IO.fromEither[Unit](new IllegalStateException("made").asLeft[Unit])
+      (a, b, c, d)
+    }
+    assertEquals(
+      kinds(r),
+      List("raise-constructed", "raise-constructed", "raise-domain-error", "raise-constructed")
+    )
+
+  test("the arguments of a call to a definition kept by @SuppressWarnings are checked"):
+    val r = WartTestTraverser(SystemTimeAndUnsafeRun) {
+      @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+      def kept(n: Long): Long = n
+      @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+      object Kept:
+        def apply(n: Long): Long = n
+      (kept(System.nanoTime()), Kept(System.currentTimeMillis()))
+    }
+    assertEquals(kinds(r), List.fill(2)("wall-clock"))
