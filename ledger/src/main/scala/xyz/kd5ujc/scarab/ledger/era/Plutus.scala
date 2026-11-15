@@ -14,6 +14,9 @@ object Language:
   sealed abstract class PlutusV2 extends Language
   sealed abstract class PlutusV3 extends Language
 
+  /** Dijkstra's language (`PlutusV4`, `Plutus/Language.hs:276`, cardano-ledger f649f975). */
+  sealed abstract class PlutusV4 extends Language
+
 /** The language `L` at the value level (`PlutusLanguage l`, `Plutus/Language.hs:452`,
   * cardano-ledger f649f975).
   */
@@ -38,6 +41,9 @@ object PlutusLanguage:
   given v3: PlutusLanguage[Language.PlutusV3] with
     def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
       xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3
+  given v4: PlutusLanguage[Language.PlutusV4] with
+    def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.V4
 
 /** A Plutus script of language `L`: its bytes (`newtype Plutus (l :: Language)`,
   * `Plutus/Language.hs:180-183`, cardano-ledger f649f975). The language is shared by the eras that

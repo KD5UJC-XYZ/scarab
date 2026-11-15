@@ -146,6 +146,10 @@ object ConwayScript:
     case AlonzoScriptRep.PlutusScript(p) =>
       AlonzoScriptRep.PlutusScript(ConwayPlutusScript.translate(p))
 
+  extension (s: ConwayScript)
+    /** The shared representation, read only: the translation into Dijkstra reads it. */
+    def rep: AlonzoScriptRep[ConwayTimelock, ConwayPlutusScript] = s
+
   given CanEqual[ConwayScript, ConwayScript] = CanEqual.derived
 
   val instance: ConwayEraScript[Conway] = new TimelockScripts[Conway] with ConwayEraScript[Conway]:
