@@ -75,6 +75,10 @@ object ConwayTimelock:
     */
   def translate(t: BabbageTimelock): ConwayTimelock = t.rep
 
+  extension (t: ConwayTimelock)
+    /** The shared representation, read only. */
+    def rep: Timelock = t
+
   given CanEqual[ConwayTimelock, ConwayTimelock] = CanEqual.derived
 
 /** Conway's Plutus script: the languages Conway has, V1 to V3 (`data PlutusScript ConwayEra`,

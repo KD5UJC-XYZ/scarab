@@ -175,6 +175,12 @@ enum EraTxError:
     */
   case StoredOutputDiffers
 
+  /** The encoding a translation into the next era wrote is refused when read again at that era's
+    * version, though the next era reads every value of the previous one: a defect of the encoder,
+    * not a refusal of the value translated.
+    */
+  case TranslationReadBack(cause: LedgerDecodeError)
+
 enum EraField:
   case Update, CurrentTreasury, MultiAsset, Datum, ReferenceScript, NegativeValue,
     GenesisDelegation, InstantaneousRewards
