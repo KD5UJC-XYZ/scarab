@@ -7,7 +7,6 @@ import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
 import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, EpochInterval, NonZero}
-
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams.{Eco, Gov, Net, NoPool, Sec, Tech}
 
 /** Dijkstra's protocol parameters as higher-kinded data (`data DijkstraPParams f era`,
@@ -79,8 +78,8 @@ object DijkstraPParams:
 
   /** `emptyDijkstraPParams` (`Dijkstra/PParams.hs:1200-1257`, cardano-ledger 9df9f98c): zero, or
     * each type's least value, but for a 2048-byte transaction, 100 pools, a 150% collateral of at
-    * most 5 inputs, a reference-script cost stride of 1, no pledge leverage limit, no Peras
-    * bootstrap round, and Dijkstra's lowest version, 12.
+    * most 5 inputs, a reference-script cost stride of 1 (`knownNonZeroBounded @1`), no pledge
+    * leverage limit, no Peras bootstrap round, and Dijkstra's lowest version, 12.
     */
   val empty: DijkstraPParams[Identity] = DijkstraPParams[Identity](
     THKD(CoinPerByte(CompactCoin.zero)),
@@ -116,7 +115,6 @@ object DijkstraPParams:
     THKD(NonNegativeInterval.zero),
     THKD(Unsigned.lit[W32](0)),
     THKD(Unsigned.lit[W32](0)),
-    // `knownNonZeroBounded @1`
     THKD(NonZero.unsafe(Unsigned.lit[W32](1))),
     THKD(PositiveInterval.minBound),
     THKD(MaxPledgeLeverage.none),
