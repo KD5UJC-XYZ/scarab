@@ -1268,9 +1268,10 @@
       "section": "J",
       "parent": "J3",
       "title": "Further metric and tracing coverage",
-      "status": "planned",
-      "priority": null,
-      "issues": [],
+      "priority": "P2",
+      "issues": [
+        1037
+      ],
       "notes": "Further metric and tracing coverage: the unexported `served_*` counters and per-block `utxoSize`/`delegMapSize`, other useful series listed in running.md \"Metrics\", and deeper tracing-schema alignment. These are explicit coverage gaps beyond #47's original endpoint/algebra/names acceptance; preserve the documented differences in meaning from the reference."
     },
     {
