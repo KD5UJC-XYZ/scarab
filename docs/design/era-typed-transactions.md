@@ -1,0 +1,483 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+# Era-specific transaction types
+
+**Status**: Proposal, 2026-11-14. The decisions are those of the
+[ADR 0007 amendment of 2026-11-14](../adr/0007-era-indexed-state.md#amendment-2026-11-14-era-specific-types-no-inter-era-generics).
+Tracked in [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85); forging in every Shelley-based era
+([#544](https://github.com/KD5UJC-XYZ/scarab/issues/544)) builds on it. **No persisted format changes in this
+programme** (§3.6).
+
+Pins: cardano-ledger f649f975 for Shelley to Conway, cardano-ledger 9df9f98c (the Leios testnet build) for
+Dijkstra, ouroboros-consensus 82ecba329. Abbreviated reference paths are under
+`eras/<era>/impl/src/Cardano/Ledger/<Era>/` and `libs/cardano-ledger-core/src/Cardano/Ledger/`.
+
+## 1. Why
+
+The node mirrors the reference's era-indexed ledger state ([ADR 0007](../adr/0007-era-indexed-state.md)),
+but its transactions are not indexed by era.
+
+**One record for every era.** `TxBody`, `Witnesses`, `Tx` and `TxOut` (`ledger/.../Tx.scala`,
+`ledger/.../Address.scala`) are single records whose fields are optional by era, and `Certificate` is one
+union of every era's certificates. Which fields an era may carry is decided at run time:
+- the decoders take the era as a value (`TxBody.decode(raw, era)`);
+- the rules either test the era (`ShelleyBasedEra.atLeast`) or group five eras behind one evidence value
+  (`PreConway[E]`).
+
+The consequences:
+- **Dijkstra's rules decode a Dijkstra transaction a second time, as a Conway one**, and check that
+  (`rules/DijkstraUtxo.scala`, `DijkstraStAnnTx.of`).
+- **A field's era is checked only at run time.** A Shelley-only certificate in a Conway transaction is
+  refused by the decoder and again by the CERTS rule (`rules/Certs.scala`, `TxDefect.PreConwayCertificate`),
+  but nothing in the types prevents it. Nothing stops a rule from reading a field its era does not have.
+- **The candidate-nonce window is chosen by comparing eras** (`HeaderValidation`, `h.era.ordinal >=
+  Era.Conway.ordinal`). That kind of choice goes wrong silently when an era is added.
+
+## 2. What the reference does
+
+**Bodies and transactions.** Every era has its own body and transaction type: `TxBody l era` and `Tx l era`
+are data families, one newtype per era (`Core.hs:241`, `Core.hs:167`). Both are indexed by a level, `TxLevel`
+(`TopTx | SubTx`, `Core/TxLevel.hs:34`):
+- most of a body's lenses take a body of any level: inputs, outputs, certificates and withdrawals
+  (`Core.hs:245-265`), the validity interval (`Allegra/TxBody.hs:90`), mint, the treasury
+  (`Conway/TxBody.hs:632`);
+- fee, collateral, total collateral, collateral return, sub-transactions and starting balance intervals take
+  a `TopTx` body only;
+- eras up to Conway have only `TopTx`; Dijkstra has both, `SubTx` being its sub-transactions.
+
+**The other families map to shared types parameterised by the era.** `TxWits`, `TxOut` and `TxAuxData`
+(`Core.hs:297-318, 467-483, 503-516`), `Value` (`Core.hs:464`) and `TxCert` (`Core/TxCert.hs:58`):
+
+| Family | Shared type | Eras |
+|---|---|---|
+| `Value` | `Coin` | Shelley, Allegra |
+| | `MaryValue` (ADA and multi-assets) | Mary to Dijkstra |
+| `TxOut` | `ShelleyTxOut era` | Shelley, Allegra, Mary |
+| | `AlonzoTxOut era` | Alonzo |
+| | `BabbageTxOut era` | Babbage, Conway, Dijkstra |
+| `TxWits` | `ShelleyTxWits era` | Shelley, Allegra, Mary |
+| | `AlonzoTxWits era` | Alonzo to Dijkstra |
+| `TxAuxData` | `ShelleyTxAuxData` | Shelley |
+| | `AllegraTxAuxData era` | Allegra, Mary |
+| | `AlonzoTxAuxData era` | Alonzo to Dijkstra |
+| `TxCert` | `ShelleyTxCert era` | Shelley to Babbage |
+| | `ConwayTxCert era` | Conway |
+| | `DijkstraTxCert era` | Dijkstra |
+| raw body | `AllegraTxBodyRaw ma` | Allegra (`ma = ()`), Mary (`ma = MultiAsset`) |
+| envelope | `ShelleyTx` | Shelley, Allegra, Mary |
+| | `AlonzoTx` | Alonzo, Babbage, Conway |
+| | `DijkstraTx` (with `DijkstraSubTx`) | Dijkstra |
+
+**Scripts and Plutus purposes differ by era inside these shared types.** Shelley has `MultiSig`, Allegra to
+Conway have `Timelock`, and Dijkstra has `DijkstraNativeScript`. The purposes are `AlonzoPlutusPurpose` for
+Alonzo and Babbage, `ConwayPlutusPurpose` for Conway and `DijkstraPlutusPurpose` for Dijkstra.
+
+**The class chain.** Capabilities come from classes, each with instances at exactly some eras, in chains:
+- `EraTxBody` ⊂ `AllegraEraTxBody` ⊂ `MaryEraTxBody` ⊂ `AlonzoEraTxBody` ⊂ `BabbageEraTxBody` ⊂
+  `ConwayEraTxBody` (`Mary/TxBody.hs:70`, `Alonzo/TxBody.hs:127`, `Babbage/TxBody.hs:110`,
+  `Conway/TxBody.hs:626-629`);
+- off the chain, `ShelleyEraTxBody` has instances for Shelley to Babbage only (`AtMostEra "Babbage"`,
+  `Shelley/TxBody.hs:97`), and `ttlTxBodyL` is for Shelley only (`ExactEra ShelleyEra`, `:98`);
+- likewise `EraTxWits` ⊂ `AlonzoEraTxWits`; `EraTxOut` ⊂ `AlonzoEraTxOut` ⊂ `BabbageEraTxOut`;
+  `EraTxAuxData` ⊂ `AllegraEraTxAuxData` ⊂ `AlonzoEraTxAuxData`; `EraTx` ⊂ `AlonzoEraTx`.
+
+A rule asks for the class it needs.
+
+**Rules are assigned per era** (`EraRule "UTXO" era`), and one implementation often serves several eras.
+Mary's UTXO is Allegra's. Babbage and Conway use Shelley's POOL (`Babbage/Era.hs:102`, `Conway/Era.hs:254`);
+Dijkstra has its own (`Dijkstra/Era.hs:282` at 9df9f98c).
+
+**Translation between adjacent eras.** For the Alonzo family on, transaction translation goes through
+CBOR: the previous era's bytes are decoded with the next era's decoder. It can fail with a `DecoderError`:
+Babbage (`Babbage/Translation.hs:61-78`), Conway (`Conway/Translation.hs:89-97`), Dijkstra
+(`Dijkstra/Translation.hs:53-62` at 9df9f98c).
+
+**Stored outputs carry no era.** On disk an output has no era tag. Reading the tables decodes each stored
+output as the era the ledger state is in (`indexedUnpackM`, ouroboros-consensus 82ecba329
+`Cardano/Ledger.hs:170-187`). In memory an output carries its era (`CardanoTxOut`, `:103-110`), and a value
+from an earlier era is upgraded when it is read in a later one (`ejectHardForkTxOut`, `:149-162`).
+
+## 3. Design
+
+### 3.1 One nominal type per era, the sharing underneath
+
+Every era has its own type for each family. Where the reference shares a type, the shared part is a
+representation parameterised by what differs, not by the era, and each era's type is an opaque type over it:
+
+| Representation | Behind |
+|---|---|
+| `ShelleyTxOutRep[V]` | `ShelleyTxOut`, `AllegraTxOut` (`V = AdaValue`); `MaryTxOut` (`V = MultiAssetValue`) |
+| `AlonzoTxOutRep` | `AlonzoTxOut` |
+| `BabbageTxOutRep[S]` | `BabbageTxOut`, `ConwayTxOut`, `DijkstraTxOut`, `S` the era's script (`BabbageScript`, `ConwayScript`, Dijkstra's), so carrying an output into the next era carries its reference script (`upgradeScript`) |
+| `ShelleyTxWitsRep[S]` | the witness sets of Shelley (`S = MultiSig`), Allegra and Mary (`S = Timelock`) |
+| `AlonzoTxWitsRep[S]` | the witness sets of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
+| `AllegraTxAuxDataRep` | the auxiliary data of Allegra and Mary |
+| `AlonzoTxAuxDataRep[S]` | the auxiliary data of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
+| `ShelleyTxCertRep` | the certificates of Shelley to Babbage |
+| `NativeScriptRep[F]` | `MultiSig` (`F = NativeForm.MultiSig`), behind Shelley's native script; `Timelock` (`F = NativeForm.Timelock`), behind each era's native script from Allegra to Conway (`AllegraTimelock` to `ConwayTimelock`) |
+| `AlonzoScriptRep[N, P]` | the scripts of Alonzo to Conway: the era's native script `N` or its Plutus script `P` (`BabbageScript`, `ConwayScript`) |
+| `Plutus[L]` | a Plutus script of language `L`, shared by the eras that have the language; which eras have which language is each era's own Plutus script (`BabbagePlutusScript` has V1 and V2, `ConwayPlutusScript` V1 to V3) |
+| `AllegraTxBodyRep[M]` | `AllegraTxBody` (`M = Unit`), `MaryTxBody` (`M = MultiAsset`) |
+
+Bodies and certificates that the reference does not share are plain case classes of their era: Shelley's,
+Alonzo's to Dijkstra's bodies, and Conway's and Dijkstra's certificates. Purposes follow the same rule. Each
+representation keeps the bytes it was decoded from; a native script keeps them at every level, as the
+reference's `MemoBytes` does, each level a window of one copy the script owns. The output representations
+also keep the value's encoded size. Their reference script is the era's script, read again from the
+output's bytes when a stored output is read into the era, as the flat output's reference-script reads are.
+
+**Where the opaqueness ends.** A top-level opaque type is transparent only in the file that defines it. Each
+era therefore has one file of its types (`conway/ConwayTypes.scala`). That file defines the opaque types and
+their companions. The constructors are private members of the companions, and the companions hold the
+instances, the decoder entry points and the translation in from the previous era. Other code sees only the
+era types. A public `rep` gives read-only access to the shared fields.
+
+**Controlled construction.** A value of an era is made only by:
+- that era's decoder;
+- its translation from the previous era (§3.7);
+- the projection of a stored output (§3.6), which is partial and `private[ledger]`. Its callers are the
+  rules' reads of the UTxO set, in `ledger`.
+
+Until stage 6a restricts the flat `TxOut`, this holds only by convention inside `ledger`: any code there can
+still build a flat output and project it.
+
+**Equality.** `CanEqual` is given per era type, with itself only, so in code compiled under strict equality
+(`import scala.language.strictEquality`) `babbageOut == conwayOut` does not compile. The module does not
+compile under strict equality, so each era's rule files import it as they move onto the era types (from
+stage 2); until then a cross-era comparison outside them compiles. The shared representations have no
+`CanEqual`, so under strict equality their values are not compared either. `Eq` and `Show` derive on the representation and are forwarded to each era type by
+one helper, from stage 2.
+
+### 3.2 Families as match types, capabilities as classes
+
+- **Families.** `TxBody[L <: TxLevel, E]`, `Tx[L, E]`, `TxOut[E]`, `TxWits[E]`, `TxAuxData[E]`, `TxCert[E]`,
+  `Script[E]`, `PlutusPurpose[E]` and `Value[E]` are match types with one case per era, as `CertState[E]` is.
+  Eras before Dijkstra reduce only at the `Top` level.
+- **Classes.** Type classes over the era tag, named after the reference's and chained as its are (§2), with
+  the reference's methods:
+  - a method that takes a body of any level is generic in `L`;
+  - fee and collateral take a `Top` body;
+  - `EraTx[E]` aggregates the classes an era's rules need, from the reference's superclass constraints, so
+    a rule asks for one or two classes.
+- **Instances.** Each class family has one `given` per era, in the root class's companion (`EraTxBody`),
+  typed as that era's instance trait (`ConwayTxBodyOps extends ConwayEraTxBody[Conway]`). One given per era
+  means no ambiguity, and the root companion lists the eras in one place.
+- **State classes.** Removing `PreConway` removes its state equalities (`CertState`, `GovState`,
+  `InstantStake` and their lenses), so the reference's state classes come with the transaction classes:
+  `EraCertState`, `ShelleyEraAccounts`/`ConwayEraAccounts`, `EraGov`, `EraStake`, `EraPParams`,
+  `ShelleyEraTxCert`/`ConwayEraTxCert`.
+- **Plutus.** The script contexts take the per-era `TxInfo` construction of the reference's
+  `EraPlutusTxInfo`.
+- **The witness.** `ShelleyBasedEra[E]` only unpacks an era known at run time and routes to that era's code
+  with an exhaustive match. It is never compared.
+
+### 3.3 Levels
+
+`TxLevel` (`Top`, `Sub`) indexes every era's body and transaction, as the reference's does. Dijkstra's
+sub-transactions are `TxBody[Sub, Dijkstra]`, so the shared rules that Dijkstra's sub-transaction rules reuse
+(Conway's CERTS and GOV) run on them unchanged. This replaces `DijkstraTxBody`'s run-time `level` and its
+`fee: Option`.
+
+### 3.4 Rule sets
+
+- **Shared rules.** A rule the reference shares is written once and asks for the reference's class.
+- **A complete set per era.** Each era has a complete rule set, `EraRules[E]`: one member per rule, none
+  defaulted, each naming the shared or era-specific rule that era runs, as the reference's `EraRule` table
+  does. A test checks every era's set against the reference's table (§2: Dijkstra's POOL is its own).
+- **Failure types** get per-era names over shared representations in the same way.
+
+### 3.5 Decoders
+
+Each era has its own decoder entry point (`ConwayTxBody.decode(raw)`). At first it projects from today's
+decoder; each stage then moves the field reading into the era's decoder. Acceptance must not change. The
+differential compares the old and new decoders on:
+- the recorded blocks;
+- the reference refusal corpus;
+- the decoder fuzz targets.
+
+It compares typed results, including the `LedgerDecodeError` of a refusal, not only success.
+
+### 3.6 The store, unchanged
+
+The persisted form stays exactly as it is: the store keeps no era, as the reference's tables keep none (§2).
+- **What stays.** The case class named `TxOut` with today's fields stays as the storage form, in its package
+  and under its name, because the sidecar fingerprint hashes the type's label and field labels
+  (`storage/.../Codec.scala`). The rules stop using it.
+- **The readers that must stay byte-identical:**
+  - the sidecar codecs (`NodeCodecs`, `SnapshotSidecar`, and the V7 and V8 readers that import the live
+    `TxOut` codec);
+  - `UtxoStore`'s value encoding and its `utxo.bin` checkpoint;
+  - `FrozenProtocolParams`;
+  - the Haskell-state output codecs (`haskell/state/UtxoCodecs.scala`, already routed by era);
+  - `mempack/TxOutMemPack`, which `haskell/state/SnapshotTableStream` also reaches.
+
+  The storage form keeps its simple name `TxOut`, because the fingerprint uses the type's label. Code that
+  also uses the era family imports it under an alias; it is never renamed. The fingerprint walks every type
+  nested in it, so these stay the flat types they are today, unchanged: its `Value` (not `AdaValue` or
+  `MultiAssetValue`), `Address`, `Datum` and `Script` (not the per-era `Script[E]`).
+- **Other persisted state stays byte-identical too.** That covers the derived protocol-state codecs
+  (`NodeCodecs`) and the chain-dependent state in the sidecar. Stage 6b retypes headers and consensus
+  configuration, not the persisted chain-dependent state.
+- **A stored output is read into the era that reads it**, as `indexedUnpackM` does. Each era's `fromStored` returns an `Either`: it refuses an output of a later era (the reference's `anachrony`) and a shape the era
+  cannot hold.
+- **The invariant this rests on:** an output whose encoding changes at a crossing is rewritten when the chain
+  crosses. Today that is Dijkstra's native reference scripts (`Translate.upgradeUtxo`,
+  `UtxoStore.enteredDijkstra`). A property test checks it over the recorded corpus: reading an output in
+  era N and translating it to the tip gives the same output as reading it at the tip.
+
+Any change to what is stored needs the owner's approval first.
+
+### 3.7 Crossing an era boundary
+
+- **Translations** between adjacent eras are explicit functions of the later era (Conway's `translate`).
+  From Alonzo on they re-decode the previous era's bytes with the next era's decoder, as the reference's
+  translation through CBOR does, and they return its typed failure.
+- **The mempool** injects an earlier era's transaction through the same chain (`hardForkInjectTxs`,
+  ouroboros-consensus 82ecba329 `Cardano/CanHardFork.hs:182-224`, ending at Conway to Dijkstra). It refuses
+  a Byron transaction and one of a later era ([#934](https://github.com/KD5UJC-XYZ/scarab/issues/934)).
+
+### 3.8 What stays a run-time check
+
+Era typing does not establish these, so they stay run-time checks:
+- predicates over a transaction's contents, the ledger state, time and the parameters in force;
+- protocol-version gates inside an era (`hardfork*`);
+- the network and the configured reference build;
+- matching an era tag read from bytes against the era the chain is in.
+
+## 4. Stages
+
+**How it lands.** Work lands on `feat/era-types` ([#990](https://github.com/KD5UJC-XYZ/scarab/pull/990)), as
+several commits or small pull requests into the branch per stage, and reaches `main` once per stage.
+
+**Every stage:**
+- compiles and passes `check` and preflight;
+- runs the scenarios of the areas it touches;
+- **does not change behaviour**: the reference refusal corpus, the upstream conformance suites and an
+  old-against-new differential on recorded blocks give identical verdicts and identical failures, except in
+  the one stage that changes them on purpose (#412);
+- **does not change the persisted format**: no fingerprint golden in `CodecSuite` and no maintained snapshot
+  fixture changes. A stage that cannot meet this stops, and the change is put to the owner as its own
+  question first;
+- moves its test builders to per-era test kits that build through the encoders and decoders, so a test
+  value's bytes stay true.
+
+| Stage | Deliverable |
+|---|---|
+| 1. Core | `TxLevel`; the match types and the transaction, state and Plutus classes in the reference's chains (each era's match-type cases and instances are added in that era's stage); the value types (`AdaValue`, `MultiAssetValue`); the representations; compile-failure tests (missing capability, another era's value, construction outside the era's file, equality across eras). No change to the rules, to `Utxo` or to any codec. |
+| 2. Conway | Conway's types and decoder. Its rules on the classes (LEDGER, UTXO, UTXOW, CERTS, GOV, MEMPOOL), with failures identical. The mempool, local submission, TxSubmission2 relay and the forger typed by Conway. The performance of Conway's UTXO path on the preprod replay is measured here. |
+| 3. Dijkstra | Converge on the shared representations, `TxBody[Sub, Dijkstra]`, remove the re-decode as Conway, its translation from Conway. Coordinated with the Leios work before it starts. |
+| 4. Babbage and Alonzo | Their types, decoders, translations and rules on the classes, with failures identical. Conway's translation in from Babbage, and the mempool's injection of a Babbage transaction into Conway. |
+| 4b. #412 | The accumulation of predicate failures in the reference's STS order, in its own pull request, after the rules are typed. The refusal corpus is regenerated and compared against the reference. |
+| 5. Mary, Allegra, Shelley | Their types, decoders, translations and rules. Then remove `PreConway`, the grouped shapes and every era comparison (below). |
+| 6a. Remove the flat types | Delete `TxBody`, `Witnesses`, `Tx`, `Certificate` from the rules, fuzz targets and tools, once each is confirmed absent from every persisted codec. The storage form `TxOut` stays (§3.6). |
+| 6b. Era-typed headers and consensus parameters | Per-era consensus configuration, with headers indexed by era (§5). |
+| 6c. Mempool and submission before Conway | The mempool, local submission, TxSubmission2, the local monitor and the failure encoders for every Shelley-based era. |
+| 6d. Forging in every era (#544) | On 6b and 6c, with a devnet gate that starts in Shelley. |
+
+**How stage 1 lands on the branch.** A match type needs a case and a class names the families it uses, so a
+family and its classes are declared in the commit that brings the first era having them, not ahead of every
+era. Stage 1 carries the value, output and script families, classes and representations for the eras the
+spike has (Allegra, Mary, Babbage, Conway), and each later stage adds its era's cases and instances. The
+other representations of §3.1 (the witness sets, auxiliary data, certificates and Allegra's body) and the
+state and Plutus-context classes arrive with their first era, Conway's in stage 2.
+
+**What stage 5 removes:** every era comparison (`ShelleyBasedEra.atLeast`), wherever it is:
+- the rules;
+- `ledger`'s `ProtocolParams`, `Block`, `Governance` and `ScriptIntegrity`;
+- the storage codecs;
+- the node-to-client queries;
+- the predicate-failure encoders (the per-era failure CBOR).
+
+A decoder-version comparison (`DecoderVersion.atLeast`), which mirrors the reference's
+`ifDecoderVersionAtLeast`, stays. The ledger-state translations of `Translate` already work per era and are
+unchanged, apart from reading outputs through §3.6.
+
+**The old and new paths side by side.** From stage 2 an era's rules run on its typed transactions, and
+the flat path stays alive for the eras not yet typed. Conway's checks on the flat `Tx` stay until stage 3,
+because Dijkstra still runs them on its transactions decoded as Conway ones. The differential gate compares
+the two paths while both exist. An era's flat path is deleted at the end of the stage that types the last
+era using it: Conway's at the end of stage 3, the shared Shelley-to-Babbage code at the end of stage 5.
+
+**Scenarios by stage:** `e2e` for every stage that touches rules or headers; `pool` and `ntc` for 2 and 6c;
+`pool` for 6d; `restart` wherever a storage reader is touched.
+
+## 5. Consensus parameters per era
+
+The window after which the candidate nonce is frozen, per era (ouroboros-consensus 82ecba329 `Cardano/Node.hs`):
+
+| Era | Window | Source |
+|---|---|---|
+| Shelley, Allegra, Mary, Alonzo | ⌈3k/f⌉ (TPraos) | `tpraosParams`, `:710, 732, 751, 770` |
+| Babbage | ⌈3k/f⌉ | the override at `:787-799` |
+| Conway | ⌈4k/f⌉ | `praosParams`, `:816-818` |
+| Dijkstra | ⌈4k/f⌉ | `praosParams`, `:835-837` |
+
+How this is typed:
+- each era has a consensus configuration, a given per era, as the reference's `PartialConsensusConfig`;
+- a header and the configuration that checks it share one era parameter;
+- the two windows are distinct opaque types that only the epoch geometry builds;
+- the nonce update stays one function, as in the reference.
+
+Before the era comparison in `HeaderValidation` is deleted, a test checks that every era's given window
+equals what the comparison gives today. A wrong window splits the chain.
+
+## 6. Results
+
+Stage 1 and Conway's types, the first part of stage 2, are on `feat/era-types`
+([#990](https://github.com/KD5UJC-XYZ/scarab/pull/990)) in `ledger/.../ledger/era/`, and pass `check`. They
+reach `main` together (decided 2026-11-15, #990): the core with Conway's types, which no rule uses yet.
+Conway's rules on the classes follow as the rest of stage 2.
+
+**What it shows:**
+- opaque per-era outputs over one representation, with a cross-era translation and no casts;
+- per-era bodies with private constructors, made by a decoder that projects from today's;
+- classes whose instances are given in a root companion and resolve for subclass requests;
+- the compiler refusing a missing capability, another era's output, and construction outside the defining
+  file. Two of these tests check only that compilation fails, not the message.
+
+**The level parameter** (stage 1's first task, done):
+- Each era's instance names the levels it has, as a type member (`Level[L]`), the reference's `STxLevel`.
+  Eras up to Conway use `TopOnly`, whose one case is `Top`; Dijkstra will use `BothLevels`.
+- A class method of any level takes the evidence, and an instance matches on it, which shows the compiler the
+  level and reduces the body type with no cast.
+- Code asking for a sub-transaction body of Conway does not compile.
+- Given a concrete body, the caller names the level (`inputs[TxLevel.Top](body)`), because the level cannot
+  be inferred back from the body type. Generic rules carry the evidence instead.
+
+**The representation parameterised by value** (stage 1, done):
+- `AllegraTxOut` and `MaryTxOut` are opaque over one `ShelleyTxOutRep[V]`, with `V = AdaValue` and
+  `MultiAssetValue`.
+- A function written once (`coinOf`, in `EraValueSuite`) adds outputs' values up through the reference's
+  `Val` in any era. Read from recorded Allegra and Mary blocks, its results equal the flat outputs'. `Val` is
+  the reference's signed group (`<+>`, `<->`, `<×>`), so `AdaValue` holds a negative amount
+  in a calculation and only an output's decoder bounds it.
+- The store's read into Allegra (`fromStored`, `private[ledger]`) refuses an output with native assets, and
+  an Allegra output carries into Mary with its bytes and lovelace.
+- The compiler refuses:
+  - an Allegra output given as a Mary one;
+  - a Mary output made from its representation in a sibling file of the same package.
+
+  The complete per-era rule set (`EraRules[E]`, §3.4) comes with Conway's rules; the spike's one-rule set is
+  removed.
+
+**The core** (stage 1, for the spike's eras):
+- The families `Value`, `TxOut`, `TxBody`, `NativeScript`, `Script` and `PlutusScript` are match types, in
+  their own file with the level types. The value is the `Value era` family, not a type member of the output
+  class.
+- Each era has its own native script, Plutus script and script: Babbage's Plutus script has V1 and V2 and
+  Conway's V1 to V3, so a V3 script of Babbage does not compile. Babbage's and Conway's decoders read as the
+  flat script decoder does and refuse what it refuses with the same error; a Babbage script carries into
+  Conway with its hash. The flat decoder refuses what the reference refuses, but two of its refusals report
+  another error than the reference's: a language the era lacks before the script's bytes are read, and tag
+  4 as unknown rather than Plutus V4. They are tracked with the other differences in what a refusal reports
+  ([#796](https://github.com/KD5UJC-XYZ/scarab/issues/796)), and the era decoders keep the flat decoder's
+  until that work changes both.
+- A native script keeps the bytes of every level (`NativeScriptRep`), read through the flat decoder and a
+  second walk on the heap. It owns one copy of its bytes and each level is a window of it, so a script kept
+  from a block does not keep the block alive. The preprod script that nests 5,383 `all` levels reads on a 256 KiB stack, and its hash is the flat
+  decoder's.
+- The script classes run from `EraScript` to `AlonzoEraScript`, and the output classes from `EraTxOut` to
+  `BabbageEraTxOut`. A class whose reference superclass is of another family names that instance as a
+  member (`BabbageEraTxOut.scripts`, `EraTxBody.outputsOf`), so each era keeps one given per class family.
+- `BabbageTxOutRep[S]` carries the era's script. The store's read into Babbage or Conway reads the reference
+  script again from the output's bytes in the era's type, and a stored V3 reference script is refused as a
+  Babbage one.
+- Each era type has `CanEqual` with itself only. Every compile-failure test has a twin that differs in the
+  one thing refused and compiles.
+- Not yet: the reference's native-script builders (`mkRequireSignature` and the others) need a
+  native-script encoder, which the node does not have. They come with the per-era test kits.
+
+**Conway's types** (stage 2, first part):
+- Conway's body has every field of the reference's `ConwayTxBodyRaw`, in its types: sorted sets of inputs and
+  required signers, ordered sets of certificates and proposals (`OSet`), nested sorted maps of votes, `Coin`
+  amounts, a `Network`, and each output `Sized` by the encoding it was read from. They are read through the
+  body classes from `EraTxBody` to `ConwayEraTxBody`, which include Babbage's sized outputs. The classes'
+  signatures are the reference's class declarations: the certificates are a sequence in `EraTxBody`
+  (`certsTxBodyL`, `Core.hs:265`) while Conway's body keeps them as an `OSet`, and the sized outputs with the
+  collateral return are of a body of any level (`allSizedOutputsTxBodyF`, `Babbage/TxBody.hs:121`). Each
+  recorded Conway body reads with every field equal to the flat decoder's.
+- Conway's certificate is its own type over the shared `PoolCert`, `ConwayDelegCert`, `ConwayGovCert` and
+  `Delegatee`. A delegation to neither a pool nor a DRep cannot be written. Each of the 17 Conway forms of a
+  certificate reads into its constructor, with the reference's key and script witnesses, and the script
+  witness equals the one the flat rules ask for. A pool registration's parameters are equal when their
+  relays and metadata mean the same, as the reference's derived `Eq StakePoolParams` compares them, though the
+  bytes they were read from are kept. Deposits and refunds are `Coin`. The certificate classes are
+  `EraTxCert`, `ShelleyEraTxCert` and `ConwayEraTxCert`, each reader with its builder. A pool is a
+  `KeyHash[StakePool]` and a retirement epoch an `EpochNo`, and each credential is of its role
+  (`Credential[Staking]`, `[DRepRole]`, `[ColdCommittee]`, `[HotCommittee]`), as in the reference's classes,
+  so a staking credential given as a DRep's does not compile.
+- Outputs and proposals compare as the reference's derived `Eq` does: an output by its address, value, datum
+  and reference script, not the bytes it arrived as; a proposal (`ProposalProcedure`) by what it means, so
+  treasury withdrawals compare as the map they are. The reference's genesis-delegation and instantaneous-reward
+  readers are on `ShelleyEraTxCert`, with `AtMostEra "Babbage"` on each method (`Shelley/TxCert.hs:164-168`).
+  A Scala method could take the same bound as evidence, but that evidence would name a range of eras, which
+  the ADR 0007 amendment rules out. So they come with those eras in a class of their own (approved
+  2026-11-15, #990; implemented with Babbage's certificates in stage 4), whose
+  instances are exactly Shelley's to Babbage's.
+- Conway's script class is `ConwayEraScript`, which builds and reads the voting and proposing purposes, and
+  `ConwayEraTxBody` names it. `AlonzoEraScript`'s own purpose builders and readers wait for Babbage's
+  purposes and certificates (stage 4), as Babbage's script instance is an `AlonzoEraScript`.
+- Conway's witness set has the reference's `AlonzoTxWitsRaw` fields: key witnesses as a set under the
+  reference's `Ord WitVKey`, bootstrap witnesses, Conway scripts by hash, the datums by hash and the
+  redeemers keyed by Conway's own purpose (`ConwayPlutusPurpose`, in the forms `AsIx`, `AsItem` and
+  `AsIxItem`), the last two with the bytes they arrived as (`TxDats`, `Redeemers`), which the script
+  integrity hash is over. The witness
+  classes are `EraTxWits` and `AlonzoEraTxWits`. The flat decoder reads the set and refuses what Conway
+  refuses. Its scripts are then read again from the same bytes into Conway's types, each native script with
+  its own bytes, and they must be the flat decoder's by hash. Every recorded Conway witness set reads with
+  the flat decoder's witnesses, and the deep preprod witness set reads on a small stack.
+- Conway's auxiliary data has `AlonzoTxAuxDataRaw`'s fields: metadata by `Word64` label, Conway native
+  scripts, and Plutus scripts' bytes per language (`Map Language (NonEmpty PlutusBinary)`). It keeps the bytes the body's auxiliary data hash is
+  over, and reads the three forms Conway reads (a metadata map, the `[metadata, native scripts]` list, the
+  map tagged 259). The flat decoder reads it and refuses what Conway refuses, and its fields are read again
+  from the same bytes with the flat decoder's readers, so a record with a detached head reads as it does. The
+  flat decoder refuses key 5 of the tagged form as unknown, where the reference reads it as Plutus V4 and
+  then refuses it below decoder version 12. That is a reported-error difference, recorded with the others
+  ([#796](https://github.com/KD5UJC-XYZ/scarab/issues/796)). The classes are `EraTxAuxData`, `AllegraEraTxAuxData` and `AlonzoEraTxAuxData`;
+  validating auxiliary data takes the protocol version and comes with the rules.
+- A Conway transaction is its body, witness set, phase-two flag (`IsPhase2Valid`) and auxiliary data,
+  read by Conway's decoders. The classes are `EraTx` and `AlonzoEraTx`, at the levels of the era's bodies.
+  Every recorded Conway transaction reads with the flat transaction's fee size
+  (`sizeTxForFeeCalculation`) and flag, and reads the same submitted whole (`ConwayTx.fromEnvelope`, the
+  form the mempool and the refusal corpus hold) as from a block's parts.
+- A Conway output is written back in the form the store keeps (`toStored`, the inverse of `fromStored`),
+  which the UTXO rule's update and the predicate failures that name outputs need. `fromStored` refuses a
+  stored output that `toStored` would not give back, one whose kept reference-script hash or tree is not
+  what its bytes read as, which only a damaged store holds (`StoredOutputDiffers`). Every recorded Conway
+  output, and outputs with native, Plutus V1, V2 and V3 reference scripts, read and are written back
+  unchanged.
+- **Next, the protocol parameters.** The flat `ProtocolParams` is one record of every era's fields, and it
+  is stored. Each era's parameters will be an opaque type over that stored form, as the outputs are. The
+  reference's parameter classes (`EraPParams` to `ConwayEraPParams`) expose an era's fields only. The first
+  rule ported is one that needs no parameters, the second one that does, each under a differential
+  against the flat rule on the recorded blocks and the refusal corpus.
+- The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
+  delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
+  crafted bytes show.
+- The spike's Babbage body is removed, so no partial body remains, and Babbage keeps its output and script
+  types. A function written once over the body classes (`EraTxSuite`) runs in Conway alone until Dijkstra's
+  body is typed (stage 3).
+
+**What it does not show yet:** a full rule pipeline (LEDGER) on typed transactions, which is stage 2.
+Bodies decoded from recorded blocks are compared on id, fee, output bytes and one era-only field.
+
+Its two findings:
+- An instance written as an anonymous class whose methods take match-type parameters needs explicit
+  `override`s, or `-Wunused` reports the methods as unused.
+- `derives` does not apply to an opaque type; instances derive on the representation.
+
+## 7. Risks
+
+- **A split through a wrong per-era choice:**
+  - the nonce window (§5);
+  - an era's rule set (§3.4);
+  - a translation (§3.7).
+
+  Each has its own test against the reference's table before the run-time choice it replaces is removed.
+- **A changed failure set:** prevented by the differential gate of every stage (§4), with #412 alone in
+  its own pull request.
+- **The store:** the storage form and every reader in §3.6 stay byte-identical. The fingerprint goldens in
+  `CodecSuite` guard them.
+- **Size of the change:** about 45 test files build the flat `TxBody`, about 90 the flat `TxOut` and `Tx`,
+  and eight tools use them. The per-era test kits move them stage by stage.
+- **Concurrent work:** the Leios work touches the Dijkstra rules. The two efforts agree who goes first
+  before stage 3 starts.

@@ -681,6 +681,106 @@
     },
     {
       "module": "ledger",
+      "path": "ledger/era",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, and what the eras share (output and script representations, certificate parts)",
+      "entryPoints": [
+        "Tx",
+        "TxOut",
+        "Script",
+        "TxCert",
+        "TxWits",
+        "TxAuxData",
+        "EraTx",
+        "EraTxOut",
+        "EraTxBody",
+        "EraTxCert",
+        "EraTxWits",
+        "EraTxAuxData",
+        "EraScript",
+        "NativeScriptRep",
+        "BabbageTxOutRep"
+      ],
+      "suites": [
+        "EraCoreSuite",
+        "EraConwaySuite",
+        "EraTxSuite",
+        "EraValueSuite"
+      ],
+      "docs": [
+        "docs/design/era-typed-transactions.md"
+      ]
+    },
+    {
+      "module": "ledger",
+      "path": "ledger/era/allegra",
+      "responsibility": "Allegra's own types: its output and native script, opaque outside their file",
+      "entryPoints": [
+        "AllegraTxOut",
+        "AllegraTimelock"
+      ],
+      "suites": [
+        "EraValueSuite"
+      ],
+      "docs": [
+        "docs/design/era-typed-transactions.md"
+      ]
+    },
+    {
+      "module": "ledger",
+      "path": "ledger/era/babbage",
+      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file",
+      "entryPoints": [
+        "BabbageScript",
+        "BabbageTxOut"
+      ],
+      "suites": [
+        "EraCoreSuite"
+      ],
+      "docs": [
+        "docs/design/era-typed-transactions.md"
+      ]
+    },
+    {
+      "module": "ledger",
+      "path": "ledger/era/conway",
+      "responsibility": "Conway's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Babbage; its certificate, purpose, witness set, auxiliary data, body and transaction, made by its decoders",
+      "entryPoints": [
+        "ConwayTx",
+        "ConwayTxBody",
+        "ConwayTxWits",
+        "ConwayTxAuxData",
+        "ConwayTxCert",
+        "ConwayPlutusPurpose",
+        "ConwayScript",
+        "ConwayTxOut"
+      ],
+      "suites": [
+        "EraCoreSuite",
+        "EraConwaySuite",
+        "EraTxSuite"
+      ],
+      "docs": [
+        "docs/design/era-typed-transactions.md"
+      ]
+    },
+    {
+      "module": "ledger",
+      "path": "ledger/era/mary",
+      "responsibility": "Mary's own types: its output and native script, and their translations from Allegra, opaque outside their file",
+      "entryPoints": [
+        "MaryTxOut",
+        "MaryTimelock"
+      ],
+      "suites": [
+        "EraValueSuite",
+        "MaryOpacitySuite"
+      ],
+      "docs": [
+        "docs/design/era-typed-transactions.md"
+      ]
+    },
+    {
+      "module": "ledger",
       "path": "ledger/injection",
       "responsibility": "Pure native streaming JSON mechanism for genesis injection files; file/hash wiring remains separate",
       "entryPoints": [

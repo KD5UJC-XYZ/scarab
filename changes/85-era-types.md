@@ -1,0 +1,4 @@
+### Added (era types, #85)
+
+- The ledger has era-specific transaction types (`ledger/era`), mirroring the reference's: each era's outputs, scripts and values are its own opaque types over shared representations, and the reference's era classes (`EraTxOut`, `EraTxBody`, `EraTxCert`, `EraTxWits`, `EraTxAuxData`, `EraTx`, `EraScript` and their subclasses) have instances at exactly the eras that have them. A rule that asks for a capability does not compile for an era without it, and one era's output cannot be given where another's is expected.
+- Conway's transaction is typed throughout (`ConwayTx`, `ConwayTxBody`, `ConwayTxCert`, `ConwayTxWits`, `ConwayTxAuxData`, `ConwayPlutusPurpose`), read through the existing decoders and checked against them on every recorded Conway block and in the submitted form. No rule, codec, node path or persisted format uses the new types yet, so behaviour does not change; Conway's rules move onto them next.
