@@ -81,13 +81,15 @@ final case class ByronAddress(
 ):
   def isRedeem: Boolean = addrType == ByronAddress.Redeem
 
-  /** `bootstrapAddressAttrsSize` (`Cardano/Ledger/Address.hs:334`): the derivation path and the
-    * attributes the ledger does not interpret, of which an output may carry 64 bytes.
+  /** `bootstrapAddressAttrsSize` (`Cardano/Ledger/Address.hs:334`, cardano-ledger f649f975): the
+    * derivation path and the attributes the ledger does not interpret, of which an output may carry
+    * 64 bytes.
     */
   def attributesSize: Int = derivationPathLength + unknownAttributesLength
 
-  /** `getNetwork` of a bootstrap address (`Cardano/Ledger/Address.hs:175`): the main network (1) if
-    * the address carries no network magic, the test network (0) if it does.
+  /** `getNetwork` of a bootstrap address (`Cardano/Ledger/Address.hs:175`, cardano-ledger
+    * f649f975): the main network (1) if the address carries no network magic, the test network (0)
+    * if it does.
     */
   def network: Int = if networkMagic.isEmpty then 1 else 0
 

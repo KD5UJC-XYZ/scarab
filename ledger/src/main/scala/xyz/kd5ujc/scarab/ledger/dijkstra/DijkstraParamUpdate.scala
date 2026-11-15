@@ -57,7 +57,9 @@ object DijkstraParamUpdate:
       .record(n, 2, DecodeField.ExUnits)
       .flatMap(xs => (part(xs(0)), part(xs(1))).mapN(ExUnits(_, _)))
 
-  /** `Prices` from version 12 (`ExUnits.hs:235-243`): two `NonNegativeInterval`. */
+  /** `Prices` from version 12 (`ExUnits.hs:235-243`, cardano-ledger 9df9f98c): two
+    * `NonNegativeInterval`.
+    */
   private def prices(n: Node): Result[DijkstraParamValue] =
     V12
       .record(n, 2, DecodeField.Prices)
@@ -70,8 +72,8 @@ object DijkstraParamUpdate:
       )
 
   /** `PoolVotingThresholds` and `DRepVotingThresholds`
-    * (`eras/conway/impl/src/Cardano/Ledger/Conway/ PParams.hs:367-375, 520-533`):
-    * `decodeRecordNamed` of `size` `UnitInterval`.
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/ PParams.hs:367-375, 520-533`, cardano-ledger
+    * 9df9f98c): `decodeRecordNamed` of `size` `UnitInterval`.
     */
   private def thresholds(size: Int, site: DecodeSite)(n: Node): Result[DijkstraParamValue] =
     V12
@@ -80,9 +82,10 @@ object DijkstraParamUpdate:
       .map(Thresholds(_))
 
   /** `CostModels` from version 9 (`decodeCostModelsLenient`, `libs/cardano-ledger-core/src/Cardano/
-    * Ledger/Plutus/CostModels.hs:302-316, 426-440`): a map of `Word8` language tags, none twice, to
-    * `decodeList` of `Int64`. A known language's list goes to Plutus's `mkEvaluationContext`, which
-    * takes a list of any length (`CostModels.hs:278-291`); an unknown one is kept.
+    * Ledger/Plutus/CostModels.hs:302-316, 426-440`, cardano-ledger 9df9f98c): a map of `Word8`
+    * language tags, none twice, to `decodeList` of `Int64`. A known language's list goes to
+    * Plutus's `mkEvaluationContext`, which takes a list of any length (`CostModels.hs:278-291`); an
+    * unknown one is kept.
     */
   private def costModels(n: Node): Result[DijkstraParamValue] =
     V12
@@ -130,12 +133,13 @@ object DijkstraParamUpdate:
     33 -> ratio(Interval.NonNegative),
     34 -> w32,
     35 -> w32,
-    // `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`)
+    // `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`, cardano-ledger 9df9f98c)
     36 -> (n =>
       V12.word32(n, what).flatMap(v => Either.cond(v != 0, Number(v), LedgerDecodeError.Zero(what)))
     ),
     37 -> ratio(Interval.Positive),
-    // `MaxPledgeLeverage`, `decodeNullStrictMaybe` of a `NonNegativeInterval` (`Core/PParams.hs:378-379`)
+    // `MaxPledgeLeverage`, `decodeNullStrictMaybe` of a `NonNegativeInterval`
+    // (`Core/PParams.hs:378-379`, cardano-ledger 9df9f98c)
     38 -> (n => V12.nullable(n)(V12.ratio(_, what, Interval.NonNegative)).map(OptionalRatio(_))),
     39 -> ratio(Interval.Unit),
     40 -> w32,

@@ -61,8 +61,8 @@ object MultiAsset:
       .bytes(n, what / DecodeSite.Qualifier.AssetName)
       .flatMap(b => Either.cond(b.size <= 32, b, LedgerDecodeError.AssetNameLength(what, b.size)))
 
-  /** A quantity of a mint (`decodeIntegerBounded64`, `Value.hs:368-392`): an integer item, not a
-    * bignum, in the range of `Int64`.
+  /** A quantity of a mint (`decodeIntegerBounded64`, `Value.hs:368-392`, cardano-ledger 9df9f98c):
+    * an integer item, not a bignum, in the range of `Int64`.
     */
   def minted(n: Node): Result[BigInt] = V12.int64(n, DecodeField.Mint).map(BigInt(_))
 
@@ -73,9 +73,9 @@ object MultiAsset:
 final case class DijkstraValue(coin: BigInt, assets: MultiAsset)
 
 object DijkstraValue:
-  /** `decodeMaryValue` (`Value.hs:298-322`): a coin alone, a `Word64`; or, for a list of any length
-    * form, `decodeRecordNamed "MaryValue" (const 2)` of the coin and a multi-asset map from version
-    * 12, which may not be empty.
+  /** `decodeMaryValue` (`Value.hs:298-322`, cardano-ledger 9df9f98c): a coin alone, a `Word64`; or,
+    * for a list of any length form, `decodeRecordNamed "MaryValue" (const 2)` of the coin and a
+    * multi-asset map from version 12, which may not be empty.
     */
   def decode(n: Node): Result[DijkstraValue] = n.value match
     case Value.UInt(_) => V12.word64(n, DecodeField.OutputValue).map(DijkstraValue(_, Map.empty))
@@ -102,10 +102,10 @@ enum DijkstraDatum:
   case Inline(raw: Bytes)
 
 object DijkstraDatum:
-  /** `Datum` from version 12
-    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs:301-316`): `decodeRecordSum` of a
-    * hash `[0, hash]` or an inline datum `[1, #6.24(bytes)]`, whose bytes must be Plutus `Data`
-    * with nothing after them (`makeBinaryData`, `:218-237`).
+  /** `Datum` from version 12 (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs:301-316`,
+    * cardano-ledger 9df9f98c): `decodeRecordSum` of a hash `[0, hash]` or an inline datum
+    * `[1, #6.24(bytes)]`, whose bytes must be Plutus `Data` with nothing after them
+    * (`makeBinaryData`, `:218-237`).
     */
   def decode(n: Node): Result[DijkstraDatum] =
     V12.sum(n, DecodeField.DatumOption) {

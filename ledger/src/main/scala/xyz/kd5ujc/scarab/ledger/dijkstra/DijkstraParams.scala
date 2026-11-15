@@ -41,7 +41,7 @@ object DijkstraParams:
   private val w32 = word(V12.Word32Max)
   private val w64 = word(V12.Word64Max)
 
-  /** `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`). */
+  /** `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`, cardano-ledger 9df9f98c). */
   private val stride: Set = (p, n) =>
     V12
       .word32(n, what)
@@ -49,7 +49,9 @@ object DijkstraParams:
         Either.cond(v != 0, p.copy(refScriptCostStride = v), LedgerDecodeError.Zero(what))
       )
 
-  /** `ExUnits` from version 12 (`Plutus/ExUnits.hs:208-230`): two `Word64` within `Int64`. */
+  /** `ExUnits` from version 12 (`Plutus/ExUnits.hs:208-230`, cardano-ledger 9df9f98c): two `Word64`
+    * within `Int64`.
+    */
   private val endorserUnits: Set = (p, n) =>
     def part(x: Node) = V12.word(x, DecodeField.ExUnits, V12.Int64Max)
     V12
@@ -59,8 +61,9 @@ object DijkstraParams:
 
   /** The setter of each update key, its value read by the decoder of [[DijkstraParamUpdate]]:
     * `decCBOR` of the field's type, the Peras bootstrap round null or a `Word32`
-    * (`ppPerasBootstrapRound`'s `EraCodec`, `PParams.hs:1074-1078`), a `Coin` by `decodeWord64`
-    * (`Coin.hs:107-112`) and a `CoinPerByte` as a compact coin, a `Word64`.
+    * (`ppPerasBootstrapRound`'s `EraCodec`, `PParams.hs:1074-1078`, cardano-ledger 9df9f98c), a
+    * `Coin` by `decodeWord64` (`Coin.hs:107-112`) and a `CoinPerByte` as a compact coin, a
+    * `Word64`.
     */
   private val setters: Map[Int, Set] = Map(
     34 -> w32((p, v) => p.copy(maxRefScriptSizePerBlock = v)),
@@ -95,9 +98,10 @@ object DijkstraParams:
   )
 
   /** The fields of `u` that Dijkstra adds, applied to `p` (`dijkstraApplyPPUpdates`,
-    * `PParams.hs:317-388`: each field present replaces the value). Conway's fields, keys 0 to 33,
-    * are applied by [[ProtocolParams.update]]; a key past 56 is not of this record and refused. The
-    * fields are the original bytes of an update read before by [[DijkstraParamUpdate.decode]].
+    * `PParams.hs:317-388` (cardano-ledger 9df9f98c): each field present replaces the value).
+    * Conway's fields, keys 0 to 33, are applied by [[ProtocolParams.update]]; a key past 56 is not
+    * of this record and refused. The fields are the original bytes of an update read before by
+    * [[DijkstraParamUpdate.decode]].
     */
   def update(p: ProtocolParams, u: ParamUpdate): Result[ProtocolParams] =
     u.fields.toVector

@@ -60,8 +60,9 @@ final case class SoftforkRule(initThd: BigInt, minThd: BigInt, thdDecrement: Big
 
 /** Byron's linear fee, stored in Nano for compatibility with native snapshot fields. */
 final case class TxFeePolicy(summandNano: BigInt, multiplierNano: BigInt):
-  /** Common/TxSizeLinear.hs:82–88 and Lovelace.hs:216–221,246–248: scale with signed ceiling,
-    * convert to Word64, then checked addition. The intermediate conversion deliberately wraps.
+  /** Common/TxSizeLinear.hs:82–88 (cardano-ledger f649f975) and Lovelace.hs:216–221,246–248: scale
+    * with signed ceiling, convert to Word64, then checked addition. The intermediate conversion
+    * deliberately wraps.
     */
   def minimumFee(size: BigInt): Either[TxFeePolicy.Error, BigInt] =
     import TxFeePolicy.*

@@ -35,9 +35,9 @@ enum DijkstraVoter:
 final case class DijkstraVotingProcedure(vote: Vote, anchor: Option[DijkstraAnchor])
 
 object DijkstraVoting:
-  /** `Voter` (`Procedures.hs:384-392`): `decodeRecordSum` of a committee member's key or script
-    * hash (tags 0 and 1), a DRep's (2 and 3) or a pool's key hash (4); 5, a pool's script, is
-    * refused.
+  /** `Voter` (`Procedures.hs:384-392`, cardano-ledger 9df9f98c): `decodeRecordSum` of a committee
+    * member's key or script hash (tags 0 and 1), a DRep's (2 and 3) or a pool's key hash (4); 5, a
+    * pool's script, is refused.
     */
   def voter(n: Node): Result[DijkstraVoter] =
     def hash(xs: Vector[Node]) = V12.bytesN(xs(1), 28, DecodeField.VoterHash)
@@ -50,7 +50,9 @@ object DijkstraVoting:
       case t if t == 4 => (2, xs => hash(xs).map(DijkstraVoter.StakePool(_)))
     }
 
-  /** `Vote` (`decodeEnumBounded`, `Procedures.hs:425-426`): `decodeInt` of 0, 1 or 2. */
+  /** `Vote` (`decodeEnumBounded`, `Procedures.hs:425-426`, cardano-ledger 9df9f98c): `decodeInt` of
+    * 0, 1 or 2.
+    */
   private def vote(n: Node): Result[Vote] =
     V12
       .int64(n, DecodeField.Vote)
@@ -61,8 +63,8 @@ object DijkstraVoting:
         case v => Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Vote, v, 0, 2))
       }
 
-  /** `VotingProcedure` from version 12 (`Procedures.hs:495-505`): `decodeRecordNamed` of the vote
-    * and an anchor or null.
+  /** `VotingProcedure` from version 12 (`Procedures.hs:495-505`, cardano-ledger 9df9f98c):
+    * `decodeRecordNamed` of the vote and an anchor or null.
     */
   private def procedure(n: Node): Result[DijkstraVotingProcedure] =
     V12
@@ -71,8 +73,9 @@ object DijkstraVoting:
         (vote(xs(0)), DijkstraAnchor.optional(xs(1))).mapN(DijkstraVotingProcedure(_, _))
       )
 
-  /** `VotingProcedures` (`Procedures.hs:447-455`): a map of voters, none twice, each to a non-empty
-    * map of governance action ids, none twice, to procedures (`decodeMapByKey`, `decodeMap`).
+  /** `VotingProcedures` (`Procedures.hs:447-455`, cardano-ledger 9df9f98c): a map of voters, none
+    * twice, each to a non-empty map of governance action ids, none twice, to procedures
+    * (`decodeMapByKey`, `decodeMap`).
     */
   def procedures(
       n: Node
@@ -117,8 +120,8 @@ final case class DijkstraProposal(
 )
 
 object DijkstraProposal:
-  /** `ProposalProcedure` from version 12 (`Procedures.hs:567-580`): `decodeRecordNamed` of the
-    * deposit (`Coin`), the return account, the action and the anchor.
+  /** `ProposalProcedure` from version 12 (`Procedures.hs:567-580`, cardano-ledger 9df9f98c):
+    * `decodeRecordNamed` of the deposit (`Coin`), the return account, the action and the anchor.
     */
   def decode(n: Node): Result[DijkstraProposal] =
     V12
@@ -139,13 +142,14 @@ object DijkstraProposal:
   private def previous(n: Node) = V12.nullable(n)(DijkstraGovActionId.decode)
   private def policy(n: Node) = V12.nullable(n)(V12.bytesN(_, 28, DecodeField.PolicyHash))
 
-  /** `GovAction` from version 12 (`Procedures.hs:935-985`): `decodeRecordSum` of a parameter change
-    * `[0, previous / null, update, policy / null]`, a hard fork `[1, previous / null, version]`
-    * whose major may be at most 13 (`decodeProtVer @DijkstraEra`, `ProtVerHigh` 12 and its
-    * successor, `BaseTypes.hs:254-265`; the version a `CBORGroup` record of a `Version` and a
-    * `Word32`), treasury withdrawals `[2, map, policy / null]`, no confidence `[3, previous /
-    * null]`, a committee update `[4, previous / null, set, map, quorum]`, a constitution `[5,
-    * previous / null, [anchor, script hash / null]]` and an information action `[6]`.
+  /** `GovAction` from version 12 (`Procedures.hs:935-985`, cardano-ledger 9df9f98c):
+    * `decodeRecordSum` of a parameter change `[0, previous / null, update, policy / null]`, a hard
+    * fork `[1, previous / null, version]` whose major may be at most 13 (`decodeProtVer @DijkstraEra`,
+    * `ProtVerHigh` 12 and its successor, `BaseTypes.hs:254-265`; the version a `CBORGroup` record
+    * of a `Version` and a `Word32`), treasury withdrawals `[2, map, policy / null]`, no confidence
+    * `[3, previous / null]`, a committee update `[4, previous / null, set, map, quorum]`, a
+    * constitution `[5, previous / null, [anchor, script hash / null]]` and an information action
+    * `[6]`.
     */
   private def action(n: Node): Result[DijkstraGovAction] =
     import DijkstraGovAction.*
@@ -204,8 +208,8 @@ object DijkstraProposal:
     }
 
   /** `ProtVer` through `decodeProtVer @DijkstraEra`: the major a `Version` (`decodeWord32` and
-    * `mkVersion32`, at most `MaxVersion` 13, `Version.hs:59-63`) no larger than 13, the minor a
-    * `Word32`.
+    * `mkVersion32`, at most `MaxVersion` 13, `Version.hs:59-63`, cardano-ledger 9df9f98c) no larger
+    * than 13, the minor a `Word32`.
     */
   private def version(n: Node): Result[(Long, Long)] =
     V12

@@ -17,7 +17,7 @@ enum DijkstraTxPart:
 /** Why a Conway transaction does not carry into Dijkstra. */
 enum DijkstraTxTranslationError:
   /** A part does not decode at Dijkstra's version: the `DecoderError` of `TranslateEra DijkstraEra
-    * (Tx TopTx)` (`Translation.hs:54`).
+    * (Tx TopTx)` (`Translation.hs:54`, cardano-ledger 9df9f98c).
     */
   case Undecodable(part: DijkstraTxPart, cause: LedgerDecodeError)
 
@@ -35,9 +35,10 @@ enum DijkstraTxTranslationError:
   */
 object DijkstraTxTranslation:
 
-  /** `TranslateEra DijkstraEra (Tx TopTx)` (`Translation.hs:53-68`): the body, the witness set and
-    * the auxiliary data, in that order, each written as Conway wrote it (`toCBOR` of a memoized
-    * part is its original bytes) and read whole at Dijkstra's version (`translateEraThroughCBOR`,
+  /** `TranslateEra DijkstraEra (Tx TopTx)` (`Translation.hs:53-68`, cardano-ledger 9df9f98c): the
+    * body, the witness set and the auxiliary data, in that order, each written as Conway wrote it
+    * (`toCBOR` of a memoized part is its original bytes) and read whole at Dijkstra's version
+    * (`translateEraThroughCBOR`,
     * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/Translation.hs:115-123`, through
     * `translateViaCBORAnnotator`, `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary.hs:60-70`),
     * the validity flag kept. Each part keeps its bytes, so the id is the same.

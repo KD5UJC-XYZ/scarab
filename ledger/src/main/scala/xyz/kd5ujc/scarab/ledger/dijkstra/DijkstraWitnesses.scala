@@ -76,8 +76,8 @@ object DijkstraWitnesses:
       redeemers.orEmpty
     )
 
-  /** `WitVKey` (`Keys/WitVKey.hs:106-109`): `decodeRecordNamed` of a 32-byte Ed25519 key and a
-    * 64-byte signature, each `decodeFixedSized`.
+  /** `WitVKey` (`Keys/WitVKey.hs:106-109`, cardano-ledger 9df9f98c): `decodeRecordNamed` of a
+    * 32-byte Ed25519 key and a 64-byte signature, each `decodeFixedSized`.
     */
   private def vkeyWitnesses(n: Node): Result[Vector[(Bytes, Bytes)]] =
     V12.nonEmptySet(n, DecodeField.VkeyWitnesses)(w =>
@@ -91,8 +91,9 @@ object DijkstraWitnesses:
         )
     )(identity)
 
-  /** `BootstrapWitness` (`Keys/Bootstrap.hs:79-112`): `decodeRecordNamed` of the key, the
-    * signature, a chain code of exactly 32 bytes from version 12, and the attributes.
+  /** `BootstrapWitness` (`Keys/Bootstrap.hs:79-112`, cardano-ledger 9df9f98c): `decodeRecordNamed`
+    * of the key, the signature, a chain code of exactly 32 bytes from version 12, and the
+    * attributes.
     */
   private def bootstrapWitnesses(n: Node): Result[Vector[DijkstraBootstrap]] =
     V12.nonEmptySet(n, DecodeField.BootstrapWitnesses)(w =>
@@ -114,8 +115,8 @@ object DijkstraWitnesses:
   private def plutusScripts(n: Node, language: DijkstraLanguage): Result[Vector[DijkstraScript]] =
     V12.nonEmptySet(n, DecodeField.PlutusScripts)(DijkstraScript.plutus(_, language))(_.hash)
 
-  /** `TxDats` from version 12 (`TxWits.hs:344-357`): a non-empty set of Plutus `Data`, no datum
-    * hash twice.
+  /** `TxDats` from version 12 (`TxWits.hs:344-357`, cardano-ledger 9df9f98c): a non-empty set of
+    * Plutus `Data`, no datum hash twice.
     */
   private def datumSet(n: Node): Result[Vector[Bytes]] =
     V12.nonEmptySet(n, DecodeField.Datums)(d =>
@@ -124,7 +125,7 @@ object DijkstraWitnesses:
       DijkstraDatum.hash
     )
 
-  /** `RedeemersRaw` from version 12 (`TxWits.hs:566-614`). */
+  /** `RedeemersRaw` from version 12 (`TxWits.hs:566-614`, cardano-ledger 9df9f98c). */
   private def redeemerMap(n: Node): Result[Vector[DijkstraRedeemer]] = n.value match
     case Value.Map(_) if !CborRead.mapLength64(n) =>
       V12
@@ -208,10 +209,11 @@ object DijkstraAuxData:
       metadatum(v).as(v.original)
     )
 
-  /** `decodeMetadatum` (`libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs:153-221`): an
-    * integer item (not a bignum), a byte string or a text of at most 64 bytes (chunked or not, the
-    * chunks joined), or a list or map of metadata in any length form (a map's keys may repeat).
-    * Nesting is unbounded, so the value is read on the heap ([[TreeFold]], ADR 0011).
+  /** `decodeMetadatum` (`libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs:153-221`,
+    * cardano-ledger 9df9f98c): an integer item (not a bignum), a byte string or a text of at most
+    * 64 bytes (chunked or not, the chunks joined), or a list or map of metadata in any length form
+    * (a map's keys may repeat). Nesting is unbounded, so the value is read on the heap
+    * ([[TreeFold]], ADR 0011).
     */
   private def metadatum(root: Node): Result[Unit] =
     TreeFold.foldE[Node, Unit, LedgerDecodeError](root) { node =>
