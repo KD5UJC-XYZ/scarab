@@ -338,3 +338,17 @@ class DijkstraPParamsSuite extends FunSuite:
     val set =
       instance.hkdPerasCertBoostL[Identity].replace(Unsigned.lit[W16](9))(DijkstraPParams.empty)
     assertEquals(set.perasCertBoost.unTHKD.value, BigInt(9))
+
+  test("an update's cost models replace those of their languages and keep the others"):
+    def models(m: Map[Int, Vector[BigInt]]) =
+      xyz.kd5ujc.scarab.ledger.era.CostModels.from(m).fold(e => fail(e.toString), identity)
+    val pp = PParams[Dijkstra](
+      DijkstraPParams.empty.copy(costModels = THKD(models(Map(0 -> Vector(BigInt(1), BigInt(2))))))
+    )
+    val ppu = PParamsUpdate[Dijkstra](
+      DijkstraPParams.emptyUpdate.copy(costModels = THKD(Some(models(Map(1 -> Vector(BigInt(3)))))))
+    )
+    assertEquals(
+      instance.applyPPUpdates(pp, ppu).hkd.costModels.unTHKD,
+      models(Map(0 -> Vector(BigInt(1), BigInt(2)), 1 -> Vector(BigInt(3))))
+    )

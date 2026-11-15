@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Dijkstra's protocol parameters have an era type of their own (`DijkstraPParams`), mirroring the higher-kinded record of the Leios testnet's build. Beside Conway's fields it has the reference scripts' limits and costs, the pledge leverage and pool margin, Leios's and Peras's parameters, and the reference inputs' costs. Dijkstra has instances of the parameter classes up to Conway's and of its own (`DijkstraEraPParams`). Its well-formedness of an update ignores the protocol version and also refuses a zero `eMax`. Measured on the build, the decoding, well-formedness and groups of 113 updates agree. No rule uses it yet, so behaviour does not change.
