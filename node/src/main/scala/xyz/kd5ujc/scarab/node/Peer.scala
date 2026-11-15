@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PeerError,
   ValidationError
 }
-import cats.effect.{Async, Deferred, Ref, Resource, Temporal}
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.implicits.*
 import cats.effect.std.{Queue, Semaphore}
 import cats.mtl.Raise
@@ -391,25 +391,6 @@ object Peer:
 
   /** Batches the peer keeps in flight: one being applied, the others being fetched. */
   private[node] val Depth = 3
-
-  /** Keep measurements current even while the header producer is blocked. Pinned BlockFetch
-    * State.hs:396–425 reads GSVs only after a candidate, status or grace trigger, in both modes;
-    * this sampling interval does not itself trigger a fetch decision. The supervised fiber owns
-    * failures and cancellation.
-    */
-  private[node] val FetchPerformanceInterval: FiniteDuration = 10.millis
-
-  private[node] def refreshFetchPerformance[F[_]: Temporal](
-      read: F[FetchGsv.PeerGsv],
-      update: FetchGsv.PeerGsv => F[Unit]
-  ): F[Unit] =
-    val F = Temporal[F]
-    F.tailRecM(Option.empty[FetchGsv.PeerGsv]) { previous =>
-      read.flatMap { current =>
-        update(current).unlessA(previous.contains(current)) *>
-          F.sleep(FetchPerformanceInterval).as(Left(Some(current)))
-      }
-    }
 
   /** Called with each fetched raw block before it is handed to the rules. */
   type Prepare[F[_]] = Vector[Bytes] => F[Unit]
@@ -1635,12 +1616,10 @@ object Peer:
           val start: F[Unit] =
             startOnce(started) {
               observersStarted.getAndSet(true).flatMap { alreadyRunning =>
-                (supervised(invalidBlockRejector) *> supervised(
-                  fetchClient
-                ) *> connection.fetchPerformance
-                  .traverse_(read =>
-                    supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
-                  ))
+                // Every fetch decision reads the connection's GSV estimate itself (native
+                // State.hs:418-421); nothing copies it between decisions.
+                (supervised(invalidBlockRejector) *> supervised(fetchClient) *>
+                  connection.fetchPerformance.traverse_(fetcher.measured))
                   .unlessA(alreadyRunning)
               } *> (if streamed then supervised(streaming)
                     else

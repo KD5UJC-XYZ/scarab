@@ -203,12 +203,15 @@ final class FetchCoordinator[F[_]: Async] private (
           Deferred[F, Unit],
           selection.sequence,
           fetched.sequence,
-          genesis.get.flatMap(_.traverse(c => c.context.map(c -> _)))
+          genesis.get.flatMap(_.traverse(c => c.context.map(c -> _))),
+          estimates
         ).tupled
-      ).flatMap { (signal, local, cached, control) =>
+      ).flatMap { (signal, local, cached, control, sampled) =>
         state
           .modify { before =>
             val snapshot = before.copy(
+              peers =
+                before.peers.map((id, peer) => id -> sampled.get(id).fold(peer)(newer(peer, _))),
               selected = local,
               fetched = cached.getOrElse(Fetched.none),
               genesisContext = control.map(_._2),
@@ -387,15 +390,21 @@ final class FetchCoordinator[F[_]: Async] private (
       }
     }
 
-  /** GSV estimates are non-trigger state (native State.hs:419–425). Recording them must not
-    * retrigger a decision or restart the grace wait; the next real trigger reads them.
+  /** The live GSV estimate of session `id` 's connection, which every decision reads: GSVs are
+    * non-trigger state, read in the decision's snapshot after its trigger (native
+    * State.hs:418–421), so a new estimate neither starts a decision nor waits in a copy for one.
     */
-  private def updatePerformance(id: Long, performance: FetchGsv.PeerGsv): F[Unit] =
+  private def measure(id: Long, estimate: F[FetchGsv.PeerGsv]): F[Unit] =
     state.update(s =>
-      s.copy(peers = s.peers.updatedWith(id)(_.map { peer =>
-        if performance.sampleTimePicos < peer.performance.sampleTimePicos then peer
-        else peer.copy(performance = performance)
-      }))
+      s.copy(peers = s.peers.updatedWith(id)(_.map(_.copy(estimate = Some(estimate)))))
+    )
+
+  /** The registered peers' estimates, read once for a decision. */
+  private def estimates: F[Map[Long, FetchGsv.PeerGsv]] =
+    state.get.flatMap(
+      _.peers.toVector
+        .traverseFilter((id, peer) => peer.estimate.traverse(_.map(id -> _)))
+        .map(_.toMap)
     )
 
   private def announce(
@@ -407,16 +416,7 @@ final class FetchCoordinator[F[_]: Async] private (
     change { s =>
       s.copy(
         peers = s.peers.updatedWith(id)(
-          _.map(peer =>
-            peer.copy(
-              tip = tip,
-              performance =
-                if performance.sampleTimePicos < peer.performance.sampleTimePicos then
-                  peer.performance
-                else performance,
-              candidate = candidate
-            )
-          )
+          _.map(peer => newer(peer, performance).copy(tip = tip, candidate = candidate))
         )
       )
     }
@@ -645,8 +645,16 @@ object FetchCoordinator:
       request: Option[Allocation] = None,
       active: Map[Long, Active] = Map.empty,
       busy: Boolean = false,
-      probe: Option[F[Peer.PipelineState]] = None
+      probe: Option[F[Peer.PipelineState]] = None,
+      estimate: Option[F[FetchGsv.PeerGsv]] = None
   )
+
+  /** `peer` with the GSV `sample`, unless the one it has was sampled later: a delayed sample never
+    * replaces a newer one, and one of the same time does.
+    */
+  private def newer[F[_]](peer: PeerState[F], sample: FetchGsv.PeerGsv): PeerState[F] =
+    if sample.sampleTimePicos < peer.performance.sampleTimePicos then peer
+    else peer.copy(performance = sample)
   private final case class State[F[_]](
       signal: Deferred[F, Unit],
       next: Long,
@@ -679,8 +687,11 @@ object FetchCoordinator:
 
     /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */
     private[node] def observed(probe: F[Peer.PipelineState]): F[Unit] = owner.observe(id, probe)
-    private[node] def updatePerformance(performance: FetchGsv.PeerGsv): F[Unit] =
-      owner.updatePerformance(id, performance)
+
+    /** Let every decision read this session's GSV estimate through `estimate`, which must not block
+      * or fail: the connection's own measurement.
+      */
+    private[node] def measured(estimate: F[FetchGsv.PeerGsv]): F[Unit] = owner.measure(id, estimate)
     private[node] def acquire: F[Option[Allocation]] = owner.acquire(id)
     private[node] def tryAcquire: F[Option[Allocation]] = owner.tryAcquire(id)
     private[node] def terminate: F[Unit] = owner.terminate(id)

@@ -19,9 +19,11 @@ loop is [#430](https://github.com/KD5UJC-XYZ/scarab/issues/430) under [#477](htt
 consensus comparison ordinals, salted peer ties and one snapshot of in-flight work.
 The pinned GSV distribution is degenerate: KeepAlive RTT/2 with a fixed 4Mbps
 serialization estimate and time-dependent smoothing. It is not an adaptive bandwidth
-estimator. A resource-owned updater samples changed KeepAlive estimates independently
-of header progress at the pinned Praos decision interval (10ms); older header
-announcements cannot replace newer samples. The native oracle records the actual ascending bulk and descending
+estimator. Each fetch session registers its connection's KeepAlive estimate once, and
+every decision reads the registered estimates with its other non-trigger inputs, as the
+reference reads the peers' GSVs in its decision snapshot (network c45735a5
+BlockFetch/State.hs:418-425): a new estimate starts no decision, and an older sample, an
+estimate or a delayed header announcement, never replaces a newer one. The native oracle records the actual ascending bulk and descending
 deadline comparator directions; comments describing a generic preferred-first sort
 are insufficient to define this behavior. The GSV comparator's 5% tie band is not
 transitive, so both GSV orderings (ranking and preferred-peer admission) use

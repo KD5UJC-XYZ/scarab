@@ -547,7 +547,8 @@ while a channel is still registered with a selector, so that a reset could lag t
 in the same seat. The effect runtime's own counters (cats-effect's per-worker `WorkerThread` and `TimerHeap` JMX beans)
 showed where: about 370 timers scheduled a second, and the compute workers polling about 200,000 times a second while
 99% idle. The timers come from loops that run whatever the load:
-- each peer session's fetch-performance refresh every 10 ms (`Peer.refreshFetchPerformance`), about 100 a second per peer;
+- each peer session's fetch-performance refresh every 10 ms, about 100 a second per peer (since removed: the decisions read
+  each connection's GSV estimate themselves, as the reference does);
 - the BlockFetch decision at the reference's 10 ms Praos interval, about 100 a second;
 - `Scheduling.monitor` every 20 ms, 50 a second;
 - the slot loop, 10 a second at these slots.
