@@ -159,12 +159,13 @@ trait NodeTypeCodecs extends VocabularyCodecs:
 
   // ---- pools
 
-  /** The pledge and cost of `StakePoolParams`, a `Coin` (`Coin.hs:93-111`): written as an `Integer`
-    * and read as a `Word64`. A genesis pool may hold a negative one or one past `Word64`, which the
-    * reference's genesis reader accepts; it is written as the reference writes it, in a query
-    * answer and in the state, and refused when the state is read back.
+  /** A `Coin` held as the reference's `Integer` (`Coin.hs:93-111`, cardano-ledger f649f975):
+    * written as an `Integer` and read as a `Word64`. The pledge and cost of `StakePoolParams` and
+    * the amounts of a treasury withdrawal. A genesis pool may hold a negative one or one past
+    * `Word64`, which the reference's genesis reader accepts; it is written as the reference writes
+    * it, in a query answer and in the state, and refused when the state is read back.
     */
-  private val poolCoin: Codec[BigInt] = new Codec[BigInt]:
+  private val heldCoin: Codec[BigInt] = new Codec[BigInt]:
     private val under = word(64)
     def decode(n: Node): Decoded[BigInt] = under.decode(n)
     def encode(a: BigInt, out: Writer): Unit = out.integer(a)
@@ -179,8 +180,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       (
         hash28,
         hash32Bytes,
-        poolCoin,
-        poolCoin,
+        heldCoin,
+        heldCoin,
         unitInterval,
         rewardAccount,
         sortedSet(hash28),
@@ -281,7 +282,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     */
   given govAction(using v: ProtVer): Codec[GovAction] = new Codec[GovAction]:
     private val policy = nullable(hash28)
-    private val withdrawals = sortedMap(rewardAccount, amount)
+    private val withdrawals = sortedMap(rewardAccount, heldCoin)
     private val removed = sortedSet(nodeCredential)
     private val added = sortedMap(nodeCredential, amount)
     private val version = Record.of[(BigInt, BigInt)]((Codec.uintBig(13), word32))

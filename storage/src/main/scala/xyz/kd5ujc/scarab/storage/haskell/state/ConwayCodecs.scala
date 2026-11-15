@@ -441,23 +441,13 @@ object ConwayCodecs:
         parameterUpdate.encode(update, out)
         policy.encode(pol, out)
       case (other, out) => state.govAction.encode(other, out)
-    } {
-      case a @ GovAction.TreasuryWithdrawals(ws, _) =>
-        // a `Map AccountAddress Coin` (`Procedures.hs:830-834`, cardano-ledger f649f975): an account once
-        val repeated = Codec.refuse(
-          ws.map(_._1).distinct.size != ws.size,
-          "TreasuryWithdrawals",
-          "each account once",
-          ws.size
-        )
-        govActionBounds(a).orElse(repeated)
-      case a => govActionBounds(a)
-    }
+    }(a => first(govActionBounds(a), decoderLimits(a)))
 
   /** What the reference's types of a `GovAction` hold (`Procedures.hs:815-855`, cardano-ledger
-    * f649f975): a `Version` major of at most 13 and a `Word32` minor, `Coin` s and epochs of a
-    * `Word64`, a quorum in 0..1, hashes of their size. The state writer checks these alone; a
-    * transaction's action is also checked by [[govAction]].
+    * f649f975): a `Version` major of at most 13 and a `Word32` minor (`ProtVer`), a `Word16` action
+    * index, accounts of network 0 or 1, epochs of a `Word64`, a quorum in 0..1, hashes of their
+    * size. A `Coin` is an `Integer` (`Coin.hs:93`) and a `Url` a `Text` (`BaseTypes.hs:674-676`),
+    * so neither is bounded here. The state writer checks these alone.
     */
   def govActionBounds(a: GovAction)(using ProtVer): Option[ConstraintViolation] =
     // `nullable` checks nothing of its own: the value inside it is checked here
@@ -469,10 +459,7 @@ object ConwayCodecs:
       case GovAction.HardFork(prev, major, minor) =>
         first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
       case GovAction.TreasuryWithdrawals(ws, pol) =>
-        first(
-          ws.iterator.flatMap((to, amount) => account(to).orElse(coin(amount))).nextOption(),
-          script(pol)
-        )
+        first(ws.iterator.flatMap((to, _) => account(to)).nextOption(), script(pol))
       case GovAction.NoConfidence(prev) => ids(prev)
       case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
         first(
@@ -482,8 +469,27 @@ object ConwayCodecs:
           unitInterval.check(quorum)
         )
       case GovAction.NewConstitution(prev, guardrails, constitution) =>
-        first(ids(prev), script(guardrails), anchor(Some(constitution)))
+        first(ids(prev), script(guardrails), hash32.check(constitution.hash))
       case GovAction.Info => None
+
+  /** What a transaction's action must also satisfy, the limits of the reference's decoders: a
+    * withdrawal's `Coin` a `Word64` (`Coin.hs:108-109`), each account once in its `Map`
+    * (`Procedures.hs:830-834`), and a constitution's url within its size (`BaseTypes.hs:678-685`),
+    * all at cardano-ledger f649f975.
+    */
+  private def decoderLimits(a: GovAction)(using ProtVer): Option[ConstraintViolation] = a match
+    case GovAction.TreasuryWithdrawals(ws, _) =>
+      first(
+        ws.iterator.flatMap((_, amount) => coin(amount)).nextOption(),
+        Codec.refuse(
+          ws.map(_._1).distinct.size != ws.size,
+          "TreasuryWithdrawals",
+          "each account once",
+          ws.size
+        )
+      )
+    case GovAction.NewConstitution(_, _, constitution) => anchor(Some(constitution))
+    case _                                             => None
 
   /** `EncCBOR (ProposalProcedure era)` (`Procedures.hs:537-544`, cardano-ledger f649f975):
     * `[deposit, return account, action, anchor]`, the action by [[govAction]].

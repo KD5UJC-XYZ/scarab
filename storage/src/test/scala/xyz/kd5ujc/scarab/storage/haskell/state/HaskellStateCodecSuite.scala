@@ -808,6 +808,48 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     }
   }
 
+  test("state withdrawals write a Coin as an Integer; only the transaction writer bounds it") {
+    // cardano-ledger f649f975, Coin.hs:93 (an `Integer`), 106 (`EncCBOR` via `Integer`), 108-109
+    // (read as a `Word64`); Procedures.hs:938-939.
+    import xyz.kd5ujc.scarab.ledger.{Credential, GovAction, RewardAccount}
+    val account = RewardAccount(0, Credential.Key(hex(key28)))
+    val codec = govAction(using version(10))
+    val transaction = ConwayCodecs.govAction(using version(10))
+    val accountBytes = "581de0" + key28
+    List(
+      (BigInt(1) << 64) -> "c249010000000000000000",
+      BigInt(-1) -> "20"
+    ).foreach { (amount, coin) =>
+      val action = GovAction.TreasuryWithdrawals(Vector(account -> amount), None)
+      assertEquals(codec.check(action), None, s"a Coin of $amount is an Integer")
+      assertEquals(codec.write(action), Right(hex(s"8302 a1 $accountBytes $coin f6")))
+      assertEquals(
+        transaction.check(action),
+        Some(
+          ConstraintViolation("unsigned integer", s"0..${(BigInt(1) << 64) - 1}", amount.toString)
+        )
+      )
+    }
+  }
+
+  test("a state constitution's url is not bounded; the transaction writer bounds it") {
+    // cardano-ledger f649f975, BaseTypes.hs:674-676 (`Url` over `Text`), 678-685 (`DecCBOR Url`).
+    import xyz.kd5ujc.scarab.ledger.{Anchor, GovAction}
+    val url = "a" * 129
+    val action = GovAction.NewConstitution(None, None, Anchor(url, hex("02" * 32)))
+    val codec = govAction(using version(10))
+    assertEquals(codec.check(action), None)
+    assertEquals(
+      codec.write(action),
+      Right(hex(s"8305 f6 82 8278 81 ${"61" * 129} 5820 ${"02" * 32} f6"))
+    )
+    assert(ConwayCodecs.govAction(using version(10)).check(action).isDefined)
+    assert(
+      codec.check(GovAction.NewConstitution(None, None, Anchor(url, hex("02" * 31)))).isDefined,
+      "the anchor's hash keeps its size"
+    )
+  }
+
   test("state treasury withdrawals encode their map without transaction validation") {
     // cardano-ledger f649f975, Conway/Governance/Procedures.hs:938-939.
     import xyz.kd5ujc.scarab.ledger.{Credential, GovAction, RewardAccount}
