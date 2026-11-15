@@ -68,14 +68,13 @@ class EraValueSuite extends munit.FunSuite:
     assertEquals(compileErrors("def f(m: MaryTxOut): MaryTxOut = m"), "")
   }
 
-  test("Val is the reference's signed group: subtraction, scaling and pointwise comparison") {
+  test("Val is the reference's signed group: subtraction and scaling") {
     val ada = summon[Val[AdaValue]]
     val (five, seven) = (AdaValue(5), AdaValue(7))
     // a negative amount is a value in a calculation (`Coin` is an `Integer`)
     assertEquals(ada.minus(five, seven).lovelace, BigInt(-2))
     assertEquals(ada.scale(-1, seven).lovelace, BigInt(-7))
     assert(ada.isZero(ada.minus(seven, seven)))
-    assert(ada.pointwise(_ <= _, five, seven))
     assertEquals(ada.modifyCoin(c => Coin(c.value * 2), five).lovelace, BigInt(10))
     val ma = summon[Val[MultiAssetValue]]
     val policy = Bytes(Vector.fill(28)(1.toByte))
@@ -88,10 +87,6 @@ class EraValueSuite extends munit.FunSuite:
     assertEquals(ma.minus(v, w).lovelace, BigInt(6))
     assert(ma.isZero(ma.scale(0, v)))
     assertEquals(ma.scale(-2, w).assets, Map(policy -> Map(a -> BigInt(-6))))
-    // a quantity one side lacks is zero
-    assert(ma.pointwise(_ >= _, v, w))
-    assert(!ma.pointwise(_ <= _, v, w))
-    assert(ma.pointwise(_ >= _, v, ma.zero))
   }
 
   test("the store's read into Allegra still refuses a negative coin, which no output holds") {

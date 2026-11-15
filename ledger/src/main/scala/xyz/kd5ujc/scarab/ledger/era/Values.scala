@@ -9,7 +9,9 @@ import xyz.kd5ujc.scarab.ledger.state.Coin
   * it, whatever the era's value is. The group is the reference's, signed: a value may be negative
   * in a calculation, and only an output's value is bounded, by its decoder. The size and
   * compact-form members (`size`, `isAdaOnlyCompact`, `coinCompact`, `injectCompact`,
-  * `modifyCompactCoin`) come with the compact forms (tracked on #85).
+  * `modifyCompactCoin`) come with the compact forms, and `pointwise` with a mirror of `Data.Map` 's
+  * `pointWise`, whose result depends on the map's tree and on the order of its recursive arguments
+  * (`Data/CanonicalMaps.hs:98-111`, cardano-ledger f649f975); both are tracked on #85.
   */
 trait Val[V]:
   def zero: V
@@ -27,9 +29,6 @@ trait Val[V]:
   def coin(v: V): Coin
 
   def modifyCoin(f: Coin => Coin, v: V): V
-
-  /** `pointwise`: `p` holds of every pair of quantities, a quantity one side lacks being zero. */
-  def pointwise(p: (BigInt, BigInt) => Boolean, a: V, b: V): Boolean
 
   /** Whether the value is lovelace only (`isAdaOnly`). */
   def isAdaOnly(v: V): Boolean
@@ -57,7 +56,6 @@ object AdaValue:
     def isZero(v: AdaValue): Boolean = v.signum == 0
     def coin(v: AdaValue): Coin = Coin(v)
     def modifyCoin(f: Coin => Coin, v: AdaValue): AdaValue = f(Coin(v)).value
-    def pointwise(p: (BigInt, BigInt) => Boolean, a: AdaValue, b: AdaValue): Boolean = p(a, b)
     def isAdaOnly(v: AdaValue): Boolean = true
 
 /** Lovelace and native assets: `MaryValue`, the value from Mary on (`Value MaryEra` to `Value
@@ -96,14 +94,4 @@ object MultiAssetValue:
     def coin(v: MultiAssetValue): Coin = Coin(v.coin)
     def modifyCoin(f: Coin => Coin, v: MultiAssetValue): MultiAssetValue =
       v.copy(coin = f(Coin(v.coin)).value)
-    def pointwise(
-        p: (BigInt, BigInt) => Boolean,
-        a: MultiAssetValue,
-        b: MultiAssetValue
-    ): Boolean =
-      val zero = Map.empty[Bytes, BigInt]
-      p(a.coin, b.coin) && (a.assets.keySet ++ b.assets.keySet).forall { policy =>
-        val (x, y) = (a.assets.getOrElse(policy, zero), b.assets.getOrElse(policy, zero))
-        (x.keySet ++ y.keySet).forall(name => p(x.getOrElse(name, 0), y.getOrElse(name, 0)))
-      }
     def isAdaOnly(v: MultiAssetValue): Boolean = v.assets.isEmpty
