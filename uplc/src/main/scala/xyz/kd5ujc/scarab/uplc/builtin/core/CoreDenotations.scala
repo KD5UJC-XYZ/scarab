@@ -120,8 +120,8 @@ object CoreDenotations:
 
   private val bodies: Map[DefaultFun, Body] =
     import DefaultFun.*
-    Map(
-      // `Builtins.hs:1099-1240` of plutus 1.70.0.0
+    // `Builtins.hs:1099-1240` of plutus 1.70.0.0
+    val integers: Map[DefaultFun, Body] = Map(
       AddInteger -> constant2[BigInt, BigInt]((x, y) => integer(x + y)),
       SubtractInteger -> constant2[BigInt, BigInt]((x, y) => integer(x - y)),
       MultiplyInteger -> constant2[BigInt, BigInt]((x, y) => integer(x * y)),
@@ -131,11 +131,14 @@ object CoreDenotations:
       ModInteger -> division(floorModulus),
       EqualsInteger -> constant2[BigInt, BigInt]((x, y) => bool(x == y)),
       LessThanInteger -> constant2[BigInt, BigInt]((x, y) => bool(x < y)),
-      LessThanEqualsInteger -> constant2[BigInt, BigInt]((x, y) => bool(x <= y)),
-      // `Builtins.hs:1242-1396` of plutus 1.70.0.0
+      LessThanEqualsInteger -> constant2[BigInt, BigInt]((x, y) => bool(x <= y))
+    )
+
+    // `Builtins.hs:1242-1396` of plutus 1.70.0.0; ConsByteString: `fromIntegral` to a `Word8`
+    // keeps the low 8 bits (variants A, B and D); C and E read a `Word8`, so their argument is that
+    // byte already.
+    val byteStrings: Map[DefaultFun, Body] = Map(
       AppendByteString -> constant2[Bytes, Bytes]((x, y) => bytes(x ++ y)),
-      // `fromIntegral` to a `Word8` keeps the low 8 bits (variants A, B and D); C and E read a
-      // `Word8`, so their argument is that byte already.
       ConsByteString -> constant2[BigInt, Bytes]((n, xs) =>
         bytes(Bytes.wrap(Array((n & BigInt(0xff)).toByte)) ++ xs)
       ),
@@ -152,8 +155,11 @@ object CoreDenotations:
       ),
       EqualsByteString -> constant2[Bytes, Bytes]((x, y) => bool(x == y)),
       LessThanByteString -> constant2[Bytes, Bytes]((x, y) => bool(x.compareTo(y) < 0)),
-      LessThanEqualsByteString -> constant2[Bytes, Bytes]((x, y) => bool(x.compareTo(y) <= 0)),
-      // `Builtins.hs:1507-1611` of plutus 1.70.0.0
+      LessThanEqualsByteString -> constant2[Bytes, Bytes]((x, y) => bool(x.compareTo(y) <= 0))
+    )
+
+    // `Builtins.hs:1507-1611` of plutus 1.70.0.0
+    val strings: Map[DefaultFun, Body] = Map(
       AppendString -> constant2[Text, Text]((x, y) =>
         Right(Constant.String(Text.fromString(x.string + y.string)))
       ),
@@ -165,8 +171,11 @@ object CoreDenotations:
           .left
           .map(_ => failed(EvaluationFailure.InvalidUtf8))
           .map(Constant.String(_))
-      ),
-      // `Builtins.hs:1612-1637` of plutus 1.70.0.0
+      )
+    )
+
+    // `Builtins.hs:1612-1637` of plutus 1.70.0.0
+    val control: Map[DefaultFun, Body] = Map(
       IfThenElse -> ([V] =>
         (r: Reading[V]) =>
           for
@@ -185,13 +194,19 @@ object CoreDenotations:
           for
             t <- r[Text](0)
             x <- r.opaque(1)
-          yield Done(x, Vector(t.string))),
-      // `Builtins.hs:1638-1661` of plutus 1.70.0.0
+          yield Done(x, Vector(t.string)))
+    )
+
+    // `Builtins.hs:1638-1661` of plutus 1.70.0.0
+    val pairs: Map[DefaultFun, Body] = Map(
       FstPair -> ([V] =>
         (r: Reading[V]) => r.someConstant(0).flatMap(pair(_, 0)).map(p => r.constant(p.first))),
       SndPair -> ([V] =>
-        (r: Reading[V]) => r.someConstant(0).flatMap(pair(_, 0)).map(p => r.constant(p.second))),
-      // `Builtins.hs:1663-1730` of plutus 1.70.0.0
+        (r: Reading[V]) => r.someConstant(0).flatMap(pair(_, 0)).map(p => r.constant(p.second)))
+    )
+
+    // `Builtins.hs:1663-1730` of plutus 1.70.0.0
+    val lists: Map[DefaultFun, Body] = Map(
       ChooseList -> ([V] =>
         (r: Reading[V]) =>
           for
@@ -229,8 +244,11 @@ object CoreDenotations:
         (r: Reading[V]) =>
           r.someConstant(0)
             .flatMap(list(_, 0))
-            .map(xs => r.constant(Constant.Bool(xs.items.isEmpty)))),
-      // `Builtins.hs:1732-1744` of plutus 1.70.0.0
+            .map(xs => r.constant(Constant.Bool(xs.items.isEmpty))))
+    )
+
+    // `Builtins.hs:1732-1744` of plutus 1.70.0.0
+    val dataChoice: Map[DefaultFun, Body] = Map(
       ChooseData -> ([V] =>
         (r: Reading[V]) =>
           r[PlutusData](0).flatMap { d =>
@@ -241,16 +259,22 @@ object CoreDenotations:
               case PlutusData.I(_)         => 4
               case PlutusData.B(_)         => 5
             r.opaque(branch).map(r.value)
-        }),
-      // `Builtins.hs:1745-1787` of plutus 1.70.0.0; `constrData` reads a `Word64` in D and E.
+        })
+    )
+
+    // `Builtins.hs:1745-1787` of plutus 1.70.0.0; `constrData` reads a `Word64` in D and E.
+    val dataConstructors: Map[DefaultFun, Body] = Map(
       ConstrData -> constant2[BigInt, Vector[PlutusData]]((i, ds) =>
         data(PlutusData.Constr(i, ds))
       ),
       MapData -> constant1[Vector[(PlutusData, PlutusData)]](es => data(PlutusData.Map(es))),
       ListData -> constant1[Vector[PlutusData]](ds => data(PlutusData.List(ds))),
       IData -> constant1[BigInt](n => data(PlutusData.I(n))),
-      BData -> constant1[Bytes](b => data(PlutusData.B(b))),
-      // `Builtins.hs:1788-1841` of plutus 1.70.0.0
+      BData -> constant1[Bytes](b => data(PlutusData.B(b)))
+    )
+
+    // `Builtins.hs:1788-1841` of plutus 1.70.0.0
+    val dataDestructors: Map[DefaultFun, Body] = Map(
       UnConstrData -> constant1[PlutusData] {
         case PlutusData.Constr(i, fields) =>
           dataList(fields).map(Constant.Pair(Constant.Integer(i), _))
@@ -272,19 +296,28 @@ object CoreDenotations:
       UnBData -> constant1[PlutusData] {
         case PlutusData.B(b) => bytes(b)
         case _               => Left(failed(EvaluationFailure.UnexpectedData(DataShape.B)))
-      },
-      // Haskell's derived `Eq`: constructors, entries and items compared in order
-      // (`Builtins.hs:1843-1849`, `PlutusCore/Data.hs:42-49`, plutus 1.70.0.0); `PlutusData`'s
-      // equality is that structural comparison, walked on the heap.
+      }
+    )
+
+    // Haskell's derived `Eq`: constructors, entries and items compared in order
+    // (`Builtins.hs:1843-1849`, `PlutusCore/Data.hs:42-49`, plutus 1.70.0.0); `PlutusData`'s
+    // equality is that structural comparison, walked on the heap.
+    val dataEquality: Map[DefaultFun, Body] = Map(
       EqualsData -> constant2[PlutusData, PlutusData]((x, y) => bool(x == y)),
-      SerialiseData -> constant1[PlutusData](d => bytes(DataSerialisation.serialise(d))),
-      // `Builtins.hs:1858-1884` of plutus 1.70.0.0
+      SerialiseData -> constant1[PlutusData](d => bytes(DataSerialisation.serialise(d)))
+    )
+
+    // `Builtins.hs:1858-1884` of plutus 1.70.0.0
+    val dataLists: Map[DefaultFun, Body] = Map(
       MkPairData -> constant2[PlutusData, PlutusData]((x, y) =>
         Right(Constant.Pair(Constant.Data(x), Constant.Data(y)))
       ),
       MkNilData -> constant1[Unit](_ => Right(Constant.List.empty(DefaultUni.Data))),
-      MkNilPairData -> constant1[Unit](_ => Right(Constant.List.empty(DataPair))),
-      // `Builtins.hs:2328-2376` of plutus 1.70.0.0
+      MkNilPairData -> constant1[Unit](_ => Right(Constant.List.empty(DataPair)))
+    )
+
+    // `Builtins.hs:2328-2376` of plutus 1.70.0.0
+    val listDrop: Map[DefaultFun, Body] = Map(
       DropList -> ([V] =>
         (r: Reading[V]) =>
           for
@@ -293,6 +326,9 @@ object CoreDenotations:
             xs <- list(c, 1)
           yield r.constant(dropList(n, xs)))
     )
+
+    integers ++ byteStrings ++ strings ++ control ++ pairs ++ lists ++ dataChoice ++
+      dataConstructors ++ dataDestructors ++ dataEquality ++ dataLists ++ listDrop
 
   private val tables: Vector[Map[DefaultFun, Denotation]] =
     CoreVariant.values.toVector.map(v => bodies.map((f, body) => f -> denotation(v, f, body)))

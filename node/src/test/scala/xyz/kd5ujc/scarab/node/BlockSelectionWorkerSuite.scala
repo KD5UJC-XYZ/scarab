@@ -1030,10 +1030,10 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       left <- checked(forks._1, 3)
       right <- checked(forks._2, 3)
       target = left(1).header
+      // beforeRule: every attempt after the first takes 5 s of the simulated clock
       _ <- TestControl.executeEmbed(
         node(
           Set.empty,
-          // every attempt after the first takes 5 s of the simulated clock
           beforeRule = h =>
             IO.monotonic.flatMap(at =>
               IO.sleep(5.seconds).whenA(h.hash == target.hash && at > Duration.Zero)

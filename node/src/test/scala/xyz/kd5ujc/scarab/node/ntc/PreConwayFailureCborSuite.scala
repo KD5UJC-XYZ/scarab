@@ -524,6 +524,7 @@ class PreConwayFailureCborSuite extends FunSuite:
     val input = TxIn(Bytes(keyHash.value ++ keyHash.value.take(4)), 0)
     // TxIn is the list [transaction id, index]: 82, 5820 id, 00
     val txIn = "82" + "5820" + input.id.hex + "00"
+    // Expected encoding: [3 BadTranslation, [1 TranslationLogicMissingInput, txIn]]
     assertEquals(
       reason(
         Era.Alonzo,
@@ -531,7 +532,6 @@ class PreConwayFailureCborSuite extends FunSuite:
           collectErrors(CollectError.BadTranslation(TranslationError.UnresolvedInput(input)))
         )
       ),
-      // [3 BadTranslation, [1 TranslationLogicMissingInput, txIn]]
       Some(
         "81" + "8204" + "81" + "8200" + "8200" + "8204" + "8207" + "8201" + "81" + "8203" + "8201" + txIn
       )

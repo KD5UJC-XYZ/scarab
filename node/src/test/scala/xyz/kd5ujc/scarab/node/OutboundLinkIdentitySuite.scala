@@ -531,8 +531,8 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
   }
 
   List(false, true).foreach { resolution =>
+    // issue 567: our own exception while connecting ends that attempt, not the node
     test(
-      // issue 567: our own exception while connecting ends that attempt, not the node
       s"a pre-ready defect reaches its caller, not the fatal sink, without success (resolution=$resolution)"
     ) {
       for

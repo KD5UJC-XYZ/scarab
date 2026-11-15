@@ -172,9 +172,10 @@ class InjectionDecimalSuite extends FunSuite:
     val widths = Vector(10239, 10240, 10241, 20479, 20480, 20481, 40959, 40960, 40961)
     val shapes = widths.flatMap { width =>
       val half = width / 2
+      // The middle three shapes: The right half begins with zeros, or is all zeros, at the midpoint
+      // split.
       Vector(
         digitsOf(width),
-        // The right half begins with zeros, or is all zeros, at the midpoint split.
         digitsOf(half) + "000" + digitsOf(width - half - 3),
         "1" + "0" * (width - 1),
         digitsOf(half) + "0" * (width - half),

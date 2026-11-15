@@ -410,6 +410,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   // (Fatal.Unverifiable), as the exception ends the reference's linked add-block thread: no invalid
   // record and no blame for the peer.
   private val boom = new IllegalStateException("provider broke")
+  // Byron ledger signature cases: the failures the real Byron rules give when the provider fails on
+  // a signature of the Byron ledger (issue 438): not a Byron refusal, so not recorded and not
+  // blamed
   private val providerDefects: List[(String, BlockFailure, VerificationDefect.Site)] =
     List(
       (
@@ -450,8 +453,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         ),
         VerificationDefect.Site.Header
       ),
-      // the failures the real Byron rules give when the provider fails on a signature of the
-      // Byron ledger (issue 438): not a Byron refusal, so not recorded and not blamed
       (
         "Byron ledger transaction witness",
         ByronLedgerDefectKit.failure(ByronSig.SignTx),

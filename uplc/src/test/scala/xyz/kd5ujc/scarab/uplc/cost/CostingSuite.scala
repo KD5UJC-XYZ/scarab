@@ -88,110 +88,140 @@ final class CostingSuite extends munit.FunSuite:
 
   test("variant E against the Haskell evaluator's budgets of the upstream conformance programs") {
     val e = defaults(SemanticsVariant.E)
-    val cases = Vector(
-      // max_size: 100788 + 420 * max(1, 1) = 101208; memory 1 + 1 * 1 = 2
-      ("addInteger/addInteger-01", two, cost(e, AddInteger, int(1), int(1))),
-      // above_and_below_diagonal, quadratic at (1, 1): 123203 + 1716 + 7305 + 57 + 960 - 900
-      ("divideInteger/divideInteger-01", two, cost(e, DivideInteger, int(1), int(2))),
-      (
-        "equalsData/equalsData-01",
-        two, {
-          val d = data(PlutusData.Constr(1, Vector(PlutusData.I(0))))
-          cost(e, EqualsData, d, d)
-        }
-      ),
-      // linear_in_x on the empty string (1 word): 158519 + 8942; the amount is an Int (1)
-      ("shiftByteString/case-01", two, cost(e, ShiftByteString, zeros(0), int(3))),
-      // linear_in_z on ValueMaxDepth: (integerLog2 2 + 1) + (integerLog2 1 + 1) = 3; 219951 + 9444 * 3
-      (
-        "lookupCoin/absent",
-        three,
-        cost(
-          e,
-          LookupCoin,
-          hex("aa"),
-          hex("bb"),
-          value(Vector("aa" -> Vector("aa" -> 100), "bb" -> Vector("aa" -> 1)))
-        )
-      ),
-      // linear_in_x on IntegerCostedLiterally 7: 116711 + 1957 * 7 = 130410; memory 4
-      (
-        "dropList/dropList-03",
-        Steps(2, 1, 1, 2),
-        cost(e, DropList, int(7), integers(11, 22, 33, 44, 55, 66, 77, 88, 99))
-      ),
-      // exp_mod_cost at (1, 1, 1): 607153 + 231697 + 53144 = 891994
-      ("expModInteger/expMod-01", three, cost(e, ExpModInteger, int(500), int(0), int(500))),
-      // linear_on_diagonal on TextCostedByByteLength: 3 quot 4 = 0, 7 quot 4 = 1: off, 39184
-      ("equalsString/equalsString-01", two, cost(e, EqualsString, str("Ola"), str(" mundo!"))),
-      // 0 = 0: 1000 + 60594 * 0
-      ("equalsString/equalsString-02", two, cost(e, EqualsString, str("Ola"), str("Ola"))),
-      // linear_in_y: 72010 + 178 * 2 (12 bytes); memory added_sizes 1 + 2 = 3
-      (
-        "consByteString/consByteString-03",
-        two,
-        cost(e, ConsByteString, int(84), hex("686543616B654973414C6965"))
-      ),
-      // multiplied_sizes: 90434 + 519 * (2 * 1); memory added_sizes 2 + 1
-      (
-        "multiplyInteger/multiplyInteger-02",
-        two,
-        cost(e, MultiplyInteger, int(BigInt("793479793478939166266268485555555")), int(0))
-      ),
-      // const_above_diagonal on total sizes 3 >= 2: 618401 + 1998 * 3 + 28258 * 2 = 680911
-      (
-        "valueContains/multi-sufficient",
-        two,
-        cost(
-          e,
-          ValueContains,
-          value(Vector("aa" -> Vector("aa" -> 10, "bb" -> 2800), "ffff" -> Vector("8888" -> 100))),
-          value(Vector("aa" -> Vector("aa" -> 10), "ffff" -> Vector("8888" -> 20)))
-        )
-      ),
-      // linear_on_diagonal, 1 word each: 28755 + 75 * 1 = 28830
-      (
-        "equalsByteString/equalsByteString",
-        two,
-        cost(e, EqualsByteString, hex("00ffaa"), hex("00ffaa"))
-      ),
-      // linear_in_z on 13 bytes (2 words): 20467 + 1 * 2; memory 4 + 0 * 2. The Ints are 1 each.
-      (
-        "sliceByteString/sliceByteString-01",
-        three,
-        cost(e, SliceByteString, int(3), int(5), hex("54686543616B654973414C6965"))
-      ),
-      // linear_in_y on a list of 1: 281145 + 18848 * 1; memory linear_in_x on #ff: 0 + 1 * 1
-      (
-        "writeBits/case-11",
-        three,
-        cost(e, WriteBits, hex("ff"), integers(0), Constant.Bool(false))
-      ),
-      // 5 nodes: quadratic_in_x 1000 + 95933 * 5 + 5^2 = 480690; memory 1 + 11 * 5 = 56
-      (
-        "unValueData/max-key-len",
-        Steps(1, 0, 1, 1),
-        cost(
-          e,
-          UnValueData,
-          data(
-            PlutusData.Map(
-              Vector(
-                PlutusData.B(Bytes.wrap(new Array[Byte](32))) ->
-                  PlutusData.Map(
-                    Vector(PlutusData.B(Bytes.wrap(new Array[Byte](32))) -> PlutusData.I(1))
-                  )
-              )
+    // max_size: 100788 + 420 * max(1, 1) = 101208; memory 1 + 1 * 1 = 2
+    val addition = ("addInteger/addInteger-01", two, cost(e, AddInteger, int(1), int(1)))
+    // above_and_below_diagonal, quadratic at (1, 1): 123203 + 1716 + 7305 + 57 + 960 - 900
+    val division = ("divideInteger/divideInteger-01", two, cost(e, DivideInteger, int(1), int(2)))
+    val dataEquality = (
+      "equalsData/equalsData-01",
+      two, {
+        val d = data(PlutusData.Constr(1, Vector(PlutusData.I(0))))
+        cost(e, EqualsData, d, d)
+      }
+    )
+    // linear_in_x on the empty string (1 word): 158519 + 8942; the amount is an Int (1)
+    val shift = ("shiftByteString/case-01", two, cost(e, ShiftByteString, zeros(0), int(3)))
+    // linear_in_z on ValueMaxDepth: (integerLog2 2 + 1) + (integerLog2 1 + 1) = 3;
+    // 219951 + 9444 * 3
+    val lookup = (
+      "lookupCoin/absent",
+      three,
+      cost(
+        e,
+        LookupCoin,
+        hex("aa"),
+        hex("bb"),
+        value(Vector("aa" -> Vector("aa" -> 100), "bb" -> Vector("aa" -> 1)))
+      )
+    )
+    // linear_in_x on IntegerCostedLiterally 7: 116711 + 1957 * 7 = 130410; memory 4
+    val drop = (
+      "dropList/dropList-03",
+      Steps(2, 1, 1, 2),
+      cost(e, DropList, int(7), integers(11, 22, 33, 44, 55, 66, 77, 88, 99))
+    )
+    // exp_mod_cost at (1, 1, 1): 607153 + 231697 + 53144 = 891994
+    val exponentiation = (
+      "expModInteger/expMod-01",
+      three,
+      cost(e, ExpModInteger, int(500), int(0), int(500))
+    )
+    // linear_on_diagonal on TextCostedByByteLength: 3 quot 4 = 0, 7 quot 4 = 1: off, 39184
+    val unequalStrings = (
+      "equalsString/equalsString-01",
+      two,
+      cost(e, EqualsString, str("Ola"), str(" mundo!"))
+    )
+    // 0 = 0: 1000 + 60594 * 0
+    val equalStrings = (
+      "equalsString/equalsString-02",
+      two,
+      cost(e, EqualsString, str("Ola"), str("Ola"))
+    )
+    // linear_in_y: 72010 + 178 * 2 (12 bytes); memory added_sizes 1 + 2 = 3
+    val cons = (
+      "consByteString/consByteString-03",
+      two,
+      cost(e, ConsByteString, int(84), hex("686543616B654973414C6965"))
+    )
+    // multiplied_sizes: 90434 + 519 * (2 * 1); memory added_sizes 2 + 1
+    val multiplication = (
+      "multiplyInteger/multiplyInteger-02",
+      two,
+      cost(e, MultiplyInteger, int(BigInt("793479793478939166266268485555555")), int(0))
+    )
+    // const_above_diagonal on total sizes 3 >= 2: 618401 + 1998 * 3 + 28258 * 2 = 680911
+    val contains = (
+      "valueContains/multi-sufficient",
+      two,
+      cost(
+        e,
+        ValueContains,
+        value(Vector("aa" -> Vector("aa" -> 10, "bb" -> 2800), "ffff" -> Vector("8888" -> 100))),
+        value(Vector("aa" -> Vector("aa" -> 10), "ffff" -> Vector("8888" -> 20)))
+      )
+    )
+    // linear_on_diagonal, 1 word each: 28755 + 75 * 1 = 28830
+    val equalBytes = (
+      "equalsByteString/equalsByteString",
+      two,
+      cost(e, EqualsByteString, hex("00ffaa"), hex("00ffaa"))
+    )
+    // linear_in_z on 13 bytes (2 words): 20467 + 1 * 2; memory 4 + 0 * 2. The Ints are 1 each.
+    val slice = (
+      "sliceByteString/sliceByteString-01",
+      three,
+      cost(e, SliceByteString, int(3), int(5), hex("54686543616B654973414C6965"))
+    )
+    // linear_in_y on a list of 1: 281145 + 18848 * 1; memory linear_in_x on #ff: 0 + 1 * 1
+    val write = (
+      "writeBits/case-11",
+      three,
+      cost(e, WriteBits, hex("ff"), integers(0), Constant.Bool(false))
+    )
+    // 5 nodes: quadratic_in_x 1000 + 95933 * 5 + 5^2 = 480690; memory 1 + 11 * 5 = 56
+    val unValue = (
+      "unValueData/max-key-len",
+      Steps(1, 0, 1, 1),
+      cost(
+        e,
+        UnValueData,
+        data(
+          PlutusData.Map(
+            Vector(
+              PlutusData.B(Bytes.wrap(new Array[Byte](32))) ->
+                PlutusData.Map(
+                  Vector(PlutusData.B(Bytes.wrap(new Array[Byte](32))) -> PlutusData.I(1))
+                )
             )
           )
         )
-      ),
-      // linear_in_u on ValueMaxDepth 1 + 1: 356924 + 18413 * 2 = 393750; memory 45 + 21 * 2 = 87
-      (
-        "insertCoin/long-key-zero-1",
-        Steps(4, 0, 1, 4),
-        cost(e, InsertCoin, hex("aa" * 33), hex(""), int(0), value(Vector("" -> Vector("" -> 1))))
       )
+    )
+    // linear_in_u on ValueMaxDepth 1 + 1: 356924 + 18413 * 2 = 393750; memory 45 + 21 * 2 = 87
+    val insert = (
+      "insertCoin/long-key-zero-1",
+      Steps(4, 0, 1, 4),
+      cost(e, InsertCoin, hex("aa" * 33), hex(""), int(0), value(Vector("" -> Vector("" -> 1))))
+    )
+    val cases = Vector(
+      addition,
+      division,
+      dataEquality,
+      shift,
+      lookup,
+      drop,
+      exponentiation,
+      unequalStrings,
+      equalStrings,
+      cons,
+      multiplication,
+      contains,
+      equalBytes,
+      slice,
+      write,
+      unValue,
+      insert
     )
     cases.foreach((test, steps, actual) => assertEquals(actual, conformance(test, steps), test))
   }

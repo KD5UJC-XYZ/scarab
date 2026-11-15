@@ -35,10 +35,10 @@ object ByronUpdateInterface:
   private type Out = Either[Unanswered, Bytes]
 
   def encode(state: UpdateState): Out =
+    // `currentEpoch`: only `initialState` writes it, with 0, and no rule changes it
+    // (`Interface.hs:225-238`)
     concat(
       Right(CborOut.build(_.array(11))),
-      // `currentEpoch`: only `initialState` writes it, with 0, and no rule changes it
-      // (`Interface.hs:225-238`)
       word(0, 64),
       Right(version(state.adoptedVersion)),
       params(state.adoptedParams),

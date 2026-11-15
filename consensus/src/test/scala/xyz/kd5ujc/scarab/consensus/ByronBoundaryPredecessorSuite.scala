@@ -32,12 +32,12 @@ class ByronBoundaryPredecessorSuite extends FunSuite:
       attributes: Bytes,
       magic: Bytes = uint(Magic)
   ): Block.Byron =
+    // The epoch/difficulty argument: the chain's first block is numbered 0
+    // (`expectedFirstBlockNo`); the block rules check no later number, which is chain selection's
     val header = arr(
       magic,
       bytes(prev),
       bytes(Bytes(Vector.fill(32)(0x22.toByte))),
-      // the chain's first block is numbered 0 (`expectedFirstBlockNo`); the block rules check no
-      // later number, which is chain selection's
       arr(uint(epoch), arr(uint(0))),
       arr(attributes)
     )

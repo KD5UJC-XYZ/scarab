@@ -41,18 +41,18 @@ final class MeasureSuite extends munit.FunSuite:
 
   test("an integer is its number of 64-bit words, 1 for 0 (memoryUsageInteger)") {
     val two64 = BigInt(1) << 64
+    // 2^63: integerLog2 63, 63 div 64 + 1 = 1
+    // 2^64: integerLog2 64, 64 div 64 + 1 = 2; its negation too (the size of |n|)
+    // 2^128 - 1: integerLog2 127 -> 2; 2^128 -> 3
     Vector[(BigInt, Long)](
       BigInt(0) -> 1,
       BigInt(1) -> 1,
       BigInt(-1) -> 1,
       BigInt(Long.MaxValue) -> 1,
-      // 2^63: integerLog2 63, 63 div 64 + 1 = 1
       (BigInt(1) << 63) -> 1,
       (two64 - 1) -> 1,
-      // 2^64: integerLog2 64, 64 div 64 + 1 = 2; its negation too (the size of |n|)
       two64 -> 2,
       -two64 -> 2,
-      // 2^128 - 1: integerLog2 127 -> 2; 2^128 -> 3
       ((BigInt(1) << 128) - 1) -> 2,
       (BigInt(1) << 128) -> 3
     ).foreach((n, words) => assertEquals(universe(integer(n)), Vector(words), n.toString))

@@ -100,6 +100,10 @@ object DijkstraParamUpdate:
     * value `decCBOR` of the field's type, the Peras bootstrap round null or a `Word32`
     * (`ppPerasBootstrapRound`'s `EraCodec`). The protocol version has no update key.
     */
+  // Key 36: `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`, cardano-ledger 9df9f98c)
+
+  // Key 38: `MaxPledgeLeverage`, `decodeNullStrictMaybe` of a `NonNegativeInterval`
+  // (`Core/PParams.hs:378-379`, cardano-ledger 9df9f98c)
   private val fieldDecoders: Map[Int, Node => Result[DijkstraParamValue]] = Map(
     0 -> w64,
     1 -> w64,
@@ -133,13 +137,10 @@ object DijkstraParamUpdate:
     33 -> ratio(Interval.NonNegative),
     34 -> w32,
     35 -> w32,
-    // `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`, cardano-ledger 9df9f98c)
     36 -> (n =>
       V12.word32(n, what).flatMap(v => Either.cond(v != 0, Number(v), LedgerDecodeError.Zero(what)))
     ),
     37 -> ratio(Interval.Positive),
-    // `MaxPledgeLeverage`, `decodeNullStrictMaybe` of a `NonNegativeInterval`
-    // (`Core/PParams.hs:378-379`, cardano-ledger 9df9f98c)
     38 -> (n => V12.nullable(n)(V12.ratio(_, what, Interval.NonNegative)).map(OptionalRatio(_))),
     39 -> ratio(Interval.Unit),
     40 -> w32,

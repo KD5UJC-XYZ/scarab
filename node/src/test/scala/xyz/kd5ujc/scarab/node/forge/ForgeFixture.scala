@@ -255,6 +255,8 @@ trait ForgeFixture:
       )
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
+      // horizon: a live loop over a chain left at genesis while the clock is thousands of slots on:
+      // the era history at that tip would not translate the slot, so such tests lift the horizon
       forger <- Forger.create[IO, MirrorState](
         config,
         rulesGlobals,
@@ -272,8 +274,6 @@ trait ForgeFixture:
           )
         ),
         sleep = if live then None else Some(_ => IO.unit),
-        // a live loop over a chain left at genesis while the clock is thousands of slots on: the
-        // era history at that tip would not translate the slot, so such tests lift the horizon
         horizon = Option.when(unbounded)((_, _) => true),
         source = source,
         enabled = enabled

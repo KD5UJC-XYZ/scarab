@@ -262,6 +262,11 @@ object GenesisSchema:
   private def address(hex: String): Either[GenesisFieldError, Unit] =
     GenesisState.address(hex).bimap(e => GenesisFieldError.Nested(e.problem), _ => ())
 
+  // staking: `FromJSON ShelleyGenesisStaking` (`Shelley/Genesis.hs:526-531`, cardano-ledger
+  // f649f975); its entries are read by [[rules.GenesisInjections]]
+
+  // extraConfig: `FromJSON ShelleyExtraConfig` (`Shelley/Genesis.hs:255-260`, cardano-ledger
+  // f649f975): an object of optional injections, read by [[rules.GenesisInjections]]
   private val shelleyFile: Check = obj(
     req("systemStart", text),
     req("networkMagic", word(32)),
@@ -277,11 +282,7 @@ object GenesisSchema:
     req("protocolParams", shelleyParams),
     req("genDelegs", mapOf(hexHash(28), obj(req("delegate", hash(28)), req("vrf", hash(32))))),
     req("initialFunds", mapOf(address, integer)),
-    // `FromJSON ShelleyGenesisStaking` (`Shelley/Genesis.hs:526-531`, cardano-ledger f649f975); its
-    // entries are read by [[rules.GenesisInjections]]
     opt("staking", obj(req("pools", anObject), req("stake", anObject))),
-    // `FromJSON ShelleyExtraConfig` (`Shelley/Genesis.hs:255-260`, cardano-ledger f649f975): an
-    // object of optional injections, read by [[rules.GenesisInjections]]
     opt("extraConfig", anObject)
   )
 
@@ -294,10 +295,13 @@ object GenesisSchema:
     either("steps", "exUnitsSteps", natural, word64)
   )
 
+  // executionPrices: `FromJSON Prices` (`Plutus/ExUnits.hs:176-181`, cardano-ledger f649f975)
+
+  // extraConfig: `FromJSON AlonzoExtraConfig` (`Alonzo/Genesis.hs:110-114`, cardano-ledger
+  // f649f975): an object whose optional cost models [[GenesisCostModels]] reads
   private val alonzoFile: Check = obj(
     req("lovelacePerUTxOWord", integer),
     req("costModels", anything),
-    // `FromJSON Prices` (`Plutus/ExUnits.hs:176-181`, cardano-ledger f649f975)
     req(
       "executionPrices",
       obj(
@@ -310,14 +314,14 @@ object GenesisSchema:
     req("maxValueSize", word(32)),
     req("collateralPercentage", word(16)),
     req("maxCollateralInputs", word(16)),
-    // `FromJSON AlonzoExtraConfig` (`Alonzo/Genesis.hs:110-114`, cardano-ledger f649f975): an
-    // object whose optional cost models [[GenesisCostModels]] reads
     opt("extraConfig", anObject)
   )
 
   private def thresholds(names: String*): Check =
     obj(names.map(req(_, bounded(BoundedRatio.Unit)))*)
 
+  // extraConfig: `FromJSON ConwayExtraConfig` (`Conway/Genesis.hs:99-103`, cardano-ledger
+  // f649f975): an object of optional injections
   private val conwayFile: Check = obj(
     req(
       "poolVotingThresholds",
@@ -362,7 +366,5 @@ object GenesisSchema:
     ),
     opt("delegs", anObject),
     opt("initialDReps", anObject),
-    // `FromJSON ConwayExtraConfig` (`Conway/Genesis.hs:99-103`, cardano-ledger f649f975): an object
-    // of optional injections
     opt("extraConfig", anObject)
   )

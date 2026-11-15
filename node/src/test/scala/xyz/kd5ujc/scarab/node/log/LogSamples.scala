@@ -439,6 +439,8 @@ object LogSamples:
   /** Every trace of the forging loop once. */
   val forgeTraces: List[ForgeTrace] =
     val tip = BlockRef(BigInt(4203), Bytes.fromArray(Array.fill(32)(9.toByte)), BigInt(170)).point
+    // The final four traces: the first block, on genesis; a key already poisoned; the mempool at
+    // the origin
     List(
       ForgeTrace.StartLeadershipCheck(BigInt(4201)),
       ForgeTrace.SlotIsImmutable(BigInt(4203), tip, BigInt(170)),
@@ -465,7 +467,6 @@ object LogSamples:
       ),
       ForgeTrace.AdoptedBlock(BigInt(4201), hash, 1890L, Vector(hash))
     ) ++ List(
-      // the first block, on genesis; a key already poisoned; the mempool at the origin
       ForgeTrace.BlockContext(BigInt(1), BigInt(0), ChainSync.Point.Origin),
       ForgeTrace.ForgeStateUpdateError(
         BigInt(6201),
@@ -474,10 +475,10 @@ object LogSamples:
       ForgeTrace.ForgingMempoolSnapshot(BigInt(1), ChainSync.Point.Origin, None, BigInt(0)),
       ForgeTrace.ForgedBlock(BigInt(1), ChainSync.Point.Origin, hash, BigInt(0), None)
     )
+  // The StateInfo entries: far from expiry, at seven periods left, and at one
   val forge: List[ForgeEvent] = List(
     ForgeEvent.Started(other, hash, BigInt(0), BigInt(62), BigInt(3), BigInt(10))
   ) ++ forgeTraces.map(ForgeEvent.Loop(_)) ++ List(
-    // far from expiry, at seven periods left, and at one
     ForgeEvent.Clock(
       ClockTrace.StartTimeInTheFuture(java.time.Instant.parse("2026-10-01T00:00:00Z"), 1500.millis)
     ),

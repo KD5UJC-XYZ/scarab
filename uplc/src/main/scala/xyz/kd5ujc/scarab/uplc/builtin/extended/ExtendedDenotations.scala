@@ -115,15 +115,18 @@ object ExtendedDenotations:
   private def table(variant: CoreVariant): Map[DefaultFun, Denotation] =
     import DefaultFun.*
     val ensurable = variant.ensurable
-    Map(
-      // Hashes (`Builtins.hs:1397-1441,2059-2092,2297-2313`, plutus 1.70.0.0).
+    // Hashes (`Builtins.hs:1397-1441,2059-2092,2297-2313`, plutus 1.70.0.0).
+    val hashes: Map[DefaultFun, Denotation] = Map(
       Sha2_256 -> one[Bytes](b => pure(bytes(Hashes.sha2_256(b)))),
       Sha3_256 -> one[Bytes](b => pure(bytes(Hashes.sha3_256(b)))),
       Blake2b_256 -> one[Bytes](b => pure(bytes(Hashes.blake2b_256(b)))),
       Blake2b_224 -> one[Bytes](b => pure(bytes(Hashes.blake2b_224(b)))),
       Keccak_256 -> one[Bytes](b => pure(bytes(Hashes.keccak_256(b)))),
-      Ripemd_160 -> one[Bytes](b => pure(bytes(Hashes.ripemd_160(b)))),
-      // Signatures (`Builtins.hs:1442-1504`, plutus 1.70.0.0): key, message, signature.
+      Ripemd_160 -> one[Bytes](b => pure(bytes(Hashes.ripemd_160(b))))
+    )
+
+    // Signatures (`Builtins.hs:1442-1504`, plutus 1.70.0.0): key, message, signature.
+    val signatures: Map[DefaultFun, Denotation] = Map(
       VerifyEd25519Signature -> three[Bytes, Bytes, Bytes]((k, m, s) =>
         verdict(VerifyEd25519Signature)(Signatures.verifyEd25519(k, m, s))
       ),
@@ -132,8 +135,11 @@ object ExtendedDenotations:
       ),
       VerifySchnorrSecp256k1Signature -> three[Bytes, Bytes, Bytes]((k, m, s) =>
         verdict(VerifySchnorrSecp256k1Signature)(Signatures.verifySchnorr(k, m, s))
-      ),
-      // BLS12-381 G1 (`Builtins.hs:1886-1958,2410-2417`, plutus 1.70.0.0).
+      )
+    )
+
+    // BLS12-381 G1 (`Builtins.hs:1886-1958,2410-2417`, plutus 1.70.0.0).
+    val g1Operations: Map[DefaultFun, Denotation] = Map(
       Bls12_381_G1_add -> two[G1Element, G1Element]((a, b) =>
         blsOf(Bls12_381_G1_add)(Bls12_381.G1.add(a, b))(g1)
       ),
@@ -153,8 +159,11 @@ object ExtendedDenotations:
       ),
       Bls12_381_G1_multiScalarMul -> two[Vector[BigInt], Vector[G1Element]]((ks, ps) =>
         blsOf(Bls12_381_G1_multiScalarMul)(Bls12_381.G1.multiScalarMul(ks, ps))(g1)
-      ),
-      // BLS12-381 G2 (`Builtins.hs:1959-2032,2418-2425`, plutus 1.70.0.0).
+      )
+    )
+
+    // BLS12-381 G2 (`Builtins.hs:1959-2032,2418-2425`, plutus 1.70.0.0).
+    val g2Operations: Map[DefaultFun, Denotation] = Map(
       Bls12_381_G2_add -> two[G2Element, G2Element]((a, b) =>
         blsOf(Bls12_381_G2_add)(Bls12_381.G2.add(a, b))(g2)
       ),
@@ -174,8 +183,11 @@ object ExtendedDenotations:
       ),
       Bls12_381_G2_multiScalarMul -> two[Vector[BigInt], Vector[G2Element]]((ks, ps) =>
         blsOf(Bls12_381_G2_multiScalarMul)(Bls12_381.G2.multiScalarMul(ks, ps))(g2)
-      ),
-      // Pairing (`Builtins.hs:2033-2058`, plutus 1.70.0.0).
+      )
+    )
+
+    // Pairing (`Builtins.hs:2033-2058`, plutus 1.70.0.0).
+    val pairing: Map[DefaultFun, Denotation] = Map(
       Bls12_381_millerLoop -> two[G1Element, G2Element]((a, b) =>
         blsOf(Bls12_381_millerLoop)(Bls12_381.Pairing.millerLoop(a, b))(ml)
       ),
@@ -184,15 +196,21 @@ object ExtendedDenotations:
       ),
       Bls12_381_finalVerify -> two[MlResult, MlResult]((a, b) =>
         blsOf(Bls12_381_finalVerify)(Bls12_381.Pairing.finalVerify(a, b))(bool)
-      ),
-      // Conversions (`Builtins.hs:2093-2118`, plutus 1.70.0.0).
+      )
+    )
+
+    // Conversions (`Builtins.hs:2093-2118`, plutus 1.70.0.0).
+    val conversions: Map[DefaultFun, Denotation] = Map(
       IntegerToByteString -> three[Boolean, BigInt, BigInt]((e, n, x) =>
         bitwise(Bitwise.integerToByteString(e, n, x))(bytes)
       ),
       ByteStringToInteger -> two[Boolean, Bytes]((e, b) =>
         pure(integer(Bitwise.byteStringToInteger(e, b)))
-      ),
-      // Logical and bitwise operations (`Builtins.hs:2119-2296`, plutus 1.70.0.0).
+      )
+    )
+
+    // Logical and bitwise operations (`Builtins.hs:2119-2296`, plutus 1.70.0.0).
+    val bitwiseOperations: Map[DefaultFun, Denotation] = Map(
       AndByteString -> three[Boolean, Bytes, Bytes]((pad, x, y) =>
         pure(bytes(Bitwise.combine(pad, x, y)(_ & _)))
       ),
@@ -213,15 +231,21 @@ object ExtendedDenotations:
       ShiftByteString -> two[Bytes, BigInt]((b, n) => pure(bytes(Bitwise.shift(b, n)))),
       RotateByteString -> two[Bytes, BigInt]((b, n) => pure(bytes(Bitwise.rotate(b, n)))),
       CountSetBits -> one[Bytes](b => pure(integer(Bitwise.countSetBits(b)))),
-      FindFirstSetBit -> one[Bytes](b => pure(integer(Bitwise.findFirstSetBit(b)))),
-      // `expModInteger` (`Builtins.hs:2314-2327`, plutus 1.70.0.0).
+      FindFirstSetBit -> one[Bytes](b => pure(integer(Bitwise.findFirstSetBit(b))))
+    )
+
+    // `expModInteger` (`Builtins.hs:2314-2327`, plutus 1.70.0.0).
+    val modularExponentiation: Map[DefaultFun, Denotation] = Map(
       ExpModInteger -> three[BigInt, BigInt, BigInt]((b, e, m) =>
         ExpMod
           .expMod(b, e, m)
           .leftMap(f => failed(EvaluationFailure.ExpMod(f)))
           .map(integer)
-      ),
-      // Arrays (`Builtins.hs:2378-2409`, plutus 1.70.0.0).
+      )
+    )
+
+    // Arrays (`Builtins.hs:2378-2409`, plutus 1.70.0.0).
+    val arrays: Map[DefaultFun, Denotation] = Map(
       LengthOfArray -> denotation(cs =>
         someConstant(cs, 0).flatMap(array(_, 0)).map(a => integer(a.items.size))
       ),
@@ -240,8 +264,11 @@ object ExtendedDenotations:
             .flatMap(a.items.lift)
             .toRight(failed(EvaluationFailure.ArrayIndexOutOfBounds(i, a.items.size)))
         yield element
-      ),
-      // `Value` (`Builtins.hs:2426-2481`, plutus 1.70.0.0).
+      )
+    )
+
+    // `Value` (`Builtins.hs:2426-2481`, plutus 1.70.0.0).
+    val values: Map[DefaultFun, Denotation] = Map(
       InsertCoin -> four[Bytes, Bytes, BigInt, Value]((c, t, q, v) =>
         valueResult(Values.insertCoin(c, t, q, v))(value)
       ),
@@ -252,8 +279,11 @@ object ExtendedDenotations:
       ValueContains -> two[Value, Value]((a, b) => valueResult(Values.valueContains(a, b))(bool)),
       ValueData -> one[Value](v => valueResult(Values.valueData(v))(Constant.Data(_))),
       UnValueData -> one[PlutusData](d => valueResult(Values.unValueData(d))(value)),
-      ScaleValue -> two[BigInt, Value]((c, v) => valueResult(Values.scaleValue(c, v))(value)),
-      // Batch 7 (`Builtins.hs:2482-2527`, plutus 1.70.0.0).
+      ScaleValue -> two[BigInt, Value]((c, v) => valueResult(Values.scaleValue(c, v))(value))
+    )
+
+    // Batch 7 (`Builtins.hs:2482-2527`, plutus 1.70.0.0).
+    val batch7: Map[DefaultFun, Denotation] = Map(
       MultiIndexArray -> denotation(cs =>
         for
           a <- someConstant(cs, 0).flatMap(array(_, 0))
@@ -273,3 +303,6 @@ object ExtendedDenotations:
         pure(value(Values.dropPolicies(ids, v)))
       )
     )
+
+    hashes ++ signatures ++ g1Operations ++ g2Operations ++ pairing ++ conversions ++
+      bitwiseOperations ++ modularExponentiation ++ arrays ++ values ++ batch7

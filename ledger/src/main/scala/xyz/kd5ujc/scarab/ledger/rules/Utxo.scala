@@ -161,6 +161,7 @@ object Utxos:
     for
       failing <- judge.failing
       counters <- st.get
+      // evaluate: `when2Phase`: a transaction applied again collects its scripts' contexts only
       next <- Refuse.recorded[F, PlutusStats](
         TxChecks.phase2[E](
           env.pp,
@@ -171,7 +172,6 @@ object Utxos:
           ann.spentByInput,
           ann.referencedByInput,
           ann.plutusPurposes,
-          // `when2Phase`: a transaction applied again collects its scripts' contexts only
           evaluate = !failing && env.ctx.validation == TxEnv.Validation.All
         )
       )

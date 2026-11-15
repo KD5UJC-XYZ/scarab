@@ -121,12 +121,13 @@ class OutboundReuseSuite extends FailsOnUncaught:
           reports <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
           metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
           given Stateful[IO, PeerMetrics[PeerNetwork.Addr]] = RefStateful(metrics)
+          // follow: the follower's own rule: no intersection ends the session
+          // (`Follower.intersect`)
           hot = OutboundPeers.Hot[IO](
             magic,
             NodeToNode.Settings(),
             Peer
               .Settings(SocketAddress(host"10.1.2.3", port"3001"), magic, byronEpochSlots = 21600),
-            // the follower's own rule: no intersection ends the session (`Follower.intersect`)
             (over, _) =>
               over.intersect(Vector(ChainSync.Point.Origin)).flatMap {
                 case None => Raise[IO, NodeError].raise[NodeError, Unit](PeerError.NoIntersection)

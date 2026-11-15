@@ -410,6 +410,8 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
 
   private val genNet: Gen[Int] = Gen.choose(0, 1)
 
+  // The last generator produces a bootstrap address, which the decoder reads in full (envelope and
+  // checksum)
   private val genAddress: Gen[Bytes] = Gen.oneOf(
     for
       net <- genNet
@@ -435,7 +437,6 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
     yield Bytes.fromArray(Array((0x40 | net).toByte)) ++ pay ++ Bytes.fromArray(
       Array(slot.toByte, tx.toByte, cert.toByte)
     ),
-    // a bootstrap address, which the decoder reads in full (envelope and checksum)
     for
       key <- genBytes(64)
       magic <- Gen.option(Gen.choose(0L, 0xffffffffL))
