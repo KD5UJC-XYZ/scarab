@@ -38,9 +38,10 @@ its symbols, not its lines.
   - the genesis state (`GenesisStart`, `GenesisPoolFields`, `GenesisMirror`);
   - the hand-over and header rules (`Handover.toShelley`, from `MirrorRules` and `NodeHeaderRules`).
 - **Dijkstra's decoders read the D-Leios form whatever the build.**
-  - Scarab: `Block.decode` reads a Dijkstra block as a `LeiosBlock`, `Header.decode` reads its header as a
+  - Scarab: `Block.decode` reads a Dijkstra block as a `LeiosBlock`, `Header.fromRaw` reads its header as a
     `LeiosHeader`, and a submitted Dijkstra transaction is read by `DijkstraTx.submitted`.
-  - The era types' Dijkstra cases are those of cardano-ledger 9df9f98c.
+  - The flat Dijkstra types of the package `xyz.kd5ujc.scarab.ledger.dijkstra` are those of
+    cardano-ledger 9df9f98c, and so are the era types' Dijkstra cases that #1043 proposes.
   - Tracked as #54's "Select Dijkstra by reference build" item.
 - **The two pins memoize native sub-scripts differently.**
   - At 9df9f98c a decoded native script's sub-scripts keep no bytes (`decodeNoBytesTimelock`,
