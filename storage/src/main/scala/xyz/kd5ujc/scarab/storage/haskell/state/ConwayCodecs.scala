@@ -5,6 +5,7 @@ import cats.Order
 import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   Block,
@@ -17,7 +18,6 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction,
   GovActionId,
   ByteStrings,
-  DecoderVersion,
   Metadatum,
   NativeScript,
   PoolParams,
@@ -25,13 +25,13 @@ import xyz.kd5ujc.scarab.ledger.{
   Proposal,
   Redeemer,
   RewardAccount,
+  Script,
   ScriptKind,
   Voter,
   VotingProcedure
 }
 import xyz.kd5ujc.scarab.ledger.state.ProtVer
 import xyz.kd5ujc.scarab.plutus.PlutusData
-import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
   ConstraintViolation,
@@ -519,32 +519,77 @@ object ConwayCodecs:
 
   // ---- scripts and witnesses
 
-  /** A script as the reference holds it: its language and the bytes its hash is over, which are the
-    * native script's own encoding (a `Timelock` is `MemoBytes`,
-    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:253`, cardano-ledger f649f975) or a
-    * Plutus script's bytes (see [[xyz.kd5ujc.scarab.ledger.Script]]).
-    */
-  final case class ScriptPayload(kind: ScriptKind, payload: Bytes)
-
   /** `EncCBOR (AlonzoScript era)` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:667-689`,
     * cardano-ledger f649f975, `toEraCBOR` of `encodeScript`): `[0, native script]`, the native
-    * script as its kept bytes, or `[language, bytes]` of a Plutus script (1 to 3).
+    * script as the bytes it was read from, or `[language, bytes]` of a Plutus script (1 to 3). A
+    * `Timelock` is `MemoBytes` (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:253`),
+    * whose `ToCBOR` it derives and over which its `EncCBOR` is the default (`Scripts.hs:255, 264`;
+    * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs:112-113`): its
+    * bytes, pre-encoded
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/MemoBytes/Internal.hs:163-164`), so a native
+    * script is written as it arrived, a non-canonical encoding too. A script whose bytes were not
+    * kept (an output's reference script, a script built rather than read) is refused, as are bytes
+    * its hash is not over or a native script's bytes that are not its tree.
     */
-  val script: Codec[ScriptPayload] =
-    writer[ScriptPayload]("a script") { (s, out) =>
+  val script: Codec[Script] =
+    writer[Script]("a script") { (s, out) =>
       alternative(out, 2, s.kind.tag)
-      if s.kind.isPlutus then out.bytes(s.payload) else out.raw(s.payload)
-    }(s => Option.unless(s.kind.isPlutus)(nativeScript(s.payload)).flatten)
+      s.kind match
+        case ScriptKind.Native => s.encoding.foreach(out.raw)
+        case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 =>
+          s.plutus.foreach(out.bytes)
+    }(kept)
 
-  /** A native script's kept bytes: one item that Conway's time-lock decoder reads. */
-  private def nativeScript(payload: Bytes): Option[ConstraintViolation] =
-    given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Conway))
+  /** The bytes a script's hash is over, when it kept them (`originalBytes`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Hashes.hs:377`, cardano-ledger f649f975): a
+    * native script's encoding or a Plutus script's bytes.
+    */
+  private def payload(s: Script): Option[Bytes] = s.kind match
+    case ScriptKind.Native                                               => s.encoding
+    case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 => s.plutus
+
+  /** The bytes a script is written as: those it was read from, which its hash is over
+    * (`hashScript`, blake2b-224 of the language's tag and the bytes,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:603-608`, cardano-ledger f649f975).
+    */
+  private def kept(s: Script): Option[ConstraintViolation] =
+    payload(s).fold(Codec.refuse(true, "a script", "the bytes it was read from", "none")) { bytes =>
+      first(
+        Codec.refuse(
+          Blake2b.hash224.hash(Bytes(Vector(s.kind.tag.toByte)) ++ bytes) != s.hash,
+          "a script",
+          "the bytes its hash is over",
+          "other bytes"
+        ),
+        s.kind match
+          case ScriptKind.Native => nativeScript(bytes, s.native)
+          case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 => None
+      )
+    }
+
+  /** A native script's kept bytes: one item that reads as its tree. They are read with chunked byte
+    * strings allowed, as a decoder of version 12 reads them ([[ByteStrings.of]]): a script read at
+    * any version keeps its bytes, and the reference writes them without reading them again
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/MemoBytes/Internal.hs:163-167`, cardano-ledger
+    * f649f975).
+    */
+  private def nativeScript(
+      payload: Bytes,
+      tree: Option[NativeScript]
+  ): Option[ConstraintViolation] =
+    given ByteStrings = ByteStrings.Chunked
     item("native script", payload).orElse(
       Cbor
         .decode(payload, Cbor.Limits.Unbounded)
         .toOption
-        .flatMap(n => NativeScript.decode(n, NativeScript.Form.Timelock).left.toOption)
-        .flatMap(e => Codec.refuse(true, "native script", "a time lock", e))
+        .flatMap(n =>
+          NativeScript
+            .decode(n, NativeScript.Form.Timelock)
+            .fold(
+              e => Codec.refuse(true, "native script", "a time lock", e),
+              read => Codec.refuse(!tree.contains(read), "native script", "its tree", read)
+            )
+        )
     )
 
   /** A redeemer as `keyValueEncoder` writes it (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/

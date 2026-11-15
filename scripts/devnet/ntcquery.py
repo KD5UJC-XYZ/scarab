@@ -116,6 +116,29 @@ def chain_point(raw):
     raise MalformedReply(f"not a chain point: {bytes(raw).hex()[:200]}")
 
 
+CURRENT_ERA = [0, [2, [1]]]  # the hard-fork query `GetCurrentEra`
+SHELLEY_BASED = range(1, 7)  # the indexes of Shelley..Conway in a hard-fork block query
+
+
+def acquired_era(session):
+    """The era of the state `session` has acquired (`GetCurrentEra`): the index a block query of that state names."""
+    session.query_raw(CURRENT_ERA)
+    raw = session.last_raw
+    era, end = _uint(raw, result_offset(raw))
+    if end != len(raw):
+        raise MalformedReply(f"not an era: {bytes(raw).hex()[:200]}")
+    return era
+
+
+def acquired_shelley_era(session):
+    """`acquired_era`, which must be a Shelley-based era (`SHELLEY_BASED`); a `RuntimeError` otherwise. The era is
+    read from the reply's own bytes, which must be an unsigned integer (`MalformedReply` otherwise)."""
+    era = acquired_era(session)
+    if era not in SHELLEY_BASED:
+        raise RuntimeError(f"the acquired state is of era {era!r}, not a Shelley-based era")
+    return era
+
+
 class Deadline(TimeoutError):
     """A session's overall deadline passed while it waited for the node (handshake, acquire or query)."""
 

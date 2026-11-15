@@ -39,14 +39,25 @@ final case class ByronTip(hash: Bytes, epoch: BigInt, slot: BigInt, boundary: Bo
   *   The Ed25519 verifier of the delegate's block signature (the reference's Byron semantics; a
   *   test injects a failing provider here). The ledger's own signatures (witnesses, certificates,
   *   proposals, votes) take theirs from [[ByronLedger.Config.signatures]].
+  *
+  * ARI-1: `signatureThreshold` is the reference's own `Double` (`newtype PBftSignatureThreshold`,
+  * `Ouroboros/Consensus/Protocol/PBFT.hs:232-235`, ouroboros-consensus 82ecba32).
   */
+@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
 final case class ByronRulesConfig(
     ledger: ByronLedger.Config,
     signatureThreshold: Double,
     configuredShelleyEpoch: Option[BigInt],
     signatures: ByronRulesConfig.Verifier = ByronRulesConfig.ByronSignatures
-)
+):
+  /** The most blocks a genesis key may sign in a window of `window` slots
+    * ([[ByronRules.windowThreshold]]).
+    */
+  def windowThreshold(window: BigInt): BigInt =
+    ByronRules.windowThreshold(signatureThreshold, window)
 
+// The companion holds the case class's `apply`, whose threshold is the same `Double` (ARI-1, as above).
+@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
 object ByronRulesConfig:
   /** An Ed25519 verifier: `(key, signature, message)` to its answer. */
   type Verifier = ByronSig.Verifier
@@ -83,8 +94,10 @@ object ByronRules:
     * for a `Word64` `floor`, so `floorDouble` floors through `Integer` and takes the result modulo
     * 2^64 (`GHC/Float.hs:651-654, 679-688`): a window of 2^64 - 1 (a `k` of -1 in the genesis,
     * #734) at a threshold of 1 is 0, and a product that is not finite decodes to a multiple of 2^64
-    * and is 0 too. These results were run on GHC 9.10.3, not on 9.6.7.
+    * and is 0 too. These results were run on GHC 9.10.3, not on 9.6.7. ARI-1: the reference's own
+    * floating point.
     */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   def windowThreshold(threshold: Double, window: BigInt): BigInt =
     val product = threshold * window.toDouble
     if product.isNaN || product.isInfinite then BigInt(0)
@@ -188,7 +201,7 @@ object ByronRules:
         signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(ByronChainError.Vocabulary(_))
         k = config.ledger.genesis.securityParam
         pbft = previous.append(PBftSigner(slot, signer), k)
-        threshold = ByronRules.windowThreshold(config.signatureThreshold, k)
+        threshold = config.windowThreshold(k)
         signed = pbft.countSignedBy(signer).toBigInt
         _ <- Either.cond(
           signed <= threshold,

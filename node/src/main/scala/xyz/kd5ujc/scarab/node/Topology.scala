@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import io.circe.{ACursor, Decoder, Json, parser}
 import java.nio.file.{Files, Path}
-import xyz.kd5ujc.scarab.network.selection.{AfterSlot, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.selection.{AfterSlot, DiffusionMode, UseLedgerPeers}
 
 /** A relay as a topology file writes it: `{"address": "host-or-ip", "port": 3001}`. */
 final case class AccessPoint(host: Host, port: Port):
@@ -23,7 +23,7 @@ final case class LocalRoots(
     warmValency: Int,
     trustable: Boolean,
     behindFirewall: Boolean,
-    diffusionMode: String,
+    diffusionMode: DiffusionMode,
     srvAccessPoints: Vector[DnsName] = Vector.empty
 )
 
@@ -143,20 +143,26 @@ object Topology:
       advertise <- optional[Boolean](c, "advertise").map(_.getOrElse(false))
       firewall <- optional[Boolean](c, "behindFirewall").map(_.getOrElse(false))
       warm <- optional[Int](c, "warmValency").map(_.getOrElse(hot))
-      mode <- optional[String](c, "diffusionMode").map(_.getOrElse("InitiatorAndResponder"))
-      _ <- Either.cond(
-        Set("InitiatorOnly", "InitiatorAndResponder")(mode),
-        (),
+      mode <- optional[String](c, "diffusionMode").flatMap(m =>
+        diffusionMode(m.getOrElse("InitiatorAndResponder"))
+      )
+      trustable <- optional[Boolean](c, "trustable").map(_.getOrElse(false))
+    yield LocalRoots(points, advertise, hot, warm, trustable, firewall, mode, srv)
+
+  /** `diffusionMode` of a local root group, as `cardano-node` names the two modes. */
+  private def diffusionMode(name: String): Either[ConfigError, DiffusionMode] = name match
+    case "InitiatorOnly"         => Right(DiffusionMode.InitiatorOnly)
+    case "InitiatorAndResponder" => Right(DiffusionMode.InitiatorAndResponder)
+    case other =>
+      Left(
         ConfigError(
           ConfigProblem.Selection(
             "topology diffusionMode",
-            mode,
+            other,
             Set("InitiatorOnly", "InitiatorAndResponder")
           )
         )
       )
-      trustable <- optional[Boolean](c, "trustable").map(_.getOrElse(false))
-    yield LocalRoots(points, advertise, hot, warm, trustable, firewall, mode, srv)
 
   private def publicRoots(j: Json): Either[ConfigError, PublicRoots] =
     val c = j.hcursor

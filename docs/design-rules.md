@@ -23,13 +23,14 @@ heading, its text struck through (`~~…~~`), with a link to what replaced it. A
 
 - **the rule**, precisely enough that a reviewer can say yes or no;
 - **scope**, one or more of:
-  - *main*: `src/main` of every module except `tools`, including the commands the node ships in package
-    `xyz.kd5ujc.scarab.node.tools`;
+  - *main*: `src/main` of every module except `tools` and `warts` (the design rules' own warts, which run
+    in the compiler), including the commands the node ships in package `xyz.kd5ujc.scarab.node.tools`;
   - *tools*: the sbt module `tools`, the programs run by hand ([TOOL-1](#tool-1));
   - *tests*: every other Scala source, the suites and their helpers;
 - **exceptions**, and how a kept site is marked. Unless a rule says otherwise, a kept site that a wart
-  refuses carries `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest
-  definition, with a comment giving the reason, and other kept sites carry the comment alone;
+  refuses carries `@SuppressWarnings(Array("<the wart's full name>"))` on its smallest definition
+  (`org.wartremover.warts.<Wart>`, or `xyz.kd5ujc.scarab.warts.<Wart>` for the design rules' own), with a
+  comment giving the reason, and other kept sites carry the comment alone;
 - **enforcement**: the compiler option, the wart, the guard script, or *review only*. *Review only; a
   guard is planned* means no tool checks the rule yet: a reviewer does;
 - **why**: the ADR, or the owner's decision with its date and a link to its row in the
@@ -64,6 +65,7 @@ sessions end, and each asks for the work it does.
 | Scala compiler | `build.sbt`, `ThisBuild / scalacOptions` | main, tools, tests | every warning, through `-Werror`; the warnings on are `-deprecation`, `-feature`, `-unchecked`, `-Wunused:imports`, `privates`, `locals`, `explicits`, `implicits`, `patvars` and `nowarn`, `-Wshadow:all`, `-Winfer-union` ([ERR-1](#err-1)), `-Wimplausible-patterns`, `-Wrecurse-with-default`, `-Wwrong-arrow` and `-Wenum-comment-discard`, plus Scala 3's own (a match that is not exhaustive among them). Generated sources are silent |
 | `-Wsafe-init` | `build.sbt`, `scarab(...)` | main | a field read before it is initialised |
 | WartRemover | `build.sbt`, `disallowedWarts` | main; not `tools`, not generated code | the 15 warts listed under [FUN-1](#fun-1); `Wart.LeakingSealed` ([ERR-1](#err-1)) and `Wart.Enumeration` ([TYP-6](#typ-6)); and `Wart.ArrayEquals`, `Wart.SynchronizedValueBasedClasses`, `Wart.StringPlusAny`, `Wart.Product`, `Wart.RedundantConversions` and `Wart.SizeIs`, which no rule names. `DisallowedWartsSuite` (tools tests) shows that each fires, except `Wart.ThreadSleep`, whose probe `scripts/check_test_sleeps.py` would count as a sleep |
+| The design rules' own warts | `warts/` (a project of the build), `ruleWarts` in `build.sbt` | main; not `tools`, not generated code | `SystemTimeAndUnsafeRun` ([EFF-5](#eff-5), [EFF-6](#eff-6), [ERR-4](#err-4)) and `FloatingPointInLedger` ([ARI-1](#ari-1)), as errors; `StringControlFlow` ([STR-3](#str-3)), as a warning that `-Werror` makes an error, outside the parsers of `project/StringParsers.scala` ([STR-2](#str-2)), where `-Wconf` silences it. Each message names its rule. Each wart's Scaladoc says what it reports and what it does not see; its suite in `warts/src/test` shows each kind, and `DisallowedWartsSuite` that each fires in the build |
 | `@tailrec` | at the definition | all | a call to itself that is not in tail position |
 | scalafmt | `.scalafmt.conf`, `scalafmtCheckAll` in `check` | all | a file not formatted |
 | scalafix | `.scalafix.conf`, `scalafixAll --check` in `check` | all | imports not laid out as `OrganizeImports` is configured: one group, the order as written, unused imports not removed. It is the only rule configured |
@@ -138,7 +140,10 @@ avoided. A suite returns its effect to the test framework, or runs it under `Tes
 - **Exceptions:** the one bridge for a third-party callback that must run an effect from outside `F`, and
   may block for it (a JVM signal handler, a library's log hook), is a `Dispatcher` owned by a `Resource`.
   The site carries a comment that gives the callback's contract.
-- **Enforcement:** review only; a guard is planned.
+- **Enforcement:** in main, `SystemTimeAndUnsafeRun` refuses an `unsafeRun*` or `unsafeTo*` of an `IO`, a
+  `SyncIO` or a `Dispatcher` (kind `unsafe-run`); the bridge carries
+  `@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))`. In tools and tests, review
+  only.
 - **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="eff-6"></a>
@@ -150,7 +155,10 @@ Code reads the time only through `Clock[F]` (`realTime`, `monotonic`, `timed`). 
 - **Scope:** main, tools, tests.
 - **Exceptions:** the timed region of a measurement tool ([FUN-2](#fun-2) (e)), where `Clock[F]` would add
   allocation to what is timed. The site carries a comment that says so.
-- **Enforcement:** review only; a guard is planned.
+- **Enforcement:** in main, `SystemTimeAndUnsafeRun` refuses a reading of the system clock (kind
+  `wall-clock`; its Scaladoc lists the methods); a timed region carries
+  `@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))`. In tools and tests, review
+  only.
 - **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md): time is
   an effect, swappable for tests (`TestControl`).
 
@@ -205,7 +213,9 @@ error cases.
 ### ERR-4. No exceptions for domain errors
 
 A domain error is never thrown (`throw`, or a call that throws, such as `sys.error` or `require`), and
-never raised as an exception (`raiseError` of a `Throwable`). An exception that is not ours (IO, a
+never raised as an exception: neither a `Throwable` made to be raised nor a domain error goes to
+`raiseError`, and a domain error is raised through cats-mtl `Raise`. A `Throwable` passed on as it came (a
+caught exception, a defect's cause) may be raised again. An exception that is not ours (IO, a
 library) is caught at the boundary only. There it becomes a typed case: `StorageError` or `PeerError`
 where it is that layer's failure, and otherwise a case that says it is a defect. It is never "the peer is
 unavailable".
@@ -213,10 +223,16 @@ unavailable".
 - **Scope:** main.
 - **Exceptions:** tests and tools ([TST-1](#tst-1)); a callback whose contract signals failure by
   exception ([FUN-2](#fun-2) (c)).
-- **Enforcement:** `Wart.Throw`. `raiseError`, `sys.error` and `require` are review only; a guard is
-  planned.
+- **Enforcement:** `Wart.Throw`, and `SystemTimeAndUnsafeRun` in main: `sys.error`, `require`, `assume`,
+  `assert`, and `raiseError`, `raiseWhen`, `raiseUnless`, `fromOption` and `fromEither` of a `Throwable` made
+  for it (by `new`, by a factory, in a `val` or in a `Left` made for `fromEither`) or of a value of one of
+  our types (kinds `raise-constructed` and `raise-domain-error`); its Scaladoc lists what it does not see. The wart refuses a defect too (a
+  precondition of the caller, the failure of one of our own constants), which is not a domain error: such
+  a site is kept with `@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))` and its
+  reason. The rest is review only.
 - **Why:** [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md);
-  [ADR 0017](adr/0017-fibers-end-with-values.md).
+  [ADR 0017](adr/0017-fibers-end-with-values.md); the owner's ruling of 2026-11-14 (a domain error goes
+  through `Raise`, not `raiseError`).
 
 <a id="err-5"></a>
 ### ERR-5. No partial accessors
@@ -276,7 +292,13 @@ Outside a parser, no decision depends on the contents of a String:
 
 - **Scope:** main.
 - **Exceptions:** none.
-- **Enforcement:** review only; a guard is planned.
+- **Enforcement:** `StringControlFlow` refuses, in main outside the parsers listed in
+  `project/StringParsers.scala` ([STR-2](#str-2)), an equality of two Strings, a `startsWith`, `endsWith`,
+  `contains` or `matches`, a regular expression, a `match` with String literal patterns, and a lookup in a
+  `Map[String, _]` or a `Set[String]` by a key that is not a literal; its Scaladoc lists what it does not
+  count as a decision. A site kept outside those files carries
+  `@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.StringControlFlow"))` and its reason. A `Map[String, _]`
+  held in domain state and an identifier built by concatenation are review only.
 - **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md).
 
 <a id="fun"></a>
@@ -326,7 +348,7 @@ Imperative, side-effecting code is kept only for:
 <a id="fun-3"></a>
 ### FUN-3. A kept site is marked and contained
 
-A kept imperative site carries `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest
+A kept imperative site carries `@SuppressWarnings(Array("<the wart's full name>"))` on its smallest
 definition, with a comment that names its measurement, the library contract, or why it is erased in place
 or timed. Its mutation stays local, behind a pure interface or an effect interpreter. An exception changes
 the implementation style only: typed errors ([ERR](#err)), capability scope ([FIB](#fib)) and hashed bytes
@@ -700,7 +722,10 @@ reference line at the site.
 
 - **Scope:** main.
 - **Exceptions:** the reference's own floating point, as stated.
-- **Enforcement:** review only; a guard is planned.
+- **Enforcement:** `FloatingPointInLedger` refuses, in the main sources of the ledger and consensus
+  packages, a type written or inferred as `Double` or `Float` and a floating-point term. The reference's
+  own floating point carries `@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))` on
+  its smallest definition, with the pinned citation.
 - **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md); results must equal the reference's
   ([REF-1](#ref-1), I1).
 

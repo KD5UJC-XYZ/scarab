@@ -51,8 +51,9 @@ object ConwayTxWits:
 
   /** A Conway witness set from its bytes. Conway's decoder (the flat decoder at Conway) reads it
     * and refuses what Conway refuses; its scripts are then read from the same bytes into Conway's
-    * script types, each with its own bytes (the flat witness set keeps no bytes of a native
-    * script), and must be the scripts the flat decoder read, by hash.
+    * script types, each level of a native script with its own bytes (the flat witness set keeps a
+    * native script's bytes whole, not by level), and must be the scripts the flat decoder read, by
+    * hash.
     */
   def decode(raw: Bytes): Either[EraTxError, ConwayTxWits] =
     for

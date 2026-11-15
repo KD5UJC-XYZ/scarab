@@ -23,6 +23,7 @@ body:
         - area:node
         - area:fuzz
         - area:tools
+        - area:warts
         - area:build
         - area:scripts
         - area:docs

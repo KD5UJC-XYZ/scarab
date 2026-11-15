@@ -83,8 +83,10 @@ object ShelleyGenesisValidation:
     * greater than the epoch length (`Genesis.hs:737-751`). `3 * k` is `Word64` and wraps before the
     * conversion; the conversions to `Double` round to nearest, ties to even, as GHC's do; `ceiling`
     * into `Word64` keeps the low 64 bits of the exact integer (`properFractionDouble`, GHC 9.6.7
-    * `GHC/Float.hs:629-634, 656-689`, with no rewrite rule for `Word64`).
+    * `GHC/Float.hs:629-634, 656-689`, with no rewrite rule for `Word64`). ARI-1: the reference's
+    * own floating point.
     */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   private def checkEpochLength(input: Input): Option[ValidationErr] =
     val k = input.securityParam.value
     val f = input.activeSlotsCoeff.rational
@@ -107,14 +109,19 @@ object ShelleyGenesisValidation:
       ValidationErr.QuorumTooSmall(input.updateQuorum, maxTooSmal, nodes)
     )
 
-  /** `fromIntegral :: Word64 -> Double`: the nearest double, ties to even. */
+  /** `fromIntegral :: Word64 -> Double`: the nearest double, ties to even. ARI-1: the reference's
+    * own floating point, as [[checkEpochLength]].
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   private[ledger] def unsignedToDouble(w: Word64): Double = w.toBigInt.toDouble
 
   /** `fromRational :: Rational -> Double` (`fromRat''`, GHC 9.6.7 `GHC/Float.hs:1216-1281`) of a
     * positive rational: the nearest double, ties to even. The quotient is taken to at least 65 bits
     * and an inexact remainder set as a sticky low bit, so `BigInteger.doubleValue` (correctly
-    * rounded) rounds it as the exact quotient would round.
+    * rounded) rounds it as the exact quotient would round. ARI-1: the reference's own floating
+    * point, as [[checkEpochLength]].
     */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   private[ledger] def rationalToDouble(r: Rational): Double =
     val (n, d) = (r.numerator.bigInteger, r.denominator.bigInteger)
     val shift = 65 - (n.bitLength - d.bitLength)
@@ -124,7 +131,8 @@ object ShelleyGenesisValidation:
     Math.scalb(sticky.doubleValue, -shift)
 
   /** `ceiling :: Double -> Word64` of a finite, non-negative double: the exact ceiling, its low 64
-    * bits.
+    * bits. ARI-1: the reference's own floating point, as [[checkEpochLength]].
     */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   private[ledger] def ceilingWord64(x: Double): Word64 =
     Word64.fromUnsigned(new java.math.BigDecimal(Math.ceil(x)).toBigInteger.longValue)

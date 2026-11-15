@@ -110,6 +110,36 @@ class DeepNestingSuite extends FunSuite:
     }
   }
 
+  test("a native script as deep as a block holds is written back as read, on a small stack") {
+    val writer = haskell.state.ConwayCodecs.script
+    val n = 30000
+    onSmallStack {
+      val script = Cbor
+        .decode(nested(n))
+        .flatMap(Script.native(_, NativeScript.Form.Timelock))
+        .fold(e => fail(e.toString), identity)
+      assertEquals(writer.write(script), Right(raw(0x82, 0x00) ++ nested(n)))
+      // the writer reads the kept bytes again and compares them with the tree, level for level
+      val otherTree = Cbor
+        .decode(
+          repeat(raw(0x82, 0x01, 0x81), n) ++ raw(0x82, 0x00, 0x58, 0x1c) ++ repeat(raw(1), 28)
+        )
+        .fold(e => fail(e.toString), identity)
+      val other =
+        NativeScript
+          .decode(otherTree, NativeScript.Form.Timelock)
+          .fold(e => fail(e.message), identity)
+      assertEquals(
+        writer.write(script.copy(native = Some(other))).left.map(v => (v.typeName, v.constraint)),
+        Left(("native script", "its tree"))
+      )
+      // the recorded preprod script, 5,383 levels
+      val recorded = parsed.witnesses.scripts.headOption.getOrElse(fail("no script"))
+      val kept = recorded.encoding.getOrElse(fail("no encoding was kept"))
+      assertEquals(writer.write(recorded), Right(raw(0x82, 0x00) ++ kept))
+    }
+  }
+
   test("native scripts of every shape nest alike, a malformed one is an error not a crash") {
     // any [ n_of_k 1 [ invalid_before 5, ... ] ] nested 10000 times
     val unit = raw(0x82, 0x02, 0x81, 0x83, 0x03, 0x01, 0x81)

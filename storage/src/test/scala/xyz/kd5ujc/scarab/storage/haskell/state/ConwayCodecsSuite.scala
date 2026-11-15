@@ -50,8 +50,6 @@ import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, Writer}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.protocol.Era
 
-import ConwayCodecs.ScriptPayload
-
 /** The reference's `EncCBOR` of the Conway values of [[ConwayCodecs]]. What a codec writes is read
   * back by the ledger's own decoder as the value written (a property over generated values, for
   * every codec but the block's); framing, map order and tags are checked against bytes worked out
@@ -295,11 +293,12 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     go(s)
     out.result
 
-  private val scriptPayload: Gen[ScriptPayload] = Gen.oneOf(
-    nativeScript(3).map(s => ScriptPayload(ScriptKind.Native, nativeBytes(s))),
+  /** A script as read: a native script with its encoding, a Plutus script with its bytes. */
+  private val script: Gen[Script] = Gen.oneOf(
+    nativeScript(3).map(s => Script.nativeOf(nativeBytes(s), s)),
     Gen
       .zip(Gen.oneOf(ScriptKind.PlutusV1, ScriptKind.PlutusV2, ScriptKind.PlutusV3), anyBytes)
-      .map(ScriptPayload(_, _))
+      .map(Script.plutus(_, _))
   )
 
   /** Plutus data, each as some encoding of it: the redeemer keeps the bytes. */
@@ -383,15 +382,9 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     }
   }
 
-  property("a script is read back with its language, its bytes and the hash over them") {
-    forAll(scriptPayload) { s =>
-      val read = Script.decode(node(written(ConwayCodecs.script)(s)), ScriptKind.PlutusV3)
-      val hash = Blake2b.hash224.hash(Bytes(s.kind.tag.toByte +: s.payload.value))
-      val native =
-        if s.kind.isPlutus then None
-        else NativeScript.decode(node(s.payload), NativeScript.Form.Timelock).toOption
-      read.map(r => (r.kind, r.hash, r.plutus, r.native)) ==
-        Right((s.kind, hash, Option.when(s.kind.isPlutus)(s.payload), native))
+  property("a script is read back as itself: its language, its tree, its bytes and their hash") {
+    forAll(script) { s =>
+      Script.decode(node(written(ConwayCodecs.script)(s)), ScriptKind.PlutusV3) == Right(s)
     }
   }
 
@@ -692,12 +685,41 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
 
   test("a native script is written as the bytes it was read with, a Plutus script as bytes") {
     // the time lock kept indefinite: the reference keeps its bytes (`MemoBytes`)
-    same(s"82 00 9f 00 581c$key ff")(
-      written(ConwayCodecs.script)(ScriptPayload(ScriptKind.Native, hex(s"9f00581c${key}ff")))
-    )
+    val native = Script
+      .native(node(hex(s"9f00581c${key}ff")), NativeScript.Form.Timelock)
+      .fold(e => fail(e.message), identity)
+    same(s"82 00 9f 00 581c$key ff")(written(ConwayCodecs.script)(native))
     same("82 03 43 010203")(
-      written(ConwayCodecs.script)(ScriptPayload(ScriptKind.PlutusV3, hex("010203")))
+      written(ConwayCodecs.script)(Script.plutus(ScriptKind.PlutusV3, hex("010203")))
     )
+  }
+
+  test("a witness script is written back as the witness set carried it, framing and all") {
+    // A time lock in two non-canonical forms the reference reads (`decodeRecordSum` takes an
+    // indefinite list, `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/
+    // Decoder.hs:670-675`, cardano-ledger f649f975) and keeps as it read them (`MemoBytes`):
+    // an indefinite root and an `AllOf` whose list is indefinite.
+    val scripts = Vector(s"9f 00 581c$key ff", s"82 01 9f 82 00 581c$key 82 04 1a00989680 ff")
+    scripts.foreach { native =>
+      val read = Witnesses
+        .decode(hex(s"a1 01 81 $native"), Era.Conway)
+        .fold(e => fail(e.message), identity)
+      val script = read.scripts.headOption.getOrElse(fail("no native script was read"))
+      same(s"82 00 $native")(written(ConwayCodecs.script)(script))
+      assertEquals(script.hash, Blake2b.hash224.hash(hex(s"00 $native")), "the hash over them")
+    }
+  }
+
+  test("a native script read at version 12, its key hash chunked, is written back as read") {
+    // a decoder at version 12 reads a chunked byte string (`ifDecoderVersionAtLeast (natVersion
+    // @12)`, `ByteStrings.of`); the script keeps those bytes and is written as them
+    val half = "11" * 14
+    val native = s"82 00 5f 4e $half 4e $half ff"
+    val read = Witnesses
+      .decode(hex(s"a1 01 81 $native"), Era.Conway, DecoderVersion.of(Era.Dijkstra))
+      .fold(e => fail(e.message), identity)
+    val script = read.scripts.headOption.getOrElse(fail("no native script was read"))
+    same(s"82 00 $native")(written(ConwayCodecs.script)(script))
   }
 
   test("a redeemer is [tag, index, data, [mem, steps]] with its data as kept") {
@@ -995,13 +1017,27 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
           )
         )
       ),
-      ConwayCodecs.script.write(ScriptPayload(ScriptKind.Native, hex("ff"))),
-      ConwayCodecs.script.write(ScriptPayload(ScriptKind.Native, hex("00"))),
+      ConwayCodecs.script.write(Script.nativeOf(hex("ff"), NativeScript.Sig(hex(key)))),
+      ConwayCodecs.script.write(Script.nativeOf(hex("00"), NativeScript.Sig(hex(key)))),
       ConwayCodecs.redeemer.write(Redeemer(0, 0, hex("f5"), ExUnits(0, 0))),
       ConwayCodecs.redeemer.write(Redeemer(6, 0, hex("00"), ExUnits(0, 0))),
       ConwayCodecs.redeemer.write(Redeemer(0, 0, Bytes.empty, ExUnits(0, 0)))
     )
     refused.zipWithIndex.foreach((r, i) => assert(r.isLeft, s"case $i was written: $r"))
+  }
+
+  test("a script whose bytes were not kept, or are not the script's, is refused") {
+    // an output's reference script and a script built by hand keep no bytes
+    val built = Script(ScriptKind.Native, hex(key), Some(NativeScript.Sig(hex(key))))
+    val reference = Script.plutus(ScriptKind.PlutusV2, hex("4100")).withoutBytes
+    // bytes its hash is not over, and native bytes that are not its tree
+    val otherHash = Script.plutus(ScriptKind.PlutusV2, hex("4100")).copy(hash = hex(key))
+    val otherTree = Script.nativeOf(hex(s"8200581c$key"), NativeScript.AnyOf(Vector.empty))
+    def refusal(s: Script) = ConwayCodecs.script.write(s).left.map(v => (v.typeName, v.constraint))
+    assertEquals(refusal(built), Left(("a script", "the bytes it was read from")))
+    assertEquals(refusal(reference), Left(("a script", "the bytes it was read from")))
+    assertEquals(refusal(otherHash), Left(("a script", "the bytes its hash is over")))
+    assertEquals(refusal(otherTree), Left(("native script", "its tree")))
   }
 
   // ---------------------------------------------------------------------- chain data

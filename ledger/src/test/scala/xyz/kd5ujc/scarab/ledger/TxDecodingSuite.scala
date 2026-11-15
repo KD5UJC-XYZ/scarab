@@ -175,6 +175,27 @@ class TxDecodingSuite extends FunSuite:
     assertEquals(plutus.hash, Blake2b.hash224.hash(Bytes(Vector(2, 1, 2, 3))))
   }
 
+  test("a witness native script keeps the bytes it was read from; an output's reference none") {
+    val key = "e" * 56
+    // an indefinite list, an encoding the reference reads and keeps as it is (`MemoBytes`)
+    val native = s"9f00581c${key}ff"
+    val raw = Bytes.fromHex(s"a10181$native").fold(e => fail(e.toString), identity)
+    val script = Witnesses
+      .decode(raw, Era.Conway)
+      .fold(e => fail(e.message), _.scripts.headOption.getOrElse(fail("no script was read")))
+    val kept = script.encoding.getOrElse(fail("no encoding was kept"))
+    assertEquals(kept.hex, native)
+    assert(kept.unsafeArray eq raw.unsafeArray, "a window of the witness set, not a copy")
+    assertEquals(script.plutus, None)
+    val output = Bytes
+      .fromHex(s"a3 00 581d 61${"1" * 56} 01 01 03 d818 5823 8200$native".filterNot(_ == ' '))
+      .fold(e => fail(e.toString), identity)
+    val reference =
+      TxOut.fromBytes(output).fold(e => fail(e.message), _.scriptRef.getOrElse(fail("no script")))
+    assertEquals(reference, script.withoutBytes, "the hash and the tree, without the bytes")
+    assertEquals((reference.encoding, reference.plutus), (None, None))
+  }
+
   test("pointer addresses decode their three variable-length naturals") {
     val hash = Vector.fill(28)(1.toByte)
     // slot 300 = 0x82 0x2c, tx index 5, cert index 0

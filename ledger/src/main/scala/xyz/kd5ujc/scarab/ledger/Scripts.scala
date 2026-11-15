@@ -220,22 +220,32 @@ object ScriptKind:
   val newestKnown: ScriptKind = PlutusV3
 
 /** A script with its hash. The hash is `blake2b-224(tag ‖ payload)`, where the payload is the
-  * original encoding of a native script or the bytes of a Plutus script. `plutus` holds the bytes
-  * of a Plutus script when they were kept (witness scripts; outputs keep only the hash of their
-  * reference script and re-read the bytes from their encoding on demand).
+  * original encoding of a native script or the bytes of a Plutus script. The payload is kept when
+  * the script was read from it, as a witness script is: `plutus` holds a Plutus script's bytes and
+  * `encoding` a native script's encoding as it arrived, a window of the bytes read, which is what
+  * the reference writes the script back as (a `Timelock` is `MemoBytes`,
+  * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:253`, cardano-ledger f649f975). An
+  * output keeps neither ([[withoutBytes]]): only the hash and the tree of its reference script,
+  * whose bytes it re-reads from its own encoding on demand, so an output read again from that
+  * encoding is equal to the one stored.
   */
 final case class Script(
     kind: ScriptKind,
     hash: Bytes,
     native: Option[NativeScript],
-    plutus: Option[Bytes] = None
-)
+    plutus: Option[Bytes] = None,
+    encoding: Option[Bytes] = None
+):
+  /** The script as an output's reference keeps it: its kind, hash and native tree, without the
+    * bytes it was read from.
+    */
+  def withoutBytes: Script = copy(plutus = None, encoding = None)
 
 object Script:
   private def hashOf(kind: ScriptKind, payload: Bytes): Bytes =
     Blake2b.hash224.hash(Bytes(kind.tag.toByte +: payload.value))
 
-  /** A native script of `form` ([[NativeScript.Form]]) with its hash. */
+  /** A native script of `form` ([[NativeScript.Form]]) with its hash and its encoding as read. */
   def native(n: Node, form: NativeScript.Form)(using
       ByteStrings
   ): Either[LedgerDecodeError, Script] =
@@ -243,14 +253,22 @@ object Script:
       .decode(n, form)
       .left
       .map(LedgerDecodeError.NativeScript(_))
-      .map(s => Script(ScriptKind.Native, hashOf(ScriptKind.Native, n.original), Some(s)))
+      .map(nativeOf(n.original, _))
 
   def plutus(kind: ScriptKind, bytes: Bytes): Script =
     Script(kind, hashOf(kind, bytes), None, Some(bytes))
 
-  /** The native script `script` whose encoding is `original`, with the hash over it. */
+  /** The native script `script` whose encoding is `original`, with the hash over it and the
+    * encoding kept.
+    */
   def nativeOf(original: Bytes, script: NativeScript): Script =
-    Script(ScriptKind.Native, hashOf(ScriptKind.Native, original), Some(script))
+    Script(
+      ScriptKind.Native,
+      hashOf(ScriptKind.Native, original),
+      Some(script),
+      None,
+      Some(original)
+    )
 
   /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`, of a
     * language no newer than `newest` (`decodeAlonzoScript`, `Alonzo/Scripts.hs:705-720`, f649f975).
@@ -272,15 +290,16 @@ object Script:
       }
     }
 
-  /** `#6.24(bytes .cbor script)` as stored in an output's reference-script field; the Plutus bytes
-    * are dropped so the ledger state keeps one copy (the output's own encoding).
+  /** `#6.24(bytes .cbor script)` as stored in an output's reference-script field; the script's
+    * bytes are dropped ([[Script.withoutBytes]]) so the ledger state keeps one copy (the output's
+    * own encoding).
     */
   def decodeWrapped(n: Node, newest: ScriptKind)(using
       ByteStrings
   ): Either[LedgerDecodeError, Script] =
-    decodeWrappedWithBytes(n, newest).map(_.copy(plutus = None))
+    decodeWrappedWithBytes(n, newest).map(_.withoutBytes)
 
-  /** As [[decodeWrapped]], keeping the Plutus bytes. */
+  /** As [[decodeWrapped]], keeping the script's bytes. */
   def decodeWrappedWithBytes(n: Node, newest: ScriptKind)(using
       ByteStrings
   ): Either[LedgerDecodeError, Script] =

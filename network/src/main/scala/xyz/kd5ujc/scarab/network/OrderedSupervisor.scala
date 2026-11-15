@@ -56,7 +56,7 @@ object OrderedSupervisor:
                 case closed @ State.Closed()    => (closed, None)
               }
               .flatMap {
-                case None     => F.raiseError(shutdown)
+                case None     => refused[F, Fiber[F, Throwable, A]]
                 case Some(id) =>
                   // The child waits until it is registered, so that a supervisor released in the
                   // meantime starts no work.
@@ -74,14 +74,19 @@ object OrderedSupervisor:
                           F.start(fiber.join *> forget(state, id)) *> registered
                             .complete(())
                             .as(fiber)
-                        case false => fiber.cancel *> F.raiseError(shutdown)
+                        case false => fiber.cancel *> refused[F, Fiber[F, Throwable, A]]
                       }
                   }
               }
           }
         }
 
-  private def shutdown: Throwable = new IllegalStateException("supervisor already shutdown")
+  /** Supervising after the release: the `IllegalStateException` of the library's supervisor, which
+    * is the contract `Supervisor` callers know (FUN-2 (b), a kept site of ERR-4).
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+  private def refused[F[_], A](using F: Concurrent[F]): F[A] =
+    F.raiseError(new IllegalStateException("supervisor already shutdown"))
 
   private def forget[F[_]](state: Ref[F, State[F]], id: Long): F[Unit] =
     state.update {

@@ -416,13 +416,13 @@ object NodeEvent:
             Json.obj(
               "source" -> "resource".asJson,
               "path" -> name.asJson,
-              "sha256" -> sha256.asJson
+              "sha256" -> sha256.hex.asJson
             )
           case CryptoLibrary.OnLibraryPath(file, sha256) =>
             Json.obj(
               "source" -> "library-path".asJson,
               "path" -> file.toString.asJson,
-              "sha256" -> sha256.asJson
+              "sha256" -> sha256.hex.asJson
             ))
       )
     case PlutusVmChosen(vm) => EventKind.PlutusVm.line("vm" -> vm.name.asJson)
