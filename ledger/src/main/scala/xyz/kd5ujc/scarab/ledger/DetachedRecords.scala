@@ -538,11 +538,11 @@ object DetachedRecords:
     /** Auxiliary data: from Allegra a list of the metadata and the scripts is a `RecD` record
       * (`Allegra/TxAuxData.hs:185-210`, `Alonzo/TxAuxData.hs:215-262`).
       */
-    def auxiliaryData(era: Era): Shape = auxiliaryDataAt(DecoderVersion.of(era).value)
+    def auxiliaryData(era: Era): Shape = auxiliaryDataAt(era, DecoderVersion.of(era).value)
 
-    /** [[auxiliaryData]] at a decoder version: Allegra's is 3. */
-    def auxiliaryDataAt(version: BigInt): Shape =
-      if version >= 3 && version < 12 then
+    /** [[auxiliaryData]] at a decoder version: `RecD` permits detached fields below 12. */
+    def auxiliaryDataAt(era: Era, version: BigInt): Shape =
+      if since(era, Era.Allegra) && version < 12 then
         ByToken {
           case Token.List => pair
           case _          => Item
@@ -557,7 +557,7 @@ object DetachedRecords:
 
     /** [[transaction]] at a decoder version of the era. */
     def transaction(era: Era, version: DecoderVersion): Shape =
-      val auxiliary = auxiliaryDataAt(version.value)
+      val auxiliary = auxiliaryDataAt(era, version.value)
       if !recorded(version) then Item
       else if since(era, Era.Alonzo) then
         Fields(
@@ -600,7 +600,7 @@ object DetachedRecords:
                 header(era, version(era)),
                 ListOf(body(era, version(era))),
                 ListOf(witnesses(era, version(era))),
-                MapOf(Item, auxiliaryDataAt(version(era).value))
+                MapOf(Item, auxiliaryDataAt(era, version(era).value))
               ),
               Item
             )

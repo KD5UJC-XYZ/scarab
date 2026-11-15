@@ -56,7 +56,7 @@ class HistoricalAuxiliarySuite extends FunSuite:
         // The shared reader, the block path and the predicate agree with the reference verdict.
         val valid = body(None)
         val block = Block.Transaction(valid, hex("a0"), Some(bytes), true)
-        assertEquals(AuxiliaryScripts.read(bytes, major).isRight, decoded)
+        assertEquals(AuxiliaryScripts.read(bytes, era(row), major).isRight, decoded)
         assertEquals(Tx.fromBlock(block, era(row)).isRight, decoded)
         if decoded then
           val tx = Tx
@@ -161,14 +161,18 @@ class HistoricalAuxiliarySuite extends FunSuite:
         Vector.fill(5000)(Vector(0x82.toByte, 1.toByte, 0x81.toByte)).flatten ++
         Vector(0x82.toByte, 4.toByte, 7.toByte)
     )
-    for protocol <- Vector(2, 3, 4) do
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary) do
       assertEquals(
-        PreprodDeepTx.onSmallStack(AuxiliaryScripts.read(metadata, protocol)),
+        PreprodDeepTx.onSmallStack(
+          AuxiliaryScripts.read(metadata, era, DecoderVersion.of(era).value)
+        ),
         Right(Vector.empty)
       )
-    for protocol <- Vector(3, 4) do
+    for era <- Vector(Era.Allegra, Era.Mary) do
       assertEquals(
-        PreprodDeepTx.onSmallStack(AuxiliaryScripts.read(scripts, protocol)),
+        PreprodDeepTx.onSmallStack(
+          AuxiliaryScripts.read(scripts, era, DecoderVersion.of(era).value)
+        ),
         Right(Vector.empty)
       )
   }

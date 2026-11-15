@@ -496,11 +496,11 @@ class DecoderVersionSuite extends FunSuite:
       )
   }
 
-  test("auxiliary list records and Plutus V4 are accepted from version 12") {
+  test("Alonzo-family auxiliary list records and Plutus V4 are accepted from version 12") {
     given ByteStrings = ByteStrings.of(at12)
     assertEquals(
       AuxiliaryScripts
-        .read(hex("d90103a1058140"), at12.value)
+        .read(hex("d90103a1058140"), Era.Conway, at12.value)
         .map(_.map(s => (s.language, s.code, s.hash))),
       Right(
         Vector(
@@ -529,6 +529,70 @@ class DecoderVersionSuite extends FunSuite:
         Left(LedgerDecodeError.UnknownTag(DecodeField.AuxiliaryField, 5))
       )
       assertEquals(Tx.fromEnvelope(tx(v4), era, at12).map(_.auxiliary), Right(Some(hex(v4))))
+  }
+
+  // Allegra/TxAuxData.hs:185-210 always uses RecD; Mary/TxAuxData.hs:27-28 uses that type
+  // (cardano-ledger f649f975). Only Alonzo's type changes its list reader at version 12.
+  test("auxiliary indefinite lists at version 12 are restricted to the Alonzo family") {
+    val auxiliary = hex("9fa080ff")
+    val parts = Block.Transaction(hex("a3008001800200"), hex("a0"), Some(auxiliary), true)
+    val envelope = hex("83a3008001800200a09fa080ff")
+    val refused = LedgerDecodeError.IndefiniteLength(DecodeField.AuxiliaryData)
+    for era <- Vector(Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway) do
+      assertEquals(Tx.fromBlock(parts, era), Left(refused), s"$era default block")
+      assertEquals(Tx.fromEnvelope(envelope, era), Left(refused), s"$era default envelope")
+      for version <- Vector(DecoderVersion.of(era), at11, at12) do
+        given ByteStrings = ByteStrings.of(version)
+        val expected: Either[LedgerDecodeError, Option[Bytes]] =
+          Either.cond(
+            version.atLeast(12) && era.ordinal >= Era.Alonzo.ordinal,
+            Some(auxiliary),
+            refused
+          )
+        assertEquals(
+          AuxiliaryScripts.read(auxiliary, era, version.value).void,
+          expected.void,
+          s"$era at ${version.value}: auxiliary"
+        )
+        assertEquals(
+          Tx.fromBlock(parts, era, version).map(_.auxiliary),
+          expected,
+          s"$era at ${version.value}: block"
+        )
+        assertEquals(
+          Tx.fromEnvelope(envelope, era, version).map(_.auxiliary),
+          expected,
+          s"$era at ${version.value}: envelope"
+        )
+        val definite = hex("82a080")
+        assertEquals(
+          Tx.fromBlock(parts.copy(auxiliaryData = Some(definite)), era, version).map(_.auxiliary),
+          Right(Some(definite)),
+          s"$era at ${version.value}: definite control"
+        )
+  }
+
+  test("historical auxiliary types refuse tag 259 and V4 even at version 12") {
+    for
+      era <- Vector(Era.Shelley, Era.Allegra, Era.Mary)
+      auxiliary <- Vector(hex("d90103a0"), hex("d90103a1058140"))
+    do
+      val body = hex(if era == Era.Shelley then "a40080018002000300" else "a3008001800200")
+      val parts = Block.Transaction(body, hex("a0"), Some(auxiliary), true)
+      val envelope = hex("83") ++ body ++ hex("a0") ++ auxiliary
+      val refused = LedgerDecodeError.Expected(
+        DecodeField.AuxiliaryData,
+        if era == Era.Shelley then LedgerDecodeError.Shape.Map
+        else LedgerDecodeError.Shape.ArrayOrMap,
+        node(auxiliary).value
+      )
+      assertEquals(Tx.fromBlock(parts, era), Left(refused), s"$era default block")
+      assertEquals(Tx.fromEnvelope(envelope, era), Left(refused), s"$era default envelope")
+      for version <- Vector(DecoderVersion.of(era), at11, at12) do
+        given ByteStrings = ByteStrings.of(version)
+        assertEquals(AuxiliaryScripts.read(auxiliary, era, version.value), Left(refused))
+        assertEquals(Tx.fromBlock(parts, era, version), Left(refused))
+        assertEquals(Tx.fromEnvelope(envelope, era, version), Left(refused))
   }
 
   test("witness script languages remain tied to the era at explicit versions") {

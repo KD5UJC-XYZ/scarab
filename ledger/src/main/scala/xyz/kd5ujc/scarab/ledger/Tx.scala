@@ -1026,7 +1026,7 @@ object Tx:
     for
       body <- TxBody.decode(t.body, era, version)
       witnesses <- Witnesses.decode(t.witnesses, era, version)
-      _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, version.value))
+      _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, era, version.value))
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
       // the `is_valid` flag is not counted (checked against Preview transactions).
