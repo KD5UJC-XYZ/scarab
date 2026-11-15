@@ -128,7 +128,8 @@ its codecs); that plan stands unless evidence shows the two builds' state files 
 
 An era's types are the same in every build, but a class can have a member at one build's pin and not at
 another's. Scarab's class carries the union of the builds' members, and the eras' instances give each build's
-values. Each such member is a Deviation against the pin that lacks it (decided 2026-11-15, #85). For example,
+values. Each such member is a Deviation against the pin that lacks it (decided 2026-11-15, #85;
+[decisions register](../decisions.md#reference-fidelity)). For example,
 `EraPParams` has `ppMaxPledgeLeverageG` and `ppMinPoolMarginG` at cardano-ledger 9df9f98c
 (`libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:510-524`) and not at f649f975. A rule that differs by
 build asks for both instances: `using EraTxBody[E]` and `BuildRules[B]`. `EraRules[E]`, the complete rule
