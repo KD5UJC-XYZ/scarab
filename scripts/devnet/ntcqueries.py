@@ -302,14 +302,15 @@ class AtPoint:
 
     A point can be acquired only while it is among the node's last `k` blocks, and an acquired session keeps its state
     however long it is held; a node ends the connection on a query it does not answer. So a round acquires, from the
-    start, a session for the first query, one for each query the node is expected to end a connection on (`spares`)
-    and one for a query it ends one on unexpectedly (`wanted`); it takes the next session only when the one before
-    ended, and acquires another late only when they run out, which a point no longer held makes `PointLost`. Only the
-    end of a connection after a query was sent on an acquired session is the node's refusal (None from `ask`);
-    anything else (a deadline, a malformed reply) is an error of the round."""
+    start, a session for the first query and one for each query the node is expected to end a connection on
+    (`spares`; `wanted` in all, none when the node is asked nothing); it takes the next session only when the one
+    before ended, and acquires another late only when they run out, which a point no longer held makes `PointLost`.
+    Only the end of a connection after a query was sent on an acquired session is the node's refusal (None from
+    `ask`); anything else (a deadline, a malformed reply) is an error of the round."""
 
     def __init__(self, opener, point, spares=0, first=None, gate=None, expires=None):
         self.opener, self.point, self.spares, self.expires = opener, point, spares, expires
+        self.wanted = 1 + spares
         self.live = [] if first is None else [first]
         self.gate = gate or threading.BoundedSemaphore(ACQUIRE_WORKERS)
         self.late = self.refused_connects = 0
@@ -318,10 +319,6 @@ class AtPoint:
         """`ntcquery.Deadline` once the round's `expires` (a `time.monotonic()` instant) has passed."""
         if self.expires is not None and time.monotonic() >= self.expires:
             raise ntcquery.Deadline("the round's deadline passed")
-
-    @property
-    def wanted(self):
-        return 2 + self.spares
 
     def connected(self):
         """A new session of the node, its handshake done."""
@@ -414,9 +411,10 @@ def acquire_all(sets, expires=None):
 
 
 class Row(NamedTuple):
-    """One query of a round: its answers (None when the node ended the connection on it), the version they were asked
-    at, whether the Scala node answers it in the round's era (`implemented`) and whether both nodes refuse it at
-    decode there (`refused`)."""
+    """One query of a round: its answers (None when the node ended the connection on it; the Scala node's to a query
+    it does not implement is asked at its tip, not at the round's point, and is not judged), the version they were
+    asked at, whether the Scala node implements the reference's behaviour for it in the round's era (`implemented`)
+    and whether both nodes refuse it at decode there (`refused`)."""
     label: str
     version: int
     implemented: bool
@@ -513,8 +511,9 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
     `legacy`, at `LEGACY_VERSION`) asked of both at that point. The era of its block queries is that of the
     reference's state at the point (`GetCurrentEra`), which the Scala node's must equal (`Incomparable`). Every
     session is acquired once the eras are known and before any other query (`AtPoint`), as many as the widest
-    universe needs (`WIDEST`); `PointLost` when one cannot be. Then the protocol major version and the arguments are
-    read from the reference's state there (`universe_of`). Returns a `Round`; an error after the acquisitions is a
+    universe needs (`WIDEST`). Then the protocol major version and the arguments are read from the reference's state
+    there (`universe_of`). An error of anything before the first row (a connection, an acquisition, the reads of the
+    point, the eras, the version and the arguments) is `PointLost`. Returns a `Round`; an error after the acquisitions is a
     `RoundError` with the rows asked before it. Every session of the round ends `DEADLINE` seconds after its start
     at the latest (`ntcquery.Deadline`), however late it was acquired."""
     expires = time.monotonic() + DEADLINE
@@ -536,51 +535,63 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
     gate = threading.BoundedSemaphore(SCALA_CONNECTIONS)
     sets = []
     try:
-        probe = scala()
-        probe.__enter__()
-        sets.append(AtPoint(scala, None, first=probe, gate=gate, expires=expires))
-        probe.acquire()
-        started = time.monotonic()
-        probe.query_raw([3])
-        point = ntcquery.chain_point(probe.last_raw)
-        if point is None:
-            raise PointLost("the Scala node's tip is Origin: no block to compare a state at")
-        sets[0].point = point
+        # everything before the first row is the round's acquisition: any error of it loses the round's point
         try:
+            probe = scala()
+            probe.__enter__()
+            sets.append(AtPoint(scala, None, first=probe, gate=gate, expires=expires))
+            probe.acquire()
+            started = time.monotonic()
+            probe.query_raw([3])
+            point = ntcquery.chain_point(probe.last_raw)
+            if point is None:
+                raise PointLost("the Scala node's tip is Origin: no block to compare a state at")
+            sets[0].point = point
             main = AtPoint(reference, point, first=reference().__enter__(), expires=expires)
-        except (RuntimeError, EOFError, OSError) as e:
-            raise PointLost(f"the reference session did not start: {e!r}") from e
-        sets.append(main)
-        try:
-            main.live[0].acquire(point)
-        except ntcquery.AcquireRefused as e:
-            raise PointLost(f"the reference refused {point!r}: {e.failure}") from e
-        era, scala_era = main.live[0].query_raw(current_era), probe.query_raw(current_era)
-        if era != scala_era or era not in range(1, ERA_CONWAY + 1):
-            raise Incomparable(f"at {point!r} the reference's state is of era {era!r}, the Scala node's of {scala_era!r}")
-        version = main.live[0].agreed_version
-        if probe.agreed_version != version:
-            raise Incomparable(f"the nodes agreed on node-to-client versions {version} and {probe.agreed_version}")
-        groups = [(version, queries_for(WIDEST, era), sets[0], main)]
-        if legacy is not None:
-            groups.append((LEGACY_VERSION, legacy(era),
-                           AtPoint(lambda: scala(LEGACY_VERSION), point, gate=gate, expires=expires),
-                           AtPoint(lambda: reference(LEGACY_VERSION), point, expires=expires)))
-        for _, forms, on_scala, on_reference in groups:
-            on_scala.spares = sum(1 for _, q, mark in forms if not mark or conway_only(inner_of(q), era))
-            on_reference.spares = sum(1 for _, q, _ in forms if conway_only(inner_of(q), era))
-            sets.extend(s for s in (on_scala, on_reference) if s not in sets)
-        acquire_all(sets, expires)
-        acquired = time.monotonic() - started
-        major = protocol_major(main.live[0].query_raw(hfc([3], era))[0], era)
-        groups[0] = (version, queries_for(universe_of(main.live[0], era), era), sets[0], main)
+            sets.append(main)
+            try:
+                main.live[0].acquire(point)
+            except ntcquery.AcquireRefused as e:
+                raise PointLost(f"the reference refused {point!r}: {e.failure}") from e
+            era, scala_era = main.live[0].query_raw(current_era), probe.query_raw(current_era)
+            if era != scala_era or era not in range(1, ERA_CONWAY + 1):
+                raise Incomparable(f"at {point!r} the reference's state is of era {era!r}, the Scala node's of {scala_era!r}")
+            version = main.live[0].agreed_version
+            if probe.agreed_version != version:
+                raise Incomparable(f"the nodes agreed on node-to-client versions {version} and {probe.agreed_version}")
+            # a query the Scala node does not implement is incomplete whatever it answers, so it is asked on sessions
+            # of the Scala node's tip, acquired one at a time as they are needed: only to see that the node ends the
+            # connection or answers well formed, in time
+            groups = [(version, queries_for(WIDEST, era), sets[0], main,
+                       AtPoint(scala, None, gate=gate, expires=expires))]
+            if legacy is not None:
+                groups.append((LEGACY_VERSION, legacy(era),
+                               AtPoint(lambda: scala(LEGACY_VERSION), point, gate=gate, expires=expires),
+                               AtPoint(lambda: reference(LEGACY_VERSION), point, expires=expires),
+                               AtPoint(lambda: scala(LEGACY_VERSION), None, gate=gate, expires=expires)))
+            for _, forms, on_scala, on_reference, at_tip in groups:
+                asked = [q for _, q, mark in forms if mark]
+                on_scala.spares = sum(1 for q in asked if conway_only(inner_of(q), era))
+                on_scala.wanted = (1 if asked else 0) + on_scala.spares
+                on_reference.spares = sum(1 for _, q, _ in forms if conway_only(inner_of(q), era))
+                on_reference.wanted = 1 + on_reference.spares
+                at_tip.wanted = 0
+                sets.extend(s for s in (on_scala, on_reference, at_tip) if s not in sets)
+            acquire_all(sets, expires)
+            acquired = time.monotonic() - started
+            major = protocol_major(main.live[0].query_raw(hfc([3], era))[0], era)
+            groups[0] = (version, queries_for(universe_of(main.live[0], era), era), *groups[0][2:])
+        except (PointLost, Incomparable):
+            raise
+        except (RuntimeError, EOFError, OSError, ValueError, IndexError, TypeError, KeyError) as e:
+            raise PointLost(f"the round's sessions or arguments were not ready at its point: {e!r}") from e
         rows = []
-        for at, forms, on_scala, on_reference in groups:
+        for at, forms, on_scala, on_reference, at_tip in groups:
             for form in forms:
                 label, query, implemented = form
                 try:
                     rows.append(Row(label, at, implemented, conway_only(inner_of(query), era),
-                                    on_reference.ask(query), on_scala.ask(query)))
+                                    on_reference.ask(query), (on_scala if implemented else at_tip).ask(query)))
                 except (Exception, SystemExit) as e:
                     raise RoundError(Round(point, era, major, version, rows), form, at, e) from e
         return Round(point, era, major, version, rows,

@@ -5,6 +5,7 @@ cardano-cli 11.2.3 refuses `query ledger-state` and `query protocol-state` befor
 but the node still answers them. This speaks the mini-protocol directly through `socat` inside the
 reference container, so the e2e can read the reference ledger in every Shelley-based era.
 """
+import os
 import select
 import socket
 import struct
@@ -248,11 +249,12 @@ def decode_all(buf):
 
 
 class _HostSocket:
-    """The process interface `LocalStateQuery` uses, over a Unix socket on the host."""
+    """The process interface `LocalStateQuery` uses, over a Unix socket on the host; its connection and every write
+    wait at most `timeout` seconds."""
 
-    def __init__(self, path):
+    def __init__(self, path, timeout=120):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.settimeout(120)
+        self.sock.settimeout(timeout)
         self.sock.connect(path)
         self.stdin = self
         self.stdout = self
@@ -316,11 +318,13 @@ class LocalStateQuery:
     def __enter__(self):
         self.expires = None if self.deadline is None else time.monotonic() + self.deadline
         if self.host:
-            self.proc = _HostSocket(self.socket)
+            self.proc = _HostSocket(self.socket, 120 if self.deadline is None else max(self.deadline, 0.001))
         else:
             self.proc = subprocess.Popen(
                 ["docker", "exec", "-i", self.container, *RELAYS[self.relay](self.socket)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+            if self.deadline is not None:
+                os.set_blocking(self.proc.stdin.fileno(), False)  # writes go as far as the pipe takes (`_write`)
         try:
             self.buffers = {}
             versions = self.VERSIONS if self.version is None else [32768 + self.version]
@@ -352,8 +356,25 @@ class LocalStateQuery:
     def _send(self, protocol, payload):
         for i in range(0, len(payload), 12288):
             chunk = payload[i:i + 12288]
-            self.proc.stdin.write(struct.pack(">IHH", 0, protocol, len(chunk)) + chunk)
+            self._write(struct.pack(">IHH", 0, protocol, len(chunk)) + chunk)
         self.proc.stdin.flush()
+
+    def _write(self, data):
+        """Write all of `data`. With a deadline the transport's descriptor does not block (a host socket with a timeout
+        is non-blocking underneath, a relay's pipe is made so): each part goes once the transport takes some, and
+        none after the deadline (`Deadline`)."""
+        if self.expires is None:
+            self.proc.stdin.write(data)
+            return
+        view = memoryview(data)
+        while view:
+            remaining = self.expires - time.monotonic()
+            if remaining <= 0 or not select.select([], [self.proc.stdin], [], remaining)[1]:
+                raise Deadline(f"{self.socket} took no write within {self.deadline} s")
+            try:
+                view = view[os.write(self.proc.stdin.fileno(), view):]
+            except BlockingIOError:
+                continue
 
     def _read(self, n):
         out = b""

@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """The same-point node-to-client battery in every Shelley-based era (`ntcqueries`, `ntceras`), without a devnet."""
 import hashlib
+import os
 import pathlib
+import socket
 import sys
+import time
 import tempfile
 import threading
 import unittest
@@ -244,20 +247,27 @@ class SamePointTest(unittest.TestCase):
         # the legacy forms were asked at V20 too, on sessions of that version
         self.assertEqual([block(q) for v, q in reference.sent if v == ntcqueries.LEGACY_VERSION],
                          [[3], [11], [9, [3]], [9, [11]]])
-        # the sessions: the reference's main one, one for each query it refuses in the widest battery and one more,
-        # and two at V20; all of them, the Scala node's too, at the round's point and acquired before the first
-        # block query was sent to either node
+        # the sessions at the round's point: the reference's main one, one for each query it refuses in the widest
+        # battery, and one at V20; the Scala node's one for each query it refuses (its probe, which chose the point,
+        # acquired its tip). All of them acquired before the first block query was sent to either node
         refused = sum(1 for _, q, _ in ntcqueries.battery(ntcqueries.WIDEST, 5)
                       if ntcqueries.conway_only(ntcqueries.inner_of(q), 5))
         self.assertEqual(refused, 18)
-        self.assertEqual(reference.opened, 1 + refused + 1 + 2)
+        self.assertEqual(reference.opened, 1 + refused + 1)
         events = reference.events
         first_block = next(i for i, e in enumerate(events) if e[0] == "query" and e[2][:1] == [0] and e[2][1][:1] == [0])
-        acquisitions = [i for i, e in enumerate(events) if e[0] == "acquire"]
-        self.assertEqual(len(acquisitions), reference.opened + scala.opened)
-        self.assertLess(max(acquisitions), first_block)
+        at_point = [i for i, e in enumerate(events) if e[0] == "acquire" and e[2] == POINT]
+        self.assertEqual(len(at_point), reference.opened + refused)
+        self.assertLess(max(at_point), first_block)
         self.assertEqual({tuple(e[2] or []) for e in events if e[0] == "acquire" and e[1] == "reference"},
                          {tuple(POINT)})
+        # a query the Scala node does not implement is asked of it on a session of its tip, one each, as it ends the
+        # connection on every one: at V23 and at V20
+        not_implemented = [row for row in rnd.rows if not row.implemented]
+        self.assertEqual(len(not_implemented), 37)
+        at_tip = [e for e in events if e[0] == "acquire" and e[1] == "scala" and e[2] is None]
+        self.assertEqual(len(at_tip), 1 + 37)
+        self.assertEqual(scala.opened, 1 + refused + 37)
 
     def test_a_conway_round_compares_every_row(self):
         reference, scala = self.nodes(6)
@@ -328,12 +338,46 @@ class SamePointTest(unittest.TestCase):
         self.assertEqual(stats[ntcqueries.LOST_ROUND]["matched"], 0)
         self.assertEqual(stats[ntcqueries.LOST_ROUND]["total"], 1)
 
+    def test_every_failure_before_the_first_row_loses_the_round(self):
+        # the Scala node's connection, the reference's acquisition, a malformed answer on the way: each a lost round,
+        # which the ntc scenario counts as a query not matched
+        class Refusing(FakeSession):
+            def __enter__(self):
+                if self.node.name == "scala":
+                    raise ConnectionRefusedError("no listener")
+                return super().__enter__()
+
+        class Slow(FakeSession):
+            def acquire(self, point=None):
+                if self.node.name == "reference":
+                    raise ntcquery.Deadline("no answer")
+                super().acquire(point)
+
+        class Malformed(FakeSession):
+            def query_raw(self, query):
+                if query == [0, [2, [1]]] and self.node.name == "reference":
+                    raise ntcquery.MalformedReply("not a result")
+                return super().query_raw(query)
+
+        for session in (Refusing, Slow, Malformed):
+            with self.subTest(session=session.__name__):
+                reference, scala = self.nodes(6)
+                FakeSession.nodes = {"reference": reference, "scala": scala}
+                with mock.patch.object(ntcquery, "LocalStateQuery", session):
+                    with self.assertRaises(ntcqueries.PointLost):
+                        ntcqueries.same_point("n", "ref.sock", "scala.sock")
+                    with mock.patch("builtins.print"):
+                        self.assertEqual(ntcqueries.compare_round("n", "ref.sock", "scala.sock"),
+                                         (None, [(ntcqueries.LOST_ROUND, True, False, 0, 0)]))
+                self.assertTrue(all(s.closed for s in reference.sessions + scala.sessions))
+
     def test_the_round_ends_by_its_deadline(self):
         reference, scala = self.nodes(5)
         FakeSession.nodes = {"reference": reference, "scala": scala}
         with mock.patch.object(ntcquery, "LocalStateQuery", FakeSession), mock.patch.object(ntcqueries, "DEADLINE", 0):
-            with self.assertRaises(ntcquery.Deadline):
+            with self.assertRaises(ntcqueries.PointLost) as raised:
                 ntcqueries.same_point("n", "ref.sock", "scala.sock")
+        self.assertIsInstance(raised.exception.__cause__, ntcquery.Deadline)
 
     def test_a_point_lost_while_the_sessions_are_acquired_closes_every_one(self):
         reference, scala = self.nodes(5)
@@ -356,6 +400,26 @@ class SamePointTest(unittest.TestCase):
             self.run_round(reference, scala)
         self.assertEqual([q for _, q in reference.sent], [[0, [2, [1]]]])
         self.assertEqual([q for _, q in scala.sent], [[3], [0, [2, [1]]]])
+
+    def test_a_malformed_answer_to_a_query_not_implemented_ends_the_round(self):
+        # its value is not judged, but the Scala node's protocol is: an answer that is not a result fails
+        reference, scala = self.nodes(5)
+
+        class Malformed(FakeSession):
+            def _recv(self, protocol):
+                if self.node.name == "scala" and self.pending[:1] == [0] and self.pending[1][:1] == [0] \
+                        and self.pending[1][1][1] == [1]:
+                    self.last_raw = cbor.enc([9, 9])
+                    return [9, 9]
+                return super()._recv(protocol)
+
+        scala.closes.discard(1)
+        FakeSession.nodes = {"reference": reference, "scala": scala}
+        with mock.patch.object(ntcquery, "LocalStateQuery", Malformed):
+            with self.assertRaises(ntcqueries.RoundError) as raised:
+                ntcqueries.same_point("n", "ref.sock", "scala.sock", legacy=ntcqueries.legacy_battery)
+        self.assertEqual((raised.exception.form[0], raised.exception.form[2]), ("GetEpochNo", False))
+        self.assertIsInstance(raised.exception.__cause__, ntcquery.MalformedReply)
 
     def test_an_answer_the_scala_node_gets_wrong_differs(self):
         reference, scala = self.nodes(5)
@@ -395,7 +459,7 @@ class AtPointTest(unittest.TestCase):
     def test_a_refusal_takes_the_next_session_and_a_late_one_may_find_the_point_gone(self):
         node = FakeNode(5, closes={23})
         FakeSession.nodes = {"reference": node}
-        at = ntcqueries.AtPoint(lambda: FakeSession(None, None, None), POINT, spares=1)
+        at = ntcqueries.AtPoint(lambda: FakeSession(None, None, None), POINT, spares=2)
         ntcqueries.acquire_all([at])
         self.assertEqual(len(at.live), 3)
         hfc = ntcqueries.hfc
@@ -430,8 +494,8 @@ class AtPointTest(unittest.TestCase):
         at = ntcqueries.AtPoint(lambda: Busy(None, None, None), POINT)
         with mock.patch.object(ntcqueries, "CONNECT_PAUSE", 0):
             ntcqueries.acquire_all([at])
-        self.assertEqual(len(at.live), 2)
-        self.assertEqual(FakeSession.nodes["reference"].opened, 2)
+        self.assertEqual(len(at.live), 1)
+        self.assertEqual(FakeSession.nodes["reference"].opened, 1)
         self.assertEqual(at.refused_connects, 3)
 
     def test_the_scala_node_is_connected_to_at_most_four_sessions_at_once(self):
@@ -453,7 +517,7 @@ class AtPointTest(unittest.TestCase):
 
         FakeSession.nodes = {"scala": FakeNode(5)}
         gate = threading.BoundedSemaphore(ntcqueries.SCALA_CONNECTIONS)
-        at = ntcqueries.AtPoint(lambda: Counting(None, None, None, host=True), POINT, spares=6, gate=gate)
+        at = ntcqueries.AtPoint(lambda: Counting(None, None, None, host=True), POINT, spares=7, gate=gate)
         ntcqueries.acquire_all([at])
         self.assertEqual(len(at.live), 8)
         self.assertEqual(Counting.peak, ntcqueries.SCALA_CONNECTIONS)
@@ -470,6 +534,58 @@ class AtPointTest(unittest.TestCase):
         with self.assertRaises(ntcqueries.PointLost):
             ntcqueries.acquire_all([late], expires=0)
         self.assertEqual(late.live, [])
+
+    def test_a_session_writes_nothing_past_its_deadline(self):
+        session = ntcquery.LocalStateQuery(None, "node.socket", 1, host=True, deadline=5)
+        near, far = socket.socketpair()
+        self.addCleanup(near.close)
+        self.addCleanup(far.close)
+        session.proc = type("Transport", (), {"stdin": near, "fileno": near.fileno})()
+        session.expires = 0
+        with self.assertRaises(ntcquery.Deadline):
+            session._send(7, cbor.enc([3, [1]]))
+        far.setblocking(False)
+        with self.assertRaises(BlockingIOError):
+            far.recv(1)  # nothing was written
+
+    def test_a_write_the_pipe_does_not_take_ends_by_the_deadline(self):
+        # a relay's pipe that nobody reads: the session's writes go as far as it takes, and no further
+        read_end, write_end = os.pipe()
+        self.addCleanup(os.close, read_end)
+        stdin = os.fdopen(write_end, "wb", buffering=0)
+        self.addCleanup(stdin.close)
+        os.set_blocking(write_end, False)
+        session = ntcquery.LocalStateQuery("container", "node.socket", 1, deadline=0.2)
+        session.proc = type("Transport", (), {"stdin": stdin})()
+        session.expires = time.monotonic() + 0.2
+        outcome = []
+
+        def send():
+            try:
+                for _ in range(64):  # more than any pipe holds
+                    session._send(7, bytes(12288))
+            except ntcquery.Deadline as e:
+                outcome.append(e)
+
+        sender = threading.Thread(target=send)
+        sender.start()
+        sender.join(10)
+        self.assertFalse(sender.is_alive())
+        self.assertEqual(len(outcome), 1)
+
+    def test_a_host_session_connects_and_writes_within_its_deadline(self):
+        timeouts = []
+
+        class Recording:
+            def __init__(self, path, timeout=120):
+                timeouts.append(timeout)
+                raise ConnectionRefusedError("no listener")
+
+        with mock.patch.object(ntcquery, "_HostSocket", Recording):
+            for deadline in (7, None):
+                with self.assertRaises(ConnectionRefusedError):
+                    ntcquery.LocalStateQuery(None, "node.socket", 1, host=True, deadline=deadline).__enter__()
+        self.assertEqual(timeouts, [7, 120])
 
     def test_a_deadline_is_an_error_of_the_round_not_a_refusal(self):
         class Slow(FakeSession):
@@ -536,9 +652,8 @@ class EraBatteryTest(unittest.TestCase):
                                                  "refusedByBoth")},
                          {"steps": [5], "rounds": 1, "compared": 1, "matched": 1, "incomplete": 2, "refusedByBoth": 1})
         self.assertEqual(alonzo["incompleteRows"], ["GetEpochNo@v23", "GetLedgerTip@v23"])
-        # an answer to a query marked not implemented is listed, and stays incomplete even when it is equal
-        self.assertEqual(alonzo["answeredWhileMarked"], ["GetLedgerTip@v23"])
-        self.assertTrue(report["rounds"][0]["rows"]["GetLedgerTip@v23"]["equalToReference"])
+        # a query marked not implemented stays incomplete even when the Scala node's answer is equal
+        self.assertEqual(report["rounds"][0]["rows"]["GetLedgerTip@v23"]["outcome"], "incomplete")
         # the other eras have no complete round: each is a failure, and this one's rows are not
         self.assertEqual(battery.failures(self.site),
                          [f"node-to-client battery: no complete round in {era}"

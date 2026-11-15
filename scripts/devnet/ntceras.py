@@ -30,7 +30,7 @@ ATTEMPTS = 4  # rounds a request tries, each at a new point, before it is given 
 RETRY_PAUSE = 1  # seconds between two attempts of a request
 SHORT = 256  # an answer of at most this many bytes that differs is kept in the report as hex
 COUNTS = ("matched", "differs", "incomplete", "refusedByBoth", "unexpected")
-NAMED = ("incompleteRows", "refusedByBothRows", "answeredWhileMarked")
+NAMED = ("incompleteRows", "refusedByBothRows")
 
 
 def row_key(row):
@@ -42,10 +42,8 @@ def round_report(rnd, dump=None, ended=None):
     """The report of one round (`ntcqueries.Round`): its step (era and protocol major version), every row's outcome
     and sizes, the counts (`compared` is the rows whose answers were compared), the rows of each class that is not
     compared, and the failures. A row whose answers differ keeps both in the directory `dump` when it is given, and
-    in the report their hex when they are short. A row not implemented that the Scala node answered all the same is
-    listed (`answeredWhileMarked`), with whether its answer equals the reference's: its mark is out of date, and it
-    stays incomplete. `ended`, the `RoundError` of a round that ended early: its rows are judged all the same, the
-    query it ended on fails, and the round is `partial`."""
+    in the report their hex when they are short. `ended`, the `RoundError` of a round that ended early: its rows are
+    judged all the same, the query it ended on fails, and the round is `partial`."""
     era, major = ERA_NAMES[rnd.era], rnd.major
     rows, failures = {}, []
     counts = dict.fromkeys(COUNTS, 0)
@@ -59,9 +57,6 @@ def round_report(rnd, dump=None, ended=None):
         counts[outcome.value if outcome.value in COUNTS else "unexpected"] += 1
         if outcome is Outcome.INCOMPLETE:
             named["incompleteRows"].append(key)
-            if row.scala is not None:
-                named["answeredWhileMarked"].append(key)
-                entry["equalToReference"] = row.scala == row.reference
         elif outcome is Outcome.REFUSED_BY_BOTH:
             named["refusedByBothRows"].append(key)
         elif outcome is Outcome.DIFFERS:
