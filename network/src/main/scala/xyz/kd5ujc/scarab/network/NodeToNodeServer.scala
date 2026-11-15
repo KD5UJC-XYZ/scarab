@@ -121,19 +121,21 @@ object NodeToNodeServer:
     def episode(temperature: Temperature, trigger: F[Unit])(run: F[Unit]): F[Unit] =
       responders.fold(run)(counted => trigger *> counted.running(temperature)(run))
     // `StartOnDemand`: the first byte of its mini-protocol starts a responder; `started` counts
-    // the starts, for `StartOnDemandAny`
-    def onDemand(started: SignallingRef[F, Long])(protocol: Int): F[Unit] =
+    // the starts, for `StartOnDemandAny`. Both triggers raise in the scope of the responder's fiber
+    def onDemand(started: SignallingRef[F, Long])(protocol: Int)(using
+        Raise[F, NetworkError]
+    ): F[Unit] =
       mux.awaitResponderInput(protocol) *> started.update(_ + 1)
-    // `StartOnDemandAny` (KeepAlive): a byte on its own channel starts it, or an on-demand
-    // responder that starts while it waits; a message to a responder that runs starts nothing
-    // (network-mux `Mux.hs` 444-450, 571-577 and 588-591 at ouroboros-network c45735a5; 445-451,
-    // 572-578 and 589-592 at 4646039f)
-    def onDemandAny(started: SignallingRef[F, Long]): F[Unit] =
-      started.get.flatMap(seen =>
-        Async[F]
-          .race(mux.awaitResponderInput(Protocols.KeepAlive), started.waitUntil(_ != seen))
-          .void
-      )
+    // `StartOnDemandAny` (KeepAlive), armed when `started` was at `seen`: a byte on its own channel
+    // starts it, or an on-demand responder that starts after; a message to a responder that runs
+    // starts nothing (network-mux `Mux.hs` 444-450, 571-577 and 588-591 at ouroboros-network
+    // c45735a5; 445-451, 572-578 and 589-592 at 4646039f)
+    def onDemandAny(started: SignallingRef[F, Long], seen: Long)(using
+        Raise[F, NetworkError]
+    ): F[Unit] =
+      Async[F]
+        .race(mux.awaitResponderInput(Protocols.KeepAlive), started.waitUntil(_ != seen))
+        .void
     for
       _ <- Resource.eval(
         mux.installApplication(if initiators then installed else Set.empty, installed)
@@ -162,15 +164,20 @@ object NodeToNodeServer:
       ).background
       // cardano-diffusion c5117705 NodeToNode.hs:310: KeepAlive uses StartOnDemandAny.
       // restarted on demand when the client ends it, as the reference's inbound governor restarts
-      // its responders, when the connection counts them
+      // its responders, when the connection counts them: armed from the start of the connection,
+      // before any on-demand responder can start, and again as each run ends (at ouroboros-network
+      // 4646039f the inbound governor starts every responder in one transaction,
+      // `InboundGovernor.hs` 345-388, and the mux takes its commands before ingress, `Mux.hs`
+      // 429-451)
       _ <- guarded("keep-alive")(
         responders.fold(
           mux.awaitResponderActivity *> KeepAliveServer.run(keepAlive, settings.keepAlive).void
         )(_ =>
-          episode(Temperature.Established, onDemandAny(started))(
-            KeepAliveServer.run(keepAlive, settings.keepAlive).void
+          Async[F].tailRecM(0L)(seen =>
+            episode(Temperature.Established, onDemandAny(started, seen))(
+              KeepAliveServer.run(keepAlive, settings.keepAlive).void
+            ) *> started.get.map(Left(_))
           )
-            .foreverM[Unit]
         )
       ).background
       _ <- Option

@@ -25,6 +25,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{DataFlow, Provenance}
 import scala.concurrent.duration.*
 
+import NodeToNodeServer.Responders
 import Peers.*
 
 /** The life of a connection's responders. The reference's inbound governor starts each responder on
@@ -726,4 +727,144 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
         assertEquals(tracked, Map.empty[Long, RemoteSt], "the remote state is unregistered")
       case Left(error) => fail(error.message)
     }
+  }
+
+  // ------------------------------------------------------------------ owned by the resource
+
+  /** A mux whose responders start at once, each receive of which parks until it is cancelled: only
+    * the resource that runs a responder can end it, whatever its mini-protocol.
+    */
+  private final class Parking(probe: Probe) extends Mux[IO]:
+    def awaitResponderActivity(using Raise[IO, NetworkError]) = IO.unit
+    override def awaitResponderInput(protocol: Int)(using Raise[IO, NetworkError]) = IO.unit
+    def installApplication(initiators: Set[Int], responders: Set[Int])(using
+        Raise[IO, NetworkError]
+    ) = IO.unit
+    def channel(protocol: Int)(using Raise[IO, NetworkError]) =
+      channel(protocol, Mux.Role.Responder)
+    def channel(id: Int, role: Mux.Role)(using Raise[IO, NetworkError]) =
+      IO.pure(new MuxChannel[IO]:
+        def protocol = id
+        def send(message: Bytes)(using Raise[IO, NetworkError]) = IO.unit
+        def flush = IO.unit
+        def recv[A](maxBytes: Int)(decode: Bytes => ChainSync.DecodeResult[A])(using
+            Raise[IO, NetworkError]
+        ) = probe.park[A](id))
+    def closed = IO.never
+    def failure = IO.pure(None)
+    def abort(reason: NetworkError) = IO.unit
+
+  test("each of the five responders is cancelled with the resource that runs it, KeepAlive too") {
+    val all = parkable + Protocols.KeepAlive
+    Settled { settle =>
+      (Probe.create, Responders.create[IO]).tupled.flatMap { (probe, responders) =>
+        typed(
+          NodeToNodeServer
+            .start(
+              Parking(probe),
+              probe.handlers(parking = false),
+              peerSharing = true,
+              responders = Some(responders)
+            )
+            .use(_ => settle *> probe.seen)
+            .flatMap(during => (settle *> probe.seen).tupleLeft(during))
+        )
+      }
+    }.map {
+      case Right((during, after)) =>
+        all.foreach { p =>
+          assertEquals(count(during, Seen.Parked(p)), 1, s"protocol $p runs: $during")
+          assertEquals(count(after, Seen.Unparked(p)), 1, s"protocol $p cancelled: $after")
+        }
+        assertEquals(count(after, Seen.Closed), 1, s"the ChainSync source released: $after")
+        assertEquals(after.size, 2 * all.size + 2, s"nothing else seen: $after")
+      case Left(error) => fail(error.message)
+    }
+  }
+
+  // the reference starts every responder of a connection in one transaction, and its mux takes
+  // those commands before any ingress (ouroboros-network 4646039f `InboundGovernor.hs` 345-388,
+  // network-mux `Mux.hs` 429-451): an on-demand responder whose first byte came before the
+  // responders started still starts KeepAlive, whose 97 s bound then holds
+  test(
+    "an on-demand responder whose first byte came before the responders started starts KeepAlive"
+  ) {
+    val seeds = (1 to 16).toVector.map(n =>
+      java.util.Base64.getEncoder
+        .encodeToString(n.toString.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    )
+    seeds
+      .traverse(seed =>
+        Settled.seededTimed(seed) { _ =>
+          (Probe.create, Responders.create[IO]).tupled.flatMap { (probe, responders) =>
+            typed(
+              linked(
+                protocols = NodeToNodeServer.Protocol,
+                client = Mux.Config(duplex = true),
+                server = Mux.Config(role = Mux.Role.Responder, duplex = true)
+              ).use { (ours, remote) =>
+                for
+                  channel <- remote.channel(Protocols.ChainSync, Mux.Role.Initiator)
+                  _ <- channel.send(
+                    ChainSync
+                      .encode(
+                        ChainSync.State.Idle,
+                        ChainSync.Role.Client,
+                        ChainSync.Message.FindIntersect(Vector(Point.Origin)),
+                        codec
+                      )
+                      .fold(e => fail(e.message), identity)
+                  )
+                  since <- IO.monotonic
+                  reason <- NodeToNodeServer
+                    .start(
+                      ours,
+                      probe.handlers(parking = false),
+                      initiators = true,
+                      responders = Some(responders)
+                    )
+                    .surround(ours.closed)
+                  now <- IO.monotonic
+                yield (reason, now - since)
+              }
+            ).map(seed -> _)
+          }
+        }
+      )
+      .map(_.foreach { (seed, result) =>
+        assertEquals(
+          result,
+          Right((NetworkError.Timeout(Protocols.KeepAlive, "client"), 97.seconds)),
+          s"seed $seed"
+        )
+      })
+  }
+
+  // FIB-1: a responder's trigger raises in the scope of the responder's own fiber
+  test("a responder's trigger that fails ends the connection with its typed error") {
+    val failing = NetworkError.Timeout(Protocols.ChainSync, "trigger")
+    Settled { settle =>
+      (Probe.create, Responders.create[IO], Ref.of[IO, Vector[NetworkError]](Vector.empty)).tupled
+        .flatMap { (probe, responders, aborted) =>
+          val mux = new Mux[IO]:
+            def awaitResponderActivity(using Raise[IO, NetworkError]) = IO.never
+            override def awaitResponderInput(protocol: Int)(using Raise[IO, NetworkError]) =
+              if protocol == Protocols.ChainSync then failing.raise[IO, Unit] else IO.never
+            def installApplication(initiators: Set[Int], responders: Set[Int])(using
+                Raise[IO, NetworkError]
+            ) = IO.unit
+            def channel(protocol: Int)(using Raise[IO, NetworkError]) =
+              Parking(probe).channel(protocol)
+            def channel(protocol: Int, role: Mux.Role)(using Raise[IO, NetworkError]) =
+              Parking(probe).channel(protocol, role)
+            def closed = IO.never
+            def failure = IO.pure(None)
+            def abort(reason: NetworkError) = aborted.update(_ :+ reason)
+          typed(
+            NodeToNodeServer
+              .start(mux, probe.handlers(parking = false), responders = Some(responders))
+              .use(_ => settle *> aborted.get)
+          )
+        }
+    }.map(r => assertEquals(r, Right(Vector(failing))))
   }
