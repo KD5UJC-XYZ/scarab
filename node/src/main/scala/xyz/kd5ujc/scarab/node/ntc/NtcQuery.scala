@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.Monad
 import cats.syntax.all.*
-import scala.annotation.tailrec
+import scala.annotation.{tailrec, unused}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
@@ -145,7 +145,6 @@ object NtcQuery:
     case other => other.toString.take(120)
 
   enum Error extends DomainError:
-    case UnsupportedVersion(version: NtcVersion)
     case MalformedCbor(cause: Cbor.Error)
     case ExpectedArray(field: String)
     case ExpectedUnsigned(field: String)
@@ -200,8 +199,6 @@ object NtcQuery:
     case Word8Range(field: String)
 
     def message: String = this match
-      case UnsupportedVersion(version) =>
-        s"query is not supported at node-to-client version ${version.number}"
       case MalformedCbor(detail)          => s"invalid query CBOR: $detail"
       case ExpectedArray(field)           => s"$field: expected array"
       case ExpectedUnsigned(field)        => s"$field: expected small unsigned integer"
@@ -331,15 +328,15 @@ object NtcQuery:
       case _ => Nil
     }
 
-  /** Apply the reference client codec's supported-version contract to an incoming query. */
-  def decode(raw: Bytes, version: NtcVersion): R[NtcQuery] =
-    decode(raw).flatMap { query =>
-      Either.cond(
-        QueryVersion.supports(version, query),
-        query,
-        Error.UnsupportedVersion(version)
-      )
-    }
+  /** A query as a session reads it at its negotiated node-to-client version: alike at every
+    * version, as the reference reads it (`decodeNodeToClient _ _ = decodeShelleyQuery`,
+    * `Shelley/Node/Serialisation.hs:372`, ouroboros-consensus 82ecba32). The reference's table of
+    * the versions that support each query (`blockQueryIsSupportedOnVersion`,
+    * `Shelley/Ledger/Query.hs:541-593`) binds its client encoder only (`Serialisation.hs:367-371`),
+    * and its server answers what it decodes (#924). The version is taken here, the one entry of a
+    * session, so that a reading that depends on it goes here too (#1002).
+    */
+  def decode(raw: Bytes, @unused version: NtcVersion): R[NtcQuery] = decode(raw)
 
   private def arr(n: Node, what: String): R[Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)

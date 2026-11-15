@@ -7,8 +7,16 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.NtcVersion
 
-/** The reference's supported-version table and V20/V21 result boundary. Live byte comparisons
-  * against the pinned cardano-node are part of the `ntc` scenario (`ntcversions.py`).
+/** What the negotiated node-to-client version does to a query, as cardano-node 11.1.3 has it: it
+  * selects the encoding of some answers and nothing else. Its server decodes a block query alike at
+  * every version (`decodeNodeToClient _ _ = decodeShelleyQuery`,
+  * `Shelley/Node/Serialisation.hs:372`) and answers what it decodes
+  * (`MiniProtocol/LocalStateQuery/Server.hs:79-81`); the supported-version table
+  * (`blockQueryIsSupportedOnVersion`, `Shelley/Ledger/Query.hs:541-593`) binds its client encoder
+  * only (`Serialisation.hs:368`). The version selects the encoding of `GetGenesisConfig` and of the
+  * old ledger-peer snapshot (`encodeShelleyResult`, `Query.hs:1000-1043`), and `GetCBOR` writes at
+  * the latest (`Query.hs:424-428`), ouroboros-consensus 82ecba32. Live byte comparisons at every
+  * version against the pinned cardano-node are part of the `ntc` scenario (`ntcversions.py`).
   */
 class QueryVersionSuite extends FunSuite:
   import LedgerQuery.*
@@ -16,63 +24,121 @@ class QueryVersionSuite extends FunSuite:
 
   private def query(q: LedgerQuery): NtcQuery = NtcQuery.IfCurrent(QueryEra.Conway, q)
 
-  test("all constructor introduction and retirement boundaries follow the reference table") {
-    val cases = Vector(
-      (GetProposedPParamsUpdates, 16, 19),
-      (GetStakeDistribution, 16, 20),
-      (GetPoolDistr(None), 16, 20),
-      (GetProposals(Set.empty), 17, 23),
-      (GetRatifyState, 17, 23),
-      (GetFuturePParams, 18, 23),
-      (GetLedgerPeerSnapshotLegacy, 19, 23),
-      (QueryStakePoolDefaultVote(Bytes(Vector.fill(28)(0.toByte))), 20, 23),
-      (GetPoolDistr2(None), 21, 23),
-      (GetStakeDistribution2, 21, 23),
-      (GetMaxMajorProtocolVersion, 21, 23),
-      (GetLedgerPeerSnapshot(LedgerPeerKind.All), 23, 23),
-      (GetDRepDelegations(Set.empty), 23, 23)
+  private def inEra(era: QueryEra)(ledger: CborOut => Unit): Bytes =
+    CborOut.build { w =>
+      w.array(2).uint(0).array(2).uint(0).array(2).uint(era.index)
+      ledger(w)
+    }
+
+  /** The block queries of Conway that the reference's client table allows at some versions only. */
+  private val limited: Vector[CborOut => Unit] = Vector(
+    _.array(1).uint(4),
+    _.array(1).uint(5),
+    _.array(2).uint(21).array(0),
+    _.array(2).uint(31).set(0),
+    _.array(1).uint(32),
+    _.array(1).uint(33),
+    _.array(1).uint(34),
+    _.array(2).uint(34).uint(0),
+    _.array(2).uint(34).uint(1),
+    _.array(2).uint(35).bytes(Bytes(Vector.fill(28)(0.toByte))),
+    _.array(2).uint(36).array(0),
+    _.array(1).uint(37),
+    _.array(1).uint(38),
+    _.array(2).uint(39).set(0)
+  )
+
+  test("a block query decodes alike at every negotiated version, also inside GetCBOR") {
+    val forms = limited.flatMap(form => Vector(form, (w: CborOut) => form(w.array(2).uint(9))))
+    forms.map(inEra(QueryEra.Conway)).foreach { raw =>
+      val plain = NtcQuery.decode(raw)
+      assert(plain.isRight, s"${raw.hex}: $plain")
+      NtcVersion.All.foreach(v => assertEquals(NtcQuery.decode(raw, v), plain, s"${raw.hex} / $v"))
+    }
+  }
+
+  test(
+    "every Conway query is answered at every version as at the latest, the genesis config aside"
+  ) {
+    val (_, state, point, blockNo) =
+      NtcGolden.subjects.find(_._1 == "rich").getOrElse(fail("no rich subject"))
+    val view = QueryView(point, blockNo, state)
+    val utxo = state.utxo.toMap
+    val retired = Vector(
+      "GetProposedPParamsUpdates" -> GetProposedPParamsUpdates,
+      "GetStakeDistribution" -> GetStakeDistribution,
+      "GetPoolDistr" -> GetPoolDistr(None)
     )
-    cases.foreach { (q, first, last) =>
-      NtcVersion.All.foreach { v =>
-        val expected = v.number >= first && v.number <= last
-        assertEquals(QueryVersion.supports(v, query(q)), expected, s"$q / $v")
-        assertEquals(QueryVersion.supports(v, query(GetCBOR(q))), expected, s"GetCBOR / $q / $v")
+    (NtcGolden.battery(NtcGolden.drawn(state)) ++ retired).foreach { (label, q) =>
+      // the genesis configuration's own encoding is the version's (the next test); in `GetCBOR` it
+      // is the latest at every version too
+      val forms = if q == GetGenesisConfig then Vector(GetCBOR(q)) else Vector(q, GetCBOR(q))
+      forms.foreach { inner =>
+        val latest = QueryAnswers.answerOrWhy(NtcGolden.queryEnv, view, utxo, query(inner), V23)
+        assert(latest.isRight, s"$label / $inner at V23: $latest")
+        NtcVersion.All.foreach { v =>
+          assertEquals(
+            QueryAnswers.answerOrWhy(NtcGolden.queryEnv, view, utxo, query(inner), v),
+            latest,
+            s"$label / $inner / $v"
+          )
+        }
       }
     }
   }
 
-  test("legacy pool and ledger-peer query constructors retain their exact Haskell shapes") {
-    def hex(s: String) = Bytes.fromHex(s).fold(e => fail(e.message), identity)
-    val pools = hex("820082008206821580") // QueryIfCurrent Conway (GetPoolDistr Nothing)
-    assertEquals(NtcQuery.decode(pools, V20), Right(query(GetPoolDistr(None))))
-    assertEquals(NtcQuery.decode(pools, V21), Left(NtcQuery.Error.UnsupportedVersion(V21)))
-    val legacyPeers = hex("820082008206811822")
-    assertEquals(NtcQuery.decode(legacyPeers, V19), Right(query(GetLedgerPeerSnapshotLegacy)))
-    assertEquals(NtcQuery.decode(legacyPeers, V18), Left(NtcQuery.Error.UnsupportedVersion(V18)))
-    val allPeers = hex("82008200820682182200")
-    assertEquals(
-      NtcQuery.decode(allPeers, V23),
-      Right(query(GetLedgerPeerSnapshot(LedgerPeerKind.All)))
-    )
-    assertEquals(NtcQuery.decode(allPeers, V22), Left(NtcQuery.Error.UnsupportedVersion(V22)))
-    assert(NtcQuery.decode(hex("82008200820682182202"), V23).isLeft)
-  }
-
-  test("the negotiated version gates raw queries before answering") {
-    val raw = CborOut.build(_.array(2).uint(0).array(2).uint(0).array(2).uint(6).array(1).uint(37))
-    assert(NtcQuery.decode(raw, V20).isLeft)
-    assertEquals(NtcQuery.decode(raw, V21), Right(query(GetStakeDistribution2)))
+  test("the genesis configuration is the legacy record below V21 and the current one from V21") {
     val (block, state) = NtcGolden.conwayStates.last
     val view = QueryView(
       Point.Block(UInt64.saturating(BigInt(block.header.slot.toLong)), block.header.hash),
       Some(block.header.blockNo),
       state
     )
-    assertEquals(
-      QueryAnswers
-        .answerOrWhy(NtcGolden.queryEnv, view, Map.empty, query(GetStakeDistribution2), V20),
-      Left(Unanswered.Unsupported)
+    def genesis(v: NtcVersion) =
+      GenesisConfig
+        .encode(NtcGolden.queryEnv.shelleyGenesis, v)
+        .fold(e => fail(e.message), identity)
+    val (legacy, current) = (genesis(V20), genesis(V21))
+    assertNotEquals(legacy, current)
+    NtcVersion.All.foreach { v =>
+      val expected = if v.number < 21 then legacy else current
+      assertEquals(
+        QueryAnswers.answerOrWhy(NtcGolden.queryEnv, view, Map.empty, query(GetGenesisConfig), v),
+        Right(CborOut.build(_.array(1).raw(expected))),
+        s"$v"
+      )
+    }
+  }
+
+  test(
+    "a query of an era the ledger is not in has the era mismatch for an answer at every version"
+  ) {
+    val (block, state) = NtcGolden.conwayStates.last
+    val view = QueryView(
+      Point.Block(UInt64.saturating(BigInt(block.header.slot.toLong)), block.header.hash),
+      Some(block.header.blockNo),
+      state
     )
+    val mismatch = CborOut.build(
+      _.array(2).array(2).uint(5).text("Babbage").array(2).uint(6).text("Conway")
+    )
+    // the forms that `requireCG` does not refuse before Conway
+    Vector[CborOut => Unit](
+      _.array(1).uint(4),
+      _.array(2).uint(21).array(0),
+      _.array(1).uint(34),
+      _.array(2).uint(34).uint(0),
+      _.array(1).uint(37)
+    ).map(inEra(QueryEra.Babbage)).foreach { raw =>
+      NtcVersion.All.foreach { v =>
+        val q = NtcQuery.decode(raw, v).fold(e => fail(s"${raw.hex} / $v: ${e.message}"), identity)
+        assertEquals(
+          QueryAnswers.answerOrWhy(NtcGolden.queryEnv, view, Map.empty, q, v),
+          Right(mismatch),
+          s"${raw.hex} / $v"
+        )
+      }
+    }
   }
 
   test("Conway protocol parameters are identical at V20 and V21, as LegacyPParams specifies") {

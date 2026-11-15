@@ -1264,7 +1264,6 @@
       "entryPoints": [
         "NtcQuery",
         "QueryAnswers",
-        "QueryVersion",
         "RewardQueries",
         "PredicateFailureCbor",
         "GenesisConfig"

@@ -227,23 +227,17 @@ object QueryAnswers:
       version: NtcVersion = NtcVersion.LatestReleased
   ): Option[Bytes] = answerOrWhy(env, view, utxo, query, version).toOption
 
-  /** The result item of the answer, or why there is none. */
+  /** The result item of the answer, or why there is none. No Shelley block query is refused for the
+    * negotiated version, as the reference's server refuses none; the version selects the encoding
+    * of some answers only (`encodeShelleyResult`, `Shelley/Ledger/Query.hs:1000-1043`,
+    * ouroboros-consensus 82ecba32).
+    */
   def answerOrWhy[S](
       env: QueryEnv,
       view: QueryView[S],
       utxo: Map[TxIn, TxOut],
       query: NtcQuery,
       version: NtcVersion = NtcVersion.LatestReleased
-  ): Either[Unanswered, Bytes] =
-    if !QueryVersion.supports(version, query) then Left(Unanswered.Unsupported)
-    else answerSupported(env, view, utxo, query, version)
-
-  private def answerSupported[S](
-      env: QueryEnv,
-      view: QueryView[S],
-      utxo: Map[TxIn, TxOut],
-      query: NtcQuery,
-      version: NtcVersion
   ): Either[Unanswered, Bytes] = query match
     case NtcQuery.SystemStart => Right(CborOut.build(systemStart(_, env.systemStart)))
     case NtcQuery.ChainBlockNo =>

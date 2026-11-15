@@ -658,9 +658,8 @@ def ntc(args):
         versions = compare_versions(args.name, f"{ENV}/socket/node1/sock",
                                    str(root / "scala-sock" / "node.socket"), root)
         print(json.dumps({"queryVersions": versions}), flush=True)
-        if versions["matched"] != versions["compared"] or versions["rejected"] != versions["expectedRejections"] \
-                or not all(versions["boundary"].values()):
-            failures.append("node-to-client version-specific query answers or support gates differ")
+        if versions["matched"] != versions["compared"] or not all(versions["boundary"].values()):
+            failures.append("node-to-client answers at the negotiated versions differ")
         # the last queries describe the final state, and the CLI comparisons run on a quiet pool of wallets
         info = {}
         funded = json.loads(in_ref(args.name, f"{CLI} query utxo --whole-utxo --testnet-magic {MAGIC} "
