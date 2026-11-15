@@ -83,7 +83,9 @@ object CoreDenotations:
 
   private val DataPair: DefaultUni = DefaultUni.Pair(DefaultUni.Data, DefaultUni.Data)
 
-  /** `nonZeroSecondArg` (`Builtins.hs:248-266`): "Cannot divide by zero" when `y` is 0. */
+  /** `nonZeroSecondArg` (`Builtins.hs:248-266`, plutus 1.70.0.0): "Cannot divide by zero" when `y`
+    * is 0.
+    */
   private def division(f: (BigInt, BigInt) => BigInt): Body =
     constant2[BigInt, BigInt]((x, y) =>
       if y.signum == 0 then Left(failed(EvaluationFailure.DivisionByZero)) else integer(f(x, y))
@@ -99,16 +101,18 @@ object CoreDenotations:
     val r = x % y
     if r.signum != 0 && r.signum != y.signum then r + y else r
 
-  /** `BS.take n (BS.drop start xs)`, both clamped to the byte string (`Builtins.hs:1309-1323`). */
+  /** `BS.take n (BS.drop start xs)`, both clamped to the byte string (`Builtins.hs:1309-1323`,
+    * plutus 1.70.0.0).
+    */
   private def slice(from: BigInt, length: BigInt, xs: Bytes): Bytes =
     val size = BigInt(xs.size)
     val start = from.max(0).min(size)
     val end = start + length.max(0).min(size - start)
     xs.slice(start.toInt, end.toInt)
 
-  /** `drop` of an `Integer` (`Builtins.hs:2328-2376`): the whole list for `n <= 0`, nothing once
-    * `n` reaches its length (a list here is shorter than `maxBound :: Int`, so the reference's
-    * unreachable clause stays unreachable).
+  /** `drop` of an `Integer` (`Builtins.hs:2328-2376`, plutus 1.70.0.0): the whole list for
+    * `n <= 0`, nothing once `n` reaches its length (a list here is shorter than `maxBound :: Int`,
+    * so the reference's unreachable clause stays unreachable).
     */
   private def dropList(n: BigInt, xs: Constant.List): Constant.List =
     val size = xs.items.size
@@ -117,7 +121,7 @@ object CoreDenotations:
   private val bodies: Map[DefaultFun, Body] =
     import DefaultFun.*
     Map(
-      // `Builtins.hs:1099-1240`
+      // `Builtins.hs:1099-1240` of plutus 1.70.0.0
       AddInteger -> constant2[BigInt, BigInt]((x, y) => integer(x + y)),
       SubtractInteger -> constant2[BigInt, BigInt]((x, y) => integer(x - y)),
       MultiplyInteger -> constant2[BigInt, BigInt]((x, y) => integer(x * y)),
@@ -128,7 +132,7 @@ object CoreDenotations:
       EqualsInteger -> constant2[BigInt, BigInt]((x, y) => bool(x == y)),
       LessThanInteger -> constant2[BigInt, BigInt]((x, y) => bool(x < y)),
       LessThanEqualsInteger -> constant2[BigInt, BigInt]((x, y) => bool(x <= y)),
-      // `Builtins.hs:1242-1396`
+      // `Builtins.hs:1242-1396` of plutus 1.70.0.0
       AppendByteString -> constant2[Bytes, Bytes]((x, y) => bytes(x ++ y)),
       // `fromIntegral` to a `Word8` keeps the low 8 bits (variants A, B and D); C and E read a
       // `Word8`, so their argument is that byte already.
@@ -149,7 +153,7 @@ object CoreDenotations:
       EqualsByteString -> constant2[Bytes, Bytes]((x, y) => bool(x == y)),
       LessThanByteString -> constant2[Bytes, Bytes]((x, y) => bool(x.compareTo(y) < 0)),
       LessThanEqualsByteString -> constant2[Bytes, Bytes]((x, y) => bool(x.compareTo(y) <= 0)),
-      // `Builtins.hs:1507-1611`
+      // `Builtins.hs:1507-1611` of plutus 1.70.0.0
       AppendString -> constant2[Text, Text]((x, y) =>
         Right(Constant.String(Text.fromString(x.string + y.string)))
       ),
@@ -162,7 +166,7 @@ object CoreDenotations:
           .map(_ => failed(EvaluationFailure.InvalidUtf8))
           .map(Constant.String(_))
       ),
-      // `Builtins.hs:1612-1637`
+      // `Builtins.hs:1612-1637` of plutus 1.70.0.0
       IfThenElse -> ([V] =>
         (r: Reading[V]) =>
           for
@@ -182,12 +186,12 @@ object CoreDenotations:
             t <- r[Text](0)
             x <- r.opaque(1)
           yield Done(x, Vector(t.string))),
-      // `Builtins.hs:1638-1661`
+      // `Builtins.hs:1638-1661` of plutus 1.70.0.0
       FstPair -> ([V] =>
         (r: Reading[V]) => r.someConstant(0).flatMap(pair(_, 0)).map(p => r.constant(p.first))),
       SndPair -> ([V] =>
         (r: Reading[V]) => r.someConstant(0).flatMap(pair(_, 0)).map(p => r.constant(p.second))),
-      // `Builtins.hs:1663-1730`
+      // `Builtins.hs:1663-1730` of plutus 1.70.0.0
       ChooseList -> ([V] =>
         (r: Reading[V]) =>
           for
@@ -226,7 +230,7 @@ object CoreDenotations:
           r.someConstant(0)
             .flatMap(list(_, 0))
             .map(xs => r.constant(Constant.Bool(xs.items.isEmpty)))),
-      // `Builtins.hs:1732-1744`
+      // `Builtins.hs:1732-1744` of plutus 1.70.0.0
       ChooseData -> ([V] =>
         (r: Reading[V]) =>
           r[PlutusData](0).flatMap { d =>
@@ -238,7 +242,7 @@ object CoreDenotations:
               case PlutusData.B(_)         => 5
             r.opaque(branch).map(r.value)
         }),
-      // `Builtins.hs:1745-1787`; `constrData` reads a `Word64` in D and E.
+      // `Builtins.hs:1745-1787` of plutus 1.70.0.0; `constrData` reads a `Word64` in D and E.
       ConstrData -> constant2[BigInt, Vector[PlutusData]]((i, ds) =>
         data(PlutusData.Constr(i, ds))
       ),
@@ -246,7 +250,7 @@ object CoreDenotations:
       ListData -> constant1[Vector[PlutusData]](ds => data(PlutusData.List(ds))),
       IData -> constant1[BigInt](n => data(PlutusData.I(n))),
       BData -> constant1[Bytes](b => data(PlutusData.B(b))),
-      // `Builtins.hs:1788-1841`
+      // `Builtins.hs:1788-1841` of plutus 1.70.0.0
       UnConstrData -> constant1[PlutusData] {
         case PlutusData.Constr(i, fields) =>
           dataList(fields).map(Constant.Pair(Constant.Integer(i), _))
@@ -270,17 +274,17 @@ object CoreDenotations:
         case _               => Left(failed(EvaluationFailure.UnexpectedData(DataShape.B)))
       },
       // Haskell's derived `Eq`: constructors, entries and items compared in order
-      // (`Builtins.hs:1843-1849`, `PlutusCore/Data.hs:42-49`); `PlutusData`'s equality is that
-      // structural comparison, walked on the heap.
+      // (`Builtins.hs:1843-1849`, `PlutusCore/Data.hs:42-49`, plutus 1.70.0.0); `PlutusData`'s
+      // equality is that structural comparison, walked on the heap.
       EqualsData -> constant2[PlutusData, PlutusData]((x, y) => bool(x == y)),
       SerialiseData -> constant1[PlutusData](d => bytes(DataSerialisation.serialise(d))),
-      // `Builtins.hs:1858-1884`
+      // `Builtins.hs:1858-1884` of plutus 1.70.0.0
       MkPairData -> constant2[PlutusData, PlutusData]((x, y) =>
         Right(Constant.Pair(Constant.Data(x), Constant.Data(y)))
       ),
       MkNilData -> constant1[Unit](_ => Right(Constant.List.empty(DefaultUni.Data))),
       MkNilPairData -> constant1[Unit](_ => Right(Constant.List.empty(DataPair))),
-      // `Builtins.hs:2328-2376`
+      // `Builtins.hs:2328-2376` of plutus 1.70.0.0
       DropList -> ([V] =>
         (r: Reading[V]) =>
           for

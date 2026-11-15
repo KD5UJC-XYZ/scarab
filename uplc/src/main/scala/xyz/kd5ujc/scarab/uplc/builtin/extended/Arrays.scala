@@ -5,12 +5,12 @@ import scala.annotation.tailrec
 
 /** `multiIndexArray` of plutus 1.70.0.0 (`507cab8c`), `PlutusCore/Arrays.hs`. */
 object Arrays:
-  /** `maximumIndexCount` (`Arrays.hs:34-35`). */
+  /** `maximumIndexCount` (`Arrays.hs:34-35`, plutus 1.70.0.0). */
   val MaximumIndexCount: Int = 1024
 
-  /** The elements of `items` at `indices`, in order (`multiIndexArray`, `Arrays.hs:48-69`). The
-    * count is checked as the indices are read: the 1025th index fails on the count whatever it is,
-    * and an index out of bounds before it fails on the bounds.
+  /** The elements of `items` at `indices`, in order (`multiIndexArray`, `Arrays.hs:48-69`, plutus
+    * 1.70.0.0). The count is checked as the indices are read: the 1025th index fails on the count
+    * whatever it is, and an index out of bounds before it fails on the bounds.
     */
   def multiIndexArray[A](
       items: Vector[A],

@@ -45,17 +45,17 @@ enum ScalarOperation:
 
 /** The failures of the BLS12-381 builtins that the reference has too, each with its log line. */
 enum BlsFailure:
-  /** `uncompress` refuses the bytes (`G1.hs:140-150`, `G2.hs:121-131`). */
+  /** `uncompress` refuses the bytes (`G1.hs:140-150`, `G2.hs:121-131`, plutus 1.70.0.0). */
   case Uncompress(group: Group, error: BlstError)
 
-  /** A domain separation tag of more than 255 bytes (`G1.hs:177-181`, `G2.hs:135-139`): `show` of
-    * `HashToCurveDstTooBig` (`PlutusCore/Crypto/BLS12_381/Error.hs:8-10`).
+  /** A domain separation tag of more than 255 bytes (`G1.hs:177-181`, `G2.hs:135-139`, plutus
+    * 1.70.0.0): `show` of `HashToCurveDstTooBig` (`PlutusCore/Crypto/BLS12_381/Error.hs:8-10`).
     */
   case DstTooBig(group: Group, length: Int)
 
-  /** A scalar outside `[-2^4095, 2^4095 - 1]` (`Bounds.hs:10-24`): `scalarMul` of variants D and E
-    * (`G1.hs:124-127`, `G2.hs:107-110`) and both `multiScalarMul` (`G1.hs:211-214`,
-    * `G2.hs:168-171`).
+  /** A scalar outside `[-2^4095, 2^4095 - 1]` (`Bounds.hs:10-24`, plutus 1.70.0.0): `scalarMul` of
+    * variants D and E (`G1.hs:124-127`, `G2.hs:107-110`) and both `multiScalarMul`
+    * (`G1.hs:211-214`, `G2.hs:168-171`).
     */
   case ScalarOutOfBounds(operation: ScalarOperation)
 
@@ -90,14 +90,14 @@ object Bls12_381:
   val FieldModulus: BigInteger = BLS12_381G1.Q
   val GroupOrder: BigInteger = BLS12_381G1.ORDER
 
-  /** The scalar bounds of `Bounds.hs:10-24`: 64 words of 64 bits, signed. */
+  /** The scalar bounds of `Bounds.hs:10-24` of plutus 1.70.0.0: 64 words of 64 bits, signed. */
   val ScalarMax: BigInt = (BigInt(1) << 4095) - 1
   val ScalarMin: BigInt = -(BigInt(1) << 4095)
 
-  /** `msmScalarOutOfBounds` (`Bounds.hs:22-24`). */
+  /** `msmScalarOutOfBounds` (`Bounds.hs:22-24`, plutus 1.70.0.0). */
   def scalarOutOfBounds(k: BigInt): Boolean = k < ScalarMin || k > ScalarMax
 
-  /** The largest domain separation tag `hashToGroup` takes (`G1.hs:179`). */
+  /** The largest domain separation tag `hashToGroup` takes (`G1.hs:179`, plutus 1.70.0.0). */
   val MaxDstLength: Int = 255
 
   private def guarded[A](body: => A): Either[BlsDefect, A] =
@@ -143,16 +143,16 @@ object Bls12_381:
   object G1:
     val CompressedSize: Int = 48
 
-    /** The compressed point at infinity, `0xc0` and 47 zeros (`G1.hs:190-191`). */
+    /** The compressed point at infinity, `0xc0` and 47 zeros (`G1.hs:190-191`, plutus 1.70.0.0). */
     val Zero: G1Element =
       G1Element.fromCompressed(Bytes.wrap(0xc0.toByte +: Array.fill(47)(0.toByte)))
 
     private def point(e: G1Element): P1 = new P1(e.compressed.toArray)
     private def element(p: P1): G1Element = G1Element.fromCompressed(Bytes.wrap(p.compress()))
 
-    /** `uncompress` (`G1.hs:140-150`): the length, the flags, `x < p` (bad encoding); `x^3 + 4` a
-      * square (not on the curve); `x = 0`, the points `(0, 2)` and `(0, -2)` of order 3, and the
-      * subgroup check (not in the group).
+    /** `uncompress` (`G1.hs:140-150`, plutus 1.70.0.0): the length, the flags, `x < p` (bad
+      * encoding); `x^3 + 4` a square (not on the curve); `x = 0`, the points `(0, 2)` and `(0, -2)`
+      * of order 3, and the subgroup check (not in the group).
       */
     def uncompress(bytes: Bytes): Result[G1Element] =
       coordinates(bytes, Group.G1, CompressedSize).flatMap {
@@ -177,7 +177,7 @@ object Bls12_381:
 
     def neg(a: G1Element): Either[BlsDefect, G1Element] = guarded(element(point(a).neg()))
 
-    /** `scalarMul` (`G1.hs:120-122`), or `scalarMulE` (124-127) when `bounded`. */
+    /** `scalarMul` (`G1.hs:120-122`, plutus 1.70.0.0), or `scalarMulE` (124-127) when `bounded`. */
     def scalarMul(k: BigInt, a: G1Element, bounded: Boolean): Result[G1Element] =
       if bounded && scalarOutOfBounds(k) then
         Left(BlsFailure.ScalarOutOfBounds(ScalarOperation.ScalarMul(Group.G1)))
@@ -186,8 +186,9 @@ object Bls12_381:
     private def multiply(k: BigInteger, a: G1Element): Either[BlsDefect, G1Element] =
       if k.signum == 0 then Right(Zero) else guarded(element(point(a).mult(k)))
 
-    /** `multiScalarMul` (`G1.hs:209-214`): every scalar in bounds, the sum over the pairs `zip`
-      * makes. blst's `blsMSM` sums by Pippenger's method; the sum is the same point.
+    /** `multiScalarMul` (`G1.hs:209-214`, plutus 1.70.0.0): every scalar in bounds, the sum over
+      * the pairs `zip` makes. blst's `blsMSM` sums by Pippenger's method; the sum is the same
+      * point.
       */
     def multiScalarMul(ks: Vector[BigInt], ps: Vector[G1Element]): Result[G1Element] =
       if ks.exists(scalarOutOfBounds) then
@@ -202,7 +203,7 @@ object Bls12_381:
           )
         )
 
-    /** `hashToGroup` (`G1.hs:175-181`): blst's `hash_to_g1` (RFC 9380 suite
+    /** `hashToGroup` (`G1.hs:175-181`, plutus 1.70.0.0): blst's `hash_to_g1` (RFC 9380 suite
       * `BLS12381G1_XMD:SHA-256_SSWU_RO_`) with `dst` as the domain separation tag. jblst takes the
       * tag as a Java string, which cannot carry every byte string, so this is Bouncy Castle's
       * implementation of the same suite; its result is checked to be in the group.
@@ -250,7 +251,9 @@ object Bls12_381:
       val t1 = s0.multiply(c1).add(s1.multiply(c0)).add(Four).mod(p)
       isSquare(t0.multiply(t0).add(t1.multiply(t1)).mod(p))
 
-    /** `uncompress` (`G2.hs:121-131`), with the checks of [[G1.uncompress]] over `Fp2`. */
+    /** `uncompress` (`G2.hs:121-131`, plutus 1.70.0.0), with the checks of [[G1.uncompress]] over
+      * `Fp2`.
+      */
     def uncompress(bytes: Bytes): Result[G2Element] =
       coordinates(bytes, Group.G2, CompressedSize).flatMap {
         case None => Right(Zero)
@@ -272,7 +275,7 @@ object Bls12_381:
 
     def neg(a: G2Element): Either[BlsDefect, G2Element] = guarded(element(point(a).neg()))
 
-    /** `scalarMul` (`G2.hs:103-105`), or `scalarMulE` (107-110) when `bounded`. */
+    /** `scalarMul` (`G2.hs:103-105`, plutus 1.70.0.0), or `scalarMulE` (107-110) when `bounded`. */
     def scalarMul(k: BigInt, a: G2Element, bounded: Boolean): Result[G2Element] =
       if bounded && scalarOutOfBounds(k) then
         Left(BlsFailure.ScalarOutOfBounds(ScalarOperation.ScalarMul(Group.G2)))
@@ -281,7 +284,7 @@ object Bls12_381:
     private def multiply(k: BigInteger, a: G2Element): Either[BlsDefect, G2Element] =
       if k.signum == 0 then Right(Zero) else guarded(element(point(a).mult(k)))
 
-    /** `multiScalarMul` (`G2.hs:168-171`), as [[G1.multiScalarMul]]. */
+    /** `multiScalarMul` (`G2.hs:168-171`, plutus 1.70.0.0), as [[G1.multiScalarMul]]. */
     def multiScalarMul(ks: Vector[BigInt], ps: Vector[G2Element]): Result[G2Element] =
       if ks.exists(scalarOutOfBounds) then
         Left(BlsFailure.ScalarOutOfBounds(ScalarOperation.MultiScalarMul(Group.G2)))
@@ -295,7 +298,7 @@ object Bls12_381:
           )
         )
 
-    /** `hashToGroup` (`G2.hs:135-139`): blst's `hash_to_g2` (suite
+    /** `hashToGroup` (`G2.hs:135-139`, plutus 1.70.0.0): blst's `hash_to_g2` (suite
       * `BLS12381G2_XMD:SHA-256_SSWU_RO_`) through Bouncy Castle, as [[G1.hashToGroup]].
       */
     def hashToGroup(message: Bytes, dst: Bytes): Result[G2Element] =
@@ -313,7 +316,7 @@ object Bls12_381:
     private def target(m: MlResult): Either[BlsDefect, PT] =
       m.target.toRight(BlsDefect.DetachedMlResult)
 
-    /** `millerLoop` (`Pairing.hs:75-76`): blst's `blst_miller_loop`. */
+    /** `millerLoop` (`Pairing.hs:75-76`, plutus 1.70.0.0): blst's `blst_miller_loop`. */
     def millerLoop(a: G1Element, b: G2Element): Either[BlsDefect, MlResult] =
       guarded(
         MlResult.ofTarget(
@@ -321,7 +324,7 @@ object Bls12_381:
         )
       )
 
-    /** `mulMlResult` (`Pairing.hs:78-79`): blst's `blst_fp12_mul`. */
+    /** `mulMlResult` (`Pairing.hs:78-79`, plutus 1.70.0.0): blst's `blst_fp12_mul`. */
     def mulMlResult(a: MlResult, b: MlResult): Either[BlsDefect, MlResult] =
       for
         x <- target(a)
@@ -329,7 +332,7 @@ object Bls12_381:
         product <- guarded(MlResult.ofTarget(x.dup().mul(y)))
       yield product
 
-    /** `finalVerify` (`Pairing.hs:81-82`): blst's `blst_fp12_finalverify`. */
+    /** `finalVerify` (`Pairing.hs:81-82`, plutus 1.70.0.0): blst's `blst_fp12_finalverify`. */
     def finalVerify(a: MlResult, b: MlResult): Either[BlsDefect, Boolean] =
       for
         x <- target(a)

@@ -54,81 +54,87 @@ object CoreUnlifting:
       if ensurable then entries.toMap else Map.empty
     val none = Map.empty[Int, UnliftingBound]
     function match
-      // `CInteger -> CInteger` in D and E (`Builtins.hs:1099-1203,1211-1240`).
+      // `CInteger -> CInteger` in D and E (`Builtins.hs:1099-1203,1211-1240`, plutus 1.70.0.0).
       case AddInteger | SubtractInteger | MultiplyInteger | DivideInteger | QuotientInteger |
           RemainderInteger | ModInteger | LessThanInteger | LessThanEqualsInteger =>
         onChain(0 -> CInteger, 1 -> CInteger)
-      // `Integer -> Integer` in every variant (`Builtins.hs:1204-1210`).
+      // `Integer -> Integer` in every variant (`Builtins.hs:1204-1210`, plutus 1.70.0.0).
       case EqualsInteger => none
-      // `CByteString -> CByteString` in D and E (`Builtins.hs:1242-1257,1351-1396`).
+      // `CByteString -> CByteString` in D and E (`Builtins.hs:1242-1257,1351-1396`,
+      // plutus 1.70.0.0).
       case AppendByteString | EqualsByteString | LessThanByteString | LessThanEqualsByteString =>
         onChain(0 -> CByteString, 1 -> CByteString)
       // `Integer` (A, B), `Word8` (C), `CInteger -> CByteString` (D), `Word8 -> CByteString` (E)
-      // (`Builtins.hs:1258-1308`).
+      // (`Builtins.hs:1258-1308`, plutus 1.70.0.0).
       case ConsByteString =>
         variant match
           case CoreVariant.A | CoreVariant.B => none
           case CoreVariant.C                 => Map(0 -> W8)
           case CoreVariant.D                 => Map(0 -> CInteger, 1 -> CByteString)
           case CoreVariant.E                 => Map(0 -> W8, 1 -> CByteString)
-      // `Int -> Int`, and `CByteString` in D and E (`Builtins.hs:1309-1323`).
+      // `Int -> Int`, and `CByteString` in D and E (`Builtins.hs:1309-1323`, plutus 1.70.0.0).
       case SliceByteString => Map(0 -> int, 1 -> int) ++ onChain(2 -> CByteString)
-      // `BS.ByteString` in every variant (`Builtins.hs:1324-1330`).
+      // `BS.ByteString` in every variant (`Builtins.hs:1324-1330`, plutus 1.70.0.0).
       case LengthOfByteString => none
-      // `CByteString` in D and E, then `Int` (`Builtins.hs:1331-1350`); `readBit` likewise
-      // (`Builtins.hs:2184-2198`).
+      // `CByteString` in D and E, then `Int` (`Builtins.hs:1331-1350`, plutus 1.70.0.0); `readBit`
+      // likewise (`Builtins.hs:2184-2198`).
       case IndexByteString | ReadBit => Map(1 -> int) ++ onChain(0 -> CByteString)
       // `CByteString` in D and E (`Builtins.hs:1397-1441,1588-1611,2059-2092,2167-2183,
-      // 2267-2313`).
+      // 2267-2313`, plutus 1.70.0.0).
       case Sha2_256 | Sha3_256 | Blake2b_256 | Keccak_256 | Blake2b_224 | Ripemd_160 | DecodeUtf8 |
           ComplementByteString | CountSetBits | FindFirstSetBit =>
         onChain(0 -> CByteString)
-      // The message only, in D and E (`Builtins.hs:1442-1478,1487-1504`).
+      // The message only, in D and E (`Builtins.hs:1442-1478,1487-1504`, plutus 1.70.0.0).
       case VerifyEd25519Signature | VerifySchnorrSecp256k1Signature => onChain(1 -> CByteString)
-      // `BS.ByteString` in every variant (`Builtins.hs:1479-1486`).
+      // `BS.ByteString` in every variant (`Builtins.hs:1479-1486`, plutus 1.70.0.0).
       case VerifyEcdsaSecp256k1Signature => none
       // `Text` (A to C) or `TextCostedByByteLength` (D, E), a costing measure, not a bound
-      // (`Builtins.hs:1507-1587`).
+      // (`Builtins.hs:1507-1587`, plutus 1.70.0.0).
       case AppendString | EqualsString | EncodeUtf8 => none
       // Polymorphic, `()`, `Bool`, `Text`, `Data` and lists of them (`Builtins.hs:1612-1743,
-      // 1760-1884`).
+      // 1760-1884`, plutus 1.70.0.0).
       case IfThenElse | ChooseUnit | Trace | FstPair | SndPair | ChooseList | MkCons | HeadList |
           TailList | NullList | ChooseData | MapData | ListData | IData | BData | UnConstrData |
           UnMapData | UnListData | UnIData | UnBData | EqualsData | SerialiseData | MkPairData |
           MkNilData | MkNilPairData =>
         none
-      // `Word64` in D and E (`Builtins.hs:1745-1759`).
+      // `Word64` in D and E (`Builtins.hs:1745-1759`, plutus 1.70.0.0).
       case ConstrData => onChain(0 -> W64)
-      // The message (the first argument) in D and E (`Builtins.hs:1933-1950,2007-2024`).
+      // The message (the first argument) in D and E (`Builtins.hs:1933-1950,2007-2024`,
+      // plutus 1.70.0.0).
       case Bls12_381_G1_hashToGroup | Bls12_381_G2_hashToGroup => onChain(0 -> CByteString)
       // Group elements, `Integer` scalars and `BS.ByteString` in every variant
-      // (`Builtins.hs:1886-1932,1951-2006,2025-2058,2410-2425`).
+      // (`Builtins.hs:1886-1932,1951-2006,2025-2058,2410-2425`, plutus 1.70.0.0).
       case Bls12_381_G1_add | Bls12_381_G1_neg | Bls12_381_G1_scalarMul | Bls12_381_G1_equal |
           Bls12_381_G1_compress | Bls12_381_G1_uncompress | Bls12_381_G2_add | Bls12_381_G2_neg |
           Bls12_381_G2_scalarMul | Bls12_381_G2_equal | Bls12_381_G2_compress |
           Bls12_381_G2_uncompress | Bls12_381_millerLoop | Bls12_381_mulMlResult |
           Bls12_381_finalVerify | Bls12_381_G1_multiScalarMul | Bls12_381_G2_multiScalarMul =>
         none
-      // `NumBytesCostedAsNumWords` is a costing measure (`Builtins.hs:2093-2102`).
+      // `NumBytesCostedAsNumWords` is a costing measure (`Builtins.hs:2093-2102`, plutus 1.70.0.0).
       case IntegerToByteString => none
-      // `CByteString` in D and E (`Builtins.hs:2103-2118`).
+      // `CByteString` in D and E (`Builtins.hs:2103-2118`, plutus 1.70.0.0).
       case ByteStringToInteger => onChain(1 -> CByteString)
-      // `Bool -> CByteString -> CByteString` in D and E (`Builtins.hs:2119-2166`).
+      // `Bool -> CByteString -> CByteString` in D and E (`Builtins.hs:2119-2166`, plutus 1.70.0.0).
       case AndByteString | OrByteString | XorByteString =>
         onChain(1 -> CByteString, 2 -> CByteString)
-      // `BS.ByteString -> [Integer] -> Bool` in every variant (`Builtins.hs:2199-2229`).
+      // `BS.ByteString -> [Integer] -> Bool` in every variant (`Builtins.hs:2199-2229`,
+      // plutus 1.70.0.0).
       case WriteBits => none
-      // `NumBytesCostedAsNumWords -> Word8` in every variant (`Builtins.hs:2230-2236`).
+      // `NumBytesCostedAsNumWords -> Word8` in every variant (`Builtins.hs:2230-2236`,
+      // plutus 1.70.0.0).
       case ReplicateByte => Map(1 -> W8)
-      // `Int` in D and E, `IntegerCostedLiterally` before (`Builtins.hs:2237-2266`).
+      // `Int` in D and E, `IntegerCostedLiterally` before (`Builtins.hs:2237-2266`,
+      // plutus 1.70.0.0).
       case ShiftByteString | RotateByteString => onChain(1 -> int)
-      // `Integer`s and `IntegerCostedLiterally` (`Builtins.hs:2314-2377`).
+      // `Integer`s and `IntegerCostedLiterally` (`Builtins.hs:2314-2377`, plutus 1.70.0.0).
       case ExpModInteger | DropList => none
-      // `SomeConstant` arrays; `indexArray` takes an `Int` (`Builtins.hs:2378-2409`).
+      // `SomeConstant` arrays; `indexArray` takes an `Int` (`Builtins.hs:2378-2409`,
+      // plutus 1.70.0.0).
       case LengthOfArray | ListToArray => none
       case IndexArray                  => Map(1 -> int)
       // `ByteString`, `Integer`, `[Integer]`, `[ByteString]` and the `Value` measures, which
-      // are costing measures (`Builtins.hs:2426-2527`).
+      // are costing measures (`Builtins.hs:2426-2527`, plutus 1.70.0.0).
       case InsertCoin | LookupCoin | UnionValue | ValueContains | ValueData | UnValueData |
           ScaleValue | MultiIndexArray | Policies | AssetCount | KeepPolicies | DropPolicies =>
         none

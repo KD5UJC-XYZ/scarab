@@ -99,14 +99,14 @@ object DataSerialisation:
       val m = magnitude(-1 - i)
       List(NegativeBig, head(2, m.length.toLong), m)
 
-  /** `encodeInteger` of `PlutusCore/Data.hs:170-182`. */
+  /** `encodeInteger` of `PlutusCore/Data.hs:170-182` of plutus 1.70.0.0. */
   private def integer(n: BigInt): List[Array[Byte]] =
     if fitsWord64(n) then List(head(0, n.longValue))
     else if fitsWord64(-1 - n) then List(head(1, (-1 - n).longValue))
     else if n.signum > 0 then PositiveBig :: byteString(Bytes.wrap(magnitude(n)))
     else NegativeBig :: byteString(Bytes.wrap(magnitude(-1 - n)))
 
-  /** `encodeBs` and `to64ByteChunks` of `PlutusCore/Data.hs:185-198`. */
+  /** `encodeBs` and `to64ByteChunks` of `PlutusCore/Data.hs:185-198` of plutus 1.70.0.0. */
   private def byteString(b: Bytes): List[Array[Byte]] =
     if b.size <= 64 then List(head(2, b.size.toLong), b.toArray)
     else
