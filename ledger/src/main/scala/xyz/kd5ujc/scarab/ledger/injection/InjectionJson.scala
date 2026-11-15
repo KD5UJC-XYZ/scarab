@@ -16,29 +16,29 @@ import xyz.kd5ujc.scarab.ledger.json.{JsonKey, JsonObject, JsonText, JsonValue, 
 object InjectionJson:
   /** The refusals `objectItems value` can reach with this lexer, one case per reference message;
     * `message` is the reference's text. The parser's other messages are unreachable here: `array'`
-    * is entered only with `ArrayBegin` in hand (`Parser.hs:259`), a string continuation never meets
-    * another element (`Parser.hs:353,603,616`), and `StringEnd` comes only after `StringContent`
-    * (`Parser.hs:636`).
+    * is entered only with `ArrayBegin` in hand (`Parser.hs:259`, json-stream 0.4.6.1), a string
+    * continuation never meets another element (`Parser.hs:353,603,616`), and `StringEnd` comes only
+    * after `StringContent` (`Parser.hs:636`).
     */
   enum Error extends DomainError:
-    /** `TokFailed` (`CLexer.hs:193,214,218,234`) where the parser received it
+    /** `TokFailed` (`CLexer.hs:193,214,218,234`, json-stream 0.4.6.1) where the parser received it
       * (`Parser.hs:321,361`).
       */
     case TokenFailed(site: TokenSite)
 
-    /** `unescapeText` refused the string (`Parser.hs:331,349,408,486`). */
+    /** `unescapeText` refused the string (`Parser.hs:331,349,408,486`, json-stream 0.4.6.1). */
     case Undecodable(arrival: Arrival)
 
-    /** `Object - unexpected item` (`Parser.hs:334`). */
+    /** `Object - unexpected item` (`Parser.hs:334`, json-stream 0.4.6.1). */
     case UnexpectedItem(item: Item)
 
-    /** `aeValue - unexpected token` (`Parser.hs:411`). */
+    /** `aeValue - unexpected token` (`Parser.hs:411`, json-stream 0.4.6.1). */
     case UnexpectedToken(end: End)
 
-    /** `ArrayEnd in ignoreval on 0 level` (`Parser.hs:622`). */
+    /** `ArrayEnd in ignoreval on 0 level` (`Parser.hs:622`, json-stream 0.4.6.1). */
     case IgnoredArrayEnd
 
-    /** `ObjectEnd in ignoreval on 0 level` (`Parser.hs:623`). */
+    /** `ObjectEnd in ignoreval on 0 level` (`Parser.hs:623`, json-stream 0.4.6.1). */
     case IgnoredObjectEnd
 
     def message: String = this match
@@ -55,18 +55,19 @@ object InjectionJson:
       case IgnoredObjectEnd           => "ObjectEnd in ignoreval on 0 level"
 
   /** The parser that received `TokFailed`: the outer `object'` before its first element
-    * (`Parser.hs:321`) or any parser after it, through `moreData` (`Parser.hs:361`).
+    * (`Parser.hs:321`, json-stream 0.4.6.1) or any parser after it, through `moreData`
+    * (`Parser.hs:361`).
     */
   enum TokenSite:
     case Object, MoreData
 
-  /** A string read as one `StringRaw` token (`Parser.hs:331,408`: `show` of the exception) or
-    * concatenated from `StringContent` parts (`Parser.hs:349,486`).
+  /** A string read as one `StringRaw` token (`Parser.hs:331,408` (json-stream 0.4.6.1): `show` of
+    * the exception) or concatenated from `StringContent` parts (`Parser.hs:349,486`).
     */
   enum Arrival:
     case Whole, Parts
 
-  /** The `JValue` scalars the lexer yields (`CLexer.hs:195-218`). */
+  /** The `JValue` scalars the lexer yields (`CLexer.hs:195-218`, json-stream 0.4.6.1). */
   enum Scalar:
     case Bool(value: Boolean)
     case Null
@@ -77,8 +78,8 @@ object InjectionJson:
       case Null          => JsonValue.Null
       case Number(value) => JsonValue.Number(value)
 
-  /** The elements `object'` refuses in key position (`TokenParser.hs:12-22`). `ArrayEnd` holds the
-    * rest of the chunk after it.
+  /** The elements `object'` refuses in key position (`TokenParser.hs:12-22`, json-stream 0.4.6.1).
+    * `ArrayEnd` holds the rest of the chunk after it.
     */
   enum Item:
     case ArrayBegin, ObjectBegin
@@ -148,7 +149,7 @@ object InjectionJson:
 
   val initial: State = new State(Phase.Tokens(InjectionLexer.initial, Mode.Root))
 
-  // `objectKeyStringLimit` (`Parser.hs:123-124`).
+  // `objectKeyStringLimit` (`Parser.hs:123-124`, json-stream 0.4.6.1).
   private val objectKeyStringLimit = 65536
 
   private enum Action:
@@ -193,7 +194,7 @@ object InjectionJson:
           case Target.Key(KeySite.Inner(fields, up)) =>
             tokens(lexer, Mode.Value(Parent.Field(fields, JsonKey.fromString(decoded), up)))
 
-  // `aeValue` (`Parser.hs:400-411`).
+  // `aeValue` (`Parser.hs:400-411`, json-stream 0.4.6.1).
   private def readValue(
       lexer: InjectionLexer.State,
       token: InjectionLexer.Token,
@@ -209,7 +210,7 @@ object InjectionJson:
       case ArrayEnd         => refuse(Error.UnexpectedToken(End.ArrayEnd(lexer.remaining)))
       case ObjectEnd        => refuse(Error.UnexpectedToken(End.ObjectEnd(lexer.remaining)))
 
-  // `ignoreVal'`'s `handleTok` (`Parser.hs:618-636`).
+  // `ignoreVal'`'s `handleTok` (`Parser.hs:618-636`, json-stream 0.4.6.1).
   private def ignore(
       lexer: InjectionLexer.State,
       level: Int,

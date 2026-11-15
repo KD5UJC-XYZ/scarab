@@ -17,7 +17,7 @@ enum BoundedRatio(val lower: Rational, val upper: Rational):
   case NonNegative extends BoundedRatio(Rational.zero, Rational(Word64.max.toBigInt))
 
   /** `PositiveUnitInterval`: `[positiveIntervalEpsilon, 1]`, the epsilon being `10^-19`
-    * (`BaseTypes.hs:508-509`), `10 ^ maxDecimalsWord64`.
+    * (`BaseTypes.hs:508-509`, cardano-ledger f649f975), `10 ^ maxDecimalsWord64`.
     */
   case PositiveUnit extends BoundedRatio(Rational(1, BigInt(10).pow(19)), Rational.one)
 
@@ -26,23 +26,24 @@ enum BoundedRatio(val lower: Rational, val upper: Rational):
     */
   case Positive extends BoundedRatio(Rational(1, BigInt(10).pow(19)), Rational(Word64.max.toBigInt))
 
-  /** `boundRational` (`fromRationalBoundedRatio`, `BaseTypes.hs:348-378`): numerator and
-    * denominator of the reduced rational within `Word64`, the value within the bounds.
+  /** `boundRational` (`fromRationalBoundedRatio`, `BaseTypes.hs:348-378`, cardano-ledger f649f975):
+    * numerator and denominator of the reduced rational within `Word64`, the value within the
+    * bounds.
     */
-  /** `maxDecimalsWord64` (`BaseTypes.hs:208-209`). */
+  /** `maxDecimalsWord64` (`BaseTypes.hs:208-209`, cardano-ledger f649f975). */
   private def MaxDecimals: Int = 19
 
   def bound(r: Rational): Option[Rational] =
     val inWord = (n: BigInt) => n >= 0 && n <= Word64.max.toBigInt
     Option.when(inWord(r.numerator) && inWord(r.denominator) && lower <= r && r <= upper)(r)
 
-  /** `fromRationalEither` (`BaseTypes.hs:460-462`). */
+  /** `fromRationalEither` (`BaseTypes.hs:460-462`, cardano-ledger f649f975). */
   def fromRational(r: Rational): Either[NumberError, Rational] =
     bound(r).toRight(NumberError.OutsideOfBounds(r))
 
-  /** `fromScientificBoundedRatioWord64` (`BaseTypes.hs:444-458`): the normalized decimal, refused
-    * when negative, when it has more than 19 decimal places, or when its exponent is above 19, and
-    * then bounded as [[fromRational]].
+  /** `fromScientificBoundedRatioWord64` (`BaseTypes.hs:444-458`, cardano-ledger f649f975): the
+    * normalized decimal, refused when negative, when it has more than 19 decimal places, or when
+    * its exponent is above 19, and then bounded as [[fromRational]].
     */
   def fromScientific(written: Scientific): Either[NumberError, Rational] =
     val sci = written.normalize
@@ -54,8 +55,9 @@ enum BoundedRatio(val lower: Rational, val upper: Rational):
     else if MaxDecimals < exp10 then Left(NumberError.TooBig(sci))
     else fromRational(Rational(coeff * BigInt(10).pow(exp10.toInt)))
 
-  /** `FromJSON (BoundedRatio b Word64)` (`BaseTypes.hs:437-442`): an object is the rational form
-    * `{"numerator": n, "denominator": d}`, anything else a decimal number.
+  /** `FromJSON (BoundedRatio b Word64)` (`BaseTypes.hs:437-442`, cardano-ledger f649f975): an
+    * object is the rational form `{"numerator": n, "denominator": d}`, anything else a decimal
+    * number.
     */
   def fromJson(json: Json): Either[NumberError, Rational] =
     json.asObject match

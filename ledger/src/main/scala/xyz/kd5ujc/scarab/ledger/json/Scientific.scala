@@ -12,10 +12,11 @@ import scala.annotation.tailrec
   * the fields to observe the representation. `toString` is the reference's `show`.
   */
 final case class Scientific(coefficient: BigInt, base10Exponent: Long):
-  /** `normalize` (`Data/Scientific.hs:1101-1111`): trailing decimal zeros of the coefficient move
-    * into the exponent, which wraps as the reference's 64-bit `Int` does; zero is `Scientific 0 0`.
-    * Its logarithmic number of divisions, instead of the reference's one per zero, is an
-    * owner-approved implementation difference with the same result, recorded in #474 (2026-10-27).
+  /** `normalize` (`Data/Scientific.hs:1101-1111`, scientific 0.3.8.1): trailing decimal zeros of
+    * the coefficient move into the exponent, which wraps as the reference's 64-bit `Int` does; zero
+    * is `Scientific 0 0`. Its logarithmic number of divisions, instead of the reference's one per
+    * zero, is an owner-approved implementation difference with the same result, recorded in #474
+    * (2026-10-27).
     */
   def normalize: Scientific =
     if coefficient == 0 then Scientific(0, 0)
@@ -23,10 +24,11 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
       val (stripped, zeros) = Scientific.stripZeros(coefficient)
       Scientific(stripped, base10Exponent + zeros)
 
-  /** `toBoundedInteger` (`Data/Scientific.hs:771-802`): the whole number in `[min, max]`, or `None`
-    * for a floating value or one outside the bounds. Check the stored exponent as `dangerouslyBig`
-    * does: normalization can wrap it into a negative machine Int. A normalized exponent exceeding
-    * the bounds' digits also proves the value is outside them without expansion.
+  /** `toBoundedInteger` (`Data/Scientific.hs:771-802`, scientific 0.3.8.1): the whole number in
+    * `[min, max]`, or `None` for a floating value or one outside the bounds. Check the stored
+    * exponent as `dangerouslyBig` does: normalization can wrap it into a negative machine Int. A
+    * normalized exponent exceeding the bounds' digits also proves the value is outside them without
+    * expansion.
     */
   def toBoundedInteger(min: BigInt, max: BigInt): Option[BigInt] =
     if coefficient == 0 then Option.when(min <= 0 && 0 <= max)(BigInt(0))
@@ -40,9 +42,9 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
           min <= i && i <= max
         )
 
-  /** The `Right` of `floatingOrInteger` (`Data/Scientific.hs:831-837`): the whole number when the
-    * exponent, as stored or normalized, is not negative. The caller bounds the exponent first, as
-    * aeson's `withBoundedScientific` does for `Integer`.
+  /** The `Right` of `floatingOrInteger` (`Data/Scientific.hs:831-837`, scientific 0.3.8.1): the
+    * whole number when the exponent, as stored or normalized, is not negative. The caller bounds
+    * the exponent first, as aeson's `withBoundedScientific` does for `Integer`.
     */
   def wholeNumber: Option[BigInt] =
     if base10Exponent >= 0 then Some(coefficient * BigInt(10).pow(base10Exponent.toInt))
@@ -60,8 +62,8 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
     val n = normalize
     (n.coefficient, n.base10Exponent).hashCode
 
-  /** `showsPrec d` (`Data/Scientific.hs:958-973`): a negative number is parenthesized above the
-    * prefix-minus precedence 6.
+  /** `showsPrec d` (`Data/Scientific.hs:958-973`, scientific 0.3.8.1): a negative number is
+    * parenthesized above the prefix-minus precedence 6.
     */
   def showsPrec(d: Int): String =
     if coefficient < 0 then
@@ -107,9 +109,9 @@ object Scientific:
         loop(n / BigInt(10).pow(ex.toInt), acc + ex)
     loop(n, 0)
 
-  /** `instance Ord Scientific` (`Data/Scientific.hs:218-241`): compares digit counts and only
-    * divides by `10^d` for the difference `d` of the coefficients' digit counts, never by a power
-    * from the exponents. Exponent sums wrap as the reference's `Int` does.
+  /** `instance Ord Scientific` (`Data/Scientific.hs:218-241`, scientific 0.3.8.1): compares digit
+    * counts and only divides by `10^d` for the difference `d` of the coefficients' digit counts,
+    * never by a power from the exponents. Exponent sums wrap as the reference's `Int` does.
     */
   private def compare(s1: Scientific, s2: Scientific): Int =
     val Scientific(c1, e1) = s1.normalize
@@ -136,8 +138,9 @@ object Scientific:
   given Ordering[Scientific] = Order[Scientific].toOrdering
   given Show[Scientific] = Show.fromToString
 
-  /** `toDecimalDigits` (`Data/Scientific.hs:1078-1089`) of a non-negative number: the digits of the
-    * normalized coefficient and the exponent of `0.d1d2…dn`, summed in the reference's `Int`.
+  /** `toDecimalDigits` (`Data/Scientific.hs:1078-1089`, scientific 0.3.8.1) of a non-negative
+    * number: the digits of the normalized coefficient and the exponent of `0.d1d2…dn`, summed in
+    * the reference's `Int`.
     */
   private def toDecimalDigits(s: Scientific): (NonEmptyList[Int], Long) =
     if s.coefficient == 0 then (NonEmptyList.one(0), 0)
@@ -151,12 +154,12 @@ object Scientific:
       val (q, r) = c /% 10
       go(q, 1, NonEmptyList.one(r.toInt))
 
-  // `showPositive` and `fmtAsGeneric` (`Data/Scientific.hs:966-973`).
+  // `showPositive` and `fmtAsGeneric` (`Data/Scientific.hs:966-973`, scientific 0.3.8.1).
   private def showPositive(s: Scientific): String =
     val (is, e) = toDecimalDigits(s)
     if e < 0 || e > 7 then fmtAsExponent(is, e) else fmtAsFixed(is, e.toInt)
 
-  /** `fmtAsExponent` (`Data/Scientific.hs:975-985`). */
+  /** `fmtAsExponent` (`Data/Scientific.hs:975-985`, scientific 0.3.8.1). */
   private def fmtAsExponent(is: NonEmptyList[Int], e: Long): String =
     val showE = (e - 1).toString
     is.map(Character.forDigit(_, 10)) match
@@ -164,8 +167,9 @@ object Scientific:
       case NonEmptyList(d, Nil)   => s"$d.0e$showE"
       case NonEmptyList(d, ds)    => s"$d.${ds.mkString}e$showE"
 
-  /** `fmtAsFixed` (`Data/Scientific.hs:987-1001`), for the exponents 0 to 7 that `fmtAsGeneric`
-    * passes: the first `e` digits, padded with zeros, before the point, and `0` for an empty side.
+  /** `fmtAsFixed` (`Data/Scientific.hs:987-1001`, scientific 0.3.8.1), for the exponents 0 to 7
+    * that `fmtAsGeneric` passes: the first `e` digits, padded with zeros, before the point, and `0`
+    * for an empty side.
     */
   private def fmtAsFixed(is: NonEmptyList[Int], e: Int): String =
     val ds = is.toList.map(Character.forDigit(_, 10)).mkString

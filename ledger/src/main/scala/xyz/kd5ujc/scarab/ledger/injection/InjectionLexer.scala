@@ -42,7 +42,8 @@ private[injection] object InjectionLexer:
     def remaining: Bytes = input.drop(at)
 
   /** Inside a string whose first part has been emitted (`state_data = 1`, `lexer.c:180-226`).
-    * `closed` is set after the final part, whose `StringEnd` follows it (`CLexer.hs:222-223`).
+    * `closed` is set after the final part, whose `StringEnd` follows it (`CLexer.hs:222-223`,
+    * json-stream 0.4.6.1).
     */
   final case class Text private[InjectionLexer] (
       private[InjectionLexer] val input: Bytes,
@@ -56,7 +57,8 @@ private[injection] object InjectionLexer:
 
   val initial: State = State(Bytes.empty, 0, Mode.Base)
 
-  /** `Failed` is the reference's `TokFailed` (`CLexer.hs:193,214,218,234`), which carries no cause.
+  /** `Failed` is the reference's `TokFailed` (`CLexer.hs:193,214,218,234`, json-stream 0.4.6.1),
+    * which carries no cause.
     */
   enum Step:
     case Emit(token: Token, next: State)
@@ -89,7 +91,7 @@ private[injection] object InjectionLexer:
   // The C fast path accepts a lone minus/dot and permits zero digits. It is used only for a
   // number ending in its first chunk; continuations take parseNumber's different grammar. With
   // no fraction digits it is `JInteger`, otherwise `JValue (Number (scientific n (-digits)))`
-  // (`lexer.c:110-176`, `CLexer.hs:204-208`).
+  // (`lexer.c:110-176`, `CLexer.hs:204-208`, json-stream 0.4.6.1).
   private def fastNumber(text: String): Option[Token] =
     final case class Acc(value: Long, digits: Int, decimals: Int, dot: Boolean, negative: Boolean)
     text.zipWithIndex
@@ -121,8 +123,8 @@ private[injection] object InjectionLexer:
   // Integer concatenation is exact: left * 10^rightWidth + right. Midpoint splitting limits
   // the JVM decimal constructor's quadratic work without changing Scientific's representation.
   // An owner-approved implementation difference (recorded in #474, 2026-10-27) with results
-  // identical to the reference's one-pass digit fold (`CLexer.hs:130-172`). The measured
-  // leaf size balances CPU time against intermediate allocation; see
+  // identical to the reference's one-pass digit fold (`CLexer.hs:130-172`, json-stream 0.4.6.1).
+  // The measured leaf size balances CPU time against intermediate allocation; see
   // docs/performance/injection-coefficients.md.
   private def decimalCoefficient(digits: String): BigInt =
     enum Work:
@@ -149,7 +151,9 @@ private[injection] object InjectionLexer:
     if digits.length <= leafDigits then BigInt(digits)
     else loop(Work.Read(digits), Nil, Map.empty)
 
-  /** `parseNumber` (`CLexer.hs:130-172`); `None` is its `Nothing`, a `TokFailed`. */
+  /** `parseNumber` (`CLexer.hs:130-172`, json-stream 0.4.6.1); `None` is its `Nothing`, a
+    * `TokFailed`.
+    */
   private[injection] def generalNumber(text: String): Option[Scientific] = text match
     case scientific(sign, whole, decimal, exponentSign, power) =>
       val fraction = Option(decimal).getOrElse("")

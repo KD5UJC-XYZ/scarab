@@ -7,14 +7,14 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Datum, ScriptKind, Value}
 
 /** The CBOR the reference writes for an output it holds only in compact form (`EncCBOR
-  * (BabbageTxOut era)`, `Babbage/TxOut.hs:312-318`; `EncCBOR MaryValue`, `Value.hs:342`): the
-  * legacy array of two or three items for an output with neither inline datum nor script, else the
-  * map with the keys 0 (address), 1 (value), 2 (datum option) and 3 (reference script, `#6.24`),
-  * and a value as a bare coin or `[coin, {policy: {name: quantity}}]` with maps of more than 23
-  * entries written indefinite (`variableMapLenEncoding`, `Encoder.hs:433`). A MemPack output has no
-  * CBOR of its own; this is the one the node's [[xyz.kd5ujc.scarab.ledger.TxOut]] carries as its
-  * `raw`, so that everything that reads `raw` (the sizes, the script, the address scan) works on
-  * it.
+  * (BabbageTxOut era)`, `Babbage/TxOut.hs:312-318` (cardano-ledger f649f975); `EncCBOR MaryValue`,
+  * `Value.hs:342`): the legacy array of two or three items for an output with neither inline datum
+  * nor script, else the map with the keys 0 (address), 1 (value), 2 (datum option) and 3 (reference
+  * script, `#6.24`), and a value as a bare coin or `[coin, {policy: {name: quantity}}]` with maps
+  * of more than 23 entries written indefinite (`variableMapLenEncoding`, `Encoder.hs:433`). A
+  * MemPack output has no CBOR of its own; this is the one the node's
+  * [[xyz.kd5ujc.scarab.ledger.TxOut]] carries as its `raw`, so that everything that reads `raw`
+  * (the sizes, the script, the address scan) works on it.
   */
 private[mempack] object CanonicalCbor:
 

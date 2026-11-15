@@ -201,8 +201,8 @@ object TxOutMemPack:
     case AdaOnly(coin: Long)
     case Assets(coin: Long, count: Int, rep: Bytes)
 
-  /** The constructors of `AlonzoTxOut` and `BabbageTxOut` (`Alonzo/TxOut.hs:144`,
-    * `Babbage/TxOut.hs:133`), by tag; the Shelley and Mary `TxOutCompact` is tag 0.
+  /** The constructors of `AlonzoTxOut` and `BabbageTxOut` (`Alonzo/TxOut.hs:144` (cardano-ledger
+    * f649f975), `Babbage/TxOut.hs:133`), by tag; the Shelley and Mary `TxOutCompact` is tag 0.
     */
   private enum Rep:
     case Compact(address: Bytes, value: PackedValue)
@@ -235,8 +235,8 @@ object TxOutMemPack:
       case Era.Shelley | Era.Allegra => true
       case _                         => false
 
-  /** The Plutus languages of the era's `PlutusScript` (`Babbage/Scripts.hs:134`,
-    * `Conway/Scripts.hs:184`).
+  /** The Plutus languages of the era's `PlutusScript` (`Babbage/Scripts.hs:134` (cardano-ledger
+    * f649f975), `Conway/Scripts.hs:184`).
     */
   private def languages[E <: EraTag](using ShelleyBasedEra[E]): Int = eraOf[E] match
     case Era.Conway  => 3
@@ -603,7 +603,7 @@ object TxOutMemPack:
       MultiAssetRep.read(n, rep).map(Value(unsigned(coin), _))
 
   /** The 57-byte base address a compact output stands for (`decodeAddress28`,
-    * `Alonzo/TxOut.hs:127`).
+    * `Alonzo/TxOut.hs:127`, cardano-ledger f649f975).
     */
   private def address28(stake: Credential, e: Addr28Extra): Bytes =
     val out = new Array[Byte](57)

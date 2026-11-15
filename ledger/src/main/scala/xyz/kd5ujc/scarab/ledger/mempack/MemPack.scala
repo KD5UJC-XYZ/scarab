@@ -47,7 +47,7 @@ object MemPack:
     case OutOfRange(field: Quantity)
 
     /** More assets or policies than the 16-bit offsets of the compact form can address
-      * (`isMultiAssetSmallEnough`, `Value.hs:710`).
+      * (`isMultiAssetSmallEnough`, `Value.hs:710`, cardano-ledger f649f975).
       */
     case MultiAssetTooLarge(assets: Int, policies: Int)
 
@@ -80,7 +80,8 @@ object MemPack:
     case MultiAssetValue, DatumHash, Addr28Constructor, InlineDatum, ReferenceScript, PlutusV2,
       PlutusV3
 
-  /** Faults of the packed multi-asset representation (`Value.hs:475-578`). */
+  /** Faults of the packed multi-asset representation (`Value.hs:475-578`, cardano-ledger f649f975).
+    */
   enum MultiAssetFault:
     /** The representation is shorter than the three fixed regions of its asset count. */
     case ShorterThanRegions

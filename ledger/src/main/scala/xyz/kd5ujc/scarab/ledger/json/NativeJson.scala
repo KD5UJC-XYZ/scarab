@@ -25,20 +25,22 @@ object NativeJson:
 
   /** The failures of `bsToTokens`; `message` is the reference's text. */
   enum Error extends DomainError:
-    /** `tkErrEOF` (`Decoding/ByteString.hs:118-120`) and its spelled-out copies (36, 84). */
+    /** `tkErrEOF` (`Decoding/ByteString.hs:118-120`, aeson 2.2.5.0) and its spelled-out copies (36,
+      * 84).
+      */
     case EndOfInput(expected: Expected)
 
-    /** `tkErrBS` (`Decoding/ByteString.hs:123-125`) and its spelled-out copies (57, 90): the
-      * `showBeginning` of at most 30 bytes (`110-111`). After a comma in an object, those bytes
-      * start at the comma (`85-88`).
+    /** `tkErrBS` (`Decoding/ByteString.hs:123-125`, aeson 2.2.5.0) and its spelled-out copies (57,
+      * 90): the `showBeginning` of at most 30 bytes (`110-111`). After a comma in an object, those
+      * bytes start at the comma (`85-88`).
       */
     case Unexpected(beginning: Bytes, expected: Expected)
 
-    /** `scanStringLiteral`'s `errEnd` (`Decoding/ByteString.hs:165`). */
+    /** `scanStringLiteral`'s `errEnd` (`Decoding/ByteString.hs:165`, aeson 2.2.5.0). */
     case StringEnd
 
-    /** `scanStringLiteral` 's `errCC` (`Decoding/ByteString.hs:166`), spelled as the reference
-      * does.
+    /** `scanStringLiteral` 's `errCC` (`Decoding/ByteString.hs:166`, aeson 2.2.5.0), spelled as the
+      * reference does.
       */
     case StringControl
 
@@ -47,20 +49,20 @@ object NativeJson:
       */
     case InvalidUtf8Stream
 
-    /** `scanNumberLiteral`'s `errEnd` (`Decoding/ByteString.hs:272`). */
+    /** `scanNumberLiteral`'s `errEnd` (`Decoding/ByteString.hs:272`, aeson 2.2.5.0). */
     case NumberEnd
 
     /** A byte that cannot start the integer or fraction part, shown as a `Word8`
-      * (`Decoding/ByteString.hs:194,221`).
+      * (`Decoding/ByteString.hs:194,221`, aeson 2.2.5.0).
       */
     case NumberByte(byte: Int)
 
     /** A byte that cannot continue an exponent, shown as a `Char` (`errUnx`,
-      * `Decoding/ByteString.hs:273`).
+      * `Decoding/ByteString.hs:273`, aeson 2.2.5.0).
       */
     case NumberChar(byte: Int)
 
-    /** `Decoding/ByteString.hs:200`. */
+    /** `Decoding/ByteString.hs:200` (aeson 2.2.5.0). */
     case LeadingZero
 
     def message: String = this match
@@ -76,11 +78,11 @@ object NativeJson:
       case NumberChar(byte) => s"Unexpected ${HaskellShow.char(byte)} while parsing number literal"
       case LeadingZero      => "Number literal with leading zero"
 
-  /** The failures of `eitherDecodeStrict` at `Value` (`Decoding.hs:48-53`). */
+  /** The failures of `eitherDecodeStrict` at `Value` (`Decoding.hs:48-53`, aeson 2.2.5.0). */
   enum DecodeError extends DomainError:
     case Syntax(error: Error)
 
-    /** Input other than JSON whitespace after the value (`Decoding.hs:52`). */
+    /** Input other than JSON whitespace after the value (`Decoding.hs:52`, aeson 2.2.5.0). */
     case TrailingGarbage
 
     def message: String = this match
@@ -114,7 +116,7 @@ object NativeJson:
   /** Byte `at` of the input, unsigned, if the input has it. */
   private[json] def byte(input: Bytes, at: Int): Option[Int] = input.lift(at).map(_ & 255)
 
-  // `skipSpace` (`Decoding/ByteString.hs:114-115`).
+  // `skipSpace` (`Decoding/ByteString.hs:114-115`, aeson 2.2.5.0).
   @tailrec private def space(input: Bytes, at: Int): Int =
     if byte(input, at).exists(isSpace) then space(input, at + 1) else at
 
@@ -146,7 +148,8 @@ object NativeJson:
       finish(at + text.length, value, frames)
     else Left(unexpected(input, at, Expected.Value))
 
-  // `tokenCase` (`Decoding/ByteString.hs:39-57`); its callers have refused the end of the input.
+  // `tokenCase` (`Decoding/ByteString.hs:39-57`, aeson 2.2.5.0); its callers have refused the end
+  // of the input.
   private def token(input: Bytes, at: Int, frames: List[Frame]): Either[Error, Step] =
     byte(input, at) match
       case None      => refuse(input, at, Expected.Value)
@@ -200,7 +203,7 @@ object NativeJson:
           else Left(unexpected(input, s.at, Expected.KeyLiteral))
         else if is(125) then
           // The pairs are reversed and `fromList` keeps a key's last pair, so the first original
-          // wins (`Decoding/Conversion.hs:81-94`).
+          // wins (`Decoding/Conversion.hs:81-94`, aeson 2.2.5.0).
           finish(s.at + 1, JsonValue.Object(JsonObject.fromList(fields)), s.frames)
         else refuse(input, s.at, Expected.ObjectSeparator)
       case Mode.Colon(fields, k) =>
@@ -218,13 +221,15 @@ object NativeJson:
       case Right(Step.Continue(next)) => loop(next)
     loop(State(0, Mode.Value, Nil))
 
-  /** `bsSpace` (`Decoding/Conversion.hs:26-27`): only JSON whitespace follows `from`. */
+  /** `bsSpace` (`Decoding/Conversion.hs:26-27`, aeson 2.2.5.0): only JSON whitespace follows
+    * `from`.
+    */
   def onlySpace(input: Bytes, from: Int): Boolean = space(input, from) == input.size
 
-  /** `eitherDecodeStrict` at `Value` (`Decoding.hs:48-53`). The reference runs `ifromJSON` between
-    * the parse and the trailing-input check; at `Value` it always succeeds, so the check follows at
-    * once. A decoder of a typed value runs between `parse` and `onlySpace`, as the reference's
-    * does.
+  /** `eitherDecodeStrict` at `Value` (`Decoding.hs:48-53`, aeson 2.2.5.0). The reference runs
+    * `ifromJSON` between the parse and the trailing-input check; at `Value` it always succeeds, so
+    * the check follows at once. A decoder of a typed value runs between `parse` and `onlySpace`, as
+    * the reference's does.
     */
   def decodeStrict(input: Bytes): Either[DecodeError, JsonValue] =
     parse(input) match
