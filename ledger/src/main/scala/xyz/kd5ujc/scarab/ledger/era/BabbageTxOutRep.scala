@@ -74,9 +74,8 @@ object BabbageTxOutRep:
           inner <- field.value match
             case CborValue.Tag(t, i) if t == 24 =>
               CborRead.bytes(i, DecodeField.ReferenceScript)
-            case CborValue.Tag(_, _) | CborValue.UInt(_) | CborValue.NInt(_) |
-                CborValue.ByteString(_) | CborValue.Text(_) | CborValue.Arr(_) | CborValue.Map(_) |
-                CborValue.Bool(_) | CborValue.Null | CborValue.Simple(_) | CborValue.Float(_, _) =>
+            // any other shape, as the flat reader refuses it (`Script.decodeWrappedWithBytes`)
+            case _ =>
               Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, field.value))
           scriptNode <- CborRead.decode(inner)
           s <- decodeScript(scriptNode)
