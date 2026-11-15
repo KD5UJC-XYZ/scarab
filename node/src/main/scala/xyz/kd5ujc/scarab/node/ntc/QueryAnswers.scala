@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayCertState,
   ConwayGovState,
+  EraTag,
   FuturePParams,
   MirrorEnv,
   MirrorError,
@@ -95,24 +96,42 @@ final case class QueryView[S](point: Point, blockNo: Option[BigInt], state: S)(u
   /** The ledger state of the era the chain is in. */
   lazy val ledger: Read[Option[InEra]] = read.ledger(state)(tip)
 
-  /** What the Conway queries read, if the chain is in Conway. */
-  lazy val conway: Read[Option[ConwayFacts]] = ledger.map(_.flatMap { case InEra.Of(era, l) =>
-    era match
-      case ShelleyBasedEra.SConway => Some(new ConwayFacts(l))
-      case _                       => None
-  })
+  /** What the queries read of the ledger state of the Shelley-based era the chain is in, if it is
+    * in one.
+    */
+  lazy val facts: Read[Option[EraFacts[?]]] = ledger.map(_.map(EraFacts.of))
 
-/** What the queries of the Conway era read of its ledger state, in the vocabulary of the mirror;
-  * each part is read the first time and kept.
+  /** What the Conway queries read, if the chain is in Conway. */
+  lazy val conway: Read[Option[ConwayFacts]] = facts.map(_.flatMap(_.conway))
+
+/** What the queries of a Shelley-based era `E` read of its ledger state, in the vocabulary of the
+  * mirror; each part is read the first time and kept. These are the parts every era has; those only
+  * Conway's queries read are [[ConwayFacts]]'.
   */
-final class ConwayFacts(val l: EraRead[Conway]):
-  lazy val cert: Read[ConwayCertState] = l.cert
-  lazy val gov: Read[ConwayGovState] = l.gov
+sealed class EraFacts[E <: EraTag](val l: EraRead[E]):
   lazy val scalars: Read[mirror.LedgerScalars] = l.scalars
-  lazy val snapshots: Read[mirror.SnapShots] = l.snapshots
-  lazy val instantStake: Read[mirror.ConwayInstantStake] = l.instantStake
 
   def epoch: BigInt = l.epoch.toBigInt
+
+  /** The same view, as Conway's, if the era is Conway. */
+  def conway: Option[ConwayFacts] = None
+
+object EraFacts:
+  /** The view of a ledger state, in the era its witness names. */
+  def of(in: InEra): EraFacts[?] = in match
+    case InEra.Of(era, l) =>
+      era match
+        case ShelleyBasedEra.SConway => new ConwayFacts(l)
+        case _                       => new EraFacts(l)
+
+/** What the queries of the Conway era read of its ledger state, besides what every era's do. */
+final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](conwayRead):
+  override def conway: Option[ConwayFacts] = Some(this)
+
+  lazy val cert: Read[ConwayCertState] = l.cert
+  lazy val gov: Read[ConwayGovState] = l.gov
+  lazy val snapshots: Read[mirror.SnapShots] = l.snapshots
+  lazy val instantStake: Read[mirror.ConwayInstantStake] = l.instantStake
 
   /** The accounts by credential, in the vocabulary of the node (what the queries are asked in). */
   lazy val accounts: Read[Map[Credential, mirror.ConwayAccountState]] =
