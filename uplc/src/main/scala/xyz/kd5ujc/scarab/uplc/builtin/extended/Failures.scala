@@ -33,10 +33,10 @@ enum SignatureScheme:
   * deserialises but does not verify is the answer `False`, never one of these.
   */
 enum SignatureInputFailure extends LogLines:
-  /** `Ed25519.hs:34` of plutus 1.70.0.0, `Secp256k1.hs:55,98`. */
+  /** `Ed25519.hs:34`, `Secp256k1.hs:55,98` of plutus 1.70.0.0. */
   case InvalidVerificationKey(scheme: SignatureScheme)
 
-  /** `Ed25519.hs:36` of plutus 1.70.0.0, `Secp256k1.hs:57,100`. */
+  /** `Ed25519.hs:36`, `Secp256k1.hs:57,100` of plutus 1.70.0.0. */
   case InvalidSignature(scheme: SignatureScheme)
 
   /** ECDSA only: a message that is not 32 bytes (`Secp256k1.hs:59`, plutus 1.70.0.0). */
@@ -144,7 +144,7 @@ enum ExpModFailure extends LogLines:
   /** A modulus of 0 or of more than 8191 bits (`ExpMod.hs:19`, plutus 1.70.0.0). */
   case InvalidModulus
 
-  /** `ExpMod.hs:24 of plutus 1.70.0.0,30,32-34`. */
+  /** `ExpMod.hs:24,30,32-34` of plutus 1.70.0.0. */
   case NotInvertible(base: BigInt, modulus: BigInt)
 
   /** A base or exponent outside `[-2^8191, 2^8191 - 1]` (`ExpMod.hs:26,49-50`, plutus 1.70.0.0). */

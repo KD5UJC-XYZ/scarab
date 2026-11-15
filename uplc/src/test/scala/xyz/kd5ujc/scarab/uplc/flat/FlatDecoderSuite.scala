@@ -225,7 +225,7 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     )
   }
 
-  // `G1.hs:86-90` of plutus 1.70.0.0, `G2.hs:72-76`, `Pairing.hs:56-58`: the value's decoder fails,
+  // `G1.hs:86-90`, `G2.hs:72-76`, `Pairing.hs:56-58` of plutus 1.70.0.0: the value's decoder fails,
   // not the type
   test("BLS12-381 values have no Flat decoding, but an empty list of them decodes") {
     assertEquals(

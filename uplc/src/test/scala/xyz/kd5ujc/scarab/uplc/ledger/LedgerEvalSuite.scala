@@ -353,7 +353,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
       case other => fail(s"expected a failure, got $other")
   }
 
-  // `Eval.hs:269-274 of plutus 1.70.0.0,296-301`
+  // `Eval.hs:269-274,296-301` of plutus 1.70.0.0
   test(
     "restricting reports the limit less what is left, counting what is spent; one unit less fails"
   ) {
