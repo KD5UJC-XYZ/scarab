@@ -5,6 +5,26 @@
   "ledger/src/main/scala"
  ],
  "entries": {
+  "class ledger.era.MaxPledgeLeverage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "MaxPledgeLeverage",
+     "lines": [
+      369,
+      373
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "9b6ed4cfeb620d0d"
+  },
   "class ledger.era.NoUpdate": {
    "upstream": [
     {
@@ -141,6 +161,66 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "7d040c1e231b0339"
+  },
+  "class ledger.era.dijkstra.DijkstraPParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "DijkstraPParams",
+     "lines": [
+      161,
+      300
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "96365c3f26064969"
+  },
+  "class ledger.era.dijkstra.Milliseconds32": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Milliseconds32",
+     "lines": [
+      704,
+      708
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "4d5c4eab11e0db1f"
+  },
+  "class ledger.era.dijkstra.SlotInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+     "file": "cardano-slotting/src/Cardano/Slotting/Slot.hs",
+     "symbol": "SlotInterval",
+     "lines": [
+      56,
+      61
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "7dc9a5af83b5fff6"
   },
   "def ledger.byron.ByronLedger.applyTx": {
    "upstream": [
@@ -1521,6 +1601,50 @@
    "structure": "same",
    "digest": "5e8fae2e704bf5ae"
   },
+  "def ledger.era.EraPParams#ppMaxPledgeLeverageG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppMaxPledgeLeverageG",
+     "lines": [
+      510,
+      516
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, no limit",
+   "digest": "e5fab64b2004bb9f"
+  },
+  "def ledger.era.EraPParams#ppMinPoolMarginG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppMinPoolMarginG",
+     "lines": [
+      518,
+      524
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, minBound",
+   "digest": "c5087c4d920a44ed"
+  },
   "def ledger.era.EraPParams#ppProtocolVersionL": {
    "upstream": [
     {
@@ -1821,6 +1945,1669 @@
    "note": "the union of ppGroup over the record's THKD fields, written out field by field where the reference's default traverses the record's Generic representation",
    "digest": "ed85bf04f3170337"
   },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdLeiosAnnouncementPeriodLengthL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosAnnouncementPeriodLengthL",
+     "lines": [
+      1325,
+      1325
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "25fd7ed30a76d0a1"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdLeiosCommitteeSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosCommitteeSizeL",
+     "lines": [
+      1328,
+      1328
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "9dc9830bf591da74"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdLeiosDiffusionPeriodLengthL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosDiffusionPeriodLengthL",
+     "lines": [
+      1327,
+      1327
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "edb337423201c26d"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdLeiosQuorumStakeThresholdL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosQuorumStakeThresholdL",
+     "lines": [
+      1329,
+      1329
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "2d76b44c70647424"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdLeiosVotePeriodLengthL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosVotePeriodLengthL",
+     "lines": [
+      1326,
+      1326
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "b5dd5e38b075da12"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMaxEndorserBlockExUnitsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxEndorserBlockExUnitsL",
+     "lines": [
+      1332,
+      1332
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "045766a18881728a"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMaxEndorserBlockReferencesSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxEndorserBlockReferencesSizeL",
+     "lines": [
+      1330,
+      1330
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "0a134283f93bc7eb"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMaxEndorserBlockTxsSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxEndorserBlockTxsSizeL",
+     "lines": [
+      1331,
+      1331
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "0eb0c7aba7adc1d8"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMaxPledgeLeverageL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxPledgeLeverageL",
+     "lines": [
+      1323,
+      1323
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "598080c091bf2e95"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMaxRefScriptSizePerBlockL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxRefScriptSizePerBlockL",
+     "lines": [
+      1319,
+      1319
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "a86fe3c7cf05e033"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMaxRefScriptSizePerEndorserBlockL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxRefScriptSizePerEndorserBlockL",
+     "lines": [
+      1333,
+      1333
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "5188735a816d63c2"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMaxRefScriptSizePerTxL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxRefScriptSizePerTxL",
+     "lines": [
+      1320,
+      1320
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "4e682459bd798ea8"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdMinPoolMarginL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMinPoolMarginL",
+     "lines": [
+      1324,
+      1324
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "1d82cdc095d4b9f1"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdPerasBootstrapRoundL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasBootstrapRoundL",
+     "lines": [
+      1338,
+      1338
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "e59537cb54d72d73"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdPerasCertBoostL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasCertBoostL",
+     "lines": [
+      1336,
+      1336
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "5a945dcd3d0d3371"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdPerasHealingFactorL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasHealingFactorL",
+     "lines": [
+      1335,
+      1335
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "a98b2124f257089a"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdPerasMinCandidateBlockAgeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasMinCandidateBlockAgeL",
+     "lines": [
+      1334,
+      1334
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "d22c3fc4660c6f48"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdPerasQuorumThresholdSafetyMarginL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasQuorumThresholdSafetyMarginL",
+     "lines": [
+      1339,
+      1339
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "2d018d1ec02ac98c"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdPerasTargetCommitteeSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasTargetCommitteeSizeL",
+     "lines": [
+      1337,
+      1337
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "e554397b5a2743bb"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdRefInputsCostPerDatumByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefInputsCostPerDatumByteL",
+     "lines": [
+      1341,
+      1341
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "e15f717ec5a4d48f"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdRefInputsCostPerMultiAssetPolicyL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefInputsCostPerMultiAssetPolicyL",
+     "lines": [
+      1340,
+      1340
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "1762f4c254ef287a"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdRefScriptCostMultiplierL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefScriptCostMultiplierL",
+     "lines": [
+      1322,
+      1322
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "0d33789bbf69bf0d"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParams#hkdRefScriptCostStrideL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefScriptCostStrideL",
+     "lines": [
+      1321,
+      1321
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "2e570ff36f926153"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.applyPPUpdates": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "applyPPUpdates",
+     "lines": [
+      711,
+      712
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "105ba3ac64a22360"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.emptyPParamsIdentity": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "emptyPParamsIdentity",
+     "lines": [
+      708,
+      708
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "3c4caf2883ddc351"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.emptyPParamsStrictMaybe": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "emptyPParamsStrictMaybe",
+     "lines": [
+      709,
+      709
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "a6b306f12fe2d6d1"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdA0L": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdA0L",
+     "lines": [
+      727,
+      727
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "ff5791bede9a6fcb"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdCoinsPerUTxOByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdCoinsPerUTxOByteL",
+     "lines": [
+      1145,
+      1146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "7e50ad09dd458224"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdCollateralPercentageL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdCollateralPercentageL",
+     "lines": [
+      1139,
+      1140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "f0eef6f126d1392d"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdCommitteeMaxTermLengthL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdCommitteeMaxTermLengthL",
+     "lines": [
+      1182,
+      1183
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "bf9f1e8151c3057f"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdCommitteeMinSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdCommitteeMinSizeL",
+     "lines": [
+      1180,
+      1181
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "c13e726424279832"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdCostModelsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdCostModelsL",
+     "lines": [
+      1127,
+      1127
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "28ccaad02350f193"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdDRepActivityL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdDRepActivityL",
+     "lines": [
+      1190,
+      1191
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "373b537c37345d5f"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdDRepDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdDRepDepositCompactL",
+     "lines": [
+      1188,
+      1189
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "689e8c0846692d17"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdDRepVotingThresholdsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdDRepVotingThresholdsL",
+     "lines": [
+      1178,
+      1179
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "90bd37a6f224e881"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdEMaxL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdEMaxL",
+     "lines": [
+      725,
+      725
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "affae8a1b81e232e"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdGovActionDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdGovActionDepositCompactL",
+     "lines": [
+      1186,
+      1187
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "4544743880e4b139"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdGovActionLifetimeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdGovActionLifetimeL",
+     "lines": [
+      1184,
+      1185
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "65149bb3217703c5"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdKeyDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdKeyDepositCompactL",
+     "lines": [
+      723,
+      723
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "10826efe45a2b878"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdLeiosAnnouncementPeriodLengthL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosAnnouncementPeriodLengthL",
+     "lines": [
+      1350,
+      1350
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "b64fca306359df6b"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdLeiosCommitteeSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosCommitteeSizeL",
+     "lines": [
+      1353,
+      1353
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "df5bc4a50713abe1"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdLeiosDiffusionPeriodLengthL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosDiffusionPeriodLengthL",
+     "lines": [
+      1352,
+      1352
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "d0daf8bbc1044fb8"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdLeiosQuorumStakeThresholdL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosQuorumStakeThresholdL",
+     "lines": [
+      1354,
+      1354
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "6fd53cfbf68f4dc6"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdLeiosVotePeriodLengthL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdLeiosVotePeriodLengthL",
+     "lines": [
+      1351,
+      1351
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "15b87818f7934210"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxBBSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxBBSizeL",
+     "lines": [
+      720,
+      720
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "7f0c46d602ea632b"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxBHSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxBHSizeL",
+     "lines": [
+      722,
+      722
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "6d571b5506109269"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxBlockExUnitsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxBlockExUnitsL",
+     "lines": [
+      1135,
+      1137
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "bcd4860e666e17a5"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxCollateralInputsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxCollateralInputsL",
+     "lines": [
+      1141,
+      1142
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "2545b365e1aa51f2"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxEndorserBlockExUnitsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxEndorserBlockExUnitsL",
+     "lines": [
+      1357,
+      1357
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "27f37db6b886269c"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxEndorserBlockReferencesSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxEndorserBlockReferencesSizeL",
+     "lines": [
+      1355,
+      1355
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "8b1321fdd868a66b"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxEndorserBlockTxsSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxEndorserBlockTxsSizeL",
+     "lines": [
+      1356,
+      1356
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "e9c8d8c475b09615"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxPledgeLeverageL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxPledgeLeverageL",
+     "lines": [
+      1348,
+      1348
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "416d145e286bf43e"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxRefScriptSizePerBlockL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxRefScriptSizePerBlockL",
+     "lines": [
+      1344,
+      1344
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "0711a0eba286a12b"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxRefScriptSizePerEndorserBlockL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxRefScriptSizePerEndorserBlockL",
+     "lines": [
+      1358,
+      1358
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "50ad95d278b3396d"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxRefScriptSizePerTxL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxRefScriptSizePerTxL",
+     "lines": [
+      1345,
+      1345
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "0ba275f10418751e"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxTxExUnitsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxTxExUnitsL",
+     "lines": [
+      1131,
+      1133
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "a9161a733ddd4e9a"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxTxSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxTxSizeL",
+     "lines": [
+      721,
+      721
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "2a713e2abfed4d75"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMaxValSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMaxValSizeL",
+     "lines": [
+      1138,
+      1138
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "70412384e4364fde"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMinFeeRefScriptCostPerByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMinFeeRefScriptCostPerByteL",
+     "lines": [
+      1192,
+      1193
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "6c89ec1ef97e29fc"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMinPoolCostCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMinPoolCostCompactL",
+     "lines": [
+      731,
+      731
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "c25fe8de76e14770"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdMinPoolMarginL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdMinPoolMarginL",
+     "lines": [
+      1349,
+      1349
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "cb5a1de0686988e8"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdNOptL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdNOptL",
+     "lines": [
+      726,
+      726
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "4f9355b1ccaa758d"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPerasBootstrapRoundL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasBootstrapRoundL",
+     "lines": [
+      1363,
+      1363
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "45392eae7c9bf3b2"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPerasCertBoostL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasCertBoostL",
+     "lines": [
+      1361,
+      1361
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "3a4d43612b5d6106"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPerasHealingFactorL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasHealingFactorL",
+     "lines": [
+      1360,
+      1360
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "23d87e0d052d166d"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPerasMinCandidateBlockAgeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasMinCandidateBlockAgeL",
+     "lines": [
+      1359,
+      1359
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "20ca3ccea9c23e77"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPerasQuorumThresholdSafetyMarginL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasQuorumThresholdSafetyMarginL",
+     "lines": [
+      1364,
+      1364
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "48cca0d09497b7b3"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPerasTargetCommitteeSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPerasTargetCommitteeSizeL",
+     "lines": [
+      1362,
+      1362
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "3cd88a5288e248a0"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPoolDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPoolDepositCompactL",
+     "lines": [
+      724,
+      724
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "22652be13c2c58be"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPoolVotingThresholdsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPoolVotingThresholdsL",
+     "lines": [
+      1176,
+      1177
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "1ee4a48ae0638f20"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdPricesL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdPricesL",
+     "lines": [
+      1128,
+      1128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "81419bef6f59e152"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdRefInputsCostPerDatumByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefInputsCostPerDatumByteL",
+     "lines": [
+      1366,
+      1366
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "fda3e9cb28f80f17"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdRefInputsCostPerMultiAssetPolicyL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefInputsCostPerMultiAssetPolicyL",
+     "lines": [
+      1365,
+      1365
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "89072faf99589673"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdRefScriptCostMultiplierL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefScriptCostMultiplierL",
+     "lines": [
+      1347,
+      1347
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "415da280a1e7d8b6"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdRefScriptCostStrideL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRefScriptCostStrideL",
+     "lines": [
+      1346,
+      1346
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "880ab69bc4781a6e"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdRhoL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdRhoL",
+     "lines": [
+      728,
+      728
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "481a088ac9d4a86a"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdTauL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdTauL",
+     "lines": [
+      729,
+      729
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "d017bad8bf9ab5a5"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdTxFeeFixedCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdTxFeeFixedCompactL",
+     "lines": [
+      719,
+      719
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "8001b2d1fb3d3e0e"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.hkdTxFeePerByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "hkdTxFeePerByteL",
+     "lines": [
+      718,
+      718
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "0c40a30600cbea67"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.modifiedPPGroups": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "modifiedPPGroups",
+     "lines": [
+      174,
+      182
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "the class's generic default, which Dijkstra's instance takes",
+   "digest": "abd7365c06434674"
+  },
+  "def ledger.era.dijkstra.DijkstraEraPParamsInstance.ppuWellFormed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppuWellFormed",
+     "lines": [
+      1149,
+      1175
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "the version is ignored, as the reference ignores it",
+   "digest": "179b58063092caa7"
+  },
+  "def ledger.era.dijkstra.DijkstraPParams.applyUpdates": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "dijkstraApplyPPUpdates",
+     "lines": [
+      317,
+      388
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "aedc7fa2fceb71ab"
+  },
+  "def ledger.era.dijkstra.DijkstraPParams.modifiedGroups": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "modifiedPPGroups",
+     "lines": [
+      174,
+      182
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "the class's generic default over the record's group tags",
+   "digest": "ccea185cf6e3779d"
+  },
   "given ledger.era.AlonzoEraPParams.conway": {
    "upstream": [
     {
@@ -1837,6 +3624,23 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "7a779a746656f788"
+  },
+  "given ledger.era.AlonzoEraPParams.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "AlonzoEraPParams",
+     "lines": [
+      1125,
+      1125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "16787e9dd381df1e"
   },
   "given ledger.era.BabbageEraPParams.conway": {
    "upstream": [
@@ -1855,6 +3659,23 @@
    "structure": "same",
    "digest": "1e1d7309615a9d84"
   },
+  "given ledger.era.BabbageEraPParams.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "BabbageEraPParams",
+     "lines": [
+      1144,
+      1144
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "983c99d46c40a06a"
+  },
   "given ledger.era.ConwayEraPParams.conway": {
    "upstream": [
     {
@@ -1872,6 +3693,23 @@
    "structure": "same",
    "digest": "c6aca1bb12f16c4e"
   },
+  "given ledger.era.ConwayEraPParams.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ConwayEraPParams",
+     "lines": [
+      1148,
+      1148
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "c24383cfa51aff9e"
+  },
   "given ledger.era.EraPParams.conway": {
    "upstream": [
     {
@@ -1888,6 +3726,23 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "c6aca1bb12f16c4e"
+  },
+  "given ledger.era.EraPParams.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "EraPParams",
+     "lines": [
+      703,
+      703
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "b954ad1a87981823"
   },
   "given ledger.era.HKDFunctor.identity": {
    "upstream": [
@@ -1922,6 +3777,23 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "c5c3d17ec918e345"
+  },
+  "given ledger.era.dijkstra.DijkstraEraPParams.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "DijkstraEraPParams",
+     "lines": [
+      1343,
+      1343
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "b954ad1a87981823"
   },
   "object ledger.era.ConwayEraPParamsInstance": {
    "upstream": [
@@ -1975,6 +3847,66 @@
    ],
    "note": "Conway's four instances in one object, given in each class's companion; the instances' upgradePParamsHKD, downgradePParamsHKD, emptyUpgradePParamsUpdate and eraPParams are not here yet, nor the update's Plutus data (#85), and the members the reference confines to a range of eras are classes of their own",
    "digest": "5e5b60316008c237"
+  },
+  "object ledger.era.dijkstra.DijkstraEraPParamsInstance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "EraPParams",
+     "lines": [
+      703,
+      796
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "AlonzoEraPParams",
+     "lines": [
+      1125,
+      1142
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "BabbageEraPParams",
+     "lines": [
+      1144,
+      1146
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ConwayEraPParams",
+     "lines": [
+      1148,
+      1197
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "DijkstraEraPParams",
+     "lines": [
+      1343,
+      1366
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "0d289138a658b11e"
   },
   "trait ledger.era.AlonzoEraPParams": {
    "upstream": [
@@ -2072,6 +4004,26 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "bf2e29f7d3635bbc"
+  },
+  "trait ledger.era.dijkstra.DijkstraEraPParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "DijkstraEraPParams",
+     "lines": [
+      1318,
+      1341
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "78cf662dd5df4f5c"
   },
   "type ledger.era.CoinPerByte": {
    "upstream": [
@@ -2190,11 +4142,22 @@
       376,
       376
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "PParamsHKD",
+     "lines": [
+      704,
+      704
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "6ade4a0c483fe11c"
+   "digest": "76b8d22b90f46894",
+   "note": "one case per era: Conway's at f649f975, Dijkstra's at 9df9f98c"
   },
   "type ledger.era.PParamsUpdate": {
    "upstream": [
@@ -2298,6 +4261,28 @@
    "structure": "same",
    "digest": "2707723379417417"
   },
+  "val ledger.era.ConwayEraPParamsInstance.ppMaxPledgeLeverageG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppMaxPledgeLeverageG",
+     "lines": [
+      510,
+      516
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, no limit",
+   "digest": "be7db5f1b71264fc"
+  },
   "val ledger.era.ConwayEraPParamsInstance.ppMaxRefScriptSizePerBlockG": {
    "upstream": [
     {
@@ -2331,6 +4316,28 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "22faf26ebd8e0dbb"
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppMinPoolMarginG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppMinPoolMarginG",
+     "lines": [
+      518,
+      524
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, minBound",
+   "digest": "dc0f189d4247291e"
   },
   "val ledger.era.ConwayEraPParamsInstance.ppProtocolVersionL": {
    "upstream": [
@@ -2418,6 +4425,27 @@
    "note": "the value emptyConwayPParams gives the field",
    "digest": "142d3305f08b5eae"
   },
+  "val ledger.era.MaxPledgeLeverage.none": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppMaxPledgeLeverageG",
+     "lines": [
+      514,
+      514
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "`MaxPledgeLeverage SNothing`",
+   "digest": "253fcd8702434eed"
+  },
   "val ledger.era.NonNegativeInterval.zero": {
    "upstream": [
     {
@@ -2452,6 +4480,27 @@
    "structure": "same",
    "note": "the value emptyConwayPParams gives the field",
    "digest": "ca048a567e385bb2"
+  },
+  "val ledger.era.PositiveInterval.minBound": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "minBound",
+     "lines": [
+      504,
+      510
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "positiveIntervalEpsilon, 1 % 10 ^ 19",
+   "digest": "109baa5608bcd6e0"
   },
   "val ledger.era.PositiveInterval.oneAndAFifth": {
    "upstream": [
@@ -2589,6 +4638,248 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "309f6382153bbca6"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppDG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppDG",
+     "lines": [
+      735,
+      735
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "fcbff5ccfffc0e7c"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppMaxPledgeLeverageG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppMaxPledgeLeverageG",
+     "lines": [
+      733,
+      733
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "cfac74842b56c169"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppMaxRefScriptSizePerBlockG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppMaxRefScriptSizePerBlockG",
+     "lines": [
+      1195,
+      1195
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "6b3bed40fd8ca3d8"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppMaxRefScriptSizePerTxG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppMaxRefScriptSizePerTxG",
+     "lines": [
+      1194,
+      1194
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "4db735647af1341a"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppMinPoolMarginG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppMinPoolMarginG",
+     "lines": [
+      740,
+      740
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "094baf98c1bd6913"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppProtocolVersionL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppProtocolVersionL",
+     "lines": [
+      732,
+      732
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "ae309444bf75c157"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppRefScriptCostMultiplierG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppRefScriptCostMultiplierG",
+     "lines": [
+      1196,
+      1196
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "4c2a8313a8f8b60e"
+  },
+  "val ledger.era.dijkstra.DijkstraEraPParamsInstance.ppRefScriptCostStrideG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "ppRefScriptCostStrideG",
+     "lines": [
+      1197,
+      1197
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "4163a9f9791cd74e"
+  },
+  "val ledger.era.dijkstra.DijkstraPParams.empty": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "emptyDijkstraPParams",
+     "lines": [
+      1200,
+      1257
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "935feee76be8df60"
+  },
+  "val ledger.era.dijkstra.DijkstraPParams.emptyUpdate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "emptyDijkstraPParamsUpdate",
+     "lines": [
+      1259,
+      1316
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "310d8af492d9e860"
+  },
+  "val ledger.era.dijkstra.Milliseconds32.zero": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Milliseconds32",
+     "lines": [
+      706,
+      708
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "minBound, of the derived Bounded",
+   "digest": "44a357d7a9091308"
+  },
+  "val ledger.era.dijkstra.SlotInterval.zero": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "emptyDijkstraPParams",
+     "lines": [
+      1200,
+      1257
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "`SlotInterval 0` of the empty record",
+   "digest": "8c0cb1e6f81ac495"
   }
  },
  "glue": [
@@ -2630,6 +4921,7 @@
     "object ledger.era.ExUnits",
     "object ledger.era.HKD",
     "object ledger.era.HKDFunctor",
+    "object ledger.era.MaxPledgeLeverage",
     "object ledger.era.NonNegativeInterval",
     "object ledger.era.OrdExUnits",
     "object ledger.era.PPGroups",
@@ -2642,7 +4934,11 @@
     "object ledger.era.Version",
     "object ledger.era.conway.ConwayPParams",
     "object ledger.era.conway.DRepVotingThresholds",
-    "object ledger.era.conway.PoolVotingThresholds"
+    "object ledger.era.conway.PoolVotingThresholds",
+    "object ledger.era.dijkstra.DijkstraEraPParams",
+    "object ledger.era.dijkstra.DijkstraPParams",
+    "object ledger.era.dijkstra.Milliseconds32",
+    "object ledger.era.dijkstra.SlotInterval"
    ]
   },
   {
