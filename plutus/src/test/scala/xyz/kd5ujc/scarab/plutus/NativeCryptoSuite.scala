@@ -40,6 +40,17 @@ class NativeCryptoSuite extends CatsEffectSuite:
     }
   }
 
+  test("a pin is a literal of 64 lowercase hex digits, or the build fails") {
+    val upper = compileErrors(
+      """LibraryDigest.pinned("CA17484CEFCD8E6ECF5C706D1FA1144A874283516EB78E52A535DAA02894934A")"""
+    )
+    val short = compileErrors("""LibraryDigest.pinned("ca17484c")""")
+    val computed = compileErrors("""val hex = "ca17484c"; LibraryDigest.pinned(hex)""")
+    assert(upper.contains("64 lowercase hex digits"), upper)
+    assert(short.contains("64 lowercase hex digits"), short)
+    assert(computed.nonEmpty, "a pin that is not a literal compiled")
+  }
+
   test("on Linux/amd64 the loader's resource name is the pinned one") {
     assume(linuxAmd64, "Linux/amd64 only")
     assertEquals(CryptoPlatform.of(NativeLibraryUtil.getArchitecture), Some(CryptoPlatform.Linux64))
@@ -71,10 +82,13 @@ class NativeCryptoSuite extends CatsEffectSuite:
   test("admission: a missing or unpinned library is refused, wherever it comes from") {
     val platform = CryptoPlatform.Linux64
     val pinned = CryptoLibrary.Resource(platform.resource, platform.sha256)
-    val other = CryptoLibrary.Resource(platform.resource, LibraryDigest.pinned("00" * 32))
+    val other = CryptoLibrary.Resource(
+      platform.resource,
+      LibraryDigest.pinned("0000000000000000000000000000000000000000000000000000000000000000")
+    )
     val onPath = CryptoLibrary.OnLibraryPath(
       Path.of("/usr/lib/libscalus_crypto.so"),
-      LibraryDigest.pinned("11" * 32)
+      LibraryDigest.pinned("1111111111111111111111111111111111111111111111111111111111111111")
     )
     val copied =
       CryptoLibrary.OnLibraryPath(Path.of("/usr/lib/libscalus_crypto.so"), platform.sha256)
