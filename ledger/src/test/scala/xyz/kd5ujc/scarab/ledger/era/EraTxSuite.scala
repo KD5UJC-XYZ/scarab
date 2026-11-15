@@ -8,11 +8,12 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayTxBody, ConwayTxOut}
 import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Spike of the era-specific transaction types (ADR 0007, amendment of 2026-11-14): per-era bodies
-  * and opaque per-era outputs over a shared representation, the reference's classes with instances
-  * at exactly their eras, a rule written once, and the compiler refusing what an era does not have.
+/** The era-specific transaction types (ADR 0007, amendment of 2026-11-14): per-era bodies and
+  * opaque per-era outputs over a shared representation, the reference's classes with instances at
+  * exactly their eras, a function written once over the classes, and the compiler refusing what an
+  * era does not have.
   */
-class EraTxSpikeSuite extends munit.FunSuite:
+class EraTxSuite extends munit.FunSuite:
   // the devnet's era walk and recorded Preview blocks with Babbage and Conway transactions
   private val sources = Vector(
     "fixtures/eras/blocks.hex",
@@ -49,18 +50,25 @@ class EraTxSpikeSuite extends munit.FunSuite:
     }
   }
 
-  test("a rule written once runs through the era's rule set") {
-    // the rule's sharing across eras' bodies is shown again when Dijkstra's body is typed (stage 3)
+  // The inline datums of a body's outputs, at any level the era has: written once for every era
+  // whose bodies have Babbage's fields, through the class and the outputs' class it names.
+  private def inlineDatums[E <: xyz.kd5ujc.scarab.ledger.state.EraTag, L <: TxLevel](
+      body: TxBody[L, E]
+  )(using b: BabbageEraTxBody[E], l: b.Level[L]): Vector[Bytes] =
+    b.outputs(body).flatMap(b.outputsOf.data)
+
+  test("a function written once over the body class reads Conway's bodies") {
+    // its sharing across eras' bodies is shown again when Dijkstra's body is typed (stage 3)
     val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_).toOption.get)
     def run[E <: xyz.kd5ujc.scarab.ledger.state.EraTag](bodies: Vector[TxBody[TxLevel.Top, E]])(
-        using r: EraRules[E]
-    ): Int = bodies.map(r.inlineDatums(_).size).sum
+        using b: BabbageEraTxBody[E]
+    ): Int = bodies.map(inlineDatums[E, TxLevel.Top](_)(using b, b.top).size).sum
     val flat = bodiesOf(Era.Conway)
       .flatMap(FlatTxBody.decode(_, Era.Conway).toOption.get.outputs)
       .count(_.datum match
         case xyz.kd5ujc.scarab.ledger.Datum.Inline(_) => true
         case _                                        => false)
-    assertEquals(run[Conway](c), flat)
+    assertEquals(run[Conway](c)(using EraTxBody.conway), flat)
   }
 
   test("a Babbage output carried into Conway keeps its bytes") {

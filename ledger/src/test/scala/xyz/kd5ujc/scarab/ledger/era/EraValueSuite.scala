@@ -8,11 +8,18 @@ import xyz.kd5ujc.scarab.ledger.era.mary.MaryTxOut
 import xyz.kd5ujc.scarab.ledger.state.{Allegra, Mary}
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Spike of the representation parameterised by value (ADR 0007, amendment of 2026-11-14):
-  * Allegra's and Mary's outputs over one `ShelleyTxOutRep[V]`, a rule adding values up through
-  * `Val` in every era, the store's partial read into an era, and the refusals the compiler makes.
+/** The representation parameterised by value (ADR 0007, amendment of 2026-11-14): Allegra's and
+  * Mary's outputs over one `ShelleyTxOutRep[V]`, a function adding values up through `Val` in every
+  * era, the store's partial read into an era, and the refusals the compiler makes.
   */
-class EraValueSpikeSuite extends munit.FunSuite:
+class EraValueSuite extends munit.FunSuite:
+  // The lovelace of a set of outputs, whatever the era's value is (`coin . sumVal`): written once
+  // through the outputs' class and its value's `Val`.
+  private def coinOf[E <: xyz.kd5ujc.scarab.ledger.state.EraTag](outs: Vector[TxOut[E]])(using
+      o: EraTxOut[E]
+  ): xyz.kd5ujc.scarab.ledger.state.Coin =
+    o.valueOps.coin(outs.map(o.value).foldLeft(o.valueOps.zero)(o.valueOps.plus))
+
   private lazy val blocks: Vector[Block.Shelley] =
     EraCorpus.shelleyBlocks(Vector("fixtures/eras/blocks.hex"))
 
@@ -28,8 +35,8 @@ class EraValueSpikeSuite extends munit.FunSuite:
     assert(allegra.nonEmpty && mary.nonEmpty, (allegra.size, mary.size))
     val a = allegra.map(AllegraTxOut.fromStored(_).toOption.get)
     val m = mary.map(MaryTxOut.fromStored(_).toOption.get)
-    assertEquals(SharedRules.coinOf[Allegra](a).value, allegra.map(_.value.coin).sum)
-    assertEquals(SharedRules.coinOf[Mary](m).value, mary.map(_.value.coin).sum)
+    assertEquals(coinOf[Allegra](a).value, allegra.map(_.value.coin).sum)
+    assertEquals(coinOf[Mary](m).value, mary.map(_.value.coin).sum)
     assertEquals(a.map(EraTxOut.allegra.raw), allegra.map(_.raw))
   }
 
@@ -37,7 +44,7 @@ class EraValueSpikeSuite extends munit.FunSuite:
     val a = outputsOf(Era.Allegra).map(AllegraTxOut.fromStored(_).toOption.get)
     val m = a.map(MaryTxOut.translate)
     assertEquals(m.map(EraTxOut.mary.raw), a.map(EraTxOut.allegra.raw))
-    assertEquals(SharedRules.coinOf[Mary](m).value, SharedRules.coinOf[Allegra](a).value)
+    assertEquals(coinOf[Mary](m).value, coinOf[Allegra](a).value)
   }
 
   test("the store's read into Allegra refuses what Allegra's outputs cannot hold") {
@@ -55,11 +62,8 @@ class EraValueSpikeSuite extends munit.FunSuite:
     assert(MaryTxOut.fromStored(withAssets).isRight)
   }
 
-  test("the compiler refuses an Allegra output as a Mary one, and an incomplete rule set") {
+  test("the compiler refuses an Allegra output as a Mary one; Mary's own compiles") {
     val wrongEra = compileErrors("def f(a: AllegraTxOut): MaryTxOut = a")
     assert(wrongEra.contains("MaryTxOut"), wrongEra)
-    val incomplete = compileErrors(
-      "val r = new EraRules[xyz.kd5ujc.scarab.ledger.state.Babbage] {}"
-    )
-    assert(incomplete.contains("inlineDatums"), incomplete)
+    assertEquals(compileErrors("def f(m: MaryTxOut): MaryTxOut = m"), "")
   }
