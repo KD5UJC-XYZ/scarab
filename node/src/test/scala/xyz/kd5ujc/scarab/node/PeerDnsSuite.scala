@@ -305,12 +305,13 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
 
   test("SRV lookup with only root targets has no usable service") {
     name(".").flatMap { dot =>
-      IO(
+      IO {
+        assertEquals(dot, DnsName.Root)
         assertEquals(
           PeerDns.selectService(Vector(DnsServiceRecord(0, 0, 3001, dot, 60.seconds)), Rng(0L)),
           Left(DnsServiceSelectionError.NoUsableService)
         )
-      )
+      }
     }
   }
 

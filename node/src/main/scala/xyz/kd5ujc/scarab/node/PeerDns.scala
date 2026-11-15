@@ -44,6 +44,9 @@ object DnsName:
         _ => Right(absolute)
       )
 
+  /** The root, `.`: the target of an SRV record that says the service is not offered (RFC 2782). */
+  val Root: DnsName = "."
+
   extension (name: DnsName) def value: String = name
 
 enum DnsRecordType:
@@ -231,7 +234,7 @@ object PeerDns:
       records: Vector[DnsServiceRecord],
       rng: xyz.kd5ujc.scarab.network.selection.Rng
   ): Either[DnsServiceSelectionError, (DnsServiceRecord, xyz.kd5ujc.scarab.network.selection.Rng)] =
-    val usable = records.filterNot(_.target.value == ".")
+    val usable = records.filterNot(_.target == DnsName.Root)
     val ordered = usable.sortBy(_.priority)
     ordered.headOption match
       case None => Left(DnsServiceSelectionError.NoUsableService)

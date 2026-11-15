@@ -140,14 +140,7 @@ object Compute:
       stats: SchedulingStats[F],
       label: A => String,
       step: => A
-  ): F[A] =
-    Sync[F]
-      .delay {
-        val began = System.nanoTime()
-        val result = step
-        (result, System.nanoTime() - began)
-      }
-      .flatMap((result, nanos) => stats.step(label(result), nanos).as(result))
+  ): F[A] = timeEffect(stats, label, Sync[F].delay(step))
 
   private def timeEffect[F[_]: Sync, A](
       stats: SchedulingStats[F],

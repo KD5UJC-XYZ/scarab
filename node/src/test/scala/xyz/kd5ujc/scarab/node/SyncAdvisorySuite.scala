@@ -6,7 +6,7 @@ import com.comcast.ip4s.*
 import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
-import xyz.kd5ujc.scarab.network.selection.{ConsensusMode, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.selection.{ConsensusMode, DiffusionMode, UseLedgerPeers}
 import xyz.kd5ujc.scarab.node.SyncAdvisory.Position
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 
@@ -20,7 +20,7 @@ class SyncAdvisorySuite extends FunSuite:
   private def point = AccessPoint(host"10.0.0.1", port"3001")
 
   private def roots(trustable: Boolean) =
-    LocalRoots(Vector(point), false, 1, 1, trustable, false, "InitiatorAndResponder")
+    LocalRoots(Vector(point), false, 1, 1, trustable, false, DiffusionMode.InitiatorAndResponder)
 
   private def topology(
       local: Vector[LocalRoots] = Vector.empty,

@@ -30,8 +30,11 @@ object Rewards:
 
   // The reference converts each rational directly to Double, rather than rounding its numerator
   // and denominator separately. Eighty decimal digits distinguish the Double rounding boundaries
-  // for the bounded ledger stake/parameter fractions (Word64 numerator and denominator).
+  // for the bounded ledger stake/parameter fractions (Word64 numerator and denominator). ARI-1: the
+  // reference's own floating point, the `realToFrac`s of `leaderProbability` (`PoolRank.hs:126-132`,
+  // cardano-ledger f649f975).
   private val doublePrecision = new java.math.MathContext(80)
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   private[ledger] def asDouble(r: Rational): Double =
     new java.math.BigDecimal(r.numerator.bigInteger)
       .divide(new java.math.BigDecimal(r.denominator.bigInteger), doublePrecision)
@@ -42,8 +45,10 @@ object Rewards:
     * order, Double logarithms and final Float rounding; this is ranking data, not monetary maths.
     * `pow` and `log` are the release node's own, musl's ([[MuslMath]]): the JVM's differ in the
     * last bit, and for a tiny stake `1 - pow(...)` magnifies that into different Float samples
-    * (#1003).
+    * (#1003). ARI-1: the reference's own floating point (`PoolRank.hs:126-172`, cardano-ledger
+    * f649f975).
     */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
   private[ledger] def likelihood(
       made: BigInt,
       stake: Rational,
@@ -172,8 +177,6 @@ object Rewards:
     val reserves = es.chainAccount.reserves.value
     val fee = es.snapshots.fee.value
     val d = decentralisation[E](pr)
-    val activeProbability = asDouble(globals.activeSlotCoeff)
-    val decentralisationProbability = asDouble(d)
     val slotsPerEpoch = globals.geometry.epochSlots(epoch)
     val expectedBlocks =
       ((Rational.one - d) * globals.activeSlotCoeff * Rational(slotsPerEpoch)).floor
@@ -247,15 +250,7 @@ object Rewards:
         deltaR,
         r,
         deltaT,
-        go.pools.transform { (id, pool) =>
-          likelihood(
-            blocks.blocks.get(id).fold(BigInt(0))(_.toBigInt),
-            ratio(pool.stake.toBigInt, totalStake),
-            activeProbability,
-            decentralisationProbability,
-            slotsPerEpoch
-          )
-        },
+        likelihoods(go.pools, blocks, globals.activeSlotCoeff, d, totalStake, slotsPerEpoch),
         leaders
       ),
       RewardPulser(
@@ -312,6 +307,45 @@ object Rewards:
         }
     }
 
+  /** Each snapshot pool's `likelihood` of `leaderProbability asc sigma (pr ^. ppDG)`
+    * (`makeLikelihoods`, `PulsingReward.hs:162-174`, cardano-ledger f649f975): every pool of the
+    * snapshot, one without blocks with none. ARI-1: the coefficients are the reference's own
+    * `Double` s.
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
+  private def likelihoods(
+      pools: SortedMap[KeyHash[StakePool], StakePoolSnapShot],
+      blocks: BlocksMade,
+      activeSlotCoeff: Rational,
+      d: Rational,
+      totalStake: BigInt,
+      slots: BigInt
+  ): SortedMap[KeyHash[StakePool], Likelihood] =
+    val activeProbability = asDouble(activeSlotCoeff)
+    val decentralisationProbability = asDouble(d)
+    pools.transform { (id, pool) =>
+      likelihood(
+        blocks.blocks.get(id).fold(BigInt(0))(_.toBigInt),
+        ratio(pool.stake.toBigInt, totalStake),
+        activeProbability,
+        decentralisationProbability,
+        slots
+      )
+    }
+
+  /** `performance` of `updateNonMyopic` (`PulsingReward.hs:316-329`, cardano-ledger f649f975): the
+    * pool's history decayed by `decayFactor`, 0.9 (`PulsingReward.hs:308-309`; `applyDecay`,
+    * `PoolRank.hs:175-178`), or `mempty` without one, then `<>` with the new likelihood
+    * (`PoolRank.hs:110-115`). ARI-1: the reference's own `Float` s.
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
+  private def performance(history: Option[Likelihood], current: Likelihood): Likelihood =
+    val decayed = history
+      .fold(Vector.fill(100)(LogWeight(0f)))(_.weights.map(w => LogWeight(0.9f * w.float)))
+    Likelihood(
+      LogWeight.normalise(decayed.zip(current.weights).map((a, b) => LogWeight(a.float + b.float)))
+    )
+
   /** `pulseStep`: the call after the last member pulse completes the update. */
   def pulse(update: PulsingRewUpdate): Either[VocabError, PulsingRewUpdate] = update match
     case c: PulsingRewUpdate.Complete => Right(c)
@@ -336,16 +370,9 @@ object Rewards:
         val deltaR2 = snapshot.r.value - total(snapshot.protocolVersion.major.toBigInt, rs)
         // `updateNonMyopic` maps the new keys only, including the empty-map case.
         val nonMyopic = NonMyopic(
-          snapshot.likelihoods.transform { (pool, current) =>
-            val old = snapshot.nonMyopic.likelihoods.get(pool)
-            val decayed = old
-              .fold(Vector.fill(100)(LogWeight(0f)))(_.weights.map(w => LogWeight(0.9f * w.float)))
-            Likelihood(
-              LogWeight.normalise(
-                decayed.zip(current.weights).map((a, b) => LogWeight(a.float + b.float))
-              )
-            )
-          },
+          snapshot.likelihoods.transform((pool, current) =>
+            performance(snapshot.nonMyopic.likelihoods.get(pool), current)
+          ),
           snapshot.r
         )
         RewardUpdate(

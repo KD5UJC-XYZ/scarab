@@ -32,10 +32,22 @@ object LibraryLogs:
     Dispatcher.sequential[F](await = true).flatMap { dispatcher =>
       Resource.make(
         Sync[F].delay(
-          route.set(Some(Route(enabled, event => dispatcher.unsafeRunAndForget(log.emit(event)))))
+          route.set(Some(bridge(dispatcher, log, enabled)))
         )
       )(_ => Sync[F].delay(route.set(None)))
     }
+
+  /** The route of the libraries' lines to `log`. A kept site of EFF-5's one bridge: SLF4J calls its
+    * logger on the library's own thread, outside `F`, and takes nothing back, so the route hands
+    * each line to the dispatcher, which [[install]]'s resource owns and waits for on release.
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+  private def bridge[F[_]](
+      dispatcher: Dispatcher[F],
+      log: Log[F],
+      enabled: Severity => Boolean
+  ): Route =
+    Route(enabled, event => dispatcher.unsafeRunAndForget(log.emit(event)))
 
   private def fallback(severity: Severity): Boolean = severity.ordinal >= Severity.Warning.ordinal
 

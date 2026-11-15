@@ -134,6 +134,17 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.SizeIs
 )
 
+// The design rules' own warts, in the `warts` project below, which every module loads through
+// `wartremoverClasspaths` (WartRemover.dependsOnLocalProjectWarts). In main sources, as the warts above:
+// SystemTimeAndUnsafeRun (EFF-5, EFF-6, ERR-4) and FloatingPointInLedger (ARI-1) are errors, whose kept site carries
+// @SuppressWarnings with the wart's full name on its smallest definition. StringControlFlow (STR-3) is a warning,
+// which -Werror makes an error, so that -Wconf can silence it in the parsers of `project/StringParsers.scala` and
+// nowhere else.
+def ruleWart(name: String): wartremover.Wart = Wart.custom(s"xyz.kd5ujc.scarab.warts.$name")
+lazy val ruleWartErrors: Seq[wartremover.Wart] = Seq("SystemTimeAndUnsafeRun", "FloatingPointInLedger").map(ruleWart)
+lazy val ruleWartWarnings: Seq[wartremover.Wart] = Seq("StringControlFlow").map(ruleWart)
+lazy val ruleWarts: Seq[wartremover.Wart] = ruleWartErrors ++ ruleWartWarnings
+
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
     // sbt-tpolecat would add its own option set; the options above are the whole set here.
@@ -146,6 +157,27 @@ def scarab(id: String, dir: String = null): Project =
       wartremoverExcluded += sourceManaged.value,
       libraryDependencies ++= testDependencies
     )
+    .settings(wartremover.WartRemover.dependsOnLocalProjectWarts(LocalProject("warts")))
+    .settings(
+      Compile / compile / wartremoverErrors ++= ruleWartErrors,
+      Compile / compile / wartremoverWarnings ++= ruleWartWarnings,
+      Compile / scalacOptions ++= StringParsers.options((ThisBuild / baseDirectory).value)
+    )
+
+// The design rules' own warts (above), compiled against the WartRemover artifact of this Scala version, as
+// WartRemover's own example of a project of custom warts does for Scala 3. It is build tooling: its code runs in
+// the compiler, so the warts it defines do not run on it, and it ships nothing.
+lazy val warts = project
+  .in(file("warts"))
+  .disablePlugins(TpolecatPlugin)
+  .settings(
+    name := "scarab-warts",
+    libraryDependencies ++= Seq(
+      Libraries.wartremoverApi,
+      Libraries.catsEffect % Test,
+      Libraries.munitTest
+    )
+  )
 
 // CBOR with original-bytes preservation, the byte-string type and exact rationals.
 lazy val codec = scarab("codec")
@@ -517,9 +549,9 @@ lazy val fuzz = scarab("fuzz")
 
 // Benchmarks, probes and the programs that write fixtures: run by hand (`tools/runMain <class>`), never as
 // tests and never shipped. They use the modules' test kits, so they follow the rules of test code
-// (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors. Its tests hold DisallowedWartsSuite,
-// which shows that each wart of `disallowedWarts` but ThreadSleep fires: it reads their names from a source the
-// build writes, and types its probes with WartRemover's own test traverser.
+// (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors or warnings. Its tests hold
+// DisallowedWartsSuite, which shows that each wart of `disallowedWarts` and `ruleWarts` but ThreadSleep fires: it
+// reads their names from a source the build writes, and types its probes with WartRemover's own test traverser.
 lazy val tools = scarab("tools")
   .dependsOn(
     codec % "compile->compile;compile->test",
@@ -532,27 +564,50 @@ lazy val tools = scarab("tools")
     consensus % "compile->compile;compile->test",
     storage % "compile->compile;compile->test",
     node % "compile->compile;compile->test",
-    models % "compile->compile;compile->test"
+    models % "compile->compile;compile->test",
+    warts % "test->compile"
   )
   .settings(
     Compile / scalacOptions -= "-Wsafe-init",
     Compile / compile / wartremoverErrors := Nil,
+    Compile / compile / wartremoverWarnings := Nil,
     publish / skip := true,
     libraryDependencies += Libraries.wartremoverTest,
     Test / sourceGenerators += Def.task {
       val source = (Test / sourceManaged).value / "DisallowedWarts.scala"
-      val names = disallowedWarts.map(wart => "\"" + wart.clazz + "\"").mkString(", ")
+      def quoted(names: Seq[String]): String = names.map(name => "\"" + name + "\"").mkString("List(", ", ", ")")
+      val names = quoted((disallowedWarts ++ ruleWarts).map(_.clazz))
+      val installed = ruleWartsInstalled.value.mkString(",\n    ")
       IO.write(
         source,
         s"""package xyz.kd5ujc.scarab
            |
            |object DisallowedWarts:
-           |  val names: List[String] = List($names)
+           |  val names: List[String] = $names
+           |  val ruleErrors: List[String] = ${quoted(ruleWartErrors.map(_.clazz))}
+           |  val ruleWarnings: List[String] = ${quoted(ruleWartWarnings.map(_.clazz))}
+           |  val parsers: Int = ${StringParsers.files.size}
+           |  val installed: List[(String, List[String], List[String], Int)] = List(
+           |    $installed
+           |  )
            |""".stripMargin
       )
       Seq(source)
     }.taskValue
   )
+
+// The modules whose main sources the design rules' own warts check, and for each the warts its compiler refuses
+// and the count of its StringControlFlow allowlist options, which DisallowedWartsSuite compares with the lists.
+lazy val ruleWartModules: ScopeFilter = ScopeFilter(
+  inProjects(codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, modelsGen, models)
+)
+lazy val ruleWartsInstalled: Def.Initialize[Task[Seq[String]]] = Def.task {
+  def quoted(names: Seq[String]): String = names.map(name => "\"" + name + "\"").mkString("List(", ", ", ")")
+  val errors = quoted((Compile / compile / wartremoverErrors).value.map(_.clazz))
+  val warnings = quoted((Compile / compile / wartremoverWarnings).value.map(_.clazz))
+  val allowlisted = (Compile / scalacOptions).value.count(_.endsWith("&msg=wartremover.StringControlFlow:s"))
+  s"""("${thisProject.value.id}", $errors, $warnings, $allowlisted)"""
+}.all(ruleWartModules)
 
 // The sources that belong to no module, whose headers the root project checks: the build definition (without
 // the git-ignored metals.sbt and local.sbt) and the conversion programs kept beside the scripts.
@@ -575,6 +630,7 @@ lazy val root = project
   .in(file("."))
   .disablePlugins(TpolecatPlugin)
   .aggregate(
+    warts,
     codec,
     crypto,
     protocol,
@@ -643,6 +699,7 @@ lazy val root = project
   )
 
 val modules = Seq(
+  "warts",
   "codec",
   "crypto",
   "protocol",

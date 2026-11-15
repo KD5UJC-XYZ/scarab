@@ -9,6 +9,7 @@ A generated map of the code: which module depends on which, then each Scala pack
 Derived from `dependsOn` in `build.sbt`; an arrow points at what the module builds on.
 
 ```
+warts      -> (none)
 codec      -> (none)
 crypto     -> codec
 protocol   -> crypto
@@ -22,8 +23,16 @@ node       -> storage, network
 models-gen -> (none)
 models     -> codec, crypto; test only: models-gen, protocol, ledger
 fuzz       -> codec, protocol, node, models-gen
-tools      -> codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, models
+tools      -> codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, models; test only: warts
 ```
+
+## warts
+
+The design rules' own WartRemover warts, compiled against this Scala version's WartRemover and loaded by every module's compiler: build tooling, never shipped.
+
+| Package | Responsibility | Entry points | Suites | Decisions |
+|---|---|---|---|---|
+| warts | SystemTimeAndUnsafeRun (EFF-5, EFF-6, ERR-4), StringControlFlow (STR-3) and FloatingPointInLedger (ARI-1), errors in main sources; `Rules`, the rule each message names | `SystemTimeAndUnsafeRun`, `StringControlFlow`, `FloatingPointInLedger`, `Rules` | `SystemTimeAndUnsafeRunSuite`, `StringControlFlowSuite`, `FloatingPointInLedgerSuite`, `DisallowedWartsSuite` | [design-rules](design-rules.md) |
 
 ## codec
 

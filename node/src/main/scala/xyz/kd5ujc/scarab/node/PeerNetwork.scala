@@ -205,8 +205,7 @@ object PeerNetwork:
     val file = topology.toList.flatMap(_.localRoots).map { g =>
       val config = RootConfig(
         g.advertise,
-        if g.diffusionMode == "InitiatorOnly" then DiffusionMode.InitiatorOnly
-        else DiffusionMode.InitiatorAndResponder,
+        g.diffusionMode,
         if g.behindFirewall then xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance.Inbound
         else xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance.Outbound,
         g.trustable
@@ -220,8 +219,7 @@ object PeerNetwork:
     val fileSrv = topology.toList.flatMap(_.localRoots).map { group =>
       val config = RootConfig(
         group.advertise,
-        if group.diffusionMode == "InitiatorOnly" then DiffusionMode.InitiatorOnly
-        else DiffusionMode.InitiatorAndResponder,
+        group.diffusionMode,
         if group.behindFirewall then xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance.Inbound
         else xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance.Outbound,
         group.trustable
