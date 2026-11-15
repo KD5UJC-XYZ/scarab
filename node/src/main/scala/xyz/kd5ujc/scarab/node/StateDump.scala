@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.protocol.Era
-import cats.effect.Sync
+import cats.effect.{Clock, Sync}
 import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
@@ -190,7 +190,7 @@ object StateDump:
         case true => Sync[F].unit
         case false =>
           for
-            started <- Sync[F].delay(System.nanoTime())
+            started <- Clock[F].monotonic
             utxo <- utxoDigest(store, s.utxo)
             projected <- Sync[F].delay(Projection.node(h.point, s, Utxo.empty))
             _ <- projected match
@@ -223,7 +223,8 @@ object StateDump:
                           }.void
                         }
                       yield ()
-                  took <- Sync[F].delay((System.nanoTime() - started) / 1000000)
+                  ended <- Clock[F].monotonic
+                  took = (ended - started).toMillis
                   _ <- emit(NodeEvent.StateDumped(h.slot, h.hash, s.ledgerEpoch, took))
                 yield ()
           yield ()
