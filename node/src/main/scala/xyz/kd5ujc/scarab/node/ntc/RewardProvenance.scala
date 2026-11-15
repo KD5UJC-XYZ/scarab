@@ -19,9 +19,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Record, Wire
 
 // The answer of `GetRewardProvenance`: the types of `Cardano/Ledger/Shelley/RewardProvenance.hs`
 // (cardano-ledger f649f975), each written as the record of its fields in declaration order
-// (`Rec`, 235-291), with the ledger's encoders of the field types.
+// (`Rec`), with the ledger's encoders of the field types.
 
-/** `RewardProvenancePool` (`RewardProvenance.hs:30-55`): one pool's part of a reward calculation.
+/** `RewardProvenancePool` (`RewardProvenance.hs:30-55`, cardano-ledger f649f975): one pool's part
+  * of a reward calculation.
   */
 private[ntc] final case class RewardProvenancePool(
     poolBlocksP: RewardBlockCount,
@@ -36,11 +37,13 @@ private[ntc] final case class RewardProvenancePool(
     lRewardP: Coin
 )
 
-/** `Desirability` (`RewardProvenance.hs:73-77`): a pool's desirability score and hit rate. */
+/** `Desirability` (`RewardProvenance.hs:73-77`, cardano-ledger f649f975): a pool's desirability
+  * score and hit rate.
+  */
 private[ntc] final case class Desirability(desirabilityScore: Double, hitRateEstimate: Double)
 
-/** `RewardProvenance` (`RewardProvenance.hs:95-135`): the intermediate values of a reward
-  * calculation.
+/** `RewardProvenance` (`RewardProvenance.hs:95-135`, cardano-ledger f649f975): the intermediate
+  * values of a reward calculation.
   */
 private[ntc] final case class RewardProvenance(
     spe: Word64,
@@ -64,8 +67,8 @@ private[ntc] final case class RewardProvenance(
 private[ntc] object RewardProvenance:
   import HaskellStateCodecs.{blocksMade, coin, keyHash, poolParams, rewardBlockCount}
 
-  /** `instance Default RewardProvenance` (`RewardProvenance.hs:150-168`): every number zero, every
-    * rational `0 % 1` and every map empty.
+  /** `instance Default RewardProvenance` (`RewardProvenance.hs:150-168`, cardano-ledger f649f975):
+    * every number zero, every rational `0 % 1` and every map empty.
     */
   val default: RewardProvenance = RewardProvenance(
     Word64.zero,
@@ -96,7 +99,7 @@ private[ntc] object RewardProvenance:
       case _                                 => Left(Codec.mismatch("double", n))
     def encode(a: Double, out: Writer): Unit = out.float64(a)
 
-  /** `EncCBOR RewardProvenancePool` (`RewardProvenance.hs:242-255`). */
+  /** `EncCBOR RewardProvenancePool` (`RewardProvenance.hs:242-255`, cardano-ledger f649f975). */
   def pool(using ProtVer): Codec[RewardProvenancePool] =
     Record.of[RewardProvenancePool](
       (
@@ -113,12 +116,12 @@ private[ntc] object RewardProvenance:
       )
     )
 
-  /** `EncCBOR Desirability` (`RewardProvenance.hs:235-237`). */
+  /** `EncCBOR Desirability` (`RewardProvenance.hs:235-237`, cardano-ledger f649f975). */
   val desirability: Codec[Desirability] = Record.of[Desirability]((double, double))
 
-  /** `EncCBOR RewardProvenance` (`RewardProvenance.hs:272-291`) at the given encoding version: a
-    * `Rational` takes tag 30 from version 9 only (`encodeRatio`), and the maps are the ledger's
-    * (`encodeMap`).
+  /** `EncCBOR RewardProvenance` (`RewardProvenance.hs:272-291`, cardano-ledger f649f975) at the
+    * given encoding version: a `Rational` takes tag 30 from version 9 only (`encodeRatio`), and the
+    * maps are the ledger's (`encodeMap`).
     */
   def codec(using ProtVer): Codec[RewardProvenance] =
     Record.of[RewardProvenance](
