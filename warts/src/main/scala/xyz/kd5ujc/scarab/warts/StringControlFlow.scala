@@ -142,11 +142,15 @@ object StringControlFlow extends WartTraverser:
           case th: This                 => Some(List(th.symbol))
           case _                        => None
 
-      /** The `String` values a tree reads by name: its references of type `String`. */
-      private object stringsRead extends TreeAccumulator[Set[Symbol]]:
-        def foldTree(found: Set[Symbol], tree: Tree)(owner: Symbol): Set[Symbol] = tree match
-          case r: Ref if stringType(r.tpe) => foldOverTree(found + r.symbol, tree)(owner)
-          case _                           => foldOverTree(found, tree)(owner)
+      /** The `String` values a tree reads by name: the stable paths of its references of type
+        * `String` (`role.text` and `other.text` are two).
+        */
+      private object stringsRead extends TreeAccumulator[Set[List[Symbol]]]:
+        def foldTree(found: Set[List[Symbol]], tree: Tree)(owner: Symbol): Set[List[Symbol]] =
+          tree match
+            case r: Ref if stringType(r.tpe) =>
+              foldOverTree(found ++ stable(r).toList, tree)(owner)
+            case _ => foldOverTree(found, tree)(owner)
 
       /** An `if` whose value is a `String` and whose branches are each built from a String its
         * condition reads (`if node.contains('.') then node else node.take(8)`): it chooses between
@@ -172,7 +176,9 @@ object StringControlFlow extends WartTraverser:
         // the cats syntax `a === b`: `a` is the argument of the conversion to `EqOps`
         case Apply(Select(syntax, op), List(rhs))
             if catsEqualities(op) && wrapped(syntax).exists(textEquality(_, rhs)) =>
-          Some("string-equality")
+          Option.unless(
+            context.equality && wrapped(syntax).exists(lhs => !isLiteral(lhs)) && !isLiteral(rhs)
+          )("string-equality")
         case Select(recv, m) if predicates(m) && (isString(recv) || recv.tpe.widen <:< stringOps) =>
           Some("string-predicate")
         case s: Select if regexMatches(s.name) && regexOwners(Trees.plainName(s.symbol.owner)) =>

@@ -82,10 +82,18 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
 
       private val throwable = TypeRepr.of[Throwable]
 
+      /** The left type of an `Either`, also of a union or intersection that has one (the type of
+        * `if b then Left(e) else Right(())` is `Left[…] | Right[…]`).
+        */
       private def eitherLeft(t: TypeRepr): Option[TypeRepr] =
-        t.widen.dealias.baseType(TypeRepr.of[Either[Any, Any]].typeSymbol) match
-          case AppliedType(_, List(left, _)) => Some(left)
-          case _                             => None
+        t.widen.dealias match
+          case OrType(a, b) =>
+            eitherLeft(a).filterNot(_ =:= TypeRepr.of[Nothing]).orElse(eitherLeft(b))
+          case AndType(a, b) => eitherLeft(a).orElse(eitherLeft(b))
+          case other =>
+            other.baseType(TypeRepr.of[Either[Any, Any]].typeSymbol) match
+              case AppliedType(_, List(left, _)) => Some(left)
+              case _                             => None
 
       /** How the value of `t` came to be, given the `val`s known to hold a made `Throwable`. */
       private def raised(made: Set[Symbol])(t: Term): Raised =
@@ -181,6 +189,9 @@ object SystemTimeAndUnsafeRun extends WartTraverser:
               case _ if Trees.isOurs(left) => Raised.Domain
               case _ =>
                 Trees.strip(t) match
+                  case If(_, a, b) => worst(raisedValue(made)(a), raisedValue(made)(b))
+                  case Match(_, cases) =>
+                    cases.map(c => raisedValue(made)(c.rhs)).foldLeft(Raised.PassedOn)(worst)
                   case r: Ref if made(r.symbol) => Raised.Constructed
                   case _                        => Raised.PassedOn
           case None => raised(made)(t)

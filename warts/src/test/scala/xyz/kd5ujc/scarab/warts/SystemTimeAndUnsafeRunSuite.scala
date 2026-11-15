@@ -229,3 +229,20 @@ class SystemTimeAndUnsafeRunSuite extends munit.FunSuite:
       (kept(System.nanoTime()), Kept(System.currentTimeMillis()))
     }
     assertEquals(kinds(r), List.fill(2)("wall-clock"))
+
+  test("fromEither of a Left made in a branch of an if or a match, direct or held in a val"):
+    val r = WartTestTraverser(SystemTimeAndUnsafeRun) {
+      def rejected[F[_]](reject: Boolean)(using F: MonadThrow[F]): F[Unit] =
+        val result: Either[Throwable, Unit] =
+          if reject then Left(new IllegalArgumentException("rejected"))
+          else Right(())
+        F.fromEither(result)
+      def matched[F[_]](n: Int)(using F: MonadThrow[F]): F[Unit] =
+        F.fromEither(n match
+          case 0 => Left(new IllegalStateException("zero"))
+          case _ => Right(()))
+      def forwarded[F[_]](e: Throwable, fail: Boolean)(using F: MonadThrow[F]): F[Unit] =
+        F.fromEither(if fail then Left(e) else Right(()))
+      (rejected[IO](true), matched[IO](0), forwarded[IO](new IllegalStateException("given"), true))
+    }
+    assertEquals(kinds(r), List("raise-constructed", "raise-constructed"))

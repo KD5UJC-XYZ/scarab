@@ -104,17 +104,22 @@ object StringParsers {
 
   private val special = "\\.[]{}()*+?^$|".toSet
 
-  private def literal(text: String): String = text.flatMap(c => if (special(c)) s"\\$c" else c.toString)
+  /** The characters that end a filter or its condition in `-Wconf`, whatever the regex says. */
+  private val delimiters = Map(':' -> "\\x3a", '&' -> "\\x26", ',' -> "\\x2c")
+
+  private def literal(text: String): String =
+    text.flatMap(c => delimiters.getOrElse(c, if (special(c)) s"\\$c" else c.toString))
 
   /** One `-Wconf` per file, its regex anchored at both ends to the file under `root`, so that it matches that
-    * file only (the compiler matches it against the source's absolute path). A file that is not there fails
-    * the build when it loads. A `:` in a filter's regex breaks the parsing of every `-Wconf`, so `.` stands for
-    * the `:` of the message's `[wartremover:StringControlFlow]`.
+    * file only: the path as the compiler matches it (`toPath.toAbsolutePath.toUri.normalize.getRawPath`), with
+    * the characters `-Wconf` splits on written as hex escapes. A file that is not there fails the build when it
+    * loads. A `:` in a filter's regex breaks the parsing of every `-Wconf`, so `.` stands for the `:` of the
+    * message's `[wartremover:StringControlFlow]`.
     */
   def options(root: File): Seq[String] =
     files.map { path =>
       require(new File(root, path).isFile, s"StringParsers lists $path, which is not a file")
-      val source = literal(new File(root, path).getAbsoluteFile.toURI.normalize.getRawPath)
+      val source = literal(new File(root, path).toPath.toAbsolutePath.toUri.normalize.getRawPath)
       s"-Wconf:src=^$source$$&msg=wartremover.StringControlFlow:s"
     }
 }

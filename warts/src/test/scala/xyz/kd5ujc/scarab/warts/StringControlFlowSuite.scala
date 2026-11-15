@@ -220,3 +220,33 @@ class StringControlFlowSuite extends munit.FunSuite:
       kept("a" == "b".reverse)
     }
     assertEquals(kinds(r), List("string-equality"))
+
+  test("a String-valued decision between other values of the same field is a site"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final case class Cell(text: String)
+      def quota(role: Cell, privileged: Cell, regular: Cell): Int =
+        (if role.text == "admin" then privileged.text else regular.text).toInt
+      def grade(role: Cell, privileged: Cell, regular: Cell): Int =
+        (role.text match
+          case "admin" => privileged.text
+          case _       => regular.text
+        ).toInt
+      def trimmed(role: Cell): String =
+        if role.text.endsWith(".") then role.text.dropRight(1) else role.text
+      (
+        quota(Cell("a"), Cell("1"), Cell("2")),
+        grade(Cell("a"), Cell("1"), Cell("2")),
+        trimmed(Cell("a"))
+      )
+    }
+    assertEquals(kinds(r), List("string-equality", "string-match"))
+
+  test("the cats === follows the rule of an equality definition"):
+    val r = WartTestTraverser(StringControlFlow) {
+      import cats.syntax.all.*
+      final case class Label(text: String)
+      def sameLabel(a: Label, b: Label): Boolean = a.text === b.text
+      def isMain(a: Label, b: Label): Boolean = a.text === "main" && b.text.nonEmpty
+      (sameLabel(Label("a"), Label("b")), isMain(Label("a"), Label("b")))
+    }
+    assertEquals(kinds(r), List("string-equality"))
