@@ -170,23 +170,31 @@ object StringControlFlow extends WartTraverser:
               case _ => foldOverTree(found, tree)(o)
         accumulator.foldTree(Map.empty, root)(owner)
 
-      /** A path with its root alias replaced by the path the alias names, as long as there is one.
+      /** A path with its aliases replaced by the paths they name, as long as there is one: a root
+        * alias by its path, and anywhere after the root a member `val` bound to a path from its own
+        * class's `this` (`val same = this.cell`) by the same path from the receiver it is selected
+        * on (`r.same.text` is `r.cell.text`). An alias rooted at an enclosing instance
+        * (`Outer.this.cell`) is not rebased.
         */
       @scala.annotation.tailrec
       private def canonical(aliases: Map[Symbol, List[Symbol]], fuel: Int)(
           path: List[Symbol]
       ): List[Symbol] =
-        val member = path.headOption.flatMap(h => aliases.get(h).map(h -> _))
+        // the innermost such member, at its index in the path (the root is last)
+        val member = path
+          .dropRight(1)
+          .zipWithIndex
+          .iterator
+          .flatMap((alias, at) =>
+            aliases.get(alias).filter(_.lastOption.contains(alias.owner)).map(at -> _)
+          )
+          .nextOption()
         path.lastOption.flatMap(aliases.get) match
           case Some(named) if fuel > 0 => canonical(aliases, fuel - 1)(path.init ++ named)
-          // a member `val` bound to a path from its own class's `this` (`val same = this.text`): the
-          // same path from the receiver it is selected on (`r.same` is `r.text`); an alias rooted at an
-          // enclosing instance (`Outer.this.text`) is not rebased
           case _ =>
             member match
-              case Some((alias, named))
-                  if fuel > 0 && path.sizeIs > 1 && named.lastOption.contains(alias.owner) =>
-                canonical(aliases, fuel - 1)(named.init ++ path.tail)
+              case Some((at, named)) if fuel > 0 =>
+                canonical(aliases, fuel - 1)(path.take(at) ++ named.init ++ path.drop(at + 1))
               case _ => path
 
       private def textual(t: Term): Boolean = isString(t) || t.tpe.widen <:< stringOps

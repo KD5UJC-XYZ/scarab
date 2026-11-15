@@ -311,3 +311,24 @@ class StringControlFlowSuite extends munit.FunSuite:
       Outer("a")
     }
     assertEquals(kinds(r), List("string-equality"))
+
+  test("an alias inside a path counts as its path; through another receiver or Outer.this, not"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final class Cell(val text: String)
+      final class Holder(val cell: Cell):
+        val same: Cell = this.cell
+        def trimmed: String =
+          if this.cell.text.endsWith(".") then this.same.text.dropRight(1)
+          else this.same.text
+        def other(that: Holder): String =
+          if this.cell.text.endsWith(".") then that.same.text.dropRight(1)
+          else that.same.text
+      class Outer(val cell: Cell):
+        class Inner extends Outer(Cell("1")):
+          val same: Cell = Outer.this.cell
+          def chosen: String =
+            if this.cell.text.endsWith(".") then this.same.text.dropRight(1)
+            else this.same.text
+      (Holder(Cell("a")).trimmed, Holder(Cell("a")).other(Holder(Cell("b"))), Outer(Cell("a")))
+    }
+    assertEquals(kinds(r), List("string-predicate", "string-predicate"))
