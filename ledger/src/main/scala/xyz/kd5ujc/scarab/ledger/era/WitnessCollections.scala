@@ -15,7 +15,14 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
   * @param datums
   *   by hash, each the bytes of its data as they arrived
   */
-final case class TxDats(raw: Option[Bytes], datums: SortedMap[Bytes, Bytes])
+final class TxDats private[era] (val raw: Option[Bytes], val datums: SortedMap[Bytes, Bytes]):
+  // Not a case class: its derived `Mirror` would make one from any datums, whatever its bytes.
+  private def fields: Any = (raw, datums)
+  override def equals(that: Any): Boolean = that match
+    case o: TxDats => fields == o.fields
+    case _         => false
+  override def hashCode(): Int = fields.hashCode
+  override def toString: String = s"TxDats($fields)"
 
 object TxDats:
   given CanEqual[TxDats, TxDats] = CanEqual.derived
@@ -29,7 +36,17 @@ object TxDats:
   * @param entries
   *   per purpose, the redeemer's data as it arrived and its units
   */
-final case class Redeemers[P](raw: Option[Bytes], entries: SortedMap[P, (Bytes, ExUnits)])
+final class Redeemers[P] private[era] (
+    val raw: Option[Bytes],
+    val entries: SortedMap[P, (Bytes, ExUnits)]
+):
+  // Not a case class: its derived `Mirror` would make one from any entries, whatever its bytes.
+  private def fields: Any = (raw, entries)
+  override def equals(that: Any): Boolean = that match
+    case o: Redeemers[?] => fields == o.fields
+    case _               => false
+  override def hashCode(): Int = fields.hashCode
+  override def toString: String = s"Redeemers($fields)"
 
 object Redeemers:
   given [P](using CanEqual[P, P]): CanEqual[Redeemers[P], Redeemers[P]] = CanEqual.derived

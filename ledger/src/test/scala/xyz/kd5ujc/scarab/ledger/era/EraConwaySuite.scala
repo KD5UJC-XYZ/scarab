@@ -588,3 +588,35 @@ class EraConwaySuite extends munit.FunSuite:
       )(using ByteStrings.Definite)
       .toOption
       .get
+
+  test("no Conway value that keeps its bytes has a Mirror to build it from other fields") {
+    // a case class's derived `Mirror.ProductOf` builds one from any fields (`fromProduct`), so
+    // these are plain classes: their only way in is their decoder
+    Vector(
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxWits]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxAuxData]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.TxDats]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.Redeemers[Int]]]"
+      )
+    ).foreach(errs => assert(errs.contains("No given instance"), errs))
+    // the same summon compiles for a case class
+    assertEquals(
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.ValidityInterval]]"
+      ),
+      ""
+    )
+  }

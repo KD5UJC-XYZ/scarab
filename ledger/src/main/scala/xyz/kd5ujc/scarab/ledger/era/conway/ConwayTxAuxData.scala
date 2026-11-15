@@ -31,12 +31,19 @@ import xyz.kd5ujc.scarab.protocol.Era
   * @param plutusScripts
   *   per language, the Plutus scripts' bytes
   */
-final case class ConwayTxAuxData private (
-    raw: Bytes,
-    metadata: SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
-    nativeScripts: Vector[ConwayTimelock],
-    plutusScripts: SortedMap[PlutusLanguage, NonEmptyVector[Bytes]]
-)
+final class ConwayTxAuxData private (
+    val raw: Bytes,
+    val metadata: SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
+    val nativeScripts: Vector[ConwayTimelock],
+    val plutusScripts: SortedMap[PlutusLanguage, NonEmptyVector[Bytes]]
+):
+  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
+  private def fields: Any = (raw, metadata, nativeScripts, plutusScripts)
+  override def equals(that: Any): Boolean = that match
+    case o: ConwayTxAuxData => fields == o.fields
+    case _                  => false
+  override def hashCode(): Int = fields.hashCode
+  override def toString: String = s"ConwayTxAuxData($fields)"
 
 object ConwayTxAuxData:
   given CanEqual[ConwayTxAuxData, ConwayTxAuxData] = CanEqual.derived

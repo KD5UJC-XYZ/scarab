@@ -280,28 +280,56 @@ object ConwayTxOut:
   * @param validity
   *   the slots the transaction is valid in (`ctbrVldt`)
   */
-final case class ConwayTxBody private (
-    raw: Bytes,
-    spendInputs: SortedSet[TxIn],
-    collateralInputs: SortedSet[TxIn],
-    referenceInputs: SortedSet[TxIn],
-    outputs: Vector[Sized[ConwayTxOut]],
-    collateralReturn: Option[Sized[ConwayTxOut]],
-    totalCollateral: Option[Coin],
-    certs: OSet[ConwayTxCert],
-    withdrawals: Map[RewardAccount, Coin],
-    fee: Coin,
-    validity: ValidityInterval,
-    reqSignerHashes: SortedSet[Bytes],
-    mint: Map[Bytes, Map[Bytes, BigInt]],
-    scriptIntegrityHash: Option[Bytes],
-    auxDataHash: Option[Bytes],
-    networkId: Option[Network],
-    votingProcedures: SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]],
-    proposalProcedures: OSet[ProposalProcedure],
-    currentTreasuryValue: Option[Coin],
-    treasuryDonation: Coin
+final class ConwayTxBody private (
+    val raw: Bytes,
+    val spendInputs: SortedSet[TxIn],
+    val collateralInputs: SortedSet[TxIn],
+    val referenceInputs: SortedSet[TxIn],
+    val outputs: Vector[Sized[ConwayTxOut]],
+    val collateralReturn: Option[Sized[ConwayTxOut]],
+    val totalCollateral: Option[Coin],
+    val certs: OSet[ConwayTxCert],
+    val withdrawals: Map[RewardAccount, Coin],
+    val fee: Coin,
+    val validity: ValidityInterval,
+    val reqSignerHashes: SortedSet[Bytes],
+    val mint: Map[Bytes, Map[Bytes, BigInt]],
+    val scriptIntegrityHash: Option[Bytes],
+    val auxDataHash: Option[Bytes],
+    val networkId: Option[Network],
+    val votingProcedures: SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]],
+    val proposalProcedures: OSet[ProposalProcedure],
+    val currentTreasuryValue: Option[Coin],
+    val treasuryDonation: Coin
 ):
+  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
+  private def fields: Any = (
+    raw,
+    spendInputs,
+    collateralInputs,
+    referenceInputs,
+    outputs,
+    collateralReturn,
+    totalCollateral,
+    certs,
+    withdrawals,
+    fee,
+    validity,
+    reqSignerHashes,
+    mint,
+    scriptIntegrityHash,
+    auxDataHash,
+    networkId,
+    votingProcedures,
+    proposalProcedures,
+    currentTreasuryValue,
+    treasuryDonation
+  )
+  override def equals(that: Any): Boolean = that match
+    case o: ConwayTxBody => fields == o.fields
+    case _               => false
+  override def hashCode(): Int = fields.hashCode
+  override def toString: String = s"ConwayTxBody($fields)"
   lazy val id: Bytes = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(raw)
 
 object ConwayTxBody:

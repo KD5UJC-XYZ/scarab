@@ -23,12 +23,20 @@ import xyz.kd5ujc.scarab.ledger.state.Conway
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:205-212`): its body, witness set, phase-two
   * flag and auxiliary data, each Conway's. Made only by [[ConwayTx.decode]].
   */
-final case class ConwayTx private (
-    body: ConwayTxBody,
-    wits: ConwayTxWits,
-    isValid: IsPhase2Valid,
-    auxData: Option[ConwayTxAuxData]
+final class ConwayTx private (
+    val body: ConwayTxBody,
+    val wits: ConwayTxWits,
+    val isValid: IsPhase2Valid,
+    val auxData: Option[ConwayTxAuxData]
 ):
+  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
+  private def fields: Any = (body, wits, isValid, auxData)
+  override def equals(that: Any): Boolean = that match
+    case o: ConwayTx => fields == o.fields
+    case _           => false
+  override def hashCode(): Int = fields.hashCode
+  override def toString: String = s"ConwayTx($fields)"
+
   /** `sizeTxForFeeCalculation`, as the flat transaction's size. */
   def sizeTxForFeeCalculation: Long =
     1L + body.raw.size + wits.raw.size + auxData.fold(1L)(_.raw.size.toLong)

@@ -28,14 +28,21 @@ import xyz.kd5ujc.scarab.protocol.Era
   * @param bootstrap
   *   the bootstrap witnesses, one per address root ([[BootstrapWitness.set]])
   */
-final case class ConwayTxWits private (
-    raw: Bytes,
-    vkeys: SortedSet[WitVKey],
-    bootstrap: Vector[BootstrapWitness],
-    scripts: SortedMap[Bytes, ConwayScript],
-    datums: TxDats,
-    redeemers: Redeemers[ConwayPlutusPurpose[AsIx]]
-)
+final class ConwayTxWits private (
+    val raw: Bytes,
+    val vkeys: SortedSet[WitVKey],
+    val bootstrap: Vector[BootstrapWitness],
+    val scripts: SortedMap[Bytes, ConwayScript],
+    val datums: TxDats,
+    val redeemers: Redeemers[ConwayPlutusPurpose[AsIx]]
+):
+  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
+  private def fields: Any = (raw, vkeys, bootstrap, scripts, datums, redeemers)
+  override def equals(that: Any): Boolean = that match
+    case o: ConwayTxWits => fields == o.fields
+    case _               => false
+  override def hashCode(): Int = fields.hashCode
+  override def toString: String = s"ConwayTxWits($fields)"
 
 object ConwayTxWits:
   private val Word32Max = (BigInt(1) << 32) - 1
