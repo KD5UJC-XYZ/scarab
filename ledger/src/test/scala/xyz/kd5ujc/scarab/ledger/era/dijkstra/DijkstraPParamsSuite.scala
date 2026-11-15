@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
+import cats.Eq
 import io.circe.Json
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
-import munit.FunSuite
+import monocle.Lens
+import monocle.law.discipline.LensTests
+import munit.DisciplineSuite
+import org.scalacheck.{Arbitrary, Cogen, Gen}
+import org.scalacheck.Prop.forAll
 import scala.collection.immutable.SortedSet
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
-import xyz.kd5ujc.scarab.ledger.{DRepGroup, StakePoolGroup, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{DRepGroup, LedgerDecodeError, StakePoolGroup, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32, W64}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraParamUpdate, DijkstraParamValue}
 import xyz.kd5ujc.scarab.ledger.era.*
@@ -20,7 +25,7 @@ import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, Conway, Dijkstra, Epoc
   * build decodes it at version 12, and where it decodes, `ppuWellFormed` at versions 12.0 and 10.0
   * and `modifiedPPGroups` are the build's.
   */
-class DijkstraPParamsSuite extends FunSuite:
+class DijkstraPParamsSuite extends DisciplineSuite:
   private val instance = summon[DijkstraEraPParams[Dijkstra]]
 
   private final case class Row(id: String, update: Bytes, reference: Json)
@@ -43,12 +48,25 @@ class DijkstraPParamsSuite extends FunSuite:
         )
       }
 
-  private def decoded(bytes: Bytes) =
-    Cbor
-      .decode(bytes)
-      .left
-      .map(_.toString)
-      .flatMap(n => DijkstraParamUpdate.decode(n).left.map(_.toString))
+  /** The update decoded at version 12; the corpus's bytes are well-formed CBOR, so only the
+    * ledger's decoder can refuse them.
+    */
+  private def decoded(bytes: Bytes): Either[LedgerDecodeError, DijkstraParamUpdate] =
+    DijkstraParamUpdate.decode(Cbor.decode(bytes).fold(e => fail(s"not CBOR: $e"), identity))
+
+  /** The typed refusal of each row the build refuses (`DeserialiseFailure` in the corpus): a zero
+    * where a `NonZero` is built, a ratio outside `PositiveInterval`, and a key no field has.
+    */
+  private val refusals: Map[String, PartialFunction[LedgerDecodeError, Unit]] = Map(
+    "refScriptCostStride zero" -> { case LedgerDecodeError.Zero(_) => () },
+    "refScriptCostMultiplier zero" -> {
+      case LedgerDecodeError.RationalOutOfBounds(_, n, d) if n == 0 && d == 1 => ()
+    },
+    "perasHealingFactor zero" -> {
+      case LedgerDecodeError.RationalOutOfBounds(_, n, d) if n == 0 && d == 1 => ()
+    },
+    "an unknown key" -> { case LedgerDecodeError.UnknownKey(_, k) if k == 57 => () }
+  )
 
   private def word[W <: Unsigned.Width: Unsigned.Bound](id: String, n: BigInt): Unsigned[W] =
     Unsigned.from[W](n).getOrElse(fail(s"$id: $n out of range"))
@@ -247,7 +265,10 @@ class DijkstraPParamsSuite extends FunSuite:
 
   test("the corpus is present: every key alone, zero and not, and the build's refusals"):
     assertEquals(rows.size, 113)
-    assertEquals(rows.count(_.reference.hcursor.downField("refused").succeeded), 4)
+    assertEquals(
+      rows.filter(_.reference.hcursor.downField("refused").succeeded).map(_.id).toSet,
+      refusals.keySet
+    )
 
   rows.foreach { row =>
     test(s"${row.id}: decoded, well-formed and grouped as the Leios build does"):
@@ -255,6 +276,7 @@ class DijkstraPParamsSuite extends FunSuite:
       decoded(row.update) match
         case Left(e) =>
           assert(c.downField("refused").succeeded, s"refused ($e), the build decoded it")
+          assert(refusals.get(row.id).exists(_.isDefinedAt(e)), s"refused with $e")
         case Right(u) =>
           assert(!c.downField("refused").succeeded, "decoded, the build refused it")
           val ppu = PParamsUpdate[Dijkstra](record(row.id, u))
@@ -368,3 +390,74 @@ class DijkstraPParamsSuite extends FunSuite:
       instance.applyPPUpdates(pp, ppu).hkd.costModels.unTHKD,
       models(Map(0 -> Vector(BigInt(1), BigInt(2)), 1 -> Vector(BigInt(3))))
     )
+    val same = PParamsUpdate[Dijkstra](
+      DijkstraPParams.emptyUpdate.copy(costModels = THKD(Some(models(Map(0 -> Vector(BigInt(9)))))))
+    )
+    assertEquals(
+      instance.applyPPUpdates(pp, same).hkd.costModels.unTHKD,
+      models(Map(0 -> Vector(BigInt(9))))
+    )
+
+  test("an update clears the optional fields: no bootstrap round, no pledge leverage limit"):
+    val pp = PParams[Dijkstra](
+      DijkstraPParams.empty.copy(
+        perasBootstrapRound = THKD(Some(Unsigned.lit[W32](7))),
+        maxPledgeLeverage = THKD(MaxPledgeLeverage(Some(NonNegativeInterval.zero)))
+      )
+    )
+    val ppu = PParamsUpdate[Dijkstra](
+      DijkstraPParams.emptyUpdate.copy(
+        perasBootstrapRound = THKD(Some(None)),
+        maxPledgeLeverage = THKD(Some(MaxPledgeLeverage.none))
+      )
+    )
+    val applied = instance.applyPPUpdates(pp, ppu).hkd
+    assertEquals(applied.perasBootstrapRound.unTHKD, None)
+    assertEquals(applied.maxPledgeLeverage.unTHKD, MaxPledgeLeverage.none)
+
+  /** The updates the build decodes, as records. */
+  private val updates: Vector[DijkstraPParams[StrictMaybe]] =
+    rows.flatMap(r => decoded(r.update).toOption.map(record(r.id, _)))
+
+  private val genUpdate: Gen[DijkstraPParams[StrictMaybe]] = Gen.oneOf(updates)
+
+  /** Parameters reached from the empty ones by a sequence of the corpus's updates. */
+  private val genParams: Gen[DijkstraPParams[Identity]] =
+    Gen.listOf(genUpdate).map(_.foldLeft(DijkstraPParams.empty)(DijkstraPParams.applyUpdates))
+
+  private val costModelsField = DijkstraPParams.empty.productElementNames.indexOf("costModels")
+  private val versionField = DijkstraPParams.empty.productElementNames.indexOf("protocolVersion")
+
+  property("applying an update is the model: each set field replaced, the rest kept"):
+    forAll(genParams, genUpdate) { (pp, u) =>
+      val applied = DijkstraPParams.applyUpdates(pp, u)
+      (0 until pp.productArity).foreach { i =>
+        val expected =
+          if i == versionField then pp.productElement(i)
+          else if i == costModelsField then
+            u.costModels.unTHKD.fold(pp.costModels.unTHKD.models)(n =>
+              pp.costModels.unTHKD.models.filterNot((l, _) => n.models.contains(l)) ++ n.models
+            )
+          else
+            u.productElement(i) match
+              case Some(v) => v
+              case _       => pp.productElement(i)
+        val actual =
+          if i == costModelsField then applied.costModels.unTHKD.models
+          else applied.productElement(i)
+        assertEquals(actual, expected, pp.productElementName(i))
+      }
+    }
+
+  private def lensLaws[A](name: String, lens: Lens[DijkstraPParams[Identity], A]): Unit =
+    given Arbitrary[DijkstraPParams[Identity]] = Arbitrary(genParams)
+    given Arbitrary[A] = Arbitrary(genParams.map(lens.get))
+    given Cogen[A] = Cogen[Int].contramap(_.hashCode)
+    given Eq[DijkstraPParams[Identity]] = Eq.fromUniversalEquals
+    given Eq[A] = Eq.fromUniversalEquals
+    checkAll(name, LensTests(lens))
+
+  lensLaws("hkdPerasCertBoostL", instance.hkdPerasCertBoostL[Identity])
+  lensLaws("hkdMaxPledgeLeverageL", instance.hkdMaxPledgeLeverageL[Identity])
+  lensLaws("hkdMaxTxExUnitsL, through OrdExUnits", instance.hkdMaxTxExUnitsL[Identity])
+  lensLaws("hkdCostModelsL", instance.hkdCostModelsL[Identity])
