@@ -56,9 +56,8 @@ class AcquiredEraTest(unittest.TestCase):
 
     def test_a_conway_state_is_not_given_a_pre_conway_view(self):
         session = FakeSession(eraview.ERA_INDEX["conway"])
-        with self.assertRaises(RuntimeError) as raised:
+        with self.assertRaises(eraview.EraLeft):
             eraview.reference_pre_conway("babbage", session, {})
-        self.assertIn("mismatch", str(raised.exception))
         self.assertEqual(session.named, [])
 
     def test_a_babbage_round_that_acquires_a_conway_state_is_skipped_as_the_chain_having_left_babbage(self):
@@ -95,16 +94,56 @@ class TallyTest(unittest.TestCase):
             self.assertEqual(tally.whole[query]["conway"]["matched"], 1, query)
             self.assertEqual(tally.whole[query]["babbage"]["matched"], 0, query)
 
-    def test_a_projection_of_a_state_in_a_later_era_counts_for_that_era(self):
-        tally = self.tally()
-        reference = {"epoch": 1, "utxo": {}, "params": {}, "ppup": {"current": {}, "future": {}},
-                     "mir": {"reserves": {}, "treasury": {}, "deltaReserves": 0, "deltaTreasury": 0},
-                     "rewardUpdate": None}
-        scala = json.loads(json.dumps(reference))
-        sample = compare.pre_conway_sample({"slot": 1, "hash": "a"}, reference, {}, None, scala, "babbage")
-        self.assertEqual(sample.result["acquiredEra"], "babbage")
-        tally.record(sample.result.get("acquiredEra", "alonzo"), "x", sample.result)
-        self.assertEqual((tally.per_era["babbage"]["matched"], tally.per_era["alonzo"]["matched"]), (1, 0))
+    STATE = {"epoch": 7, "utxo": {}, "rewardUpdate": None, "params": {}, "ppup": {"current": {}, "future": {}},
+             "mir": {"reserves": {}, "treasury": {}, "deltaReserves": 0, "deltaTreasury": 0}}
+
+    def round(self, state_of=lambda site: json.loads(json.dumps(TallyTest.STATE)), whole_error=False):
+        """`compare_era` for an alonzo round whose acquired state is babbage, with two followers: (tallies, agreement)."""
+        import tempfile
+        from devnet.util import FollowerSite
+        sites = (FollowerSite("scalus"), FollowerSite("scarab"))
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = pathlib.Path(directory.name)
+        tallies = [compare.Comparisons(root, site) for site in sites]
+        agreement = compare.FollowerAgreement(root, sites)
+        view = {**json.loads(json.dumps(self.STATE)), "_era": "babbage"}
+        context = unittest.mock.MagicMock()
+        with patch.object(compare, "protocol_parameters", return_value={}), \
+                patch.object(compare, "lsq", return_value=context), \
+                patch.object(eraview, "reference_pre_conway", return_value=({"slot": 1, "hash": "a"}, view)), \
+                patch.object(compare, "awaited_state", side_effect=lambda n, t, site, *a: state_of(site)), \
+                patch.object(compare, "whole_state", return_value={"skipped": "none"}), \
+                patch.object(compare.time, "sleep"):
+            compare.compare_era("n", "alonzo", "x", tallies, agreement)
+        return tallies, agreement
+
+    def test_a_round_that_acquires_babbage_counts_and_agrees_in_babbage(self):
+        tallies, agreement = self.round()
+        for tally in tallies:
+            self.assertEqual((tally.per_era["babbage"]["matched"], tally.per_era["alonzo"]["matched"]), (1, 0))
+        self.assertEqual((agreement.per_era["babbage"]["agreed"], agreement.per_era["alonzo"]["agreed"]), (1, 0))
+
+    def test_a_failure_after_the_state_was_acquired_counts_for_the_acquired_era(self):
+        def broken(site):
+            raise ValueError("unreadable")
+        tallies, agreement = self.round(broken)
+        for tally in tallies:
+            self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
+        self.assertEqual((agreement.per_era["babbage"]["notCompared"], agreement.per_era["alonzo"]["notCompared"]),
+                         (1, 0))
+
+    def test_a_malformed_reply_is_an_error_not_a_skip(self):
+        class Malformed(FakeSession):
+            def ledger_query(self, era_index, query):
+                raise RuntimeError("era mismatch or unexpected reply: 'x'")
+        context = unittest.mock.MagicMock()
+        context.__enter__.return_value = Malformed(eraview.ERA_INDEX["babbage"])
+        with patch.object(compare, "protocol_parameters", return_value={}), \
+                patch.object(compare, "lsq", return_value=context), patch.object(compare.time, "sleep"):
+            samples = compare.compare_pre_conway_followers("n", "babbage", (compare.SINGLE_FOLLOWER,), attempts=2)
+        self.assertNotIn("skipped", samples[0].result)
+        self.assertIn("error", samples[0].result)
 
 
 if __name__ == "__main__":
