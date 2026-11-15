@@ -131,10 +131,15 @@ trait BabbageEraTxBody[E <: EraTag] extends AlonzoEraTxBody[E]:
 
 /** The governance fields of a body, from Conway (`ConwayEraTxBody`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs:626-641`, cardano-ledger f649f975), whose
-  * certificates are Conway's (the superclass `ConwayEraTxCert era`).
+  * certificates are Conway's (the superclass `ConwayEraTxCert era`) and whose scripts have Conway's
+  * purposes (`ConwayEraScript era`). Its superclass `ConwayEraPParams era` comes with the era's
+  * protocol parameters.
   */
 trait ConwayEraTxBody[E <: EraTag] extends BabbageEraTxBody[E]:
   override def certsOf: ConwayEraTxCert[E]
+
+  /** The scripts' class (the superclass `ConwayEraScript era`). */
+  def scriptsOf: ConwayEraScript[E]
 
   def currentTreasuryValue[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Coin]
   def votingProcedures[L <: TxLevel](body: TxBody[L, E])(using

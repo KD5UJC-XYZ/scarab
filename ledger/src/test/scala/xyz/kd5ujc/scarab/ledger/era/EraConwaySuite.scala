@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Witnesses
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayPlutusPurpose,
   ConwayTxOut,
   ConwayTx,
   ConwayTxAuxData,
@@ -354,6 +355,27 @@ class EraConwaySuite extends munit.FunSuite:
     assertEquals(c.getRetirePoolTxCert(c.mkRetirePoolTxCert(ph, 10)), Some((ph, BigInt(10))))
     assertEquals(c.getUnRegDRepTxCert(c.mkRegDRepTxCert(cred, Coin(5), None)), None)
     assertEquals(c.getUpdateDRepTxCert(c.mkUpdateDRepTxCert(cred, None)), Some((cred, None)))
+  }
+
+  test("Conway's voting and proposing purposes build and read back in each form, and only those") {
+    val scripts = EraScript.conway
+    val ix = Unsigned.from[Unsigned.Width.W32](BigInt(3)).get
+    val voter = xyz.kd5ujc.scarab.ledger.Voter.Pool(Bytes.fromHex(p).toOption.get)
+    val voting = scripts.mkVotingPurpose[AsIx](AsIx(ix))
+    assertEquals(voting, ConwayPlutusPurpose.ConwayVoting[AsIx](AsIx(ix)))
+    assertEquals(scripts.toVotingPurpose[AsIx](voting), Some(AsIx(ix)))
+    assertEquals(scripts.toProposingPurpose[AsIx](voting), None)
+    val proposing = scripts.mkProposingPurpose[AsIx](AsIx(ix))
+    assertEquals(proposing, ConwayPlutusPurpose.ConwayProposing[AsIx](AsIx(ix)))
+    assertEquals(scripts.toProposingPurpose[AsIx](proposing), Some(AsIx(ix)))
+    assertEquals(scripts.toVotingPurpose[AsIx](proposing), None)
+    val spending = ConwayPlutusPurpose.ConwaySpending[AsIx](AsIx(ix))
+    assertEquals(scripts.toVotingPurpose[AsIx](spending), None)
+    assertEquals(scripts.toProposingPurpose[AsIx](spending), None)
+    val item = scripts.mkVotingPurpose[AsItem](AsItem(voter))
+    assertEquals(scripts.toVotingPurpose[AsItem](item), Some(AsItem(voter)))
+    // the body's scripts are the class its outputs name
+    assert(EraTxBody.conway.scriptsOf eq EraTxBody.conway.outputsOf.scripts)
   }
 
   test("pool registrations are equal when their relays mean the same, as the reference compares") {

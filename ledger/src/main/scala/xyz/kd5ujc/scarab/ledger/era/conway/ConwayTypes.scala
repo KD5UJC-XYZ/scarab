@@ -15,14 +15,15 @@ import xyz.kd5ujc.scarab.ledger.{
   RewardAccount,
   ScriptKind,
   TxIn,
+  Unsigned,
   Voter,
   VotingProcedure
 }
 import xyz.kd5ujc.scarab.ledger.era.{
-  AlonzoEraScript,
   AlonzoScriptRep,
   BabbageEraTxOut,
   BabbageTxOutRep,
+  ConwayEraScript,
   ConwayEraTxBody,
   ConwayEraTxCert,
   EraField,
@@ -143,7 +144,7 @@ object ConwayScript:
 
   given CanEqual[ConwayScript, ConwayScript] = CanEqual.derived
 
-  val instance: AlonzoEraScript[Conway] = new TimelockScripts[Conway] with AlonzoEraScript[Conway]:
+  val instance: ConwayEraScript[Conway] = new TimelockScripts[Conway] with ConwayEraScript[Conway]:
     override protected def timelock(native: ConwayTimelock): Timelock = native
     override protected def ofTimelock(t: Timelock): ConwayTimelock = t
     override def scriptPrefixTag(script: ConwayScript): Byte = script match
@@ -163,6 +164,30 @@ object ConwayScript:
       case AlonzoScriptRep.NativeScript(_) => None
     override def fromPlutusScript(plutus: ConwayPlutusScript): ConwayScript =
       AlonzoScriptRep.PlutusScript(plutus)
+
+    // `ConwayEraScript ConwayEra`, `Conway/Scripts.hs:131-141`, cardano-ledger f649f975
+    override def mkVotingPurpose[F[_, _]](
+        voter: F[Unsigned[Unsigned.Width.W32], Voter]
+    ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayVoting(voter)
+    override def toVotingPurpose[F[_, _]](
+        purpose: ConwayPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], Voter]] = purpose match
+      case ConwayPlutusPurpose.ConwayVoting(voter) => Some(voter)
+      case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
+          ConwayPlutusPurpose.ConwayCertifying(_) | ConwayPlutusPurpose.ConwayWithdrawing(_) |
+          ConwayPlutusPurpose.ConwayProposing(_) =>
+        None
+    override def mkProposingPurpose[F[_, _]](
+        proposal: F[Unsigned[Unsigned.Width.W32], Proposal]
+    ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayProposing(proposal)
+    override def toProposingPurpose[F[_, _]](
+        purpose: ConwayPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], Proposal]] = purpose match
+      case ConwayPlutusPurpose.ConwayProposing(proposal) => Some(proposal)
+      case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
+          ConwayPlutusPurpose.ConwayCertifying(_) | ConwayPlutusPurpose.ConwayWithdrawing(_) |
+          ConwayPlutusPurpose.ConwayVoting(_) =>
+        None
 
 /** A Conway output: `BabbageTxOut ConwayEra`, the representation Babbage's has with Conway's script
   * (`eras/conway/impl/src/Cardano/Ledger/Conway/TxOut.hs`), a type of its own.
@@ -227,7 +252,7 @@ object ConwayTxOut:
   given CanEqual[ConwayTxOut, ConwayTxOut] = CanEqual.derived
 
   val instance: BabbageEraTxOut[Conway] = new BabbageEraTxOut[Conway]:
-    override def scripts: AlonzoEraScript[Conway] = ConwayScript.instance
+    override def scripts: ConwayEraScript[Conway] = ConwayScript.instance
     override def valueOps: Val[MultiAssetValue] = summon[Val[MultiAssetValue]]
     override def address(out: ConwayTxOut): Address = out.address
     override def value(out: ConwayTxOut): MultiAssetValue = out.value
@@ -341,6 +366,7 @@ object ConwayTxBody:
       override def top: TopOnly[TxLevel.Top] = TopOnly.Top
       override def outputsOf: BabbageEraTxOut[Conway] = ConwayTxOut.instance
       override def certsOf: ConwayEraTxCert[Conway] = ConwayTxCert.instance
+      override def scriptsOf: ConwayEraScript[Conway] = ConwayScript.instance
       override def id[L <: TxLevel](body: TxBody[L, Conway])(using l: TopOnly[L]): Bytes =
         l match
           case TopOnly.Top => body.id

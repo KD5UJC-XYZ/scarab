@@ -3,7 +3,13 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{NativeScript as FlatNativeScript, ScriptKind}
+import xyz.kd5ujc.scarab.ledger.{
+  NativeScript as FlatNativeScript,
+  Proposal,
+  ScriptKind,
+  Unsigned,
+  Voter
+}
 import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
 
 /** The scripts of era `E` (`EraScript`, cardano-ledger f649f975
@@ -55,8 +61,11 @@ trait AllegraEraScript[E <: EraTag] extends ShelleyEraScript[E]:
   def getTimeExpire(native: NativeScript[E]): Option[BigInt]
 
 /** The Plutus scripts from Alonzo (`AlonzoEraScript`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-188`, cardano-ledger f649f975). Its
-  * Plutus purposes come with the purpose family.
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-188`, cardano-ledger f649f975). The
+  * reference's builders and readers of the spending, minting, certifying and withdrawing purposes
+  * (`mkSpendingPurpose` to `toWithdrawingPurpose`, `Scripts.hs:200-225`) are not here yet:
+  * Babbage's instance needs Babbage's purposes and certificates, which come with Babbage (tracked
+  * on #85).
   */
 trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
   /** The newest language of the era (`eraMaxLanguage`). */
@@ -64,6 +73,22 @@ trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
 
   def toPlutusScript(script: Script[E]): Option[PlutusScript[E]]
   def fromPlutusScript(plutus: PlutusScript[E]): Script[E]
+
+/** The voting and proposing purposes from Conway (`ConwayEraScript`,
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:63-70`, cardano-ledger f649f975), in any
+  * form `F` of a purpose, with a `Word32` index.
+  */
+trait ConwayEraScript[E <: EraTag] extends AlonzoEraScript[E]:
+  def mkVotingPurpose[F[_, _]](voter: F[Unsigned[Unsigned.Width.W32], Voter]): PlutusPurpose[F, E]
+  def toVotingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], Voter]]
+  def mkProposingPurpose[F[_, _]](
+      proposal: F[Unsigned[Unsigned.Width.W32], Proposal]
+  ): PlutusPurpose[F, E]
+  def toProposingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], Proposal]]
 
 /** The native-script readers of every era whose native script is a [[Timelock]], written once over
   * the representation as the reference writes them once over `Timelock era`
@@ -116,4 +141,4 @@ object EraScript:
   given mary: AllegraEraScript[Mary] = xyz.kd5ujc.scarab.ledger.era.mary.MaryTimelock.instance
   given babbage: AlonzoEraScript[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageScript.instance
-  given conway: AlonzoEraScript[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayScript.instance
+  given conway: ConwayEraScript[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayScript.instance
