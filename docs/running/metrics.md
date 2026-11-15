@@ -155,15 +155,30 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   and remaining periods; `scarab_opcert_counter` is written when forging starts and after every reload that installs
   credentials, and `forging_enabled_int` with each `blockForgingUpdate` (at start, and at a reload that enables
   or disables forging), as the reference writes it (`Tracers/Startup.hs` 301-307).
+- `cardano_node_metrics_txsProcessedNum_counter`: ours counts the transactions added to the mempool; the
+  reference counts those its mempool removes after a change of the ledger (`TraceMempoolRemoveTxs`, cardano-node
+  11.1.3 `Tracers/Consensus.hs` 1149-1152). This is a gap, tracked in [#1037](https://github.com/KD5UJC-XYZ/scarab/issues/1037).
 
-**Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
-`served_header_counter` and `served_block_latest_counter` (what the node served to peers; the `sessions` of
-`GET /connections` count the headers our hot sessions received, not those served), `utxoSize_int` and `delegMapSize_int` (see
-`scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
-`tipBlock` and `basicInfo`, the `blockfetchclient_*` series (see
-`scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and
-`Forge_adoption_thread_died_counter`, whose trace cannot happen here (the forged block is adopted in the
-forging fiber itself).
+**Not exported** (cardano-node 11.1.3 has them; each one's meaning at the pin is in [#1037](https://github.com/KD5UJC-XYZ/scarab/issues/1037), roadmap J3e):
+`cardano_node_metrics_served_block_counter`, `served_header_counter`, `ChainSync_HeadersServed_counter` and
+`served_block_latest_int` (what the node served to peers; the `sessions` of `GET /connections` count the headers
+our hot sessions received, not those served), `utxoSize_int` and `delegMapSize_int` (see
+`scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration_int`
+and `txsSyncDurationTotal_counter`, `GSM_state_int` (see `scarab_gsm_state`),
+`connectionManager_fullDuplexConns_int` and `connectionManager_unidirectionalConns_int`, the
+`localInboundGovernor_*_int` gauges of the node-to-client side, the `submissions_*_counter` counters of the
+transaction-submission server, `tipBlock`, `basicInfo`, `cardano_build_info` and the `cardano_version_*` and
+`haskell_compiler_*` gauges (see `scarab_build_info`), and the `blockfetchclient_*` series (see
+`scarab_blockfetch_seconds`). These need an event Scarab does not have: the seventeen `txSubmission_*_int`
+gauges, among them the wait counters `txIdBlockingWaitMs`, `txPipelineWaitMs` and `txSubmissionWaitMs`, which
+the reference exports only with `TxSubmissionLogicVersion: TxSubmissionLogicV2` (with the default V1 logic it
+never emits them); Scarab implements the V1 logic. Also `txsMempoolTimeoutSoft_counter` and
+`txsMempoolTimeoutHard_counter` (Scarab's mempool has no validation timeout), the `rpc_request_*_counter`
+counters (no gRPC server) and the Peras object-diffusion series. Not applicable: the GHC runtime's `RTS_*`,
+`rts_gc_*`, `Mem_*` and `Stat_*`, and `Forge_adoption_thread_died_counter`, whose trace cannot happen here (the
+forged block is adopted in the forging fiber itself). The network packages of the next release add the
+`peerSelection_churn_hot_*` and `peerSelection_churn_bigLedger_*` gauges, computed from the scores of each hot
+demotion; they come with the re-pin of the network ([#1002](https://github.com/KD5UJC-XYZ/scarab/issues/1002)).
 
 The full list follows, in the order of the catalogue
 (`node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/Catalogue.scala`); `DocsSuite` fails when this
