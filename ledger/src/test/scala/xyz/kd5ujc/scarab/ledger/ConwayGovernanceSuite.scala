@@ -1011,7 +1011,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     // a key hash scheduled by a re-registration is taken too, until the pool goes back to its own
     val s3 = ok(register(w, s2, a, f2, fresh = false))
     // the reference's map: the second re-registration of the epoch forgets the key of the first,
-    // which is the key the pool has in use (`Pool.hs:274-286`)
+    // which is the key the pool has in use (`Pool.hs:274-286`, cardano-ledger f649f975)
     assertEquals(keys(s3), Set(vrfOf(0, w), vrfOf(1, w), f2))
     assertEquals(refusal(register(w, s3, b, f2, fresh = true)), taken(b, f2))
     val s4 = ok(register(w, s3, a, f1, fresh = false))

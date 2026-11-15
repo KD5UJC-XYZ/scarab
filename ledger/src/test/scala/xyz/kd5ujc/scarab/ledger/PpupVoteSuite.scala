@@ -50,7 +50,7 @@ class PpupVoteSuite extends FunSuite:
 
   // d = 1/2 (key 12) written five ways: reduced, unreduced, with two negative integers, and with
   // wider heads than needed; each a `UnitInterval` of 1 % 2 (`decodeRationalWithTag`,
-  // `Plain.hs:159-167`).
+  // `Plain.hs:159-167`, cardano-ledger f649f975).
   private val halves = Vector(
     "d81e820102",
     "d81e820204",
@@ -109,7 +109,7 @@ class PpupVoteSuite extends FunSuite:
 
   // The same values: wide heads, unreduced rationals, and the cost model as a map that names
   // PlutusV1 twice, which below decoder version 9 keeps the last (`decodeMapByKey`,
-  // `Decoder.hs:810-824`).
+  // `Decoder.hs:810-824`, cardano-ledger f649f975).
   private val rewritten = proposed(
     Era.Alonzo,
     "a4" + "001a000003e8" + "12" + "a200" + "98a6" + "00" * 166 + costModel("190064").drop(2) +

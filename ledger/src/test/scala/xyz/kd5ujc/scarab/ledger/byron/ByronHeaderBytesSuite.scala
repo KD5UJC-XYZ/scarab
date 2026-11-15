@@ -86,8 +86,9 @@ class ByronHeaderBytesSuite extends FunSuite:
   test(
     "a verification key in a longer length form than its shortest is refused; a signature is not"
   ) {
-    // `decodeBytesCanonical` for a key (`Signing/VerificationKey.hs:96-97`), `decodeBytes` for a
-    // signature (`Signing/Signature.hs:129-130`): 64 bytes as `59 0040` instead of `58 40`
+    // `decodeBytesCanonical` for a key (`Signing/VerificationKey.hs:96-97`,
+    // cardano-ledger f649f975), `decodeBytes` for a signature (`Signing/Signature.hs:129-130`): 64
+    // bytes as `59 0040` instead of `58 40`
     val h = items(node(main))
     val consensus = items(h(3))
     val proxy = items(items(consensus(3))(1))
@@ -160,7 +161,7 @@ class ByronHeaderBytesSuite extends FunSuite:
       cause(chunked(main, items(proof(1))(1))),
       Left(Header.fail(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes)))
     )
-    // the SSC proof's tag is 0 to 3 (`dropSscProof`, `Ssc.hs:169-188`)
+    // the SSC proof's tag is 0 to 3 (`dropSscProof`, `Ssc.hs:169-188`, cardano-ledger f649f975)
     val ssc = items(proof(1))
     val retagged = Bytes(
       main.value.patch(main.value.indexOfSlice(proof(1).original.value) + 1, Vector(0x04.toByte), 1)

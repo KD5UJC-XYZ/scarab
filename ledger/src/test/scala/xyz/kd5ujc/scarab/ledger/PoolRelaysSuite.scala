@@ -8,10 +8,10 @@ import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 
 /** The relays of a pool registration: `StakePoolRelay` of cardano-ledger-core
-  * (`State/StakePool.hs:328-421`), read from the bytes a registration holds. The fixtures: the one
-  * real registration with relays the repository holds (a mainnet Shelley block, provenance in
-  * `fixtures/mainnet/README.md`), the registrations of the devnet (none has a relay), and bytes
-  * written by hand from the reference's encoder.
+  * (`State/StakePool.hs:328-421`, cardano-ledger f649f975), read from the bytes a registration
+  * holds. The fixtures: the one real registration with relays the repository holds (a mainnet
+  * Shelley block, provenance in `fixtures/mainnet/README.md`), the registrations of the devnet
+  * (none has a relay), and bytes written by hand from the reference's encoder.
   */
 class PoolRelaysSuite extends ScalaCheckSuite:
   private def hex(s: String): Bytes =

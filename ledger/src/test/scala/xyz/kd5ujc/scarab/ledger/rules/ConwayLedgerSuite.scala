@@ -879,9 +879,9 @@ class ConwayLedgerSuite extends FunSuite:
   test(
     "re-registering with the pool's own key hash and then another in one epoch drops the key in use (the reference's quirk)"
   ) {
-    // `Pool.hs:274-286`: a re-registration whose future parameters hold another key hash deletes
-    // that one from the map, whether or not it is also the key of the registered pool, so the
-    // map is no longer every key the pools use.
+    // `Pool.hs:274-286` (cardano-ledger f649f975): a re-registration whose future parameters hold
+    // another key hash deletes that one from the map, whether or not it is also the key of the
+    // registered pool, so the map is no longer every key the pools use.
     val one = key()
     val pp11 = pparams.copy(protocolMajor = 11)
     val own = poolParams(one).vrfKeyHash
@@ -1049,11 +1049,11 @@ class ConwayLedgerSuite extends FunSuite:
   }
 
   // The withdrawal accounts of a transaction are of the network of the ledger, whichever validity
-  // tag the transaction has (`validateWrongNetworkWithdrawal`, `Babbage/Rules/Utxo.hs:400`, in the
-  // rule UTXO that every transaction passes). The expected verdicts are those of that rule in the
-  // pinned reference; the refusals of the two tags are also taken from the reference node on the
-  // devnet (`ntccases.py`, `DevnetRefusedTxSuite`). Each case is run as a transaction (LEDGER) and
-  // as a block of it (LEDGERS).
+  // tag the transaction has (`validateWrongNetworkWithdrawal`, `Babbage/Rules/Utxo.hs:400`
+  // (cardano-ledger f649f975), in the rule UTXO that every transaction passes). The expected
+  // verdicts are those of that rule in the pinned reference; the refusals of the two tags are also
+  // taken from the reference node on the devnet (`ntccases.py`, `DevnetRefusedTxSuite`). Each case
+  // is run as a transaction (LEDGER) and as a block of it (LEDGERS).
   for
     protocol <- Vector(10, 11)
     block <- Vector(false, true)
@@ -1121,8 +1121,8 @@ class ConwayLedgerSuite extends FunSuite:
       ),
       "WrongNetwork"
     )
-    // `feesOK` comes before the inputs (`Babbage/Rules/Utxo.hs:370-376`): the collateral that does
-    // not exist pays nothing, which is the first failure
+    // `feesOK` comes before the inputs (`Babbage/Rules/Utxo.hs:370-376`, cardano-ledger f649f975):
+    // the collateral that does not exist pays nothing, which is the first failure
     assertEquals(
       refused("missing collateral", c.bodyWith(c.hash, collateral = Vector(txIn(40)))),
       "InsufficientCollateral"
@@ -1212,7 +1212,8 @@ class ConwayLedgerSuite extends FunSuite:
     accepted(s, paying(byron(0, Some(42))))
     assertEquals(refusedWith(s, paying(byron(0, None))), "WrongNetwork")
     // 64 bytes of attributes are allowed, 65 are not; Conway reports Shelley's failure as
-    // `OutputTooBigUTxO` (`Conway/Rules/Utxo.hs:158-161`, `Allegra/Rules/Utxo.hs:387`)
+    // `OutputTooBigUTxO` (`Conway/Rules/Utxo.hs:158-161` (cardano-ledger f649f975),
+    // `Allegra/Rules/Utxo.hs:387`)
     accepted(s, paying(byron(64, Some(42))))
     assertEquals(refusedWith(s, paying(byron(65, Some(42)))), "OutputTooBigUTxO")
   }

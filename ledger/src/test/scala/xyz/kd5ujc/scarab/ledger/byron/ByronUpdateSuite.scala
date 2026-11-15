@@ -248,7 +248,8 @@ class ByronUpdateSuite extends ScalaCheckSuite:
     )
     CborRead.decode(Cb.arr(Cb.arr(proposal), Cb.arr())).flatMap(UpdatePayload.decode)
 
-  // `InstallerHash`: four byte strings, the second a 32-byte hash (`Update/InstallerHash.hs:58-65`)
+  // `InstallerHash`: four byte strings, the second a 32-byte hash (`Update/InstallerHash.hs:58-65`,
+  // cardano-ledger f649f975)
   private val installer =
     Cb.arr(
       Cb.bytes(Bytes.empty),
@@ -323,7 +324,8 @@ class ByronUpdateSuite extends ScalaCheckSuite:
   }
 
   test("a proposal's attributes are empty: `dropEmptyAttributes` refuses any entry (#552)") {
-    // `Common/Attributes.hs:241-244`: `DecoderErrorSizeMismatch "Attributes" 0 len`
+    // `Common/Attributes.hs:241-244` (cardano-ledger f649f975):
+    // `DecoderErrorSizeMismatch "Attributes" 0 len`
     assertEquals(
       proposalWith(Cb.map(), Cb.map(Cb.uint(0) -> Cb.bytes(Bytes.empty))),
       Left(LedgerDecodeError.NumberOutOfRange(DecodeField.ProposalAttributes, 1, 0, 0))

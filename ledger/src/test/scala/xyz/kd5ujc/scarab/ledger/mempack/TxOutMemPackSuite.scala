@@ -195,7 +195,8 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
 
   /** A packed output is canonical when packing what it decodes to gives the same bytes. The
     * devnet's genesis outputs are not in Alonzo and later: they are base-address, ada-only outputs
-    * that the eras before Alonzo stored as tag 0 and `upgradeTxOut` kept (`Alonzo/TxOut.hs:340`).
+    * that the eras before Alonzo stored as tag 0 and `upgradeTxOut` kept (`Alonzo/TxOut.hs:340`,
+    * cardano-ledger f649f975).
     */
   private def checkPacking[E <: EraTag](label: String, value: Bytes)(using
       ShelleyBasedEra[E]

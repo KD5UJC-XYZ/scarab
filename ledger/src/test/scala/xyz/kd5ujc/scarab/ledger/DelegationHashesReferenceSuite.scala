@@ -84,7 +84,8 @@ object DelegationHashesReferenceSuite:
     case DRepScript extends Place("drep script hash", DecodeField.DrepHash)
 
   object Place:
-    /** The places of the certificate `tag` (`Conway/TxCert.hs:683-731`). */
+    /** The places of the certificate `tag` (`Conway/TxCert.hs:683-731`, cardano-ledger f649f975).
+      */
     def of(tag: Int): Set[Place] =
       val pool = Set(2, 10, 11, 13).contains(tag)
       val drep = Set(9, 10, 12, 13).contains(tag)

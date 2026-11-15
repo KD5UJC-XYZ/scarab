@@ -133,8 +133,8 @@ class BbodySuite extends FunSuite:
       body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
       Vector.empty
     )
-    // `BodyRefScriptsSizeTooBig` (Conway `Rules/Bbody.hs:342-355`): 18 scripts of 60,000 bytes
-    // supplied, against the limit of 1 MiB expected
+    // `BodyRefScriptsSizeTooBig` (Conway `Rules/Bbody.hs:342-355`, cardano-ledger f649f975): 18
+    // scripts of 60,000 bytes supplied, against the limit of 1 MiB expected
     assertEquals(
       run(pp, Vector(naming), state(pp, utxo), BodyCommitment(101, commitment.hash)),
       Left(
@@ -147,8 +147,8 @@ class BbodySuite extends FunSuite:
 
   test("Conway at versions 7 and 8 limits the reference scripts of the block too") {
     // `conwayBbodyTransition` runs `validateBodyRefScriptsSizeTooBig` whatever the version
-    // (`Conway/Rules/Bbody.hs:314,330-355`); a chain that starts Conway by epoch keeps the
-    // version of Babbage
+    // (`Conway/Rules/Bbody.hs:314,330-355`, cardano-ledger f649f975); a chain that starts Conway by
+    // epoch keeps the version of Babbage
     val alice = key()
     val held = Vector.tabulate(18)(i => TxIn(Bytes.fromArray(Array.fill(32)(i.toByte)), 0))
     val utxo = Utxo.empty ++ held.map(_ -> withScript(alice.address(), 60000))
@@ -244,8 +244,8 @@ class BbodySuite extends FunSuite:
 
   test("the reference scripts of one transaction are added up in 64 bits, as the reference's Int") {
     // `totalRefScriptSizeInBlock` sums `txNonDistinctRefScriptsSize :: ... -> Int` (Conway
-    // `Rules/Bbody.hs:357-370`): 2048 reference inputs, each naming a script of 1 MiB, hold 2^31
-    // bytes, one more than a 32-bit Int holds
+    // `Rules/Bbody.hs:357-370`, cardano-ledger f649f975): 2048 reference inputs, each naming a
+    // script of 1 MiB, hold 2^31 bytes, one more than a 32-bit Int holds
     val alice = key()
     val script = withScript(alice.address(), 1 << 20)
     val held = Vector.tabulate(2048)(i => TxIn(Bytes.fromArray(Array.fill(32)(9.toByte)), i))

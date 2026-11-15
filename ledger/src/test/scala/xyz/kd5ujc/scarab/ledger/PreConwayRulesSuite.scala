@@ -444,7 +444,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       "ScriptWitnessNotValidatingUTXOW"
     )
     // an extraneous script that holds: before Babbage every native script provided must hold
-    // (`validateFailedNativeScripts`, `Shelley/Rules/Utxow.hs:365-373`), and that check comes first
+    // (`validateFailedNativeScripts`, `Shelley/Rules/Utxow.hs:365-373`, cardano-ledger f649f975),
+    // and that check comes first
     val extra = Witnesses(
       Vector.empty,
       scripts = Vector(policyScript, scriptOf(NativeScript.AllOf(Vector.empty)))
@@ -783,8 +784,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     // a proposal for the wrong epoch is refused
     val late = b.copy(update = Some(u.copy(epoch = 9)))
     assertEquals(rule(run(s, tx(late, Vector(alice, delegates(0))))), "PPUpdateWrongEpoch")
-    // `getTheSlotOfNoReturn` is monus (`Slot.hs:106-114`): with 2 * 3k/f past the next epoch's first
-    // slot the point is slot 0, so even slot 0 votes for the next epoch
+    // `getTheSlotOfNoReturn` is monus (`Slot.hs:106-114`, cardano-ledger f649f975): with 2 * 3k/f
+    // past the next epoch's first slot the point is slot 0, so even slot 0 votes for the next epoch
     val past = env.copy(slot = 0, stabilityWindow = env.firstSlotNextEpoch)
     run(s, tx(b, Vector(alice, delegates(0))), past) match
       case Left(LedgerFailure.Rejected(_, fs)) =>
@@ -803,7 +804,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
 
   /** The state after two genesis delegates of a quorum of two propose `update` for this epoch in
     * the era `E`, from parameters `pp`: PPUP predicts the parameters of the next epoch
-    * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`).
+    * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`, cardano-ledger f649f975).
     */
   private def proposedIn[E <: EraTag](pp: ProtocolParams, update: ParamUpdate)(using
       ShelleyBasedEra[E],
@@ -834,7 +835,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   private def cbor(bytes: Int*): Bytes = Bytes(bytes.toVector.map(_.toByte))
 
   // Babbage's parameters at version 6, as the Babbage translation leaves them (no cost per word,
-  // `Babbage/PParams.hs:316-345`)
+  // `Babbage/PParams.hs:316-345`, cardano-ledger f649f975)
   private val babbageAt6 =
     params(6).copy(coinsPerUTxOByte = 4310, coinsPerUTxOWord = 0, minUTxOValue = 0)
 
@@ -852,7 +853,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
 
   test("Babbage at version 6 keeps coinsPerUTxOByte when an update moves it to version 7") {
     // Babbage's update has no conversion of its own: only the translation converts
-    // (`Babbage/Translation.hs:84-91`)
+    // (`Babbage/Translation.hs:84-91`, cardano-ledger f649f975)
     val after = proposedIn[Babbage](babbageAt6, ParamUpdate(Map(14 -> cbor(0x82, 0x07, 0x00))))
     assertEquals(predicted(after).coinsPerUTxOByte, BigInt(4310))
     val adopted = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))
@@ -869,8 +870,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   }
 
   test("the Babbage translation converts the cost per word an Alonzo update set, rounded down") {
-    // `upgradeBabbagePParams True` on the future parameters (`Babbage/Translation.hs:84-91`,
-    // `Babbage/PParams.hs:316-345, 390-391`)
+    // `upgradeBabbagePParams True` on the future parameters (`Babbage/Translation.hs:84-91`
+    // (cardano-ledger f649f975), `Babbage/PParams.hs:316-345, 390-391`)
     val update = ParamUpdate(Map(14 -> cbor(0x82, 0x07, 0x00), 17 -> cbor(0x19, 0x9c, 0x43)))
     val after = proposedIn[Alonzo](params(6), update)
     val entered = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))

@@ -128,7 +128,8 @@ class DijkstraRulesSuite extends FunSuite:
     )
   }
 
-  // the reference records both and reports them in reverse (`Extended.hs:715-722`)
+  // the reference records both and reports them in reverse (`Extended.hs:715-722`,
+  // cardano-ledger 9df9f98c)
   test("BBODY refuses a header whose body hash is not the body's, and records a wrong size too") {
     val other = Bytes.fromArray(Array.fill(32)(9.toByte))
     val header = empty.header.copy(bodyHash = other)
@@ -275,7 +276,8 @@ class DijkstraRulesSuite extends FunSuite:
       signal
     )
 
-  // an unknown voter's votes are dropped before the actions are looked up (`Gov.hs:569-602`)
+  // an unknown voter's votes are dropped before the actions are looked up (`Gov.hs:569-602`,
+  // cardano-ledger 9df9f98c)
   test("GOV records a voter that does not exist and not its votes, with Conway's transition") {
     val missing = DijkstraGovActionId(Bytes.fromArray(Array.fill(32)(7)), 0)
     val signal = DijkstraGovSignal(

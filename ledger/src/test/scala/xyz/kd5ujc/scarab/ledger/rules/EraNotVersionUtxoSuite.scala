@@ -81,7 +81,8 @@ class EraNotVersionUtxoSuite extends FunSuite:
   test("Allegra at version 2 runs the validity interval (Allegra/Rules/Utxo.hs:176,225-235)") {
     val pp = TestLedger.params(2)
     val outs = Vector(out(funds - fee))
-    // the upper bound is exclusive (`inInterval`, `Allegra/Scripts.hs:504-509`)
+    // the upper bound is exclusive (`inInterval`, `Allegra/Scripts.hs:504-509`,
+    // cardano-ledger f649f975)
     assertEquals(
       failures[Allegra](pp, Value.coin(funds), outs, ttl = Some(slot)),
       utxo(UtxoFailure.OutsideValidityInterval(None, Some(slot), slot))
@@ -106,7 +107,7 @@ class EraNotVersionUtxoSuite extends FunSuite:
 
   test("Mary at version 2 never finds an output with assets too small (Mary/TxOut.hs:33)") {
     // `Val.pointwise (<)` against an ada-only minimum is false for any asset
-    // (`Allegra/Rules/Utxo.hs:256-270`), whatever `scaledMinDeposit` says
+    // (`Allegra/Rules/Utxo.hs:256-270`, cardano-ledger f649f975), whatever `scaledMinDeposit` says
     val pp = TestLedger.params(2)
     val value = big(policy, 1)
     val small = out(1, value)
@@ -141,7 +142,7 @@ class EraNotVersionUtxoSuite extends FunSuite:
   }
 
   test("Alonzo at version 4 limits a value by maxValSize, last output first") {
-    // `validateOutputTooBigUTxO` (`Alonzo/Rules/Utxo.hs:400-424`)
+    // `validateOutputTooBigUTxO` (`Alonzo/Rules/Utxo.hs:400-424`, cardano-ledger f649f975)
     val pp = TestLedger.params(4).copy(minUTxOValue = 0)
     val value = big(policy)
     assert(value.serializedSize > 4000 && value.serializedSize < pp.maxValueSize)
@@ -157,7 +158,7 @@ class EraNotVersionUtxoSuite extends FunSuite:
   }
 
   /** Babbage's parameters at version 6, as the Babbage translation leaves them
-    * (`Babbage/PParams.hs:389-391`).
+    * (`Babbage/PParams.hs:389-391`, cardano-ledger f649f975).
     */
   private val babbageAt6 =
     TestLedger.params(6).copy(coinsPerUTxOByte = 4310, coinsPerUTxOWord = 0, minUTxOValue = 0)
@@ -165,7 +166,8 @@ class EraNotVersionUtxoSuite extends FunSuite:
   test("Babbage at version 6 takes its minimum from coinsPerUTxOByte (Babbage/TxOut.hs:230)") {
     val small = out(1000)
     val outs = Vector(small, out(funds - fee - 1000))
-    // `validateOutputTooSmallUTxO` (`Babbage/Rules/Utxo.hs:302-321`) reports the minimum too
+    // `validateOutputTooSmallUTxO` (`Babbage/Rules/Utxo.hs:302-321`, cardano-ledger f649f975)
+    // reports the minimum too
     assertEquals(
       failures[Babbage](babbageAt6, Value.coin(funds), outs),
       utxo(UtxoFailure.BabbageOutputTooSmall(Vector(small -> (160 + small.ledgerSize) * 4310)))
@@ -173,8 +175,9 @@ class EraNotVersionUtxoSuite extends FunSuite:
   }
 
   test("Babbage at version 6 takes the collateral return off the collateral") {
-    // `feesOK` (`Babbage/Rules/Utxo.hs:170-192`, `validateTotalCollateral`): the balance is the
-    // collateral less its return, 100 here against the 300 that 150% of the fee needs
+    // `feesOK` (`Babbage/Rules/Utxo.hs:170-192` (cardano-ledger f649f975),
+    // `validateTotalCollateral`): the balance is the collateral less its return, 100 here against
+    // the 300 that 150% of the fee needs
     val held = TestLedger.txIn(1) -> out(1000000000)
     val returned = out(1000000000 - 100)
     val redeemer = Redeemer(0, 0, Bytes.empty, ExUnits.zero)

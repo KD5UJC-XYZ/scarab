@@ -110,7 +110,8 @@ class EraNotVersionUtxowSuite extends FunSuite:
   }
 
   test("Babbage at version 6 allows the datums of reference inputs and the collateral return") {
-    // `getBabbageSupplementalDataHashes` (`Babbage/UTxO.hs:74-83`), whatever the version
+    // `getBabbageSupplementalDataHashes` (`Babbage/UTxO.hs:74-83`, cardano-ledger f649f975),
+    // whatever the version
     val plain = Vector(out(funds - fee))
     val viaReference = withDatum(plain, beforeConway, referenceInputs = Vector(referenced))
     assertEquals(
@@ -132,7 +133,8 @@ class EraNotVersionUtxowSuite extends FunSuite:
 
   test("Alonzo at version 7 runs every native script it is given (Alonzo/Rules/Utxow.hs:326)") {
     // Alonzo's `validateFailedNativeScripts` runs every native script provided, first; Babbage's
-    // `validateFailedBabbageScripts` only the needed ones (`Babbage/Rules/Utxow.hs:210-228`)
+    // `validateFailedBabbageScripts` only the needed ones (`Babbage/Rules/Utxow.hs:210-228`,
+    // cardano-ledger f649f975)
     val bob = TestLedger.key()
     val unneeded = Script.nativeOf(
       Bytes(Vector(0x82, 0x00, 0x58, 0x1c).map(_.toByte)) ++ bob.hash,
