@@ -7,7 +7,7 @@ pragma-org's [node-diversity-conformance](https://pragma-org.github.io/node-dive
 the reports that independent Cardano nodes publish for four scenarios: `ledger-rules`, `uplc-conformance`,
 `uplc-turbo` and `cbor-decoding` (one report per era, `conway` and `dijkstra`). The site runs nothing itself: it
 downloads each node's newest report when it is built. Scarab writes its reports with the `tools` entry points
-named in [the code map](../codemap.md), and publishes them on demand, never on a schedule. The Plutus scenarios
+named in [the code map](../codemap.md). The CBOR detector runs nightly; publication stays on demand. The Plutus scenarios
 report Scarab's own evaluator (`--plutus-vm scarab`).
 
 ## Running a scenario locally
@@ -37,6 +37,41 @@ python3 -I -B scripts/conformance/run.py ledger-rules uplc-conformance cbor-deco
    program that does not evaluate and the site counts it as failed; the provenance records how many it reports.
 5. It writes the report, compressed, beside a `.provenance.json` (commit, inputs and pins, tool and arguments,
    image, checks, timings; no host name or path) and `summary.json`.
+
+The workflow also runs `scripts/conformance/summarize.py --out <dir>`. Its `cbor-outcomes.md` is the job summary;
+`cbor-outcomes.json` retains matched and mismatched counts by era and rule, source identities and every mismatched
+sample's name. A successfully generated report may contain disagreements: the summary says **MISMATCHES**, emits
+a workflow warning and keeps those results visible. It does not add a merge gate or prevent publishing an honest
+report. Missing or invalid report evidence is **INCOMPLETE**, never a conformance pass.
+With `--previous <earlier-run-dir>`, the summarizer identifies new and resolved disagreements only when dataset,
+protocol version and sample identities agree. Without comparable evidence that number is unknown, not zero.
+
+## Nightly CBOR detector
+
+The existing workflow runs `cbor-decoding` nightly, with both complete pinned era corpora and all normalisation
+vectors. It does not publish reports automatically or add a required PR check. The job's summary gives the
+conformance verdict; a successful report-generation job alone is not a conformance pass. Reports, provenance,
+outcome summaries and diagnostic logs have bounded workflow-artifact retention. The workflow reads the most recent
+successful nightly run's artifact for comparison. A first run, expired/missing artifact or incompatible corpus
+gives an unknown comparison; local comparisons can use two retained run directories with `summarize.py --previous`.
+
+The detector's historical positive control is [#550](https://github.com/KD5UJC-XYZ/scarab/issues/550), fixed by
+[#628](https://github.com/KD5UJC-XYZ/scarab/pull/628): an anchor URL above 128 UTF-8 bytes was accepted. The pinned
+dataset `ed6c49a4e273bb540a26c46d61c011974d0192f6` contains
+`dataset/conway/url/invalid-zap-1/00001-ccbbf62b010f35dd.input.cbor`, a valid definite text string of 129 UTF-8
+bytes (SHA-256 `ccbbf62b010f35dde2d12314f79e2318a9f7693aabf67a4e7e6b384c818eea91`). It is embedded as an
+anchor's URL, with a 32-byte hash, exactly as `ConwayRules` reaches the production `Anchor.decode`.
+
+On 2026-11-15, immutable development-source exports of affected revision
+`be6309ab7fc5591c27835d008069f5c2b3cd9c70` and fixed revision
+`1b84d9944017fddfae3bb56621480c74698b565c` were built in the same Docker JDK image
+`sha256:b958d3cb2430d6130e46c104cbfb371731e36569a13c2c580e79ae8dbf5d1924` (Java 25.0.4.1, sbt 1.10.7,
+Scala 3.3.8). A test entry point read that original file, wrapped it as `[url, bytes32]`, called `Cbor.decode`,
+then the revision's own `Anchor.decode`. The only API adaptation was the fixed reader's explicit Conway decoder
+version. The affected revision returned `accepted`; the fixed revision returned
+`rejected: TextTooLong(anchor url,128,129)`. Both compiled and ran successfully. This demonstrates detection of
+one historical defect, not complete conformance. Commands and the compact probe are retained in
+[#1082](https://github.com/KD5UJC-XYZ/scarab/issues/1082); raw build outputs are not published.
 
 A report names its commit, so the checkout must have no uncommitted or untracked changes (`--allow-dirty` runs
 anyway, and `publish.py` then refuses the report). Each run takes a fresh `--out`: the runner refuses one that

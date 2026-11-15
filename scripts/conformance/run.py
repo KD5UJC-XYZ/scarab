@@ -391,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     args.inputs.mkdir(parents=True, exist_ok=True)
     outcomes = run_scenarios(args, checkout, selected, pins)
     summary = {"scarab_commit": checkout.commit, "dirty": checkout.dirty,
+               "requested": [scenario.id for scenario in selected],
                "outcomes": [outcome.summary() for outcome in outcomes]}
     (args.out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     for outcome in outcomes:

@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Conformance reports
 
-# Scarab's reports for pragma-org's node-diversity-conformance site, on demand only
+# Scarab's reports for pragma-org's node-diversity-conformance site, on demand and a nightly CBOR detector
 # (docs/running/conformance.md): scripts/conformance/run.py builds the tools in the JDK image, runs each
 # chosen scenario on its pinned inputs and checks the report; the files are kept as a workflow artifact.
 # With `publish`, from main only, scripts/conformance/publish.py commits them to the public reports repository
 # KD5UJC-XYZ/scarab-conformance, pushing with the deploy key in the CONFORMANCE_REPO_DEPLOY_KEY secret.
 # uplc-turbo is a timing benchmark and is not offered: it runs ad hoc on a quiet machine.
 on:
+  schedule:
+    - cron: '17 8 * * *'
   workflow_dispatch:
     inputs:
       ledger-rules:
@@ -29,9 +31,10 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: conformance-reports
+  group: ${{ github.event_name == 'schedule' && 'conformance-nightly' || 'conformance-reports' }}
   cancel-in-progress: false
 
 jobs:
@@ -63,7 +66,7 @@ jobs:
         env:
           LEDGER_RULES: ${{ inputs.ledger-rules }}
           UPLC_CONFORMANCE: ${{ inputs.uplc-conformance }}
-          CBOR_DECODING: ${{ inputs.cbor-decoding }}
+          CBOR_DECODING: ${{ github.event_name == 'schedule' || inputs.cbor-decoding }}
         run: |
           scenarios=()
           if [ "$LEDGER_RULES" = true ]; then scenarios+=(ledger-rules); fi
@@ -75,9 +78,31 @@ jobs:
             --out "$RUNNER_TEMP/conformance" --inputs "$RUNNER_TEMP/conformance-inputs" \
             --image scarab-jdk:local --build-image --owner "conformance-$GITHUB_RUN_ID"
 
+      - name: Read the previous nightly CBOR report when available
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous_run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow conformance.yml --branch main \
+            --event schedule --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty') || previous_run=
+          if [ -n "$previous_run" ]; then
+            gh run download "$previous_run" --repo "$GITHUB_REPOSITORY" --name "conformance-reports-$previous_run" \
+              --dir "$RUNNER_TEMP/conformance-previous" || echo 'Previous CBOR evidence unavailable; comparison will say unknown'
+          fi
+
       - name: Summary
         if: ${{ always() }}
         run: |
+          # This informational summary must not turn a skipped CBOR tool into a new publication blocker.
+          if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance" \
+            --previous "$RUNNER_TEMP/conformance-previous"; then
+            echo '::warning::CBOR conformance evidence is incomplete; see the job summary'
+          fi
+          if [ -f "$RUNNER_TEMP/conformance/cbor-outcomes.md" ]; then
+            cat "$RUNNER_TEMP/conformance/cbor-outcomes.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'CBOR conformance: INCOMPLETE (summary unavailable)' >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f "$RUNNER_TEMP/conformance/summary.json" ]; then
             { echo '```json'; cat "$RUNNER_TEMP/conformance/summary.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -91,6 +116,8 @@ jobs:
             ${{ runner.temp }}/conformance/*.json.gz
             ${{ runner.temp }}/conformance/*.provenance.json
             ${{ runner.temp }}/conformance/summary.json
+            ${{ runner.temp }}/conformance/cbor-outcomes.json
+            ${{ runner.temp }}/conformance/cbor-outcomes.md
             ${{ runner.temp }}/conformance/work/**/*.log
           retention-days: 30
           if-no-files-found: error
