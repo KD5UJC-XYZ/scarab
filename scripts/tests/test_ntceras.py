@@ -12,7 +12,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from devnet import cbor, ntceras, ntcqueries, ntcquery  # noqa: E402
+from devnet import cbor, ledgercompare, ntceras, ntcqueries, ntcquery  # noqa: E402
 from devnet.ntcqueries import Outcome, Row  # noqa: E402
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.util import FollowerSite  # noqa: E402
@@ -686,17 +686,17 @@ class EraBatteryTest(unittest.TestCase):
         return next_round
 
     def matching(self, era, major=5):
-        return self.round_of(era, [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME)], major)
+        return self.round_of(era, [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME, 7)], major)
 
     def differing(self, era, major=5):
-        return self.round_of(era, [Row("GetUTxOByTxIn", 23, True, False, b"\x82\x04\x01", b"\x82\x04\x02")],
+        return self.round_of(era, [Row("GetUTxOByTxIn", 23, True, False, b"\x82\x04\x01", b"\x82\x04\x02", 15)],
                              major)
 
     def test_a_round_reports_its_rows_by_class(self):
-        rows = [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME),
-                Row("GetEpochNo", 23, False, False, self.SAME, None),
-                Row("GetLedgerTip", 23, False, False, self.SAME, self.SAME),
-                Row("GetConstitution", 23, True, True, None, None)]
+        rows = [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME, 7),
+                Row("GetEpochNo", 23, False, False, self.SAME, None, 1),
+                Row("GetLedgerTip", 23, False, False, self.SAME, self.SAME, 0),
+                Row("GetConstitution", 23, True, True, None, None, 23)]
         battery = self.battery(self.rounds(self.round_of(4, rows)))
         battery.request("alonzo")
         battery.step(battery.requests.get_nowait())
@@ -722,8 +722,8 @@ class EraBatteryTest(unittest.TestCase):
         return battery
 
     def test_the_verdict_is_incomplete_while_a_query_is_not_implemented_and_never_a_pass(self):
-        matched = Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME)
-        missing = Row("GetEpochNo", 23, False, False, self.SAME, None)
+        matched = Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME, 7)
+        missing = Row("GetEpochNo", 23, False, False, self.SAME, None, 1)
         passed = self.every_era(lambda era: [matched])
         self.assertEqual((passed.report(self.site)["verdict"], passed.failures(self.site),
                           passed.incomplete(self.site)), ("passed", [], []))
@@ -737,6 +737,91 @@ class EraBatteryTest(unittest.TestCase):
         self.assertIn("INCOMPLETE", ntceras.table(report).splitlines()[0])
         failed = self.every_era(lambda era: [missing, self.differing(era).rows[0]])
         self.assertEqual(failed.report(self.site)["verdict"], "failed")
+
+    def test_the_ratchet_holds_with_the_expected_incomplete_set(self):
+        # every era's battery as it is marked today: nothing grows, falls back or shrinks (the ledger states, which
+        # need framed answers to match, are left out)
+        def rows_of(era):
+            forms = [(23, form) for form in ntcqueries.battery(ntcqueries.WIDEST, era)] + \
+                [(ntcqueries.LEGACY_VERSION, form) for form in ntcqueries.legacy_battery(era)]
+            return [Row(label, version, mark, ntcqueries.conway_only(ntcqueries.inner_of(q), era),
+                        None if ntcqueries.conway_only(ntcqueries.inner_of(q), era) else self.SAME,
+                        self.SAME if mark and not ntcqueries.conway_only(ntcqueries.inner_of(q), era) else None,
+                        ntcqueries.inner(ntcqueries.inner_of(q))[0])
+                    for version, (label, q, mark) in forms if not ledgercompare.applies(label)]
+        battery = self.every_era(rows_of)
+        report = battery.report(self.site)
+        self.assertEqual(report["ratchet"], {"grows": [], "fallsBack": [], "shrinks": [], "shrinkTags": []})
+        self.assertEqual((report["verdict"], battery.failures(self.site)), ("incomplete", []))
+        self.assertEqual([len(report["perEra"][era]["incompleteRows"]) for era in ntceras.ERA_NAMES.values()],
+                         [37, 37, 37, 37, 37, 0])
+        # and in each era before Conway the expected set is exactly the queries the battery does not mark implemented
+        for era in range(1, 6):
+            unmarked = {ntcqueries.inner(ntcqueries.inner_of(q))[0]
+                        for _, q, mark in ntcqueries.battery(ntcqueries.WIDEST, era) + ntcqueries.legacy_battery(era)
+                        if not mark}
+            self.assertEqual(unmarked, set(ntcqueries.INCOMPLETE_BEFORE_CONWAY), era)
+
+    def test_an_incomplete_row_the_expectation_does_not_list_fails(self):
+        # a query added to the battery that the Scala node does not answer before Conway (tag 4), or one the battery
+        # no longer marks answered (tag 14): the incomplete set grows
+        for tag, label in ((4, "GetProposedPParamsUpdates"), (14, "GetRewardProvenance")):
+            with self.subTest(tag=tag):
+                battery = self.every_era(lambda era: [self.matching(era).rows[0],
+                                                      Row(label, 23, era == 6, False, self.SAME,
+                                                          self.SAME if era == 6 else None, tag)])
+                report = battery.report(self.site)
+                self.assertEqual(report["ratchet"]["grows"],
+                                 sorted(f"{era} {label}@v23" for era in ("shelley", "allegra", "mary", "alonzo",
+                                                                          "babbage")))
+                self.assertEqual(report["verdict"], "failed")
+                self.assertTrue([f for f in battery.failures(self.site) if "the incomplete set grows" in f])
+
+    def test_a_row_treated_as_answered_that_is_not_compared_fails(self):
+        # the Scala node no longer answers a query the battery marks answered: never incomplete, a fall-back
+        battery = self.every_era(lambda era: [Row("GetUTxOWhole", 23, True, False, self.SAME, None, 7)])
+        report = battery.report(self.site)
+        self.assertEqual(len(report["ratchet"]["fallsBack"]), 6)
+        self.assertEqual(report["rounds"][0]["rows"]["GetUTxOWhole@v23"]["outcome"], "scalaRefused")
+        self.assertTrue([f for f in battery.failures(self.site) if "fall back" in f])
+        # a query `ANSWERED_BEFORE_CONWAY` lists that a battery leaves unmarked falls back too, before Conway
+        battery = self.every_era(lambda era: [self.matching(era).rows[0],
+                                              Row("DebugChainDepState", 23, era == 6, False, self.SAME,
+                                                  self.SAME if era == 6 else None, 13)])
+        held = battery.report(self.site)["ratchet"]
+        self.assertEqual(len(held["fallsBack"]), 5)
+        self.assertEqual(held["grows"], held["fallsBack"])
+
+    def test_a_listed_query_now_compared_and_matched_shrinks_the_set_and_passes(self):
+        battery = self.every_era(lambda era: [self.matching(era).rows[0],
+                                              Row("GetEpochNo", 23, True, False, self.SAME, self.SAME, 1)])
+        report = battery.report(self.site)
+        self.assertEqual(report["ratchet"]["grows"], [])
+        self.assertEqual(report["ratchet"]["fallsBack"], [])
+        self.assertEqual(report["ratchet"]["shrinks"],
+                         sorted(f"{era} GetEpochNo@v23" for era in ("shelley", "allegra", "mary", "alonzo",
+                                                                     "babbage")))
+        self.assertEqual((report["verdict"], battery.failures(self.site)), ("passed", []))
+        self.assertEqual(report["ratchet"]["shrinkTags"], [1])
+        self.assertIn("RATCHET", ntceras.table(report))
+        self.assertIn("[1]", ntceras.table(report).splitlines()[-1])
+
+    def test_a_shrink_after_a_round_that_ended_on_the_same_query_is_reported(self):
+        # a round that ended on a listed query, then a round in which that query is compared and matched: the end
+        # fails, and the shrink is reported all the same
+        ended = ntcqueries.RoundError(self.matching(5), ("GetEpochNo", [0, [0, [5, [1]]]], True), 23,
+                                      ntcquery.Deadline("no answer"))
+        listed = Row("GetEpochNo", 23, True, False, self.SAME, self.SAME, 1)
+        with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
+            battery = self.battery(self.rounds(ended, self.round_of(5, [listed])))
+            battery.request("babbage")
+            battery.step("babbage")
+        report = battery.report(self.site)
+        self.assertEqual(report["rounds"][0]["rows"]["GetEpochNo@v23"]["tag"], 1)
+        self.assertEqual((report["ratchet"]["shrinks"], report["ratchet"]["shrinkTags"]),
+                         (["babbage GetEpochNo@v23"], [1]))
+        self.assertIn("RATCHET", ntceras.table(report))
+        self.assertEqual(report["verdict"], "failed")
 
     def test_answers_that_differ_fail_and_are_kept(self):
         battery = self.battery(self.rounds(self.differing(5)))

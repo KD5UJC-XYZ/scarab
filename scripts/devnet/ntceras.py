@@ -15,6 +15,11 @@ ended early too, and so does the query such a round ended on, whatever later rou
 a complete round in `ATTEMPTS` (one the run's end cut short is reported as cancelled instead) and a Shelley-based era
 with no complete round. The battery's `verdict` for a follower is `failed` when anything failed, else `incomplete`
 when a row is incomplete, else `passed`.
+
+The incomplete rows are held to a ratchet (`ratchet`, against `ntcqueries.INCOMPLETE_BEFORE_CONWAY`): a row that is
+incomplete where that expectation does not list it (the set grows) fails the run, and so does a row the battery treats
+as answered that is not compared (it falls back); a row the expectation lists that is compared and matched is reported
+(`shrinks`), so that the expectation can be lowered, and fails nothing.
 """
 import concurrent.futures
 import queue
@@ -51,7 +56,7 @@ def round_report(rnd, dump=None, ended=None):
     for row in rnd.rows:
         outcome, verdict = ntcqueries.judge(row)
         key = row_key(row)
-        entry = {"outcome": outcome.value, "implemented": row.implemented,
+        entry = {"outcome": outcome.value, "implemented": row.implemented, "tag": row.tag,
                  "referenceBytes": None if row.reference is None else len(row.reference),
                  "scalaBytes": None if row.scala is None else len(row.scala)}
         counts[outcome.value if outcome.value in COUNTS else "unexpected"] += 1
@@ -76,7 +81,8 @@ def round_report(rnd, dump=None, ended=None):
         rows[key] = entry
     if ended is not None:
         key = f"{ended.form[0]}@v{ended.version}"
-        rows[key] = {"outcome": "roundEnded", "implemented": ended.form[2], "error": str(ended)[:300]}
+        rows[key] = {"outcome": "roundEnded", "implemented": ended.form[2],
+                     "tag": ntcqueries.inner(ntcqueries.inner_of(ended.form[1]))[0], "error": str(ended)[:300]}
         counts["unexpected"] += 1
         failures.append(f"{era} (protocol {major}) {key}: the round ended on it: {str(ended)[:200]}")
     report = {"era": era, "eraIndex": rnd.era, "protocolMajor": major, "point": compare.point_json(rnd.point),
@@ -209,14 +215,16 @@ class EraBattery:
                             **{k: sorted({row for r in judged for row in r[k]}) for k in NAMED}}
         complete = sum(1 for r in reports if not r["partial"])
         out = {"requested": requested, "cancelled": cancelled, "unaccounted": requested - complete - len(unjudged)
-               - len(cancelled), "perEra": per_era, "notJudged": unjudged, "rounds": reports}
+               - len(cancelled), "perEra": per_era, "ratchet": ratchet(reports), "notJudged": unjudged,
+               "rounds": reports}
         out["verdict"] = self.verdict_of(out)
         return out
 
     def failures(self, site):
-        """What fails the run for the follower: a row of any round that fails, the query a round ended on, a request
-        without a complete round, a request neither judged nor cancelled, and a Shelley-based era with no complete
-        round. Nothing when the walk asked for none (no load or no comparisons)."""
+        """What fails the run for the follower: a row of any round that fails, the query a round ended on, the
+        ratchet's growth and fall-backs (`ratchet`), a request without a complete round, a request neither judged nor
+        cancelled, and a Shelley-based era with no complete round. Nothing when the walk asked for none (no load or no
+        comparisons)."""
         return self.failures_of(self.report(site))
 
     @staticmethod
@@ -224,6 +232,7 @@ class EraBattery:
         if not report["requested"]:
             return []
         out = [f for r in report["rounds"] for f in r["failures"]]
+        out += ratchet_failures(report["ratchet"])
         out += [f"node-to-client battery: a {u['era']} request without a complete round: {u['attemptErrors'][-1:]}"
                 for u in report["notJudged"]]
         if report["unaccounted"]:
@@ -253,6 +262,43 @@ class EraBattery:
         return "incomplete" if cls.incomplete_of(report) else "passed"
 
 
+def ratchet(rounds):
+    """The rows of `rounds` (round reports, partial ones too) held to the expected incomplete set
+    (`ntcqueries.expected_incomplete`), as sorted "era row" names: `grows`, an incomplete row the expectation does not
+    list; `fallsBack`, a row the battery treats as answered (marked implemented, or of a query
+    `ntcqueries.ANSWERED_BEFORE_CONWAY` lists) that is not compared because the Scala node did not answer it or it is
+    incomplete; `shrinks`, a row the expectation lists that was compared and matched, and `shrinkTags`, the queries of
+    those rows."""
+    grows, falls, shrinks, shrink_tags = set(), set(), set(), set()
+    for r in rounds:
+        era = r["eraIndex"]
+        for key, row in r["rows"].items():
+            name = f"{r['era']} {key}"
+            expected = ntcqueries.expected_incomplete(row.get("tag"), era)
+            treated_answered = row["implemented"] or (row.get("tag") in ntcqueries.ANSWERED_BEFORE_CONWAY)
+            if row["outcome"] == Outcome.INCOMPLETE.value and not expected:
+                grows.add(name)
+            if treated_answered and row["outcome"] in (Outcome.INCOMPLETE.value, Outcome.SCALA_REFUSED.value):
+                falls.add(name)
+            if expected and row["outcome"] == Outcome.MATCHED.value:
+                shrinks.add(name)
+                shrink_tags.add(row["tag"])
+    return {"grows": sorted(grows), "fallsBack": sorted(falls), "shrinks": sorted(shrinks),
+            "shrinkTags": sorted(shrink_tags)}
+
+
+def ratchet_failures(held):
+    """What fails the run in a `ratchet`: its growth and its fall-backs; its shrinkage fails nothing."""
+    out = []
+    if held["grows"]:
+        out.append(f"node-to-client battery: the incomplete set grows, rows incomplete that "
+                   f"ntcqueries.INCOMPLETE_BEFORE_CONWAY does not list: {held['grows'][:20]}")
+    if held["fallsBack"]:
+        out.append(f"node-to-client battery: rows the battery treats as answered fall back, not compared: "
+                   f"{held['fallsBack'][:20]}")
+    return out
+
+
 def table(report):
     """The verdict and per-era counts of one follower's report, as printed at the end of the run."""
     lines = [f"same-point node-to-client battery: {report['verdict'].upper()}"
@@ -264,4 +310,7 @@ def table(report):
         lines.append(f"{era:<9} {versions:>8}  {row['rounds']:>6}  {row['compared']:>8}  {row['matched']:>7}  "
                      f"{row['differs']:>7}  {row['incomplete']:>10}  {row['refusedByBoth']:>13}  "
                      f"{row['unexpected']:>10}")
+    if report["ratchet"]["shrinks"]:
+        lines.append(f"RATCHET: compared and matched, so ntcqueries.INCOMPLETE_BEFORE_CONWAY can lose the queries "
+                     f"{report['ratchet']['shrinkTags']}: {report['ratchet']['shrinks'][:20]}")
     return "\n".join(lines)

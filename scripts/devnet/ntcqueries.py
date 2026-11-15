@@ -28,6 +28,12 @@ CONWAY_ONLY = frozenset({23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39})
 # UTxO and the reward provenance (`QueryAnswers.inEveryEra`). It decodes the others there and ends the connection
 # without an answer.
 ANSWERED_BEFORE_CONWAY = frozenset({6, 7, 8, 12, 13, 14, 15})
+# The ratchet of the e2e era battery (`ntceras.ratchet`): the block queries whose forms are expected incomplete before
+# Conway, those of the battery's queries the Scala node does not have there yet; none in Conway. Every form of a
+# query is expected as its query is (`expected_incomplete`), at every version and in every era before Conway. A form
+# of another query that is incomplete fails the run, and a form of these that is compared and matched is reported,
+# so that its query leaves this set. It only shrinks: a query leaves it when the Scala node answers it before Conway.
+INCOMPLETE_BEFORE_CONWAY = frozenset({0, 1, 2, 3, 10, 11, 16, 17, 18, 19, 20, 22, 24, 29, 34, 36, 37, 38})
 # Below this node-to-client version the protocol parameters and the genesis configuration have their legacy encodings
 # (`currentPParamsEnDecoding`, `genesisConfigEnDecoding`, Query.hs 1098-1125, ouroboros-consensus 82ecba32:
 # ShelleyNodeToClientVersion13 is V21); the battery asks them at V20 besides the version both nodes agree on.
@@ -70,6 +76,12 @@ def implemented(query, era):
 def conway_only(query, era):
     """Whether both nodes refuse the block query `query` at decode in the era `era` (`CONWAY_ONLY`)."""
     return era < ERA_CONWAY and inner(query)[0] in CONWAY_ONLY
+
+
+def expected_incomplete(tag, era):
+    """Whether the ratchet expects a form of the block query of tag `tag` (inside its `GetCBOR` layers; None for a
+    query that is not a block query) incomplete in the era `era` (`INCOMPLETE_BEFORE_CONWAY`)."""
+    return era < ERA_CONWAY and tag in INCOMPLETE_BEFORE_CONWAY
 
 
 def _order(x):
@@ -416,13 +428,15 @@ class Row(NamedTuple):
     """One query of a round: its answers (None when the node ended the connection on it; the Scala node's to a query
     it does not implement is asked at its tip, not at the round's point, and is not judged), the version they were
     asked at, whether the Scala node implements the reference's behaviour for it in the round's era (`implemented`)
-    and whether both nodes refuse it at decode there (`refused`)."""
+    and whether both nodes refuse it at decode there (`refused`), and the tag of its block query inside its `GetCBOR`
+    layers (`tag`; None for a query that is not a block query)."""
     label: str
     version: int
     implemented: bool
     refused: bool
     reference: bytes | None
     scala: bytes | None
+    tag: int | None = None
 
 
 class Round(NamedTuple):
@@ -587,7 +601,8 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
                 label, query, implemented = form
                 try:
                     rows.append(Row(label, at, implemented, conway_only(inner_of(query), era),
-                                    on_reference.ask(query), (on_scala if implemented else at_tip).ask(query)))
+                                    on_reference.ask(query), (on_scala if implemented else at_tip).ask(query),
+                                    inner(inner_of(query))[0]))
                 except (Exception, SystemExit) as e:
                     raise RoundError(Round(point, era, major, version, rows), form, at, e) from e
         return Round(point, era, major, version, rows,
