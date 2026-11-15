@@ -22,7 +22,9 @@ header (the reference reports per header; the headers of a pipelined batch arriv
 Header usefulness is reported only after header acceptance, using its captured arrival timestamp;
 traffic counters remain independent. Inbound serving-only connections contribute no client arrivals. The board is the reference's: earliest arrival wins, 180 slots, an older slot on a
 full board is dropped, the join and last-seen registries are pruned at the oldest slot of the boards, and `adjustAvg` is not
-implemented (it is `0` in the pinned release). The hot-demotion pick ranks `(upstreamness + fetchynessBlocks, joined slot, random)`;
+implemented (it is `0` in the pinned release). The hot-demotion pick ranks `(upstreamness + fetchynessBlocks, joined slot, random)`
+(since #956 D11 only in deadline mode; in bulk sync and Genesis the score is `fetchynessBytes`, as
+[the reference model](reference-model.md#18-pick-policies) says);
 a peer the board does not know ranks before all that it does (`Map.findWithDefault (0, Nothing)`), and both the local-root and the
 other hot demotions use it.
 
