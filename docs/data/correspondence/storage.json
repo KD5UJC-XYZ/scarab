@@ -5,5 +5,13 @@
   "storage/src/main/scala"
  ],
  "entries": {},
- "glue": []
+ "glue": [
+  {
+   "reason": "the decimal numbers in Scarab's own storage file names, written in ASCII digits under every locale; the reference writes the numbers of its own file names with show, which writes ASCII digits",
+   "definitions": [
+    "object storage.FileNumber",
+    "def storage.FileNumber.padded"
+   ]
+  }
+ ]
 }
