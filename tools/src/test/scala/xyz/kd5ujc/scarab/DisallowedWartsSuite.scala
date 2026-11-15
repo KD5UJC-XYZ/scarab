@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab
 import org.wartremover.WartTraverser
 import org.wartremover.test.WartTestTraverser
 import org.wartremover.warts
-import xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun
+import xyz.kd5ujc.scarab.warts.{StringControlFlow, SystemTimeAndUnsafeRun}
 
 /** The parent the `LeakingSealed` probe leaks. */
 private sealed trait ProbeShape
@@ -120,6 +120,7 @@ class DisallowedWartsSuite extends munit.FunSuite:
       SystemTimeAndUnsafeRun,
       WartTestTraverser(SystemTimeAndUnsafeRun)(() => java.time.Instant.now())
     ),
+    Probe(StringControlFlow, WartTestTraverser(StringControlFlow)((s: String) => s == "x")),
     Probe(ledger.FloatingPointProbe.wart, ledger.FloatingPointProbe.result)
   )
 

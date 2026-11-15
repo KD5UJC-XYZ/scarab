@@ -137,10 +137,12 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
 // The design rules' own warts, in the `warts` project below, which every module loads through
 // `wartremoverClasspaths` (WartRemover.dependsOnLocalProjectWarts). In main sources, as the warts above:
 // SystemTimeAndUnsafeRun (EFF-5, EFF-6, ERR-4) and FloatingPointInLedger (ARI-1) are errors, whose kept site carries
-// @SuppressWarnings with the wart's full name on its smallest definition.
+// @SuppressWarnings with the wart's full name on its smallest definition. StringControlFlow (STR-3) is a warning,
+// which -Werror makes an error, so that -Wconf can silence it in the parsers of `project/StringParsers.scala` and
+// nowhere else.
 def ruleWart(name: String): wartremover.Wart = Wart.custom(s"xyz.kd5ujc.scarab.warts.$name")
 lazy val ruleWartErrors: Seq[wartremover.Wart] = Seq("SystemTimeAndUnsafeRun", "FloatingPointInLedger").map(ruleWart)
-lazy val ruleWartWarnings: Seq[wartremover.Wart] = Nil
+lazy val ruleWartWarnings: Seq[wartremover.Wart] = Seq("StringControlFlow").map(ruleWart)
 lazy val ruleWarts: Seq[wartremover.Wart] = ruleWartErrors ++ ruleWartWarnings
 
 def scarab(id: String, dir: String = null): Project =
@@ -158,7 +160,8 @@ def scarab(id: String, dir: String = null): Project =
     .settings(wartremover.WartRemover.dependsOnLocalProjectWarts(LocalProject("warts")))
     .settings(
       Compile / compile / wartremoverErrors ++= ruleWartErrors,
-      Compile / compile / wartremoverWarnings ++= ruleWartWarnings
+      Compile / compile / wartremoverWarnings ++= ruleWartWarnings,
+      Compile / scalacOptions ++= StringParsers.options
     )
 
 // The design rules' own warts (above), compiled against the WartRemover artifact of this Scala version, as

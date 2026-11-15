@@ -229,7 +229,7 @@ object ByronUpdate:
     val adopted = st.adoptedParams
     val protocolChanged = !(p.version == st.adoptedVersion && p.update(adopted) == adopted)
     val softwareChanged =
-      st.appVersions.get(p.softwareName).forall(_.number != p.softwareNumber)
+      appVersion(st, p.softwareName).forall(_.number != p.softwareNumber)
     val exempt = env.magicId == MainnetStagingMagic &&
       (env.slot == BigInt(969188) || env.slot == BigInt(1915231))
     for
@@ -306,11 +306,23 @@ object ByronUpdate:
       )
     yield st.registeredProtocol.updated(p.id, ProtocolProposal(p.version, proposed))
 
+  // The two lookups by application name are kept sites of STR-3 (#386). The reference's name is a type of its
+  // own (`newtype ApplicationName`, `Cardano/Chain/Update/ApplicationName.hs:41-43`, cardano-ledger f649f975);
+  // here it is the `String` key of the update state, as the persisted sidecar holds it, and a type for it
+  // would change the sidecar codec's shape, so it waits for a format change (FMT-1).
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.StringControlFlow"))
+  private def appVersion(st: UpdateState, name: String): Option[AppVersion] =
+    st.appVersions.get(name)
+
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.StringControlFlow"))
+  private def softwareRegistered(st: UpdateState, name: String): Boolean =
+    st.registeredSoftware.valuesIterator.exists(_.name == name)
+
   private def registerSoftware(
       st: UpdateState,
       p: ByronProposal
   ): Either[UpdateError, Map[Bytes, SoftwareProposal]] =
-    val follows = st.appVersions.get(p.softwareName) match
+    val follows = appVersion(st, p.softwareName) match
       case None    => p.softwareNumber == 0 || p.softwareNumber == 1
       case Some(a) => p.softwareNumber == a.number + 1
     // `registerSoftwareUpdate` (`Validation/Registration.hs:553-585`, cardano-ledger f649f975), in
@@ -322,7 +334,7 @@ object ByronUpdate:
         .traverse_(t => xyz.kd5ujc.scarab.ledger.byron.SystemTagError.check(t))
         .leftMap(UpdateError.SystemTagError(_))
       _ <- Either.cond(
-        !st.registeredSoftware.valuesIterator.exists(_.name == p.softwareName),
+        !softwareRegistered(st, p.softwareName),
         (),
         UpdateError.DuplicateSoftwareVersion(p.softwareName)
       )
