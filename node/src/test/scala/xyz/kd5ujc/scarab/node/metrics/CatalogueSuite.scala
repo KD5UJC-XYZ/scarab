@@ -17,8 +17,9 @@ class CatalogueSuite extends FunSuite:
     Catalogue.getClass.getDeclaredMethods.toList
       .filter(m => m.getParameterCount == 0 && classOf[MetricDef].isAssignableFrom(m.getReturnType))
       .map(_.invoke(Catalogue).asInstanceOf[MetricDef]) ++
-      // the governor's counters are one list of (gauge, counter), so they are not declared one by one
-      Catalogue.peerSelectionGauges.map(_._1)
+      // the governor's counters are one list of (gauge, counter), and the churn durations one gauge
+      // per step, so neither is declared one by one
+      Catalogue.peerSelectionGauges.map(_._1) ++ Catalogue.churnDurations
 
   test("all lists every definition of the catalogue, once") {
     assert(declared.size > 50, declared.size)

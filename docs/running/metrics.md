@@ -105,6 +105,17 @@ Meanings and units worth knowing before building a dashboard:
   metric for the transaction bytes it serves: the `txSubmission.*` counters of ouroboros-network
   `c45735a5` (`ouroboros-network/tracing/Ouroboros/Network/Tracing/TxSubmission.hs` 95-111) count what
   the receiving side requests and receives, so the name is ours.
+- `cardano_node_metrics_peerSelection_churn<Action>_duration_real` are twelve gauges, one for each step of a churn
+  round: the seconds the last step of that kind took to meet its targets, set as the reference sets them on
+  `TraceChurnAction` (`ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection/Governor/TracePeerSelection.hs`
+  385-388, ouroboros-network `c45735a5`), in seconds as precise as the clock. `<Action>` is the reference's
+  `ChurnAction` constructor (`DecreasedActivePeers`, `IncreasedKnownBigLedgerPeers`, ...) written straight after
+  `churn`, as that code builds the name; the reference's own metric documentation of them (`metricsDocFor`,
+  649-656) shows a dot there and only the six decreases, but a running cardano-node 11.1.3 exports the names
+  without it. A step that times out (`TraceChurnTimeout`) sets nothing, so a gauge is absent until its step first
+  meets its targets and keeps that duration through later timeouts; `scarab_peer_selection_churn_steps_total{step,result}` counts both
+  outcomes. The reference writes a `_real` series without a `# TYPE` line (trace-dispatcher keeps it as a label);
+  ours are gauges, as `density_real` is.
 - `jvm_gc_collection_seconds_total` is the time the JVM reports for each collector (a counter, in seconds, as
   precise as the JVM's own millisecond count); `jvm_memory_bytes_max{area="nonheap"}` is -1 when the JVM sets no
   limit.
@@ -317,6 +328,18 @@ section and the catalogue differ.
 | `cardano_node_metrics_peerSelection_WarmBootstrapPeersPromotions_int` | gauge |  | Number of warm bootstrap peers being promoted. | same name; in the source of 11.1.3, not scraped |
 | `cardano_node_metrics_peerSelection_ActiveBootstrapPeers_int` | gauge |  | Number of active bootstrap peers. | same name; in the source of 11.1.3, not scraped |
 | `cardano_node_metrics_peerSelection_ActiveBootstrapPeersDemotions_int` | gauge |  | Number of active bootstrap peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_churnDecreasedActiveBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the active big ledger peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedActiveBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that increased the active big ledger peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnDecreasedEstablishedBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the established big ledger peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnDecreasedKnownBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the known big ledger peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedKnownBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that increased the known big ledger peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnIncreasedEstablishedBigLedgerPeers_duration_real` | gauge |  | Seconds the last churn step that increased the established big ledger peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnDecreasedActivePeers_duration_real` | gauge |  | Seconds the last churn step that decreased the active peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedActivePeers_duration_real` | gauge |  | Seconds the last churn step that increased the active peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnDecreasedEstablishedPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the established peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnDecreasedKnownPeers_duration_real` | gauge |  | Seconds the last churn step that decreased the known peers took to meet its target. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_peerSelection_churnIncreasedKnownPeers_duration_real` | gauge |  | Seconds the last churn step that increased the known peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
+| `cardano_node_metrics_peerSelection_churnIncreasedEstablishedPeers_duration_real` | gauge |  | Seconds the last churn step that increased the established peers took to meet its target. | same name; in the source of 11.1.3, not scraped (the step timed out in the run) |
 
 ### Storage
 
