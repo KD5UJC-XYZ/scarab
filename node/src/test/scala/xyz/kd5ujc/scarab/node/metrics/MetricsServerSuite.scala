@@ -118,16 +118,23 @@ class MetricsServerSuite extends CatsEffectSuite:
       (lines.headOption.getOrElse(""), in.readNBytes(length.getOrElse(0)).length)
     }
 
-  /** What follows until the server ends the connection: nothing (an end of stream) or a reset. A
-    * read that times out is not an end.
+  /** How a connection the server should end turned out. */
+  private enum End:
+    case Ended
+    case MoreBytes(count: Int)
+    case StillOpen
+    case Failed(cause: Throwable)
+
+  /** What follows until the server ends the connection: an end of stream or a reset ends it; a read
+    * that times out does not.
     */
-  private def ended(socket: Socket): IO[Either[String, Unit]] =
+  private def ended(socket: Socket): IO[End] =
     IO.blocking(socket.getInputStream.readAllBytes()).attempt.map {
-      case Right(rest) if rest.isEmpty     => Right(())
-      case Right(rest)                     => Left(s"${rest.length} more bytes")
-      case Left(_: SocketTimeoutException) => Left("still open after 10 s")
-      case Left(_: SocketException)        => Right(())
-      case Left(other)                     => Left(other.toString)
+      case Right(rest) if rest.isEmpty     => End.Ended
+      case Right(rest)                     => End.MoreBytes(rest.length)
+      case Left(_: SocketTimeoutException) => End.StillOpen
+      case Left(_: SocketException)        => End.Ended
+      case Left(other)                     => End.Failed(other)
     }
 
   test(
@@ -144,7 +151,7 @@ class MetricsServerSuite extends CatsEffectSuite:
           assertEquals(first._1, "HTTP/1.1 200 OK", "the request was answered before the stop")
           assert(first._2 > 0, "with its whole body")
           assert(took < ShutdownBound, s"the server took $took to stop")
-          assertEquals(end, Right(()), "the idle connection was ended")
+          assertEquals(end, End.Ended, "the idle connection was ended")
       }
     }
   }
@@ -161,7 +168,7 @@ class MetricsServerSuite extends CatsEffectSuite:
         yield
           assertEquals(first._1, "HTTP/1.1 200 OK", "the connection was accepted and served")
           assert(took < ShutdownBound, s"the server took $took to stop")
-          assertEquals(end, Right(()), "the connection with a half-sent request was ended")
+          assertEquals(end, End.Ended, "the connection with a half-sent request was ended")
       }
     }
   }
