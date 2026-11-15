@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
+from datetime import datetime, timezone
 from pathlib import Path
+import re
 import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import check_storage_format as fmt
 import pr_policy as policy
 
 
@@ -144,6 +147,125 @@ class PrBodyTests(unittest.TestCase):
         pr = pull_request()
         pr["body"] = ""
         self.assertEqual(policy.evaluate(pr, "example/scarab", 42, "dev-only-main")["head"], "dev")
+
+
+NOW = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
+STORAGE_TITLE = "fix(storage)!: storage format V10 drops the bootstrap sidecar fields"
+STORAGE_FILES = [fmt.MANIFEST, "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala",
+                 "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala",
+                 "fixtures/snapshot-v10/preview-4320.bin", "docs/storage-migrations.md", "changes/994-sidecar.md"]
+RECORD = ("## Storage format change\n\n"
+          "- Question: May I change the storage format? The V10 sidecar drops the bootstrap fields; V8 stores are\n"
+          "  unaffected; V9 and V10 files are refused; the alternative keeps the fields unused.\n"
+          "- Asked at: `2026-11-14T09:30:00Z`\n"
+          "- Decision: approved, the V10 sidecar is edited in place\n"
+          "- **Decided at:** 2026-11-14T09:41:07Z\n")
+
+
+class StorageFormatTests(unittest.TestCase):
+    def pr(self, title=STORAGE_TITLE, body=None, user_type="User", head="feature"):
+        pr = pull_request(head=head)
+        pr["title"], pr["body"], pr["user"] = title, body_of(3, "None", "None") + RECORD if body is None else body, \
+            {"type": user_type}
+        return pr
+
+    def check(self, pr, files=STORAGE_FILES):
+        return policy.check_storage_format(pr, files, NOW)
+
+    def test_a_complete_storage_format_change_passes_and_is_at_least_level_three(self):
+        self.assertTrue(self.check(self.pr()))
+        self.assertEqual(policy.check_body(self.pr(), STORAGE_FILES), 3)
+        low = self.pr(body=body_of(2, "None", "None") + RECORD)
+        with self.assertRaisesRegex(policy.PolicyError, "level 2 is below 3: the persisted-format register, the "
+                                                        "storage format manifest or its guard"):
+            policy.check_body(low, STORAGE_FILES)
+        with self.assertRaisesRegex(policy.PolicyError, "level 3 or more, not 2"):
+            self.check(low)
+        with self.assertRaisesRegex(policy.PolicyError, "level 2 is below 3"):
+            policy.check_body(low, [fmt.GUARD])
+
+    def test_a_pull_request_that_leaves_the_manifest_and_the_guard_alone_is_not_one(self):
+        self.assertFalse(self.check(self.pr(title="feat(node): accept witness", body=""), ["node/src/main/A.scala"]))
+        self.assertTrue(self.check(self.pr(), ["scripts/check_storage_format.py"]))
+
+    def test_the_title_is_conventional_storage_scoped_breaking_and_names_the_storage_format(self):
+        for title in ["feat(storage)!: storage format V11 for the Leios state",
+                      "fix(storage)!: the Storage Format of V10 keeps its binding"]:
+            with self.subTest(title=title):
+                self.assertTrue(self.check(self.pr(title=title)))
+        for title in ["STORAGE FORMAT: V10 drops the bootstrap sidecar fields",
+                      "fix(storage): storage format V10 drops the bootstrap sidecar fields",
+                      "fix(node)!: storage format V10 drops the bootstrap sidecar fields",
+                      "fix(storage)!: V10 drops the bootstrap sidecar fields",
+                      "fix(storage)!: storage formats move", "fix(storage)!:"]:
+            with self.subTest(title=title), self.assertRaisesRegex(policy.PolicyError, r"\(storage\)!"):
+                self.check(self.pr(title=title))
+
+    def test_it_is_a_pull_request_of_its_own(self):
+        for extra in ["consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/NodeState.scala", "AGENTS.md",
+                      "changes/README.md", "scripts/pr_policy.py"]:
+            with self.subTest(extra=extra), self.assertRaisesRegex(policy.PolicyError, "must be its own pull request.*"
+                                                                   + re.escape(extra)):
+                self.check(self.pr(), STORAGE_FILES + [extra])
+
+    def test_the_body_records_the_question_and_the_decision_with_their_utc_times(self):
+        record = policy.approval_record(policy.sections(RECORD)["storage format change"])
+        self.assertEqual(record["asked_at"], "2026-11-14T09:30:00Z")
+        self.assertEqual(record["decided_at"], "2026-11-14T09:41:07Z")
+        self.assertEqual(record["decision"], "approved, the V10 sidecar is edited in place")
+        self.assertTrue(record["question"].endswith("the alternative keeps the fields unused."))
+        base = body_of(3, "None", "None")
+        for body, message in [
+            (base, "Storage format change\" section"),
+            (base + "<!--\n" + RECORD + "-->", "Storage format change\" section"),
+            (base + RECORD.replace("- Decision: approved, the V10 sidecar is edited in place\n", ""), "decision is missing"),
+            (base + RECORD.replace("`2026-11-14T09:30:00Z`", "this morning"), "asked_at is not a UTC"),
+            (base + RECORD.replace("2026-11-14T09:41:07Z", "2026-11-14T09:00:00Z"), "decided_at is not after asked_at"),
+            (base + RECORD.replace("May I change the storage format?", "May I?"), "does not say plainly"),
+        ]:
+            with self.subTest(message=message), self.assertRaisesRegex(policy.PolicyError, message):
+                self.check(self.pr(body=body))
+
+    def test_a_bot_is_checked_and_a_promotion_of_dev_is_not(self):
+        with self.assertRaisesRegex(policy.PolicyError, "level 3 or more, not None"):
+            self.check(self.pr(body="", user_type="Bot"))
+        with self.assertRaisesRegex(policy.PolicyError, 'needs a "## Storage format change" section'):
+            self.check(self.pr(body=body_of(3, "None", "None"), user_type="Bot"))
+        self.assertFalse(self.check(self.pr(title="chore: promote dev", body="", head="dev"), STORAGE_FILES + ["a"]))
+
+    def test_a_branch_named_dev_in_a_fork_is_not_a_promotion(self):
+        fork = self.pr(title="chore: promote dev", body="", head="dev")
+        fork["head"]["repo"] = {"id": 900, "full_name": "fork/scarab"}
+        with self.assertRaisesRegex(policy.PolicyError, r"\(storage\)!"):
+            self.check(fork, STORAGE_FILES)
+        renamed = self.pr(title="chore: promote dev", body="", head="dev")
+        renamed["head"]["repo"] = {"id": 42, "full_name": "example/renamed"}
+        self.assertFalse(policy.promotion(renamed))
+
+    def test_the_record_is_read_as_github_renders_it(self):
+        base = body_of(3, "None", "None")
+        trailing = RECORD + "Evidence: checked the migration.\n### Notes\nmore prose\n"
+        record = policy.approval_record(policy.rendered_section(base + trailing, "storage format change"))
+        self.assertEqual(record["decided_at"], "2026-11-14T09:41:07Z")
+        self.assertTrue(self.check(self.pr(body=base + trailing)))
+        quoted = RECORD.replace("- Decision: approved, the V10 sidecar is edited in place\n",
+                                "- Decision:\n  > approved, the V10 sidecar\n  > is edited in place\n")
+        self.assertEqual(policy.approval_record(policy.rendered_section(quoted, "storage format change"))["decision"],
+                         "approved, the V10 sidecar\nis edited in place")
+        for hidden in ["```\n" + RECORD + "```\n", "~~~~\n" + RECORD + "~~~~\n"]:
+            with self.subTest(hidden=hidden[:4]), self.assertRaisesRegex(policy.PolicyError, "section"):
+                self.check(self.pr(body=base + hidden))
+        ended = "## Storage format change\n\n# Other\n\n" + RECORD.split("\n\n", 1)[1]
+        with self.assertRaisesRegex(policy.PolicyError, "section"):
+            self.check(self.pr(body=base + ended))
+        record = RECORD.split("\n\n", 1)[1]
+        for hidden in ["```text\n```still-code\n" + RECORD + "```\n",
+                       "## Storage format change\n\nOther\n=====\n\n" + record,
+                       "## Storage format change\n\n" + "".join("    " + line + "\n" for line in record.splitlines()),
+                       "## Storage format change\n" + "".join("    " + line + "\n" for line in record.splitlines())]:
+            with self.subTest(hidden=hidden[:30]), self.assertRaisesRegex(policy.PolicyError, "section|is missing"):
+                self.check(self.pr(body=base + hidden))
+        self.assertTrue(self.check(self.pr(body=base + RECORD + "---\n\nmore prose\n")))
 
 
 if __name__ == "__main__":

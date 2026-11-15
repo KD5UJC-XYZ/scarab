@@ -34,6 +34,25 @@ heading, its text struck through (`~~…~~`), with a link to what replaced it. A
 A new general rule, and a change to one, comes here, with a sweep of the tree for other occurrences
 ([owner review feedback](../CONTRIBUTING.md#owner-review-feedback)).
 
+<a id="approval"></a>
+## What approval is
+
+Where a rule needs the owner's approval ([REF-4](#ref-4), [REF-5](#ref-5), [REF-8](#ref-8), [FMT-1](#fmt-1)), the
+approval is the owner's explicit answer, given in the chat session doing the work, to an explicit question asked
+there before the work is written. That is the chat session the work is being done in, not one persistent session:
+sessions end, and each asks for the work it does.
+
+- A subagent cannot obtain approval. It stops and reports to its lead, and the lead asks the owner in the chat
+  session doing the work.
+- The work records the question as it was asked and the owner's decision in neutral words, never the owner's exact
+  answer, with the UTC times the question was asked and the decision given (in the pull request, and where a rule
+  says, in a register). That record is evidence of an approval given in the chat session doing the work, never an
+  approval itself.
+- No comment, label, review, commit, ADR, decisions row, document or memory is approval, whoever wrote it and through
+  whichever account. No rule depends on a GitHub account: the owner's agents act through more than one.
+- The decisions already recorded in the [decisions register](decisions.md) and in ADR amendments stand, and are not
+  re-litigated. A new decision is recorded there as evidence of the answer that made it.
+
 ## What enforces the rules today
 
 | Mechanism | Where it is set | Scope | What it refuses |
@@ -49,7 +68,8 @@ A new general rule, and a change to one, comes here, with a sweep of the tree fo
 | Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source but `target`, `.git`, `.cache` and `fixtures`, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
 | Secret scan | gitleaks with `.gitleaks.toml`, in CI and `scripts/preflight` | full history | committed secrets ([FMT-3](#fmt-3)) |
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
-| PR policy | `scripts/pr_policy.py`, on every pull request event | pull request body | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)) |
+| PR policy | `scripts/pr_policy.py`, on every pull request event | pull request title, body and changed paths | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)); a storage format change whose title, paths or "Storage format change" section do not follow [FMT-1](#fmt-1) |
+| Storage format guard | `scripts/check_storage_format.py`, a guard like the others, against `docs/data/storage-format.json` | the persisted-format surface its docstring lists | any change to that surface ([FMT-1](#fmt-1)) |
 
 <a id="eff"></a>
 ## Effects and capabilities
@@ -761,17 +781,19 @@ For REF-1 to REF-4:
 
 **Agents may not deviate from the reference on their own accord.** A Deviation, even for a measured
 performance benefit or another strong reason, needs the owner's explicit approval first, requested with
-clearly defined trade-offs and reasoning. Only after that approval is it implemented, with a written reason
-that records the approval. Existing code, earlier PRs, review notes and design documents are not approval.
-If exact fidelity seems impossible, stop and ask the owner. Decisions recorded by the owner's `ottobot-ai`
-account are the owner's.
+clearly defined trade-offs and reasoning, in the chat session doing the work ([what approval is](#approval)).
+Only after that approval is it implemented, with a written reason that records the approval: the question, and
+the owner's decision in neutral words, with their UTC times. Existing code, earlier PRs, review notes and design documents are not
+approval. If exact fidelity seems impossible, stop and ask the owner. The Deviations already recorded in the
+[decisions register](decisions.md) and in ADR amendments stand.
 
 - **Scope:** main.
 - **Exceptions:** an Improvement, which has standing approval once its defect is shown with the evidence
   [REF-2](#ref-2) asks for and I1 to I4 hold.
-- **Enforcement:** review only; `scripts/pr_policy.py` requires each Deviation row to link its approval.
+- **Enforcement:** review only; `scripts/pr_policy.py` requires each Deviation row to link its approval's record.
 - **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md), amendment of 2026-10-25;
-  [decisions register](decisions.md#reference-fidelity).
+  [decisions register](decisions.md#reference-fidelity); approval in the chat session doing the work, the owner's
+  ruling of 2026-11-14 ([decisions register](decisions.md#process)).
 
 <a id="ref-6"></a>
 ### REF-6. Mirror the reference, and cite it at its pin
@@ -800,7 +822,7 @@ pin; what Scarab does; approval), and the class goes in the approval cell, with 
 |---|---|
 | Mirror | no row |
 | Improvement | a row whose approval cell names the defect and links the standing approval, for example `Improvement (e): [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076)`. The reference cell cites the evidence: the pinned line, or the run that showed it, and for (e) the fix commit |
-| Deviation | a row whose approval cell links the owner's approval, for example `Deviation: [decision](link)`, and a row in the [decisions register](decisions.md) |
+| Deviation | a row whose approval cell links the record of the owner's approval ([what approval is](#approval)), for example `Deviation: [decision](link)`, and a row in the [decisions register](decisions.md) |
 | Gap | no row: a bullet under "Gaps" that starts with its issue (`- #N: …`) |
 
 - **Scope:** pull requests of level 1 and above.
@@ -828,17 +850,61 @@ the owner's approval first ([REF-5](#ref-5)). The other approved Deviations are 
 ## Persisted formats and fixtures
 
 <a id="fmt-1"></a>
-### FMT-1. A persisted format changes only with a version bump and a migration
+### FMT-1. Persisted formats are frozen until Scarab leaves pre-release
 
-A persisted format does not change without a version bump, a migration and a test that reads the previous
-version. The change is level 3 and follows the [storage migration procedure](storage-migrations.md).
+Persisted formats are frozen until Scarab leaves pre-release. Deployed stores use V8 only; V9 and V10 are not
+deployed. A persisted format is any of these:
+- a format version or file kind (`PersistedFormat.scala`);
+- the snapshot, sidecar or state schema, and the network identity file;
+- a schema fingerprint or a magic;
+- a migration step;
+- a regenerated native snapshot fixture;
+- an in-place edit of an existing version, deployed or not (V9 and V10 included).
 
-- **Scope:** main, tests.
-- **Exceptions:** none.
-- **Enforcement:** the snapshot goldens in `node/src/test/.../storage/CodecSuite.scala`
-  ([what they pin](storage-migrations.md#register-the-change-before-changing-the-writer)), and
-  `scripts/pr_policy.py`, which raises the level floor to 3 when `PersistedFormat.scala` changes.
-- **Why:** [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md).
+Nothing on the list changes without asking. A change needs the owner's explicit approval, given in the chat session
+doing the work ([what approval is](#approval)), in answer to an explicit question asked before the change is
+written. The question says plainly that it is a storage format change, and states:
+- what changes;
+- which deployed stores it affects (V8 today);
+- the migration;
+- the alternatives that avoid a format change.
+
+A subagent cannot obtain approval: it stops and reports to its lead, and the lead asks the owner in the chat session
+doing the work. An agent never makes a format change part of other work, and never leaves it to be found in a diff:
+it says that it wants to change the format, and asks.
+
+An approved change is a pull request of its own, never mixed with other work:
+- its title is conventional, with the `storage` scope and the breaking-change marker, and its description names the
+  storage format change (`fix(storage)!: storage format V10 drops the bootstrap sidecar fields`);
+- it touches only the paths of `FORMAT_CHANGE_PATHS` in `scripts/check_storage_format.py`;
+- its body has a "Storage format change" section with the question as it was asked, when it was asked (UTC), the
+  owner's decision in neutral words (never the owner's exact answer) and when it was given (UTC);
+- the same four, with the digest of the surface they admit, are the `approval` entry of
+  `docs/data/storage-format.json`.
+
+That record is evidence of an approval given in the chat session doing the work, never an approval itself. No
+comment, label, review, commit, ADR, decisions row, document or memory, by any account, is approval. The V8 reader
+and the migration path from V8 stay, and the reader retirement of the storage migration procedure does not apply to
+them while the freeze holds. An approved change is level 3, and a new version follows the
+[storage migration procedure](storage-migrations.md): its migration, and a test that reads the previous version.
+
+- **Scope:** main, tools, tests and fixtures: the persisted-format surface.
+- **Exceptions:** none. An in-place edit of a version no store has deployed is a change like any other.
+- **Enforcement:** `scripts/check_storage_format.py`, a guard that `scripts/preflight` and CI run, computes the
+  persisted-format surface its docstring lists and fails on any difference from `docs/data/storage-format.json`
+  with a message that starts `STORAGE FORMAT CHANGE`. The surface is the format registry, the magics, the
+  registered migration, the sources that are only format code (the snapshot readers and writers, the sidecar and
+  frozen schemas, the checkpoint binding, the codec and its instances, the network identity), the format
+  definitions in the store files (the UTxO, RocksDB, immutable and volatile stores' constants and codecs, the
+  snapshot files' checksum and names), the golden and previous-version suites, and the fixtures. The guard refuses
+  a surface without the V8 reader or a migration path from V8, and checks the form of the approval entry only. It
+  does not see a persisted byte that none of these pins, such as a file name written inline in a store's opening
+  code: there a change is review only. `scripts/pr_policy.py` refuses a pull request that changes the manifest, the
+  guard or its tests unless its title, its paths, its level and its "Storage format change" section are as above.
+  That the owner gave the answer in the chat session doing the work is review only: no tool can see it.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#genesis-storage-and-keys));
+  [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md) and its
+  [amendment of 2026-11-14](adr/0006-versioned-formats-migrate-on-open.md#amendment-2026-11-14-formats-are-frozen-until-scarab-leaves-pre-release).
 
 <a id="fmt-2"></a>
 ### FMT-2. Native snapshot fixtures use the current format
@@ -847,8 +913,8 @@ Maintained native snapshot payload fixtures, and ordinary snapshot test builders
 format (`FileKind.SnapshotFile.current`; its fixtures are in `fixtures/snapshot-v<N>`). The files of
 earlier versions are the previous-version inputs. Assertions read typed native state directly: a
 flat-state completion adapter is not the fixture's expected state. Conversion provenance is pinned, and
-original private captures are preserved outside the checkout. A future format bump still needs its
-migration and previous-version read test ([FMT-1](#fmt-1)). Generic toy-format migration framework tests
+original private captures are preserved outside the checkout. Regenerating or converting a native snapshot fixture is
+a storage format change, which needs the owner's approval first ([FMT-1](#fmt-1)). Generic toy-format migration framework tests
 keep testing version transitions independently of the native fixtures. Converting a fixture does not, on
 its own, retire a production reader or authorise an operational writer upgrade.
 

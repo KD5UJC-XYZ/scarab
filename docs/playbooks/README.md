@@ -19,5 +19,6 @@ JDK image, as [CONTRIBUTING](../../CONTRIBUTING.md#build-docker-only) shows; the
 | Rebase after a squash merge | [rebase-after-a-squash-merge.md](rebase-after-a-squash-merge.md) | any |
 
 `python3 scripts/status.py --issue N` lists the playbooks whose areas match the issue's `area:` labels, and those
-for any area. A new persisted-format version follows [storage-migrations.md](../storage-migrations.md), whose
-worked example is the snapshot V5 to V7 change.
+for any area. A persisted-format change needs the owner's approval first ([FMT-1](../design-rules.md#fmt-1)); an
+approved new version follows [storage-migrations.md](../storage-migrations.md), whose worked example is the snapshot
+V5 to V7 change.

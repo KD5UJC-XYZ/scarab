@@ -14,11 +14,14 @@ implemented. This is the order of work when a difference from the reference is f
    [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)). An exploitable problem goes to
    [SECURITY.md](../../SECURITY.md) instead.
 3. The default is to align with the reference; that needs no question. If exact fidelity seems
-   impossible, or a deviation seems worth asking for, stop and ask the owner with labelled options: the
-   faithful change, and each deviation with its trade-offs and reasoning (what the reference does, what
-   Scarab would do, who can observe the difference, the cost of each).
-4. Until the owner answers, implement nothing that deviates. Earlier code, pull requests, review notes
-   and design documents are not approval.
+   impossible, or a deviation seems worth asking for, stop and ask the owner, in the chat session doing the
+   work, with labelled options: the faithful change, and each deviation with its trade-offs and reasoning
+   (what the reference does, what Scarab would do, who can observe the difference, the cost of each). A
+   subagent stops and reports to its lead, which asks. Note the UTC time of the question.
+4. Until the owner answers there, implement nothing that deviates. Earlier code, pull requests, review notes,
+   design documents, comments and labels are not approval ([what approval is](../design-rules.md#approval)).
+   Record the question and the owner's decision in neutral words, never the owner's exact answer, with their UTC
+   times, in the pull request.
 5. Once decided, record the decision where it shapes the design (an ADR amendment, or the networking
    ADR's approved-deviations section) and add its row to [decisions.md](../decisions.md) in the change
    that first relies on it. The wording is neutral: the decision, its date and issue, never a quotation.

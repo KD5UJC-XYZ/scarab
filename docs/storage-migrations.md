@@ -6,10 +6,27 @@ operator procedure for preserving a usable database through that change. The dec
 [architecture.md](architecture.md). Commands for following a chain belong in
 [running.md](running.md).
 
+## Ask the owner first
+
+Persisted formats are frozen until Scarab leaves pre-release ([FMT-1](design-rules.md#fmt-1)). The first step of
+every change on this page, a new version, an in-place edit of an existing one (V9 and V10 included), a new
+migration step or a regenerated fixture, is to ask the owner as FMT-1 says: explicitly, in the chat session doing
+the work, before the change is written, saying plainly that it is a storage format change, what changes, which
+deployed stores it affects (V8 today), the migration, and the alternatives that avoid a format change. A subagent
+stops and reports to its lead, which asks. Without the owner's approval given there, stop: write nothing of the
+change.
+
+With it, the change is a pull request of its own. Record the question as it was asked and the owner's decision in neutral
+words, never the owner's exact answer, with their UTC times, in its "Storage format change" section and in the `approval` entry of `docs/data/storage-format.json` (with the
+surface digest that `python3 scripts/check_storage_format.py --print-surface` prints), as FMT-1 says. The rest of
+this page is the procedure for an approved new version. An approved in-place edit of a version that no deployed
+store uses (V9 or V10) changes that version's schema, goldens and fixtures in place, exactly as the approval names,
+with no new version and no migration step; the previous-version tests stay as they are.
+
 ## Register the change before changing the writer
 
-[PersistedFormat.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala) owns `FormatVersion` and `FileKind`. Append a version, never renumber
-one. Add a file kind when its identity and migration are independent; otherwise append the changed
+[PersistedFormat.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala) owns `FormatVersion` and `FileKind`. A new version is appended, never
+renumbered. Add a file kind when its identity and migration are independent; otherwise append the changed
 kind's `(version, identifier)` entry to `history`. An unchanged kind keeps its last layout and is not
 rewritten merely because another kind changed. `identifier`, `current` and `versionOf` are the
 registry, rather than independent magic strings scattered through callers.
@@ -21,8 +38,8 @@ reproduction proves that writer's format; it does not establish an unknown captu
 Keep small public fixtures in Git. Large captures, checkpoint directories and logs stay outside the
 checkout with a hashed manifest and reproducible provenance.
 
-The snapshot goldens in `CodecSuite` move only together with the version, migration and
-previous-version regression: the schema fingerprints of the sidecar and the checkpoint binding guard
+The snapshot goldens in `CodecSuite` move only with an approved change ([FMT-1](design-rules.md#fmt-1)): a new
+version with its migration and previous-version regression, or the in-place edit the approval names: the schema fingerprints of the sidecar and the checkpoint binding guard
 the typed sections, and the header golden the V10 header's recorded reference build, which sits
 outside both schemas. Regenerating a golden to make a test pass is not a migration.
 Native snapshots are V10: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
@@ -115,10 +132,11 @@ the frozen V9 schema and writes it in the current one, the bootstrap state's fla
 dropped and its era and epoch verdicts kept as the follow state (`FrozenSidecar.live`). A store
 written by an earlier build in V10's former shape is not supported; none is deployed. `Migrate`
 then has no work for V10. Unchanged kinds retain their own current versions.
-A future snapshot change appends global `V11`, the magic `SCRBSNPB` (the last character of a
-snapshot magic is its format number as one base-36 digit). Retire the V5
+A new snapshot version, if the owner approves one ([FMT-1](design-rules.md#fmt-1)), appends global `V11`, the
+magic `SCRBSNPB` (the last character of a snapshot magic is its format number as one base-36 digit). Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
-kind's `readableFrom` to V7 (and retire the V7 and V8 readers the same way). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
+kind's `readableFrom` to V7 (and retire the V7 reader the same way). The V8 reader stays, and so does the migration
+path from V8, while persisted formats are frozen: deployed stores are V8 ([FMT-1](design-rules.md#fmt-1)). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
 do not capture an earlier caller's error interpreter in a long-lived migration object.
 
 Acquire `DatabaseOwnership` before inspecting a database that could have another writer. Its lock
@@ -276,8 +294,8 @@ The preprod and mainnet writer upgrades remain separate operational work under
    including the diff overlay, fixed-range continuation and a second restart. Preserve source
    gaps and era observations through rewriting; require unchanged V5 framing/fingerprint for
    V5 input. Retired input needs its established pinned-source conversion first.
-4. Present the per-network manifests, results and rollback plan for owner approval before stopping
-   or switching its writer. Upgrade one network at a time. Do not infer downgrade safety from
+4. Present the per-network manifests, results and rollback plan for the owner's approval
+   ([what approval is](design-rules.md#approval)) before stopping or switching its writer. Upgrade one network at a time. Do not infer downgrade safety from
    unchanged framing: an older writer can read V5 yet drop provenance when it rewrites the state.
 
 Source validation and private devnet restarts do not establish that either operational network has
@@ -298,7 +316,9 @@ checkpoints at matching anchors, identity, immutable and volatile data. Do not e
 to read a new file or mix arbitrary old checkpoints with new snapshots. Any operator transition of a
 running writer is an explicit operation; producing verified copies does not update that writer.
 
-For this greenfield repository, an old payload reader can leave the development runtime once all
+Reader retirement is itself a storage format change, which needs the owner's approval first, and it never retires
+the V8 reader while persisted formats are frozen ([FMT-1](design-rules.md#fmt-1)). Beyond that, for this greenfield
+repository, an old payload reader can leave the development runtime once all
 local active inputs and repository test/tool dependencies have verified current-format replacements,
 local writers no longer emit that format, and useful historical evidence is recoverable from pinned
 Git source or an archived one-shot bridge. There is no speculative release support horizon. Keep
