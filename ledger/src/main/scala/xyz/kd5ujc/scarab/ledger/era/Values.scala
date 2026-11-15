@@ -53,6 +53,9 @@ object MultiAssetValue:
     def lovelace: BigInt = v.coin
     def assets: Map[Bytes, Map[Bytes, BigInt]] = v.assets
 
+    /** The value in the form the store keeps. */
+    private[ledger] def stored: xyz.kd5ujc.scarab.ledger.Value = v
+
   given Val[MultiAssetValue] with
     def zero: MultiAssetValue = xyz.kd5ujc.scarab.ledger.Value(0, Map.empty)
     def plus(a: MultiAssetValue, b: MultiAssetValue): MultiAssetValue = a + b

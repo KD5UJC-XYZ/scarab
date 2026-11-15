@@ -178,6 +178,28 @@ object ConwayTxOut:
   ): Either[EraTxError, ConwayTxOut] =
     BabbageTxOutRep.fromStored(out)(n => ConwayScript.read(n)).leftMap(EraTxError.Decode(_))
 
+  /** The output in the form the store keeps, the inverse of [[fromStored]]: its bytes, fields and
+    * the value's size as they arrived, and its reference script as the flat output keeps one, by
+    * its hash, with the tree of a native script and without a Plutus script's bytes (which the
+    * store reads again from the output's bytes).
+    */
+  private[ledger] def toStored(out: ConwayTxOut): xyz.kd5ujc.scarab.ledger.TxOut =
+    xyz.kd5ujc.scarab.ledger.TxOut(
+      out.raw,
+      out.address,
+      out.value.stored,
+      out.datum,
+      out.scriptRef.map(storedScript),
+      out.valueSize
+    )
+
+  private def storedScript(s: ConwayScript): xyz.kd5ujc.scarab.ledger.Script =
+    val hash = ConwayScript.instance.hashScript(s)
+    s match
+      case AlonzoScriptRep.NativeScript(t) =>
+        xyz.kd5ujc.scarab.ledger.Script(ScriptKind.Native, hash, Some(t.script))
+      case AlonzoScriptRep.PlutusScript(p) => xyz.kd5ujc.scarab.ledger.Script(p.kind, hash, None)
+
   /** A Babbage output carried into Conway (`upgradeBabbageTxOut`, `Conway/TxOut.hs:68-81`,
     * cardano-ledger f649f975): the same address, value, datum and bytes, its reference script
     * carried into Conway.

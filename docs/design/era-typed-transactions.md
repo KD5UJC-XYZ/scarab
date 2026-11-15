@@ -416,7 +416,11 @@ passes `check`.
 - A Conway transaction is its body, witness set, phase-two flag (`IsPhase2Valid`) and auxiliary data,
   read by Conway's decoders. The classes are `EraTx` and `AlonzoEraTx`, at the levels of the era's bodies.
   Every recorded Conway transaction reads with the flat transaction's fee size
-  (`sizeTxForFeeCalculation`) and flag.
+  (`sizeTxForFeeCalculation`) and flag, and reads the same submitted whole (`ConwayTx.fromEnvelope`, the
+  form the mempool and the refusal corpus hold) as from a block's parts.
+- A Conway output is written back in the form the store keeps (`toStored`, the inverse of `fromStored`),
+  which the UTXO rule's update and the predicate failures that name outputs need. Every recorded Conway
+  output, and outputs with each kind of reference script, read and are written back unchanged.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.

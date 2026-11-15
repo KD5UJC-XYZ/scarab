@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Witnesses
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayTxOut,
   ConwayTx,
   ConwayTxAuxData,
   ConwayTxBody,
@@ -406,3 +407,39 @@ class EraConwaySuite extends munit.FunSuite:
       assertEquals(tx.witsOf.scriptsOf.eraMaxLanguage, ScriptKind.PlutusV3)
     }
   }
+
+  test("a Conway output written back to the store is the output it was read from") {
+    val outputs = bodies.flatMap(FlatTxBody.decode(_, Era.Conway).toOption.get.outputs)
+    val withScripts = Vector(
+      storedWith("8202420102"),
+      storedWith(s"82008200581c$k"),
+      storedWith("8203420102")
+    )
+    assert(outputs.nonEmpty)
+    (outputs ++ withScripts).foreach { out =>
+      assertEquals(ConwayTxOut.fromStored(out).map(ConwayTxOut.toStored), Right(out), out.raw.hex)
+    }
+  }
+
+  test("a submitted Conway transaction reads as its parts do from a block") {
+    transactions.foreach { t =>
+      val submitted = xyz.kd5ujc.scarab.ledger.Tx.envelope(t)
+      assertEquals(ConwayTx.fromEnvelope(submitted), ConwayTx.decode(t))
+    }
+  }
+
+  // a map-form output with the reference script `scriptHex`, read by the flat output decoder
+  private def storedWith(scriptHex: String): xyz.kd5ujc.scarab.ledger.TxOut =
+    val script = Bytes.fromHex(scriptHex).toOption.get
+    val wrapped =
+      if script.size < 24 then f"d818${0x40 + script.size}%02x$scriptHex"
+      else f"d81858${script.size}%02x$scriptHex"
+    xyz.kd5ujc.scarab.ledger.TxOut
+      .decode(
+        node(s"a300581d61${"ab" * 28}011a000f424003$wrapped"),
+        xyz.kd5ujc.scarab.ledger.Address.Mode.Rigorous,
+        xyz.kd5ujc.scarab.ledger.TxOut.Forms.PairDatumHashOrMap,
+        ScriptKind.newestKnown
+      )(using ByteStrings.Definite)
+      .toOption
+      .get
