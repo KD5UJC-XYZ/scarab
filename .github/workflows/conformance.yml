@@ -34,7 +34,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: conformance-reports
+  group: ${{ github.event_name == 'schedule' && 'conformance-nightly' || 'conformance-reports' }}
   cancel-in-progress: false
 
 jobs:
@@ -93,7 +93,7 @@ jobs:
       - name: Summary
         if: ${{ always() }}
         run: |
-          # Missing CBOR evidence is visible, but must not prevent publication of other honest reports.
+          # This informational summary must not turn a skipped CBOR tool into a new publication blocker.
           if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance" \
             --previous "$RUNNER_TEMP/conformance-previous"; then
             echo '::warning::CBOR conformance evidence is incomplete; see the job summary'
