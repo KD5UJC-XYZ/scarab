@@ -118,7 +118,9 @@ moves to it. [The decision](#decision) names no release, so no words of it are s
   `cardano-diffusion/api/lib/Cardano/Network/NodeToClient/Version.hs` 70-75, and its codec at 84-95),
   and its release notes list the removal of versions 16 to 22 among the changes of 11.2.0. Scarab
   keeps offering 16 to 22 beside 23, for backwards compatibility. This is an approved deviation from
-  11.2.1, in force once node-to-client follows 11.2.1.
+  11.2.1, in force once node-to-client follows 11.2.1. At versions 16 to 22, which 11.2.1 does not
+  define, a query is answered as the cardano-node 11.1.3 server answers it at that version; the
+  [decisions register](../decisions.md#networking-and-local-clients) records it (#1002, 2026-11-15).
 
 The target's revisions are those of the packages cardano-node 11.2.1 links, at the versions its
 binary's link line names and the commits the CHaP metadata of each package records (typed-protocols,
