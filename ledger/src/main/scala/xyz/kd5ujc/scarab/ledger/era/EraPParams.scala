@@ -29,6 +29,11 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * members of every era. Not yet here: `emptyUpgradePParamsUpdate`, `upgradePParamsHKD` and
   * `downgradePParamsHKD`, which come with Babbage's record, and `eraPParams`, the parameters'
   * descriptions (#85).
+  *
+  * The class carries the union of the reference builds' members: `ppMaxPledgeLeverageG` and
+  * `ppMinPoolMarginG` are members at the Leios build's pin (cardano-ledger 9df9f98c
+  * `Core/PParams.hs:510-524`) and not at f649f975, where nothing reads them (decided 2026-11-15,
+  * #85).
   */
 trait EraPParams[E <: EraTag]:
   /** `applyPPUpdates`. */
@@ -55,6 +60,12 @@ trait EraPParams[E <: EraTag]:
   def ppDG: Getter[PParams[E], UnitInterval]
 
   def ppProtocolVersionL: Lens[PParams[E], ProtVer]
+
+  /** `ppMaxPledgeLeverageG`: the most a pool's stake may be over its pledge, or no limit. */
+  def ppMaxPledgeLeverageG: Getter[PParams[E], MaxPledgeLeverage]
+
+  /** `ppMinPoolMarginG`: the least margin a pool may declare. */
+  def ppMinPoolMarginG: Getter[PParams[E], UnitInterval]
 
   /** `emptyPParams`. */
   final def emptyPParams: PParams[E] = PParams[E](emptyPParamsIdentity)
@@ -172,6 +183,17 @@ private object ConwayEraPParamsInstance extends ConwayEraPParams[Conway]:
     */
   val ppProtocolVersionL: Lens[PParams[Conway], ProtVer] =
     PParams.lensHKD[Conway].andThen(GenLens[R[Identity]](_.protocolVersion))
+
+  /** The class's default up to Conway, `L.to (const (MaxPledgeLeverage SNothing))`
+    * (`Core/PParams.hs:510-516`, cardano-ledger 9df9f98c): no limit.
+    */
+  val ppMaxPledgeLeverageG: Getter[PParams[Conway], MaxPledgeLeverage] =
+    Getter(_ => MaxPledgeLeverage.none)
+
+  /** The class's default up to Conway, `L.to (const minBound)` (`Core/PParams.hs:518-524`,
+    * cardano-ledger 9df9f98c).
+    */
+  val ppMinPoolMarginG: Getter[PParams[Conway], UnitInterval] = Getter(_ => UnitInterval.zero)
 
   def hkdCostModelsL[F[_]: HKDFunctor]: Lens[R[F], F[CostModels]] =
     GenLens[R[F]](_.costModels).andThen(THKD.value)

@@ -45,10 +45,7 @@ object DijkstraEraPParams:
   given dijkstra: DijkstraEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
 /** Dijkstra's instances (`instance EraPParams DijkstraEra` to `instance DijkstraEraPParams
-  * DijkstraEra`, `Dijkstra/PParams.hs:703-1197, 1343-1366`, cardano-ledger 9df9f98c). The members
-  * the reference's `EraPParams` has at this pin and not at f649f975 (`ppMaxPledgeLeverageG`,
-  * `ppMinPoolMarginG`) are not in Scarab's class yet; Dijkstra's fields are reached through
-  * [[DijkstraEraPParams]].
+  * DijkstraEra`, `Dijkstra/PParams.hs:703-1197, 1343-1366`, cardano-ledger 9df9f98c).
   */
 private[era] object DijkstraEraPParamsInstance extends DijkstraEraPParams[Dijkstra]:
   private type R[F[_]] = DijkstraPParams[F]
@@ -95,6 +92,15 @@ private[era] object DijkstraEraPParamsInstance extends DijkstraEraPParams[Dijkst
     */
   val ppProtocolVersionL: Lens[PParams[Dijkstra], ProtVer] =
     PParams.lensHKD[Dijkstra].andThen(GenLens[R[Identity]](_.protocolVersion))
+
+  /** `ppMaxPledgeLeverageG = ppMaxPledgeLeverageL` and `ppMinPoolMarginG = ppLensHKD .
+    * hkdMinPoolMarginL` (`Dijkstra/PParams.hs:733,740`, cardano-ledger 9df9f98c): Dijkstra's
+    * fields, where the eras before it have constants.
+    */
+  val ppMaxPledgeLeverageG: Getter[PParams[Dijkstra], MaxPledgeLeverage] =
+    field(hkdMaxPledgeLeverageL[Identity])
+  val ppMinPoolMarginG: Getter[PParams[Dijkstra], UnitInterval] =
+    field(hkdMinPoolMarginL[Identity])
 
   def hkdCostModelsL[F[_]: HKDFunctor]: Lens[R[F], F[CostModels]] =
     GenLens[R[F]](_.costModels).andThen(THKD.value)

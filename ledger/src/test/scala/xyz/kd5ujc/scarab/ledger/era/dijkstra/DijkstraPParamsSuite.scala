@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32, W64}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraParamUpdate, DijkstraParamValue}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, Dijkstra, EpochInterval, NonZero}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, Conway, Dijkstra, EpochInterval, NonZero}
 
 /** Dijkstra's protocol parameters (`DijkstraPParams`, cardano-ledger 9df9f98c) against the build
   * the Leios testnet runs: each update of `fixtures/reference/dijkstra-pparams` is decoded as the
@@ -331,6 +331,22 @@ class DijkstraPParamsSuite extends FunSuite:
     )
     assertEquals(instance.ppMaxRefScriptSizePerTxG.get(pp).value, BigInt(1000))
     assertEquals(instance.ppMaxRefScriptSizePerBlockG.get(pp).value, BigInt(5000))
+
+  test(
+    "the class's leverage and margin getters read Dijkstra's fields, where Conway has constants"
+  ):
+    val leverage = MaxPledgeLeverage(NonNegativeInterval.boundRational(Rational(7, 2)))
+    val margin =
+      UnitInterval.boundRational(Rational(1, 20)).fold(fail("1/20 out of range"))(identity)
+    val pp = PParams[Dijkstra](
+      DijkstraPParams.empty.copy(maxPledgeLeverage = THKD(leverage), minPoolMargin = THKD(margin))
+    )
+    val era = summon[EraPParams[Dijkstra]]
+    assertEquals(era.ppMaxPledgeLeverageG.get(pp), leverage)
+    assertEquals(era.ppMinPoolMarginG.get(pp), margin)
+    val conway = summon[EraPParams[Conway]]
+    assertEquals(conway.ppMaxPledgeLeverageG.get(conway.emptyPParams), MaxPledgeLeverage.none)
+    assertEquals(conway.ppMinPoolMarginG.get(conway.emptyPParams), UnitInterval.zero)
 
   test("one lens reads the parameters and an update"):
     val ppu = DijkstraPParams.emptyUpdate.copy(perasCertBoost = THKD(Some(Unsigned.lit[W16](3))))
