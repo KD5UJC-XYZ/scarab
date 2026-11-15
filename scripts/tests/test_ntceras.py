@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The same-point node-to-client battery in every Shelley-based era (`ntcqueries`), without a devnet."""
+"""The same-point node-to-client battery in every Shelley-based era (`ntcqueries`, `ntceras`), without a devnet."""
 import hashlib
 import pathlib
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from devnet import cbor, ntcqueries, ntcquery  # noqa: E402
+from devnet import cbor, ntceras, ntcqueries, ntcquery  # noqa: E402
 from devnet.ntcqueries import Outcome, Row  # noqa: E402
+from devnet.util import FollowerSite  # noqa: E402
 
 CRED = [0, b"\xab" * 28]
 POOL = b"\x01" * 28
@@ -113,12 +115,15 @@ class JudgeTest(unittest.TestCase):
 
 
 class FakeNode:
-    """A node at `POINT` whose state is of the era `era`: it answers every query with a value naming it, ends the
-    connection on a block query whose tag is in `closes`, and refuses to acquire once `lost` is set."""
+    """A node at `POINT` whose state is of the era `era` and protocol major version `major`: it answers every query
+    with a value naming it, ends the connection on a block query whose tag is in `closes`, and refuses to acquire
+    once `lost` is set. `events` records, in order, each acquisition and each query sent (shared by two nodes)."""
 
-    def __init__(self, era, closes=(), answers=None, version=23):
+    def __init__(self, era, closes=(), answers=None, version=23, major=7, events=None, name="node"):
         self.era, self.closes, self.answers, self.version = era, set(closes), answers or {}, version
-        self.sent, self.opened, self.lost = [], 0, False
+        self.major, self.name = major, name
+        self.sent, self.opened, self.lost, self.sessions = [], 0, False, []
+        self.events = [] if events is None else events
 
     def answer(self, query):
         if query == [3]:
@@ -132,6 +137,11 @@ class FakeNode:
                 return None
             if tag in self.answers:
                 return self.answers[tag]
+            if q == [3]:
+                # the protocol version where the ledger's encoding of the parameters has it
+                pparams = [0] * 20
+                pparams[14 if era < 5 else 12] = [self.major, 0]
+                return [pparams]
             if tag in (8, 12):
                 # a ledger-state answer as `ledgercompare` frames one: an epoch state of 4 fields, a new one of 7
                 state = [era] * (4 if tag == 8 else 7)
@@ -149,6 +159,7 @@ class FakeSession:
 
     def __enter__(self):
         self.node.opened += 1
+        self.node.sessions.append(self)
         self.agreed_version = self.version or self.node.version
         return self
 
@@ -158,12 +169,14 @@ class FakeSession:
     def acquire(self, point=None):
         if self.node.lost:
             raise ntcquery.AcquireRefused(0)
+        self.node.events.append(("acquire", self.node.name, point))
 
     def _send(self, protocol, payload):
         if self.closed:
             raise BrokenPipeError()
         self.pending = ntcquery.decode_all(payload)[1]
         self.node.sent.append((self.agreed_version, self.pending))
+        self.node.events.append(("query", self.node.name, self.pending))
 
     def _recv(self, protocol):
         value = self.node.answer(self.pending)
@@ -194,12 +207,14 @@ class SamePointTest(unittest.TestCase):
         scala_closes = set(refused)
         if before:
             scala_closes |= {0, 1, 2, 3, 10, 11, 16, 17, 18, 19, 20, 22, 24, 29, 34, 36, 37, 38}
-        return FakeNode(era, refused, answers), FakeNode(era, scala_closes, answers)
+        events = []
+        return (FakeNode(era, refused, answers, events=events, name="reference"),
+                FakeNode(era, scala_closes, answers, events=events, name="scala"))
 
     def test_a_babbage_round_asks_babbage_queries_and_judges_every_row(self):
         reference, scala = self.nodes(5)
         rnd = self.run_round(reference, scala)
-        self.assertEqual((rnd.point, rnd.era, rnd.version), (POINT, 5, 23))
+        self.assertEqual((rnd.point, rnd.era, rnd.major, rnd.version), (POINT, 5, 7, 23))
         block_eras = {q[1][1][0] for _, q in reference.sent + scala.sent if q[:1] == [0] and q[1][:1] == [0]}
         self.assertEqual(block_eras, {5})
         outcomes = {(row.label, row.version): ntcqueries.judge(row)[0] for row in rnd.rows}
@@ -208,22 +223,91 @@ class SamePointTest(unittest.TestCase):
         self.assertIs(outcomes[("GetEpochNo", 23)], Outcome.INCOMPLETE)
         self.assertIs(outcomes[("GetConstitution", 23)], Outcome.REFUSED_BY_BOTH)
         self.assertIs(outcomes[("GetGenesisConfig", 20)], Outcome.INCOMPLETE)
-        # the arguments were read with queries both decoders take before Conway: the pools, the registered
-        # credentials and the UTxO, then the battery's first form
+        # the protocol version was read, then the arguments, with queries both decoders take before Conway: the
+        # pools, the registered credentials and the UTxO; then the battery's first form
         blocks = [q[1][1][1][0] for _, q in reference.sent if q[:1] == [0] and q[1][:1] == [0]]
-        self.assertEqual(blocks[:4], [16, 22, 7, 0])
+        self.assertEqual(blocks[:5], [3, 16, 22, 7, 0])
         # the legacy forms were asked at V20 too, on sessions of that version
         self.assertEqual([block(q) for v, q in reference.sent if v == ntcqueries.LEGACY_VERSION],
                          [[3], [11], [9, [3]], [9, [11]]])
-        # every session was acquired before the first query: the reference's main one, one for each query it
-        # refuses and one more, and two at V20
-        refused = sum(1 for row in rnd.rows if row.refused)
+        # the sessions: the reference's main one, one for each query it refuses in the widest battery and one more,
+        # and two at V20; all of them, the Scala node's too, at the round's point and acquired before the first
+        # block query was sent to either node
+        refused = sum(1 for _, q, _ in ntcqueries.battery(ntcqueries.WIDEST, 5)
+                      if ntcqueries.conway_only(ntcqueries.inner_of(q), 5))
         self.assertEqual(reference.opened, 1 + refused + 1 + 2)
+        events = reference.events
+        first_block = next(i for i, e in enumerate(events) if e[0] == "query" and e[2][:1] == [0] and e[2][1][:1] == [0])
+        acquisitions = [i for i, e in enumerate(events) if e[0] == "acquire"]
+        self.assertEqual(len(acquisitions), reference.opened + scala.opened)
+        self.assertLess(max(acquisitions), first_block)
+        self.assertEqual({tuple(e[2] or []) for e in events if e[0] == "acquire" and e[1] == "reference"},
+                         {tuple(POINT)})
 
     def test_a_conway_round_compares_every_row(self):
         reference, scala = self.nodes(6)
+        reference.major = scala.major = 10
         rnd = self.run_round(reference, scala)
         self.assertEqual({ntcqueries.judge(row)[0] for row in rnd.rows}, {Outcome.MATCHED})
+        self.assertEqual(rnd.major, 10)
+
+    def test_an_error_after_the_acquisitions_keeps_the_rows_asked_before_it(self):
+        reference, scala = self.nodes(5)
+        scala.answers = {**scala.answers, 7: [[b"other"]]}
+
+        class Slow(FakeNode):
+            def answer(self, query):
+                if query[:1] == [0] and query[1][:1] == [0] and query[1][1][1] == [12]:
+                    raise ntcquery.Deadline("no answer")
+                return super().answer(query)
+
+        slow = Slow(5, scala.closes, scala.answers, events=scala.events, name="scala")
+        with self.assertRaises(ntcqueries.RoundError) as raised:
+            self.run_round(reference, slow)
+        partial = raised.exception.round
+        self.assertEqual(raised.exception.form[0], "DebugNewEpochState")
+        outcomes = {row.label: ntcqueries.judge(row)[0] for row in partial.rows}
+        self.assertIs(outcomes["GetUTxOWhole"], Outcome.DIFFERS)
+        self.assertNotIn("DebugNewEpochState", outcomes)
+        # every session was closed
+        self.assertTrue(all(s.closed for s in reference.sessions + slow.sessions))
+
+    def test_an_ntc_round_that_ended_early_counts_its_rows_and_the_query_it_ended_on(self):
+        reference, scala = self.nodes(6)
+
+        class Slow(FakeNode):
+            def answer(self, query):
+                if query[:1] == [0] and query[1][:1] == [0] and query[1][1][1] == [12]:
+                    raise ntcquery.Deadline("no answer")
+                return super().answer(query)
+
+        FakeSession.nodes = {"reference": reference,
+                             "scala": Slow(6, scala.closes, scala.answers, events=scala.events, name="scala")}
+        with mock.patch.object(ntcquery, "LocalStateQuery", FakeSession), \
+                mock.patch("builtins.print"):
+            point, results = ntcqueries.compare_round("n", "ref.sock", "scala.sock")
+        labels = [label for label, _, _, _, _ in results]
+        self.assertEqual(labels[-1], "DebugNewEpochState")
+        self.assertEqual(results[-1], ("DebugNewEpochState", True, False, 0, 0))
+        self.assertTrue(all(matched for _, _, matched, _, _ in results[:-1]))
+        # the rows asked before it, in the battery's order, and none after it
+        self.assertEqual(labels[-2:], ["DebugEpochState", "DebugNewEpochState"])
+        self.assertNotIn("GetCBOR/DebugEpochState", labels)
+
+    def test_a_point_lost_while_the_sessions_are_acquired_closes_every_one(self):
+        reference, scala = self.nodes(5)
+
+        class Losing(FakeSession):
+            def acquire(self, point=None):
+                if len(self.node.sessions) > 4:
+                    raise ntcquery.AcquireRefused(1)
+                super().acquire(point)
+
+        FakeSession.nodes = {"reference": reference, "scala": scala}
+        with mock.patch.object(ntcquery, "LocalStateQuery", Losing), self.assertRaises(ntcqueries.PointLost):
+            ntcqueries.same_point("n", "ref.sock", "scala.sock", legacy=ntcqueries.legacy_battery)
+        self.assertTrue(all(s.closed for s in reference.sessions + scala.sessions))
+        self.assertFalse([e for e in reference.events if e[0] == "query" and e[2][:1] == [0] and e[2][1][:1] == [0]])
 
     def test_the_round_stops_before_any_block_query_when_the_eras_differ(self):
         reference, scala = FakeNode(5), FakeNode(4)
@@ -307,6 +391,31 @@ class AtPointTest(unittest.TestCase):
             ntcqueries.acquire_all([at])
         self.assertEqual(len(at.live), 2)
         self.assertEqual(FakeSession.nodes["reference"].opened, 2)
+        self.assertEqual(at.refused_connects, 3)
+
+    def test_the_scala_node_is_connected_to_at_most_four_sessions_at_once(self):
+        # each acquisition waits until four are in progress together, which only the gate's width lets happen; a
+        # fifth one let through would raise the peak
+        together = threading.Barrier(ntcqueries.SCALA_CONNECTIONS, timeout=10)
+
+        class Counting(FakeSession):
+            active = peak = 0
+            lock = threading.Lock()
+
+            def acquire(self, point=None):
+                with Counting.lock:
+                    Counting.active += 1
+                    Counting.peak = max(Counting.peak, Counting.active)
+                together.wait()
+                with Counting.lock:
+                    Counting.active -= 1
+
+        FakeSession.nodes = {"scala": FakeNode(5)}
+        gate = threading.BoundedSemaphore(ntcqueries.SCALA_CONNECTIONS)
+        at = ntcqueries.AtPoint(lambda: Counting(None, None, None, host=True), POINT, spares=6, gate=gate)
+        ntcqueries.acquire_all([at])
+        self.assertEqual(len(at.live), 8)
+        self.assertEqual(Counting.peak, ntcqueries.SCALA_CONNECTIONS)
 
     def test_a_deadline_is_an_error_of_the_round_not_a_refusal(self):
         class Slow(FakeSession):
@@ -320,6 +429,176 @@ class AtPointTest(unittest.TestCase):
             at.ask([1])
 
 
+class EraBatteryTest(unittest.TestCase):
+    SAME = b"\x82\x04\x81\x01"
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.dir.name)
+        self.site = FollowerSite()
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def battery(self, rounds):
+        return ntceras.EraBattery("n", self.root, [self.site], threading.Event(), rounds=rounds)
+
+    @staticmethod
+    def round_of(era, rows, major=5):
+        return ntcqueries.Round(POINT, era, major, 23, rows)
+
+    def rounds(self, *outcomes):
+        """A `same_point` that gives each of `outcomes` in turn: a round, or an exception to raise. `self.calls`
+        counts the rounds asked."""
+        calls = iter(outcomes)
+        self.calls = 0
+
+        def next_round(*a, **k):
+            self.calls += 1
+            outcome = next(calls)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+        return next_round
+
+    def matching(self, era, major=5):
+        return self.round_of(era, [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME)], major)
+
+    def differing(self, era, major=5):
+        return self.round_of(era, [Row("GetUTxOByTxIn", 23, True, False, b"\x82\x04\x01", b"\x82\x04\x02")],
+                             major)
+
+    def test_a_round_reports_its_rows_by_class(self):
+        rows = [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME),
+                Row("GetEpochNo", 23, False, False, self.SAME, None),
+                Row("GetConstitution", 23, False, True, None, None)]
+        battery = self.battery(self.rounds(self.round_of(4, rows)))
+        battery.request("alonzo")
+        battery.step(battery.requests.get_nowait())
+        alonzo = battery.report(self.site)["perEra"]["alonzo"]
+        self.assertEqual({k: alonzo[k] for k in ("steps", "rounds", "compared", "matched", "incomplete",
+                                                 "refusedByBoth")},
+                         {"steps": [5], "rounds": 1, "compared": 1, "matched": 1, "incomplete": 1, "refusedByBoth": 1})
+        self.assertEqual(alonzo["incompleteRows"], ["GetEpochNo@v23"])
+        # the other eras have no complete round: each is a failure, and this one's rows are not
+        self.assertEqual(battery.failures(self.site),
+                         [f"node-to-client battery: no complete round in {era}"
+                          for era in ("shelley", "allegra", "mary", "babbage", "conway")])
+
+    def test_answers_that_differ_fail_and_are_kept(self):
+        battery = self.battery(self.rounds(self.differing(5)))
+        battery.request("babbage")
+        battery.step("babbage")
+        report = battery.report(self.site)["rounds"][0]
+        self.assertEqual(report["rows"]["GetUTxOByTxIn@v23"]["scalaHex"], "820402")
+        self.assertIn("babbage (protocol 5) GetUTxOByTxIn@v23: differs", battery.failures(self.site))
+        self.assertEqual((self.root / "ntc-eras" / "babbage-5-120-GetUTxOByTxIn-v23.scala").read_bytes(),
+                         b"\x82\x04\x02")
+
+    def test_a_later_round_of_the_same_step_never_erases_a_difference(self):
+        battery = self.battery(self.rounds(self.differing(5, 7), self.matching(5, 7)))
+        for _ in range(2):
+            battery.request("babbage")
+            battery.step("babbage")
+        self.assertEqual(battery.report(self.site)["perEra"]["babbage"]["rounds"], 2)
+        self.assertIn("babbage (protocol 7) GetUTxOByTxIn@v23: differs", battery.failures(self.site))
+
+    def test_a_round_that_ended_early_keeps_its_failures(self):
+        partial = self.differing(5)
+        ended = ntcqueries.RoundError(partial, ("DebugNewEpochState", [12], True), ntcquery.Deadline("no answer"))
+        with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
+            battery = self.battery(self.rounds(ended, self.matching(5)))
+            battery.request("babbage")
+            battery.step("babbage")
+        babbage = battery.report(self.site)["perEra"]["babbage"]
+        self.assertEqual((babbage["rounds"], babbage["partialRounds"]), (1, 1))
+        self.assertIn("babbage (protocol 5) GetUTxOByTxIn@v23: differs", battery.failures(self.site))
+
+    def test_a_request_without_a_complete_round_fails(self):
+        lost = [ntcqueries.PointLost("gone")] * ntceras.ATTEMPTS
+        with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
+            battery = self.battery(self.rounds(*lost, self.matching(3, 4)))
+            for _ in range(2):
+                battery.request("mary")
+                battery.step("mary")
+        self.assertEqual(self.calls, ntceras.ATTEMPTS + 1)
+        # a later round of the era does not make up for the request that had none
+        self.assertEqual([f for f in battery.failures(self.site) if "request" in f],
+                         ["node-to-client battery: a mary request without a complete round: "
+                          "[{'attempt': 3, 'error': \"PointLost('gone')\", 'kind': 'transient'}]"])
+
+    def test_each_request_gets_one_complete_round_whatever_its_step(self):
+        # the walk asked in Babbage, and the follower's state is in Conway by then: the round is Conway's
+        with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
+            battery = self.battery(self.rounds(ntcqueries.PointLost("gone"), self.matching(6, 9), self.matching(6, 9)))
+            for _ in range(2):
+                battery.request("babbage")
+                battery.step("babbage")
+        self.assertEqual(self.calls, 3)
+        report = battery.report(self.site)
+        self.assertEqual(report["perEra"]["conway"]["steps"], [9])
+        self.assertEqual([r["attempts"] for r in report["rounds"]], [2, 1])
+        self.assertEqual([r["requestedIn"] for r in report["rounds"]], ["babbage", "babbage"])
+        self.assertFalse([f for f in battery.failures(self.site) if "request" in f])
+
+    def test_a_stop_cancels_the_queued_requests_and_one_it_cuts_short(self):
+        battery = self.battery(self.rounds())
+        battery.request("babbage")
+        battery.request("conway")
+        battery.stop.set()
+        battery.run()
+        self.assertEqual(battery.cancelled, ["babbage", "conway"])
+
+        def stopping(*a, **k):
+            battery.stop.set()
+            raise ntcqueries.PointLost("gone")
+
+        battery = self.battery(stopping)
+        battery.request("babbage")
+        battery.step("babbage")
+        report = battery.report(self.site)
+        self.assertEqual((report["cancelled"], report["notJudged"]), (["babbage"], []))
+        self.assertFalse([f for f in battery.failures(self.site) if "request" in f])
+        # a request after the stop is not taken
+        battery.request("conway")
+        self.assertEqual(battery.requested, 1)
+
+    def test_nodes_that_cannot_be_compared_are_not_retried(self):
+        battery = self.battery(self.rounds(ntcqueries.Incomparable("5 and 4")))
+        battery.request("babbage")
+        battery.step("babbage")
+        unjudged = battery.report(self.site)["notJudged"]
+        self.assertEqual([e["kind"] for e in unjudged[0]["attemptErrors"]], ["incomparable"])
+
+    def test_the_followers_rounds_of_a_request_run_at_once(self):
+        # each round waits until the other follower's is in progress too
+        together = threading.Barrier(2, timeout=10)
+
+        def judged(name, ref_socket, socket, **k):
+            together.wait()
+            return self.matching(3, 4)
+
+        sites = [FollowerSite("scalus"), FollowerSite("scarab")]
+        battery = ntceras.EraBattery("n", self.root, sites, threading.Event(), rounds=judged)
+        battery.request("mary")
+        battery.step("mary")
+        self.assertEqual([battery.report(site)["perEra"]["mary"]["rounds"] for site in sites], [1, 1])
+
+    def test_the_thread_runs_the_requests_and_ends_on_the_stop(self):
+        done = threading.Event()
+
+        def judged(*a, **k):
+            done.set()
+            return self.matching(6, 10)
+
+        battery = self.battery(judged)
+        battery.thread.start()
+        battery.request("conway")
+        self.assertTrue(done.wait(10))
+        battery.stop.set()
+        battery.thread.join(10)
+        self.assertFalse(battery.thread.is_alive())
+        self.assertEqual(battery.report(self.site)["perEra"]["conway"]["steps"], [10])
 
 if __name__ == "__main__":
     unittest.main()

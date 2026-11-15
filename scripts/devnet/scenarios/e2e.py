@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 import traceback
-from .. import eraload, govextra, protocolversions, protocolwalk
+from .. import eraload, govextra, ntceras, protocolversions, protocolwalk
 from ..cluster import down, freeze_classes, keep_native_evidence, listening_ports, scala_container, up_eras
 from ..compare import (PROJECTION_SCOPE, Comparisons, FollowerAgreement, agreement_failures, compare_era,
                        comparison_table, judge_comparisons, lsq)
@@ -298,7 +298,8 @@ def e2e(args):
     two ledgers are compared at several points (see `compare_pre_conway`, `compare_once`). With several
     `--plutus-vm` values one follower runs per evaluator (`util.follower_plan`): each is judged as the only one
     is, every comparison reads the reference once and compares all of them with that block, and at the end they
-    are judged against each other (`followers_cross_check`)."""
+    are judged against each other (`followers_cross_check`). At each era step a thread of its own asks the same-point
+    node-to-client battery of each follower's local socket and of the reference (`ntceras.EraBattery`)."""
     root = data_root(args.name)
     plan = follower_plan(getattr(args, "plutus_vm", None))
     sites = [site for site, _ in plan]
@@ -311,6 +312,7 @@ def e2e(args):
         down(args, quiet=True)  # leftovers of an earlier e2e run
     followers = {site: None for site in sites}  # the `follow` process of each follower
     loader, worker, conway_load = None, None, None
+    battery = None  # the node-to-client battery at each era step (`ntceras`), with the load and the comparisons
     late = []  # load threads that did not end within LOAD_JOIN_SECONDS of the request to stop
     tallies, agreement = {}, None
     summary, failures = {}, []
@@ -343,14 +345,22 @@ def e2e(args):
                                                  local_socket=True, plutus_vm=vm, site=site)
 
         def pools_ready(driver):
-            nonlocal loader, worker
+            nonlocal loader, worker, battery
             if args.no_load:
                 return
             loader = eraload.EraLoad(args.name, lambda: lsq(args.name), log=lambda m: print(json.dumps(m), flush=True))
             loader.dynamic_forks = True  # the protocol walk drives the Conway versions
             loader.ready.set()
-            compare =(lambda era, label: None) if args.no_compare else \
-                (lambda era, label: compare_era(args.name, era, label, list(tallies.values()), agreement))
+            if not args.no_compare:
+                battery = ntceras.EraBattery(args.name, root, sites, loader.stop,
+                                             log=lambda m: print(json.dumps(m), flush=True))
+                battery.thread.start()
+
+            def compare_and_ask(era, label):
+                compare_era(args.name, era, label, list(tallies.values()), agreement)
+                if label == "after-batch":
+                    battery.request(era)  # on the battery's own thread: the walk goes on
+            compare = (lambda era, label: None) if args.no_compare else compare_and_ask
 
             def conway_hook():
                 nonlocal conway_load
@@ -411,7 +421,8 @@ def e2e(args):
         if loader is not None:
             loader.stop.set()
         load_threads = {} if loader is None else {
-            "worker": worker, "governance": loader.governance_thread, "extended": loader.ext_thread}
+            "worker": worker, "governance": loader.governance_thread, "extended": loader.ext_thread,
+            "ntcEras": battery.thread if battery is not None else None}
         late = join_stopped(load_threads)
         blocked = {} if loader is None else blocked_stacks(load_threads)
         if conway_load is not None:
@@ -468,6 +479,9 @@ def e2e(args):
         if not args.no_compare:
             for site, tally in tallies.items():
                 failures += tagged(site, judge_comparisons(tally, args.min_comparisons, loader is not None))
+            if battery is not None:
+                for site in sites:
+                    failures += tagged(site, battery.failures(site))
             if agreement is not None:
                 failures += agreement_failures(agreement.per_era)
         if keyed:
@@ -507,7 +521,8 @@ def e2e(args):
             loader.stop.set()
             # an exceptional exit reaches here with the threads running: end them before the containers go
             still = join_stopped({"worker": worker, "governance": loader.governance_thread,
-                                  "extended": loader.ext_thread})
+                                  "extended": loader.ext_thread,
+                                  "ntcEras": battery.thread if battery is not None else None})
             unreported = [name for name in still if name not in late]
             if unreported:
                 failures.append(f"load threads still running {LOAD_JOIN_SECONDS} s after they were asked to stop: "
@@ -523,6 +538,9 @@ def e2e(args):
                                                "mismatches": tally.mismatches,
                                                # complete same-point states but the UTxO (#433, #677)
                                                "wholeState": tally.whole}
+        if battery is not None:
+            for site in sites:
+                entry(site)["ntcEras"] = battery.report(site)
         if keyed and "crossCheck" not in summary:
             summary["crossCheck"] = {"skipped": "the run ended before its followers were stopped and judged"}
         if loader is not None:
@@ -559,6 +577,8 @@ def e2e(args):
             if keyed:
                 print(f"{site.role}:")
             print(comparison_table(tally))
+            if battery is not None:
+                print(ntceras.table(battery.report(site)))
         if not args.keep:
             for c in (*(site.container(args.name) for site in sites), ref(args.name)):
                 docker("rm", "-f", c, check=False)

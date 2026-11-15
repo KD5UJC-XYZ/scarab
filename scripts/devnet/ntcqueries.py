@@ -9,6 +9,8 @@ state the reference acquired at that point (`GetCurrentEra`), never another one.
 """
 import concurrent.futures
 import enum
+import json
+import threading
 import time
 from typing import NamedTuple
 
@@ -16,6 +18,7 @@ from . import ledgercompare, ntcquery
 from .cbor import Tag, enc
 from .util import MAGIC
 
+ERA_BABBAGE = 5
 ERA_CONWAY = 6
 # The block queries the reference's decoder refuses in an era before Conway, whatever their arguments: `requireCG`
 # in `decodeShelleyQuery` (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Query.hs`
@@ -265,12 +268,15 @@ def ask(session, query):
 
 # How a node's connection ends when it does not answer a query: the end of its stream, read or written.
 CLOSED = (EOFError, BrokenPipeError, ConnectionResetError)
-DEADLINE = 120  # seconds a session of a round may last, from its handshake to its last answer
-# Sessions acquired at once: the length of a node's queue of connections not yet accepted, 8 on the reference's local
-# socket (`localSnocket`, `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 578, ouroboros-network
-# c45735a5) and on the Scala node's (`LocalSocket.Backlog`). A connection a full queue refuses (EAGAIN) is tried again
-# after `CONNECT_PAUSE`, at most `CONNECT_TRIES` times.
-ACQUIRE_WORKERS = 8
+DEADLINE = 45  # seconds a round may last, from its probe to its last answer: every session of it ends by then
+# Sessions acquired at once. A node's queue of connections not yet accepted holds 8 on the reference's local socket
+# (`localSnocket`, `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 578, ouroboros-network c45735a5)
+# and on the Scala node's (`LocalSocket.Backlog`); a round connects to the Scala node's at most `SCALA_CONNECTIONS` at
+# a time, so that the comparisons of the run's other threads (`compare.whole_state`) find room in its queue. A
+# connection a full queue refuses (EAGAIN) is tried again after `CONNECT_PAUSE`, at most `CONNECT_TRIES` times, and
+# counted (`Round.refused_connects`). The reference's sessions connect from its container, where a full queue waits.
+ACQUIRE_WORKERS = 12
+SCALA_CONNECTIONS = 4
 CONNECT_TRIES = 50
 CONNECT_PAUSE = 0.02
 
@@ -295,10 +301,11 @@ class AtPoint:
     end of a connection after a query was sent on an acquired session is the node's refusal (None from `ask`);
     anything else (a deadline, a malformed reply) is an error of the round."""
 
-    def __init__(self, opener, point, spares=0, first=None):
+    def __init__(self, opener, point, spares=0, first=None, gate=None):
         self.opener, self.point, self.spares = opener, point, spares
         self.live = [] if first is None else [first]
-        self.late = 0
+        self.gate = gate or threading.BoundedSemaphore(ACQUIRE_WORKERS)
+        self.late = self.refused_connects = 0
 
     @property
     def wanted(self):
@@ -311,18 +318,20 @@ class AtPoint:
             try:
                 return session.__enter__()
             except BlockingIOError:
+                self.refused_connects += 1
                 time.sleep(CONNECT_PAUSE)
         return self.opener().__enter__()
 
     def acquired(self):
-        """A new session of the node acquired at the point."""
-        session = self.connected()
-        try:
-            session.acquire(self.point)
-        except BaseException:
-            session.__exit__(None, None, None)
-            raise
-        return session
+        """A new session of the node acquired at the point, at most as many at once as its `gate` lets through."""
+        with self.gate:
+            session = self.connected()
+            try:
+                session.acquire(self.point)
+            except BaseException:
+                session.__exit__(None, None, None)
+                raise
+            return session
 
     def session(self):
         """The session the next query goes to: the first one left, or one acquired late."""
@@ -361,19 +370,26 @@ class AtPoint:
 
 
 def acquire_all(sets):
-    """Acquire the sessions every `AtPoint` of `sets` still wants, all at once; `PointLost`, with every session
-    closed, when one could not be."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=ACQUIRE_WORKERS) as pool:
-        pending = [(s, pool.submit(s.acquired)) for s in sets for _ in range(s.wanted - len(s.live))]
-    errors = []
-    for s, future in pending:
-        try:
-            s.live.append(future.result())
-        except Exception as e:  # each refusal, deadline or connection error of an acquisition
-            errors.append(e)
-    if errors:
+    """Acquire the sessions every `AtPoint` of `sets` still wants, all at once, each acquired session going to its
+    set however the acquisitions end (the caller closes the sets); `PointLost` when one could not be acquired."""
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=ACQUIRE_WORKERS)
+    pending, errors = [], []
+    try:
         for s in sets:
-            s.close()
+            for _ in range(s.wanted - len(s.live)):
+                pending.append((s, pool.submit(s.acquired)))
+        concurrent.futures.wait([future for _, future in pending])
+    finally:
+        pool.shutdown(wait=True)
+        for s, future in pending:
+            if future.cancelled():
+                continue
+            error = future.exception()
+            if error is None:
+                s.live.append(future.result())
+            else:  # a refusal, deadline or connection error of an acquisition
+                errors.append(error)
+    if errors:
         raise PointLost(f"{len(errors)} of {len(pending)} sessions not acquired: {errors[0]!r}") from errors[0]
 
 
@@ -390,13 +406,26 @@ class Row(NamedTuple):
 
 
 class Round(NamedTuple):
-    """A round: its point, the era of both nodes' states there, the version they agreed on, its rows, and the seconds
-    from the probe's acquisition to the last session's (`acquired`) and to the last answer (`answered`)."""
+    """A round: its point, the era and protocol major version of the reference's state there (the Scala node's era
+    is the same), the version both nodes agreed on, its rows, the seconds from the probe's acquisition to the last
+    session's (`acquired`) and to the last answer (`answered`), and the connections to the Scala node a full queue
+    refused before they were tried again."""
     point: list
     era: int
+    major: int
     version: int
     rows: list
     seconds: dict = {}
+    refused_connects: int = 0
+
+
+class RoundError(RuntimeError):
+    """A round that ended with an error after its sessions were acquired (a deadline, a malformed reply, sessions
+    run out): `round` holds the rows asked before it, and `form` the (label, query, implemented) it ended on."""
+
+    def __init__(self, partial, form, cause):
+        super().__init__(f"the round ended on {form[0]}: {cause!r}")
+        self.round, self.form = partial, form
 
 
 class Outcome(enum.Enum):
@@ -433,24 +462,45 @@ def judge(row):
     return (Outcome.MATCHED if row.reference == row.scala else Outcome.DIFFERS), None
 
 
+def protocol_major(pparams, era):
+    """The protocol major version in a `GetCurrentPParams` result at the ledger's encoding: the first item of field
+    14 before Babbage and of field 12 from it, as `eraview.previous_major` reads the previous epoch's parameters."""
+    return pparams[14 if era < ERA_BABBAGE else 12][0]
+
+
+# A universe with an element of every kind: the most forms a battery builds from any universe, for the sessions a
+# round acquires before it reads the arguments of its own.
+WIDEST = Universe([bytes(28)], [(0, bytes(28))], [[0, bytes(28)]], [[0, bytes(28)]], [bytes(29)], [[bytes(32), 0]],
+                  [[bytes(32), 0]], [[0, bytes(28)]])
+
+
 def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, legacy=None):
     """One round: the Scala node's volatile tip, acquired on both nodes, and every query of `queries_for` (and of
     `legacy`, at `LEGACY_VERSION`) asked of both at that point. The era of its block queries is that of the
-    reference's state at the point (`GetCurrentEra`), which the Scala node's must equal (`Incomparable`), and the
-    arguments are read from the reference's state there (`universe_of`). Every session is acquired before the first
-    query (`AtPoint`); `PointLost` when one cannot be. Returns a `Round`."""
+    reference's state at the point (`GetCurrentEra`), which the Scala node's must equal (`Incomparable`). Every
+    session is acquired once the eras are known and before any other query (`AtPoint`), as many as the widest
+    universe needs (`WIDEST`); `PointLost` when one cannot be. Then the protocol major version and the arguments are
+    read from the reference's state there (`universe_of`). Returns a `Round`; an error after the acquisitions is a
+    `RoundError` with the rows asked before it. Every session of the round ends `DEADLINE` seconds after its start
+    at the latest (`ntcquery.Deadline`), however late it was acquired."""
+    expires = time.monotonic() + DEADLINE
+
+    def remaining():
+        return max(expires - time.monotonic(), 0.1)
+
     def reference(version=None):
-        return ntcquery.LocalStateQuery(f"{name}-ref", ref_socket, MAGIC, version=version, deadline=DEADLINE)
+        return ntcquery.LocalStateQuery(f"{name}-ref", ref_socket, MAGIC, version=version, deadline=remaining())
 
     def scala(version=None):
-        return ntcquery.LocalStateQuery(None, scala_socket, MAGIC, host=True, version=version, deadline=DEADLINE)
+        return ntcquery.LocalStateQuery(None, scala_socket, MAGIC, host=True, version=version, deadline=remaining())
 
     current_era = [0, [2, [1]]]
+    gate = threading.BoundedSemaphore(SCALA_CONNECTIONS)
     sets = []
     try:
         probe = scala()
         probe.__enter__()
-        sets.append(AtPoint(scala, None, first=probe))
+        sets.append(AtPoint(scala, None, first=probe, gate=gate))
         probe.acquire()
         started = time.monotonic()
         probe.query_raw([3])
@@ -473,9 +523,9 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
         version = main.live[0].agreed_version
         if probe.agreed_version != version:
             raise Incomparable(f"the nodes agreed on node-to-client versions {version} and {probe.agreed_version}")
-        groups = [(version, queries_for(universe_of(main.live[0], era), era), sets[0], main)]
+        groups = [(version, queries_for(WIDEST, era), sets[0], main)]
         if legacy is not None:
-            groups.append((LEGACY_VERSION, legacy(era), AtPoint(lambda: scala(LEGACY_VERSION), point),
+            groups.append((LEGACY_VERSION, legacy(era), AtPoint(lambda: scala(LEGACY_VERSION), point, gate=gate),
                            AtPoint(lambda: reference(LEGACY_VERSION), point)))
         for _, forms, on_scala, on_reference in groups:
             on_scala.spares = sum(1 for _, q, implemented in forms if not implemented or conway_only(inner_of(q), era))
@@ -483,27 +533,29 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
             sets.extend(s for s in (on_scala, on_reference) if s not in sets)
         acquire_all(sets)
         acquired = time.monotonic() - started
+        major = protocol_major(main.live[0].query_raw(hfc([3], era))[0], era)
+        groups[0] = (version, queries_for(universe_of(main.live[0], era), era), sets[0], main)
         rows = []
         for at, forms, on_scala, on_reference in groups:
-            for label, query, implemented in forms:
-                rows.append(Row(label, at, implemented, conway_only(inner_of(query), era),
-                                on_reference.ask(query), on_scala.ask(query)))
-        return Round(point, era, version, rows,
-                     {"acquired": round(acquired, 3), "answered": round(time.monotonic() - started, 3)})
+            for form in forms:
+                label, query, implemented = form
+                try:
+                    rows.append(Row(label, at, implemented, conway_only(inner_of(query), era),
+                                    on_reference.ask(query), on_scala.ask(query)))
+                except (Exception, SystemExit) as e:
+                    raise RoundError(Round(point, era, major, version, rows), form, e) from e
+        return Round(point, era, major, version, rows,
+                     {"acquired": round(acquired, 3), "answered": round(time.monotonic() - started, 3)},
+                     sum(s.refused_connects for s in sets))
     finally:
         for s in sets:
             s.close()
 
 
-
-def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, dump_dir=None,
-                  ledger_states=None):
-    """One round of the `ntc` scenario (`same_point`). Returns (point, [(label, implemented, matched,
-    reference_length, scala_length)]). The two answers of a query that differs are written to `dump_dir` when it is
-    given. The ledger-state queries (`ledgercompare.LABELS`) require complete wire-byte equality; `ledger_states`,
-    when given, collects per-label exact comparison counts (`ledgercompare.add_to`)."""
-    rnd = same_point(name, ref_socket, scala_socket, queries_for, universe_of)
-    point = rnd.point
+def round_results(rnd, dump_dir=None, ledger_states=None):
+    """[(label, implemented, matched, reference_length, scala_length)] of a round, as the `ntc` scenario counts it:
+    the two answers of a query that differs are written to `dump_dir` when it is given, and `ledger_states`, when
+    given, collects per-label exact comparison counts of the ledger states (`ledgercompare.add_to`)."""
     results = []
     for row in rnd.rows:
         outcome, verdict = judge(row)
@@ -514,8 +566,25 @@ def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_
                 ledger_states[row.label].setdefault("problems", []).append(verdict.problems)
         if not matched and row.implemented and dump_dir is not None and row.reference is not None \
                 and row.scala is not None:
-            stem = f"diff-{row.label.replace('/', '_')}-{point[0]}"
+            stem = f"diff-{row.label.replace('/', '_')}-{rnd.point[0]}"
             (dump_dir / f"{stem}.reference").write_bytes(row.reference)
             (dump_dir / f"{stem}.scala").write_bytes(row.scala)
         results.append((row.label, row.implemented, matched, len(row.reference or b""), len(row.scala or b"")))
-    return point, results
+    return results
+
+
+def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, dump_dir=None,
+                  ledger_states=None):
+    """One round of the `ntc` scenario (`same_point`). Returns (point, [(label, implemented, matched,
+    reference_length, scala_length)]) (`round_results`). The ledger-state queries (`ledgercompare.LABELS`) require
+    complete wire-byte equality. A round that ends with an error after its sessions were acquired keeps the rows
+    asked before it, and the query it ended on counts as not matched."""
+    try:
+        rnd, ended = same_point(name, ref_socket, scala_socket, queries_for, universe_of), None
+    except RoundError as e:
+        rnd, ended = e.round, e
+        print(json.dumps({"roundError": str(e)[:300], "slot": rnd.point[0]}), flush=True)
+    results = round_results(rnd, dump_dir, ledger_states)
+    if ended is not None:
+        results.append((ended.form[0], ended.form[2], False, 0, 0))
+    return rnd.point, results
