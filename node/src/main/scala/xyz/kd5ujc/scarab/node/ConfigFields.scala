@@ -8,8 +8,9 @@ import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.json.{FromJson, JsonKind, NumberError, Scientific}
 import xyz.kd5ujc.scarab.ledger.state.{NonZero, Word64}
 
-/** Primitive instances used by the Leios configuration reader (aeson 2.3.1.0,
-  * Data/Aeson/Types/FromJSON.hs:188-213,1697-1698,1752-1753,1810-1835).
+/** Primitive instances used by the configuration reader (aeson 2.2.5.0,
+  * `src/Data/Aeson/Types/FromJSON.hs:187-212, 1688-1689, 1733-1744, 1814-1815`); optional fields
+  * treat missing keys and null as absent (`:858-859, 922-925, 1616-1618`).
   */
 private[node] final class ConfigFields private (val name: String, val fields: JsonObject):
   def value(key: String): Option[Json] = fields(key).filterNot(_.isNull)

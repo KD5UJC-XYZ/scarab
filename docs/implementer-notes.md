@@ -623,14 +623,14 @@ are the ones most in need of a second reading.
 
 ### Network, mini-protocols and queries
 
-#### IN-62 ChainSync intersection candidates are limited to 64
+#### IN-62 ChainSync intersection candidates use Fibonacci offsets
 
-- **Behaviour:** A reconnect that offers more than 64 intersection candidates fails; the candidates must be thinned.
+- **Behaviour:** The protocol has no candidate-count limit. Scarab's former 64-point bound was an implementation limit. The reference client offers the tip, Fibonacci offsets below `min(k, fragment length)`, and that final offset. Scarab follows this selection, offering at most 47 points for its `Int`-sized retained history; 47 is not a protocol limit.
 - **Era or protocol-version gate:** Not gated.
-- **Upstream reference:** none cited in our docs (protocol limit).
-- **Chain evidence:** Pipelined Preview sync.
+- **Upstream reference:** ouroboros-consensus 82ecba32 `Ouroboros/Consensus/MiniProtocol/ChainSync/Client.hs:2019-2043` (`mkOffsets`); ouroboros-network c45735a5 `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs:138-146` (`MsgFindIntersect`) and `Codec.hs:124-125, 209-214` (the point list has no count check).
+- **Chain evidence:** Pipelined Preview sync exposed the former Scarab bound; the selection rule above is checked against source.
 - **Pinned by:** [`PeerSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/PeerSuite.scala)
-- **Status:** observed
+- **Status:** confirmed in source
 
 #### IN-63 A BlockFetch range of full blocks can exceed the 10 MB per-request limit
 
@@ -922,7 +922,7 @@ are the ones most in need of a second reading.
 | [IN-59](#in-59-tpraos-overlay-schedule-and-the-absence-of-a-threshold-check-in-overlay-slots) | TPraos overlay schedule and the absence of a threshold check in overlay slots | Shelley to Alonzo, d > 0 | confirmed in source | Preview epochs 0 and 1 |
 | [IN-60](#in-60-header-envelope-checks-and-the-timing-of-era-entry) | Header envelope checks and the timing of era entry | Shelley onwards | confirmed in source | Preview from genesis |
 | [IN-61](#in-61-the-first-header-of-a-chain-that-starts-at-origin-names-the-byron-genesis-hash-as-its-parent) | The first header of a chain that starts at Origin names the Byron genesis hash as its parent | Byron | observed | preprod from genesis |
-| [IN-62](#in-62-chainsync-intersection-candidates-are-limited-to-64) | ChainSync intersection candidates are limited to 64 | all | observed | Preview sync |
+| [IN-62](#in-62-chainsync-intersection-candidates-use-fibonacci-offsets) | ChainSync intersection candidates use Fibonacci offsets | all | confirmed in source | Preview sync; source review |
 | [IN-63](#in-63-a-blockfetch-range-of-full-blocks-can-exceed-the-10-mb-per-request-limit) | A BlockFetch range of full blocks can exceed the 10 MB per-request limit | all | observed | Preview sync |
 | [IN-64](#in-64-getsystemstart-answers-with-the-byron-genesis-starttime-and-that-start-is-the-slot-clock) | `GetSystemStart` answers with the Byron genesis `startTime`, and that start is the slot clock | all with a Byron genesis | observed | devnet `ntc`, `pool` |
 | [IN-65](#in-65-the-alonzo-genesis-of-a-babbage-era-cluster-carries-the-plutusv2-cost-model-in-extraconfig) | The Alonzo genesis of a Babbage-era cluster carries the PlutusV2 cost model in `extraConfig` | Babbage | observed | devnet `ntc` |
