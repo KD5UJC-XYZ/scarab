@@ -722,6 +722,12 @@ class GreenRunTest(unittest.TestCase):
             with self.subTest(plutus_vm=plutus_vm):
                 summary, code = self.run_e2e(plutus_vm)
                 self.assertEqual((summary["failures"], summary["passed"], code), ([], True, 0))
+                self.assertEqual((summary["verdict"], summary["incomplete"]), ("passed", []))
+
+    def test_an_incomplete_gate_is_not_a_pass(self):
+        self.assertEqual(e2e_scenario.run_verdict(False, []), "passed")
+        self.assertEqual(e2e_scenario.run_verdict(False, ["node-to-client battery: 1 incomplete rows"]), "incomplete")
+        self.assertEqual(e2e_scenario.run_verdict(True, ["node-to-client battery: 1 incomplete rows"]), "failed")
 
     def test_the_only_follower_keeps_the_summary_layout(self):
         summary, _ = self.run_e2e(None)
@@ -818,11 +824,12 @@ class GreenRunTest(unittest.TestCase):
         self.assertEqual(summary["followers"]["scalus"]["followerExit"], 1)
 
     # the keys of a single-follower run's summary before several followers existed (this run's: no load, no
-    # comparisons), pinned so that no change for several followers adds one
+    # comparisons), pinned so that no change for several followers adds one; `incomplete` and `verdict` are the run's
+    # incomplete gates and its verdict (#924)
     SINGLE_SUMMARY = {"transitions", "expectedTransitions", "blocksPerEra", "blocksApplied", "lastEpoch",
                       "validationErrors", "fatalErrors", "unparsedOutput", "rollbacks", "reconnects", "followerExit",
                       "ledgerComparison", "blockedThreads", "endedThreads", "stoppedBecause", "cpuStarvationWarnings",
-                      "targetConwayEpoch", "failures", "passed"}
+                      "targetConwayEpoch", "failures", "incomplete", "verdict", "passed"}
 
     def test_one_explicit_evaluator_is_checked_as_each_of_several_is(self):
         # with one `--plutus-vm` the run's only follower must log that evaluator at its start, as each of several

@@ -203,18 +203,20 @@ def query_rounds(args, root, stats, until, every, ledger_states=None):
             time.sleep(1)
             continue
         rounds += 1
+        # a round whose sessions were not acquired has no point, and counts its one row as not matched
+        slot = point[0] if point else None
         for label, implemented, matched, n_ref, n_scala in results:
             row = stats.setdefault(label, {"implemented": implemented, "matched": 0, "total": 0, "lastDiff": None})
             row["total"] += 1
             if matched:
                 row["matched"] += 1
             else:
-                row["lastDiff"] = {"slot": point[0], "referenceBytes": n_ref, "scalaBytes": n_scala}
-        print(json.dumps({"round": rounds, "slot": point[0], "matched": sum(1 for r in results if r[2]),
+                row["lastDiff"] = {"slot": slot, "referenceBytes": n_ref, "scalaBytes": n_scala}
+        print(json.dumps({"round": rounds, "slot": slot, "matched": sum(1 for r in results if r[2]),
                           "queries": len(results)}), flush=True)
         for label, implemented, matched, n_ref, n_scala in results:
             if implemented and not matched:
-                print(json.dumps({"differs": label, "slot": point[0], "referenceBytes": n_ref,
+                print(json.dumps({"differs": label, "slot": slot, "referenceBytes": n_ref,
                                   "scalaBytes": n_scala}), flush=True)
         time.sleep(every)
     return rounds
