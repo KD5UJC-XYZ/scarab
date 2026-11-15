@@ -96,7 +96,8 @@ Reports are published to the public repository `KD5UJC-XYZ/scarab-conformance`, 
 
 - `reports/<scenario>/scarab-YYYYMMDD-<scenario>[-<era>].json.gz`: every published report, with its provenance;
 - `latest/<scenario>[-<era>].json.gz`: the newest report of each scenario and era, with its provenance;
-- `README.md`, which `publish.py` writes from `latest/`.
+- `README.md`, which `publish.py` writes from `latest/`: a Results section with the met, total and ratio of each
+  report and the overall score, as the site computes them, and the provenance of each report.
 
 The site reads a node's reports from the URLs of the node's entry in the site's own repository (`nodes/<id>/`),
 one per scenario and one per era for `cbor-decoding`, and decompresses a `.gz` it downloads. The URLs to give it
@@ -117,10 +118,22 @@ python3 -I -B scripts/conformance/publish.py <dir> --dry-run  # the default
 python3 -I -B scripts/conformance/publish.py <dir> --apply    # clones the reports repository, commits and pushes
 ```
 
-With `--apply` it checks that each report's Scarab commit is on GitHub (with `gh`), clones the reports repository
-shallowly into a temporary directory of its own with your Git credentials (`--repo-url` names another), copies
-each report under `reports/`, points `latest/` at it unless a newer report is there, writes `README.md`, stages
-exactly those files, commits with a message that names the Scarab commits, and pushes to `main`. The clone is
+With `--apply` it checks that each report's Scarab commit is on GitHub (with `gh`), fetches the site at its pinned
+commit as the runner does (into `--inputs`, reusing a copy verified there, else into a temporary directory of its
+own), clones the reports repository shallowly into that temporary directory with your Git credentials
+(`--repo-url` names another), copies each report under `reports/`, points `latest/` at it unless a newer report is
+there, writes `README.md`, stages exactly those files, commits with a message that names the Scarab commits, and
+pushes to `main`.
+
+The README's Results are computed again at each publication from the reports `latest/` then holds, by
+`scripts/conformance/score.py`, which mirrors the site's scoring at the pinned site commit and cites it rule by
+rule: each scenario weighs the same in the overall score, a scenario without a report the site can read counts
+zero, and `cbor-decoding` is scored by its Conway report, Dijkstra being shown but not scored while Conway can be
+read. The site's data that scoring needs (the ledger-rules fixtures, the uplc-conformance expectations, the
+uplc-turbo corpus) comes from the pinned checkout, so moving the site's pin means reading its scoring again at the
+new commit: the publisher refuses a pin that is not the commit `score.py` mirrors. One rule of the site is left
+out: it also fails a uplc-turbo benchmark whose budget disagrees with the other nodes' reports, which the reports
+repository does not hold. The clone is
 removed on normal exit and on exceptions: a failure before the push publishes nothing, so run it again once
 the cause is fixed. It refuses a file whose provenance does
 not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated

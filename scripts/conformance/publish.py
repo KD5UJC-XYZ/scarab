@@ -4,7 +4,7 @@
 node-diversity-conformance site reads them.
 
     python3 -I -B scripts/conformance/publish.py DIR_OR_FILES... [--dry-run | --apply] [--replace]
-        [--repo-url URL] [--identity 'Name <email>']
+        [--repo-url URL] [--identity 'Name <email>'] [--inputs DIR]
 
 The repository holds
 
@@ -13,17 +13,20 @@ The repository holds
   * `latest/<scenario>[-<era>].json.gz` and its `.provenance.json`: the newest report of each scenario and era,
     which the site reads at a fixed URL (`https://raw.githubusercontent.com/KD5UJC-XYZ/scarab-conformance/main/latest/
     <scenario>[-<era>].json.gz`; it decompresses a `.gz` it downloads);
-  * `README.md`, written by this script from what `latest/` holds.
+  * `README.md`, written by this script from what `latest/` holds: the scores of its reports as the site computes
+    them (`score.py`), and their provenance.
 
 `--dry-run`, the default, prints every action and runs none: no `gh` or `git` command, no file written. With
 `--apply` it
 
   1. checks that each report's Scarab commit is on GitHub (`gh api`), so that the provenance resolves;
-  2. clones the reports repository shallowly into a temporary directory of its own (`--repo-url`; Git's own
-     credentials, which the workflow gives through `GIT_SSH_COMMAND` and its deploy key);
-  3. copies each report and its provenance under `reports/`, refusing a dated file that is already there unless
+  2. fetches the site at its pinned commit (`pins.json`), whose data the scores need, into `--inputs` unless a
+     verified copy is there (as `run.py` does), or into a temporary directory of its own;
+  3. clones the reports repository shallowly into that temporary directory (`--repo-url`; Git's own credentials,
+     which the workflow gives through `GIT_SSH_COMMAND` and its deploy key);
+  4. copies each report and its provenance under `reports/`, refusing a dated file that is already there unless
      `--replace` is given; points `latest/` at a report unless a newer one is there; writes `README.md`;
-  4. stages exactly those files, commits, with a message that names the Scarab commits, and pushes to `main`.
+  5. stages exactly those files, commits, with a message that names the Scarab commits, and pushes to `main`.
 
 The clone is the script's own and is removed on normal exit and on exceptions. A failure before the push publishes
 nothing; after a push failure, the remote's `main` is checked to determine whether it accepted the commit. If that
@@ -52,6 +55,7 @@ from typing import Callable, Sequence
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from conformance import inputs, score  # noqa: E402
 from conformance.scenarios import NAME, SCENARIOS, label, provenance_name  # noqa: E402
 
 SCARAB = "KD5UJC-XYZ/scarab"
@@ -156,8 +160,9 @@ def place(reports: list[Report], clone: Path, replace: bool) -> list[Placement]:
     return [Placement(report, (latest_date(clone, report) or "") <= report.date) for report in reports]
 
 
-def readme(clone: Path) -> str:
-    """The reports repository's README, from the provenance of what `latest/` holds."""
+def readme(clone: Path, site: score.Site) -> str:
+    """The reports repository's README, from what `latest/` holds: the scores of its reports by the rules of the
+    site, whose data is `site`, and their provenance."""
     rows = []
     for record_path in sorted((clone / "latest").glob("*.provenance.json")):
         record = json.loads(record_path.read_text(encoding="utf-8"))
@@ -183,11 +188,14 @@ also writes this file: do not edit it by hand. The Plutus scenarios report Scara
   `generated_at`, with its `.provenance.json`: the Scarab commit, the pinned inputs and their checksums, the tool, its
   arguments and the checks the report passed.
 
+{score.markdown(score.results(clone / "latest", site))}
+## Reports in `latest/`
+
 {table}
 """
 
 
-def lay_out(placements: list[Placement], clone: Path) -> list[str]:
+def lay_out(placements: list[Placement], clone: Path, site: score.Site) -> list[str]:
     """Copy the reports into the clone and write its README; the paths written, relative to the clone."""
     written = []
     for placement in placements:
@@ -200,8 +208,28 @@ def lay_out(placements: list[Placement], clone: Path) -> list[str]:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
             written.append(target)
-    (clone / "README.md").write_text(readme(clone), encoding="utf-8")
+    (clone / "README.md").write_text(readme(clone, site), encoding="utf-8")
     return written + ["README.md"]
+
+
+def site_pin() -> inputs.Pin:
+    """The pinned site, which must be the commit whose scoring `score.py` mirrors."""
+    pin = inputs.load_pins()["site"]
+    if pin.spec["commit"] != score.SITE_COMMIT:
+        raise PublishError(f"pins.json pins the site at {pin.spec['commit']}, but score.py scores as it does at "
+                           f"{score.SITE_COMMIT}: read the site's scoring at the new commit and update score.py")
+    return pin
+
+
+def scoring_site(root: Path) -> score.Site:
+    """The site's data its scores need, from its checkout at the pinned commit under `root`, fetched there unless
+    a verified copy is there."""
+    pin = site_pin()
+    try:
+        return score.Site.read(inputs.fetch(pin, root))
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        raise PublishError(f"the site at {pin.spec['commit'][:9]} could not be fetched or read: {error}; nothing "
+                           "was published") from error
 
 
 def message(reports: list[Report]) -> str:
@@ -250,12 +278,18 @@ def execute(argv: Sequence[str]) -> subprocess.CompletedProcess:
     return subprocess.run(list(argv), text=True, capture_output=True)
 
 
-def dry_run(reports: list[Report], url: str, replace: bool, identity: str | None) -> None:
+def dry_run(reports: list[Report], url: str, replace: bool, identity: str | None, root: Path | None) -> None:
     """Print every action of `--apply`, running none."""
     print(f"# dry run: nothing is checked, cloned, written, committed or pushed. With --apply, for {len(reports)} "
           "report(s):")
     for commit in sorted({report.commit for report in reports}):
         print(shlex.join(commit_check(commit)))
+    pin = site_pin()
+    target = (root or Path("<temporary directory>")) / pin.directory
+    print(f"# fetch the site at {pin.spec['commit']} into {target}, unless a verified copy is there, to score "
+          "latest/:")
+    for command in inputs.git_commands(pin, target):
+        print(shlex.join(command))
     clone = Path("<temporary clone>")
     print(shlex.join(clone_command(url, clone)))
     written = []
@@ -264,7 +298,7 @@ def dry_run(reports: list[Report], url: str, replace: bool, identity: str | None
               f"({'replacing one already there' if replace else 'refused if one is already there'})")
         print(f"# copy {report.path} -> {report.latest}, and its provenance, unless a newer report is there")
         written += [report.dated, provenance_name(report.dated), report.latest, provenance_name(report.latest)]
-    print("# write README.md from latest/")
+    print("# write README.md from latest/: the scores of its reports by the site's rules, and their provenance")
     commands = git_commands(clone, reports, identity, [*written, "README.md"])
     for step in ("add", "commit", "push"):
         print(shlex.join(commands[step]))
@@ -278,19 +312,21 @@ def git(run: Run, command: list[str], step: str) -> str:
     return done.stdout.strip()
 
 
-def apply(reports: list[Report], url: str, replace: bool, identity: str | None, run: Run) -> None:
+def apply(reports: list[Report], url: str, replace: bool, identity: str | None, run: Run,
+          root: Path | None) -> None:
     for commit in sorted({report.commit for report in reports}):
         found = run(commit_check(commit))
         if found.returncode != 0 or found.stdout.strip() != commit:
             raise PublishError(f"Scarab commit {commit} is not on GitHub: push it before publishing its reports")
     with tempfile.TemporaryDirectory(prefix="scarab-conformance-") as scratch:
+        site = scoring_site(root or Path(scratch) / "inputs")
         clone = Path(scratch) / "clone"
         git(run, clone_command(url, clone), "clone")
         try:
             head = ["git", "-C", str(clone), "rev-parse", "HEAD"]
             starting = git(run, head, "rev-parse")
             placements = place(reports, clone, replace)
-            commands = git_commands(clone, reports, identity, lay_out(placements, clone))
+            commands = git_commands(clone, reports, identity, lay_out(placements, clone, site))
             git(run, commands["add"], "add")
             if run(commands["staged"]).returncode == 0:
                 print("already published: the remote's main holds these files; nothing committed")
@@ -328,6 +364,8 @@ def main(argv: list[str] | None = None, run: Run = execute) -> int:
     parser.add_argument("--repo-url", default=REPOSITORY_URL, help="the reports repository to clone "
                         "(default: %(default)s)")
     parser.add_argument("--identity", help="the commit's author, 'Name <email>' (default: Git's configuration)")
+    parser.add_argument("--inputs", type=Path, help="where the pinned site is fetched to score latest/, and reused "
+                        "once verified, as run.py's --inputs (default: a temporary directory)")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     try:
         identity_flags(args.identity)
@@ -335,10 +373,11 @@ def main(argv: list[str] | None = None, run: Run = execute) -> int:
         if not reports:
             print("no report to publish")
             return 0
+        root = args.inputs.resolve() if args.inputs else None
         if args.apply:
-            apply(reports, args.repo_url, args.replace, args.identity, run)
+            apply(reports, args.repo_url, args.replace, args.identity, run, root)
         else:
-            dry_run(reports, args.repo_url, args.replace, args.identity)
+            dry_run(reports, args.repo_url, args.replace, args.identity, root)
     except (PublishError, OSError, json.JSONDecodeError) as error:
         print(f"refused: {error}", file=sys.stderr)
         return 1
