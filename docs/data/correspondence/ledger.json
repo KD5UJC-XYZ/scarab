@@ -3699,8 +3699,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
-   "digest": "7e50399f3b91fa2c"
+   "note": "the reference's predicate generic in its era over the reference's classes, the count narrowed to a Word16 as the reference's fromIntegral does; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "5818849f1be1d96b"
   },
   "def ledger.era.rules.AlonzoUtxo.validateWrongNetworkInTxBody": {
    "upstream": [
@@ -3799,12 +3799,13 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6900444297",
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "note": "each address's raw bytes, where the reference collects decoded addresses, equal by value, and its failure encodes them again: two encodings of one address are two entries here and one in the reference. The verdict is the reference's; the refusal's content differs for an address written non-canonically",
    "digest": "17be9b6cfea31805"
   },
   "def ledger.era.rules.ShelleyUtxo.validateWrongNetworkWithdrawal": {

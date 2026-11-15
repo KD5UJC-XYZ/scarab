@@ -474,6 +474,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     transaction of the recorded Conway refusal corpora (`ConwayUtxoChecksSuite`), five of the eight refuse
     somewhere; the other three refuse on cases crafted from a recorded one, an empty input set, spent
     reference inputs at version 10 and a collateral maximum of zero.
+  - The independent review found two differences from the reference that the flat predicates share, so the
+    comparison could not show them. The collateral count is now narrowed to a `Word16` in both, as the
+    reference's `fromIntegral` narrows it. `validateWrongNetwork` keeps each address's raw bytes where the
+    reference collects decoded addresses, equal by value: a Gap of the refusal's content, tracked on #796.
   - The predicates whose failures carry outputs (the output sizes and the bootstrap attributes) wait for each
     era's failure types (§3.4); the fee, the value conserved and the collateral wait for the UTxO class
     (`EraUTxO`) and the certificate state's.

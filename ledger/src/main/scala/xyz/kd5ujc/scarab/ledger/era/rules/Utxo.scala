@@ -118,7 +118,8 @@ object AlonzoUtxo:
       )
 
   /** `validateTooManyCollateralInputs` (`Alonzo/Rules/Utxo.hs:470-481`, cardano-ledger f649f975):
-    * at most `ppMaxCollateralInputs` collateral inputs, counted as a set.
+    * at most `ppMaxCollateralInputs` collateral inputs, counted as a set and the count narrowed to
+    * a `Word16`, as the reference compares it.
     */
   def validateTooManyCollateralInputs[E <: EraTag](pp: PParams[E], body: TxBody[TxLevel.Top, E])(
       using
@@ -126,7 +127,8 @@ object AlonzoUtxo:
       p: AlonzoEraPParams[E]
   ): Test[PredicateFailure] =
     val maxColl = PParams.lensHKD[E].andThen(p.hkdMaxCollateralInputsL[Identity]).get(pp).value
-    val numColl = BigInt(b.collateralInputs(body).size)
+    // `fromIntegral . Set.size`: the size narrowed to a `Word16`, so modulo 2^16
+    val numColl = BigInt(b.collateralInputs(body).size) % (BigInt(1) << 16)
     Test.failureUnless(
       numColl <= maxColl,
       failure(UtxoFailure.TooManyCollateralInputs(Mismatch(numColl.toInt, maxColl.toInt)))

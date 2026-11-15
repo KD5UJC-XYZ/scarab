@@ -173,7 +173,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
         parts.head.value match
           case Value.Map(fields) =>
             val body = Node(Value.Map(f(fields)), Bytes.empty)
-            right("re-encode")(Cbor.encode(Value.Arr(body +: parts.tail)))
+            right("re-encode")(Cbor.encode(Value.Arr(body +: parts.tail), Cbor.Limits.Unbounded))
           case other => fail(s"a body that is not a map: $other")
       case other => fail(s"an envelope that is not an array: $other")
     s.copy(
@@ -226,6 +226,41 @@ class ConwayUtxoChecksSuite extends FunSuite:
   test("crafted from a recorded case: more collateral inputs than the parameters allow"):
     val s = seen.find(_.flat.body.collateral.nonEmpty).getOrElse(fail("no case with collateral"))
     compared(withParams(s)(_.copy(maxCollateralInputs = 0)), "validateTooManyCollateralInputs")
+
+  /** A collateral set of `n` distinct inputs: indices below 50,000 of one transaction id after
+    * another, since an index is a `Word16`.
+    */
+  private def collateral(n: Int): Node =
+    def leaf(v: Value) = Node(v, Bytes.empty)
+    def input(i: Int) =
+      val id = leaf(Value.ByteString(Bytes(Vector.fill(31)(7.toByte) :+ (i / 50000).toByte)))
+      leaf(Value.Arr(Vector(id, leaf(Value.UInt(i % 50000)))))
+    leaf(Value.Arr(Vector.tabulate(n)(input)))
+
+  private def withCollateral(s: Seen, n: Int): Seen =
+    edited(s, envelope(s))(fields =>
+      fields.filterNot((k, _) => isKey(13)(k)) :+ (key(13) -> collateral(n))
+    )
+
+  test("the collateral count is narrowed to a Word16, as the reference compares it, in both paths"):
+    val s = withParams(seen.head)(_.copy(maxCollateralInputs = 3))
+    def verdicts(n: Int) =
+      val (_, flat, typed) =
+        pairs(withCollateral(s, n)).find(_._1 == "validateTooManyCollateralInputs").get
+      assertEquals(typed, flat, s"$n collateral inputs")
+      flat
+    assert(verdicts(1 << 16).isValid, "65,536 inputs count as 0")
+    assert(verdicts((1 << 16) + 3).isValid, "65,539 inputs count as 3")
+    assertEquals(
+      verdicts((1 << 16) + 4),
+      Verdict.failureUnless(
+        false,
+        PredicateFailure.utxo(
+          xyz.kd5ujc.scarab.ledger.UtxoFailure
+            .TooManyCollateralInputs(xyz.kd5ujc.scarab.ledger.Mismatch(4, 3))
+        )
+      )
+    )
 
   test("the corpus fails the predicates it can tell apart, and names the rest"):
     val all = pairs(seen.head).map(_._1).toSet

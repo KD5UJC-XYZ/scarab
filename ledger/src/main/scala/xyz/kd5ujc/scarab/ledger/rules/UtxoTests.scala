@@ -188,14 +188,18 @@ object UtxoTests:
     unless(total.fits(pp.maxTxExUnits), UtxoFailure.ExUnitsTooBig(Mismatch(total, pp.maxTxExUnits)))
 
   /** `validateTooManyCollateralInputs` (`Alonzo/Rules/Utxo.hs:470-481`), which Babbage's UTXO runs
-    * and Alonzo's does not.
+    * and Alonzo's does not. The count is the set's size as a `Word16` (`fromIntegral`), so modulo
+    * 2^16, as the reference compares it.
     */
   def tooManyCollateralInputs(pp: ProtocolParams, body: TxBody): Test[PredicateFailure] =
-    val count = TxChecks.collateralInputs(body).size
+    val count = TxChecks.collateralInputs(body).size % Word16Values
     unless(
       count <= pp.maxCollateralInputs,
       UtxoFailure.TooManyCollateralInputs(Mismatch(count, pp.maxCollateralInputs.toInt))
     )
+
+  /** The number of values of a `Word16`, by which `fromIntegral` narrows an `Int` to one. */
+  private val Word16Values = 1 << 16
 
   /** `disjointRefInputs` (`Babbage/Rules/Utxo.hs:194-207`): the inputs that are also reference
     * inputs, refused at protocol versions 9 and 10 only.
