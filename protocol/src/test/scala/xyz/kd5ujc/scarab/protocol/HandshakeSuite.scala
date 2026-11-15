@@ -240,8 +240,9 @@ class HandshakeSuite extends munit.FunSuite:
     }
     val largeString = Term.ByteString(Bytes(Vector.fill(3000)(0.toByte)))
     val oversized = Message.Propose(Vector(14 -> Term.Arr(Vector.fill(2)(largeString))))
-    assertEquals(encode(ntn, oversized), Left(ProtocolError.HandshakeByteLimitExceeded))
+    // written as the reference writes it, with no bound, and refused when read
     val oversizedWire = bytes("8200a10e82590bb8" + "00" * 3000 + "590bb8" + "00" * 3000)
+    assertEquals(encode(ntn, oversized), Right(oversizedWire))
     val capError = decodePrefix(ntn, State.Propose, oversizedWire).swap.toOption.get
     assert(!capError.incomplete)
     assert(capError.message.contains("byte limit"))
@@ -361,15 +362,15 @@ class HandshakeSuite extends munit.FunSuite:
     assertEquals(proposal, Right(Message.Propose(Vector.empty)))
     assertEquals(accept, Right(Message.Accept(14, nested(depth))))
     assertEquals(written, Some(Right(bytes(accepted))))
-    // past the bound the message is refused when read and when written
-    val (tooDeep, unwritten) = onSmallStack {
+    // past the bound the message is written, as the reference writes it, and refused when read
+    val (tooDeep, written6000) = onSmallStack {
       (
         decodePrefix(ntn, State.Confirm, bytes("83010e" + "81" * 6000 + "00")),
         encode(ntn, Message.Accept(14, nested(6000)))
       )
     }
     assertEquals(tooDeep, Left(DecodeError(ProtocolError.HandshakeByteLimitExceeded)))
-    assertEquals(unwritten, Left(ProtocolError.HandshakeByteLimitExceeded))
+    assertEquals(written6000, Right(bytes("83010e" + "81" * 6000 + "00")))
   }
 
   test(

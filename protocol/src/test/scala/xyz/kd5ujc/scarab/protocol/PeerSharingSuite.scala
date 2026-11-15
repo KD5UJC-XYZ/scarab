@@ -204,25 +204,28 @@ class PeerSharingSuite extends munit.ScalaCheckSuite:
     )
   }
 
-  test("a message over the limit is refused when encoded and when decoded") {
+  // The reference's encodeMsg writes a message of any size and its driver sends it
+  // (`sendMessage`, Driver/Limits.hs:109-117, ouroboros-network c45735a5); the limit of the state is
+  // applied on receipt only (`runDecoderWithLimit`, 295-331).
+  test("a message over the limit is written, and refused when read (#1029)") {
     val many = Vector.tabulate(300)(i =>
       v6(0xffffffffL, 0xfffffff0L + i % 16, 0xffffffffL, 0xffffffffL, 65535 - i)
     )
     val reply = Message.SharePeers(many)
-    val big = Limits(1_000_000)
-    assertEquals(encode(State.Busy, Role.Server, reply), Left(Error.TooLarge(UpstreamMessageBytes)))
-    val wire = encode(State.Busy, Role.Server, reply, big).fold(e => fail(e.message), identity)
+    val wire = encode(State.Busy, Role.Server, reply).fold(e => fail(e.message), identity)
     assert(wire.size > UpstreamMessageBytes, wire.size)
     assertEquals(
       decodePrefix(State.Busy, Role.Server, wire),
       Decoding.Failed(Error.TooLarge(UpstreamMessageBytes))
     )
     assertEquals(
-      decodePrefix(State.Busy, Role.Server, wire, big),
+      decodePrefix(State.Busy, Role.Server, wire, Limits(1_000_000)),
       Decoding.Decoded(reply, wire.size)
     )
     // the largest answer of ten peers fits
-    assert(encode(State.Busy, Role.Server, Message.SharePeers(many.take(10))).isRight)
+    assert(
+      encode(State.Busy, Role.Server, Message.SharePeers(many.take(10))).exists(_.size <= 5760)
+    )
     // a list that claims far more items than the limit holds fails on the first byte past it
     val claims = b("82019b00ffffffffffffff" + "83001a7f000001190bb9" * 800)
     assertEquals(

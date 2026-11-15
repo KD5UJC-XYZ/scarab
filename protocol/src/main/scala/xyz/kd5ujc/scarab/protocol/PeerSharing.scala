@@ -275,19 +275,14 @@ object PeerSharing:
         readAddress(cursor)
       override private[protocol] def writeTo(
           writer: PeerSharingEngine.Writer,
-          value: Address,
-          limits: Limits
+          value: Address
       ): Either[Error, Unit] =
         writeAddress(writer, value)
         Right(())
 
-  def encode(
-      state: State,
-      sender: Role,
-      message: Message,
-      limits: Limits = Limits()
-  ): Either[Error, Bytes] =
-    PeerSharingEngine.encodeTyped(state, sender, toEngine(message), addressCodec, limits)
+  /** The message's bytes; nothing bounds them, as nothing bounds what the reference sends. */
+  def encode(state: State, sender: Role, message: Message): Either[Error, Bytes] =
+    PeerSharingEngine.encodeTyped(state, sender, toEngine(message), addressCodec)
 
   /** One message prefix; the strict address domain keeps its original validation order. */
   def decodePrefix(

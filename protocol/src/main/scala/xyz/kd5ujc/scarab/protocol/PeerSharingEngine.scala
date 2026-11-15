@@ -25,11 +25,15 @@ object PeerSharingEngine:
     def decode(item: Bytes): Either[ProtocolError, P]
     private[protocol] def readFrom(cursor: Cursor): Parse[P] =
       cursor.item().flatMapF(item => decode(item).left.map(e => Stop.Fail(Error.PeerItem(e))))
-    private[protocol] def writeTo(writer: Writer, peer: P, limits: Limits): Either[Error, Unit] =
+
+    /** The item must be one complete CBOR item; its own bytes are its only bound, as the reference
+      * bounds a message on receipt only.
+      */
+    private[protocol] def writeTo(writer: Writer, peer: P): Either[Error, Unit] =
       for
         item <- encode(peer).left.map(Error.PeerItem.apply)
         _ <- ProtocolWire
-          .validateItem(item, itemLimits(limits.maxMessageBytes))
+          .validateItem(item, itemLimits(item.size).copy(maxItems = math.max(item.size, 1)))
           .left
           .map(Error.PeerItem.apply)
       yield writer.raw(item)
@@ -79,12 +83,17 @@ object PeerSharingEngine:
     def raw(value: Bytes): Unit = out.write(value.toArray)
     def result: Bytes = Bytes.fromArray(out.toByteArray)
 
+  /** `encodeMsg` (`Codec.hs:44-56`, ouroboros-network c45735a5), a list of peers written as
+    * `encodeListWith` writes it (81-84). Nothing bounds the message written: the driver sends what
+    * the codec encodes (`sendMessage`, `framework/lib/Ouroboros/Network/Driver/Limits.hs:109-117`)
+    * and bounds a message on receipt only (`runDecoderWithLimit`, 295-331), which [[decodeTyped]]
+    * mirrors.
+    */
   private[protocol] def encodeTyped[P](
       state: State,
       sender: Role,
       message: Message[P],
-      peer: PeerCodec[P],
-      limits: Limits
+      peer: PeerCodec[P]
   ): Either[Error, Bytes] =
     transitionTyped(state, sender, message).flatMap { _ =>
       val writer = new Writer
@@ -101,30 +110,22 @@ object PeerSharingEngine:
             writer.byte(0x9f)
             peers
               .foldLeft[Either[Error, Unit]](Right(()))((done, value) =>
-                done.flatMap(_ => peer.writeTo(writer, value, limits))
+                done.flatMap(_ => peer.writeTo(writer, value))
               )
               .map(_ => writer.byte(0xff))
         case Message.Done =>
           writer.head(4, 1); writer.head(0, 2)
           Right(())
-      written.flatMap { _ =>
-        val bytes = writer.result
-        Either.cond(
-          bytes.size <= limits.maxMessageBytes,
-          bytes,
-          Error.TooLarge(limits.maxMessageBytes)
-        )
-      }
+      written.map(_ => writer.result)
     }
 
   def encode[P](
       state: State,
       sender: Role,
       message: Message[P],
-      peer: PeerCodec[P],
-      limits: Limits = Limits()
+      peer: PeerCodec[P]
   ): Either[ProtocolError, Bytes] =
-    encodeTyped(state, sender, message, peer, limits).left.map(ProtocolError.PeerSharing.apply)
+    encodeTyped(state, sender, message, peer).left.map(ProtocolError.PeerSharing.apply)
 
   /** Why a read stopped: the input ended, or the bytes are wrong. */
   private[protocol] enum Stop:

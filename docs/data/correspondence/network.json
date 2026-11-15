@@ -288,8 +288,8 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
-   "note": "its private parser reads a message as one generic term and checks it afterwards, where decodeMsg reads the list length and key and checks (key, length) before reading on, so a malformed message can be refused at another item and with other text (#796). As the reference since #1029: a refusal's reason is read as decodeRefuseReason reads it, its length read and ignored, and generic terms and strings have no depth, count or size cap, only the message's 5760 bytes. Its encoder also refuses to write a message over 5760 bytes, where encodeMsg writes any and the reference bounds a message on receipt only (runDecoderWithLimit)",
-   "digest": "9e4c61ae95c7b374"
+   "note": "its private parser reads a message as one generic term and checks it afterwards, where decodeMsg reads the list length and key and checks (key, length) before reading on, so a malformed message can be refused at another item and with other text (#796). As the reference since #1029: a refusal's reason is read as decodeRefuseReason reads it, its length read and ignored; generic terms and strings have no depth, count or size cap, only the message's 5760 bytes on receipt (runDecoderWithLimit); and the encoder writes a message of any size, as encodeMsg does and the driver sends it (sendMessage, Driver/Limits.hs:109-117)",
+   "digest": "c43c5a0b97106ba6"
   },
   "object protocol.KeepAlive.UpstreamTimeLimits": {
    "upstream": [
@@ -334,7 +334,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "its private address reader is decodeRemoteAddress: the address's length is read and ignored, then its tag as a word (0 or 1, any other refused), then one or four Word32 and the port as a Word16; its private writer is encodeRemoteAddress, [0, word32, port] and [1, word32 x 4, port]. The rest converts between the facade's messages and PeerSharingEngine's",
-   "digest": "0537deef26ecce66"
+   "digest": "a5ff280aecb871e4"
   },
   "object protocol.TxSubmission2": {
    "upstream": [

@@ -33,7 +33,9 @@ protocol, started on demand, only when the negotiated flag is on).
    integers in any definite width, a definite or an indefinite list of peers. The encoder writes what the reference writes (an
    empty list definite, otherwise indefinite).
 2. Errors are the closed `PeerSharing.Error`; the multiplexer sees the message of the error (`DecodeResult.Failed`). A server cuts an
-   answer to the amount asked for and to what fits 5760 bytes instead of failing, whatever its source returns.
+   answer to the amount asked for and to what fits 5760 bytes instead of failing, whatever its source returns. The codec itself
+   writes a message of any size, as the reference's does, and bounds a message on receipt only
+   ([#1029](https://github.com/KD5UJC-XYZ/scarab/issues/1029)).
 3. The salt of the server policy mirrors the reference's quirk: the request that re-salts is answered under the draw the
    generator made, the generator is stored advanced, and the other requests of the 823 s read the first draw of the advanced
    generator (`PeerSharing.hs:219-227`), so the salt of an interval is read by the request that opens the next one. `PeerShare.Salting`
@@ -46,7 +48,7 @@ protocol, started on demand, only when the negotiated flag is on).
    protocol answered, but the governor does not ask and the server has nothing to share (see G1.4b).
 
 **Tests.** `protocol`: `PeerSharingSuite` (literals written from the reference codec, every truncation, ranges, declared
-lengths, agency, the byte limit both ways, a round-trip property and a totality property). `network`: `PeerSharingSuite` (in-memory bearers: the
+lengths, agency, the byte limit on receipt, a round-trip property and a totality property). `network`: `PeerSharingSuite` (in-memory bearers: the
 answers, the cut to the amount and to 5760 bytes, `Done` and a second conversation, more peers than asked for, an oversize answer,
 no answer within 60 s on `TestControl`, no timeout while idle, the flag as the conjunction on a whole connection),
 `selection/PeerShareSuite` (the shareable set, `min(amount, 10)`, the order independent of the arrival order, one peer changes at

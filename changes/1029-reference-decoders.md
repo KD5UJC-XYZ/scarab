@@ -15,3 +15,10 @@
   on the heap, so its depth does not reach the thread's stack.
 - A refusal's reason is read as the reference's `decodeRefuseReason` reads it: its declared length is
   read and ignored, and its tag names the items read (the list of versions, or a version and a text).
+
+### Changed (PeerSharing and Handshake encoding, #1029)
+
+- The PeerSharing and Handshake encoders write a message of any size, as the reference's do: its driver
+  sends what the codec encodes and bounds a message on receipt only. They refused one over 5760 bytes
+  before. The receive bound is unchanged, and the PeerSharing server still cuts its answer to what fits
+  5760 bytes. `PeerSharing.encode` and `PeerSharingEngine.encode` no longer take `Limits`.

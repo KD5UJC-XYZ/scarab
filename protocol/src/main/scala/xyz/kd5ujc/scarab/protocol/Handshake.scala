@@ -835,8 +835,10 @@ object Handshake:
           val initial = if width == 2 then 249 else if width == 4 then 250 else 251
           Right((initial.toByte +: number(bits, width)) -> Nil)
 
-  /** A term in pre-order from a stack on the heap, refused once its bytes pass the bound of a
-    * message.
+  /** A term in pre-order from a stack on the heap. Nothing bounds its bytes: the reference's driver
+    * sends what the codec encodes (`sendMessage`,
+    * `ouroboros-network/framework/lib/Ouroboros/Network/Driver/Limits.hs:109-117`, c45735a5) and
+    * bounds a message on receipt only (`runDecoderWithLimit`, 295-331), as [[Parser]] does.
     */
   private def encodeTerm(term: Term)(using ProtocolWire.Scope): Bytes =
     @tailrec def go(
@@ -850,8 +852,6 @@ object Handshake:
             case Pending.Raw(bytes) => Right((bytes, Nil))
             case Pending.Item(item) => written(item)
           step match
-            case Left(error) => Left(error)
-            case Right((bytes, _)) if bytes.sizeIs > MaxMessageBytes - out.size =>
-              Left(ProtocolError.HandshakeByteLimitExceeded)
+            case Left(error)           => Left(error)
             case Right((bytes, items)) => go(items ::: rest, out ++ bytes)
     Bytes(ProtocolWire.get(go(List(Pending.Item(term)), Vector.empty)))
