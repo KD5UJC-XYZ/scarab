@@ -102,23 +102,20 @@ class ForgerAssertionsSuite
     // slots of one second from the epoch: the previous reading in slot 5000, its next slot at 5001 s
     val previous = Instant.ofEpochSecond(5000, 250000000L)
     val awaited = Instant.ofEpochSecond(5001)
-    def early(by: Duration) = Forger.earlyWake(geometry, previous, awaited.minus(by))
-    assertEquals(
-      early(Duration.ofNanos(500000)),
-      Some(Forger.EarlyWake(previous, awaited.minusNanos(500000), awaited))
-    )
-    assertEquals(early(Duration.ofNanos(1001)).map(_.now), Some(awaited.minusNanos(1001)))
-    assertEquals(early(Duration.ofNanos(999999)).map(_.now), Some(awaited.minusNanos(999999)))
+    def early(by: Duration) = Forger.wokeEarly(geometry, previous, awaited.minus(by))
+    assertEquals(early(Duration.ofNanos(500000)), Some(awaited))
+    assertEquals(early(Duration.ofNanos(1001)), Some(awaited))
+    assertEquals(early(Duration.ofNanos(999999)), Some(awaited))
     // the bounds themselves are out: a wait floored to the microsecond, and #629's millisecond
     assertEquals(early(Duration.ofNanos(1000)), None)
     assertEquals(early(Duration.ofNanos(999)), None)
     assertEquals(early(Duration.ofMillis(1)), None)
     assertEquals(early(Duration.ofMillis(500)), None)
     // a reading earlier than the previous one is a clock that moved back, not a wake
-    assertEquals(Forger.earlyWake(geometry, previous, previous.minusNanos(500000)), None)
-    assertEquals(Forger.earlyWake(geometry, previous, previous), None)
+    assertEquals(Forger.wokeEarly(geometry, previous, previous.minusNanos(500000)), None)
+    assertEquals(Forger.wokeEarly(geometry, previous, previous), None)
     // a reading in the slot after is no wake before it
-    assertEquals(Forger.earlyWake(geometry, previous, awaited.plusNanos(500000)), None)
+    assertEquals(Forger.wokeEarly(geometry, previous, awaited.plusNanos(500000)), None)
   }
 
   property("an early wake is a later reading, more than 1 µs and less than 1 ms before its slot") {
@@ -131,7 +128,7 @@ class ForgerAssertionsSuite
       val previous = Instant.ofEpochSecond(second, offset)
       val now = Instant.ofEpochSecond(second + 1).minusNanos(earlyNanos)
       val expected = now.isAfter(previous) && earlyNanos > 1000L && earlyNanos < 1000000L
-      assertEquals(Forger.earlyWake(geometry, previous, now).isDefined, expected)
+      assertEquals(Forger.wokeEarly(geometry, previous, now).isDefined, expected)
     }
   }
 

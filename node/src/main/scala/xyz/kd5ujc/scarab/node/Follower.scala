@@ -623,7 +623,7 @@ final class Follower[F[_]: Async, S] private (
       assertions.sometimes(Property.Sometimes.RolledBackMoreThanOne, depth > 1, rollback) *>
       assertions.sometimes(
         Property.Sometimes.RolledBackMoreThanHalfK,
-        2 * depth > original.k,
+        Follower.pastHalfK(depth, original.k),
         rollback
       )
 
@@ -718,6 +718,11 @@ final class Follower[F[_]: Async, S] private (
     }
 
 object Follower:
+  /** Whether a rollback of `depth` blocks is of more than half of `k`: `2 * depth > k`, in `Long`,
+    * which holds twice any `Int` (a configured k may be as large as `Int.MaxValue`).
+    */
+  private[node] def pastHalfK(depth: Int, k: Int): Boolean = 2L * depth > k
+
   /** What a commit's assertions report: the tip it left, the point it rolled back to, how many
     * blocks that was and the chain's `k`.
     */

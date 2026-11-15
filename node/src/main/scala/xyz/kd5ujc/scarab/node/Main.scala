@@ -584,6 +584,16 @@ object Main extends IOApp:
         Fatal.Unverifiable(_) =>
       Assertions[IO].unreachable(Property.Unreachable.StoppedOnFault, Stop(fault))
 
+  /** The reporter of the faults that stop the node ([[FatalReporter]]): the first is logged (`log`,
+    * cancelable), then, in the step that runs once the fault is claimed whatever becomes of the
+    * log, asserted ([[stopped]]) and handed to `faulted`, which ends the run. A log that is
+    * cancelled or fails loses neither the assertion nor the stop.
+    */
+  private[node] def faultReporter(faulted: Deferred[IO, Fatal], log: Fatal => IO[Unit])(using
+      Assertions[IO]
+  ): IO[FatalReporter[IO]] =
+    FatalReporter.create[IO](log, fault => stopped(fault).guarantee(faulted.complete(fault).void))
+
   /** What the assertion of a stop reports: the fault, as the `fatal` line gives it. */
   private final case class Stop(fault: Fatal)
 
@@ -1155,10 +1165,7 @@ object Main extends IOApp:
         // is logged where it happens, and the run ends like a signal does (the stores close, the
         // shutdown snapshot is taken) with an exit code of its own
         faulted <- Deferred[IO, Fatal]
-        fatalReporter <- FatalReporter.create[IO](
-          fault => stopped(fault) *> logged(NodeEvent.Faulted(fault)),
-          fault => faulted.complete(fault).void
-        )
+        fatalReporter <- faultReporter(faulted, fault => logged(NodeEvent.Faulted(fault)))
         watchdog <- StallWatchdog.create[IO](
           BigInt(0),
           options.stallMinutes.minutes,

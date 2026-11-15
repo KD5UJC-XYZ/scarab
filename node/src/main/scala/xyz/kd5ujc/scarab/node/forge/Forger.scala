@@ -338,8 +338,13 @@ final class Forger[F[_]: Async, S](
               if !Duration.between(instant, at).minus(Forger.MaxClockRewind).isPositive then
                 clockTrace(ClockTrace.SystemClockMovedBack(at, instant)) *>
                   Forger
-                    .earlyWake(geometry, at, instant)
-                    .traverse_(assertions.unreachable(Property.Unreachable.ClockWokeEarly, _)) *>
+                    .wokeEarly(geometry, at, instant)
+                    .traverse_(awaited =>
+                      assertions.unreachable(
+                        Property.Unreachable.ClockWokeEarly,
+                        Forger.EarlyWake(at, instant, awaited)
+                      )
+                    ) *>
                   untilNext(slot, instant, 0.millis) *>
                   loop(Some(Some(last) -> instant))
               else
@@ -863,21 +868,22 @@ object Forger:
     * reading's, which is the one the loop waited for. A wait floored to the microsecond
     * ([[untilNext]]) can end less than 1 µs early; a reading earlier than the previous one is a
     * clock that really moved back. It is the typed form of the Antithesis trial driver's detector
-    * of the trace, which read the log for the same readings.
+    * of the trace, which read the log for the same readings. The slot start it woke before, when it
+    * is such a wake; its details ([[EarlyWake]]) are built only where they are written.
     */
-  private[forge] def earlyWake(
+  private[forge] def wokeEarly(
       geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry,
       previous: Instant,
       now: Instant
-  ): Option[EarlyWake] =
+  ): Option[Instant] =
     val awaited = geometry.slotStart(geometry.slotAt(previous) + 1)
     val early = Duration.between(now, awaited)
     Option.when(
       now.isAfter(previous) && early.compareTo(EarlyWake.Least) > 0 &&
         early.compareTo(EarlyWake.Most) < 0
-    )(EarlyWake(previous, now, awaited))
+    )(awaited)
 
-  /** A wake `awaited - now` before the slot start the loop waited for (see [[earlyWake]]). */
+  /** A wake `awaited - now` before the slot start the loop waited for (see [[wokeEarly]]). */
   private[forge] final case class EarlyWake(previous: Instant, now: Instant, awaited: Instant)
 
   private[forge] object EarlyWake:

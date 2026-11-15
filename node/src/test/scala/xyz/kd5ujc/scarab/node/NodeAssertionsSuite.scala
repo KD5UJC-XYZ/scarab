@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -29,7 +28,7 @@ import xyz.kd5ujc.scarab.storage.StorageEvent
   * collecting interpreter from the typed value that triggers it: a fault the node stops for, a
   * snapshot the storage wrote, a demotion the governor traced.
   */
-class NodeAssertionsSuite extends CatsEffectSuite:
+class NodeAssertionsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val point = ChainSync.Point.Block(
     ChainSync.UInt64.saturating(4200L),
     Bytes.wrap(Array.fill(32)(0xab.toByte))
@@ -84,6 +83,77 @@ class NodeAssertionsSuite extends CatsEffectSuite:
         )
       )
       assertEquals(clockOnly, Vector.empty[Made])
+  }
+
+  /** The reporter of the node's faults, its log entered and cancelled before it ends: what it
+    * asserted, and the fault the run was handed.
+    */
+  private def cancelledLog(fault: Fatal): IO[(Vector[Made], Option[Fatal])] =
+    for
+      collected <- Collecting.create
+      (assertions, made) = collected
+      faulted <- Deferred[IO, Fatal]
+      entered <- Deferred[IO, Unit]
+      reporter <- Main.faultReporter(faulted, _ => entered.complete(()) *> IO.never)(using
+        assertions
+      )
+      reporting <- reporter.report(fault).start
+      _ <- entered.get
+      _ <- reporting.cancel
+      asserted <- made
+      handed <- faulted.tryGet
+    yield (asserted, handed)
+
+  test("a stop is asserted and the run is told even when the fatal log is cancelled") {
+    val storage = Fatal.Storage(StorageError.Io("volatile", new java.io.IOException("disk full")))
+    val clock = Fatal.Internal(ClockProblem.SystemClockMovedBack(BigInt(5010), BigInt(4980)))
+    for
+      stop <- cancelledLog(storage)
+      clockStop <- cancelledLog(clock)
+    yield
+      assertEquals(
+        stop._1.map(m => (m.property, m.condition, m.details("kind"))),
+        Vector((Property.Unreachable.StoppedOnFault, false, Some(Json.fromString("Storage"))))
+      )
+      assertEquals(stop._2, Some(storage))
+      assertEquals(clockStop._1, Vector.empty[Made])
+      assertEquals(clockStop._2, Some(clock))
+  }
+
+  // The runtime checks for cancelation at every step and yields at every second one, so the seeded
+  // schedules let a cancel land anywhere in a report: before its claim, during it, in the log.
+  test("a fault is never handed to the run without its assertion, wherever a cancel lands") {
+    val everyStep = cats.effect.unsafe.IORuntimeConfig(1, 2)
+    val storage = Fatal.Storage(StorageError.Io("volatile", new java.io.IOException("disk full")))
+    (1L to 40L).toList.traverse_ { seed =>
+      val program =
+        for
+          collected <- Collecting.create
+          (assertions, made) = collected
+          faulted <- Deferred[IO, Fatal]
+          reporter <- Main.faultReporter(faulted, _ => IO.never)(using assertions)
+          _ <- reporter.report(storage).start.flatMap(_.cancel)
+          asserted <- made
+          handed <- faulted.tryGet
+        yield assertEquals(
+          asserted.map(_.property),
+          handed.as(Property.Unreachable.StoppedOnFault).toVector,
+          s"seed $seed: the stop handed to the run, $handed, is asserted"
+        )
+      val seeded = java.util.Base64.getEncoder
+        .encodeToString(seed.toString.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      cats.effect.testkit.TestControl.executeEmbed(program, everyStep, Some(seeded))
+    }
+  }
+
+  test("a rollback past half of k is counted without overflow, for any k a configuration takes") {
+    assert(Follower.pastHalfK(1073741824, 1500000000))
+    assert(!Follower.pastHalfK(750000000, 1500000000))
+    assert(Follower.pastHalfK(Int.MaxValue, Int.MaxValue))
+    assert(!Follower.pastHalfK(Int.MaxValue / 2, Int.MaxValue))
+    assert(Follower.pastHalfK(3, 5))
+    assert(!Follower.pastHalfK(2, 5))
+    assert(!Follower.pastHalfK(0, 1))
   }
 
   test("a start that fails on a fault is a stop too; one that fails otherwise is not") {
