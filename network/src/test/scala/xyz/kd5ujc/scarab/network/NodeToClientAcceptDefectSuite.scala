@@ -35,8 +35,8 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
     */
   private final case class Node(
       path: Path,
-      failures: Ref[IO, Vector[NetworkError]],
-      firstEnded: Deferred[IO, Unit]
+      failures: Ref[IO, Vector[(LocalConnectionId, NetworkError)]],
+      firstEnded: Deferred[IO, LocalConnectionId]
   )
 
   /** The state the toy ledger answers with. */
@@ -92,8 +92,8 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
           refs <- Resource.eval(
             (
               Ref.of[IO, Int](0),
-              Ref.of[IO, Vector[NetworkError]](Vector.empty),
-              Deferred[IO, Unit]
+              Ref.of[IO, Vector[(LocalConnectionId, NetworkError)]](Vector.empty),
+              Deferred[IO, LocalConnectionId]
             ).tupled
           )
           (accepted, failures, firstEnded) = refs
@@ -101,10 +101,10 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
             LocalSockets.jdk[IO],
             LocalAddress(path.toString),
             _ => IO.unit
-          )((_, failure) =>
+          )((id, failure) =>
             failure match
               case HandlerFailure.Domain(error) =>
-                failures.update(_ :+ error).void *> firstEnded.complete(()).void
+                failures.update(_ :+ (id -> error)) *> firstEnded.complete(id).void
               case HandlerFailure.Defect(thrown) =>
                 IO(fail(s"the connection was a defect of the node: $thrown"))
           )((bearer, _) =>
@@ -218,13 +218,24 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
       yield answer
     }
 
-  /** The one connection that failed, as the node saw it. */
-  private def onlyDecoderDefect(node: Node, protocol: Int): IO[Unit] =
-    node.failures.get.map {
-      case Vector(NetworkError.DecoderDefect(seen, thrown)) =>
-        assertEquals(seen, protocol)
-        assert(thrown eq cause, s"the original exception is kept, got $thrown")
-      case other => fail(s"expected one DecoderDefect, got $other")
+  /** The defective connection has exactly one failure; the healthy client's close may already have
+    * been reported too.
+    */
+  private def onlyDecoderDefect(
+      node: Node,
+      connection: LocalConnectionId,
+      protocol: Int
+  ): IO[Unit] =
+    node.failures.get.map { failures =>
+      val (defective, healthy) = failures.partition(_._1 == connection)
+      defective.map(_._2) match
+        case Vector(NetworkError.DecoderDefect(seen, thrown)) =>
+          assertEquals(seen, protocol)
+          assert(thrown eq cause, s"the original exception is kept, got $thrown")
+        case other => fail(s"expected one DecoderDefect for $connection, got $other")
+      healthy.foreach { case (_, error) =>
+        assertEquals(error, NetworkError.BearerClosed(NetworkError.Closure.PeerClosed))
+      }
     }
 
   /** Two clients of `protocol`: the first on a connection whose decoder throws, the second on a
@@ -237,9 +248,9 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
     withNode(protocol, stateQuery) { node =>
       for
         failed <- request(node.path)
-        _ <- node.firstEnded.get
+        defective <- node.firstEnded.get
         served <- request(node.path)
-        _ <- onlyDecoderDefect(node, protocol)
+        _ <- onlyDecoderDefect(node, defective, protocol)
       yield
         failed match
           case Left(_: NetworkError.BearerClosed) => ()
