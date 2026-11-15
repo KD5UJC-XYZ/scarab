@@ -133,8 +133,8 @@ set per era (stage 2 of #85), is given per era and takes the build's instance fo
 ## 3. Stages
 
 1. **The class and the unpack.**
-   - Scope: `Build`, `SomeBuild`, and `BuildRules[B]` with the existing rule switch and the layout's rule
-     members (SNAP, NEWEPOCH, POOL, POOLREAP, the genesis state) as members.
+   - Scope: `Build`, `SomeBuild`, and the classes of §2.3, with the members listed below. They refine
+     the first list of #1063, which also named SNAP, NEWEPOCH and POOLREAP; those wait for stage 2.
    - The node parses the build and unpacks it once, and rules take `BuildRules[B]` instead of a
      `ReferenceBuild` value. No layout changes.
    - Members in this stage are the sites that read the build:
