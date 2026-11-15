@@ -144,12 +144,11 @@ object DijkstraProposal:
 
   /** `GovAction` from version 12 (`Procedures.hs:935-985`, cardano-ledger 9df9f98c):
     * `decodeRecordSum` of a parameter change `[0, previous / null, update, policy / null]`, a hard
-    * fork `[1, previous / null, version]` whose major may be at most 13
-    * (`decodeProtVer @DijkstraEra`, `ProtVerHigh` 12 and its successor, `BaseTypes.hs:254-265`; the
-    * version a `CBORGroup` record of a `Version` and a `Word32`), treasury withdrawals `[2, map,
-    * policy / null]`, no confidence `[3, previous / null]`, a committee update `[4, previous /
-    * null, set, map, quorum]`, a constitution `[5, previous / null, [anchor, script hash / null]]`
-    * and an information action
+    * fork `[1, previous / null, version]` whose major may be at most 13 (`decodeProtVer @DijkstraEra`,
+    * `ProtVerHigh` 12 and its successor, `BaseTypes.hs:254-265`; the version a `CBORGroup` record
+    * of a `Version` and a `Word32`), treasury withdrawals `[2, map, policy / null]`, no confidence
+    * `[3, previous / null]`, a committee update `[4, previous / null, set, map, quorum]`, a
+    * constitution `[5, previous / null, [anchor, script hash / null]]` and an information action
     * `[6]`.
     */
   private def action(n: Node): Result[DijkstraGovAction] =
