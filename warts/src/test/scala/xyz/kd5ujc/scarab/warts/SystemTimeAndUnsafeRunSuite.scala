@@ -253,6 +253,7 @@ class SystemTimeAndUnsafeRunSuite extends munit.FunSuite:
       val b = (e: Either[Boom, Unit] | Either[java.io.IOException, Unit]) => IO.fromEither(e)
       val c = (e: Either[java.io.IOException, Unit] | Either[IllegalStateException, Unit]) =>
         IO.fromEither(e)
-      (a, b, c)
+      val d = (e: Either[Boom, Unit] & Serializable) => IO.fromEither(e)
+      (a, b, c, d)
     }
-    assertEquals(kinds(r), List.fill(2)("raise-domain-error"))
+    assertEquals(kinds(r), List.fill(3)("raise-domain-error"))

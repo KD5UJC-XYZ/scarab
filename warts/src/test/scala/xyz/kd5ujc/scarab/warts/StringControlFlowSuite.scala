@@ -271,3 +271,22 @@ class StringControlFlowSuite extends munit.FunSuite:
       )
     }
     assertEquals(kinds(r), List("string-equality", "string-equality"))
+
+  test(
+    "only augmentString is the conversion of a text form; a member val alias counts as its path"
+  ):
+    val r = WartTestTraverser(StringControlFlow) {
+      import scala.collection.StringOps
+      def quota(role: String, high: String => StringOps, low: String => StringOps): Int =
+        (if role == "admin" then high(role).take(4) else low(role).take(1)).toInt
+      final class Label(val text: String):
+        val same: String = this.text
+        def trimmed: String = if this.text.endsWith(".") then this.same.dropRight(1) else this.same
+        def other(that: Label): String = if this.text.endsWith(".") then that.same else this.same
+      (
+        quota("a", new StringOps(_), new StringOps(_)),
+        Label("a").trimmed,
+        Label("a").other(Label("b"))
+      )
+    }
+    assertEquals(kinds(r), List("string-equality", "string-predicate"))

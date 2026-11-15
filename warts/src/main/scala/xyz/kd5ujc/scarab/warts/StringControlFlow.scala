@@ -176,9 +176,14 @@ object StringControlFlow extends WartTraverser:
       private def canonical(aliases: Map[Symbol, List[Symbol]], fuel: Int)(
           path: List[Symbol]
       ): List[Symbol] =
-        path.lastOption.flatMap(aliases.get) match
-          case Some(named) if fuel > 0 => canonical(aliases, fuel - 1)(path.init ++ named)
-          case _                       => path
+        (path.lastOption.flatMap(aliases.get), path.headOption.flatMap(aliases.get)) match
+          case (Some(named), _) if fuel > 0 => canonical(aliases, fuel - 1)(path.init ++ named)
+          // a member `val` bound to a path from `this` (`val same = this.text`): the same path from the
+          // receiver it is selected on (`r.same` is `r.text`)
+          case (_, Some(named))
+              if fuel > 0 && path.sizeIs > 1 && named.lastOption.exists(_.isClassDef) =>
+            canonical(aliases, fuel - 1)(named.init ++ path.tail)
+          case _ => path
 
       private def textual(t: Term): Boolean = isString(t) || t.tpe.widen <:< stringOps
 
@@ -202,7 +207,11 @@ object StringControlFlow extends WartTraverser:
             builtOn(context, paths)(q) && own(args)
           case Apply(TypeApply(Select(q, _), _), args) if textual(q) =>
             builtOn(context, paths)(q) && own(args)
-          case Apply(_, List(x)) if term.tpe.widen <:< stringOps && isString(x) =>
+          // `node.take(8)` is `augmentString(node).take(8)`
+          case Apply(f, List(x))
+              if Trees
+                .callee(f)
+                .exists(r => Trees.plainName(r.symbol) == "scala.Predef.augmentString") =>
             builtOn(context, paths)(x)
           case Apply(Select(sc, _), args) if sc.tpe.widen <:< TypeRepr.of[StringContext] =>
             val parts = args.flatMap(interpolated)
