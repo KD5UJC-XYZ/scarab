@@ -33,7 +33,9 @@ object Word32:
   given Order[Word32] = Order.from(Integer.compareUnsigned(_, _))
   given Show[Word32] = Show.show(w => s"Word32(${Integer.toUnsignedString(w)})")
 
-/** `PerasRoundNo` (`Block/SupportsPeras.hs:85`, a `Word64` newtype): a Peras voting round. */
+/** `PerasRoundNo` (`Block/SupportsPeras.hs:85` of ouroboros-consensus 82ecba32, a `Word64`
+  * newtype): a Peras voting round.
+  */
 opaque type PerasRoundNo = Word64
 
 object PerasRoundNo:
@@ -44,8 +46,8 @@ object PerasRoundNo:
   given Order[PerasRoundNo] = Word64.order
   given Show[PerasRoundNo] = Show.show(r => s"PerasRoundNo(${Word64.decimal(r)})")
 
-/** `ShelleyTip` (`Shelley/Ledger/Ledger.hs:258-263`): the last block applied. The Haskell
-  * `HeaderHash (ShelleyBlock proto era)` is the 32-byte header hash.
+/** `ShelleyTip` (`Shelley/Ledger/Ledger.hs:258-263`, ouroboros-consensus 82ecba32): the last block
+  * applied. The Haskell `HeaderHash (ShelleyBlock proto era)` is the 32-byte header hash.
   */
 final case class ShelleyTip(slot: SlotNo, blockNo: BlockNo, hash: Hash32) derives Eq, Show, Diff
 
@@ -54,18 +56,19 @@ object ShelleyTip:
   val blockNo: Lens[ShelleyTip, BlockNo] = Focus[ShelleyTip](_.blockNo)
   val hash: Lens[ShelleyTip, Hash32] = Focus[ShelleyTip](_.hash)
 
-/** `ShelleyTransition` (`Ledger.hs:299-322`): the number of blocks in this epoch past the voting
-  * deadline, from which the hard-fork combinator learns that a hard fork is certain.
+/** `ShelleyTransition` (`Ledger.hs:299-322`, ouroboros-consensus 82ecba32): the number of blocks in
+  * this epoch past the voting deadline, from which the hard-fork combinator learns that a hard fork
+  * is certain.
   */
 final case class ShelleyTransition(afterVoting: Word32) derives Eq, Show, Diff
 
 object ShelleyTransition:
   val afterVoting: Lens[ShelleyTransition, Word32] = Focus[ShelleyTransition](_.afterVoting)
 
-/** `LedgerState (ShelleyBlock proto era)` (`Ledger.hs:280-286`), minus the `LedgerTables` (the UTxO
-  * lives in `UtxoTables` inside the new-epoch state, as everywhere in the mirror): the tip, the
-  * ledger's own state, the transition information and a fourth field by layout
-  * ([[ShelleyLedgerState.Layout]]).
+/** `LedgerState (ShelleyBlock proto era)` (`Ledger.hs:280-286`, ouroboros-consensus 82ecba32),
+  * minus the `LedgerTables` (the UTxO lives in `UtxoTables` inside the new-epoch state, as
+  * everywhere in the mirror): the tip, the ledger's own state, the transition information and a
+  * fourth field by layout ([[ShelleyLedgerState.Layout]]).
   */
 final case class ShelleyLedgerState[E <: EraTag](
     tip: WithOrigin[ShelleyTip],

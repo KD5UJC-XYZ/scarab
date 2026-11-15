@@ -41,17 +41,17 @@ enum CrossingForecastFailure:
 object DijkstraCrossing:
 
   /** `translateChainDepState` of `TranslateProto (Praos c) (Praos2 c)`
-    * (`Protocol/Praos2.hs:189-200`), which the crossing applies through
-    * `translateChainDepStateAcrossShelley` (`Cardano/CanHardFork.hs:166-173`,
+    * (`Protocol/Praos2.hs:189-200`, ouroboros-consensus 2416493b), which the crossing applies
+    * through `translateChainDepStateAcrossShelley` (`Cardano/CanHardFork.hs:166-173`,
     * `Shelley/ShelleyHFC.hs:304-317`): every field carried unchanged and no announcement, since no
     * Praos header could carry one. The epoch transition is the tick's, not the translation's.
     */
   def chainDepState(praos: PraosState): Praos2.State = Praos2.State(praos, None)
 
-  /** `crossEraForecastBound` (`Ouroboros/Consensus/Forecast.hs:174-200`): the exclusive upper bound
-    * of a forecast from `tip` across a transition at `transition`, the lesser of what a next block
-    * of this era and the first block of the next could change. Slot additions are the reference's
-    * unsigned words.
+  /** `crossEraForecastBound` (`Ouroboros/Consensus/Forecast.hs:174-200`, ouroboros-consensus
+    * 2416493b): the exclusive upper bound of a forecast from `tip` across a transition at
+    * `transition`, the lesser of what a next block of this era and the first block of the next
+    * could change. Slot additions are the reference's unsigned words.
     */
   def forecastBound(
       tip: WithOrigin[SlotNo],
@@ -66,12 +66,12 @@ object DijkstraCrossing:
       if fromCurrent.toBigInt < fromNext.toBigInt then fromCurrent else fromNext
     else fromNext
 
-  /** `crossEraForecastConwayToDijkstraWrapper` (`Cardano/CanHardFork.hs:767-808`): the Dijkstra
-    * ledger view of `forecastFor` from the Conway state `nes` at `tip`, the transition at
-    * `transition`. It does not translate the Conway view, which has no Leios parameters; it
-    * translates the state ([[Translate.conwayToDijkstra]], as the combinator does when it ticks
-    * across the boundary) and forecasts with Dijkstra's own rules (`ledgerViewForecastAtPolyPraos`,
-    * `Shelley/Ledger/SupportsProtocol.hs:105-140`).
+  /** `crossEraForecastConwayToDijkstraWrapper` (`Cardano/CanHardFork.hs:767-808`,
+    * ouroboros-consensus 2416493b): the Dijkstra ledger view of `forecastFor` from the Conway state
+    * `nes` at `tip`, the transition at `transition`. It does not translate the Conway view, which
+    * has no Leios parameters; it translates the state ([[Translate.conwayToDijkstra]], as the
+    * combinator does when it ticks across the boundary) and forecasts with Dijkstra's own rules
+    * (`ledgerViewForecastAtPolyPraos`, `Shelley/Ledger/SupportsProtocol.hs:105-140`).
     *
     * The slot must be before both bounds: the crossing's ([[forecastBound]], the stability windows
     * of `conway` and `dijkstra`) and then the Dijkstra forecast's own, the stability window past
@@ -103,14 +103,15 @@ object DijkstraCrossing:
     yield view
 
   /** TICKF of Dijkstra, Conway's (`EraRule "TICKF" DijkstraEra = Conway.TICKF`,
-    * `Dijkstra/Era.hs:224`; `Conway/Rules/Tickf.hs:59-85`), as far as the header view reads it: the
-    * future parameters made certain from the slot of no return (`solidifyNextEpochPParams`,
-    * `Shelley/Rules/Tick.hs:147-159`; `getTheSlotOfNoReturn`, `Slot.hs:106-114`), and only into the
-    * epoch after the state's the snapshots rotated by Dijkstra's SNAP, the old mark becoming the
-    * set whose pool distribution the forecast reads (`Dijkstra/Rules/Snap.hs:103-143`,
-    * `nesStakePoolDistrG`, `Shelley/LedgerState/Types.hs:643-644`), and the parameters of the next
-    * epoch in force (`nextEpochPParams`, `State/Governance.hs:121-133`). The new mark and the Leios
-    * committee it seats are not in the header view.
+    * `Dijkstra/Era.hs:224`; `Conway/Rules/Tickf.hs:59-85`; cardano-ledger 9df9f98c), as far as the
+    * header view reads it: the future parameters made certain from the slot of no return
+    * (`solidifyNextEpochPParams`, `Shelley/Rules/Tick.hs:147-159`; `getTheSlotOfNoReturn`,
+    * `Slot.hs:106-114`), and only into the epoch after the state's the snapshots rotated by
+    * Dijkstra's SNAP, the old mark becoming the set whose pool distribution the forecast reads
+    * (`Dijkstra/Rules/Snap.hs:103-143`, `nesStakePoolDistrG`,
+    * `Shelley/LedgerState/Types.hs:643-644`), and the parameters of the next epoch in force
+    * (`nextEpochPParams`, `State/Governance.hs:121-133`). The new mark and the Leios committee it
+    * seats are not in the header view.
     */
   private def tickf(
       globals: Globals,
@@ -129,9 +130,9 @@ object DijkstraCrossing:
   private def params(nes: NewEpochState[Dijkstra]): ProtocolParams =
     nes.es.ls.utxo.gov.curPParams
 
-  /** `forecastToPolyPraosLedgerView` of Praos2 (`Protocol/Praos2.hs:136-159`) over
-    * `mkDijkstraForecast` (`Dijkstra/Forecast.hs:124-152`), the fields header validation reads
-    * ([[Praos2.LedgerView]]).
+  /** `forecastToPolyPraosLedgerView` of Praos2 (`Protocol/Praos2.hs:136-159`, ouroboros-consensus
+    * 2416493b) over `mkDijkstraForecast` (`Dijkstra/Forecast.hs:124-152`, cardano-ledger 9df9f98c),
+    * the fields header validation reads ([[Praos2.LedgerView]]).
     */
   private def ledgerView(
       pools: PoolDistr,

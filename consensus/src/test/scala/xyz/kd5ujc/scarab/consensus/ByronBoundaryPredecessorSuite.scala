@@ -80,8 +80,8 @@ class ByronBoundaryPredecessorSuite extends FunSuite:
   }
 
   test("a boundary block's magic is not compared: it is dropped as it is read (#634)") {
-    // `dropInt32` (`Block/Header.hs:617`) and `updateChainBoundary` (`Validation.hs:271-297`);
-    // only a main block's magic is compared (`updateBlock`, `:520-525`)
+    // `dropInt32` (`Block/Header.hs:617`) and `updateChainBoundary` (`Validation.hs:271-297`,
+    // cardano-ledger f649f975); only a main block's magic is compared (`updateBlock`, `:520-525`)
     val other = first(boundary(0, genesis.hash, map(), uint(Magic + 1)))
     assert(other.isRight, other.toString)
     // a negative magic, -1 (`0x20`), is an `Int32` too

@@ -50,8 +50,9 @@ final case class HardForkConfig(triggers: Map[Era, ForkTrigger], maxMajorProtVer
     eraOf(k)(Hfc.Pending(HardForkConfig.Sequence.head, epoch, None, 0L), epoch)
 
   /** The epoch at which the chain leaves the era of `pending` (`singleEraTransition`,
-    * `ShelleyHFC.hs:220-227`): the configured epoch of the next era, or with a version trigger the
-    * next epoch when the definite update is to exactly that version and `afterVoting >= k`.
+    * `ShelleyHFC.hs:220-227`, ouroboros-consensus 82ecba32): the configured epoch of the next era,
+    * or with a version trigger the next epoch when the definite update is to exactly that version
+    * and `afterVoting >= k`.
     */
   def transition(k: BigInt): Hfc.Transition = pending =>
     HardForkConfig

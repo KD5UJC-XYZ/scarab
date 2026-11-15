@@ -9,9 +9,10 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Horizon}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState}
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** One era of the history (`EraSummary`, `HardFork/History/Summary.hs:198-205`): where it starts,
-  * where it ends (`None`: unbounded, `EraUnbounded`, `Summary.hs:210-216`) and its parameters
-  * (`EraParams`: epoch size, slot length in milliseconds, safe zone, genesis window).
+/** One era of the history (`EraSummary`, `HardFork/History/Summary.hs:198-205`, ouroboros-consensus
+  * 82ecba32): where it starts, where it ends (`None`: unbounded, `EraUnbounded`,
+  * `Summary.hs:210-216`) and its parameters (`EraParams`: epoch size, slot length in milliseconds,
+  * safe zone, genesis window).
   */
 final case class EraSummary(
     start: Bound,

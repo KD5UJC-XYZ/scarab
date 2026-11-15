@@ -15,9 +15,9 @@ enum IsEBB derives Eq, Show, Diff:
   case EBB, NotEBB
 
 /** The annotation of the tip of the Cardano chain: `TipInfo` of each era under `OneEraTipInfo`
-  * (`Cardano/Block.hs:873-907` lists the eras). Byron's is `TipInfoIsEBB`, the hash and whether the
-  * block is a boundary block (`HeaderValidation.hs:569`, `Byron/Ledger/ HeaderValidation.hs:30`); a
-  * Shelley-based era's is the header hash alone.
+  * (`Cardano/Block.hs:873-907` lists the eras; ouroboros-consensus 82ecba32). Byron's is
+  * `TipInfoIsEBB`, the hash and whether the block is a boundary block (`HeaderValidation.hs:569`,
+  * `Byron/Ledger/ HeaderValidation.hs:30`); a Shelley-based era's is the header hash alone.
   */
 enum TipInfo:
   case ByronTip(hash: Hash32, isEBB: IsEBB)
@@ -30,8 +30,8 @@ object TipInfo:
     case ShelleyBasedTip(era, hash) => s"ShelleyBasedTip(${era.show}, ${hash.show})"
   }
 
-/** `AnnTip` (`HeaderValidation.hs:115-119`): the tip's slot and block number with the era's
-  * annotation.
+/** `AnnTip` (`HeaderValidation.hs:115-119`, ouroboros-consensus 82ecba32): the tip's slot and block
+  * number with the era's annotation.
   */
 final case class AnnTip(slot: SlotNo, blockNo: BlockNo, info: TipInfo) derives Eq, Show, Diff
 
@@ -40,8 +40,8 @@ object AnnTip:
   val blockNo: Lens[AnnTip, BlockNo] = Focus[AnnTip](_.blockNo)
   val info: Lens[AnnTip, TipInfo] = Focus[AnnTip](_.info)
 
-/** `HeaderState` (`HeaderValidation.hs:184-187`): the tip of the headers and the chain-dependent
-  * state of each era the chain has been through.
+/** `HeaderState` (`HeaderValidation.hs:184-187`, ouroboros-consensus 82ecba32): the tip of the
+  * headers and the chain-dependent state of each era the chain has been through.
   */
 final case class HeaderState(tip: WithOrigin[AnnTip], chainDep: Telescope[ChainDepState])
 

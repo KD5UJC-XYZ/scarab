@@ -110,8 +110,9 @@ class TPraosSuite extends FunSuite:
     assertEquals(firstError(bad), Some(TPraosError.BadNonceVrf(Vrf.Result.OutputMismatch)))
   }
 
-  // A header decodes with a VRF output of any length (`OutputVRF`, #712); the reference refuses it in
-  // `vrfChecks` (`TPraos/Rules/Overlay.hs:168-184`), the nonce certificate before the leader one.
+  // A header decodes with a VRF output of any length (`OutputVRF`, #712); the reference refuses it
+  // in `vrfChecks` (`TPraos/Rules/Overlay.hs:168-184`, cardano-ledger f649f975), the nonce
+  // certificate before the leader one.
   test("a VRF output of another length is refused by the VRF checks, nonce first") {
     val h = headers.head
     val vrf = h.vrf.asInstanceOf[HeaderVrf.TPraos]

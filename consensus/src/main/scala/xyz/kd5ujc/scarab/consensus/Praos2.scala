@@ -43,9 +43,9 @@ object Praos2:
     */
   final case class PoolStake(share: Rational, vrf: VRFVerKeyHash)
 
-  /** The fields of PolyPraosLedgerView read by header validation (Praos2.hs:131-159 and
-    * Praos/Views.hs:70-93). Committee, quorum and transaction-byte bounds belong to body/vote
-    * validation and are not consulted by these header predicates.
+  /** The fields of PolyPraosLedgerView read by header validation (Praos2.hs:136-159 and
+    * Praos/Views.hs:70-93, ouroboros-consensus 2416493b). Committee, quorum and transaction-byte
+    * bounds belong to body/vote validation and are not consulted by these header predicates.
     */
   final case class LedgerView(
       pools: Map[KeyHash[StakePool], PoolStake],
@@ -84,7 +84,9 @@ object Praos2:
 
   final case class Config(praos: PraosConfig, maxMajor: Word64, epochInfo: EpochInfo)
 
-  /** Only the immediate predecessor's announcement is retained (PolyPraos.hs:307-335,665-668). */
+  /** Only the immediate predecessor's announcement is retained (PolyPraos.hs:307-335,665-668,
+    * ouroboros-consensus 2416493b).
+    */
   final case class AnnouncedBy(issuer: KeyHash[BlockIssuer], announcement: EbAnnouncement)
   final case class State(praos: PraosState, announcement: Option[AnnouncedBy])
   final case class Tip(hash: Bytes, blockNo: BlockNo, slot: SlotNo)
@@ -117,9 +119,10 @@ object Praos2:
 
   type Failure = Error | Defect | ProviderDefect
 
-  /** `tickChainDepStatePolyPraos`, PolyPraos.hs:551-587. The new-epoch test uses the old epoch's
-    * first slot and size; it does not ask a limited forecast for the epoch of the new slot
-    * (`Protocol/Ledger/Util.hs:isNewEpoch`). Slot subtraction and epoch addition are Word64.
+  /** `tickChainDepStatePolyPraos`, PolyPraos.hs:551-587 (ouroboros-consensus 2416493b). The
+    * new-epoch test uses the old epoch's first slot and size; it does not ask a limited forecast
+    * for the epoch of the new slot (`Protocol/Ledger/Util.hs:isNewEpoch`). Slot subtraction and
+    * epoch addition are Word64.
     */
   def tick(
       config: Config,
@@ -152,13 +155,14 @@ object Praos2:
     yield Ticked(state.copy(protocol = protocol), ledger)
 
   /** Full ChainSync header validation: block number, slot, previous hash, checkpoint, envelope,
-    * then protocol (`HeaderValidation.hs:374-386,518-526`).
+    * then protocol (`HeaderValidation.hs:374-386,518-526`, ouroboros-consensus 2416493b).
     */
   def validate(config: Config, header: LeiosHeader, ticked: Ticked): Either[Failure, ChainState] =
     envelope(config, header, ticked) *> validateProtocol(config, header, ticked)
 
   /** The protocol portion used for an announced header that need not extend the local tip
-    * (`HeaderValidation.hs:536-550`). Its caller still supplies the appropriate ticked forecast.
+    * (`HeaderValidation.hs:536-550`, ouroboros-consensus 2416493b). Its caller still supplies the
+    * appropriate ticked forecast.
     */
   def validateProtocol(
       config: Config,
@@ -282,8 +286,9 @@ object Praos2:
       )
     yield ()
 
-  /** `minCertificationSlot`, Leios/Types.hs:299-317. The caller passes the current header slot's
-    * forecast length, truncated to whole milliseconds as `slotLengthToMillisec` does.
+  /** `minCertificationSlot`, Leios/Types.hs:299-317 (ouroboros-consensus 2416493b). The caller
+    * passes the current header slot's forecast length, truncated to whole milliseconds as
+    * `slotLengthToMillisec` does.
     */
   def minCertificationSlot(
       slotMillis: BigInt,
@@ -329,8 +334,9 @@ object Praos2:
             case _ => Left(Error.LeiosCertWithoutAnnouncement)
     yield ()
 
-  /** The certificate checks precede the VRF checks (PolyPraos.hs:615-624,900-937). The reference
-    * adds KES periods and increments certificate counters in unsigned machine words.
+  /** The certificate checks precede the VRF checks (PolyPraos.hs:615-624,900-937,
+    * ouroboros-consensus 2416493b). The reference adds KES periods and increments certificate
+    * counters in unsigned machine words.
     */
   private def certificate(
       config: PraosConfig,

@@ -129,8 +129,8 @@ enum PerasResolver derives Eq, Show, Diff:
   /** `PerasEpochContextResolver NoPerasEnabled NoPerasEnabled` (`[1, [], []]`): neither the current
     * nor the previous epoch runs Peras. A window with an epoch context holds a voting committee,
     * which only Dijkstra has (`PerasVotingCommitteeScheme` is `VoidPerasVotingCommitteeScheme` for
-    * Byron to Conway, `Byron/Node/Peras.hs:34`, `Shelley/Node/Peras.hs:159-219`): it is the
-    * Dijkstra part of the state, not read by this build.
+    * Byron to Conway, `Byron/Node/Peras.hs:34`, `Shelley/Node/Peras.hs:159-219`,
+    * ouroboros-consensus 2416493b): it is the Dijkstra part of the state, not read by this build.
     */
   case Disabled
 
@@ -143,14 +143,14 @@ final case class PerasState(resolver: PerasResolver, latestCertOnChainRound: Opt
       Diff
 
 object PerasState:
-  /** `defaultPerasState` (`Ledger/Extended.hs:508-512`): what a two-part `ExtLedgerState` is read
-    * with (`:488-495`).
+  /** `defaultPerasState` (`Ledger/Extended.hs:510-514`, ouroboros-consensus 2416493b): what a
+    * two-part `ExtLedgerState` is read with (`:489-497`).
     */
   val default: PerasState = PerasState(PerasResolver.Disabled, None)
 
-/** `ExtLedgerState` (`Ledger/Extended.hs:70-73`): the ledger state with the header state, less the
-  * `LedgerTables` (the UTxO stays in the node's store), and what the layout adds
-  * ([[ExtLedgerState.Layout]]).
+/** `ExtLedgerState` (`Ledger/Extended.hs:70-73`, ouroboros-consensus 82ecba32): the ledger state
+  * with the header state, less the `LedgerTables` (the UTxO stays in the node's store), and what
+  * the layout adds ([[ExtLedgerState.Layout]]).
   */
 final case class ExtLedgerState(
     ledgerState: CardanoLedgerState,

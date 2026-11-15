@@ -24,16 +24,18 @@ import xyz.kd5ujc.scarab.protocol.Era
 // are the types the node itself runs on: `Praos`, `TPraos` and the PBFT window of `ByronRules` evolve
 // them, and `MirrorState` holds them in its `HeaderState`.
 
-/** `PBftSigner` (`Protocol/PBFT/State.hs:146-149`): who signed the block of a slot. */
+/** `PBftSigner` (`Protocol/PBFT/State.hs:146-149`, ouroboros-consensus 82ecba32): who signed the
+  * block of a slot.
+  */
 final case class PBftSigner(slot: SlotNo, genesisKey: KeyHash[Genesis]) derives Eq, Show, Diff
 
 object PBftSigner:
   val slot: Lens[PBftSigner, SlotNo] = Focus[PBftSigner](_.slot)
   val genesisKey: Lens[PBftSigner, KeyHash[Genesis]] = Focus[PBftSigner](_.genesisKey)
 
-/** `PBftState` (`State.hs:82-92`): the signatures of the last `n` slots, and the cached count per
-  * genesis key (which [[PBftState.ofWindow]] recomputes: Haskell's `computeCounts`,
-  * `State.hs:102-109`).
+/** `PBftState` (`State.hs:82-92`, ouroboros-consensus 82ecba32): the signatures of the last `n`
+  * slots, and the cached count per genesis key (which [[PBftState.ofWindow]] recomputes: Haskell's
+  * `computeCounts`, `State.hs:102-109`).
   */
 final case class PBftState(
     inWindow: Vector[PBftSigner],
@@ -54,10 +56,10 @@ object PBftState:
     def countSignedBy(genesisKey: KeyHash[Genesis]): Word64 =
       p.counts.getOrElse(genesisKey, Word64.zero)
 
-    /** `PBftState.append` (`State.hs:125-139`): the newest signer joins, and the oldest leaves once
-      * the window holds `windowSize`. The counts are kept up to date, not recomputed; they stay
-      * those of [[ofWindow]] (a key with no signer in the window has no entry). `windowSize` is the
-      * Byron `k`, a `Word64` (`pbftSecurityParam`).
+    /** `PBftState.append` (`State.hs:213-236`, ouroboros-consensus 82ecba32): the newest signer
+      * joins, and the oldest leaves once the window holds `windowSize`. The counts are kept up to
+      * date, not recomputed; they stay those of [[ofWindow]] (a key with no signer in the window
+      * has no entry). `windowSize` is the Byron `k`, a `Word64` (`pbftSecurityParam`).
       */
     def append(signer: PBftSigner, windowSize: BigInt): PBftState =
       val joined = p.counts.updated(
@@ -86,8 +88,8 @@ object PBftState:
   val inWindow: Lens[PBftState, Vector[PBftSigner]] = Focus[PBftState](_.inWindow)
   val counts: Lens[PBftState, SortedMap[KeyHash[Genesis], Word64]] = Focus[PBftState](_.counts)
 
-/** `PrtclState` (`TPraos/Rules/Prtcl.hs:67-75`): the operational-certificate counters, the evolving
-  * and the candidate nonce.
+/** `PrtclState` (`TPraos/Rules/Prtcl.hs:67-75`, cardano-ledger f649f975): the
+  * operational-certificate counters, the evolving and the candidate nonce.
   */
 final case class PrtclState(
     ocertCounters: SortedMap[KeyHash[BlockIssuer], Word64],
@@ -103,8 +105,8 @@ object PrtclState:
   val evolvingNonce: Lens[PrtclState, Nonce] = Focus[PrtclState](_.evolvingNonce)
   val candidateNonce: Lens[PrtclState, Nonce] = Focus[PrtclState](_.candidateNonce)
 
-/** `TicknState` (`TPraos/Rules/Tickn.hs:32-35`): the epoch nonce and the hash nonce of the last
-  * header of the previous epoch.
+/** `TicknState` (`TPraos/Rules/Tickn.hs:32-35`, cardano-ledger f649f975): the epoch nonce and the
+  * hash nonce of the last header of the previous epoch.
   */
 final case class TicknState(epochNonce: Nonce, prevHashNonce: Nonce) derives Eq, Show, Diff
 
@@ -112,8 +114,9 @@ object TicknState:
   val epochNonce: Lens[TicknState, Nonce] = Focus[TicknState](_.epochNonce)
   val prevHashNonce: Lens[TicknState, Nonce] = Focus[TicknState](_.prevHashNonce)
 
-/** The ledger's `ChainDepState` of TPraos (`TPraos/API.hs:432-437`; Haskell calls it
-  * `SL.ChainDepState`, here `TPraosLedgerState` to keep it apart from the enum below).
+/** The ledger's `ChainDepState` of TPraos (`TPraos/API.hs:432-437`, cardano-ledger f649f975;
+  * Haskell calls it `SL.ChainDepState`, here `TPraosLedgerState` to keep it apart from the enum
+  * below).
   */
 final case class TPraosLedgerState(protocol: PrtclState, tickn: TicknState, labNonce: Nonce)
     derives Eq,
@@ -125,8 +128,8 @@ object TPraosLedgerState:
   val tickn: Lens[TPraosLedgerState, TicknState] = Focus[TPraosLedgerState](_.tickn)
   val labNonce: Lens[TPraosLedgerState, Nonce] = Focus[TPraosLedgerState](_.labNonce)
 
-/** `TPraosState` (`Protocol/TPraos.hs:263-267` in ouroboros-consensus-protocol): the slot of the
-  * last applied header and the ledger's chain-dependent state.
+/** `TPraosState` (`Protocol/TPraos.hs:263-267` in ouroboros-consensus-protocol, ouroboros-consensus
+  * 82ecba32): the slot of the last applied header and the ledger's chain-dependent state.
   */
 final case class TPraosState(lastSlot: WithOrigin[SlotNo], chainDep: TPraosLedgerState)
     derives Eq,
@@ -137,8 +140,8 @@ object TPraosState:
   val lastSlot: Lens[TPraosState, WithOrigin[SlotNo]] = Focus[TPraosState](_.lastSlot)
   val chainDep: Lens[TPraosState, TPraosLedgerState] = Focus[TPraosState](_.chainDep)
 
-/** `PraosState` (`Protocol/Praos.hs:270-288`, eight fields): the last slot, the operational
-  * certificate counters, and the six nonces that evolve over an epoch.
+/** `PraosState` (`Protocol/Praos.hs:270-288` of ouroboros-consensus 82ecba32, eight fields): the
+  * last slot, the operational certificate counters, and the six nonces that evolve over an epoch.
   */
 final case class PraosState(
     lastSlot: WithOrigin[SlotNo],

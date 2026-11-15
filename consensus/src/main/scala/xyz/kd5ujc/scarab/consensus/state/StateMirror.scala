@@ -10,9 +10,9 @@ import xyz.kd5ujc.scarab.ledger.state.{Diff, Gap, MirrorEnv, MirrorError, NodeEx
 import xyz.kd5ujc.scarab.protocol.Era
 
 // The consensus side of the mirror: the Haskell `ExtLedgerState` of the Cardano block
-// (`Ledger/Extended.hs:70-73`) with the node's bookkeeping beside it ([[MirrorState]]), the environment the
-// conversions read and their error. The state a chain starts from is built from its genesis
-// ([[ByronMirror]], [[GenesisMirror]]).
+// (`Ledger/Extended.hs:70-73`, ouroboros-consensus 82ecba32) with the node's bookkeeping beside it
+// ([[MirrorState]]), the environment the conversions read and their error. The state a chain starts
+// from is built from its genesis ([[ByronMirror]], [[GenesisMirror]]).
 
 /** What the consensus side of the conversion reads from the node's configuration: the ledger side's
   * ([[MirrorEnv]]) and what the era history is made from.
@@ -115,8 +115,9 @@ final case class MirrorProvenance private (
   /** NEWEPOCH discards the old reward update and resets the voting count. Count one SNAP witness
     * per successful block crossing an epoch, even when its tick traverses several: this
     * conservatively understates recovery. Three witnesses replace every imported mark/set/go and
-    * the distribution derived from mark (`Rules/Snap.hs:75`, `Rules/NewEpoch.hs:148`). Reopening
-    * restarts the proof: V5 records gaps, not this transient witness.
+    * the distribution derived from mark (`Rules/Snap.hs:75`, `Rules/NewEpoch.hs:148`,
+    * cardano-ledger f649f975). Reopening restarts the proof: V5 records gaps, not this transient
+    * witness.
     */
   def epochBoundary: MirrorProvenance =
     val expired = Set(Gap.RewardAttribution, Gap.PendingPulsingUpdate, Gap.ShelleyTransition)

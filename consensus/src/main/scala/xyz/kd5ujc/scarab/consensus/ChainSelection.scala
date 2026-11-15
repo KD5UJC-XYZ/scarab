@@ -59,8 +59,9 @@ object ChainSelection:
     case Restricted(maxSlotDistance: BigInt)
 
   /** Conway restricts the VRF tie-breaker to tips within 5 slots of each other:
-    * `Shelley/Ledger/Config.hs` lines 86-93 of ouroboros-consensus-cardano 4.2.0.x
-    * (`isBeforeConway` gives `UnrestrictedVRFTiebreaker`, else `RestrictedVRFTiebreaker 5`).
+    * `Shelley/Ledger/Config.hs` lines 86-93 of ouroboros-consensus-cardano 4.2.0.x, at
+    * ouroboros-consensus 82ecba32 (`isBeforeConway` gives `UnrestrictedVRFTiebreaker`, else
+    * `RestrictedVRFTiebreaker 5`).
     */
   val ConwayRestriction: BigInt = 5
 
@@ -90,7 +91,8 @@ object ChainSelection:
     */
   def prefers(tiebreaker: Tiebreaker, ours: SelectView, candidate: SelectView): Boolean =
     if candidate.blockNo != ours.blockNo then candidate.blockNo > ours.blockNo
-    // PBFT.hs:137–170: an EBB repeats its predecessor's difficulty, but extends its chain.
+    // PBFT.hs:138–168 (ouroboros-consensus 82ecba32): an EBB repeats its predecessor's difficulty,
+    // but extends its chain.
     else if noAcrossEraTiebreaker(ours, candidate) then false
     else if ours.issuer.isEmpty && candidate.issuer.isEmpty && ours.boundary != candidate.boundary
     then candidate.boundary
@@ -229,8 +231,9 @@ object ChainSelection:
         NonEmptyVector.fromVector(headers.drop(common)) match
           case None       => Decision.Keep
           case Some(take) =>
-            // AnchoredFragment.hs:195–201 compares an empty selected fragment by point, not
-            // its anchor's selection view. In particular a boundary block may repeat blockNo.
+            // AnchoredFragment.hs:195–201 (ouroboros-consensus 82ecba32) compares an empty selected
+            // fragment by point, not its anchor's selection view. In particular a boundary block
+            // may repeat blockNo.
             if local.blocks.isEmpty || prefersCandidate(
                 tiebreaker,
                 local.tipView,
