@@ -16,7 +16,8 @@ import xyz.kd5ujc.scarab.ledger.{Block, StorageError, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, LedgerState, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+import xyz.kd5ujc.scarab.node.read.InEra
+import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion}
 import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
 import xyz.kd5ujc.scarab.storage.haskell.state.{
@@ -32,8 +33,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   *   - the answer is what the Haskell codec decodes, to a state that holds what the mirror holds
   *     and that writes the answer again byte for byte;
   *   - a Shelley-based era answers both queries (and their `GetCBOR` forms), in the era's own
-  *     encoding version, the chain-dependent state, the UTxO queries and the reward provenance, and
-  *     only these (the other queries stay Conway's);
+  *     encoding version, the chain-dependent state, the UTxO queries, the reward provenance and the
+  *     queries that read nothing of the era's own, and only these (the other queries stay
+  *     Conway's);
   *   - a query for another era is the era mismatch, and Byron is refused.
   */
 class MirrorAnswersSuite extends FunSuite:
@@ -224,11 +226,100 @@ class MirrorAnswersSuite extends FunSuite:
     }
   }
 
-  test("the other queries stay Conway's: a state of an earlier era answers neither") {
+  /** What cardano-node 11.1.3 answered to `GetProposedPParamsUpdates` and to
+    * `GetMaxMajorProtocolVersion` (the result item of `MsgResult`), recorded on 2026-11-15 on the
+    * devnet that walks the eras (`devnet.py up-eras`), in Babbage, at node-to-client versions 16,
+    * 20, 21 and 23. The first is the empty map whatever the state (`answerPureBlockQuery`,
+    * `Shelley/Ledger/Query.hs:417-418`, ouroboros-consensus 82ecba32), the second the maximum the
+    * node's protocols are configured with in every era (`Cardano/Node.hs:644-645, 677, 690`), 11
+    * for this release, as on the eras capture.
+    */
+  private val referenceProposedUpdates = "81a0"
+  private val referenceMaxMajorProtocolVersion = "810b"
+
+  /** The answer of the eras capture's first Conway state to `GetGenesisConfig` at the latest
+    * version, the project's regression golden (`fixtures/ntc-golden`); the genesis is the same in
+    * every era.
+    */
+  private lazy val conwayGenesisConfig: String =
+    Files
+      .readAllLines(NtcGolden.file)
+      .asScala
+      .map(_.split('\t'))
+      .collectFirst { case Array("conway-0", "GetGenesisConfig", value) => value }
+      .getOrElse(fail("no GetGenesisConfig golden"))
+
+  test(
+    "every state of every Shelley-based era answers the queries that read nothing of the era's own"
+  ) {
+    val genesis = queryEnv.shelleyGenesis
+    val legacyGenesis = GenesisConfig
+      .encode(genesis, NtcVersion.V20)
+      .fold(e => fail(e.message), _.hex)
+    // the legacy record writes the Shelley protocol version as two fields, not as one pair: a byte
+    // shorter, as the reference's answers on the devnet were (392 and 393 bytes)
+    assertEquals(legacyGenesis.length, conwayGenesisConfig.length - 2)
+    def at(block: Block, state: MirrorState): QueryView[MirrorState] =
+      val tip = Point.Block(UInt64.saturating(BigInt(block.header.slot.toLong)), block.header.hash)
+      QueryView(tip, Some(block.header.blockNo), state)
+    shelleyBased.foreach { (block, state) =>
+      val view = at(block, state)
+      val era = state.era
+      val nes = state.ext.ledgerState.state match
+        case i: EraLedgerState.InShelleyEra[e] => i.state.nes
+        case _: EraLedgerState.ByronCurrent    => fail(s"$era is Byron")
+      val slot = BigInt(block.header.slot.toLong)
+      // epoch 0 is Byron's 50 slots, every later epoch 500 (`fixtures/eras/README.md`)
+      val epoch = (slot - 50) / 500 + 1
+      val account = CborOut.build(
+        _.array(2).uint(nes.es.chainAccount.treasury.value).uint(nes.es.chainAccount.reserves.value)
+      )
+      List(NtcVersion.V16, NtcVersion.V20, NtcVersion.V21, NtcVersion.V23).foreach { version =>
+        val label = s"$era block ${block.header.blockNo} at ${version.number}"
+        def asked(q: LedgerQuery): Either[Unanswered, String] =
+          QueryAnswers
+            .answerOrWhy(
+              queryEnv,
+              view,
+              Map.empty,
+              NtcQuery.IfCurrent(QueryEra.of(era), q),
+              version
+            )
+            .map(_.hex)
+        def both(q: LedgerQuery, plain: String, latest: String): Unit =
+          assertEquals(asked(q), Right("81" + plain), s"$label: $q")
+          val cbor = Bytes.fromHex(latest).fold(e => fail(e.message), identity)
+          assertEquals(asked(LedgerQuery.GetCBOR(q)), Right("81" + wrapped(cbor)), s"$label: $q")
+        val point = CborOut.build(_.array(2).uint(slot).bytes(block.header.hash)).hex
+        both(LedgerQuery.GetLedgerTip, point, point)
+        val epochNo = CborOut.build(_.uint(epoch)).hex
+        both(LedgerQuery.GetEpochNo, epochNo, epochNo)
+        val proposed = referenceProposedUpdates.drop(2)
+        both(LedgerQuery.GetProposedPParamsUpdates, proposed, proposed)
+        both(
+          LedgerQuery.GetGenesisConfig,
+          if version.number < 21 then legacyGenesis else conwayGenesisConfig,
+          conwayGenesisConfig
+        )
+        both(LedgerQuery.GetAccountState, account.hex, account.hex)
+        val maxMajor = referenceMaxMajorProtocolVersion.drop(2)
+        both(LedgerQuery.GetMaxMajorProtocolVersion, maxMajor, maxMajor)
+      }
+    }
+    // the proposed updates are answered empty in states that hold proposals too
+    val proposing = shelleyBased.filter(_._1.era != Era.Conway).exists { (block, state) =>
+      at(block, state).ledger.toOption.flatten.exists { case InEra.Of(_, l) =>
+        l.ppup.exists((current, _) => current.nonEmpty)
+      }
+    }
+    assert(proposing, "no state before Conway holds a proposal")
+  }
+
+  test("the other queries stay Conway's: a state of an earlier era answers none") {
     shelleyBased.filter(_._1.era != Era.Conway).take(40).foreach { (block, state) =>
       val era = state.era
       assertEquals(ask(era, block, state, LedgerQuery.GetCurrentPParams), None)
-      assertEquals(ask(era, block, state, LedgerQuery.GetEpochNo), None)
+      assertEquals(ask(era, block, state, LedgerQuery.GetStakePools), None)
     }
   }
 

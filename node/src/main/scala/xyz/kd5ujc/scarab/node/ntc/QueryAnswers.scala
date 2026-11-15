@@ -198,9 +198,10 @@ final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](co
   * resolves them against the backing store first, see [[UtxoNeeds]]).
   *
   * The Conway era is answered, and in every Shelley-based era the ledger state, the chain-dependent
-  * state, the UTxO and the reward provenance: their `IfCurrent` queries get `[result]`, queries
-  * naming another era get the era-mismatch reply, as the reference sends. The ledger state is read
-  * through [[ChainRead]]: from the mirror's records, whichever form the state is in.
+  * state, the UTxO, the reward provenance and the queries that read nothing of the era's own: their
+  * `IfCurrent` queries get `[result]`, queries naming another era get the era-mismatch reply, as
+  * the reference sends. The ledger state is read through [[ChainRead]]: from the mirror's records,
+  * whichever form the state is in.
   */
 object QueryAnswers:
   @unused private val ConwayIndex = Era.Conway.index
@@ -306,17 +307,21 @@ object QueryAnswers:
       else if era != Era.Conway && !inEveryEra(inner) then Left(Unanswered.Unsupported)
       else ledgerAnswer(env, view, utxo, inner, version).map(r => CborOut.build(_.array(1).raw(r)))
 
-  /** The queries answered in every Shelley-based era: the ledger state as the Haskell node writes
-    * it, the chain-dependent state, the UTxO and the reward provenance (the others are Conway's).
-    * The reference answers each of them in every Shelley-based era, at every node-to-client version
-    * (`blockQueryIsSupportedOnVersion`, `Ouroboros/Consensus/Shelley/Ledger/Query.hs:541-557`,
-    * ouroboros-consensus 82ecba32).
+  /** The queries answered in every Shelley-based era (the others are Conway's): the ledger state as
+    * the Haskell node writes it, the chain-dependent state, the UTxO, the reward provenance, and
+    * the queries that read nothing of the era's own, the ledger tip, the epoch, the proposed
+    * parameter updates, the genesis configuration, the chain account state and the maximum major
+    * protocol version. The reference answers each of them in every Shelley-based era, with the same
+    * `answerPureBlockQuery` (`Ouroboros/Consensus/Shelley/Ledger/Query.hs:406-535`,
+    * ouroboros-consensus 82ecba32), at every node-to-client version.
     */
   private def inEveryEra(q: LedgerQuery): Boolean = LedgerQuery.cborLayers(q)._2 match
     case LedgerQuery.DebugEpochState | LedgerQuery.DebugNewEpochState |
         LedgerQuery.DebugChainDepState | LedgerQuery.GetUTxOWhole |
         LedgerQuery.GetUTxOByAddress(_) | LedgerQuery.GetUTxOByTxIn(_) |
-        LedgerQuery.GetRewardProvenance =>
+        LedgerQuery.GetRewardProvenance | LedgerQuery.GetLedgerTip | LedgerQuery.GetEpochNo |
+        LedgerQuery.GetProposedPParamsUpdates | LedgerQuery.GetGenesisConfig |
+        LedgerQuery.GetAccountState | LedgerQuery.GetMaxMajorProtocolVersion =>
       true
     case _ => false
 
@@ -463,18 +468,37 @@ object QueryAnswers:
       Versions.shelleyBased(view.era) match
         case Some(era) => UtxoCodecs.utxoIn(era).answer(entries)
         case None      => Left(Unanswered.Unsupported)
+    def shelleyBased[A](f: EraFacts[?] => Either[Unanswered, A]): Either[Unanswered, A] =
+      view.facts.leftMap(Unanswered.Refused(_)).flatMap {
+        case Some(facts) => f(facts)
+        case None        => Left(Unanswered.Unsupported)
+      }
     def conway[A](f: ConwayFacts => Either[Unanswered, A]): Either[Unanswered, A] =
       view.conway.leftMap(Unanswered.Refused(_)).flatMap {
         case Some(facts) => f(facts)
         case None        => Left(Unanswered.Unsupported)
       }
     q match
+      // Six queries read nothing of the era's own, and are answered and written alike in every
+      // Shelley-based era (`answerPureBlockQuery` and `encodeShelleyResult`, Query.hs:406-535 and
+      // 1007-1047, ouroboros-consensus 82ecba32). The first is the ledger's tip, `encodePoint
+      // encode` (Query.hs:408-409, 1008).
       case GetLedgerTip => Right(CborOut.build(point(_, view.point)))
-      case GetEpochNo   => conway(f => coin.answer(f.epoch))
+      // `nesEL`, the epoch (Query.hs:410-411, 1009, ouroboros-consensus 82ecba32).
+      case GetEpochNo => shelleyBased(f => coin.answer(f.epoch))
       // The reference's LegacyPParams Conway instance delegates to the current codec, so unlike
       // the Shelley genesis parameters these bytes do not change at NTC 21.
-      case GetCurrentPParams         => conway(f => protocolParams.answer(f.l.params))
+      case GetCurrentPParams => conway(f => protocolParams.answer(f.l.params))
+      // `ProposedPPUpdates Map.empty` whatever the state, the proposals of the eras before Conway
+      // too (Query.hs:417-418, 1012, ouroboros-consensus 82ecba32).
       case GetProposedPParamsUpdates => Right(CborOut.build(_.map(0)))
+      // The compact Shelley genesis of the era's ledger configuration (Query.hs:432-433), the same
+      // genesis in every era: each era's configuration takes it from its transition configuration
+      // (`mkPartialLedgerConfigShelley`, `Cardano/Node.hs:1105-1120`), and those are one chain of
+      // previous-era configurations (633-639, ouroboros-consensus 82ecba32). It is written at
+      // Shelley's protocol version whatever the era (`shelleyProtVer`,
+      // `Query/LegacyShelleyGenesis.hs:39, 111`; `Shelley/Genesis.hs:595` at
+      // cardano-ledger f649f975); the version selects the record (Query.hs:1019, 1113-1125).
       case GetGenesisConfig =>
         GenesisConfig.encode(env.shelleyGenesis, version).leftMap(_ => Unanswered.Unwritable)
       case DebugChainDepState => chainDepState(view)
@@ -580,8 +604,10 @@ object QueryAnswers:
               )
             )
         }
+      // `queryChainAccountState`, the treasury and the reserves (Query.hs:466-467, 1037,
+      // ouroboros-consensus 82ecba32; `State/ChainAccount.hs:46-48`, cardano-ledger f649f975).
       case GetAccountState =>
-        conway { f =>
+        shelleyBased { f =>
           Record
             .of[(BigInt, BigInt)]((coin, coin))
             .answerRead(
@@ -650,6 +676,9 @@ object QueryAnswers:
         conway(f => PeerSnapshotQueries.answer(env, f, view.point, None, version.number >= 22))
       case GetLedgerPeerSnapshot(kind) =>
         conway(f => PeerSnapshotQueries.answer(env, f, view.point, Some(kind), true))
+      // `protoMaxMajorPV` of the era's protocol (Query.hs:515-519, 1046), the one maximum TPraos
+      // and Praos are configured with in every era (`Cardano/Node.hs:644-645, 677, 690`,
+      // ouroboros-consensus 82ecba32).
       case GetMaxMajorProtocolVersion =>
         coin.answer(BigInt(env.forks.maxMajorProtVer))
       case GetDRepDelegations(dreps) =>
