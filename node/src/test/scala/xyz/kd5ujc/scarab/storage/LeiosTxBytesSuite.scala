@@ -6,6 +6,7 @@ import cats.mtl.Ask
 import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.ByronState
 import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
   EraLedgerState,
@@ -108,6 +109,26 @@ class LeiosTxBytesSuite extends CatsEffectSuite:
     val second = stepped(first, block(1))
     assertEquals(layoutOf(second), leios(56))
     assertEquals(layoutOf(stepped(second, block(2, plain))), leios(56 + 17))
+  }
+
+  test("leaving Byron, the block of the hand-over adds its bytes to the origin's zero") {
+    // the start mirror with a Byron state in place of its own: no field precedes the block
+    val byron = start.copy(ext =
+      start.ext.copy(ledgerState =
+        start.ext.ledgerState.withState(EraLedgerState.ByronCurrent(ByronState.initial))
+      )
+    )
+    val after = MirrorStep
+      .handover(
+        byron,
+        placement,
+        block(0, plain, invalid),
+        MirrorStep.nesOf(start).getOrElse(fail("expected a Shelley-based state")),
+        start.protocol,
+        start.consensus
+      )
+      .fold(e => fail(e.toString), identity)
+    assertEquals(layoutOf(after), leios(17 + 7))
   }
 
   test("the total is a Word64: it wraps modulo 2^64, as the reference's sum and + do") {
