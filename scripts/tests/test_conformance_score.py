@@ -273,6 +273,7 @@ class CborTest(unittest.TestCase):
             "version 1 rules not an object": v1_report(rules=[]),
             "version 1 rule counts not an object": v1_report(rules={"r": 3}),
             "version 1 counts not numbers": v1_report(totals=v1_counts(("5", 4))),
+            "version 1 counts that overflow": v1_report(totals=v1_counts(rejected=(10**309, 3), zapped=(0.5, 1))),
             "version 1 of another era": v1_report(era="dijkstra"),
             "version 1 of a null era": v1_report(era=None),
         }

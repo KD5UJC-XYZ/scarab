@@ -215,7 +215,7 @@ def _v1_counts(outcome: Any) -> dict[str, Any]:
     try:
         return {f"{kind}_{side}": sum(outcome.get(f"{old}_{side}", 0) for old in classes)
                 for kind, classes in CBOR_V1_CLASSES.items() for side in ("expected", "actual")}
-    except TypeError as error:
+    except (TypeError, OverflowError) as error:
         raise Unreadable(f"version 1 counts are not numbers: {error}") from error
 
 
