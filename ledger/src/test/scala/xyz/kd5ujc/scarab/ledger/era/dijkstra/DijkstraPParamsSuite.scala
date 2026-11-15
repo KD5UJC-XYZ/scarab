@@ -449,15 +449,74 @@ class DijkstraPParamsSuite extends DisciplineSuite:
       }
     }
 
-  private def lensLaws[A](name: String, lens: Lens[DijkstraPParams[Identity], A]): Unit =
-    given Arbitrary[DijkstraPParams[Identity]] = Arbitrary(genParams)
-    given Arbitrary[A] = Arbitrary(genParams.map(lens.get))
+  /** monocle's laws for a lens of the record, with states and values from generators of their own:
+    * the states are parameters reached by the corpus's updates with the field set by the record's
+    * `copy`, not by the lens under test, and the values are any of the field's type.
+    */
+  private def lensLaws[A](
+      name: String,
+      lens: Lens[DijkstraPParams[Identity], A],
+      values: Gen[A],
+      set: (DijkstraPParams[Identity], A) => DijkstraPParams[Identity]
+  ): Unit =
+    given Arbitrary[DijkstraPParams[Identity]] =
+      Arbitrary(genParams.flatMap(pp => values.map(set(pp, _))))
+    given Arbitrary[A] = Arbitrary(values)
     given Cogen[A] = Cogen[Int].contramap(_.hashCode)
     given Eq[DijkstraPParams[Identity]] = Eq.fromUniversalEquals
     given Eq[A] = Eq.fromUniversalEquals
     checkAll(name, LensTests(lens))
 
-  lensLaws("hkdPerasCertBoostL", instance.hkdPerasCertBoostL[Identity])
-  lensLaws("hkdMaxPledgeLeverageL", instance.hkdMaxPledgeLeverageL[Identity])
-  lensLaws("hkdMaxTxExUnitsL, through OrdExUnits", instance.hkdMaxTxExUnitsL[Identity])
-  lensLaws("hkdCostModelsL", instance.hkdCostModelsL[Identity])
+  private val genW16: Gen[Unsigned[W16]] = Gen.choose(0, 65535).map(n => word[W16]("gen", n))
+
+  private val genLeverage: Gen[MaxPledgeLeverage] =
+    Gen
+      .option(
+        Gen
+          .zip(Gen.choose(0L, 10000L), Gen.choose(1L, 10000L))
+          .map((n, d) =>
+            ratio("gen", Rational(BigInt(n), BigInt(d)))(NonNegativeInterval.boundRational)
+          )
+      )
+      .map(MaxPledgeLeverage(_))
+
+  private val genUnits: Gen[ExUnits] =
+    Gen
+      .zip(Gen.choose(0L, Long.MaxValue), Gen.choose(0L, Long.MaxValue))
+      .map((m, st) =>
+        ExUnits
+          .from(xyz.kd5ujc.scarab.plutus.ExUnits(BigInt(m), BigInt(st)))
+          .getOrElse(fail(s"units $m $st"))
+      )
+
+  private val genCostModels: Gen[CostModels] =
+    Gen
+      .mapOf(Gen.zip(Gen.choose(0, 3), Gen.listOf(Gen.choose(-1000L, 1000L).map(BigInt(_)))))
+      .map(m =>
+        CostModels.from(m.view.mapValues(_.toVector).toMap).fold(e => fail(e.toString), identity)
+      )
+
+  lensLaws(
+    "hkdPerasCertBoostL",
+    instance.hkdPerasCertBoostL[Identity],
+    genW16,
+    (pp, a) => pp.copy(perasCertBoost = THKD(a))
+  )
+  lensLaws(
+    "hkdMaxPledgeLeverageL",
+    instance.hkdMaxPledgeLeverageL[Identity],
+    genLeverage,
+    (pp, a) => pp.copy(maxPledgeLeverage = THKD(a))
+  )
+  lensLaws(
+    "hkdMaxTxExUnitsL, through OrdExUnits",
+    instance.hkdMaxTxExUnitsL[Identity],
+    genUnits,
+    (pp, a) => pp.copy(maxTxExUnits = THKD(OrdExUnits(a)))
+  )
+  lensLaws(
+    "hkdCostModelsL",
+    instance.hkdCostModelsL[Identity],
+    genCostModels,
+    (pp, a) => pp.copy(costModels = THKD(a))
+  )
