@@ -217,6 +217,34 @@ class AssertionsSuite extends FailsOnUncaught:
     }
   }
 
+  // The runtime checks for cancelation at every step and yields every second one, so the seeded
+  // schedules let a cancel land anywhere in an assertion: between recording a pair and offering it
+  // too, were that step not uncancelable (and then the pair, recorded, would never be written).
+  test("a cancelled assertion never leaves its pair recorded without its line") {
+    val everyStep = cats.effect.unsafe.IORuntimeConfig(1, 2)
+    val properties = Property.Sometimes.values.toVector
+    (1L to 40L).toList.traverse_ { seed =>
+      val program =
+        for
+          lines <- Ref.of[IO, Vector[String]](Vector.empty)
+          _ <- Assertions.recording[IO](kept(lines), noFailure).use { assertions =>
+            properties.traverse_(p =>
+              assertions.sometimes(p, true, seen).start.flatMap(_.cancel) *>
+                assertions.sometimes(p, true, seen)
+            )
+          }
+          written <- lines.get
+        yield properties.foreach(p =>
+          assertEquals(
+            written.count(_ == evaluated(p, true)),
+            1,
+            s"seed $seed: ${p.message} written once"
+          )
+        )
+      TestControl.executeEmbed(program, everyStep, Some(base64Seed(seed)))
+    }
+  }
+
   test("a caller never waits for the writer, and the release drains the queue before closing") {
     TestControl.executeEmbed {
       for
