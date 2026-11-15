@@ -119,7 +119,7 @@ declare_catalog() {
     for m in "$HASKELL_REFUSED" "$SCARAB_REFUSED"; do
       must_record false false reachability Unreachable "$m" false
     done
-    must_record false false always AlwaysOrUnreachable "$FORK_BELOW_K" true
+    must_record false false always AlwaysOrUnreachable "$FORK_BELOW_K" false
     must_record false true sometimes Sometimes "$FORK_SEEN" false
   fi
   # Every config mounts /logs; without it this fails rather than the detectors passing unseen.
