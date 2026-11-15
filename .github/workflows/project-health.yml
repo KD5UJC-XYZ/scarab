@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Project health
+
+on:
+  schedule:
+    - cron: '43 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: project-health-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: informational project health
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the previous compact snapshot when available
+        run: |
+          previous_run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow project-health.yml --branch main \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty') || previous_run=
+          if [ -n "$previous_run" ]; then
+            gh run download "$previous_run" --repo "$GITHUB_REPOSITORY" --name project-health \
+              --dir "$RUNNER_TEMP/previous-health" || echo 'Previous snapshot unavailable; trends will say unknown'
+          fi
+      - name: Collect existing evidence without changing the repository
+        run: |
+          python3 -B scripts/project_health.py --repository "$GITHUB_REPOSITORY" \
+            --out "$RUNNER_TEMP/project-health" --previous "$RUNNER_TEMP/previous-health/health.json"
+          cat "$RUNNER_TEMP/project-health/health.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: project-health
+          path: ${{ runner.temp }}/project-health/
+          retention-days: 90
+          if-no-files-found: error
