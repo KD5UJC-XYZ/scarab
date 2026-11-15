@@ -134,11 +134,17 @@ everything else is caught within a day by CI. Land in minutes, not hours.
 
 | Level | Examples | Before landing | Paperwork |
 |---|---|---|---|
-| **0. Docs, notes, comments** | wording, a typo, a new section of a design doc | relative links resolve; a design document or ADR also has its reference claims checked (below) | none |
+| **0. Docs, notes, comments** | wording, a typo, a new section of a design doc | relative links resolve and `scripts/preflight` (non-sbt checks) passes; a design document or ADR also has its reference claims checked (below) | none |
 | **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (formatting, `-Werror`, every module's tests, the fuzz suite and scalafix) | commit message; a changelog fragment only if a user could notice |
 | **2. Behaviour change in one area** | a bug fix, a new query, a new flag or event, a performance change | `check` plus **one** scenario for the area (table below) | changelog fragment; a test that fails without the change; `docs/running.md` if a flag, event or metric changed; a `docs/findings.md` row if it was found on real data |
 | **3. Consensus-critical or cross-cutting** | ledger rules, chain selection, a persisted format, the rules switch, anything forging | `check` plus the area scenarios, run in parallel | as level 2, plus the compatibility matrix row and the design document "as built" |
 | **4. Stage boundary** | the jump gates of a design (all Preview epochs, preprod from genesis), a release | the long runs the design names, once per stage, not per commit | an evidence-log entry under `docs/compatibility/` with commit, date and command |
+
+For documentation-only changes (level 0), run `scripts/preflight` without `--check`: it runs the
+repository-wide non-sbt checks. Do not build or run the Scala test suite for those changes. For level 1
+and above, run `scripts/preflight --check`, which includes `scripts/sbtw check` in the JDK image.
+Mixed changes use the highest applicable level. Design documents and ADRs still require the reference
+claim review described below.
 
 Persisted formats are frozen until Scarab leaves pre-release ([FMT-1](docs/design-rules.md#fmt-1)): a storage
 format change needs the owner's explicit approval first, asked for and given in the chat session doing the work,

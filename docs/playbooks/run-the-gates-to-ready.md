@@ -6,21 +6,23 @@
 [AGENTS.md](../../AGENTS.md#before-you-hand-back); this is the order of work.
 
 1. Name the level of the change from the
-   [levels table](../../CONTRIBUTING.md#levels). A documentation-only change (level 0) needs only that
-   its relative links resolve: `python3 scripts/check_docs.py`.
-2. Iterate with a persistent sbt server of your own
+   [levels table](../../CONTRIBUTING.md#levels). For a documentation-only change (level 0), check
+   relative links with `python3 scripts/check_docs.py` and run non-sbt preflight in step 3. Design
+   documents and ADRs also require the reference-claim review described in CONTRIBUTING.
+2. For level 1 and above, iterate with a persistent sbt server of your own
    ([CONTRIBUTING](../../CONTRIBUTING.md#fast-iteration-a-persistent-sbt-server-optional)). When the
-   change is complete, rebase onto the pull request's target, then run the level's gates on that head: at
-   least `scripts/sbtw check`, and for level 2 and above
+   change is complete (at any level), rebase onto the pull request's target, then run the level's gates
+   on that head. Step 3 includes `scripts/sbtw check` for level 1 and above; for level 2 and above also run
    [one scenario per area touched](../../CONTRIBUTING.md#the-one-scenario-per-area) under a devnet name
    of your own.
-3. Run the repository-wide checks on the same head:
+3. Run the repository-wide checks on the same head, choosing the command by level:
 
-   ```sh
-   scripts/preflight --check
-   ```
+   - Documentation-only (level 0): `scripts/preflight` (non-sbt checks only).
+   - Level 1 and above: `scripts/preflight --check` (also runs the Scala build and tests).
 
-   Do not edit the worktree while it runs: the secret scan, the guards and `check` read its files. A pull
+   Mixed changes follow the highest applicable level. Do not add `--check` for documentation-only changes.
+
+   Do not edit the worktree while it runs: the secret scan, the guards and, when selected, `check` read its files. A pull
    request is not ready while it fails ([AGENTS.md](../../AGENTS.md#before-you-hand-back)).
    Without a reachable Docker it runs no step: it prints one `INCOMPLETE: Docker unavailable, gates not run`
    line and exits 3, which is neither a pass nor a failure of the change. `scripts/preflight --doctor` prints
