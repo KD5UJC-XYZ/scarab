@@ -158,6 +158,12 @@ class CborOutcomesTest(unittest.TestCase):
             self.assertIn('ledger-rules', (root/'page.md').read_text())
             self.assertIn('INCOMPLETE', (root/'page.md').read_text())
 
+    def test_nightly_detector_selects_cbor_without_enabling_publication(self):
+        workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/conformance.yml').read_text()
+        self.assertIn("- cron: '17 8 * * *'", workflow)
+        self.assertIn("CBOR_DECODING: ${{ github.event_name == 'schedule' || inputs.cbor-decoding }}", workflow)
+        self.assertIn('if: ${{ inputs.publish }}', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

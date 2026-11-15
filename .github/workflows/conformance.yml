@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Conformance reports
 
-# Scarab's reports for pragma-org's node-diversity-conformance site, on demand only
+# Scarab's reports for pragma-org's node-diversity-conformance site, on demand and a nightly CBOR detector
 # (docs/running/conformance.md): scripts/conformance/run.py builds the tools in the JDK image, runs each
 # chosen scenario on its pinned inputs and checks the report; the files are kept as a workflow artifact.
 # With `publish`, from main only, scripts/conformance/publish.py commits them to the public reports repository
 # KD5UJC-XYZ/scarab-conformance, pushing with the deploy key in the CONFORMANCE_REPO_DEPLOY_KEY secret.
 # uplc-turbo is a timing benchmark and is not offered: it runs ad hoc on a quiet machine.
 on:
+  schedule:
+    - cron: '17 8 * * *'
   workflow_dispatch:
     inputs:
       ledger-rules:
@@ -63,7 +65,7 @@ jobs:
         env:
           LEDGER_RULES: ${{ inputs.ledger-rules }}
           UPLC_CONFORMANCE: ${{ inputs.uplc-conformance }}
-          CBOR_DECODING: ${{ inputs.cbor-decoding }}
+          CBOR_DECODING: ${{ github.event_name == 'schedule' || inputs.cbor-decoding }}
         run: |
           scenarios=()
           if [ "$LEDGER_RULES" = true ]; then scenarios+=(ledger-rules); fi
