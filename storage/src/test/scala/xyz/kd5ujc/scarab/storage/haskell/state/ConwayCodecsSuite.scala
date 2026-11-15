@@ -744,6 +744,25 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     checkRedeemerSet(DecoderVersion.high(Era.Conway), input, mapHex, expected)
   }
 
+  test("redeemer sets order certifying, withdrawing and voting keys by their tags") {
+    // Conway/Scripts.hs:201-213, 269-278, cardano-ledger f649f975: tags 2, 3 and 4.
+    def at(tag: Int) = Redeemer(tag, 0, hex("00"), ExUnits(0, 0))
+    val input = Vector(at(4), at(2), at(3))
+    val expected = Vector(at(2), at(3), at(4))
+    checkRedeemerSet(
+      beforeRedeemerMap,
+      input,
+      "83 84020000820000 84030000820000 84040000820000",
+      expected
+    )
+    checkRedeemerSet(
+      version,
+      input,
+      "a3 8202008200820000 8203008200820000 8204008200820000",
+      expected
+    )
+  }
+
   test("redeemer sets are definite at 23 entries and indefinite at 24 in both forms") {
     // TxWits.hs:157-169 and Encoding/Encoder.hs:431-468, cardano-ledger f649f975.
     // The container becomes indefinite; index 24 itself needs the longer integer head 1818.
