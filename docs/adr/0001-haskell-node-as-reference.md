@@ -110,9 +110,8 @@ moves to it. [The decision](#decision) names no release, so no words of it are s
 - **Both reference builds are kept.** `--reference-build` keeps `11.1` (cardano-node 11.1.3), which
   reads 11.1.3 databases and state files and works with 11.1.3 peers, and gains `11.2` (cardano-node
   11.2.1), following [the playbook](../playbooks/add-a-reference-build.md). The default stays `11.1`
-  until the later stages land; moving it is the owner's decision. Until then `11.2` is named, parsed
-  and logged with its pins, and every command refuses it at start, because its `state` layout is
-  not read or written yet.
+  until the later stages land; moving it is the owner's decision. Until then `11.2` is named and parsed,
+  and every command refuses it at start, because its `state` layout is not read or written yet.
 - **Node-to-client versions 16 to 22 stay offered.** cardano-node 11.2.1 offers node-to-client
   version 23 only: `NodeToClientVersion` has the one constructor `NodeToClientV_23`
   (cardano-diffusion 1.3.0.1, ouroboros-network 4646039f

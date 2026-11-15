@@ -80,8 +80,9 @@ as 4.2.1.0 does (`ntc/GenesisConfig.scala`).
    - round trips on `state` files of that build, and the refusal of them by every other layout.
 
    Until that layout exists, `StateLayout.of` refuses the value (`ReferenceBuildNotYet.Layout`):
-   it is named, parsed and logged, and `follow`, `import-ledger-snapshot` and
-   `export-ledger-snapshot` refuse it at start, as `11.2` is refused until its layout lands.
+   it is named and parsed, the node's setup refuses it (the genesis state is built in the build's
+   layout), and `follow`, `import-ledger-snapshot` and `export-ledger-snapshot` refuse it at start,
+   as `11.2` is refused until its layout lands.
 
    The snapshot format does not change: V10 records the name as text.
 4. **The rules.** The value also selects the ledger and consensus rules. `NodeSetup` sets it on

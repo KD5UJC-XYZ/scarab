@@ -287,7 +287,8 @@ object GenesisStart:
     for
       epoch <- EpochNo.fromBigInt(globals.ledger.firstEpoch).leftMap(GenesisStartError.Vocab(_))
       shelley <- Handover
-        .toShelley(context, epoch, byronUtxo, StateLayout.of(globals.ledger.referenceBuild))
+        .layoutOf(globals.ledger.referenceBuild)
+        .flatMap(Handover.toShelley(context, epoch, byronUtxo, _))
         .leftMap(GenesisStartError.Translation(_))
       translated <- translateTo(globals, era, EraNes.InEra(ShelleyBasedEra.SShelley, shelley))
       injected <- translated match

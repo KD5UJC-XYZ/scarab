@@ -22,11 +22,14 @@ class ReferenceBuildSuite extends FunSuite:
     "configuration defaults follow the selected build through file, directory and absent config setup"
   ) {
     val dir = Path.of("fixtures", "preview", "genesis")
-    List(
-      ReferenceBuild.Release11_1 -> BigInt(600),
-      ReferenceBuild.Release11_2 -> BigInt(21600),
-      ReferenceBuild.LeiosB004fe0c -> BigInt(21600)
+    // 11.2's setup is refused for want of its layout (the test below); its configuration is read
+    assertEquals(
+      NodeSetup
+        .readConfig(ReferenceBuild.Release11_2)(dir.resolve("config.json"))
+        .map(_.settings.ledgerDb.snapshots.maximumDelaySeconds),
+      Right(BigInt(21600))
     )
+    List(ReferenceBuild.Release11_1 -> BigInt(600), ReferenceBuild.LeiosB004fe0c -> BigInt(21600))
       .foreach { (build, maximum) =>
         val options = Main
           .parse(
@@ -223,7 +226,7 @@ class ReferenceBuildSuite extends FunSuite:
 
   test("the ledger of every setup follows the rules of the build it is given (#832)") {
     val config = Path.of("fixtures", "preview", "genesis", "config.json").toString
-    ReferenceBuild.values.foreach { build =>
+    ReferenceBuild.values.filter(b => StateLayout.of(b).isRight).foreach { build =>
       val options = Main
         .parse(
           List(
@@ -245,6 +248,29 @@ class ReferenceBuildSuite extends FunSuite:
         .fold(e => fail(e.message), identity)
       assertEquals(directory.globals.referenceBuild, build, build.name)
     }
+  }
+
+  test(
+    "a build whose layout is not implemented yet has no setup: its genesis state has no layout"
+  ) {
+    val refused = Left(
+      ConfigError(
+        ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2))
+      )
+    )
+    val options = Main
+      .parse(
+        List("follow", "--genesis-dir", "fixtures/preview/genesis", "--peer", "127.0.0.1:3001") ++
+          List("--reference-build", "11.2")
+      )
+      .fold(e => fail(e.message), identity)
+    assertEquals(Main.nodeSetup(options).map(_.globals.referenceBuild), refused)
+    assertEquals(
+      NodeSetup
+        .fromDirectory(ReferenceBuild.Release11_2)(Path.of("fixtures", "preview", "genesis"))
+        .map(_.globals.referenceBuild),
+      refused
+    )
   }
 
   test("the help says the value has to be the build the network runs, and lists every build") {

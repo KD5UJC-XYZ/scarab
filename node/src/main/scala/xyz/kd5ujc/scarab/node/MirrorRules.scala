@@ -40,7 +40,7 @@ import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, VocabError}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.UtxoStore
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** Full block validation on the era-indexed state: the rules of [[NodeRules]] with the Haskell
   * ledger state in place of the node's flat one (design `ledger-mirror-step2.md` §4, J2.8).
@@ -319,7 +319,8 @@ object MirrorRules:
           )
           epoch <- EpochNo.fromBigInt(first).leftMap(v => BlockFailure.Tick(TickFailure.Vocab(v)))
           nes <- Handover
-            .toShelley(context, epoch, ledger.utxo, StateLayout.of(globals.referenceBuild))
+            .layoutOf(globals.referenceBuild)
+            .flatMap(Handover.toShelley(context, epoch, ledger.utxo, _))
             .leftMap(BlockFailure.Tick(_))
           extras = state.consensus
         yield Pre(
