@@ -141,7 +141,7 @@ enum MirrorError extends DomainError derives Show:
   *   the era history, for the point of no return of the parameter update
   * @param quorum
   *   the number of genesis delegates that must propose the same update (`quorum`,
-  *   `Rules/Ppup.hs:190`), before Conway
+  *   `Rules/Ppup.hs:185`), before Conway
   * @param snapshots
   *   where the delegators of the pools of the `mark` snapshot come from ([[SnapshotBasis]])
   */

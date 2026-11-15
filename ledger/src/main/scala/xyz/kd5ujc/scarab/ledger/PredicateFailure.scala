@@ -51,7 +51,7 @@ enum UtxosFailure:
   case ValidationTagMismatch(isValid: Boolean, failures: Option[Vector[PlutusFailure]])
 
   /** The evaluation of a script could not be set up (`CollectErrors`,
-    * `Alonzo/Rules/Utxos.hs:94-100`); a phase-1 failure.
+    * `Alonzo/Rules/Utxos.hs:333`); a phase-1 failure.
     */
   case CollectErrors(errors: cats.data.NonEmptyVector[CollectError])
 
@@ -183,7 +183,7 @@ enum DelegFailure:
 
   /** A MIR certificate arrives too late in the epoch: the slot is the supplied side, the first slot
     * too late the expected (`MIRCertificateTooLateinEpochDELEG`, `checkSlotNotTooLate`,
-    * `Shelley/Rules/Deleg.hs:386`).
+    * `Shelley/Rules/Deleg.hs:387-404`).
     */
   case MIRCertificateTooLateinEpoch(mismatch: Mismatch[BigInt])
 

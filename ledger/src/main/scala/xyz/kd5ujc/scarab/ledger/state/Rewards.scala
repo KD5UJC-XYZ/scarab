@@ -208,7 +208,7 @@ object RewardBlockCount:
   given Eq[RewardBlockCount] = Eq.fromUniversalEquals
   given Show[RewardBlockCount] = Show.show(_.toString)
 
-/** `LeaderOnlyReward` (`Shelley/Rewards.hs:223`): the pool and its operator's reward. */
+/** `LeaderOnlyReward` (`Shelley/Rewards.hs:221-224`): the pool and its operator's reward. */
 final case class LeaderOnlyReward(pool: KeyHash[StakePool], amount: Coin) derives Eq, Show, Diff
 
 /** `PoolRewardInfo` (`Shelley/Rewards.hs:242-253`), captured once at reward start. */
@@ -222,7 +222,7 @@ final case class PoolRewardInfo(
       Show,
       Diff
 
-/** `FreeVars` (`Shelley/RewardUpdate.hs:216`): immutable inputs of the member calculation. */
+/** `FreeVars` (`Shelley/RewardUpdate.hs:210-216`): immutable inputs of the member calculation. */
 final case class RewardFreeVars(
     registered: SortedSet[Credential[Staking]],
     totalStake: Coin,

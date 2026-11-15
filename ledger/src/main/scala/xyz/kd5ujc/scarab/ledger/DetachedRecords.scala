@@ -586,7 +586,7 @@ object DetachedRecords:
 
     /** A block as BlockFetch carries it, `[era tag, block]`: a block of a Shelley-based era is its
       * [[header]], then the bodies, the witness sets, the auxiliary data by index and the invalid
-      * transactions (`Block.hs:104-115`, `Alonzo/BlockBody/Internal.hs:215-240`).
+      * transactions (`Block.hs:98-110`, `Alonzo/BlockBody/Internal.hs:215-240`).
       */
     val block: Shape = blockAt(DecoderVersion.of)
 

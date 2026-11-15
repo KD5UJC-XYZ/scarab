@@ -35,7 +35,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 /** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`): the block-level context (the slot), the parameters in
   * force, and the certificate state *before* the transaction's certificates (the refunds of
   * deregistrations are the deposits its accounts hold, which CERTS has already removed from the
-  * state that follows, `Conway/Rules/Ledger.hs:410-415`). The certificate state is the era's
+  * state that follows, `Conway/Rules/Ledger.hs:429-440`). The certificate state is the era's
   * (`UtxoEnv era` holds `CertState era`): Conway's here, [[ShelleyCertState]] for the eras before.
   */
 final case class UtxoEnv[+C](ctx: TxEnv, pp: ProtocolParams, cert: C)

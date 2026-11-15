@@ -128,7 +128,7 @@ class DijkstraRulesSuite extends FunSuite:
     )
   }
 
-  // the reference records both and reports them in reverse (`Extended.hs:610-622`)
+  // the reference records both and reports them in reverse (`Extended.hs:715-722`)
   test("BBODY refuses a header whose body hash is not the body's, and records a wrong size too") {
     val other = Bytes.fromArray(Array.fill(32)(9.toByte))
     val header = empty.header.copy(bodyHash = other)

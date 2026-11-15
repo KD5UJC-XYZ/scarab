@@ -227,7 +227,7 @@ object JudgedSts:
 final case class Embed[S, S0, Fail, Fail0](state: Lens[S0, S], failure: Fail => Fail0)
 
 object Embed:
-  /** `instance STS sts => Embed sts sts` (`Extended.hs:288`). */
+  /** `instance STS sts => Embed sts sts` (`Extended.hs:278`). */
   given refl[S, Fail]: Embed[S, S, Fail, Fail] =
     Embed(Lens[S, S](identity)(s => _ => s), identity)
 

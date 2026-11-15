@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * rewards (before Conway), EPOCH runs, and the epoch's blocks become the previous epoch's, the
   * reward update is cleared and the pool distribution is the one of the `mark` snapshot the
   * boundary has just made `set` (`ssStakeMarkPoolDistr` of the snapshots before EPOCH). Inside the
-  * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:160-165`) and the
+  * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:161-166`) and the
   * earlier eras change nothing.
   *
   * For an epoch that is not the next one the reference does nothing (`pure src`; Conway also

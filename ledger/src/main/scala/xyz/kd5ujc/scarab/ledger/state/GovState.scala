@@ -46,7 +46,7 @@ object FuturePParams:
 
   /** The parameters the prediction holds, if any. */
   extension (f: FuturePParams)
-    /** `knownFuturePParams` (`State/Governance.hs:105-108`): the parameters, only if it is certain
+    /** `knownFuturePParams` (`State/Governance.hs:111-114`): the parameters, only if it is certain
       * that they will be adopted.
       */
     def definite: Option[ProtocolParams] = f match
