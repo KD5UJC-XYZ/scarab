@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, TxBody as FlatTxBody}
 import xyz.kd5ujc.scarab.ledger.era.allegra.AllegraTxOut
 import xyz.kd5ujc.scarab.ledger.era.mary.MaryTxOut
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Coin, Mary}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The representation parameterised by value (ADR 0007, amendment of 2026-11-14): Allegra's and
@@ -66,4 +66,38 @@ class EraValueSuite extends munit.FunSuite:
     val wrongEra = compileErrors("def f(a: AllegraTxOut): MaryTxOut = a")
     assert(wrongEra.contains("MaryTxOut"), wrongEra)
     assertEquals(compileErrors("def f(m: MaryTxOut): MaryTxOut = m"), "")
+  }
+
+  test("Val is the reference's signed group: subtraction, scaling and pointwise comparison") {
+    val ada = summon[Val[AdaValue]]
+    val (five, seven) = (AdaValue(5), AdaValue(7))
+    // a negative amount is a value in a calculation (`Coin` is an `Integer`)
+    assertEquals(ada.minus(five, seven).lovelace, BigInt(-2))
+    assertEquals(ada.scale(-1, seven).lovelace, BigInt(-7))
+    assert(ada.isZero(ada.minus(seven, seven)))
+    assert(ada.pointwise(_ <= _, five, seven))
+    assertEquals(ada.modifyCoin(c => Coin(c.value * 2), five).lovelace, BigInt(10))
+    val ma = summon[Val[MultiAssetValue]]
+    val policy = Bytes(Vector.fill(28)(1.toByte))
+    val (a, b) = (Bytes(Vector(0x61)), Bytes(Vector(0x62)))
+    val v =
+      MultiAssetValue.of(xyz.kd5ujc.scarab.ledger.Value(10, Map(policy -> Map(a -> 3, b -> 4))))
+    val w = MultiAssetValue.of(xyz.kd5ujc.scarab.ledger.Value(4, Map(policy -> Map(a -> 3))))
+    // a quantity that reaches zero leaves the map, as `canonicalMap` drops it
+    assertEquals(ma.minus(v, w).assets, Map(policy -> Map(b -> BigInt(4))))
+    assertEquals(ma.minus(v, w).lovelace, BigInt(6))
+    assert(ma.isZero(ma.scale(0, v)))
+    assertEquals(ma.scale(-2, w).assets, Map(policy -> Map(a -> BigInt(-6))))
+    // a quantity one side lacks is zero
+    assert(ma.pointwise(_ >= _, v, w))
+    assert(!ma.pointwise(_ <= _, v, w))
+    assert(ma.pointwise(_ >= _, v, ma.zero))
+  }
+
+  test("the store's read into Allegra still refuses a negative coin, which no output holds") {
+    val out = outputsOf(Era.Allegra).head
+    assertEquals(
+      AllegraTxOut.fromStored(out.copy(value = out.value.copy(coin = -1))),
+      Left(EraTxError.NotInEra(EraField.NegativeValue))
+    )
   }

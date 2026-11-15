@@ -38,7 +38,12 @@ object AllegraTxOut:
       _ <- Either.cond(out.value.assets.isEmpty, (), EraTxError.NotInEra(EraField.MultiAsset))
       _ <- Either.cond(out.datum == Datum.NoDatum, (), EraTxError.NotInEra(EraField.Datum))
       _ <- Either.cond(out.scriptRef.isEmpty, (), EraTxError.NotInEra(EraField.ReferenceScript))
-      ada <- AdaValue.of(out.value.coin).toRight(EraTxError.NotInEra(EraField.NegativeValue))
+      // an output's coin is a `Word64` (`CompactForm Coin`), so no output holds a negative one
+      ada <- Either.cond(
+        out.value.coin >= 0,
+        AdaValue(out.value.coin),
+        EraTxError.NotInEra(EraField.NegativeValue)
+      )
     yield ShelleyTxOutRep(out.raw, out.address, ada, out.valueSize)
 
   extension (out: AllegraTxOut)

@@ -347,7 +347,9 @@ Conway's rules on the classes follow as the rest of stage 2.
 - `AllegraTxOut` and `MaryTxOut` are opaque over one `ShelleyTxOutRep[V]`, with `V = AdaValue` and
   `MultiAssetValue`.
 - A function written once (`coinOf`, in `EraValueSuite`) adds outputs' values up through the reference's
-  `Val` in Allegra, Mary, Babbage and Conway. Read from recorded blocks, its results equal the flat outputs'.
+  `Val` in any era. Read from recorded Allegra and Mary blocks, its results equal the flat outputs'. `Val` is
+  the reference's signed group (`<+>`, `<->`, `<×>`, `pointwise`), so `AdaValue` holds a negative amount
+  in a calculation and only an output's decoder bounds it.
 - The store's read into Allegra (`fromStored`, `private[ledger]`) refuses an output with native assets, and
   an Allegra output carries into Mary with its bytes and lovelace.
 - The compiler refuses:
