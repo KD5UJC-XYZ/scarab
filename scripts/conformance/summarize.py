@@ -26,6 +26,11 @@ from conformance.schema import loads  # noqa: E402
 INVALID = (OSError, ValueError, KeyError, TypeError, EOFError, zlib.error)
 
 
+def explanation(error: Exception) -> str:
+    # FileNotFoundError includes the host's absolute scratch path, which is not report evidence.
+    return (error.strerror or type(error).__name__) if isinstance(error, OSError) else str(error)
+
+
 def run_items(directory: Path) -> tuple[dict, list[dict]]:
     run = loads((directory / "summary.json").read_text())
     if not isinstance(run, dict) or not isinstance(run.get("outcomes"), list) \
@@ -61,7 +66,7 @@ def collect(directory: Path, previous: Path | None = None) -> list[dict]:
         try:
             _, old = run_items(previous)
         except INVALID as error:
-            old_error = f"previous run evidence is unavailable: {error}"
+            old_error = f"previous run evidence is unavailable: {explanation(error)}"
     result = []
     seen = set()
     for item in items:
@@ -87,7 +92,7 @@ def collect(directory: Path, previous: Path | None = None) -> list[dict]:
                     try:
                         prior = read_report(previous, candidates[0])
                     except INVALID as error:
-                        prior_error = f"previous evidence is invalid: {error}"
+                        prior_error = f"previous evidence is invalid: {explanation(error)}"
                 else:
                     prior_error = "previous run has no unique checked report for this era"
             comparison = outcomes.compare(report, prior)
@@ -95,7 +100,7 @@ def collect(directory: Path, previous: Path | None = None) -> list[dict]:
                 comparison = {"status": "unavailable", "reason": prior_error}
             result.append({"era": era, **outcomes.cbor(report), "comparison": comparison})
         except INVALID as error:
-            result.append({"era": era, "verdict": "incomplete", "reason": str(error)})
+            result.append({"era": era, "verdict": "incomplete", "reason": explanation(error)})
     if "cbor-decoding" in run.get("requested", []):
         result += [{"era": era, "verdict": "incomplete", "reason": "requested era has no outcome"}
                    for era in ("conway", "dijkstra") if era not in seen]
@@ -110,7 +115,7 @@ def main(argv=None) -> int:
     try:
         items = collect(args.out, args.previous)
     except INVALID as error:
-        items = [{"era": None, "verdict": "incomplete", "reason": str(error)}]
+        items = [{"era": None, "verdict": "incomplete", "reason": explanation(error)}]
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "cbor-outcomes.json").write_text(json.dumps({"schemaVersion": 1, "outcomes": items}, indent=2) + "\n")
     (args.out / "cbor-outcomes.md").write_text(outcomes.markdown(items))

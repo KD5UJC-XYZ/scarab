@@ -82,7 +82,11 @@ jobs:
           if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance"; then
             echo '::warning::CBOR conformance evidence is incomplete; see the job summary'
           fi
-          cat "$RUNNER_TEMP/conformance/cbor-outcomes.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/conformance/cbor-outcomes.md" ]; then
+            cat "$RUNNER_TEMP/conformance/cbor-outcomes.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'CBOR conformance: INCOMPLETE (summary unavailable)' >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f "$RUNNER_TEMP/conformance/summary.json" ]; then
             { echo '```json'; cat "$RUNNER_TEMP/conformance/summary.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi

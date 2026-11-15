@@ -4,9 +4,12 @@ import copy
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
+import textwrap
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -137,6 +140,23 @@ class CborOutcomesTest(unittest.TestCase):
         self.assertIn('cat "$RUNNER_TEMP/conformance/summary.json"', workflow)
         self.assertIn('if ! python3 -I -B scripts/conformance/summarize.py', workflow)
         self.assertNotIn('exit "$result"', workflow)
+
+    def test_summary_shell_preserves_other_results_when_summarizer_cannot_write_a_page(self):
+        workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/conformance.yml').read_text()
+        step = workflow.split('      - name: Summary\n', 1)[1].split('\n      - name:', 1)[0]
+        script = textwrap.dedent(step.split('        run: |\n', 1)[1]).strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'conformance').mkdir()
+            (root/'conformance/summary.json').write_text('{"outcomes":[{"scenario":"ledger-rules"}]}')
+            (root/'python3').write_text('#!/bin/sh\nexit 1\n')
+            (root/'python3').chmod(0o755)
+            env = {**os.environ, 'PATH': str(root)+os.pathsep+os.environ['PATH'],
+                   'RUNNER_TEMP': tmp, 'GITHUB_STEP_SUMMARY': str(root/'page.md')}
+            result = subprocess.run(['/bin/bash', '-eo', 'pipefail', '-c', script], env=env, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('ledger-rules', (root/'page.md').read_text())
+            self.assertIn('INCOMPLETE', (root/'page.md').read_text())
 
 
 if __name__ == "__main__":
