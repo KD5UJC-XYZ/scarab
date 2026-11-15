@@ -173,10 +173,12 @@ class BacklogRetryTest(unittest.TestCase):
 
 class MonitorSession:
     """A LocalTxMonitor session that answers `HasTx` false, or ends the connection on the ids
-    `closes` names."""
+    `closes` names once it has read them. `acquires=False` ends it at the acquire, and `writes`
+    is the error, if any, that writing a `HasTx` request raises. `sent` counts the requests written."""
 
-    def __init__(self, closes, answer=b"\x82\x08\xf4", acquires=True):
-        self.closes, self.answer, self.acquires = closes, answer, acquires
+    def __init__(self, closes, answer=b"\x82\x08\xf4", acquires=True, writes=None):
+        self.closes, self.answer, self.acquires, self.writes = closes, answer, acquires, writes
+        self.sent, self.pending = 0, None
 
     def __enter__(self):
         return self
@@ -192,10 +194,20 @@ class MonitorSession:
     def release_snapshot(self):
         pass
 
-    def has_item(self, item):
-        if item in self.closes:
+    def send_has_item(self, item):
+        if self.writes is not None:
+            raise self.writes
+        self.sent += 1
+        self.pending = item
+
+    def has_reply(self):
+        if self.pending in self.closes:
             raise EOFError("node closed the connection")
         return self.answer
+
+    def has_item(self, item):
+        self.send_has_item(item)
+        return self.has_reply()
 
     def has_tx(self, txid, era=6):
         return self.has_item(b"\x82" + bytes([era]) + cbor.enc(txid))
@@ -225,8 +237,28 @@ class HasTxIdsTest(unittest.TestCase):
                         + [MonitorSession(self.refused)])
         report, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused), lambda: next(refusing))
         self.assertEqual(len(failures), len(ntclocal.REFUSED_IDS))
-        self.assertTrue(all("setup" in row["scala"] and not row["scala"]["closed"]
+        self.assertTrue(all(row["scala"]["stage"] == "acquire" and not row["scala"]["closed"]
                             for row in report["refused"].values()))
+
+    def test_a_request_that_cannot_be_written_is_not_a_refusal(self):
+        for error in (BrokenPipeError("pipe"), ConnectionResetError("reset")):
+            with self.subTest(error=type(error).__name__):
+                sessions = [MonitorSession(self.refused, writes=error) for _ in ntclocal.REFUSED_IDS]
+                refusing = iter([MonitorSession(self.refused)] + sessions + [MonitorSession(self.refused)])
+                report, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused),
+                                                       lambda: next(refusing))
+                self.assertEqual(sum(session.sent for session in sessions), 0)
+                self.assertEqual(len(failures), len(ntclocal.REFUSED_IDS))
+                self.assertTrue(all(row["scala"]["stage"] == "send" and not row["scala"]["closed"]
+                                    for row in report["refused"].values()))
+
+    def test_an_end_while_reading_the_reply_is_a_refusal(self):
+        sessions = [MonitorSession(self.refused) for _ in ntclocal.REFUSED_IDS]
+        refusing = iter([MonitorSession(self.refused)] + sessions + [MonitorSession(self.refused)])
+        report, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused), lambda: next(refusing))
+        self.assertEqual(failures, [])
+        self.assertEqual([session.sent for session in sessions], [1] * len(ntclocal.REFUSED_IDS))
+        self.assertTrue(all(row["scala"] == {"closed": True} for row in report["refused"].values()))
 
     def test_a_differing_answer_to_an_accepted_id_fails(self):
         _, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused),

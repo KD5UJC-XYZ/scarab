@@ -61,11 +61,19 @@ class Session(ntcquery.LocalStateQuery):
     def has_tx(self, txid, era=6):
         return self.request(MONITOR, [7, [era, txid]])[1]
 
-    def has_item(self, item):
-        """`HasTx` of an id item given as raw CBOR, sent as written."""
+    def send_has_item(self, item):
+        """Send `HasTx` of an id item given as raw CBOR, as written, without reading the reply."""
         self._send(MONITOR, b"\x82\x07" + item)
+
+    def has_reply(self):
+        """The raw reply to the `HasTx` sent last."""
         self._recv(MONITOR)
         return self.last_raw
+
+    def has_item(self, item):
+        """`HasTx` of an id item given as raw CBOR, sent as written."""
+        self.send_has_item(item)
+        return self.has_reply()
 
     def sizes(self):
         return self.request(MONITOR, [9])[1]
@@ -249,20 +257,26 @@ ACCEPTED_IDS = {
 
 def _has_closes(opener, item):
     """Whether `HasTx` of `item`, on a fresh connection with an acquired snapshot, ends the connection.
-    Only an end after the snapshot was acquired and the item sent counts: a connection that ends or
-    fails before is reported as `setup`, not closed. The opener's session deadline bounds a node that
-    neither answers nor closes."""
+    Only an end met while reading the reply, after the snapshot was acquired and the whole request
+    written, counts as closed. A failure at any earlier stage (opening, acquiring, or writing the
+    request, which a node can only refuse once it has it) is reported with that stage and fails the
+    probe. The opener's session deadline bounds a node that neither answers nor closes."""
+    stage = "open"
     try:
         with opener() as session:
+            stage = "acquire"
             session.acquire_snapshot()
+            stage = "send"
+            session.send_has_item(item)
+            stage = "reply"
             try:
-                return {"closed": False, "reply": session.has_item(item).hex()}
+                return {"closed": False, "reply": session.has_reply().hex()}
             except (EOFError, ConnectionResetError, BrokenPipeError):
                 return {"closed": True}
     except ntcquery.Deadline as e:
-        return {"closed": False, "timedOut": True, "setup": repr(e)}
+        return {"closed": False, "timedOut": True, "stage": stage, "error": repr(e)}
     except (EOFError, OSError, RuntimeError, AssertionError) as e:
-        return {"closed": False, "setup": repr(e)}
+        return {"closed": False, "stage": stage, "error": repr(e)}
 
 
 def has_tx_ids(open_h, open_s):
