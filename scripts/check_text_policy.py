@@ -60,6 +60,14 @@ ALLOWED: Mapping[str, str] = {
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisPoolFields.scala":
         "constructs a text node to encode the URL already read from genesis JSON; "
         "this is encoding, not a CBOR text read",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/BabbageTxOutRep.scala":
+        "`fromStored` names every shape a reference script is not (`Value.Text(_)` among them) to "
+        "refuse it, as TYP-6 asks of a match, and discards its contents, so no text is read at all "
+        "(owner-approved 2026-11-15, #990)",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTxAuxData.scala":
+        "`fields` names every shape auxiliary data is not (`Value.Text(_)` among them) to refuse it, "
+        "as TYP-6 asks of a match, and discards its contents, so no text is read at all "
+        "(owner-approved 2026-11-15, #990)",
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/V12.scala":
         "owns the version-12 text rule: definite or chunked, with each chunk checked by the "
         "item decoder (cardano-ledger 9df9f98c Decoding/Decoder.hs:1564-1569,1582-1598)",

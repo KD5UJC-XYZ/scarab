@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
+import xyz.kd5ujc.scarab.codec
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   ByteStrings,
@@ -72,10 +73,13 @@ object BabbageTxOutRep:
               LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.ReferenceScript)
             )
           inner <- field.value match
-            case CborValue.Tag(t, i) if t == 24 =>
+            case codec.Value.Tag(t, i) if t == 24 =>
               CborRead.bytes(i, DecodeField.ReferenceScript)
-            // any other shape, as the flat reader refuses it (`Script.decodeWrappedWithBytes`)
-            case _ =>
+            // every other shape, as the flat reader refuses it (`Script.decodeWrappedWithBytes`)
+            case codec.Value.Tag(_, _) | codec.Value.UInt(_) | codec.Value.NInt(_) |
+                codec.Value.ByteString(_) | codec.Value.Text(_) | codec.Value.Arr(_) |
+                codec.Value.Map(_) | codec.Value.Bool(_) | codec.Value.Null |
+                codec.Value.Simple(_) | codec.Value.Float(_, _) =>
               Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, field.value))
           scriptNode <- CborRead.decode(inner)
           s <- decodeScript(scriptNode)
