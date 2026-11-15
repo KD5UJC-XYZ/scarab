@@ -28,7 +28,8 @@ enum ScriptDecodeError:
   case ExpectedBytes
 
   /** `CBORDeserialiseError` with `OtherReason`: the Flat decoder refuses the program, which it
-    * reports to cborg through `fail` (`decodeViaFlatWith`, `SerialiseViaFlat.hs:28-32`).
+    * reports to cborg through `fail` (`decodeViaFlatWith`, `SerialiseViaFlat.hs:28-32`, plutus
+    * 1.70.0.0).
     */
   case Flat(error: FlatError)
 
@@ -50,11 +51,11 @@ enum ScriptDecodeError:
   */
 object SerialisedScript:
 
-  /** `deserialiseScript ll pv` (`SerialisedScript.hs:254-266`), in its order: the language must be
-    * available at `protocol`; the script must start with a definite-length CBOR byte string
-    * (`decodeBytes`, through `decodeViaFlatWith`), whose content the Flat decoder reads whole with
-    * the ledger's [[Checks]]; and bytes after that byte string are refused unless the language is
-    * V1 or V2 (`SerialisedScript.hs:262-264`).
+  /** `deserialiseScript ll pv` (`SerialisedScript.hs:254-266`, plutus 1.70.0.0), in its order: the
+    * language must be available at `protocol`; the script must start with a definite-length CBOR
+    * byte string (`decodeBytes`, through `decodeViaFlatWith`), whose content the Flat decoder reads
+    * whole with the ledger's [[Checks]]; and bytes after that byte string are refused unless the
+    * language is V1 or V2 (`SerialisedScript.hs:262-264`).
     *
     * The program's version is not checked here: it is a failure of the evaluation, not of the
     * decoding ([[forEvaluation]]).
@@ -84,7 +85,7 @@ object SerialisedScript:
     yield program
 
   /** The check that `mkTermToEvaluate` makes of a deserialised program before it runs
-    * (`Eval.hs:124-127`): its version must be one the language has at `protocol`
+    * (`Eval.hs:124-127`, plutus 1.70.0.0): its version must be one the language has at `protocol`
     * (`plcVersionsAvailableIn`, [[Availability.programVersions]]); otherwise
     * `PlutusCoreLanguageNotAvailableError`, a failure of phase 2. The scope check that follows it
     * (`Eval.hs:129-130`) is [[xyz.kd5ujc.scarab.uplc.ledger.Scope.check]].
@@ -98,9 +99,9 @@ object SerialisedScript:
 
   /** The content of the definite-length CBOR byte string at the start of `script`, and the bytes
     * after it: what cborg's `decodeBytes` reads and what `deserialiseFromBytes` leaves
-    * (`SerialisedScript.hs:268-274`). The length may be written in any of the widths CBOR allows.
-    * An indefinite-length (chunked) byte string is refused as cborg refuses it, with
-    * `ExpectedBytes`.
+    * (`SerialisedScript.hs:268-274`, plutus 1.70.0.0). The length may be written in any of the
+    * widths CBOR allows. An indefinite-length (chunked) byte string is refused as cborg refuses it,
+    * with `ExpectedBytes`.
     */
   def byteString(script: Bytes): Either[ScriptDecodeError, (Bytes, Bytes)] =
     script.headOption match

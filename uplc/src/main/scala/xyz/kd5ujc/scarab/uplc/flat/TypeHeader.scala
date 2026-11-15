@@ -11,7 +11,8 @@ import xyz.kd5ujc.scarab.uplc.DefaultUni
   */
 object TypeHeader:
   /** A type of the universe at any kind: `DefaultUni` at the kinds its Flat decoder can produce
-    * (`withDecodedUni`, `Universe.hs:1085-1100`; `withApplicable`, `Universe/Core.hs:596-615`).
+    * (`withDecodedUni`, `Universe.hs:1085-1100`; `withApplicable`, `Universe/Core.hs:596-615`,
+    * plutus 1.70.0.0).
     */
   enum Kinded:
     /** A type of kind `*`. */
@@ -30,10 +31,10 @@ object TypeHeader:
     case PairWith(first: DefaultUni)
 
   /** Why the tags are not one type: each a way for `decodeKindedUni` to return `Nothing`
-    * (`Universe/Core.hs:479-492`).
+    * (`Universe/Core.hs:479-492`, plutus 1.70.0.0).
     */
   enum Failure:
-    /** A tag with no type (`withDecodedUni`'s `empty`, `Universe.hs:1106`). */
+    /** A tag with no type (`withDecodedUni`'s `empty`, `Universe.hs:1106`, plutus 1.70.0.0). */
     case UnknownTag(tag: Int)
 
     /** An application whose function is not an operator expecting a type of kind `*`
@@ -49,7 +50,7 @@ object TypeHeader:
 
   private val Apply = 7
 
-  /** The type of each tag that is a type on its own (`Universe.hs:1086-1099`). */
+  /** The type of each tag that is a type on its own (`Universe.hs:1086-1099`, plutus 1.70.0.0). */
   private def leaf(tag: Int): Option[Kinded] = tag match
     case 0  => Some(Kinded.Star(DefaultUni.Integer))
     case 1  => Some(Kinded.Star(DefaultUni.ByteString))
@@ -66,7 +67,8 @@ object TypeHeader:
     case 13 => Some(Kinded.Star(DefaultUni.Value))
     case _  => None
 
-  /** `withApplicable` (`Universe/Core.hs:596-615`): every operator takes an argument of kind `*`.
+  /** `withApplicable` (`Universe/Core.hs:596-615`, plutus 1.70.0.0): every operator takes an
+    * argument of kind `*`.
     */
   private def applied(function: Kinded, argument: Kinded): Either[Failure, Kinded] =
     (function, argument) match
@@ -85,9 +87,9 @@ object TypeHeader:
     case Parse(tags: List[Int])
     case Parsed(kinded: Kinded, rest: List[Int])
 
-  /** `decodeKindedUni` (`Universe/Core.hs:479-482`): the one type the tags spell, parsed on the
-    * heap, the function of an application before its argument and both before the check that one
-    * applies to the other.
+  /** `decodeKindedUni` (`Universe/Core.hs:479-482`, plutus 1.70.0.0): the one type the tags spell,
+    * parsed on the heap, the function of an application before its argument and both before the
+    * check that one applies to the other.
     */
   def parse(tags: Vector[Int]): Either[Failure, Kinded] =
     @tailrec def go(step: Step, pending: List[Pending]): Either[Failure, Kinded] = step match
@@ -121,7 +123,8 @@ object TypeHeader:
             case Right(Got(tag, next)) => go(next, read :+ tag)
     go(at, Vector.empty)
 
-  /** The type at `at` and the position after it: its tags, parsed, of kind `*` (`Flat.hs:148-153`).
+  /** The type at `at` and the position after it: its tags, parsed, of kind `*` (`Flat.hs:148-153`,
+    * plutus 1.70.0.0).
     */
   def read(input: Input, at: Long): Either[FlatError, Got[DefaultUni]] =
     tags(input, at).flatMap { case Got(tags, after) =>
