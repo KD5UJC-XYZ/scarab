@@ -5215,6 +5215,12 @@
     "object ledger.era.rules.BabbageUtxo",
     "object ledger.era.rules.ShelleyUtxo"
    ]
+  },
+  {
+   "reason": "how an output holds its reference script: by its hash and tree, without the bytes a script read from them keeps, which the output re-reads from its own encoding (#998); the reference's output holds the script whole, so this representation has no counterpart",
+   "definitions": [
+    "def ledger.Script#withoutBytes"
+   ]
   }
  ]
 }

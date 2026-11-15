@@ -7866,7 +7866,6 @@
    "class storage.haskell.Validated": null,
    "class storage.haskell.state.AncillaryManifest": null,
    "class storage.haskell.state.AncillaryManifest.File": null,
-   "class storage.haskell.state.ConwayCodecs.ScriptPayload": null,
    "class storage.haskell.state.HaskellLedgerFile": null,
    "class storage.haskell.state.IndividualPoolStake11": null,
    "class storage.haskell.state.NewEpochStateLeios": null,

@@ -254,6 +254,55 @@ class UtxoStoreSuite extends ScalaCheckSuite:
     assert(UtxoStore.Coding.mayPayTo(pointer, other))
   }
 
+  // An output's reference script keeps no bytes (#998), whichever way the output was made, so the
+  // output read again from its encoding is the one stored and the store keeps writing that encoding
+  // (tag 1), as it did before scripts kept their bytes: the stored values below are those builds
+  // wrote. The two indefinite lists are a native script's encoding as it may arrive.
+  test("an output with a reference script is stored as its encoding, however it was made") {
+    def hex(s: String): Bytes =
+      Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(e => fail(e.toString), identity)
+    val key = (0 until 28).map(i => f"${0x10 + i}%02x").mkString
+    val head = s"a3 00 581d 61$key 01 1a001e8480 03 d818"
+    def decoded(script: String) =
+      val raw = hex(s"$head 58${f"${hex(script).size}%02x"} $script")
+      TxOut.fromBytes(raw).fold(e => fail(e.message), identity)
+    val sig = NativeScript.Sig(hex(key))
+    val indefinite = decoded(s"82 00 9f 00 581c$key ff")
+    val plain =
+      TxOut.fromBytes(hex(s"82 581d 61$key 1a001e8480")).fold(e => fail(e.message), identity)
+    val packed = mempack.TxOutMemPack
+      .toTxOut(
+        mempack.TxOutParts(
+          plain.address.raw,
+          plain.value,
+          Datum.NoDatum,
+          Some(mempack.RefScript(ScriptKind.Native, hex(s"9f 00 581c$key ff")))
+        )
+      )
+      .fold(e => fail(e.toString), identity)
+    val outputs = Vector(
+      decoded(s"82 00 82 00 581c$key") -> s"$head 5822 82 00 82 00 581c$key",
+      indefinite -> s"$head 5823 82 00 9f 00 581c$key ff",
+      decoded("82 02 47 46010000220011") -> s"$head 580a 82 02 47 46010000220011",
+      packed -> s"$head 5823 82 00 9f 00 581c$key ff",
+      mempack.TxOutMemPack.withNativeReference(plain, hex(s"82 00 581c$key"), sig) ->
+        s"$head 5822 82 00 82 00 581c$key"
+    )
+    outputs.foreach { (out, raw) =>
+      val stored = UtxoStore.Coding.encodeValue(out)
+      assertEquals(Bytes.wrap(stored).hex, "01" + raw.filterNot(_.isWhitespace), out)
+      assertEquals(
+        out.scriptRef.map(s => (s.encoding, s.plutus)),
+        Some((None, None)),
+        "the reference script keeps no bytes"
+      )
+      assertEquals(TxOut.fromBytes(out.raw), Right(out), "read again from its encoding")
+      assertEquals(UtxoStore.Coding.decodeValue(stored), Right(out), "read back from the store")
+    }
+    // the bytes are still there to read again for the rules, from the output's encoding
+    assertEquals(indefinite.referenceScript.flatMap(_.encoding), Some(hex(s"9f 00 581c$key ff")))
+  }
+
   // -------------------------------------------------------------------------------------------
 
   private def orFail[A](program: Handle[IO, StorageError] ?=> IO[A]): A =
