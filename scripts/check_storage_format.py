@@ -173,7 +173,8 @@ OWNER_NAMED_PATHS = (
 )
 # Then what the other gates require in the same change: the code map lists suites and entry points, the fixture
 # inventory every fixture, the documentation check's baseline its findings, a level 3 change its compatibility
-# register entry and page, a decision its register row, and a new decoder its fuzz target (CONTRIBUTING.md).
+# register entry and page, a decision its register row, a new decoder its fuzz target (CONTRIBUTING.md), and the
+# correspondence map an entry or a glue line for each new definition of a mirrored area (REF-6).
 REQUIRED_BY_OTHER_GATES = (
     'docs/data/codemap.json',
     'docs/codemap.md',
@@ -184,6 +185,7 @@ REQUIRED_BY_OTHER_GATES = (
     'docs/compatibility/persistence*.md',
     'docs/decisions.md',
     'fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala',
+    'docs/data/correspondence/*.json',
 )
 FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
 # A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the

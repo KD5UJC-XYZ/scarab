@@ -317,12 +317,14 @@ class AllowlistTest(unittest.TestCase):
         for path in ('docs/data/storage-format.json', fmt.REGISTRY, fmt.MIGRATION, CODEC,
                      'fixtures/snapshot-v10/eras/byron-1.bin', 'fixtures/snapshot-v11/manifest.json',
                      'docs/storage-migrations.md', 'changes/994-v10-sidecar.md',
-                     'tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10FixtureMain.scala'):
+                     'tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10FixtureMain.scala',
+                     'docs/data/correspondence/storage.json'):
             with self.subTest(path=path):
                 self.assertTrue(fmt.allowed(path))
         for path in ('consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/NodeState.scala', 'changes/README.md',
                      'storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsBase.scala', 'AGENTS.md',
-                     'docs/design-rules.md', 'scripts/pr_policy.py', 'fixtures/eras/genesis/byron.json'):
+                     'docs/design-rules.md', 'scripts/pr_policy.py', 'fixtures/eras/genesis/byron.json',
+                     'docs/data/correspondence-baseline.json', 'docs/data/correspondence/storage/extra.json'):
             with self.subTest(path=path):
                 self.assertFalse(fmt.allowed(path))
         self.assertEqual(fmt.outside_format_change([fmt.MANIFEST, 'AGENTS.md', 'README.md']), ['AGENTS.md', 'README.md'])
