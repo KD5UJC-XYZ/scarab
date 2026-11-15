@@ -39,8 +39,9 @@ object Envelope:
     def encode(a: A, out: Writer): Unit = inner.encode(a, out)
     override def check(a: A): Option[ConstraintViolation] = inner.check(a)
 
-  /** `encodeVersion v` (`Util/Versioned.hs:94-103`): `[v, item]`. A version this decoder does not
-    * know, or the older unversioned layout, is an error that names where.
+  /** `encodeVersion v` (`Util/Versioned.hs:94-103`, ouroboros-consensus 82ecba32): `[v, item]`. A
+    * version this decoder does not know, or the older unversioned layout, is an error that names
+    * where.
     */
   def versioned[A](version: Int, inner: Codec[A]): Codec[A] =
     versionedIn(StateLayout.Node11_1)(version, inner)
@@ -59,8 +60,8 @@ object Envelope:
       inner.encode(a, out)
     override def check(a: A): Option[ConstraintViolation] = inner.check(a)
 
-  /** `WithOrigin` as `encodeWithOrigin` writes it (`Util/CBOR.hs:344-345`, over `Maybe`): `[]` or
-    * `[x]`. The ledger tip and the header state's tip.
+  /** `WithOrigin` as `encodeWithOrigin` writes it (`Util/CBOR.hs:344-345` (ouroboros-consensus
+    * 82ecba32), over `Maybe`): `[]` or `[x]`. The ledger tip and the header state's tip.
     */
   def withOriginMaybe[A](
       inner: Codec[A],
@@ -131,7 +132,7 @@ object Envelope:
   private val word64Max = (BigInt(1) << 64) - 1
   private val bound64: Codec[BigInt] = Codec.uintBig(word64Max)
 
-  /** `PerasRoundNo` (`Block/SupportsPeras.hs:85`, a `Word64`). */
+  /** `PerasRoundNo` (`Block/SupportsPeras.hs:85` (ouroboros-consensus 82ecba32), a `Word64`). */
   private val boundPerasRound: Codec[PerasRoundNo] = word64.imap(PerasRoundNo(_))(_.word)
 
   /** `Bound` in `layout`: `[time in picoseconds, slot, epoch]` and the Peras round. The time is an
@@ -182,11 +183,11 @@ object Envelope:
         .orElse(bound64.check(a.slot))
         .orElse(bound64.check(a.epoch))
 
-  /** `Past` (`State/Instances.hs:141-147`): `[start, end]`. */
+  /** `Past` (`State/Instances.hs:141-147`, ouroboros-consensus 82ecba32): `[start, end]`. */
   def past(layout: StateLayout): Codec[Past] =
     arrayIn(layout, Record.of[Past]((bound(layout), bound(layout))))
 
-  /** `Current` (`State/Instances.hs:126-132`): `[start, state]`. */
+  /** `Current` (`State/Instances.hs:126-132`, ouroboros-consensus 82ecba32): `[start, state]`. */
   def current[A](layout: StateLayout, state: Codec[A]): Codec[Current[A]] = new Codec[Current[A]]:
     private val start = bound(layout)
     def decode(n: Node): Decoded[Current[A]] =
@@ -210,10 +211,11 @@ object Envelope:
       Kind.Domain(e)
     )
 
-  /** `HardForkState` (`Serialisation/Common.hs:371-390`): an array of one `Past` per finished era
-    * and then the `Current`, `1 + era index` items; the era of the current state, and with it the
-    * codec of its state, is the length. The telescope is built with [[Telescope.make]], so a
-    * decoded one is consistent (the eras abut, the state is one of the era it is in).
+  /** `HardForkState` (`Serialisation/Common.hs:371-390`, ouroboros-consensus 82ecba32): an array of
+    * one `Past` per finished era and then the `Current`, `1 + era index` items; the era of the
+    * current state, and with it the codec of its state, is the length. The telescope is built with
+    * [[Telescope.make]], so a decoded one is consistent (the eras abut, the state is one of the era
+    * it is in).
     */
   def telescope[A](layout: StateLayout, stateOf: Era => Codec[A])(using
       EraIndexed[A]

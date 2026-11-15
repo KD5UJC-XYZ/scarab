@@ -11,9 +11,9 @@ import xyz.kd5ujc.scarab.models.runtime.{ConstraintViolation, Decoded}
 final case class StateNotWritable(violation: ConstraintViolation)
 
 /** The ledger part of the Haskell node's `state` file, as bytes: the `NewEpochState` of an era
-  * (`Types.hs:397-405`), written at the version the reference writes the era at ([[Versions]]). The
-  * enclosing snapshot version, hard-fork telescope and header state are handled by
-  * [[HaskellLedgerFile]].
+  * (`Types.hs:397-405`, cardano-ledger f649f975), written at the version the reference writes the
+  * era at ([[Versions]]). The enclosing snapshot version, hard-fork telescope and header state are
+  * handled by [[HaskellLedgerFile]].
   */
 object HaskellState:
   /** The limits for reading a state: no cap below the sizes a state has (tens of megabytes, and
@@ -33,8 +33,8 @@ object HaskellState:
   )(using ShelleyBasedEra[E]): Either[StateNotWritable, Bytes] =
     HaskellStateCodecs.newEpochState[E].write(state).left.map(StateNotWritable(_))
 
-  /** The bytes of the epoch state alone (`Types.hs:136-142`), at the version of its era: what the
-    * node-to-client query `DebugEpochState` answers.
+  /** The bytes of the epoch state alone (`Types.hs:136-142`, cardano-ledger f649f975), at the
+    * version of its era: what the node-to-client query `DebugEpochState` answers.
     */
   def encodeEpochState[E <: EraTag](
       state: EpochState[E]

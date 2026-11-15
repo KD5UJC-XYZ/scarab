@@ -6,8 +6,8 @@ import cats.derived.*
 import cats.syntax.all.*
 import io.circe.{Json, ParsingFailure}
 
-/** Where the UTxO of a snapshot is kept (`SnapshotBackend`, `LedgerDB/Snapshots.hs:245-262`); its
-  * name is in the `meta` file.
+/** Where the UTxO of a snapshot is kept (`SnapshotBackend`, `LedgerDB/Snapshots.hs:245-262`,
+  * ouroboros-consensus 82ecba32); its name is in the `meta` file.
   */
 enum SnapshotBackend(val name: String) derives Eq, Show:
   case InMemory extends SnapshotBackend("utxohd-mem")
@@ -36,7 +36,9 @@ enum MetaError derives Eq, Show:
   /** A checksum outside a `Word32`. */
   case BadChecksum(value: BigInt)
 
-  /** A tables codec version other than 1 (`enforceVersion`, `Snapshots.hs:215-221`). */
+  /** A tables codec version other than 1 (`enforceVersion`, `Snapshots.hs:215-221`,
+    * ouroboros-consensus 82ecba32).
+    */
   case UnknownTablesCodecVersion(version: BigInt)
 
   case UnsupportedBackend(backend: SnapshotBackend)
@@ -49,8 +51,8 @@ object MetaError:
 /** The `meta` file of a ledger snapshot (`SnapshotMetadata`, `LedgerDB/Snapshots.hs:223-243`): a
   * JSON object `{"backend": ..., "checksum": <word32>, "tablesCodecVersion": 1}`. The checksum is
   * the CRC32 of the decimal text of the CRC32 of `state` followed by that of `tables`
-  * (`crcOfConcat`, `Util/CRC.hs:20-26`; `V2/InMemory.hs:223`), not the CRC of the two files
-  * together. [[SnapshotMeta.verify]] checks that rule for the Mem backend.
+  * (`crcOfConcat`, `Util/CRC.hs:20-26`; `V2/InMemory.hs:223`, ouroboros-consensus 82ecba32), not
+  * the CRC of the two files together. [[SnapshotMeta.verify]] checks that rule for the Mem backend.
   */
 final case class SnapshotMeta(backend: SnapshotBackend, checksum: Long, tablesCodecVersion: Int)
     derives Eq,
@@ -60,7 +62,9 @@ object SnapshotMeta:
   def fromCrcs(state: SnapshotCrc, tables: SnapshotCrc): SnapshotMeta =
     SnapshotMeta(SnapshotBackend.InMemory, SnapshotCrc.combined(state, tables).value, 1)
 
-  /** The compact three-field JSON in the reference writer's order (`Snapshots.hs:223-243`). */
+  /** The compact three-field JSON in the reference writer's order (`Snapshots.hs:223-243`,
+    * ouroboros-consensus 82ecba32).
+    */
   def encode(meta: SnapshotMeta): Either[MetaError, String] =
     valid(meta).as(
       Json

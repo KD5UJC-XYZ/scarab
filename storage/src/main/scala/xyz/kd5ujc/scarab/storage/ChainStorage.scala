@@ -47,13 +47,13 @@ enum StorageEvent:
 
   /** A skipped snapshot could not be deleted (`error`); the restore went on, as the reference's
     * `defaultDeleteSnapshotIfTemporary` catches the failure of its deletion
-    * (`Snapshots.hs:320-330`).
+    * (`Snapshots.hs:320-330`, ouroboros-consensus 82ecba32).
     */
   case SnapshotNotDeleted(name: String, error: StorageError)
 
   /** A checkpoint that no snapshot lists could not be deleted at the start (`error`); the start
     * went on, as the reference's best-effort deletion of a snapshot's tables does
-    * (`Snapshots.hs:316-330`).
+    * (`Snapshots.hs:316-330`, ouroboros-consensus 82ecba32).
     */
   case CheckpointNotDeleted(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])

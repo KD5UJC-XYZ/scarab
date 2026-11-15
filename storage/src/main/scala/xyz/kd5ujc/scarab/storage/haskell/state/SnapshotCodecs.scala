@@ -37,15 +37,17 @@ private[state] final case class SnapShots11(mark: SnapShot, set: SnapShot, go: S
   * `State/PoolDistr.hs` of `cardano-ledger-core`, the pinned shape of 11.1.3).
   */
 trait SnapshotCodecs extends GovStateCodecs:
-  /** `StakeWithDelegation` (`Stake.hs:116-117`): `[stake, pool]`, the stake not zero. */
+  /** `StakeWithDelegation` (`Stake.hs:116-117`, cardano-ledger f649f975): `[stake, pool]`, the
+    * stake not zero.
+    */
   given stakeWithDelegation: Codec[StakeWithDelegation] = Record.auto[StakeWithDelegation]
 
-  /** `ActiveStake` (`Stake.hs:146-148`, a newtype over the map). */
+  /** `ActiveStake` (`Stake.hs:146-148` (cardano-ledger f649f975), a newtype over the map). */
   given activeStake(using ProtVer): Codec[ActiveStake] =
     mapOf(credential[Staking], stakeWithDelegation).imap(ActiveStake(_))(_.entries)
 
-  /** The `Int` count of delegators (`SnapShots.hs:175`): a non-negative number below 2^63, as the
-    * mirror keeps it in a word.
+  /** The `Int` count of delegators (`SnapShots.hs:175`, cardano-ledger f649f975): a non-negative
+    * number below 2^63, as the mirror keeps it in a word.
     */
   private val delegatorCount: Codec[Word64] =
     Codec.uintBig(BigInt(Long.MaxValue)).imap(n => Word64.fromUnsigned(n.toLong))(w => w.toBigInt)
@@ -122,7 +124,7 @@ trait SnapshotCodecs extends GovStateCodecs:
       )
 
   /** `SnapShot` (`SnapShots.hs:290-296`): `[active stake, pools]`. The older three-field shape
-    * (`SnapShots.hs:310-325`) is not read.
+    * (`SnapShots.hs:310-325`, cardano-ledger f649f975) is not read.
     */
   given snapShot(using ProtVer): Codec[SnapShot] =
     Record.of[SnapShot]((activeStake, mapOf(keyHash[StakePool], stakePoolSnapShot)))
@@ -228,7 +230,9 @@ trait SnapshotCodecs extends GovStateCodecs:
           .orElse(coin.check(a.fee).map(_.at("fee")))
       case SnapShots.Layout.Node11_1 => ofThisLayout("SnapShots", a.layout).map(_.at("layout"))
 
-  /** `IndividualPoolStake` (`PoolDistr.hs:70-77`): `[ratio of the total, stake, VRF key hash]`. */
+  /** `IndividualPoolStake` (`PoolDistr.hs:70-77`, cardano-ledger f649f975): `[ratio of the total,
+    * stake, VRF key hash]`.
+    */
   given individualPoolStake(using ProtVer): Codec[IndividualPoolStake] =
     val record = Record.of[IndividualPoolStake11]((ratio, compactCoin, vrfVerKeyHash))
     new Codec[IndividualPoolStake]:
@@ -264,7 +268,9 @@ trait SnapshotCodecs extends GovStateCodecs:
             )
           case StateLayout.Leios => key.check(a.blsKey).map(_.at("blsKey")))
 
-  /** `PoolDistr` (`PoolDistr.hs:117-122`): `[distribution, total active stake]`. */
+  /** `PoolDistr` (`PoolDistr.hs:117-122`, cardano-ledger f649f975): `[distribution, total active
+    * stake]`.
+    */
   given poolDistr(using ProtVer): Codec[PoolDistr] =
     Record.of[PoolDistr](
       (mapOf(keyHash[StakePool], individualPoolStake), nonZero[Coin])

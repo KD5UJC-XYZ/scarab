@@ -54,7 +54,8 @@ trait LedgerFileCodecs extends ConsensusCodecs:
 
   /** `AnnTip` of the Cardano chain (`HardFork/Combinator/Serialisation/SerialiseDisk.hs:100-108`,
     * an `NS`): `[era index, the era's tip]`. A Shelley-based tip is `[slot, hash, block number]`
-    * (`HeaderValidation.hs:657-671`), Byron's has the boundary-block flag after them (`:673-697`).
+    * (`HeaderValidation.hs:657-671`, ouroboros-consensus 82ecba32), Byron's has the boundary-block
+    * flag after them (`:673-697`).
     * Note the order of the hash and the block number, which is not the ledger tip's (`ShelleyTip`:
     * slot, block number, hash).
     */
@@ -86,7 +87,9 @@ trait LedgerFileCodecs extends ConsensusCodecs:
           hash32.encode(hash, out)
           blockNo.encode(a.blockNo, out)
 
-  /** `HeaderState` (`HeaderValidation.hs:715-727`): `[tip, chain-dependent state telescope]`. */
+  /** `HeaderState` (`HeaderValidation.hs:715-727`, ouroboros-consensus 82ecba32): `[tip,
+    * chain-dependent state telescope]`.
+    */
   given headerState: Codec[HeaderState] = new Codec[HeaderState]:
     private val tip = withOriginMaybe(annTip, stateLayout)
     private val chainDep = telescope(stateLayout, chainDepStateOf)
@@ -111,8 +114,9 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     * (`Peras/Context.hs:170-203`, `[start round, end round, [committee, parameters]]`) holds a
     * voting committee indexed by era (`decodeNS`, `HardFork/Combinator/AcrossEras.hs`,
     * `[era, committee]`): the eras before Dijkstra have none (`VoidPerasVotingCommitteeScheme`,
-    * whose decoder fails, `Peras/Void.hs:168-170`), so the reference refuses one of them as this
-    * does; Dijkstra's is the Dijkstra part of the state, not read by this build.
+    * whose decoder fails, `Peras/Void.hs:168-170`, ouroboros-consensus 2416493b), so the reference
+    * refuses one of them as this does; Dijkstra's is the Dijkstra part of the state, not read by
+    * this build.
     */
   private val noEpochContext: Codec[Unit] = new Codec[Unit]:
     def decode(n: Node): Decoded[Unit] =
@@ -133,8 +137,8 @@ trait LedgerFileCodecs extends ConsensusCodecs:
       }
     def encode(a: Unit, out: Writer): Unit = out.arrayHead(0)
 
-  /** `PerasEpochContextResolver` (`Peras/Context.hs:264-301`): `[0, reason]` or `[1, current,
-    * previous]`, any other length and tag refused.
+  /** `PerasEpochContextResolver` (`Peras/Context.hs:264-301`, ouroboros-consensus 2416493b): `[0,
+    * reason]` or `[1, current, previous]`, any other length and tag refused.
     */
   given perasResolver: Codec[PerasResolver] = new Codec[PerasResolver]:
     private val reason = Codec.bytesSized(0, Int.MaxValue)
@@ -162,7 +166,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
         noEpochContext.encode((), out)
 
   /** `PerasState` (`Ledger/Peras.hs:76-101`): `[resolver, latest certificate round]`, the round a
-    * `StrictMaybe` (`encodeStrictMaybe`, `Util/CBOR.hs:358-362`).
+    * `StrictMaybe` (`encodeStrictMaybe`, `Util/CBOR.hs:358-362`, ouroboros-consensus 2416493b).
     */
   given perasState: Codec[PerasState] =
     arrayIn(

@@ -156,8 +156,9 @@ object SnapshotTables:
   def decode(bytes: Bytes): Either[Error, (Vector[Entry], Summary)] =
     decoder.feed(bytes).flatMap((next, entries) => next.finish.map(entries -> _))
 
-  /** The Haskell node's framing policy (`Binary/Encoding/Encoder.hs:397-443`): a definite map up to
-    * 23 entries, otherwise indefinite. The outer array always has exactly one item.
+  /** The Haskell node's framing policy (`Binary/Encoding/Encoder.hs:397-443`, cardano-ledger
+    * f649f975): a definite map up to 23 entries, otherwise indefinite. The outer array always has
+    * exactly one item.
     */
   def prefix(entries: Long): Either[Error, Bytes] =
     Either.cond(

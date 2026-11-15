@@ -148,7 +148,8 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
 
   test("PerasState: the constant of this build, an error state, and a refused epoch context") {
     // `[[1, NoPerasEnabled, NoPerasEnabled], SNothing]` (Ledger/Peras.hs:76-101,
-    // Peras/Context.hs:288-301): every state of the captures ends in it
+    // Peras/Context.hs:288-301, ouroboros-consensus 2416493b): every state of the captures ends in
+    // it
     val constant = hex("828301808080")
     assertEquals(readOk(LeiosStateCodecs.perasState, constant), PerasState.default)
     assertEquals(LeiosStateCodecs.perasState.encodeUnchecked(PerasState.default), constant)
@@ -194,7 +195,8 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     failure(LeiosStateCodecs.blsKey, zero).kind match
       case Kind.Domain(_: xyz.kd5ujc.scarab.ledger.LedgerDecodeError.LeiosCertificate) => ()
       case other => fail(s"not refused as a BLS point: $other")
-    // a chunked byte string is read from version 12 on only (`decodeBytes`, Decoder.hs:355-363)
+    // a chunked byte string is read from version 12 on only (`decodeBytes`, Decoder.hs:355-363,
+    // cardano-ledger f649f975)
     val chunked = bytesOf { w =>
       w.arrayHead(2)
       w.raw(Bytes.wrap(Array(0x5f.toByte)))
@@ -317,7 +319,7 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
         assert(s.layout.stateLayout == StateLayout.Leios)
         assertEquals(s.nes.layout, NewEpochState.Layout.Leios)
         // the mark snapshot of a Conway state: epoch, committee size and key age zero, and the
-        // set snapshot's committee empty (`State/SnapShots.hs:386-432`)
+        // set snapshot's committee empty (`State/SnapShots.hs:386-432`, cardano-ledger 9df9f98c)
         assertEquals(
           s.nes.es.snapshots.layout,
           SnapShots.Layout.Leios(EpochNo.fromUnsigned(0L), 0, 0, LeiosCommittee.empty)
