@@ -128,15 +128,15 @@ private[ledger] object CborRead:
       Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
     )
 
-  /** A record the reference reads with `RecD` below decoder version 12, where every era this node
-    * decodes is: `decodeCount (RecD cn) n` reads the length with `decodeRecordNamed` around a
-    * decoder that reads nothing (`Decoding/Coders.hs:482`, cardano-ledger f649f975), so a non-empty
-    * indefinite list meets the check for its break before its first field and fails with "Excess
-    * terms in array" (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`). A definite list of `size`
-    * items is the record. An empty indefinite list passes that check, and the reference then reads
-    * the fields from the items after its break: read with them ([[DetachedRecords]]), it is the
-    * detached record of those `size` fields ([[Node.isDetached]]) and is the record too (#687). Any
-    * other item is not one.
+  /** A record the reference reads with `RecD` below decoder version 12: `decodeCount (RecD cn) n`
+    * reads the length with `decodeRecordNamed` around a decoder that reads nothing
+    * (`Decoding/Coders.hs:482`, cardano-ledger f649f975), so a non-empty indefinite list meets the
+    * check for its break before its first field and fails with "Excess terms in array"
+    * (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`). A definite list of `size` items is the
+    * record. An empty indefinite list passes that check, and the reference then reads the fields
+    * from the items after its break: read with them ([[DetachedRecords]]), it is the detached
+    * record of those `size` fields ([[Node.isDetached]]) and is the record too (#687). Any other
+    * item is not one.
     */
   def record(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
     n.value match
@@ -147,6 +147,12 @@ private[ledger] object CborRead:
           definite(n, what) *>
             Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
         )
+
+  /** `RecD` before 12, `decodeRecordNamed` around the fields from 12 (`Plutus/ExUnits.hs:195-203`,
+    * cardano-ledger f649f975).
+    */
+  def record(n: Node, size: Int, what: DecodeSite, version: DecoderVersion): Result[Vector[Node]] =
+    if version.atLeast(12) then arrayN(n, size, what) else record(n, size, what)
 
   /** The encoding a value read as `n` is kept by when it is written into another document: its
     * original bytes, except that a detached record ([[Node.isDetached]]) is kept with the head of a
@@ -279,15 +285,15 @@ private[ledger] object CborRead:
     /** `NonNegativeInterval`: 0 up to the `Word64` maximum (a price, `a0`). */
     case NonNegative
 
-  /** The value of tag 30 as the reference decodes it below decoder version 12, which covers every
-    * version this node reads (Conway is 9): `fromCBOR` of `BoundedRatio` reads
-    * `decodeRationalWithTag` (`Binary/Plain.hs:155-163`), a tag 30 over a definite or indefinite
-    * array of two `decodeInteger` s (any sign, bignum tags 2 and 3 included), refuses a zero
-    * denominator, and builds `n % d`; `decCBOR` dispatches to it for versions below 12 and to
-    * `decodeIntegralRational` from 12 (`BaseTypes.hs:416-430`), which this node does not read. The
-    * value is then bounded by `boundRational` (`BaseTypes.hs:348-374`): the reduced numerator and
-    * denominator must fit the underlying `Word64`, and the value lie in the type's interval. Equal
-    * rationals are one value whatever the signs, factors or integer forms they were written with.
+  /** The value of tag 30 as the reference decodes it below decoder version 12: `fromCBOR` of
+    * `BoundedRatio` reads `decodeRationalWithTag` (`Binary/Plain.hs:155-163`), a tag 30 over a
+    * definite or indefinite array of two `decodeInteger` s (any sign, bignum tags 2 and 3
+    * included), refuses a zero denominator, and builds `n % d`; `decCBOR` dispatches to it for
+    * versions below 12 and to `decodeIntegralRational` from 12 (`BaseTypes.hs:416-427`,
+    * cardano-ledger f649f975). The value is then bounded by `boundRational`
+    * (`BaseTypes.hs:348-374`): the reduced numerator and denominator must fit the underlying
+    * `Word64`, and the value lie in the type's interval. Equal rationals are one value whatever the
+    * signs, factors or integer forms they were written with.
     */
   def rational(n: Node, what: DecodeSite, bound: Bound): Result[Rational] =
     ratio(n, what).flatMap(r =>
@@ -297,6 +303,28 @@ private[ledger] object CborRead:
         LedgerDecodeError.RationalOutOfBounds(what, r.numerator, r.denominator)
       )
     )
+
+  /** From 12, `BoundedRatio Word64` reads unsigned components before reducing the ratio
+    * (`BaseTypes.hs:416-427`; `Binary/Decoding/DecCBOR.hs:214-225`, cardano-ledger f649f975).
+    */
+  def rational(n: Node, what: DecodeSite, bound: Bound, version: DecoderVersion): Result[Rational] =
+    if !version.atLeast(12) then rational(n, what, bound)
+    else
+      n.value match
+        case Value.Tag(t, inner) if t == 30 =>
+          for
+            xs <- arrayN(inner, 2, what)
+            num <- Unsigned.read[Unsigned.Width.W64](xs(0), what).map(_.value)
+            den <- Unsigned.read[Unsigned.Width.W64](xs(1), what).map(_.value)
+            _ <- Either.cond(den != 0, (), LedgerDecodeError.ZeroDenominator(what))
+            r = Rational(num, den)
+            _ <- Either.cond(
+              fits(r, bound),
+              (),
+              LedgerDecodeError.RationalOutOfBounds(what, r.numerator, r.denominator)
+            )
+          yield r
+        case _ => Left(LedgerDecodeError.ExpectedTag(what, 30, n.value))
 
   /** `decodeRationalWithTag`: the reduced rational, before any bound. */
   private[ledger] def ratio(n: Node, what: DecodeSite): Result[Rational] = n.value match

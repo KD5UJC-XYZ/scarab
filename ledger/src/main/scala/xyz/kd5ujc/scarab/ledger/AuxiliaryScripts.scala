@@ -4,6 +4,8 @@ package xyz.kd5ujc.scarab.ledger
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
+import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** An original-byte view of auxiliary scripts, never added to the transaction's script witnesses.
   * cardano-ledger f649f975, Alonzo/TxAuxData.hs:220–306,369–373; Metadata.hs:153–222.
@@ -48,12 +50,12 @@ private[ledger] object AuxiliaryScripts:
       .flatMap(_.traverse_(Script.native(_, NativeScript.Form.Timelock)))
       .as(Vector.empty)
 
-  /** Plutus scripts of `language`, whose scripts are of `kind`, allowed from protocol `minimum`
-    * (`guardPlutus`).
+  /** Plutus scripts of `language`, allowed from protocol `minimum` (`guardPlutus`,
+    * Plutus/Language.hs:639-647, cardano-ledger f649f975). Hashes use the language prefix 1 to 4
+    * (`hashPlutusScript`, Plutus/Language.hs:200-204,521,541,561,582 at that pin).
     */
   private def plutus(
       language: PlutusLanguage,
-      kind: ScriptKind,
       minimum: Int,
       protocol: BigInt,
       node: Node
@@ -70,24 +72,34 @@ private[ledger] object AuxiliaryScripts:
           _.traverse(
             CborRead
               .bytes(_, DecodeField.AuxiliaryPlutusScript)
-              .map(code => Plutus(language, code, Script.plutus(kind, code).hash))
+              .map(code =>
+                Plutus(
+                  language,
+                  code,
+                  Blake2b.hash224.hash(Bytes((language.id + 1).toByte +: code.value))
+                )
+              )
           )
         )
 
-  /** Shelley (decoder version 2) reads only a metadata map; Allegra and Mary (3, 4) also read the
-    * definite two-element `[metadata, native scripts]` list. Tag 259 and the Plutus fields are
-    * Alonzo's: Shelley/TxAuxData.hs, Allegra/TxAuxData.hs:185-210 at f649f975 (`RecD`: a definite
-    * list of two, checked before its fields, [[CborRead.record]]). The era's decoder version is
-    * `eraProtVerLow` (Core/Internal/Definition/Era.hs 95-109).
+  /** Shelley reads only a metadata map; Allegra and Mary also read the definite two-element
+    * `[metadata, native scripts]` list. Tag 259 and the Plutus fields are Alonzo's:
+    * Shelley/TxAuxData.hs, Allegra/TxAuxData.hs:185-210 at f649f975 (`RecD`: a definite list of
+    * two, checked before its fields, [[CborRead.record]]). Mary uses Allegra's type
+    * (`Mary/TxAuxData.hs:27-28` at that pin), independently of the decoder version.
     */
   private def historical(
       node: Node,
+      era: Era,
       protocol: BigInt
   )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
-    val lists = protocol >= 3
+    val lists = era == Era.Allegra || era == Era.Mary
     node.value match
-      case _: Value.Map          => metadata(node, protocol).as(Vector.empty)
-      case _: Value.Arr if lists => record(node, protocol)
+      case _: Value.Map => metadata(node, protocol).as(Vector.empty)
+      case _: Value.Arr if lists =>
+        CborRead
+          .record(node, 2, DecodeField.AuxiliaryData)
+          .flatMap(xs => metadata(xs(0), protocol) *> native(xs(1)))
       case other =>
         Left(
           LedgerDecodeError.Expected(
@@ -97,24 +109,30 @@ private[ledger] object AuxiliaryScripts:
           )
         )
 
-  /** The `[metadata, native scripts]` list, a `RecD` record. */
+  /** The Alonzo-family auxiliary list: `RecD` before 12, `decodeRecordNamed` from 12
+    * (`Alonzo/TxAuxData.hs:245-257`, cardano-ledger f649f975).
+    */
   private def record(
       node: Node,
       protocol: BigInt
   )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
-    CborRead
-      .record(node, 2, DecodeField.AuxiliaryData)
+    val fields =
+      if protocol >= 12 then CborRead.arrayN(node, 2, DecodeField.AuxiliaryData)
+      else CborRead.record(node, 2, DecodeField.AuxiliaryData)
+    fields
       .flatMap(xs => metadata(xs(0), protocol) *> native(xs(1)))
 
-  def read(bytes: Bytes, protocol: BigInt)(using
+  def read(bytes: Bytes, era: Era, protocol: BigInt)(using
       ByteStrings
   ): Either[LedgerDecodeError, Vector[Plutus]] =
     DetachedRecords.read(
       bytes,
       Cbor.Limits.Unbounded,
-      DetachedRecords.Shapes.auxiliaryDataAt(protocol)
+      DetachedRecords.Shapes.auxiliaryDataAt(era, protocol)
     )(LedgerDecodeError.Syntax(_))(node =>
-      if protocol < 5 then historical(node, protocol) else alonzoOn(node, protocol)
+      era match
+        case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary     => historical(node, era, protocol)
+        case Era.Alonzo | Era.Babbage | Era.Conway | Era.Dijkstra => alonzoOn(node, protocol)
     )
 
   /** From Alonzo (decoder version 5) the token type picks the form (`decodeTxAuxDataByTokenType`,
@@ -146,11 +164,15 @@ private[ledger] object AuxiliaryScripts:
                       metadata(value, protocol).as(Vector.empty[Plutus])
                     case (n, value) if n == 1 => native(value)
                     case (n, value) if n == 2 =>
-                      plutus(PlutusLanguage.V1, ScriptKind.PlutusV1, 5, protocol, value)
+                      plutus(PlutusLanguage.V1, 5, protocol, value)
                     case (n, value) if n == 3 =>
-                      plutus(PlutusLanguage.V2, ScriptKind.PlutusV2, 7, protocol, value)
+                      plutus(PlutusLanguage.V2, 7, protocol, value)
                     case (n, value) if n == 4 =>
-                      plutus(PlutusLanguage.V3, ScriptKind.PlutusV3, 9, protocol, value)
+                      plutus(PlutusLanguage.V3, 9, protocol, value)
+                    // `decoderByKey` and `guardPlutus` admit V4 from 12
+                    // (Alonzo/TxAuxData.hs:280-286; Plutus/Language.hs:639-647, f649f975).
+                    case (n, value) if n == 5 && protocol >= 12 =>
+                      plutus(PlutusLanguage.V4, 12, protocol, value)
                     case (n, _) => Left(LedgerDecodeError.UnknownTag(DecodeField.AuxiliaryField, n))
                   }
                   .map(_.flatten)

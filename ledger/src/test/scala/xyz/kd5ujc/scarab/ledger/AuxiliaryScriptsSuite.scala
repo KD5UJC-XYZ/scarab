@@ -69,7 +69,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
       val bytes = hex(field[String](row, "auxiliary"))
       val reference = field[Json](row, "oracle")
       val decoded = field[Boolean](reference, "decoded")
-      assertEquals(AuxiliaryScripts.read(bytes, major).isRight, decoded)
+      assertEquals(AuxiliaryScripts.read(bytes, era, major).isRight, decoded)
       val original = base(era.toString.toLowerCase)
       val witnesses = original.witnesses.raw.getOrElse(fail("no original witnesses"))
       assertEquals(
@@ -152,7 +152,10 @@ class AuxiliaryScriptsSuite extends FunSuite:
   test("deep metadata decodes and validates on a 256KiB stack") {
     val bytes =
       Bytes(Vector(0xa1.toByte, 0.toByte) ++ Vector.fill(20000)(0x81.toByte) ++ Vector(0.toByte))
-    assertEquals(PreprodDeepTx.onSmallStack(AuxiliaryScripts.read(bytes, 10)), Right(Vector.empty))
+    assertEquals(
+      PreprodDeepTx.onSmallStack(AuxiliaryScripts.read(bytes, Era.Conway, 10)),
+      Right(Vector.empty)
+    )
   }
 
   private def body(
@@ -212,7 +215,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
       val transactions = PreparedBlockFixture.txs.map(_.copy(isValid = valid))
       val supplied = auxiliary("v1-wellformed")
       val code = AuxiliaryScripts
-        .read(supplied, 10)
+        .read(supplied, Era.Conway, 10)
         .fold(error => fail(error.toString), identity)
         .headOption
         .getOrElse(fail("no auxiliary script"))
@@ -232,7 +235,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
 
   test("an unavailable auxiliary decode dominates malformed Flat flags in either script order") {
     val good = AuxiliaryScripts
-      .read(auxiliary("v1-wellformed"), 10)
+      .read(auxiliary("v1-wellformed"), Era.Conway, 10)
       .fold(error => fail(error.toString), identity)
       .headOption
       .getOrElse(fail("no script"))

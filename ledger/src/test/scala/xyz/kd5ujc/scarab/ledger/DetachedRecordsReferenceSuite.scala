@@ -38,7 +38,7 @@ class DetachedRecordsReferenceSuite extends FunSuite:
         .bimap(Refused.Decode(_), _ => Verdict(None, None, Vector.empty))
     case Kind.Auxiliary =>
       AuxiliaryScripts
-        .read(row.raw, DecoderVersion.of(row.era).value)(using
+        .read(row.raw, row.era, DecoderVersion.of(row.era).value)(using
           ByteStrings.of(DecoderVersion.of(row.era))
         )
         .bimap(Refused.Decode(_), _ => Verdict(None, None, Vector.empty))

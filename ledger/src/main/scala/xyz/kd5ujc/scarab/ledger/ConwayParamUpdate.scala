@@ -181,28 +181,42 @@ object ConwayParam:
   ): Read =
     n => Unsigned.read[W](n, site).map(make)
 
-  private def ratio(site: DecodeSite, bound: CborRead.Bound)(make: Rational => ConwayParam): Read =
-    n => CborRead.rational(n, site, bound).map(make)
+  private def ratio(site: DecodeSite, bound: CborRead.Bound, records: Records)(
+      make: Rational => ConwayParam
+  ): Read =
+    n => records.rational(n, site, bound).map(make)
 
   private val Int64Max = BigInt(Long.MaxValue)
 
-  /** Where `RecD` records ([[Records.record]]) are read from: a transaction, which the reference's
-    * decoder reads, or a stored ledger state or output, which holds a record as an earlier build of
-    * this node accepted it from a body (ADR 0006).
+  /** Transaction record and rational rules before 12 or from 12, and the unchanged reader for
+    * stored state and outputs accepted by earlier builds (ADR 0006).
     */
   enum Records:
-    case Body, Stored
+    case Body, Version12, Stored
 
     /** A record the reference reads with `RecD` ([[CborRead.record]]): in a transaction a definite
       * list of `size` items, or a detached one ([[DetachedRecords]]). A stored state or output may
       * also hold one as an indefinite list, which the builds before this rule took from a body, and
-      * it is read in any of the three forms.
+      * it is read in any of the three forms. From 12 a transaction uses `decodeRecordNamed`,
+      * accepting indefinite lists but no detached record (`Plutus/ExUnits.hs:195-230`, f649f975).
       */
     def record(n: Node, size: Int, site: DecodeSite): Either[LedgerDecodeError, Vector[Node]] =
       this match
         case Body                   => CborRead.record(n, size, site)
         case Stored if n.isDetached => CborRead.record(n, size, site)
-        case Stored                 => CborRead.arrayN(n, size, site)
+        case Version12 | Stored     => CborRead.arrayN(n, size, site)
+
+    /** `BoundedRatio` changes its component decoder at 12 (`BaseTypes.hs:416-427`, f649f975).
+      * Stored values retain the permissive reader used when they were accepted.
+      */
+    def rational(n: Node, site: DecodeSite, bound: CborRead.Bound): Result[Rational] =
+      this match
+        case Version12     => CborRead.rational(n, site, bound, DecoderVersion.Dijkstra)
+        case Body | Stored => CborRead.rational(n, site, bound)
+
+  object Records:
+    def at(version: DecoderVersion): Records =
+      if version.atLeast(12) then Version12 else Body
 
   /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a `RecD` record of two
     * `Word64` s, each at most `maxBound :: Int64`. The largest units of a transaction and of a
@@ -229,13 +243,13 @@ object ConwayParam:
   private def units(site: DecodeSite, records: Records)(make: ExUnits => ConwayParam): Read =
     n => exUnits(n, site, records).map(make)
 
-  private def thresholds[A](site: DecodeSite, size: Int)(
+  private def thresholds[A](site: DecodeSite, size: Int, records: Records)(
       build: Vector[Rational] => Result[A]
   )(make: A => ConwayParam): Read =
     n =>
       CborRead
         .arrayN(n, size, site)
-        .flatMap(_.traverse(CborRead.rational(_, site, CborRead.Bound.Unit)))
+        .flatMap(_.traverse(records.rational(_, site, CborRead.Bound.Unit)))
         .flatMap(build)
         .map(make)
 
@@ -260,9 +274,9 @@ object ConwayParam:
     6 -> word[W64](DecodeField.PoolDeposit)(PoolDeposit(_)),
     7 -> word[W32](DecodeField.EMax)(EMax(_)),
     8 -> word[W16](DecodeField.NOpt)(NOpt(_)),
-    9 -> ratio(DecodeField.A0, CborRead.Bound.NonNegative)(A0(_)),
-    10 -> ratio(DecodeField.Rho, CborRead.Bound.Unit)(Rho(_)),
-    11 -> ratio(DecodeField.Tau, CborRead.Bound.Unit)(Tau(_)),
+    9 -> ratio(DecodeField.A0, CborRead.Bound.NonNegative, records)(A0(_)),
+    10 -> ratio(DecodeField.Rho, CborRead.Bound.Unit, records)(Rho(_)),
+    11 -> ratio(DecodeField.Tau, CborRead.Bound.Unit, records)(Tau(_)),
     16 -> word[W64](DecodeField.MinPoolCost)(MinPoolCost(_)),
     17 -> word[W64](DecodeField.CoinsPerUTxO)(CoinsPerUTxOByte(_)),
     // `Prices` below decoder version 12 (`ExUnits.hs:222-231`): a `RecD` record of two
@@ -272,8 +286,8 @@ object ConwayParam:
         .record(n, 2, DecodeField.Prices)
         .flatMap(xs =>
           (
-            CborRead.rational(xs(0), DecodeField.PriceMem, CborRead.Bound.NonNegative),
-            CborRead.rational(xs(1), DecodeField.PriceSteps, CborRead.Bound.NonNegative)
+            records.rational(xs(0), DecodeField.PriceMem, CborRead.Bound.NonNegative),
+            records.rational(xs(1), DecodeField.PriceSteps, CborRead.Bound.NonNegative)
           ).mapN(Prices(_, _))
         )
     ),
@@ -285,7 +299,8 @@ object ConwayParam:
   ).map((k, read) => BigInt(k) -> read)
 
   /** The decoders of the keys every Shelley-based era shares, as a body is read. */
-  private[ledger] val everyEra: Map[BigInt, Read] = shared(Records.Body)
+  private[ledger] def everyEra(version: DecoderVersion): Map[BigInt, Read] =
+    shared(Records.at(version))
 
   /** The decoder of each Conway update key: `decCBOR` of the field's type at the decoder version of
     * Conway (`mkField Nothing`, `Core/PParams.hs:284-293`), the keys every era shares and the keys
@@ -296,10 +311,12 @@ object ConwayParam:
       costModels: CostModelDecode.Format = CostModelDecode.Format.Open
   ): Map[BigInt, Read] = shared(records) ++ Map[Int, Read](
     18 -> (n => CostModelDecode.decode(n, costModels).map(CostModels(_))),
-    25 -> thresholds(DecodeField.PoolVotingThresholds, 5)(PoolVotingThresholds.fromVector)(
+    25 -> thresholds(DecodeField.PoolVotingThresholds, 5, records)(PoolVotingThresholds.fromVector)(
       PoolThresholds(_)
     ),
-    26 -> thresholds(DecodeField.DRepVotingThresholds, 10)(DRepVotingThresholds.fromVector)(
+    26 -> thresholds(DecodeField.DRepVotingThresholds, 10, records)(
+      DRepVotingThresholds.fromVector
+    )(
       DRepThresholds(_)
     ),
     27 -> word[W16](DecodeField.CommitteeMinSize)(CommitteeMinSize(_)),
@@ -308,7 +325,7 @@ object ConwayParam:
     30 -> word[W64](DecodeField.GovActionDeposit)(GovActionDeposit(_)),
     31 -> word[W64](DecodeField.DrepDeposit)(DRepDeposit(_)),
     32 -> word[W32](DecodeField.DrepActivity)(DRepActivity(_)),
-    33 -> ratio(DecodeField.MinFeeRefScriptCostPerByte, CborRead.Bound.NonNegative)(
+    33 -> ratio(DecodeField.MinFeeRefScriptCostPerByte, CborRead.Bound.NonNegative, records)(
       MinFeeRefScriptCostPerByte(_)
     )
   ).map((k, read) => BigInt(k) -> read)
@@ -317,7 +334,7 @@ object ConwayParam:
   private[ledger] val decoders: Map[BigInt, Read] = conway(Records.Body)
 
   private[ledger] def at(version: DecoderVersion): Map[BigInt, Read] =
-    conway(Records.Body, CostModelDecode.Format.of(version))
+    conway(Records.at(version), CostModelDecode.Format.of(version))
 
   /** The decoders of a Conway update in a stored ledger state. */
   private[ledger] val stored: Map[BigInt, Read] = conway(Records.Stored)

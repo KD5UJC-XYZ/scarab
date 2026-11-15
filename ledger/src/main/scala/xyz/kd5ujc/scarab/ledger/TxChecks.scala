@@ -478,13 +478,14 @@ object TxChecks:
       env: Env
   )(using era: ShelleyBasedEra[E]): Either[LedgerDefect, Test[PredicateFailure]] =
     val id = tx.body.id
+    val wireEra = EraNes.eraOf(era)
     for
       decoded <- tx.auxiliary
         .traverse(bytes =>
           // The bytes were read at the era's decoder version when the transaction was decoded
           // (`Tx.fromBlock`): the rule reads them again for their scripts, not their form.
           AuxiliaryScripts
-            .read(bytes, DecoderVersion.of(EraNes.eraOf(era)).value)(using ByteStrings.Chunked)
+            .read(bytes, wireEra, DecoderVersion.of(wireEra).value)(using ByteStrings.Chunked)
             .leftMap(error => LedgerFailure.Undecodable(id, TxDefect.AuxiliaryData(error)))
         )
       valid <- decoded.fold(Right(true): Either[LedgerDefect, Boolean]) { scripts =>
