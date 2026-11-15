@@ -12,7 +12,9 @@ import xyz.kd5ujc.scarab.ledger.Ptr
 // each has a Shelley and a Conway record, chosen by the match types `Accounts[E]` and
 // `InstantStake[E]` (`Eras.scala`). Maps iterate in the Haskell order of the key.
 
-/** `ShelleyAccountState` (`Shelley/State/Account.hs:42-51`): one stake account before Conway. */
+/** `ShelleyAccountState` (`Shelley/State/Account.hs:42-51`, cardano-ledger f649f975): one stake
+  * account before Conway.
+  */
 final case class ShelleyAccountState(
     ptr: Ptr,
     balance: CompactCoin,
@@ -29,10 +31,11 @@ object ShelleyAccountState:
   val pool: Lens[ShelleyAccountState, Option[KeyHash[StakePool]]] =
     Focus[ShelleyAccountState](_.pool)
 
-/** `ConwayAccountState` (`Conway/State/Account.hs:60-109`): one stake account in Conway. Haskell
-  * holds it as a sum of the four delegation cases (`CASNoDelegation`, `CASStakePool`, `CASDRep`,
-  * `CASStakePoolAndDRep`); the record is its view (`viewConwayAccountState`, the pattern synonym
-  * `ConwayAccountState`), which is also what the encoding is.
+/** `ConwayAccountState` (`Conway/State/Account.hs:60-109`, cardano-ledger f649f975): one stake
+  * account in Conway. Haskell holds it as a sum of the four delegation cases (`CASNoDelegation`,
+  * `CASStakePool`, `CASDRep`, `CASStakePoolAndDRep`); the record is its view
+  * (`viewConwayAccountState`, the pattern synonym `ConwayAccountState`), which is also what the
+  * encoding is.
   */
 final case class ConwayAccountState(
     balance: CompactCoin,
@@ -50,8 +53,8 @@ object ConwayAccountState:
     Focus[ConwayAccountState](_.pool)
   val drep: Lens[ConwayAccountState, Option[DRep]] = Focus[ConwayAccountState](_.drep)
 
-/** `ShelleyAccounts` (`Shelley/State/Account.hs:93-97`): the accounts and the map from a
-  * certificate pointer to the credential it registered.
+/** `ShelleyAccounts` (`Shelley/State/Account.hs:93-97`, cardano-ledger f649f975): the accounts and
+  * the map from a certificate pointer to the credential it registered.
   */
 final case class ShelleyAccounts(
     states: SortedMap[Credential[Staking], ShelleyAccountState],
@@ -66,8 +69,8 @@ object ShelleyAccounts:
   val ptrs: Lens[ShelleyAccounts, SortedMap[Ptr, Credential[Staking]]] =
     Focus[ShelleyAccounts](_.ptrs)
 
-/** `ConwayAccounts` (`Conway/State/Account.hs:160-162`, a newtype over the account map): the
-  * pointer map is gone.
+/** `ConwayAccounts` (`Conway/State/Account.hs:160-162` (cardano-ledger f649f975), a newtype over
+  * the account map): the pointer map is gone.
   */
 final case class ConwayAccounts(states: SortedMap[Credential[Staking], ConwayAccountState])
     derives Eq,
@@ -78,8 +81,8 @@ object ConwayAccounts:
   val states: Lens[ConwayAccounts, SortedMap[Credential[Staking], ConwayAccountState]] =
     Focus[ConwayAccounts](_.states)
 
-/** `ShelleyInstantStake` (`Shelley/State/Stake.hs:57-61`): the lovelace each credential and each
-  * certificate pointer controls through the addresses of the UTxO.
+/** `ShelleyInstantStake` (`Shelley/State/Stake.hs:57-61`, cardano-ledger f649f975): the lovelace
+  * each credential and each certificate pointer controls through the addresses of the UTxO.
   */
 final case class ShelleyInstantStake(
     credentialStake: SortedMap[Credential[Staking], CompactCoin],
@@ -94,8 +97,8 @@ object ShelleyInstantStake:
   val ptrStake: Lens[ShelleyInstantStake, SortedMap[Ptr, CompactCoin]] =
     Focus[ShelleyInstantStake](_.ptrStake)
 
-/** `ConwayInstantStake` (`Conway/State/Stake.hs:49-53`, a newtype over the credential map): the
-  * pointer stake is gone.
+/** `ConwayInstantStake` (`Conway/State/Stake.hs:49-53` (cardano-ledger f649f975), a newtype over
+  * the credential map): the pointer stake is gone.
   */
 final case class ConwayInstantStake(credentialStake: SortedMap[Credential[Staking], CompactCoin])
     derives Eq,

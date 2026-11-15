@@ -14,8 +14,8 @@ import xyz.kd5ujc.scarab.protocol.{LayoutPart, StateLayout}
 // and the reward types they hold are in `SnapShots.scala` and `Rewards.scala`, the ledger state in
 // `LedgerState.scala`.
 
-/** `ChainAccountState` (`State/ChainAccount.hs:39-42`, encoding `46-48`: `array(2)`): the treasury
-  * and the reserves (`AccountState` before ledger 1.21).
+/** `ChainAccountState` (`State/ChainAccount.hs:39-42` (cardano-ledger f649f975), encoding `46-48`:
+  * `array(2)`): the treasury and the reserves (`AccountState` before ledger 1.21).
   */
 final case class ChainAccountState(treasury: Coin, reserves: Coin) derives Eq, Show, Diff
 
@@ -27,9 +27,10 @@ object ChainAccountState:
   val pair: Iso[ChainAccountState, (Coin, Coin)] =
     Iso[ChainAccountState, (Coin, Coin)](c => (c.treasury, c.reserves))(ChainAccountState(_, _))
 
-/** `BlocksMade` (`BaseTypes.hs:910-912`, a newtype over `Map (KeyHash StakePool) Natural`): the
-  * blocks each pool made in an epoch. A `Natural` is unbounded in Haskell and a count of the blocks
-  * of one epoch here is far below 2^64, so the word is the value type.
+/** `BlocksMade` (`BaseTypes.hs:910-912` (cardano-ledger f649f975), a newtype over
+  * `Map (KeyHash StakePool) Natural`): the blocks each pool made in an epoch. A `Natural` is
+  * unbounded in Haskell and a count of the blocks of one epoch here is far below 2^64, so the word
+  * is the value type.
   */
 opaque type BlocksMade = SortedMap[KeyHash[StakePool], Word64]
 
@@ -53,8 +54,8 @@ object BlocksMade:
       s"BlocksMade(${b.toList.map((k, n) => s"${k.show} -> ${n.show}").mkString(", ")})"
     )
 
-/** `EpochState era` (`LedgerState/Types.hs:66-77`, encoding `136-142`: `array(4)`, ledger state
-  * before the snapshots).
+/** `EpochState era` (`LedgerState/Types.hs:66-77` (cardano-ledger f649f975), encoding `136-142`:
+  * `array(4)`, ledger state before the snapshots).
   */
 final case class EpochState[E <: EraTag](
     chainAccount: ChainAccountState,
@@ -89,11 +90,11 @@ object EpochState:
   def snapshots[E <: EraTag]: Lens[EpochState[E], SnapShots] = Focus[EpochState[E]](_.snapshots)
   def nonMyopic[E <: EraTag]: Lens[EpochState[E], NonMyopic] = Focus[EpochState[E]](_.nonMyopic)
 
-/** `NewEpochState era` (`LedgerState/Types.hs:302-330`, encoding `397-405`: `array(7)`): the whole
-  * ledger state of an era. `ru` is a `StrictMaybe`, which is an `Option` here; `avvm` is the AVVM
-  * addresses stashed on the Byron to Shelley boundary (the UTxO in Shelley, `()` after,
-  * `Types.hs:357-359`). The pool distribution is in [[NewEpochState.Layout]]: the 11.1 layout holds
-  * it, the Leios layout derives it ([[pd]]).
+/** `NewEpochState era` (`LedgerState/Types.hs:302-330` (cardano-ledger f649f975), encoding
+  * `397-405`: `array(7)`): the whole ledger state of an era. `ru` is a `StrictMaybe`, which is an
+  * `Option` here; `avvm` is the AVVM addresses stashed on the Byron to Shelley boundary (the UTxO
+  * in Shelley, `()` after, `Types.hs:357-359`). The pool distribution is in
+  * [[NewEpochState.Layout]]: the 11.1 layout holds it, the Leios layout derives it ([[pd]]).
   */
 final case class NewEpochState[E <: EraTag](
     epoch: EpochNo,

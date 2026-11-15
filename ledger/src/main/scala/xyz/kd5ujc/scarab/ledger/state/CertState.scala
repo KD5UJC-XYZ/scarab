@@ -14,8 +14,9 @@ import xyz.kd5ujc.scarab.ledger.{Anchor, GenDelegPair, PoolParams}
 // is the type parameter of `DState` below, so the records here need no witness and derive their
 // instances.
 
-/** `FutureGenDeleg` (`State/CertState.hs:100-104`, `deriving (Eq, Ord)`): a genesis delegation that
-  * takes effect at a later slot. The fields are declared slot first, so that is the order.
+/** `FutureGenDeleg` (`State/CertState.hs:100-104` (cardano-ledger f649f975), `deriving (Eq, Ord)`):
+  * a genesis delegation that takes effect at a later slot. The fields are declared slot first, so
+  * that is the order.
   */
 final case class FutureGenDeleg(slot: SlotNo, genKeyHash: KeyHash[Genesis]) derives Eq, Show, Diff
 
@@ -25,8 +26,8 @@ object FutureGenDeleg:
   val slot: Lens[FutureGenDeleg, SlotNo] = Focus[FutureGenDeleg](_.slot)
   val genKeyHash: Lens[FutureGenDeleg, KeyHash[Genesis]] = Focus[FutureGenDeleg](_.genKeyHash)
 
-/** `InstantaneousRewards` (`State/CertState.hs:134-140`): the MIR certificates of the epoch so far,
-  * paid at the next boundary.
+/** `InstantaneousRewards` (`State/CertState.hs:134-140`, cardano-ledger f649f975): the MIR
+  * certificates of the epoch so far, paid at the next boundary.
   */
 final case class InstantaneousRewards(
     reserves: SortedMap[Credential[Staking], Coin],
@@ -50,10 +51,10 @@ object InstantaneousRewards:
 /** The accounts a [[DState]] can hold: the Shelley record before Conway, the Conway one after. */
 type AccountsRecord = ShelleyAccounts | ConwayAccounts
 
-/** `DState era` (`State/CertState.hs:157-166`): delegation state. `A` is `Accounts[E]` of the era
-  * (`DState[ShelleyAccounts]` before Conway, `DState[ConwayAccounts]` in it): parameterised by the
-  * record rather than the era, `DState` is a plain record whose `Eq` and `Show` are derived, and
-  * the era-generic composites above it need no witness for it.
+/** `DState era` (`State/CertState.hs:157-166`, cardano-ledger f649f975): delegation state. `A` is
+  * `Accounts[E]` of the era (`DState[ShelleyAccounts]` before Conway, `DState[ConwayAccounts]` in
+  * it): parameterised by the record rather than the era, `DState` is a plain record whose `Eq` and
+  * `Show` are derived, and the era-generic composites above it need no witness for it.
   */
 final case class DState[A <: AccountsRecord](
     accounts: A,
@@ -130,8 +131,8 @@ object PState:
   val future: Lens[PState, SortedMap[KeyHash[StakePool], PoolParams]] = Focus[PState](_.future)
   val retiring: Lens[PState, SortedMap[KeyHash[StakePool], EpochNo]] = Focus[PState](_.retiring)
 
-/** `DRepState` (`DRep.hs:166-172`): a registered DRep. Not the node's `DRepState` (another order,
-  * `BigInt` s, a `Set`).
+/** `DRepState` (`DRep.hs:166-172`, cardano-ledger f649f975): a registered DRep. Not the node's
+  * `DRepState` (another order, `BigInt` s, a `Set`).
   */
 final case class DRepState(
     expiry: EpochNo,
@@ -149,14 +150,16 @@ object DRepState:
   val delegators: Lens[DRepState, SortedSet[Credential[Staking]]] =
     Focus[DRepState](_.delegators)
 
-/** `CommitteeAuthorization` (`State/CertState.hs:302-307`): what the committee state records about
-  * a cold credential.
+/** `CommitteeAuthorization` (`State/CertState.hs:302-307`, cardano-ledger f649f975): what the
+  * committee state records about a cold credential.
   */
 enum CommitteeAuthorization derives Eq, Show, Diff:
   case CommitteeHotCredential(credential: Credential[HotCommittee])
   case CommitteeMemberResigned(anchor: Option[Anchor])
 
-/** `CommitteeState` (`State/CertState.hs:328-331`, a newtype over the map). */
+/** `CommitteeState` (`State/CertState.hs:328-331` (cardano-ledger f649f975), a newtype over the
+  * map).
+  */
 final case class CommitteeState(creds: SortedMap[Credential[ColdCommittee], CommitteeAuthorization])
     derives Eq,
       Show,
@@ -166,7 +169,9 @@ object CommitteeState:
   val creds: Lens[CommitteeState, SortedMap[Credential[ColdCommittee], CommitteeAuthorization]] =
     Focus[CommitteeState](_.creds)
 
-/** `VState era` (`Conway/State/VState.hs:56-68`): the voting state (Conway). */
+/** `VState era` (`Conway/State/VState.hs:56-68`, cardano-ledger f649f975): the voting state
+  * (Conway).
+  */
 final case class VState(
     dreps: SortedMap[Credential[DRepRole], DRepState],
     committeeState: CommitteeState,
@@ -180,8 +185,8 @@ object VState:
   val committeeState: Lens[VState, CommitteeState] = Focus[VState](_.committeeState)
   val numDormantEpochs: Lens[VState, EpochNo] = Focus[VState](_.numDormantEpochs)
 
-/** `ShelleyCertState` (`Shelley/State/CertState.hs:48-52`): pools and delegation, Shelley to
-  * Babbage.
+/** `ShelleyCertState` (`Shelley/State/CertState.hs:48-52`, cardano-ledger f649f975): pools and
+  * delegation, Shelley to Babbage.
   */
 final case class ShelleyCertState(pState: PState, dState: DState[ShelleyAccounts])
     derives Eq,
@@ -192,7 +197,9 @@ object ShelleyCertState:
   val pState: Lens[ShelleyCertState, PState] = Focus[ShelleyCertState](_.pState)
   val dState: Lens[ShelleyCertState, DState[ShelleyAccounts]] = Focus[ShelleyCertState](_.dState)
 
-/** `ConwayCertState` (`Conway/State/CertState.hs:56-61`): voting, pools and delegation. */
+/** `ConwayCertState` (`Conway/State/CertState.hs:56-61`, cardano-ledger f649f975): voting, pools
+  * and delegation.
+  */
 final case class ConwayCertState(vState: VState, pState: PState, dState: DState[ConwayAccounts])
     derives Eq,
       Show,

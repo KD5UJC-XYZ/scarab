@@ -15,8 +15,8 @@ import xyz.kd5ujc.scarab.protocol.{LayoutPart, StateLayout}
 // (`ssTotalActiveStake`, `ssStakeMarkPoolDistr`) are derived, so a mirror cannot disagree with
 // itself about them.
 
-/** `StakeWithDelegation` (`State/Stake.hs:104-108`, encoding `116-117`: `array(2)[stake, pool]`):
-  * the non-zero stake of one credential, and the pool it is delegated to.
+/** `StakeWithDelegation` (`State/Stake.hs:104-108` (cardano-ledger f649f975), encoding `116-117`:
+  * `array(2)[stake, pool]`): the non-zero stake of one credential, and the pool it is delegated to.
   */
 final case class StakeWithDelegation(stake: NonZero[CompactCoin], delegation: KeyHash[StakePool])
     derives Eq,
@@ -28,8 +28,8 @@ object StakeWithDelegation:
   val delegation: Lens[StakeWithDelegation, KeyHash[StakePool]] =
     Focus[StakeWithDelegation](_.delegation)
 
-/** `ActiveStake` (`State/Stake.hs:146-148`, a newtype over a map): the stake of the credentials
-  * that are registered, delegated and have some stake.
+/** `ActiveStake` (`State/Stake.hs:146-148` (cardano-ledger f649f975), a newtype over a map): the
+  * stake of the credentials that are registered, delegated and have some stake.
   */
 final case class ActiveStake(entries: SortedMap[Credential[Staking], StakeWithDelegation])
     derives Eq,
@@ -43,9 +43,9 @@ object ActiveStake:
     Focus[ActiveStake](_.entries)
 
   extension (a: ActiveStake)
-    /** `sumAllActiveStake` (`State/Stake.hs:157-160`): the total, which is one lovelace when there
-      * is none, because the total is a denominator. Each compact amount is converted to Coin before
-      * the fold, so this total has arbitrary precision.
+    /** `sumAllActiveStake` (`State/Stake.hs:157-160`, cardano-ledger f649f975): the total, which is
+      * one lovelace when there is none, because the total is a denominator. Each compact amount is
+      * converted to Coin before the fold, so this total has arbitrary precision.
       */
     def total: NonZero[Coin] =
       val sum = a.entries.valuesIterator.foldLeft(BigInt(0))(_ + _.stake.value.toBigInt)
@@ -102,9 +102,10 @@ enum PoolParamsBlsKey derives Eq, Show:
     case Node11_1   => PoolBlsKey.Node11_1
     case Leios(key) => PoolBlsKey.Leios(key.map(BlsKeyState(_, epoch)))
 
-/** `StakePoolSnapShot` (`State/SnapShots.hs:156-183`, encoding `239-252`: `array(10)` in this
-  * order): what the reward calculation needs of one pool, resolved when the snapshot is taken. The
-  * Leios layout has the voting key after the VRF key hash, `array(11)` ([[PoolBlsKey]]).
+/** `StakePoolSnapShot` (`State/SnapShots.hs:156-183` (cardano-ledger f649f975), encoding `239-252`:
+  * `array(10)` in this order): what the reward calculation needs of one pool, resolved when the
+  * snapshot is taken. The Leios layout has the voting key after the VRF key hash, `array(11)`
+  * ([[PoolBlsKey]]).
   *
   * `numDelegators` is an `Int` in Haskell, only ever a count; the word is its non-negative range.
   * Its only use is the pool-distribution filter (`SnapShots.hs:453`).
@@ -141,10 +142,11 @@ object StakePoolSnapShot:
   val accountId: Lens[StakePoolSnapShot, Credential[Staking]] =
     Focus[StakePoolSnapShot](_.accountId)
 
-/** `SnapShot` (`State/SnapShots.hs:273-282`, encoding `290-296`: `array(2)[activeStake, pools]`).
-  * The pinned shape holds the delegations inside the active stake and the pools as a map of
-  * [[StakePoolSnapShot]]; the older `[stake, delegations, pools]` shape is decode-only
-  * (`SnapShots.hs:310-325`). `ssTotalActiveStake` is not encoded and is [[ActiveStake.total]] here.
+/** `SnapShot` (`State/SnapShots.hs:273-282` (cardano-ledger f649f975), encoding `290-296`:
+  * `array(2)[activeStake, pools]`). The pinned shape holds the delegations inside the active stake
+  * and the pools as a map of [[StakePoolSnapShot]]; the older `[stake, delegations, pools]` shape
+  * is decode-only (`SnapShots.hs:310-325`). `ssTotalActiveStake` is not encoded and is
+  * [[ActiveStake.total]] here.
   */
 final case class SnapShot(
     activeStake: ActiveStake,
@@ -159,7 +161,7 @@ final case class SnapShot(
   lazy val poolDistr: PoolDistr = PoolDistr.calculate(this)
 
 object SnapShot:
-  /** `emptySnapShot` (`State/SnapShots.hs:390-391`). */
+  /** `emptySnapShot` (`State/SnapShots.hs:390-391`, cardano-ledger f649f975). */
   val empty: SnapShot = SnapShot(ActiveStake.empty, Sorted.empty)
 
   val activeStake: Lens[SnapShot, ActiveStake] = Focus[SnapShot](_.activeStake)
@@ -167,7 +169,9 @@ object SnapShot:
     Focus[SnapShot](_.pools)
 
   extension (s: SnapShot)
-    /** `ssTotalActiveStake`, derived (`mkSnapShot`, `State/SnapShots.hs:397-403`). */
+    /** `ssTotalActiveStake`, derived (`mkSnapShot`, `State/SnapShots.hs:397-403`, cardano-ledger
+      * f649f975).
+      */
     def totalActiveStake: NonZero[Coin] = s.activeStake.total
 
 /** `IndividualPoolStake` (`State/PoolDistr.hs:54-62`, encoding `70-77`: `array(3)`): the stake of
@@ -191,7 +195,8 @@ object IndividualPoolStake:
   val vrf: Lens[IndividualPoolStake, VRFVerKeyHash] = Focus[IndividualPoolStake](_.vrf)
   val blsKey: Lens[IndividualPoolStake, Option[BlsKey]] = Focus[IndividualPoolStake](_.blsKey)
 
-/** `PoolDistr` (`State/PoolDistr.hs:98-104`, encoding `117-122`: `array(2)[distribution, total]`).
+/** `PoolDistr` (`State/PoolDistr.hs:98-104` (cardano-ledger f649f975), encoding `117-122`:
+  * `array(2)[distribution, total]`).
   */
 final case class PoolDistr(
     distribution: SortedMap[KeyHash[StakePool], IndividualPoolStake],
@@ -201,15 +206,16 @@ final case class PoolDistr(
       Diff
 
 object PoolDistr:
-  /** `def` (`State/PoolDistr.hs:108-109`). */
+  /** `def` (`State/PoolDistr.hs:108-109`, cardano-ledger f649f975). */
   val empty: PoolDistr = PoolDistr(Sorted.empty, Coin.oneNonZero)
 
   val distribution: Lens[PoolDistr, SortedMap[KeyHash[StakePool], IndividualPoolStake]] =
     Focus[PoolDistr](_.distribution)
   val totalActiveStake: Lens[PoolDistr, NonZero[Coin]] = Focus[PoolDistr](_.totalActiveStake)
 
-  /** `calculatePoolDistr` (`State/SnapShots.hs:446-465`): the pools of the snapshot that have at
-    * least one delegator, with their stake and VRF key, over the snapshot's total.
+  /** `calculatePoolDistr` (`State/SnapShots.hs:446-465`, cardano-ledger f649f975): the pools of the
+    * snapshot that have at least one delegator, with their stake and VRF key, over the snapshot's
+    * total.
     */
   def of(snapshot: SnapShot): PoolDistr = snapshot.poolDistr
 
@@ -241,9 +247,10 @@ object LeiosCommittee:
   /** `emptyLeiosCommittee` (9df9f98c `State/LeiosCommittee.hs:39-41`). */
   val empty: LeiosCommittee = LeiosCommittee(Vector.empty)
 
-/** `SnapShots` (`State/SnapShots.hs:341-347`, encoding `355-362`: `array(4)[mark, set, go, fee]`).
-  * Haskell also holds `ssStakeMarkPoolDistr`, lazily, and does not encode it; here it is
-  * [[SnapShots.markPoolDistr]]. What the Leios layout adds is in [[SnapShots.Layout]].
+/** `SnapShots` (`State/SnapShots.hs:341-347` (cardano-ledger f649f975), encoding `355-362`:
+  * `array(4)[mark, set, go, fee]`). Haskell also holds `ssStakeMarkPoolDistr`, lazily, and does not
+  * encode it; here it is [[SnapShots.markPoolDistr]]. What the Leios layout adds is in
+  * [[SnapShots.Layout]].
   */
 final case class SnapShots(
     mark: SnapShot,
@@ -278,7 +285,8 @@ object SnapShots:
       case Node11_1          => StateLayout.Node11_1
       case Leios(_, _, _, _) => StateLayout.Leios
 
-  /** `emptySnapShots` (`State/SnapShots.hs:393-395`), in the 11.1 layout. */
+  /** `emptySnapShots` (`State/SnapShots.hs:393-395`, cardano-ledger f649f975), in the 11.1 layout.
+    */
   val empty: SnapShots =
     SnapShots(SnapShot.empty, SnapShot.empty, SnapShot.empty, Coin.zero, Layout.Node11_1)
 
@@ -300,5 +308,7 @@ object SnapShots:
   val layout: Lens[SnapShots, Layout] = Focus[SnapShots](_.layout)
 
   extension (s: SnapShots)
-    /** `ssStakeMarkPoolDistr`, derived (`decSharePlusCBOR`, `State/SnapShots.hs:374`). */
+    /** `ssStakeMarkPoolDistr`, derived (`decSharePlusCBOR`, `State/SnapShots.hs:374`,
+      * cardano-ledger f649f975).
+      */
     def markPoolDistr: PoolDistr = PoolDistr.of(s.mark)

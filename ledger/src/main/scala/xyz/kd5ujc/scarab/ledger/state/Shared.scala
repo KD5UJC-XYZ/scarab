@@ -48,9 +48,9 @@ given Show[PulsingSnapshot] = Show.fromToString
 given Eq[RatifyState] = Eq.fromUniversalEquals
 given Show[RatifyState] = Show.fromToString
 
-/** `Ptr` (`Credential.hs:258-259`, `data Ptr = Ptr !SlotNo32 !TxIx !CertIx deriving (Eq, Ord)`):
-  * slot, then transaction index, then certificate index, which is the order the node's `Ptr`
-  * already has.
+/** `Ptr` (`Credential.hs:258-259` (cardano-ledger f649f975),
+  * `data Ptr = Ptr !SlotNo32 !TxIx !CertIx deriving (Eq, Ord)`): slot, then transaction index, then
+  * certificate index, which is the order the node's `Ptr` already has.
   */
 given Order[Ptr] = Order.fromOrdering[Ptr]
 given Show[Ptr] = Show.fromToString

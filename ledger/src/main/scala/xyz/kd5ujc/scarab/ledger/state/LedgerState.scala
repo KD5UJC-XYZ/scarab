@@ -23,7 +23,7 @@ object UtxoTables:
   given Eq[UtxoTables] = Eq.fromUniversalEquals
   given Show[UtxoTables] = Show.show(t => s"UtxoTables(count = ${t.count}, coin = ${t.coin})")
 
-/** `UTxOState era` (`LedgerState/Types.hs:198-206`). */
+/** `UTxOState era` (`LedgerState/Types.hs:198-206`, cardano-ledger f649f975). */
 final case class UTxOState[E <: EraTag](
     utxo: UtxoTables,
     deposited: Coin,
@@ -68,8 +68,9 @@ object UTxOState:
     Focus[UTxOState[E]](_.instantStake)
   def donation[E <: EraTag]: Lens[UTxOState[E], Coin] = Focus[UTxOState[E]](_.donation)
 
-/** `LedgerState era` (`LedgerState/Types.hs:447-452`). Haskell encodes the certificate state before
-  * the UTxO state (`Types.hs:504-509`); the fields here follow the encoding.
+/** `LedgerState era` (`LedgerState/Types.hs:447-452`, cardano-ledger f649f975). Haskell encodes the
+  * certificate state before the UTxO state (`Types.hs:504-509`); the fields here follow the
+  * encoding.
   */
 final case class LedgerState[E <: EraTag](cert: CertState[E], utxo: UTxOState[E])
 

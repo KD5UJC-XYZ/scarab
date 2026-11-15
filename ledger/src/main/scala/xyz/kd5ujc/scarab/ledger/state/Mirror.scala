@@ -16,16 +16,17 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
   * accompanied by the set of gaps it has; the set was a function of the source state alone.
   */
 enum Gap derives Eq, Show, Diff:
-  /** `esNonMyopic` and the non-myopic part of the reward update (`PoolRank.hs:231-236`): the pool
-    * ranking history is absent from the historical flat source, so its conversion holds
-    * `NonMyopic.empty`. Current rules generate new likelihoods, but cannot reconstruct that lost
-    * history. The live state retains this gap even after new likelihoods are generated.
+  /** `esNonMyopic` and the non-myopic part of the reward update (`PoolRank.hs:231-236`,
+    * cardano-ledger f649f975): the pool ranking history is absent from the historical flat source,
+    * so its conversion holds `NonMyopic.empty`. Current rules generate new likelihoods, but cannot
+    * reconstruct that lost history. The live state retains this gap even after new likelihoods are
+    * generated.
     */
   case NonMyopic
 
   /** The reward update names, per credential, the pools it came from (`Reward.rewardPool`,
-    * `RewardUpdate.hs:111-117`); the node keeps one amount per credential. The mirror's `rs` is
-    * empty and the amounts are in the extras. Present when a reward update is.
+    * `RewardUpdate.hs:111-117`, cardano-ledger f649f975); the node keeps one amount per credential.
+    * The mirror's `rs` is empty and the amounts are in the extras. Present when a reward update is.
     */
   case RewardAttribution
 
@@ -141,7 +142,7 @@ enum MirrorError extends DomainError derives Show:
   *   the era history, for the point of no return of the parameter update
   * @param quorum
   *   the number of genesis delegates that must propose the same update (`quorum`,
-  *   `Rules/Ppup.hs:185`), before Conway
+  *   `Rules/Ppup.hs:185`, cardano-ledger f649f975), before Conway
   * @param snapshots
   *   where the delegators of the pools of the `mark` snapshot come from ([[SnapshotBasis]])
   */
@@ -154,8 +155,9 @@ final case class MirrorEnv(
 
 /** Where the delegator-derived fields of the pools of the `mark` snapshot (`numDelegators`,
   * `selfDelegatedOwners` and their stake) come from. Haskell fixes them when the snapshot is taken
-  * (`mkStakePoolSnapShot`, `State/SnapShots.hs:187-217`, over the pool's `spsDelegators` of that
-  * moment); the node keeps the stake-bearing delegations of the snapshot only.
+  * (`mkStakePoolSnapShot`, `State/SnapShots.hs:187-217` (cardano-ledger f649f975), over the pool's
+  * `spsDelegators` of that moment); the node keeps the stake-bearing delegations of the snapshot
+  * only.
   */
 enum SnapshotBasis:
   /** The accounts as they are in the state converted, which agree with the snapshot at the boundary

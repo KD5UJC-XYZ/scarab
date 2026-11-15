@@ -13,11 +13,12 @@ import xyz.kd5ujc.scarab.codec.Rational
 // `Shelley/RewardUpdate.hs` (shelley impl 1.19.0.1 of the pinned ledger) and
 // `cardano-ledger-core/.../Rewards.hs`.
 
-/** `LogWeight` (`Shelley/PoolRank.hs:88`, `newtype LogWeight = LogWeight Float`): the logarithm of
-  * one sample of a pool's likelihood. A 32-bit float, and encoded as one (`deriving EncCBOR` of
-  * `Float`; only `PerformanceEstimate`, `PoolRank.hs:222-229`, is a `Double`, and it is not part of
-  * the state). `Eq` is the IEEE one of `Float`, as in Haskell: `NaN` is not equal to itself and
-  * `0.0 == -0.0`, so the generators of the mirror produce finite values only.
+/** `LogWeight` (`Shelley/PoolRank.hs:88` (cardano-ledger f649f975),
+  * `newtype LogWeight = LogWeight Float`): the logarithm of one sample of a pool's likelihood. A
+  * 32-bit float, and encoded as one (`deriving EncCBOR` of `Float`; only `PerformanceEstimate`,
+  * `PoolRank.hs:222-229`, is a `Double`, and it is not part of the state). `Eq` is the IEEE one of
+  * `Float`, as in Haskell: `NaN` is not equal to itself and `0.0 == -0.0`, so the generators of the
+  * mirror produce finite values only.
   */
 opaque type LogWeight = Float
 
@@ -26,8 +27,8 @@ object LogWeight:
 
   extension (w: LogWeight) def float: Float = w
 
-  /** `normalizeLikelihood` (`PoolRank.hs:121-123`): every weight less the least; empty is itself
-    * (Haskell's `minimum` is partial there).
+  /** `normalizeLikelihood` (`PoolRank.hs:121-123`, cardano-ledger f649f975): every weight less the
+    * least; empty is itself (Haskell's `minimum` is partial there).
     */
   def normalise(ws: Vector[LogWeight]): Vector[LogWeight] =
     ws.minOption(using Ordering.Float.IeeeOrdering).fold(ws)(least => ws.map(_ - least))
@@ -35,11 +36,12 @@ object LogWeight:
   given Eq[LogWeight] = Eq.instance((a, b) => a == b)
   given Show[LogWeight] = Show.show(_.toString)
 
-/** `Likelihood` (`Shelley/PoolRank.hs:101-103`, a `StrictSeq LogWeight`): the likelihood samples of
-  * one pool, 100 of them (`samplePositions`, `PoolRank.hs:134-135`) when the node computes it. `Eq`
-  * is the Haskell one (`PoolRank.hs:107-108`): the normalised sequences are compared, so two
-  * likelihoods that differ by a constant are equal. (Haskell's `Ord` is the derived one on the raw
-  * sequence, which that `Eq` disagrees with; the mirror has no use for it and offers none.)
+/** `Likelihood` (`Shelley/PoolRank.hs:101-103` (cardano-ledger f649f975), a `StrictSeq LogWeight`):
+  * the likelihood samples of one pool, 100 of them (`samplePositions`, `PoolRank.hs:134-135`) when
+  * the node computes it. `Eq` is the Haskell one (`PoolRank.hs:107-108`): the normalised sequences
+  * are compared, so two likelihoods that differ by a constant are equal. (Haskell's `Ord` is the
+  * derived one on the raw sequence, which that `Eq` disagrees with; the mirror has no use for it
+  * and offers none.)
   */
 final case class Likelihood(weights: Vector[LogWeight])
 
@@ -51,10 +53,10 @@ object Likelihood:
 
   given Show[Likelihood] = Show.show(l => s"Likelihood(${l.weights.show})")
 
-/** `NonMyopic` (`Shelley/PoolRank.hs:231-236`, encoding `245-250`: `array(2)[likelihoods, pot]`):
-  * the data of the pool ranking (`getNonMyopicMemberRewards`), which is not part of the protocol.
-  * Reward start captures new pool likelihoods. Completion updates the pot and combines them with
-  * the previous history, including imported pending updates.
+/** `NonMyopic` (`Shelley/PoolRank.hs:231-236` (cardano-ledger f649f975), encoding `245-250`:
+  * `array(2)[likelihoods, pot]`): the data of the pool ranking (`getNonMyopicMemberRewards`), which
+  * is not part of the protocol. Reward start captures new pool likelihoods. Completion updates the
+  * pot and combines them with the previous history, including imported pending updates.
   */
 final case class NonMyopic(
     likelihoods: SortedMap[KeyHash[StakePool], Likelihood],
@@ -64,19 +66,22 @@ final case class NonMyopic(
       Diff
 
 object NonMyopic:
-  /** `def` (`PoolRank.hs:238-239`). */
+  /** `def` (`PoolRank.hs:238-239`, cardano-ledger f649f975). */
   val empty: NonMyopic = NonMyopic(Sorted.empty, Coin.zero)
 
   val likelihoods: Lens[NonMyopic, SortedMap[KeyHash[StakePool], Likelihood]] =
     Focus[NonMyopic](_.likelihoods)
   val rewardPot: Lens[NonMyopic, Coin] = Focus[NonMyopic](_.rewardPot)
 
-/** `RewardType` (`Rewards.hs:41-42`, encoded as the word 0 or 1, `50-52`). */
+/** `RewardType` (`Rewards.hs:41-42` (cardano-ledger f649f975), encoded as the word 0 or 1,
+  * `50-52`).
+  */
 enum RewardType derives Eq, Show, Diff:
   case MemberReward, LeaderReward
 
-/** `Reward` (`cardano-ledger-core/.../Rewards.hs:68-72`, encoding `89-91`: `array(3)`): a reward of
-  * one stake pool, to a member or to the leader (the owner), in lovelace.
+/** `Reward` (`cardano-ledger-core/.../Rewards.hs:68-72` (cardano-ledger f649f975), encoding
+  * `89-91`: `array(3)`): a reward of one stake pool, to a member or to the leader (the owner), in
+  * lovelace.
   */
 final case class Reward(rewardType: RewardType, rewardPool: KeyHash[StakePool], rewardAmount: Coin)
     derives Eq,
@@ -84,10 +89,10 @@ final case class Reward(rewardType: RewardType, rewardPool: KeyHash[StakePool], 
       Diff
 
 object Reward:
-  /** The Haskell `Ord Reward` (`Rewards.hs:76-83`): member rewards sort above leader rewards (the
-    * reverse of the constructors), then by pool, and the amount does not count, so a set holds one
-    * reward per type and pool. Not an `Order` given, because it disagrees with the structural `Eq`;
-    * a [[RewardSet]] is built with it and nothing else sorts by it.
+  /** The Haskell `Ord Reward` (`Rewards.hs:76-83`, cardano-ledger f649f975): member rewards sort
+    * above leader rewards (the reverse of the constructors), then by pool, and the amount does not
+    * count, so a set holds one reward per type and pool. Not an `Order` given, because it disagrees
+    * with the structural `Eq`; a [[RewardSet]] is built with it and nothing else sorts by it.
     */
   val ordering: Order[Reward] = Order.from { (a, b) =>
     (a.rewardType, b.rewardType) match
@@ -118,10 +123,11 @@ object RewardSet:
   given Eq[RewardSet] = Eq.fromUniversalEquals
   given Show[RewardSet] = Show.show(s => s"RewardSet(${s.toList.map(_.show).mkString(", ")})")
 
-/** `RewardUpdate` (`Shelley/RewardUpdate.hs:111-117`, encoding `125-132`: `array(5)`): the change
-  * of the treasury, the reserves and the fees, and the rewards of each credential, computed for the
-  * next boundary. The encoding writes `deltaR` and `deltaF` negated (`invert`, `129,131`); the
-  * mirror holds them as they are in memory, and the codec is where the sign is flipped.
+/** `RewardUpdate` (`Shelley/RewardUpdate.hs:111-117` (cardano-ledger f649f975), encoding `125-132`:
+  * `array(5)`): the change of the treasury, the reserves and the fees, and the rewards of each
+  * credential, computed for the next boundary. The encoding writes `deltaR` and `deltaF` negated
+  * (`invert`, `129,131`); the mirror holds them as they are in memory, and the codec is where the
+  * sign is flipped.
   */
 final case class RewardUpdate(
     deltaT: DeltaCoin,
@@ -134,7 +140,7 @@ final case class RewardUpdate(
       Diff
 
 object RewardUpdate:
-  /** `emptyRewardUpdate` (`RewardUpdate.hs:154-156`). */
+  /** `emptyRewardUpdate` (`RewardUpdate.hs:154-156`, cardano-ledger f649f975). */
   val empty: RewardUpdate =
     RewardUpdate(DeltaCoin(0), DeltaCoin(0), Sorted.empty, DeltaCoin(0), NonMyopic.empty)
 
@@ -144,9 +150,10 @@ object RewardUpdate:
   val deltaF: Lens[RewardUpdate, DeltaCoin] = Focus[RewardUpdate](_.deltaF)
   val nonMyopic: Lens[RewardUpdate, NonMyopic] = Focus[RewardUpdate](_.nonMyopic)
 
-/** `ProtVer` (`BaseTypes.hs:211-212`, encoded as the two numbers in sequence, `CBORGroup`): the
-  * protocol version. Haskell bounds the major version (`Version`) and the minor is a `Word32`; both
-  * are widened to a word here, and the codec is where the range is checked.
+/** `ProtVer` (`BaseTypes.hs:211-212` (cardano-ledger f649f975), encoded as the two numbers in
+  * sequence, `CBORGroup`): the protocol version. Haskell bounds the major version (`Version`) and
+  * the minor is a `Word32`; both are widened to a word here, and the codec is where the range is
+  * checked.
   */
 final case class ProtVer(major: Word64, minor: Word64) derives Eq, Show, Diff
 
@@ -169,8 +176,8 @@ object ProtVer:
   val major: Lens[ProtVer, Word64] = Focus[ProtVer](_.major)
   val minor: Lens[ProtVer, Word64] = Focus[ProtVer](_.minor)
 
-/** `RewardSnapShot` (`RewardUpdate.hs:161-170`, encoding `177-189`: `array(8)`): what the pulsing
-  * reward calculation was started from.
+/** `RewardSnapShot` (`RewardUpdate.hs:161-170` (cardano-ledger f649f975), encoding `177-189`:
+  * `array(8)`): what the pulsing reward calculation was started from.
   */
 final case class RewardSnapShot(
     fees: Coin,
@@ -208,10 +215,14 @@ object RewardBlockCount:
   given Eq[RewardBlockCount] = Eq.fromUniversalEquals
   given Show[RewardBlockCount] = Show.show(_.toString)
 
-/** `LeaderOnlyReward` (`Shelley/Rewards.hs:221-224`): the pool and its operator's reward. */
+/** `LeaderOnlyReward` (`Shelley/Rewards.hs:221-224`, cardano-ledger f649f975): the pool and its
+  * operator's reward.
+  */
 final case class LeaderOnlyReward(pool: KeyHash[StakePool], amount: Coin) derives Eq, Show, Diff
 
-/** `PoolRewardInfo` (`Shelley/Rewards.hs:242-253`), captured once at reward start. */
+/** `PoolRewardInfo` (`Shelley/Rewards.hs:242-253`, cardano-ledger f649f975), captured once at
+  * reward start.
+  */
 final case class PoolRewardInfo(
     relativeStake: Rational,
     pot: Coin,
@@ -222,7 +233,9 @@ final case class PoolRewardInfo(
       Show,
       Diff
 
-/** `FreeVars` (`Shelley/RewardUpdate.hs:210-216`): immutable inputs of the member calculation. */
+/** `FreeVars` (`Shelley/RewardUpdate.hs:210-216`, cardano-ledger f649f975): immutable inputs of the
+  * member calculation.
+  */
 final case class RewardFreeVars(
     registered: SortedSet[Credential[Staking]],
     totalStake: Coin,
@@ -253,8 +266,8 @@ object SingletonReward:
   given Eq[SingletonReward] = Eq.instance((a, b) => Eq[Reward].eqv(a.reward, b.reward))
   given Show[SingletonReward] = Show.show(_.reward.show)
 
-/** `RewardAns` (`Shelley/RewardUpdate.hs:89`): member rewards accumulated and emitted by the last
-  * pulse.
+/** `RewardAns` (`Shelley/RewardUpdate.hs:89`, cardano-ledger f649f975): member rewards accumulated
+  * and emitted by the last pulse.
   */
 final case class RewardAns(
     accumulated: SortedMap[Credential[Staking], SingletonReward],
@@ -266,8 +279,9 @@ final case class RewardAns(
 object RewardAns:
   val empty: RewardAns = RewardAns(Sorted.empty, Sorted.empty)
 
-/** `RSLP` (`Shelley/RewardUpdate.hs:285-290,332-339`), in the reference's field order. Remaining
-  * stake is a persistent ordered map: a pulse removes a prefix without copying the suffix.
+/** `RSLP` (`Shelley/RewardUpdate.hs:285-290,332-339`, cardano-ledger f649f975), in the reference's
+  * field order. Remaining stake is a persistent ordered map: a pulse removes a prefix without
+  * copying the suffix.
   */
 final case class RewardPulser(
     size: RewardPulseSize,
@@ -278,8 +292,9 @@ final case class RewardPulser(
       Show,
       Diff
 
-/** `PulsingRewUpdate` (`RewardUpdate.hs:341-348`): `[0, snapshot, pulser]` or `[1, update]`. Both
-  * locally started and imported pending updates resume through the same pure machine.
+/** `PulsingRewUpdate` (`RewardUpdate.hs:341-348`, cardano-ledger f649f975): `[0, snapshot, pulser]`
+  * or `[1, update]`. Both locally started and imported pending updates resume through the same pure
+  * machine.
   */
 enum PulsingRewUpdate derives Eq, Show, Diff:
   case Pulsing(snapshot: RewardSnapShot, pulser: RewardPulser)
