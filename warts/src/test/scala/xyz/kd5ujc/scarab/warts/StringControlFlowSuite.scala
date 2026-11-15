@@ -351,3 +351,18 @@ class StringControlFlowSuite extends munit.FunSuite:
     }
     assertEquals(kinds(r), List("string-predicate"))
 
+  test("aliases are replaced until none is left, and a cycle of aliases ends"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final class Box(val text: String):
+        val self: Box = this
+        val a: Box = this.b
+        val b: Box = this.a
+        def deep: String =
+          if this.text.endsWith(".") then
+            this.self.self.self.self.self.self.self.self.self.text.dropRight(1)
+          else this.text
+        def looped: String =
+          if this.text.endsWith(".") then this.a.text.dropRight(1) else this.text
+      (Box("a").deep, Box("b").looped)
+    }
+    assertEquals(kinds(r), List("string-predicate"))

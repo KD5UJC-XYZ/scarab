@@ -187,32 +187,31 @@ object StringControlFlow extends WartTraverser:
               case _ => foldOverTree(found, tree)(o)
         accumulator.foldTree(Map.empty, root)(owner)
 
-      /** A path with its aliases replaced by the paths they name, as long as there is one: a root
-        * alias by its path, and anywhere after the root a member `val` bound to a path from its own
-        * class's `this` (`val same = this.cell`) by the same path from the receiver it is selected
-        * on (`r.same.text` is `r.cell.text`). An alias rooted at an enclosing instance
-        * (`Outer.this.cell`) is not rebased.
+      /** A path (outermost last) with each alias replaced by the path it names: a root alias by its
+        * path, and after the root a member alias bound to a path from its own class's `this` (`val
+        * same = this.cell`) by the same steps from the receiver it is selected on (`r.same.text` is
+        * `r.cell.text`). An alias rooted at an enclosing instance (`Outer.this.cell`) is not
+        * rebased. Aliases are replaced until none is left; an alias met again inside its own
+        * replacement (`val a = this.b; val b = this.a`) stays as it is, so a cycle ends.
         */
-      @scala.annotation.tailrec
-      private def canonical(aliases: Map[Symbol, List[Symbol]], fuel: Int)(
-          path: List[Symbol]
-      ): List[Symbol] =
-        // the innermost such member, at its index in the path (the root is last)
-        val member = path
-          .dropRight(1)
-          .zipWithIndex
-          .iterator
-          .flatMap((alias, at) =>
-            aliases.get(alias).filter(_.lastOption.contains(alias.owner)).map(at -> _)
-          )
-          .nextOption()
-        path.lastOption.flatMap(aliases.get) match
-          case Some(named) if fuel > 0 => canonical(aliases, fuel - 1)(path.init ++ named)
-          case _ =>
-            member match
-              case Some((at, named)) if fuel > 0 =>
-                canonical(aliases, fuel - 1)(path.take(at) ++ named.init ++ path.drop(at + 1))
-              case _ => path
+      private def canonical(aliases: Map[Symbol, List[Symbol]])(path: List[Symbol]): List[Symbol] =
+        def from(start: Symbol, open: Set[Symbol]): Vector[Symbol] =
+          aliases.get(start).filterNot(_ => open(start)) match
+            case Some(named) => steps(named.reverse, open + start)
+            case None        => Vector(start)
+        def select(prefix: Vector[Symbol], step: Symbol, open: Set[Symbol]): Vector[Symbol] =
+          aliases
+            .get(step)
+            .filter(named => !open(step) && named.lastOption.contains(step.owner)) match
+            // the alias's steps after its `this`, from the receiver it is selected on
+            case Some(named) =>
+              named.reverse.drop(1).foldLeft(prefix)((p, s) => select(p, s, open + step))
+            case None => prefix :+ step
+        def steps(outermostFirst: List[Symbol], open: Set[Symbol]): Vector[Symbol] =
+          outermostFirst match
+            case first :: rest => rest.foldLeft(from(first, open))((p, s) => select(p, s, open))
+            case Nil           => Vector.empty
+        steps(path.reverse, Set.empty).reverse.toList
 
       private def textual(t: Term): Boolean = isString(t) || t.tpe.widen <:< stringOps
 
@@ -230,7 +229,7 @@ object StringControlFlow extends WartTraverser:
         val term = Trees.strip(t)
         def own(args: List[Term]): Boolean =
           args.forall(a => !isString(a) || isLiteral(a) || builtOn(context, paths)(a))
-        stable(term).map(canonical(context.aliases, 8)).exists(paths) || (term match
+        stable(term).map(canonical(context.aliases)).exists(paths) || (term match
           case Select(q, _) if textual(q) => builtOn(context, paths)(q)
           case Apply(Select(q, _), args) if textual(q) =>
             builtOn(context, paths)(q) && own(args)
@@ -253,7 +252,7 @@ object StringControlFlow extends WartTraverser:
         */
       private def textForm(context: Context)(cond: Term, branches: List[Term]): Boolean =
         val read =
-          stringsRead.foldTree(Set.empty, cond)(Symbol.noSymbol).map(canonical(context.aliases, 8))
+          stringsRead.foldTree(Set.empty, cond)(Symbol.noSymbol).map(canonical(context.aliases))
         read.nonEmpty && branches.forall(builtOn(context, read))
 
       /** Where a site is: in the body of an equality definition, and in the value of an upsert of a
