@@ -539,3 +539,59 @@ run. The control's own 14 to 20 MB are the accepted sockets and their handlers. 
 with (gigabytes, section 8), this is small, so the blocking design stays. A non-blocking design on the cats-effect
 selector would save the threads, at the cost of a readiness capability built in `Main` and a close that the JDK defers
 while a channel is still registered with a selector, so that a reset could lag the close.
+
+## 57. A near-idle node's CPU: the HTTP servers' selector and the fetch decision's sets (#1024)
+
+**2026-11-15.** A Scarab pool in a three-pool devnet with two cardano-node 11.1.3 pools (the Antithesis trial's
+`antithesis/pool` `config`: 0.1 s slots, k = 5, no transactions) used about 0.3 cores, against about 0.02 for cardano-node
+in the same seat. The effect runtime's own counters (cats-effect's per-worker `WorkerThread` and `TimerHeap` JMX beans)
+showed where: about 370 timers scheduled a second, and the compute workers polling about 200,000 times a second while
+99% idle. The timers come from loops that run whatever the load:
+- each peer session's fetch-performance refresh every 10 ms (`Peer.refreshFetchPerformance`), about 100 a second per peer;
+- the BlockFetch decision at the reference's 10 ms Praos interval, about 100 a second;
+- `Scheduling.monitor` every 20 ms, 50 a second;
+- the slot loop, 10 a second at these slots.
+
+The polling needed sockets registered with the runtime's integrated selector, and the only ones were the query and
+metrics HTTP servers': the node-to-node sockets are blocking (section 56). With the servers on the JDK's asynchronous
+channels (`fs2.io.net.Network.forAsync`), the polls fell to about one per park.
+
+A profile with the polling removed and both timer loops slowed down showed what remained. About 37% of the samples
+were in the fetch decision: each decision rebuilt a set of every fetched hash (the pool's filled bodies, its processed
+blocks and the received log's holdings), then a set of fetched points for each candidate, and `FetchCandidates` built
+the selected chain's point set twice more per candidate. The change answers the decision with a membership test over
+that state, read once per decision, as the reference's `readFetchedBlocks :: STM m (Point block -> Bool)` is
+(ouroboros-network c45735a5 `BlockFetch/ConsensusInterface.hs:100-101`), and builds the selected chain's index once
+per decision. Decisions and their 10 ms cadence are unchanged. Another 21% was VRF proving, one proof a slot. Those sets
+are bounded by the volatile window, about k plus forks, so at k = 5 they are small. This change's effect on them is
+expected at mainnet's k = 2160 with many peers, and is not measured here.
+
+**Harness and environment.** Cavendish, shared with other builds, so CPU varies by about ±0.03 cores between identical
+runs; the runtime's counters do not. The devnet ran under `docker compose`, with s1's image built from each JAR (`main`
+03461a6f8, and the same commit with this change) and JMX enabled through `JAVA_TOOL_OPTIONS`. After setup complete and
+30 s more, s1's cgroup CPU (`cpu.stat` `usage_usec`) and the runtime's counters were read at the start and the end of
+a 120 s window. Each slot's wake lateness is its `startLeadershipCheck` time against the slot's start from the genesis.
+The variants ran alternately. Raw logs and profiles are not published.
+
+<!-- register:table perf-63.t1 -->
+| s1 (120 s after setup complete, in run order) | Compute workers' polls a second | Timers scheduled a second | s1 CPU, cores | Slot wake lateness p50 / p99, ms |
+|---|---:|---:|---:|---:|
+| `main` 03461a6f8, run 1 | 165,513 | 368 | 0.305 | 0.457 / 2.346 |
+| this change, run 1 | 756 | 369 | 0.201 | 0.447 / 2.564 |
+| `main` 03461a6f8, run 2 | 239,132 | 371 | 0.239 | 0.370 / 0.602 |
+| this change, run 2 | 769 | 369 | 0.178 | 0.365 / 1.971 |
+| `main` 03461a6f8, run 3 | 189,651 | 370 | 0.282 | 0.377 / 3.573 |
+| this change, run 3 (a load spike on the host: h2 and h3 rose too) | 665 | 359 | 0.301 | 0.482 / 5.252 |
+| median, `main` / this change | 189,651 / 756 | 370 / 369 | 0.282 / 0.201 | 0.377 / 0.447 (p50) |
+<!-- /register -->
+
+The polls fell about 250-fold in every run, and s1's CPU by about 30% at the median. The third run of the change met
+a load spike on the host: the two cardano-node pools' CPU rose with it, and its slot lateness tail with them. The slot
+wake lateness is otherwise unchanged: the change rounds no timer. The timers stay, at about 370 a second, but cost
+little once no worker spins on the selector: slowing the two loops above removed 244 a second and saved about 0.013
+cores, inside the noise.
+
+On the nodes the project runs, the same day, from the Docker engine's cumulative container CPU at both ends of 902 s:
+a Scarab mainnet relay used 0.367 cores, and a cardano-node 11.1.3 on the same host 0.016 cores; a Scarab preprod pool
+(an older build) used 0.521 cores of a 2-CPU host. Measuring the relay again the same way once it runs this change shows
+its effect at mainnet scale.

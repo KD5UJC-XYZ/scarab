@@ -4466,6 +4466,87 @@
      "close": "```"
     }
    ]
+  },
+  {
+   "id": "perf-63",
+   "section": "57",
+   "heading": "57. A near-idle node's CPU: the HTTP servers' selector and the fetch decision's sets (#1024)",
+   "subject": "A near-idle node's CPU: the HTTP servers' selector and the fetch decision's sets (#1024)",
+   "date": "2026-11-15",
+   "dateSource": "text",
+   "issues": [
+    "#1024"
+   ],
+   "commits": [
+    "03461a6f8"
+   ],
+   "links": [],
+   "page": "peers-and-network",
+   "results": [
+    {
+     "id": "perf-63.t1",
+     "header": [
+      "s1 (120 s after setup complete, in run order)",
+      "Compute workers' polls a second",
+      "Timers scheduled a second",
+      "s1 CPU, cores",
+      "Slot wake lateness p50 / p99, ms"
+     ],
+     "separator": "|---|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "`main` 03461a6f8, run 1",
+       "165,513",
+       "368",
+       "0.305",
+       "0.457 / 2.346"
+      ],
+      [
+       "this change, run 1",
+       "756",
+       "369",
+       "0.201",
+       "0.447 / 2.564"
+      ],
+      [
+       "`main` 03461a6f8, run 2",
+       "239,132",
+       "371",
+       "0.239",
+       "0.370 / 0.602"
+      ],
+      [
+       "this change, run 2",
+       "769",
+       "369",
+       "0.178",
+       "0.365 / 1.971"
+      ],
+      [
+       "`main` 03461a6f8, run 3",
+       "189,651",
+       "370",
+       "0.282",
+       "0.377 / 3.573"
+      ],
+      [
+       "this change, run 3 (a load spike on the host: h2 and h3 rose too)",
+       "665",
+       "359",
+       "0.301",
+       "0.482 / 5.252"
+      ],
+      [
+       "median, `main` / this change",
+       "189,651 / 756",
+       "370 / 369",
+       "0.282 / 0.201",
+       "0.377 / 0.447 (p50)"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }
