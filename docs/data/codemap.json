@@ -1,7 +1,6 @@
 {
   "_comment": "Source of the generated docs/codemap.md. Entry points are names, never line numbers; suites are class names under src/test. Checked by scripts/render_codemap.py --check.",
   "modules": {
-    "warts": "The design rules' own WartRemover warts, compiled against this Scala version's WartRemover and loaded by every module's compiler: build tooling, never shipped",
     "codec": "CBOR with original bytes, exact rationals",
     "crypto": "Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational certificates",
     "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
@@ -15,7 +14,8 @@
     "models": "Generated CDDL models runtime and equivalence tests",
     "node": "The node: wiring, mempool, forging, relay, node-to-client, tools",
     "fuzz": "Structured fuzzing of decoder entry points (test only)",
-    "tools": "Programs run by hand, never as tests and never shipped: benchmarks, probes against a live peer, and the writers of committed fixtures and goldens; they use the modules' test kits"
+    "tools": "Programs run by hand, never as tests and never shipped: benchmarks, probes against a live peer, and the writers of committed fixtures and goldens; they use the modules' test kits",
+    "warts": "The design rules' own WartRemover warts, compiled against this Scala version's WartRemover and loaded by every module's compiler: build tooling, never shipped"
   },
   "packages": [
     {

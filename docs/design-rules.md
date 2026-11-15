@@ -225,8 +225,8 @@ unavailable".
   exception ([FUN-2](#fun-2) (c)).
 - **Enforcement:** `Wart.Throw`, and `SystemTimeAndUnsafeRun` in main: `sys.error`, `require`, `assume`,
   `assert`, and `raiseError`, `raiseWhen`, `raiseUnless`, `fromOption` and `fromEither` of a `Throwable` made
-  for it (by `new`, by a factory or in a `val`) or of a value of one of our types (kinds `raise-constructed`
-  and `raise-domain-error`); its Scaladoc lists what it does not see. The wart refuses a defect too (a
+  for it (by `new`, by a factory, in a `val` or in a `Left` made for `fromEither`) or of a value of one of
+  our types (kinds `raise-constructed` and `raise-domain-error`); its Scaladoc lists what it does not see. The wart refuses a defect too (a
   precondition of the caller, the failure of one of our own constants), which is not a domain error: such
   a site is kept with `@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))` and its
   reason. The rest is review only.

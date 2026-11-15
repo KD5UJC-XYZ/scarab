@@ -164,6 +164,7 @@ the dependencies.
 | `node` | Peers, follower, relay, mempool, forging, node-to-client, query server, `Main` |
 | `models-gen`, `models` | A CDDL parser and code generator; the models generated from the pinned upstream CDDL (a spike: used by tests, and its runtime by the ledger-state codec in `storage`) |
 | `fuzz` | Structured fuzzing of every decoder |
+| `warts` | The design rules' own WartRemover warts, which every other module's compiler runs on its main sources |
 
 Alongside: `fixtures/` (test vectors and captured chain data, each with its provenance), `scripts/`
 (`devnet.py` scenarios, the pinned `sbtw` launcher), `docs/`.
