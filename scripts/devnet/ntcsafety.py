@@ -4,7 +4,8 @@
 The singleton constructors follow ouroboros-consensus 82ecba3:
 HardFork/Combinator/Ledger/Query.hs:536-551 and Serialisation/SerialiseNodeToClient.hs:410-417.
 The deep query goes only to Scala; its leaf answer is compared with a shallow reference query
-at the same acquired point. Python builds the query and peels CBOR-in-CBOR without recursion.
+at the same acquired point. So does the deep query of an unknown tag, whose shallow form both nodes
+must refuse. Python builds the query and peels CBOR-in-CBOR without recursion.
 """
 import socket
 import threading
@@ -60,7 +61,12 @@ INVALID_RAW = {
     "byron-query-tag-1": b"\x82\x00\x82\x00\x82\x00\x01",
     "byron-query-as-a-list": b"\x82\x00\x82\x00\x82\x00\x81\x00",
     "era-start-of-era-8": b"\x82\x00\x83\x01\x81\x00\x08",
+    # a ledger query tag past the last, 39 (`decodeShelleyQuery`'s fall-through, ouroboros-consensus
+    # 82ecba32 `Shelley/Ledger/Query.hs:998`)
+    "unknown-ledger-query-tag": b"\x82\x00\x82\x00\x82\x06\x81\x18\x28",
 }
+# The leaf of the deep refusal probe: the unknown tag above, which both nodes refuse at decode.
+UNKNOWN_TAG = 40
 # Accepted by the reference with lists written indefinite where its decoders take them: a ledger
 # set and the credentials in it. Both nodes must answer alike.
 VALID_RAW = {
@@ -164,10 +170,11 @@ def run(open_reference, open_scala):
         report["invalid"][label] = row
         if not all(result["closed"] for result in row.values()):
             failures.append(f"query safety: invalid {label} not refused by both nodes: {row}")
-    # This path exercises the refusal diagnostic after decoding the deep AST, too.
-    report["deepUnsupported"] = _closed(open_scala, encoded_query(era, 14, DEPTH))
-    if not report["deepUnsupported"]["closed"]:
-        failures.append("query safety: deep unsupported query did not close its connection")
+    # The decoder's refusal of a leaf under the whole deep wrapper: the walk down the wrappers and
+    # the diagnostic of the refusal must not depend on the depth.
+    report["deepUnknownTag"] = _closed(open_scala, encoded_query(era, UNKNOWN_TAG, DEPTH))
+    if not report["deepUnknownTag"]["closed"]:
+        failures.append("query safety: deep query of an unknown tag did not close its connection")
     with open_scala() as scala:
         scala.acquire()
         report["healthyAfterRefusals"] = scala.query_raw(VALID["current-era"]) == era

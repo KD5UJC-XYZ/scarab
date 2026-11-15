@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.state.{EraTag, LedgerState, NewEpochState, Shell
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery}
+import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion}
 import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellState,
@@ -32,8 +32,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   *   - the answer is what the Haskell codec decodes, to a state that holds what the mirror holds
   *     and that writes the answer again byte for byte;
   *   - a Shelley-based era answers both queries (and their `GetCBOR` forms), in the era's own
-  *     encoding version, the chain-dependent state and the UTxO queries, and only these (the other
-  *     queries stay Conway's);
+  *     encoding version, the chain-dependent state, the UTxO queries and the reward provenance, and
+  *     only these (the other queries stay Conway's);
   *   - a query for another era is the era mismatch, and Byron is refused.
   */
 class MirrorAnswersSuite extends FunSuite:
@@ -170,6 +170,57 @@ class MirrorAnswersSuite extends FunSuite:
         case i: EraLedgerState.InShelleyEra[e] =>
           inEra[e](era, block, state, i.state.nes)(using i.era)
         case _: EraLedgerState.ByronCurrent => fail(s"$era is Byron")
+    }
+  }
+
+  /** What cardano-node 11.1.3 answered to `GetRewardProvenance` and to its `GetCBOR` form (the
+    * result item of `MsgResult`), recorded on 2026-11-15 on the devnet that walks the eras
+    * (`devnet.py up-eras`), in each era at a tip of it, at node-to-client versions 16 and 23. It is
+    * the default provenance whatever the state (`Shelley/API/Wallet.hs:373-384`, cardano-ledger
+    * f649f975), at the era's lowest version: its two rationals untagged before Conway, under tag 30
+    * in it.
+    */
+  private val referenceRewardProvenance: Map[Era, (String, String)] =
+    val before = (
+      "819000a000000000000082000100820001000000a0a0",
+      "81d818559000a000000000000082000100820001000000a0a0"
+    )
+    Map(
+      Era.Shelley -> before,
+      Era.Allegra -> before,
+      Era.Mary -> before,
+      Era.Alonzo -> before,
+      Era.Babbage -> before,
+      Era.Conway -> (
+        "819000a0000000000000d81e82000100d81e820001000000a0a0",
+        "81d81858199000a0000000000000d81e82000100d81e820001000000a0a0"
+      )
+    )
+
+  test("every state of every Shelley-based era answers the reward provenance as the reference") {
+    shelleyBased.foreach { (block, state) =>
+      val era = state.era
+      val (plain, wrapped) =
+        referenceRewardProvenance.getOrElse(era, fail(s"$era: no recorded answer"))
+      List(NtcVersion.V16, NtcVersion.V23).foreach { version =>
+        def asked(q: LedgerQuery): Either[Unanswered, String] =
+          QueryAnswers
+            .answerOrWhy(
+              queryEnv,
+              view(block, state),
+              Map.empty,
+              NtcQuery.IfCurrent(QueryEra.of(era), q),
+              version
+            )
+            .map(_.hex)
+        val label = s"$era block ${block.header.blockNo} at ${version.number}"
+        assertEquals(asked(LedgerQuery.GetRewardProvenance), Right(plain), label)
+        assertEquals(
+          asked(LedgerQuery.GetCBOR(LedgerQuery.GetRewardProvenance)),
+          Right(wrapped),
+          label
+        )
+      }
     }
   }
 
