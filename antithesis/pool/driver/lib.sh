@@ -1,7 +1,10 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
 # Shared by the driver's main process and its test commands: the assertion catalogue in the fallback SDK's format
-# (JSON lines appended to $ANTITHESIS_OUTPUT_DIR/sdk.jsonl), the pools' tips and the divergence detectors.
+# (JSON lines appended to $ANTITHESIS_OUTPUT_DIR/sdk.jsonl), the pools' tips and the divergence detectors. What Scarab
+# knows itself (a fatal stop, a forged block with transactions, the clock read before its slot) it asserts itself, in
+# its own container's sdk.jsonl (`--assertions-file`, #1032); the driver reads s1 only for its refusal count and the
+# fork tree.
 #
 # The tips get sometimes and reachable assertions only: at k = 5 a partition can split the chain for good, which is
 # the protocol working, so no convergence `always` is asserted yet.
@@ -12,17 +15,6 @@ INTERVAL_SECONDS=5
 # The text of the Haskell pools' `ChainSync.Client.Exception` trace when they refuse a block, from a local run of the
 # canary against cardano-node 11.1.3: `InvalidBlock (Point (At (Block {blockPointSlot = ...`.
 REFUSAL_PATTERN='InvalidBlock (Point'
-# Scarab's `Node.Fatal` event (`EventKind.Fatal`) as its JSON log line writes it, and the text of the one fatal
-# cause the reference has too: a clock moved back further than `Forger.MaxClockRewind` stops the node, as
-# `checkValidClockChange` stops cardano-node (`Fatal.Internal(ClockProblem.SystemClockMovedBack)`). Antithesis's clock
-# skips can cause it, so it is not a detector hit.
-FATAL_PATTERN='"event":"fatal"'
-CLOCK_STOP_PATTERN='the system clock moved back'
-# Scarab's `systemClockMovedBack` trace (`ClockTrace.SystemClockMovedBack`), traced as the reference traces it when a
-# reading falls in the previous reading's slot or earlier. The slot loop waits until the next slot's start, so two
-# readings in one slot with the time moving forward are a wake before that start (#629). After a clock really moved
-# back, the loop keeps the old slot and later readings move forward through earlier slots, which this tells apart.
-CLOCK_TRACE_PATTERN='"event":"systemClockMovedBack"'
 SDK="${ANTITHESIS_OUTPUT_DIR:-/tmp}/sdk.jsonl"
 # What the test commands remember within a timeline (markers and log offsets): each runs as a process of its own,
 # many times per timeline, and a timeline that branches takes this directory with it.
@@ -37,13 +29,10 @@ ALL_AGREE="all three pools report the same tip"
 CANARY_SUBMITTED="the writeBits transaction was submitted to s1 and answered"
 HASKELL_REFUSED="a Haskell pool never refuses a block as invalid"
 SCARAB_REFUSED="Scarab never refuses a block as invalid"
-SCARAB_FATAL="Scarab never logs a fatal event"
-SCARAB_FALSE_CLOCK="Scarab never traces the clock moved back on a wake 1 µs to 1 ms before its slot, time moving on"
 FORK_BELOW_K="the cluster's fork depth stays below k"
 FORK_SEEN="a fork is observed"
 PAYMENT_S1="s1 accepts a payment"
 PAYMENT_HASKELL="a Haskell pool accepts a payment"
-S1_FORGES_TXS="s1 forges a block with transactions"
 LOGS_PRESENT="every pool's log is present and not empty"
 
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
@@ -125,14 +114,9 @@ declare_catalog() {
   for m in "$SCARAB_EXTENDS" "$HASKELL_EXTENDS" "$ALL_EXTEND" "$ALL_AGREE" "$PAYMENT_S1" "$PAYMENT_HASKELL"; do
     must_record false true sometimes Sometimes "$m" false
   done
-  # Scarab's `forged` event names a block's transactions; cardano-node's forge traces do not, so the reference
-  # controls (S1_IMPLEMENTATION=cardano-node) leave this one out.
-  if [ "${S1_IMPLEMENTATION:-scarab}" = scarab ]; then
-    must_record false true sometimes Sometimes "$S1_FORGES_TXS" false
-  fi
   # The divergence detectors run where the compose file mounts the pools' logs at /logs.
   if [ -d /logs ]; then
-    for m in "$HASKELL_REFUSED" "$SCARAB_REFUSED" "$SCARAB_FATAL" "$SCARAB_FALSE_CLOCK"; do
+    for m in "$HASKELL_REFUSED" "$SCARAB_REFUSED"; do
       must_record false false reachability Unreachable "$m" false
     done
     must_record false false always AlwaysOrUnreachable "$FORK_BELOW_K" true
@@ -145,8 +129,7 @@ declare_catalog() {
   fi
 }
 
-# log_match NAME LOG PATTERN [EXCEPT]: the first line of LOG past NAME's offset that holds the fixed string PATTERN
-# (and not the fixed string EXCEPT). The
+# log_match NAME LOG PATTERN: the first line of LOG past NAME's offset that holds the fixed string PATTERN. The
 # offset then moves to 4 KiB before the end read, so that a line cut by the end is read whole next time; a log that
 # is shorter than the offset was started again, and is read from its start.
 log_match() {
@@ -156,11 +139,7 @@ log_match() {
   from=$(cat "$offset_file" 2> /dev/null || echo 0)
   [ "$from" -le "$size" ] || from=0
   # Every command reads to the end: an early exit would break the pipe, and pipefail would hide the match.
-  if [ -n "${4:-}" ]; then
-    lines=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$3" | grep -v -F -- "$4")
-  else
-    lines=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$3")
-  fi
+  lines=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$3")
   status=$?
   # The offset moves only once the scan is done, so that a scan cut short is made again.
   echo $(( size > 4096 ? size - 4096 : 0 )) > "$offset_file"
@@ -190,49 +169,6 @@ scarab_refusal() {
     | {count: (map(split(" ")[-1] | tonumber) | add), series: .} | select(.count > 0)' | grep . || return 1
 }
 
-scarab_fatal() {
-  local line
-  line=$(log_match fatal-s1 /logs/s1.log "$FATAL_PATTERN" "$CLOCK_STOP_PATTERN") || return 1
-  jq -cn --arg line "$line" '{line: $line[0:2000]}'
-}
-
-# The first `systemClockMovedBack` of s1's log past its offset whose `prevTime` and `newTime` fall in one slot, with
-# `newTime` the later and more than 1 µs (1.5, for the log's microseconds and float error) but less than 1 ms before
-# the next slot's start: #629's millisecond floor woke at most that early. A clock skip back by less than a slot
-# during the wait also wakes the loop inside the slot it read, mostly earlier: in a run with the platform's clock
-# skips, s1 woke 20 to 80 ms early, and the cardano-node pools traced `SystemClockMovedBack` hundreds of times, none
-# in a run without. The bound is a heuristic: a skip back together with a late wake can still land inside it, so a
-# hit in a run with clock faults is checked against the skips and the pools' traces before it is called #629. The
-# reference floors its wait to the microsecond (`threadDelay`), so it too can wake a fraction of a microsecond early
-# and trace `SystemClockMovedBack`. A cardano-node 11.1.3 pool did, 144 ns before its slot, in a platform run of
-# 2026-11-14. Scarab, floored as the reference since #955, does that far more often on the platform (why is not
-# checked); that is not what this detects.
-# Slots are counted from the genesis's `systemStart` by its `slotLength`, as `EpochGeometry` counts them; whole
-# seconds are subtracted before the fraction is added, so the arithmetic stays exact enough.
-scarab_false_clock() {
-  local offset_file="$STATE_DIR/offset-clock-s1" log=/logs/s1.log genesis=/env/net/shelley-genesis.json size from found
-  [ -f "$log" ] && [ -f "$genesis" ] || return 1
-  size=$(stat -c %s "$log")
-  from=$(cat "$offset_file" 2> /dev/null || echo 0)
-  [ "$from" -le "$size" ] || from=0
-  found=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$CLOCK_TRACE_PATTERN" | jq -R -c -n \
-      --argjson g "$(jq -c '{systemStart, slotLength}' "$genesis")" '
-    def whole: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
-    def fraction: (capture("\\.(?<f>[0-9]+)Z$") | "0." + .f | tonumber) // 0;
-    ($g.systemStart | whole) as $start | ($g.systemStart | fraction) as $startFraction
-    | def since: (whole - $start) + (fraction - $startFraction);
-    def slot: since / $g.slotLength | floor;
-    def early: ((slot + 1) * $g.slotLength) - since;
-    first(inputs | fromjson? | select(.newTime != null and .prevTime != null)
-          | select((.newTime | slot) == (.prevTime | slot)
-                   and ((.newTime | whole) - (.prevTime | whole)) + (.newTime | fraction) - (.prevTime | fraction) > 0
-                   and (.newTime | early) > 0.0000015 and (.newTime | early) < 0.001))
-    // empty')
-  echo $(( size > 4096 ? size - 4096 : 0 )) > "$offset_file"
-  [ -n "$found" ] || return 1
-  printf '%s\n' "$found"
-}
-
 # One pass of the divergence detectors, where /logs is mounted. The detectors that read a log find nothing in a log
 # that is missing or empty, so that they cannot pass unseen on a broken path, a sometimes property records that every
 # pool's log was present and not empty (after dingo's removed analyzer, which asserted that it read each node's log).
@@ -253,14 +189,6 @@ check_divergence() {
   if found=$(scarab_refusal); then
     echo "detectors: s1 refused a block: $found"
     unreachable_hit "$SCARAB_REFUSED" "$found"
-  fi
-  if found=$(scarab_fatal); then
-    echo "detectors: s1 logged a fatal event: $found"
-    unreachable_hit "$SCARAB_FATAL" "$found"
-  fi
-  if found=$(scarab_false_clock); then
-    echo "detectors: s1 reported the clock moved back for two readings in one slot: $found"
-    unreachable_hit "$SCARAB_FALSE_CLOCK" "$found"
   fi
   return 0
 }

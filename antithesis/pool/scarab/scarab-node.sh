@@ -42,6 +42,16 @@ vm=()
 if [ -n "${PLUTUS_VM:-}" ]; then
   vm=(--plutus-vm "$PLUTUS_VM")
 fi
+# Where Antithesis injects ANTITHESIS_OUTPUT_DIR (every container it runs), the node writes its own assertions there in
+# the fallback SDK's format (`--assertions-file`, #1032); the platform keeps each container's file apart from the
+# driver's. A local run sets the variable itself to read them. SCARAB_ASSERTIONS=off, set on s1 in the compose file,
+# is for a build that has no such flag (before #1032, such as v0.2.0-alpha.1), which would refuse to start with it.
+# The file is made readable, as the driver's is, before the node appends to it: the umask above is for the keys.
+assertions=()
+if [ -n "${ANTITHESIS_OUTPUT_DIR:-}" ] && [ "${SCARAB_ASSERTIONS:-on}" != off ]; then
+  (umask 022 && mkdir -p "$ANTITHESIS_OUTPUT_DIR" && touch "$ANTITHESIS_OUTPUT_DIR/sdk.jsonl")
+  assertions=(--assertions-file "$ANTITHESIS_OUTPUT_DIR/sdk.jsonl")
+fi
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp '/opt/scarab/*' xyz.kd5ujc.scarab.node.Main \
   follow \
@@ -56,4 +66,5 @@ exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory
   --vrf-skey "$keys/vrf.skey" \
   --kes-skey "$keys/kes.skey" \
   --opcert "$keys/opcert.cert" \
-  "${vm[@]}"
+  "${vm[@]}" \
+  "${assertions[@]}"

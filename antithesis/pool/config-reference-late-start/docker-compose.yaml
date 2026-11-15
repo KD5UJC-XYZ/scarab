@@ -2,7 +2,8 @@
 # The control of ../config-late-start: the same cluster, start order, faults, properties and workload, with pool 1 run
 # by cardano-node 11.1.3 in s1's seat instead of Scarab (as ../config-reference is to ../config). Its question: how
 # often does the reference fork, refuse or lag when s1's name does not resolve at the pools' first lookup?
-# Scarab's own detectors (its metrics, its fatal and clock events) have nothing to read here and stay quiet.
+# Scarab's metrics detector has nothing to read here and stays quiet, and the assertions Scarab makes itself
+# (`--assertions-file`) are not declared.
 # No restart policies: Antithesis restarts what it kills.
 
 x-labels: &labels

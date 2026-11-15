@@ -44,19 +44,7 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 - unreachable: a Haskell pool never refuses a block as invalid (its `ChainSync.Client.Exception` trace
   `InvalidBlock (Point ...`). Before blaming s1, check which pool forged the block;
 - unreachable: Scarab never refuses a block as invalid (`scarab_validation_errors_total` on s1's metrics);
-- unreachable: Scarab never logs a `fatal` event, other than the stop for a clock moved back more than
-  `Forger.MaxClockRewind`, which cardano-node makes too and Antithesis's clock skips can cause;
-- unreachable: Scarab never traces the clock moved back on a wake 1 µs to 1 ms before its slot, time moving on
-  (#629). The slot loop waits until the next slot's start, floored to the microsecond as the reference's
-  `threadDelay` floors it, so only a wake earlier than that is #629's millisecond floor, which woke less than 1 ms
-  early. A cardano-node pool on the platform also woke a fraction of a microsecond early and traced
-  `SystemClockMovedBack`. A clock moved back by more than a slot is told apart: its traces move forward through
-  earlier slots. By less, during the wait, the wake mostly comes earlier than the window (20 to 80 ms in a run with
-  the platform's clock skips, which the cardano-node pools traced as `SystemClockMovedBack` too), but a skip back
-  with a late wake can still land inside it: the bound is a heuristic, and a hit in a run with clock faults is
-  checked against the skips and the pools' traces before it is called #629.
-
-- sometimes: s1 accepts a payment; a Haskell pool accepts a payment; s1 forges a block with transactions;
+- sometimes: s1 accepts a payment; a Haskell pool accepts a payment;
 - always (or unreachable): the cluster's fork depth stays below k. The depth is the deepest rollback any pool would
   need to follow the longest tip. `driver/forktree.py` builds the block tree from the pools' logs: every forged
   block with its parent, and every pool's tip changes.
@@ -71,6 +59,32 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 - sometimes: every pool's log is present and not empty, so that the detectors that read logs cannot pass unseen on
   a broken path. It is declared in every config, and fails where `/logs` is not mounted; it says the logs were
   there, not that each detector read them through.
+
+What Scarab knows itself, it asserts itself (#1032): `scarab/scarab-node.sh` starts s1 with
+`--assertions-file "$ANTITHESIS_OUTPUT_DIR/sdk.jsonl"` (`docs/running/flags.md`), and the node declares its catalogue
+of properties at each start (`Property`, in `node/src/main/scala/xyz/kd5ujc/scarab/node/assertions/`) and evaluates
+each one from the typed event at the site that meets it, so the driver no longer reads s1's log for these. They
+include the three the driver made before:
+
+- unreachable: Scarab never stops on a fault other than a clock moved back too far. The stop for a clock moved back
+  more than `Forger.MaxClockRewind`, which cardano-node makes too and Antithesis's clock skips can cause, is left out
+  by its type;
+- unreachable: Scarab never traces the clock moved back on a wake 1 µs to 1 ms before its slot, time moving on
+  (#629). The slot loop waits until the next slot's start, floored to the microsecond as the reference's
+  `threadDelay` floors it, so only a wake earlier than that is #629's millisecond floor, which woke less than 1 ms
+  early. A cardano-node pool on the platform also woke a fraction of a microsecond early and traced
+  `SystemClockMovedBack`. A clock moved back by more than a slot is told apart: its readings move forward through
+  earlier slots. By less, during the wait, the wake mostly comes earlier than the window (20 to 80 ms in a run with
+  the platform's clock skips, which the cardano-node pools traced as `SystemClockMovedBack` too), but a skip back
+  with a late wake can still land inside it: the bound is a heuristic, and a hit in a run with clock faults is
+  checked against the skips and the pools' traces before it is called #629;
+- sometimes: Scarab forges a block with transactions.
+
+The others cover forks and rollbacks deeper than 1 block and than k / 2, peer demotions, a peer's chain that no
+longer intersects s1's, mempool drops on revalidation, forging, ledger snapshots, a forged block s1's own rules
+refuse, a forge defect and a block validation without a verdict. In the configs where cardano-node sits in s1's seat
+none of them is declared. A Scarab build without the flag (before #1032, such as v0.2.0-alpha.1) runs only with
+`SCARAB_ASSERTIONS: "off"` in s1's environment, since the platform sets `ANTITHESIS_OUTPUT_DIR` in every container.
 
 The test commands append each assertion line under a lock, waited on for up to a minute and never bypassed (a line
 that cannot be locked or encoded fails its command, and a once-per-timeline line is then tried again), bound every
