@@ -3901,11 +3901,13 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896116597",
    "evidence": [
     "DijkstraPParamsSuite"
    ],
+   "note": "Dijkstra's five instances in one object, given in each class's companion; the instances' upgradePParamsHKD, downgradePParamsHKD, emptyUpgradePParamsUpdate and eraPParams are not here yet, nor the update's Plutus data (#85), and the members the reference confines to a range of eras are classes of their own",
    "digest": "0d289138a658b11e"
   },
   "trait ledger.era.AlonzoEraPParams": {
