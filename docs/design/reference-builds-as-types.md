@@ -2,7 +2,9 @@
 # Reference builds as types
 
 **Status**: Accepted, 2026-11-15: the whole design, in stages, with layouts as types (stage 2), worked
-alongside the era typing ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85)). Stage 1 not started.
+alongside the era typing ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85)). Three refinements are
+added for the owner's review with this document: one class per module layer (§2.3), stage 1's members
+and the suites of its differential (§3). Stage 1 not started.
 Tracked in [#1063](https://github.com/KD5UJC-XYZ/scarab/issues/1063). **No persisted format changes in this
 programme** (§4).
 
@@ -88,7 +90,7 @@ program that needs the build asks for its instance.
 - the rule switch (the bootstrap attribute check);
 - #826 step c's list;
 - the form of the Dijkstra decoders;
-- the layout (§2.3).
+- the layout (§2.4).
 
 Most members belong to the layout, not the build. A member that differs by layout is defined once per
 layout and reached through the build's `Layout`, so builds that share a layout share it.
@@ -97,7 +99,22 @@ The instances are given in the class's companion, one per build, with no default
 therefore does not compile until it answers every member: the list of what a new build must answer, made
 by the compiler.
 
-### 2.3 Layouts as types
+### 2.3 One class per module layer
+
+The modules are layered: `protocol`, `ledger`, `consensus`, `storage` and `node`, with `network` beside
+them. A class can name only the types of its own module and of those below it. The members of §2.2 are
+of every layer: the bootstrap attribute check is a ledger rule, the Peras state and the bounds are
+consensus state, the codecs are storage's, and the mempool and node-to-client differences are the node's.
+
+So `BuildRules[B]` is one class per layer, each in the lowest module that sees its members' types:
+- each layer's class has one instance per build in its companion, with no defaults;
+- `Build` is in `protocol`, below all of them, and so is the layout (§2.4).
+
+The node's unpack names each build's type once, where `ReferenceBuild` becomes `SomeBuild`, and summons
+there every layer's instance of that build. A new build with no instance at some layer therefore does not
+compile. A program asks only for the layers it uses. The class names are chosen in stage 1.
+
+### 2.4 Layouts as types
 
 The layout becomes a type member of the instance (`type Layout <: StateLayout`). Each state record with a
 layout part takes the layout as a type parameter, and its layout fields become a match type with one case
@@ -107,7 +124,7 @@ A codec is a given per layout, so state in one layout cannot be written by anoth
 builds may share one layout. #1002's stage 2 plans a layout of its own for `11.2` (a `StateLayout` case with
 its codecs); that plan stands unless evidence shows the two builds' state files agree.
 
-### 2.4 With the era types
+### 2.5 With the era types
 
 The era classes do not vary by build: an era's types are the same in every build. A rule that differs by
 build asks for both instances: `using EraTxBody[E]` and `BuildRules[B]`. `EraRules[E]`, the complete rule
@@ -120,7 +137,25 @@ set per era (stage 2 of #85), is given per era and takes the build's instance fo
      members (SNAP, NEWEPOCH, POOL, POOLREAP, the genesis state) as members.
    - The node parses the build and unpacks it once, and rules take `BuildRules[B]` instead of a
      `ReferenceBuild` value. No layout changes.
-   - Differential: identical verdicts on the refusal corpus and the recorded blocks for both builds.
+   - Members in this stage are the sites that read the build:
+     - the bootstrap attribute check;
+     - the voting key POOL registers (`Certs`);
+     - the genesis state's layout (`GenesisStart`, `GenesisInjections.read`);
+     - the hand-over's layout (the callers of `Handover.toShelley`).
+
+     The sites that match on the layout part the state already holds stay as they are until stage 2
+     types them: SNAP, NEWEPOCH's boundary layout, POOLREAP, the seeded genesis snapshots and
+     `GenesisMirror`. They key on the state they are given, so no build can reach them with the wrong
+     one.
+   - `ReferenceBuild` stays as the run-time descriptor (name, stability, pins), the one match left being
+     its unpack to `SomeBuild`. No given falls back to `11.1`.
+   - Differential: identical verdicts before and after for each build.
+     - `11.1`: the refusal corpus (`ReferenceRefusalSuite`, `RemainingPredicateReferenceSuite`) and the
+       recorded chains (`PreviewReplaySuite`, `PreviewConwayRulesSuite`).
+     - The Leios build: its reference suites (`LeiosEpochReferenceSuite`, `LeiosGenesisReferenceSuite`,
+       `LeiosCommitteeReferenceSuite`, `LeiosTestnetBlockReferenceSuite`). No run applies blocks under
+       that build while `follow` refuses it.
+     - Each member also gets a mutation that swaps the two builds' instances.
    - The UTXO paths' build parameter (`UtxoTests.shelleyAfterPpup`, `TxEnv.referenceBuild`) changes only
      in agreement with the era-types work, whose Conway rules rewrite the same paths.
 2. **Layouts as types.**
