@@ -26,7 +26,7 @@ enum CostModelApplyWarn:
   */
 enum CostModelApplyError:
   /** A parameter name that the variant's model has no coefficient for: the reference's
-    * `CMUnknownParamError` (`CostModelInterface.hs:244-246,315`).
+    * `CMUnknownParamError` (`CostModelInterface.hs:244-246,315`, plutus 1.70.0.0).
     */
   case UnknownParameter(name: String)
 
@@ -56,14 +56,15 @@ final case class VariantCosts(
 )
 
 /** The costing part of a language's evaluation context (`EvaluationContext`,
-  * `PlutusLedgerApi/Common/Eval.hs:175-195`): the costs of every variant the language evaluates
-  * under, built once from the ledger's cost-model list and looked up by protocol version.
+  * `PlutusLedgerApi/Common/Eval.hs:175-195`, plutus 1.70.0.0): the costs of every variant the
+  * language evaluates under, built once from the ledger's cost-model list and looked up by protocol
+  * version.
   */
 final case class EvaluationContext(language: PlutusLanguage, variants: Vector[VariantCosts]):
 
-  /** The costs at `protocol` (`toMachineParameters`, `Common/Eval.hs:132-139`). The reference stops
-    * with an internal error when the variant of `protocol` has none; that cannot happen, as
-    * [[SemanticsVariant.of]] gives a variant of [[SemanticsVariant.ofContext]].
+  /** The costs at `protocol` (`toMachineParameters`, `Common/Eval.hs:132-139`, plutus 1.70.0.0).
+    * The reference stops with an internal error when the variant of `protocol` has none; that
+    * cannot happen, as [[SemanticsVariant.of]] gives a variant of [[SemanticsVariant.ofContext]].
     */
   def at(protocol: ProtocolMajor): Option[VariantCosts] =
     val variant = SemanticsVariant.of(language, protocol)
@@ -79,9 +80,9 @@ object EvaluationContext:
     case PlutusLanguage.V2                     => ParamNames.v2
     case PlutusLanguage.V3 | PlutusLanguage.V4 => ParamNames.v3
 
-  /** `tagWithParamNames` (`PlutusLedgerApi/Common/ParamName.hs:86-112`): the values paired with the
-    * names in order; the values beyond the last name are dropped, and a name without a value gets
-    * `maxBound`, each with a warning.
+  /** `tagWithParamNames` (`PlutusLedgerApi/Common/ParamName.hs:86-112`, plutus 1.70.0.0): the
+    * values paired with the names in order; the values beyond the last name are dropped, and a name
+    * without a value gets `maxBound`, each with a warning.
     */
   def tagWithParamNames(
       names: Vector[String],
@@ -97,9 +98,9 @@ object EvaluationContext:
 
   /** The evaluation context of `language` from the ledger's list (`mkEvaluationContext`,
     * `PlutusLedgerApi/V1/EvaluationContext.hs:40-58`, V2 the same, `V3/EvaluationContext.hs:37-54`;
-    * `mkDynEvaluationContext`, `Common/Eval.hs:209-219`): the list tagged with the names, then the
-    * model of every variant of the context made from the same parameters, in the order of the
-    * variants, the first failure winning (`mkMachineVariantParametersFor`,
+    * `mkDynEvaluationContext`, `Common/Eval.hs:209-219`, plutus 1.70.0.0): the list tagged with the
+    * names, then the model of every variant of the context made from the same parameters, in the
+    * order of the variants, the first failure winning (`mkMachineVariantParametersFor`,
     * `MachineParameters/Default.hs:66-78`).
     */
   def build(
@@ -126,10 +127,10 @@ object EvaluationContext:
       .tell(told) >> context.fold(failure.raise[CostModelApplyError, EvaluationContext], F.pure)
 
   /** The costs of `variant` from named parameters (`applyCostModelParams`,
-    * `CostModelInterface.hs:352-382`): the parameters whose names start with `cek` are the
-    * machine's and the others the builtins' (`splitParams`), each part applied to its model, the
-    * machine's first (`applyParams`, lines 290-317: a name the model does not have fails, the
-    * smallest such name first, as `Map.mergeA` visits the keys in order).
+    * `CostModelInterface.hs:352-382`, plutus 1.70.0.0): the parameters whose names start with `cek`
+    * are the machine's and the others the builtins' (`splitParams`), each part applied to its
+    * model, the machine's first (`applyParams`, lines 290-317: a name the model does not have
+    * fails, the smallest such name first, as `Map.mergeA` visits the keys in order).
     */
   def costsOf(
       variant: SemanticsVariant,

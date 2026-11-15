@@ -28,9 +28,9 @@ object Measure:
 
   /** A type's own measure. A constant has the measure of its type ([[constant]]: `instance
     * ExMemoryUsage (Some (ValueOf uni))`, lines 237-239, also for `SomeConstant`,
-    * `Builtin/Polymorphism.hs:164-167`); any other value of the machine is 1, the CEK machine's
-    * measure of a value that is not a constant (`instance ExMemoryUsage (CekValue ...)`,
-    * `Cek/Internal.hs:751-759`).
+    * `Builtin/Polymorphism.hs:164-167`, plutus 1.70.0.0); any other value of the machine is 1, the
+    * CEK machine's measure of a value that is not a constant (`instance ExMemoryUsage (CekValue
+    * ...)`, `Cek/Internal.hs:751-759`).
     */
   val universe: Measure = new Measure:
     val name = "universe"
@@ -99,7 +99,7 @@ object Measure:
   private def depth(size: Int): Long = (32 - Integer.numberOfLeadingZeros(size)).toLong
 
   /** The measure of a constant by its type (the `ExMemoryUsage` instance of each type of the
-    * universe, `ExMemoryUsage.hs:199-497`).
+    * universe, `ExMemoryUsage.hs:199-497`, plutus 1.70.0.0).
     */
   def constant(c: Constant): Costs = c match
     case Constant.Integer(n)              => Costs.Last(integer(n))
@@ -195,14 +195,16 @@ object Measure:
     walk(root, Nil)
 
   /** `memSizeBytes div 8` of a G1 point, 144 bytes (`g1ElementCost`, lines 472-477;
-    * `Crypto/BLS12_381/G1.hs:201-203,250-251`).
+    * `Crypto/BLS12_381/G1.hs:201-203,250-251`, plutus 1.70.0.0).
     */
   val G1Words: Long = 18L
 
-  /** A G2 point, 288 bytes (`g2ElementCost`, lines 481-486; `Crypto/BLS12_381/G2.hs:207-208`). */
+  /** A G2 point, 288 bytes (`g2ElementCost`, lines 481-486; `Crypto/BLS12_381/G2.hs:207-208`,
+    * plutus 1.70.0.0).
+    */
   val G2Words: Long = 36L
 
   /** A Miller-loop result, 576 bytes (`mlResultElementCost`, lines 490-495;
-    * `Crypto/BLS12_381/Pairing.hs:104`).
+    * `Crypto/BLS12_381/Pairing.hs:104`, plutus 1.70.0.0).
     */
   val MlResultWords: Long = 72L
