@@ -453,7 +453,7 @@ class EraConwaySuite extends munit.FunSuite:
     val detached = ConwayTxAuxData.decode(Bytes.fromHex("9fffa080").toOption.get)
     assert(
       xyz.kd5ujc.scarab.ledger.AuxiliaryScripts
-        .read(Bytes.fromHex("9fffa080").toOption.get, 9)(using ByteStrings.Definite)
+        .read(Bytes.fromHex("9fffa080").toOption.get, Era.Conway, 9)(using ByteStrings.Definite)
         .isRight
     )
     assertEquals(detached.map(c.metadata(_).size), Right(0))

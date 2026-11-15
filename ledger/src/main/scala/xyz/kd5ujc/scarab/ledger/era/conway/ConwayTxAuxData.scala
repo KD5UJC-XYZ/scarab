@@ -56,11 +56,11 @@ object ConwayTxAuxData:
     val version = DecoderVersion.of(Era.Conway)
     given ByteStrings = ByteStrings.of(version)
     (for
-      _ <- AuxiliaryScripts.read(raw, version.value)
+      _ <- AuxiliaryScripts.read(raw, Era.Conway, version.value)
       parts <- DetachedRecords.read(
         raw,
         Cbor.Limits.Unbounded,
-        DetachedRecords.Shapes.auxiliaryDataAt(version.value)
+        DetachedRecords.Shapes.auxiliaryDataAt(Era.Conway, version.value)
       )(LedgerDecodeError.Syntax(_))(fields)
     yield ConwayTxAuxData(raw, parts._1, parts._2, parts._3)).leftMap(EraTxError.Decode(_))
 
