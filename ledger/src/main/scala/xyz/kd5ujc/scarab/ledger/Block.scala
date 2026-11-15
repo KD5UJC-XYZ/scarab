@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A block as fetched over node-to-node BlockFetch (`[tag, block]`). Every component keeps its
@@ -33,7 +34,19 @@ object Block:
       bodySize: Long,
       bodyHash: Bytes,
       segments: Vector[Bytes] = Vector.empty
-  ) extends Block
+  ) extends Block:
+
+    /** `before` with the bytes of every transaction of the body added, valid or not: the ledger
+      * state's `shelleyCumulativeTxBytes` after the block (`applyHelper`, ouroboros-consensus
+      * 2416493b `Shelley/Ledger/Ledger.hs:749-756`), each transaction's `sizeTxF`
+      * ([[Transaction.size]]) widened to `Word64` and summed modulo 2^64, as `Word64` 's `sum` and
+      * `+` are. A block's bytes are bounded by [[MaxInputBytes]], so neither the widening nor the
+      * sum of one block can wrap; the running total is the reference's `Word64` all the same.
+      */
+    def addTxBytes(before: Word64): Word64 =
+      transactions.foldLeft(before)((total, t) =>
+        Word64.wrappingAdd(total, Word64.fromUnsigned(t.size))
+      )
 
   /** A Dijkstra block, tag 8: the Leios header and the body `[transactions, leios_cert / nil,
     * peras_cert / nil]` of the build the Leios testnet runs ([[LeiosBlock]]), each transaction
@@ -60,6 +73,14 @@ object Block:
       isValid: Boolean
   ):
     lazy val id: Bytes = Blake2b.hash256.hash(body)
+
+    /** `sizeTxF` (cardano-ledger 9df9f98c: Shelley to Mary
+      * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Tx.hs:154-176`, Alonzo to Conway
+      * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:377-384,485-496`): the length of
+      * `toCBORForSizeComputation`, the list `[body, witnesses, auxiliary data or null]` whose parts
+      * keep the bytes they were read from. The `is_valid` flag is not counted.
+      */
+    lazy val size: Long = 1L + body.size + witnesses.size + auxiliaryData.fold(1L)(_.size.toLong)
 
   /** The most bytes a block takes: BlockFetch's 2500000 bytes a message (`largeByteLimit`,
     * `Ouroboros/Network/Protocol/BlockFetch/Codec.hs:42-45`, ouroboros-network c45735a5).

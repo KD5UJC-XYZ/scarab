@@ -1010,8 +1010,8 @@ object Tx:
       Bytes.fromArray(Array((if t.isValid then 0xf5 else 0xf4).toByte)) ++
       t.auxiliaryData.getOrElse(Bytes.fromArray(Array(0xf6.toByte)))
 
-  /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
-    * Alonzo, `[body, witnesses, aux]` before.
+  /** The transaction `t` of a block of `era`, decoded at the era's decoder version; its size is the
+    * ledger's `sizeTxF` ([[Block.Transaction.size]]).
     */
   def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
     fromBlock(t, era, DecoderVersion.of(era))
@@ -1027,14 +1027,10 @@ object Tx:
       body <- TxBody.decode(t.body, era, version)
       witnesses <- Witnesses.decode(t.witnesses, era, version)
       _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, era, version.value))
-    yield
-      // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
-      // the `is_valid` flag is not counted (checked against Preview transactions).
-      val aux = t.auxiliaryData.fold(1L)(_.size.toLong)
-      Tx(
-        body,
-        witnesses,
-        1L + t.body.size + t.witnesses.size + aux,
-        t.isValid,
-        t.auxiliaryData
-      )
+    yield Tx(
+      body,
+      witnesses,
+      t.size,
+      t.isValid,
+      t.auxiliaryData
+    )
