@@ -194,7 +194,7 @@ object ScalusEvaluator:
 
     /** The machine of the request; `caseOnData` comes from the program's version
       * ([[PlutusAvailability.caseOnData]]), which the machine parameters of the reference depend on
-      * too (`toMachineParameters`, `PlutusLedgerApi/Common/Eval.hs:133-141`, 1.71.0.0).
+      * too (`toMachineParameters`, `PlutusLedgerApi/Common/Eval.hs:133-141`, plutus 1.71.0.0).
       */
     private def vm(
         request: EvalRequest,

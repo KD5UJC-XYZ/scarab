@@ -34,11 +34,11 @@ enum SemanticsVariant:
 
 object SemanticsVariant:
   /** The variant of a script's language at a protocol version (`machineParametersFor`,
-    * `PlutusLedgerApi/MachineParameters.hs:16-44`, and the `mkEvaluationContext` of
-    * `V1/EvaluationContext.hs:46-66`, `V2/EvaluationContext.hs:46-66` and
-    * `V3/EvaluationContext.hs:43-60`, 1.71.0.0). A PlutusV4 script is evaluated in the PlutusV3
-    * evaluation context ([[PlutusLanguage.evaluatedAs]]); the language does not exist below
-    * Dijkstra.
+    * `PlutusLedgerApi/MachineParameters.hs:13-45`, and the `mkEvaluationContext` of
+    * `V1/EvaluationContext.hs:46-64`, `V2/EvaluationContext.hs:46-64` and
+    * `V3/EvaluationContext.hs:43-58`, plutus 1.71.0.0). A PlutusV4 script is evaluated in the
+    * PlutusV3 evaluation context ([[PlutusLanguage.evaluatedAs]]); the language does not exist
+    * below Dijkstra.
     */
   def of(language: PlutusLanguage, protocolMajor: Int): SemanticsVariant =
     import PlutusAvailability.{Chang, Dijkstra, VanRossem}

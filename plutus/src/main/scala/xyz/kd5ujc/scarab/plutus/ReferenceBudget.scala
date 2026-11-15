@@ -24,11 +24,11 @@ import scalus.uplc.eval.{BudgetSpender, CekValEnv, ExBudgetCategory, OutOfExBudg
   * thread.
   */
 private[plutus] object ReferenceBudget:
-  /** `defaultSlippage` (`Internal.hs` lines 416-421). */
+  /** `defaultSlippage` (`Internal.hs` lines 416-421, plutus 1.70.0.0). */
   val Slippage = 200
 
-  /** `StepKind` 's constructors in the reference's order (`Internal.hs` lines 207-218), which is
-    * the order `spendAccumulatedBudget` charges them in.
+  /** `StepKind` 's constructors in the reference's order (`Internal.hs` lines 207-218, plutus
+    * 1.70.0.0), which is the order `spendAccumulatedBudget` charges them in.
     */
   private val kinds: Vector[StepKind] = Vector(
     StepKind.Const,
@@ -57,9 +57,9 @@ private[plutus] object ReferenceBudget:
     * as the reference's machine would charge it. A step is counted; the counted steps are charged
     * per kind, `count * cost` in [[SatInt]] (`stimes`, `PlutusCore/Evaluation/Machine/ExBudget.hs`
     * lines 201-203), when 200 have accumulated and when the machine returns its result ([[settle]];
-    * `returnCek NoFrame`, `Internal.hs` lines 891-894). Steps counted before a failure are never
-    * charged, as in the reference. The startup cost and each element of a builtin's budget
-    * ([[ReferenceCosting.BudgetStream]]) are charged at once.
+    * `returnCek NoFrame`, `Internal.hs` lines 891-894, plutus 1.70.0.0). Steps counted before a
+    * failure are never charged, as in the reference. The startup cost and each element of a
+    * builtin's budget ([[ReferenceCosting.BudgetStream]]) are charged at once.
     */
   // Scalus's `BudgetSpender` is a mutable callback of the machine (as the reference's spender is a
   // counter array), measured in `docs/performance.md` section 44
