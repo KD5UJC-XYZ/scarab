@@ -1,0 +1,3 @@
+### Added (ledger, #85)
+
+- Dijkstra's era types, of the Leios testnet's build (cardano-ledger 9df9f98c): its native script as a type of its own with the guard constructor, its Plutus script of four languages, its script and its output, each read as the build's block decoder reads them at decoder version 12, and their cases in the era's families and instances. A Conway script or output is carried into Dijkstra as the reference carries it, a native script encoded anew. They agree with the build on every script and output of the Leios testnet corpus and on the translation corpus. No rule uses them yet, and the store's form of a Dijkstra output waits for #54.
