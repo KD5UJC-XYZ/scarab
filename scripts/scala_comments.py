@@ -8,7 +8,8 @@ comment (Scala block comments nest). A string literal is blanked with its interp
 triple-quoted or not, by the scanner of `check_imperative.py`; a character literal (`'('`, `'\\''`, `'\\u0041'`)
 is blanked too, so a quoted bracket is not a bracket. The quotes themselves stay, so a literal still reads
 as a value. Blanking keeps the length and every line break, so an offset into the code is an offset into
-the source. A comment inside an interpolation is part of the literal and is not reported.
+the source. A comment inside an interpolation is part of the literal and is not reported. `Split.literals` holds
+the span of each literal, quotes included, for a reader that needs their text (`scala_definitions.py`).
 
 Pure standard library.
 """
@@ -59,8 +60,10 @@ class Block:
 
 @dataclass(frozen=True)
 class Split:
+    """`literals` are the (start, end) offsets of the string and character literals, quotes included."""
     code: str
     comments: tuple[Comment, ...]
+    literals: tuple[tuple[int, int], ...] = ()
 
 
 def comment_end(source: str, i: int) -> int:
@@ -77,6 +80,7 @@ def comment_end(source: str, i: int) -> int:
 def split(source: str) -> Split:
     pieces: list[str] = []
     found: list[Comment] = []
+    literals: list[tuple[int, int]] = []
     newlines = [match.start() for match in re.finditer('\n', source)]
     i, n = 0, len(source)
 
@@ -105,16 +109,18 @@ def split(source: str) -> Split:
             triple = source.startswith('"""', i)
             end, _ = string_literal(source, i + (3 if triple else 1), triple, interpolated)
             blank(i, end, '"')
+            literals.append((i, end))
         elif source[i] == "'" and (match := CHARACTER.match(source, i)):
             end = match.end()
             blank(i, end, "'")
+            literals.append((i, end))
         else:
             # code up to the next comment or literal
             following = INTERESTING.search(source, i + 1)
             end = n if following is None else following.start()
             pieces.append(source[i:end])
         i = end
-    return Split(''.join(pieces), tuple(found))
+    return Split(''.join(pieces), tuple(found), tuple(literals))
 
 
 def blocks(source: str, comments: tuple[Comment, ...]) -> list[Block]:

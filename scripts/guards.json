@@ -10,6 +10,7 @@
   {"id": "ci-parity", "title": "a push to main runs nothing its pull request did not, and is never cancelled", "argv": ["scripts/check_ci_parity.py"]},
   {"id": "pinned-citations", "title": "no new unpinned upstream citations in comments", "argv": ["scripts/check_pinned_citations.py"]},
   {"id": "parameter-comments", "title": "no new comments in parameter and argument lists", "argv": ["scripts/check_parameter_comments.py"]},
+  {"id": "correspondence", "title": "every definition of a mirrored area is mapped, glue or baselined, and its entry is current", "argv": ["scripts/check_correspondence.py"]},
   {"id": "local-paths", "title": "no absolute home paths", "argv": ["scripts/check_local_paths.py"]},
   {"id": "licences", "title": "licence records", "argv": ["scripts/check_notice.py"]},
   {"id": "compatibility", "title": "compatibility register", "argv": ["scripts/render_compatibility.py", "--check"]},

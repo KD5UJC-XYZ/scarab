@@ -268,10 +268,13 @@ jobs:
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
+      # Two commits deep, so that on a pull request the merge commit's first parent, the target branch, is there:
+      # the correspondence guard compares its baseline with the target's.
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - name: Byte-compile every script
         run: |
           find scripts -name '*.py' -print0 | xargs -0 python3 -c '

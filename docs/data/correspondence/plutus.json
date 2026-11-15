@@ -1,0 +1,10 @@
+{
+ "_comment": "Plutus: the script evaluator algebra and its backends (module plutus) and the own UPLC evaluator (module uplc). Its reference is plutus, and cardano-ledger for the script context and cost models. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "plutus",
+ "roots": [
+  "plutus/src/main/scala",
+  "uplc/src/main/scala"
+ ],
+ "entries": {},
+ "glue": []
+}

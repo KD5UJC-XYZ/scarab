@@ -1,0 +1,802 @@
+{
+ "_comment": "Networking: the mini-protocol codecs and state machines (module protocol) and the bearer, multiplexer, connection manager, protocol clients and servers, and peer selection (module network). Their reference is ouroboros-network, and ouroboros-consensus for the block and transaction types the protocols carry. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "network",
+ "roots": [
+  "protocol/src/main/scala",
+  "network/src/main/scala"
+ ],
+ "entries": {
+  "class protocol.ChainSync.Limits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+     "symbol": "byteLimitsChainSync",
+     "lines": [
+      40,
+      51
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+     "symbol": "decodeList",
+     "lines": [
+      209,
+      214
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/755",
+   "note": "the defaults refuse a MsgFindIntersect of more than 64 points or 8192 items; the reference reads any number of points within smallByteLimit",
+   "digest": "78c83781c25d3af2"
+  },
+  "class protocol.KeepAlive.Cookie": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "Cookie",
+     "lines": [
+      39,
+      40
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a newtype of Word16; the Scala class holds an Int checked to that range at construction",
+   "digest": "2a4402785d15e716"
+  },
+  "def protocol.Handshake.acceptOrRefuse": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Client.hs",
+     "symbol": "acceptOrRefuse",
+     "lines": [
+      191,
+      222
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "greatest common version, else VersionMismatch of the local versions in ascending order; decode its data, else HandshakeDecodeError; accept it, else Refused. Failures stay typed (SelectionError) and refusal renders their text. Offers are a Vector its callers keep distinct (proposal refuses duplicates); the branch for a common version missing from the offers cannot be taken",
+   "digest": "9db19c30f0fdd2c7"
+  },
+  "def protocol.KeepAlive.transition": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "Message",
+     "lines": [
+      85,
+      106
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's transitions and agency are in the message and StateAgency types; this is the same table at run time",
+   "digest": "c79bc53cce242619"
+  },
+  "def protocol.PeerSharingEngine.decodeTyped": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "symbol": "decodeMsg",
+     "lines": [
+      62,
+      75
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
+   "note": "the outer array's declared length must match the message here; the reference reads and ignores it",
+   "digest": "8e8040c3046fd913"
+  },
+  "enum protocol.ChainSync.Message": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs",
+     "symbol": "Message",
+     "lines": [
+      107,
+      169
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the eight messages in the reference's order, with the same fields; the header is the type parameter P, and the states they go between are checked by ChainSyncEngine.transition",
+   "digest": "4c443497afd434f7"
+  },
+  "enum protocol.Handshake.State": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Type.hs",
+     "symbol": "Handshake",
+     "lines": [
+      43,
+      46
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StPropose, StConfirm, StDone",
+   "digest": "d7de64309644447f"
+  },
+  "enum protocol.KeepAlive.Message": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "Message",
+     "lines": [
+      85,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "MsgKeepAlive, MsgKeepAliveResponse and MsgDone; the states they go between are checked by transition",
+   "digest": "fc08a98a740b3f16"
+  },
+  "enum protocol.KeepAlive.State": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "KeepAlive",
+     "lines": [
+      50,
+      62
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "1b7f5f516eaa1b4b"
+  },
+  "enum protocol.PeerSharing.Message": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+     "symbol": "Message",
+     "lines": [
+      75,
+      89
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "MsgShareRequest, MsgSharePeers and MsgDone; the reference's peerAddress parameter is fixed to Address, the wire form of the RemoteAddress cardano-diffusion instantiates it with",
+   "digest": "bc24fd8d595a796a"
+  },
+  "enum protocol.PeerSharing.State": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+     "symbol": "PeerSharing",
+     "lines": [
+      45,
+      58
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StIdle, StBusy, StDone",
+   "digest": "a1b47262619687ed"
+  },
+  "enum protocol.PeerSharing.Violation": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "symbol": "PeerSharingError",
+     "lines": [
+      96,
+      100
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "PeerSharingProtocolViolation PeerSharingAmount Int; the reference throws it from peerSharingClient (PeerSharing.hs:128-130), here it is a typed value",
+   "digest": "ed0450f8068c3c02"
+  },
+  "object protocol.Handshake": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "decodeRefuseReason",
+     "lines": [
+      264,
+      289
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "decodeMsg",
+     "lines": [
+      152,
+      195
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "byteLimitsHandshake",
+     "lines": [
+      58,
+      68
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
+   "note": "its private parsers refuse a refusal of another declared length and apply depth, term and string caps; the reference reads and ignores the length and bounds only the message, at 5760 bytes",
+   "digest": "cdc8d7bc397b2784"
+  },
+  "object protocol.KeepAlive.UpstreamTimeLimits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "timeLimitsKeepAlive",
+     "lines": [
+      108,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "9aae5338d53dcd97"
+  },
+  "object protocol.PeerSharing": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs",
+     "symbol": "decodeListLen",
+     "lines": [
+      49,
+      65
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
+   "note": "an address's declared length must be 3 or 6 here (its private address reader); the reference reads and ignores it",
+   "digest": "916d2007d053b7ca"
+  },
+  "object protocol.TxSubmission2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs",
+     "symbol": "hardForkInjectTxs",
+     "lines": [
+      182,
+      224
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/934",
+   "note": "a GenTx not tagged Conway is a protocol error here (the codec's private body reader); the reference decodes it and the mempool translates a Shelley to Babbage transaction into the current era",
+   "digest": "2f00e9e261a92f0d"
+  },
+  "type protocol.PeerSharing.Values.Amount": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+     "symbol": "PeerSharingAmount",
+     "lines": [
+      29,
+      31
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a newtype of Word8; the opaque type holds an Int that its constructors keep in 0..255",
+   "digest": "1e21a33f472c5222"
+  },
+  "val protocol.BlockFetch.MiniProtocolId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
+     "file": "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
+     "symbol": "blockFetchMiniProtocolNum",
+     "lines": [
+      478,
+      479
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "a70e0b35cfad326a"
+  },
+  "val protocol.Handshake.DefaultPhaseTimeout": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "timeLimitsHandshake",
+     "lines": [
+      80,
+      88
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+     "symbol": "shortWait",
+     "lines": [
+      111,
+      112
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StPropose and StConfirm: shortWait, 10 seconds (node-to-node; node-to-client runs noTimeLimitsHandshake, Codec.hs:91-99)",
+   "digest": "a1bd5ee80c0e37d5"
+  },
+  "val protocol.Handshake.MaxDepth": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "byteLimitsHandshake",
+     "lines": [
+      58,
+      68
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
+   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
+   "digest": "94de53e5e8af49b5"
+  },
+  "val protocol.Handshake.MaxItems": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "byteLimitsHandshake",
+     "lines": [
+      58,
+      68
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
+   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
+   "digest": "1c17b58b1d6ca8d0"
+  },
+  "val protocol.Handshake.MaxMessageBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "byteLimitsHandshake",
+     "lines": [
+      58,
+      68
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "maxTransmissionUnit",
+     "lines": [
+      54,
+      55
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StPropose and StConfirm both take maxTransmissionUnit, 4 * 1440 = 5760 bytes",
+   "digest": "0dfd0613c6b3e091"
+  },
+  "val protocol.Handshake.MaxRefusalBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "byteLimitsHandshake",
+     "lines": [
+      58,
+      68
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
+   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
+   "digest": "18ca90d020934111"
+  },
+  "val protocol.Handshake.MaxStringBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "byteLimitsHandshake",
+     "lines": [
+      58,
+      68
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
+   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
+   "digest": "487dcf4fb68b772e"
+  },
+  "val protocol.KeepAlive.CodecVersion": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "codecKeepAlive_v2",
+     "lines": [
+      37,
+      41
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the codec in use is codecKeepAlive_v2",
+   "digest": "b17dfd06fa7e6dab"
+  },
+  "val protocol.KeepAlive.MiniProtocolId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
+     "file": "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
+     "symbol": "keepAliveMiniProtocolNum",
+     "lines": [
+      484,
+      485
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "3936bc041a643ceb"
+  },
+  "val protocol.KeepAlive.UpstreamMessageBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "byteLimitsKeepAlive",
+     "lines": [
+      87,
+      95
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+     "symbol": "smallByteLimit",
+     "lines": [
+      108,
+      109
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "both active states take smallByteLimit, 65535 bytes",
+   "digest": "d688beb3c206d6eb"
+  },
+  "val protocol.KeepAlive.UpstreamTimeLimits.client": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "timeLimitForState",
+     "lines": [
+      114,
+      114
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StClient: 97 seconds",
+   "digest": "e799a5e7b3cbc83e"
+  },
+  "val protocol.KeepAlive.UpstreamTimeLimits.server": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "timeLimitForState",
+     "lines": [
+      115,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StServer: 60 seconds",
+   "digest": "e1a0cff71d90d400"
+  },
+  "val protocol.PeerSharing.MiniProtocolId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
+     "file": "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
+     "symbol": "peerSharingMiniProtocolNum",
+     "lines": [
+      487,
+      488
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "bbe8bfb6978bfff8"
+  },
+  "val protocol.PeerSharing.UpstreamMessageBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "symbol": "byteLimitsPeerSharing",
+     "lines": [
+      130,
+      140
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "symbol": "maxTransmissionUnit",
+     "lines": [
+      127,
+      128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "both active states take maxTransmissionUnit, 4 * 1440 = 5760 bytes",
+   "digest": "d772e74dd046abad"
+  },
+  "val protocol.PeerSharing.UpstreamTimeLimits.busy": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "symbol": "timeLimitForState",
+     "lines": [
+      161,
+      161
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+     "symbol": "longWait",
+     "lines": [
+      114,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StBusy: longWait, 60 seconds",
+   "digest": "61552a11253566a9"
+  }
+ },
+ "glue": [
+  {
+   "reason": "Scala value equality and rendering of a class with a private constructor; the reference's Cookie derives Eq and Show",
+   "definitions": [
+    "def protocol.KeepAlive.Cookie#equals",
+    "def protocol.KeepAlive.Cookie#hashCode",
+    "def protocol.KeepAlive.Cookie#toString"
+   ]
+  },
+  {
+   "reason": "construction of a Cookie inside Word16's range, the range of the reference's Cookie",
+   "definitions": [
+    "object protocol.KeepAlive.Cookie",
+    "val protocol.KeepAlive.Cookie.Max",
+    "val protocol.KeepAlive.Cookie.Zero",
+    "def protocol.KeepAlive.Cookie.from"
+   ]
+  },
+  {
+   "reason": "Scala value equality, hashing and rendering of a class with a private constructor",
+   "definitions": [
+    "def protocol.ChainSync.UInt64#equals",
+    "def protocol.ChainSync.UInt64#hashCode",
+    "def protocol.ChainSync.UInt64#toString"
+   ]
+  },
+  {
+   "reason": "Scala value equality and hashing of a class with a private constructor; the reference's Tip derives Eq",
+   "definitions": [
+    "def protocol.ChainSync.Tip#equals",
+    "def protocol.ChainSync.Tip#hashCode"
+   ]
+  },
+  {
+   "reason": "construction of a UInt64 inside the unsigned 64-bit range",
+   "definitions": [
+    "object protocol.ChainSync.UInt64",
+    "val protocol.ChainSync.UInt64.Max",
+    "val protocol.ChainSync.UInt64.Zero",
+    "def protocol.ChainSync.UInt64.from"
+   ]
+  },
+  {
+   "reason": "the boundary scope's short-circuit, forwarded to ProtocolWire.bad and ProtocolWire.get",
+   "definitions": [
+    "def protocol.ChainSync.bad",
+    "def protocol.ChainSync.get"
+   ]
+  },
+  {
+   "reason": "adapters from this facade's point, tip and payload codecs to ChainSyncEngine's codec interfaces",
+   "definitions": [
+    "val protocol.ChainSync.enginePointCodec",
+    "val protocol.ChainSync.engineTipCodec",
+    "def protocol.ChainSync.enginePayloadCodec"
+   ]
+  },
+  {
+   "reason": "names under the Cardano facade for BlockFetchEngine's types, companions and values, with the point type fixed to ChainSync.Point; they decide nothing, and what they name is BlockFetchEngine's",
+   "definitions": [
+    "type protocol.BlockFetch.State",
+    "object protocol.BlockFetch.State",
+    "val protocol.BlockFetch.State.values",
+    "type protocol.BlockFetch.Role",
+    "object protocol.BlockFetch.Role",
+    "val protocol.BlockFetch.Role.values",
+    "type protocol.BlockFetch.Message",
+    "object protocol.BlockFetch.Message",
+    "object protocol.BlockFetch.Message.RequestRange",
+    "def protocol.BlockFetch.Message.RequestRange.apply",
+    "def protocol.BlockFetch.Message.RequestRange.unapply",
+    "type protocol.BlockFetch.PayloadCodec",
+    "type protocol.BlockFetch.Limits",
+    "val protocol.BlockFetch.Limits",
+    "type protocol.BlockFetch.TimeLimits",
+    "val protocol.BlockFetch.TimeLimits",
+    "type protocol.BlockFetch.RequestLimits",
+    "val protocol.BlockFetch.RequestLimits",
+    "type protocol.BlockFetch.Received",
+    "val protocol.BlockFetch.Received.Empty"
+   ]
+  },
+  {
+   "reason": "construction of an Amount inside Word8's range, the range of the reference's PeerSharingAmount, and its getAmount accessor; trusted narrows a value the decoder has already checked against Max",
+   "definitions": [
+    "object protocol.PeerSharing.Values.Amount",
+    "val protocol.PeerSharing.Values.Amount.Max",
+    "val protocol.PeerSharing.Values.Amount.Zero",
+    "def protocol.PeerSharing.Values.Amount.from",
+    "def protocol.PeerSharing.Values.Amount.trusted",
+    "def protocol.PeerSharing.Values.Amount.value"
+   ]
+  },
+  {
+   "reason": "Scala ordering of an Amount; the reference's PeerSharingAmount derives Ord",
+   "definitions": [
+    "given protocol.PeerSharing.Values.Amount.given_Ordering_Amount"
+   ]
+  },
+  {
+   "reason": "the unsigned words of an address on the wire: the reference takes Word32 from base and PortNumber (a Word16 on the wire, PeerSelection/PeerSharing/Codec.hs:15-19) from the network package, neither defined in ouroboros-network; these opaque types and their constructors only hold those ranges and convert from JVM integers",
+   "definitions": [
+    "type protocol.PeerSharing.Values.Word32",
+    "object protocol.PeerSharing.Values.Word32",
+    "val protocol.PeerSharing.Values.Word32.Max",
+    "def protocol.PeerSharing.Values.Word32.from",
+    "def protocol.PeerSharing.Values.Word32.trusted",
+    "def protocol.PeerSharing.Values.Word32.ofBits",
+    "def protocol.PeerSharing.Values.Word32.value",
+    "type protocol.PeerSharing.Values.Port",
+    "object protocol.PeerSharing.Values.Port",
+    "val protocol.PeerSharing.Values.Port.Max",
+    "def protocol.PeerSharing.Values.Port.from",
+    "def protocol.PeerSharing.Values.Port.trusted",
+    "def protocol.PeerSharing.Values.Port.value"
+   ]
+  },
+  {
+   "reason": "text of typed errors for logs, never sent on the wire; the reference's PeerSharingError derives Show",
+   "definitions": [
+    "def protocol.PeerSharing.Error#message",
+    "def protocol.PeerSharing.Violation#message",
+    "def protocol.Handshake.DecodeError#message"
+   ]
+  },
+  {
+   "reason": "conversion between Scarab's own types: decodePrefix's Decoding as the multiplexer's ChainSync.DecodeResult",
+   "definitions": [
+    "def protocol.PeerSharing.decoder"
+   ]
+  }
+ ]
+}

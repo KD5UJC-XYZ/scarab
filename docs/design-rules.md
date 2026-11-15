@@ -807,8 +807,12 @@ differ only where every observable result is identical
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** in the documents `scripts/check_docs.py` reads, it refuses a new citation of an upstream
-  version or revision that no registered pin covers (`UNREGISTERED_PIN`). In code, citations are review
-  only; a guard is planned.
+  version or revision that no registered pin covers (`UNREGISTERED_PIN`). In the five mirrored areas,
+  `scripts/check_correspondence.py` refuses a definition that is neither mapped to its counterpart at a registered
+  pin nor listed as glue, and a mapped definition whose code changed while its entry did not (the
+  [correspondence map](design/correspondence-map.md)). The definitions that existed when the map began are in a
+  baseline that only shrinks ([#1026](https://github.com/KD5UJC-XYZ/scarab/issues/1026)). A citation in a comment
+  is review only.
 - **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md).
 
 <a id="ref-7"></a>

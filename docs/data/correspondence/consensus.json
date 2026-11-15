@@ -1,0 +1,39 @@
+{
+ "_comment": "Consensus: Praos, TPraos and PBFT, chain selection, the hard-fork combinator's state and history, header rules (module consensus). Its reference is ouroboros-consensus, and cardano-ledger for the protocol rules (cardano-protocol-tpraos). docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "consensus",
+ "roots": [
+  "consensus/src/main/scala"
+ ],
+ "entries": {
+  "def consensus.HardForkConfig#check": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Protocol/EnvelopeChecks.hs",
+     "symbol": "envelopeCheck",
+     "lines": [
+      77,
+      91
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "checkHeaderProtVerTooHigh",
+     "lines": [
+      294,
+      312
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/935",
+   "note": "HeaderProtVerTooHigh is checked with the envelope here; the reference checks it in Conway's BBODY rule",
+   "digest": "ebaab53d9a99ed4c"
+  }
+ },
+ "glue": []
+}

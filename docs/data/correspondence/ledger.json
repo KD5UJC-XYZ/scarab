@@ -1,0 +1,29 @@
+{
+ "_comment": "Ledger: blocks, transactions, rules and state of every era (module ledger). Its reference is cardano-ledger. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "ledger",
+ "roots": [
+  "ledger/src/main/scala"
+ ],
+ "entries": {
+  "def ledger.byron.ByronLedger.applyTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/byron/ledger/impl/src/Cardano/Chain/UTxO/UTxO.hs",
+     "symbol": "txOutputUTxO",
+     "lines": [
+      176,
+      188
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/966",
+   "note": "the outputs a transaction creates are keyed by the hash of its bytes as received; the reference's txId is serializeCborHash of the transaction encoded again. The rule's other checks are not mapped here: the counterpart named is where the difference is",
+   "digest": "465b654b1a437b16"
+  }
+ },
+ "glue": []
+}
