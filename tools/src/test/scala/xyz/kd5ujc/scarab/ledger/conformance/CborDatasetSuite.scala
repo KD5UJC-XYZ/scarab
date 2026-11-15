@@ -312,11 +312,12 @@ class CborDatasetSuite extends FunSuite:
 
   /** For each rule written by a `ConwayCodecs` encoder: a valid sample written by hand, and the
     * bytes the reference writes it as at version 11. Where the encoder writes another form than the
-    * sample's, the two differ after the normal form too: a set gains tag 258, the voters and the
-    * languages come out in the order of their keys.
+    * sample's, the two differ after the normal form too: a set gains tag 258 (the owners of the
+    * pool registration, written untagged and out of order, and the certificates and proposal
+    * procedures), and the voters (a pool's vote before a committee member's, which `Ord Voter` puts
+    * first) and the languages come out in the order of their keys.
     */
   private val encoded = Vector(
-    // a pool registration, its owners a set written untagged and out of order
     (
       "certificate",
       "8a03581c" + "01" * 28 + "5820" + "02" * 32 + "011a1443fd00d81e820104581de0" + "03" * 28
@@ -331,7 +332,6 @@ class CborDatasetSuite extends FunSuite:
     ),
     ("voter", "8202581c" + k28, "8202581c" + k28),
     ("voting_procedure", "82028261615820" + "66" * 32, "82028261615820" + "66" * 32),
-    // a pool's vote before a committee member's, which `Ord Voter` puts first
     (
       "voting_procedures",
       "a2" + "8204581c" + p28 + "a1" + actionId + "8201f6" + "8200581c" + k28 + "a1" + actionId
@@ -381,6 +381,23 @@ class CborDatasetSuite extends FunSuite:
         s"$rule: the sample's own normal form would meet the expected bytes"
       )
       assertEquals(ran(rule, sample).map(_.map(_.hex)), Right(Right(expected)), rule)
+  }
+
+  /** A sample whose heads the encoder writes shorter and whose containers it writes definite, and
+    * the bytes it writes: forms the normal form erases, so the comparison with the expected bytes
+    * alone would not tell the encoder from the sample's own bytes. A script's outer pair is written
+    * by the encoder, the native script inside it as the bytes it was read with.
+    */
+  private val reframed = Vector(
+    ("script", "821800" + "8200581c" + k28, "8200" + "8200581c" + k28),
+    ("script", "82180343010203", "820343010203"),
+    ("metadatum", "bf015f41014102ff029f7f6161ffffff", "a20142010202816161")
+  )
+
+  test("a script and a metadatum are written from their values, not as the sample's bytes") {
+    for (rule, sample, written) <- reframed do
+      assertEquals(conway(rule, Kind.Valid, sample, Some(written)), Outcome.Met, s"$rule $sample")
+      assertEquals(ran(rule, sample).map(_.map(_.hex)), Right(Right(written)), s"$rule $sample")
   }
 
   test("a Conway block is written as the header and body segments it was read with") {
