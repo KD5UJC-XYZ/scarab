@@ -1966,9 +1966,14 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "note": "Conway's four instances in one object, given in each class's companion",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896116597",
+   "evidence": [
+    "EraPParamsSuite",
+    "ConwayPParamsStateSuite"
+   ],
+   "note": "Conway's four instances in one object, given in each class's companion; the instances' upgradePParamsHKD, downgradePParamsHKD, emptyUpgradePParamsUpdate and eraPParams are not here yet, nor the update's Plutus data (#85), and the members the reference confines to a range of eras are classes of their own",
    "digest": "5e5b60316008c237"
   },
   "trait ledger.era.AlonzoEraPParams": {
@@ -2098,8 +2103,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896247213",
+   "note": "the valid models (known languages) and the unknown ones (unknown tags) in one map by tag, a tag being in only one of the two; the reference's pair of maps orders differently, and a known language's evaluation context is the cost-model decoder's to check",
    "digest": "0b8021b1503689c9"
   },
   "type ledger.era.ExUnits": {
