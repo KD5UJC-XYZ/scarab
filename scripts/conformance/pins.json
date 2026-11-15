@@ -1,0 +1,39 @@
+{
+  "_comment": "The inputs of the node-diversity-conformance scenarios, pinned. scripts/conformance/run.py fetches each into a directory of its own and refuses one that does not match its pin: a Git source by its commit, a file by its sha256. The site and the ledger-rules dataset move together: dataset_commit is the Amaru commit that last changed the corpus the site's fixtures were taken from. Change a pin in a reviewed commit of its own.",
+  "site": {
+    "kind": "git",
+    "repository": "pragma-org/node-diversity-conformance",
+    "commit": "9dc68a750478335755d057288cc8978c117d7ac4",
+    "paths": ["scenarios"]
+  },
+  "ledger-rules-documents": {
+    "kind": "files",
+    "repository": "pragma-org/amaru",
+    "commit": "40ba995081b2b066cab497eade9abfbc0e350970",
+    "root": "crates/amaru-ledger/tests/data/transaction",
+    "files": {
+      "common/era-history/preprod-conway.json": "cdc28dc4cc8a33d30b82bb0191fa2dc74f40c39742d74c274a5093da9e103af3",
+      "common/protocol-parameters/preprod-287.json": "10ae2e7241772b116160be711c62fa9bec4559f21395030ec38d3b82a8402b50",
+      "common/protocol-parameters/preprod-conway-v10-no-v3-cost-models.json": "1bd993bac8ac2c9163bebccffd4343b372d2800fdf1986fa0654ce7e4cdcd59c",
+      "common/protocol-parameters/preprod-conway-v10-zero-cost-models.json": "b7939a6ed1681c77ae11bb3e1451bea8699145c0074f89d9ce86ae912a83dc81",
+      "common/protocol-parameters/preprod-conway-v10.json": "41938b54874101b6bf62d2dad6a0b98eadcbce70924987e8cfe885501898cb20",
+      "common/protocol-parameters/preprod-conway-v9-zero-cost-models.json": "c90a092471d571dfa3f1b5688b100aafe7616f296b841c9a3c8df14c8b75ec1f"
+    }
+  },
+  "uplc-conformance-corpus": {
+    "kind": "tarball",
+    "url": "https://pub-2239d82d9a074482b2eb2c886191cb4e.r2.dev/uplc-conformance.tar.zst",
+    "sha256": "8bd4ad4f9f4c8c6b8ffa1f06ed1db0b43043afbba77ef6a14bcfb5a52345ed3f"
+  },
+  "uplc-turbo-corpus": {
+    "kind": "tarball",
+    "url": "https://pub-2239d82d9a074482b2eb2c886191cb4e.r2.dev/turbo.tar.zst",
+    "sha256": "821af55e3323c826b5598c964d634b46dd468014834d0e97ebdc5edb0a158576"
+  },
+  "cbor-dataset": {
+    "kind": "git",
+    "repository": "r2rationality/cardano-cbor-dataset",
+    "commit": "ed6c49a4e273bb540a26c46d61c011974d0192f6",
+    "paths": ["dataset/conway", "dataset/dijkstra", "dataset/normalization"]
+  }
+}

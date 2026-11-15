@@ -97,3 +97,4 @@ Each topic of this guide has a page of its own; the section names below are the 
 | [Monitoring long runs](running/monitoring.md) | Monitoring long runs |
 | [Fuzzing the decoders](running/fuzzing.md) | Fuzzing the decoders (roadmap K3) |
 | [Capture and the devnet scenarios](running/devnet.md) | `capture`: recording blocks; Devnet scenarios (`scripts/devnet.py`) |
+| [Conformance reports for node-diversity-conformance](running/conformance.md) | Running a scenario locally; Names and the reports repository; Publishing on demand (and setting up the reports repository and its key); Moving to a newer corpus |
