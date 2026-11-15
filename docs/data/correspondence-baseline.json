@@ -8383,7 +8383,6 @@
    "def storage.haskell.state.ReferenceLayout#decode": null,
    "def storage.haskell.state.ReferenceLayout#decodeNative": null,
    "def storage.haskell.state.ReferenceLayout#encode": null,
-   "def storage.haskell.state.ReferenceLayout#layout": null,
    "def storage.haskell.state.ReferenceLayout#reads": null,
    "def storage.haskell.state.ReferenceLayout.of": null,
    "def storage.haskell.state.SnapshotBackend.named": null,
