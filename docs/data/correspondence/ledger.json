@@ -25,5 +25,14 @@
    "digest": "465b654b1a437b16"
   }
  },
- "glue": []
+ "glue": [
+  {
+   "reason": "the state layout of each reference build Scarab can follow, and the defect of a build whose layout is not implemented yet, which the node's setup refuses before any rule runs (#1002, stage 0); the reference is one build and has no counterpart",
+   "definitions": [
+    "class ledger.LedgerFailure.LayoutNotYet",
+    "def ledger.rules.Handover.layoutOf",
+    "def ledger.rules.Refuse.layout"
+   ]
+  }
+ ]
 }
