@@ -306,17 +306,25 @@ class LocalStateQuery:
     `deadline` (seconds, None for none) bounds the whole session from its start: every read of the
     handshake, an acquire or a query waits at most until then and otherwise raises `Deadline`, and the
     transport is terminated and reaped, so a node that keeps the connection open without answering
-    cannot hang the caller."""
+    cannot hang the caller. `until`, a `time.monotonic()` instant, bounds it instead by that instant, however
+    late the session starts: a session started after it raises `Deadline` at once."""
 
     VERSIONS = [32784 + i for i in range(0, 10)]
 
-    def __init__(self, container, socket, magic, host=False, version=None, deadline=None, relay="socat"):
+    def __init__(self, container, socket, magic, host=False, version=None, deadline=None, relay="socat",
+                 until=None):
         self.container, self.socket, self.magic, self.host = container, socket, magic, host
         self.version, self.relay = version, relay
-        self.deadline = deadline
+        self.deadline, self.until = deadline, until
 
     def __enter__(self):
-        self.expires = None if self.deadline is None else time.monotonic() + self.deadline
+        if self.until is not None:
+            left = self.until - time.monotonic()
+            if left <= 0:
+                raise Deadline(f"{self.socket}: the session's deadline passed before it started")
+            self.deadline, self.expires = left, self.until
+        else:
+            self.expires = None if self.deadline is None else time.monotonic() + self.deadline
         if self.host:
             self.proc = _HostSocket(self.socket, 120 if self.deadline is None else max(self.deadline, 0.001))
         else:
@@ -369,7 +377,8 @@ class LocalStateQuery:
         view = memoryview(data)
         while view:
             remaining = self.expires - time.monotonic()
-            if remaining <= 0 or not select.select([], [self.proc.stdin], [], remaining)[1]:
+            if remaining <= 0 or not select.select([], [self.proc.stdin], [], remaining)[1] \
+                    or time.monotonic() >= self.expires:
                 raise Deadline(f"{self.socket} took no write within {self.deadline} s")
             try:
                 view = view[os.write(self.proc.stdin.fileno(), view):]

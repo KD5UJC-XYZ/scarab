@@ -171,11 +171,13 @@ class FakeNode:
 class FakeSession:
     nodes = {}
 
-    def __init__(self, container, socket, magic, host=False, version=None, deadline=None):
-        self.node, self.version = self.nodes["scala" if host else "reference"], version
+    def __init__(self, container, socket, magic, host=False, version=None, deadline=None, until=None):
+        self.node, self.version, self.until = self.nodes["scala" if host else "reference"], version, until
         self.closed, self.pending, self.last_raw = False, None, None
 
     def __enter__(self):
+        if self.until is not None and time.monotonic() >= self.until:
+            raise ntcquery.Deadline("the session's deadline passed before it started")
         self.node.opened += 1
         self.node.sessions.append(self)
         self.agreed_version = self.version or self.node.version
@@ -575,6 +577,55 @@ class AtPointTest(unittest.TestCase):
         sender.join(10)
         self.assertFalse(sender.is_alive())
         self.assertEqual(len(outcome), 1)
+
+    def test_a_write_the_transport_takes_only_after_the_deadline_is_not_made(self):
+        # the transport becomes writable, but only once the deadline has passed: nothing is written
+        near, far = socket.socketpair()
+        self.addCleanup(near.close)
+        self.addCleanup(far.close)
+        session = ntcquery.LocalStateQuery(None, "node.socket", 1, host=True, deadline=1)
+        session.proc = type("Transport", (), {"stdin": near, "fileno": near.fileno, "flush": lambda: None})()
+        session.expires = 1
+        clock = iter([0, 2])
+        with mock.patch.object(ntcquery.time, "monotonic", side_effect=lambda: next(clock)), \
+                mock.patch.object(ntcquery.select, "select", return_value=([], [near], [])):
+            with self.assertRaises(ntcquery.Deadline):
+                session._write(b"frame")
+        far.setblocking(False)
+        with self.assertRaises(BlockingIOError):
+            far.recv(1)
+
+    def test_a_session_ends_by_the_instant_it_was_given_however_late_it_starts(self):
+        class Transport:
+            def __init__(self, path, timeout=120):
+                self.timeout = timeout
+                raise ConnectionRefusedError("no listener")
+
+        started = time.monotonic()
+        late = ntcquery.LocalStateQuery(None, "node.socket", 1, host=True, until=started - 1)
+        with self.assertRaises(ntcquery.Deadline):
+            late.__enter__()
+        session = ntcquery.LocalStateQuery(None, "node.socket", 1, host=True, until=started + 60)
+        with mock.patch.object(ntcquery, "_HostSocket", Transport), self.assertRaises(ConnectionRefusedError):
+            session.__enter__()
+        # the expiry is the instant given, not one counted from when the session started
+        self.assertEqual(session.expires, started + 60)
+        self.assertLessEqual(session.deadline, 60)
+
+    def test_a_query_is_not_sent_on_a_session_acquired_past_the_rounds_deadline(self):
+        node = FakeNode(5)
+        FakeSession.nodes = {"reference": node}
+        at = ntcqueries.AtPoint(lambda: Expiring(None, None, None), POINT, expires=float("inf"))
+
+        class Expiring(FakeSession):
+            def acquire(self, point=None):
+                super().acquire(point)
+                at.expires = 0  # the acquisition took the rest of the round
+
+        with self.assertRaises(ntcquery.Deadline):
+            at.ask(ntcqueries.hfc([1], 5))
+        self.assertEqual(node.sent, [])
+        at.close()
 
     def test_a_host_session_connects_and_writes_within_its_deadline(self):
         timeouts = []

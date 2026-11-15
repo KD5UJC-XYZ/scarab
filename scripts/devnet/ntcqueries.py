@@ -361,6 +361,7 @@ class AtPoint:
         while True:
             self.check()
             session = self.session()
+            self.check()  # a session acquired late may have taken the rest of the round
             try:
                 session._send(7, enc([3, query]))
             except CLOSED:
@@ -519,18 +520,12 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
     at the latest (`ntcquery.Deadline`), however late it was acquired."""
     expires = time.monotonic() + DEADLINE
 
-    def remaining():
-        """The seconds left of the round, a session's deadline; `ntcquery.Deadline` once none are."""
-        left = expires - time.monotonic()
-        if left <= 0:
-            raise ntcquery.Deadline("the round's deadline passed")
-        return left
-
+    # every session ends by the round's own deadline, however late it starts (`until`)
     def reference(version=None):
-        return ntcquery.LocalStateQuery(f"{name}-ref", ref_socket, MAGIC, version=version, deadline=remaining())
+        return ntcquery.LocalStateQuery(f"{name}-ref", ref_socket, MAGIC, version=version, until=expires)
 
     def scala(version=None):
-        return ntcquery.LocalStateQuery(None, scala_socket, MAGIC, host=True, version=version, deadline=remaining())
+        return ntcquery.LocalStateQuery(None, scala_socket, MAGIC, host=True, version=version, until=expires)
 
     current_era = [0, [2, [1]]]
     gate = threading.BoundedSemaphore(SCALA_CONNECTIONS)
