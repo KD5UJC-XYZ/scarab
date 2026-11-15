@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.warts
+
+import org.wartremover.{WartTraverser, WartUniverse}
+
+/** A `String` that decides control flow (STR-3): an equality between two strings, a `startsWith`,
+  * `endsWith`, `contains` or `matches` on a string, a regex match, a `match` on a string with
+  * literal string patterns, and a lookup in a `Map[String, _]` or a `Set[String]` by a key that is
+  * not a literal. Each message starts with the kind of site, so counts split by it.
+  *
+  * Not sites, because no decision of the program depends on the text:
+  *   - a value of an opaque type, although a `String` underlies it, inside the type's own scope: it
+  *     is a typed value (`JsonKey`);
+  *   - the equality of a type that holds a string: the body of `equals`, and of a function of two
+  *     values of the same type, not `String`, to `Boolean` (`sameLabel(x: Value, y: Value)`); other
+  *     kinds are sites there;
+  *   - the condition of an `if`, and a `match`, whose value is a `String`: the text decides only
+  *     which text is written;
+  *   - the lookup of an upsert, `m.updated(k, … m.get(k) …)`, which is `updatedWith`;
+  *   - a macro implementation (a definition that takes `Quotes`), which runs in the compiler;
+  *   - code the compiler made (an enum's `valueOf`); a lambda's body is user code, although its
+  *     owner is synthetic too.
+  */
+object StringControlFlow extends WartTraverser:
+
+  private val equalities = Set("==", "!=", "equals", "equalsIgnoreCase")
+  private val predicates = Set("startsWith", "endsWith", "contains", "matches")
+  private val lookups = Set("get", "apply", "contains", "getOrElse")
+  private val regexOwners = Set(
+    "scala.util.matching.Regex",
+    "scala.util.matching.UnanchoredRegex",
+    "java.util.regex.Pattern",
+    "java.util.regex.Matcher"
+  )
+  private val regexMatches = Set(
+    "findFirstIn",
+    "findFirstMatchIn",
+    "findAllIn",
+    "findAllMatchIn",
+    "findPrefixOf",
+    "findPrefixMatchOf",
+    "matches",
+    "unapplySeq",
+    "matcher",
+    "find",
+    "lookingAt"
+  )
+
+  def apply(u: WartUniverse): u.Traverser =
+    new u.Traverser(this):
+      import q.reflect.*
+
+      private val string = TypeRepr.of[String]
+      private val stringOps = TypeRepr.of[scala.collection.StringOps]
+      private val mapClass = TypeRepr.of[scala.collection.Map[Any, Any]].typeSymbol
+      private val setClass = TypeRepr.of[scala.collection.Set[Any]].typeSymbol
+
+      private def opaque(t: TypeRepr): Boolean =
+        t.widen.dealiasKeepOpaques match
+          case r: TypeRef => r.typeSymbol.flags.is(Flags.Opaque)
+          case _          => false
+
+      private def stringType(t: TypeRepr): Boolean =
+        val w = t.widen
+        !opaque(w) && w <:< string && !(w <:< TypeRepr.of[Null]) && !(w =:= TypeRepr.of[Nothing])
+
+      private def isString(t: Term): Boolean = stringType(t.tpe)
+
+      private def stringKeyed(t: Term): Boolean =
+        val w = t.tpe.widen
+        def keyOf(base: Symbol): Option[TypeRepr] =
+          w.baseType(base) match
+            case AppliedType(_, key :: _) => Some(key)
+            case _                        => None
+        !opaque(w) && !(w =:= TypeRepr.of[Nothing]) && !(w <:< TypeRepr.of[Null]) &&
+        keyOf(mapClass).orElse(keyOf(setClass)).exists(stringType)
+
+      private def isLiteral(t: Term): Boolean =
+        Trees.strip(t) match
+          case Literal(_) => true
+          case _          => false
+
+      private def stringPattern(p: Tree): Boolean = p match
+        case Literal(StringConstant(_)) => true
+        case Alternatives(ps)           => ps.exists(stringPattern)
+        case Bind(_, b)                 => stringPattern(b)
+        case _                          => false
+
+      /** The body of `equals`, or of a function of two values of one type other than `String` to
+        * `Boolean`.
+        */
+      private def equalityDefinition(d: DefDef): Boolean =
+        val explicit = d.termParamss.filterNot(_.isImplicit).flatMap(_.params)
+        d.name == "equals" || (d.returnTpt.tpe =:= TypeRepr.of[Boolean] && (explicit match
+          case List(a, b) => a.tpt.tpe =:= b.tpt.tpe && !stringType(a.tpt.tpe)
+          case _          => false))
+
+      private def macroImplementation(d: DefDef): Boolean =
+        d.termParamss.exists(_.params.exists(_.tpt.tpe <:< TypeRepr.of[scala.quoted.Quotes]))
+
+      private def stable(t: Term): Option[Symbol] =
+        Trees.strip(t) match
+          case r: Ref => Some(r.symbol)
+          case _      => None
+
+      /** Where a site is: in the body of an equality definition, and in the value of an upsert of a
+        * map by a key (both as symbols).
+        */
+      private final case class Context(equality: Boolean, upserts: Set[(Symbol, Symbol)])
+
+      private def kind(context: Context)(tree: Tree): Option[String] = tree match
+        case Apply(Select(lhs, op), List(rhs))
+            if equalities(op) && !context.equality && isString(lhs) && isString(rhs) =>
+          Some("string-equality")
+        case Select(recv, m) if predicates(m) && (isString(recv) || recv.tpe.widen <:< stringOps) =>
+          Some("string-predicate")
+        case s: Select if regexMatches(s.name) && regexOwners(Trees.plainName(s.symbol.owner)) =>
+          Some("regex-match")
+        case m @ Match(scrutinee, cases)
+            if isString(scrutinee) && !isString(m) && cases.exists(c => stringPattern(c.pattern)) =>
+          Some("string-match")
+        case Apply(Select(recv, m), key :: _)
+            if lookups(m) && stringKeyed(recv) && !isLiteral(key) =>
+          Option.unless(upsert(context)(recv, key))("string-keyed-lookup")
+        case Apply(TypeApply(Select(recv, m), _), key :: _)
+            if lookups(m) && stringKeyed(recv) && !isLiteral(key) =>
+          Option.unless(upsert(context)(recv, key))("string-keyed-lookup")
+        case _ => None
+
+      private def upsert(context: Context)(map: Term, key: Term): Boolean =
+        stable(map).zip(stable(key)).exists(context.upserts)
+
+      /** `m.updated(k, v)`, with its type argument or without. */
+      private object Updated:
+        def unapply(t: Tree): Option[(Term, Term, Term)] = t match
+          case Apply(Select(map, "updated"), List(key, value)) => Some((map, key, value))
+          case Apply(TypeApply(Select(map, "updated"), _), List(key, value)) =>
+            Some((map, key, value))
+          case _ => None
+
+      private def walk(context: Context): u.Traverser =
+        new u.Traverser(StringControlFlow.this):
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+            tree match
+              case t if hasWartAnnotation(t)           => ()
+              case d: DefDef if macroImplementation(d) => ()
+              case d: DefDef if !context.equality && equalityDefinition(d) =>
+                walk(context.copy(equality = true)).traverseTree(d)(owner)
+              case i @ If(_, thenp, elsep) if isString(i) =>
+                traverseTree(thenp)(owner)
+                traverseTree(elsep)(owner)
+              case Updated(map, key, value) if stringKeyed(map) =>
+                traverseTree(map)(owner)
+                traverseTree(key)(owner)
+                stable(map).zip(stable(key)) match
+                  case Some(pair) =>
+                    walk(context.copy(upserts = context.upserts + pair)).traverseTree(value)(owner)
+                  case None => traverseTree(value)(owner)
+              case _ if owner.flags.is(Flags.Synthetic) && !owner.isAnonymousFunction =>
+                super.traverseTree(tree)(owner)
+              case _ =>
+                kind(context)(tree).foreach(k => error(tree.pos, s"$k: ${Rules.Str3}"))
+                super.traverseTree(tree)(owner)
+
+      override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+        walk(Context(equality = false, upserts = Set.empty)).traverseTree(tree)(owner)

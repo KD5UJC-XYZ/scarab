@@ -1,6 +1,7 @@
 {
   "_comment": "Source of the generated docs/codemap.md. Entry points are names, never line numbers; suites are class names under src/test. Checked by scripts/render_codemap.py --check.",
   "modules": {
+    "warts": "The design rules' own WartRemover warts, compiled against this Scala version's WartRemover and loaded by every module's compiler: build tooling, never shipped",
     "codec": "CBOR with original bytes, exact rationals",
     "crypto": "Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational certificates",
     "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
@@ -1690,6 +1691,26 @@
       ],
       "suites": [],
       "docs": []
+    },
+    {
+      "module": "warts",
+      "path": "warts",
+      "responsibility": "SystemTimeAndUnsafeRun (EFF-5, EFF-6, ERR-4), StringControlFlow (STR-3) and FloatingPointInLedger (ARI-1), errors in main sources; `Rules`, the rule each message names",
+      "entryPoints": [
+        "SystemTimeAndUnsafeRun",
+        "StringControlFlow",
+        "FloatingPointInLedger",
+        "Rules"
+      ],
+      "suites": [
+        "SystemTimeAndUnsafeRunSuite",
+        "StringControlFlowSuite",
+        "FloatingPointInLedgerSuite",
+        "DisallowedWartsSuite"
+      ],
+      "docs": [
+        "docs/design-rules.md"
+      ]
     }
   ]
 }

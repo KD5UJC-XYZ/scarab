@@ -80,10 +80,12 @@ object Dependencies {
     val munitTest = "org.scalameta" %% "munit" % V.munit % Test
     val monocleLawTest = "dev.optics" %% "monocle-law" % V.monocle % Test
     val circeParserTest = "io.circe" %% "circe-parser" % V.circe % Test
-    // WartRemover's test traverser, at the version of the sbt plugin, for the suite that shows each
-    // disallowed wart fires (tools tests).
-    val wartremoverTest =
-      ("org.wartremover" % "wartremover" % wartremover.Wart.PluginVersion).cross(CrossVersion.full) % Test
+    // WartRemover, at the version of the sbt plugin and for this exact Scala version: the API the design
+    // rules' own warts are written against (`warts`), and its test traverser, for the suites that show each
+    // disallowed wart fires (warts and tools tests).
+    val wartremoverApi =
+      ("org.wartremover" % "wartremover" % wartremover.Wart.PluginVersion).cross(CrossVersion.full)
+    val wartremoverTest = wartremoverApi % Test
   }
 
   // Scala 3 has no compiler plugins in use here: better-monadic-for and kind-projector (the two of

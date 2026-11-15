@@ -25,6 +25,7 @@ a cycle does not load.
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 | `tools` | Benchmarks, probes and fixture writers run by hand (`tools/runMain <class>`); not published | `IO` at entry points; pure helpers |
+| `warts` | The design rules' own WartRemover warts (`SystemTimeAndUnsafeRun`, `StringControlFlow`, `FloatingPointInLedger`), which the compiler of every other module loads; build tooling, not published | Compiler-plugin code |
 
 The dependency graph, generated from `build.sbt`, is the first section of the [code map](../codemap.md).
 

@@ -147,6 +147,21 @@ def scarab(id: String, dir: String = null): Project =
       libraryDependencies ++= testDependencies
     )
 
+// The design rules' own warts (above), compiled against the WartRemover artifact of this Scala version, as
+// WartRemover's own example of a project of custom warts does for Scala 3. It is build tooling: its code runs in
+// the compiler, so the warts it defines do not run on it, and it ships nothing.
+lazy val warts = project
+  .in(file("warts"))
+  .disablePlugins(TpolecatPlugin)
+  .settings(
+    name := "scarab-warts",
+    libraryDependencies ++= Seq(
+      Libraries.wartremoverApi,
+      Libraries.catsEffect % Test,
+      Libraries.munitTest
+    )
+  )
+
 // CBOR with original-bytes preservation, the byte-string type and exact rationals.
 lazy val codec = scarab("codec")
   .settings(
@@ -575,6 +590,7 @@ lazy val root = project
   .in(file("."))
   .disablePlugins(TpolecatPlugin)
   .aggregate(
+    warts,
     codec,
     crypto,
     protocol,
@@ -643,6 +659,7 @@ lazy val root = project
   )
 
 val modules = Seq(
+  "warts",
   "codec",
   "crypto",
   "protocol",
