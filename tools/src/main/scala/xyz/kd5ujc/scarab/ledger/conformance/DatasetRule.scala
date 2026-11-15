@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolRelayError,
   VotingProcedures
 }
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** Why Scarab refuses a sample of a rule: the typed cause of the production decoder, or the form
@@ -61,6 +62,11 @@ enum Unwritten:
   /** The bytes a native script is hashed over are not its encoding. */
   case HashMismatch
 
+  /** The production encoder refuses the decoded value (`Codec.check`): it cannot write it as the
+    * reference would.
+    */
+  case Refused(cause: ConstraintViolation)
+
   case Syntax(cause: Cbor.Error)
   case Defect(cause: Throwable)
 
@@ -69,6 +75,7 @@ enum Unwritten:
     case NotKept        => "decoded; the value does not keep its original bytes"
     case NotFound(path) => s"the parent's production encoding has no item at ${path.mkString("/")}"
     case HashMismatch   => "the script hash is not over the bytes kept"
+    case Refused(cause) => s"the production encoder refuses the decoded value: ${cause.render}"
     case Syntax(cause)  => s"the production encoding does not read as CBOR: $cause"
     case Defect(failure) =>
       s"the encoder raised ${failure.getClass.getName}: ${failure.getMessage}"

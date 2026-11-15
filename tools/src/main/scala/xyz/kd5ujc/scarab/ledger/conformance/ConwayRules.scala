@@ -39,7 +39,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Witnesses
 }
 import xyz.kd5ujc.scarab.ledger.state.{Coin, ProtVer, Word64}
-import xyz.kd5ujc.scarab.models.runtime.{Codec, Writer}
+import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, Wire}
@@ -122,15 +122,14 @@ object ConwayRules:
   private def ledger[A](r: Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, A]) =
     r.leftMap(Refusal.Ledger(_))
 
-  /** The bytes `codec` writes `a` as. */
+  /** The bytes `codec` writes `a` as, through its check ([[Codec.write]]): a value the codec
+    * refuses is not written.
+    */
   def written[A](codec: Codec[A])(a: A): Either[Unwritten, Bytes] =
     Either
-      .catchNonFatal {
-        val out = new Writer
-        codec.encode(a, out)
-        out.result
-      }
+      .catchNonFatal(codec.write(a))
       .leftMap(Unwritten.Defect(_))
+      .flatMap(_.leftMap(Unwritten.Refused(_)))
 
   private def present[A](o: Option[A]): Either[Refusal, A] = o.toRight(Refusal.Form(Shape.Present))
 

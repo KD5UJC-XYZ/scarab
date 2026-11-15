@@ -298,6 +298,14 @@ class CborDatasetSuite extends FunSuite:
       case _                                  => false)
   }
 
+  test("a value the production encoder refuses is a typed refusal, never written") {
+    import xyz.kd5ujc.scarab.ledger.Voter
+    import xyz.kd5ujc.scarab.storage.haskell.state.ConwayCodecs
+    assert(ConwayRules.written(ConwayCodecs.voter)(Voter.Pool(hex("00"))) match
+      case Left(Unwritten.Refused(_)) => true
+      case _                          => false)
+  }
+
   test("a rule Scarab has no decoder of fails every sample, valid or invalid") {
     for kind <- Kind.values do
       assert(conway("language", kind, "00", Some("00")) match
