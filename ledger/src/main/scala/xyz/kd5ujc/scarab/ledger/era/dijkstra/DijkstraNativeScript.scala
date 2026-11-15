@@ -47,7 +47,9 @@ final class DijkstraNativeScript private (
     */
   lazy val hash: Bytes = Blake2b.hash224.hash(DijkstraNativeScript.nativeTag ++ raw)
 
-  /** `getRequireSignature` (`getDijkstraRequireSignature`, `Scripts.hs:620-622`). */
+  /** `getRequireSignature` (`getDijkstraRequireSignature`, `Scripts.hs:620-622`, cardano-ledger
+    * 9df9f98c).
+    */
   def getRequireSignature: Option[Bytes] = form match
     case DijkstraNativeScript.Form.RequireSignature(h) => Some(h)
     case DijkstraNativeScript.Form.RequireAllOf(_) | DijkstraNativeScript.Form.RequireAnyOf(_) |
@@ -55,7 +57,8 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeExpire(_) | DijkstraNativeScript.Form.RequireGuard(_) =>
       None
 
-  /** `getRequireAllOf` (`getDijkstraRequireAllOf`, `Scripts.hs:628-630`). */
+  /** `getRequireAllOf` (`getDijkstraRequireAllOf`, `Scripts.hs:628-630`, cardano-ledger 9df9f98c).
+    */
   def getRequireAllOf: Option[Vector[DijkstraNativeScript]] = form match
     case DijkstraNativeScript.Form.RequireAllOf(ss) => Some(ss)
     case DijkstraNativeScript.Form.RequireSignature(_) | DijkstraNativeScript.Form.RequireAnyOf(_) |
@@ -63,7 +66,8 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeExpire(_) | DijkstraNativeScript.Form.RequireGuard(_) =>
       None
 
-  /** `getRequireAnyOf` (`getDijkstraRequireAnyOf`, `Scripts.hs:636-638`). */
+  /** `getRequireAnyOf` (`getDijkstraRequireAnyOf`, `Scripts.hs:636-638`, cardano-ledger 9df9f98c).
+    */
   def getRequireAnyOf: Option[Vector[DijkstraNativeScript]] = form match
     case DijkstraNativeScript.Form.RequireAnyOf(ss) => Some(ss)
     case DijkstraNativeScript.Form.RequireSignature(_) | DijkstraNativeScript.Form.RequireAllOf(_) |
@@ -71,8 +75,8 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeExpire(_) | DijkstraNativeScript.Form.RequireGuard(_) =>
       None
 
-  /** `getRequireMOf` (`getDijkstraRequireMOf`, `Scripts.hs:644-647`): the count is an `Int`, a
-    * 64-bit signed value, negative allowed.
+  /** `getRequireMOf` (`getDijkstraRequireMOf`, `Scripts.hs:644-647`, cardano-ledger 9df9f98c): the
+    * count is an `Int`, a 64-bit signed value, negative allowed.
     */
   def getRequireMOf: Option[(BigInt, Vector[DijkstraNativeScript])] = form match
     case DijkstraNativeScript.Form.RequireMOf(m, ss) => Some((BigInt(m), ss))
@@ -81,7 +85,9 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeExpire(_) | DijkstraNativeScript.Form.RequireGuard(_) =>
       None
 
-  /** `getTimeStart` (`getDijkstraTimeStart`, `Scripts.hs:652-654`): a `Word64` slot. */
+  /** `getTimeStart` (`getDijkstraTimeStart`, `Scripts.hs:652-654`, cardano-ledger 9df9f98c): a
+    * `Word64` slot.
+    */
   def getTimeStart: Option[BigInt] = form match
     case DijkstraNativeScript.Form.TimeStart(slot) => Some(slot)
     case DijkstraNativeScript.Form.RequireSignature(_) | DijkstraNativeScript.Form.RequireAllOf(_) |
@@ -89,7 +95,9 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeExpire(_) | DijkstraNativeScript.Form.RequireGuard(_) =>
       None
 
-  /** `getTimeExpire` (`getDijkstraTimeExpire`, `Scripts.hs:659-661`): a `Word64` slot. */
+  /** `getTimeExpire` (`getDijkstraTimeExpire`, `Scripts.hs:659-661`, cardano-ledger 9df9f98c): a
+    * `Word64` slot.
+    */
   def getTimeExpire: Option[BigInt] = form match
     case DijkstraNativeScript.Form.TimeExpire(slot) => Some(slot)
     case DijkstraNativeScript.Form.RequireSignature(_) | DijkstraNativeScript.Form.RequireAllOf(_) |
@@ -97,8 +105,9 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeStart(_) | DijkstraNativeScript.Form.RequireGuard(_) =>
       None
 
-  /** `getRequireGuard` (`getDijkstraRequireGuard`, `Scripts.hs:666-668`). Dijkstra's script class,
-    * `DijkstraEraScript`, which also has the guarding purpose, is not here yet (#85).
+  /** `getRequireGuard` (`getDijkstraRequireGuard`, `Scripts.hs:666-668`, cardano-ledger 9df9f98c).
+    * Dijkstra's script class, `DijkstraEraScript`, which also has the guarding purpose, is not here
+    * yet (#85).
     */
   def getRequireGuard: Option[Credential] = form match
     case DijkstraNativeScript.Form.RequireGuard(c) => Some(c)
