@@ -18,8 +18,8 @@ import org.wartremover.{WartTraverser, WartUniverse}
   *     sites there;
   *   - the condition of an `if`, and a `match`, whose value is a `String` and whose every branch is
   *     built on a String the condition reads by the String's own operations (`if node.contains('.')
-  *     then node else node.take(8)`; an immutable alias of the path counts as the path): it chooses
-  *     between forms of the same text;
+  *     then node else node.take(8)`; an immutable alias of the path that no override can replace
+  *     counts as the path): it chooses between forms of the same text;
   *   - the lookup of an upsert, `m.updated(k, … m.get(k) …)` with the same path `m` and key `k`,
   *     which is `updatedWith`;
   *   - a macro implementation (a definition that takes `Quotes`), which runs in the compiler;
@@ -156,8 +156,23 @@ object StringControlFlow extends WartTraverser:
               foldOverTree(found ++ stable(r).toList, tree)(owner)
             case _ => foldOverTree(found, tree)(owner)
 
-      /** The immutable `val` s bound to a stable path (`val same = role`), so that a path through
-        * one is the path it names.
+      /** Whether dispatch cannot replace `s`: a local value, or a member that is final or private,
+        * or whose class is final, an object, or sealed with no subclass.
+        */
+      private def fixed(s: Symbol): Boolean =
+        val owner = s.owner
+        !owner.isClassDef || s.flags.is(Flags.Final) || s.flags.is(Flags.Private) ||
+        owner.flags.is(Flags.Final) || owner.flags.is(Flags.Module) ||
+        (owner.flags.is(Flags.Sealed) && owner.children.isEmpty)
+
+      /** Whether each step of a path is a value that does not change once read: a class's `this`, a
+        * parameter, a `val` or an object, not a method or a `var`.
+        */
+      private def steady(path: List[Symbol]): Boolean =
+        path.forall(s => s.isClassDef || !(s.flags.is(Flags.Method) || s.flags.is(Flags.Mutable)))
+
+      /** The immutable `val` s bound to a stable path of such values (`val same = role`) that no
+        * override can replace, so that a path through one is the path it names.
         */
       private def aliasesOf(root: Tree, owner: Symbol): Map[Symbol, List[Symbol]] =
         val accumulator = new TreeAccumulator[Map[Symbol, List[Symbol]]]:
@@ -165,8 +180,10 @@ object StringControlFlow extends WartTraverser:
               o: Symbol
           ): Map[Symbol, List[Symbol]] =
             tree match
-              case v @ ValDef(_, _, Some(rhs)) if !v.symbol.flags.is(Flags.Mutable) =>
-                foldOverTree(stable(rhs).fold(found)(path => found + (v.symbol -> path)), tree)(o)
+              case v @ ValDef(_, _, Some(rhs))
+                  if !v.symbol.flags.is(Flags.Mutable) && fixed(v.symbol) =>
+                val named = stable(rhs).filter(steady)
+                foldOverTree(named.fold(found)(path => found + (v.symbol -> path)), tree)(o)
               case _ => foldOverTree(found, tree)(o)
         accumulator.foldTree(Map.empty, root)(owner)
 

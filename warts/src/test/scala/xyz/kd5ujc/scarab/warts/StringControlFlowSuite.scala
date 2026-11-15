@@ -332,3 +332,22 @@ class StringControlFlowSuite extends munit.FunSuite:
       (Holder(Cell("a")).trimmed, Holder(Cell("a")).other(Holder(Cell("b"))), Outer(Cell("a")))
     }
     assertEquals(kinds(r), List("string-predicate", "string-predicate"))
+
+  test("a member alias a subclass can override is not its path; in a final class it is"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final class Cell(val text: String)
+      class Holder(val cell: Cell):
+        val same: Cell = this.cell
+        def chosen: String =
+          if this.cell.text.endsWith(".") then this.same.text.dropRight(1)
+          else this.same.text
+      class Other(c: Cell, override val same: Cell) extends Holder(c)
+      final class Fixed(val cell: Cell):
+        val same: Cell = this.cell
+        def chosen: String =
+          if this.cell.text.endsWith(".") then this.same.text.dropRight(1)
+          else this.same.text
+      (Other(Cell("a."), Cell("xyz")).chosen, Fixed(Cell("a")).chosen)
+    }
+    assertEquals(kinds(r), List("string-predicate"))
+
