@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.ScriptKind
 
 /** A Plutus language (`data Language`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs`), as a type, so a script's
@@ -19,18 +18,26 @@ object Language:
   * cardano-ledger f649f975).
   */
 trait PlutusLanguage[L <: Language]:
-  /** The language's kind, whose tag is the script's hash prefix (`plutusLanguageTag`,
-    * `Plutus/Language.hs:468`, cardano-ledger f649f975).
+  /** The language as a value (`plutusLanguage`), the reference's `Language` with its four languages
+    * (`Plutus/Language.hs:272-277`, cardano-ledger f649f975).
     */
-  def kind: ScriptKind
+  def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage
+
+  /** The script's hash prefix (`plutusLanguageTag`, `Plutus/Language.hs:468`, cardano-ledger
+    * f649f975): one more than the language's index.
+    */
+  final def tag: Byte = (language.id + 1).toByte
 
 object PlutusLanguage:
   given v1: PlutusLanguage[Language.PlutusV1] with
-    def kind: ScriptKind = ScriptKind.PlutusV1
+    def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1
   given v2: PlutusLanguage[Language.PlutusV2] with
-    def kind: ScriptKind = ScriptKind.PlutusV2
+    def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.V2
   given v3: PlutusLanguage[Language.PlutusV3] with
-    def kind: ScriptKind = ScriptKind.PlutusV3
+    def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3
 
 /** A Plutus script of language `L`: its bytes (`newtype Plutus (l :: Language)`,
   * `Plutus/Language.hs:180-183`, cardano-ledger f649f975). The language is shared by the eras that

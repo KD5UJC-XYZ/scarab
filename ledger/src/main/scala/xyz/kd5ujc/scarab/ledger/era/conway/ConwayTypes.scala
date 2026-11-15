@@ -158,7 +158,8 @@ object ConwayScript:
       case AlonzoScriptRep.PlutusScript(_) => None
     override def fromNativeScript(native: ConwayTimelock): ConwayScript =
       AlonzoScriptRep.NativeScript(native)
-    override def eraMaxLanguage: ScriptKind = ScriptKind.PlutusV3
+    override def eraMaxLanguage: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3
     override def toPlutusScript(script: ConwayScript): Option[ConwayPlutusScript] = script match
       case AlonzoScriptRep.PlutusScript(p) => Some(p)
       case AlonzoScriptRep.NativeScript(_) => None

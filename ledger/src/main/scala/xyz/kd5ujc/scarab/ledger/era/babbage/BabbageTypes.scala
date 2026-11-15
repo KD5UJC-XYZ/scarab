@@ -106,7 +106,8 @@ object BabbageScript:
       case AlonzoScriptRep.PlutusScript(_) => None
     override def fromNativeScript(native: BabbageTimelock): BabbageScript =
       AlonzoScriptRep.NativeScript(native)
-    override def eraMaxLanguage: ScriptKind = ScriptKind.PlutusV2
+    override def eraMaxLanguage: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.V2
     override def toPlutusScript(script: BabbageScript): Option[BabbagePlutusScript] = script match
       case AlonzoScriptRep.PlutusScript(p) => Some(p)
       case AlonzoScriptRep.NativeScript(_) => None

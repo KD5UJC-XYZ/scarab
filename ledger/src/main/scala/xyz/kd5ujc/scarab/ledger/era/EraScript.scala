@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{NativeScript as FlatNativeScript, ScriptKind, Unsigned, Voter}
+import xyz.kd5ujc.scarab.ledger.{NativeScript as FlatNativeScript, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
 
 /** The scripts of era `E` (`EraScript`, cardano-ledger f649f975
@@ -62,8 +62,8 @@ trait AllegraEraScript[E <: EraTag] extends ShelleyEraScript[E]:
   * on #85).
   */
 trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
-  /** The newest language of the era (`eraMaxLanguage`). */
-  def eraMaxLanguage: ScriptKind
+  /** The newest language of the era (`eraMaxLanguage`), one of the reference's `Language`. */
+  def eraMaxLanguage: xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
   def toPlutusScript(script: Script[E]): Option[PlutusScript[E]]
   def fromPlutusScript(plutus: PlutusScript[E]): Script[E]

@@ -483,7 +483,7 @@ class EraConwaySuite extends munit.FunSuite:
         flat.body.collateral.sorted
       )
       assertEquals(tx.witsOf.rdmrsTxWits(tx.wits[TxLevel.Top](c)).raw, flat.witnesses.redeemersRaw)
-      assertEquals(tx.witsOf.scriptsOf.eraMaxLanguage, ScriptKind.PlutusV3)
+      assertEquals(tx.witsOf.scriptsOf.eraMaxLanguage, xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3)
     }
   }
 
