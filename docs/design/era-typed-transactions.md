@@ -395,7 +395,11 @@ passes `check`.
   witness equals the one the flat rules ask for. A pool registration's parameters are equal when their
   relays and metadata mean the same, as the reference's derived `Eq StakePoolParams` compares them, though the
   bytes they were read from are kept. Deposits and refunds are `Coin`. The certificate classes are
-  `EraTxCert`, `ShelleyEraTxCert` and `ConwayEraTxCert`, each reader with its builder. The reference's genesis-delegation and instantaneous-reward
+  `EraTxCert`, `ShelleyEraTxCert` and `ConwayEraTxCert`, each reader with its builder. A pool is a
+  `KeyHash[StakePool]` and a retirement epoch an `EpochNo`, as in the reference's classes.
+- Outputs and proposals compare as the reference's derived `Eq` does: an output by its address, value, datum
+  and reference script, not the bytes it arrived as; a proposal (`ProposalProcedure`) by what it means, so
+  treasury withdrawals compare as the map they are. The reference's genesis-delegation and instantaneous-reward
   readers are on `ShelleyEraTxCert`, with `AtMostEra "Babbage"` on each method (`Shelley/TxCert.hs:164-168`).
   A Scala method could take the same bound as evidence, but that evidence would name a range of eras, which
   the ADR 0007 amendment rules out. So, by design, they come with those eras in a class of their own, whose
