@@ -18,12 +18,14 @@ object Test:
   def failureUnless[Rec](cond: Boolean, failure: => Rec): Test[Rec] =
     if cond then pass else Validated.invalidNec(failure)
 
-  /** `failureOnJust` (`Extended.hs:409-414`): fails with the failure made of a present value. */
+  /** `failureOnJust` (`Extended.hs:409-414`, cardano-ledger f649f975): fails with the failure made
+    * of a present value.
+    */
   def failureOnJust[A, Rec](cond: Option[A])(onJust: A => Rec): Test[Rec] =
     cond.fold(pass[Rec])(a => Validated.invalidNec(onJust(a)))
 
-  /** `failureOnNonEmpty`, `failureOnNonEmptySet`, `failureOnNonEmptyMap` (`Extended.hs:423-453`):
-    * fails with the failure made of the items, if there are any.
+  /** `failureOnNonEmpty`, `failureOnNonEmptySet`, `failureOnNonEmptyMap` (`Extended.hs:423-453`,
+    * cardano-ledger f649f975): fails with the failure made of the items, if there are any.
     */
   def failureOnNonEmpty[C, Rec](items: C)(isEmpty: C => Boolean)(onNonEmpty: C => Rec): Test[Rec] =
     if isEmpty(items) then pass else Validated.invalidNec(onNonEmpty(items))

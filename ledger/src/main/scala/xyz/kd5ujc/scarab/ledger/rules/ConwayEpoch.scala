@@ -8,8 +8,8 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** HARDFORK (`Conway/Rules/HardFork.hs:68`): the rule that runs at the epoch boundary where the
-  * protocol version changed.
+/** HARDFORK (`Conway/Rules/HardFork.hs:68`, cardano-ledger f649f975): the rule that runs at the
+  * epoch boundary where the protocol version changed.
   *
   *   - Entering protocol version 10 (the end of the bootstrap phase) it rebuilds every DRep's index
   *     of delegators from the accounts and drops the delegations to DReps that are not registered
@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
   *     (J2.4; the rest of J3.3, the VRF key hashes in the node's own checks, stays).
   */
 object HardFork:
-  /** `updateDRepDelegations` (`HardFork.hs:82`). */
+  /** `updateDRepDelegations` (`HardFork.hs:82`, cardano-ledger f649f975). */
   def updateDRepDelegations(cert: ConwayCertState): ConwayCertState =
     val reset: SortedMap[Credential[DRepRole], DRepState] =
       Sorted.map(
@@ -57,10 +57,10 @@ object HardFork:
         (dreps.updated(drep, state.copy(delegators = state.delegators + credential)), accounts)
       case None => (dreps, accounts.updated(credential, account.copy(drep = None)))
 
-  /** `populateVRFKeyHashes` (`HardFork.hs:107`): the count of each VRF key hash is the number of
-    * pools that use it, registered ones and re-registrations that wait for the boundary, each
-    * counted. The map starts empty (the reference has none before version 11; a state converted
-    * from the node's, which derived it from 10, is taken to the same).
+  /** `populateVRFKeyHashes` (`HardFork.hs:107`, cardano-ledger f649f975): the count of each VRF key
+    * hash is the number of pools that use it, registered ones and re-registrations that wait for
+    * the boundary, each counted. The map starts empty (the reference has none before version 11; a
+    * state converted from the node's, which derived it from 10, is taken to the same).
     */
   def populateVRFKeyHashes(pools: PState): PState =
     def add(
@@ -81,7 +81,7 @@ object HardFork:
       (registered ++ pending).foldLeft(Sorted.empty[VRFVerKeyHash, NonZero[Word64]])(add)
     )
 
-  /** `hardforkTransition` (`HardFork.hs:68`). */
+  /** `hardforkTransition` (`HardFork.hs:68`, cardano-ledger f649f975). */
   def apply(es: EpochState[Conway], newVersion: Int): EpochState[Conway] =
     if newVersion == 10 then
       es.copy(ls = es.ls.copy[Conway](cert = updateDRepDelegations(es.ls.cert)))
@@ -91,17 +91,19 @@ object HardFork:
       )
     else es
 
-/** EPOCH of Conway (`Conway/Rules/Epoch.hs:244,269`): the boundary of an epoch, after the rewards
-  * are applied: the new snapshot (SNAP) and the retiring pools (POOLREAP), then the ratification
-  * the DRep pulser reached is enacted: treasury withdrawals reach the accounts, the enacted and the
-  * expired proposals are removed and their deposits returned, the committee and the constitution
-  * change and the parameters of the next epoch take effect. The deposits are counted again, the
-  * hard fork rule runs if the protocol version changed, and a fresh pulser starts.
+/** EPOCH of Conway (`Conway/Rules/Epoch.hs:244,269`, cardano-ledger f649f975): the boundary of an
+  * epoch, after the rewards are applied: the new snapshot (SNAP) and the retiring pools (POOLREAP),
+  * then the ratification the DRep pulser reached is enacted: treasury withdrawals reach the
+  * accounts, the enacted and the expired proposals are removed and their deposits returned, the
+  * committee and the constitution change and the parameters of the next epoch take effect. The
+  * deposits are counted again, the hard fork rule runs if the protocol version changed, and a fresh
+  * pulser starts.
   */
 object ConwayEpoch:
-  /** `predictFuturePParams` (`Conway/Governance.hs:299`): while the future parameters are only
-    * `Potential`, they are the parameters the pulser's ratification enacts, if it enacts a change
-    * of parameters or a hard fork. The pulser is complete here, so it is not forced.
+  /** `predictFuturePParams` (`Conway/Governance.hs:299`, cardano-ledger f649f975): while the future
+    * parameters are only `Potential`, they are the parameters the pulser's ratification enacts, if
+    * it enacts a change of parameters or a hard fork. The pulser is complete here, so it is not
+    * forced.
     */
   def predictFuturePParams(g: ConwayGovState): ConwayGovState = g.futurePParams match
     case FuturePParams.PotentialPParamsUpdate(_) =>

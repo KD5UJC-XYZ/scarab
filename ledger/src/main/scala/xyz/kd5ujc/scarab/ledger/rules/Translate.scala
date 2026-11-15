@@ -145,8 +145,9 @@ object Translate:
   // ---- Shelley to Allegra: the AVVM balances go back to the reserves
 
   /** `TranslateEra AllegraEra NewEpochState` with `returnRedeemAddrsToReserves` (`Allegra/
-    * Translation.hs:58`, `Shelley/LedgerState/NewEpochState.hs:126`): the Byron redeem balances
-    * stashed when the chain entered Shelley are removed from the UTxO and returned to the reserves.
+    * Translation.hs:58` (cardano-ledger f649f975), `Shelley/LedgerState/NewEpochState.hs:126`): the
+    * Byron redeem balances stashed when the chain entered Shelley are removed from the UTxO and
+    * returned to the reserves.
     */
   def shelleyToAllegra(nes: NewEpochState[Shelley]): Either[TickFailure, NewEpochState[Allegra]] =
     val stash = nes.avvm.utxo
@@ -172,8 +173,9 @@ object Translate:
 
   // ---- Mary to Alonzo: the parameters Alonzo introduces take their genesis values
 
-  /** `TranslateEra AlonzoEra PParams` (`Alonzo/Translation.hs:64`, `upgradePParams`): the Alonzo
-    * genesis supplies the cost per UTxO word; the minimum lovelace per output is gone.
+  /** `TranslateEra AlonzoEra PParams` (`Alonzo/Translation.hs:64` (cardano-ledger f649f975),
+    * `upgradePParams`): the Alonzo genesis supplies the cost per UTxO word; the minimum lovelace
+    * per output is gone.
     */
   def maryToAlonzo(globals: Globals, nes: NewEpochState[Mary]): NewEpochState[Alonzo] =
     reindex[Mary, Alonzo](nes, ())(
@@ -182,10 +184,11 @@ object Translate:
 
   // ---- Alonzo to Babbage: the cost per byte
 
-  /** `upgradePParams ()` (`Babbage/Translation.hs:84`, `Babbage/PParams.hs:321-345`): the cost per
-    * UTxO byte is the per word cost over the eight bytes of a word, rounded down; the per word cost
-    * is gone. Both proposal maps are upgraded too (`Babbage/Translation.hs:155-168`), before UPEC
-    * rotates the late proposals and predicts the parameters of the next Babbage epoch.
+  /** `upgradePParams ()` (`Babbage/Translation.hs:84` (cardano-ledger f649f975),
+    * `Babbage/PParams.hs:321-345`): the cost per UTxO byte is the per word cost over the eight
+    * bytes of a word, rounded down; the per word cost is gone. Both proposal maps are upgraded too
+    * (`Babbage/Translation.hs:155-168`), before UPEC rotates the late proposals and predicts the
+    * parameters of the next Babbage epoch.
     */
   def alonzoToBabbage(nes: NewEpochState[Alonzo]): NewEpochState[Babbage] =
     val translated = reindex[Alonzo, Babbage](nes, ())(p =>
@@ -205,8 +208,8 @@ object Translate:
 
   // ---- Babbage to Conway
 
-  /** `upgradePParams` of the Conway genesis (`Conway/Translation.hs:109`): the parameters of the
-    * governance the era introduces.
+  /** `upgradePParams` of the Conway genesis (`Conway/Translation.hs:109`, cardano-ledger f649f975):
+    * the parameters of the governance the era introduces.
     */
   private def conwayParams(globals: Globals)(p: ProtocolParams): ProtocolParams =
     globals.ledger.conway.fold(p)(c =>
@@ -242,10 +245,11 @@ object Translate:
         .map(TickFailure.Vocab(_))
     )
 
-  /** `TranslateEra ConwayEra NewEpochState` (`Conway/Translation.hs:69,131,156,165`): the accounts
-    * lose their pointers and have no DRep delegation, the pointer stake goes, the governance state
-    * is new (the committee and the constitution of the genesis, no proposals) with the pulser
-    * completed over the enact state of that state, and the voting state is empty.
+  /** `TranslateEra ConwayEra NewEpochState` (`Conway/Translation.hs:69,131,156,165`, cardano-ledger
+    * f649f975): the accounts lose their pointers and have no DRep delegation, the pointer stake
+    * goes, the governance state is new (the committee and the constitution of the genesis, no
+    * proposals) with the pulser completed over the enact state of that state, and the voting state
+    * is empty.
     */
   def babbageToConway(
       globals: Globals,
@@ -327,11 +331,11 @@ object Translate:
   // ---- Conway to Dijkstra (cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/
   // Dijkstra/Translation.hs`)
 
-  /** `TranslateEra DijkstraEra NewEpochState` (`Translation.hs:70-80`): the state with its records
-    * as they are (Dijkstra's families are Conway's records, so the `coerce` s of the accounts
-    * (109-111), the voting state (118-119), the committee and the constitution (176-177, 204, 206)
-    * and the instant stake (221) change nothing), the stake snapshots unchanged (96-97), and these
-    * translated:
+  /** `TranslateEra DijkstraEra NewEpochState` (`Translation.hs:70-80`, cardano-ledger 9df9f98c):
+    * the state with its records as they are (Dijkstra's families are Conway's records, so the
+    * `coerce` s of the accounts (109-111), the voting state (118-119), the committee and the
+    * constitution (176-177, 204, 206) and the instant stake (221) change nothing), the stake
+    * snapshots unchanged (96-97), and these translated:
     *   - the parameters, current, previous and future, and those of the enact state the pulser
     *     reached, by the Dijkstra genesis
     *     ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis.upgrade]], 86-94, 172-183, 200-211);

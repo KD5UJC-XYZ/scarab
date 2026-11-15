@@ -25,8 +25,8 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
   */
 final case class BbodyEnv(ctx: TxEnv, pp: ProtocolParams, treasury: Coin)
 
-/** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs:82`): the ledger state, and the blocks the pools
-  * have made in the epoch (`nesBcur`).
+/** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs:82`, cardano-ledger f649f975): the ledger state,
+  * and the blocks the pools have made in the epoch (`nesBcur`).
   */
 final case class BbodyState(ledger: ConwayLedger, blocksMade: BlocksMade)
 
@@ -92,9 +92,9 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
     total
 
   /** The execution units of all the transactions of the block when they exceed the limit
-    * (`validateExUnits`, `Alonzo/Rules/Bbody.hs:149-167`: `foldMap totExUnits txs`, compared
-    * point-wise). The BBODY of every era from Alonzo runs it whatever the protocol version; the
-    * caller's era decides ([[ShelleyBbody]]).
+    * (`validateExUnits`, `Alonzo/Rules/Bbody.hs:149-167` (cardano-ledger f649f975):
+    * `foldMap totExUnits txs`, compared point-wise). The BBODY of every era from Alonzo runs it
+    * whatever the protocol version; the caller's era decides ([[ShelleyBbody]]).
     */
   def exUnitsExceeded(pp: ProtocolParams, txs: Vector[Tx]): Option[ExUnits] =
     Some(txs.foldLeft(ExUnits.zero)(_ + _.witnesses.totalExUnits))

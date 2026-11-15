@@ -7,8 +7,9 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** The reward calculation (`createRUpd`: `startStep` and `completeRupd` of `Shelley/LedgerState/
-  * PulsingReward.hs:89,242,284`, `mkPoolRewardInfo` `Rewards.hs:331`, `rewardOnePoolMember` `291`
-  * and the reward formulas of `Shelley/Rewards.hs:86-190`), in exact rational arithmetic.
+  * PulsingReward.hs:89,242,284` (cardano-ledger f649f975), `mkPoolRewardInfo` `Rewards.hs:331`,
+  * `rewardOnePoolMember` `291` and the reward formulas of `Shelley/Rewards.hs:86-190`), in exact
+  * rational arithmetic.
   *
   * The pure start/pulse/complete machine mirrors the reference: captured inputs are immutable, and
   * each normal pulse consumes a bounded prefix in credential order. The result is attributed: each
@@ -69,14 +70,16 @@ object Rewards:
     */
   private def forgoPrefilter(major: BigInt): Boolean = major >= 7
 
-  /** `filterRewards` (`Rewards.hs:170`): the rewards that are delivered. Before Allegra a
-    * credential earning from several sources got only the least (`Set.deleteFindMin`; the leader
-    * reward sorts before the member rewards, then by pool).
+  /** `filterRewards` (`Rewards.hs:170`, cardano-ledger f649f975): the rewards that are delivered.
+    * Before Allegra a credential earning from several sources got only the least
+    * (`Set.deleteFindMin`; the leader reward sorts before the member rewards, then by pool).
     */
   private def delivered(major: BigInt, rewards: RewardSet): Iterable[Reward] =
     if aggregated(major) then rewards.rewards else rewards.rewards.headOption
 
-  /** `aggregateRewards` (`Rewards.hs:186`): sum Coin amounts for each credential in its order. */
+  /** `aggregateRewards` (`Rewards.hs:186`, cardano-ledger f649f975): sum Coin amounts for each
+    * credential in its order.
+    */
   def aggregate(
       major: BigInt,
       rs: Iterable[(Credential[Staking], RewardSet)]
@@ -85,8 +88,9 @@ object Rewards:
       credential -> Coin(delivered(major, rewards).foldLeft(BigInt(0))(_ + _.rewardAmount.value))
     }.toVector
 
-  /** `aggregateCompactRewards` (`Shelley/Rewards.hs:205–210`): convert each delivered reward before
-    * the compact fold. A negative or oversized individual reward still fails conversion.
+  /** `aggregateCompactRewards` (`Shelley/Rewards.hs:205–210`, cardano-ledger f649f975): convert
+    * each delivered reward before the compact fold. A negative or oversized individual reward still
+    * fails conversion.
     */
   def aggregateCompact(
       major: BigInt,
@@ -102,14 +106,14 @@ object Rewards:
       }
       .map(Sorted.map(_))
 
-  /** `sumRewards` (`Rewards.hs:159`). */
+  /** `sumRewards` (`Rewards.hs:159`, cardano-ledger f649f975). */
   def total(major: BigInt, rs: Iterable[(Credential[Staking], RewardSet)]): BigInt =
     rs.iterator.foldLeft(BigInt(0))((sum, entry) =>
       sum + delivered(major, entry._2).foldLeft(BigInt(0))(_ + _.rewardAmount.value)
     )
 
-  /** `maxPool'` (`State/SnapShots.hs:119`): the most a pool of relative stake `sigma` and relative
-    * pledge `pledge` can earn of the pot `r`.
+  /** `maxPool'` (`State/SnapShots.hs:119`, cardano-ledger f649f975): the most a pool of relative
+    * stake `sigma` and relative pledge `pledge` can earn of the pot `r`.
     */
   def maxPool(a0: Rational, nOpt: BigInt, r: BigInt, sigma: Rational, pledge: Rational): BigInt =
     if nOpt <= 0 then BigInt(0)
@@ -123,7 +127,7 @@ object Rewards:
       val factor2 = sigma1 + p1 * a0 * factor3
       (factor1 * factor2).floor
 
-  /** `calcStakePoolOperatorReward` (`Rewards.hs:110`). */
+  /** `calcStakePoolOperatorReward` (`Rewards.hs:110`, cardano-ledger f649f975). */
   def operatorReward(
       pot: BigInt,
       cost: BigInt,
@@ -134,7 +138,7 @@ object Rewards:
     if pot <= cost then pot
     else cost + (Rational(pot - cost) * (margin + (Rational.one - margin) * owners / sigma)).floor
 
-  /** `calcStakePoolMemberReward` (`Rewards.hs:140`). */
+  /** `calcStakePoolMemberReward` (`Rewards.hs:140`, cardano-ledger f649f975). */
   def memberReward(
       pot: BigInt,
       cost: BigInt,
@@ -155,8 +159,9 @@ object Rewards:
         ShelleyBasedEra.SAlonzo =>
       p.d
 
-  /** `createRUpd` (`PulsingReward.hs:284`) for the epoch state `es` and the blocks of the previous
-    * epoch `blocks`: the reward update that is applied at the next boundary.
+  /** `createRUpd` (`PulsingReward.hs:284`, cardano-ledger f649f975) for the epoch state `es` and
+    * the blocks of the previous epoch `blocks`: the reward update that is applied at the next
+    * boundary.
     */
   def start[E <: EraTag](es: EpochState[E], blocks: BlocksMade, globals: Globals, epoch: BigInt)(
       using ShelleyBasedEra[E]

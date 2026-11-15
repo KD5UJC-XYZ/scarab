@@ -10,9 +10,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
 /** TICK (`Shelley/Rules/Tick.hs`: `bheadTransition` 244, `validatingTickTransition` 160, the same
   * rule in every era): the ledger state is brought to a slot. In order:
   *
-  *   1. `solidifyNextEpochPParams` (`Tick.hs:144`): from the point of no return (two stability
-  *      windows before the end of the epoch) the parameters that will take effect at the boundary
-  *      are certain;
+  *   1. `solidifyNextEpochPParams` (`Tick.hs:144`, cardano-ledger f649f975): from the point of no
+  *      return (two stability windows before the end of the epoch) the parameters that will take
+  *      effect at the boundary are certain;
   *   2. NEWEPOCH for the epoch of the slot, which does something only at the boundary
   *      ([[NewEpoch]]);
   *   3. `adoptGenesisDelegs`: the genesis delegations due by the slot take effect;
@@ -38,7 +38,7 @@ object Tick:
           globals <- Sts.globals[F]
           now = slot.toBigInt
           epoch = globals.epochOf(now)
-          // `getTheSlotOfNoReturn` (`Slot.hs:106`)
+          // `getTheSlotOfNoReturn` (`Slot.hs:106`, cardano-ledger f649f975)
           pointOfNoReturn = globals.slotOfNoReturn(epoch)
           _ <- nes.modify(n =>
             if now < pointOfNoReturn then n
@@ -69,8 +69,9 @@ object Tick:
           )
         yield ()
 
-  /** `adoptGenesisDelegs` (`Tick.hs:111`): the genesis delegations scheduled for a slot up to
-    * `slot` replace the current ones; of several for one genesis key the latest slot wins.
+  /** `adoptGenesisDelegs` (`Tick.hs:111`, cardano-ledger f649f975): the genesis delegations
+    * scheduled for a slot up to `slot` replace the current ones; of several for one genesis key the
+    * latest slot wins.
     */
   def adoptGenesisDelegs[E <: EraTag](ls: LedgerState[E], slot: BigInt)(using
       ShelleyBasedEra[E]

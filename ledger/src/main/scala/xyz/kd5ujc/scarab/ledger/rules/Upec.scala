@@ -7,9 +7,9 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.UpdateChecks
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** UPEC with the NEWPP rule it embeds (`Shelley/Rules/Upec.hs:74`, `Newpp.hs:68,88`; Shelley to
-  * Babbage): at the epoch boundary the protocol parameters that the proposals voted for take effect
-  * and the proposals rotate.
+/** UPEC with the NEWPP rule it embeds (`Shelley/Rules/Upec.hs:74` (cardano-ledger f649f975),
+  * `Newpp.hs:68,88`; Shelley to Babbage): at the epoch boundary the protocol parameters that the
+  * proposals voted for take effect and the proposals rotate.
   *
   *   - The parameters adopted are `nextEpochPParams` of the governance state
   *     (`State/Governance.hs:121`): the future parameters when they are `Definite`, else the ones

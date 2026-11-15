@@ -27,9 +27,9 @@ object Refusal:
         case LedgerFailure.Rejected(_, failures) => Right(failures)
         case defect: LedgerDefect                => Left(defect)
 
-/** `applySTS` (`Extended.hs:592-622`) over the judgment interpreter [[RuleT]]: the predicate
-  * failures of a refusal in the order the reference reports them, or the state after the
-  * transition, or a defect.
+/** `applySTS` (`Extended.hs:592-622`, cardano-ledger f649f975) over the judgment interpreter
+  * [[RuleT]]: the predicate failures of a refusal in the order the reference reports them, or the
+  * state after the transition, or a defect.
   */
 object Judgment:
   export RuleT.Policy
@@ -37,13 +37,13 @@ object Judgment:
   /** The failures of a judgment in the order of the reference's list.
     *
     * The reference keeps each rule's failures in a list it prepends to: a predicate failure is put
-    * in front (`Extended.hs:708`), and a sub-rule's list, built the same way, is put in front one
-    * element at a time (`traverse_ (\a -> modify (first (a :)))`, `Extended.hs:720-722`), which
-    * reverses it. The root's list is returned as it is (`Extended.hs:610-622`). So the root's
-    * failures and blocks are reversed, a block one level down is in the order it was recorded, the
-    * next level reversed again, and so on: the parity of the depth decides. For CERTS and DELEGS,
-    * which recurse on the prefix of the certificates (`gamma :|> c`), this is the zigzag the
-    * reference reports, not plain reversal.
+    * in front (`Extended.hs:708`, cardano-ledger f649f975), and a sub-rule's list, built the same
+    * way, is put in front one element at a time (`traverse_ (\a -> modify (first (a :)))`,
+    * `Extended.hs:720-722`), which reverses it. The root's list is returned as it is
+    * (`Extended.hs:610-622`). So the root's failures and blocks are reversed, a block one level
+    * down is in the order it was recorded, the next level reversed again, and so on: the parity of
+    * the depth decides. For CERTS and DELEGS, which recurse on the prefix of the certificates
+    * (`gamma :|> c`), this is the zigzag the reference reports, not plain reversal.
     *
     * An explicit stack of pending blocks, each with the direction it is read in (ADR 0011): linear
     * in the number of recorded failures and blocks, constant in the JVM stack for any depth.

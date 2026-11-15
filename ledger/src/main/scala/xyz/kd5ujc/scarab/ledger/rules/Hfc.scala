@@ -6,9 +6,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The ledger side of the hard-fork combinator's tick (`applyChainTickLedgerResult`,
-  * `HardFork/Combinator/Ledger.hs:160`): bring the new-epoch state of whichever era the chain is in
-  * to a slot, translating it into each era the chain has entered on the way, and ticking it in the
-  * era it ends in.
+  * `HardFork/Combinator/Ledger.hs:160`, ouroboros-consensus 82ecba32): bring the new-epoch state of
+  * whichever era the chain is in to a slot, translating it into each era the chain has entered on
+  * the way, and ticking it in the era it ends in.
   *
   * The order is the combinator's (`extendToSlot` before `tickOne`): at an epoch boundary where the
   * next era begins the state is translated first and the boundary (NEWEPOCH) runs in the new era.
@@ -17,8 +17,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   *
   * Like the reference, this ticks to a slot only: [[Tick]] runs once, in the epoch of the slot, and
   * NEWEPOCH does nothing when that epoch is not the one after the state's (`Shelley/Rules/
-  * NewEpoch.hs:148`, `pure src`). The boundaries of an epoch with no block are therefore not
-  * crossed here either.
+  * NewEpoch.hs:148` (cardano-ledger f649f975), `pure src`). The boundaries of an epoch with no
+  * block are therefore not crossed here either.
   *
   * The only loop is over the eras translated on the way (the combinator's `extendToSlot`), so it is
   * `tailRecM`.
@@ -44,7 +44,8 @@ object Hfc:
 
   /** The state at `slot`, from the state `start` of the epoch the chain is in, whose blocks after
     * the voting deadline are `afterVoting`. A translation carries the update and the counter over
-    * (`Cardano/CanHardFork.hs:704`), so every era on the way is asked with the same counter.
+    * (`Cardano/CanHardFork.hs:704`, ouroboros-consensus 82ecba32), so every era on the way is asked
+    * with the same counter.
     */
   def tick(globals: Globals, transition: Transition)(
       start: EraNes,
@@ -65,7 +66,9 @@ object Hfc:
       else ticked(globals, current, slot).map(Right(_))
     }
 
-  /** What the combinator reads of `e`: the definite update only (`ShelleyHFC.hs:222`). */
+  /** What the combinator reads of `e`: the definite update only (`ShelleyHFC.hs:222`,
+    * ouroboros-consensus 82ecba32).
+    */
   def pending(e: EraNes, afterVoting: Long): Pending = e match
     case i: EraNes.InEra[e] =>
       given ShelleyBasedEra[e] = i.era

@@ -143,20 +143,20 @@ final case class ShelleyBbodyState[E <: EraTag](
     blocksMade: BlocksMade
 )
 
-/** BBODY (`Shelley/Rules/Bbody.hs:207`, `bbodyTransition`, and `Alonzo/Rules/Bbody.hs:169`): the
-  * body of a block against what its header says, LEDGERS, the execution units of the transactions
-  * against the limit of the block (Alonzo on, after LEDGERS: `Alonzo/Rules/Bbody.hs:212`), and the
-  * block counted for its issuer unless the slot is one of the overlay schedule (`incrBlocks`,
-  * `BlockBody/Internal.hs:295`: a block of the overlay is made by a genesis delegate, whose count
-  * the pool performance does not use). Babbage has no decentralisation parameter (`ppDG` is zero),
-  * so its slots have no overlay.
+/** BBODY (`Shelley/Rules/Bbody.hs:207` (cardano-ledger f649f975), `bbodyTransition`, and
+  * `Alonzo/Rules/Bbody.hs:169`): the body of a block against what its header says, LEDGERS, the
+  * execution units of the transactions against the limit of the block (Alonzo on, after LEDGERS:
+  * `Alonzo/Rules/Bbody.hs:212`), and the block counted for its issuer unless the slot is one of the
+  * overlay schedule (`incrBlocks`, `BlockBody/Internal.hs:295`: a block of the overlay is made by a
+  * genesis delegate, whose count the pool performance does not use). Babbage has no
+  * decentralisation parameter (`ppDG` is zero), so its slots have no overlay.
   *
   * The signal is Conway's ([[BbodySignal]]); LEDGERS runs on the ledger part of the state, its
   * failures wrapped as the block's (`BlockFailure.Tx`).
   */
 object ShelleyBbody:
-  /** `isOverlaySlot` (`Slot.hs:117-130`): the slot is reserved for the overlay schedule of
-    * decentralisation `d`, `firstSlot` being the first slot of its epoch.
+  /** `isOverlaySlot` (`Slot.hs:117-130`, cardano-ledger f649f975): the slot is reserved for the
+    * overlay schedule of decentralisation `d`, `firstSlot` being the first slot of its epoch.
     */
   def isOverlaySlot(firstSlot: BigInt, d: Rational, slot: BigInt): Boolean =
     val s = slot - firstSlot

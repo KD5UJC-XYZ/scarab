@@ -29,8 +29,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // the Shelley certificate state (`ShelleyCertState`): the accounts with the pointer of the
 // certificate that registered each, the pointer map, the pools with their delegators, the genesis
 // delegations and the instantaneous rewards. A rule that fails raises the predicate failure the
-// reference has for it (`ShelleyDelegPredFailure`, `Deleg.hs:89-120`; the cases of the eras
-// before Conway are in the closed failure types the Conway rules use as well).
+// reference has for it (`ShelleyDelegPredFailure`, `Deleg.hs:89-120` (cardano-ledger f649f975); the
+// cases of the eras before Conway are in the closed failure types the Conway rules use as well).
 
 /** The lenses into the Shelley certificate state that its rules use. */
 object ShelleyCertLens:
@@ -67,7 +67,7 @@ final case class DelegsEnv(
 )
 
 /** `DelegEnv` (`Deleg.hs`, `DelplEnv`): DELEGS' environment, with the pointer of the certificate
-  * that DELEGS builds (`Ptr slot txIx certIx`, `Delegs.hs:169`).
+  * that DELEGS builds (`Ptr slot txIx certIx`, `Delegs.hs:169`, cardano-ledger f649f975).
   */
 final case class ShelleyDelegEnv(delegs: DelegsEnv, ptr: Ptr)
 
@@ -77,8 +77,8 @@ final case class ShelleyDelegEnv(delegs: DelegsEnv, ptr: Ptr)
 object ShelleyCertOps:
   private val zeroCoin: CompactCoin = CompactCoin.fromUnsigned(0L)
 
-  /** `registerShelleyAccount` (`Shelley/State/Account.hs:206`): a new account with no balance and
-    * no delegation, its pointer recorded in the pointer map.
+  /** `registerShelleyAccount` (`Shelley/State/Account.hs:206`, cardano-ledger f649f975): a new
+    * account with no balance and no delegation, its pointer recorded in the pointer map.
     */
   def register(
       s: ShelleyCertState,
@@ -93,9 +93,9 @@ object ShelleyCertOps:
       )
     )(s)
 
-  /** `unregisterShelleyAccount` (`Account.hs:221`) and `unDelegReDelegStakePool`
-    * (`State/CertState.hs:281`): the account and its pointer are removed, and the pool it delegated
-    * to forgets it.
+  /** `unregisterShelleyAccount` (`Account.hs:221`, cardano-ledger f649f975) and
+    * `unDelegReDelegStakePool` (`State/CertState.hs:281`): the account and its pointer are removed,
+    * and the pool it delegated to forgets it.
     */
   def unregister(
       s: ShelleyCertState,
@@ -167,7 +167,7 @@ object ShelleyDeleg
             !ShelleyCertLens.states.get(s).contains(cred),
             DelegFailure.StakeKeyAlreadyRegistered(c)
           )
-          // `compactCoinOrError (pp ^. ppKeyDepositL)` (`Deleg.hs:268`)
+          // `compactCoinOrError (pp ^. ppKeyDepositL)` (`Deleg.hs:268`, cardano-ledger f649f975)
           deposit <- Refuse.state[F, CompactCoin](id, CompactCoin.fromBigInt(pp.keyDeposit))
           _ <- st.set(ShelleyCertOps.register(s, cred, env.ptr, deposit))
         yield ()
@@ -176,7 +176,8 @@ object ShelleyDeleg
           cred <- Refuse.vocab[F, Credential[Staking]](Convert.credential[Staking](c))
           s <- st.get
           account = ShelleyCertLens.states.get(s).get(cred)
-          // the balance of an account that exists, then whether it exists (`Deleg.hs:272-289`)
+          // the balance of an account that exists, then whether it exists (`Deleg.hs:272-289`,
+          // cardano-ledger f649f975)
           _ <- account.traverse_(a =>
             ensure(
               a.balance.word.isZero,
@@ -229,9 +230,9 @@ object ShelleyDeleg
         (LedgerFailure.Undecodable(id, TxDefect.ConwayCertificate(other)): LedgerFailure)
           .raise[F, Unit]
 
-  /** The `MIRCert` of a transaction (`Deleg.hs:252-420`): to the reserves' or the treasury's
-    * entries, or a transfer between the pots, from the pots as the chain account and the
-    * instantaneous rewards so far have them.
+  /** The `MIRCert` of a transaction (`Deleg.hs:252-420`, cardano-ledger f649f975): to the reserves'
+    * or the treasury's entries, or a transfer between the pots, from the pots as the chain account
+    * and the instantaneous rewards so far have them.
     */
   private def moveRewards[F[_]: Monad](
       env: ShelleyDelegEnv,

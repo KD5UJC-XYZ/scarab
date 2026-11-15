@@ -5,8 +5,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** `setFreshDRepPulsingState` (`Conway/Governance.hs:458`): the DRep pulser that starts at an epoch
-  * boundary, for the ratification that the next boundary applies.
+/** `setFreshDRepPulsingState` (`Conway/Governance.hs:458`, cardano-ledger f649f975): the DRep
+  * pulser that starts at an epoch boundary, for the ratification that the next boundary applies.
   *
   * Haskell spreads the pulser over the epoch (it works through the accounts a few at a time, so the
   * DRep distribution is ready two stability windows before the end of the epoch) and keeps it

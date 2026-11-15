@@ -6,8 +6,9 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
 import xyz.kd5ujc.scarab.ledger.state.{NonZero, Word64}
 
 /** The constants of a network that the era-indexed rules read from their environment: Haskell's
-  * `Globals` (`Cardano/Ledger/BaseTypes.hs:761-789`), the reader environment of `ShelleyBase =
-  * ReaderT Globals Identity` (`BaseTypes.hs:796`), which every rule of the ledger runs in.
+  * `Globals` (`Cardano/Ledger/BaseTypes.hs:761-789`, cardano-ledger f649f975), the reader
+  * environment of `ShelleyBase = ReaderT Globals Identity` (`BaseTypes.hs:796`), which every rule
+  * of the ledger runs in.
   *
   * It is made of the node's two records rather than a third copy of their fields: the ledger's own
   * constants ([[LedgerGlobals]]: the supply, the network, the update quorum) and the era history
