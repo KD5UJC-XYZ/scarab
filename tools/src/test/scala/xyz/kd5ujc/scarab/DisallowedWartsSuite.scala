@@ -4,20 +4,23 @@ package xyz.kd5ujc.scarab
 import org.wartremover.WartTraverser
 import org.wartremover.test.WartTestTraverser
 import org.wartremover.warts
+import xyz.kd5ujc.scarab.warts.{StringControlFlow, SystemTimeAndUnsafeRun}
 
 /** The parent the `LeakingSealed` probe leaks. */
 private sealed trait ProbeShape
 
-/** Each wart that `build.sbt` refuses in main sources (`disallowedWarts`, which the build writes
-  * into `DisallowedWarts.names`) fires on a probe. WartRemover takes a wart it cannot load, or one
-  * that finds nothing on this Scala version, without a message, so a wart that is on is shown to
-  * work here. Each probe is typed when this suite compiles and never runs.
+/** Each wart that `build.sbt` refuses in main sources (`disallowedWarts` and the design rules' own
+  * warts of `warts/`, `ruleWarts`, which the build writes into `DisallowedWarts.names`) fires on a
+  * probe. WartRemover takes a wart it cannot load, or one that finds nothing on this Scala version,
+  * without a message, so a wart that is on is shown to work here. Each probe is typed when this
+  * suite compiles and never runs; the probe of `FloatingPointInLedger` is in a ledger package
+  * ([[ledger.FloatingPointProbe]]), as the wart reports only there.
   */
 class DisallowedWartsSuite extends munit.FunSuite:
 
   private final case class Probe(wart: WartTraverser, result: WartTestTraverser.Result):
     def name: String = wart.getClass.getName.stripSuffix("$")
-    def tag: String = s"[wartremover:${name.stripPrefix("org.wartremover.warts.")}]"
+    def tag: String = s"[wartremover:${name.split('.').last}]"
 
   /** `ThreadSleep` has no probe: a call to `Thread.sleep`, even one that never runs, is a sleep to
     * `scripts/check_test_sleeps.py`, which refuses one in a test source.
@@ -112,7 +115,13 @@ class DisallowedWartsSuite extends munit.FunSuite:
       warts.RedundantConversions,
       WartTestTraverser(warts.RedundantConversions)((n: Int) => n.toInt)
     ),
-    Probe(warts.SizeIs, WartTestTraverser(warts.SizeIs)((xs: List[Int]) => xs.size > 1))
+    Probe(warts.SizeIs, WartTestTraverser(warts.SizeIs)((xs: List[Int]) => xs.size > 1)),
+    Probe(
+      SystemTimeAndUnsafeRun,
+      WartTestTraverser(SystemTimeAndUnsafeRun)(() => java.time.Instant.now())
+    ),
+    Probe(StringControlFlow, WartTestTraverser(StringControlFlow)((s: String) => s == "x")),
+    Probe(ledger.FloatingPointProbe.wart, ledger.FloatingPointProbe.result)
   )
 
   test("every wart build.sbt refuses has a probe here"):
@@ -120,6 +129,30 @@ class DisallowedWartsSuite extends munit.FunSuite:
       probes.map(_.name).sorted,
       DisallowedWarts.names.filterNot(unprobed).sorted
     )
+
+  test("every module but tools and warts refuses the design rules' own warts in its main sources"):
+    assertEquals(
+      DisallowedWarts.installed.map(_._1).sorted,
+      List(
+        "codec",
+        "consensus",
+        "crypto",
+        "ledger",
+        "models",
+        "modelsGen",
+        "network",
+        "node",
+        "plutus",
+        "protocol",
+        "storage",
+        "uplc"
+      )
+    )
+    DisallowedWarts.installed.foreach { (module, errors, warnings, allowlisted) =>
+      assert(DisallowedWarts.ruleErrors.forall(errors.contains), s"$module refuses $errors")
+      assert(DisallowedWarts.ruleWarnings.forall(warnings.contains), s"$module warns of $warnings")
+      assertEquals(allowlisted, DisallowedWarts.parsers, s"$module's StringControlFlow allowlist")
+    }
 
   probes.foreach { probe =>
     test(s"${probe.tag} fires on its probe"):

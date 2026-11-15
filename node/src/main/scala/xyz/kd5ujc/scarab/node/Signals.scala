@@ -35,13 +35,21 @@ object Signals:
     */
   def interrupt[F[_]: Async](onInterrupt: F[Unit]): Resource[F, Unit] = on("INT", onInterrupt)
 
+  /** The handler that runs `run` for each signal. A kept site of EFF-5's one bridge: the JVM calls
+    * a `SignalHandler` on its own signal thread, outside `F`, and takes nothing back, so the
+    * handler hands the effect to the dispatcher, which [[on]]'s resource owns.
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+  private def bridge[F[_]](dispatcher: Dispatcher[F], run: F[Unit]): SignalHandler =
+    handler(dispatcher.unsafeRunAndForget(run))
+
   private def on[F[_]: Async](name: String, run: F[Unit]): Resource[F, Unit] =
     Dispatcher.sequential[F].flatMap { dispatcher =>
       Resource
         .make(
           Sync[F].delay(
             Either.catchNonFatal(
-              Signal.handle(new Signal(name), handler(dispatcher.unsafeRunAndForget(run)))
+              Signal.handle(new Signal(name), bridge(dispatcher, run))
             )
           )
         )(previous =>

@@ -214,15 +214,17 @@ class WholeStateAnchorTest(unittest.TestCase):
         (self.root / "scala-sock").mkdir()
         (self.root / "scala-sock" / "node.socket").write_text("")
         self.calls = []
+        self.sent = []
         self.tip = 6
+        self.acquired_era = 6
 
     def tearDown(self):
         self.dir.cleanup()
 
-    def sessions(self, refuse_scala_acquires=0, scala_answer=None):
+    def sessions(self, refuse_scala_acquires=0, scala_answer=None, fail_tip_acquire=None):
         """Fake node-to-client sessions: the reference answers `ref`, the Scala node `scala_answer` (default the
         same), and the Scala node refuses its first `refuse_scala_acquires` acquires of a point."""
-        test, refusals = self, [refuse_scala_acquires]
+        test, refusals, tips = self, [refuse_scala_acquires], [0]
         utxo = cbor.enc([4, [{}]])
 
         class Session:
@@ -241,17 +243,23 @@ class WholeStateAnchorTest(unittest.TestCase):
                 test.calls.append((self.side, "acquire", point))
                 if point is None:
                     test.tip += 1  # each acquire of a tip finds it a block further on
+                    tips[0] += 1
+                    if tips[0] == fail_tip_acquire:
+                        raise EOFError("closed")
                 if self.side == "scala" and point is not None and refusals[0] > 0:
                     refusals[0] -= 1
                     raise ntcquery.AcquireRefused(1)
 
             def query_raw(self, query):
+                if query == ntcquery.CURRENT_ERA:
+                    self.last_raw = cbor.enc([4, test.acquired_era])
+                    return test.acquired_era
                 point = [test.tip, b"\x07" * 32]
                 self.last_raw = cbor.enc([4, point])
                 return point
 
             def _send(self, protocol, payload):
-                pass
+                test.sent.append((self.side, ntcquery.decode_all(payload)[1]))
 
             def _recv(self, protocol):
                 # each session asks the new-epoch state first, then the UTxO (`WHOLE_QUERIES` order)
@@ -267,6 +275,28 @@ class WholeStateAnchorTest(unittest.TestCase):
                 self.mock.patch.object(self.compare, "ref", lambda name: "ref-container"), \
                 self.mock.patch.object(self.compare.time, "sleep", lambda s: None):
             return self.compare.whole_state("x", "conway", **kwargs)
+
+    def test_a_state_one_era_later_than_the_callers_is_asked_in_the_acquired_era_on_both_nodes(self):
+        self.acquired_era = 6
+        with self.mock.patch.object(self.compare.ntcquery, "LocalStateQuery", self.sessions()), \
+                self.mock.patch.object(self.compare.util, "data_root", lambda name: self.root), \
+                self.mock.patch.object(self.compare, "ref", lambda name: "ref-container"):
+            result = self.compare.whole_state("x", "babbage")
+        self.assertNotIn("error", result)
+        eras = {(side, query[1][1][0]) for side, query in self.sent}
+        self.assertEqual(eras, {("scala", 6), ("reference", 6)})
+        self.assertEqual(result["era"], "conway")
+
+    def test_a_failure_after_a_reselection_does_not_report_the_era_of_the_previous_point(self):
+        fake = {"refuse_scala_acquires": 1, "fail_tip_acquire": 2}
+        with self.mock.patch.object(self.compare.ntcquery, "LocalStateQuery", self.sessions(**fake)), \
+                self.mock.patch.object(self.compare.util, "data_root", lambda name: self.root), \
+                self.mock.patch.object(self.compare, "ref", lambda name: "ref-container"), \
+                self.mock.patch.object(self.compare.time, "sleep", lambda s: None):
+            result = self.compare.whole_state("x", "babbage", anchor="reference", reselections=1)
+        self.assertIn("closed", result["error"])
+        self.assertEqual(result["stage"], "anchor-acquire")
+        self.assertNotIn("era", result)
 
     def test_the_reference_anchor_asks_the_reference_first_and_the_scala_node_at_its_point(self):
         result = self.run_whole(anchor="reference")
@@ -352,6 +382,9 @@ class WholeStateForkTest(unittest.TestCase):
                     raise outcome
 
             def query_raw(self, query):
+                if query == ntcquery.CURRENT_ERA:
+                    self.last_raw = cbor.enc([4, 6])
+                    return 6
                 answered = test.point(test.tip) if point is ... else point
                 self.last_raw = cbor.enc([4, answered])
                 return answered
@@ -568,8 +601,8 @@ class WholeStateTransportTest(unittest.TestCase):
         self.dir.cleanup()
 
     def anchor(self, point):
-        """The bytes of the follower's session: its tip acquired, its chain point, then both answers."""
-        return frames([1], [4, point], answer(nes()), cbor.enc([4, [{}]]))
+        """The bytes of the follower's session: its tip acquired, its chain point, its era, then both answers."""
+        return frames([1], [4, point], [4, 6], answer(nes()), cbor.enc([4, [{}]]))
 
     def other(self, *acquire):
         """The bytes of the reference's session: its reply to the acquire, and both answers after a success."""

@@ -120,12 +120,15 @@ class DeepNestingSuite extends FunSuite:
         .fold(e => fail(e.toString), identity)
       assertEquals(writer.write(script), Right(raw(0x82, 0x00) ++ nested(n)))
       // the writer reads the kept bytes again and compares them with the tree, level for level
-      val other = Cbor
+      val otherTree = Cbor
         .decode(
           repeat(raw(0x82, 0x01, 0x81), n) ++ raw(0x82, 0x00, 0x58, 0x1c) ++ repeat(raw(1), 28)
         )
-        .flatMap(NativeScript.decode(_, NativeScript.Form.Timelock))
         .fold(e => fail(e.toString), identity)
+      val other =
+        NativeScript
+          .decode(otherTree, NativeScript.Form.Timelock)
+          .fold(e => fail(e.message), identity)
       assertEquals(
         writer.write(script.copy(native = Some(other))).left.map(v => (v.typeName, v.constraint)),
         Left(("native script", "its tree"))

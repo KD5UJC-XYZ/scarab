@@ -9,10 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import render_codemap as rc
 
 SBT = '''
+lazy val tooling = project
+  .in(file("tool-ing"))
 lazy val codec = scarab("codec")
 lazy val nativeLib = scarab("nativeLib", "native-lib")
 lazy val crypto = scarab("crypto")
-  .dependsOn(codec % "compile->compile;test->test", nativeLib)
+  .dependsOn(codec % "compile->compile;test->test", nativeLib, tooling % "test->compile")
 lazy val models = scarab("models")
   .dependsOn(
     codec,
@@ -41,7 +43,7 @@ def fixture(entries=None, modules=None) -> tempfile.TemporaryDirectory:
     write(root, "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala", "object Cbor\n")
     write(root, "codec/src/test/scala/xyz/kd5ujc/scarab/codec/CborSuite.scala", "class CborSuite\n")
     write(root, "docs/adr/0005-x.md", "# x\n")
-    data = {"modules": modules or {m: "M" for m in ("codec", "native-lib", "crypto", "models", "models-gen")},
+    data = {"modules": modules or {m: "M" for m in ("tool-ing", "codec", "native-lib", "crypto", "models", "models-gen")},
             "packages": [ENTRY] if entries is None else entries}
     write(root, rc.DATA, json.dumps(data))
     return tmp
@@ -50,8 +52,11 @@ def fixture(entries=None, modules=None) -> tempfile.TemporaryDirectory:
 class GraphCase(unittest.TestCase):
     def test_edges_by_directory_and_test_only(self):
         graph = rc.parse_build(SBT)
-        self.assertEqual(list(graph), ["codec", "native-lib", "crypto", "models", "models-gen"])
-        self.assertEqual(graph["crypto"], [rc.Edge("codec", True), rc.Edge("native-lib", True)])
+        self.assertEqual(list(graph), ["tool-ing", "codec", "native-lib", "crypto", "models", "models-gen"])
+        self.assertEqual(
+            graph["crypto"], [rc.Edge("codec", True), rc.Edge("native-lib", True), rc.Edge("tool-ing", False)]
+        )
+        self.assertEqual(graph["tool-ing"], [])
         self.assertEqual(graph["models"], [rc.Edge("codec", True), rc.Edge("models-gen", False)])
         self.assertEqual(graph["codec"], [])
 

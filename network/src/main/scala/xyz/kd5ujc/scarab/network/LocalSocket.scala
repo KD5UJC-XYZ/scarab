@@ -245,6 +245,9 @@ object LocalSockets:
         F.blocking(Unlink(path))
           .map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
 
+    // A kept site of ERR-4 (#1035): a `unix:mode` that is not an `Integer` breaks the JDK's own contract, and is
+    // raised as the defect the cast it replaces would have thrown.
+    @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
     def fileMode(path: String): F[Either[SystemCallError, Int]] =
       F.blocking(Either.catchOnly[IOException](Files.getAttribute(Path.of(path), "unix:mode")))
         .flatMap(_.leftMap(SystemCallError.of(SystemCall.GetFileStatus, Some(path))).traverse {
