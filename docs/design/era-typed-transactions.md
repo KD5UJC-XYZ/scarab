@@ -384,17 +384,25 @@ passes `check`.
 - Conway's body has every field of the reference's `ConwayTxBodyRaw`, in its types: sorted sets of inputs and
   required signers, ordered sets of certificates and proposals (`OSet`), nested sorted maps of votes, `Coin`
   amounts, a `Network`, and each output `Sized` by the encoding it was read from. They are read through the
-  body classes from `EraTxBody` to `ConwayEraTxBody`, which include Babbage's sized outputs. Each recorded
-  Conway body reads with every field equal to the flat decoder's.
+  body classes from `EraTxBody` to `ConwayEraTxBody`, which include Babbage's sized outputs. The classes'
+  signatures are the reference's class declarations: the certificates are a sequence in `EraTxBody`
+  (`certsTxBodyL`, `Core.hs:265`) while Conway's body keeps them as an `OSet`, and the sized outputs with the
+  collateral return are of a body of any level (`allSizedOutputsTxBodyF`, `Babbage/TxBody.hs:121`). Each
+  recorded Conway body reads with every field equal to the flat decoder's.
 - Conway's certificate is its own type over the shared `PoolCert`, `ConwayDelegCert`, `ConwayGovCert` and
   `Delegatee`. A delegation to neither a pool nor a DRep cannot be written. Each of the 17 Conway forms of a
   certificate reads into its constructor, with the reference's key and script witnesses, and the script
-  witness equals the one the flat rules ask for. The certificate classes are `EraTxCert`,
-  `ShelleyEraTxCert` and `ConwayEraTxCert`. The reference's genesis-delegation and instantaneous-reward
+  witness equals the one the flat rules ask for. A pool registration's parameters are equal when their
+  relays and metadata mean the same, as the reference's derived `Eq StakePoolParams` compares them, though the
+  bytes they were read from are kept. Deposits and refunds are `Coin`. The certificate classes are
+  `EraTxCert`, `ShelleyEraTxCert` and `ConwayEraTxCert`, each reader with its builder. The reference's genesis-delegation and instantaneous-reward
   readers are on `ShelleyEraTxCert`, with `AtMostEra "Babbage"` on each method (`Shelley/TxCert.hs:164-168`).
   A Scala method could take the same bound as evidence, but that evidence would name a range of eras, which
   the ADR 0007 amendment rules out. So, by design, they come with those eras in a class of their own, whose
   instances are exactly Shelley's to Babbage's.
+- Conway's script class is `ConwayEraScript`, which builds and reads the voting and proposing purposes, and
+  `ConwayEraTxBody` names it. `AlonzoEraScript`'s own purpose builders and readers wait for Babbage's
+  purposes and certificates (stage 4), as Babbage's script instance is an `AlonzoEraScript`.
 - Conway's witness set has the reference's `AlonzoTxWitsRaw` fields: key witnesses as a set under the
   reference's `Ord WitVKey`, bootstrap witnesses, Conway scripts by hash, the datums by hash and the
   redeemers keyed by Conway's own purpose (`ConwayPlutusPurpose`, in the forms `AsIx`, `AsItem` and
