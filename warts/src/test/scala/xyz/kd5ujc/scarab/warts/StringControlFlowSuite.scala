@@ -291,6 +291,17 @@ class StringControlFlowSuite extends munit.FunSuite:
     }
     assertEquals(kinds(r), List("string-equality", "string-predicate"))
 
+  test("renamed imports of one member from two receivers are two paths"):
+    val r = WartTestTraverser(StringControlFlow) {
+      final class Cell(val text: String)
+      def chosen(a: Cell, b: Cell): String =
+        import a.text as tested
+        import b.text as other
+        if tested == "admin" then other else tested
+      chosen(Cell("a"), Cell("b"))
+    }
+    assertEquals(kinds(r), List("string-equality"))
+
   test("a member alias rooted at an enclosing instance is not its receiver's path"):
     val r = WartTestTraverser(StringControlFlow) {
       class Outer(val text: String):
