@@ -161,7 +161,7 @@ def scarab(id: String, dir: String = null): Project =
     .settings(
       Compile / compile / wartremoverErrors ++= ruleWartErrors,
       Compile / compile / wartremoverWarnings ++= ruleWartWarnings,
-      Compile / scalacOptions ++= StringParsers.options
+      Compile / scalacOptions ++= StringParsers.options((ThisBuild / baseDirectory).value)
     )
 
 // The design rules' own warts (above), compiled against the WartRemover artifact of this Scala version, as
@@ -575,18 +575,39 @@ lazy val tools = scarab("tools")
     libraryDependencies += Libraries.wartremoverTest,
     Test / sourceGenerators += Def.task {
       val source = (Test / sourceManaged).value / "DisallowedWarts.scala"
-      val names = (disallowedWarts ++ ruleWarts).map(wart => "\"" + wart.clazz + "\"").mkString(", ")
+      def quoted(names: Seq[String]): String = names.map(name => "\"" + name + "\"").mkString("List(", ", ", ")")
+      val names = quoted((disallowedWarts ++ ruleWarts).map(_.clazz))
+      val installed = ruleWartsInstalled.value.mkString(",\n    ")
       IO.write(
         source,
         s"""package xyz.kd5ujc.scarab
            |
            |object DisallowedWarts:
-           |  val names: List[String] = List($names)
+           |  val names: List[String] = $names
+           |  val ruleErrors: List[String] = ${quoted(ruleWartErrors.map(_.clazz))}
+           |  val ruleWarnings: List[String] = ${quoted(ruleWartWarnings.map(_.clazz))}
+           |  val parsers: Int = ${StringParsers.files.size}
+           |  val installed: List[(String, List[String], List[String], Int)] = List(
+           |    $installed
+           |  )
            |""".stripMargin
       )
       Seq(source)
     }.taskValue
   )
+
+// The modules whose main sources the design rules' own warts check, and for each the warts its compiler refuses
+// and the count of its StringControlFlow allowlist options, which DisallowedWartsSuite compares with the lists.
+lazy val ruleWartModules: ScopeFilter = ScopeFilter(
+  inProjects(codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, modelsGen, models)
+)
+lazy val ruleWartsInstalled: Def.Initialize[Task[Seq[String]]] = Def.task {
+  def quoted(names: Seq[String]): String = names.map(name => "\"" + name + "\"").mkString("List(", ", ", ")")
+  val errors = quoted((Compile / compile / wartremoverErrors).value.map(_.clazz))
+  val warnings = quoted((Compile / compile / wartremoverWarnings).value.map(_.clazz))
+  val allowlisted = (Compile / scalacOptions).value.count(_.endsWith("&msg=wartremover.StringControlFlow:s"))
+  s"""("${thisProject.value.id}", $errors, $warnings, $allowlisted)"""
+}.all(ruleWartModules)
 
 // The sources that belong to no module, whose headers the root project checks: the build definition (without
 // the git-ignored metals.sbt and local.sbt) and the conversion programs kept beside the scripts.

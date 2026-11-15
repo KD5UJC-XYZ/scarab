@@ -130,6 +130,30 @@ class DisallowedWartsSuite extends munit.FunSuite:
       DisallowedWarts.names.filterNot(unprobed).sorted
     )
 
+  test("every module but tools and warts refuses the design rules' own warts in its main sources"):
+    assertEquals(
+      DisallowedWarts.installed.map(_._1).sorted,
+      List(
+        "codec",
+        "consensus",
+        "crypto",
+        "ledger",
+        "models",
+        "modelsGen",
+        "network",
+        "node",
+        "plutus",
+        "protocol",
+        "storage",
+        "uplc"
+      )
+    )
+    DisallowedWarts.installed.foreach { (module, errors, warnings, allowlisted) =>
+      assert(DisallowedWarts.ruleErrors.forall(errors.contains), s"$module refuses $errors")
+      assert(DisallowedWarts.ruleWarnings.forall(warnings.contains), s"$module warns of $warnings")
+      assertEquals(allowlisted, DisallowedWarts.parsers, s"$module's StringControlFlow allowlist")
+    }
+
   probes.foreach { probe =>
     test(s"${probe.tag} fires on its probe"):
       assert(probe.result.errors.nonEmpty, s"${probe.name} reported nothing")
