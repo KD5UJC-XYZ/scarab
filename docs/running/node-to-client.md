@@ -23,13 +23,14 @@ behind them (see [architecture.md](../architecture/node-to-client.md#node-to-cli
 (`DebugNewEpochState` and `DebugEpochState`, also as `GetCBOR`) is answered from the mirror of the Haskell
 state, in every Shelley-based era, without the UTxO, which the reference leaves out too (`map(0)`). The UTxO
 queries (`utxo` whole, by address and by input) are answered in every Shelley-based era as well, each
-output in its era's encoding.
+output in its era's encoding, and so is `GetRewardProvenance`, which the reference answers with the
+default provenance whatever the state, written at the era's encoding version.
 The `ntc` gate requires the complete answer bytes to match at the same acquired point. It does not
 mask historical state gaps: any remaining difference fails the comparison and must be resolved.
 Earlier qualified measurements are retained in [compatibility.md](../compatibility.md). Not answered yet
-(the connection ends, the log line `inbound ... closed` names the query): `GetRewardProvenance`, `DebugLedgerConfig`
+(the connection ends, the log line `inbound ... closed` names the query): `DebugLedgerConfig`
 ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924)), and every query but `ledger-state`, the
-chain-dependent state and the UTxO queries in an era other than Conway (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+chain-dependent state, the UTxO queries and `GetRewardProvenance` in an era other than Conway (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
 Fresh native genesis retains injected pool records with an empty VRF registry, matching the
