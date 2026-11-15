@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc
 
+import java.util.Locale
+
 /** The names of the cost-model parameters of each Plutus language, in the order of the on-chain
   * list: the constructors of `data ParamName` in `PlutusLedgerApi/V1/ParamName.hs`,
   * `V2/ParamName.hs` and `V3/ParamName.hs` at plutus 1.70.0.0 (`507cab8c`), in declaration order.
@@ -1072,9 +1074,14 @@ object ParamNames:
       Policies'memory'arguments'slope
     """
 
-  /** `showParamName` of a constructor name. */
+  /** `showParamName` of a constructor name (`lowerKebab`, `PlutusLedgerApi/Common/ParamName.hs`
+    * lines 67-75 at plutus `507cab8c`): the first letter lowered by GHC's `toLower`, a table
+    * generated from the Unicode data (`toSimpleLowerCase` of GHC 9.6's `base`) that maps `I` to `i`
+    * in every locale. The root locale lowers these names the same way; the JVM's default locale
+    * does not under Turkish or Azeri, where `I` lowers to a dotless `ı`.
+    */
   def show(constructor: String): String =
-    constructor.take(1).toLowerCase + constructor.drop(1).replace('\'', '-')
+    constructor.take(1).toLowerCase(Locale.ROOT) + constructor.drop(1).replace('\'', '-')
 
   /** The parameters of PlutusV1 as the ledger and Plutus name them (`plutusVXParamNames PlutusV1`).
     */
