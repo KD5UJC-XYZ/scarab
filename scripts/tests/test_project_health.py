@@ -86,6 +86,30 @@ class ProjectHealthTest(unittest.TestCase):
             self.assertIn('Unknown: API unavailable', page)
             self.assertIn('**Unknown**', page)
 
+    def test_previous_identity_and_unavailable_reason_are_retained(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(health, 'main_runs', side_effect=health.EvidenceError('API unavailable')):
+            root = Path(tmp)
+            previous = root/'previous.json'
+            data = {'schemaVersion': 1, 'repository': 'KD5UJC-XYZ/scarab', 'source_commit': 'b'*40,
+                    'collected_at': '2026-01-01T00:00:00Z', 'baselines': {'imperative': {'count': 9}}}
+            previous.write_text(json.dumps(data))
+            health.main(['--out', str(root/'now'), '--previous', str(previous)])
+            page = (root/'now/health.md').read_text()
+            self.assertIn('Previous snapshot: 2026-01-01T00:00:00Z', page)
+            self.assertIn('`'+'b'*40+'`', page)
+            for malformed in ([], {**data, 'collected_at': 1}, {**data, 'baselines': {'imperative': []}},
+                              {**data, 'repository': 'other/node'}):
+                previous.write_text(json.dumps(malformed))
+                health.main(['--out', str(root/'now'), '--previous', str(previous)])
+                self.assertIn('Previous snapshot: **unknown**', (root/'now/health.md').read_text())
+
+    def test_action_required_is_unknown_not_a_test_failure(self):
+        item = run(1, 'action_required', '2026-11-15T10:00:00Z', '2026-11-15T10:10:00Z')
+        result = health.failures([item], True)
+        self.assertEqual(result['failed_push_runs'], 0)
+        self.assertEqual(result['unknown_runs'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

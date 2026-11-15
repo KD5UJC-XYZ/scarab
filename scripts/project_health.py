@@ -237,8 +237,10 @@ def main(argv=None) -> int:
                     or candidate.get("repository") != args.repository \
                     or not re.fullmatch(r"[0-9a-f]{40}", candidate.get("source_commit", "")) \
                     or not isinstance(candidate.get("baselines"), dict) \
-                    or not all(isinstance(v, dict) and (v.get("count") is None or type(v.get("count")) is int)
+                    or not all(isinstance(v, dict) and (v.get("count") is None
+                               or (type(v.get("count")) is int and v["count"] >= 0))
                                for v in candidate["baselines"].values()) \
+                    or not isinstance(candidate.get("collected_at"), str) \
                     or timestamp(candidate["collected_at"]) > now:
                 raise EvidenceError("previous snapshot schema, repository, counts or identity do not match")
             previous = candidate
