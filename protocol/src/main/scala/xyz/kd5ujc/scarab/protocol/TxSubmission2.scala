@@ -99,7 +99,8 @@ object TxSubmission2:
   final case class EraTxId(era: Era, id: Bytes)
 
   /** A transaction as the hard-fork combinator carries it, `[era, #6.24(original)]`: the era's
-    * `GenTx`, CBOR-in-CBOR (`wrapCBORinCBOR`, `Shelley/Ledger/Mempool.hs:256-266`).
+    * `GenTx`, CBOR-in-CBOR (`wrapCBORinCBOR`, `Shelley/Ledger/Mempool.hs:256-266`,
+    * ouroboros-consensus 82ecba32).
     */
   final case class EraTx(era: Era, original: Bytes)
 
@@ -149,8 +150,9 @@ object TxSubmission2:
 
   /** The codec of the hard-fork combinator's `GenTx` and `GenTxId` of every Shelley-based era, its
     * transactions read by `reader` in the era each names: the reference's TxSubmission2 codec over
-    * the `HardForkBlock` 's (`dispatchDecoder`, `SerialiseNodeToNode.hs:80-109`). A transaction's
-    * id is the hash of its body as its era's decoders read it, under its era.
+    * the `HardForkBlock` 's (`dispatchDecoder`, `SerialiseNodeToNode.hs:80-109`,
+    * ouroboros-consensus 82ecba32). A transaction's id is the hash of its body as its era's
+    * decoders read it, under its era.
     */
   private[scarab] def eraCodec(
       reader: TransactionReader
