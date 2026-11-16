@@ -6338,6 +6338,219 @@
    ],
    "note": "the `DeltaCoin` as an integer of either sign; the outputs' lovelace wraps modulo 2^64 as `sumAllCoin` (`State/UTxO.hs:207-212`) adds it in a `Word64`, which no reachable input reaches: the collateral outputs are distinct UTxO entries, whose sum is at most the supply. The flat path adds exactly; the two differ only past that bound",
    "digest": "900d1cb4bda04881"
+  },
+  "def ledger.era.rules.ShelleyUtxow.validateVerifiedWits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+     "symbol": "validateVerifiedWits",
+     "lines": [
+      390,
+      407
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes, the failing keys in the witness sets' order as the reference lists them; the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
+   "digest": "07bebd19d3681314"
+  },
+  "def ledger.era.rules.AlonzoUtxow.checkScriptIntegrityHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "symbol": "checkScriptIntegrityHash",
+     "lines": [
+      266,
+      286
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
+   "digest": "a80980cb73ef7155"
+  },
+  "def ledger.era.rules.BabbageUtxow.babbageMissingScripts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
+     "symbol": "babbageMissingScripts",
+     "lines": [
+      193,
+      208
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite"
+   ],
+   "note": "the reference's predicate over the three sets of script hashes; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
+   "digest": "6887780da35d09cc"
+  },
+  "class ledger.era.ScriptIntegrity": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "ScriptIntegrity",
+     "lines": [
+      377,
+      382
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the redeemers and datums with the bytes they arrived as, and the language views",
+   "digest": "1ad9aef054b355c4"
+  },
+  "def ledger.era.ScriptIntegrity.originalBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "originalBytes",
+     "lines": [
+      391,
+      395
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the reference's empty redeemers carry the bytes mkMemoizedEra gave them at the era's eraProtVerLow; the era's witness set keeps none for a set without redeemers, so the empty redeemers' encoding at the era's lowest version is written here, from the era's witness (ShelleyBasedEra) and its decoder version; compared byte for byte with the flat preimage",
+   "digest": "cd2c605975701249"
+  },
+  "def ledger.era.ScriptIntegrity.hashScriptIntegrity": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "hashScriptIntegrity",
+     "lines": [
+      401,
+      402
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "blake2b-256 of the original bytes",
+   "digest": "766a7f6980913529"
+  },
+  "def ledger.era.ScriptIntegrity.mkScriptIntegrity": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "mkScriptIntegrity",
+     "lines": [
+      404,
+      423
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "over the classes the reference names: EraTx, AlonzoEraPParams and AlonzoEraTxWits",
+   "digest": "c0bc1d1a5f7927df"
+  },
+  "class ledger.era.LangDepView": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "LangDepView",
+     "lines": [
+      547,
+      548
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the tag and the parameters, each already encoded",
+   "digest": "cffded14cb2b05cd"
+  },
+  "def ledger.era.LangDepView.getLanguageView": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "getLanguageView",
+     "lines": [
+      566,
+      585
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the valid cost model by the language's tag in CostModels' one map, which holds a known language's model only among the valid ones",
+   "digest": "ed6d99af5647e881"
+  },
+  "def ledger.era.LangDepView.encodeLangViews": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "encodeLangViews",
+     "lines": [
+      587,
+      597
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the views in the short-lex order of their tags",
+   "digest": "a39fd38019b36661"
   }
  },
  "glue": [
@@ -6480,6 +6693,24 @@
     "def ledger.era.dijkstra.DijkstraPParams.fromStored",
     "def ledger.era.dijkstra.DijkstraPParams.fromUpdate",
     "def ledger.era.dijkstra.DijkstraPParams.toStored"
+   ]
+  },
+  {
+   "reason": "the era-typed UTXOW predicates' adapter to the node's flat failure type (UtxowFailure under PredicateFailure), until each era's failures are named (§3.4 of docs/design/era-typed-transactions.md), and the objects that stand for the reference's Rules/Utxow modules",
+   "definitions": [
+    "def ledger.era.rules.utxow",
+    "object ledger.era.rules.AlonzoUtxow",
+    "object ledger.era.rules.BabbageUtxow",
+    "object ledger.era.rules.ShelleyUtxow"
+   ]
+  },
+  {
+   "reason": "the companions of the script integrity's types, holding their equality and the Scala Ordering of a language view, whose order the reference derives",
+   "definitions": [
+    "given ledger.era.LangDepView.given_CanEqual_LangDepView_LangDepView",
+    "given ledger.era.LangDepView.ordering",
+    "object ledger.era.LangDepView",
+    "object ledger.era.ScriptIntegrity"
    ]
   }
  ]
