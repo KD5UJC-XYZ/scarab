@@ -49,7 +49,7 @@ This record keeps the decision; it is not the inventory. The conformance count i
 is historical; current results and their evidence are in [plutus-conformance.md](../plutus-conformance.md).
 The native cryptographic backend is [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md).
 ~~The builtin corrections the wrapper applies, with their reproducer suites, are documented on
-`ScalusEvaluator.CorrectedVm` in ScalusEvaluator.scala;
+ScalusEvaluator.CorrectedVm in ScalusEvaluator.scala;
 the list in the amendment above is not maintained as corrections change.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-by-the-own-evaluator))
 
 ## Amendment (2026-11-12): an own evaluator as an opt-in backend

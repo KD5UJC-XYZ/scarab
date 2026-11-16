@@ -176,7 +176,7 @@ and recording the block as invalid is a verdict the implementation does not have
 - ~~**Input** — any other exception the evaluator or decoder throws, a stack overflow, a budget beyond
   64 bits. Only the block or transaction that carries the input lacks a verdict.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
-The script-failure allowlist (`ScalusEvaluator.referenceFailure`) is unchanged: neither reach is ever
+The script-failure allowlist (ScalusEvaluator.referenceFailure) is unchanged: neither reach is ever
 a script failure, and nothing is added to it. The three outcomes of an evaluation are therefore a
 verdict (passed, or failed as the reference fails), no verdict for this input, and no verdict at all.
 

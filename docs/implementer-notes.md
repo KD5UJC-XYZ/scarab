@@ -767,7 +767,7 @@ are the ones most in need of a second reading.
 
 - **Era:** Babbage onwards
 - **Specification or CDDL says:** See the Part A entry on script bytes: V1 and V2 ignore a remainder.
-- **Implementation does:** `DeBruijnedProgram.fromCbor` fails on any trailing input.
+- **Implementation does:** DeBruijnedProgram.fromCbor fails on any trailing input.
 - **Evidence:** Preprod tx aee75c1c. Roadmap B16. Not filed upstream yet.
 - **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala).
 - **Suggested upstream action:** Scalus: expose the first-item length or accept a remainder for V1 and V2 (not filed yet).

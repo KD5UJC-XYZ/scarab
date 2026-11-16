@@ -19,14 +19,14 @@ scalus-secp256k1-jni and depends on `org.scalus:scalus-crypto-jni:0.1.0`, whose
 (`Secp256k1`) and every BLS12-381 operation (`Blst`) run there. Read from the Scalus 1.4.0 class
 files, 22 builtins reach it. Eighteen do so through `JVMPlatformSpecific`. The compress and equal
 builtins of G1 and G2 do so through the methods of `G1Element` and `G2Element`. That is the set
-`ScalusEvaluator.nativeCrypto` guards.
+ScalusEvaluator.nativeCrypto guards.
 
 How the library loads, read from the class files:
 
-1. `CryptoJni.<clinit>` calls `NativeLoader.loadLibrary("scalus_crypto")` and catches only
+1. `CryptoJni.<clinit>` calls NativeLoader.loadLibrary("scalus_crypto") and catches only
    `IOException` and `UnsatisfiedLinkError`. Either one is printed to stderr and leaves
    `isEnabled` false. Every entry point then throws `IllegalStateException` from `requireEnabled`.
-2. `NativeLoader.loadLibrary` first tries `System.loadLibrary` (`java.library.path`). Only after
+2. NativeLoader.loadLibrary first tries `System.loadLibrary` (`java.library.path`). Only after
    that fails does it extract `natives/<platform>/libscalus_crypto.so`, then `<platform>/…`, then
    `META-INF/lib/<platform>/…`, to a new directory under `java.io.tmpdir`, and `System.load` it from
    there.
@@ -83,14 +83,14 @@ condition, as ADR 0012 did for libblst.**~~ ([amended 2026-11-15](#amendment-202
   - the raw-DST `hashToGroup` adapter and its ASCII-only refusal;
   - the `BinaryDstUnavailable` and `NativeHashToGroupUnavailable` cases of `BackendFailure`;
   - the `ScalusDeviations` context patch.
-- Every builtin the library backs is wrapped by `CorrectedVm.nativeGuarded`. It checks
-  `NativeCrypto.available`, which never throws: an initialisation `LinkageError` counts as not
+- Every builtin the library backs is wrapped by CorrectedVm.nativeGuarded. It checks
+  NativeCrypto.available, which never throws: an initialisation `LinkageError` counts as not
   loaded. When the library is missing, the builtin returns `EvalFailure.Unsupported`
-  (`BackendFailure.BuiltinUnavailable`). That is never a script verdict or a consensus predicate
+  (BackendFailure.BuiltinUnavailable). That is never a script verdict or a consensus predicate
   failure.
-- **Start-up check (`NativeCrypto.verify`)**. `follow` runs it after `Blst.verify`, before
+- **Start-up check (NativeCrypto.verify)**. `follow` runs it after `Blst.verify`, before
   anything evaluates a script, and `BlstCheckMain` runs it too:
-  1. `NativeLibraryUtil.getArchitecture` names the platform. A platform without a pinned library is
+  1. NativeLibraryUtil.getArchitecture names the platform. A platform without a pinned library is
      `UnsupportedPlatform`.
   2. `locate` resolves the library in native-lib-loader's order without loading it: a file on
      `java.library.path` first, then the three resource locations. `admissible` accepts it only if
@@ -167,7 +167,7 @@ Rejected:
   compiled by two toolchains.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
 - ~~Revisit when:~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
   - ~~scalus-crypto-jni changes: update the five pins, the jar hash, the licence texts in
-    `plutus/licenses/` and this record, and rerun the ISA check;~~
+    plutus/licenses/ and this record, and rerun the ISA check;~~
   - ~~Scarab rebuilds the library from source;~~
   - ~~a platform other than Linux/amd64 is deployed;~~
   - ~~Scalus gains BLS key generation (then [0012](0012-portable-blst.md)'s module could go).~~
