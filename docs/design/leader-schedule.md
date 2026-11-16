@@ -626,9 +626,11 @@ scenario.
   is then; an early refusal that clears before the onset is forged; a refusal that stands is logged once; and no block
   signed with replaced credentials is handed over.
 - **A KES boundary during assembly (§5.5).** Under `TestControl`, a forge of a period's last slot is suspended just
-  before it signs while the clock crosses into the next period: the slot driver waits on the reservation, the block is
-  signed with the key of its own period and handed over, and the key moves to the next period after the signature,
-  written back once.
+  before it signs while the clock crosses into the next period: the slot driver stays waiting for that slot's result
+  (it cannot reach the next period's first slot before the earlier slot is settled, §5.4), the block is signed with the
+  key of its own period and handed over, the slot is settled, and only then does the key move to the next period,
+  written back once. Contention for the reservation is covered by the expiry test below, with a forge of the same
+  slot.
 - **Two fibers, one slot (§5.4).** A slot led under inputs A has its early attempt under way when a fork changes the
   inputs to B, under which it is not led, before the onset; run with the forging fiber's claim first and with the slot
   driver reaching the slot first. In both orders the slot has one outcome, `nodeNotLeader`, counted once in
