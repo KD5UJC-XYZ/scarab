@@ -9,9 +9,9 @@ import cats.mtl.Raise
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, VolatileChain}
-import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
+import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorProvenance, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{Block, StorageError, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, LedgerState, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion}
 import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
 import xyz.kd5ujc.scarab.storage.haskell.state.{
+  HaskellLedgerFile,
   HaskellState,
   HaskellStateCodecs,
   UtxoCodecs,
@@ -33,9 +34,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   *   - the answer is what the Haskell codec decodes, to a state that holds what the mirror holds
   *     and that writes the answer again byte for byte;
   *   - a Shelley-based era answers both queries (and their `GetCBOR` forms), in the era's own
-  *     encoding version, the chain-dependent state, the UTxO queries, the reward provenance and the
-  *     queries that read nothing of the era's own, and only these (the other queries stay
-  *     Conway's);
+  *     encoding version, the chain-dependent state, the UTxO queries, the reward provenance, the
+  *     queries that read nothing of the era's own, and its current parameters and governance state
+  *     (as the reference wrote them in its own snapshots of each era), and only these (the other
+  *     queries stay Conway's);
   *   - a query for another era is the era mismatch, and Byron is refused.
   */
 class MirrorAnswersSuite extends FunSuite:
@@ -315,11 +317,143 @@ class MirrorAnswersSuite extends FunSuite:
     assert(proposing, "no state before Conway holds a proposal")
   }
 
+  /** The item at `path` of the CBOR `bytes`, an index into each array on the way, as it was written
+    * (the ledger state holds floats, the non-myopic likelihoods).
+    */
+  private def item(bytes: Bytes, path: Int*): CborNode =
+    path.foldLeft(Cbor.decode(bytes, HaskellState.limits).fold(e => fail(e.toString), identity)) {
+      (n, i) =>
+        n.items.flatMap(_.drop(i).nextOption()).getOrElse(fail(s"no item $i in ${n.original.hex}"))
+    }
+
+  /** The governance state in a new-epoch state as the ledger writes it: `[epoch, blocks, blocks,
+    * [chain account, [certificate state, [UTxO, deposited, fees, governance state, ..]], ..], ..]`
+    * (`LedgerState/Types.hs`, cardano-ledger f649f975).
+    */
+  private def govIn(newEpochState: Bytes): Bytes = item(newEpochState, 3, 1, 1, 3).original
+
+  /** The current parameters in a governance state: the third item of `ShelleyGovState`, the fourth
+    * of `ConwayGovState` (`Shelley/Governance.hs:63-68`, `Conway/Governance.hs:359-369`,
+    * cardano-ledger f649f975), and how the reference writes them below node-to-client version 21:
+    * before Conway with the protocol version pair, the 15th parameter up to Alonzo and the 13th in
+    * Babbage, as its two fields, one item more; Conway's as they are
+    * (`Query/LegacyPParams.hs:43-68, 107-130, 167-190, 227-258, 302-330, 371-372`,
+    * ouroboros-consensus 82ecba32).
+    */
+  private def paramsIn(era: Era, gov: Bytes): (Bytes, Bytes) =
+    def split(at: Int): (Bytes, Bytes) =
+      val current = item(gov, 2).original
+      val fields = item(current).items.map(_.toVector).getOrElse(fail("no parameters"))
+      val pair = fields(at).items.map(_.toVector).getOrElse(fail(s"$era: no protocol version"))
+      assertEquals(pair.size, 2, s"$era: the protocol version")
+      val legacy = CborOut.build { w =>
+        w.array(fields.size + 1)
+        (fields.take(at) ++ pair ++ fields.drop(at + 1)).foreach(f => w.raw(f.original))
+      }
+      assertEquals(legacy.size, current.size - 1, s"$era: the legacy parameters")
+      (current, legacy)
+    era match
+      case Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo => split(14)
+      case Era.Babbage                                       => split(12)
+      case Era.Conway =>
+        val current = item(gov, 3).original
+        (current, current)
+      case Era.Byron | Era.Dijkstra => fail(s"$era has no parameters here")
+
+  /** `GetCurrentPParams` and `GetGovState` and their `GetCBOR` forms asked of `view` in `era` at
+    * versions 16, 20, 21 and 23: the governance state `gov` at every version, its current
+    * parameters from version 21 and their legacy form below it, and both at the latest version
+    * through `GetCBOR`.
+    */
+  private def asksGovernance[S](label: String, era: Era, view: QueryView[S], gov: Bytes): Unit =
+    val (current, legacy) = paramsIn(era, gov)
+    List(NtcVersion.V16, NtcVersion.V20, NtcVersion.V21, NtcVersion.V23).foreach { version =>
+      def asked(q: LedgerQuery): Either[Unanswered, String] =
+        QueryAnswers
+          .answerOrWhy(queryEnv, view, Map.empty, NtcQuery.IfCurrent(QueryEra.of(era), q), version)
+          .map(_.hex)
+      val at = s"$label at ${version.number}"
+      assertEquals(
+        asked(LedgerQuery.GetCurrentPParams),
+        Right("81" + (if version.number < 21 then legacy else current).hex),
+        s"$at: GetCurrentPParams"
+      )
+      assertEquals(
+        asked(LedgerQuery.GetCBOR(LedgerQuery.GetCurrentPParams)),
+        Right("81" + wrapped(current)),
+        s"$at: GetCBOR GetCurrentPParams"
+      )
+      assertEquals(asked(LedgerQuery.GetGovState), Right("81" + gov.hex), s"$at: GetGovState")
+      assertEquals(
+        asked(LedgerQuery.GetCBOR(LedgerQuery.GetGovState)),
+        Right("81" + wrapped(gov)),
+        s"$at: GetCBOR GetGovState"
+      )
+    }
+
+  test(
+    "every state of every Shelley-based era answers its current parameters and governance state, as its new-epoch state holds them"
+  ) {
+    val proposing = shelleyBased.map { (block, state) =>
+      val era = state.era
+      val label = s"$era block ${block.header.blockNo}"
+      val gov = govIn(
+        ask(era, block, state, LedgerQuery.DebugNewEpochState)
+          .map(result)
+          .getOrElse(fail(s"$label: DebugNewEpochState is not answered"))
+      )
+      asksGovernance(label, era, view(block, state), gov)
+      era != Era.Conway && item(gov, 0).entries.exists(_.nonEmpty)
+    }
+    // the proposed updates are in the answer of a state that holds them
+    assert(proposing.exists(identity), "no state before Conway holds a proposal")
+  }
+
+  /** The ledger snapshots cardano-node 11.1.3 wrote, one in each Shelley-based era, on the devnet
+    * that walks the eras (`fixtures/haskell-state`, by its `db-analyser`).
+    */
+  private val referenceSnapshots =
+    Vector(
+      "shelley-1000",
+      "allegra-1800",
+      "mary-2308",
+      "alonzo-3013",
+      "babbage-4000",
+      "conway-4593"
+    )
+
+  test(
+    "a state the reference wrote answers its current parameters and governance state with the reference's bytes"
+  ) {
+    // these queries read the ledger state only; the rest of the mirror is a capture state's
+    val (_, capture) = shelleyBased.head
+    val eras = referenceSnapshots.map { name =>
+      val raw = Bytes.fromArray(Files.readAllBytes(Path.of(s"fixtures/haskell-state/$name/state")))
+      val file = HaskellLedgerFile.decode(raw).fold(e => fail(s"$name: ${e.render}"), identity)
+      val ext = file.ext.getOrElse(fail(s"$name: no Shelley-based state"))
+      val state = MirrorState(ext, capture.extras, MirrorProvenance.complete)
+      // the file is `[1, [ledger telescope, header state]]`, the telescope's last item the current
+      // era's `[start, [2, [tip, new-epoch state, transition]]]`: the governance state there is the
+      // reference's own bytes
+      val current = item(raw, 1, 0).items.flatMap(_.toVector.lastOption).getOrElse(fail(name))
+      val gov = govIn(item(current.original, 1, 1, 1).original)
+      asksGovernance(name, file.era, QueryView(Point.Origin, None, state), gov)
+      file.era
+    }
+    assertEquals(
+      eras,
+      Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
+    )
+  }
+
   test("the other queries stay Conway's: a state of an earlier era answers none") {
     shelleyBased.filter(_._1.era != Era.Conway).take(40).foreach { (block, state) =>
       val era = state.era
-      assertEquals(ask(era, block, state, LedgerQuery.GetCurrentPParams), None)
       assertEquals(ask(era, block, state, LedgerQuery.GetStakePools), None)
+      assertEquals(
+        ask(era, block, state, LedgerQuery.GetFilteredDelegationsAndRewardAccounts(Set.empty)),
+        None
+      )
     }
   }
 
