@@ -6,12 +6,19 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 ## Status as recorded
 
 partial (I2, [#43](https://github.com/KD5UJC-XYZ/scarab/issues/43), [ADR 0027](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)):
-the `uplc` module, with no Scalus on its class path, evaluates phase 2 and admits scripts in the block
-rules, the mempool and the forger under `--plutus-vm scarab` ([flags](../running/flags.md)). Scalus stays
-the default. The node forges with `scarab` too ([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)), and protocol 12 and later get no verdict, both
-by decision. What each suite shows is in [the conformance profile](../plutus-conformance.md#scarabs-own-evaluator).
+the `uplc` module is the node's only Plutus evaluator
+([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)). It
+evaluates phase 2 and admits scripts in the block rules, the mempool and the forger; the Scalus backend and
+the `--plutus-vm` flag are removed ([flags](../running/flags.md)). The node forges with it
+([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)). Protocol 12 and
+later get no verdict until the evaluator is extended to them
+([#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099), decided on 2026-11-15). What each suite shows is
+in [the conformance profile](../plutus-conformance.md#scarabs-own-evaluator).
 
 ## Evidence
+
+Recorded while the Scalus backend was the node's default and the own evaluator ran under `--plutus-vm scarab`;
+the commands below are those of that time.
 
 - **Upstream conformance:** the 1,009 cases of the pinned evaluation corpus, without exclusions, and the
   906 of them in Flat form through the own Flat decoder, with exact results and budgets.
@@ -54,12 +61,16 @@ by decision. What each suite shows is in [the conformance profile](../plutus-con
   `pool` run's scripts are trivial (one that always succeeds and one that fails with `error`, in V1 and V2, at
   protocol 10): it shows the path of a validity flag from admission to a forged block that the Haskell pools
   adopt, not the evaluator's agreement on real scripts. Plutus V3 is not in its load.
-- **Protocol 12 and later** (Leios, PlutusV4) get no verdict, by decision.
+- **Protocol 12 and later** (Leios, PlutusV4) get no verdict until
+  [#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099) extends the evaluator to them; the plutus 1.71.0.0
+  corpus has no runner until then ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md)).
 - **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch
-  boundaries. It compares no single script's verdict or budget with the Scalus backend's; a different
-  verdict that left the projected state unchanged would not show.
-- **Failure-path comparison:** the differential compares execution units and logs on successes only.
+  boundaries. It compares no single script's verdict or budget; a different verdict that left the projected
+  state unchanged would not show.
+- **Recorded script requests:** the 752 recorded requests of the differential were compared between the two
+  backends, not with the reference, and in execution units and logs on successes only; that comparison went
+  with the Scalus backend.
 - **ExUnits conversion:** the conversion of a redeemer's `ExUnits` to a budget is not compared with cardano-ledger's own.
 - **Finite samples:** no corpus shows equality for every program, size or cost-model list.
