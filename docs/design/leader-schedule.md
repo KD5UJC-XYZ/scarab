@@ -1,9 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Forging from a per-epoch leader schedule
 
-**Status**: Accepted 2026-11-16: the owner's decisions on [#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101),
-and its reference claims checked independently at their pins (the pull request's review). Stages S1 and S2 are built (§8); S3 records the evidence. **No persisted format
-changes**: the schedule is held in memory only (§5.2, [FMT-1](../design-rules.md#fmt-1)).
+**Status**: Current. Accepted 2026-11-16: the owner's decisions on
+[#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101), and its reference claims checked independently at their pins
+(the pull request's review). Built in stages S1 to S3 (§8); §11 says what was built and what its evidence shows. **No
+persisted format changes**: the schedule is held in memory only (§5.2, [FMT-1](../design-rules.md#fmt-1)).
 
 Pins. The forger cites the `11.1` build: cardano-node 11.1.3, ouroboros-consensus 82ecba32, cardano-ledger f649f975,
 and for the files of its cardano-ledger-shelley package cardano-ledger 4c81e909 (the revision that package is built
@@ -794,3 +795,44 @@ Risks:
 - **The forge path after the leader check**, its refusals (`forgeFailed`, `forgeDefect`), and dynamic block forging
   (SIGHUP, `--start-as-non-producing-node`).
 - **Which node forges.** A node without credentials runs no forger, so no clock fiber, slot driver or schedule, as now.
+
+## 11. As built
+
+What [#1109](https://github.com/KD5UJC-XYZ/scarab/pull/1109) built, in the order of §5. Where the build settles what §5
+left open, or differs from it, §8 lists the point under S2; it is not repeated here.
+
+- **The inputs (§5.2).** `EpochInputs` is an epoch's leader-check inputs as one value, compared by value: the epoch and
+  its slots, the epoch nonce, the pool's stake and the total, the active slot coefficient, and the VRF key by its
+  public key. `Forger.inputsAt` derives it from a tip through `Forger.conwayAt` and `Forger.leaderView`, the functions
+  the slot driver's own check of an uncovered slot calls (Q3), so the two paths cannot be given different inputs.
+- **The schedule (§5.2).** `LeaderSchedule` walks an epoch in chunks of `LeaderSchedule.ChunkSlots` (100) slots with
+  `Leadership.decide`: the output for every slot, a proof for a led slot only. `LeaderSchedule.Pacing` sets the pause
+  after each chunk. The stream switches to each new value of the inputs' signal and drops the work under way; the state
+  answers for a slot only while the inputs it was computed from are those in force, and drops an epoch the inputs no
+  longer name. It is held in memory only.
+- **The fibers (§5.1, §5.3, §5.4).** `Forger.run` starts the scheduler, the clock fiber, the forging fiber and the slot
+  driver in one scope and joins them at once ([FIB-3](../design-rules.md#fib-3)); the first `Fatal` ends all four and
+  is returned as before. `Forger.step` keeps one slot's per-slot decision, as the oracle of the differential test.
+- **The KES key (§5.5)** is updated under one reservation, from a forge's update through its signing; the slot driver's
+  update at a period's first slot takes the same reservation.
+- **What the operator sees (§5.6):** the four gauges in [metrics](../running/metrics.md), and the `leaderSchedule`
+  and discarded-attempt lines in [logging](../running/logging.md).
+- **The tests (§7).** `LeaderScheduleSuite`: the schedule's decision and certificate equal `Leadership.check` on every
+  slot of generated epochs, and the pacing's arithmetic. `LeaderScheduleStreamSuite`: the stream under `TestControl`.
+  `ScheduledForgerSuite`: the differential, each slot's outcome and each block handed over against `Forger.step`, across
+  an epoch boundary, forks past the freeze and across the previous boundary, a VRF key reload, forging switched off
+  and on, and a start mid-epoch. `ForgeInterleavingSuite`: the interleavings §7 lists, each placed with
+  `Forger.Point`.
+- **The evidence (S3)** is in the [evidence log](../compatibility/evidence-log-5.md), the entries for #1101: the
+  devnet `pool` and `kes-rotate` runs, and one Antithesis run of the trial's base configuration under node, clock and
+  network faults, in which every property that must never fire held and forks past k came at the per-slot forger's
+  rate.
+
+What the measurements say about §6 and §9:
+
+- **The CPU.** As §6 reads it, the count of evaluations does not change, and on the trial's topology a local comparison
+  (2026-11-16, the node beside two Haskell pools at 0.1 s slots, two 300 s windows each) found no difference in the
+  node's CPU between the scheduled forger and the per-slot loop beyond the spread between runs. The gain is timing.
+- **The timing (Q5, Q11).** On the devnet `pool` runs a led slot's block was built a median 44 to 46 ms before its
+  onset and adopted a median 10 to 12 ms after it. The time from the onset to the adoption is small, so the two-step
+  `Follower` API of Q5 is not needed.
