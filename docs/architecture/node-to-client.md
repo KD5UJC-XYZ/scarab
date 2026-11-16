@@ -23,9 +23,12 @@ fields in line, reversed where the ledger swaps them, sets under tag 258, `Stric
 one-element list), and `LocalSubmission.reasonItem` wraps the failures as the hard-fork combinator's
 `ApplyTxErr` of the pool's era: `[[6, [failure, ...]]]` in Conway, the era's own instances before it
 (`PreConwayFailureCbor`; a failure that has no encoding there has no reply, `NoEncoding`); a transaction of another
-era that does not reach the pool's gets the era mismatch `[[era, name], [ledger era, name]]` (#934). The LEDGER-level checks (treasury value, reference-script size,
-withdrawals), CERTS and GOV run before UTXOW, as in the ledger. A submitted transaction is judged
-by the ledger's MEMPOOL rule under the accumulating judgment (`rules/Judge.scala`,
+era that does not reach the pool's gets the era mismatch `[[era, name], [ledger era, name]]` (#934). In Conway the LEDGER-level checks (treasury value, reference-script size,
+withdrawals), CERTS and GOV run before UTXOW, as in the ledger, and a submitted transaction is judged
+by the ledger's MEMPOOL rule; from Shelley to Babbage the pool applies the era's LEDGER rule (`EarlierLedger`), as
+the reference's mempool does in those eras, where Conway's applies MEMPOOL (the `ApplyTx` instances,
+`Shelley/API/Mempool.hs:325-344` and `Conway.hs:50-59`, cardano-ledger `f649f975`). Either is run under the
+accumulating judgment (`rules/Judge.scala`,
 `docs/design/rule-interpreter-as-built.md`): every rule boundary of the reference is a sub-rule
 that always runs, so the failures of different rules are all reported, in the reference's order.
 Within each rule every check records its failure and the rule goes on to the state the reference

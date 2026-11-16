@@ -5,7 +5,7 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 
 ## Status as recorded
 
-implemented: pure `MempoolState`, TxSubmission2 both roles, typed rejections; in every era from Shelley to Conway the pool holds the transactions of the era of its ledger, the tip's state ticked to the slot after it, and TxSubmission2 carries the hard-fork combinator's `GenTx` and `GenTxId` of every Shelley-based era under the era's index, each transaction read by its era's decoders; a peer's transaction of another era is taken as a local client's is, as the selected reference build does (#934; `EraMempoolSuite`). A Byron `GenTx` or `GenTxId` from a peer ends the connection, where the reference decodes it and refuses it with the era mismatch
+implemented: pure `MempoolState`, TxSubmission2 both roles, typed rejections; in every era from Shelley to Conway the pool holds the transactions of the era of its ledger, the tip's state ticked to the slot after it, and TxSubmission2 carries the hard-fork combinator's `GenTx` and `GenTxId` of every Shelley-based era under the era's index, each transaction read by its era's decoders; a peer's transaction of another era is taken as a local client's is, as the selected reference build does (#934; `EraMempoolSuite`). A Byron `GenTx` or `GenTxId` from a peer ends the connection. The reference decodes both: it takes a Byron `GenTxId` as any other id, compared by its hash whatever the era (`AcrossEras.hs:167-181`, ouroboros-consensus `82ecba32`), for its lookups and requests, and refuses a Byron `GenTx`, the transaction, with the era mismatch
 
 ## Evidence
 
