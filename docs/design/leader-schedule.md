@@ -377,7 +377,9 @@ At the wake the fiber makes an **early attempt**. It is provisional until the sl
    handed over or the slot's refusal is final, so the log shows one attempt per slot, the one that counted ([#1101,
    Q4](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395): lines cover only what is final). The
    forging fiber publishes none of them: it hands the slot's final result to the slot driver, which publishes it
-   (§5.4).
+   (§5.4). A held line keeps the time it was made: its `at` is the event's time, not the publication's, so a block
+   forged before the onset shows its `forged` time before the onset (Q11), and the lines of a slot can be published
+   after lines of later times.
 
 **An early refusal is retried up to the onset.** If the early attempt gives the slot up (`noLedgerView`,
 `slotIsImmutable` or `blockFromFuture` because the tip is not yet where it will be, or not led because the inputs it
