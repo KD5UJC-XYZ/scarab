@@ -9,9 +9,17 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   CompactCoin,
   Conway,
+  Credential,
+  DRep,
+  DRepRole,
+  DRepState,
   DState,
   EraTag,
+  KeyHash,
   PState,
+  StakePool,
+  StakePoolState,
+  Staking,
   VState
 }
 
@@ -95,3 +103,67 @@ object EraCertState:
     shelleyObligationCertState[E](certState).copy(oblDRep =
       CompactCoin.sum(c.certVStateL.get(certState).dreps.valuesIterator.map(_.deposit)).toCoin
     )
+
+  /** `unDelegReDelegStakePool` (`State/CertState.hs:281-300`, cardano-ledger f649f975): the account
+    * of `credential`, as `accountState` was, leaves the pool it delegated to and joins `newPool` 's
+    * delegators; nothing changes where the pool is the same.
+    */
+  def unDelegReDelegStakePool[E <: EraTag](
+      credential: Credential[Staking],
+      accountState: AccountState[E],
+      newPool: Option[KeyHash[StakePool]],
+      pState: PState
+  )(using a: EraAccounts[E]): PState =
+    def addNewDelegation(
+        pools: scala.collection.immutable.SortedMap[KeyHash[StakePool], StakePoolState]
+    ) =
+      newPool.fold(pools)(pool =>
+        pools.updatedWith(pool)(_.map(StakePoolState.delegators.modify(_ + credential)))
+      )
+    PState.stakePools.modify { pools =>
+      a.stakePoolDelegationAccountStateL.get(accountState) match
+        case None                                       => addNewDelegation(pools)
+        case Some(current) if newPool.contains(current) => pools
+        case Some(current) =>
+          addNewDelegation(
+            pools.updatedWith(current)(_.map(StakePoolState.delegators.modify(_ - credential)))
+          )
+    }(pState)
+
+/** The functions of Conway's voting state (`eras/conway/impl/src/Cardano/Ledger/Conway/State/`,
+  * cardano-ledger f649f975) over the classes.
+  */
+object ConwayEraCertState:
+  /** `dRepToCred` (`libs/cardano-ledger-core/src/Cardano/Ledger/DRep.hs:121-124`, cardano-ledger
+    * f649f975): the credential of a DRep that has one, not of the two predefined.
+    */
+  def dRepToCred(drep: DRep): Option[Credential[DRepRole]] = drep match
+    case DRep.DRepKeyHash(h)    => Some(Credential.KeyHashObj[DRepRole](h))
+    case DRep.DRepScriptHash(h) => Some(Credential.ScriptHashObj[DRepRole](h))
+    case DRep.DRepAlwaysAbstain | DRep.DRepAlwaysNoConfidence => None
+
+  /** `unDelegReDelegDRep` (`Conway/State/VState.hs:120-143`, cardano-ledger f649f975): the account
+    * of `credential`, as `accountState` was, leaves the DRep it delegated to and joins `newDRep` 's
+    * delegators; nothing changes where the DRep is the same. A predefined DRep has no delegators.
+    */
+  def unDelegReDelegDRep[E <: EraTag](
+      credential: Credential[Staking],
+      accountState: AccountState[E],
+      newDRep: Option[DRep],
+      vState: VState
+  )(using a: ConwayEraAccounts[E]): VState =
+    def addNewDelegation(
+        dreps: scala.collection.immutable.SortedMap[Credential[DRepRole], DRepState]
+    ) =
+      newDRep
+        .flatMap(dRepToCred)
+        .fold(dreps)(c => dreps.updatedWith(c)(_.map(DRepState.delegators.modify(_ + credential))))
+    VState.dreps.modify { dreps =>
+      a.dRepDelegationAccountStateL
+        .get(accountState)
+        .flatMap(d => dRepToCred(d).map(d -> _)) match
+        case None                                            => addNewDelegation(dreps)
+        case Some((current, _)) if newDRep.contains(current) => dreps
+        case Some((_, c)) =>
+          addNewDelegation(dreps.updatedWith(c)(_.map(DRepState.delegators.modify(_ - credential))))
+    }(vState)

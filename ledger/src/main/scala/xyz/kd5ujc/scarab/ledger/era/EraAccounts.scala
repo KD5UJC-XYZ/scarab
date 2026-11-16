@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import cats.syntax.all.*
 import monocle.Lens
 import scala.collection.immutable.SortedMap
+import xyz.kd5ujc.scarab.ledger.{Mismatch, RewardAccount}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
   Coin,
@@ -14,7 +17,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EraTag,
   KeyHash,
   StakePool,
-  Staking
+  Staking,
+  VocabError
 }
 
 /** The state of one stake account in era `E` (`type AccountState era`, cardano-ledger f649f975
@@ -103,8 +107,64 @@ object EraAccounts:
   )(using a: EraAccounts[E]): Option[KeyHash[StakePool]] =
     lookupAccountState[E](credential, accounts).flatMap(a.stakePoolDelegationAccountStateL.get)
 
+  /** The withdrawals of no registered account of the network, and those that do not take their
+    * account's whole balance.
+    */
+  type Undrained = (Map[RewardAccount, Coin], Map[RewardAccount, Mismatch[Coin]])
+
+  /** `withdrawalsThatDoNotDrainAccounts` (`State/Account.hs:202-215`, by `categorizeWithdrawals`,
+    * `:230-264`, cardano-ledger f649f975): none if every withdrawal drains a registered account of
+    * the network `network`; otherwise the withdrawals of an account that is not registered or is on
+    * another network, and those that do not take the account's whole balance, with that balance. A
+    * withdrawal's credential is read into the state's vocabulary, which a decoded one always is.
+    */
+  def withdrawalsThatDoNotDrainAccounts[E <: EraTag](
+      withdrawals: Map[RewardAccount, Coin],
+      network: Int,
+      accounts: Accounts[E]
+  )(using
+      a: EraAccounts[E]
+  ): Either[VocabError, Option[Undrained]] =
+    withdrawals.toVector
+      .traverse((account, amount) =>
+        Convert
+          .credential[Staking](account.credential)
+          .map(c =>
+            (
+              account,
+              amount,
+              Option.when(account.network == network)(c).flatMap(lookupAccountState[E](_, accounts))
+            )
+          )
+      )
+      .map { found =>
+        val missing = found.collect { case (account, amount, None) => account -> amount }.toMap
+        val incomplete = found.collect {
+          case (account, amount, Some(state))
+              if amount.value != a.balanceAccountStateL.get(state).toBigInt =>
+            account -> Mismatch(amount, a.balanceAccountStateL.get(state).toCoin)
+        }.toMap
+        Option.when(missing.nonEmpty || incomplete.nonEmpty)((missing, incomplete))
+      }
+
+  /** `drainAccounts` (`State/Account.hs:272-277`, by `updateAccountBalances`, `:311-330`,
+    * cardano-ledger f649f975): each withdrawn account's balance set to zero, whatever its network;
+    * a withdrawal of no registered account changes nothing.
+    */
+  def drainAccounts[E <: EraTag](withdrawals: Map[RewardAccount, Coin], accounts: Accounts[E])(using
+      a: EraAccounts[E]
+  ): Accounts[E] =
+    withdrawals.keysIterator.foldLeft(accounts)((acc, account) =>
+      Convert
+        .credential[Staking](account.credential)
+        .fold(
+          _ => acc,
+          c => adjustAccountState[E](a.balanceAccountStateL.replace(CompactCoin.zero), c, acc)
+        )
+    )
+
 /** The stake accounts from Conway, which delegate their votes too (`class ConwayEraAccounts`,
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/State/Account.hs:281-294`, cardano-ledger f649f975).
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/State/Account.hs:281-295`, cardano-ledger f649f975).
   */
 trait ConwayEraAccounts[E <: EraTag] extends EraAccounts[E]:
   /** `mkConwayAccountState`: an account with no balance and no delegation, holding `deposit`. */
