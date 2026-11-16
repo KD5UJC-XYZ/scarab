@@ -232,7 +232,7 @@ section and the catalogue differ.
 
 | Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
 |---|---|---|---|---|
-| `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots the forger handled, led or not (TraceStartLeadershipCheck, whose line only a led slot logs). | same name; scraped from 11.1.3, which counts every slot its forging thread runs |
+| `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots the forger handled, led or not (TraceStartLeadershipCheck, whose line a slot not led logs only at a KES period change). | same name; scraped from 11.1.3, which counts every slot its forging thread runs |
 | `cardano_node_metrics_Forge_slot_is_immutable_counter` | counter |  | Slots given up because the immutable tip is in the slot or a later one (TraceSlotIsImmutable). | same name; from the binary's trace name `Forge.slot-is-immutable` (`Tracers/Consensus.hs` 1509-1510), not scraped |
 | `cardano_node_metrics_Forge_block_from_future_counter` | counter |  | Slots given up because the tip of the chain is in a later slot (TraceBlockFromFuture). | same name; from the binary's trace name `Forge.block-from-future` (`Tracers/Consensus.hs` 1511-1512), not scraped |
 | `cardano_node_metrics_Forge_could_not_forge_counter` | counter |  | Slots given up for the ledger view or a leader slot that could not be forged (TraceNoLedgerState, TraceNoLedgerView, TraceNodeCannotForge). | same name; from the binary's trace name `Forge.could-not-forge` (`Tracers/Consensus.hs` 1513-1521), not scraped |

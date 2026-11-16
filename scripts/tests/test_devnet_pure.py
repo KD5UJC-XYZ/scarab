@@ -1180,7 +1180,7 @@ class PoolOracleTest(unittest.TestCase):
         ev += [{"event": "forged", "at": self.at(s), "slot": s, "hash": f"f{s}"} for s in forged]
         ev += [{"event": "extended", "at": self.at(s), "block": {"slot": s, "hash": f"o{s}"}} for s in other]
         # every slot of the window is handled but 30, which the forger passed over: a led slot logs
-        # `startLeadershipCheck`, one not led only the line that ends it (#1101)
+        # `startLeadershipCheck`, one not led only the line that ends it but at a KES period change (#1101)
         ev += [{"event": "startLeadershipCheck" if s % 2 else "nodeNotLeader", "at": self.at(s), "slot": s}
                for s in range(6, end) if s not in (30, 50)]
         ev += [{"event": "startLeadershipCheck", "at": self.at(50), "slot": 50}]

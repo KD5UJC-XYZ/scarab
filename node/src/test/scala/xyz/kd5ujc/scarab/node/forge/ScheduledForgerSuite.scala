@@ -470,23 +470,34 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
   test(
     "a slot not led logs nodeNotLeader alone and is counted; a led slot logs its whole sequence"
   ) {
-    val p = pool(kesStart = 50, seed = 9)
+    // the first slot, which announces KES period 50, is not led
+    val first = BigInt(5000)
+    val p = pool(kesStart = 50, seed = seedLeading(Nil, Vector(first)))
     ran(p, 5000, 5040).map { (events, stats) =>
       val led = traced[ForgeTrace.NodeIsLeader](events).map(_.slot)
       val notLed = traced[ForgeTrace.NodeNotLeader](events).map(_.slot)
       assert(led.nonEmpty && notLed.nonEmpty, s"$led $notLed")
       assertEquals((led ++ notLed).sorted, (BigInt(5000) to BigInt(5040)).toVector)
-      // the counters as before: every slot checked, led or not
+      // the counters as before: every slot checked, led or not, and once
       assertEquals(stats.slotsChecked, 41L)
       assertEquals(stats.leaderSlots, led.size.toLong)
       assertEquals(stats.notLeader, notLed.size.toLong)
-      // the reference's Info and Debug lines of the slot's steps only for a led slot
-      assertEquals(traced[ForgeTrace.StartLeadershipCheck](events).map(_.slot), led)
+      // the reference's Info and Debug lines of the slot's steps only for a led slot, but for
+      // `startLeadershipCheck`, also logged on a slot not led that announces the KES period
+      assertEquals(
+        traced[ForgeTrace.StartLeadershipCheck](events).map(_.slot),
+        (first +: led).sorted
+      )
       assertEquals(traced[ForgeTrace.BlockContext](events).map(_.slot), led)
       assertEquals(traced[ForgeTrace.LedgerView](events).map(_.slot), led)
       // the KES key's state in each led slot's sequence, and once at the period's first slot
       val states = events.count(_.isInstanceOf[ForgeEvent.StateInfo])
-      assertEquals(states, led.size + (if led.contains(BigInt(5000)) then 0 else 1))
+      assertEquals(states, led.size + 1)
+      // that slot's lines in the reference's order: its start, the key's state, its end
+      val start = events.indexOf(ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(first)))
+      assert(start >= 0, events.toString)
+      assert(events(start + 1).isInstanceOf[ForgeEvent.StateInfo], events.toString)
+      assertEquals(events(start + 2), ForgeEvent.Loop(ForgeTrace.NodeNotLeader(first)))
     }
   }
 

@@ -626,26 +626,32 @@ final class Forger[F[_]: Async, S](
     }
 
   /** The lines of a slot not led, as the reference would end it: counted as a slot checked, with
-    * the KES key's state at a period change or near its expiry, then `nodeNotLeader`.
+    * `startLeadershipCheck` and the KES key's state at a period change, the state near its expiry,
+    * then `nodeNotLeader`.
     */
   private def notLed(slot: BigInt, kes: Option[(Long, KesInfo)]): F[Vector[Held[F]]] =
     ended(slot, kes, reached = true)(Forger.traced(ForgeTrace.NodeNotLeader(slot)))
 
   /** The lines of a slot the slot driver ends itself: the slot counted (the reference's
-    * `StartLeadershipCheck`, whose line only a led slot logs), the KES key's state if its period
-    * has not been announced, or if the slot's checks reached the key near its expiry, then the
-    * lines that end the slot (`last`).
+    * `StartLeadershipCheck`, whose line a slot not led logs only where it announces the KES
+    * period's state), the KES key's state if its period has not been announced, or if the slot's
+    * checks reached the key near its expiry, then the lines that end the slot (`last`).
     */
   private def ended(slot: BigInt, kes: Option[(Long, KesInfo)], reached: Boolean)(
       last: Instant => Vector[Held[F]]
   ): F[Vector[Held[F]]] =
     (now, shared.published.get).mapN { (at, published) =>
+      val announcing = kes.exists((generation, _) =>
+        !published.announced.contains(generation -> kesPeriodOf(slot))
+      )
+      val start = ForgeTrace.StartLeadershipCheck(slot)
+      // at a KES period change the line too, first, as the reference orders a slot's lines (#1101,
+      // Q2); counted once either way, the line's publication counting it
       val counted: Held[F] =
-        Held.Effect(stats.record(geometry.epochOf(slot), ForgeTrace.StartLeadershipCheck(slot)))
+        if announcing then Held.Line(ForgeEvent.Loop(start), at)
+        else Held.Effect(stats.record(geometry.epochOf(slot), start))
       val state = kes.collect {
-        case (generation, info)
-            if !published.announced.contains(generation -> kesPeriodOf(slot)) ||
-              (reached && info.remaining <= Forger.KesWarning) =>
+        case (generation, info) if announcing || (reached && info.remaining <= Forger.KesWarning) =>
           Held.Kes[F](slot, generation, Right(info), at)
       }
       (counted +: state.toVector) ++ last(at)

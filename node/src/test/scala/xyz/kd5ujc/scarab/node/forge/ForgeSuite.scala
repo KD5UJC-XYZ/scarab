@@ -160,14 +160,15 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
           events <- h.seen
         yield
           assertEquals(forged.map(_.slot.toInt).filter(_ < 5200), leads.toVector)
-          // every slot is ended once, none twice and none passed over; only the led ones are
-          // started with a line of their own (#1101)
+          // every slot is ended once, none twice and none passed over; only the led ones, and the
+          // first slot of each KES period (5000 and 5100), are started with a line of their own
+          // (#1101)
           assertEquals(endedIn(events).map(_.toInt).filter(_ < 5200), (5000 until 5200).toVector)
           assertEquals(
             events
               .collect { case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) => s.toInt }
               .filter(_ < 5200),
-            leads.toVector
+            (leads ++ Vector(5000, 5100)).distinct.sorted.toVector
           )
       }
     )
