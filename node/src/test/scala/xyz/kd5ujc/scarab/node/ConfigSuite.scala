@@ -818,12 +818,32 @@ class ConfigSuite extends FunSuite:
     assert(Topology.parse("[]").isLeft)
     // an empty bootstrap list and no trustable local root: nothing to make progress from
     assert(Topology.parse("""{"localRoots": [], "publicRoots": [], "bootstrapPeers": []}""").isLeft)
-    assert(
+    // a trustable group counts only with an access point (`isValidTrustedPeerConfiguration`,
+    // cardano-diffusion 1.1.1.0 `Cardano/Network/Diffusion/Topology.hs` 29-40)
+    assertEquals(
       Topology
         .parse(
           """{"localRoots": [{"accessPoints": [], "valency": 1, "trustable": true}], "publicRoots": [], "bootstrapPeers": []}"""
         )
+        .left
+        .map(_.problem),
+      Left(ConfigProblem.UntrustedBootstrap),
+      "a trustable group with no access point is no trustable peer"
+    )
+    assert(
+      Topology
+        .parse(
+          """{"localRoots": [{"accessPoints": [{"address": "127.0.0.1", "port": 3001}], "valency": 1, "trustable": true}], "publicRoots": [], "bootstrapPeers": []}"""
+        )
         .isRight
+    )
+    assert(
+      Topology
+        .parse(
+          """{"localRoots": [{"accessPoints": [{"address": "relays.example"}], "valency": 1, "trustable": true}], "publicRoots": [], "bootstrapPeers": []}"""
+        )
+        .isRight,
+      "an SRV access point is an access point"
     )
   }
 

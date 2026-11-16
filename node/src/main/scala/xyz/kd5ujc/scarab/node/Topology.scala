@@ -200,10 +200,14 @@ object Topology:
         .flatMap(_.traverse(parseMixedAccessPoints))
       ledger <- ledgerPeers(c)
       snapshot <- optional[String](c, "peerSnapshotFile")
-      // as `isValidTrustedPeerConfiguration`: an empty bootstrap list needs a trustable local root
+      // as `isValidTrustedPeerConfiguration` (cardano-diffusion 1.1.1.0, c5117705f,
+      // `cardano-diffusion/lib/Cardano/Network/Diffusion/Topology.hs` 19-40): an empty bootstrap
+      // list needs a trustable local root group that names at least one access point
       _ <- Either.cond(
         bootstrap.forall { case (fixed, srv) => fixed.nonEmpty || srv.nonEmpty } ||
-          locals.exists(_.trustable),
+          locals.exists(g =>
+            g.trustable && (g.accessPoints.nonEmpty || g.srvAccessPoints.nonEmpty)
+          ),
         (),
         ConfigError(ConfigProblem.UntrustedBootstrap)
       )
