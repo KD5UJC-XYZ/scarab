@@ -75,7 +75,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .cache/scarab
-          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw') }}
           restore-keys: |
             sbt-${{ runner.os }}-
       - name: scalafmt, headers, compile and scalafix (check without the tests), and the test suites
@@ -87,15 +87,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/scala-test-plan"
           python3 scripts/ci_test_shards.py plan --inventory target/ci/test-suites.tsv \
             --out "$RUNNER_TEMP/scala-test-plan/test-plan.json"
-      - name: ADX/BMI2 code of the Linux/amd64 native libraries is behind the CPU switch
+      - name: ADX/BMI2 code of the Linux/amd64 blst library is behind the CPU switch
         if: needs.changes.outputs.run == 'true'
         run: |
           mapfile -t jblst < <(find .cache/scarab/coursier -name 'jblst-*.jar' ! -name '*-sources.jar')
           test "${#jblst[@]}" -eq 1
           python3 scripts/check_native_identity.py "${jblst[0]}"
-          mapfile -t jars < <(find .cache/scarab/coursier -name scalus-crypto-jni-0.1.0.jar)
-          test "${#jars[@]}" -eq 1
-          python3 scripts/check_native_isa.py "${jars[0]}" --member natives/linux_64/libscalus_crypto.so
       # Every `target` directory: classes, zinc's analysis, generated sources and sbt's caches under `streams`,
       # the meta-build's `project/target` among them, as one file. The shards check out the same commit at the
       # same path, with the same JDK and dependency cache, so zinc finds nothing to compile; each shard refuses
@@ -163,14 +160,13 @@ jobs:
           check-latest: false
           overwrite-settings: false
       # Exactly the dependency cache the build job ran with, which it saved or found under this key; the shards only
-      # read it. An older cache could lack the prepared Scalus repository, and `scripts/sbtw` would build it here, so
-      # a miss stops the shard at once: re-running all jobs saves the cache again.
+      # read it, and a miss stops the shard at once: re-running all jobs saves the cache again.
       - name: Restore sbt launcher, boot, ivy and coursier
         if: needs.changes.outputs.run == 'true'
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .cache/scarab
-          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw') }}
           fail-on-cache-miss: true
       - name: Download the compiled output
         if: needs.changes.outputs.run == 'true'
