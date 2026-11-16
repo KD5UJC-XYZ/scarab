@@ -140,7 +140,7 @@ copy of ouroboros-network `main` in the workspace (1.3.0.0), which agree with th
    when ledger peers are on; a file that cannot be read is traced and ignored in Praos mode (a startup error in Genesis mode); a version 1 or 2
    file ("Unsupported legacy peer snapshot version"), a snapshot at the origin, one of another network and one older than `useLedgerAfterSlot`
    stop the node at start. `PeerSnapshot.use` is that, with a typed refusal for each; 7c's "a bad file stops the node" is therefore
-   corrected: an unreadable file is ignored with a `snapshotIgnored` event, as the reference does.
+   corrected: in Praos mode an unreadable file is ignored with a `snapshotIgnored` event, as the reference does (in Genesis mode the reference, and so the node, stops at start: `Run.hs` 733-736).
 8. *IPv6 in a registration is four little-endian 32-bit words* (`ipv6ToBytes`, `Encoder.hs` 569-575: `putWord32le` of each word of `fromIPv6w`;
    `getHostAddress6`, `Decoder.hs` 1363-1368). **7c's fact 3 was wrong**: it read the sixteen octets in network order. Three real registrations
    (two mainnet, one Preview, the exact CBOR from the Koios API's `tx_cbor` beside the address its `pool_updates` shows) decide it: for

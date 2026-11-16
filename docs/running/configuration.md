@@ -23,7 +23,7 @@ What the configuration does:
 | `CheckpointsFile`/`Hash` | a configured file is required; its byte hash is verified before parsing. Unique unsigned block numbers map to 32-byte header hashes, enforced during header and block validation across eras |
 | `TestShelleyHardForkAtEpoch` ... `TestConwayHardForkAtEpoch` | the first epoch of each era (`0` for all of them: the chain starts in that era, as Preview); absent for Shelley: the Byron ledger decides |
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
-| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`). `GenesisMode` integrates GSM, LoE/GDD, LoP, ChainSync jumping, historicity and devoted BlockFetch across outbound and inbound duplex clients; full canonical header validation applies even with header-first disabled. It refuses bootstrap peers and checks peer snapshots against the immutable point. Praos remains the default. Experimental hard forks (the Dijkstra era) and `Test<Era>HardForkAtVersion` remain unsupported |
+| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`). `GenesisMode` integrates GSM, LoE/GDD, LoP, ChainSync jumping, historicity and devoted BlockFetch across outbound and inbound duplex clients; full canonical header validation applies even with header-first disabled. It drops the topology's bootstrap peers with the reference's warning (below) and checks peer snapshots against the immutable point. Praos remains the default. Experimental hard forks (the Dijkstra era) and `Test<Era>HardForkAtVersion` remain unsupported |
 | `LowLevelGenesisOptions` | the reference's `EnableCSJ`, `EnableLoEAndGDD`, `EnableLoP`, `BlockFetchGracePeriod`, `BucketCapacity`, `BucketRate`, `CSJJumpSize` and `GDDRateLimit`; [defaults and resource policy](../design/genesis.md#mechanisms-and-resource-policy) follow the pinned production configuration |
 | `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins. Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
 | `StartAsNonProducingNode` | a Boolean, default false: start with forging disabled although `--forge` and its files are given, as `--start-as-non-producing-node`, which wins over it (see [dynamic block forging](forging.md#dynamic-block-forging)) |
@@ -56,7 +56,14 @@ The topology needs `localRoots` and `publicRoots`; `bootstrapPeers` (a list or `
 (above 0: after that slot, `0`: always, below: never) and `peerSnapshotFile` are optional. An access point with a
 port is `{"address": <name or IP>, "port": <number>}`; a DNS name without a port is an SRV relay resolved through
 `_cardano._tcp.<domain>`. The unspecified address, a port that is not a number, the legacy `Producers` format, and an empty
-`bootstrapPeers` with no trustable local root are `ConfigError`s. Bootstrap peers are refused in GenesisMode.
+`bootstrapPeers` with no trustable local root that names an access point are `ConfigError`s. A topology with no root at
+all is not refused, as the reference does not refuse one: the node then has only its ledger peers, or no peer.
+As the reference's `readTopologyFile` does, at start-up and at each reload the node logs what it makes of the topology
+(`networkConfigUpdateWarning`, or `networkConfigUpdateInfo`, with the reference's text): for a block producer
+(`--forge`), ledger peers on, or a `peerSnapshotFile` with ledger peers off; in PraosMode, a `peerSnapshotFile` with
+ledger peers off, which is then not read; in GenesisMode, a relay without ledger peers, or with them and no
+`peerSnapshotFile`; and in GenesisMode `bootstrapPeers`, even an empty list, which the node does not use: it goes on as
+with `null`, from big ledger peers (cardano-node 11.1.3 `TopologyP2P.hs` 66-108).
 `useLedgerAfterSlot` and `peerSnapshotFile` are acted on (ledger peers and big ledger peers, below); `advertise`,
 `trustable` and the valencies feed peer selection and peer sharing; `behindFirewall` is retained in topology metadata.
 SIGHUP reloads the topology. A malformed replacement leaves the active settings running; a valid reload preserves
@@ -65,8 +72,9 @@ original CLI roots and installs the new runtime/governor roots at an acknowledge
 - **`useLedgerAfterSlot`.** A number above 0: take peers from the ledger once the ledger's tip is at or past that slot;
   `0`: always; below 0 or absent: never (`UseLedgerPeers`). The official Preview file has 119231973.
 - **`peerSnapshotFile`.** The big ledger peer snapshot, relative to the topology file's directory, read at startup and
-  when topology is reloaded while ledger peers are on (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`): a file
-  that cannot be read is ignored with a `ledgerPeers` event `snapshotIgnored`; a legacy (version 1, 2) file, a snapshot at the origin, of another network
+  when topology is reloaded while ledger peers are on (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`): in PraosMode
+  a file that cannot be read is ignored with a `ledgerPeers` event `snapshotIgnored`; in GenesisMode it stops the node at
+  start with a `ConfigError`, as the reference stops; a legacy (version 1, 2) file, a snapshot at the origin, of another network
   (`NetworkMagic`) or older than `useLedgerAfterSlot` stops the node with a `ConfigError`. The snapshot is used for the
   stake maps only while it is not older than the ledger's tip: the official Preview file is at slot 123.6 M, so a node whose
   ledger is further ahead takes its peers from the ledger (event `ledgerPeers`, `source`). In GenesisMode, when the
@@ -77,9 +85,16 @@ original CLI roots and installs the new runtime/governor roots at an acknowledge
 
 Without a `ConsensusMode` in the configuration the node runs in `PraosMode`, as cardano-node 11.1.3
 does; a `--config` that sets it is honoured as written ([ADR 0022](../adr/0022-defaults-follow-the-reference-binary.md)).
-The configuration files published for mainnet, preprod and preview set `GenesisMode`. To sync from an
-empty database, use `GenesisMode` (`--config` with `"ConsensusMode": "GenesisMode"`, no bootstrap peers), or in
-Praos mode give the topology `bootstrapPeers` or a local root with `"trustable": true`. A node that
+The configuration files published for mainnet, preprod and preview set `GenesisMode`, and their topologies list
+`bootstrapPeers`, ledger peers (`useLedgerAfterSlot`) and a `peerSnapshotFile`, `peer-snapshot.json`, published beside
+them. Used as published, the node drops the bootstrap peers with the reference's warning and syncs from the big ledger
+peers of the snapshot; without the snapshot file it stops at start, as the reference does. In GenesisMode the node
+stays in `PreSyncing`, where its Limit on Eagerness keeps its selection within `k` blocks of its immutable tip, until
+its outbound connections are trusted (`outboundConnectionsState`): with ledger peers or peer sharing on, once `MinBigLedgerPeersForTrustedState` (5) big
+ledger peers are active; with both off, while every established peer is a trustable local root.
+`--peer` roots are not trustable, so in GenesisMode a node with only `--peer` roots and ledger peers off stays in
+`PreSyncing`, as the reference does with such a topology (it warns, above). In Praos mode, sync from an empty database
+with the topology's `bootstrapPeers` or a local root with `"trustable": true`. A node that
 starts in Praos mode with an empty or far-behind chain and neither logs the `praosSyncUntrusted`
 warning once (`consensusMode`, `start`, `slotsBehind`); it changes nothing else.
 
@@ -199,15 +214,15 @@ java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.nod
 ```
 
 (`--genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001` still works.)
-The Preview genesis files (Byron, Shelley, Alonzo, Conway), `config.json` and `topology.json` come from the
-official Cardano network configuration (`fixtures/preview/genesis/` holds a copy for the tests). Fetch them
+The Preview genesis files (Byron, Shelley, Alonzo, Conway), `config.json`, `topology.json` and the
+`peer-snapshot.json` the topology names come from the official Cardano network configuration (`fixtures/preview/genesis/` holds a copy of all but the snapshot for the tests). Fetch them
 into the config directory, in a container like everything else:
 
 ```sh
 mkdir -p "${SCARAB_DATA_DIR:-/tmp/scarab}/preview/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
   -v "${SCARAB_DATA_DIR:-/tmp/scarab}/preview/config":/out --entrypoint bash scarab-jdk:local -c \
-  'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+  'for f in config.json topology.json peer-snapshot.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preview/$f"; done'
 ```
 
@@ -235,7 +250,7 @@ The node follows the public preprod testnet (network magic 1) from genesis throu
 mkdir -p "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
   -v "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config":/out --entrypoint bash scarab-jdk:local -c \
-  'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+  'for f in config.json topology.json peer-snapshot.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done'
 java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   --config "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config/config.json" \
