@@ -218,13 +218,41 @@ object ConwayRules:
   private val unsigned: Codec[BigInt] = Codec.uintBig((BigInt(1) << 64) - 1)
   private def hash(size: Int)(b: Bytes) = written(Wire.hash(size))(b)
   private def leafBytes(b: Bytes) = written(Codec.bytes)(b)
+
+  /** `EncCBOR Addr` writes a decoded Byron address anew, including the CRC of its rewritten
+    * payload. Its CBOR byte string is opaque to the normaliser, so keeping `Address.raw` would
+    * retain wide heads inside it (`ByronAddress.reencoded`). Shelley addresses already hold their
+    * decoded encoding.
+    */
+  private[conformance] def writeAddress(a: Address): Either[Unwritten, Bytes] =
+    val raw = a.kind match
+      case Address.Kind.Byron(_) =>
+        xyz.kd5ujc.scarab.ledger.byron.ByronAddress.reencoded(a.raw).leftMap(Unwritten.Unread(_))
+      case Address.Kind.Shelley(_, _, _, _) => Right(a.raw)
+    raw.flatMap(leafBytes)
+
+  /** `Language` is an enum, not the open `Word8` key of a Conway cost-model map. The production
+    * reader is shared with legacy cost models; the writer emits the decoded language's index
+    * (`Plutus/Language.hs:328-333`, cardano-ledger f649f975).
+    */
+  private[conformance] val language: DatasetRule = DatasetRule(
+    "CborRead.language",
+    Reach.Direct,
+    Writing.Leaf("Codec.uintBig(3)")
+  )(b =>
+    CborRead
+      .decode(b)
+      .leftMap(Refusal.Ledger(_))
+      .flatMap(n => CborRead.language(n).leftMap(Refusal.Ledger(_)))
+  )(l => written(Codec.uintBig(3))(BigInt(l.id)))
   private def govAction(a: GovAction) = written(HaskellStateCodecs.govAction)(a)
-  private def mintMap(assets: Map[Bytes, Map[Bytes, BigInt]]) =
-    written(UtxoCodecs.value)(Value(0, assets)).flatMap(Step.at(_, List(Index(1))))
+  private def writeMultiasset(assets: Map[Bytes, Map[Bytes, BigInt]]) =
+    written(UtxoCodecs.multiasset)(assets)
 
   private val signable = Writing.Encoder("HeaderBodyEncoding (Header.Shelley.signable)")
   private val txOutCodec = Writing.Encoder("UtxoCodecs.txOut")
   private val valueCodec = Writing.Encoder("UtxoCodecs.value")
+  private val multiassetCodec = Writing.Encoder("UtxoCodecs.multiasset")
   private val govActionCodec = Writing.Encoder("HaskellStateCodecs.govAction")
   private val paramValue =
     Writing.Kept("ConwayParamUpdate entry, via HaskellStateCodecs.conwayParamUpdate")
@@ -409,19 +437,21 @@ object ConwayRules:
     "%multiasset<positive_coin>" -> DatasetRule(
       "Value.decode",
       Reach.Embedded("[0, multiasset]"),
-      valueCodec
+      multiassetCodec
     )(b => tree(At.outputValue)(hex("8200") ++ b).flatMap(value))(v =>
-      written(UtxoCodecs.value)(v).flatMap(Step.at(_, List(Index(1))))
+      // An empty asset map makes the value's writer emit a bare coin, without an array's item 1.
+      // The production MultiAsset writer writes the decoded map directly, including it empty.
+      writeMultiasset(v.assets)
     ),
-    "mint" -> DatasetRule("TxBody.decode", Reach.Embedded("a body's key 9"), valueCodec)(
+    "mint" -> DatasetRule("TxBody.decode", Reach.Embedded("a body's key 9"), multiassetCodec)(
       body("09")
-    )(t => mintMap(t.mint)),
+    )(t => writeMultiasset(t.mint)),
     "nonzero_int64" -> DatasetRule(
       "TxBody.decode",
       Reach.Embedded("a mint quantity of a body"),
-      valueCodec
+      multiassetCodec
     )(b => body("09")(hex("a1581c" + zeros(28) + "a140") ++ b))(t =>
-      mintMap(t.mint).flatMap(Step.at(_, List(FirstValue, FirstValue)))
+      writeMultiasset(t.mint).flatMap(Step.at(_, List(FirstValue, FirstValue)))
     ),
     "asset_name" -> DatasetRule("Value.decode", Reach.Embedded("an output value"), valueCodec)(b =>
       tree(At.outputValue)(hex("8200a1581c" + zeros(28) + "a1") ++ b ++ hex("01")).flatMap(value)
@@ -667,11 +697,15 @@ object ConwayRules:
         ledger(CborRead.bytes(n, DecodeField.RewardAccount).flatMap(RewardAccount.decode))
       )
     )(written(HaskellStateCodecs.rewardAccount)),
-    "address" -> DatasetRule("Address.decode", Reach.Direct, Writing.Kept("Address.raw"))(b =>
+    "address" -> DatasetRule(
+      "Address.decode",
+      Reach.Direct,
+      Writing.Encoder("ByronAddress.reencoded / Address.raw")
+    )(b =>
       tree(At.item)(b).flatMap(n =>
         ledger(CborRead.bytes(n, DecodeField.OutputAddress).flatMap(Address.decode(_, mode)))
       )
-    )(a => leafBytes(a.raw)),
+    )(writeAddress),
     "relay" -> DatasetRule("PoolRelays.fromBody", Reach.Embedded("[relay]"), relaysCodec)(b =>
       relays("81")(b).flatMap(rs => present(rs.headOption.as(rs)))
     )(rs => Step.at(PoolRelays.encode(rs), List(Index(0)))),
@@ -765,7 +799,7 @@ object ConwayRules:
     "addr_keyhash" -> leafHash("signer", 28, DecodeField.Signer),
     "pool_keyhash" -> leafHash("pool operator", 28, DecodeField.PoolOperator),
     "policy_id" -> leafHash("policy", 28, DecodeField.Mint),
-    "language" -> DatasetRule.Unmapped(Unmapped.NoDecoder)
+    "language" -> language
   )
 
   private def plutusScript(site: DecodeField) =

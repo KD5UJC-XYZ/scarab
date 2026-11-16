@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
+  BootstrapWitness,
   GovAction,
   Block,
   ByteStrings,
@@ -16,9 +17,12 @@ import xyz.kd5ujc.scarab.ledger.{
   GovActionId,
   Header,
   LedgerDecodeError,
+  Metadatum,
   RewardAccount,
   TxIn,
-  Value
+  Value,
+  Voter,
+  VotingProcedure
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraAnchor,
@@ -36,6 +40,8 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraTxOut,
   DijkstraValue,
   DijkstraVoting,
+  DijkstraVoter,
+  DijkstraVotingProcedure,
   DijkstraWitnesses,
   V12
 }
@@ -43,13 +49,14 @@ import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, Wire}
+import xyz.kd5ujc.scarab.storage.haskell.state.{ConwayCodecs, HaskellStateCodecs, UtxoCodecs, Wire}
 
 /** The rules of the Dijkstra corpus, each mapped to the decoder of the Leios testnet's Dijkstra
   * that Scarab reads a Leios block with ([[DijkstraTx]], [[DijkstraWitnesses]] and the readers of
-  * [[V12]], at decoder version 12). Scarab has no encoder of these values: a decoded sample is
-  * written again from the bytes its decoded value keeps, by a production codec of a scalar, or by a
-  * Haskell-format codec of the ledger state where the decoded value is a type that codec writes.
+  * [[V12]], at decoder version 12). A type that shares its encoding with Conway is written from its
+  * decoded fields by the shared production encoder. Other samples are written from the bytes their
+  * decoded value keeps, by a production codec of a scalar, or by a Haskell-format codec of the
+  * ledger state where its value is a type that codec writes. Missing writers remain failures.
   */
 object DijkstraRules:
   private val era = Era.Dijkstra
@@ -186,11 +193,35 @@ object DijkstraRules:
 
   private val govActionCodec = Writing.Encoder("HaskellStateCodecs.govAction")
   private val valueCodec = Writing.Encoder("UtxoCodecs.value")
+  private val multiassetCodec = Writing.Encoder("UtxoCodecs.multiasset")
 
-  private def mintMap(assets: Map[Bytes, Map[Bytes, BigInt]]) =
-    written(UtxoCodecs.value)(Value(0, assets)).flatMap(Step.at(_, List(Index(1))))
+  private def writeMultiasset(assets: Map[Bytes, Map[Bytes, BigInt]]) =
+    written(UtxoCodecs.multiasset)(assets)
 
   private def notEmbedded(parent: String) = DatasetRule.Unmapped(Unmapped.NotEmbedded(parent))
+
+  /** These types have the same `EncCBOR` in both eras: voters and votes
+    * (`Conway/Governance/Procedures.hs:365-404,469-474`, cardano-ledger f649f975), vkey and
+    * bootstrap witnesses (`Keys/WitVKey.hs:101-104`, `Keys/Bootstrap.hs:83-90`). Their Dijkstra
+    * decoders remain the readers; only decoded fields are passed to the shared writers.
+    */
+  private def conwayVoter(v: DijkstraVoter): Voter = v match
+    case DijkstraVoter.Committee(c) => Voter.CommitteeHot(c)
+    case DijkstraVoter.DRep(c)      => Voter.DRepVoter(c)
+    case DijkstraVoter.StakePool(h) => Voter.Pool(h)
+
+  private val votingCodec = Writing.Encoder("ConwayCodecs.votingProcedures")
+
+  private def writeVoting(
+      all: Vector[(DijkstraVoter, Vector[(DijkstraGovActionId, DijkstraVotingProcedure)])]
+  ) = written(ConwayCodecs.votingProcedures)(all.map { (v, votes) =>
+    conwayVoter(v) -> votes.map { (id, p) =>
+      GovActionId(id.txId, BigInt(id.index)) -> VotingProcedure(
+        p.vote,
+        p.anchor.map(a => Anchor(a.url, a.hash))
+      )
+    }
+  })
 
   /** The rules, by the name of their directory in the corpus. */
   /** `certificates`, the set at a body's key 4, which refuses it empty (`DijkstraTx.body`), as the
@@ -203,9 +234,9 @@ object DijkstraRules:
     * 19).
     */
   private def votingProcedures: DatasetRule =
-    unwritten("DijkstraVoting.procedures, non-empty")(n =>
-      DijkstraVoting.procedures(n).flatMap(V12.nonEmpty(_, DecodeField.VotingProcedures))
-    )
+    DatasetRule("DijkstraVoting.procedures, non-empty", Reach.Direct, votingCodec)(
+      read(n => DijkstraVoting.procedures(n).flatMap(V12.nonEmpty(_, DecodeField.VotingProcedures)))
+    )(writeVoting)
 
   /** `proposal_procedures`, the set at a body's key 20, which refuses it empty, as for the
     * certificates.
@@ -256,18 +287,33 @@ object DijkstraRules:
     )(
       _.raw
     ),
-    "redeemers" -> DatasetRule.unwritten(
+    "redeemers" -> DatasetRule(
       "DijkstraWitnesses.decode",
-      Reach.Embedded("a witness set's key 5")
-    )(b => read(DijkstraWitnesses.decode)(hex("a105") ++ b)),
-    "vkeywitness" -> DatasetRule.unwritten(
+      Reach.Embedded("a witness set's key 5"),
+      Writing.Kept("DijkstraWitnesses.raw, key 5")
+    )(b => read(DijkstraWitnesses.decode)(hex("a105") ++ b))(w => Step.at(w.raw, List(Key(5)))),
+    "vkeywitness" -> DatasetRule(
       "DijkstraWitnesses.decode",
-      Reach.Embedded("{0: [vkeywitness]}")
-    )(b => read(DijkstraWitnesses.decode)(hex("a10081") ++ b)),
-    "bootstrap_witness" -> DatasetRule.unwritten(
+      Reach.Embedded("{0: [vkeywitness]}"),
+      Writing.Encoder("ConwayCodecs.vkeyWitness")
+    )(b =>
+      read(DijkstraWitnesses.decode)(hex("a10081") ++ b).flatMap(w =>
+        w.vkeys.headOption.toRight(Refusal.Form(Shape.Present))
+      )
+    )(written(ConwayCodecs.vkeyWitness)),
+    "bootstrap_witness" -> DatasetRule(
       "DijkstraWitnesses.decode",
-      Reach.Embedded("{2: [bootstrap_witness]}")
-    )(b => read(DijkstraWitnesses.decode)(hex("a10281") ++ b)),
+      Reach.Embedded("{2: [bootstrap_witness]}"),
+      Writing.Encoder("ConwayCodecs.bootstrapWitness")
+    )(b =>
+      read(DijkstraWitnesses.decode)(hex("a10281") ++ b).flatMap(w =>
+        w.bootstraps.headOption.toRight(Refusal.Form(Shape.Present))
+      )
+    )(w =>
+      written(ConwayCodecs.bootstrapWitness)(
+        BootstrapWitness(w.key, w.signature, w.chainCode, w.attributes)
+      )
+    ),
     "vkey" -> DatasetRule(
       "DijkstraWitnesses.decode",
       Reach.Embedded("a vkey witness"),
@@ -293,10 +339,18 @@ object DijkstraRules:
       Reach.Embedded("[{}, scripts]"),
       Writing.Kept("DijkstraAuxData.raw")
     )(b => read(DijkstraAuxData.decode)(hex("82a0") ++ b))(a => Step.at(a.raw, List(Index(1)))),
-    "metadatum" -> DatasetRule.unwritten(
+    "metadatum" -> DatasetRule(
       "DijkstraAuxData.decode",
-      Reach.Embedded("{0: metadatum}")
-    )(b => read(DijkstraAuxData.decode)(hex("a100") ++ b)),
+      Reach.Embedded("{0: metadatum}"),
+      Writing.Encoder("ConwayCodecs.metadatum")
+    )(b =>
+      read(DijkstraAuxData.decode)(hex("a100") ++ b)
+        .flatMap(a => a.metadata.headOption.toRight(Refusal.Form(Shape.Present)))
+        .flatMap((_, raw) => node(raw))
+        .flatMap(n => ledger(Metadatum.decode(n, version)))
+    )(
+      written(ConwayCodecs.metadatum)
+    ),
     "native_script" -> DatasetRule(
       "DijkstraScript.native",
       Reach.Direct,
@@ -340,27 +394,34 @@ object DijkstraRules:
       Reach.Direct,
       Writing.Kept("DijkstraTxOut.raw")
     )(b => shaped(Shape.Array)(b).flatMap(n => ledger(DijkstraTxOut.decode(n))))(o => Right(o.raw)),
-    "value" -> unwritten("DijkstraValue.decode")(DijkstraValue.decode),
-    "%multiasset<positive_coin>" -> DatasetRule.unwritten(
+    "value" -> DatasetRule("DijkstraValue.decode", Reach.Direct, valueCodec)(
+      read(DijkstraValue.decode)
+    )(v => written(UtxoCodecs.value)(Value(v.coin, v.assets))),
+    "%multiasset<positive_coin>" -> DatasetRule(
       "DijkstraValue.decode",
-      Reach.Embedded("[0, multiasset]")
-    )(b => read(DijkstraValue.decode)(hex("8200") ++ b)),
-    "mint" -> DatasetRule("DijkstraTx.body (Top)", Reach.Embedded("a body's key 9"), valueCodec)(
+      Reach.Embedded("[0, multiasset]"),
+      multiassetCodec
+    )(b => read(DijkstraValue.decode)(hex("8200") ++ b))(v => writeMultiasset(v.assets)),
+    "mint" -> DatasetRule(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("a body's key 9"),
+      multiassetCodec
+    )(
       body("09")
-    )(t => mintMap(t.mint)),
+    )(t => writeMultiasset(t.mint)),
     "nonzero_int64" -> DatasetRule(
       "DijkstraTx.body (Top)",
       Reach.Embedded("a mint quantity of a body"),
-      valueCodec
+      multiassetCodec
     )(b => body("09")(hex("a1581c" + zeros(28) + "a140") ++ b))(t =>
-      mintMap(t.mint).flatMap(Step.at(_, List(FirstValue, FirstValue)))
+      writeMultiasset(t.mint).flatMap(Step.at(_, List(FirstValue, FirstValue)))
     ),
     "asset_name" -> DatasetRule(
       "DijkstraTx.body (Top)",
       Reach.Embedded("an asset name of a body's mint"),
       valueCodec
     )(b => body("09")(hex("a1581c" + zeros(28) + "a1") ++ b ++ hex("01")))(t =>
-      mintMap(t.mint).flatMap(Step.at(_, List(FirstValue, FirstKey)))
+      writeMultiasset(t.mint).flatMap(Step.at(_, List(FirstValue, FirstKey)))
     ),
     "withdrawals" -> DatasetRule(
       "DijkstraTx.body (Top)",
@@ -430,26 +491,33 @@ object DijkstraRules:
     "address" -> DatasetRule(
       "DijkstraTxOut.decode",
       Reach.Embedded("[address, 0]"),
-      Writing.Kept("Address.raw")
+      Writing.Encoder("ByronAddress.reencoded / Address.raw")
     )(
       output("82", "00")
-    )(o => written(Codec.bytes)(o.address.raw)),
-    "voter" -> unwritten("DijkstraVoting.voter")(DijkstraVoting.voter),
+    )(o => ConwayRules.writeAddress(o.address)),
+    "voter" -> DatasetRule(
+      "DijkstraVoting.voter",
+      Reach.Direct,
+      Writing.Encoder("ConwayCodecs.voter")
+    )(
+      read(DijkstraVoting.voter)
+    )(v => written(ConwayCodecs.voter)(conwayVoter(v))),
     "voting_procedures" -> votingProcedures,
-    "voting_procedure" -> DatasetRule.unwritten(
+    "voting_procedure" -> DatasetRule(
       "DijkstraVoting.procedures",
-      Reach.Embedded("{voter: {id: procedure}}")
+      Reach.Embedded("{voter: {id: procedure}}"),
+      votingCodec
     )(b =>
       read(DijkstraVoting.procedures)(
         hex("a18204581c" + zeros(28) + "a1825820" + zeros(32) + "00") ++ b
       )
-    ),
+    )(all => writeVoting(all).flatMap(Step.at(_, List(FirstValue, FirstValue)))),
     "vote" -> DatasetRule
-      .unwritten("DijkstraVoting.procedures", Reach.Embedded("a voting procedure"))(b =>
+      .apply("DijkstraVoting.procedures", Reach.Embedded("a voting procedure"), votingCodec)(b =>
         read(DijkstraVoting.procedures)(
           hex("a18204581c" + zeros(28) + "a1825820" + zeros(32) + "0082") ++ b ++ hex("f6")
         )
-      ),
+      )(all => writeVoting(all).flatMap(Step.at(_, List(FirstValue, FirstValue, Index(0))))),
     "gov_action_id" -> DatasetRule(
       "DijkstraGovActionId.decode",
       Reach.Direct,
@@ -526,7 +594,7 @@ object DijkstraRules:
     "addr_keyhash" -> leafHash(28, DecodeField.Signer),
     "pool_keyhash" -> leafHash(28, DecodeField.PoolOperator),
     "policy_id" -> leafHash(28, DecodeField.Mint),
-    "language" -> DatasetRule.Unmapped(Unmapped.NoDecoder)
+    "language" -> ConwayRules.language
   )
 
   private def plutusScript(site: DecodeField) =

@@ -5,6 +5,21 @@
   "ledger/src/main/scala"
  ],
  "entries": {
+  "def ledger.CborRead.language": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "DecCBOR Language",
+     "lines": [331, 333]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["CostModelDecodeSuite", "CborDatasetSuite"],
+   "digest": "55e5978f6e713e65"
+  },
   "class ledger.era.MaxPledgeLeverage": {
    "upstream": [
     {

@@ -76,11 +76,14 @@ object CostModelDecode:
             l.toInt,
             LedgerDecodeError.NumberOutOfRange(DecodeField.CostModelLanguage, l, 0, 255)
           )
-        case Format.Legacy if l < 0 || l > 3 =>
-          Left(LedgerDecodeError.UnknownTag(DecodeField.CostModelLanguage, l))
-        case Format.Legacy if l > 1 =>
-          Left(LedgerDecodeError.UnsupportedCostModelLanguage(l.toInt))
-        case Format.Legacy => Right(l.toInt)
+        case Format.Legacy =>
+          CborRead.language(k).flatMap { lang =>
+            Either.cond(
+              lang.id <= 1,
+              lang.id,
+              LedgerDecodeError.UnsupportedCostModelLanguage(lang.id)
+            )
+          }
     }
 
   private def parameters(

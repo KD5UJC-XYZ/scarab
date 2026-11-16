@@ -35,10 +35,17 @@ object UtxoCodecs:
   /** `TxIn` (`TxIn.hs`): `[transaction id, index]`. */
   given txIn: Codec[TxIn] = Record.of[TxIn]((Wire.hash(32), Wire.word16))
 
+  /** `EncCBOR MultiAsset` (`Mary/Value.hs`, cardano-ledger f649f975): the policy and asset maps,
+    * including an empty map when this value is written alone. `MaryValue` instead writes a bare
+    * coin when it has no assets.
+    */
+  val multiasset: Codec[Map[Bytes, Map[Bytes, BigInt]]] =
+    Wire.sortedMapOf(Codec.bytes, Wire.sortedMapOf(Codec.bytes, Codec.int))
+
   /** `MaryValue` (`Mary/Value.hs`): a bare coin, or `[coin, {policy: {asset: quantity}}]`. */
   given value: Codec[Value] = new Codec[Value]:
     private val coin = Wire.word(64)
-    private val assets = Wire.sortedMapOf(Codec.bytes, Wire.sortedMapOf(Codec.bytes, Codec.int))
+    private val assets = multiasset
     private val withAssets = Record.of[(BigInt, Map[Bytes, Map[Bytes, BigInt]])]((coin, assets))
     def decode(n: Node): Decoded[Value] = n.value match
       case CborValue.UInt(_) => coin.decode(n).map(Value(_, Map.empty))
