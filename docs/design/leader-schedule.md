@@ -150,10 +150,14 @@ ever holds a Scarab header from the future, and the margin to the skew stays who
 `HotKey.evolve` (`evolveKey`) leaves a key before its certificate's window as it is; poisons a key at or past the end
 of the window (its memory erased, every later update `KESKeyAlreadyPoisoned`); and inside the window evolves it one
 period at a time, each step `updateKES` followed by `forgetSignKeyKES` of the old key, "Clear the memory associated
-with the old key" (C6). That erasure is the forward security of KES: once the key has moved to period t, nothing on
-the node can sign for a period before t. Since the update runs in each slot that reaches the leader check, the key
-moves at the first such slot of a new period, which on a synced node is the period's first slot; while the node gives
-slots up before the leader check (no ledger view, for example) the key does not move.
+with the old key" (C6). That erasure gives the live key forward security: once the key in memory has moved to period
+t, it cannot sign for a period before t. It covers the key in memory only. With a key file, cardano-node reads the
+signing key from that file (`readLeaderCredentialsSingleton`, `opCertKesKeyCheck`) and its reader does not write the
+file back, so the file can still hold the key of an earlier period (C20). Scarab writes the evolved key back over its
+file ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)). Since the update runs in each slot that
+reaches the leader check, the key moves at the first such slot of a new period, which on a synced node is the
+period's first slot; while the node gives slots up before the leader check (no ledger view, for example) the key does
+not move.
 
 ### 2.7 The clock
 
@@ -208,6 +212,7 @@ until the forging area moves with #1002.
 | C17 | A header up to the skew early is held until its onset; earlier, the client disconnects; the skew is 2 s; cardano-node sets no other. | 82ecba32 `MiniProtocol/ChainSync/Client/InFutureCheck.hs` 134-176, 205-207; `MiniProtocol/ChainSync/Client.hs` 1751-1775; `Node.hs` 589, 1107-1108; 11.1.3 `Run.hs` | 808e4005 the same `InFutureCheck.hs` lines; `Client.hs` 1757-1781; `Node.hs` 592, 1140-1141; 11.2.1 `Run.hs` | yes; "no override" by search of `Run.hs`. The chain database's handling of a future block: unverified |
 | C18 | The blockchain time is its own thread; `checkValidClockChange`; rewind limit 20 s, backoff 60 s. | 82ecba32 `BlockchainTime/WallClock/HardFork.hs` 68-178; `Node.hs` 547-561 | 808e4005 the same `HardFork.hs` lines; `Node.hs` 550-564 | yes |
 | C19 | `setBlockForging` hands a list of credentials to `blockForgingController`, which cancels the forging threads and forks one per entry: with none, no forging thread runs and no slot is traced. | 82ecba32 `NodeKernel.hs` 416, 428-439 | 808e4005 `NodeKernel.hs` 399, 411-422 | yes |
+| C20 | With a key file (`KESKeyFilePath`), the node reads the KES signing key from it, checked against the certificate (`readLeaderCredentialsSingleton`, `opCertKesKeyCheck`); the reader writes nothing back. | 11.1.3 `Protocol/Shelley.hs` 191-195, 220-231 | 11.2.1 `Protocol/Shelley.hs` 187-191, 216-227 | yes for the reader; that nothing else in the node rewrites the file is from [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md), not re-read |
 
 ## 3. Prior art: Amaru
 
@@ -389,14 +394,16 @@ nothing per slot, as the reference runs no forging thread then (C19).
 
 ### 5.5 The KES timer
 
-At start, and then at the onset of the first slot of each KES period, the timer calls `HotKeys.update(period)` (decision
-3). It evolves the key and writes it back, or poisons it past its certificate's window, as the per-slot loop does. It
-emits `stateInfo`, which writes the KES gauges, or `forgeStateUpdateError`. The old key's memory is zeroed as now
-(`Sum6KesSigning`'s `evolve`), so forward security is kept from the period's first slot, as on a synced reference node.
-Unlike the reference (§2.6), the key moves even while the node cannot forecast its slots, so it is never older than
-the clock's period. A led slot still runs the forge state update and `checkCanForge` in its own sequence (§5.3, step 2);
-for a led slot in the first slot of a period this evolves the key up to the wake margin before the period begins. While
-forging is disabled the timer does nothing, as no forging thread runs then in the reference (C19).
+At start, and then at the onset of the first slot of each KES period, the timer calls `HotKeys.update(period)`
+(decision 3). It evolves the key and writes it back, or poisons it past its certificate's window, as the per-slot loop
+does. It emits `stateInfo`, which writes the KES gauges, or `forgeStateUpdateError`. The old key's memory is zeroed as
+now (`Sum6KesSigning`'s `evolve`), so from the period's first slot the key in memory cannot sign for an earlier
+period, as on a synced reference node, and the write-back of [ADR
+0015](../adr/0015-kes-key-written-back-and-checked-reload.md) replaces the earlier key in its file. Unlike the
+reference (§2.6), the key moves even while the node cannot forecast its slots, so it is never older than the clock's
+period. A led slot still runs the forge state update and `checkCanForge` in its own sequence (§5.3, step 2); for a led
+slot in the first slot of a period this evolves the key up to the wake margin before the period begins. While forging
+is disabled the timer does nothing, as no forging thread runs then in the reference (C19).
 
 **The timer waits for a forge in flight.** A forge holds one reservation of the key from its own forge state update
 (`HotKeys.update`, §5.3 step 2) until its block is signed, and the timer takes the same reservation before it evolves
