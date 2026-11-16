@@ -296,6 +296,12 @@ def wait_listening(name, ports, seconds=120):
     raise SystemExit(f"the reference nodes did not listen on {sorted(pending)} within {seconds} s")
 
 
+class EraWalkFailed(SystemExit):
+    """The era walk cannot follow its plan: it missed a planned epoch, no tip could be read, or the chain stopped
+    growing. The walk ends with this reason instead of waiting for an epoch that has passed (#1113); a run that
+    meets it fails, never passes (CNF-2)."""
+
+
 class EraDriver:
     """Submits the transactions that move the chain through the eras and records each transition.
 
@@ -314,6 +320,8 @@ class EraDriver:
         self.done = set()
         self.on_pools_ready = None
         self.timeline = []
+        self.last_block = None
+        self.protocol = {}
         self.address = {n: in_ref(self.name, f"cardano-cli conway address build --testnet-magic {MAGIC} "
                                              f"--payment-verification-key-file {ENV}/stake-delegators/delegator{n}/payment.vkey "
                                              f"--stake-verification-key-file {ENV}/stake-delegators/delegator{n}/staking.vkey"
@@ -423,6 +431,23 @@ class EraDriver:
             raise SystemExit(f"update proposal for protocol {major} failed: {r.stderr.strip()[:600]}")
         self.wait_spent(self.address[1], None, [txin])
 
+    def proposal(self, index):
+        """The update proposal planned epoch `index` submits, as `(major, decentralise)` with `major` None when the
+        version stays, or None when it submits none."""
+        plan = self.plan
+        if index + 1 >= len(plan):
+            return None
+        decentralise = index == 1
+        major = plan[index + 1][1]
+        if major == plan[index][1] and not decentralise:
+            return None
+        return (major if major != plan[index][1] else None, decentralise)
+
+    def acts_in(self, index):
+        """Whether the walk must see planned epoch `index`: the pools are set up in the first, a proposal is submitted
+        in some, and the walk ends in the last. Any other epoch may pass unseen."""
+        return index == 0 or index == len(self.plan) - 1 or self.proposal(index) is not None
+
     def step(self, tip):
         """Act on one tip observation; return True once the final era's first block is seen."""
         era, epoch = tip["era"].lower(), tip["epoch"]
@@ -433,21 +458,71 @@ class EraDriver:
             print(json.dumps({"era": era, "epoch": epoch, "slot": tip["slot"], "hash": tip["hash"]}), flush=True)
         if index < 0 or ("epoch", epoch) in self.done:
             return False
+        # an epoch the walk must act in cannot be made good once it has passed unseen, nor can a tip past the plan
+        missed = [self.args.byron_epochs + i for i in range(min(index, len(self.plan)))
+                  if self.acts_in(i) and ("epoch", self.args.byron_epochs + i) not in self.done]
+        if missed:
+            raise EraWalkFailed(f"the era walk missed planned epoch {missed[0]}: the first tip seen after it is {tip}")
+        if index >= len(self.plan):
+            raise EraWalkFailed(f"the era walk passed its plan's last epoch, {self.args.byron_epochs + len(self.plan) - 1}, "
+                                f"without reaching {self.plan[-1][0]}: {tip}")
         self.done.add(("epoch", epoch))
         pv = json.loads(in_ref(self.name, f"cardano-cli query protocol-parameters {util.SOCKET}").stdout)["protocolVersion"]
         self.protocol[epoch] = pv["major"]
         print(json.dumps({"epoch": epoch, "era": era, "protocolMajor": pv["major"]}), flush=True)
         if index == 0:
             self.setup_pools(era)
-        plan = self.plan
-        if index + 1 < len(plan):
-            decentralise = index == 1
-            major = plan[index + 1][1]
-            if major != plan[index][1] or decentralise:
-                if tip["slotInEpoch"] > self.epoch_length - STABILITY_FACTOR * 5 / self.args.active_slots_coeff - 20:
-                    raise SystemExit(f"epoch {epoch} is too far gone to submit an update proposal: {tip}")
-                self.propose(era, epoch, major if major != plan[index][1] else None, decentralise=decentralise)
-        return index == len(plan) - 1 and era == plan[-1][0]
+        proposal = self.proposal(index)
+        if proposal is not None:
+            if tip["slotInEpoch"] > self.epoch_length - STABILITY_FACTOR * 5 / self.args.active_slots_coeff - 20:
+                raise SystemExit(f"epoch {epoch} is too far gone to submit an update proposal: {tip}")
+            major, decentralise = proposal
+            self.propose(era, epoch, major, decentralise=decentralise)
+        return index == len(self.plan) - 1 and era == self.plan[-1][0]
+
+
+def schedule_seconds(args, byron, shelley):
+    """How long the chain takes from its start to the end of the plan's last epoch, read from its genesis files: the
+    Byron epochs (10k slots each) and the planned Shelley-based ones."""
+    byron_epoch = 10 * byron["protocolConsts"]["k"] * int(byron["blockVersionData"]["slotDuration"]) / 1000
+    return args.byron_epochs * byron_epoch + len(era_plan(args)) * shelley["epochLength"] * shelley["slotLength"]
+
+
+def walk(args, driver, read_tip, bound, on_tick=None, clock=time.monotonic, pause=time.sleep):
+    """Feed `driver` the tip until its plan is done. It ends with `EraWalkFailed` when no tip can be read, or the chain
+    does not grow, for `args.stall_seconds`; when the driver misses an epoch it must act in; and when the walk is not
+    done within `bound` seconds, whatever the tips say (#1113). The bound is checked between steps: each command a step
+    runs has a timeout of its own (`in_ref`'s 60 s, `wait_spent`'s 60 s), so a walk overruns it by at most one step,
+    and a walk whose last step reaches the plan's end has finished, however long that step took."""
+    start = read = grew = clock()
+    last = None
+    while True:
+        if clock() - start > bound:
+            raise EraWalkFailed(f"the era walk did not finish within {bound:.0f} s, the era schedule's length and the "
+                                f"stall bound" + (f"; the last tip was {last}" if last else ""))
+        try:
+            tip = read_tip()
+        except (SystemExit, json.JSONDecodeError, subprocess.TimeoutExpired):
+            tip = None
+        if tip is None or "slot" not in tip:
+            if clock() - read > args.stall_seconds:
+                raise EraWalkFailed(f"no tip could be read for {args.stall_seconds} s"
+                                    + (f"; the last was {last}" if last else ""))
+            pause(0.5)
+            continue
+        read = clock()
+        if last is None or tip["block"] != last["block"]:
+            grew = read
+        elif read - grew > args.stall_seconds:
+            raise EraWalkFailed(f"no new block for {args.stall_seconds} s at {tip}")
+        if on_tick:
+            on_tick(tip)
+        finished = driver.step(tip)
+        driver.last_block = tip["block"]
+        last = tip
+        if finished:
+            return
+        pause(0.4)
 
 
 def up_eras(args, on_nodes_up=None, on_pools_ready=None, on_tick=None):
@@ -481,31 +556,8 @@ def up_eras(args, on_nodes_up=None, on_pools_ready=None, on_tick=None):
         driver.on_pools_ready = lambda: on_pools_ready(driver)
     if on_nodes_up:
         on_nodes_up(root)
-    driver.last_block = None
-    driver.protocol = {}
-    stalled = time.monotonic()
-    last = None
-    while True:
-        try:
-            tip = era_tip(args.name)
-        except (SystemExit, json.JSONDecodeError, subprocess.TimeoutExpired):
-            time.sleep(0.5)
-            continue
-        if "slot" not in tip:
-            time.sleep(0.5)
-            continue
-        if last is None or tip["block"] != last["block"]:
-            stalled = time.monotonic()
-        elif time.monotonic() - stalled > args.stall_seconds:
-            raise SystemExit(f"no new block for {args.stall_seconds} s at {tip}")
-        if on_tick:
-            on_tick(tip)
-        finished = driver.step(tip)
-        driver.last_block = tip["block"]
-        last = tip
-        if finished:
-            break
-        time.sleep(0.4)
+    byron = json.loads((root / "genesis" / "byron-genesis.json").read_text())
+    walk(args, driver, lambda: era_tip(args.name), schedule_seconds(args, byron, shelley) + args.stall_seconds, on_tick)
     summary = {"up": True, "root": str(root), "ports": ports, "eras": driver.timeline,
                "protocolMajorByEpoch": driver.protocol}
     (root / "eras.json").write_text(json.dumps(summary, indent=2))

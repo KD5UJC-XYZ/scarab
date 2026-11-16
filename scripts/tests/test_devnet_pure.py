@@ -141,6 +141,118 @@ class EraPlanTest(unittest.TestCase):
         self.assertEqual(config["Protocol"], "Cardano")
 
 
+class EraWalkTest(unittest.TestCase):
+    """The era walk follows its plan or ends with `EraWalkFailed`; it never waits for an epoch that has passed (#1113).
+    The driver is built by its own constructor with the reference's commands stubbed, the tips come from a list, the
+    clock is a counter advanced by the walk's own pauses, and a walk that has not ended after `LIMIT` reads fails the
+    test instead of hanging it."""
+
+    LIMIT = 1_000
+    PROTOCOL = types.SimpleNamespace(stdout=json.dumps({"protocolVersion": {"major": 2}}))
+
+    class Clock:
+        def __init__(self):
+            self.now = 0.0
+
+        def __call__(self):
+            return self.now
+
+        def pause(self, seconds):
+            self.now += seconds
+
+    def driver(self, shelley_epochs=1):
+        args = types.SimpleNamespace(name="n", byron_epochs=1, shelley_epochs=shelley_epochs, active_slots_coeff=0.1,
+                                     stall_seconds=90)
+        shelley = {"protocolParams": {"keyDeposit": 0, "poolDeposit": 0}, "epochLength": 500}
+        with patch.object(cluster, "in_ref", return_value=self.PROTOCOL):
+            driver = cluster.EraDriver(args, shelley)
+        driver.setup_pools = lambda era: None
+        driver.propose = lambda *a, **k: None
+        return driver
+
+    @staticmethod
+    def tip(driver, epoch, block):
+        index = epoch - driver.args.byron_epochs
+        era = "byron" if index < 0 else driver.plan[min(index, len(driver.plan) - 1)][0]
+        return {"era": era.capitalize(), "epoch": epoch, "slot": epoch * 500 + 10, "slotInEpoch": 10,
+                "block": block, "hash": f"h{block}"}
+
+    def run_walk(self, driver, reads, bound=10_000, grows=True):
+        """Walk over `reads` (tips, or exceptions to raise); past their end the last one repeats, its block growing
+        when `grows`."""
+        clock, count = self.Clock(), [0]
+
+        def read_tip():
+            count[0] += 1
+            if count[0] > self.LIMIT:
+                raise AssertionError(f"the walk did not end after {self.LIMIT} reads, at {clock.now} s")
+            item = reads[min(count[0], len(reads)) - 1]
+            if isinstance(item, BaseException):
+                raise item
+            return dict(item, block=item["block"] + (max(0, count[0] - len(reads)) if grows else 0))
+        with patch.object(cluster, "in_ref", return_value=self.PROTOCOL), contextlib.redirect_stdout(io.StringIO()):
+            cluster.walk(driver.args, driver, read_tip, bound, clock=clock, pause=clock.pause)
+        return clock
+
+    def test_a_walk_that_sees_every_planned_epoch_ends_at_the_first_conway_block(self):
+        driver = self.driver()
+        self.run_walk(driver, [self.tip(driver, e, e) for e in range(0, 9)])
+        self.assertEqual(driver.timeline[-1]["era"], "conway")
+        self.assertEqual(driver.timeline[-1]["epoch"], 8)
+        self.assertEqual(driver.protocol[8], 2)  # the stubbed reference's answer, recorded for the first Conway epoch
+
+    def test_an_epoch_with_nothing_to_do_may_pass_unseen(self):
+        # four Shelley epochs: the first sets up the pools, the second ends the overlay, the third does nothing and
+        # the fourth proposes Allegra's version; missing the third loses nothing
+        driver = self.driver(shelley_epochs=4)
+        self.assertFalse(driver.acts_in(2))
+        last = driver.args.byron_epochs + len(driver.plan) - 1
+        self.run_walk(driver, [self.tip(driver, e, e) for e in range(0, last + 1) if e != 3])
+        self.assertEqual(driver.timeline[-1], {**driver.timeline[-1], "era": "conway", "epoch": last})
+
+    def test_a_walk_that_misses_the_first_conway_epoch_ends_with_its_reason(self):
+        # the tip could not be read for all of epoch 8, the planned first Conway epoch: the next tip read is in epoch 9
+        driver = self.driver()
+        with self.assertRaises(cluster.EraWalkFailed) as raised:
+            self.run_walk(driver, [self.tip(driver, e, e) for e in range(0, 8)] + [self.tip(driver, 9, 9)])
+        self.assertIn("missed planned epoch 8", str(raised.exception))
+
+    def test_a_walk_that_misses_an_epoch_it_must_act_in_ends_at_the_next_tip(self):
+        driver = self.driver()
+        self.assertTrue(driver.acts_in(2))  # epoch 3 proposes Mary's version
+        with self.assertRaises(cluster.EraWalkFailed) as raised:
+            self.run_walk(driver, [self.tip(driver, e, e) for e in (0, 1, 2, 4)])
+        self.assertIn("missed planned epoch 3", str(raised.exception))
+
+    def test_a_tip_that_cannot_be_read_ends_the_walk_after_the_stall_bound(self):
+        driver = self.driver()
+        with self.assertRaises(cluster.EraWalkFailed) as raised:
+            self.run_walk(driver, [self.tip(driver, 0, 0), self.tip(driver, 1, 1),
+                                   SystemExit("cardano-cli query tip failed")])
+        self.assertIn("no tip could be read for 90 s", str(raised.exception))
+
+    def test_a_chain_that_stops_growing_still_ends_the_walk(self):
+        driver = self.driver()
+        with self.assertRaises(cluster.EraWalkFailed) as raised:
+            self.run_walk(driver, [self.tip(driver, 1, 1)], grows=False)
+        self.assertIn("no new block for 90 s", str(raised.exception))
+
+    def test_a_walk_whose_tips_never_advance_the_plan_ends_at_its_bound(self):
+        # the block number keeps changing (a fork switching back and forth), so neither stall check fires
+        driver = self.driver()
+        reads = [self.tip(driver, 1, b % 2) for b in range(self.LIMIT)]
+        with self.assertRaises(cluster.EraWalkFailed) as raised:
+            self.run_walk(driver, reads, bound=120)
+        self.assertIn("did not finish within 120 s", str(raised.exception))
+
+    def test_the_bound_is_the_schedule_read_from_the_genesis_files(self):
+        args = types.SimpleNamespace(byron_epochs=1, shelley_epochs=1)
+        byron = {"protocolConsts": {"k": 5}, "blockVersionData": {"slotDuration": "1000"}}
+        shelley = {"epochLength": 500, "slotLength": 0.1}
+        # one Byron epoch of 50 one-second slots, then the eight planned epochs of 500 slots of 0.1 s
+        self.assertEqual(cluster.schedule_seconds(args, byron, shelley), 50 + 8 * 50)
+
+
 class EncodingTest(unittest.TestCase):
     def test_bech32_roundtrip(self):
         for data in (b"\x01\x02\x03\x04\x05", bytes(range(29)), bytes(57)):
@@ -847,6 +959,13 @@ class E2EReferenceEvidenceTest(unittest.TestCase):
         self.assertEqual(summary["failures"], [])
         self.assertFalse(summary["passed"])  # it left by traceback: the summary must not call that a pass
         self.assertLess(events.index(("evidence", "run")), self.removal_of(events, "n-ref"))
+
+    def test_an_era_walk_that_missed_its_epoch_fails_the_run(self):
+        missed = cluster.EraWalkFailed("the era walk missed planned epoch 8: the first tip seen after it is {}")
+        summary, _, raised = self.failed_run(lambda name, root: {"kept": [], "notKept": {}}, error=missed)
+        self.assertEqual(summary["failures"], [str(missed)])
+        self.assertEqual(summary["verdict"], "failed")
+        self.assertEqual(raised.code, 1)
 
     def test_a_capture_that_fails_keeps_the_runs_own_failure_and_cause(self):
         def gone(name, root):
