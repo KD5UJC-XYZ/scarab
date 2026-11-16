@@ -8812,6 +8812,100 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
    "note": "the hash of sppMetadata's PoolMetadata (pmHash), read by `of` when the parameters are, where the reference keeps the decoded PoolMetadata",
    "digest": "34e10f3d8932247d"
+  },
+  "def ledger.era.BabbageTxOuts.babbageMinUTxOValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "symbol": "babbageMinUTxOValue",
+     "lines": [
+      665,
+      688
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a function where the reference reaches it through EraTxOut's getMinCoinSizedTxOut (Core.hs:391-392), which waits for the parameter records of the eras before Babbage (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6926143354)",
+   "digest": "a0188335e532a3f2"
+  },
+  "def ledger.era.rules.AlonzoUtxo.validateOutputTooBigUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateOutputTooBigUTxO",
+     "lines": [
+      412,
+      431
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's; a value's serialised size is that of the node's stored value (Value.serializedSize), MaryValue's encoding at every version (Mary/Value.hs:342-350)",
+   "digest": "ddeaa25cdd3171cb"
+  },
+  "def ledger.era.rules.BabbageUtxo.validateOutputTooSmallUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "symbol": "validateOutputTooSmallUTxO",
+     "lines": [
+      302,
+      323
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-data/src/Data/CanonicalMaps.hs",
+     "symbol": "pointWise",
+     "lines": [
+      98,
+      111
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's; `pointwise (>=)` against `inject` of the least lovelace is written out: the coin at least it and every quantity at least zero, as pointWise against an empty map is (CanonicalMaps.hs:104-106)",
+   "digest": "fb214072c1197496"
+  },
+  "def ledger.era.rules.ShelleyUtxo.validateOutputBootAddrAttrsTooBig": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "validateOutputBootAddrAttrsTooBig",
+     "lines": [
+      544,
+      558
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's; Shelley's own failure, which each later era's UTXO injects as its build has it when it runs this",
+   "digest": "aa9e5c8a2eab6544"
   }
  },
  "glue": [
@@ -8943,6 +9037,7 @@
    "reason": "objects that stand for the reference's modules of functions (`State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`), which Scala needs to hold top-level functions under a name",
    "definitions": [
     "object ledger.era.AlonzoTx",
+    "object ledger.era.BabbageTxOuts",
     "object ledger.era.BabbageUTxO",
     "object ledger.era.MaryUTxO",
     "object ledger.era.ShelleyUTxO",
