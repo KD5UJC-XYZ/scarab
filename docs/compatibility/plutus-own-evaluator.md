@@ -31,6 +31,10 @@ the commands below are those of that time.
   also agreed ([corpus](../../fixtures/reference/uplc-generated/README.md)).
 - **Differential:** both backends on 752 recorded script requests, with no difference in verdict or
   failure class; the successes also agree in execution units and logs.
+- **Recorded script requests**, 2026-11-16: the 253 script requests the ledger collects for the recorded
+  Preview and preprod transactions, judged by the pinned Haskell evaluator of plutus 1.70.0.0, agree with
+  the node's evaluator in stage, error, budget (on success and on failure) and logs
+  (`RecordedRequestOracleSuite`, [fixture](../../fixtures/reference/plutus-recorded-requests/README.md)).
 - **Devnet `e2e`**, at `b736b7fa7` and again at `766324062` after a rebase, with `--plutus-vm scarab`:
   Byron to Conway, with every projected and whole-state comparison matched and the Plutus cases accepted
   or refused as the reference does.
@@ -70,8 +74,9 @@ the commands below are those of that time.
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch
   boundaries. It compares no single script's verdict or budget; a different verdict that left the projected
   state unchanged would not show.
-- **Recorded script requests:** the 752 recorded requests of the differential were compared between the two
-  backends, not with the reference, and in execution units and logs on successes only; that comparison went
-  with the Scalus backend.
+- **Recorded script requests:** of the 253 Preview and preprod requests the reference judged, 251 succeed and the
+  2 that fail run out of a budget of 10 steps and 10 units of memory, so failures of real chain scripts are barely
+  sampled. The requests are the ledger's own collection; whether cardano-ledger builds the same ones is for the
+  script-context oracles to show.
 - **ExUnits conversion:** the conversion of a redeemer's `ExUnits` to a budget is not compared with cardano-ledger's own.
 - **Finite samples:** no corpus shows equality for every program, size or cost-model list.

@@ -1448,7 +1448,8 @@
           "GeneratedOracleSuite",
           "LedgerBoundaryOracleSuite",
           "FlatReferenceCorporaSuite",
-          "ScarabEvaluatorSuite"
+          "ScarabEvaluatorSuite",
+          "RecordedRequestOracleSuite"
         ],
         "docs": [
           "docs/plutus-conformance.md#scarabs-own-evaluator",
