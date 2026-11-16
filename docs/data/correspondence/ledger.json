@@ -6339,7 +6339,7 @@
    "note": "the `DeltaCoin` as an integer of either sign; the outputs' lovelace wraps modulo 2^64 as `sumAllCoin` (`State/UTxO.hs:207-212`) adds it in a `Word64`, which no reachable input reaches: the collateral outputs are distinct UTxO entries, whose sum is at most the supply. The flat path adds exactly; the two differ only past that bound",
    "digest": "900d1cb4bda04881"
   },
-  "def ledger.era.rules.ShelleyUtxow.validateVerifiedWits": {
+"def ledger.era.rules.ShelleyUtxow.validateVerifiedWits": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6358,7 +6358,7 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, the failing keys in the witness sets' order as the reference lists them; the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
+   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence where the reference's is a set; the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
    "digest": "07bebd19d3681314"
   },
   "def ledger.era.rules.AlonzoUtxow.checkScriptIntegrityHash": {

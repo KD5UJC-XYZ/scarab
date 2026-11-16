@@ -28,9 +28,11 @@ private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
 object ShelleyUtxow:
   /** `validateVerifiedWits` (`Shelley/Rules/Utxow.hs:390-407`, cardano-ledger f649f975): the keys
     * of the key witnesses, then of the bootstrap witnesses, whose signature of the body's hash does
-    * not verify, each in the order of its witness set. The node's signature checks are `verdicts`;
-    * one that gives no verdict is a defect of the provider, not a failure of the transaction
-    * (`LedgerFailure.Unverifiable`), as in the flat check.
+    * not verify. The key witnesses are in their set's order (`Ord WitVKey`), as the reference lists
+    * them; the bootstrap witnesses in the order `bootAddrTxWits` gives, a sequence where the
+    * reference's is a set. The node's signature checks are `verdicts`; one that gives no verdict is
+    * a defect of the provider, not a failure of the transaction (`LedgerFailure.Unverifiable`), as
+    * in the flat check.
     */
   def validateVerifiedWits[E <: EraTag, L <: TxLevel](tx: Tx[L, E], verdicts: Verdicts)(using
       t: EraTx[E],

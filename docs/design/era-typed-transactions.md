@@ -505,14 +505,16 @@ Conway's rules on the classes follow as the rest of stage 2.
   `checkScriptIntegrityHash`, with the script integrity it compares (`ScriptIntegrity`, `mkScriptIntegrity`,
   `hashScriptIntegrity`, and the language views `getLanguageView` and `encodeLangViews`).
   - Their verdicts equal the flat checks' on every transaction of the recorded Conway refusal corpora
-    (`ConwayUtxowChecksSuite`), where the scripts and the integrity hash refuse and the signatures never do,
-    and on every recorded Conway transaction (`EraUtxowSuite`). Crafted cases refuse each: forged key
+    (`ConwayUtxowChecksSuite`), where the scripts and the integrity hash refuse and the signatures never do.
+    On every recorded Conway transaction, which has no UTxO set, the signature check's verdict and the
+    integrity check's equal the flat ones (`EraUtxowSuite`). Crafted cases refuse each: forged key
     witnesses, an extraneous script, a wrong integrity hash at versions 10 and 11, and datums without
     redeemers, whose integrity is over the era's empty redeemers. The integrity's bytes equal the flat
     preimage for every set of languages.
   - The signature check lists the keys of failing key witnesses in the witness set's order (`Ord WitVKey`),
     as the reference does; the flat check lists them as they arrived, so the two differ in the refusal's
-    content when two witnesses fail out of that order.
+    content when two witnesses fail out of that order. The bootstrap witnesses are listed in the order of
+    `bootAddrTxWits`, a sequence where the reference's is a set; no case fails one.
   - The scripts needed and provided (`ScriptsNeeded`, `getScriptsProvided`), the needed key witnesses
     (`getWitsVKeyNeeded`), the failing native scripts, the datums and the redeemers wait for `EraUTxO`'s
     members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction annotated with its
