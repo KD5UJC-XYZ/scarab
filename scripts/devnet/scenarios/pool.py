@@ -227,14 +227,15 @@ FORGE_PHASES = ("toForged", "checkToForgedBlock", "leaderToForgedBlock", "forged
 
 
 def forge_timing(events, shelley, kinds=None):
-    """What the forger took in the slots it forged in, in milliseconds, per block: from the slot's start by the
-    genesis to the block's handover (`toForged`): a block forged ahead of its slot is handed over at the slot's
-    onset, so this is the time past the onset at which `forged` was logged, none if it was logged before it
-    (#1101); from `startLeadershipCheck` to `forgedBlock` of the same slot, which does not
-    depend on the slot clock (`checkToForgedBlock`); from `nodeIsLeader` to `forgedBlock`: the tick, the mempool's
-    revalidation and selection, the body and the signature (`leaderToForgedBlock`); from `forged` to
-    `adoptedBlock`: the node's own rules on the block and its commit (`forgedToAdopted`); and `adopted`'s own
-    `latencyMs`, slot start to adoption (`adoptedLatency`). Each as `spread`, over every forged block and, given
+    """What the forger took in the slots it forged in, in milliseconds, per block: when the block was built,
+    relative to its slot's onset by the genesis (`toForged`, the time of `forged`, which keeps the time it was made:
+    negative for a block built ahead of its slot, #1101); from `startLeadershipCheck` to `forgedBlock` of the same
+    slot, which does not depend on the slot clock (`checkToForgedBlock`); from `nodeIsLeader` to `forgedBlock`: the
+    tick, the mempool's revalidation and selection, the body and the signature (`leaderToForgedBlock`); from
+    `forged` to `adoptedBlock`: for a block built ahead of its slot the wait for the onset, then the node's own rules
+    on the block and its commit (`forgedToAdopted`); and `adopted`'s own `latencyMs`, the slot's onset to the
+    adoption, which is how late the block was handed over and adopted (`adoptedLatency`; the handover itself has no
+    line). Each as `spread`, over every forged block and, given
     `kinds` ({hash: kind}, `pool_plutus.block_kinds`), over the blocks of each kind (`withPlutus`, `withoutPlutus`,
     `unknown`; a block `kinds` does not name is unknown)."""
     system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
@@ -252,7 +253,7 @@ def forge_timing(events, shelley, kinds=None):
             continue
         slot, at = e["slot"], event_time(e)
         blocks.append((e["hash"], {
-            "toForged": max(at - system_start - slot * shelley["slotLength"], 0) * 1000,
+            "toForged": (at - system_start - slot * shelley["slotLength"]) * 1000,
             "checkToForgedBlock": gap(first.get(("startLeadershipCheck", slot)), first.get(("forgedBlock", slot))),
             "leaderToForgedBlock": gap(first.get(("nodeIsLeader", slot)), first.get(("forgedBlock", slot))),
             "forgedToAdopted": gap(at, first.get(("adoptedBlock", slot))),

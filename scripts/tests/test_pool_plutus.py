@@ -480,6 +480,15 @@ class ForgeTimingTest(unittest.TestCase):
         self.assertEqual(timing["all"]["toForged"]["n"], 2)
         self.assertIsNone(timing["unknown"]["toForged"])
 
+    def test_a_block_built_ahead_of_its_slot_has_a_negative_build_time(self):
+        # built 40 ms before its onset, handed over and adopted 120 ms after it (a late timer): the build time
+        # is negative, and the lateness of the handover is the adoption's own latency, not a guess
+        events = self.slot(10, (-45, -44, -41, -40, 120), "p", 120)
+        timing = pool.forge_timing(events, self.SHELLEY)
+        self.assertEqual(timing["all"]["toForged"]["max"], -40)
+        self.assertEqual(timing["all"]["forgedToAdopted"]["max"], 160)
+        self.assertEqual(timing["all"]["adoptedLatency"]["max"], 120)
+
     def test_without_plutus_hashes_only_the_whole_and_missing_traces_are_left_out(self):
         events = [e for e in self.slot(10, (2, 4, 20, 21, 50), "p", 50) if e["event"] != "nodeIsLeader"]
         timing = pool.forge_timing(events, self.SHELLEY)
