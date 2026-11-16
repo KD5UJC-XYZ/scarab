@@ -342,7 +342,7 @@ wake margin. A change of the schedule interrupts the sleep, and it takes the ear
 - twenty devnet `pool` runs with Scarab on one CPU measured a median of 4 to 10 ms from a slot's start to its
   signed block (`forged`) ([evidence log 3](../compatibility/evidence-log-3.md)), so 50 ms holds that work with room
   to spare;
-- it is under half of the devnet's 0.1 s slot, so the forging of a slot starts after the previous slot's onset;
+- it is half of the devnet's 0.1 s slot, so the forging of a slot still starts after the previous slot's onset;
 - it is far inside the reference's 2 s skew.
 
 At the wake the fiber makes an **early attempt**. It is provisional until the slot's onset:
