@@ -340,6 +340,15 @@ final class Forger[F[_]: Async, S](
     yield ()
   }
 
+  /** The slot the clock fiber published last, none before the first. */
+  private[forge] def clockSlot: Signal[F, Option[BigInt]] = shared.clock
+
+  /** The claims on slots and the slot driver's mark. */
+  private[forge] def claimed: Signal[F, Forger.Claims[F]] = shared.claims
+
+  /** The slot driver's resolved-through mark: every slot up to it is settled. */
+  private[forge] def settledThrough: Signal[F, BigInt] = shared.claims.map(_.mark)
+
   /** What the operator's gauges show of the schedule (#1101): the schedule of the epoch the clock
     * is in and of the next, and the first led slot from the clock's slot on.
     */
@@ -369,7 +378,7 @@ final class Forger[F[_]: Async, S](
       val pumped = (chains, hot.inForce).tupled.discrete
         .evalMap((c, i) => known(c, i))
         .changes
-        .evalMap(inForce.set)
+        .evalMap(i => pause(Forger.Point.Inputs(i.epochs.map(_.epoch))) *> inForce.set(i))
         .compile
         .drain
       val computed = schedule.computed(inForce).evalMap(announce(said, _)).compile.drain
@@ -782,7 +791,7 @@ final class Forger[F[_]: Async, S](
                     if !on then F.pure(t)
                     else if !known then changeOf(None, claims, schedules).as(last)
                     else
-                      Deferred[F, Final[F]].flatMap { result =>
+                      pause(Forger.Point.Waking(t)) *> Deferred[F, Final[F]].flatMap { result =>
                         shared.claims.modify(_.forging(t, result)).flatMap { claimed =>
                           if claimed then early(t, result).as(t) else F.pure(last)
                         }
@@ -820,9 +829,9 @@ final class Forger[F[_]: Async, S](
         for
           seen <- seenNow
           first <- attempt(slot, scheduled)
-          _ <- pause(Forger.Point.Signed(slot)).whenA(first match
-            case _: Attempted.Built[F, S] => true
-            case _: Attempted.Ended[F, S] => false)
+          _ <- pause(first match
+            case _: Attempted.Built[F, S] => Forger.Point.Signed(slot)
+            case _: Attempted.Ended[F, S] => Forger.Point.Refused(slot))
           last <- provisional(slot, first, seen, Vector.empty)
         yield last
     }).flatMap(result.complete).void
@@ -851,7 +860,7 @@ final class Forger[F[_]: Async, S](
           case Left(_) => atOnset(slot, current, discards)
           case Right(next) =>
             current match
-              case built: Attempted.Built[F, S] if next.generation == seen.generation =>
+              case built: Attempted.Built[F, S] if next.generation == built.prepared.generation =>
                 provisional(slot, built, next, discards)
               case other =>
                 val why = other match
@@ -1135,6 +1144,7 @@ final class Forger[F[_]: Async, S](
         .fold(r => hold.giveUp(ForgeTrace.NoLedgerView(slot, r)), proceed)
       crossed <- perform(crossedTo(context.base, epoch, slot))
       _ <- hold.say(ForgeTrace.LedgerView(slot))
+      _ <- perform(pause(Forger.Point.Context(slot)))
       prepared <- reserved(signing(slot, epoch, period, context, crossed, decide, hold))
     yield prepared
 
@@ -1152,6 +1162,7 @@ final class Forger[F[_]: Async, S](
       hold: Holding
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
     for
+      _ <- perform(pause(Forger.Point.Reserved(slot)))
       record <- perform(recordedOrMade(period)).flatMap(_.fold(disabled)(proceed))
       (generation, result) = record
       key <- result match
@@ -1512,9 +1523,10 @@ final class Forger[F[_]: Async, S](
     yield conway
 
   /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
-    * boundary is the expensive part and every slot of a new epoch needs it). This is where the
-    * ledger view of the slot comes from; the refusals here are Scarab's own (only Praos with Conway
-    * transactions is forged, on a fully validated ledger).
+    * boundary is the expensive part and every slot of a new epoch needs it; a chain at its origin,
+    * whose tip names no state, is not cached). This is where the ledger view of the slot comes
+    * from; the refusals here are Scarab's own (only Praos with Conway transactions is forged, on a
+    * fully validated ledger).
     */
   private def crossedTo(
       current: VolatileChain[S],
@@ -1523,7 +1535,7 @@ final class Forger[F[_]: Async, S](
   )(using Handle[F, NodeError]): F[Forger.Crossed] =
     val key = (current.tipRef.map(_.hash), epoch)
     cache.get.flatMap {
-      case Some(c) if c.key == key => F.pure(c)
+      case Some(c) if c.key == key && key._1.nonEmpty => F.pure(c)
       case _ =>
         for
           nes <- lift(Forger.conwayAt(current, epoch, slot))
@@ -1567,8 +1579,9 @@ final class Forger[F[_]: Async, S](
       )
 
   /** The leader view of `epoch` forecast from the tip of `base`, by the derivation of [[inputsAt]],
-    * kept for the last few tips and epochs asked about: what the slot driver decides a slot not
-    * claimed with, and the scheduler derives the inputs from, with no ledger tick.
+    * kept for the last few tips and epochs asked about (by the tip's hash, which names the state; a
+    * chain at its origin is not kept): what the slot driver decides a slot not claimed with, and
+    * the scheduler derives the inputs from, with no ledger tick.
     */
   private def viewOf(
       base: VolatileChain[S],
@@ -1577,7 +1590,7 @@ final class Forger[F[_]: Async, S](
   ): F[Either[NodeError, Forger.LeaderView]] =
     val key = (base.tipRef.map(_.hash), epoch)
     viewed.get.flatMap(
-      _.collectFirst { case (k, v) if k == key => v }.fold(
+      _.collectFirst { case (k, v) if k == key && key._1.nonEmpty => v }.fold(
         F.delay(
           Forger
             .conwayAt(base, epoch, slot)
@@ -1668,17 +1681,34 @@ object Forger:
 
   /** Where a test suspends a fiber, to drive an interleaving (#1101, §7). */
   enum Point:
+    /** The scheduler has derived the inputs in force and is about to compute from them. */
+    case Inputs(epochs: Vector[BigInt])
+
+    /** The forging fiber's wake for a slot has come, and it is about to claim the slot. */
+    case Waking(slot: BigInt)
+
     /** The forging fiber has claimed a slot and is about to make its early attempt. */
     case Woke(slot: BigInt)
 
+    /** A forge has its block context and the slot's ledger view, and is about to update the KES key
+      * and make the leader check again.
+      */
+    case Context(slot: BigInt)
+
     /** A forge has made the leader check again and is about to build its block. */
     case Rechecked(slot: BigInt)
+
+    /** A forge has reserved the KES key and is about to update it to the slot's period. */
+    case Reserved(slot: BigInt)
 
     /** A forge is about to sign, the KES key reserved. */
     case Signing(slot: BigInt)
 
     /** An early attempt has built and signed its block, before the slot's onset. */
     case Signed(slot: BigInt)
+
+    /** An early attempt ended without a block before the slot's onset, and is pending. */
+    case Refused(slot: BigInt)
 
     /** The slot driver found a slot led and is about to hand it to the forging fiber. */
     case Deciding(slot: BigInt)
