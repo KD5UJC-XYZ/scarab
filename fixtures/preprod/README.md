@@ -48,6 +48,10 @@ Output 0 carries 2 policies and 501 assets: its value is 5001 bytes in definite-
 5000 bytes as the ledger writes it (a map of more than 23 entries is indefinite-length), so it is
 within `maxValueSize` 5000. Used by `PreConwayRulesSuite`.
 
+## plutus/ and the Haskell reference
+
+Every case is also checked against the pinned Haskell reference twice: its script contexts against cardano-ledger's collection ([recorded-contexts](../reference/recorded-contexts/README.md), `RecordedScriptContextsSuite`), and its script requests' verdicts, budgets and logs against plutus 1.70.0.0 ([plutus-recorded-requests](../reference/plutus-recorded-requests/README.md), `RecordedRequestOracleSuite`). Both fixtures bind the exact set of case files of `fixtures/preview/plutus` and `fixtures/preprod/plutus` by their hashes, so adding, changing or removing a case fails both suites, in CI too, until both fixtures are recorded again with their runners ([recorded-contexts](../../scripts/oracle/plutus/recorded-contexts/README.md), [recorded](../../scripts/oracle/plutus/recorded/README.md)), which need the Haskell oracle images their READMEs say how to build. That failure is the check working: a case the reference has not judged is not covered.
+
 ## tx-2edd684f.hex and plutus/tx-2edd684f.json
 
 The full transaction `2edd684fb762fb4cc464367aa5a01b5e129e202e41b68f755a4e28d9ea293802` (Conway,
