@@ -507,10 +507,12 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Their verdicts equal the flat checks' on every transaction of the recorded Conway refusal corpora
     (`ConwayUtxowChecksSuite`), where the scripts and the integrity hash refuse and the signatures never do.
     On every recorded Conway transaction, which has no UTxO set, the signature check's verdict and the
-    integrity check's equal the flat ones (`EraUtxowSuite`). Crafted cases refuse each: forged key
-    witnesses, an extraneous script, a wrong integrity hash at versions 10 and 11, and datums without
-    redeemers, whose integrity is over the era's empty redeemers. The integrity's bytes equal the flat
-    preimage for every set of languages.
+    integrity check's equal the flat ones (`EraUtxowSuite`). Crafted cases refuse each: forged key and
+    bootstrap witnesses, an extraneous script, a wrong integrity hash at versions 10 and 11, and datums
+    without redeemers, whose integrity is over the era's empty redeemers. The integrity's bytes equal the
+    flat preimage for every set of languages, and each language's view, with and without its cost model,
+    equals bytes written out by hand. Views of one tag are encoded in their derived order, as the
+    reference's stable sort of `Set.toList` leaves them, whatever order the set was built in.
   - A witness set without redeemers has the era's empty redeemers, whose bytes the reference encodes at the
     era's lowest protocol version. That version comes from the reference's `Era` class, here a class of its
     own with `eraProtVerLow` and `eraProtVerHigh` (`era/Era.scala`), with instances for Allegra, Mary,
@@ -518,8 +520,9 @@ Conway's rules on the classes follow as the rest of stage 2.
   - The signature check lists the keys of failing key witnesses in the witness set's order (`Ord WitVKey`),
     as the reference does; the flat check lists them as they arrived, so the two differ in the refusal's
     content when two witnesses fail out of that order: a Gap of the flat path's refusal content, tracked on
-    [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038). The bootstrap witnesses are listed in the order of
-    `bootAddrTxWits`, a sequence where the reference's is a set; no case fails one.
+    [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038). The bootstrap
+    witnesses follow, in the order of `bootAddrTxWits`, which the decoder keeps in the reference's set order
+    (by address root); crafted cases fail them alone and after key witnesses, in that order in both paths.
   - The scripts needed and provided (`ScriptsNeeded`, `getScriptsProvided`), the needed key witnesses
     (`getWitsVKeyNeeded`), the failing native scripts, the datums and the redeemers wait for `EraUTxO`'s
     members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction

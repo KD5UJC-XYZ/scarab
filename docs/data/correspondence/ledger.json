@@ -6358,7 +6358,7 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence where the reference's is a set; the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check. The flat check lists the failing keys as they arrived, a difference in the refusal's content tracked on #796 (https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038); it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
+   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check. The flat check lists the failing keys as they arrived, a difference in the refusal's content tracked on #796 (https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038); it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
    "digest": "07bebd19d3681314"
   },
   "def ledger.era.rules.AlonzoUtxow.checkScriptIntegrityHash": {
@@ -6550,8 +6550,8 @@
    "evidence": [
     "EraUtxowSuite"
    ],
-   "note": "the views in the short-lex order of their tags",
-   "digest": "a39fd38019b36661"
+   "note": "the views in their derived (tag, parameters) order, then stably in the short-lex order of their tags, as the reference sorts Set.toList",
+   "digest": "a52fc69ecf80b5b7"
   },
   "trait ledger.era.Era": {
    "upstream": [
@@ -6630,11 +6630,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "EraUtxowSuite"
    ],
-   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "55a3691663f3bf59"
   },
   "given ledger.era.Era.mary": {
@@ -6651,11 +6651,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "EraUtxowSuite"
    ],
-   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "5f89b5884a70de0d"
   },
   "given ledger.era.Era.babbage": {
@@ -6672,11 +6672,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "EraUtxowSuite"
    ],
-   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "bd261914d88bd764"
   },
   "given ledger.era.Era.conway": {
@@ -6693,11 +6693,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "EraUtxowSuite"
    ],
-   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "2aec1287f877a3ef"
   },
   "given ledger.era.Era.dijkstra": {
@@ -6714,11 +6714,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "EraUtxowSuite"
    ],
-   "note": "the era's versions as values, compared with the flat decoders' range of the era, at the Leios testnet's build",
+   "note": "the era's versions as values, compared with the flat decoders' range of the era, at the Leios testnet's build; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "4490ac8f7a690eb5"
   }
  },
