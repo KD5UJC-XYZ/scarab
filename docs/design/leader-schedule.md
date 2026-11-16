@@ -520,10 +520,12 @@ For each slot it handles, while forging is enabled, the slot driver:
    (decision 1; [#1101, Q1](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395)). Either way the
    slot is counted in `ForgeEpochStats` (`slotsChecked`) and the about-to-lead counter, and the `ForgingStats` gauges
    are published, every slot, as now (Q2). `startLeadershipCheck` and `stateInfo` are logged only on led slots and at
-   a KES period change, where the slot not led that announces the period's `stateInfo` logs `startLeadershipCheck`
-   before it, as the reference orders a slot's lines; `stateInfo` at Warning or Alert (seven or fewer periods left)
-   is logged in every slot whose checks reach the KES key, without `startLeadershipCheck`, as the reference logs it
-   (Q2);
+   a KES period change, where the first slot of the period that the slot driver ends itself logs
+   `startLeadershipCheck` first, as the reference orders a slot's lines, whether the period's update succeeded
+   (then `stateInfo` follows) or failed (then the slot's ending, the failure's `forgeStateUpdateError` where its
+   checks reach the key), once per period and credentials; `stateInfo` at Warning or Alert (seven or fewer periods
+   left) is logged in every slot whose checks reach the KES key, without `startLeadershipCheck`, as the reference logs
+   it (Q2);
 5. checks the forged blocks replaced later (`watch`), as now after each slot.
 
 **The epoch's summary.** Before the first slot of a later epoch, the slot driver publishes the `forgeEpoch` line of
@@ -608,7 +610,7 @@ the change that first relies on them adds their rows to the [decisions register]
 
 | Behaviour | Reference | Scarab | Approval |
 |---|---|---|---|
-| A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `startLeadershipCheck` and `stateInfo` before it at a KES period change, `stateInfo` otherwise only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
+| A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `startLeadershipCheck` before it at a KES period change, with `stateInfo` where the period's update succeeded, `stateInfo` otherwise only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
 | When the leader check runs | at the slot, in the forging thread (C1, C4) | ahead of the epoch, spread over the time left; again at a led slot | decisions 4, 5 |
 | When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset, but after it in the first slot of a KES period (§5.3); handed to chain selection at the onset | decision 6 |
 | When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by the slot driver at the period's first slot, decision 3's timer; also at a led slot as now, never before the clock's period | decision 3 |
@@ -737,7 +739,8 @@ recorded result.
        the boundary.
      - The `stateInfo` of a period change is published at the first slot of the period the slot driver handles,
        whether or not that slot's checks reach the key, so that the KES gauges move at the period's start; on a slot
-       not led, after its `startLeadershipCheck`.
+       not led, after its `startLeadershipCheck`. A period whose update failed has that `startLeadershipCheck` too,
+       at the first slot the slot driver ends in it, before the slot's ending line.
      - The KES key's own lines (`kesEvolved`, `kesFileAbsent`, `kesWrittenByRename`, `kesPersistFailed`) are
        written where the key moves, by the slot driver's update of the period or by a forge's, never before the
        clock's period, not held with the slot's lines.

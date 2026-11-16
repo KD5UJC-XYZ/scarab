@@ -62,8 +62,8 @@ at once, and a fatal outcome of any of them ends the others and is the run's res
   `blockFromFuture`), the forecast horizon (`noLedgerView`), the era of the ledger the view is forecast from
   (`forgeFailed`), the KES key's state (`forgeStateUpdateError`); then from the schedule, if it covers the slot
   under the inputs in force (derived from the block the slot would build on), or with `Leadership.check` at the
-  slot. A slot not led logs only its ending line, after `startLeadershipCheck` and `stateInfo` where it announces a
-  KES period, and is counted as a slot checked; a led one is handed to the forging fiber. The `forgeEpoch` line of
+  slot. A slot not led logs only its ending line, after `startLeadershipCheck`, with `stateInfo` where the key's
+  update succeeded, at a KES period change, and is counted as a slot checked; a led one is handed to the forging fiber. The `forgeEpoch` line of
   an epoch comes after every slot of it has been published.
 - **The forging fiber** forges a led slot 50 ms before its onset, once every slot before it is settled, so that
   forges, and their signatures, run in slot order. The attempt is provisional until the onset: made again when
