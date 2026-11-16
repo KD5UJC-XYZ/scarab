@@ -4,7 +4,7 @@
 Part of the [compatibility matrix](../compatibility.md#evidence-kinds).
 
 - **Unit/property**: munit, ScalaCheck and cats-laws suites under `*/src/test`.
-- **Golden/oracle**: fixtures under `fixtures/` (see their READMEs) and a Scalus oracle for script contexts.
+- **Golden/oracle**: fixtures under `fixtures/` (see their READMEs).
 - **Devnet**: `scripts/devnet.py` scenarios against a Haskell cluster, see [running.md](../running.md).
 - **Preview sync**: following the public Preview testnet from genesis (every block checked against
   our rules; the chain is the oracle, so it shows we do not reject valid blocks, not that our ledger
