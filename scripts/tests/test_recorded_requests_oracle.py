@@ -5,7 +5,9 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -94,6 +96,41 @@ class RecordedRequestsOracleTests(unittest.TestCase):
         with patch.object(RUN, "entrypoint", return_value=["/bin/sh"]):
             with self.assertRaisesRegex(ValueError, "does not run"):
                 RUN.image_binding(release, "sha256:" + "a" * 64, "test", None)
+
+    def test_an_image_file_or_executable_that_could_not_be_measured_is_refused(self):
+        for changes in ({f"file:{RUN.IMAGE_BINARY}": "", "built": ""}, {f"file:{RUN.IMAGE_BUILD[0]}": None},
+                        {"built": None, f"file:{RUN.IMAGE_BINARY}": None}):
+            with self.assertRaisesRegex(ValueError, "could not be measured"):
+                self.binding(**changes)
+
+    def pinned_check(self, status_exit, listing=""):
+        """What PINNED_CHECK prints with a `git` whose `status` exits `status_exit` after printing `listing`."""
+        with tempfile.TemporaryDirectory() as stubs:
+            git = Path(stubs) / "git"
+            git.write_text("#!/bin/sh\n"
+                           f'if [ "$1" = status ]; then printf %s "{listing}"; exit {status_exit}; fi\n'
+                           "exit 0\n")
+            git.chmod(0o755)
+            env = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}"}
+            return subprocess.run(["sh", "-c", RUN.PINNED_CHECK], env=env, capture_output=True, text=True).stdout
+
+    def test_the_pinned_check_fails_closed_when_git_status_fails(self):
+        self.assertEqual(self.pinned_check(0), "pinned unchanged\n")
+        self.assertEqual(self.pinned_check(128), "")
+        self.assertEqual(self.pinned_check(0, listing="?? plutus-core/Extra.hs"), "")
+
+    def test_a_binding_without_every_build_file_fails_validation(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            copy = Path(scratch) / "fixture"
+            shutil.copytree(RUN.DIRECTORY, copy)
+            for name in ("provenance.json", "manifest.json"):
+                record = json.loads((copy / name).read_text())
+                del record["imageFilesSha256"][RUN.IMAGE_BUILD[0]]
+                (copy / name).write_text(json.dumps(record))
+            with self.assertRaisesRegex(ValueError, "not exactly"):
+                RUN.validate(copy)
+            with self.assertRaisesRegex(ValueError, "not exactly"):
+                RUN.accepted_build(copy)
 
     def test_the_retained_provenance_accepts_one_build(self):
         accepted = RUN.accepted_build(RUN.DIRECTORY)

@@ -37,18 +37,35 @@ PINNED_TREES = ("plutus-core", "plutus-ledger-api", "plutus-tx")
 IMAGE_HARNESS = "/source/scarab-oracle/Main.hs"
 IMAGE_BINARY = "/usr/local/bin/scarab-plutus-oracle"
 IMAGE_BUILD = ("/source/scarab-oracle/scarab-plutus-oracle.cabal", "/source/cabal.project", IMAGE_BINARY)
-# Run in the image (working directory /source, the plutus checkout): each line a key and a value. The plutus trees
-# must equal their commit (no change, staged or not, no untracked or ignored file), and cabal must find the
-# executable up to date with the sources the image holds.
+# The plutus trees equal their commit: no change, staged or not, and no untracked or ignored file. `git status` is
+# captured by an assignment, whose exit status is the command's, so a status that fails prints nothing rather than an
+# empty listing that reads as clean.
+PINNED_CHECK = (f'listing=$(git status --porcelain --ignored --untracked-files=all -- {" ".join(PINNED_TREES)})'
+                f' && git diff --quiet HEAD -- {" ".join(PINNED_TREES)}'
+                ' && test -z "$listing" && echo "pinned unchanged"')
+# Run in the image (working directory /source, the plutus checkout): each line a key and a value. A measurement that
+# fails prints no value or an empty one, which `image_binding` refuses; cabal must find the executable up to date
+# with the sources the image holds.
 MEASURE = "\n".join([
     *(f'echo "file:{path} $(sha256sum {path} | cut -d\' \' -f1)"' for path in (IMAGE_HARNESS, *IMAGE_BUILD)),
     'echo "head $(git rev-parse HEAD)"',
-    f'git diff --quiet HEAD -- {" ".join(PINNED_TREES)}'
-    f' && test -z "$(git status --porcelain --ignored --untracked-files=all -- {" ".join(PINNED_TREES)})"'
-    ' && echo "pinned unchanged"',
+    PINNED_CHECK,
     'cabal build scarab-plutus-oracle --offline --dry-run 2>/dev/null | grep -qx "Up to date" && echo "build current"',
     'echo "built $(sha256sum "$(cabal list-bin scarab-plutus-oracle)" | cut -d\' \' -f1)"',
 ])
+
+
+DIGEST = re.compile(r"[0-9a-f]{64}")
+
+
+def build_files(files, where):
+    """The digests a record binds the image's files by: exactly the harness and the build files, each a SHA-256."""
+    expected = {IMAGE_HARNESS, *IMAGE_BUILD}
+    if not isinstance(files, dict) or set(files) != expected:
+        raise ValueError(f"{where}: the image's files are not exactly {sorted(expected)}")
+    if not all(isinstance(value, str) and DIGEST.fullmatch(value) for value in files.values()):
+        raise ValueError(f"{where}: an image file without a SHA-256")
+    return files
 
 
 def era(protocol):
@@ -99,6 +116,9 @@ def image_binding(release, image_id, owner, accepted):
     measured = measure(image_id, owner)
     files = {key[len("file:"):]: value for key, value in measured.items() if key.startswith("file:")}
     refusals = [
+        (all(isinstance(files.get(path), str) and DIGEST.fullmatch(files[path]) for path in (IMAGE_HARNESS, *IMAGE_BUILD))
+         and DIGEST.fullmatch(measured.get("built", "")) is not None,
+         "an image file or the built executable could not be measured"),
         (measured.get("head") == release["pin"], f"plutus is not at {release['pin']}"),
         (measured.get("pinned") == "unchanged",
          f"the plutus source differs from its commit under {', '.join(PINNED_TREES)}"),
@@ -122,7 +142,8 @@ def accepted_build(fixtures):
     provenance = json.loads((fixtures / "provenance.json").read_text())
     if "imageFilesSha256" not in provenance:
         raise ValueError("the fixture accepts no oracle build yet: record with --accept-build")
-    return {path: provenance["imageFilesSha256"][path] for path in IMAGE_BUILD}
+    files = build_files(provenance["imageFilesSha256"], "provenance.json")
+    return {path: files[path] for path in IMAGE_BUILD}
 
 
 def execute(image_id, requests, raw, owner):
@@ -158,8 +179,10 @@ def validate(fixtures):
     if len({r["id"] for r in requests}) != len(requests):
         raise ValueError("duplicate request id")
     provenance = json.loads((fixtures / "provenance.json").read_text())
-    image = provenance["imageFilesSha256"]
-    if (provenance["imageId"] != manifest["oracleImage"] or image != manifest["imageFilesSha256"]
+    image = build_files(provenance.get("imageFilesSha256"), "provenance.json")
+    build_files(manifest.get("imageFilesSha256"), "manifest.json")
+    if (re.fullmatch(r"sha256:[0-9a-f]{64}", provenance["imageId"]) is None
+            or provenance["imageId"] != manifest["oracleImage"] or image != manifest["imageFilesSha256"]
             or provenance["oracleBinarySha256"] != image[IMAGE_BINARY]
             or image[IMAGE_HARNESS] != GENERATED.sha256(ROOT / release["harness"] / "Main.hs")):
         raise ValueError("the provenance does not bind the image, its executable and the current harness")
