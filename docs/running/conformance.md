@@ -8,7 +8,7 @@ the reports that independent Cardano nodes publish for four scenarios: `ledger-r
 `uplc-turbo` and `cbor-decoding` (one report per era, `conway` and `dijkstra`). The site runs nothing itself: it
 downloads each node's newest report when it is built. Scarab writes its reports with the `tools` entry points
 named in [the code map](../codemap.md). The CBOR detector runs nightly; publication stays on demand. The Plutus scenarios
-report Scarab's own evaluator (`--plutus-vm scarab`).
+report Scarab's Plutus evaluator, its own (`uplc`).
 
 ## Running a scenario locally
 
