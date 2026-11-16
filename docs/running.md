@@ -79,6 +79,7 @@ Each topic of this guide has a page of its own; the section names below are the 
 
 | Page | Sections |
 |---|---|
+| [A tester's runbook](running/tester-runbook.md) | Before you start; The images; A devnet: Scarab forging beside two Haskell pools; Mainnet from a Mithril snapshot to the tip; A preprod node; `cardano-cli` against the node-to-client socket; A pool on preprod; Cleaning up (each step with its commands and what success looks like) |
 | [Flags of `follow`](running/flags.md) | the table of every `follow` flag |
 | [Databases, snapshots and imports](running/snapshots.md) | `import-haskell-db`: start from a Haskell node's blocks; `import-mithril`: certified bootstrap into a fresh database; `import-ledger-snapshot`: start from a reference ledger snapshot; `export-ledger-snapshot`: write a reference ledger directory; `export-scls` and `import-scls`: canonical ledger-state interchange |
 | [Configuration, topology, peers and networks](running/configuration.md) | Configuration and topology files; Choosing the consensus mode; Peer selection; Preview; Preprod |
