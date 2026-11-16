@@ -1,15 +1,18 @@
 # Plutus conformance: executed reference boundaries
 
-**Status: Current.** All 1,009 pinned upstream evaluation cases pass with exact recorded results
-and budgets, without exclusions, and so do the 906 of them that upstream also gives in Flat form,
-run from their `.flat` files. Ledger admission remains a separate tested boundary; recorded
-experiments remain tied to their source revisions.
+**Status: Current.** All 1,009 upstream evaluation cases of plutus 1.70.0.0 pass on the node's
+evaluator, its own ([ADR 0027, amendment of 2026-11-15](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)), with exact recorded results and budgets,
+without exclusions, and so do the 906 of them that upstream also gives in Flat form, run from their
+`.flat` files. The corpus of plutus 1.71.0.0 has no runner until [#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099): an incomplete gate, not a pass.
+Ledger admission remains a separate tested boundary; recorded experiments remain tied to their source
+revisions.
 
 The original [#155](https://github.com/KD5UJC-XYZ/scarab/issues/155) (AUD-03) triage established
 which dependency differences reached ledger validation. That historical classification is retained
 below; it no longer excuses an upstream test failure.
-[`PlutusConformanceSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusConformanceSuite.scala)
-now runs the complete original corpus with the reference executable's execution profile. Trigger
+The own evaluator runs the complete original corpus with the reference executable's execution profile
+([`ConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/text/ConformanceSuite.scala), [`CekConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CekConformanceSuite.scala);
+[below](#scarabs-own-evaluator)); until 2026-11-15 `PlutusConformanceSuite` ran it on the Scalus backend. Trigger
 details are not written here (see [SECURITY.md](../SECURITY.md)). The corpus, the cost model data
 and the parameter-name lists are kept once for every pinned plutus release, in
 [`plutus-reference`](../plutus/src/test/resources/plutus-reference/README.md): the newest release
@@ -18,8 +21,9 @@ each release with its pinned upstream archive.
 
 The profile follows `PlutusConformance/CekEvaluator.hs:46-61` at Plutus commit
 `507cab8cf6192e5143f12be5b2d3005a2928dc6d`: check the whole term for free variables, then evaluate
-the original term with variant E and saturating counting. The machine is the one production builds:
-`ScalusEvaluator.corrected` makes the evaluation context of the request's language, protocol and
+the original term with variant E and saturating counting. On the Scalus backend, until 2026-11-15, the
+machine was the one production builds:
+`ScalusEvaluator.corrected` made the evaluation context of the request's language, protocol and
 cost model, and `CorrectedVm.cek` the CEK machine, with the corrected builtin runtimes. Two
 settings differ from the ledger's, both because the reference executable differs from the ledger
 there. The budget is the counting one (`counting`) where the ledger restricts. `case` on `Data` is
@@ -31,11 +35,12 @@ inserted before term evaluation. Existing original-byte sidecars still test malf
 constants before the dependency text parser can normalize their entries.
 
 All 1,009 upstream cases retain their original expectations; the former six BLS constants, five
-saturating `dropList` cases and two Data cases now execute and pass. A differential regression runs
-those same thirteen cases through the previous ledger/Flat harness, reproduces its mismatches,
-and requires the exact original term result and budget from the corrected profile. Separate
-`PlutusReachabilitySuite` tests retain the ledger's Flat admission, protocol gates and restricting
-budgets. A counting-profile success is not a claim that a transaction with that term is admissible.
+saturating `dropList` cases and two Data cases now execute and pass. Until 2026-11-15 a differential
+regression ran those same thirteen cases through the previous ledger/Flat harness, reproduced its
+mismatches, and required the exact original term result and budget from the corrected profile, and
+`PlutusReachabilitySuite` tested the ledger's Flat admission, protocol gates and restricting budgets on
+the Scalus backend; on the own evaluator the Flat-decoding corpus and the boundary corpora do
+([below](#scarabs-own-evaluator)). A counting-profile success is not a claim that a transaction with that term is admissible.
 
 **The Flat form.** Upstream gives 906 of the 1,009 cases a `.flat` program and a `.flat.expected`
 result as well. The other 103 are the text parser's cases under `builtin/parser` and `term/parser`,
@@ -45,14 +50,13 @@ builtins, constant types or `constr` fields, though `constr` and `case` still ne
 refuses a variable that no `lam` binds anywhere in the term (`unDeBruijnProgram`, which, unlike the
 ledger's scope check, looks inside `constr` and `case`), evaluates with the same profile, and compares
 the result with the decoded `.flat.expected` program and the budget with the shared
-`.budget.expected` (`Common.hs:347-417,550-575`, unchanged at 1.71.0.0). `PlutusConformanceSuite` and
-`PlutusConformance171Suite` run the 906 that way through the Scalus backend's Flat walker
-(`FlatScan`) and machine. All 906 pass at each release, with no exclusion. The own evaluator runs
-the 1.70.0.0 cases, text and Flat, the release it implements ([below](#scarabs-own-evaluator),
-ADR 0027); the 1.71.0.0 cases run on the Scalus backend alone. Upstream's `conformance-consistency`
-check, that each Flat program and result decodes to what its text form parses to, is mirrored with
-the own parser and decoder only; the Scalus suites decode the program and its expected result with
-the same walker, as upstream's runner does.
+`.budget.expected` (`Common.hs:347-417,550-575`, unchanged at 1.71.0.0). The own evaluator runs the 906
+of 1.70.0.0, the release it implements, that way through its own Flat decoder and machine, all passing
+with no exclusion ([below](#scarabs-own-evaluator), ADR 0027). Until 2026-11-15 `PlutusConformanceSuite`
+and `PlutusConformance171Suite` ran the 906 of each release through the Scalus backend's Flat walker and
+machine, all passing; the 1.71.0.0 cases have had no runner since, until [#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099), which is an incomplete
+gate, not a pass. Upstream's `conformance-consistency` check, that each Flat program and result decodes
+to what its text form parses to, is mirrored with the own parser and decoder.
 
 ## 1. The reference evaluator
 
@@ -81,8 +85,8 @@ The parameter-name lists of 1.70.0.0 (the order of the on-chain list) have 343 n
 V2 and 361 for V3 (`ledger-api/` in the 1.70.0.0 view of
 [`plutus-reference`](../plutus/src/test/resources/plutus-reference/README.md)). Language and builtin
 availability (`PlutusLedgerApi/Common/Versions.hs`, 109-110 and 320-356, transcribed in
-[`PlutusAvailability`](../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/PlutusAvailability.scala) and
-checked by `PlutusAvailabilitySuite`):
+[`Availability`](../uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/Availability.scala) and
+checked by `AvailabilitySuite`):
 
 | Protocol | V1 gains | V2 gains | V3 gains |
 |---|---|---|---|
@@ -306,27 +310,23 @@ flat bytes that handles the `value` constants:
 
 ## 5. Implementation and remaining scope
 
-Scalus 1.4.0 evaluates the cryptographic builtins on `libscalus_crypto` of scalus-crypto-jni 0.1.0
-(libsodium, libsecp256k1 and portable blst 0.3.15) and passes `hashToGroup`'s tag as bytes, so the
-earlier raw-byte DST backport into Scarab's portable libblst is no longer used by Plutus
-([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). The cost-model shapes and
-the 255-byte DST length check are Scalus's own; the budget arithmetic is the reference's
-(`ReferenceCosting` measures the arguments and runs the costing functions in `SatInt` arithmetic
-as budget streams, `ReferenceBudget` charges steps in batches of 200 and compares a saturating
-remaining budget after every charge; IN-84, [#485](https://github.com/KD5UJC-XYZ/scarab/issues/485)).
-The conformance suite's counting spender is charged through the same machine, and the
-original upstream conformance assertions plus the independently exported G1/G2 point vectors pass
-through the production evaluator. The start-up check of the library computes the `hashToGroup` known answers for a non-ASCII tag. A builtin the
-library backs is a typed `BuiltinUnavailable` when it did not load. The complete upstream suite
-passes 1,009/1,009 cases from their text programs and 906/906 from their Flat programs, with zero
-exceptions, under its own term/counting profile; the obsolete known-failure resource is removed.
+Since 2026-11-15 the node's only evaluator is its own, the `uplc` module
+([ADR 0027, amendment of 2026-11-15](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator), [below](#scarabs-own-evaluator)). It evaluates Ed25519 and
+secp256k1 on the JVM (the `crypto` module and Bouncy Castle) and BLS12-381 on jblst's portable libblst
+([ADR 0025](adr/0025-jblst.md)), with `hashToGroup` through Bouncy Castle's hash-to-curve, which takes
+the tag as bytes; its costing and budget arithmetic are the reference's (`SatInt`, the costing oracle;
+IN-84, [#485](https://github.com/KD5UJC-XYZ/scarab/issues/485)). The complete upstream suite of
+1.70.0.0 passes 1,009/1,009 cases from their text programs and 906/906 from their Flat programs on it,
+with zero exceptions, under its own term/counting profile. Until 2026-11-15 the Scalus backend
+evaluated the cryptographic builtins on `libscalus_crypto` of scalus-crypto-jni
+([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)), whose start-up check computed
+the `hashToGroup` known answers for a non-ASCII tag, and its wrapper brought the budget arithmetic to the
+reference's (`ReferenceCosting`, `ReferenceBudget`); the same corpus passed on it.
 
 An implementation limit is `Phase2.Outcome.Unavailable` and `LedgerFailure.Unavailable`, regardless
 of the transaction validity flag. It supplies no script verdict and no consensus predicate failure.
-Unavailable decoder attempts are not retained by the bounded program cache. VM memoisation
-shares one lazy construction per key, retaining successful values; a failed attempt removes only
-its own cache entry atomically, so recovery remains retryable and cannot evict a newer success.
-Known malformed input remains memoised. The node's supervision boundary handles unavailability as
+Unavailable decoder attempts are not retained by the bounded program cache, and the evaluator keeps no
+answer that is no verdict (`ScarabEvaluator`). Known malformed input remains memoised. The node's supervision boundary handles unavailability as
 unavailable validation. This remains distinct from
 reference-proven setup, scope, budget and runtime script failures.
 
@@ -388,7 +388,7 @@ and tag 2/tag 3 bignum payloads. The joined value may be larger: chunks of 64 an
 a definite 65-byte value or an indefinite string containing one 65-byte chunk is refused.
 `ByteStringChunks` examines retained original framing after generic CBOR syntax validation,
 so it does not confuse the joined payload size with an individual chunk's length. Construction
-of an in-memory `PlutusData.B` remains independent of wire admission, and `DataSerialiser`
+of an in-memory `PlutusData.B` remains independent of wire admission, and `serialiseData`
 writes longer payloads in bounded chunks.
 
 This follows `PlutusCore/Data.hs:232-265` at the pinned Plutus `507cab8c` revision. The
@@ -408,20 +408,19 @@ are separate from the twelve exact parser/hash cases above.
 
 ## Scarab's own evaluator
 
-`--plutus-vm scarab` ([flags](running/flags.md),
-[ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)) evaluates and admits the node's
-scripts with the `uplc` module, which has no Scalus on its class path, through
+The node evaluates and admits its scripts with the `uplc` module, its only Plutus evaluator
+([ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) and its
+[amendment of 2026-11-15](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)), through
 [`ScarabEvaluator`](../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluator.scala). It
-maps the own evaluator's results onto the algebra both backends share, so that a verdict means the same
-whichever gave it: a refusal of `deserialiseScript` and the program-version check of `mkTermToEvaluate`
+maps the own evaluator's results onto the algebra of `ScriptEvaluator`: a refusal of `deserialiseScript` and the program-version check of `mkTermToEvaluate`
 are decoding failures, the scope check `OpenTerm`, an overspent budget `OutOfBudget`, any other failure
 of the machine a script failure; protocol 12 and later, a defect of the implementation and any
 `Throwable` that reaches the adapter are no verdict, never a failure of the script. The typed detail of
 its failures names their cases only, never a constant or a term of the script; a failure's text also
-carries the script's own `trace` output. The Scalus backend stays the
-default and is unchanged.
+carries the script's own `trace` output. The Scalus backend and the `--plutus-vm` flag that chose
+between the two were removed on 2026-11-15 ([flags](running/flags.md)).
 
-The module's own evidence is against the reference, with no Scalus in the comparison: the 1,009 cases of
+The module's own evidence is against the reference: the 1,009 cases of
 the conformance corpus with their results and budgets
 ([`ConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/text/ConformanceSuite.scala),
 [`CekConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CekConformanceSuite.scala)),
@@ -439,61 +438,30 @@ and the Flat-decoding corpus's deserialisation and program-version admission
 The integration adds:
 
 - [`ScarabEvaluatorSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluatorSuite.scala):
-  each row of the mapping; where both backends give a verdict, that it is the class the Scalus backend
-  gives the same request; and, on its own, the own evaluator's protocol-12 and defect handling;
-- [`PlutusBackendDifferentialSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PlutusBackendDifferentialSuite.scala):
-  both backends on every script request the ledger collects from the recorded Preview and preprod
-  transactions and from the reference corpora the ledger and node suites judge (`v1-context`,
-  `context-errors`, `script-results`, `context-matrix`, `spending-datum`, `plutus-boundaries`,
-  `plutus-boundary-transactions`), with the same verdict, failure class, and on success the same
-  execution units and logs. The Leios testnet's contexts (protocol 12, no verdict by design) and the
-  recorded blocks without the outputs they spend are not compared. The two backends share the request
-  (ADR 0027's amendment), so it cannot show a fault in the script context; the suites that compare with
-  the Haskell results do;
+  each row of the mapping, and the own evaluator's protocol-12 and defect handling;
 - [`PlutusBackendProbeSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/PlutusBackendProbeSuite.scala)
   and [`PlutusBackendBlockProbeSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/forge/PlutusBackendBlockProbeSuite.scala):
   a backend with no verdict on anything, put where the node puts its backend (the mempool's admission, a
   block's rules serial and prepared, and `MirrorRules` on a forged block with a Plutus reference script),
   must be asked and must leave the transaction or the block without a verdict. `Main` gives the
-  mempool, the rules and the forger the one backend of the run; that wiring has no default to fall back
-  on, but no runtime probe;
-- [`MainArgsSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/MainArgsSuite.scala): the flag, and
-  `--forge` taken with either evaluator;
-- the nightly devnet era walk, `devnet.py e2e --plutus-vm scalus --plutus-vm scarab`
-  ([runbook](running/devnet.md#several-followers-in-one-e2e)): a follower with each backend in one cluster, both from
-  Origin on the same chain, so both judge the Plutus transactions of the e2e load. Each is held to the single
-  follower's gates against the reference (no validation error, every ledger comparison and same-point whole state
-  matched), and the two must agree on their final chain and on their projected states at every block where both were
-  compared. The load's Plutus cases are few, so this shows the backend wired into a following node, not coverage of
-  the evaluator.
+  mempool, the rules and the forger the one backend, `PlutusBackend.default`; that wiring has no runtime
+  probe;
+- the nightly devnet era walk, `devnet.py e2e` ([runbook](running/devnet.md)): the follower judges the
+  Plutus transactions of the e2e load and is held to its gates against the reference (no validation error,
+  every ledger comparison and same-point whole state matched). The load's Plutus cases are few, so this
+  shows the evaluator wired into a following node, not coverage of the evaluator.
 
-**Running the suites on either backend.** The suites of `ledger`, `consensus`, `storage` and `node` that
-need an evaluator and test none in particular take it from
-[`PlutusBackends`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusBackends.scala), chosen by the
-JVM's system property `scarab.plutus.vm` (`scalus` by default, or `scarab`; another value fails them).
-The default test groups run in the build's JVM, so the property is given to it, for example with
-`docker exec -e JAVA_TOOL_OPTIONS=-Dscarab.plutus.vm=scarab <container> bash scripts/sbtw check`;
-[`PlutusBackendsSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusBackendsSuite.scala)
-names the backend in the test output. The tools take the same property.
-
-**Suites that run on the Scalus backend only.** They test the Scalus backend itself: its machine and
+**What went with the Scalus backend (2026-11-15).** `PlutusBackendDifferentialSuite`, which ran both
+backends on every script request the ledger collects from the recorded Preview and preprod transactions
+and from the reference corpora the ledger and node suites judge, and compared verdicts, failure classes
+and, on successes, execution units and logs; the switch that ran the suites of `ledger`, `consensus`,
+`storage` and `node` on either backend (`PlutusBackends`, the system property `scarab.plutus.vm`); the
+nightly e2e's second follower; and the suites that tested the Scalus backend itself: its machine and
 hooks, the corrections of its builtins and budget arithmetic, its Flat walker, its native library, and
-its agreement with the reference corpora. None of them counts as passed for `scarab` (ADR 0027); the
-`uplc` suites above are the own evaluator's counterparts. In `plutus`: `BackendFailureSuite`,
-`BoundaryTransactionScriptsSuite`, `BuiltinCostingOracleSuite`, `BuiltinCostingSuite`, `CaseOnDataSuite`,
-`ConstrIndexReferenceSuite`, `CostModelLengthSuite`, `DataEqualityReferenceSuite`, `DataSerialiserSuite`,
-`FlatDecodeOracleSuite`, `FlatDecodeParitySuite`, `FlatScanDepthSuite`, `FlatScanImperativeSuite`,
-`FlatScanWord64Suite`, `NativeCryptoAbsentSuite`, `NativeCryptoSuite`,
-`NativeTextReferenceSuite`, `PlutusAvailabilitySuite`, `PlutusBoundaryOracleSuite`,
-`PlutusConformance171Suite`, `PlutusConformanceSuite`, `PlutusDataChunkSuite`, `PlutusReachabilitySuite`,
-`ReferenceBudgetSuite`, `ScalusCekHooksSuite`, `ScalusConformanceReproducersSuite`, `ScalusEvaluatorSuite`,
-`ScalusReproducersSuite`, `Secp256k1Suite`, `SerialiseDataReferenceSuite`, `SliceByteStringReferenceSuite`,
-`UnliftingBoundsSuite`, `UpstreamPlutusBoundarySuite` and `WycheproofSecp256k1Suite` (and
-`OwnFlatDecoderParitySuite`, which compares the two decoders). The other `plutus` suites test types
-both backends share (`PlutusDataSuite`, `ParamNamesSuite`, `PlutusScriptBytesSuite`, `PlutusReferenceSuite`,
-`RetryingMemoSuite`) or the choice itself (`PlutusBackendsSuite`, `ScarabEvaluatorSuite`). In `ledger`: `CostModelNameTablesSuite`,
-which evaluates a PlutusV4 script at protocol 12, where the own evaluator gives no verdict by design.
-`BlstCheckMain`, the start-up check of the Scalus native library, evaluates with Scalus by design.
+its agreement with the reference corpora, among them `PlutusConformanceSuite` and
+`PlutusConformance171Suite`. Every suite that needs an evaluator runs the own evaluator, and the `uplc`
+suites above are its evidence against the reference. `BlstCheckMain` evaluates its BLS12-381 scripts with
+the node's evaluator.
 
 **Evidence (2026-11-12, at `860684ae2`, the integration's draft head on top of the WP8 oracles;
 `scripts/preflight --check` passed again at `b736b7fa7` and, after the rebase onto `f1f553c1d`, at
