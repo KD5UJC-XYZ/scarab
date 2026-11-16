@@ -1,6 +1,6 @@
 # uplc: the core model of Scarab's own evaluator
 
-Scarab's second Plutus evaluator, with no Scalus on its class path ([ADR 0027](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)).
+Scarab's Plutus evaluator, the node's only one ([ADR 0027](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) and its [amendment of 2026-11-15](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)).
 This file records the core model the decoder, parser, machine, builtins and costing build on. Every type
 transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstream file and line.
 
