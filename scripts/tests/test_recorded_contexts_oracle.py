@@ -29,6 +29,27 @@ class RecordedContextsOracleTests(unittest.TestCase):
                        if row['name'].startswith('preview/'))
         self.assertEqual(named, files)
 
+    def test_every_recorded_preprod_transaction_has_a_reference_answer(self):
+        files = sorted(str(path.relative_to(ROOT)) for path in (ROOT / 'fixtures/preprod/plutus').glob('*.json'))
+        named = [row['provenance']['sourcePath'] for row in self.rows if row['name'].startswith('preprod/')]
+        self.assertEqual(named, files)
+
+    def test_only_the_large_transaction_is_kept_as_digests(self):
+        for row in self.rows:
+            for script in row['oracle'].get('scripts', []):
+                digested = row['name'] in RUN.DIGESTED
+                self.assertEqual('request' in script, digested, row['name'])
+                self.assertEqual('contextCbor' in script, not digested, row['name'])
+        large = self.by_name['preprod/preprod-c70243bb']['oracle']['scripts']
+        self.assertEqual(len(large), 158)
+        self.assertTrue(all(len(script['request']['argumentsSha256']) == 3 for script in large))
+
+    def test_digests_of_a_whole_request_name_each_argument(self):
+        script = self.by_name['preview/slot1140200-450a242a']['oracle']['scripts'][0]
+        request = RUN.request_digests(script['contextCbor'])
+        self.assertEqual((request['protocolMajor'], request['language']), (7, 1))
+        self.assertEqual(len(request['argumentsSha256']), 3)
+
     def test_recorded_inputs_are_not_copied_but_bound(self):
         for row in self.rows:
             if row['provenance']['kind'] == 'recorded-chain-transaction':

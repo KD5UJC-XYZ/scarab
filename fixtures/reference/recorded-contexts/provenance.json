@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
- "scope": "The script contexts the unchanged released Haskell collection (collectPlutusScriptsWithContext, at each transaction's own era type and protocol version) builds for the recorded Preview and preprod Plutus transactions and for API-only Conway transactions with several voters: for each, every collected request's complete ToCBOR PlutusWithContext encoding in the reference's order, or the collection's refusal. API replay, not signature checking or ledger admission.",
+ "scope": "The script contexts the unchanged released Haskell collection (collectPlutusScriptsWithContext, at each transaction's own era type and protocol version) builds for every recorded Preview and preprod Plutus transaction and for API-only Conway transactions with several voters: for each, every collected request's complete ToCBOR PlutusWithContext encoding in the reference's order, or the collection's refusal. API replay, not signature checking or ledger admission.",
  "observer": "scripts/oracle/plutus/context-matrix, unchanged: the executable and image of fixtures/reference/context-matrix",
  "inputs": "scripts/oracle/plutus/recorded-contexts/prepare.py",
  "ledgerSourceRevision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
@@ -14,8 +14,8 @@
   "preview": "system start 1666656000 s, 1000 ms slots: Shelley-based from slot 0 (fixtures/preview/genesis)",
   "preprod": "system start 1655683200 s, 1000 ms slots: the Shelley line of fixtures/preprod/genesis (slot 86400 at 1655769600 s after four Byron epochs of 20 s slots), valid for every Shelley-based slot"
  },
- "leftOut": {
-  "fixtures/preprod/plutus/tx-c70243bb.json": "158 spending requests of a 159-input transaction: 19.6 MB of answer"
+ "retainedAsDigests": {
+  "preprod/preprod-c70243bb": "158 requests of a 159-input transaction, 19.6 MB whole: each kept with its protocol version, language, budget and cost model, and the SHA-256 of its script and of each argument's bytes; the complete answers are bound by fullAnswersSha256"
  },
  "apiOnly": true,
  "wholeLedgerAdmissionClaim": false,
@@ -32,8 +32,9 @@
   "scripts/oracle/plutus/context-matrix/prepare.py": "9144b529d2085ddd636bd7813a0b8b33914ed062ee1be6ae6404096d50a8dcc6",
   "scripts/oracle/plutus/context-matrix/run.py": "d2d419ad9642eab2c213f575ecb7c298ddf042995426af088f71c149c4b40e1a",
   "scripts/oracle/plutus/context-matrix/scarab-context-oracle.cabal": "82890af53432e16b7690e7f3cf1845aa3562d6b6f2d6b1140d1c7ae7908b8e4f",
-  "scripts/oracle/plutus/recorded-contexts/prepare.py": "dd14e6674441669d8dffd0fcd894235e4c127fcda515cec49ebe93fcb44100e8",
-  "scripts/oracle/plutus/recorded-contexts/run.py": "71fd6f08780b029f6130650521888aa9e3dfb591cdc59b5f1296bd44ec9f2736"
+  "scripts/oracle/plutus/recorded-contexts/prepare.py": "6bdff720e502d929fc04523ba6df1f42db96d7e3ac103f2edc3765cd1ceef6c5",
+  "scripts/oracle/plutus/recorded-contexts/run.py": "9cfc7965e06f745a079835ad4aa36ddfa8044525a4a4fda763b59a236e20a1e4"
  },
- "observations": 52
+ "observations": 53,
+ "fullAnswersSha256": "5df198f14e002ad13c30fefc48d6c5f2702c5bdb58056ce027dc3a80f9ac204a"
 }

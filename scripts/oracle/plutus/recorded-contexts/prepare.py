@@ -31,9 +31,6 @@ NETWORKS = {
 }
 SLOT_MILLISECONDS = 1000
 VOTE_BASE = 'slot117938233-a1b750a9'
-# Left out at no small cost: its 158 spending scripts' requests, each the whole context of a
-# 159-input transaction with the script, are 19.6 MB of answer, ten times all the others together.
-LEFT_OUT = {'fixtures/preprod/plutus/tx-c70243bb.json'}
 
 
 def require(condition, message):
@@ -49,8 +46,6 @@ def recorded(network):
     directory, start = NETWORKS[network]
     rows = []
     for path in sorted(directory.glob('*.json')):
-        if str(path.relative_to(ROOT)) in LEFT_OUT:
-            continue
         case = json.loads(path.read_text())
         # The node's side reads these samples; the observer reads the network's clock line.
         for slot, millis in case.get('clock', {}).items():

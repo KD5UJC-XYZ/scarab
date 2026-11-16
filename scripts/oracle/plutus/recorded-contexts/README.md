@@ -19,11 +19,12 @@ that provenance accepts before it runs.
 `fixtures/preprod/plutus` through the context oracle's `original_case` (the recorded body,
 witnesses, validity flag and auxiliary data, and every output the file records), at the network's
 clock line, which every recorded slot sample must lie on; and four variants of a recorded vote with
-five voters. One preprod transaction is left out for the size of its answer
-([fixture README](../../../../fixtures/reference/recorded-contexts/README.md)).
+five voters. `run.py` keeps the requests of one preprod transaction as digests for the size of its
+answer ([fixture README](../../../../fixtures/reference/recorded-contexts/README.md)) and binds the
+complete answers by their SHA-256.
 
 ```sh
-python3 scripts/oracle/plutus/recorded-contexts/run.py --verify-only
+python3 scripts/oracle/plutus/recorded-contexts/run.py --verify-only [--full <complete answers>.json]
 python3 scripts/oracle/plutus/recorded-contexts/run.py --out <raw answers>.json   # replay, needs the image
 python3 scripts/oracle/plutus/recorded-contexts/run.py --record --out <raw answers>.json
 # In the private-socket Docker JDK container:
@@ -31,6 +32,7 @@ bash scripts/sbtw 'ledger/testOnly *RecordedScriptContextsSuite'
 ```
 
 The replay runs the observer offline and read-only and requires every retained answer, byte for
-byte and in order. `--record` writes a new fixture (`contexts.json`, the measured fields of
-`provenance.json`, `manifest.json`); a recorded file that changes, or a new one, needs it. Build the
+byte and in order, and the complete answers' SHA-256. `--record` writes a new fixture
+(`contexts.json`, the measured fields of `provenance.json`, `manifest.json`) and the complete answers
+to `--out`; a recorded file that changes, or a new one, needs it. Build the
 image with `context-matrix/run.py --build` when it is missing.
