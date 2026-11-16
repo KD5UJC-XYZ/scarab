@@ -502,15 +502,19 @@ nonce that a fork then replaces is replaced by the restart, and a led slot is ch
 
 ## 7. Conformance evidence
 
-Decision 9 names three pieces of evidence.
+Decision 9 names three pieces of evidence. The first, the differential test, is the first three items below.
 
 - **A differential test of both paths.** The per-slot decision is the `Leadership.check` of today. Over generated
   epochs (lengths, slot ranges across a boundary), nonces (neutral and hashed), stakes (zero, all, between), totals,
   coefficients and VRF keys, the schedule's led slots and certificates equal those of `Leadership.check` run on every
   slot, byte for byte. The wired forger is then driven under `TestControl` with a scripted chain and clock: an epoch
-  boundary; a fork that replaces a block before the freeze while the schedule is computed; a SIGHUP that installs
-  another VRF key mid-epoch; forging switched off and on; and a start mid-epoch. For every slot the clock reaches, the
-  decision and the certificate it acts on must equal `Leadership.check` with the inputs in force at that slot.
+  boundary; a fork that replaces a block before the freeze while the schedule is computed; a fork across the previous
+  boundary that changes the mark distribution; a led slot in an epoch's first slot whose tip already holds a block of
+  that slot, so that the block is an alternative on the tip's predecessor in the previous epoch and its inputs come
+  from that state; slots the clock reaches before the schedule covers them, decided inline (§5.4); a SIGHUP that
+  installs another VRF key mid-epoch; forging switched off and on; and a start mid-epoch. For every slot the clock
+  reaches, the decision and the certificate it acts on must equal `Leadership.check` with the inputs in force at that
+  slot. The early attempt and a KES boundary during assembly have the tests of the next two items.
 - **Tests of the early attempt (§5.3).** Deterministic, under `TestControl`, with one change at each point where it can
   fall: between the wake and the re-check, between the re-check and the signing, and between the signing and the onset.
   The changes are a block of an earlier slot that moves the tip; a fork that changes the nonce or the mark
