@@ -4,11 +4,7 @@
 Part of [Running the node and the devnet scenarios](../running.md).
 
 Flags, as parsed by `Main.parse` (`node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala`). Every flag takes a
-value except `--forge`, `--dump-state-full` and `--adopt-legacy-network-identity`. An unknown flag, a repeated flag (except `--peer`, `--log-severity` and `--log-every`, which accumulate) and a flag without its value are refused with a typed `ConfigError` (M1). `--plutus-vm`, which chose the Plutus
-evaluator until 2026-11-15, is such an unknown flag: Scarab's own evaluator (the `uplc` module) is the only Plutus
-evaluator of phase 2 and of script admission, in the block rules, the mempool and the forger
-([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)),
-and a command line that names it is refused (`ConfigProblem.UnknownFlag`, exit status 2) before the node starts.
+value except `--forge`, `--dump-state-full` and `--adopt-legacy-network-identity`. An unknown flag, a repeated flag (except `--peer`, `--log-severity` and `--log-every`, which accumulate) and a flag without its value are refused with a typed `ConfigError` (M1).
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -45,6 +41,7 @@ and a command line that names it is refused (`ConfigProblem.UnknownFlag`, exit s
 | `--dump-state <dir>` | off | write a ledger-state digest (`<slot>-<hash>.json`) at the points of `--dump-state-at`, for the db-analyser comparison below |
 | `--dump-state-at <points>` | `epoch-boundaries` | with `--dump-state`: `epoch-boundaries` (the first block of every epoch), `epoch-boundaries/N` (every Nth epoch) or `slot,slot,...` (the first block at or after each slot, what `db-analyser --store-ledger` stores) |
 | `--rules`, `--mirror-check`, `--on-divergence`, `--repro-dir` | removed | J2.9 removed the old rules and the differential harness: the era-indexed rules on the Haskell ledger state are the only rules, and the chain's state is the mirror. A command line that names one of these flags is refused with a typed `ConfigError` (`ConfigProblem.RemovedFlag`, exit status 2) that says what to do instead (drop the flag; `--snapshot-check full` is the read-back check of the state) |
+| `--plutus-vm` | removed | It chose the Plutus evaluator until 2026-11-15. Scarab's own evaluator (the `uplc` module) is now the only one, for phase 2 and script admission in the block rules, the mempool and the forger ([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)). A command line that names it, with or without a value, is refused before the node starts with a typed `ConfigError` (`ConfigProblem.RemovedFlag`, exit status 2) that says to drop the flag |
 | `--dump-state-full` | off | with `--dump-state`: also write the whole projection, UTxO included, as `<slot>-<hash>.full` (drill-down on small states only) |
 | `--mempool-bytes N` | none: two blocks of the protocol parameters in force (`MempoolCapacityBytesOverride` with `--config`) | the reference's `MempoolCapacityBytesOverride` in bytes, a `Word32` (0 to 4294967295): the capacity is the least whole number of blocks (at least one) that holds N bytes, a block being `maxBlockBodySize - 1024` bytes, `maxBlockExUnits` and 1 MiB of reference scripts, and it follows the parameters. Unlike the reference's, it does not wrap at 2^32 ([decision](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)). LocalTxMonitor reports the capacity the pool enforces |
 | `--plutus-cases <dir>` | off | record self-contained JSON cases of Plutus transactions (used to build `fixtures/preview/plutus`) |

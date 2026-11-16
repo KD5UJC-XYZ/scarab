@@ -122,7 +122,8 @@ two.
 
 - **One backend, no flag.** The block rules, the mempool and the forger each take the one `PlutusBackend`,
   `PlutusBackend.default` (`ScarabEvaluator.default` and `ScarabEvaluator.defaultDecoder`). `--plutus-vm` is
-  refused as any unknown flag is, and the node does not start ([flags](../running/flags.md)); the start-up event
+  refused as a removed flag, as J2.9's flags are: the node does not start, and the error says to drop the flag
+  ([flags](../running/flags.md)); the start-up event
   `plutusVm` is gone. The selection by a flag and the consequences that assumed two backends are struck through
   above.
 - **The differential reference** is the pinned Haskell evaluator and the upstream corpora: the oracles of the

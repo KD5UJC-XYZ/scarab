@@ -2215,11 +2215,12 @@ object Main extends IOApp:
         }
       case _ => None
 
-  /** The flags of the rule sets and the harness that J2.9 removed with them. A node started with
-    * one is refused, not run: `--rules old` would otherwise run the era-indexed rules while the
-    * operator believes it runs the old ones, and a flag that selected a rule set must never be
-    * ignored in a consensus node. The refusal is a typed [[ConfigProblem.RemovedFlag]] and says
-    * what to do.
+  /** The flags of the rule sets and the harness that J2.9 removed with them, and `--plutus-vm`,
+    * which chose the Plutus evaluator of the rules until the own evaluator became the only one
+    * (#43). A node started with one is refused, not run: `--rules old` would otherwise run the
+    * era-indexed rules while the operator believes it runs the old ones, and a flag that selected a
+    * rule set must never be ignored in a consensus node. The refusal is a typed
+    * [[ConfigProblem.RemovedFlag]] and says what to do.
     */
   private enum RemovedFlag(val flag: String, val instead: String):
     case Rules
@@ -2235,6 +2236,11 @@ object Main extends IOApp:
     case OnDivergence
         extends RemovedFlag("on-divergence", "the differential rules are gone; drop the flag")
     case ReproDir extends RemovedFlag("repro-dir", "the differential rules are gone; drop the flag")
+    case PlutusVm
+        extends RemovedFlag(
+          "plutus-vm",
+          "the own evaluator is the node's only Plutus evaluator; drop the flag"
+        )
 
     def refusal(usage: String): ConfigError =
       ConfigError(ConfigProblem.WithUsage(ConfigProblem.RemovedFlag(flag), s"$instead\n$usage"))

@@ -291,24 +291,23 @@ class MainArgsSuite extends munit.FunSuite:
       assert(Main.parse(base ++ List("--plutus-workers", value)).isLeft)
   }
 
-  test("--plutus-vm is refused as an unknown flag: the node has one Plutus evaluator") {
+  test(
+    "--plutus-vm is refused as a removed flag that says what to do: the node has one evaluator"
+  ) {
     import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
     val keys = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
-    for
-      value <- List("scalus", "scarab")
-      flags <- List(base ++ List("--plutus-vm", value), base ++ keys ++ List("--plutus-vm", value))
-    do
+    val named = List("scalus", "scarab").flatMap { value =>
+      List(base ++ List("--plutus-vm", value), base ++ keys ++ List("--plutus-vm", value))
+    }
+    for flags <- named :+ (base ++ List("--plutus-vm")) do
       Main.parse(flags) match
         case Left(
-              ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag("--plutus-vm"), _))
+              e @ ConfigError(
+                ConfigProblem.WithUsage(ConfigProblem.RemovedFlag("plutus-vm"), _)
+              )
             ) =>
-          ()
+          assert(e.message.contains("--plutus-vm was removed"), e.message)
+          assert(e.message.contains("only Plutus evaluator; drop the flag"), e.message)
         case other => fail(s"$flags: $other")
-    Main.parse(base ++ List("--plutus-vm")) match
-      case Left(
-            ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlagValue("--plutus-vm"), _))
-          ) =>
-        ()
-      case other => fail(s"$other")
     assert(Main.parse(base ++ keys).exists(_.forge.isDefined))
   }
