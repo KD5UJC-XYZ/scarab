@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """`scripts/preflight --doctor`: what the gates would run with on this machine, on the terminal only.
 
-It reports the pinned JDK (`patches/scalus/manifest.json`, the JDK `docker/jdk.Dockerfile` pins) against
-`java -version` inside the JDK image (never a host `java`), whether the prepared Scalus dependency repository
-of the current pins exists in the cache, whether Docker is reachable, and where the dependency cache lives.
+It reports the pinned JDK (the Temurin release whose tag `docker/jdk.Dockerfile` names beside the digest it pins)
+against `java -version` inside the JDK image (never a host `java`), whether Docker is reachable, and where the
+dependency cache lives.
 The report names local paths and hosts, so it is printed and never written anywhere; the doctor creates no
 file and always exits 0.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import json
 import os
 from pathlib import Path
 import re
@@ -25,9 +24,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from devnet.util import JDK_IMAGE, cache_dir  # noqa: E402
-from prepare_scalus import input_digest  # noqa: E402
 
-MANIFEST = "patches/scalus/manifest.json"
+DOCKERFILE = "docker/jdk.Dockerfile"
+# The Temurin tag the Dockerfile's header names for its pinned digest, `eclipse-temurin:<release>_<build>-jdk-...`;
+# the JDK of that release reports `<release>+<build>` and the vendor below.
+TEMURIN_TAG = re.compile(r"\beclipse-temurin:(\d+(?:\.\d+)*)_(\d+)-jdk-")
+TEMURIN_VENDOR = "Eclipse Adoptium"
 PROPERTY = re.compile(r"^\s*(java\.(?:version|vendor|runtime\.version)) = (.+)$", re.MULTILINE)
 
 
@@ -60,24 +62,35 @@ def docker_line(info: subprocess.CompletedProcess | None) -> Line:
     return Line("docker", f"reachable, server {info.stdout.strip() or 'unknown version'}", True)
 
 
-def jdk_line(manifest: dict, reachable: bool, image_java: subprocess.CompletedProcess | None) -> Line:
-    pinned = f"{manifest['javaVendor']} {manifest['javaRuntimeVersion']}"
+@dataclass(frozen=True)
+class JdkPin:
+    """The JDK the image is built from: its vendor and the `java.runtime.version` prefix of its release."""
+    vendor: str
+    release: str
+
+    def matches(self, vendor: str | None, runtime_version: str | None) -> bool:
+        return vendor == self.vendor and runtime_version is not None and (
+            runtime_version == self.release or runtime_version.startswith(f"{self.release}-"))
+
+
+def jdk_pin(dockerfile: str) -> JdkPin | None:
+    """The Temurin release `docker/jdk.Dockerfile` names for its pinned digest, or None when it names none."""
+    match = TEMURIN_TAG.search(dockerfile)
+    return None if match is None else JdkPin(TEMURIN_VENDOR, f"{match.group(1)}+{match.group(2)}")
+
+
+def jdk_line(pin: JdkPin | None, reachable: bool, image_java: subprocess.CompletedProcess | None) -> Line:
+    if pin is None:
+        return Line("jdk", f"{DOCKERFILE} names no eclipse-temurin tag; the pin cannot be read", False)
+    pinned = f"{pin.vendor} {pin.release}"
     if not reachable:
         return Line("jdk", f"pinned {pinned}; {JDK_IMAGE} not checked (Docker unavailable)", None)
     if image_java is None or image_java.returncode != 0:
         return Line("jdk", f"pinned {pinned}; {JDK_IMAGE} not available (build it from docker/jdk.Dockerfile)", False)
     found = dict(PROPERTY.findall(image_java.stderr))
     actual = f"{found.get('java.vendor', '?')} {found.get('java.runtime.version', '?')}"
-    matches = (found.get("java.vendor"), found.get("java.runtime.version")) == \
-        (manifest["javaVendor"], manifest["javaRuntimeVersion"])
+    matches = pin.matches(found.get("java.vendor"), found.get("java.runtime.version"))
     return Line("jdk", f"pinned {pinned}; {JDK_IMAGE} has {actual}", matches)
-
-
-def repository_line(cache: Path, digest: str) -> Line:
-    entry = cache / "scarab" / "patched-scalus" / digest
-    return (Line("dependency repository", f"prepared at {entry}", True) if (entry / "repository").is_dir()
-            else Line("dependency repository", f"not prepared for the current pins ({entry} is absent; the first "
-                                               "sbt build in the JDK image prepares it)", False))
 
 
 def cache_line(cache: Path, env: dict) -> Line:
@@ -87,14 +100,13 @@ def cache_line(cache: Path, env: dict) -> Line:
 
 
 def report(root: Path, docker: str, env: dict, runner=run) -> list[Line]:
-    manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
+    pin = jdk_pin((root / DOCKERFILE).read_text(encoding="utf-8"))
     info = runner([docker, "info", "--format", "{{.ServerVersion}}"], 30)
     reachable = info is not None and info.returncode == 0
     image_java = (runner([docker, "run", "--rm", "--network", "none", JDK_IMAGE,
                           "java", "-XshowSettings:properties", "-version"]) if reachable else None)
     cache = cache_dir(root, env)
-    return [docker_line(info), jdk_line(manifest, reachable, image_java),
-            repository_line(cache, input_digest(root)), cache_line(cache, env)]
+    return [docker_line(info), jdk_line(pin, reachable, image_java), cache_line(cache, env)]
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -110,7 +110,7 @@ class DoctorTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("docker: not found or not answering", result.stdout)
         self.assertIn("not checked (Docker unavailable)", result.stdout)
-        self.assertIn("dependency repository:", result.stdout)
+        self.assertNotIn("dependency repository", result.stdout)
         self.assertIn("cache:", result.stdout)
         self.assertNotIn("INCOMPLETE:", result.stdout)
         self.assertEqual(tree_state(), before, "--doctor must not write into the repository")
@@ -131,21 +131,29 @@ class DoctorTest(unittest.TestCase):
         self.assertTrue(jdk.good, jdk.text)
 
     def test_a_different_jdk_in_the_image_is_a_warning(self):
-        manifest = json.loads((ROOT / doctor.MANIFEST).read_text())
-        other = subprocess.CompletedProcess([], 0, "", JAVA_PROPERTIES.replace("25.0.4.1+1-LTS", "21.0.1+12"))
-        line = doctor.jdk_line(manifest, True, other)
-        self.assertFalse(line.good)
-        self.assertIn("21.0.1+12", line.text)
-        missing = doctor.jdk_line(manifest, True, subprocess.CompletedProcess([], 125, "", "No such image"))
+        pin = doctor.jdk_pin((ROOT / doctor.DOCKERFILE).read_text())
+        for properties, shown in ((JAVA_PROPERTIES.replace("25.0.4.1+1-LTS", "21.0.1+12"), "21.0.1+12"),
+                                  (JAVA_PROPERTIES.replace("25.0.4.1+1-LTS", "25.0.4.1+10-LTS"), "25.0.4.1+10-LTS"),
+                                  (JAVA_PROPERTIES.replace("Eclipse Adoptium", "Oracle Corporation"), "Oracle")):
+            with self.subTest(shown=shown):
+                line = doctor.jdk_line(pin, True, subprocess.CompletedProcess([], 0, "", properties))
+                self.assertFalse(line.good, line.text)
+                self.assertIn(shown, line.text)
+        missing = doctor.jdk_line(pin, True, subprocess.CompletedProcess([], 125, "", "No such image"))
         self.assertFalse(missing.good)
         self.assertIn("not available", missing.text)
 
-    def test_the_prepared_repository_is_found_under_the_cache(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            cache = pathlib.Path(tmp)
-            self.assertFalse(doctor.repository_line(cache, "abc").good)
-            (cache / "scarab" / "patched-scalus" / "abc" / "repository").mkdir(parents=True)
-            self.assertTrue(doctor.repository_line(cache, "abc").good)
+    def test_the_pin_is_the_temurin_release_the_dockerfile_names(self):
+        pin = doctor.jdk_pin((ROOT / doctor.DOCKERFILE).read_text())
+        self.assertIsNotNone(pin, "docker/jdk.Dockerfile names the eclipse-temurin tag of its pinned digest")
+        self.assertEqual(pin.vendor, "Eclipse Adoptium")
+        self.assertRegex(pin.release, r"^\d+(\.\d+)*\+\d+$")
+        self.assertEqual(doctor.jdk_pin("# tag eclipse-temurin:25.0.4.1_1-jdk-resolute, index\nFROM x\n"),
+                         doctor.JdkPin("Eclipse Adoptium", "25.0.4.1+1"))
+        self.assertTrue(doctor.JdkPin("Eclipse Adoptium", "25.0.4.1+1").matches("Eclipse Adoptium", "25.0.4.1+1-LTS"))
+        unread = doctor.jdk_line(doctor.jdk_pin("FROM eclipse-temurin@sha256:00\n"), True, None)
+        self.assertFalse(unread.good)
+        self.assertIn("names no eclipse-temurin tag", unread.text)
 
 
 if __name__ == "__main__":
