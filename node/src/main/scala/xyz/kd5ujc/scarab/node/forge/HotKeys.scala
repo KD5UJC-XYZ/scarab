@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import cats.Applicative
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all.*
@@ -69,6 +70,24 @@ enum ReloadRefusal:
     case Expired(p, s, e)        => s"KES period $p is past the certificate's window [$s, ${s + e})"
     case KeyPastPeriod(k, w) => s"the KES key is at period $k, past the period $w it must sign in"
     case Counter(e)          => e.message
+
+/** The slot the forger's clock has published last: what the reference's blockchain time hands its
+  * forging thread (#1101). A change of the KES state for a slot (the key evolved, poisoned and
+  * erased, or a period's update made for the forger to record) is made only while this slot is at
+  * or past it, read where the change is made, under the key's lock, which a reload takes too: the
+  * per-slot loop makes those changes when it handles a slot the clock has published. The slot can
+  * go back after a spell in which it was unknown, as the reference's can (`checkValidClockChange`),
+  * so it is read at each change and never kept.
+  */
+final class PublishedSlot[F[_]](val read: F[Option[BigInt]])
+
+object PublishedSlot:
+  /** A clock that has published `slot`: that of the per-slot decision of `slot`. */
+  def at[F[_]: Applicative](slot: BigInt): PublishedSlot[F] =
+    PublishedSlot(Applicative[F].pure(Some(slot)))
+
+/** A change of the KES state for `slot` not made: the clock has published only `published`. */
+final case class Unpublished(slot: BigInt, published: Option[BigInt])
 
 /** Where the credentials rotation replaces come from and where the evolved KES key is written back.
   * The node reads from it at a reload (SIGHUP, as the Haskell node does); a test supplies its own.
@@ -238,9 +257,10 @@ final class HotKeys[F[_]: Async] private (
 
   /** Evolve to the exact relative period and write it back (the lock is held). An exhausted signing
     * lifetime is terminal, as `HotKey.hs:411-438` at consensus 82ecba32 fails when `updateKES`
-    * cannot reach an in-window target. A backward target retains its crypto cause.
+    * cannot reach an in-window target. A backward target retains its crypto cause. Unchecked: for a
+    * slot it is made only through [[evolvedFor]] or [[update]], and for a reload by [[adopt]].
     */
-  private[forge] def evolved(c: PoolCredentials, kesPeriod: BigInt)(using
+  private def evolved(c: PoolCredentials, kesPeriod: BigInt)(using
       Raise[F, Fatal]
   ): F[Either[ForgeError, Unit]] =
     val relative = kesPeriod - c.opCert.kesPeriod
@@ -259,33 +279,62 @@ final class HotKeys[F[_]: Async] private (
         }
     }
 
-  /** `updateForgeState` of the reference at a slot whose KES period is `kesPeriod`: `HotKey.evolve`
+  /** `updateForgeState` of the reference at `slot`, to its KES period: `HotKey.evolve`
     * (`evolveKey`, consensus 82ecba329 `Protocol/Ledger/HotKey.hs` 385-418, called from
-    * `Shelley/Node/Praos.hs` 83-85). Before the certificate's window the key is left as it is (the
-    * leader check then finds it not usable yet); inside it, the key evolves to the period when that
-    * is later than its own, and is written back before anything signs with it; at or past the end
-    * of the window it is poisoned and the update fails (`KESCouldNotEvolve`), as every later one
-    * does (`KESKeyAlreadyPoisoned`) until a reload installs another key. The key's state after the
-    * update is the value, none while forging is disabled. An exhausted signing lifetime inside the
-    * configured window stops this forging worker with its typed crypto cause; a failed write also
-    * stops the worker.
+    * `Shelley/Node/Praos.hs` 83-85). Made only once `clock` has published the slot, read under the
+    * key's lock; before, it is [[Unpublished]] and nothing changes. Before the certificate's window
+    * the key is left as it is (the leader check then finds it not usable yet); inside it, the key
+    * evolves to the period when that is later than its own, and is written back before anything
+    * signs with it; at or past the end of the window it is poisoned and the update fails
+    * (`KESCouldNotEvolve`), as every later one does (`KESKeyAlreadyPoisoned`) until a reload
+    * installs another key. The key's state after the update is the value, none while forging is
+    * disabled. An exhausted signing lifetime inside the configured window stops this forging worker
+    * with its typed crypto cause; a failed write also stops the worker.
     */
-  def update(kesPeriod: BigInt)(using
+  def update(slot: BigInt, clock: PublishedSlot[F])(using
       Raise[F, Fatal]
-  ): F[Option[Either[ForgeError, Either[KesEvolutionError, KesInfo]]]] =
-    usingKey(updated(_, kesPeriod))
+  ): F[Option[Either[Unpublished, HotKeys.KesUpdate]]] =
+    usingKey(c => published(slot, clock)(updated(c, periodOf(slot))))
 
   /** [[update]], with the generation of the credentials it was made with ([[HotKeys.Installed]]),
-    * read under the same lock.
+    * read under the same lock: the forger records the period's update only from this.
     */
-  def updateIn(kesPeriod: BigInt)(using
+  def updateIn(slot: BigInt, clock: PublishedSlot[F])(using
       Raise[F, Fatal]
-  ): F[Option[(Long, Either[ForgeError, Either[KesEvolutionError, KesInfo]])]] =
-    usingKey(c => installed.get.flatMap(i => updated(c, kesPeriod).map(i.generation -> _)))
+  ): F[Option[(Long, Either[Unpublished, HotKeys.KesUpdate])]] =
+    usingKey(c =>
+      installed.get.flatMap(i =>
+        published(slot, clock)(updated(c, periodOf(slot))).map(i.generation -> _)
+      )
+    )
+
+  /** The key of `c` at the KES period of `slot`, to sign in it (the lock is held): as it is where
+    * it is there already, which changes nothing and needs no clock; evolved to it and written back
+    * where it must move forward, only once `clock` has published the slot, else [[Unpublished]] and
+    * nothing changes. A key past the period cannot go back, and stays as it is.
+    */
+  private[forge] def evolvedFor(c: PoolCredentials, slot: BigInt, clock: PublishedSlot[F])(using
+      Raise[F, Fatal]
+  ): F[Either[Unpublished, Either[ForgeError, Unit]]] =
+    val kesPeriod = periodOf(slot)
+    F.delay(kesPeriod - c.opCert.kesPeriod > c.kes.period).flatMap { forward =>
+      if forward then published(slot, clock)(evolved(c, kesPeriod))
+      else evolved(c, kesPeriod).map(Right(_))
+    }
+
+  /** `change`, made only while `clock` has published `slot` (the lock is held). */
+  private def published[A](slot: BigInt, clock: PublishedSlot[F])(
+      change: => F[A]
+  ): F[Either[Unpublished, A]] =
+    clock.read.flatMap(at =>
+      if at.exists(_ >= slot) then change.map(Right(_)) else F.pure(Left(Unpublished(slot, at)))
+    )
+
+  private def periodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
 
   private def updated(c: PoolCredentials, kesPeriod: BigInt)(using
       Raise[F, Fatal]
-  ): F[Either[ForgeError, Either[KesEvolutionError, KesInfo]]] =
+  ): F[HotKeys.KesUpdate] =
     val now = HotKeys.info(c, config)
     poisoned.get.flatMap {
       case Some(stale) =>
@@ -396,6 +445,11 @@ final class HotKeys[F[_]: Async] private (
     yield ()
 
 object HotKeys:
+  /** The update of the KES key to a period: the key's state, its failure, or a failure of the
+    * forger's own.
+    */
+  type KesUpdate = Either[ForgeError, Either[KesEvolutionError, KesInfo]]
+
   /** The credentials in force: `generation` moves on at every reload that switches them or disables
     * forging, and `vrf` is their VRF key, none while forging is disabled.
     */

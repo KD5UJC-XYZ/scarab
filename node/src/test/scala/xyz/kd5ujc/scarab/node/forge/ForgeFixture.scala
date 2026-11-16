@@ -157,6 +157,7 @@ trait ForgeFixture:
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None,
       unbounded: Boolean = false,
+      known: Option[BigInt => Boolean] = None,
       enabled: Boolean = true,
       protocolVersion: (BigInt, BigInt) = ConfigSettings().protocolVersion,
       network: Int = globals.network,
@@ -299,7 +300,9 @@ trait ForgeFixture:
           )
         ),
         sleep = if live then None else Some(_ => IO.unit),
-        horizon = Option.when(unbounded)((_, _) => true),
+        horizon = known
+          .map(k => (_: VolatileChain[MirrorState], slot: BigInt) => k(slot))
+          .orElse(Option.when(unbounded)((_, _) => true)),
         source = source,
         enabled = enabled,
         chains = Option.unless(committedChain)(ref),
@@ -310,6 +313,14 @@ trait ForgeFixture:
 
   def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))
+
+  /** The update of `keys` to KES `period`, at the period's first slot, the clock having published
+    * it.
+    */
+  def toPeriod(keys: HotKeys[IO], period: BigInt)(using
+      Raise[IO, xyz.kd5ujc.scarab.node.Fatal]
+  ): IO[Option[Either[Unpublished, HotKeys.KesUpdate]]] =
+    keys.update(period * slotsPerKes, PublishedSlot.at(period * slotsPerKes))
 
   /** The credentials in use; fails while forging is disabled. */
   def currentHot(keys: HotKeys[IO]): IO[PoolCredentials] =

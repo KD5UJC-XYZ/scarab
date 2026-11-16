@@ -145,8 +145,8 @@ trait ScheduleFixture extends ForgeFixture:
     reloaded(side => HotKeySource.Reading.Found(certified(side.pool, kesOf(kesSeed), start, 1)))
 
   /** The pool's credentials with another KES key, under a certificate issued for it (counter 1). */
-  def certifiedFor(p: Pool, kesSeed: Int): HotKeySource.Candidate[IO] =
-    certified(p, kesOf(kesSeed), p.creds.opCert.kesPeriod.toInt, 1)
+  def certifiedFor(p: Pool, kesSeed: Int, counter: Int = 1): HotKeySource.Candidate[IO] =
+    certified(p, kesOf(kesSeed), p.creds.opCert.kesPeriod.toInt, counter)
 
   private def certified(
       p: Pool,
