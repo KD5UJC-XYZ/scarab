@@ -1181,24 +1181,30 @@
     {
       "module": "node",
       "path": "node/forge",
-      "responsibility": "Block production: leadership, hot keys, KES files, block builder, forger",
+      "responsibility": "Block production: leadership, the leader schedule, hot keys, KES files, block builder, forger",
       "entryPoints": [
         "Forger",
         "BlockBuilder",
         "HotKeys",
         "KesFiles",
         "KeyFiles",
-        "Leadership"
+        "Leadership",
+        "LeaderSchedule"
       ],
       "suites": [
         "ForgeSuite",
         "KesRotationSuite",
         "KeyFilesSuite",
         "ForgerFailureSuite",
-        "PlutusBackendBlockProbeSuite"
+        "PlutusBackendBlockProbeSuite",
+        "LeaderScheduleSuite",
+        "ScheduledForgerSuite",
+        "ForgeInterleavingSuite"
       ],
       "docs": [
-        "docs/adr/0015-kes-key-written-back-and-checked-reload.md"
+        "docs/adr/0015-kes-key-written-back-and-checked-reload.md",
+        "docs/design/leader-schedule.md",
+        "docs/architecture/block-production.md"
       ]
     },
     {

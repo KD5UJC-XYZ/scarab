@@ -2,7 +2,7 @@
 # Forging from a per-epoch leader schedule
 
 **Status**: Accepted 2026-11-16: the owner's decisions on [#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101),
-and its reference claims checked independently at their pins (the pull request's review). Not implemented. **No persisted format
+and its reference claims checked independently at their pins (the pull request's review). Stages S1 and S2 are built (§8); S3 records the evidence. **No persisted format
 changes**: the schedule is held in memory only (§5.2, [FMT-1](../design-rules.md#fmt-1)).
 
 Pins. The forger cites the `11.1` build: cardano-node 11.1.3, ouroboros-consensus 82ecba32, cardano-ledger f649f975,
@@ -19,7 +19,7 @@ package, and `TPraos/Rules/Updn.hs` from `Cardano/Protocol/` in cardano-protocol
 ## 1. What the forger does now
 
 `Forger`, in the node's `forge` package, runs the reference's forging thread slot by slot
-([block production](../architecture/block-production.md#the-forging-loop)). Its `loop` reads the wall clock over the
+([block production](../architecture/block-production.md#the-slots-a-pool-leads)). Its `loop` reads the wall clock over the
 era history and checks each reading against the previous one as the reference's `checkValidClockChange` does: a
 slot that moved back within 20 s (`Forger.MaxClockRewind`) is traced as `systemClockMovedBack` and kept, and further
 back the node stops. It hosts the #1032 assertion that a wake 1 µs to 1 ms before the slot is no clock moved back
@@ -704,6 +704,24 @@ same slot: `KESCouldNotEvolve` appears once, in the first slot in slot order who
      - `pool.py` (its reads of `startLeadershipCheck`, `forge_timing` and `slot_clock`) and `dynamic_forging.py`
        brought in line;
      - `check`, and `pool` with `kes-rotate` run in parallel.
+   - Where the build differs from §5, or settles what §5 leaves open:
+     - The slot driver derives a slot's inputs from the ledger view forecast from the block the slot would build on,
+       with no ledger tick (Q1); a slot not led whose ledger cannot be carried into its epoch so logs
+       `nodeNotLeader` where the per-slot loop logged `forgeFailed`. A led slot's attempt carries the ledger as
+       before.
+     - The `stateInfo` of a period change is published at the first slot of the period the slot driver handles,
+       whether or not that slot's checks reach the key, so that the KES gauges move at the period's start.
+     - The KES key's own lines (`kesEvolved`, `kesFileAbsent`, `kesWrittenByRename`, `kesPersistFailed`) are
+       written where the key moves, by the forge that updates it up to the wake margin before the period, not held
+       with the slot's lines.
+     - A forge made ahead of its slot runs the mempool's housekeeping as the per-slot loop did (a held transaction
+       with no verdict leaves the pool), even if the attempt is then discarded.
+     - The forging fiber forges a slot only once the clock can know it (the era history's horizon), as the
+       reference's watcher hands it only known slots; a forging fiber woken before the clock has published a slot
+       waits for the slot driver's mark.
+     - The schedule of an epoch the inputs no longer name is dropped, so that forging switched off leaves none.
+     - `Forger.Point` names the points where the tests of §7 suspend a fiber; `Forger.step` keeps the per-slot
+       decision of one slot as the differential test's oracle.
 3. **S3: the evidence** (level 4).
    - Scope: the devnet `pool` run and the one Antithesis run, recorded in the evidence log with commit, date and
      command.
