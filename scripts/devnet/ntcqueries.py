@@ -27,17 +27,20 @@ CONWAY_ONLY = frozenset({23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39})
 # The block queries the Scala node answers in an era before Conway: the ledger states, the chain-dependent state, the
 # UTxO, the reward provenance, the queries that read nothing of the era's own (the ledger tip, the epoch, the proposed
 # parameter updates, the genesis configuration, the chain account state and the maximum major protocol version), those
-# of the governance state (the current parameters and the governance state) and the distributions, the wallet's
-# queries and the ledger peers (the non-myopic member rewards, the stake distributions, the reward information of the
-# pools, the ledger peer snapshots and the pool distributions; `QueryAnswers.inEveryEra`). It decodes the others there
-# and ends the connection without an answer.
-ANSWERED_BEFORE_CONWAY = frozenset({0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 18, 21, 24, 29, 34, 36, 37, 38})
+# of the governance state (the current parameters and the governance state), those of the certificate state (the
+# delegations and reward accounts, the pools, their parameters, state and stake snapshots and the delegation deposits)
+# and the distributions, the wallet's queries and the ledger peers (the non-myopic member rewards, the stake
+# distributions, the reward information of the pools, the ledger peer snapshots and the pool distributions;
+# `QueryAnswers.inEveryEra`): every block query the reference's decoder takes there.
+ANSWERED_BEFORE_CONWAY = frozenset({0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24,
+                                    29, 34, 36, 37, 38})
 # The ratchet of the e2e era battery (`ntceras.ratchet`): the block queries whose forms are expected incomplete before
 # Conway, those of the battery's queries the Scala node does not have there yet; none in Conway. Every form of a
 # query is expected as its query is (`expected_incomplete`), at every version and in every era before Conway. A form
 # of another query that is incomplete fails the run, and a form of these that is compared and matched is reported,
 # so that its query leaves this set. It only shrinks: a query leaves it when the Scala node answers it before Conway.
-INCOMPLETE_BEFORE_CONWAY = frozenset({10, 16, 17, 19, 20, 22})
+# It is empty: the Scala node answers every query of the battery in every era before Conway (#924).
+INCOMPLETE_BEFORE_CONWAY = frozenset()
 # Below this node-to-client version the protocol parameters and the genesis configuration have their legacy encodings
 # (`currentPParamsEnDecoding`, `genesisConfigEnDecoding`, Query.hs 1098-1125, ouroboros-consensus 82ecba32:
 # ShelleyNodeToClientVersion13 is V21); the battery asks them at V20 besides the version both nodes agree on.

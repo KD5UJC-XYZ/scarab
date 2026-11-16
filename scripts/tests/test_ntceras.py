@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """The same-point node-to-client battery in every Shelley-based era (`ntcqueries`, `ntceras`), without a devnet."""
+import contextlib
 import hashlib
 import os
 import pathlib
@@ -31,6 +32,21 @@ def universe():
 def block(query):
     """The block query of a hard-fork query `[0, [0, [era, q]]]`."""
     return query[1][1][1]
+
+
+def battery_incomplete_rows(report):
+    """The number of incomplete rows of each Shelley-based era of a battery's report, Shelley to Conway."""
+    return [len(report["perEra"][era]["incompleteRows"]) for era in ntceras.ERA_NAMES.values()]
+
+
+@contextlib.contextmanager
+def unanswered(*tags):
+    """The pins as they would be while the Scala node did not answer the block queries of `tags` before Conway. It
+    answers every query of the battery there now (#924), so `INCOMPLETE_BEFORE_CONWAY` is empty, and the tests of a
+    query not answered yet take their example from here."""
+    with mock.patch.object(ntcqueries, "ANSWERED_BEFORE_CONWAY", ntcqueries.ANSWERED_BEFORE_CONWAY - set(tags)), \
+            mock.patch.object(ntcqueries, "INCOMPLETE_BEFORE_CONWAY", frozenset(tags)):
+        yield
 
 
 # The forms the battery gained after it took an era, with the queries the Scala node answers in every Shelley-based era
@@ -94,9 +110,11 @@ class BatteryTest(unittest.TestCase):
             "GetAccountState", "GetMaxMajorProtocolVersion", "GetCBOR/GetLedgerTip", "GetCBOR/GetEpochNo",
             "GetCBOR/GetProposedPParamsUpdates", "GetCBOR/GetGenesisConfig", "GetCBOR/GetAccountState",
             "GetCBOR/GetMaxMajorProtocolVersion", "GetCurrentPParams", "GetGovState", "GetCBOR/GetCurrentPParams",
-            "GetCBOR/GetGovState", "GetNonMyopicMemberRewards", "GetNonMyopicMemberRewards/empty",
-            "GetNonMyopicMemberRewards/mixed", "GetCBOR/GetNonMyopicMemberRewards", "GetRewardInfoPools",
-            "GetCBOR/GetRewardInfoPools", "GetStakeDistribution", "GetStakeDistribution2",
+            "GetCBOR/GetGovState", "GetFilteredDelegationsAndRewardAccounts", "GetStakePools", "GetStakePoolParams",
+            "GetPoolState/all", "GetPoolState/some", "GetStakeSnapshots/all", "GetStakeSnapshots/some",
+            "GetStakeDelegDeposits/all", "GetStakeDelegDeposits/some", "GetNonMyopicMemberRewards",
+            "GetNonMyopicMemberRewards/empty", "GetNonMyopicMemberRewards/mixed", "GetCBOR/GetNonMyopicMemberRewards",
+            "GetRewardInfoPools", "GetCBOR/GetRewardInfoPools", "GetStakeDistribution", "GetStakeDistribution2",
             "GetCBOR/GetStakeDistribution2", "GetPoolDistr/all", "GetPoolDistr/some", "GetPoolDistr/empty",
             "GetPoolDistr2/all", "GetPoolDistr2/some", "GetPoolDistr2/empty", "GetLedgerPeerSnapshot",
             "GetLedgerPeerSnapshot/big", "GetLedgerPeerSnapshot/legacy", "GetCBOR/GetLedgerPeerSnapshot",
@@ -260,64 +278,81 @@ class SamePointTest(unittest.TestCase):
                 FakeNode(era, scala_closes, answers, events=events, name="scala"))
 
     def test_a_babbage_round_asks_babbage_queries_and_judges_every_row(self):
+        # GetStakePools as a query the Scala node does not answer before Conway yet (`unanswered`)
+        with unanswered(16):
+            reference, scala = self.nodes(5)
+            rnd = self.run_round(reference, scala)
+            self.assertEqual((rnd.point, rnd.era, rnd.major, rnd.version), (POINT, 5, 7, 23))
+            block_eras = {q[1][1][0] for _, q in reference.sent + scala.sent if q[:1] == [0] and q[1][:1] == [0]}
+            self.assertEqual(block_eras, {5})
+            outcomes = {(row.label, row.version): ntcqueries.judge(row)[0] for row in rnd.rows}
+            self.assertFalse([k for k, o in outcomes.items() if o.fails])
+            self.assertIs(outcomes[("GetUTxOByTxIn", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetRewardProvenance", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetCBOR/GetRewardProvenance", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetEpochNo", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetCBOR/GetMaxMajorProtocolVersion", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetCurrentPParams", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetGovState", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetCBOR/GetGovState", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetRewardInfoPools", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetCBOR/GetNonMyopicMemberRewards", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetLedgerPeerSnapshot/legacy", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetStakeDistribution", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetPoolDistr/empty", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetPoolDistr2/empty", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetStakeDelegDeposits/all", 23)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetStakePools", 23)], Outcome.INCOMPLETE)
+            self.assertIs(outcomes[("GetConstitution", 23)], Outcome.REFUSED_BY_BOTH)
+            self.assertIs(outcomes[("GetGenesisConfig", 20)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetCurrentPParams", 20)], Outcome.MATCHED)
+            self.assertIs(outcomes[("GetCBOR/GetCurrentPParams", 20)], Outcome.MATCHED)
+            # the protocol version was read, then the arguments, with queries both decoders take before Conway: the
+            # pools, the registered credentials and the UTxO; then the battery's first form
+            blocks = [q[1][1][1][0] for _, q in reference.sent if q[:1] == [0] and q[1][:1] == [0]]
+            self.assertEqual(blocks[:5], [3, 16, 22, 7, 0])
+            # the legacy forms were asked at V20 too, on sessions of that version
+            self.assertEqual([block(q) for v, q in reference.sent if v == ntcqueries.LEGACY_VERSION],
+                             [[3], [11], [9, [3]], [9, [11]]])
+            # the sessions at the round's point: the reference's main one, one for each query it refuses in the widest
+            # battery, and one at V20; the Scala node's one for each query it refuses (its probe, which chose the point,
+            # acquired its tip), and one at V20 for the legacy forms it answers. All of them acquired before the first
+            # block query was sent to either node
+            refused = sum(1 for _, q, _ in ntcqueries.battery(ntcqueries.WIDEST, 5)
+                          if ntcqueries.conway_only(ntcqueries.inner_of(q), 5))
+            self.assertEqual(refused, 18)
+            self.assertEqual(reference.opened, 1 + refused + 1)
+            events = reference.events
+            first_block = next(i for i, e in enumerate(events) if e[0] == "query" and e[2][:1] == [0] and e[2][1][:1] == [0])
+            at_point = [i for i, e in enumerate(events) if e[0] == "acquire" and e[2] == POINT]
+            self.assertEqual(len(at_point), reference.opened + refused + 1)
+            self.assertLess(max(at_point), first_block)
+            self.assertEqual({tuple(e[2] or []) for e in events if e[0] == "acquire" and e[1] == "reference"},
+                             {tuple(POINT)})
+            # a query the Scala node does not implement is asked of it on a session of its tip, one each, as it ends the
+            # connection on every one: at V23 and at V20
+            not_implemented = [row for row in rnd.rows if not row.implemented]
+            unmarked = sum(1 for _, _, mark in ntcqueries.battery(ntcqueries.WIDEST, 5) + ntcqueries.legacy_battery(5)
+                           if not mark)
+            self.assertEqual(len(not_implemented), unmarked)
+            self.assertEqual({row.tag for row in not_implemented}, set(ntcqueries.INCOMPLETE_BEFORE_CONWAY))
+            at_tip = [e for e in events if e[0] == "acquire" and e[1] == "scala" and e[2] is None]
+            self.assertEqual(len(at_tip), 1 + unmarked)
+            self.assertEqual(scala.opened, 1 + refused + unmarked + 1)
+
+    def test_a_babbage_round_with_every_query_answered_compares_every_row_but_the_refused(self):
+        # as the pins are today: the Scala node answers every query of the battery before Conway, and refuses at decode
+        # those `requireCG` guards, as the reference does, so no row is incomplete and none is asked at its tip
         reference, scala = self.nodes(5)
         rnd = self.run_round(reference, scala)
-        self.assertEqual((rnd.point, rnd.era, rnd.major, rnd.version), (POINT, 5, 7, 23))
-        block_eras = {q[1][1][0] for _, q in reference.sent + scala.sent if q[:1] == [0] and q[1][:1] == [0]}
-        self.assertEqual(block_eras, {5})
         outcomes = {(row.label, row.version): ntcqueries.judge(row)[0] for row in rnd.rows}
-        self.assertFalse([k for k, o in outcomes.items() if o.fails])
-        self.assertIs(outcomes[("GetUTxOByTxIn", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetRewardProvenance", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetCBOR/GetRewardProvenance", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetEpochNo", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetCBOR/GetMaxMajorProtocolVersion", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetCurrentPParams", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetGovState", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetCBOR/GetGovState", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetRewardInfoPools", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetCBOR/GetNonMyopicMemberRewards", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetLedgerPeerSnapshot/legacy", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetStakeDistribution", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetPoolDistr/empty", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetPoolDistr2/empty", 23)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetStakePools", 23)], Outcome.INCOMPLETE)
-        self.assertIs(outcomes[("GetConstitution", 23)], Outcome.REFUSED_BY_BOTH)
-        self.assertIs(outcomes[("GetGenesisConfig", 20)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetCurrentPParams", 20)], Outcome.MATCHED)
-        self.assertIs(outcomes[("GetCBOR/GetCurrentPParams", 20)], Outcome.MATCHED)
-        # the protocol version was read, then the arguments, with queries both decoders take before Conway: the
-        # pools, the registered credentials and the UTxO; then the battery's first form
-        blocks = [q[1][1][1][0] for _, q in reference.sent if q[:1] == [0] and q[1][:1] == [0]]
-        self.assertEqual(blocks[:5], [3, 16, 22, 7, 0])
-        # the legacy forms were asked at V20 too, on sessions of that version
-        self.assertEqual([block(q) for v, q in reference.sent if v == ntcqueries.LEGACY_VERSION],
-                         [[3], [11], [9, [3]], [9, [11]]])
-        # the sessions at the round's point: the reference's main one, one for each query it refuses in the widest
-        # battery, and one at V20; the Scala node's one for each query it refuses (its probe, which chose the point,
-        # acquired its tip), and one at V20 for the legacy forms it answers. All of them acquired before the first
-        # block query was sent to either node
+        self.assertEqual(set(outcomes.values()), {Outcome.MATCHED, Outcome.REFUSED_BY_BOTH})
+        self.assertEqual({tag for (label, _), o in outcomes.items() if o is Outcome.REFUSED_BY_BOTH
+                          for tag in [next(r.tag for r in rnd.rows if r.label == label)]}, set(ntcqueries.CONWAY_ONLY))
+        self.assertEqual([row for row in rnd.rows if not row.implemented], [])
         refused = sum(1 for _, q, _ in ntcqueries.battery(ntcqueries.WIDEST, 5)
                       if ntcqueries.conway_only(ntcqueries.inner_of(q), 5))
-        self.assertEqual(refused, 18)
-        self.assertEqual(reference.opened, 1 + refused + 1)
-        events = reference.events
-        first_block = next(i for i, e in enumerate(events) if e[0] == "query" and e[2][:1] == [0] and e[2][1][:1] == [0])
-        at_point = [i for i, e in enumerate(events) if e[0] == "acquire" and e[2] == POINT]
-        self.assertEqual(len(at_point), reference.opened + refused + 1)
-        self.assertLess(max(at_point), first_block)
-        self.assertEqual({tuple(e[2] or []) for e in events if e[0] == "acquire" and e[1] == "reference"},
-                         {tuple(POINT)})
-        # a query the Scala node does not implement is asked of it on a session of its tip, one each, as it ends the
-        # connection on every one: at V23 and at V20
-        not_implemented = [row for row in rnd.rows if not row.implemented]
-        unmarked = sum(1 for _, _, mark in ntcqueries.battery(ntcqueries.WIDEST, 5) + ntcqueries.legacy_battery(5)
-                       if not mark)
-        self.assertEqual(len(not_implemented), unmarked)
-        self.assertEqual({row.tag for row in not_implemented}, set(ntcqueries.INCOMPLETE_BEFORE_CONWAY))
-        at_tip = [e for e in events if e[0] == "acquire" and e[1] == "scala" and e[2] is None]
-        self.assertEqual(len(at_tip), 1 + unmarked)
-        self.assertEqual(scala.opened, 1 + refused + unmarked + 1)
+        self.assertEqual(scala.opened, 1 + refused + 1)
 
     def test_a_conway_round_compares_every_row(self):
         reference, scala = self.nodes(6)
@@ -452,24 +487,25 @@ class SamePointTest(unittest.TestCase):
         self.assertEqual([q for _, q in scala.sent], [[3], [0, [2, [1]]]])
 
     def test_a_malformed_answer_to_a_query_not_implemented_ends_the_round(self):
-        # its value is not judged, but the Scala node's protocol is: an answer that is not a result fails
-        reference, scala = self.nodes(5)
+        with unanswered(18):
+            # its value is not judged, but the Scala node's protocol is: an answer that is not a result fails
+            reference, scala = self.nodes(5)
 
-        class Malformed(FakeSession):
-            def _recv(self, protocol):
-                if self.node.name == "scala" and self.pending[:1] == [0] and self.pending[1][:1] == [0] \
-                        and self.pending[1][1][1] == [16]:
-                    self.last_raw = cbor.enc([9, 9])
-                    return [9, 9]
-                return super()._recv(protocol)
+            class Malformed(FakeSession):
+                def _recv(self, protocol):
+                    if self.node.name == "scala" and self.pending[:1] == [0] and self.pending[1][:1] == [0] \
+                            and self.pending[1][1][1] == [18]:
+                        self.last_raw = cbor.enc([9, 9])
+                        return [9, 9]
+                    return super()._recv(protocol)
 
-        scala.closes.discard(16)
-        FakeSession.nodes = {"reference": reference, "scala": scala}
-        with mock.patch.object(ntcquery, "LocalStateQuery", Malformed):
-            with self.assertRaises(ntcqueries.RoundError) as raised:
-                ntcqueries.same_point("n", "ref.sock", "scala.sock", legacy=ntcqueries.legacy_battery)
-        self.assertEqual((raised.exception.form[0], raised.exception.form[2]), ("GetStakePools", False))
-        self.assertIsInstance(raised.exception.__cause__, ntcquery.MalformedReply)
+            scala.closes.discard(18)
+            FakeSession.nodes = {"reference": reference, "scala": scala}
+            with mock.patch.object(ntcquery, "LocalStateQuery", Malformed):
+                with self.assertRaises(ntcqueries.RoundError) as raised:
+                    ntcqueries.same_point("n", "ref.sock", "scala.sock", legacy=ntcqueries.legacy_battery)
+            self.assertEqual((raised.exception.form[0], raised.exception.form[2]), ("GetRewardInfoPools", False))
+            self.assertIsInstance(raised.exception.__cause__, ntcquery.MalformedReply)
 
     def test_an_answer_the_scala_node_gets_wrong_differs(self):
         reference, scala = self.nodes(5)
@@ -738,25 +774,26 @@ class EraBatteryTest(unittest.TestCase):
                              major)
 
     def test_a_round_reports_its_rows_by_class(self):
-        rows = [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME, 7),
-                Row("GetStakePoolParams", 23, False, False, self.SAME, None, 17),
-                Row("GetStakePools", 23, False, False, self.SAME, self.SAME, 16),
-                Row("GetConstitution", 23, True, True, None, None, 23)]
-        battery = self.battery(self.rounds(self.round_of(4, rows)))
-        battery.request("alonzo")
-        battery.step(battery.requests.get_nowait())
-        report = battery.report(self.site)
-        alonzo = report["perEra"]["alonzo"]
-        self.assertEqual({k: alonzo[k] for k in ("steps", "rounds", "compared", "matched", "incomplete",
-                                                 "refusedByBoth")},
-                         {"steps": [5], "rounds": 1, "compared": 1, "matched": 1, "incomplete": 2, "refusedByBoth": 1})
-        self.assertEqual(alonzo["incompleteRows"], ["GetStakePoolParams@v23", "GetStakePools@v23"])
-        # a query marked not implemented stays incomplete even when the Scala node's answer is equal
-        self.assertEqual(report["rounds"][0]["rows"]["GetStakePools@v23"]["outcome"], "incomplete")
-        # the other eras have no complete round: each is a failure, and this one's rows are not
-        self.assertEqual(battery.failures(self.site),
-                         [f"node-to-client battery: no complete round in {era}"
-                          for era in ("shelley", "allegra", "mary", "babbage", "conway")])
+        with unanswered(16, 17):
+            rows = [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME, 7),
+                    Row("GetStakePoolParams", 23, False, False, self.SAME, None, 17),
+                    Row("GetStakePools", 23, False, False, self.SAME, self.SAME, 16),
+                    Row("GetConstitution", 23, True, True, None, None, 23)]
+            battery = self.battery(self.rounds(self.round_of(4, rows)))
+            battery.request("alonzo")
+            battery.step(battery.requests.get_nowait())
+            report = battery.report(self.site)
+            alonzo = report["perEra"]["alonzo"]
+            self.assertEqual({k: alonzo[k] for k in ("steps", "rounds", "compared", "matched", "incomplete",
+                                                     "refusedByBoth")},
+                             {"steps": [5], "rounds": 1, "compared": 1, "matched": 1, "incomplete": 2, "refusedByBoth": 1})
+            self.assertEqual(alonzo["incompleteRows"], ["GetStakePoolParams@v23", "GetStakePools@v23"])
+            # a query marked not implemented stays incomplete even when the Scala node's answer is equal
+            self.assertEqual(report["rounds"][0]["rows"]["GetStakePools@v23"]["outcome"], "incomplete")
+            # the other eras have no complete round: each is a failure, and this one's rows are not
+            self.assertEqual(battery.failures(self.site),
+                             [f"node-to-client battery: no complete round in {era}"
+                              for era in ("shelley", "allegra", "mary", "babbage", "conway")])
 
     def every_era(self, rows_of):
         """A battery with one complete round in each Shelley-based era, its rows `rows_of(era)`."""
@@ -767,25 +804,28 @@ class EraBatteryTest(unittest.TestCase):
         return battery
 
     def test_the_verdict_is_incomplete_while_a_query_is_not_implemented_and_never_a_pass(self):
-        matched = Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME, 7)
-        missing = Row("GetStakePoolParams", 23, False, False, self.SAME, None, 17)
-        passed = self.every_era(lambda era: [matched])
-        self.assertEqual((passed.report(self.site)["verdict"], passed.failures(self.site),
-                          passed.incomplete(self.site)), ("passed", [], []))
-        incomplete = self.every_era(lambda era: [matched] + ([missing] if era < 6 else []))
-        report = incomplete.report(self.site)
-        self.assertEqual((report["verdict"], incomplete.failures(self.site)), ("incomplete", []))
-        self.assertEqual(incomplete.incomplete(self.site),
-                         ["node-to-client battery: 5 incomplete rows, the queries the Scala node does not implement "
-                          "yet (distinct per era: {'shelley': 1, 'allegra': 1, 'mary': 1, 'alonzo': 1, 'babbage': 1}); "
-                          "they are not compared, and the battery does not pass"])
-        self.assertIn("INCOMPLETE", ntceras.table(report).splitlines()[0])
-        failed = self.every_era(lambda era: [missing, self.differing(era).rows[0]])
-        self.assertEqual(failed.report(self.site)["verdict"], "failed")
+        with unanswered(17):
+            matched = Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME, 7)
+            missing = Row("GetStakePoolParams", 23, False, False, self.SAME, None, 17)
+            passed = self.every_era(lambda era: [matched])
+            self.assertEqual((passed.report(self.site)["verdict"], passed.failures(self.site),
+                              passed.incomplete(self.site)), ("passed", [], []))
+            incomplete = self.every_era(lambda era: [matched] + ([missing] if era < 6 else []))
+            report = incomplete.report(self.site)
+            self.assertEqual((report["verdict"], incomplete.failures(self.site)), ("incomplete", []))
+            self.assertEqual(incomplete.incomplete(self.site),
+                             ["node-to-client battery: 5 incomplete rows, the queries the Scala node does not implement "
+                              "yet (distinct per era: {'shelley': 1, 'allegra': 1, 'mary': 1, 'alonzo': 1, 'babbage': 1}); "
+                              "they are not compared, and the battery does not pass"])
+            self.assertIn("INCOMPLETE", ntceras.table(report).splitlines()[0])
+            failed = self.every_era(lambda era: [missing, self.differing(era).rows[0]])
+            self.assertEqual(failed.report(self.site)["verdict"], "failed")
 
     def test_the_ratchet_holds_with_the_expected_incomplete_set(self):
-        # every era's battery as it is marked today: nothing grows, falls back or shrinks (the ledger states, which
-        # need framed answers to match, are left out)
+        # every era's battery as it is marked: nothing grows, falls back or shrinks (the ledger states, which need
+        # framed answers to match, are left out); as it is marked today, with every query answered before Conway, the
+        # battery passes, and while a query is not answered yet (`unanswered`), it is incomplete with that query's
+        # rows only
         def rows_of(era):
             forms = [(23, form) for form in ntcqueries.battery(ntcqueries.WIDEST, era)] + \
                 [(ntcqueries.LEGACY_VERSION, form) for form in ntcqueries.legacy_battery(era)]
@@ -794,23 +834,34 @@ class EraBatteryTest(unittest.TestCase):
                         self.SAME if mark and not ntcqueries.conway_only(ntcqueries.inner_of(q), era) else None,
                         ntcqueries.inner(ntcqueries.inner_of(q))[0])
                     for version, (label, q, mark) in forms if not ledgercompare.applies(label)]
-        battery = self.every_era(rows_of)
-        report = battery.report(self.site)
-        self.assertEqual(report["ratchet"], {"grows": [], "fallsBack": [], "shrinks": [], "shrinkTags": []})
-        self.assertEqual((report["verdict"], battery.failures(self.site)), ("incomplete", []))
-        unmarked = [sum(1 for version, (label, _, mark) in
-                        [(23, form) for form in ntcqueries.battery(ntcqueries.WIDEST, era)] +
-                        [(ntcqueries.LEGACY_VERSION, form) for form in ntcqueries.legacy_battery(era)]
-                        if not mark and not ledgercompare.applies(label)) for era in range(1, 7)]
-        self.assertEqual(unmarked[-1], 0)
-        self.assertEqual([len(report["perEra"][era]["incompleteRows"]) for era in ntceras.ERA_NAMES.values()],
-                         unmarked)
-        # and in each era before Conway the expected set is exactly the queries the battery does not mark implemented
-        for era in range(1, 6):
-            unmarked = {ntcqueries.inner(ntcqueries.inner_of(q))[0]
-                        for _, q, mark in ntcqueries.battery(ntcqueries.WIDEST, era) + ntcqueries.legacy_battery(era)
-                        if not mark}
-            self.assertEqual(unmarked, set(ntcqueries.INCOMPLETE_BEFORE_CONWAY), era)
+
+        def holds(verdict):
+            battery = self.every_era(rows_of)
+            report = battery.report(self.site)
+            self.assertEqual(report["ratchet"], {"grows": [], "fallsBack": [], "shrinks": [], "shrinkTags": []})
+            self.assertEqual((report["verdict"], battery.failures(self.site)), (verdict, []))
+            unmarked = [sum(1 for version, (label, _, mark) in
+                            [(23, form) for form in ntcqueries.battery(ntcqueries.WIDEST, era)] +
+                            [(ntcqueries.LEGACY_VERSION, form) for form in ntcqueries.legacy_battery(era)]
+                            if not mark and not ledgercompare.applies(label)) for era in range(1, 7)]
+            self.assertEqual(unmarked[-1], 0)
+            self.assertEqual([len(report["perEra"][era]["incompleteRows"]) for era in ntceras.ERA_NAMES.values()],
+                             unmarked)
+            # and in each era before Conway the expected set is exactly the queries the battery does not mark
+            # implemented
+            for era in range(1, 6):
+                unmarked = {ntcqueries.inner(ntcqueries.inner_of(q))[0]
+                            for _, q, mark in ntcqueries.battery(ntcqueries.WIDEST, era) + ntcqueries.legacy_battery(era)
+                            if not mark}
+                self.assertEqual(unmarked, set(ntcqueries.INCOMPLETE_BEFORE_CONWAY), era)
+            return report
+
+        self.assertEqual(ntcqueries.INCOMPLETE_BEFORE_CONWAY, frozenset())
+        passed = holds("passed")
+        self.assertEqual(battery_incomplete_rows(passed), [0, 0, 0, 0, 0, 0])
+        with unanswered(16):
+            incomplete = holds("incomplete")
+        self.assertEqual(battery_incomplete_rows(incomplete), [1, 1, 1, 1, 1, 0])
 
     def test_an_incomplete_row_the_expectation_does_not_list_fails(self):
         # an incomplete row of a query the expectation does not list grows the incomplete set, whatever the query:
@@ -844,35 +895,37 @@ class EraBatteryTest(unittest.TestCase):
         self.assertEqual(held["grows"], held["fallsBack"])
 
     def test_a_listed_query_now_compared_and_matched_shrinks_the_set_and_passes(self):
-        battery = self.every_era(lambda era: [self.matching(era).rows[0],
-                                              Row("GetStakePoolParams", 23, True, False, self.SAME, self.SAME, 17)])
-        report = battery.report(self.site)
-        self.assertEqual(report["ratchet"]["grows"], [])
-        self.assertEqual(report["ratchet"]["fallsBack"], [])
-        self.assertEqual(report["ratchet"]["shrinks"],
-                         sorted(f"{era} GetStakePoolParams@v23" for era in ("shelley", "allegra", "mary", "alonzo",
-                                                                             "babbage")))
-        self.assertEqual((report["verdict"], battery.failures(self.site)), ("passed", []))
-        self.assertEqual(report["ratchet"]["shrinkTags"], [17])
-        self.assertIn("RATCHET", ntceras.table(report))
-        self.assertIn("[17]", ntceras.table(report).splitlines()[-1])
+        with unanswered(17):
+            battery = self.every_era(lambda era: [self.matching(era).rows[0],
+                                                  Row("GetStakePoolParams", 23, True, False, self.SAME, self.SAME, 17)])
+            report = battery.report(self.site)
+            self.assertEqual(report["ratchet"]["grows"], [])
+            self.assertEqual(report["ratchet"]["fallsBack"], [])
+            self.assertEqual(report["ratchet"]["shrinks"],
+                             sorted(f"{era} GetStakePoolParams@v23" for era in ("shelley", "allegra", "mary", "alonzo",
+                                                                                 "babbage")))
+            self.assertEqual((report["verdict"], battery.failures(self.site)), ("passed", []))
+            self.assertEqual(report["ratchet"]["shrinkTags"], [17])
+            self.assertIn("RATCHET", ntceras.table(report))
+            self.assertIn("[17]", ntceras.table(report).splitlines()[-1])
 
     def test_a_shrink_after_a_round_that_ended_on_the_same_query_is_reported(self):
-        # a round that ended on a listed query, then a round in which that query is compared and matched: the end
-        # fails, and the shrink is reported all the same
-        ended = ntcqueries.RoundError(self.matching(5), ("GetStakePoolParams", [0, [0, [5, [17, [POOL]]]]], True),
-                                      23, ntcquery.Deadline("no answer"))
-        listed = Row("GetStakePoolParams", 23, True, False, self.SAME, self.SAME, 17)
-        with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
-            battery = self.battery(self.rounds(ended, self.round_of(5, [listed])))
-            battery.request("babbage")
-            battery.step("babbage")
-        report = battery.report(self.site)
-        self.assertEqual(report["rounds"][0]["rows"]["GetStakePoolParams@v23"]["tag"], 17)
-        self.assertEqual((report["ratchet"]["shrinks"], report["ratchet"]["shrinkTags"]),
-                         (["babbage GetStakePoolParams@v23"], [17]))
-        self.assertIn("RATCHET", ntceras.table(report))
-        self.assertEqual(report["verdict"], "failed")
+        with unanswered(17):
+            # a round that ended on a listed query, then a round in which that query is compared and matched: the end
+            # fails, and the shrink is reported all the same
+            ended = ntcqueries.RoundError(self.matching(5), ("GetStakePoolParams", [0, [0, [5, [17, [POOL]]]]], True),
+                                          23, ntcquery.Deadline("no answer"))
+            listed = Row("GetStakePoolParams", 23, True, False, self.SAME, self.SAME, 17)
+            with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
+                battery = self.battery(self.rounds(ended, self.round_of(5, [listed])))
+                battery.request("babbage")
+                battery.step("babbage")
+            report = battery.report(self.site)
+            self.assertEqual(report["rounds"][0]["rows"]["GetStakePoolParams@v23"]["tag"], 17)
+            self.assertEqual((report["ratchet"]["shrinks"], report["ratchet"]["shrinkTags"]),
+                             (["babbage GetStakePoolParams@v23"], [17]))
+            self.assertIn("RATCHET", ntceras.table(report))
+            self.assertEqual(report["verdict"], "failed")
 
     def test_answers_that_differ_fail_and_are_kept(self):
         battery = self.battery(self.rounds(self.differing(5)))
