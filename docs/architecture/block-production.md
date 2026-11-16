@@ -63,8 +63,8 @@ at once, and a fatal outcome of any of them ends the others and is the run's res
   (`forgeFailed`), the KES key's state (`forgeStateUpdateError`); then from the schedule, if it covers the slot
   under the inputs in force (derived from the block the slot would build on), or with `Leadership.check` at the
   slot. A slot not led logs only its ending line, after `startLeadershipCheck`, with `stateInfo` where the key's
-  update succeeded, at a KES period change, and is counted as a slot checked; a led one is handed to the forging fiber. The `forgeEpoch` line of
-  an epoch comes after every slot of it has been published.
+  update succeeded, at a KES period change, and is counted as a slot checked; a led one is handed to the forging
+  fiber. The `forgeEpoch` line of an epoch comes after every slot of it has been published.
 - **The forging fiber** forges a led slot 50 ms before its onset, once every slot before it is settled, so that
   forges, and their signatures, run in slot order. The attempt is provisional until the onset: made again when
   the chain or the credentials change, and at the onset its block is handed to chain selection only if the block
@@ -77,12 +77,15 @@ at once, and a fatal outcome of any of them ends the others and is the run's res
 
 **The KES key at each period.** The slot driver updates the key at the first slot of each period it handles,
 under a reservation that a forge holds from its own update to its signature, so that the key cannot move to the
-next period between a forge's update and its signature; the lock order is the reservation, then the key's lock. No
-change of the KES state for a slot (an evolution, a poisoning, a period's update to record) is made before the clock
-fiber has published the slot: `HotKeys`' changing operations take the published slot and check it under the key's
-lock, which a reload takes too, so that a reload in a slot's wake margin finds the key the per-slot loop would have.
-Before then an attempt only reads the period's recorded update and signs with a key already at the slot's period;
-where it would change the state it ends and the slot is made at its onset. One update is recorded per period and credentials
+next period between a forge's update and its signature; the lock order is the reservation, then the key's lock. Only
+an attempt admitted at its slot changes the KES state for it (an evolution, a poisoning, a period's update to record):
+one that began, or was made again, once the clock fiber had published the slot, as the slot driver's handling of a
+slot and its handover are; it keeps the admission for its duration, as the per-slot loop goes on with a slot it has
+begun should the clock go back. `HotKeys`' changing operations take the admission and check it under the key's lock,
+which a reload takes too, so that a reload in a slot's wake margin finds the key the per-slot loop would have. An
+attempt not admitted only reads the period's recorded update and signs with a key already at the slot's period; where
+it would change the state it ends and the slot is made at its onset. A reload is the one exception: it brings a new
+key to the wall clock's period, on both paths alike. One update is recorded per period and credentials
 (a reload clears it), and every slot of the period reads it: the first failure is published as `KESCouldNotEvolve`
 in the first slot, in slot order, whose checks reach the key, and `KESKeyAlreadyPoisoned` in each later one, as the
 reference's poisoned key answers.

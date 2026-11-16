@@ -16,8 +16,8 @@
 - The lines of a led slot are held until its outcome is final and keep the time they were made: a block forged
   ahead of its slot shows a `forged` time before the slot's onset. `adopted`'s `latencyMs`,
   `scarab_forge_adoption_seconds` and `forgeLatencyMs` stay measured from the slot's onset.
-- The KES key evolves at the first slot of each period, also while the node cannot forecast its slots, and never
-  for a slot before the clock has published it.
+- The KES key evolves at the first slot of each period, also while the node cannot forecast its slots, and only
+  by an attempt admitted at its slot (begun or made again once the clock had published it), or by a reload.
 
 ### Added (forging from a leader schedule, #1101)
 
