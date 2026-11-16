@@ -52,7 +52,11 @@ to make a corpus sample pass. Triage a mismatch against both pinned implementati
 A valid sample also needs a re-encoding: missing encoders and missing harness embeddings are conformance gaps,
 not evidence that the production decoder refused the sample. The `language` rule uses the bounded `Language`
 reader, not the open `Word8` key of a Conway cost-model map. Shared Dijkstra encoders consume decoded fields;
-byte-exact rules consume the original bytes retained by their production decoder.
+`DijkstraCodecs` rebuilds Dijkstra certificates, proposals, parameter updates, scripts, datums, relays and outputs
+from their decoded values. Output re-encoding chooses the reference's list or map form; it does not replay the
+whole output's input bytes. Standalone DReps and pool metadata are decoded inside minimal certificates.
+Byte-exact rules consume the original bytes retained by their production decoder. These wire re-encodings do
+not change persisted-state codecs or the reference profile selected by the node.
 
 ## Nightly CBOR detector
 

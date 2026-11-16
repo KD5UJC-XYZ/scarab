@@ -28,6 +28,7 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraAnchor,
   DijkstraAuxData,
   DijkstraCert,
+  DijkstraDelegatee,
   DijkstraDatum,
   DijkstraGovActionId,
   DijkstraLevel,
@@ -49,7 +50,13 @@ import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.{ConwayCodecs, HaskellStateCodecs, UtxoCodecs, Wire}
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  ConwayCodecs,
+  DijkstraCodecs,
+  HaskellStateCodecs,
+  UtxoCodecs,
+  Wire
+}
 
 /** The rules of the Dijkstra corpus, each mapped to the decoder of the Leios testnet's Dijkstra
   * that Scarab reads a Leios block with ([[DijkstraTx]], [[DijkstraWitnesses]] and the readers of
@@ -90,9 +97,6 @@ object DijkstraRules:
   private def written[A](codec: Codec[A])(a: A) = ConwayRules.written(codec)(a)
   private val unsigned: Codec[BigInt] = Codec.uintBig((BigInt(1) << 64) - 1)
   private def leafBytes(b: Bytes) = written(Codec.bytes)(b)
-
-  private def unwritten[A](decoder: String)(f: Node => Either[LedgerDecodeError, A]) =
-    DatasetRule.unwritten(decoder, Reach.Direct)(read(f))
 
   private def kept[A](decoder: String, keeps: String)(f: Node => Either[LedgerDecodeError, A])(
       raw: A => Bytes
@@ -230,7 +234,11 @@ object DijkstraRules:
     * reference's body does where the set's own decoder takes an empty one.
     */
   private def certificates: DatasetRule = DatasetRule
-    .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 4"))(body("04"))
+    .apply(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("a body's key 4"),
+      Writing.Encoder("DijkstraCodecs.certificates")
+    )(body("04"))(t => written(DijkstraCodecs.certificates)(t.certificates))
 
   /** `voting_procedures`, non-empty, as the body that holds them requires (`DijkstraTx.body`'s key
     * 19).
@@ -244,7 +252,11 @@ object DijkstraRules:
     * certificates.
     */
   private def proposalProcedures: DatasetRule = DatasetRule
-    .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 20"))(body("14"))
+    .apply(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("a body's key 20"),
+      Writing.Encoder("DijkstraCodecs.proposals")
+    )(body("14"))(t => written(DijkstraCodecs.proposals)(t.proposals))
 
   val rules: Map[String, DatasetRule] = Map(
     "block" -> DatasetRule.unwritten(
@@ -365,7 +377,13 @@ object DijkstraRules:
           Unwritten.HashMismatch
         )
     ),
-    "script" -> unwritten("DijkstraScript.script")(DijkstraScript.script),
+    "script" -> DatasetRule(
+      "DijkstraScript.script",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.script")
+    )(
+      read(DijkstraScript.script)
+    )(written(DijkstraCodecs.script)),
     "plutus_v1_script" -> plutusScript(DecodeField.PlutusV1),
     "plutus_v2_script" -> plutusScript(DecodeField.PlutusV2),
     "plutus_v3_script" -> plutusScript(DecodeField.PlutusV3),
@@ -373,11 +391,21 @@ object DijkstraRules:
     "%constr<plutus_data>" -> dataRule(None),
     "big_int" -> dataRule(Some(Shape.Integer)),
     "bounded_bytes" -> dataRule(Some(Shape.ByteString)),
-    "datum_option" -> unwritten("DijkstraDatum.decode")(DijkstraDatum.decode),
+    "datum_option" -> DatasetRule(
+      "DijkstraDatum.decode",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.datum")
+    )(
+      read(DijkstraDatum.decode)
+    )(written(DijkstraCodecs.datum)),
     "data" -> DatasetRule
-      .unwritten("DijkstraTxOut.decode", Reach.Embedded("an output's inline datum"))(
+      .apply(
+        "DijkstraTxOut.decode",
+        Reach.Embedded("an output's inline datum"),
+        Writing.Encoder("DijkstraCodecs.txOut")
+      )(
         output("a300581d61" + zeros(28) + "0100028201", "")
-      ),
+      )(o => written(DijkstraCodecs.txOut)(o).flatMap(Step.at(_, List(Key(2), Index(1))))),
     "transaction_input" -> DatasetRule(
       "DijkstraTxIn.decode",
       Reach.Direct,
@@ -385,17 +413,27 @@ object DijkstraRules:
     )(
       read(DijkstraTxIn.decode)
     )(i => written(UtxoCodecs.txIn)(TxIn(i.id, BigInt(i.index)))),
-    "transaction_output" -> kept("DijkstraTxOut.decode", "DijkstraTxOut.raw")(DijkstraTxOut.decode)(
-      _.raw
+    "transaction_output" -> DatasetRule(
+      "DijkstraTxOut.decode",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.txOut")
+    )(read(DijkstraTxOut.decode))(
+      written(DijkstraCodecs.txOut)
     ),
-    "babbage_transaction_output" -> kept("DijkstraTxOut.decode", "DijkstraTxOut.raw")(
-      DijkstraTxOut.decode
-    )(_.raw),
+    "babbage_transaction_output" -> DatasetRule(
+      "DijkstraTxOut.decode",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.txOut")
+    )(
+      read(DijkstraTxOut.decode)
+    )(written(DijkstraCodecs.txOut)),
     "alonzo_transaction_output" -> DatasetRule(
       "DijkstraTxOut.decode (an array only)",
       Reach.Direct,
-      Writing.Kept("DijkstraTxOut.raw")
-    )(b => shaped(Shape.Array)(b).flatMap(n => ledger(DijkstraTxOut.decode(n))))(o => Right(o.raw)),
+      Writing.Encoder("DijkstraCodecs.txOut")
+    )(b => shaped(Shape.Array)(b).flatMap(n => ledger(DijkstraTxOut.decode(n))))(
+      written(DijkstraCodecs.txOut)
+    ),
     "value" -> DatasetRule("DijkstraValue.decode", Reach.Direct, valueCodec)(
       read(DijkstraValue.decode)
     )(v => written(UtxoCodecs.value)(Value(v.coin, v.assets))),
@@ -453,36 +491,83 @@ object DijkstraRules:
       .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 26"))(
         body("181a")
       ),
-    "account_balance_interval" -> DatasetRule.unwritten(
-      "DijkstraTx.body (Top)",
-      Reach.Embedded("an interval of a body's key 26")
-    )(b => body("181a")(hex("a1581de0" + zeros(28)) ++ b)),
-    "certificate" -> unwritten("DijkstraCert.decode")(DijkstraCert.decode),
+    "account_balance_interval" -> DatasetRule(
+      "DijkstraTx.balanceInterval",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.balanceInterval")
+    )(read(DijkstraTx.balanceInterval))(written(DijkstraCodecs.balanceInterval)),
+    "certificate" -> DatasetRule(
+      "DijkstraCert.decode",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.certificate")
+    )(
+      read(DijkstraCert.decode)
+    )(written(DijkstraCodecs.certificate)),
     "certificates" -> certificates,
-    "relay" -> unwritten("DijkstraRelay.decode")(DijkstraRelay.decode),
+    "relay" -> DatasetRule(
+      "DijkstraRelay.decode",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.relay")
+    )(
+      read(DijkstraRelay.decode)
+    )(written(DijkstraCodecs.relay)),
     "dns_name" -> DatasetRule
-      .unwritten("DijkstraRelay.decode", Reach.Embedded("a multi-host relay"))(relay("8202")),
+      .apply(
+        "DijkstraRelay.decode",
+        Reach.Embedded("a multi-host relay"),
+        Writing.Encoder("DijkstraCodecs.relay")
+      )(relay("8202"))(r => written(DijkstraCodecs.relay)(r).flatMap(Step.at(_, List(Index(1))))),
     "ipv4" -> DatasetRule
-      .unwritten("DijkstraRelay.decode", Reach.Embedded("a single-host address relay"))(b =>
+      .apply(
+        "DijkstraRelay.decode",
+        Reach.Embedded("a single-host address relay"),
+        Writing.Encoder("DijkstraCodecs.relay")
+      )(b =>
         relay("8400f6", "f6")(b).flatMap {
           case r @ DijkstraRelay.SingleHostAddr(_, Some(_), _) => Right(r)
           case _                                               => Left(Refusal.Form(Shape.Present))
         }
-      ),
+      )(r => written(DijkstraCodecs.relay)(r).flatMap(Step.at(_, List(Index(2))))),
     "ipv6" -> DatasetRule
-      .unwritten("DijkstraRelay.decode", Reach.Embedded("a single-host address relay"))(b =>
+      .apply(
+        "DijkstraRelay.decode",
+        Reach.Embedded("a single-host address relay"),
+        Writing.Encoder("DijkstraCodecs.relay")
+      )(b =>
         relay("8400f6f6")(b).flatMap {
           case r @ DijkstraRelay.SingleHostAddr(_, _, Some(_)) => Right(r)
           case _                                               => Left(Refusal.Form(Shape.Present))
         }
-      ),
-    "pool_metadata" -> notEmbedded("a Dijkstra pool registration"),
+      )(r => written(DijkstraCodecs.relay)(r).flatMap(Step.at(_, List(Index(3))))),
+    "pool_metadata" -> DatasetRule(
+      "DijkstraCert.decode",
+      Reach.Embedded("a Dijkstra pool registration"),
+      Writing.Encoder("DijkstraCodecs.certificate")
+    )(b =>
+      read(DijkstraCert.decode)(
+        hex(
+          "8a03581c" + zeros(28) + "5820" + zeros(32) + "0000d81e820001581de0" + zeros(28) + "8080"
+        ) ++ b
+      ).flatMap {
+        case c @ DijkstraCert.RegisterPool(p) if p.metadata.isDefined => Right(c)
+        case _ => Left(Refusal.Form(Shape.Present))
+      }
+    )(c => written(DijkstraCodecs.certificate)(c).flatMap(Step.at(_, List(Index(9))))),
     "credential" -> credential(DecodeField.CertificateCredential),
     "stake_credential" -> credential(DecodeField.CertificateCredential),
     "drep_credential" -> credential(DecodeField.CertificateCredential),
     "committee_cold_credential" -> credential(DecodeField.CommitteeMember),
     "committee_hot_credential" -> credential(DecodeField.CommitteeMember),
-    "drep" -> notEmbedded("a Dijkstra delegation certificate"),
+    "drep" -> DatasetRule(
+      "DijkstraCert.decode",
+      Reach.Embedded("a vote delegation certificate"),
+      Writing.Encoder("HaskellStateCodecs.nodeDRep")
+    )(b =>
+      read(DijkstraCert.decode)(hex("83098200581c" + zeros(28)) ++ b).flatMap {
+        case DijkstraCert.Delegate(_, DijkstraDelegatee.Vote(d)) => Right(d)
+        case _ => Left(Refusal.Form(Shape.Present))
+      }
+    )(written(HaskellStateCodecs.nodeDRep)),
     "reward_account" -> DatasetRule(
       "RewardAccount.decode (V12.bytes)",
       Reach.Direct,
@@ -541,31 +626,58 @@ object DijkstraRules:
     )(b => read(DijkstraAnchor.decode)(hex("82") ++ b ++ hex("5820" + zeros(32))))(a =>
       written(HaskellStateCodecs.anchor)(Anchor(a.url, a.hash)).flatMap(Step.at(_, List(Index(0))))
     ),
-    "proposal_procedure" -> unwritten("DijkstraProposal.decode")(DijkstraProposal.decode),
+    "proposal_procedure" -> DatasetRule(
+      "DijkstraProposal.decode",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.proposal")
+    )(
+      read(DijkstraProposal.decode)
+    )(written(DijkstraCodecs.proposal)),
     "proposal_procedures" -> proposalProcedures,
     "gov_action" -> DatasetRule
-      .unwritten("DijkstraProposal.decode", Reach.Embedded("a proposal procedure"))(b =>
+      .apply(
+        "DijkstraProposal.decode",
+        Reach.Embedded("a proposal procedure"),
+        Writing.Encoder("DijkstraCodecs.proposal")
+      )(b =>
         read(DijkstraProposal.decode)(
           hex("8400581de0" + zeros(28)) ++ b ++ hex("8260" + "5820" + zeros(32))
         )
-      ),
+      )(p => written(DijkstraCodecs.proposal)(p).flatMap(Step.at(_, List(Index(2))))),
     "constitution" -> DatasetRule
-      .unwritten("DijkstraProposal.decode", Reach.Embedded("a NewConstitution action"))(b =>
+      .apply(
+        "DijkstraProposal.decode",
+        Reach.Embedded("a NewConstitution action"),
+        Writing.Encoder("DijkstraCodecs.proposal")
+      )(b =>
         read(DijkstraProposal.decode)(
           hex("8400581de0" + zeros(28) + "8305f6") ++ b ++ hex("8260" + "5820" + zeros(32))
         )
-      ),
+      )(p => written(DijkstraCodecs.proposal)(p).flatMap(Step.at(_, List(Index(2), Index(2))))),
     "protocol_version" -> DatasetRule
-      .unwritten("DijkstraProposal.decode", Reach.Embedded("a HardFork action"))(
+      .apply(
+        "DijkstraProposal.decode",
+        Reach.Embedded("a HardFork action"),
+        Writing.Encoder("DijkstraCodecs.proposal")
+      )(
         proposal("8301f6")
-      ),
-    "major_protocol_version" -> DatasetRule.unwritten(
+      )(p => written(DijkstraCodecs.proposal)(p).flatMap(Step.at(_, List(Index(2), Index(2))))),
+    "major_protocol_version" -> DatasetRule.apply(
       "DijkstraProposal.decode",
-      Reach.Embedded("a HardFork action's major version")
-    )(proposal("8301f682", "00")),
+      Reach.Embedded("a HardFork action's major version"),
+      Writing.Encoder("DijkstraCodecs.proposal")
+    )(proposal("8301f682", "00"))(p =>
+      written(DijkstraCodecs.proposal)(p).flatMap(Step.at(_, List(Index(2), Index(2), Index(0))))
+    ),
     "epoch" -> word64(DecodeField.RetirementEpoch),
     "coin" -> word64(DecodeField.ProposalDeposit),
-    "protocol_param_update" -> unwritten("DijkstraParamUpdate.decode")(DijkstraParamUpdate.decode),
+    "protocol_param_update" -> DatasetRule(
+      "DijkstraParamUpdate.decode",
+      Reach.Direct,
+      Writing.Encoder("DijkstraCodecs.paramUpdate")
+    )(
+      read(DijkstraParamUpdate.decode)
+    )(written(DijkstraCodecs.paramUpdate)),
     "drep_voting_thresholds" -> paramRule("181a", 26),
     "pool_voting_thresholds" -> paramRule("1819", 25),
     "ex_units" -> paramRule("14", 20),
@@ -609,7 +721,10 @@ object DijkstraRules:
     )(leafBytes)
 
   private def paramRule(key: String, field: Int) =
-    DatasetRule.unwritten(
+    DatasetRule.apply(
       "DijkstraParamUpdate.decode",
-      Reach.Embedded(s"a parameter update's key $field")
-    )(b => read(DijkstraParamUpdate.decode)(hex("a1" + key) ++ b))
+      Reach.Embedded(s"a parameter update's key $field"),
+      Writing.Encoder("DijkstraCodecs.paramUpdate")
+    )(b => read(DijkstraParamUpdate.decode)(hex("a1" + key) ++ b))(u =>
+      written(DijkstraCodecs.paramUpdate)(u).flatMap(Step.at(_, List(Key(field))))
+    )

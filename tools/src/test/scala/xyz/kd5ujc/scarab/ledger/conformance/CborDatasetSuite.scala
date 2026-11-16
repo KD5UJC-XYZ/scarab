@@ -179,6 +179,42 @@ class CborDatasetSuite extends FunSuite:
       assert(!proposals(empty), s"proposals $empty")
   }
 
+  test("Dijkstra's standalone parts use production writers and still reject an absent part") {
+    val key = "581c" + zeros(28)
+    val anchor = "82605820" + zeros(32)
+    val samples = Vector(
+      ("certificate", "83078200" + key + "00", "83078200" + key + "00"),
+      ("certificates", "8183078200" + key + "00", "d901028183078200" + key + "00"),
+      ("pool_metadata", "8261784100", "8261784100"),
+      ("drep", "8102", "8102"),
+      ("relay", "82026178", "82026178"),
+      ("dns_name", "6178", "6178"),
+      ("ipv4", "4401020304", "4401020304"),
+      ("ipv6", "50" + zeros(16), "50" + zeros(16)),
+      ("protocol_version", "820d00", "820d00"),
+      ("major_protocol_version", "0d", "0d"),
+      ("gov_action", "8106", "8106"),
+      ("constitution", "82" + anchor + "f6", "82" + anchor + "f6"),
+      ("account_balance_interval", "190001", "01"),
+      ("ex_units", "820102", "820102"),
+      ("protocol_param_update", "a200010102", "a200010102")
+    )
+    for (rule, sample, expected) <- samples do
+      assertEquals(
+        DatasetCheck
+          .check(rule, DijkstraRules.rules.get(rule), Kind.Valid, hex(sample), Some(hex(expected))),
+        Outcome.Met,
+        rule
+      )
+    for (rule, sample) <- Vector(
+        "pool_metadata" -> "f6",
+        "drep" -> "8104",
+        "ipv4" -> "f6",
+        "account_balance_interval" -> "82f6f6"
+      )
+    do assert(!decoded(DijkstraRules.rules, rule)(sample), s"$rule $sample")
+  }
+
   test("a Conway block is read with each of its transactions, as BlockTransport reads one") {
     val block = decoded(ConwayRules.rules, "block")
     val header = Embedding.headerAround(Embedding.headerBody(0, hex("00"))).hex

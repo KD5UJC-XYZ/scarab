@@ -213,8 +213,12 @@ object DijkstraTx:
       deposits <- f
         .get(25)
         .traverse(accountMap(_, DecodeField.DirectDeposits)(coin(DecodeField.DirectDeposits)))
-      intervals <- f.get(26).traverse(accountMap(_, DecodeField.AccountBalanceIntervals)(interval))
-      starting <- f.get(27).traverse(accountMap(_, DecodeField.AccountBalanceIntervals)(interval))
+      intervals <- f
+        .get(26)
+        .traverse(accountMap(_, DecodeField.AccountBalanceIntervals)(balanceInterval))
+      starting <- f
+        .get(27)
+        .traverse(accountMap(_, DecodeField.AccountBalanceIntervals)(balanceInterval))
     yield DijkstraTxBody(
       n.original,
       level,
@@ -296,7 +300,7 @@ object DijkstraTx:
     * an exact balance; anything else is `decodeRecordNamed` of a lower and an upper bound, each a
     * coin or null, not both null.
     */
-  private def interval(n: Node): Result[DijkstraBalanceInterval] = n.value match
+  def balanceInterval(n: Node): Result[DijkstraBalanceInterval] = n.value match
     case Value.UInt(_) =>
       V12.word64(n, DecodeField.AccountBalanceIntervals).map(DijkstraBalanceInterval.Exact(_))
     case _ =>
