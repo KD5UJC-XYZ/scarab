@@ -191,7 +191,7 @@ trait ConwayEraTxBody[E <: EraTag] extends BabbageEraTxBody[E]:
   def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[ProposalProcedure]
   def treasuryDonation[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Coin
 
-  /** `conwayProposalsDeposits` (`Conway/TxBody.hs:382-390`, cardano-ledger f649f975): the
+  /** `conwayProposalsDeposits` (`Conway/TxBody.hs:382-391`, cardano-ledger f649f975): the
     * governance-action deposit of the parameters for each proposal.
     */
   protected final def conwayProposalsDeposits[L <: TxLevel](pp: PParams[E], body: TxBody[L, E])(

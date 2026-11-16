@@ -484,7 +484,13 @@ Conway's rules on the classes follow as the rest of stage 2.
   and the reference's parameter lenses they read. Then `feesOK` with the collateral checks,
   `validateMaxTxSizeUTxO` and `validateExUnitsTooBigUTxO`.
   - On every Conway case of the refusal corpora the minimum fee and the values consumed and produced equal
-    the flat rule's, and each predicate's verdict equals the flat one's; each refuses somewhere in the corpus.
+    the flat rule's, and each predicate's verdict equals the flat one's. `feesOK`, the size and the units each
+    refuse somewhere in the corpus, but the corpus holds no reference script, no pool or staking certificate,
+    no donation and no wrong declared total collateral, so crafted cases compare those branches: repeated
+    reference scripts past the first fee tier, the tiers' boundaries, deposits and refunds of crafted
+    certificates, and a declared total that is not the balance.
+  - `collAdaBalance` adds the lovelace in a wrapping `Word64`, as `sumAllCoin` does; the flat path adds
+    exactly. They differ only past the supply, which no set of collateral outputs reaches.
   - A failure that carries an output or a value carries the node's stored form of it, through a glue class
     (`StoredTxOut`) with Conway's instance only, until each era's failure types (§3.4).
   - `EraUTxO` lands without the members UTXOW reads (the scripts needed and provided, the witnesses needed)

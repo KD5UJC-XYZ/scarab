@@ -5432,7 +5432,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "digest": "3caeb6fa86f93ead"
+   "digest": "ded9ec471b724f18"
   },
   "def ledger.era.ConwayEraTxBody#conwayProposalsDeposits": {
    "upstream": [
@@ -5443,7 +5443,7 @@
      "symbol": "conwayProposalsDeposits",
      "lines": [
       383,
-      390
+      391
      ]
     }
    ],
@@ -5616,7 +5616,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "a function of the transaction where the reference has a getter (`SimpleGetter`), and a `Long` where the reference's `Word32` is bounded by `errorFail`; Conway's counts the list header and the parts' bytes, as `sizeAlonzoTxF` serialises them",
+   "note": "a function of the transaction where the reference has a getter (`SimpleGetter`), and a `Long` where the reference's `Word32` is bounded by `errorFail`, which fails past 2^32-1 bytes; no transaction that large reaches the rules, the multiplexer's ingress limits holding a transaction to tens of kilobytes (`network/.../IngressLimits.scala`) and a block to its body size. Conway's counts the list header and the parts' bytes, as `sizeAlonzoTxF` serialises them",
    "digest": "91afe090e4ddaccd"
   },
   "def ledger.era.EraTxBody#getTotalDepositsTxBody": {
@@ -6295,8 +6295,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the `DeltaCoin` as an integer of either sign",
-   "digest": "8f0d93c4ae79db5d"
+   "note": "the `DeltaCoin` as an integer of either sign; the outputs' lovelace wraps modulo 2^64 as `sumAllCoin` (`State/UTxO.hs:207-212`) adds it in a `Word64`, which no reachable input reaches: the collateral outputs are distinct UTxO entries, whose sum is at most the supply. The flat path adds exactly; the two differ only past that bound",
+   "digest": "900d1cb4bda04881"
   }
  },
  "glue": [

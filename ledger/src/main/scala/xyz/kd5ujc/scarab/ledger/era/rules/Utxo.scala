@@ -227,6 +227,9 @@ object BabbageUtxo:
     */
   private val BabbageProtVerHigh = 8
 
+  /** The number of values of a `Word64`, by which `sumAllCoin` 's sum wraps. */
+  private val Word64Values = BigInt(1) << 64
+
   /** `feesOK` (`Babbage/Rules/Utxo.hs:168-197`, cardano-ledger f649f975): the fee at least the
     * minimum (`getMinFeeTxUtxo`), and the collateral of a transaction with redeemers.
     */
@@ -315,13 +318,18 @@ object BabbageUtxo:
 
   /** `collAdaBalance` (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs:30-41`,
     * cardano-ledger f649f975): the lovelace of the collateral outputs less the return's, a
-    * `DeltaCoin`.
+    * `DeltaCoin`. The outputs' lovelace is added up as `sumAllCoin` adds it, in a `Word64` that
+    * wraps (`State/UTxO.hs:207-212`, cardano-ledger f649f975). Collateral outputs are distinct
+    * entries of the UTxO set, so their sum is at most the supply, far below 2^64, and no reachable
+    * input wraps.
     */
   def collAdaBalance[E <: EraTag](
       txBody: TxBody[TxLevel.Top, E],
       utxoCollateral: Map[TxIn, TxOut[E]]
   )(using b: BabbageEraTxBody[E]): BigInt =
     val o = b.outputsOf
-    val colbal = utxoCollateral.valuesIterator.map(out => o.valueOps.coin(o.value(out)).value).sum
+    val colbal =
+      utxoCollateral.valuesIterator.map(out => o.valueOps.coin(o.value(out)).value).sum %
+        Word64Values
     b.sizedCollateralReturn(txBody)
       .fold(colbal)(r => colbal - o.valueOps.coin(o.value(r.value)).value)

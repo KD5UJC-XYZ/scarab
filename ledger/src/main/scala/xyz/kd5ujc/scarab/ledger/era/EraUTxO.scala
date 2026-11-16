@@ -136,7 +136,7 @@ object MaryUTxO:
 object BabbageUTxO:
   /** `getReferenceScriptsNonDistinct` (`Babbage/UTxO.hs:157-166`, cardano-ledger f649f975): the
     * reference script of each output of `inputs` that has one, a script as many times as outputs
-    * carry it, with its hash.
+    * carry it, with its hash, in the order of the inputs (`Map.elems`).
     */
   def getReferenceScriptsNonDistinct[E <: EraTag](utxo: UTxO[E], inputs: Set[TxIn])(using
       o: BabbageEraTxOut[E]
@@ -144,10 +144,10 @@ object BabbageUTxO:
     UTxOs
       .txInsFilter(utxo, inputs)
       .unUTxO
-      .valuesIterator
-      .flatMap(o.referenceScript(_))
-      .map(script => (o.scripts.hashScript(script), script))
       .toVector
+      .sortBy(_._1)
+      .flatMap((_, out) => o.referenceScript(out))
+      .map(script => (o.scripts.hashScript(script), script))
 
 /** Conway's instance (`instance EraUTxO ConwayEra`, `eras/conway/impl/src/Cardano/Ledger/Conway/
   * UTxO.hs:119-137`, cardano-ledger f649f975).
