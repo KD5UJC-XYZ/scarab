@@ -267,9 +267,17 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
       .added(Decided(inputs, 1000, 1100, Vector.empty, None))
       .getOrElse(fail("refused"))
     // nine chunks left share 1000 - 300 - 70 seconds
-    assertEquals(Pacing.pause(target, signalled, 300, oneChunk), 70.seconds)
+    assertEquals(Pacing.pause(g, target, signalled, oneChunk, 0.nanos), 70.seconds)
+    // a chunk that took 10 s: nine chunks of 10 s are kept back from the 630 s
+    assertEquals(
+      Pacing.pause(g, target, signalled.plusSeconds(10), oneChunk, 10.seconds),
+      (530.seconds.toNanos / 9).nanos
+    )
     // past the deadline less the margin, no pause
-    assertEquals(Pacing.pause(target, Instant.EPOCH.plusSeconds(935), 935, oneChunk), 0.nanos)
+    assertEquals(
+      Pacing.pause(g, target, Instant.EPOCH.plusSeconds(935), oneChunk, 0.nanos),
+      0.nanos
+    )
   }
 
   test("pacing a begun epoch: no pause until a chunk ahead, then done a chunk before its end") {
@@ -284,37 +292,78 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
         .added(Decided(inputs, 300, until, Vector.empty, None))
         .getOrElse(fail("refused"))
     // 99 slots ahead of the clock: no pause
-    assertEquals(Pacing.pause(target, signalled.plusSeconds(1), 301, covering(400)), 0.nanos)
+    assertEquals(
+      Pacing.pause(g, target, signalled.plusSeconds(1), covering(400), 0.nanos),
+      0.nanos
+    )
     // a chunk ahead: six chunks left share 900 - 300 - 60 seconds
-    assertEquals(Pacing.pause(target, signalled, 300, covering(400)), 90.seconds)
+    assertEquals(Pacing.pause(g, target, signalled, covering(400), 0.nanos), 90.seconds)
   }
 
-  /** The walk of `inputs` with the pure steps, a chunk taking no time: the time of each chunk and
-    * what the schedule covered after it.
-    */
+  test(
+    "a pause leaves the next chunk time to be decided, and as long again, before its first slot"
+  ) {
+    // slots of 0.1 s, an epoch of 300 signalled at its onset, each chunk taking 2.5 s: after two
+    // chunks, at 5 s, the epoch's last chunk must be decided before slot 200 begins at 20 s
+    val g = geometry(100, 300)
+    val inputs = EpochInputs.of(g, 0, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
+    val target = Pacing.target(g, inputs, Instant.EPOCH)
+    assertEquals(target, Pacing.Target.Begun(Instant.EPOCH.plusSeconds(20), 2.seconds))
+    val two = EpochSchedule
+      .empty(inputs)
+      .added(Decided(inputs, 0, 200, Vector.empty, None))
+      .getOrElse(fail("refused"))
+    // the share of the time left would be 20 - 5 - 2 - 2.5 = 10.5 s; the next chunk and as long
+    // again before 20 s leave 10 s
+    assertEquals(
+      Pacing.pause(g, target, Instant.EPOCH.plusSeconds(5), two, 2500.millis),
+      10.seconds
+    )
+  }
+
+  /** The time each chunk of a walk takes to decide. */
+  private enum Took:
+    /** Every chunk takes `each`. */
+    case Steady(each: FiniteDuration)
+
+    /** The first chunk takes `first`; each next one the one before times the next of `factors` (in
+      * turn), at most `most`.
+      */
+    case Varying(first: FiniteDuration, factors: Vector[Double], most: FiniteDuration)
+
+    def apply(chunk: Int): FiniteDuration = this match
+      case Steady(each) => each
+      case Varying(first, factors, most) =>
+        (0 until chunk).foldLeft(first)((d, i) =>
+          (d.toNanos * factors(i % factors.size)).toLong.nanos.min(most)
+        )
+
+  /** A chunk of the walk: when its decisions were done, and the slots it decided. */
+  private final case class Walked(done: Instant, from: BigInt, until: BigInt)
+
+  /** The walk of `inputs` with the pure steps, each chunk taking the time `took` gives it. */
   private def paced(
       g: EpochGeometry,
       inputs: EpochInputs,
-      signalled: Instant
-  ): Vector[(Instant, BigInt)] =
+      signalled: Instant,
+      took: Took
+  ): Vector[Walked] =
     val target = Pacing.target(g, inputs, signalled)
-    @tailrec def go(
-        at: Instant,
-        schedule: EpochSchedule,
-        log: Vector[(Instant, BigInt)]
-    ): Vector[(Instant, BigInt)] =
+    @tailrec def go(at: Instant, schedule: EpochSchedule, log: Vector[Walked]): Vector[Walked] =
       schedule.next(g.slotAt(at)) match
         case None => log
         case Some((from, until)) =>
           val added = schedule
             .added(Decided(inputs, from, until, Vector.empty, None))
             .getOrElse(fail(s"chunk $from-$until refused"))
-          val pause = Pacing.pause(target, at, g.slotAt(at), added)
-          go(at.plusNanos(pause.toNanos), added, log :+ (at -> added.until))
+          val spent = took(log.size)
+          val done = at.plusNanos(spent.toNanos)
+          val pause = Pacing.pause(g, target, done, added, spent)
+          go(done.plusNanos(pause.toNanos), added, log :+ Walked(done, from, until))
     go(signalled, EpochSchedule.empty(inputs), Vector.empty)
 
   property(
-    "paced, an epoch is done before its deadline, and once caught up stays ahead of the clock"
+    "paced, an epoch is done before its deadline when its decisions fit, and once caught up stays ahead of the clock"
   ) {
     val walks =
       for
@@ -322,32 +371,61 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
         length <- Gen.choose(1L, 5000L)
         // the signal: before the epoch, or into it
         offset <- Gen.choose(-length * slotMillis, length * slotMillis - 1)
-      yield (slotMillis, length, offset)
+        // the time a chunk's slots take to pass
+        chunkTime = (slotMillis * 100).millis
+        took <- Gen.oneOf(
+          Gen.const(Took.Steady(0.nanos)),
+          Gen.choose(0.0, 0.9).map(f => Took.Steady((chunkTime.toNanos * f).toLong.nanos)),
+          for
+            first <- Gen.choose(0.001, 0.45)
+            factors <- Gen.listOfN(17, Gen.choose(0.5, 1.95))
+          yield Took.Varying(
+            (chunkTime.toNanos * first).toLong.nanos,
+            factors.toVector,
+            (chunkTime.toNanos * 0.9).toLong.nanos
+          )
+        )
+      yield (slotMillis, length, offset, took)
     // twenty walks a case: each is cheap, and the cases are few
-    forAllNoShrink(Gen.listOfN(20, walks))(_.map((s, l, o) => walked(s, l, o)).reduce(_ && _))
+    forAllNoShrink(Gen.listOfN(20, walks))(
+      _.map((s, l, o, t) => walked(s, l, o, t)).reduce(_ && _)
+    )
   }
 
-  private def walked(slotMillis: Long, length: Long, offset: Long): Prop =
+  private def walked(slotMillis: Long, length: Long, offset: Long, took: Took): Prop =
     val g = geometry(slotMillis, length)
     val inputs = EpochInputs.of(g, 2, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
     val signalled = g.slotStart(inputs.first).plusMillis(offset)
-    val log = paced(g, inputs, signalled)
-    val (lastAt, lastUntil) = log.last
-    val done = Prop(lastUntil == inputs.end) :| s"covered until $lastUntil" &&
-      (if offset < 0 then
-         Prop(lastAt.isBefore(g.slotStart(inputs.first))) :| s"done at $lastAt, after the start"
-       else Prop(lastAt.isBefore(g.slotStart(inputs.end))) :| s"done at $lastAt, after the end")
-    // from the first chunk a chunk ahead of the clock, the clock never reaches an uncovered slot
-    val caught = log.indexWhere((at, until) =>
-      until >= g.slotAt(at) + LeaderSchedule.ChunkSlots || until == inputs.end
+    val log = paced(g, inputs, signalled, took)
+    val last = log.last
+    // with every chunk taking as long, done by the deadline whenever the decisions fit before it
+    val deadline = Pacing.target(g, inputs, signalled) match
+      case Pacing.Target.Ahead(at, margin) => (at, margin)
+      case Pacing.Target.Begun(at, margin) => (at, margin)
+    val fits = took match
+      case Took.Steady(each) =>
+        BigInt(each.toNanos) * log.size <=
+          BigInt(java.time.Duration.between(signalled, deadline._1).toNanos) - deadline._2.toNanos
+      case Took.Varying(_, _, _) => false
+    val done = Prop(last.until == inputs.end) :| s"covered until ${last.until}" &&
+      Prop(
+        !fits || !last.done.isAfter(deadline._1)
+      ) :| s"done at ${last.done}, after ${deadline._1}"
+    // from the first chunk a chunk ahead of the clock, each chunk is decided before its first slot
+    // begins, and none passes slots over
+    val caught = log.indexWhere(w =>
+      w.until >= g.slotAt(w.done) + LeaderSchedule.ChunkSlots || w.until == inputs.end
     )
     val behind = log
-      .drop(caught.max(0))
-      .sliding(2)
+      .drop(caught.max(0) + 1)
+      .zip(log.drop(caught.max(0)))
       .collect {
-        case Vector((_, covered), (next, _)) if g.slotAt(next) >= covered => next -> covered
+        case (w, before) if caught >= 0 && (g.slotAt(w.done) >= w.from || w.from != before.until) =>
+          w
       }
-      .toVector
-    (done && Prop(caught >= 0) :| "never caught up" &&
-      Prop(behind.isEmpty) :| s"the clock reached uncovered slots: ${behind.take(3)}") :|
-      s"slots of ${slotMillis} ms, epochs of $length, signalled $offset ms from the epoch's start"
+    val steadyCaught = took match
+      case Took.Steady(each)     => each == 0.nanos
+      case Took.Varying(_, _, _) => false
+    (done && Prop(caught >= 0 || !steadyCaught) :| "never caught up" &&
+      Prop(behind.isEmpty) :| s"the clock reached slots not decided: ${behind.take(3)}") :|
+      s"slots of $slotMillis ms, epochs of $length, signalled $offset ms from the epoch's start, $took"

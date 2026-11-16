@@ -19,10 +19,10 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, VrfCert}
   * led slots only.
   *
   * [[computed]] walks each epoch of a signal's value in chunks of [[LeaderSchedule.ChunkSlots]]
-  * slots, paced so that the work is spread over the time left and done before the epoch starts
-  * ([[LeaderSchedule.Pacing]]). A new value of the signal cancels the computation under way and
-  * starts again from the new inputs; an epoch whose inputs did not change goes on from where its
-  * schedule got.
+  * slots, paced so that the work is spread over the time left, done before the epoch starts, and
+  * ahead of the clock ([[LeaderSchedule.Pacing]], which states what it assumes of a chunk's
+  * computation). A new value of the signal cancels the computation under way and starts again from
+  * the new inputs; an epoch whose inputs did not change goes on from where its schedule got.
   *
   * The schedules are held in memory only: a restart computes them again. Time comes only from `now`
   * and `sleep`.
@@ -31,6 +31,7 @@ final class LeaderSchedule[F[_]: Async] private (
     geometry: EpochGeometry,
     now: F[Instant],
     sleep: FiniteDuration => F[Unit],
+    evaluator: EpochInputs => Leadership.Evaluator,
     state: SignallingRef[F, LeaderSchedule.Schedules]
 ):
   import LeaderSchedule.*
@@ -49,7 +50,7 @@ final class LeaderSchedule[F[_]: Async] private (
     * cancelled. A value equal to the one before changes nothing; a new one cancels the computation
     * under way. Each element is an epoch's schedule just after a chunk was added to it.
     */
-  def computed(signal: Signal[F, InForce]): Stream[F, EpochSchedule] =
+  def computed(signal: Signal[F, InForce]): Stream[F, Added] =
     signal.discrete.changes.switchMap(all)
 
   /** [[computed]], its elements discarded. */
@@ -59,7 +60,7 @@ final class LeaderSchedule[F[_]: Async] private (
     * paced to its own deadline. The schedules of the epochs that have passed are dropped, and an
     * epoch whose inputs changed starts again from nothing.
     */
-  private def all(value: InForce): Stream[F, EpochSchedule] =
+  private def all(value: InForce): Stream[F, Added] =
     Stream.eval(now).flatMap { signalled =>
       val clock = geometry.slotAt(signalled)
       val live = value.epochs.filter(_.end > clock)
@@ -70,16 +71,16 @@ final class LeaderSchedule[F[_]: Async] private (
           .parJoinUnbounded
     }
 
-  private def walk(inputs: EpochInputs, target: Pacing.Target): Stream[F, EpochSchedule] =
+  private def walk(inputs: EpochInputs, target: Pacing.Target): Stream[F, Added] =
     Stream.eval(step(inputs)).flatMap {
-      case Step.Ended          => Stream.empty
-      case Step.Last(schedule) => Stream.emit(schedule)
-      case Step.Paced(schedule) =>
-        Stream.emit(schedule) ++ Stream.exec(pause(target, schedule)) ++ walk(inputs, target)
+      case Step.Ended       => Stream.empty
+      case Step.Last(added) => Stream.emit(added)
+      case Step.Paced(added) =>
+        Stream.emit(added) ++ Stream.exec(pause(target, added)) ++ walk(inputs, target)
     }
 
   /** The next chunk of the epoch of `inputs`, decided and added to its schedule, if the schedule
-    * has these inputs and has slots left.
+    * has these inputs and has slots left, with the time its decisions took.
     */
   private def step(inputs: EpochInputs): F[Step] =
     for
@@ -89,23 +90,26 @@ final class LeaderSchedule[F[_]: Async] private (
       result <- current.of(inputs).flatMap(_.next(clock)) match
         case None => F.pure(Step.Ended)
         case Some((from, until)) =>
-          F.blocking(decided(inputs, from, until, Leadership.Evaluator.of(inputs.key)))
-            .flatMap(chunk =>
-              state.modify { s =>
-                s.pruned(clock).added(chunk) match
-                  case None => (s, Step.Ended)
-                  case Some((updated, schedule)) =>
-                    val next = chunk.failure match
-                      case Some(_) => Step.Last(schedule)
-                      case None =>
-                        if schedule.complete then Step.Last(schedule) else Step.Paced(schedule)
-                    (updated, next)
-              }
-            )
+          for
+            chunk <- F.blocking(decided(inputs, from, until, evaluator(inputs)))
+            done <- now
+            took = Pacing.elapsed(at, done)
+            next <- state.modify { s =>
+              s.pruned(clock).added(chunk) match
+                case None => (s, Step.Ended)
+                case Some((updated, schedule)) =>
+                  val added = Added(schedule, done, took)
+                  val next = chunk.failure match
+                    case Some(_) => Step.Last(added)
+                    case None =>
+                      if schedule.complete then Step.Last(added) else Step.Paced(added)
+                  (updated, next)
+            }
+          yield next
     yield result
 
-  private def pause(target: Pacing.Target, schedule: EpochSchedule): F[Unit] =
-    now.flatMap(at => sleep(Pacing.pause(target, at, geometry.slotAt(at), schedule)))
+  private def pause(target: Pacing.Target, added: Added): F[Unit] =
+    now.flatMap(at => sleep(Pacing.pause(geometry, target, at, added.schedule, added.took)))
 
 object LeaderSchedule:
   /** The slots decided between two pauses. */
@@ -209,6 +213,11 @@ object LeaderSchedule:
         else EpochSchedule(inputs, chunk.from, chunk.until, SortedMap.from(chunk.led))
       )
 
+  /** An epoch's schedule just after a chunk was added to it, at `at`, the chunk's decisions having
+    * taken `took`.
+    */
+  final case class Added(schedule: EpochSchedule, at: Instant, took: FiniteDuration)
+
   object EpochSchedule:
     /** The schedule of `inputs` before any chunk. */
     private[forge] def empty(inputs: EpochInputs): EpochSchedule =
@@ -249,14 +258,25 @@ object LeaderSchedule:
     case Ended
 
     /** A chunk was added, and the walk ends: the epoch is covered, or a slot's check failed. */
-    case Last(schedule: EpochSchedule)
+    case Last(added: Added)
 
     /** A chunk was added, and slots are left: the walk pauses, then goes on. */
-    case Paced(schedule: EpochSchedule)
+    case Paced(added: Added)
 
-  /** The pacing of an epoch's walk (#1101): the pause after a chunk is the time left until the
-    * deadline, less a margin, shared among the chunks left, so that the work is spread and done a
-    * margin before the deadline. The margin is a tenth of the time from the signal to the deadline.
+  /** The pacing of an epoch's walk (#1101). The pause after a chunk is the time left until the
+    * deadline, less a margin and less the time the chunks left take to decide, shared among those
+    * chunks; each chunk left is taken to need as long as the last one took. So the work is spread
+    * and, whenever it fits in the time left, done a margin before the deadline. The margin is a
+    * tenth of the time from the signal to the deadline.
+    *
+    * No pause is so long that the next chunk, taking as long as the last, would end less than that
+    * time again before the onset of the first slot the schedule has not decided. Once a chunk ahead
+    * of the clock, the schedule so stays ahead of it, each chunk decided before its first slot
+    * begins, as long as deciding a chunk takes less than the time its slots take to pass, less one
+    * slot (9.9 s of 0.1 s slots, 99 s of 1 s slots), and less than twice as long as the chunk
+    * before it. A chunk that takes longer can end after the clock has reached its first slots: the
+    * walk then goes on from the clock's slot, and each slot the clock reaches before the schedule
+    * covers it is decided at the slot.
     */
   object Pacing:
     /** What an epoch's walk is paced to. */
@@ -278,18 +298,25 @@ object LeaderSchedule:
         val deadline = geometry.slotStart((inputs.end - ChunkSlots).max(inputs.first))
         Target.Begun(deadline, tenth(signalled, deadline))
 
-    /** The pause after a chunk added to `schedule`, at `now`, the clock in slot `clock`. */
+    /** The pause at `now` after a chunk added to `schedule` whose decisions took `took`. */
     def pause(
+        geometry: EpochGeometry,
         target: Target,
         now: Instant,
-        clock: BigInt,
-        schedule: EpochSchedule
+        schedule: EpochSchedule,
+        took: FiniteDuration
     ): FiniteDuration =
+      val clock = geometry.slotAt(now)
       val left = chunksLeft(schedule.until.max(clock), schedule.inputs.end)
+      // the next chunk, and as long again, before the first slot not decided
+      val cap = nanos(now, geometry.slotStart(schedule.until)) - 2 * BigInt(took.toNanos)
       target match
         case Target.Begun(_, _) if schedule.until < clock + ChunkSlots => 0.nanos
-        case Target.Begun(deadline, margin) => spread(deadline, margin, now, left)
-        case Target.Ahead(deadline, margin) => spread(deadline, margin, now, left)
+        case Target.Begun(deadline, margin) => spread(deadline, margin, now, left, took, cap)
+        case Target.Ahead(deadline, margin) => spread(deadline, margin, now, left, took, cap)
+
+    /** The time from `from` to `to`, none if `to` is earlier. */
+    def elapsed(from: Instant, to: Instant): FiniteDuration = bounded(nanos(from, to).max(0))
 
     /** The chunks that cover the slots from `from` until `end`. */
     def chunksLeft(from: BigInt, end: BigInt): BigInt =
@@ -299,10 +326,14 @@ object LeaderSchedule:
         deadline: Instant,
         margin: FiniteDuration,
         now: Instant,
-        left: BigInt
+        left: BigInt,
+        took: FiniteDuration,
+        cap: BigInt
     ): FiniteDuration =
       if left <= 0 then 0.nanos
-      else bounded((nanos(now, deadline) - margin.toNanos).max(0) / left)
+      else
+        val reserved = left * took.toNanos
+        bounded(((nanos(now, deadline) - margin.toNanos - reserved) / left).min(cap).max(0))
 
     private def tenth(from: Instant, to: Instant): FiniteDuration =
       bounded(nanos(from, to).max(0) / 10)
@@ -322,6 +353,15 @@ object LeaderSchedule:
       now: Option[F[Instant]] = None,
       sleep: Option[FiniteDuration => F[Unit]] = None
   ): F[LeaderSchedule[F]] =
+    evaluatedWith(geometry, now, sleep, inputs => Leadership.Evaluator.of(inputs.key))
+
+  /** [[create]] with the evaluations of each epoch's VRF key given, for tests. */
+  private[forge] def evaluatedWith[F[_]: Async](
+      geometry: EpochGeometry,
+      now: Option[F[Instant]],
+      sleep: Option[FiniteDuration => F[Unit]],
+      evaluator: EpochInputs => Leadership.Evaluator
+  ): F[LeaderSchedule[F]] =
     SignallingRef
       .of[F, Schedules](Schedules.empty)
       .map(state =>
@@ -329,6 +369,7 @@ object LeaderSchedule:
           geometry,
           now.getOrElse(Clock[F].realTimeInstant),
           sleep.getOrElse(d => Async[F].sleep(d)),
+          evaluator,
           state
         )
       )
