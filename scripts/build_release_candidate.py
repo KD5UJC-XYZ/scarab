@@ -115,7 +115,7 @@ def build(args):
              'xyz.kd5ujc.scarab.node.tools.BlstCheckMain'], evidence / 'image-native-smoke.log')
         results = [json.loads(line) for line in (evidence / 'image-native-smoke.log').read_text().splitlines() if line.startswith('{')]
         if not any(r.get('ok') and r.get('library') == 'portable' for r in results):
-            raise ValueError('candidate image did not pass actual portable native/Plutus smoke')
+            raise ValueError('candidate image did not pass actual portable native smoke')
         cli = subprocess.run(['docker', 'run', '--rm', '--network', 'none', '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,size=256m',
                               '--cpus=2', image_id, '--help'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (evidence / 'image-cli-smoke.log').write_bytes(cli.stdout)

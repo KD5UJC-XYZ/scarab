@@ -6,8 +6,8 @@
 older release keeps only the files that differ from the base, under `overlays/<tag>/`, and lists
 the base files it lacks in `releases.json`. A release's view is the base, its overlay over it, minus
 its absent files. Nothing is downloaded when tests run; `verify` and `add-release` fetch the codeload
-archive of a commit, as `scripts/prepare_scalus.py` does for Scalus. `verify` refuses an archive whose
-sha256 is not the recorded one; `add-release` records it.
+archive of a commit. `verify` refuses an archive whose sha256 is not the recorded one; `add-release`
+records it.
 
   check        offline: every view matches the digest and file count recorded in releases.json
   verify       download each release and compare its view with upstream, file by file

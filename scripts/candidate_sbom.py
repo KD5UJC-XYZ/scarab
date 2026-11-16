@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from assembly_inventory import PLUTUS_CRYPTO
+from assembly_inventory import PORTABLE
 from candidate_manifest import sha256
 
 
@@ -27,9 +27,7 @@ def base(subject_name, subject_hash, subject_type='application'):
 def jvm(artifact, coverage, source_identity, native_receipt):
     if coverage['artifactSha256'] != sha256(artifact):
         raise ValueError('assembly coverage binds different JAR bytes')
-    portable = [n for n in coverage['nativeResources'] if n['path'] == 'supranational/blst/Linux/amd64/libblst.so']
-    if len([n for n in coverage['nativeResources'] if n['path'] == PLUTUS_CRYPTO]) != 1:
-        raise ValueError('packaged Linux/amd64 Plutus crypto library missing or duplicated')
+    portable = [n for n in coverage['nativeResources'] if n['path'] == PORTABLE]
     pinned = native_receipt.get('resources', {}).get('Linux/amd64/libblst.so', {})
     if (len(portable) != 1 or native_receipt.get('status') != 'passed'
             or pinned.get('pinned') != portable[0]['sha256'] or pinned.get('packaged') != portable[0]['sha256']):
@@ -80,11 +78,7 @@ def jvm(artifact, coverage, source_identity, native_receipt):
             raise ValueError(f'unowned native resource: {path}')
         component = {'type': 'file', 'name': path, 'bom-ref': ref, 'hashes': hashes(native['sha256']),
                      'evidence': {'occurrences': [{'location': 'jar!/' + path}]},
-                     'properties': properties(runtimeVerified=str(path in (portable[0]['path'], PLUTUS_CRYPTO)).lower())}
-        if path == PLUTUS_CRYPTO:
-            # Start-up sha-256 pin and known answers only; the nix build is not byte-reproduced (ADR 0020).
-            component['licenses'] = [{'license': {'id': i}} for i in ('Apache-2.0', 'ISC', 'MIT')]
-            component['properties'] += properties(sourceRebuilt='false', startupPinned='true')
+                     'properties': properties(runtimeVerified=str(path == portable[0]['path']).lower())}
         if path == portable[0]['path']:
             # jblst's library, pinned at start-up and checked for gated ADX/BMI2 code (ADR 0025)
             component['licenses'] = [{'license': {'id': 'Apache-2.0'}}]

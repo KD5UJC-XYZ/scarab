@@ -247,7 +247,7 @@ def smoke(artifact, source, classpath, commit, build_identity=None):
                 line.startswith("{") and json.loads(line).get("ok")
                 and json.loads(line).get("library") == "portable"
                 for line in native.stdout.splitlines()):
-            raise ValueError(f"fat JAR native/Plutus check failed: {native.stdout}")
+            raise ValueError(f"fat JAR native check failed: {native.stdout}")
 
 
 def inside_jdk():
@@ -290,7 +290,7 @@ def inside_jdk():
             if inventory_tasks:
                 from assembly_inventory import export
                 export(artifact, location / "node/target/release-inventory.json", output / f"inventory-{index}")
-            print(f"Build {index}: fat JAR resources, java -jar and portable native/Plutus checks passed", flush=True)
+            print(f"Build {index}: fat JAR resources, java -jar and portable native checks passed", flush=True)
             artifacts.append(artifact)
             reports.append(dict(file=artifact.name, assemblyName=produced[0].name, sha256=sha256(artifact)))
             print(f"Build {index}: {sha256(artifact)}", flush=True)

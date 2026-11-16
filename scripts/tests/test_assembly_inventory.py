@@ -24,8 +24,7 @@ class AssemblyInventoryTest(unittest.TestCase):
         self.source = {'x/Library.class': b'class-bytes', 'META-INF/services/test.Service': b'Library\n',
                        'META-INF/maven/g/a/pom.xml': b'<project/>', 'LICENSE': b'library license',
                        'META-INF/versions/11/x/Library.class': b'versioned',
-                       'native/Linux/a.so': b'other-native', inventory.PLUTUS_CRYPTO: b'plutus-crypto',
-                       inventory.PORTABLE: b'portable',
+                       'native/Linux/a.so': b'other-native', inventory.PORTABLE: b'portable',
                        'module-info.class': b'module'}
         self.write_zip(self.library, self.source)
         self.artifact = self.root / 'application.jar'
@@ -52,12 +51,12 @@ class AssemblyInventoryTest(unittest.TestCase):
         # jblst's library is a dependency resource like any other: preserved byte for byte (ADR 0025)
         self.assertEqual(policies[inventory.PORTABLE], 'deduplicate')
         self.assertEqual(len(result['components']), 1)
-        self.assertEqual(len(result['nativeResources']), 3)
+        self.assertEqual(len(result['nativeResources']), 2)
 
-    def test_an_artifact_without_the_plutus_crypto_library_is_refused(self):
-        source = {k: v for k, v in self.source.items() if k != inventory.PLUTUS_CRYPTO}
+    def test_an_artifact_without_jblsts_portable_library_is_refused(self):
+        source = {k: v for k, v in self.source.items() if k != inventory.PORTABLE}
         self.write_zip(self.library, source)
-        self.write_zip(self.artifact, {k: v for k, v in self.result.items() if k != inventory.PLUTUS_CRYPTO})
+        self.write_zip(self.artifact, {k: v for k, v in self.result.items() if k != inventory.PORTABLE})
         with self.assertRaisesRegex(ValueError, 'missing native'):
             inventory.reconcile(self.artifact, self.graph)
 
@@ -101,7 +100,7 @@ class AssemblyInventoryTest(unittest.TestCase):
                 'texts': {'library-1/LICENSE': {'source': {'jar': 'g:library:1', 'entry': 'LICENSE'},
                                                 'sha256': inventory.digest(b'library license')}},
                 'components': {'g:library:1': {'licence': 'MIT', 'texts': ['library-1/LICENSE']}},
-                'natives': [{'paths': [inventory.PORTABLE, inventory.PLUTUS_CRYPTO, 'native/Linux/a.so'],
+                'natives': [{'paths': [inventory.PORTABLE, 'native/Linux/a.so'],
                              'contents': 'test natives', 'texts': ['library-1/LICENSE']}]}
 
     def test_export_requires_the_licence_texts_of_every_resolved_component_and_native(self):
