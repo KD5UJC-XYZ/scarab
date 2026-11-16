@@ -7,6 +7,7 @@ import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import munit.FunSuite
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.plutus.{EvalRequest, PlutusLanguage}
@@ -25,7 +26,9 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
   * node must make the same requests in the same order, every argument byte for byte as
   * `serialiseData` writes it, and refuse where the reference refuses, for the same purposes in the
   * same order. A recorded transaction is read from its recorded file, which the fixture binds by
-  * its hash; a recorded case runs on its recorded slot clock, the reference on the network's.
+  * its hash; a recorded case runs on its recorded slot clock, the reference on the network's. The
+  * requests of one transaction too large to keep whole are retained as digests: each argument and
+  * the script by the SHA-256 of its bytes, the other fields as they are.
   */
 class RecordedScriptContextsSuite extends FunSuite:
   private val root = Path.of("fixtures/reference/recorded-contexts")
@@ -43,8 +46,10 @@ class RecordedScriptContextsSuite extends FunSuite:
 
   private def cbor(bytes: Bytes): Node = Cbor.decode(bytes).fold(e => fail(e.toString), identity)
 
-  private def sha256(path: Path): String =
-    Bytes.wrap(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))).hex
+  private def sha256(bytes: Bytes): String =
+    Bytes.wrap(MessageDigest.getInstance("SHA-256").digest(bytes.toArray)).hex
+
+  private def sha256(path: Path): String = sha256(Bytes.wrap(Files.readAllBytes(path)))
 
   private def named(group: String): Vector[Json] =
     rows.filter(field[String](_, "name").startsWith(s"$group/"))
@@ -144,8 +149,54 @@ class RecordedScriptContextsSuite extends FunSuite:
     case Value.NInt(value) => value
     case other             => fail(s"not an integer: $other")
 
+  /** A request of the reference: its `PlutusWithContext` encoding, or that encoding's digests. */
+  private enum Reference:
+    case Whole(encoding: Bytes)
+    case Digested(request: Json)
+
+  private def reference(script: Json): Reference =
+    script.hcursor.downField("contextCbor").focus.flatMap(_.asString) match
+      case Some(encoding) => Reference.Whole(hex(encoding))
+      case None           => Reference.Digested(field[Json](script, "request"))
+
+  private def sameRequest(ours: EvalRequest, theirs: Reference, at: String): Unit = theirs match
+    case Reference.Whole(encoding)   => sameEncoding(ours, encoding, at)
+    case Reference.Digested(request) => sameDigests(ours, request, at)
+
+  /** The node's request against the digests of the reference's: every field, each argument and the
+    * script by the SHA-256 of its bytes.
+    */
+  private def sameDigests(ours: EvalRequest, theirs: Json, at: String): Unit =
+    assertEquals(
+      BigInt(ours.protocolMajor),
+      field[BigInt](theirs, "protocolMajor"),
+      s"$at: version"
+    )
+    assertEquals(BigInt(ours.language.id), field[BigInt](theirs, "language"), s"$at: language")
+    assertEquals(sha256(ours.script), field[String](theirs, "scriptSha256"), s"$at: script")
+    val expected = field[Vector[String]](theirs, "argumentsSha256")
+    assertEquals(ours.args.size, expected.size, s"$at: number of arguments")
+    ours.args.zip(expected).zipWithIndex.foreach { case ((argument, digest), i) =>
+      assertEquals(
+        sha256(DataSerialisation.serialise(argument)),
+        digest,
+        s"$at: argument $i, the SHA-256 of its bytes"
+      )
+    }
+    val budget = field[Json](theirs, "budget")
+    assertEquals(
+      (ours.budget.mem, ours.budget.steps),
+      (field[BigInt](budget, "mem"), field[BigInt](budget, "steps")),
+      s"$at: budget"
+    )
+    assertEquals(
+      ours.costModel.map(BigInt(_)),
+      field[Vector[BigInt]](theirs, "costModel"),
+      s"$at: cost model"
+    )
+
   /** The node's request against the reference's `PlutusWithContext` encoding. */
-  private def sameRequest(ours: EvalRequest, theirs: Bytes, at: String): Unit =
+  private def sameEncoding(ours: EvalRequest, theirs: Bytes, at: String): Unit =
     cbor(theirs).value match
       case Value.Arr(Vector(version, script, arguments, budget, model)) =>
         assertEquals(integer(version), BigInt(ours.protocolMajor), s"$at: protocol version")
@@ -216,11 +267,17 @@ class RecordedScriptContextsSuite extends FunSuite:
       case (other, _) => fail(s"the fixture has no refusal of this kind: $other")
     }
 
-  test("every recorded Preview transaction, three of preprod and four several-voter probes") {
+  test("every recorded Preview and preprod transaction and four several-voter probes") {
     val preview = named("preview").map(field[String](_, "name").stripPrefix("preview/"))
     assertEquals(preview, PlutusCase.all.map(_.name))
     assert(preview.size >= 45, preview.size)
-    assert(named("preprod").size >= 3, named("preprod").size)
+    val preprod = Path.of("fixtures/preprod/plutus")
+    val recorded = Files.list(preprod).iterator.asScala.map(_.getFileName.toString).toVector
+    assertEquals(
+      named("preprod").map(row => Path.of(field[String](provenance(row), "sourcePath"))),
+      recorded.filter(_.endsWith(".json")).sorted.map(preprod.resolve)
+    )
+    assert(named("preprod").size >= 4, named("preprod").size)
     assertEquals(
       named("voters").map(field[String](_, "name")),
       Vector(
@@ -257,7 +314,7 @@ class RecordedScriptContextsSuite extends FunSuite:
           requests.zip(references).zipWithIndex.foreach { case (((redeemer, ours), theirs), i) =>
             sameRequest(
               ours,
-              hex(field[String](theirs, "contextCbor")),
+              reference(theirs),
               s"request $i (redeemer ${redeemer.tag}.${redeemer.index})"
             )
           }
