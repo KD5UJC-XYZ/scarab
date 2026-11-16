@@ -204,7 +204,8 @@ def slot_at(shelley, stamp):
 def slot_clock(events, shelley):
     """How the Scala node's slot clock stands against the reference nodes', in milliseconds after the slot's start
     by the genesis: when the Scala node adopted a block it forged (`forgeLatencyMs`, the `adopted` line: the block is
-    forged ahead of its slot and handed over at the slot's onset, so normally a few ms, #1101) and when it received a
+    forged ahead of its slot, but in a KES period's first slot at its onset, and handed over at the slot's onset, so
+    normally a few ms, #1101) and when it received a
     block another pool forged (`arrivalMs`, normally a few ms). A forge latency of a second or more either way with
     normal arrivals means the Scala node believes it is another slot than the network does, so its leader slots
     find the tip already past them and are silently skipped."""

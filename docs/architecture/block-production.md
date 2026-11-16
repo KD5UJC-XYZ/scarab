@@ -62,22 +62,27 @@ at once, and a fatal outcome of any of them ends the others and is the run's res
   `blockFromFuture`), the forecast horizon (`noLedgerView`), the era of the ledger the view is forecast from
   (`forgeFailed`), the KES key's state (`forgeStateUpdateError`); then from the schedule, if it covers the slot
   under the inputs in force (derived from the block the slot would build on), or with `Leadership.check` at the
-  slot. A slot not led logs only its ending line and is counted as a slot checked; a led one is handed to the
-  forging fiber. The `forgeEpoch` line of an epoch comes after every slot of it has been published.
+  slot. A slot not led logs only its ending line, after `startLeadershipCheck` and `stateInfo` where it announces a
+  KES period, and is counted as a slot checked; a led one is handed to the forging fiber. The `forgeEpoch` line of
+  an epoch comes after every slot of it has been published.
 - **The forging fiber** forges a led slot 50 ms before its onset, once every slot before it is settled, so that
   forges, and their signatures, run in slot order. The attempt is provisional until the onset: made again when
   the chain or the credentials change, and at the onset its block is handed to chain selection only if the block
   context, the slot's inputs and the credentials are still those it was made from; otherwise the slot is forged
   again from the node as it is then, as the per-slot loop forged it, and the discarded attempt logs one Debug line
   (`forgeDiscarded`). Every line of an attempt is held, with the time it was made, until the slot's outcome is
-  final, and the slot driver publishes them in slot order. A slot the slot driver hands over is forged at once.
+  final, and the slot driver publishes them in slot order. A slot the slot driver hands over is forged at once. A
+  led slot of a KES period the clock has not reached at the wake, in practice a period's first slot, is not forged
+  ahead: the slot driver hands it over at its onset, after its update of the period, so that no forge moves the KES
+  key ahead of the clock and a reload in the margin is checked against the key the per-slot loop would have.
 
 **The KES key at each period.** The slot driver updates the key at the first slot of each period it handles,
 under a reservation that a forge holds from its own update to its signature, so that the key cannot move to the
-next period between a forge's update and its signature; the lock order is the reservation, then the key's lock. One
-update is recorded per period and credentials (a reload clears it), and every slot of the period reads it: the
-first failure is published as `KESCouldNotEvolve` in the first slot, in slot order, whose checks reach the key, and
-`KESKeyAlreadyPoisoned` in each later one, as the reference's poisoned key answers.
+next period between a forge's update and its signature, and no forge moves it into a period the clock has not
+reached; the lock order is the reservation, then the key's lock. One update is recorded per period and credentials
+(a reload clears it), and every slot of the period reads it: the first failure is published as `KESCouldNotEvolve`
+in the first slot, in slot order, whose checks reach the key, and `KESKeyAlreadyPoisoned` in each later one, as the
+reference's poisoned key answers.
 
 ### The slots a pool leads
 

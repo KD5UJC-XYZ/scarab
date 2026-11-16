@@ -5,18 +5,19 @@
   the next once its nonce is known, is computed ahead of the slots and spread over the time left; a led slot is
   checked again against the chain at the slot, its block is built 50 ms before the slot's onset and handed to
   chain selection at the onset, and built again if the chain, the slot's inputs or the credentials changed
-  meanwhile. Every slot's leadership decision, every won slot's certificate and every block are the per-slot
-  check's.
+  meanwhile. In the first slot of a KES period the block is built after the onset, as before. Every slot's
+  leadership decision, every won slot's certificate and every block are the per-slot check's.
 - A slot the pool does not lead logs only the line that ends it: the reference's line where a check before the
   leader check refuses it (`slotIsImmutable`, `blockFromFuture`, `noLedgerView`, `forgeStateUpdateError`,
-  `forgeFailed`), else `nodeNotLeader`. `startLeadershipCheck`, the slot's Debug lines and `stateInfo` at Info
-  appear only on led slots and at a KES period change; `stateInfo` at Warning and Alert near the key's expiry
-  is logged every slot as before. The forge counters and the `ForgingStats` gauges count every slot as before.
+  `forgeFailed`), else `nodeNotLeader`. `startLeadershipCheck` and `stateInfo` at Info appear only on led slots
+  and at a KES period change, and the slot's Debug lines only on led slots; `stateInfo` at Warning and Alert near
+  the key's expiry is logged every slot as before. The forge counters and the `ForgingStats` gauges count every
+  slot as before.
 - The lines of a led slot are held until its outcome is final and keep the time they were made: a block forged
   ahead of its slot shows a `forged` time before the slot's onset. `adopted`'s `latencyMs`,
   `scarab_forge_adoption_seconds` and `forgeLatencyMs` stay measured from the slot's onset.
-- The KES key evolves at the first slot of each period, also while the node cannot forecast its slots, and up to
-  50 ms before the period for a led slot in its first slot.
+- The KES key evolves at the first slot of each period, also while the node cannot forecast its slots, and never
+  before the clock reaches the period.
 
 ### Added (forging from a leader schedule, #1101)
 
