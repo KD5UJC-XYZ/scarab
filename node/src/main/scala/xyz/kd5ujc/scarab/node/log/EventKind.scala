@@ -231,6 +231,16 @@ enum EventKind(val area: Area, val severity: Severity):
   case ForgeDefect extends EventKind(Area.Forge, Severity.Critical)
   case ForgeEpoch extends EventKind(Area.Forge, Severity.Notice)
 
+  /** An epoch's leader schedule, when it is complete and whenever a restart changes it (#1101,
+    * decision 7); the reference keeps its schedule to itself.
+    */
+  case LeaderSchedule extends EventKind(Area.Forge, Severity.Info)
+
+  /** An attempt at a slot that did not count: a block built ahead of the slot and not handed over,
+    * or an attempt made again (#1101, Q4).
+    */
+  case ForgeDiscarded extends EventKind(Area.Forge, Severity.Debug)
+
   // the chain database
   case FormatMigrated extends EventKind(Area.Storage, Severity.Notice)
   case ImmutableOpened extends EventKind(Area.Storage, Severity.Info)

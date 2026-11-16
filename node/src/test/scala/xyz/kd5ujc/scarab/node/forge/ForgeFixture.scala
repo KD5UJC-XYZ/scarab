@@ -304,6 +304,24 @@ trait ForgeFixture:
   def tracesIn(h: Harness): IO[Vector[ForgeTrace]] =
     h.seen.map(_.collect { case ForgeEvent.Loop(t) => t })
 
+  /** The slot of each line that ends a slot, in the order published: one per slot the forger
+    * handled, led or not (#1101: a slot not led logs only the line that ends it).
+    */
+  def endedIn(events: Vector[ForgeEvent]): Vector[BigInt] =
+    events.collect {
+      case ForgeEvent.Loop(t: ForgeTrace.NodeNotLeader)         => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.SlotIsImmutable)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.BlockFromFuture)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.NoLedgerView)          => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.ForgeStateUpdateError) => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.NodeCannotForge)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.AdoptedBlock)          => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.DidntAdoptBlock)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.ForgedInvalidBlock)    => t.slot
+      case ForgeEvent.Failed(slot, _)                           => slot
+      case ForgeEvent.Defect(slot, _, _)                        => slot
+    }
+
   /** The names of the loop's traces of `slot`, in order: the constructors of `TraceForgeEvent`. */
   def namesIn(h: Harness, slot: BigInt): IO[Vector[String]] =
     tracesIn(h).map(_.filter(_.slot == slot).map(_.productPrefix))
