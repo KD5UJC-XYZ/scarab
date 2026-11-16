@@ -12,13 +12,39 @@ import org.scalacheck.{Arbitrary, Cogen, Gen}
 import org.scalacheck.Prop.forAll
 import scala.collection.immutable.SortedSet
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
-import xyz.kd5ujc.scarab.ledger.{DRepGroup, LedgerDecodeError, StakePoolGroup, Unsigned}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value as CborValue}
+import xyz.kd5ujc.scarab.ledger.{
+  DecodeField,
+  DRepGroup,
+  LedgerDecodeError,
+  ParamUpdate,
+  ProtocolParams,
+  StakePoolGroup,
+  Unsigned
+}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32, W64}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraParamUpdate, DijkstraParamValue}
+import xyz.kd5ujc.scarab.ledger.dijkstra.{
+  DijkstraGenesis,
+  DijkstraParamUpdate,
+  DijkstraParamValue,
+  DijkstraParams,
+  Params
+}
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, Conway, Dijkstra, EpochInterval, NonZero}
+import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayPParams,
+  DRepVotingThresholds,
+  PoolVotingThresholds
+}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  CompactCoin,
+  Conway,
+  Dijkstra,
+  EpochInterval,
+  NonZero,
+  ShelleyBasedEra
+}
 
 /** Dijkstra's protocol parameters (`DijkstraPParams`, cardano-ledger 9df9f98c) against the build
   * the Leios testnet runs: each update of `fixtures/reference/dijkstra-pparams` is decoded as the
@@ -520,3 +546,190 @@ class DijkstraPParamsSuite extends DisciplineSuite:
     genCostModels,
     (pp, a) => pp.copy(costModels = THKD(a))
   )
+
+  // ---- the parameters the node keeps
+
+  /** The Leios testnet's parameters as the node keeps them: its Dijkstra genesis over a Conway
+    * record.
+    */
+  private val testnet: ProtocolParams =
+    io.circe.parser
+      .parse(Files.readString(Path.of("fixtures/leios/testnet/config/dijkstra-genesis.json")))
+      .left
+      .map(_.message)
+      .flatMap(j => DijkstraGenesis.read(j).left.map(_.message))
+      .fold(fail(_), _.upgrade(Params.base))
+
+  private def stored(p: ProtocolParams): DijkstraPParams[Identity] =
+    DijkstraPParams.fromStored(p).fold(e => fail(e.toString), identity)
+
+  /** The corpus's update with each key's value as the bytes it was written in. */
+  private def raw(bytes: Bytes): ParamUpdate =
+    Cbor.decode(bytes).fold(e => fail(s"not CBOR: $e"), identity).value match
+      case CborValue.Map(entries) =>
+        ParamUpdate(entries.map { (k, v) =>
+          k.value match
+            case CborValue.UInt(n) => n.toInt -> v.original
+            case other             => fail(s"key $other")
+        }.toMap)
+      case other => fail(s"not a map: $other")
+
+  test("the testnet's parameters are read and written back unchanged"):
+    assertEquals(DijkstraPParams.toStored(stored(testnet), testnet), testnet)
+
+  test("parameters without Dijkstra's fields are refused, not read as Dijkstra's"):
+    // before Dijkstra the node's record holds zero in each field Dijkstra adds
+    assertEquals(
+      DijkstraPParams.fromStored(Params.base),
+      Left(PParamsError.OutOfRange(DecodeField.RefScriptCostStride, BigInt(0)))
+    )
+    assertEquals(
+      DijkstraPParams.fromStored(testnet.copy(refScriptCostMultiplier = Rational.zero)),
+      Left(PParamsError.RatioOutOfBounds(DecodeField.RefScriptCostMultiplier, Rational.zero))
+    )
+    assertEquals(
+      DijkstraPParams.fromStored(testnet.copy(perasHealingFactor = Rational.zero)),
+      Left(PParamsError.RatioOutOfBounds(DecodeField.PerasHealingFactor, Rational.zero))
+    )
+    assertEquals(
+      DijkstraPParams.fromStored(testnet.copy(leiosCommitteeSize = BigInt(65536))),
+      Left(PParamsError.OutOfRange(DecodeField.LeiosCommitteeSize, BigInt(65536)))
+    )
+
+  rows.foreach { row =>
+    decoded(row.update).toOption.foreach { u =>
+      test(s"${row.id}: the record of the update, and applied as the node applies it"):
+        val update = DijkstraPParams.fromUpdate(u).fold(e => fail(e.toString), identity)
+        assertEquals(update, record(row.id, u))
+        // the flat path: Conway's keys by `ProtocolParams.update`, Dijkstra's by its own table
+        val flat = ProtocolParams
+          .update(testnet, raw(row.update))(using ShelleyBasedEra.SDijkstra)
+          .flatMap(DijkstraParams.update(_, raw(row.update)))
+          .fold(e => fail(e.toString), identity)
+        assertEquals(
+          DijkstraPParams.toStored(DijkstraPParams.applyUpdates(stored(testnet), update), testnet),
+          flat
+        )
+    }
+  }
+
+  test("an update's key outside the parameters, or a value not of its key's form, is refused"):
+    import DijkstraParamValue.*
+    def fromUpdate(fields: (Int, DijkstraParamValue)*) =
+      DijkstraPParams.fromUpdate(DijkstraParamUpdate(fields.toMap))
+    assertEquals(fromUpdate(57 -> Number(1)), Left(PParamsError.UnknownKey(57)))
+    // `d`, a key of Shelley's parameters that Babbage dropped
+    assertEquals(fromUpdate(12 -> Ratio(Rational.zero)), Left(PParamsError.UnknownKey(12)))
+    assertEquals(fromUpdate(0 -> Ratio(Rational.zero)), Left(PParamsError.ValueNotOfKey(0)))
+    assertEquals(
+      fromUpdate(25 -> Thresholds(Vector.fill(4)(Rational.zero))),
+      Left(PParamsError.ValueNotOfKey(25))
+    )
+    assertEquals(
+      fromUpdate(36 -> Number(0)),
+      Left(PParamsError.OutOfRange(DecodeField.RefScriptCostStride, BigInt(0)))
+    )
+    assertEquals(
+      fromUpdate(37 -> Ratio(Rational.zero)),
+      Left(PParamsError.RatioOutOfBounds(DecodeField.RefScriptCostMultiplier, Rational.zero))
+    )
+
+  private given xyz.kd5ujc.scarab.ledger.state.HasZero[Unsigned[W32]] =
+    xyz.kd5ujc.scarab.ledger.state.HasZero.instance(_.value.signum == 0)
+
+  private val genW32: Gen[Unsigned[W32]] =
+    Gen.choose(0L, 0xffffffffL).map(n => word[W32]("gen", BigInt(n)))
+
+  private def genRatio[A](bound: Rational => Option[A], lo: Long, hi: Long): Gen[A] =
+    Gen
+      .zip(Gen.choose(lo, hi), Gen.choose(1L, 1000L))
+      .map((n, d) => ratio("gen", Rational(BigInt(n), BigInt(d)))(bound))
+
+  private val genUnit = Gen
+    .choose(0L, 1000L)
+    .map(n => ratio("gen", Rational(BigInt(n), BigInt(1000)))(UnitInterval.boundRational))
+  private val genPositive = genRatio(PositiveInterval.boundRational, 1L, 100000L)
+
+  /** Parameters with each field Dijkstra adds drawn on its own, so that two fields of one type
+    * rarely hold one value.
+    */
+  private val genStoredParams: Gen[DijkstraPParams[Identity]] =
+    for
+      pp <- genParams
+      sizes <- Gen.listOfN(7, genW32)
+      w16s <- Gen.listOfN(3, genW16)
+      stride <- Gen.choose(1L, 0xffffffffL).map(n => NonZero.from(word[W32]("gen", BigInt(n))))
+      multiplier <- genPositive
+      healing <- genPositive
+      leverage <- genLeverage
+      units <- Gen.listOfN(4, genUnit)
+      periods <- Gen.listOfN(3, genW32)
+      age <- genW32
+      round <- Gen.option(genW32)
+      policy <- Gen.choose(0L, Long.MaxValue).map(n => Coin(BigInt(n)))
+      perByte <- Gen.choose(0L, Long.MaxValue).map(CompactCoin.fromUnsigned)
+      endorser <- genUnits
+    yield pp.copy(
+      maxRefScriptSizePerBlock = THKD(sizes(0)),
+      maxRefScriptSizePerTx = THKD(sizes(1)),
+      refScriptCostStride = THKD(stride.fold(e => fail(e.toString), identity)),
+      refScriptCostMultiplier = THKD(multiplier),
+      maxPledgeLeverage = THKD(leverage),
+      minPoolMargin = THKD(units(0)),
+      leiosAnnouncementPeriodLength = THKD(Milliseconds32(periods(0))),
+      leiosVotePeriodLength = THKD(Milliseconds32(periods(1))),
+      leiosDiffusionPeriodLength = THKD(Milliseconds32(periods(2))),
+      leiosCommitteeSize = THKD(w16s(0)),
+      leiosQuorumStakeThreshold = THKD(units(1)),
+      maxEndorserBlockReferencesSize = THKD(sizes(2)),
+      maxEndorserBlockTxsSize = THKD(sizes(3)),
+      maxEndorserBlockExUnits = THKD(OrdExUnits(endorser)),
+      maxRefScriptSizePerEndorserBlock = THKD(sizes(4)),
+      perasMinCandidateBlockAge = THKD(SlotInterval(age)),
+      perasHealingFactor = THKD(healing),
+      perasCertBoost = THKD(w16s(1)),
+      perasTargetCommitteeSize = THKD(w16s(2)),
+      perasBootstrapRound = THKD(round),
+      perasQuorumThresholdSafetyMargin = THKD(units(2)),
+      refInputsCostPerMultiAssetPolicy = THKD(policy),
+      refInputsCostPerDatumByte = THKD(CoinPerByte(perByte))
+    )
+
+  property("parameters written to the node's record are read back unchanged"):
+    forAll(genStoredParams) { pp =>
+      assertEquals(DijkstraPParams.fromStored(DijkstraPParams.toStored(pp, testnet)), Right(pp))
+    }
+
+  test("the downgrade keeps Conway's fields, which Conway's record writes as Dijkstra's does"):
+    val pp = stored(testnet)
+    val conway = DijkstraPParams.downgrade(pp)
+    assertEquals(
+      ConwayPParams.toStored(conway, Params.base),
+      DijkstraPParams
+        .toStored(pp, Params.base)
+        .copy(
+          maxRefScriptSizePerBlock = Params.base.maxRefScriptSizePerBlock,
+          maxRefScriptSizePerTx = Params.base.maxRefScriptSizePerTx,
+          refScriptCostStride = Params.base.refScriptCostStride,
+          refScriptCostMultiplier = Params.base.refScriptCostMultiplier,
+          maxPledgeLeverage = Params.base.maxPledgeLeverage,
+          minPoolMargin = Params.base.minPoolMargin,
+          leiosAnnouncementPeriodLength = Params.base.leiosAnnouncementPeriodLength,
+          leiosVotePeriodLength = Params.base.leiosVotePeriodLength,
+          leiosDiffusionPeriodLength = Params.base.leiosDiffusionPeriodLength,
+          leiosCommitteeSize = Params.base.leiosCommitteeSize,
+          leiosQuorumStakeThreshold = Params.base.leiosQuorumStakeThreshold,
+          maxEndorserBlockReferencesSize = Params.base.maxEndorserBlockReferencesSize,
+          maxEndorserBlockTxsSize = Params.base.maxEndorserBlockTxsSize,
+          maxEndorserBlockExUnits = Params.base.maxEndorserBlockExUnits,
+          maxRefScriptSizePerEndorserBlock = Params.base.maxRefScriptSizePerEndorserBlock,
+          perasMinCandidateBlockAge = Params.base.perasMinCandidateBlockAge,
+          perasHealingFactor = Params.base.perasHealingFactor,
+          perasCertBoost = Params.base.perasCertBoost,
+          perasTargetCommitteeSize = Params.base.perasTargetCommitteeSize,
+          perasBootstrapRound = Params.base.perasBootstrapRound,
+          perasQuorumThresholdSafetyMargin = Params.base.perasQuorumThresholdSafetyMargin,
+          refInputsCostPerMultiAssetPolicy = Params.base.refInputsCostPerMultiAssetPolicy,
+          refInputsCostPerDatumByte = Params.base.refInputsCostPerDatumByte
+        )
+    )

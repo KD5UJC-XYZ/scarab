@@ -82,7 +82,7 @@ class DijkstraParamsSuite extends FunSuite:
     )
   }
 
-private object Params:
+private[ledger] object Params:
   val base: ProtocolParams = ProtocolParams(
     44,
     155381,

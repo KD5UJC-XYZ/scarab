@@ -1,0 +1,3 @@
+### Added (ledger, #85)
+
+- Dijkstra's parameter record is read from and written back to the parameters the node keeps (`DijkstraPParams.fromStored` and `toStored`), and built from a decoded Dijkstra update (`fromUpdate`), as Conway's is. Parameters without Dijkstra's fields, which hold zero where Dijkstra requires a non-zero stride and positive ratios, are refused rather than read. `DijkstraPParams.downgrade` mirrors the reference's `downgradeDijkstraPParams` (cardano-ledger 9df9f98c). Every update of the Leios build's parameter corpus, applied through the record, gives the parameters that the node's own update of the flat record gives.
