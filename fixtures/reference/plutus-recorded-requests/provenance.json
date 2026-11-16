@@ -1,0 +1,21 @@
+{
+ "schemaVersion": 1,
+ "scope": "Admission, stage, error class and constructor, budget spent (on success and on failure) and logs of the script requests the ledger collects for recorded Preview and preprod transactions, under deserialiseScript and evaluateScriptRestricting with the request's cost-model list and the redeemer's budget; not the collection itself, which the requests are taken from",
+ "plutusSourceCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+ "measuredAt": "2026-11-16",
+ "network": "none",
+ "sourceNetworks": [
+  "preprod",
+  "preview"
+ ],
+ "cases": 49,
+ "requests": 253,
+ "imageId": "sha256:0ba57aed177d7a9370c31a858ab963581b9e8320b69e2d3cfb8925e88b951002",
+ "baseImageId": "sha256:b50784fa61a079153e78ad8b0216ea5d2c35d98f5255f6b920993011007123cb",
+ "harnessSha256": "8c03e0538ff60a331a2172dcbc9a35329f71551aea22bca8fdce925011a69d77",
+ "runnerSha256": "3ec4453608cad7c017b2778c69d118855980000aceabd7ed7cb67afa9ea7d480",
+ "requestsSha256": "d02cf101a68798a8e0232c0aa88f3fb1808884a1a688fc4474071bfc47135507",
+ "oracleRequestsSha256": "4f29673a7799d4bbeea4bbc657b5f1bcf0ad0b6e1dbbfebf033cee38646d0851",
+ "modelsSha256": "fa83cbedd0e1f365497f67fb3f2c4d5714cc3394e1b7f6866dd947364029657f",
+ "verdictsSha256": "9ae355fa502210b292fd450495db12c7ed277c49c3d0c9fe41205a4491e5036e"
+}

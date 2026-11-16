@@ -1,0 +1,302 @@
+{
+  "release" : "1.70.0.0",
+  "collection" : "Phase2.collect in the era TestLedger.usualEra gives the case's protocol version",
+  "cases" : 49,
+  "requests" : 253,
+  "sources" : [
+    {
+      "file" : "fixtures/preview/plutus/slot111341540-6e9de1d0.json",
+      "sha256" : "debe61203b4d694ef3f332d91871f39995cae720cac9a6b698892a1b502090b0",
+      "cases" : 1,
+      "requests" : 3
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1140200-450a242a.json",
+      "sha256" : "e42113ed493c287bf0bc7517bc129ee46c3a0a999b1b40ad50707483bb4428d7",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1156258-842a18e8.json",
+      "sha256" : "5ad441a537c735f9dd60cd759f01e199ce8b26027046cede6d74c088887d37ef",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1160386-23a8f478.json",
+      "sha256" : "c2a18090b921ce03b1612c081e0abc994e2431b7a9cce5acd1d29535b9075044",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1165060-1186a43c.json",
+      "sha256" : "5a72c73deae7ec64426be5369a9504686d270d9532a5a5200c8d778b4f94fa81",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot116688298-89d3a627.json",
+      "sha256" : "34d1c71f602e0a7baace5e3bc2e8d975927a6ae677023b248f4c73ca0583692f",
+      "cases" : 1,
+      "requests" : 4
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1171902-884ebf42.json",
+      "sha256" : "c4d8cd372463bb592ed857ddc0bd2f8d93a2ef826a817bd7d55298d2b80175f1",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1178938-3cfa1a9c.json",
+      "sha256" : "1f70831185a81f5f832d351f1e57761670a5ba23ac8be74b2932c384de9baa06",
+      "cases" : 1,
+      "requests" : 5
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot117938233-a1b750a9.json",
+      "sha256" : "90d40578f670b0be427b3bfd6aa0f5e28e4f9013735414fad6b613a14034b848",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot117938233-adf76ac5.json",
+      "sha256" : "a101abe0d3fa352abf9320c3ef36e40d70eec511a946a304c17c951b3d2da023",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot117938233-f1a0dfee.json",
+      "sha256" : "fd6f93ff2c3699363956d56294d6f7e572ca1db2aa3c9551d05f12c5425fa9ed",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot118251211-e3c89bb6.json",
+      "sha256" : "876f6eda988d61af80d278b338018723fda0aa543537fdf1e26ca33e5ff43617",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot118843801-59fc342a.json",
+      "sha256" : "03c756ffb3a8d297b5ec9733e99845cb7db0092497081473035a22d9e2977b19",
+      "cases" : 1,
+      "requests" : 15
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot118844178-019f457d.json",
+      "sha256" : "4b60c6c31a0687dbdb463088b73869eb679772740845aa550b6818958ee5d46c",
+      "cases" : 1,
+      "requests" : 5
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot118844178-c932b58f.json",
+      "sha256" : "fce83bc07d7d84e97a0576f5f73709980ca6186fe69d8731a7fa0b6244817d05",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot118844178-d145de7b.json",
+      "sha256" : "23ecd68fe20bc77539b593c9bdd539757967ec213142ccb8966fd05c1cfb28cf",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot122335579-bcb85f33.json",
+      "sha256" : "9f500d69a6880a1169f2ea571d6f8f4d583d2bc65cd5034781370f5cdd9d7a85",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot122335579-c91ebddd.json",
+      "sha256" : "9d2bc9c4c274a36ce5b8c5ae3563d8f84f463d0b231cf0a1ac1feaacaaa2e5a1",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot122488843-ddaa08c3.json",
+      "sha256" : "cb7264815ab302e4b3d89fe073dcadf5f308f2a636516361f9923ece4d709ffc",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1236218-38aa02d3.json",
+      "sha256" : "e3e1f310ccc223571cfda186c5103bb320d6b706f6b8434761dec9f872040cb2",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot124861899-5bf450c4.json",
+      "sha256" : "36cbe4a613790a08a49253a4442c48f05c996ae207de2e23d08e5b5abceed7dc",
+      "cases" : 1,
+      "requests" : 3
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot124861954-7d5d12cd.json",
+      "sha256" : "0f41312c96d223a1ca57cb1c80fc3808e867e752901ed82243ab20402b19bf83",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot124861995-95023289.json",
+      "sha256" : "4137774b8015a7cea393c19fe74bc3d8a51cb193939921c84f872173a8fad4ad",
+      "cases" : 1,
+      "requests" : 3
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot124862028-3a3b9b08.json",
+      "sha256" : "8a2e69973b7292c7ee6c0bcc1d6f8c3c148c1064cbd8feee50cb7b7c0c97e1e8",
+      "cases" : 1,
+      "requests" : 3
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot124905885-561eca9a.json",
+      "sha256" : "d070b0e1658320161b718c1c18ef4514cae286e359217f3a5b1d4b6cd1dcbf0f",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1251657-d88c5eda.json",
+      "sha256" : "7220e2efba7cd1d06c475b7774ba64faa7b87eef2d3454be7a0ca6edff908990",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot12924758-e5e7f3de.json",
+      "sha256" : "98ffce8d14ca425c3d22ea317b8e8437c1fc15faf5dd9b5ef0fc16082a4f1147",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1528828-ec8834c3.json",
+      "sha256" : "74b75914e2840d1bb1384ee3763a9574b4c77911925e966196501b6ea7ddbc71",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1613451-f42cda3f.json",
+      "sha256" : "5d3ca60bcb4d2f811b694c36c76cba1409f71c48a1c6e91fcc8f31e1d396a4e6",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot1706004-51613c7a.json",
+      "sha256" : "1b608d51c5be872b3842658e034583155b755748504db02dba05b0a6beddb9f2",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot2130867-ad457dd7.json",
+      "sha256" : "6d3ccf9bd53d74d62401275b33eb95b144c054f507de0840985d9672236fa168",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot2394838-c8b77a98.json",
+      "sha256" : "3ea402939d2ea5e2271a5454b0c571713df7d2c96aa97ce28e5303e65b9dc0f1",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot2437468-9ca304c9.json",
+      "sha256" : "88602d2030f5fed3c5a285115ad09de7b01e18afc24c0c790d88122b8d7185e1",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot2513949-7a102e6c.json",
+      "sha256" : "4a56be9d363c6e2508ac95e943a009fda0a7bf926d311b5fd40d96485da43ec7",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot2518061-84478afa.json",
+      "sha256" : "38800ff383dbbba2bc7240c164eb69c676aab39efcfb5eb0b18fa5526d68825c",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot2893402-8e1d4f29.json",
+      "sha256" : "511dedae333b3a59ad9e1fc36e0c315595480c2c76be561305f697e20ef7edca",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot3761914-f4156ed5.json",
+      "sha256" : "d3f15bc8d13ce4a66f068c9fb8e7af3dbe91fed45f2cbb67070301616e87c5e8",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot65493476-9f538f7a.json",
+      "sha256" : "3f91ffaf39f3a7cc57d92d860de7d93d6444fef8fae21fe787772d34fe23fe92",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot732765-eeae94f8.json",
+      "sha256" : "c2f9e9073ed287725682c1dd3afe8fce5a284357be41325f3c92c55b6b004409",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot742072-788efde4.json",
+      "sha256" : "5be799dfde77abec8a32f5fe3ffb5706066c71f9f1db127288decfd7f5b20d42",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot788688-c2c84d18.json",
+      "sha256" : "74087527e3accd24719e28431b08034b702818c996fd636db4720ca979b4cdba",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot848770-a7dd8b31.json",
+      "sha256" : "702c19ad146763a15a0e41768b4d01f1f71301867c16d2e0ce14ef4a02692ece",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot899223-19860e14.json",
+      "sha256" : "d617b005b67021c20e0a9d59dbc21fcaace063bf119fde87aade3a69b5c5d4a0",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot90526940-892227a5.json",
+      "sha256" : "5853f3a0959a584ce871b0b1d65a2e241b60d670741d7b69766ddceb0949675c",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preview/plutus/slot907889-598312af.json",
+      "sha256" : "220c3323ed74897ca9394ac946c7a0f6d1240b24861ce04491ecf95ae66081ae",
+      "cases" : 1,
+      "requests" : 1
+    },
+    {
+      "file" : "fixtures/preprod/plutus/tx-2edd684f.json",
+      "sha256" : "53ace4f613f820ba5fdc8a3775f2eccaf7f479d9f836ff2eb749d406145aa352",
+      "cases" : 1,
+      "requests" : 2
+    },
+    {
+      "file" : "fixtures/preprod/plutus/tx-97b31e35.json",
+      "sha256" : "d17debe33d415647f349722655a67a7fdfe0719419ec1495b6e66ef2f2277b9a",
+      "cases" : 1,
+      "requests" : 3
+    },
+    {
+      "file" : "fixtures/preprod/plutus/tx-aee75c1c.json",
+      "sha256" : "b9e5084c7a34017a7c846daccb727f983f99c94e9859214f4c74b2dc87ec9558",
+      "cases" : 1,
+      "requests" : 0
+    },
+    {
+      "file" : "fixtures/preprod/plutus/tx-c70243bb.json",
+      "sha256" : "39e3331873a083e74cdd17e1d864746e97a187bf139d0102182beb03df94f7d7",
+      "cases" : 1,
+      "requests" : 158
+    }
+  ]
+}
