@@ -16,8 +16,8 @@ a cycle does not load.
 | `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios, through jblst, ADR 0025) and `Blst`, the start-up check of its native library and the CPU, operational certificates | Pure; `Blst` in `F[_]` with `Sync`/`Raise` |
 | `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`), pure network error vocabulary | Pure |
 | `network` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
-| `uplc` | Scarab's own UPLC evaluator with no Scalus on its class path ([ADR 0027](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)): `PlutusData`, `ExUnits`, `PlutusLanguage`, `ParamNames`; the term model, Flat decoder, CEK machine, builtins, costing and budget as they land | Pure; `F[_]` with cats-mtl capabilities at the machine |
-| `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `NativeCrypto` (the start-up check of the Plutus native library); re-exports the types of `uplc` it used to hold | `F[_]` at the evaluator, pure otherwise |
+| `uplc` | Scarab's own UPLC evaluator, the node's only one ([ADR 0027](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)): `PlutusData`, `ExUnits`, `PlutusLanguage`, `ParamNames`; the term model, Flat decoder, CEK machine, builtins, costing and budget | Pure; `F[_]` with cats-mtl capabilities at the machine |
+| `plutus` | `ScriptEvaluator[F]` algebra, the adapter of the own evaluator (`ScarabEvaluator`), `PlutusBackend` (the evaluator and script decoder the rules, the mempool and the forger take); re-exports the types of `uplc` it used to hold | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `MirrorState` and the mirror's types, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
@@ -29,7 +29,7 @@ a cycle does not load.
 
 The dependency graph, generated from `build.sbt`, is the first section of the [code map](../codemap.md).
 
-`plutus` depends on `uplc`, which depends on `crypto` and `codec` and never on `plutus`, so Scalus stays out of it; `ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
+`plutus` depends on `uplc`, which depends on `crypto` and `codec` and never on `plutus`; `ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
 `models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
 its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
@@ -66,7 +66,7 @@ several modules).
 | Byron ledger | `ledger/byron/` | Pure: addresses and roots, transactions and witnesses, the UTxO rules and fee policy, delegation certificates, the update system, the body proofs and the Byron to Shelley transition epoch |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, EPOCH (rewards, SNAP, POOLREAP, dormant epochs), and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `MirrorRules.scala` (the rules), `LedgerRules.scala` (`NodeRules`: block decoding, the Byron step, the events between two states) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
-| Plutus | `plutus/`, `ledger/Phase2.scala`, `ScriptContexts.scala`, `ScriptIntegrity.scala` | `ScriptEvaluator[F]` algebra; Scalus interpreter; our own script contexts and cost-model selection |
+| Plutus | `plutus/`, `ledger/Phase2.scala`, `ScriptContexts.scala`, `ScriptIntegrity.scala` | `ScriptEvaluator[F]` algebra; the own evaluator (`uplc`); our own script contexts and cost-model selection |
 | UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `RocksUtxoStore.scala` | The UTxO set behind `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure view |
 | Storage | `storage/` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `NetworkIdentityFile`, derived `Codec`s |
 | Scheduling | `Scheduling.scala` | `Compute[F]` (the CPU pool the follower runs on, a `Resource`), timer-lateness monitor, `SchedulingStats` |
@@ -93,7 +93,7 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 | `VolatileStore[F]` | crash-safe log of the volatile chain's updates | `VolatileStore.open` (file log) |
 | `Compute[F]` | run the follower (CPU-bound) on its own pool, time pure steps | `Compute.pool` (work-stealing pool, a `Resource`), `Compute.measured`, `Compute.inline` (tests) |
 | `LedgerSnapshots[F, S]` | atomic checksummed snapshots of the node state | `FileLedgerSnapshots` |
-| `ScriptEvaluator[F]` | evaluate one Plutus script request | `ScalusEvaluator` (pure `Id` and suspended `F` forms) |
+| `ScriptEvaluator[F]` | evaluate one Plutus script request | `ScarabEvaluator` (pure `Id` and suspended `F` forms) |
 | `Mempool[F]` | validated transaction pool, TxSubmission2 source and sink | `Mempool` over pure `MempoolState` |
 | `ChainView[F, S]` | read access for the query server | `ChainView.fromRef` |
 | `Bearer[F]`, `Mux[F]` | byte transport and multiplexer | TCP, in-memory (tests) |
@@ -132,11 +132,8 @@ replace their narrow API types or prove their semantics. See [the error design](
 | `ForgeError` | key-file, KES, VRF, ledger-view and assembly failures | the forger logs and skips the slot |
 | `ConfigError(problem: ConfigProblem)` | configuration, CLI, topology and genesis failures retain fields, input values and typed JSON, codec or service causes | fatal at start |
 
-Programmer preconditions are distinct from domain rejection. The retained Scalus callback
-`BuiltinException` signal is an explicit foreign ABI seam: the adapter records and recovers a
-typed evaluator failure because the upstream callback cannot return one. The error design records
-that limitation and the separate generator and compiler-guard follow-ups under M11-E; fiber
-ownership remains G7 / #180.
+Programmer preconditions are distinct from domain rejection. The error design records the separate
+generator and compiler-guard follow-ups under M11-E; fiber ownership remains G7 / #180.
 
 ## Data flow
 
