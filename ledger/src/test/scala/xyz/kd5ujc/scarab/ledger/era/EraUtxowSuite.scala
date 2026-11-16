@@ -110,7 +110,7 @@ class EraUtxowSuite extends munit.FunSuite:
         AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](c, pp, si)(using
           tx,
           summon[EraPParams[Conway]],
-          summon[ShelleyBasedEra[Conway]],
+          summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
           top
         ),
         Test.failureUnless(
@@ -181,5 +181,26 @@ class EraUtxowSuite extends munit.FunSuite:
     assertEquals(
       BabbageUtxow.babbageMissingScripts[Conway](pp, Set(h(1), h(2)), Set(h(2)), Set(h(1))),
       Test.pass[PredicateFailure]
+    )
+  }
+
+  test("each era's protocol versions are the ones the flat decoders read it at") {
+    import xyz.kd5ujc.scarab.ledger.DecoderVersion
+    import xyz.kd5ujc.scarab.ledger.era.Era as EraVersions
+    def versions[E <: xyz.kd5ujc.scarab.ledger.state.EraTag](using e: EraVersions[E]) =
+      DecoderVersion.Range(e.eraProtVerLow.value, e.eraProtVerHigh.value)
+    assertEquals(
+      versions[xyz.kd5ujc.scarab.ledger.state.Allegra],
+      DecoderVersion.range(Era.Allegra)
+    )
+    assertEquals(versions[xyz.kd5ujc.scarab.ledger.state.Mary], DecoderVersion.range(Era.Mary))
+    assertEquals(
+      versions[xyz.kd5ujc.scarab.ledger.state.Babbage],
+      DecoderVersion.range(Era.Babbage)
+    )
+    assertEquals(versions[Conway], DecoderVersion.range(Era.Conway))
+    assertEquals(
+      versions[xyz.kd5ujc.scarab.ledger.state.Dijkstra],
+      DecoderVersion.range(Era.Dijkstra)
     )
   }

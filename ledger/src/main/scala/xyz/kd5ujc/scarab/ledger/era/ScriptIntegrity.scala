@@ -3,9 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.DecoderVersion
-import xyz.kd5ujc.scarab.ledger.rules.EraNes
-import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.EraTag
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** A language's view of the protocol parameters (`data LangDepView`, cardano-ledger f649f975
@@ -106,11 +104,12 @@ object ScriptIntegrity:
     * empty redeemers (`mempty`, made by `mkMemoizedEra`, `Alonzo/TxWits.hs:197-198, 207-211`),
     * encoded at the era's `eraProtVerLow` whatever the protocol version
     * (`MemoBytes/Internal.hs:294-295`): a map from version 9, a list below
-    * (`Alonzo/TxWits.hs:157-162`). The era's lowest version is found by its witness's exhaustive
-    * match ([[EraNes.eraOf]], [[DecoderVersion.of]]).
+    * (`Alonzo/TxWits.hs:157-162`, `ifEncodingVersionAtLeast`). The witness set keeps no bytes for
+    * redeemers it does not have, so they are written here; the redeemers it has are their bytes as
+    * they arrived.
     */
-  def originalBytes[E <: EraTag](si: ScriptIntegrity[E])(using era: ShelleyBasedEra[E]): Bytes =
-    val empty = if DecoderVersion.of(EraNes.eraOf(era)).atLeast(9) then 0xa0 else 0x80
+  def originalBytes[E <: EraTag](si: ScriptIntegrity[E])(using era: Era[E]): Bytes =
+    val empty = if era.eraProtVerLow.value >= 9 then 0xa0 else 0x80
     val redeemers = si.redeemers.raw.getOrElse(Bytes(Vector(empty.toByte)))
     val dats = if si.dats.datums.isEmpty then Bytes.empty else si.dats.raw.getOrElse(Bytes.empty)
     redeemers ++ dats ++ LangDepView.encodeLangViews(si.views)
@@ -118,7 +117,7 @@ object ScriptIntegrity:
   /** `hashScriptIntegrity` (`Alonzo/Tx.hs:401-402`, cardano-ledger f649f975): blake2b-256 of the
     * original bytes.
     */
-  def hashScriptIntegrity[E <: EraTag](si: ScriptIntegrity[E])(using ShelleyBasedEra[E]): Bytes =
+  def hashScriptIntegrity[E <: EraTag](si: ScriptIntegrity[E])(using Era[E]): Bytes =
     Blake2b.hash256.hash(originalBytes(si))
 
   /** `mkScriptIntegrity` (`Alonzo/Tx.hs:404-423`, cardano-ledger f649f975): none when the witness

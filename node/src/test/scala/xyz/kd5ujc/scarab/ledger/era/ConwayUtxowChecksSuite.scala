@@ -201,7 +201,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
               using
               tx,
               summon[EraPParams[Conway]],
-              summon[ShelleyBasedEra[Conway]],
+              summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
               top
             )
           )

@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.Test
-import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.EraTag
 
 // The predicates of UTXOW as the reference writes them, each generic in its era and asking for the
 // reference's classes (cardano-ledger f649f975, the `Rules/Utxow.hs` of each era), as
@@ -72,7 +72,7 @@ object AlonzoUtxow:
   )(using
       t: AlonzoEraTx[E],
       p: EraPParams[E],
-      era: ShelleyBasedEra[E],
+      era: Era[E],
       l: t.bodyOf.Level[L]
   ): Test[PredicateFailure] =
     val computedScriptIntegrityHash = scriptIntegrity.map(ScriptIntegrity.hashScriptIntegrity(_))
