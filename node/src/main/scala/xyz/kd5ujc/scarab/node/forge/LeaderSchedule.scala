@@ -49,9 +49,20 @@ final class LeaderSchedule[F[_]: Async] private (
   /** The computation of the schedules of the epochs in `signal` 's values, until the stream is
     * cancelled. A value equal to the one before changes nothing; a new one cancels the computation
     * under way. Each element is an epoch's schedule just after a chunk was added to it.
+    *
+    * A value no longer in force when its computation would begin is not computed. fs2's `switchMap`
+    * (3.14.0 `Stream.scala` 1988-2014) runs each value's inner stream once it holds a guard; the
+    * inner stream of a replaced value can take the guard after the stream of the value that
+    * replaced it has ended, and its first steps run before its interruption takes effect. Computed
+    * then, the replaced value would start the schedules again from its own inputs and drop the
+    * epochs it does not name, its successor's among them, for good (#1101).
     */
   def computed(signal: Signal[F, InForce]): Stream[F, Added] =
-    signal.discrete.changes.switchMap(all)
+    signal.discrete.changes.switchMap(value =>
+      Stream
+        .eval(signal.get)
+        .flatMap(current => if current === value then all(value) else Stream.empty)
+    )
 
   /** [[computed]], its elements discarded. */
   def run(signal: Signal[F, InForce]): F[Unit] = computed(signal).compile.drain
