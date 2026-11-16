@@ -166,7 +166,8 @@ trait ForgeFixture:
       committedChain: Boolean = false,
       selectionLedger: Option[
         (BigInt, xyz.kd5ujc.scarab.protocol.ChainSync.Point, MempoolLedger) => MempoolLedger
-      ] = None
+      ] = None,
+      rulesPause: Header => IO[Unit] = _ => IO.unit
   )(using Handle[IO, NodeError]): IO[Harness] =
     given Assertions[IO] = assertions
     val rulesGlobals = globals.copy(network = network)
@@ -190,7 +191,7 @@ trait ForgeFixture:
             Raise[IO, StorageError],
             Raise[IO, ChainError]
         ): IO[MirrorState] =
-          rulesThrow.fold(
+          rulesPause(header) *> rulesThrow.fold(
             chainFailure.fold(
               ruleFailure.fold(realRules(state, header, raw))(failure =>
                 ValidationError(header.point, failure).raise[IO, MirrorState]

@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import java.time.Instant
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
-import xyz.kd5ujc.scarab.ledger.ClockProblem
+import xyz.kd5ujc.scarab.ledger.{ClockProblem, ForgeError, Header}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.node.Fatal
 
@@ -87,7 +87,8 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       shift: Option[Ref[IO, Long]] = None,
       observe: Harness => Forger.Point => IO[Unit] = _ => _ => IO.unit,
       enabled: Boolean = true,
-      bound: FiniteDuration = Bound
+      bound: FiniteDuration = Bound,
+      rulesPause: Header => IO[Unit] = _ => IO.unit
   )(body: Run => IO[Unit]): IO[Ran] =
     TestControl.executeEmbed(
       withHandle {
@@ -109,6 +110,7 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
               )
             ),
             enabled = enabled,
+            rulesPause = rulesPause,
             pause = Some(point =>
               self.get.flatMap(observe(_)(point)) *> held.get(point).fold(IO.unit)(_.at)
             )
@@ -612,4 +614,111 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       result.left.exists(_.isInstanceOf[java.util.concurrent.TimeoutException]),
       result.toString
     )
+  }
+
+  /** A key source whose `read`, the reload's first act under the key's lock, says so (`reached`)
+    * and then waits for `go` before it finds the KES key file absent.
+    */
+  private def gated(reached: Deferred[IO, Unit], go: Deferred[IO, Unit]): HotKeySource[IO] =
+    new HotKeySource[IO]:
+      def read: IO[Either[ForgeError, HotKeySource.Reading[IO]]] =
+        reached.complete(()) *> go.get.as(
+          Right(HotKeySource.Reading.Absent(java.nio.file.Path.of("kes.skey")))
+        )
+      def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
+
+  test(
+    "forging disabled between the slot driver's take of a slot and its decision: a claim is awaited"
+  ) {
+    // s is the first slot of epoch 6 and of KES period 60. The slot driver takes s with forging on
+    // (its `forgeEpoch` line of epoch 5 says it has), the forging fiber then claims s, and a reload
+    // that disables forging, holding the key's lock, makes the driver's update of the period find
+    // no credentials: it decides s `Decision.Disabled`, and must await the forge claimed before it
+    val s = BigInt(6000)
+    val seed = seedLeading(Vector(s))
+    for
+      readReached <- Deferred[IO, Unit]
+      go <- Deferred[IO, Unit]
+      held <- holds(Forger.Point.Waking(s))
+      ran <- runningIn(seed, s - 2, held, epoch = 6, source = Some(gated(readReached, go))) { r =>
+        for
+          _ <- held(Forger.Point.Waking(s)).reached.get
+          reload <- r.h.forger.reload.start
+          _ <- readReached.get
+          _ <- r.h.events.discrete
+            .find(_.exists {
+              case ForgeEvent.EpochSummary(epoch, _) => epoch == 5
+              case _                                 => false
+            })
+            .compile
+            .drain
+          _ <- held(Forger.Point.Waking(s)).free
+          _ <- r.h.forger.claimed.discrete
+            .find(_.owned.get(s).exists {
+              case Forger.Claim.Forging(_)                        => true
+              case Forger.Claim.Handed(_) | Forger.Claim.Driver() => false
+            })
+            .compile
+            .drain
+          _ <- go.complete(())
+          _ <- reload.joinWithNever
+          _ <- r.h.settled(s)
+        yield ()
+      }
+    yield
+      // the forge, which found forging disabled when it reached the key, ended the slot; its lines
+      // are published, so its claim was awaited, not passed over
+      assert(
+        ran.events.contains(ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s))),
+        ran.events.toString
+      )
+      assert(
+        ran.events.contains(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging)),
+        "the reload disabled forging"
+      )
+  }
+
+  test(
+    "a reload during a handover's adoption completes only after the adoption, under the key's lock"
+  ) {
+    // the early block of s is checked and handed over; its adoption is held in the block rules, a
+    // reload is sent and the clock moves a slot on (every fiber that can run has run); the reload
+    // must still be waiting for the key's lock, and finds the block adopted when it completes
+    val s = BigInt(5003)
+    val seed = seedLeading(Vector(s))
+    for
+      inAdoption <- Deferred[IO, Unit]
+      adopt <- Deferred[IO, Unit]
+      readReached <- Deferred[IO, Unit]
+      go <- Deferred[IO, Unit]
+      atReload <- Deferred[IO, Option[BigInt]]
+      reloadEarly <- Ref.of[IO, Boolean](true)
+      held <- holds()
+      ran <- runningIn(
+        seed,
+        s - 2,
+        held,
+        source = Some(gated(readReached, go)),
+        rulesPause = header => (inAdoption.complete(()) *> adopt.get).whenA(header.slot == s)
+      ) { r =>
+        for
+          _ <- inAdoption.get
+          reload <- (r.h.forger.reload *> r.h.chain.flatMap(c =>
+            atReload.complete(c.blocks.map(_._1.slot).find(_ == s))
+          )).start
+          _ <- r.h.clocked(s + 1)
+          early <- readReached.tryGet.map(_.isDefined)
+          _ <- reloadEarly.set(early)
+          _ <- go.complete(())
+          _ <- adopt.complete(())
+          _ <- reload.joinWithNever
+          _ <- r.h.settled(s)
+        yield ()
+      }
+      early <- reloadEarly.get
+      seen <- atReload.get
+    yield
+      assert(!early, "the reload got the key's lock while the handover's adoption was under way")
+      assertEquals(seen, Some(s), "the block was adopted before the reload completed")
+      assert(forged(ran, s).nonEmpty, "the block, published")
   }
