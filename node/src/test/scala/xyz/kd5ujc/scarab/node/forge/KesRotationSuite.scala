@@ -814,8 +814,8 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       keys <- HotKeys.create[IO](p.creds, None, config, e => seen.update(_ :+ e))
-      // a key past the slot's period changes nothing, whatever the clock has published
-      result <- Forger.scoped(keys.locked(c => keys.evolvedFor(c, 4900, PublishedSlot.at(0))))
+      // a key past the slot's period changes nothing, with no admission
+      result <- Forger.scoped(keys.locked(c => keys.evolvedFor(c, 4900, None)))
       _ = assertEquals(
         result,
         Right(

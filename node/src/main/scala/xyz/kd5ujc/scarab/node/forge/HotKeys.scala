@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import cats.Applicative
+import cats.Functor
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
 import java.nio.file.{NoSuchFileException, Path}
 import java.io.IOException
@@ -71,23 +72,36 @@ enum ReloadRefusal:
     case KeyPastPeriod(k, w) => s"the KES key is at period $k, past the period $w it must sign in"
     case Counter(e)          => e.message
 
-/** The slot the forger's clock has published last: what the reference's blockchain time hands its
-  * forging thread (#1101). A change of the KES state for a slot (the key evolved, poisoned and
-  * erased, or a period's update made for the forger to record) is made only while this slot is at
-  * or past it, read where the change is made, under the key's lock, which a reload takes too: the
-  * per-slot loop makes those changes when it handles a slot the clock has published. The slot can
-  * go back after a spell in which it was unknown, as the reference's can (`checkValidClockChange`),
-  * so it is read at each change and never kept.
+/** An attempt's admission (#1101): when it began, or was made again, the forger's clock fiber had
+  * published `through`, so every slot up to it is admitted, as the reference's blockchain time had
+  * handed it to the forging thread. Only an admitted attempt changes the KES state for its slot
+  * (the key evolved, or poisoned and erased, or a period's update made for the forger to record);
+  * it keeps its admission for its duration, as the per-slot loop goes on with a slot it has begun
+  * should the clock go back meanwhile (after a spell in which the slot was unknown, as the
+  * reference's can, `checkValidClockChange`). Made only from the clock fiber's published slot, and
+  * for the per-slot decision of a slot, admitted at the slot it decides.
   */
-final class PublishedSlot[F[_]](val read: F[Option[BigInt]])
+final class Admitted private (val through: BigInt):
+  /** Whether it admits a change for `slot`. */
+  def admits(slot: BigInt): Boolean = slot <= through
 
-object PublishedSlot:
-  /** A clock that has published `slot`: that of the per-slot decision of `slot`. */
-  def at[F[_]: Applicative](slot: BigInt): PublishedSlot[F] =
-    PublishedSlot(Applicative[F].pure(Some(slot)))
+object Admitted:
+  /** The admission of `slot` if the clock fiber has published it, or a later slot, now. */
+  private[forge] def now[F[_]: Functor](
+      slot: BigInt,
+      shared: Forger.Shared[F]
+  ): F[Option[Admitted]] =
+    shared.clock.get.map(_.filter(_ >= slot).map(new Admitted(_)))
 
-/** A change of the KES state for `slot` not made: the clock has published only `published`. */
-final case class Unpublished(slot: BigInt, published: Option[BigInt])
+  /** Each slot the clock fiber publishes, as the admission of it and of every slot before it. */
+  private[forge] def published[F[_]](shared: Forger.Shared[F]): Stream[F, Admitted] =
+    shared.clock.discrete.collect { case Some(slot) => new Admitted(slot) }
+
+  /** The per-slot decision of `slot` and the tests: admitted at the slot it decides. */
+  private[forge] def at(slot: BigInt): Admitted = new Admitted(slot)
+
+/** A change of the KES state for `slot` not made: the attempt was not admitted at it. */
+final case class NotAdmitted(slot: BigInt)
 
 /** Where the credentials rotation replaces come from and where the evolved KES key is written back.
   * The node reads from it at a reload (SIGHUP, as the Haskell node does); a test supplies its own.
@@ -281,54 +295,53 @@ final class HotKeys[F[_]: Async] private (
 
   /** `updateForgeState` of the reference at `slot`, to its KES period: `HotKey.evolve`
     * (`evolveKey`, consensus 82ecba329 `Protocol/Ledger/HotKey.hs` 385-418, called from
-    * `Shelley/Node/Praos.hs` 83-85). Made only once `clock` has published the slot, read under the
-    * key's lock; before, it is [[Unpublished]] and nothing changes. Before the certificate's window
-    * the key is left as it is (the leader check then finds it not usable yet); inside it, the key
-    * evolves to the period when that is later than its own, and is written back before anything
-    * signs with it; at or past the end of the window it is poisoned and the update fails
+    * `Shelley/Node/Praos.hs` 83-85). Made only for a slot `admitted` admits, checked under the
+    * key's lock; otherwise it is [[NotAdmitted]] and nothing changes. Before the certificate's
+    * window the key is left as it is (the leader check then finds it not usable yet); inside it,
+    * the key evolves to the period when that is later than its own, and is written back before
+    * anything signs with it; at or past the end of the window it is poisoned and the update fails
     * (`KESCouldNotEvolve`), as every later one does (`KESKeyAlreadyPoisoned`) until a reload
     * installs another key. The key's state after the update is the value, none while forging is
     * disabled. An exhausted signing lifetime inside the configured window stops this forging worker
     * with its typed crypto cause; a failed write also stops the worker.
     */
-  def update(slot: BigInt, clock: PublishedSlot[F])(using
+  def update(slot: BigInt, admitted: Admitted)(using
       Raise[F, Fatal]
-  ): F[Option[Either[Unpublished, HotKeys.KesUpdate]]] =
-    usingKey(c => published(slot, clock)(updated(c, periodOf(slot))))
+  ): F[Option[Either[NotAdmitted, HotKeys.KesUpdate]]] =
+    usingKey(c => admittedFor(slot, Some(admitted))(updated(c, periodOf(slot))))
 
   /** [[update]], with the generation of the credentials it was made with ([[HotKeys.Installed]]),
     * read under the same lock: the forger records the period's update only from this.
     */
-  def updateIn(slot: BigInt, clock: PublishedSlot[F])(using
+  def updateIn(slot: BigInt, admitted: Admitted)(using
       Raise[F, Fatal]
-  ): F[Option[(Long, Either[Unpublished, HotKeys.KesUpdate])]] =
+  ): F[Option[(Long, Either[NotAdmitted, HotKeys.KesUpdate])]] =
     usingKey(c =>
       installed.get.flatMap(i =>
-        published(slot, clock)(updated(c, periodOf(slot))).map(i.generation -> _)
+        admittedFor(slot, Some(admitted))(updated(c, periodOf(slot))).map(i.generation -> _)
       )
     )
 
   /** The key of `c` at the KES period of `slot`, to sign in it (the lock is held): as it is where
-    * it is there already, which changes nothing and needs no clock; evolved to it and written back
-    * where it must move forward, only once `clock` has published the slot, else [[Unpublished]] and
+    * it is there already, which changes nothing and needs no admission; evolved to it and written
+    * back where it must move forward, only for a slot `admitted` admits, else [[NotAdmitted]] and
     * nothing changes. A key past the period cannot go back, and stays as it is.
     */
-  private[forge] def evolvedFor(c: PoolCredentials, slot: BigInt, clock: PublishedSlot[F])(using
+  private[forge] def evolvedFor(c: PoolCredentials, slot: BigInt, admitted: Option[Admitted])(using
       Raise[F, Fatal]
-  ): F[Either[Unpublished, Either[ForgeError, Unit]]] =
+  ): F[Either[NotAdmitted, Either[ForgeError, Unit]]] =
     val kesPeriod = periodOf(slot)
     F.delay(kesPeriod - c.opCert.kesPeriod > c.kes.period).flatMap { forward =>
-      if forward then published(slot, clock)(evolved(c, kesPeriod))
+      if forward then admittedFor(slot, admitted)(evolved(c, kesPeriod))
       else evolved(c, kesPeriod).map(Right(_))
     }
 
-  /** `change`, made only while `clock` has published `slot` (the lock is held). */
-  private def published[A](slot: BigInt, clock: PublishedSlot[F])(
+  /** `change`, made only for a slot `admitted` admits (the lock is held). */
+  private def admittedFor[A](slot: BigInt, admitted: Option[Admitted])(
       change: => F[A]
-  ): F[Either[Unpublished, A]] =
-    clock.read.flatMap(at =>
-      if at.exists(_ >= slot) then change.map(Right(_)) else F.pure(Left(Unpublished(slot, at)))
-    )
+  ): F[Either[NotAdmitted, A]] =
+    if admitted.exists(_.admits(slot)) then change.map(Right(_))
+    else F.pure(Left(NotAdmitted(slot)))
 
   private def periodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
 

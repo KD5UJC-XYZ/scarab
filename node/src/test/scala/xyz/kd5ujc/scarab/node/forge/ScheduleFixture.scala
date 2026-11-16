@@ -94,7 +94,8 @@ trait ScheduleFixture extends ForgeFixture:
       h: Harness,
       reading: Ref[IO, HotKeySource.Reading[IO]],
       pool: Pool,
-      way: Way
+      way: Way,
+      rewind: FiniteDuration => IO[Unit]
   )
 
   /** A key source whose reading the test sets; the evolved key is not written anywhere. */
@@ -201,7 +202,9 @@ trait ScheduleFixture extends ForgeFixture:
     * [[inMargin]], a slot's later ones each [[MarginStep]] after the one before), and the ones made
     * when the scheduled forger reaches a point of its own (`at`), which the per-slot decision takes
     * before the slot. `behind`: at the margin of its slot, before that margin's changes, the wall
-    * clock moves back by its duration, within the rewind allowance, and stays behind.
+    * clock moves back by its duration, within the rewind allowance, and stays behind. `within`: the
+    * changes made on both paths when an attempt reaches a point (the per-slot decision's attempt
+    * passes the same points). `known`: the slots the scheduled run's clock can know (its horizon).
     */
   final case class Scenario(
       seed: Int,
@@ -217,7 +220,9 @@ trait ScheduleFixture extends ForgeFixture:
       setup: Change = _ => IO.unit,
       selection: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
       margin: Vector[(BigInt, Change)] = Vector.empty,
-      behind: Option[(BigInt, FiniteDuration)] = None
+      behind: Option[(BigInt, FiniteDuration)] = None,
+      within: Vector[(Forger.Point, Change)] = Vector.empty,
+      known: BigInt => Boolean = _ => true
   ):
     /** The longest the scheduled run may take on the test clock, past which it fails. */
     def bound: FiniteDuration = ((until - from).toLong + 120).seconds
@@ -303,7 +308,7 @@ trait ScheduleFixture extends ForgeFixture:
     withHandle {
       for
         hooks <- Ref.of[IO, Map[Forger.Point, Change]](
-          sc.at.map((point, _, change) => point -> change).toMap
+          (sc.at.map((point, _, change) => point -> change) ++ sc.within).toMap
         )
         reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
         side <- Deferred[IO, Side]
@@ -317,6 +322,7 @@ trait ScheduleFixture extends ForgeFixture:
           live = true,
           offsetMillis = offset,
           unbounded = true,
+          known = Some(sc.known),
           source = Some(keysFrom(reading)),
           clock = Some(
             (back.get, IO.realTimeInstant).mapN((b, t) =>
@@ -332,7 +338,7 @@ trait ScheduleFixture extends ForgeFixture:
               .flatMap(_.traverse_(change => side.get.flatMap(change)))
           )
         )
-        here = Side(h, reading, p, Way.Scheduled)
+        here = Side(h, reading, p, Way.Scheduled, d => back.update(_ + d.toMillis))
         _ <- side.complete(here)
         _ <- sc.setup(here)
         timed <- margins.traverse((change, due) => (due.get *> change(here)).start)
@@ -371,15 +377,23 @@ trait ScheduleFixture extends ForgeFixture:
     for
       at <- Ref.of[IO, Instant](geometry.slotStart(sc.from))
       reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
+      hooks <- Ref.of[IO, Map[Forger.Point, Change]](sc.within.toMap)
+      here <- Deferred[IO, Side]
       h <- harness(
         p,
         sc.ledger(p),
         source = Some(keysFrom(reading)),
         clock = Some(at.get),
         praos = sc.praos,
-        selectionLedger = sc.selection
+        selectionLedger = sc.selection,
+        pause = Some(point =>
+          hooks
+            .modify(m => (m - point, m.get(point)))
+            .flatMap(_.traverse_(change => here.get.flatMap(change)))
+        )
       )
-      side = Side(h, reading, p, Way.PerSlot)
+      side = Side(h, reading, p, Way.PerSlot, d => at.update(_.minusNanos(d.toNanos)))
+      _ <- here.complete(side)
       _ <- sc.setup(side)
       _ <- (sc.from to sc.until).toList.traverse_ { s =>
         at.set(geometry.slotStart(s)) *> sc.before.filter(_._1 == s).traverse_(_._2(side)) *>
