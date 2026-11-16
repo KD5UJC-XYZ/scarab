@@ -35,6 +35,9 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+      - name: Classify documentation-only changes
+        id: docs
+        run: python3 scripts/ci_changes.py
       # Everything the fuzz project reads or runs: its own sources; the decoders it calls (codec, protocol with the
       # mini-protocol and mux codecs, ledger with the block, header, transaction, witness and script decoders, plutus
       # for Plutus scripts, uplc for Plutus data, crypto for hashing, storage for persisted formats, consensus for the
@@ -47,11 +50,16 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
+          if [ "${{ steps.docs.outputs.run }}" = false ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Documentation-only: decoder fuzz not required"
+            exit 0
+          fi
           paths=(
             fuzz codec crypto protocol ledger uplc plutus storage consensus node models models-gen fixtures
             network/src/test/resources/upstream/ouroboros-network-protocol-codecs
             build.sbt project scripts/sbtw scripts/prepare_scalus.py patches/scalus
-            .github/workflows/fuzz-gate.yml
+            scripts/ci_changes.py .github/workflows/fuzz-gate.yml
           )
           if [ "$EVENT" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"

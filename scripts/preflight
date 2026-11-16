@@ -41,7 +41,8 @@ step "secret scan (gitleaks, full history)" \
     git /repo --log-opts="--full-history HEAD" --config /repo/.gitleaks.toml --no-banner --redact --exit-code 1
 step "secret scan controls" python3 scripts/check_secret_scan.py
 step "secret scan history controls" python3 scripts/check_secret_scan_history.py
-step "workflow lint" "$docker" run --rm --network none -v "$root":/repo -w /repo "$actionlint" -color
+step "workflow lint" "$docker" run --rm --network none --user "$(id -u):$(id -g)" \
+  -v "$common":"$common":ro -v "$root":/repo:ro -w /repo "$actionlint" -color
 # The Python guards are registered once, in scripts/guards.json, which CI's scripts job runs too; each is a step.
 # The list is read on a descriptor of its own, so a guard that reads its standard input cannot consume it.
 if guards=$(python3 scripts/guards.py --list); then

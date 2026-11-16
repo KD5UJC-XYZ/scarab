@@ -150,9 +150,20 @@ class SourceCase(unittest.TestCase):
 
         self.assertEqual(len(status.fetch_for_check(None, run)), 1)
         self.assertEqual(calls, [status.CHECK_COMMAND])
-        self.assertEqual(calls[0][:4], ["gh", "api", "--paginate", "--slurp"])
+        self.assertEqual(calls[0][:3], ["gh", "api", "--paginate"])
+        self.assertNotIn("--slurp", calls[0])
         self.assertNotIn("--method", calls[0])
         self.assertIn("state=all", calls[0][-1])
+
+    def test_consecutive_pages_and_empty_pages(self):
+        text = json.dumps([issue(1)]) + "\n[]\n" + json.dumps([issue(2)])
+        self.assertEqual([i["number"] for i in status.read_issue_pages(text)], [1, 2])
+        self.assertEqual(status.read_issue_pages("[]"), [])
+
+    def test_bad_pages_are_failures_not_clean_triage(self):
+        for text in ("", "[", "[]garbage", "{}", "[1]", '["x"]'):
+            with self.subTest(text=text), self.assertRaises(status.GhFailure):
+                status.read_issue_pages(text)
 
     def test_exit_codes(self):
         def run_with(raw, code=0):

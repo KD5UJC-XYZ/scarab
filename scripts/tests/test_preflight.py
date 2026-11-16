@@ -68,6 +68,40 @@ class IncompleteTest(unittest.TestCase):
             self.assertEqual(stub.calls(), ["info"], "only the capability probe may reach Docker")
 
 
+class WorkflowLintTest(unittest.TestCase):
+    def test_private_linked_worktree_uses_owner_and_shared_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp) / "repo"
+            root.mkdir(mode=0o700)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                            "commit", "--allow-empty", "-qm", "initial"], check=True)
+            work = pathlib.Path(tmp) / "work"
+            subprocess.run(["git", "-C", str(root), "worktree", "add", "-qb", "test", str(work)], check=True)
+            (work / "scripts").mkdir()
+            (work / "scripts/preflight").write_text(PREFLIGHT.read_text())
+            binaries = pathlib.Path(tmp) / "bin"
+            binaries.mkdir()
+            log = pathlib.Path(tmp) / "calls.jsonl"
+            docker = binaries / "docker"
+            docker.write_text(f"#!{sys.executable}\nimport json, sys\nwith open({str(log)!r}, 'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n")
+            docker.chmod(0o755)
+            for name, code in (("python3", 0), ("gh", 1)):
+                path = binaries / name
+                path.write_text(f"#!/bin/sh\nexit {code}\n")
+                path.chmod(0o755)
+            env = dict(os.environ, PATH=str(binaries)+os.pathsep+os.environ["PATH"],
+                       SCARAB_PREFLIGHT_DOCKER=str(docker))
+            result = subprocess.run(["bash", str(work / "scripts/preflight")], env=env,
+                                    text=True, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            lint = next(args for args in calls if any("rhysd/actionlint" in arg for arg in args))
+            self.assertEqual(lint[lint.index("--user")+1], f"{os.getuid()}:{os.getgid()}")
+            self.assertIn(f"{root / '.git'}:{root / '.git'}:ro", lint)
+            self.assertIn(f"{work}:/repo:ro", lint)
+
+
 class DoctorTest(unittest.TestCase):
     def test_doctor_without_docker_exits_zero_and_writes_nothing(self):
         before = tree_state()
