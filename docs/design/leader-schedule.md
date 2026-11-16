@@ -152,8 +152,11 @@ cardano-node's `Run.hs` does not override. The forging code's own comment says t
 contain blocks from the future; what the chain database does with one added locally was not read (unverified).
 
 The source therefore does not require a block to be released at its onset: a peer holds a header up to 2 s early and
-refuses it beyond that. Releasing a block at its slot's onset, not before, is this design's choice (§5.3): no peer
-ever holds a Scarab header from the future, and the margin to the skew stays whole for clock error.
+refuses it beyond that. Releasing a block at its slot's onset, not before, is this design's choice (§5.3): Scarab
+never publishes a header early on purpose, and the skew allowance stays whole for the disagreement of clocks. It
+cannot stop a peer whose clock runs behind Scarab's from receiving the header before that peer's own onset and holding
+it; that is the case the skew allows for, as the source's own example of two nodes half a second apart describes
+(C17).
 
 ### 2.6 The KES key
 
@@ -219,7 +222,7 @@ until the forging area moves with #1002.
 | C14 | The nonce is determined once a block at or after the freeze slot is on the chain, and settled once a block at or after it is immutable: k + 1 blocks at or after it. | derived from C11, C13 and the k-block rollback bound | the same | derived; the rollback bound not re-read |
 | C15 | NEWEPOCH sets `nesPd` to `ssStakeMarkPoolDistr` before SNAP; SNAP sets that field to the new mark's pool distribution; TICKF into the next epoch takes the same field. | f649f975 `Conway/Rules/NewEpoch.hs` 154-188, `Conway/Rules/Tickf.hs` 42-66; 4c81e909 `Shelley/Rules/Snap.hs` 94-102 | 29a7d656 the same Conway lines; `Snap.hs` 94-103 | yes |
 | C16 | The ledger view is forecast only before the stability window after the state's slot's successor. | 82ecba32 `Shelley/Ledger/SupportsProtocol.hs` 100-127 | 808e4005 the same lines | yes |
-| C17 | A header up to the skew early is held until its onset; earlier, the client disconnects; the skew is 2 s; cardano-node sets no other. | 82ecba32 `MiniProtocol/ChainSync/Client/InFutureCheck.hs` 134-176, 205-207; `MiniProtocol/ChainSync/Client.hs` 1751-1775; `Node.hs` 589, 1107-1108; 11.1.3 `Run.hs` | 808e4005 the same `InFutureCheck.hs` lines; `Client.hs` 1757-1781; `Node.hs` 592, 1140-1141; 11.2.1 `Run.hs` | yes; "no override" by search of `Run.hs`. The chain database's handling of a future block: unverified |
+| C17 | A header up to the skew early is held until its onset; earlier, the client disconnects; the skew, 2 s, allows for clocks that disagree; cardano-node sets no other. | 82ecba32 `MiniProtocol/ChainSync/Client/InFutureCheck.hs` 134-176, 182-207; `MiniProtocol/ChainSync/Client.hs` 1751-1775; `Node.hs` 589, 1107-1108; 11.1.3 `Run.hs` | 808e4005 the same `InFutureCheck.hs` lines; `Client.hs` 1757-1781; `Node.hs` 592, 1140-1141; 11.2.1 `Run.hs` | yes; "no override" by search of `Run.hs`. The chain database's handling of a future block: unverified |
 | C18 | The blockchain time is its own thread; `checkValidClockChange`; rewind limit 20 s, backoff 60 s. | 82ecba32 `BlockchainTime/WallClock/HardFork.hs` 68-178; `Node.hs` 547-561 | 808e4005 the same `HardFork.hs` lines; `Node.hs` 550-564 | yes |
 | C19 | `setBlockForging` hands a list of credentials to `blockForgingController`, which cancels the forging threads and forks one per entry: with none, no forging thread runs and no slot is traced. | 82ecba32 `NodeKernel.hs` 416, 428-439 | 808e4005 `NodeKernel.hs` 399, 411-422 | yes |
 | C20 | With a key file (`KESKeyFilePath`), the node reads the KES signing key from it, checked against the certificate (`readLeaderCredentialsSingleton`, `opCertKesKeyCheck`); the reader writes nothing back. | 11.1.3 `Protocol/Shelley.hs` 191-195, 220-231 | 11.2.1 `Protocol/Shelley.hs` 187-191, 216-227 | yes for the reader; that nothing else in the node rewrites the file is from [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md), not re-read |
