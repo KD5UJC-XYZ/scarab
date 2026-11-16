@@ -83,9 +83,13 @@ and one transaction larger than the whole capacity is refused at once as "mempoo
 ever, [IN-82](../implementer-notes.md)).
 Local ChainSync (mini-protocol 5, what db-sync, Ogmios and `cardano-cli`'s followers use) serves each block as
 `#6.24(bytes)` of the block as stored (`[era, block]`), from the immutable store (with `--db`) and the volatile
-chain, with the same intersection, roll-forward, roll-backward and await behaviour as on node-to-node.
-Without `--db` only the last `k` blocks can be served, so a client that starts from Origin once the chain is
-longer than that is told there is no intersection.
+chain, with the same intersection, roll-forward, roll-backward and await behaviour as on node-to-node. A client
+that asks for the next block before any intersection is first told to roll back to Origin, with the tip, as the
+reference's follower does; `cardano-cli query kes-period-info` reads the tip that way.
+Without `--db` only the last `k` blocks can be served. A client that starts from Origin once the chain is
+longer than that is told there is no intersection. A client whose next block has left the last `k` (one that asked
+for the next block from Origin, such as `cardano-cli debug log-epoch-state`, or one more than `k` blocks behind) is
+disconnected, and the node logs `the block after … is not kept`.
 
 ### The socket path
 
