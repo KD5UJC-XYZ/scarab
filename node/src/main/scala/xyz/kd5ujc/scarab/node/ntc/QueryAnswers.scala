@@ -191,10 +191,10 @@ final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](co
   *
   * The Conway era is answered, and in every Shelley-based era the ledger state, the chain-dependent
   * state, the UTxO, the reward provenance, the queries that read nothing of the era's own, those of
-  * the governance state and, up to Conway, the distributions, the wallet's queries and the ledger
-  * peers: their `IfCurrent` queries get `[result]`, queries naming another era get the era-mismatch
-  * reply, as the reference sends. The ledger state is read through [[ChainRead]]: from the mirror's
-  * records, whichever form the state is in.
+  * the governance state and, up to Conway, those of the certificate state, the distributions, the
+  * wallet's queries and the ledger peers: their `IfCurrent` queries get `[result]`, queries naming
+  * another era get the era-mismatch reply, as the reference sends. The ledger state is read through
+  * [[ChainRead]]: from the mirror's records, whichever form the state is in.
   */
 object QueryAnswers:
   @unused private val ConwayIndex = Era.Conway.index
@@ -305,10 +305,12 @@ object QueryAnswers:
     * queries that read nothing of the era's own, the ledger tip, the epoch, the proposed parameter
     * updates, the genesis configuration, the chain account state and the maximum major protocol
     * version, those of the governance state, the current parameters and the governance state, and
-    * the distributions, the wallet's queries and the ledger peers: the pool distributions, the
-    * stake distributions, the reward information of the pools, the non-myopic member rewards and
-    * the ledger peer snapshots. The reference answers each of them in every Shelley-based era, with
-    * the same `answerPureBlockQuery` (`Ouroboros/Consensus/Shelley/Ledger/Query.hs:406-535`,
+    * those of the certificate state, the delegations and reward accounts, the pools, their
+    * parameters, state and stake snapshots and the delegation deposits, and the distributions, the
+    * wallet's queries and the ledger peers: the pool distributions, the stake distributions, the
+    * reward information of the pools, the non-myopic member rewards and the ledger peer snapshots.
+    * The reference answers each of them in every Shelley-based era, with the same
+    * `answerPureBlockQuery` (`Ouroboros/Consensus/Shelley/Ledger/Query.hs:406-535`,
     * ouroboros-consensus 82ecba32), at every node-to-client version.
     */
   private def inEveryEra(q: LedgerQuery): Boolean = LedgerQuery.cborLayers(q)._2 match
@@ -319,6 +321,9 @@ object QueryAnswers:
         LedgerQuery.GetProposedPParamsUpdates | LedgerQuery.GetGenesisConfig |
         LedgerQuery.GetAccountState | LedgerQuery.GetMaxMajorProtocolVersion |
         LedgerQuery.GetCurrentPParams | LedgerQuery.GetGovState |
+        LedgerQuery.GetFilteredDelegationsAndRewardAccounts(_) | LedgerQuery.GetStakePools |
+        LedgerQuery.GetStakePoolParams(_) | LedgerQuery.GetPoolState(_) |
+        LedgerQuery.GetStakeSnapshots(_) | LedgerQuery.GetStakeDelegDeposits(_) |
         LedgerQuery.GetNonMyopicMemberRewards(_) | LedgerQuery.GetRewardInfoPools |
         LedgerQuery.GetStakeDistribution | LedgerQuery.GetPoolDistr(_) |
         LedgerQuery.GetPoolDistr2(_) | LedgerQuery.GetStakeDistribution2 |
@@ -361,7 +366,6 @@ object QueryAnswers:
     nodeCredential,
     nodeDRep,
     nodeDRepState,
-    poolParams,
     ratifyState
   }
   import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
@@ -371,7 +375,6 @@ object QueryAnswers:
   private val coin = Wire.word(64)
   private val poolId = Wire.hash(28)
   private val protocolParams = Params.conwayCodec
-  private val pools = Wire.sortedMapOf(poolId, poolParams)
 
   /** The bytes of an answer, or why there are none: its value is outside what the Haskell type
     * holds.
@@ -447,25 +450,6 @@ object QueryAnswers:
 
   private def restrict[K, V](m: Map[K, V], keys: Set[K]): Map[K, V] =
     if keys.isEmpty then m else m.filter { case (k, _) => keys(k) }
-
-  private def restrictAlways[K, V](m: Map[K, V], keys: Set[K]): Map[K, V] =
-    m.filter { case (k, _) => keys(k) }
-
-  /** The parameters of a registered pool as the reference reads them back (`mkQueryPoolResult`,
-    * `Api/State/Query.hs:485-525`): the reward account on the node's network.
-    */
-  private def registered(network: Int, id: Bytes, p: mirror.StakePoolState): PoolParams =
-    PoolParams(
-      id,
-      p.vrf.bytes,
-      p.pledge.value,
-      p.cost.value,
-      p.margin,
-      RewardAccount(network, EraRead.credential(p.accountId)),
-      p.owners.iterator.map(_.bytes).toSet,
-      p.relays,
-      p.metadata
-    )
 
   private def ledgerAnswer[S](
       env: QueryEnv,
@@ -565,16 +549,6 @@ object QueryAnswers:
         utxoAnswer(utxo.filter { case (_, o) => addresses(o.address.raw) })
       case GetUTxOByTxIn(inputs) =>
         utxoAnswer(utxo.filter { case (i, _) => inputs(i) })
-      case GetFilteredDelegationsAndRewardAccounts(credentials) =>
-        conway { f =>
-          delegationsAndRewards.answerRead(f.accounts.map { all =>
-            val accounts = restrictAlways(all, credentials)
-            (
-              accounts.flatMap((c, a) => a.pool.map(pool => c -> pool.bytes)),
-              accounts.map { case (c, a) => c -> a.balance.toBigInt }
-            )
-          })
-        }
       // `getRewardInfoPools` and `getNonMyopicMemberRewards` of the current stake (Query.hs:412-414,
       // 444-445, ouroboros-consensus 82ecba32; `Shelley/API/Wallet.hs:217-259, 327-366`,
       // cardano-ledger f649f975), written alike in every era: the first's `a0` and margins are
@@ -583,49 +557,18 @@ object QueryAnswers:
       case GetRewardInfoPools => throughConway((f, _) => RewardQueries.poolInfo(env, f))
       case GetNonMyopicMemberRewards(credentials) =>
         throughConway((f, _) => RewardQueries.queryMembers(env, f, credentials))
-      case GetStakePools =>
-        conway(f => Wire.definiteSetOf(poolId).answerRead(f.pools.map(_.keySet)))
-      // a registered pool's reward account on the node's network, its future parameters' as they
-      // are (`queryPoolParameters`, `mkQueryPoolStateResult`, `Api/State/Query.hs:485-525`)
+      // The queries of the certificate state, answered alike in every Shelley-based era
+      // (Query.hs:430-431, 440-453, ouroboros-consensus 82ecba32; `CertStateAnswers`).
+      case GetFilteredDelegationsAndRewardAccounts(credentials) =>
+        shelleyBased(f => CertStateAnswers.delegationsAndRewards(f.l, credentials))
+      case GetStakePools => shelleyBased(f => CertStateAnswers.stakePools(f.l))
       case GetStakePoolParams(ids) =>
-        conway { f =>
-          pools.answerRead(
-            f.pools.map(all =>
-              restrictAlways(all, ids).map { case (id, p) =>
-                id -> registered(env.mirror.network, id, p)
-              }
-            )
-          )
-        }
+        shelleyBased(f => CertStateAnswers.stakePoolParams(f.l, env.mirror.network, ids))
       case GetPoolState(ids) =>
-        conway { f =>
-          def pick[V](m: Map[Bytes, V]): Map[Bytes, V] = ids.fold(m)(restrictAlways(m, _))
-          poolState.answerRead((f.pools, f.cert).mapN { (all, c) =>
-            val state = c.pState
-            (
-              pick(all).map { case (id, p) => id -> registered(env.mirror.network, id, p) },
-              pick(state.future.iterator.map((id, p) => id.bytes -> p).toMap),
-              pick(state.retiring.iterator.map((id, e) => id.bytes -> e.toBigInt).toMap),
-              pick(all).map { case (id, p) => id -> p.deposit.toBigInt }
-            )
-          })
-        }
-      case GetStakeSnapshots(ids) =>
-        conway(f =>
-          stakeSnapshots.answerRead(
-            f.snapshots.map(stakeSnapshotsOf(f.l.params, _, ids))
-          )
-        )
+        shelleyBased(f => CertStateAnswers.poolState(f.l, env.mirror.network, ids))
+      case GetStakeSnapshots(ids) => shelleyBased(f => CertStateAnswers.stakeSnapshots(f.l, ids))
       case GetStakeDelegDeposits(credentials) =>
-        conway { f =>
-          Wire
-            .sortedMapOf(nodeCredential, coin)
-            .answerRead(
-              f.accounts.map(all =>
-                restrict(all, credentials).map { case (c, a) => c -> a.deposit.toBigInt }
-              )
-            )
-        }
+        shelleyBased(f => CertStateAnswers.stakeDelegDeposits(f.l, credentials))
       case GetConstitution => conway(f => constitution.answerRead(f.gov.map(_.constitution)))
       // The era's governance state, at every version (Query.hs:456-457, 1032, ouroboros-consensus
       // 82ecba32; `GovStateAnswers`).
@@ -733,21 +676,6 @@ object QueryAnswers:
         }
       case _ => Left(Unanswered.Unsupported)
 
-  private val delegationsAndRewards: Codec[(Map[Credential, Bytes], Map[Credential, BigInt])] =
-    Record.of[(Map[Credential, Bytes], Map[Credential, BigInt])](
-      (Wire.sortedMapOf(nodeCredential, poolId), Wire.sortedMapOf(nodeCredential, coin))
-    )
-
-  /** `QueryPoolState`: the pools' parameters, their future parameters, their retirements and their
-    * deposits.
-    */
-  private val poolState: Codec[
-    (Map[Bytes, PoolParams], Map[Bytes, PoolParams], Map[Bytes, BigInt], Map[Bytes, BigInt])
-  ] =
-    Record.of[
-      (Map[Bytes, PoolParams], Map[Bytes, PoolParams], Map[Bytes, BigInt], Map[Bytes, BigInt])
-    ]((pools, pools, Wire.sortedMapOf(poolId, coin), Wire.sortedMapOf(poolId, coin)))
-
   /** The chain-dependent state of the protocol the chain runs, as the reference serialises its
     * `ChainDepState` (`DebugChainDepState`): TPraos's from Shelley to Alonzo, Praos's from Babbage.
     */
@@ -805,62 +733,6 @@ object QueryAnswers:
     (f.currentStake, f.scalars).tupled.leftMap(Unanswered.Refused(_)).map { (current, scalars) =>
       byTotalStakeFraction(current, env.maxSupply - scalars.chainAccount.reserves.value)
     }
-
-  /** `GetStakeSnapshots`: each pool's stake in the mark, set and go snapshots, and their totals. */
-  private type StakeSnapshotsAnswer =
-    (Map[Bytes, (BigInt, BigInt, BigInt)], BigInt, BigInt, BigInt)
-
-  private val stakeSnapshots: Codec[StakeSnapshotsAnswer] =
-    Record.of[StakeSnapshotsAnswer](
-      (
-        Wire.sortedMapOf(poolId, Record.of[(BigInt, BigInt, BigInt)]((coin, coin, coin))),
-        coin,
-        coin,
-        coin
-      )
-    )
-
-  private def stakeSnapshotsOf(
-      params: ProtocolParams,
-      snapshots: mirror.SnapShots,
-      ids: Option[Set[Bytes]]
-  ): StakeSnapshotsAnswer =
-    val snaps = Vector(snapshots.mark, snapshots.set, snapshots.go)
-    // each pool's stake in each snapshot, by pool id
-    val stakes: Vector[Map[Bytes, BigInt]] =
-      snaps.map(_.pools.iterator.map((id, s) => id.bytes -> s.stake.toBigInt).toMap)
-    def stakeOf(i: Int, p: Bytes): BigInt = stakes(i).getOrElse(p, BigInt(0))
-    // Without a list of pools: before protocol version 11 the pools that have delegators in any
-    // snapshot, from 11 those with stake.
-    val chosen: Set[Bytes] = ids.getOrElse {
-      if params.protocolMajor < 11 then
-        snaps
-          .flatMap { sn =>
-            val known = sn.pools.keySet
-            sn.activeStake.entries.valuesIterator.map(_.delegation).filter(known.contains)
-          }
-          .map(_.bytes)
-          .toSet
-      else
-        snaps
-          .flatMap(_.pools.iterator.collect { case (p, s) if s.stake.toBigInt > 0 => p.bytes })
-          .toSet
-    }
-    val rows = chosen.toVector
-      .map(p => p -> snaps.indices.map(stakeOf(_, p)))
-      .filter { case (_, st) => params.protocolMajor < 11 || st.exists(_ > 0) }
-      .map { case (p, st) => p -> (st(0), st(1), st(2)) }
-    // the totals are `NonZero`: an empty snapshot counts as 1
-    (
-      rows.toMap,
-      activeStake(snaps(0)).max(1),
-      activeStake(snaps(1)).max(1),
-      activeStake(snaps(2)).max(1)
-    )
-
-  /** The stake of the pools of a snapshot, summed. */
-  private def activeStake(s: mirror.SnapShot): BigInt =
-    s.pools.valuesIterator.foldLeft(BigInt(0))(_ + _.stake.toBigInt)
 
   // ---- the committee members' state
 

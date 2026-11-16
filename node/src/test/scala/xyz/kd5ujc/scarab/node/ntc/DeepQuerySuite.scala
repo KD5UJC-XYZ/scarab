@@ -177,10 +177,17 @@ class DeepQuerySuite extends FailsOnUncaught:
 
   test("unsupported and malformed deep queries return typed failures on a small stack") {
     onSmallStack {
-      // GetStakePools of a state before Conway, which the node decodes but does not answer: every
-      // query of Conway is answered at every version (#924)
+      // Every block query the node decodes before Conway is answered there (#924), and those of
+      // Conway's governance are refused at decode there (`requireCG`), at any depth: so GetConstitution
+      // read as Conway's and asked of a state before Conway, which the answers refuse too
       val early = QueryView(Point.Origin, None, shelleyState)
-      val query = decoded(nested(16, era = Era.Shelley))
+      assert(NtcQuery.decode(nested(23, era = Era.Shelley)).left.exists {
+        case NtcQuery.Error.ConwayOnly(23) => true
+        case _                             => false
+      })
+      val query = decoded(nested(23, era = Era.Conway)) match
+        case NtcQuery.IfCurrent(_, inner) => NtcQuery.IfCurrent(QueryEra.of(Era.Shelley), inner)
+        case other                        => fail(s"not a block query: $other")
       assertEquals(QueryAnswers.utxoNeeds(early, query), QueryAnswers.UtxoNeeds.Nothing)
       assertEquals(
         QueryAnswers.answerOrWhy(env, early, Map.empty, query),
@@ -202,7 +209,7 @@ class DeepQuerySuite extends FailsOnUncaught:
         (0 until depth).foldLeft(leaf)((q, _) => LedgerQuery.GetCBOR(q))
       )
       assertEquals(
-        QueryAnswers.answerOrWhy(env, early, Map.empty, wrapped(LedgerQuery.GetStakePools)),
+        QueryAnswers.answerOrWhy(env, early, Map.empty, wrapped(LedgerQuery.GetConstitution)),
         Left(Unanswered.Unsupported)
       )
       val answer = QueryAnswers
@@ -242,7 +249,8 @@ class DeepQuerySuite extends FailsOnUncaught:
   test("a session answers and returns a refusal diagnostic at 20000 layers on a small stack") {
     onSmallStack {
       val program = for
-        // a state before Conway, where GetStakePools is decoded but not answered
+        // a state before Conway, where GetConstitution is refused at decode (`requireCG`): every block
+        // query decoded there is answered (#924)
         chain <- Ref.of[IO, VolatileChain[MirrorState]](
           VolatileChain(5, Anchor(None, shelleyState), Vector.empty)
         )
@@ -258,7 +266,7 @@ class DeepQuerySuite extends FailsOnUncaught:
             session =>
               for
                 answered <- session.answer(nested(7, era = Era.Shelley))
-                refused <- session.answer(nested(16, era = Era.Shelley))
+                refused <- session.answer(nested(23, era = Era.Shelley))
               yield answered -> refused
           )
         }
@@ -269,8 +277,9 @@ class DeepQuerySuite extends FailsOnUncaught:
           refused,
           Right(
             Left(
-              Refusal.Unsupported(
-                s"IfCurrent(${Era.Shelley.index},GetCBOR[$depth](GetStakePools))"
+              Refusal.Undecodable(
+                NtcQuery.Error.ConwayOnly(23),
+                nested(23, era = Era.Shelley).hex.take(80)
               )
             )
           )
