@@ -1,6 +1,6 @@
 # 0003. Plutus evaluation through Scalus, behind our own interface
 
-- **Status**: Accepted
+- **Status**: Superseded by [0027](0027-own-uplc-evaluator-as-a-correctness-backend.md) ([amended 2026-11-15](#amendment-2026-11-15-superseded-by-the-own-evaluator))
 - **Date**: 2026-10-11
 - **Issue**: [#43](https://github.com/KD5UJC-XYZ/scarab/issues/43) (whether to own the CEK machine later)
 
@@ -12,15 +12,15 @@ implementation.
 
 ## Decision
 
-Evaluate scripts through Scalus behind our own `ScriptEvaluator` algebra. The script context, the
-phase-1/phase-2 rules and the cost-model handling are ours. Deviations found against the conformance
+Evaluate scripts ~~through Scalus~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-by-the-own-evaluator)) behind our own `ScriptEvaluator` algebra. The script context, the
+phase-1/phase-2 rules and the cost-model handling are ours. ~~Deviations found against the conformance
 suite or real chains are corrected in our wrapper (for example `DataSerialiser`, `Secp256k1.verifyEcdsa`)
-and reported upstream with reproductions.
+and reported upstream with reproductions.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-by-the-own-evaluator))
 
 ## Consequences
 
 - Plutus conformance is measured continuously ~~(987 of 1,009 cases at the time of writing)~~ ([amended 2026-10-25](#amendment-2026-10-25-where-the-current-state-is-recorded)).
-- Scalus versions move only with evidence (the conformance suite and the Preview and preprod replays).
+- ~~Scalus versions move only with evidence (the conformance suite and the Preview and preprod replays).~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-by-the-own-evaluator))
 - ~~Owning the evaluator remains an open spike (#43).~~ ([amended 2026-11-12](#amendment-2026-11-12-an-own-evaluator-as-an-opt-in-backend))
 
 ## Amendment (2026-10-23): the trusted base and the remaining corrections
@@ -48,14 +48,27 @@ and reported upstream with reproductions.
 This record keeps the decision; it is not the inventory. The conformance count in the consequences
 is historical; current results and their evidence are in [plutus-conformance.md](../plutus-conformance.md).
 The native cryptographic backend is [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md).
-The builtin corrections the wrapper applies, with their reproducer suites, are documented on
-`ScalusEvaluator.CorrectedVm` in
-[ScalusEvaluator.scala](../../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala);
-the list in the amendment above is not maintained as corrections change.
+~~The builtin corrections the wrapper applies, with their reproducer suites, are documented on
+`ScalusEvaluator.CorrectedVm` in ScalusEvaluator.scala;
+the list in the amendment above is not maintained as corrections change.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-by-the-own-evaluator))
 
 ## Amendment (2026-11-12): an own evaluator as an opt-in backend
 
 The spike of #43 is decided: Scarab builds its own evaluator in the module `uplc`, with no Scalus in it, as
-an opt-in correctness backend selected by `--plutus-vm scalus|scarab`. This decision stands: Scalus remains
-the default and the fast path, behind `ScriptEvaluator`. The reasons, scope and consequences are in
+an opt-in correctness backend selected by `--plutus-vm scalus|scarab`. ~~This decision stands: Scalus remains
+the default and the fast path, behind `ScriptEvaluator`.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-by-the-own-evaluator)) The reasons, scope and consequences are in
 [ADR 0027](0027-own-uplc-evaluator-as-a-correctness-backend.md).
+
+## Amendment (2026-11-15): superseded by the own evaluator
+
+The owner decided on 2026-11-15 that Scarab keeps one Plutus evaluator, its own, and removes the Scalus backend
+([ADR 0027, amendment of 2026-11-15](0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator),
+[decisions register](../decisions.md#reference-fidelity)).
+
+- **Kept:** the `ScriptEvaluator` algebra and what this record called ours: the script context, the phase-1 and
+  phase-2 rules and the cost-model handling. `ScarabEvaluator` implements the algebra.
+- **Removed:** `ScalusEvaluator` with its corrections (`CorrectedVm`), `FlatScan`, `ReferenceCosting`,
+  `ReferenceBudget`, the Scalus dependency, its patched build and its native library
+  ([ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped)).
+- **Historical:** the amendments of 2026-10-23 to 2026-11-12 describe the Scalus backend as it was until
+  2026-11-15.

@@ -1,6 +1,6 @@
 # 0020. Plutus native crypto through scalus-crypto-jni
 
-- **Status**: Accepted; partially supersedes [0012](0012-portable-blst.md) (its Plutus part)
+- **Status**: Superseded by [0027](0027-own-uplc-evaluator-as-a-correctness-backend.md) ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped)); it had partially superseded [0012](0012-portable-blst.md) (its Plutus part)
 - **Date**: 2026-10-23
 - **Issue**: roadmap B11, I1; follow-ups [#406](https://github.com/KD5UJC-XYZ/scarab/issues/406) to [#409](https://github.com/KD5UJC-XYZ/scarab/issues/409)
 
@@ -74,8 +74,8 @@ Platform limits, read with `objdump -T`:
 
 ## Decision
 
-**Adopt Scalus 1.4.0 with scalus-crypto-jni, and make the library's presence a start-up
-condition, as ADR 0012 did for libblst.**
+~~**Adopt Scalus 1.4.0 with scalus-crypto-jni, and make the library's presence a start-up
+condition, as ADR 0012 did for libblst.**~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
 
 - The wrapper corrections that 1.4.0 makes unnecessary are removed:
   - the variant-A Ed25519 costing;
@@ -157,14 +157,14 @@ Rejected:
 
 ## Consequences
 
-- A node needs, on Linux, glibc 2.33 or newer and a `java.io.tmpdir` that exists, is writable and
+- ~~A node needs, on Linux, glibc 2.33 or newer and a `java.io.tmpdir` that exists, is writable and
   allows execution. Otherwise it refuses to start with `NativeLibraryError`. The release images
-  already mount `/tmp` with `exec`.
-- The trusted computing base grows to the upstream nix build of `libscalus_crypto`, pinned by hash
+  already mount `/tmp` with `exec`.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+- ~~The trusted computing base grows to the upstream nix build of `libscalus_crypto`, pinned by hash
   but not reproduced. The SBOM marks the Linux/amd64 library as runtime-verified (start-up pin and
-  known answers), not source-rebuilt.
-- The Plutus builtins and Scarab's MinSig run different blst builds: the same v0.3.15 source,
-  compiled by two toolchains.
+  known answers), not source-rebuilt.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+- ~~The Plutus builtins and Scarab's MinSig run different blst builds: the same v0.3.15 source,
+  compiled by two toolchains.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
 - Revisit when:
   - scalus-crypto-jni changes: update the five pins, the jar hash, the licence texts in
     `plutus/licenses/` and this record, and rerun the ISA check;
@@ -177,5 +177,21 @@ Rejected:
 [ADR 0025](0025-jblst.md) replaces blst-java and the library of ADR 0012 with `tech.pegasys:jblst`
 0.3.18 (blst v0.3.17) for the Leios BLS keys (`MinSig`). The start-up check of ADR 0012 stays, in
 `crypto`, and now pins jblst's libraries. The raw-DST entry points above went with that library, so
-#408 is moot. The Plutus builtins are unaffected: they still run on `libscalus_crypto`, under this
-record.
+#408 is moot. ~~The Plutus builtins are unaffected: they still run on `libscalus_crypto`, under this
+record.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+
+## Amendment (2026-11-15): superseded, the library is no longer shipped
+
+The owner decided on 2026-11-15 that Scarab keeps one Plutus evaluator, its own, and removes the Scalus backend
+([ADR 0027, amendment of 2026-11-15](0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator),
+[decisions register](../decisions.md#reference-fidelity)). The own evaluator takes its cryptography from Bouncy
+Castle, the `crypto` module and jblst ([ADR 0027](0027-own-uplc-evaluator-as-a-correctness-backend.md)), so nothing
+loads `libscalus_crypto` and it is no longer shipped.
+
+- **Removed:** scalus-crypto-jni, the node's start-up check of `libscalus_crypto` with its pins and known answers,
+  the `plutusCrypto` event, the suites of this record, and the library's licence entries.
+- **Kept:** the start-up check of jblst's libraries ([ADR 0025](0025-jblst.md)).
+- **No subject left:** the consequences struck through above, and the follow-ups that concern this library alone
+  ([#406](https://github.com/KD5UJC-XYZ/scarab/issues/406), [#407](https://github.com/KD5UJC-XYZ/scarab/issues/407)).
+- **Historical:** the context, the provenance table and the measurements above describe the library shipped until
+  2026-11-15.
