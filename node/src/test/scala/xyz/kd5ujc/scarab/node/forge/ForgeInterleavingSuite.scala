@@ -280,7 +280,8 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
 
   test("a KES expiry boundary, the slot driver's update first") {
     // the expiry's first slot is led, but no forge moves the key into a period the clock has not
-    // reached: the slot driver's update at the onset is the first, and ends the slot
+    // reached: the slot driver's update at the onset is the first, and ends the slot with its start,
+    // at the period change, and the key's failure, none of a forge's steps
     for
       held <- holds()
       ran <- running(expiring, expiry - 2, held, kesStart = 0, epoch = 6) { (h, _) =>
@@ -288,9 +289,15 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       }
     yield
       poisonedOnce(ran)
-      assert(
-        !ran.events.contains(ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(expiry))),
-        "a forge reached the key"
+      assertEquals(
+        ran.events.collect { case ForgeEvent.Loop(t) if t.slot == expiry => t.productPrefix },
+        Vector("StartLeadershipCheck", "ForgeStateUpdateError"),
+        "the expiry slot's lines"
+      )
+      // each slot counted once
+      assertEquals(
+        ran.stats.getOrElse(6, ForgeEpochStats()).slotsChecked,
+        endedIn(ran.events).count(geometry.epochOf(_) == 6).toLong
       )
   }
 
