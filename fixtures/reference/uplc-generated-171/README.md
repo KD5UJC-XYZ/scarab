@@ -55,6 +55,15 @@ As in the [1.70.0.0 fixture](../uplc-generated/README.md#files): `corpus.json` (
 the [harness README](../../../scripts/oracle/plutus/generated-171/README.md) write the requests and
 the verdicts again.
 
+## A larger run (not retained)
+
+On 2026-11-16 a corpus of 19,000 programs (1,000 per profile, generator version 1, corpus seed 3001 with
+two lists per profile: arguments `3001 1000 2 1.71.0.0`) went through the same oracle and
+`GeneratedOracleReplayMain` (the same entry point) with no disagreement in stage, error, budget (on
+success and on failure) or logs: 7,625 successes and 2,569 out of budget in all, and at protocol 12
+4,000 programs with 1,117 successes. Its requests and verdicts are not published; those arguments write
+them again.
+
 ## What it does not claim
 
 The fixture covers what the generator writes, with the defaults and the lists drawn from them; it is
