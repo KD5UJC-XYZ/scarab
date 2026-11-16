@@ -143,6 +143,13 @@ class DefaultLocaleSuite extends FunSuite with DefaultLocaleFixture:
     under.test(
       s"each real list's evaluation context is the one the reference's names give ($label)"
     ) { _ =>
+      PlutusLanguage.values.foreach { language =>
+        assertEquals(
+          EvaluationContext.parameterNames(language),
+          referenceNames(language),
+          s"the names, in order, the evaluator tags a $language list with"
+        )
+      }
       assert(lists.size >= 10, s"only ${lists.size} lists")
       lists.foreach { (name, language, values) =>
         val names = referenceNames(language)
