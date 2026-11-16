@@ -2,6 +2,12 @@
   "plutusCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
   "oracleImage": "sha256:57d4e9fe87acef3ade739020795d75ef00948635d4895b730386afff04a9ec0e",
   "oracleBaseImage": "sha256:54cb3d080e717085f07baba23067fd27dec7d335075dbad0c249b1938ceb0536",
+  "imageFilesSha256": {
+    "/source/scarab-oracle/Main.hs": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
+    "/source/scarab-oracle/scarab-plutus-oracle.cabal": "71b84c4696082466585b042b031b531ccfb2ae9ab092cf5e991d0e05dc69939e",
+    "/source/cabal.project": "178b1a9497e5a9c70241b366f34de8aedbf64fe33c3ab9eff6eb29e7f3873689",
+    "/usr/local/bin/scarab-plutus-oracle": "927bddda3072081b55f709289ab21c37e73a9c7a7ed575bc0be936f339cf2b13"
+  },
   "requests": 273,
   "transactions": 200,
   "stages": {
@@ -14,7 +20,11 @@
   },
   "toolSha256": {
     "scripts/oracle/plutus/generated-171/Main.hs": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
-    "scripts/oracle/plutus/generated-171/Dockerfile": "d97c9965343eabc810da0804fe62c22bc84ebbea578148469852db8966a47a15"
+    "scripts/oracle/plutus/generated-171/Dockerfile": "d97c9965343eabc810da0804fe62c22bc84ebbea578148469852db8966a47a15",
+    "scripts/oracle/leios-testnet/leios_chain_scan.py": "12aa09eac6359c62c5974cea9342f41155acc768790dd96f27aa52498a833982",
+    "scripts/oracle/leios-testnet/chain/run.py": "c73c02b287f4a5f80ce1045fe60940b53215a75fc6bcd2ed3a9990bfbf76f3dd",
+    "scripts/oracle/plutus/generated/run.py": "6e0d39e0f1a8efa9da8864231efe8f0804c19d08262ef94ba927452575d4deea",
+    "scripts/oracle/plutus/recorded/run.py": "4d665f72033d7125145d1341e958626b6674fbc9634b3ccea472d7461af49c5f"
   },
   "rawSha256": "00549f213abace8c7ba40d7ee1dd960fb85211c459050fff730aa13c9f7f394a"
 }

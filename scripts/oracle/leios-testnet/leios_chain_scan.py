@@ -875,6 +875,8 @@ def verdicts(args):
         "requests": len(rows),
         "transactions": manifest["transactions"],
         "network": "none",
+        "sourceNetwork": "the public Leios testnet's chain, network magic 164 "
+                         "(fixtures/reference/leios-testnet-chain-contexts)",
         "imageId": image_id,
         "baseImageId": manifest["oracleBaseImage"],
         "imageFilesSha256": binding["imageFilesSha256"],
