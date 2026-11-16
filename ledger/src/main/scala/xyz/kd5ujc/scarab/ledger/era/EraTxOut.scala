@@ -57,3 +57,18 @@ object EraTxOut:
   given conway: BabbageEraTxOut[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.instance
   given dijkstra: BabbageEraTxOut[Dijkstra] =
     xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.instance
+
+/** The node's stored form of an output and a value of era `E`, which the flat failures carry
+  * ([[xyz.kd5ujc.scarab.ledger.UtxoFailure]]): glue until each era's failures are its own types
+  * (design §3.4), not a class of the reference. An era has an instance once its outputs have a
+  * stored form.
+  */
+trait StoredTxOut[E <: EraTag]:
+  def toStored(out: TxOut[E]): xyz.kd5ujc.scarab.ledger.TxOut
+  def storedValue(value: Value[E]): xyz.kd5ujc.scarab.ledger.Value
+
+object StoredTxOut:
+  given conway: StoredTxOut[Conway] with
+    def toStored(out: TxOut[Conway]): xyz.kd5ujc.scarab.ledger.TxOut =
+      xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.toStored(out)
+    def storedValue(value: Value[Conway]): xyz.kd5ujc.scarab.ledger.Value = value.stored

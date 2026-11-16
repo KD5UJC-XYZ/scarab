@@ -35,9 +35,10 @@ enum PoolCert:
   * and the metadata are kept as the bytes they were read from ([[PoolParams]]), and two parameters
   * are equal when what those bytes mean is equal ([[PoolParams.identity]]), as the reference's
   * derived `Eq` compares the decoded `StrictSeq StakePoolRelay` and `PoolMetadata`: an empty relay
-  * list read as `80` and as `9800` is one list.
+  * list read as `80` and as `9800` is one list. `sppId`, the pool's key hash, is the operator's 28
+  * bytes as the reference types them (`sppId :: KeyHash StakePool`).
   */
-final class StakePoolParams private[era] (val value: PoolParams):
+final class StakePoolParams private[era] (val sppId: KeyHash[StakePool], val value: PoolParams):
   private lazy val identity: PoolIdentity = PoolParams.identity(value)
 
   override def equals(that: Any): Boolean = that match

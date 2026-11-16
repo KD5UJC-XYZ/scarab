@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Delegatee,
   EraField,
   EraTxError,
+  PParams,
   PoolCert
 }
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -77,7 +78,9 @@ object ConwayTxCert:
           case None    => ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(c, to))
       )
     case Certificate.RegisterPool(params) =>
-      Right(ConwayTxCertPool(PoolCert.RegPool(StakePoolParams(params))))
+      poolKey(params.operator).map(id =>
+        ConwayTxCertPool(PoolCert.RegPool(StakePoolParams(id, params)))
+      )
     case Certificate.RetirePool(pool, epoch) =>
       (poolKey(pool), EpochNo.fromBigInt(epoch).leftMap(EraTxError.Vocab(_)))
         .mapN((p, e) => ConwayTxCertPool(PoolCert.RetirePool(p, e)))
@@ -186,6 +189,18 @@ object ConwayTxCert:
               ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
             None
         }
+
+      // `getTotalRefundsTxCerts` and `getTotalDepositsTxCerts`, `Conway/TxCert.hs:145-147`, cardano-ledger f649f975
+      override def getTotalDepositsTxCerts(
+          pp: PParams[Conway],
+          isPoolRegistered: KeyHash[StakePool] => Boolean,
+          certs: Iterable[ConwayTxCert]
+      ): Coin = conwayTotalDepositsTxCerts(pp, isPoolRegistered, certs)
+      override def getTotalRefundsTxCerts(
+          pp: PParams[Conway],
+          lookupStakingDeposit: Credential[Staking] => Option[Coin],
+          certs: Iterable[ConwayTxCert]
+      ): Coin = conwayTotalRefundsTxCerts(pp, lookupStakingDeposit, certs)
 
       override def mkRegTxCert(credential: Credential[Staking]): ConwayTxCert =
         ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(credential, None))

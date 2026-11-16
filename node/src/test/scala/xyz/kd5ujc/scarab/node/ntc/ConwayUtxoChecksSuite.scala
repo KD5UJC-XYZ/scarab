@@ -3,13 +3,36 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import java.nio.file.Path
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{PredicateFailure, Tx, TxIn, TxOut, Utxo}
-import xyz.kd5ujc.scarab.ledger.era.{EraTx, EraTxBody, Network, PParams, TxLevel, UTxO}
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayEraPParams,
+  EraPParams,
+  EraTx,
+  EraTxBody,
+  EraUTxO,
+  Network,
+  PParams,
+  StoredTxOut,
+  TxLevel,
+  UTxO
+}
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{AllegraUtxo, AlonzoUtxo, BabbageUtxo, ShelleyUtxo}
-import xyz.kd5ujc.scarab.ledger.rules.{Test as Verdict, UtxoTests}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.{RefScripts, testByteStrings}
+import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Deposits, Test as Verdict, UtxoTests}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Conway,
+  ConwayCertState,
+  ConwayLedgerState,
+  ConwayNewEpochState,
+  Credential,
+  KeyHash,
+  ShelleyBasedEra,
+  StakePool,
+  Staking
+}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
 import xyz.kd5ujc.scarab.protocol.Era
@@ -39,7 +62,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
       stored: Map[TxIn, TxOut],
       utxo: UTxO[Conway],
       flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
-      pp: PParams[Conway]
+      pp: PParams[Conway],
+      cert: ConwayCertState
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -72,7 +96,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
           stored,
           right(s"$what typed UTxO")(ConwayUTxO.fromStored(stored)),
           flatPp,
-          PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp)))
+          PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp))),
+          ConwayNewEpochState.ls.andThen(ConwayLedgerState.cert).get(nes)
         )
       }
     }
@@ -143,8 +168,98 @@ class ConwayUtxoChecksSuite extends FunSuite:
         "validateTooManyCollateralInputs",
         UtxoTests.tooManyCollateralInputs(s.flatPp, fb),
         AlonzoUtxo.validateTooManyCollateralInputs[Conway](s.pp, tb)
+      ),
+      (
+        "feesOK",
+        UtxoTests.feesOK[Conway](s.flatPp, Utxo.fromMap(s.stored), s.flat, flatMinFee(s)),
+        BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo)
+      ),
+      (
+        "validateMaxTxSizeUTxO",
+        UtxoTests.maxTxSize(s.flatPp, s.flat),
+        ShelleyUtxo.validateMaxTxSizeUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+          tx,
+          tx.bodyOf.top
+        )
+      ),
+      (
+        "validateExUnitsTooBigUTxO",
+        UtxoTests.exUnitsTooBig(s.flatPp, s.flat),
+        AlonzoUtxo.validateExUnitsTooBigUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+          tx,
+          tx.bodyOf.top
+        )
       )
     )
+
+  /** The flat path's minimum fee, as its UTXO computes it
+    * ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]]'s `validate`).
+    */
+  private def flatMinFee(s: Seen): BigInt =
+    val pp = s.flatPp
+    val units = s.flat.witnesses.totalExUnits
+    val scriptFee =
+      (pp.priceMem * Rational(units.mem) + pp.priceSteps * Rational(units.steps)).ceil
+    pp.minFeeA * s.flat.size + pp.minFeeB + scriptFee +
+      RefScripts.tierRefScriptFee(
+        pp.minFeeRefScriptCostPerByte,
+        RefScripts.refScriptsSize(Utxo.fromMap(s.stored), s.flat.body)
+      )
+
+  /** The flat path's value consumed and produced, as its UTXO computes them from the deposits and
+    * refunds of [[Deposits.of]].
+    */
+  private def flatBalance(
+      s: Seen
+  ): (xyz.kd5ujc.scarab.ledger.Value, xyz.kd5ujc.scarab.ledger.Value) =
+    import xyz.kd5ujc.scarab.ledger.Value as FlatValue
+    val body = s.flat.body
+    val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, body)
+    val spent = body.inputs.flatMap(s.stored.get)
+    val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
+    val consumed = spent.foldLeft(FlatValue.zero)(_ + _.value) +
+      FlatValue.coin(withdrawn + refunds) + FlatValue.minted(body.mint)
+    val produced = body.outputs.foldLeft(FlatValue.zero)(_ + _.value) +
+      FlatValue.coin(body.fee + deposits + body.donation) + FlatValue.burned(body.mint)
+    (consumed, produced)
+
+  private def lookupStakingDeposit(s: Seen)(c: Credential[Staking]): Option[Coin] =
+    CertLens.accounts.get(s.cert).get(c).map(_.deposit.toCoin)
+
+  private def isPoolRegistered(s: Seen)(k: KeyHash[StakePool]): Boolean =
+    CertLens.pools.get(s.cert).contains(k)
+
+  test("getMinFeeTxUtxo is the flat path's minimum fee on every Conway case"):
+    val u = EraUTxO.conway
+    seen.foreach { s =>
+      assertEquals(
+        u.getMinFeeTxUtxo[TxLevel.Top](s.pp, s.typed, s.utxo)(using u.txOf.bodyOf.top).value,
+        flatMinFee(s),
+        s.label
+      )
+    }
+
+  test("getConsumedValue and getProducedValue are the flat path's on every Conway case"):
+    val u = EraUTxO.conway
+    val stored = StoredTxOut.conway
+    seen.foreach { s =>
+      val tb = u.txOf.body[TxLevel.Top](s.typed)(using u.txOf.bodyOf.top)
+      val (consumed, produced) = flatBalance(s)
+      assertEquals(
+        stored.storedValue(
+          u.getConsumedValue[TxLevel.Top](s.pp, lookupStakingDeposit(s), s.utxo, tb)(using
+            u.txOf.bodyOf.top
+          )
+        ),
+        consumed,
+        s"${s.label}: consumed"
+      )
+      assertEquals(
+        stored.storedValue(u.getProducedValue(s.pp, isPoolRegistered(s), tb)),
+        produced,
+        s"${s.label}: produced"
+      )
+    }
 
   test("the corpus has Conway cases, each read by both paths"):
     assert(clue(seen.size) > 0)
@@ -261,6 +376,179 @@ class ConwayUtxoChecksSuite extends FunSuite:
         )
       )
     )
+
+  // ---- crafted cases for the branches the corpus never takes (review of #1119) ----
+
+  private def leaf(v: Value): Node = Node(v, Bytes.empty)
+  private def uint(n: BigInt): Node = leaf(Value.UInt(n))
+  private def bytesOf(b: Bytes): Node = leaf(Value.ByteString(b))
+  private def filled(n: Int, b: Int): Bytes = Bytes(Vector.fill(n)(b.toByte))
+  private def keyCred(b: Int): Node = leaf(Value.Arr(Vector(uint(0), bytesOf(filled(28, b)))))
+
+  /** An output of `s` 's first spent output's address and two ada, holding a native reference
+    * script of `sigs` signatures (an `all-of`), read by the flat output decoder.
+    */
+  private def withRefScript(s: Seen, sigs: Int): TxOut =
+    val address = s.stored(s.flat.body.inputs.head).address.raw
+    val native = leaf(
+      Value.Arr(
+        Vector(
+          uint(1),
+          leaf(
+            Value.Arr(
+              Vector.tabulate(sigs)(i =>
+                leaf(Value.Arr(Vector(uint(0), bytesOf(filled(28, i % 256)))))
+              )
+            )
+          )
+        )
+      )
+    )
+    val script =
+      right("script")(Cbor.encode(Value.Arr(Vector(uint(0), native)), Cbor.Limits.Unbounded))
+    val out = Value.Map(
+      Vector(
+        uint(0) -> bytesOf(address),
+        uint(1) -> uint(2000000),
+        uint(3) -> leaf(Value.Tag(24, bytesOf(script)))
+      )
+    )
+    right("output")(
+      TxOut.fromBytes(right("encode output")(Cbor.encode(out, Cbor.Limits.Unbounded)))
+    )
+
+  test(
+    "the minimum fee counts repeated reference scripts and an input in both sets once, as the flat path"
+  ):
+    val base = seen.head
+    val spent = base.flat.body.inputs.toVector
+    // the same script on a spent output and on a reference output, and another on a second one
+    val ref2 = TxIn(Bytes(Vector.fill(32)(9.toByte)), 1)
+    val ref = TxIn(Bytes(Vector.fill(32)(9.toByte)), 0)
+    val stored =
+      base.stored ++ spent.map(_ -> withRefScript(base, 900)) +
+        (ref -> withRefScript(base, 900)) + (ref2 -> withRefScript(base, 3))
+    val s0 = base.copy(stored = stored, utxo = right("typed UTxO")(ConwayUTxO.fromStored(stored)))
+    val s = edited(s0, envelope(s0))(fields =>
+      val inputs =
+        fields.collectFirst { case (k, v) if isKey(0)(k) => v }.getOrElse(fail("no inputs"))
+      val refs = inputs.value match
+        case Value.Arr(xs) =>
+          leaf(
+            Value.Arr(
+              xs ++ Vector(ref, ref2).map(in =>
+                leaf(Value.Arr(Vector(bytesOf(in.id), uint(in.index))))
+              )
+            )
+          )
+        case other => fail(s"inputs: $other")
+      fields.filterNot((k, _) => isKey(18)(k)) :+ (key(18) -> refs)
+    )
+    assert(
+      RefScripts.refScriptsSize(Utxo.fromMap(s.stored), s.flat.body) > 25600L,
+      "past the first tier"
+    )
+    val u = EraUTxO.conway
+    assertEquals(
+      u.getMinFeeTxUtxo[TxLevel.Top](s.pp, s.typed, s.utxo)(using u.txOf.bodyOf.top).value,
+      flatMinFee(s)
+    )
+
+  test("tierRefScriptFee is the flat path's at and around each tier's boundary"):
+    val p = EraPParams.conway
+    val pp = seen.head.pp
+    val base = seen.head.flatPp.minFeeRefScriptCostPerByte
+    Vector(0L, 1L, 25599L, 25600L, 25601L, 51199L, 51200L, 204800L, 1048576L).foreach { size =>
+      assertEquals(
+        ConwayTx
+          .tierRefScriptFee(
+            p.ppRefScriptCostMultiplierG.get(pp),
+            p.ppRefScriptCostStrideG.get(pp),
+            ConwayEraPParams.ppMinFeeRefScriptCostPerByteL[Conway].get(pp).rational,
+            size
+          )
+          .value,
+        RefScripts.tierRefScriptFee(base, size),
+        s"size $size"
+      )
+    }
+
+  /** A pool registration (tag 3) of `operator` at cost `cost`. */
+  private def regPool(s: Seen, operator: Bytes, cost: Int): Node =
+    leaf(
+      Value.Arr(
+        Vector(
+          uint(3),
+          bytesOf(operator),
+          bytesOf(filled(32, 1)),
+          uint(0),
+          uint(cost),
+          leaf(Value.Tag(30, leaf(Value.Arr(Vector(uint(1), uint(10)))))),
+          bytesOf(Bytes(Vector((0xe0 | s.network).toByte)) ++ filled(28, 3)),
+          leaf(Value.Arr(Vector.empty)),
+          leaf(Value.Arr(Vector.empty)),
+          leaf(Value.Null)
+        )
+      )
+    )
+
+  test(
+    "deposits and refunds of crafted certificates, proposals aside, are the flat path's, as is the donation"
+  ):
+    // a pool deposit of its own, so the pools' share of the deposits is seen
+    val base = withParams(seen.head)(_.copy(poolDeposit = 500000000))
+    val certs = Vector(
+      leaf(Value.Arr(Vector(uint(7), keyCred(0x41), uint(base.flatPp.keyDeposit)))),
+      leaf(Value.Arr(Vector(uint(8), keyCred(0x41), uint(base.flatPp.keyDeposit)))),
+      leaf(Value.Arr(Vector(uint(8), keyCred(0x42), uint(base.flatPp.keyDeposit)))),
+      regPool(base, filled(28, 0x51), 340000000),
+      regPool(base, filled(28, 0x51), 340000001),
+      regPool(base, filled(28, 0x52), 340000000),
+      leaf(
+        Value.Arr(Vector(uint(16), keyCred(0x61), uint(base.flatPp.drepDeposit), leaf(Value.Null)))
+      ),
+      leaf(Value.Arr(Vector(uint(17), keyCred(0x62), uint(5))))
+    ) ++ CertLens.pools.get(base.cert).keys.headOption.map(k => regPool(base, k.bytes, 1)).toVector
+    val s = edited(base, envelope(base))(fields =>
+      fields.filterNot((k, _) => isKey(4)(k) || isKey(22)(k)) :+ (key(4) -> leaf(
+        Value.Arr(certs)
+      )) :+
+        (key(22) -> uint(7))
+    )
+    val b = EraTxBody.conway
+    val tb = b.top
+    val body = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
+    val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, s.flat.body)
+    assertEquals(b.getTotalDepositsTxBody(s.pp, isPoolRegistered(s), body).value, deposits)
+    assertEquals(
+      b.getTotalRefundsTxBody[TxLevel.Top](s.pp, lookupStakingDeposit(s), body)(using tb).value,
+      refunds
+    )
+    assert(refunds > 0, "refunds")
+    assert(deposits >= 2 * base.flatPp.poolDeposit, "two new pools' deposits")
+    val u = EraUTxO.conway
+    val (consumed, produced) = flatBalance(s)
+    assertEquals(
+      StoredTxOut.conway.storedValue(u.getProducedValue(s.pp, isPoolRegistered(s), body)),
+      produced
+    )
+    assertEquals(
+      StoredTxOut.conway.storedValue(
+        u.getConsumedValue[TxLevel.Top](s.pp, lookupStakingDeposit(s), s.utxo, body)(using
+          u.txOf.bodyOf.top
+        )
+      ),
+      consumed
+    )
+
+  test("crafted from a recorded case: a declared total collateral that is not the balance"):
+    val s = seen
+      .find(s => s.flat.body.collateral.nonEmpty && s.flat.witnesses.redeemers.nonEmpty)
+      .getOrElse(fail("no case with collateral and redeemers"))
+    val wrong = edited(s, envelope(s))(fields =>
+      fields.filterNot((k, _) => isKey(17)(k)) :+ (key(17) -> uint(1))
+    )
+    compared(wrong, "feesOK")
 
   test("the corpus fails the predicates it can tell apart, and names the rest"):
     val all = pairs(seen.head).map(_._1).toSet

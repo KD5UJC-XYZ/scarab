@@ -33,6 +33,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Network,
   OSet,
   Plutus,
+  PParams,
   ProposalProcedure,
   Sized,
   Timelock,
@@ -49,7 +50,7 @@ import xyz.kd5ujc.scarab.ledger.era.babbage.{
   BabbageTimelock,
   BabbageTxOut
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, KeyHash, StakePool}
 import xyz.kd5ujc.scarab.protocol.Era
 
 // Conway's types: the opaque types are transparent in this file only, so only this file makes a
@@ -474,6 +475,19 @@ object ConwayTxBody:
         body.collateralReturn
       // `allInputsTxBodyF = babbageAllInputsTxBodyF`, `Conway/TxBody.hs:344`, cardano-ledger f649f975
       override def allInputs(body: ConwayTxBody): SortedSet[TxIn] = allInputsBabbage(body)
+      // `getTotalDepositsTxBody = conwayTotalDepositsTxBody`, `Conway/TxBody.hs:356,363-380`,
+      // cardano-ledger f649f975: the certificates' deposits and the proposals'
+      override def getTotalDepositsTxBody(
+          pp: PParams[Conway],
+          isPoolRegistered: KeyHash[StakePool] => Boolean,
+          body: ConwayTxBody
+      ): Coin =
+        Coin(
+          certsOf
+            .getTotalDepositsTxCerts(pp, isPoolRegistered, certs[TxLevel.Top](body)(using top))
+            .value +
+            conwayProposalsDeposits[TxLevel.Top](pp, body)(using top).value
+        )
       // `withTopTxLevelOnly`, `Conway/TxBody.hs:453`, cardano-ledger f649f975
       override def allSizedOutputs[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]

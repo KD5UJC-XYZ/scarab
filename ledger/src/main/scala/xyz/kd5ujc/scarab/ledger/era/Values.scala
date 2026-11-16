@@ -33,6 +33,11 @@ trait Val[V]:
   /** Whether the value is lovelace only (`isAdaOnly`). */
   def isAdaOnly(v: V): Boolean
 
+  /** `inject`, of the superclass `Inject Coin t` (`Val.hs:32`, `BaseTypes.hs:1032-1033`,
+    * cardano-ledger f649f975): the value of lovelace `c` alone.
+    */
+  def inject(c: Coin): V
+
 /** A value that is lovelace only: `Coin`, the value of Shelley and Allegra (`Value ShelleyEra`,
   * `Value AllegraEra`), an `Integer` of either sign (`Coin.hs:93-107`, cardano-ledger f649f975).
   */
@@ -57,6 +62,7 @@ object AdaValue:
     def coin(v: AdaValue): Coin = Coin(v)
     def modifyCoin(f: Coin => Coin, v: AdaValue): AdaValue = f(Coin(v)).value
     def isAdaOnly(v: AdaValue): Boolean = true
+    def inject(c: Coin): AdaValue = c.value
 
 /** Lovelace and native assets: `MaryValue`, the value from Mary on (`Value MaryEra` to `Value
   * DijkstraEra`). Over the flat [[xyz.kd5ujc.scarab.ledger.Value]], whose arithmetic it keeps.
@@ -95,3 +101,4 @@ object MultiAssetValue:
     def modifyCoin(f: Coin => Coin, v: MultiAssetValue): MultiAssetValue =
       v.copy(coin = f(Coin(v.coin)).value)
     def isAdaOnly(v: MultiAssetValue): Boolean = v.assets.isEmpty
+    def inject(c: Coin): MultiAssetValue = ofAda(c.value)
