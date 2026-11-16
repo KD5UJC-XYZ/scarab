@@ -31,26 +31,61 @@ cross-checked: the certificate must name this KES key and be signed by its cold 
   level's stored verification keys and refuses a damaged key. A key from a file is at period 0 and is evolved to
   the slot's period (`slot / slotsPerKESPeriod - certificate start`) before it signs.
 
-**Forging** (`node/forge`). `Forger` runs one attempt per slot from the wall clock over the era history
-(`EpochGeometry`), as the reference's `knownSlotWatcher` hands slots to `forkBlockForging`: only a known slot
-runs, that is after the system start and while the era history at the tip of the chain translates the wall
-clock's slot (its horizon, the one the transactions' time translation has); otherwise nothing runs, nothing is
-counted, the reading is traced (`currentSlotUnknown`) and the clock is asked again after 60 seconds
-(`BackoffDelay`). A passed slot is never forged late, and a slot that passes while an earlier attempt is still
-running is passed over without a trace. Each reading is checked against the previous one as the reference's
-`checkValidClockChange` checks it (consensus 82ecba329 `BlockchainTime/WallClock/HardFork.hs` 121-151): the
-same or an earlier slot within 20 seconds of the previous reading's time (`hfbtMaxClockRewind`) is traced
-(`systemClockMovedBack`) and the previous slot kept; further back the node stops
-(`ClockProblem.SystemClockMovedBack`). The wait for the next slot is fixed at the reading and timed on the
-monotonic clock.
+**Forging** (`node/forge`) runs from a per-epoch leader schedule ([#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101),
+an approved Deviation; [design](../design/leader-schedule.md)). `Forger.run` runs four fibers in one scope, joined
+at once, and a fatal outcome of any of them ends the others and is the run's result:
 
-### The forging loop
+- **The scheduler** derives the inputs of the leader check of an epoch (its slots, the epoch nonce, the pool's
+  stake and the distribution's total, the active-slot coefficient, the VRF key: `EpochInputs`) from the committed
+  chain and the credentials in force, by the same derivation the forge uses: the epoch of the tip's ledger, and
+  the next one once the tip is at or past its freeze slot (4k/f before its first slot), when its nonce cannot
+  change on that chain any more. A new value restarts the computation (`LeaderSchedule`): each epoch's slots in
+  chunks of 100, every slot's VRF output and a proof for a led slot only, paced to finish before the epoch starts,
+  or, for an epoch already begun, a chunk ahead of the clock. The schedule is held in memory only.
+- **The clock fiber** is the reference's blockchain time (`hardForkBlockchainTime`): it reads the wall clock over
+  the era history (`EpochGeometry`) each slot and publishes the slot. Only a known slot is published, that is after
+  the system start and while the era history at the tip translates the wall clock's slot (its horizon, the one
+  the transactions' time translation has); otherwise the reading is traced (`currentSlotUnknown`) and the clock is
+  asked again after 60 seconds (`BackoffDelay`). Each reading is checked against the previous one as the
+  reference's `checkValidClockChange` checks it (consensus 82ecba329 `BlockchainTime/WallClock/HardFork.hs`
+  121-151): the same or an earlier slot within 20 seconds of the previous reading's time (`hfbtMaxClockRewind`)
+  is traced (`systemClockMovedBack`) and the previous slot kept; further back the node stops
+  (`ClockProblem.SystemClockMovedBack`). The wait for the next slot is fixed at the reading and timed on the
+  monotonic clock. It waits on no other fiber.
+- **The slot driver** takes the slots as the reference's `knownSlotWatcher` hands them to its forging thread: a
+  slot to its end, then the latest slot the clock has reached; a slot that passes meanwhile is passed over without
+  a line or a count, unless the forging fiber has claimed it. It is the only publisher of a slot's outcome. Each
+  slot has one claim, set once, and the driver's resolved-through mark is the floor below which nothing can be
+  claimed. At each slot it first makes or reads the KES key's update of the slot's period (below). A slot the
+  forging fiber owns gets that fiber's final result. Any other slot is decided with the checks the reference makes
+  before its leader check, with no VRF and no ledger tick, in its order: the tip (`slotIsImmutable`,
+  `blockFromFuture`), the forecast horizon (`noLedgerView`), the era of the ledger the view is forecast from
+  (`forgeFailed`), the KES key's state (`forgeStateUpdateError`); then from the schedule, if it covers the slot
+  under the inputs in force (derived from the block the slot would build on), or with `Leadership.check` at the
+  slot. A slot not led logs only its ending line and is counted as a slot checked; a led one is handed to the
+  forging fiber. The `forgeEpoch` line of an epoch comes after every slot of it has been published.
+- **The forging fiber** forges a led slot 50 ms before its onset, once every slot before it is settled, so that
+  forges, and their signatures, run in slot order. The attempt is provisional until the onset: made again when
+  the chain or the credentials change, and at the onset its block is handed to chain selection only if the block
+  context, the slot's inputs and the credentials are still those it was made from; otherwise the slot is forged
+  again from the node as it is then, as the per-slot loop forged it, and the discarded attempt logs one Debug line
+  (`forgeDiscarded`). Every line of an attempt is held, with the time it was made, until the slot's outcome is
+  final, and the slot driver publishes them in slot order. A slot the slot driver hands over is forged at once.
 
-Each slot follows `forkBlockForging` (consensus 82ecba329 `NodeKernel.hs` 549-796), step by step and trace by
-trace, with the reference's trace names, severities and machine fields ([logging](../running/logging.md),
-the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
+**The KES key at each period.** The slot driver updates the key at the first slot of each period it handles,
+under a reservation that a forge holds from its own update to its signature, so that the key cannot move to the
+next period between a forge's update and its signature; the lock order is the reservation, then the key's lock. One
+update is recorded per period and credentials (a reload clears it), and every slot of the period reads it: the
+first failure is published as `KESCouldNotEvolve` in the first slot, in slot order, whose checks reach the key, and
+`KESKeyAlreadyPoisoned` in each later one, as the reference's poisoned key answers.
 
-1. `startLeadershipCheck`, the first act of every slot.
+### The slots a pool leads
+
+A led slot's attempt (`Forger.attempt`) follows `forkBlockForging` (consensus 82ecba329 `NodeKernel.hs` 549-796),
+step by step and trace by trace, with the reference's trace names, severities and machine fields
+([logging](../running/logging.md), the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
+
+1. `startLeadershipCheck`, the first act of the slot.
 2. The block to build on (`mkCurrentBlockContext`, 831-891): the tip if it is in an earlier slot; when the tip
    holds the slot, an alternative to it on its predecessor (same height; chain selection then decides between
    the two), or the successor of a boundary block in the same slot. The slot is given up when the tip is in a
@@ -68,7 +103,9 @@ the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
    (`stateInfo`). At or past the window's end the key is poisoned (erased from memory) and every slot gives
    `forgeStateUpdateError` (`Critical`) until a reload installs another key; before the window's start the key
    is left as it is.
-5. The leader check is on the stake alone (`checkIsLeader`): `Leadership` evaluates the VRF key on
+5. The leader check is made again (decision 5 of the design): under inputs equal to the schedule's, the slot's
+   output is evaluated again and the schedule's certificate is used; otherwise `Leadership.check` decides afresh.
+   The check is on the stake alone (`checkIsLeader`): `Leadership` evaluates the VRF key on
    `Blake2b-256(slot || epochNonce)` and compares the output with the Praos threshold of the
    pool's relative stake in the forecast ledger view's distribution, the same check and the same
    distribution as for received headers: the predecessor's current one in its own epoch and two or more
@@ -89,7 +126,7 @@ the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
    invalid indices) and hashed as the header commits; the ten-element Praos header body (block number, slot,
    previous hash, cold key, VRF key, VRF result, body size and hash, operational certificate, the ledger's
    protocol version) is signed with the KES key at the slot's period (`forgedBlock`, then Scarab's `forged`).
-8. `Follower.adoptForged` runs the block through the node's own `MirrorRules` and commits it through the same
+8. At the onset, `Follower.adoptForged` runs the block through the node's own `MirrorRules` and commits it through the same
    path as any block (persistence, the chain server, mempool synchronisation): `adoptedBlock` (then `adopted`
    with the latency). A valid block that does not become the tip, because the tip has moved or chain selection
    prefers it, is `didntAdoptBlock` (then `lost`). A block our rules refuse is `forgedInvalidBlock`: its
@@ -120,7 +157,7 @@ transaction ids, KES periods, stake), `adopted`, `lost` (the block did not join 
 its height later), `kesEvolved`, `kesReloaded`, `kesReloadRefused`, `kesPersistFailed` (see "Rotating the KES
 key" in [running.md](../running.md)), `forgeFailed`, `forgeEpoch`. Whether the node forges is the reference's
 `blockForgingUpdate`, at start-up and at each SIGHUP that finds the files or finds one absent: a reload that finds a credential file absent disables
-forging, and the loop then starts no slot until a reload finds the files again (see "Dynamic block forging" in
+forging, and no slot is started until a reload finds the files again (see "Dynamic block forging" in
 [running/forging.md](../running/forging.md#dynamic-block-forging)).
 
 The slot clock starts at the Byron genesis' `startTime` (whole seconds) when there is a Byron genesis
@@ -129,15 +166,18 @@ file, as the reference's hard-fork combinator does, and at the Shelley `systemSt
 the public networks, but a hand-made network can write them apart, and a node that used the Shelley value
 then runs its slots a whole number of seconds away from the network's (roadmap H6).
 
-Counters (`ForgeStats`, per epoch; roadmap H5) are folded over the loop's traces, so the log, `GET /forging`
-and the metrics cannot disagree: slots started (`slotsChecked`, the reference's `Forge.about-to-lead`), led
+Counters (`ForgeStats`, per epoch; roadmap H5) are folded over the published traces, so the log, `GET /forging`
+and the metrics cannot disagree: slots checked (`slotsChecked`, the reference's `Forge.about-to-lead`, every slot
+the slot driver handles, led or not), led
 (`leaderSlots`), not led, could not forge, forge-state update errors, forged, adopted, slot battles lost at
 adoption (`lostSlotBattles`), forged invalid, adopted blocks replaced later, Scarab's own refusals (`failed`),
 forge defects (`defects`),
 slots given up before the leader check by reason (`slotIsImmutable`, `blockFromFuture`, `noLedgerView`), and
 the forge latency (slot start to adoption: count, mean, max). The reference's `ForgingStats` (`nodeIsLeader`,
 `nodeCannotForge`, `blocksForged`, `slotsMissed`) are folded as cardano-node folds them and published at the
-start of each slot ([metrics](../running/metrics.md)). A `forgeEpoch` line carries an epoch's counters when
+start of each slot ([metrics](../running/metrics.md)), folded in slot order. The schedule is published in the
+gauges `scarab_forge_scheduled_leader_slots`, `scarab_forge_expected_leader_slots`, `scarab_forge_next_leader_slot`
+and `scarab_forge_schedule_complete` and the `leaderSchedule` line: whoever reads them learns when the pool leads. A `forgeEpoch` line carries an epoch's counters when
 the next epoch begins, and `GET /forging` on the query port serves the counters per epoch and in total (the
 `pool` scenario reads it and asserts it against the log and the metrics: forged and adopted counts equal, no
 block took more than five slots from its slot's start to adoption).
@@ -147,5 +187,7 @@ are accepted, consecutive, counted for the pool, transactions leave the mempool,
 boundaries, the order of the traces in a slot led and one not led, the forecast bound at genesis and after a
 block, a certificate before its window and a key past it, a VRF key that is not the registered one, the
 longest-prefix selection, lost and invalid adoption, body size accounting and a decode round trip),
-`ForgeStatsSuite` and the `ForgingStats` cases the counters, `KeyFilesSuite` loads a real `cardano-cli`
+`ForgeStatsSuite` and the `ForgingStats` cases the counters, `LeaderScheduleSuite` and `LeaderScheduleStreamSuite`
+the schedule and its pacing, `ScheduledForgerSuite` the differential test of the scheduled forger against the
+per-slot check and `ForgeInterleavingSuite` its fibers' interleavings (#1101), `KeyFilesSuite` loads a real `cardano-cli`
 certificate, `Draft03ProverSuite` and `Sum6KesSigningSuite` hold the vectors.

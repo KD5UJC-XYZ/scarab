@@ -126,11 +126,13 @@ has to change both before they run out. The node does four things for that; a dr
   with their typed cause preserved. An interrupted key update prevents later signing until restart;
   cancellation itself remains cancellation.
 - **Alerts.** `cardano_node_metrics_remainingKESPeriods_int`, `currentKESPeriod_int` and
-  `operationalCertificate{Start,Expiry}KESPeriod_int` are set at each update of the forge state, as the
-  reference's `Forge.StateInfo` sets them (a failed update, for a key past its window, zeroes the first two),
+  `operationalCertificate{Start,Expiry}KESPeriod_int` are set at each update of the forge state, at the first slot
+  of each KES period (#1101), as the reference's `Forge.StateInfo` sets them (a failed update, for a key past its
+  window, zeroes the first two),
   and `scarab_opcert_counter` at start-up and after every reload; `forgeStarted` and `kesReloaded` carry the
   certificate's numbers. A key past its window is poisoned as in the reference: every slot then logs
-  `forgeStateUpdateError` until a reload installs a new key. Alert on `remainingKESPeriods_int` falling below the driver's threshold while the driver's service is
+  `forgeStateUpdateError` until a reload installs a new key, and with seven periods or fewer left every slot logs
+  `stateInfo` at Warning (Alert with one). Alert on `remainingKESPeriods_int` falling below the driver's threshold while the driver's service is
   failing: the driver's exit status is the signal (below), and "Pool monitoring" lists the alerts and the dashboard.
 - **Nothing in the node needs the cold key.** It is never read by the node and need not be mounted into its
   container.
