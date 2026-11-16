@@ -1321,9 +1321,14 @@ final class Forger[F[_]: Async, S](
       // lands between them: a block signed with credentials no longer in force is not handed over,
       // as the reference's forging thread of replaced credentials ends (C19); the failures of the
       // adoption come back as values, so that none crosses the lock's scope
-      handle
-        .attempt(F.defer(withdrawals.sequence_ *> adopted(slot, prepared, hold)))
-        .map(e => Option(Option(e)))
+      hot
+        .lockedIn { (_, generation) =>
+          if generation != prepared.generation then F.pure(Option.empty[Either[NodeError, Unit]])
+          else
+            handle
+              .attempt(F.defer(withdrawals.sequence_ *> adopted(slot, prepared, hold)))
+              .map(Option(_))
+        }
         .map(_.flatten)
         .flatMap {
           case None           => discarded(slot, DiscardReason.Credentials, built).map(Vector(_))
