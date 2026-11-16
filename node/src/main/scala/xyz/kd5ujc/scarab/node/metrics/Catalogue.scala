@@ -236,7 +236,7 @@ object Catalogue:
 
   val forgeAboutToLead = CounterDef(
     MetricName("cardano_node_metrics_Forge_about_to_lead_counter"),
-    "Slots the forger handled, led or not (TraceStartLeadershipCheck, whose line only a led slot logs)."
+    "Slots the forger handled, led or not (TraceStartLeadershipCheck, whose line a slot not led logs only at a KES period change)."
   )
   val forgeSlotIsImmutable = CounterDef(
     MetricName("cardano_node_metrics_Forge_slot_is_immutable_counter"),
