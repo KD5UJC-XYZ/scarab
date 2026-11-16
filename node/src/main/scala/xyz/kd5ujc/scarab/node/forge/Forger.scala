@@ -204,7 +204,8 @@ trait ForgeEvents[F[_]]:
   *     publishes the slot;
   *   - the forging fiber wakes [[Forger.WakeMargin]] before each led slot and forges it with the
   *     reference's steps ([[attempt]], `forkBlockForging` 's `go`, `NodeKernel.hs` 549-796), its
-  *     lines held until the slot's outcome is final;
+  *     lines held until the slot's outcome is final; a led slot of a KES period the clock has not
+  *     reached at the wake is forged at its onset instead, once the slot driver hands it over;
   *   - the slot driver takes each slot from the clock fiber as `knownSlotWatcher` hands it to the
   *     reference's forging thread, and is the only publisher of a slot's outcome: the lines and the
   *     counters of a led slot as the forging fiber made them, and for a slot not led the
@@ -587,7 +588,9 @@ final class Forger[F[_]: Async, S](
       on <- hot.enabled
       _ <- pause(Forger.Point.Disabled(slot)).unlessA(on)
       // the KES key at the slot's period, before anything of the slot (§5.5)
-      kes <- if on then periodUpdate(kesPeriodOf(slot)) else F.pure(None)
+      kes <-
+        if on then pause(Forger.Point.Updating(slot)) *> periodUpdate(kesPeriodOf(slot))
+        else F.pure(None)
       _ <- claim match
         case Some(Claim.Forging(result)) => awaited(slot, kes, result)
         case Some(Claim.Handed(result))  => awaited(slot, kes, result)
@@ -784,9 +787,11 @@ final class Forger[F[_]: Async, S](
     * driver handed over after `forged`, the last slot this fiber forged (a slot passed over is not
     * one, so that a slot handed over after its scheduled wake was passed over is still forged). A
     * scheduled slot is forged early ([[early]]) once its wake has come and every slot before it is
-    * settled; one handed over is forged at once. A change of the schedule or of the claims wakes
-    * it, and it takes the earliest again. It publishes nothing: each slot's final result goes to
-    * the slot driver.
+    * settled, unless its KES period is one the clock has not reached then: that slot is passed
+    * over, and forged when the slot driver hands it over at its onset, so that no forge moves the
+    * KES key ahead of the clock. One handed over is forged at once. A change of the schedule or of
+    * the claims wakes it, and it takes the earliest again. It publishes nothing: each slot's final
+    * result goes to the slot driver.
     */
   private def forging(last: BigInt, forged: BigInt)(using
       Handle[F, NodeError],
@@ -816,6 +821,11 @@ final class Forger[F[_]: Async, S](
                     claims,
                     schedules
                   ) *> waiting
+                // a slot of a KES period the clock has not reached, in practice a period's first
+                // slot, is not forged ahead: its forge would move the key into that period before
+                // the clock (§5.5). At the onset the slot driver, after its update of the period,
+                // hands it over, and it is forged then, as the per-slot loop forges it
+                else if kesPeriodOf(t) > kesPeriodOf(geometry.slotAt(at)) then passed(t)
                 else
                   // a slot is forged only while forging is enabled, and only in a slot the clock
                   // can know, as the reference's watcher hands it only known slots
@@ -1783,6 +1793,11 @@ object Forger:
 
     /** The slot driver found forging disabled at a slot, and is about to settle it. */
     case Disabled(slot: BigInt)
+
+    /** The slot driver has taken a slot with forging enabled, and is about to make or read the KES
+      * key's update of its period.
+      */
+    case Updating(slot: BigInt)
 
     /** A forge is about to hand its block to chain selection. */
     case Handing(slot: BigInt)

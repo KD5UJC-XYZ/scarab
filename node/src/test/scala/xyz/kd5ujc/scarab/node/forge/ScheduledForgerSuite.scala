@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import scala.concurrent.duration.*
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -338,6 +338,95 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
         assertEquals(
           stands.scheduledEndings.filter(_._1 == pair.slot),
           Vector(pair.slot -> "BlockFromFuture")
+        )
+    }
+  }
+
+  // ---- a led slot in the first slot of a KES period: never forged before the period begins
+
+  /** The first slot of KES period 51, for a certificate from period 50. */
+  private val periodStart = BigInt(5100)
+
+  test(
+    "a led first slot of a KES period, and a reissued certificate installed in its wake margin"
+  ) {
+    // between the forging fiber's wake for the slot and its onset, a SIGHUP installs a certificate
+    // issued again (counter 1) for the same KES key: the clock is still in period 50
+    val seed = seedLeading(Vector(periodStart))
+    withHandle {
+      compared(
+        Scenario(
+          seed,
+          alone,
+          periodStart - 2,
+          periodStart + 1,
+          margin = Vector(periodStart -> otherCertificate(seed, 50))
+        )
+      ).map { c =>
+        assertEquals(
+          c.scheduled.collect { case r: ForgeEvent.KesReloadRefused => r },
+          Vector.empty,
+          "the scheduled forger refused the reload"
+        )
+        reloaded(c)
+        same(c)
+        def counter(events: Vector[ForgeEvent]) = events.collect {
+          case f: ForgeEvent.Forged if f.slot == periodStart => f.opCertCounter
+        }
+        assertEquals(counter(c.perSlot), Vector(BigInt(1)), "the per-slot decision's certificate")
+        assertEquals(counter(c.scheduled), Vector(BigInt(1)), "signed under the new certificate")
+      }
+    }
+  }
+
+  test("the certificate's expiry at a led first slot of a KES period: the key erased no earlier") {
+    // a certificate from period 0: its window ends at period 62, whose first slot the pool leads; the
+    // key's state is read between each slot's wake and its onset on both paths
+    val expiry = BigInt(6200)
+    val seed = seedLeading(Vector(expiry))
+    withHandle {
+      for
+        erased <- Ref.of[IO, Vector[(Way, BigInt, Boolean)]](Vector.empty)
+        probe = (slot: BigInt) =>
+          (side: Side) =>
+            currentHot(side.h.forger.hot).flatMap(c =>
+              erased.update(_ :+ (side.way, slot, c.kes.isForgotten))
+            )
+        c <- compared(
+          Scenario(
+            seed,
+            p => ledgerIn(6, Vector(p -> BigInt(1000000))),
+            expiry - 2,
+            expiry + 2,
+            kesStart = 0,
+            margin = Vector(expiry -> probe(expiry), (expiry + 1) -> probe(expiry + 1))
+          )
+        )
+        read <- erased.get
+      yield
+        def of(way: Way) = read.collect { case (w, slot, gone) if w == way => slot -> gone }
+        assertEquals(
+          of(Way.Scheduled),
+          of(Way.PerSlot),
+          "the key erased, by the slot whose wake margin it was read in"
+        )
+        assertEquals(of(Way.PerSlot), Vector(expiry -> false, (expiry + 1) -> true))
+        same(c)
+        def failures(events: Vector[ForgeEvent]) = events.collect {
+          case ForgeEvent.Loop(ForgeTrace.ForgeStateUpdateError(slot, error)) => slot -> error
+        }
+        assertEquals(failures(c.scheduled), failures(c.perSlot), "the lines of the expiry")
+        assert(
+          failures(c.perSlot).headOption.exists {
+            case (slot, KesEvolutionError.CouldNotEvolve(_, _))  => slot == expiry
+            case (_, KesEvolutionError.KeyAlreadyPoisoned(_, _)) => false
+          },
+          failures(c.perSlot).toString
+        )
+        assertEquals(
+          c.scheduled.collect { case d: ForgeEvent.Discarded if d.slot == expiry => d },
+          Vector.empty,
+          "an attempt at the expiry slot made before its period and discarded"
         )
     }
   }

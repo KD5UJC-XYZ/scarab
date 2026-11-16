@@ -81,10 +81,21 @@ trait ScheduleFixture extends ForgeFixture:
       .find(seed => led.forall(leads(seed, _)) && idle.forall(!leads(seed, _)))
       .getOrElse(throw new AssertionError(s"no seed leads $led and not $idle"))
 
-  /** One side of a differential run: its harness, the reading its key source gives at a reload, and
-    * its own copy of the pool.
+  /** The way a side of a differential run forges: the scheduled forger, or the per-slot decision.
     */
-  final case class Side(h: Harness, reading: Ref[IO, HotKeySource.Reading[IO]], pool: Pool)
+  enum Way:
+    case Scheduled
+    case PerSlot
+
+  /** One side of a differential run: its harness, the reading its key source gives at a reload, its
+    * own copy of the pool, and the way it forges.
+    */
+  final case class Side(
+      h: Harness,
+      reading: Ref[IO, HotKeySource.Reading[IO]],
+      pool: Pool,
+      way: Way
+  )
 
   /** A key source whose reading the test sets; the evolved key is not written anywhere. */
   def keysFrom(reading: Ref[IO, HotKeySource.Reading[IO]]): HotKeySource[IO] =
@@ -184,8 +195,9 @@ trait ScheduleFixture extends ForgeFixture:
     chained(_ => IO.pure(VolatileChain.genesis(geometry.k.toInt, state)))
 
   /** A scenario run on both paths: the slots `from` to `until`, the changes made just before a
-    * slot's wake (`before`), and the ones made when the scheduled forger reaches a point of its own
-    * (`at`), which the per-slot decision takes before the slot.
+    * slot's wake (`before`), the ones made between a slot's wake and its onset (`margin`, at
+    * [[inMargin]]), and the ones made when the scheduled forger reaches a point of its own (`at`),
+    * which the per-slot decision takes before the slot.
     */
   final case class Scenario(
       seed: Int,
@@ -199,74 +211,114 @@ trait ScheduleFixture extends ForgeFixture:
       scheduler: Boolean = true,
       committed: Boolean = false,
       setup: Change = _ => IO.unit,
-      selection: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None
+      selection: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
+      margin: Vector[(BigInt, Change)] = Vector.empty
   ):
-    def changesAt(slot: BigInt): Vector[Change] =
-      before.filter(_._1 == slot).map(_._2) ++ at.filter(_._2 == slot).map(_._3)
-
     /** The longest the scheduled run may take on the test clock, past which it fails. */
     def bound: FiniteDuration = ((until - from).toLong + 120).seconds
+
+  /** Half the wake margin before the onset of `slot`: after the forging fiber's wake for the slot,
+    * before the slot begins.
+    */
+  def inMargin(slot: BigInt): Instant =
+    geometry.slotStart(slot).minusNanos(Forger.WakeMargin.toNanos / 2)
 
   /** What a path published, and the transactions its mempool held at the end. */
   final case class Outcome(events: Vector[ForgeEvent], mempool: Vector[Bytes])
 
   /** The scheduled forger's run of `sc` on the test clock, and what it published, bounded by
     * `sc.bound` on that clock: a settlement that never comes fails the run, and the forger is
-    * cancelled whatever happened.
+    * cancelled whatever happened. The test clock starts at the onset of `sc.from`, and is driven to
+    * each change of a slot's margin, which is made when the clock is there.
     */
   def scheduledRun(sc: Scenario, p: Pool): IO[Outcome] =
-    TestControl.executeEmbed(
-      withHandle {
-        for
-          hooks <- Ref.of[IO, Map[Forger.Point, Change]](
-            sc.at.map((point, _, change) => point -> change).toMap
-          )
-          reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
-          side <- Deferred[IO, Side]
-          stalled = (point: Forger.Point) =>
-            point match
-              case Forger.Point.Inputs(_) if !sc.scheduler => IO.never[Unit]
-              case _                                       => IO.unit
-          h <- harness(
-            p,
-            sc.ledger(p),
-            live = true,
-            offsetMillis = ((sc.from - 5000) * 1000).toLong,
-            unbounded = true,
-            source = Some(keysFrom(reading)),
-            praos = sc.praos,
-            committedChain = sc.committed,
-            selectionLedger = sc.selection,
-            pause = Some(point =>
-              stalled(point) *> hooks
-                .modify(m => (m - point, m.get(point)))
-                .flatMap(_.traverse_(change => side.get.flatMap(change)))
-            )
-          )
-          _ <- side.complete(Side(h, reading, p))
-          _ <- sc.setup(Side(h, reading, p))
-          fiber <- h.forger.run.start
-          ended <- (sc.before.traverse_((slot, change) =>
-            h.settled(slot - 1) *> change(Side(h, reading, p))
-          ) *> IO.race(h.settled(sc.until), fiber.join))
-            .timeout(sc.bound)
-            .guarantee(fiber.cancel)
-          _ <- ended.fold(
-            _ => IO.unit,
-            o => IO.raiseError(new AssertionError(s"the forger ended: $o"))
-          )
-          // every change made at a point of the forger's was made: the point was reached
-          left <- hooks.get
-          _ <- IO
-            .raiseError(new AssertionError(s"points never reached: ${left.keys}"))
-            .whenA(left.nonEmpty)
-          events <- h.seen
-          held <- h.mempool.snapshot
-        yield Outcome(events, held.entries.map(_.id))
+    for
+      due <- sc.margin.traverse((slot, change) => Deferred[IO, Unit].map(d => (slot, change, d)))
+      control <- TestControl.execute(scheduledOn(sc, p, due.map((_, change, d) => change -> d)))
+      _ <- due.sortBy(_._1).foldLeftM(geometry.slotStart(sc.from)) { (reached, timed) =>
+        val (slot, _, d) = timed
+        val at = inMargin(slot)
+        control.tickFor(Forger.between(reached, at)) *> d.complete(()) *> control.tick.as(at)
       }
-    )
+      _ <- control.tickAll
+      result <- control.results
+      outcome <- result match
+        case Some(cats.effect.kernel.Outcome.Succeeded(o)) => IO.pure(o)
+        case Some(cats.effect.kernel.Outcome.Errored(e))   => IO.raiseError(e)
+        case Some(cats.effect.kernel.Outcome.Canceled()) =>
+          IO.raiseError(new AssertionError("the scheduled run was cancelled"))
+        case None => IO.raiseError(new AssertionError("the scheduled run did not end"))
+    yield outcome
 
-  /** The per-slot decision of every slot of `sc`, at the slot's onset, the changes made before it.
+  /** The program of [[scheduledRun]]: each change of a slot's margin is made once its `due` is
+    * completed.
+    */
+  private def scheduledOn(
+      sc: Scenario,
+      p: Pool,
+      margins: Vector[(Change, Deferred[IO, Unit])]
+  ): IO[Outcome] =
+    withHandle {
+      for
+        hooks <- Ref.of[IO, Map[Forger.Point, Change]](
+          sc.at.map((point, _, change) => point -> change).toMap
+        )
+        reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
+        side <- Deferred[IO, Side]
+        stalled = (point: Forger.Point) =>
+          point match
+            case Forger.Point.Inputs(_) if !sc.scheduler => IO.never[Unit]
+            case _                                       => IO.unit
+        h <- harness(
+          p,
+          sc.ledger(p),
+          live = true,
+          offsetMillis = ((sc.from - 5000) * 1000).toLong,
+          unbounded = true,
+          source = Some(keysFrom(reading)),
+          praos = sc.praos,
+          committedChain = sc.committed,
+          selectionLedger = sc.selection,
+          pause = Some(point =>
+            stalled(point) *> hooks
+              .modify(m => (m - point, m.get(point)))
+              .flatMap(_.traverse_(change => side.get.flatMap(change)))
+          )
+        )
+        here = Side(h, reading, p, Way.Scheduled)
+        _ <- side.complete(here)
+        _ <- sc.setup(here)
+        timed <- margins.traverse((change, due) => (due.get *> change(here)).start)
+        fiber <- h.forger.run.start
+        ended <- (sc.before.traverse_((slot, change) => h.settled(slot - 1) *> change(here)) *>
+          IO.race(h.settled(sc.until), fiber.join))
+          .timeout(sc.bound)
+          .guarantee(fiber.cancel *> timed.traverse_(_.cancel))
+        _ <- ended.fold(
+          _ => IO.unit,
+          o => IO.raiseError(new AssertionError(s"the forger ended: $o"))
+        )
+        // every change made at a point of the forger's was made: the point was reached
+        left <- hooks.get
+        _ <- IO
+          .raiseError(new AssertionError(s"points never reached: ${left.keys}"))
+          .whenA(left.nonEmpty)
+        // and every change of a slot's margin, before the run's last slot was settled
+        made <- timed.traverse(_.join)
+        _ <- made.traverse_ {
+          case cats.effect.kernel.Outcome.Succeeded(_) => IO.unit
+          case cats.effect.kernel.Outcome.Errored(e)   => IO.raiseError(e)
+          case cats.effect.kernel.Outcome.Canceled() =>
+            IO.raiseError(new AssertionError("a change of a slot's margin was never made"))
+        }
+        events <- h.seen
+        held <- h.mempool.snapshot
+      yield Outcome(events, held.entries.map(_.id))
+    }
+
+  /** The per-slot decision of every slot of `sc`, at the slot's onset, the changes made before it
+    * in the order of the scheduled run: before the slot's wake, in its margin (the clock then at
+    * [[inMargin]]), at the forger's points.
     */
   def perSlotRun(sc: Scenario, p: Pool)(using Handle[IO, NodeError]): IO[Outcome] =
     for
@@ -280,10 +332,12 @@ trait ScheduleFixture extends ForgeFixture:
         praos = sc.praos,
         selectionLedger = sc.selection
       )
-      side = Side(h, reading, p)
+      side = Side(h, reading, p, Way.PerSlot)
       _ <- sc.setup(side)
       _ <- (sc.from to sc.until).toList.traverse_ { s =>
-        at.set(geometry.slotStart(s)) *> sc.changesAt(s).traverse_(_(side)) *>
+        at.set(geometry.slotStart(s)) *> sc.before.filter(_._1 == s).traverse_(_._2(side)) *>
+          sc.margin.filter(_._1 == s).traverse_(m => at.set(inMargin(s)) *> m._2(side)) *>
+          at.set(geometry.slotStart(s)) *> sc.at.filter(_._2 == s).traverse_(_._3(side)) *>
           h.forger
             .step(s)
             .flatMap(_.fold(f => IO.raiseError(new AssertionError(f.message)), IO.pure))
