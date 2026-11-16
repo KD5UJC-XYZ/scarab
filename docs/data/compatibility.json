@@ -1631,7 +1631,7 @@
       "id": "persistence-snapshot-v10",
       "component": "Persistence: ledger snapshot format (V10) and the reference build",
       "status": "implemented",
-      "summary": "Native snapshot format V10 records the reference build (`--reference-build`) whose layout the Haskell state bytes are in; V9 files migrate as 11.1 with every other byte kept; import and export keep the reference's bytes and convert nothing; 11.1's and the Leios build's layouts are read and written, and `follow` refuses the Leios build until its rules exist; `11.2` is named and refused by every command until its layout exists",
+      "summary": "Native snapshot format V10 records the reference build (`--reference-build`) whose layout the Haskell state bytes are in; V9 files migrate as 11.1 with every other byte kept; import and export keep the reference's bytes and convert nothing; 11.1's and the Leios build's layouts are read and written, and `follow` refuses the Leios build until its rules exist; `11.2` is named and refused by every command until its layout exists; a stored script's kind may be PlutusV4",
       "evidence": {
         "suites": [
           "SnapshotV10MigrationSuite",
@@ -1639,10 +1639,12 @@
           "CodecSuite",
           "ReferenceBuildSuite",
           "LedgerSnapshotImportSuite",
-          "LedgerSnapshotExportSuite"
+          "LedgerSnapshotExportSuite",
+          "StoredScriptKindSuite"
         ],
         "issues": [
-          826
+          826,
+          85
         ]
       },
       "limitations": {
