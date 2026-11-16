@@ -50,7 +50,7 @@ refuses a variable that no `lam` binds anywhere in the term (`unDeBruijnProgram`
 ledger's scope check, looks inside `constr` and `case`), evaluates with the same profile, and compares
 the result with the decoded `.flat.expected` program and the budget with the shared
 `.budget.expected` (`Common.hs:347-417,550-575`, unchanged at 1.71.0.0). The own evaluator runs the 906
-of 1.70.0.0, the release it implements, that way through its own Flat decoder and machine, all passing
+of 1.70.0.0 that way through its own Flat decoder and machine, all passing
 with no exclusion ([below](#scarabs-own-evaluator), ADR 0027). Until 2026-11-15 `PlutusConformanceSuite`
 and `PlutusConformance171Suite` ran the 906 of each release through the Scalus backend's Flat walker and
 machine, all passing; the own evaluator runs the 906 of 1.71.0.0 the same way
