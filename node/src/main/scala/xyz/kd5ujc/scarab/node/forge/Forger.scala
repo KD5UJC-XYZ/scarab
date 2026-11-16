@@ -250,6 +250,10 @@ trait ForgeEvents[F[_]]:
   *   its update of each period.
   * @param pause
   *   Called at the points where a test suspends a fiber ([[Forger.Point]]); nothing by default.
+  * @param selectionLedger
+  *   The ledger a block's transactions in a slot on a predecessor are selected against: the ticked
+  *   ledger itself, but in a test that needs one no chain state holds (a parameter beyond the
+  *   state's range, so that the selection withholds a transaction).
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
@@ -274,7 +278,8 @@ final class Forger[F[_]: Async, S](
     val schedule: LeaderSchedule[F],
     chains: Signal[F, VolatileChain[S]],
     shared: Forger.Shared[F],
-    pause: Forger.Point => F[Unit]
+    pause: Forger.Point => F[Unit],
+    selectionLedger: (BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger
 )(using
     chain: Stateful[F, VolatileChain[S]],
     read: ChainRead[S],
@@ -580,16 +585,24 @@ final class Forger[F[_]: Async, S](
         else F.unit
       }
       on <- hot.enabled
+      _ <- pause(Forger.Point.Disabled(slot)).unlessA(on)
       // the KES key at the slot's period, before anything of the slot (§5.5)
       kes <- if on then periodUpdate(kesPeriodOf(slot)) else F.pure(None)
       _ <- claim match
         case Some(Claim.Forging(result)) => awaited(slot, kes, result)
         case Some(Claim.Handed(result))  => awaited(slot, kes, result)
         case Some(Claim.Driver())        => F.unit
-        case None                        => own(slot, kes).whenA(on)
+        case None                        => if on then own(slot, kes) else F.unit
       _ <- shared.claims.update(_.settled(slot))
       _ <- watch
     yield ()
+
+  /** A slot the slot driver does not handle (forging is disabled): claimed by it, so that the
+    * forging fiber cannot claim it any more, unless the forging fiber claimed it first, after a
+    * reload enabled forging, whose result is then awaited and published before the mark passes it.
+    */
+  private def unowned(slot: BigInt, kes: Option[(Long, Forger.KesResult)]): F[Unit] =
+    shared.claims.update(_.claim(slot, Claim.Driver())._1).void.flatTap(_ => F.pure(kes))
 
   /** A slot the forging fiber owns: its final result, published. */
   private def awaited(
@@ -643,7 +656,8 @@ final class Forger[F[_]: Async, S](
         val period = kesPeriodOf(slot)
         val inHeld = held.exists {
           case Held.Kes(s, g, Right(_), _) => g == generation && kesPeriodOf(s) == period
-          case Held.Kes(_, _, Left(_), _) | Held.Line(_, _) | Held.Effect(_) => false
+          case Held.Kes(_, _, Left(_), _) | Held.Line(_, _) | Held.Effect(_) | Held.Withdrawal(_) =>
+            false
         }
         shared.published.get.flatMap { published =>
           if inHeld || published.announced.contains(generation -> period) then F.pure(held)
@@ -659,7 +673,7 @@ final class Forger[F[_]: Async, S](
       Raise[F, Fatal]
   ): F[Unit] =
     decided(slot, kes).flatMap {
-      case Forger.Decision.Disabled() => shared.claims.update(_.claim(slot, Claim.Driver())._1)
+      case Forger.Decision.Disabled() => unowned(slot, kes)
       case Forger.Decision.Ends(lines) =>
         shared.claims.modify(_.claim(slot, Claim.Driver())).flatMap {
           case None                        => publish(lines)
@@ -869,21 +883,25 @@ final class Forger[F[_]: Async, S](
             .compile
             .lastOrError
             .map((tip, generation) => Seen(tip, generation))
-        F.race(sleep(Forger.between(at, onset)), changed).flatMap {
-          case Left(_) => atOnset(slot, current, discards)
-          case Right(next) =>
-            current match
-              case built: Attempted.Built[F, S] if next.generation == built.prepared.generation =>
-                provisional(slot, built, next, discards)
-              case other =>
-                val why = other match
-                  case _: Attempted.Built[F, S] => DiscardReason.Credentials
-                  case e: Attempted.Ended[F, S] => Forger.reasonOf(e.why)
-                discarded(slot, why, other).flatMap { line =>
-                  attempt(slot, scheduled)
-                    .flatMap(again => provisional(slot, again, next, discards :+ line))
-                }
-        }
+        pause(Forger.Point.Waiting(slot)) *> F
+          .race(sleep(Forger.between(at, onset)), changed)
+          .flatMap {
+            // the monotonic timer is only a wake: the wall clock, read again, says whether the
+            // onset has come (a clock moved back within the rewind allowance has it later)
+            case Left(_) => atOnset(slot, current, discards)
+            case Right(next) =>
+              current match
+                case built: Attempted.Built[F, S] if next.generation == built.prepared.generation =>
+                  provisional(slot, built, next, discards)
+                case other =>
+                  val why = other match
+                    case _: Attempted.Built[F, S] => DiscardReason.Credentials
+                    case e: Attempted.Ended[F, S] => Forger.reasonOf(e.why)
+                  discarded(slot, why, other).flatMap { line =>
+                    attempt(slot, scheduled)
+                      .flatMap(again => provisional(slot, again, next, discards :+ line))
+                  }
+          }
     }
 
   /** At the onset: the early block handed over if it still holds, else the slot forged again. */
@@ -895,9 +913,7 @@ final class Forger[F[_]: Async, S](
       case built: Attempted.Built[F, S] =>
         holds(slot, built.prepared).flatMap {
           case None =>
-            handover(slot, built.prepared).map(lines =>
-              Final.Lines(discards ++ built.held ++ lines)
-            )
+            handover(slot, built).map(lines => Final.Lines(discards ++ lines))
           case Some(why) =>
             discarded(slot, why, built).flatMap(line =>
               forgeNow(slot).map(_.after(discards :+ line))
@@ -956,7 +972,7 @@ final class Forger[F[_]: Async, S](
       else
         attempt(slot, scheduled).flatMap {
           case built: Attempted.Built[F, S] =>
-            handover(slot, built.prepared).map(lines => Final.Lines(built.held ++ lines))
+            handover(slot, built).map(Final.Lines(_))
           case Attempted.Ended(_, Why.NotLed(generation, info)) =>
             now.map(at =>
               Final.NotLed(
@@ -1007,7 +1023,7 @@ final class Forger[F[_]: Async, S](
       attempt(slot, checked)
         .flatMap {
           case built: Attempted.Built[F, S] =>
-            handover(slot, built.prepared).map(built.held ++ _)
+            handover(slot, built)
           case e: Attempted.Ended[F, S] => F.pure(e.held)
         }
         .flatMap(publish)
@@ -1062,7 +1078,8 @@ final class Forger[F[_]: Async, S](
           events.emitAt(at, ForgeEvent.StateInfo(info))
       case Held.Kes(slot, generation, Left(failure), at) =>
         shared.published.modify(_.named(generation, slot, failure)).flatMap(trace(_, at))
-      case Held.Effect(run) => run
+      case Held.Effect(run)     => run
+      case Held.Withdrawal(run) => run
     }
 
   private def trace(t: ForgeTrace, at: Instant): F[Unit] =
@@ -1083,6 +1100,13 @@ final class Forger[F[_]: Async, S](
     def kes(slot: BigInt, generation: Long, r: Either[KesEvolutionError, KesInfo]): F[Unit] =
       now.flatMap(at => held.update(_ :+ Held.Kes(slot, generation, r, at)))
     def effect(run: F[Unit]): F[Unit] = held.update(_ :+ Held.Effect(run))
+
+    /** The transactions the selection had no verdict on, which leave the mempool once the attempt
+      * counts: before its block is handed over, or when its refusal is published; never for an
+      * attempt that is discarded.
+      */
+    def withdrawal(reasons: Map[Bytes, Rejection]): F[Unit] =
+      held.update(_ :+ Held.Withdrawal(mempool.withdraw(reasons).void)).whenA(reasons.nonEmpty)
     def say(t: ForgeTrace): Step[Unit] = EitherT.liftF(line(ForgeEvent.Loop(t)))
     def giveUp[A](t: ForgeTrace): Step[A] = EitherT.left(line(ForgeEvent.Loop(t)).as(Why.Refused))
     def failed(slot: BigInt, error: ForgeError): F[Unit] =
@@ -1226,7 +1250,9 @@ final class Forger[F[_]: Async, S](
         )
       )
       snapshot <- perform(mempool.snapshot)
-      chosen <- perform(select(context.base, slot, epoch, ticked, snapshot))
+      selected <- perform(select(context.base, slot, epoch, ticked, snapshot))
+      (chosen, withheld) = selected
+      _ <- perform(hold.withdrawal(withheld))
       _ <- hold.say(
         ForgeTrace.ForgingMempoolSnapshot(
           slot,
@@ -1274,20 +1300,37 @@ final class Forger[F[_]: Async, S](
   /** The block handed to chain selection (`Follower.adoptForged`) and what came of it, its lines
     * held.
     */
-  private def handover(slot: BigInt, prepared: Prepared[S])(using
+  private def handover(slot: BigInt, built: Attempted.Built[F, S])(using
       handle: Handle[F, NodeError],
       terminal: Raise[F, Fatal]
   ): F[Vector[Held[F]]] =
-    Ref.of[F, Vector[Held[F]]](Vector.empty).flatMap { held =>
+    val prepared = built.prepared
+    val withdrawals = built.held.collect { case Held.Withdrawal(run) => run }
+    val lines = built.held.filter {
+      case Held.Withdrawal(_)                                      => false
+      case Held.Line(_, _) | Held.Kes(_, _, _, _) | Held.Effect(_) => true
+    }
+    pause(Forger.Point.Handing(slot)) *> Ref.of[F, Vector[Held[F]]](Vector.empty).flatMap { held =>
       val hold = Holding(held)
-      handle.attempt(F.defer(adopted(slot, prepared, hold))).flatMap {
-        case Right(_) => held.get
-        case Left(e: ForgeError) =>
-          HotKeys
-            .infrastructureFailure(e)
-            .fold(hold.failed(slot, e) *> held.get)(_.raise[F, Vector[Held[F]]])
-        case Left(other) => other.raise[F, Vector[Held[F]]]
-      }
+      // the check of the credentials and the submission under the key's lock, so that no reload
+      // lands between them: a block signed with credentials no longer in force is not handed over,
+      // as the reference's forging thread of replaced credentials ends (C19); the failures of the
+      // adoption come back as values, so that none crosses the lock's scope
+      handle
+        .attempt(F.defer(withdrawals.sequence_ *> adopted(slot, prepared, hold)))
+        .map(e => Option(Option(e)))
+        .map(_.flatten)
+        .flatMap {
+          case None           => discarded(slot, DiscardReason.Credentials, built).map(Vector(_))
+          case Some(Right(_)) => held.get.map(lines ++ _)
+          case Some(Left(e: ForgeError)) =>
+            HotKeys
+              .infrastructureFailure(e)
+              .fold(hold.failed(slot, e) *> held.get.map(lines ++ _))(
+                _.raise[F, Vector[Held[F]]]
+              )
+          case Some(Left(other)) => other.raise[F, Vector[Held[F]]]
+        }
     }
 
   private def adopted(slot: BigInt, prepared: Prepared[S], hold: Holding)(using
@@ -1391,7 +1434,9 @@ final class Forger[F[_]: Async, S](
       epoch: BigInt,
       ticked: MempoolLedger,
       held: MempoolState
-  )(using Handle[F, NodeError]): F[Vector[(Entry, BlockBuilder.Piece)]] =
+  )(using
+      Handle[F, NodeError]
+  ): F[(Vector[(Entry, BlockBuilder.Piece)], Map[Bytes, Rejection])] =
     for
       readable <- UtxoStore.complete(
         utxoStore,
@@ -1400,7 +1445,7 @@ final class Forger[F[_]: Async, S](
       )
       selection <- F.blocking(
         BlockBuilder.select(
-          ticked.withUtxo(readable),
+          selectionLedger(slot, base.tip, ticked.withUtxo(readable)),
           slot,
           epoch,
           geometry,
@@ -1410,17 +1455,14 @@ final class Forger[F[_]: Async, S](
           Some(clock.at(base.state, Era.Conway, slot))
         )(plutus.decoder, plutus.evaluator)
       )
-      // the held transactions we have no verdict on leave the pool with their reason, and the
-      // block is built from the rest: the owner's decision of 2026-10-28 (issue 584), where the
-      // reference's linked forging thread stops the node (consensus 82ecba32 Node/NodeKernel.hs
-      // `forkBlockForging`)
-      _ <- mempool
-        .withdraw(
-          selection.withheld.map((entry, failure) => entry.id -> Rejection.Ledger(failure)).toMap
-        )
-        .whenA(selection.withheld.nonEmpty)
-      chosen = selection.chosen
-    yield chosen
+    // the held transactions we have no verdict on leave the pool with their reason, and the block
+    // is built from the rest: the owner's decision of 2026-10-28 (issue 584), where the reference's
+    // linked forging thread stops the node (consensus 82ecba32 Node/NodeKernel.hs
+    // `forkBlockForging`); they leave it only once the attempt counts (#1101)
+    yield (
+      selection.chosen,
+      selection.withheld.map((entry, failure) => entry.id -> Rejection.Ledger(failure)).toMap
+    )
 
   /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a
     * block the steps before let through: the key's window, and the body size and the decoding of
@@ -1723,8 +1765,17 @@ object Forger:
     /** An early attempt ended without a block before the slot's onset, and is pending. */
     case Refused(slot: BigInt)
 
+    /** A pending early attempt has read the clock and is about to wait for the slot's onset. */
+    case Waiting(slot: BigInt)
+
     /** The slot driver found a slot led and is about to hand it to the forging fiber. */
     case Deciding(slot: BigInt)
+
+    /** The slot driver found forging disabled at a slot, and is about to settle it. */
+    case Disabled(slot: BigInt)
+
+    /** A forge is about to hand its block to chain selection. */
+    case Handing(slot: BigInt)
 
   /** The update of the KES key to a period: the key's state, its failure, or a failure of the
     * forger's own.
@@ -1744,6 +1795,9 @@ object Forger:
         at: Instant
     )
     case Effect(run: F[Unit])
+
+    /** Transactions leaving the mempool, run before a block is handed over or with the lines. */
+    case Withdrawal(run: F[Unit])
 
   /** Why an attempt ended without a block. */
   private[forge] enum Why:
@@ -2177,7 +2231,8 @@ object Forger:
       source: Option[HotKeySource[F]] = None,
       enabled: Boolean = true,
       chains: Option[Signal[F, VolatileChain[S]]] = None,
-      pause: Option[Point => F[Unit]] = None
+      pause: Option[Point => F[Unit]] = None,
+      selectionLedger: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None
   )(using
       Stateful[F, VolatileChain[S]],
       ChainRead[S],
@@ -2218,6 +2273,7 @@ object Forger:
         schedule,
         chains.getOrElse(follower.committedChain),
         shared,
-        pause.getOrElse(_ => Async[F].unit)
+        pause.getOrElse(_ => Async[F].unit),
+        selectionLedger.getOrElse((_, _, ticked) => ticked)
       )
     }
