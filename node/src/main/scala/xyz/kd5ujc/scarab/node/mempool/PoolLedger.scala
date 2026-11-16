@@ -156,12 +156,22 @@ object PoolLedger:
         read.nes match
           case Left(error) => Right(Left(ConwayView.Unavailable.Refused(error)))
           case Right(nes) =>
-            for
-              slot <- SlotNo
-                .fromBigInt(tip.fold(BigInt(0))(_.slot + 1))
-                .leftMap(TickFailure.Vocab(_))
-              ticked <- Hfc.tick(env.rules, transition)(EraNes.InEra(era, nes), s.afterVoting, slot)
-            yield of(ticked)
+            ticked(EraNes.InEra(era, nes), s.afterVoting, tip.map(_.slot), env, transition)
+
+  /** [[at]] of the new-epoch state `start` of a chain whose tip is at `tipSlot` (none at Origin)
+    * and has `afterVoting` blocks after the voting deadline of its epoch.
+    */
+  def ticked(
+      start: EraNes,
+      afterVoting: Long,
+      tipSlot: Option[BigInt],
+      env: MempoolEnv,
+      transition: Hfc.Transition
+  ): Either[TickFailure, Either[ConwayView.Unavailable, PoolLedger]] =
+    for
+      slot <- SlotNo.fromBigInt(tipSlot.fold(BigInt(0))(_ + 1)).leftMap(TickFailure.Vocab(_))
+      next <- Hfc.tick(env.rules, transition)(start, afterVoting, slot)
+    yield of(next)
 
 /** The ledger of an era from Shelley to Babbage, whose transactions LEDGER applies
   * (`ruleApplyTxValidation @"LEDGER"`, `Shelley/API/Mempool.hs:230-262`, cardano-ledger f649f975):

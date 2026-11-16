@@ -287,3 +287,63 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     assertEquals(selected.chosen.map(_._1.id), held.entries.map(_.id))
     assertEquals(counts, admitted)
   }
+
+  // Before Conway: a Babbage transaction of preview whose PlutusV2 script fails (its budget is
+  // exceeded), which the chain holds with is_valid false. `applyAlonzoBasedTx` corrects a peer's
+  // claim from Alonzo on (`Shelley/Eras.hs:190-269`, ouroboros-consensus 82ecba32).
+  private val babbage: (PlutusCase, Block.Transaction) =
+    val j = parse(Files.readString(Path.of("fixtures/preview/plutus/slot1156258-842a18e8.json")))
+      .fold(e => fail(e.message), identity)
+    val plutus = PlutusCase.fromJson(j)
+    val body = hex(j, "body").getOrElse(fail("no body"))
+    val witnesses = hex(j, "witnesses").getOrElse(fail("no witnesses"))
+    plutus -> Block.Transaction(body, witnesses, hex(j, "auxiliary"), plutus.tx.isValid)
+
+  test(
+    "Babbage: a remote transaction claiming valid whose script fails is held as invalid; a local one is refused"
+  ) {
+    val (plutus, parts) = babbage
+    assert(!parts.isValid, "the case is a failing script")
+    given xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[xyz.kd5ujc.scarab.ledger.state.Babbage] =
+      xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SBabbage
+    // the fixture does not record its collateral output: 10 ada at the signer's enterprise address,
+    // which pays the declared total collateral of 3 ada with the 7 ada it returns
+    import xyz.kd5ujc.scarab.ledger.given
+    val collateral = Map(
+      TxIn(
+        Bytes
+          .fromHex("3af629a5cd75f76d0cc21172e1193b85f199ca78e837c3965d77d7d6bc90206b")
+          .fold(e => fail(e.message), identity),
+        0
+      ) -> TxOut
+        .fromBytes(
+          Bytes
+            .fromHex("82581d60b114288c766cc00730c7fb00ff8b955b575ba9011c6d87d2e720ff421a00989680")
+            .fold(e => fail(e.message), identity)
+        )
+        .fold(e => fail(e.toString), identity)
+    )
+    val funds = plutus.spent ++ plutus.references ++ collateral
+    val nes =
+      Build.funded(Build.nes[xyz.kd5ujc.scarab.ledger.state.Babbage](5, plutus.params), funds)
+    val ledger = EarlierLedger(
+      xyz.kd5ujc.scarab.ledger.rules.PreConway[xyz.kd5ujc.scarab.ledger.state.Babbage],
+      nes.es.ls,
+      nes.es.chainAccount,
+      nes.epoch.toBigInt
+    )
+    val pool = MempoolState.empty(Right(ledger), plutus.slot - 1, None)
+    val claimed = Submission(
+      xyz.kd5ujc.scarab.protocol.Era.Babbage.index,
+      EraInjection.envelope(parts.copy(isValid = true), xyz.kd5ujc.scarab.protocol.Era.Babbage)
+    )
+    val entry =
+      pool.add(claimed, mempoolEnv, Source.Remote).fold(r => fail(s"refused: ${r.message}"), _._2)
+    assert(!entry.tx.isValid, "the held transaction must carry is_valid = false")
+    assertEquals(entry.raw, EraInjection.envelope(parts, xyz.kd5ujc.scarab.protocol.Era.Babbage))
+    assert(
+      tagMismatch(true)
+        .applyOrElse(pool.add(claimed, mempoolEnv, Source.Local).map(_ => ()), _ => false),
+      "a local client's claim is judged as it came"
+    )
+  }

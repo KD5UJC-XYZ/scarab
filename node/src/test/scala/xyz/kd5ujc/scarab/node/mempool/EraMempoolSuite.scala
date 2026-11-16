@@ -10,8 +10,9 @@ import xyz.kd5ujc.scarab.protocol.TxSubmission2.{EraTx, EraTxId}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{Block, TestLedger}
-import xyz.kd5ujc.scarab.ledger.rules.{NativeRules, PreConway}
+import xyz.kd5ujc.scarab.ledger.rules.{EraNes, NativeRules, PreConway}
 import xyz.kd5ujc.scarab.ledger.state.{
+  FuturePParams,
   Allegra,
   Alonzo,
   Babbage,
@@ -427,4 +428,91 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(pointers(synced), expected, "revalidated")
       assertEquals(synced.entries.map(_.ticket), Vector(1L, 2L), "the tickets keep their order")
     }
+  }
+
+  // ---- a real hard fork, the two revalidations, and a peer's earlier-era transaction
+
+  test("a hard fork in the tick brings the held transactions into the new era: Babbage to Conway") {
+    given ShelleyBasedEra[Babbage] = ShelleyBasedEra.SBabbage
+    val nes = NativeRules.stateIn[Babbage](7, (1 to 2).toVector.map(i => txIn(i) -> funds))
+    val pre = PreConway[Babbage]
+    // the definite update of the next boundary is to Conway's version: the chain enters Conway there
+    val utxo = pre.gov.modify(g =>
+      g.copy(futurePParams =
+        FuturePParams.DefinitePParamsUpdate(g.curPParams.copy(protocolMajor = BigInt(9)))
+      )
+    )(nes.es.ls.utxo)
+    val forking =
+      nes.copy[Babbage](es = nes.es.copy[Babbage](ls = nes.es.ls.copy[Babbage](utxo = utxo)))
+    val boundary = translating.geometry.firstSlot(nes.epoch.toBigInt + 1)
+    def at(tip: BigInt) =
+      PoolLedger
+        .ticked(
+          EraNes.InEra(ShelleyBasedEra.SBabbage, forking),
+          0L,
+          Some(tip),
+          translating,
+          NativeRules.transition
+        )
+        .fold(f => fail(f.toString), identity)
+    val before = at(boundary - 2)
+    assertEquals(before.map(_.era), Right(Era.Babbage), "the slot before the boundary")
+    val (raw, parts) = payment(Era.Babbage)
+    val held = MempoolState
+      .empty(before, boundary - 2, None)
+      .add(Submission(Era.Babbage.index, raw), translating, Source.Local)
+      .fold(r => fail(r.message), _._1)
+    val after = at(boundary - 1)
+    assertEquals(after.map(_.era), Right(Era.Conway), "the boundary's slot, translated")
+    Vector(translating, redecoding).foreach { env =>
+      val (moved, dropped) = held.sync(after, boundary - 1, env)
+      assertEquals(dropped, Vector.empty)
+      assertEquals(
+        moved.entries.map(e => (e.id, e.era, e.ticket)),
+        Vector((parts.id, Era.Conway, 1L))
+      )
+      assertEquals(
+        LocalMonitor.snapshot(moved).txs.map(_.tx),
+        Vector(LocalMonitor.wrapTx(Era.Conway, raw))
+      )
+    }
+  }
+
+  test(
+    "a held transaction brought into a new era is applied again without the static checks under 11.1, with every check under the Leios build"
+  ) {
+    // held in Babbage with a signature over other bytes, as no admission would take it: only the
+    // full validation of a re-decoded transaction checks the signature again
+    val (_, parts) = payment(Era.Babbage, forged = true)
+    val tx =
+      xyz.kd5ujc.scarab.ledger.Tx.fromBlock(parts, Era.Babbage).fold(e => fail(e.message), identity)
+    val entry = Entry(Era.Babbage, parts, tx, 1L)
+    val state = pool(Era.Babbage).copy(entries = Vector(entry), nextTicket = 2L)
+    val (translated, kept) = state.sync(Right(ledger(Era.Conway)), 1000, translating)
+    assertEquals(kept, Vector.empty, "11.1 reapplies it: the signature is a static check")
+    assertEquals(translated.entries.map(_.era), Vector(Era.Conway))
+    val (redecoded, dropped) = state.sync(Right(ledger(Era.Conway)), 1000, redecoding)
+    assertEquals(redecoded.entries, Vector.empty)
+    dropped match
+      case Vector(
+            (`entry`, Rejection.Ledger(_: xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected))
+          ) =>
+        ()
+      case other => fail(s"the Leios build must refuse it again: $other")
+  }
+
+  test(
+    "a peer's transaction of an earlier era reaches a Conway pool, held and offered as Conway's"
+  ) {
+    val (babbage, parts) = payment(Era.Babbage, i = 1)
+    for
+      pool <- Mempool
+        .create[IO](Right(ledger(Era.Conway)), 1000, translating, None, MempoolEvents.none[IO])
+      sink = pool.sink(failure => IO(fail(s"unexpected fatal: $failure")))
+      _ <- sink.submit(Vector(EraTx(Era.Babbage, babbage)))
+      offered <- pool.source.after(0L, 10)
+      body <- pool.source.body(parts.id)
+    yield
+      assertEquals(offered.map(h => (h.id, h.era)), Vector(parts.id -> Era.Conway))
+      assertEquals(body, Some(EraTx(Era.Conway, babbage)))
   }
