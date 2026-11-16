@@ -32,11 +32,18 @@ As in [uplc-generated-171](../uplc-generated-171/README.md#files), without a gen
 `models.jsonl` (the chain's cost model of each language, at protocol 12), `requests.jsonl` (each
 script with its arguments and budget, the transaction it belongs to, the transaction's recorded
 validity flag and the purpose its context names), `verdicts.jsonl` (the oracle's admission, stage,
-error class and constructor, budget spent and logs), and `manifest.json`, binding the three with the
-oracle's image and base image and the harness's hashes. `leios_chain_scan.py requests` writes the
-requests from the contexts and `leios_chain_scan.py verdicts` runs the oracle on them (the
-[oracle README](../../../scripts/oracle/leios-testnet/README.md#the-chains-own-transactions-54)). The
-raw answers of the oracle are not published.
+error class and constructor, budget spent and logs), `manifest.json`, binding the three with the
+harness's and the runners' sources, and `provenance.json`. `leios_chain_scan.py requests` writes the
+requests from the contexts, refusing a context the reference did not collect at any level, and
+`leios_chain_scan.py verdicts` runs the oracle on them (the
+[oracle README](../../../scripts/oracle/leios-testnet/README.md#the-chains-own-transactions-54)) as one
+immutable image ID, without network, after the recorded-request runner's check of the image
+(`scripts/oracle/plutus/recorded/run.py`: the repository's harness at the pinned, unchanged plutus,
+an executable cabal finds up to date as the entry point); the manifest and provenance bind that ID
+and the digests of the image's harness, build files and executable, which a later record must find
+again. `leios_chain_scan.py verdicts --verify-only` checks the fixture without Docker, its requests
+against those the retained contexts give. On 2026-11-16 the image, so checked, gave these
+`verdicts.jsonl` bytes again. The raw answers of the oracle are not published.
 
 ## What the suite checks
 

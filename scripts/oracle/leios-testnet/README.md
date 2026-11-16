@@ -92,7 +92,17 @@ chain. `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx` read nothing else of th
 ```sh
 docker build --label xyz.kd5ujc.scarab.kind=oracle \
   -f scripts/oracle/leios-testnet/chain/Dockerfile -t scarab-leios-testnet-chain:local .
+python3 -I scripts/oracle/leios-testnet/chain/run.py --evidence <a directory outside the checkout>
+python3 -I scripts/oracle/leios-testnet/chain/run.py --verify-only
 ```
+
+`chain/run.py` runs the image as its immutable ID, without network, only after measuring in it
+(under `set -euo pipefail`, so a failing command ends the measurement) that its `Main.hs`, package
+and cabal project are the repository's, that each checkout under `dist-newstyle/src` is at a commit
+the cabal project pins and unchanged, that cabal finds the executable up to date and that the image's
+entry point is that executable; the parent image's tag the Dockerfile names is not trusted. The
+fixture's provenance binds the image's build files and executable, and a later record must find them
+again (`--accept-build` accepts a build reviewed anew).
 
 The [chain contexts fixture](../../../fixtures/reference/leios-testnet-chain-contexts/README.md)
 says how its cases were extracted, and the

@@ -43,7 +43,9 @@ purposes of its redeemers, whether it has sub-transactions and a validity interv
 least cost per script new to the sample, its cost being its size times its number of redeemers; then,
 round by round over the strata, the same among the transactions of at most two redeemers and at most
 twice the median size of their stratum, which keeps the fixture small. The rule is deterministic, and
-`cases` collected the outputs the sample spends in a second reading of the chain.
+`cases` collected the outputs the sample spends in a second reading of the chain. On 2026-11-16 the scanner as
+committed with the image check read the same database again and wrote the same scan, sample and
+`cases.json`, byte for byte.
 
 ## Files
 
@@ -57,7 +59,13 @@ outputs its inputs, collateral and reference inputs spend, each encoded as the c
 transaction and of each sub-transaction, the `ToCBOR PlutusWithContext` encoding (the protocol
 version, the script with its language, the arguments, the redeemer's execution units and the cost
 model), in the order the reference collects them. `provenance.json` binds both with the chain's
-tip, the extraction script's and the harness's hashes and the images.
+tip and the extraction script's hash, and binds the oracle (`oracle`): the immutable ID of the image
+that answered, without network, and the digests of its harness, package, cabal project and
+executable, measured in the image by [`chain/run.py`](../../../scripts/oracle/leios-testnet/README.md#the-chains-own-transactions-54)
+before it answered, with the ledger and cardano-base checkouts at the commits the project pins and
+unchanged. `python3 -I scripts/oracle/leios-testnet/chain/run.py --verify-only` checks the fixture
+against that record without Docker; on 2026-11-16 the image, so checked, answered the cases again
+with these `results.json` bytes.
 
 The 200 transactions (89 of ranking blocks, 111 of endorser blocks; slots 292,839 to 2,562,177; 28
 with sub-transactions, 61 with a validity interval) run 273 scripts: 68 PlutusV1, 54 PlutusV2, 117
@@ -70,12 +78,17 @@ sub-transactions. The reference collected every transaction's contexts without a
 
 `LeiosChainContextsSuite` reads each transaction and its outputs as the node does and collects its
 scripts with `DijkstraScriptContexts.transaction`, the slots turned to POSIX time from the chain's
-system start: the same scripts, of the same languages and hashes, in the same order, for the same
-purposes, with the same redeemers and execution units as the reference, at the top level and in
-every sub-transaction, and each PlutusV4 script's argument equal to the reference's. The node builds
+system start: the same scripts, of the same languages and hashes, in the same order, each for the
+same purpose (the input it spends, the policy it mints, the account it withdraws from, the voter, or
+the index of the certificate, proposal or guard, read from the reference's arguments for every
+language), with the same redeemers and execution units as the reference, at the top level and in
+every sub-transaction; and each PlutusV4 script's argument, as `DataSerialisation` writes it, equal
+byte for byte to the reference's argument bytes in its `PlutusWithContext` encoding. Every
+collection of the reference must have succeeded, with an explicit list of contexts. The node builds
 no context for a PlutusV1 to PlutusV3 script in a Dijkstra transaction (it collects them as
-`Untranslated`, [the compatibility page](../../../docs/compatibility/plutus-v4-dijkstra.md)), so those
-arguments are not compared here; the suite reports how many. The arguments themselves are
+`Untranslated`, [the compatibility page](../../../docs/compatibility/plutus-v4-dijkstra.md)), so only
+those arguments are not compared here; the suite reports how many, requires every PlutusV4 argument
+of the reference to be compared, and fails on a PlutusV4 script collected without a context. The arguments themselves are
 evaluated, with the reference's verdicts, by
 [leios-testnet-chain-scripts](../leios-testnet-chain-scripts/README.md).
 
