@@ -30,6 +30,7 @@ import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.UtxoStore
+import scala.annotation.unused
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.Fibers
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
@@ -152,6 +153,11 @@ enum ForgeEvent:
 
 trait ForgeEvents[F[_]]:
   def emit(event: ForgeEvent): F[Unit]
+
+  /** `event`, which happened at `at`: a line the forger held until its slot's outcome was final
+    * keeps the time it was made (#1101). A sink that has no use for the time drops it.
+    */
+  def emitAt(@unused at: Instant, event: ForgeEvent): F[Unit] = emit(event)
 
 /** Block production for one pool, in the Praos protocol, as the reference's `forkBlockForging` does
   * it (consensus 82ecba329 `NodeKernel.hs` 549-796): once per slot, find the block to build on, the

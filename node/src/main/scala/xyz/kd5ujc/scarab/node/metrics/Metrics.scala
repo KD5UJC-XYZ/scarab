@@ -61,6 +61,9 @@ trait Metrics[F[_]]:
 
   def set[L](gauge: GaugeDef[L], labels: L, value: Double): F[Unit]
 
+  /** Remove a gauge's series, so that a value that has no meaning now is absent, not stale. */
+  def clear[L](gauge: GaugeDef[L], labels: L): F[Unit]
+
   /** Count a value into a histogram (a value that is not finite is dropped). */
   def observe[L](histogram: HistogramDef[L], labels: L, value: Double): F[Unit]
 
@@ -79,6 +82,7 @@ object Metrics:
     def inc(counter: CounterDef[Unit]): F[Unit] = metrics.inc(counter, (), 1.0)
     def advance(counter: CounterDef[Unit], to: Double): F[Unit] = metrics.advance(counter, (), to)
     def set(gauge: GaugeDef[Unit], value: Double): F[Unit] = metrics.set(gauge, (), value)
+    def clear(gauge: GaugeDef[Unit]): F[Unit] = metrics.clear(gauge, ())
     def observe(histogram: HistogramDef[Unit], value: Double): F[Unit] =
       metrics.observe(histogram, (), value)
 
@@ -89,6 +93,7 @@ object Metrics:
     def inc[L](counter: CounterDef[L], labels: L, by: Double) = Applicative[F].unit
     def advance[L](counter: CounterDef[L], labels: L, to: Double) = Applicative[F].unit
     def set[L](gauge: GaugeDef[L], labels: L, value: Double) = Applicative[F].unit
+    def clear[L](gauge: GaugeDef[L], labels: L) = Applicative[F].unit
     def observe[L](histogram: HistogramDef[L], labels: L, value: Double) = Applicative[F].unit
     def snapshot = Applicative[F].pure(Snapshot(SortedMap.empty))
 
@@ -160,6 +165,13 @@ object Metrics:
       state.update { s =>
         val f = gauge(s, g)
         Snapshot(s.families.updated(g.name, f.copy(series = f.series.updated(key, value))))
+      }
+
+    def clear[L](g: GaugeDef[L], labels: L) =
+      val key = g.labels.values(labels)
+      state.update { s =>
+        val f = gauge(s, g)
+        Snapshot(s.families.updated(g.name, f.copy(series = f.series.removed(key))))
       }
 
     def observe[L](h: HistogramDef[L], labels: L, value: Double) =
