@@ -443,6 +443,48 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     }
   }
 
+  test(
+    "a pending early attempt made again after a reload, the clock moved back a period: no key moved"
+  ) {
+    // 5101 is led and built early, the clock in 5100 (period 51). In its wake margin the wall clock
+    // moves back a second, into period 50, within the rewind allowance; a reload installs another
+    // KES key under a certificate from period 50 (counter 0), taken at relative period 0, and the
+    // early attempt is made again; a step later a certificate issued again for that key (counter
+    // 1) is installed, the clock still in period 50
+    val s = BigInt(5101)
+    val seed = seedLeading(Vector(s))
+    val other = seed + 200
+    withHandle {
+      compared(
+        Scenario(
+          seed,
+          alone,
+          s - 2,
+          s + 1,
+          behind = Some(s -> 1.second),
+          margin = Vector(s -> otherKes(other, 50, counter = 0), s -> otherKes(other, 50))
+        )
+      ).map { c =>
+        assertEquals(
+          c.scheduled.collect { case r: ForgeEvent.KesReloadRefused => r },
+          Vector.empty,
+          "the scheduled forger refused a reload"
+        )
+        reloaded(c)
+        same(c)
+        def counter(events: Vector[ForgeEvent]) = events.collect {
+          case f: ForgeEvent.Forged if f.slot == s => f.opCertCounter
+        }
+        assertEquals(counter(c.perSlot), Vector(BigInt(1)), "the per-slot decision's certificate")
+        assertEquals(
+          counter(c.scheduled),
+          Vector(BigInt(1)),
+          "signed under the reissued certificate"
+        )
+      }
+    }
+  }
+
   // ---- what an operator sees of the slots not led (#1101, Q1 and Q2)
 
   /** The scheduled forger's events from `from` to `until`, and its counters of epoch 5. */

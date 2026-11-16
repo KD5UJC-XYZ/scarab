@@ -134,9 +134,11 @@ trait ScheduleFixture extends ForgeFixture:
       )
     )
 
-  /** A SIGHUP that installs another KES key, under a certificate issued for it (counter 1). */
-  def otherKes(kesSeed: Int, start: Int): Change =
-    reloaded(side => HotKeySource.Reading.Found(certified(side.pool, kesOf(kesSeed), start, 1)))
+  /** A SIGHUP that installs another KES key, under a certificate issued for it (`counter`). */
+  def otherKes(kesSeed: Int, start: Int, counter: Int = 1): Change =
+    reloaded(side =>
+      HotKeySource.Reading.Found(certified(side.pool, kesOf(kesSeed), start, counter))
+    )
 
   /** A SIGHUP that installs the same KES key under a certificate issued again (counter 1). */
   def otherCertificate(kesSeed: Int, start: Int): Change =
@@ -196,8 +198,10 @@ trait ScheduleFixture extends ForgeFixture:
 
   /** A scenario run on both paths: the slots `from` to `until`, the changes made just before a
     * slot's wake (`before`), the ones made between a slot's wake and its onset (`margin`, at
-    * [[inMargin]]), and the ones made when the scheduled forger reaches a point of its own (`at`),
-    * which the per-slot decision takes before the slot.
+    * [[inMargin]], a slot's later ones each [[MarginStep]] after the one before), and the ones made
+    * when the scheduled forger reaches a point of its own (`at`), which the per-slot decision takes
+    * before the slot. `behind`: at the margin of its slot, before that margin's changes, the wall
+    * clock moves back by its duration, within the rewind allowance, and stays behind.
     */
   final case class Scenario(
       seed: Int,
@@ -212,16 +216,33 @@ trait ScheduleFixture extends ForgeFixture:
       committed: Boolean = false,
       setup: Change = _ => IO.unit,
       selection: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
-      margin: Vector[(BigInt, Change)] = Vector.empty
+      margin: Vector[(BigInt, Change)] = Vector.empty,
+      behind: Option[(BigInt, FiniteDuration)] = None
   ):
     /** The longest the scheduled run may take on the test clock, past which it fails. */
     def bound: FiniteDuration = ((until - from).toLong + 120).seconds
 
-  /** Half the wake margin before the onset of `slot`: after the forging fiber's wake for the slot,
-    * before the slot begins.
+    /** Each change of a slot's margin, with its place among that slot's. */
+    def margins: Vector[(BigInt, Int, Change)] =
+      margin.zipWithIndex.map { case ((slot, change), i) =>
+        (slot, margin.take(i).count(_._1 == slot), change)
+      }
+
+    /** How far behind the wall clock reads in the margin of `slot`. */
+    def back(slot: BigInt): FiniteDuration =
+      behind.collect { case (s, d) if s <= slot => d }.getOrElse(Duration.Zero)
+
+  /** How far apart the changes of one slot's margin are made. */
+  val MarginStep: FiniteDuration = 5.millis
+
+  /** Half the wake margin before the onset of `slot`, and `nth` steps of [[MarginStep]] after:
+    * after the forging fiber's wake for the slot, before the slot begins.
     */
-  def inMargin(slot: BigInt): Instant =
-    geometry.slotStart(slot).minusNanos(Forger.WakeMargin.toNanos / 2)
+  def inMargin(slot: BigInt, nth: Int = 0): Instant =
+    geometry
+      .slotStart(slot)
+      .minusNanos(Forger.WakeMargin.toNanos / 2)
+      .plusNanos((MarginStep * nth.toLong).toNanos)
 
   /** What a path published, and the transactions its mempool held at the end. */
   final case class Outcome(events: Vector[ForgeEvent], mempool: Vector[Bytes])
@@ -229,16 +250,35 @@ trait ScheduleFixture extends ForgeFixture:
   /** The scheduled forger's run of `sc` on the test clock, and what it published, bounded by
     * `sc.bound` on that clock: a settlement that never comes fails the run, and the forger is
     * cancelled whatever happened. The test clock starts at the onset of `sc.from`, and is driven to
-    * each change of a slot's margin, which is made when the clock is there.
+    * each change of a slot's margin, which is made when the clock is there, and to the moment the
+    * wall clock moves back (`sc.behind`), after which the wall clock reads that far behind it.
     */
   def scheduledRun(sc: Scenario, p: Pool): IO[Outcome] =
+    val start = geometry.slotStart(sc.from)
+    def later(slot: BigInt) = sc.behind.collect { case (s, d) if s < slot => d }
     for
-      due <- sc.margin.traverse((slot, change) => Deferred[IO, Unit].map(d => (slot, change, d)))
-      control <- TestControl.execute(scheduledOn(sc, p, due.map((_, change, d) => change -> d)))
-      _ <- due.sortBy(_._1).foldLeftM(geometry.slotStart(sc.from)) { (reached, timed) =>
-        val (slot, _, d) = timed
-        val at = inMargin(slot)
-        control.tickFor(Forger.between(reached, at)) *> d.complete(()) *> control.tick.as(at)
+      back <- Ref.of[IO, Long](0L)
+      due <- sc.margins.traverse((slot, nth, change) =>
+        Deferred[IO, Unit].map(d => (slot, nth, change, d))
+      )
+      control <- TestControl.execute(
+        scheduledOn(sc, p, back, due.map((_, _, change, d) => change -> d))
+      )
+      // on the test clock, which the wall clock's moving back does not move: the rewind first at
+      // its instant, then each change of a margin
+      events = sc.behind.toVector.map((slot, d) =>
+        (Forger.between(start, inMargin(slot)), 0, back.set(d.toMillis))
+      ) ++ due.map((slot, nth, _, d) =>
+        (
+          Forger.between(start, inMargin(slot, nth)) + later(slot).getOrElse(Duration.Zero),
+          1,
+          d.complete(()).void
+        )
+      )
+      _ <- events.sortBy((at, order, _) => (at, order)).foldLeftM(Duration.Zero) {
+        (reached, event) =>
+          val (at, _, act) = event
+          control.tickFor((at - reached).max(Duration.Zero)) *> act *> control.tick.as(at)
       }
       _ <- control.tickAll
       result <- control.results
@@ -256,8 +296,10 @@ trait ScheduleFixture extends ForgeFixture:
   private def scheduledOn(
       sc: Scenario,
       p: Pool,
+      back: Ref[IO, Long],
       margins: Vector[(Change, Deferred[IO, Unit])]
   ): IO[Outcome] =
+    val offset = ((sc.from - 5000) * 1000).toLong
     withHandle {
       for
         hooks <- Ref.of[IO, Map[Forger.Point, Change]](
@@ -273,9 +315,14 @@ trait ScheduleFixture extends ForgeFixture:
           p,
           sc.ledger(p),
           live = true,
-          offsetMillis = ((sc.from - 5000) * 1000).toLong,
+          offsetMillis = offset,
           unbounded = true,
           source = Some(keysFrom(reading)),
+          clock = Some(
+            (back.get, IO.realTimeInstant).mapN((b, t) =>
+              t.plusSeconds(5000).plusMillis(offset - b)
+            )
+          ),
           praos = sc.praos,
           committedChain = sc.committed,
           selectionLedger = sc.selection,
@@ -318,7 +365,7 @@ trait ScheduleFixture extends ForgeFixture:
 
   /** The per-slot decision of every slot of `sc`, at the slot's onset, the changes made before it
     * in the order of the scheduled run: before the slot's wake, in its margin (the clock then at
-    * [[inMargin]]), at the forger's points.
+    * [[inMargin]], behind by what the wall clock has moved back), at the forger's points.
     */
   def perSlotRun(sc: Scenario, p: Pool)(using Handle[IO, NodeError]): IO[Outcome] =
     for
@@ -336,7 +383,11 @@ trait ScheduleFixture extends ForgeFixture:
       _ <- sc.setup(side)
       _ <- (sc.from to sc.until).toList.traverse_ { s =>
         at.set(geometry.slotStart(s)) *> sc.before.filter(_._1 == s).traverse_(_._2(side)) *>
-          sc.margin.filter(_._1 == s).traverse_(m => at.set(inMargin(s)) *> m._2(side)) *>
+          sc.margins
+            .filter(_._1 == s)
+            .traverse_((_, nth, change) =>
+              at.set(inMargin(s, nth).minusNanos(sc.back(s).toNanos)) *> change(side)
+            ) *>
           at.set(geometry.slotStart(s)) *> sc.at.filter(_._2 == s).traverse_(_._3(side)) *>
           h.forger
             .step(s)
