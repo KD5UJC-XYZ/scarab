@@ -34,9 +34,10 @@ and one Antithesis run of the schedule are stage S3's. Before the schedule: `For
 ## Explicitly unchecked or unconfirmed
 
 The schedule (#1101): not yet run on the devnet or under Antithesis (stage S3); the time from a slot's onset to its
-block's adoption is measured (`adopted`'s `latencyMs`) but no run has recorded it yet (the design's Q5). A forge
-made ahead of its slot runs the mempool's own housekeeping as the per-slot loop did (a held transaction with no
-verdict leaves the mempool, `select`), even if the attempt is then discarded; the KES key's write-back and its
+block's adoption is measured (`adopted`'s `latencyMs`) but no run has recorded it yet (the design's Q5). A held
+transaction the selection has no verdict on is reachable in the wired forger only through a test's ledger (the
+state's parameters cannot hold a deposit beyond its range); the differential test reaches it so. The KES key's
+write-back and its
 `kesEvolved` line come from the forge that moves the key, up to 50 ms before the period, not from the slot
 driver. A slot not led whose ledger cannot be carried into its epoch (a failed boundary tick) logs `nodeNotLeader`
 where the per-slot loop logged `forgeFailed`, as the reference, which ticks the ledger to a slot only for a slot it leads.
