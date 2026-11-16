@@ -48,7 +48,11 @@ answered: in Conway every query, before it the ledger states, the chain-dependen
 queries, the reward provenance, the queries that read nothing of the era's own and those of the
 governance state, the current protocol parameters and the governance state (`QueryAnswers.inEveryEra`;
 `GovStateAnswers` writes the last two with the era's codecs, and the parameters below version 21 in the
-legacy encoding the reference uses before Conway); a query for another era gets the combinator's mismatch reply. The era history is built
+legacy encoding the reference uses before Conway), and from Shelley to Conway the distributions, the
+wallet's queries and the ledger peers: the pool distribution in force as the state holds it (`nesPd`), the
+stake distributions, the reward information and the non-myopic member rewards of the current stake
+(`EraFacts.currentStake`, the snapshot SNAP would take, with the pointer stake before Conway) and the ledger
+peer snapshots, the distributions written at the era's lowest version; a query for another era gets the combinator's mismatch reply. The era history is built
 from the configured hard-fork epochs, the transitions this run observed and the safe zone of the
 current era (`EraHistory`); a version-triggered hard fork that happened before this run cannot be
 placed and is assumed to start with the previous era. As on the reference, a result has no byte or item

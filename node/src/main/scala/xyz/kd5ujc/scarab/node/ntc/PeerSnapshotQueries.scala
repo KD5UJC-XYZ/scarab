@@ -5,6 +5,7 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{Ipv4, Ipv6, LedgerRelay}
+import xyz.kd5ujc.scarab.ledger.state.EraTag
 import xyz.kd5ujc.scarab.network.selection.{LedgerPeerStake, LedgerPool}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
@@ -17,9 +18,9 @@ private[ntc] object PeerSnapshotQueries:
     * weights and the native 90% cutoff. Unusable but well-formed relays remain filtered by the
     * normal ledger-peer projection.
     */
-  def answer(
+  def answer[E <: EraTag](
       env: QueryEnv,
-      facts: ConwayFacts,
+      facts: EraFacts[E],
       at: Point,
       kind: Option[LedgerPeerKind],
       supportsSrv: Boolean

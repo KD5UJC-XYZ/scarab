@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{Credential, ProtocolParams}
 import xyz.kd5ujc.scarab.ledger.rules.{MuslMath, Rewards}
-import xyz.kd5ujc.scarab.ledger.state.{Likelihood, NonMyopic, SnapShot, StakePoolSnapShot}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, Likelihood, NonMyopic, SnapShot, StakePoolSnapShot}
 import xyz.kd5ujc.scarab.node.read.EraRead
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Wire}
 
@@ -39,7 +39,7 @@ private[ntc] object RewardQueries:
     )
     Either.cond(encodable && finiteHistory, (), Unanswered.Unwritable)
 
-  private def facts(env: QueryEnv, f: ConwayFacts): Either[Unanswered, Facts] =
+  private def facts[E <: EraTag](env: QueryEnv, f: EraFacts[E]): Either[Unanswered, Facts] =
     (f.currentStake, f.scalars, f.l.nes).tupled.leftMap(Unanswered.Refused(_)).flatMap {
       (snap, scalars, nes) =>
         val total = env.maxSupply - scalars.chainAccount.reserves.value
@@ -48,12 +48,12 @@ private[ntc] object RewardQueries:
     }
 
   /** Validate stored values before entering the native numeric/encoding calculation. */
-  def poolInfo(env: QueryEnv, f: ConwayFacts): Either[Unanswered, Bytes] =
+  def poolInfo[E <: EraTag](env: QueryEnv, f: EraFacts[E]): Either[Unanswered, Bytes] =
     facts(env, f).map(s => info(s.params, s.total, s.snapshot, s.history))
 
-  def queryMembers(
+  def queryMembers[E <: EraTag](
       env: QueryEnv,
-      f: ConwayFacts,
+      f: EraFacts[E],
       requested: Vector[Either[BigInt, Credential]]
   ): Either[Unanswered, Bytes] =
     facts(env, f).flatMap(s => members(s.params, s.total, s.snapshot, s.history, requested))

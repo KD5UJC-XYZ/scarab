@@ -30,14 +30,21 @@ whatever the state, as the reference answers), the genesis configuration (the le
 21, as in Conway), the treasury and reserves, and the maximum major protocol version, each with its
 `GetCBOR` form. So are the current protocol parameters (`protocol-parameters`, in the era's encoding;
 below version 21 in the legacy one the reference uses before Conway) and the governance state, each with
-its `GetCBOR` form.
+its `GetCBOR` form, and, from Shelley to Babbage as in Conway, the pool distributions (`GetPoolDistr2`
+and the retired `GetPoolDistr`, the pool distribution in force, every pool for an absent or empty set of
+pools), the stake distributions of the current stake (`stake-distribution`, `GetStakeDistribution2` and
+the retired `GetStakeDistribution`), the pools' reward information and the non-myopic member rewards
+(`GetRewardInfoPools`, `GetNonMyopicMemberRewards`) and the ledger peer snapshots
+(`GetLedgerPeerSnapshot`, both forms), each with its `GetCBOR` form, the ratios of the distributions
+untagged before Conway as the reference writes them.
 The `ntc` gate requires the complete answer bytes to match at the same acquired point. It does not
 mask historical state gaps: any remaining difference fails the comparison and must be resolved.
 Earlier qualified measurements are retained in [compatibility.md](../compatibility.md). Not answered yet
 (the connection ends, the log line `inbound ... closed` names the query): `DebugLedgerConfig`
 ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924)), and every query but `ledger-state`, the
 chain-dependent state, the UTxO queries, `GetRewardProvenance`, the six that read nothing of the era's own,
-the current protocol parameters and the governance state in an era other than Conway (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+the current protocol parameters, the governance state, the distributions, the wallet's queries and the
+ledger peer snapshots in an era other than Conway, and these last ones in Dijkstra (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
 Fresh native genesis retains injected pool records with an empty VRF registry, matching the

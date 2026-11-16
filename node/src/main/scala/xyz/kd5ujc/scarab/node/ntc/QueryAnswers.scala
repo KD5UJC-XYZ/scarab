@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.node.ntc
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import scala.annotation.unused
-import scala.collection.immutable.SortedMap
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
@@ -13,7 +12,7 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ConsensusMirrorEnv, Placement}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.rules.StakeDistribution
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, StakeDistribution}
 import xyz.kd5ujc.scarab.ledger.state as mirror
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
@@ -113,13 +112,24 @@ sealed class EraFacts[E <: EraTag](val l: EraRead[E]):
 
   def epoch: BigInt = l.epoch.toBigInt
 
+  /** `currentSnapshot` (`Shelley/API/Wallet.hs:261-268`, cardano-ledger f649f975): the stake of the
+    * current ledger state as a snapshot, made as SNAP makes the mark (`snapShotFromInstantStake`),
+    * with the stake of the pointer addresses before Conway. The wallet queries and
+    * `GetStakeDistribution2` read it.
+    */
+  lazy val currentStake: Read[mirror.SnapShot] = l.nes.map { nes =>
+    given ShelleyBasedEra[E] = l.era
+    val ls = nes.es.ls
+    StakeDistribution.snapshot(EraLedger.activeStake(ls), EraLedger.pState(ls).stakePools)
+  }
+
   /** The same view, as Conway's, if the era is Conway. */
   def conway: Option[ConwayFacts] = None
 
 object EraFacts:
   /** The view of a ledger state, in the era its witness names: Conway's own in Conway, and in every
-    * other era, Dijkstra too, the parts every era has (a Dijkstra state answers the queries of
-    * every era, not Conway's).
+    * other era, Dijkstra too, the parts every era has (a Dijkstra state is not Conway's; which of
+    * the queries of every era it answers, the answers say).
     */
   def of(in: InEra): EraFacts[?] = in match
     case InEra.Of(era, l) =>
@@ -136,7 +146,6 @@ final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](co
   lazy val cert: Read[ConwayCertState] = l.cert
   lazy val gov: Read[ConwayGovState] = l.gov
   lazy val snapshots: Read[mirror.SnapShots] = l.snapshots
-  lazy val instantStake: Read[mirror.ConwayInstantStake] = l.instantStake
 
   /** The accounts by credential, in the vocabulary of the node (what the queries are asked in). */
   lazy val accounts: Read[Map[Credential, mirror.ConwayAccountState]] =
@@ -175,38 +184,17 @@ final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](co
         .toMap
     )
 
-  /** The current stake as a snapshot, which `GetStakeDistribution2` reports: the instant stake of
-    * the UTxO and the rewards, over the accounts that delegate to a registered pool.
-    */
-  lazy val currentStake: Read[mirror.SnapShot] =
-    for
-      c <- cert
-      instant <- instantStake
-      active = StakeDistribution
-        .resolve(
-          instant.credentialStake,
-          EraViews
-            .accounts[Conway](c)
-            .map((k, a) =>
-              k -> xyz.kd5ujc.scarab.ledger.rules.EraLedger
-                .AccountView(a.balance, a.deposit, a.pool)
-            ),
-          SortedMap.empty[Ptr, mirror.Credential[mirror.Staking]],
-          SortedMap.empty[Ptr, mirror.CompactCoin]
-        )
-      snap = StakeDistribution.snapshot(active, c.pState.stakePools)
-    yield snap
-
 /** Pure answers to node-to-client queries. `answer` returns the result item of the `MsgResult`
   * (`None` for a query this node does not answer; the connection then ends, as a decode failure
   * ends it on the reference). The UTxO queries take the entries they need as `utxo` (the caller
   * resolves them against the backing store first, see [[UtxoNeeds]]).
   *
   * The Conway era is answered, and in every Shelley-based era the ledger state, the chain-dependent
-  * state, the UTxO, the reward provenance, the queries that read nothing of the era's own and those
-  * of the governance state: their `IfCurrent` queries get `[result]`, queries naming another era
-  * get the era-mismatch reply, as the reference sends. The ledger state is read through
-  * [[ChainRead]]: from the mirror's records, whichever form the state is in.
+  * state, the UTxO, the reward provenance, the queries that read nothing of the era's own, those of
+  * the governance state and, up to Conway, the distributions, the wallet's queries and the ledger
+  * peers: their `IfCurrent` queries get `[result]`, queries naming another era get the era-mismatch
+  * reply, as the reference sends. The ledger state is read through [[ChainRead]]: from the mirror's
+  * records, whichever form the state is in.
   */
 object QueryAnswers:
   @unused private val ConwayIndex = Era.Conway.index
@@ -316,9 +304,11 @@ object QueryAnswers:
     * the Haskell node writes it, the chain-dependent state, the UTxO, the reward provenance, the
     * queries that read nothing of the era's own, the ledger tip, the epoch, the proposed parameter
     * updates, the genesis configuration, the chain account state and the maximum major protocol
-    * version, and those of the governance state, the current parameters and the governance state.
-    * The reference answers each of them in every Shelley-based era, with the same
-    * `answerPureBlockQuery` (`Ouroboros/Consensus/Shelley/Ledger/Query.hs:406-535`,
+    * version, those of the governance state, the current parameters and the governance state, and
+    * the distributions, the wallet's queries and the ledger peers: the pool distributions, the
+    * stake distributions, the reward information of the pools, the non-myopic member rewards and
+    * the ledger peer snapshots. The reference answers each of them in every Shelley-based era, with
+    * the same `answerPureBlockQuery` (`Ouroboros/Consensus/Shelley/Ledger/Query.hs:406-535`,
     * ouroboros-consensus 82ecba32), at every node-to-client version.
     */
   private def inEveryEra(q: LedgerQuery): Boolean = LedgerQuery.cborLayers(q)._2 match
@@ -328,7 +318,11 @@ object QueryAnswers:
         LedgerQuery.GetRewardProvenance | LedgerQuery.GetLedgerTip | LedgerQuery.GetEpochNo |
         LedgerQuery.GetProposedPParamsUpdates | LedgerQuery.GetGenesisConfig |
         LedgerQuery.GetAccountState | LedgerQuery.GetMaxMajorProtocolVersion |
-        LedgerQuery.GetCurrentPParams | LedgerQuery.GetGovState =>
+        LedgerQuery.GetCurrentPParams | LedgerQuery.GetGovState |
+        LedgerQuery.GetNonMyopicMemberRewards(_) | LedgerQuery.GetRewardInfoPools |
+        LedgerQuery.GetStakeDistribution | LedgerQuery.GetPoolDistr(_) |
+        LedgerQuery.GetPoolDistr2(_) | LedgerQuery.GetStakeDistribution2 |
+        LedgerQuery.GetLedgerPeerSnapshotLegacy | LedgerQuery.GetLedgerPeerSnapshot(_) =>
       true
     case _ => false
 
@@ -354,8 +348,9 @@ object QueryAnswers:
 
   // ---- the ledger queries
 
-  /** The version the answers are written at: the lowest of the Conway era, which is how the
-    * reference encodes them (`Versions.eraLow`): rationals under tag 30, sets under tag 258.
+  /** The version the answers of Conway's queries are written at: the lowest of the Conway era,
+    * which is how the reference encodes them (`Versions.eraLow`): rationals under tag 30, sets
+    * under tag 258. The pool distributions take their own era's (`throughConway`).
     */
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
 
@@ -391,25 +386,64 @@ object QueryAnswers:
   /** A pool's share of the stake: its ratio of the total, its stake and its VRF key hash. */
   private final case class PoolShare(ratio: Rational, stake: BigInt, vrf: Bytes)
 
-  private val poolShare: Codec[PoolShare] =
-    Record.of[PoolShare]((Wire.ratio, coin, Wire.hash(32)))
+  /** A pool distribution as the answers write it: each pool's share, then the total active stake.
+    */
+  private type Shares = (Map[Bytes, PoolShare], BigInt)
 
-  private val poolDistribution: Codec[(Map[Bytes, PoolShare], BigInt)] =
-    Record.of[(Map[Bytes, PoolShare], BigInt)]((Wire.sortedMapOf(poolId, poolShare), coin))
+  /** `PoolDistr` written at `ProtVer` (`toEraCBOR @era`, `State/PoolDistr.hs:70-77, 117-122`,
+    * cardano-ledger f649f975): the ratio is a plain `Rational`, under tag 30 from version 9 only
+    * (`encodeRatio`, `Binary/Encoding/Encoder.hs:301-306`), so untagged before Conway.
+    */
+  private def poolDistribution(using ProtVer): Codec[Shares] =
+    Record.of[Shares](
+      (Wire.sortedMapOf(poolId, Record.of[PoolShare]((Wire.ratio, coin, Wire.hash(32)))), coin)
+    )
 
   /** The retired `PoolDistr`: the map alone and each pool's ratio and VRF hash, with no stake or
     * total (`Query/Types.hs:32-72` at ouroboros-consensus
-    * 82ecba329d7d054340bf707d44fe6e9ac27cec40).
+    * 82ecba329d7d054340bf707d44fe6e9ac27cec40), written at `ProtVer` as the current one is.
     */
-  private val legacyPoolDistribution: Codec[Map[Bytes, (Rational, Bytes)]] =
+  private def legacyPoolDistribution(using ProtVer): Codec[Map[Bytes, (Rational, Bytes)]] =
     Wire.sortedMapOf(poolId, Record.of[(Rational, Bytes)]((Wire.ratio, Wire.hash(32))))
 
-  private def legacyDistribution(
-      distribution: (Map[Bytes, PoolShare], BigInt)
-  ): Either[Unanswered, Bytes] =
+  /** `fromLedgerPoolDistr` (`Query/Types.hs:69-73`, ouroboros-consensus 82ecba32): each pool's
+    * ratio and VRF hash.
+    */
+  private def legacyDistribution(distribution: Shares)(using ProtVer): Either[Unanswered, Bytes] =
     legacyPoolDistribution.answer(distribution._1.map { case (id, share) =>
       id -> (share.ratio, share.vrf)
     })
+
+  /** The shares of a `PoolDistr` of the mirror, as it holds them. */
+  private def shares(pd: mirror.PoolDistr): Shares =
+    (
+      pd.distribution.iterator.map { (id, p) =>
+        id.bytes -> PoolShare(p.stake, p.totalPoolStake.toBigInt, p.vrf.bytes)
+      }.toMap,
+      pd.totalActiveStake.value.value
+    )
+
+  /** `querySetSnapshotStakePoolDistr` (`Api/State/Query.hs:743-751`, cardano-ledger f649f975) as
+    * `GetPoolDistr2` and `GetPoolDistr` ask it, `maybe Set.empty id`
+    * (`Shelley/Ledger/Query.hs:450-451, 511-512`, ouroboros-consensus 82ecba32): `nesPd`,
+    * restricted to the pools named, every pool when none are, whether the set is absent or empty
+    * (#933); the total stays the whole distribution's.
+    */
+  private def setSnapshotDistr(pd: mirror.PoolDistr, ids: Option[Set[Bytes]]): Shares =
+    val (pools, total) = shares(pd)
+    (restrict(pools, ids.getOrElse(Set.empty)), total)
+
+  /** `poolsByTotalStakeFraction` (`Shelley/API/Wallet.hs:185-202`, cardano-ledger f649f975): the
+    * pool distribution of the current stake (`calculatePoolDistr`), each pool's ratio scaled by the
+    * active stake's share of the lovelace in circulation (`%?`: zero when none circulates); the
+    * total stays the active stake.
+    */
+  private def byTotalStakeFraction(current: mirror.SnapShot, circulation: BigInt): Shares =
+    val pd = mirror.PoolDistr.of(current)
+    val active = pd.totalActiveStake.value.value
+    val scale = if circulation == 0 then Rational.zero else Rational(active, circulation)
+    val (pools, total) = shares(pd)
+    (pools.map((id, s) => id -> s.copy(ratio = s.ratio * scale)), total)
 
   private def restrict[K, V](m: Map[K, V], keys: Set[K]): Map[K, V] =
     if keys.isEmpty then m else m.filter { case (k, _) => keys(k) }
@@ -481,6 +515,16 @@ object QueryAnswers:
         case Some(facts) => f(facts)
         case None        => Left(Unanswered.Unsupported)
       }
+    // The view of an era from Shelley to Conway and the era's lowest version, which its `toEraCBOR`
+    // writes at; a Dijkstra state answers none of the queries that ask it, as before.
+    def throughConway[A](f: (EraFacts[?], ProtVer) => Either[Unanswered, A]) =
+      shelleyBased { facts =>
+        facts.l.era match
+          case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+              ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+            f(facts, Versions.eraLow(facts.l.era))
+          case ShelleyBasedEra.SDijkstra => Left(Unanswered.Unsupported)
+      }
     q match
       // Six queries read nothing of the era's own, and are answered and written alike in every
       // Shelley-based era (`answerPureBlockQuery` and `encodeShelleyResult`, Query.hs:406-535 and
@@ -531,9 +575,14 @@ object QueryAnswers:
             )
           })
         }
-      case GetRewardInfoPools => conway(f => RewardQueries.poolInfo(env, f))
+      // `getRewardInfoPools` and `getNonMyopicMemberRewards` of the current stake (Query.hs:412-414,
+      // 444-445, ouroboros-consensus 82ecba32; `Shelley/API/Wallet.hs:217-259, 327-366`,
+      // cardano-ledger f649f975), written alike in every era: the first's `a0` and margins are
+      // bounded ratios, under tag 30 at every version (`BaseTypes.hs:380-404`, Query.hs:1026), the
+      // second has no ratio (`toCBOR`, Query.hs:1010).
+      case GetRewardInfoPools => throughConway((f, _) => RewardQueries.poolInfo(env, f))
       case GetNonMyopicMemberRewards(credentials) =>
-        conway(f => RewardQueries.queryMembers(env, f, credentials))
+        throughConway((f, _) => RewardQueries.queryMembers(env, f, credentials))
       case GetStakePools =>
         conway(f => Wire.definiteSetOf(poolId).answerRead(f.pools.map(_.keySet)))
       // a registered pool's reward account on the node's network, its future parameters' as they
@@ -644,43 +693,33 @@ object QueryAnswers:
         conway(f =>
           Codec.intRange(0, 2).answerRead((f.pools, f.accounts).mapN(defaultVote(_, _, pool)))
         )
+      // `nesPd` (`GetPoolDistr2`) and its retired form (`GetPoolDistr`, `fromLedgerPoolDistr`
+      // of the first), the current stake as a fraction of the lovelace in circulation
+      // (`GetStakeDistribution2`) and its retired form (`GetStakeDistribution`), in every era, each
+      // written at the era's lowest version (Query.hs:419-420, 450-451, 511-514, 1013, 1029,
+      // 1044-1045, ouroboros-consensus 82ecba32).
       case GetPoolDistr(ids) =>
-        conway(f => legacyDistribution(poolDistr(f.l.leaderPools(nextEpoch = false), ids, None)))
-      case GetStakeDistribution =>
-        conway { f =>
-          (f.currentStake, f.scalars).tupled.leftMap(Unanswered.Refused(_)).flatMap {
-            (current, scalars) =>
-              legacyDistribution(
-                poolDistr(
-                  leaders(current),
-                  None,
-                  Some(env.maxSupply - scalars.chainAccount.reserves.value)
-                )
-              )
+        throughConway { (f, v) =>
+          f.l.pd.leftMap(Unanswered.Refused(_)).flatMap { pd =>
+            legacyDistribution(setSnapshotDistr(pd, ids))(using v)
           }
         }
+      case GetStakeDistribution =>
+        throughConway((f, v) => currentFraction(env, f).flatMap(legacyDistribution(_)(using v)))
       case GetPoolDistr2(ids) =>
-        conway { f =>
-          poolDistribution.answer(poolDistr(f.l.leaderPools(nextEpoch = false), ids, None))
+        throughConway { (f, v) =>
+          poolDistribution(using v).answerRead(f.l.pd.map(setSnapshotDistr(_, ids)))
         }
       case GetStakeDistribution2 =>
-        // the current stake (not a snapshot), as a fraction of the lovelace in circulation
-        conway { f =>
-          (f.currentStake, f.scalars).tupled.leftMap(Unanswered.Refused(_)).flatMap {
-            (current, scalars) =>
-              poolDistribution.answer(
-                poolDistr(
-                  leaders(current),
-                  None,
-                  Some(env.maxSupply - scalars.chainAccount.reserves.value)
-                )
-              )
-          }
-        }
+        throughConway((f, v) => currentFraction(env, f).flatMap(poolDistribution(using v).answer))
+      // `getPeers` of the ledger state, written by the network's encoder whatever the era
+      // (Query.hs:476-508, 1042, ouroboros-consensus 82ecba32).
       case GetLedgerPeerSnapshotLegacy =>
-        conway(f => PeerSnapshotQueries.answer(env, f, view.point, None, version.number >= 22))
+        throughConway((f, _) =>
+          PeerSnapshotQueries.answer(env, f, view.point, None, version.number >= 22)
+        )
       case GetLedgerPeerSnapshot(kind) =>
-        conway(f => PeerSnapshotQueries.answer(env, f, view.point, Some(kind), true))
+        throughConway((f, _) => PeerSnapshotQueries.answer(env, f, view.point, Some(kind), true))
       // `protoMaxMajorPV` of the era's protocol (Query.hs:515-519, 1046), the one maximum TPraos
       // and Praos are configured with in every era (`Cardano/Node.hs:644-645, 677, 690`,
       // ouroboros-consensus 82ecba32).
@@ -759,32 +798,13 @@ object QueryAnswers:
         .mapValues(_.toSet)
         .toMap
 
-  /** The stake and VRF key hash of the pools of a snapshot that have a delegator (the pool
-    * distribution it makes, `calculatePoolDistr`).
+  /** `poolsByTotalStakeFraction` of the view's current stake and circulation (`getTotalStake`,
+    * `Shelley/API/Wallet.hs:204-209`, cardano-ledger f649f975).
     */
-  private def leaders(s: mirror.SnapShot): PoolDistribution =
-    val live = s.pools.iterator.filter((_, p) => !p.numDelegators.isZero).toVector
-    PoolDistribution(
-      live.map((id, p) => id.bytes -> p.stake.toBigInt).toMap,
-      live.map((id, p) => id.bytes -> p.vrf.bytes).toMap
-    )
-
-  /** `PoolDistr`: each pool's stake as a fraction of `denominator` (the distribution's active stake
-    * unless a circulating supply is given), its stake and its VRF key hash, then the active stake.
-    */
-  private def poolDistr(
-      dist: PoolDistribution,
-      ids: Option[Set[Bytes]],
-      circulation: Option[BigInt]
-  ): (Map[Bytes, PoolShare], BigInt) =
-    val total = dist.total
-    val denominator = circulation.getOrElse(total)
-    val shares = dist.stake.collect {
-      case (id, stake) if ids.forall(_(id)) =>
-        val ratio = if denominator == 0 then Rational.zero else Rational(stake, denominator)
-        id -> PoolShare(ratio, stake, dist.vrf.getOrElse(id, Bytes.empty))
+  private def currentFraction(env: QueryEnv, f: EraFacts[?]): Either[Unanswered, Shares] =
+    (f.currentStake, f.scalars).tupled.leftMap(Unanswered.Refused(_)).map { (current, scalars) =>
+      byTotalStakeFraction(current, env.maxSupply - scalars.chainAccount.reserves.value)
     }
-    (shares, total.max(1))
 
   /** `GetStakeSnapshots`: each pool's stake in the mark, set and go snapshots, and their totals. */
   private type StakeSnapshotsAnswer =
