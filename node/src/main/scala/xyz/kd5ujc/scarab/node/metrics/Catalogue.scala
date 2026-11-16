@@ -364,7 +364,7 @@ object Catalogue:
   )
   val forgeScheduleComplete = GaugeDef(
     MetricName("scarab_forge_schedule_complete"),
-    "1 once the epoch's leader schedule covers all its slots, else 0.",
+    "1 once the epoch's leader schedule covers its slots to the last, else 0; an epoch whose schedule was computed after it began is covered from the clock's slot when the computation started.",
     Labels.one[ScheduleEpochLabel](LabelName("epoch"))
   )
   val forgeAdoptionSeconds = HistogramDef(
