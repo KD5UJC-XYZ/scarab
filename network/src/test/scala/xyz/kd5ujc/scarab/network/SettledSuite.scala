@@ -72,3 +72,28 @@ class SettledSuite extends FailsOnUncaught:
       assertEquals(first.sorted, (1 to 8).toVector)
     )
   }
+
+  test("a fiber that outlives the body fails the test once its cleanup reaches the limit") {
+    // a ticker on the simulated clock, which only the cleanup moves
+    failure(Settled(_ => IO.never[Unit].timeoutTo(1.second, IO.unit).foreverM.start.void))
+      .map(message => assert(message.contains("a fiber outlives the test"), message))
+  }
+
+  test("a fiber that never waits fails the test within the step limit, and is cancelled") {
+    for
+      cancelled <- Deferred[IO, Unit]
+      message <- failure(
+        Settled.limited(10000)(_ => IO.unit.foreverM.onCancel(cancelled.complete(()).void))
+      )
+      stopped <- cancelled.tryGet
+    yield
+      assert(message.contains("a fiber never waits"), message)
+      assertEquals(stopped, Some(()))
+  }
+
+  test(
+    "a fiber that never waits and cannot be cancelled is left once its cleanup reaches the limit"
+  ) {
+    failure(Settled.limited(10000)(_ => IO.uncancelable(_ => IO.unit.foreverM)))
+      .map(message => assert(message.contains("a fiber never waits"), message))
+  }
