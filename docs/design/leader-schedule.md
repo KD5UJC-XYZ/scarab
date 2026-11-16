@@ -337,8 +337,11 @@ crowding the end.
 
 **Start-up and a late signal.** When the epoch has already begun (the node starts mid-epoch, forging is switched on, a
 VRF key is reloaded), the stream computes the epoch's remaining slots in order from the clock's slot, with no pause
-until it is one chunk ahead of the clock, and then paces the rest to finish before the epoch's end. Paced so, it stays
-ahead: from then on it covers its remaining slots faster than the clock consumes them. A slot the clock reaches
+until it is one chunk ahead of the clock, and then paces the rest to finish by the onset of the epoch's last chunk
+(one chunk, 100 slots, before its end), with a margin of a tenth of the time from the signal to that deadline. Paced
+so, it stays ahead once a chunk ahead: each chunk's slots begin after the chunk is computed. Pacing to the epoch's end
+itself would not: the last chunks would be computed after their slots begin (on the trial devnet, a signal at slot 750
+of a 500-slot epoch ending at 1000 leaves a margin of about 25 slots, less than a chunk). A slot the clock reaches
 before the stream covers it gets the per-slot decision from the slot driver (§5.4, Q3 in §9).
 
 **State.** A `Ref` (or `SignallingRef`, so that the forging fiber wakes on a change) holding, per epoch, the inputs the
