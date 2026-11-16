@@ -302,8 +302,8 @@ crowding the end.
 **Start-up and a late signal.** When the epoch has already begun (the node starts mid-epoch, forging is switched on, a
 VRF key is reloaded), the stream computes the epoch's remaining slots in order from the clock's slot, with no pause
 until it is one chunk ahead of the clock, and then paces the rest to finish before the epoch's end. Paced so, it stays
-ahead: from then on it covers its remaining slots faster than the clock consumes them. The slots the clock reaches
-before the stream covers them are §9 Q3.
+ahead: from then on it covers its remaining slots faster than the clock consumes them. A slot the clock reaches
+before the stream covers it gets the per-slot decision from the watcher (§5.4, Q3 in §9).
 
 **State.** A `Ref` (or `SignallingRef`, so that the forging fiber wakes on a change) holding, per epoch, the inputs the
 schedule was computed from, how far it has got, and the led slots with their certificates. An answer for a slot is
@@ -335,12 +335,13 @@ At the wake:
 4. The tick, the mempool snapshot, the block built and signed (`forgedBlock`, `forged`) as now.
 5. The block waits until the slot's onset, and is then handed to chain selection (`Follower.adoptForged`). If the tip
    changed meanwhile (a late block of an earlier slot), the block is not handed over; the slot is forged again on the
-   new tip (§9 Q4).
+   new tip. The `forgedBlock` line and the forge counters are held until a block is handed over, so they cover only
+   the block published; a discarded attempt logs one Debug line ([#1101, Q4](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395)).
 
 The forging fiber handles one slot at a time and does not cancel a forge under way when the schedule changes, as
 Amaru's stage does not; the HotKeys lock already orders signing against a reload. For a given slot, parent, mempool
 snapshot and credentials the block is byte-for-byte the one the per-slot loop would forge. The snapshot is taken up to
-the margin earlier, so a transaction that arrives in those milliseconds waits for the next block (§9 Q4).
+the margin earlier, so a transaction that arrives in those milliseconds waits for the next block (part of decision 6).
 
 ### 5.4 The clock watcher
 
@@ -349,15 +350,21 @@ The watcher is the forger's `loop` without the attempt: it reads the clock each 
 with the 60 s backoff, the `ClockWokeEarly` assertion, and the wait on the monotonic clock (decision 2). For each new
 slot while forging is enabled:
 
-- a slot the schedule does not lead: `nodeNotLeader` (decision 1), counted in `ForgeEpochStats` and folded into
-  `ForgingStats`;
+- a slot the schedule does not lead: first the reference's cheap checks before its leader check, with no VRF and no
+  ledger tick (the tip for `slotIsImmutable` and `blockFromFuture`, the forecast horizon for `noLedgerView`, the KES
+  key's state for `forgeStateUpdateError`, the era and protocol version for Scarab's `forgeFailed`); the line the
+  reference would log if one applies, else `nodeNotLeader` (decision 1; [#1101, Q1](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395)).
+  Either way the slot is counted in `ForgeEpochStats` (`slotsChecked`) and the about-to-lead counter, and the
+  `ForgingStats` gauges are published, every slot, as now (Q2). `startLeadershipCheck` and `stateInfo` are logged only
+  on led slots and at a KES period change, except `stateInfo` at Warning or Alert (seven or fewer periods left), which
+  is logged every slot as the reference logs it (Q2);
 - a led slot: nothing; the forging fiber traces it;
 - the end of an epoch: the `forgeEpoch` line, as now;
 - the check of forged blocks replaced later (`watch`), as now after each slot.
 
-What the watcher logs for a slot not led where the reference would have logged something else is not settled (§9 Q1).
 A slot the schedule does not yet cover with the inputs in force still gets the per-slot decision, `Leadership.check`
-with those inputs, as decision 9 requires; where that check runs is §9 Q3. While forging is disabled the watcher logs
+with those inputs, as decision 9 requires: the watcher runs it inline (one output evaluation) and hands a led slot to
+the forging fiber (Q3, §9). While forging is disabled the watcher logs
 nothing per slot, as the reference runs no forging thread then (C19).
 
 ### 5.5 The KES timer
@@ -380,10 +387,11 @@ Decision 7 publishes the schedule; the reference keeps it to itself (C10).
 | `scarab_forge_scheduled_leader_slots` | gauge, label `epoch` (`current`, `next`) | The epoch's potential leader slots in the schedule. A slot battle can still lose one, and a fork can change the schedule. |
 | `scarab_forge_expected_leader_slots` | gauge, label `epoch` | `slots × (1 - (1 - f)^σ)`, σ the pool's share of the distribution: the expected number, for comparison. Display only: computed in floating point and never used for a decision. |
 | `scarab_forge_next_leader_slot` | gauge | The next led slot in the schedule; absent when there is none. |
+| `scarab_forge_schedule_complete` | gauge, label `epoch` | 1 once the epoch's schedule covers all its slots, else 0; the counts above show the slots covered so far (Q8, §9). |
 | `leaderSchedule` (namespace `Forge`, Info) | log line | When an epoch's schedule is complete, and again whenever a restart changes it: `epoch`, `slots` (the led slots), `expected`, and whether the nonce is settled. |
 
 Anyone who can read the node's metrics or logs learns when the pool will lead. That is the purpose; it also means an
-operator who exposes `/metrics` publicly publishes the schedule (§9 Q9).
+operator who exposes `/metrics` publicly publishes the schedule. The metrics page says so (Q9, §9).
 
 ### 5.7 Mirror and Deviation
 
@@ -397,7 +405,7 @@ the change that first relies on them adds their rows to the [decisions register]
 
 | Behaviour | Reference | Scarab | Approval |
 |---|---|---|---|
-| A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader` only | decision 1 |
+| A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `stateInfo` only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
 | When the leader check runs | at the slot, in the forging thread (C1, C4) | ahead of the epoch, spread over the time left; again at a led slot | decisions 4, 5 |
 | When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset; handed to chain selection at the onset | decision 6 |
 | When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by a timer at the period's first slot; also at a led slot as now | decision 3 |
@@ -479,53 +487,40 @@ Decision 9 names three pieces of evidence.
      command.
    - The pull request shows this document's "as built" section, and its status moved to Current.
 
-## 9. Open questions and risks
+## 9. Questions the draft raised, and their answers
 
-Reading the code turned up these, which the decisions do not settle. None is decided here; each is answered before
-S2. Each says who answers it: the **owner** where the answer changes what an operator sees beyond the five approved
-rows of §5.7 ([REF-4](../design-rules.md#ref-4), [REF-5](../design-rules.md#ref-5)), the **lead** where it is internal
-or keeps the Mirror.
+Reading the code turned up questions the decisions of §4 did not settle. The owner answered those that change what an
+operator sees beyond the approved rows of §5.7 ([REF-4](../design-rules.md#ref-4), [REF-5](../design-rules.md#ref-5);
+recorded on [#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395), 2026-11-16 01:55 UTC);
+the lead settled the internal ones.
 
-- **Q1 (owner). A slot not led whose reference trace is not `NodeNotLeader`.** The reference gives up some slots
-  before the leader check: `SlotIsImmutable` or `BlockFromFuture` (Error), `NoLedgerView` (Error, every slot while the
-  node is behind), `ForgeStateUpdateError` (Critical, every slot while the key is poisoned). Scarab adds `forgeFailed`
-  (a TPraos or Byron tip, a protocol version below 9). Should the watcher run those cheap checks and log what the
-  reference logs, or log `nodeNotLeader`? An operator alerting on the Critical line would otherwise see it once per
-  KES period.
-- **Q2 (owner). `startLeadershipCheck` only on led slots.** `Forge_about_to_lead_counter` and `slotsChecked` would
-  count led slots only; `ForgeStats` publishes the `ForgingStats` gauges only at that trace, so they would move once
-  per led slot; the per-slot `stateInfo` (and its Warning and Alert near expiry) would appear once per KES period.
-  Does the watcher count every slot in `slotsChecked` and publish the gauges each slot, or do these follow the trace?
-- **Q3 (lead). Slots not yet covered.** After a start mid-epoch, a fork past the freeze, a SIGHUP with another VRF key
-  or forging switched on, the clock can reach slots before the stream has computed them with the inputs in force.
-  Decision 9 settles their decision: `Leadership.check` with the inputs in force, the per-slot path. Open: whether the
-  watcher runs it inline (one output evaluation) and hands a led slot to the forging fiber, or the forging fiber takes
-  every uncovered slot.
-- **Q4 (owner for the traces, lead for the rest). Forging ahead.** A block of an earlier slot that arrives before the
-  onset makes the design forge again. Are the traces of the attempt not handed over emitted (two `forgedBlock` for one
-  slot, the `Forge_forged_counter` counting both), or held until the block is handed over? Its KES signature is never
-  published. Also, the snapshot is taken up to 50 ms earlier than the per-slot loop takes it, so the bodies can
-  differ.
-- **Q5 (lead). Adoption at the onset.** Handing the block over at the onset puts its validation by our own rules after
-  the onset. Validating before and committing at the onset needs a two-step `Follower` API, which commits only if the
-  tip has not moved.
-- **Q6 (lead; owner if it adds a flag). The wake margin.** 50 ms, fixed? Derived from measured forge times? A flag
-  would be a new operator option.
-- **Q7 (lead). Trace order across fibers.** `ForgingStats` folds `NodeNotLeader` and `NodeIsLeader` in the order they
-  arrive. If the watcher's line for slot s-1 is late (a loaded host) and the forging fiber's `nodeIsLeader` for slot s
-  comes first, the fold books a negative gap in `slotsMissed`. Should the two fibers order their per-slot traces, or
-  the fold take the order of slots?
-- **Q8 (lead). Gauges while computing.** Does `scarab_forge_scheduled_leader_slots` show the count so far while the
-  stream is pacing, or appear only when the epoch is complete?
-- **Q9 (lead). Exposure.** Publishing the schedule tells whoever reads `/metrics` or the logs when the pool will lead,
-  which makes a targeted outage cheaper. Is a note in [the metrics page](../running/metrics.md) enough?
-- **Q10 (lead). Settlement.** Is "settled" (k blocks past the freeze) only reported, in the log line and perhaps a
-  gauge, or does it change behaviour, for example the margin?
-- **Q11 (lead). Timing measures.** A led slot's lines, from `startLeadershipCheck` to `forged`, now come before its
-  onset. `adopted`'s `latencyMs`, `scarab_forge_adoption_seconds` and the `forgeLatencyMs` of `forgeEpoch` would
-  measure only the onset to the adoption. In the `pool` scenario, `toForged` (`forge_timing`) goes negative, and
-  `slot_clock`, which reads the `forged` time as the node's slot-clock offset, moves by the margin. Should these
-  measure from the wake, from the onset, or both? These are Scarab's own measures; the reference has none of them.
+- **Q1 (owner). A slot not led whose reference trace is not `NodeNotLeader`.** The watcher runs the reference's cheap
+  pre-checks and logs what the reference logs (`slotIsImmutable`, `blockFromFuture`, `noLedgerView`,
+  `forgeStateUpdateError`, and Scarab's `forgeFailed`); `nodeNotLeader` only when none applies (§5.4).
+- **Q2 (owner). Counters and gauges on slots not led.** Updated every slot as now (`slotsChecked`, the about-to-lead
+  counter, the `ForgingStats` gauges). `startLeadershipCheck` and `stateInfo` at Info only on led slots and at a KES
+  period change; `stateInfo` at Warning or Alert every slot, as the reference logs it (§5.4).
+- **Q3 (lead). Slots not yet covered.** The watcher runs the per-slot decision inline (`Leadership.check` with the
+  inputs in force, one output evaluation) and hands a led slot to the forging fiber.
+- **Q4 (owner). Forging ahead, then again.** The `forgedBlock` line and the forge counters are held until a block is
+  handed to chain selection; a discarded attempt logs one Debug line (§5.3). The snapshot taken up to the margin
+  earlier is part of decision 6.
+- **Q5 (lead). Adoption at the onset.** S2 hands the block over at the onset, so our own validation of it runs after
+  the onset, as Amaru's design does. S2 measures the time from the onset to the adoption; a two-step `Follower` API
+  (validate before, commit at the onset if the tip has not moved) is a follow-up only if that time matters.
+- **Q6 (lead). The wake margin.** 50 ms, a constant, with no flag (§5.3).
+- **Q7 (lead). Trace order across fibers.** The `ForgingStats` fold takes the order of the slots, not of the lines'
+  arrival, so a late line cannot book a negative gap in `slotsMissed`.
+- **Q8 (lead). Gauges while computing.** `scarab_forge_scheduled_leader_slots` shows the led slots found so far, and
+  `scarab_forge_schedule_complete` says when the epoch is covered (§5.6).
+- **Q9 (lead). Exposure.** The metrics page says that whoever reads `/metrics` or the logs learns when the pool will
+  lead; exposing them is the operator's choice (decision 7).
+- **Q10 (lead). Settlement.** Reported only, in the `leaderSchedule` line; it changes no behaviour. A rollback past the
+  freeze recomputes the schedule whether or not it was settled.
+- **Q11 (lead). Timing measures.** They stay measured from the slot's onset, the meaning an operator reads them in:
+  `adopted`'s `latencyMs`, `scarab_forge_adoption_seconds` and `forgeLatencyMs` from the onset to the adoption. A
+  `forged` time before the onset is negative relative to it, which is correct. The `pool` scenario's `toForged` and
+  `slot_clock` are adjusted in S2 to read the handover at the onset.
 
 Risks:
 
