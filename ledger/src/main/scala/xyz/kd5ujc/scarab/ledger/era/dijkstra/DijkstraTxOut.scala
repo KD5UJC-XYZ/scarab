@@ -3,9 +3,17 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
-import xyz.kd5ujc.scarab.ledger.{Address, CborRead, DecodeField, Datum, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{
+  Address,
+  CborRead,
+  DecodeField,
+  Datum,
+  LedgerDecodeError,
+  ScriptKind
+}
 import xyz.kd5ujc.scarab.ledger.dijkstra.V12
 import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoScriptRep,
   AlonzoEraScript,
   BabbageEraTxOut,
   BabbageTxOutRep,
@@ -19,12 +27,8 @@ import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 /** A Dijkstra output: `BabbageTxOut DijkstraEra`, the representation Babbage's and Conway's have
   * with Dijkstra's script (`instance EraTxOut DijkstraEra`, `type TxOut DijkstraEra = BabbageTxOut
   * DijkstraEra`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxOut.hs:29-30`, cardano-ledger
-  * 9df9f98c), a type of its own. Made only by [[DijkstraTxOut.decode]] and
-  * [[DijkstraTxOut.translate]].
-  *
-  * The store's form of a Dijkstra output, and so `fromStored` and `toStored`, waits for the store's
-  * Dijkstra form (#54, tracked on #85): the flat output keeps a native reference script as a tree
-  * of the time-lock language, which has no guard.
+  * 9df9f98c), a type of its own. Made only by [[DijkstraTxOut.decode]], [[DijkstraTxOut.translate]]
+  * and [[DijkstraTxOut.fromStored]].
   */
 opaque type DijkstraTxOut = BabbageTxOutRep[DijkstraScript]
 
@@ -119,6 +123,54 @@ object DijkstraTxOut:
     r.scriptRef
       .traverse(DijkstraScript.translate)
       .map(script => BabbageTxOutRep(raw, r.address, r.value, r.valueSize, r.datum, script))
+
+  /** The stored output read as a Dijkstra output: its reference script read again from the output's
+    * bytes as a Dijkstra script ([[DijkstraScript.read]]), as Conway's and Babbage's are read
+    * (`BabbageTxOutRep.fromStored`), so a native script with a guard, which the flat output keeps
+    * without a tree, is read whole.
+    */
+  private[ledger] def fromStored(
+      out: xyz.kd5ujc.scarab.ledger.TxOut
+  ): Either[EraTxError, DijkstraTxOut] =
+    BabbageTxOutRep
+      .fromStored(out)(n => DijkstraScript.read(n))
+      .leftMap(EraTxError.Decode(_))
+      // the output written back is the one read, so `toStored` is its inverse
+      .flatMap(o => Either.cond(toStored(o) == out, o, EraTxError.StoredOutputDiffers))
+
+  /** The output in the form the store keeps, the inverse of [[fromStored]] (which refuses a stored
+    * output this does not give back): its bytes, fields and the value's size as they arrived, and
+    * its reference script as the flat output keeps one, by its kind and hash, with the time-lock
+    * tree of a native script that holds no guard ([[DijkstraNativeScript.timelock]]) and none for
+    * one that does, and without a Plutus script's bytes; the store reads the script again from the
+    * output's bytes. The flat output keeps a script so, rather than in a new stored form, by the
+    * owner's decision of 2026-11-16 (#54): the reference keeps a Dijkstra native script as its
+    * bytes (`MemoBytes`), which the output's bytes hold.
+    */
+  private[ledger] def toStored(out: DijkstraTxOut): xyz.kd5ujc.scarab.ledger.TxOut =
+    xyz.kd5ujc.scarab.ledger.TxOut(
+      out.raw,
+      out.address,
+      out.value.stored,
+      out.datum,
+      out.scriptRef.map(storedScript),
+      out.valueSize
+    )
+
+  private def storedScript(s: DijkstraScript): xyz.kd5ujc.scarab.ledger.Script =
+    val hash = DijkstraScript.instance.hashScript(s)
+    s.rep match
+      case AlonzoScriptRep.NativeScript(n) =>
+        xyz.kd5ujc.scarab.ledger.Script(ScriptKind.Native, hash, n.timelock)
+      case AlonzoScriptRep.PlutusScript(p) =>
+        xyz.kd5ujc.scarab.ledger.Script(storedKind(p), hash, None)
+
+  /** The stored kind of a Plutus script of Dijkstra's languages, PlutusV1 to PlutusV4. */
+  private def storedKind(p: DijkstraPlutusScript): ScriptKind = p match
+    case DijkstraPlutusScript.V1(_) => ScriptKind.PlutusV1
+    case DijkstraPlutusScript.V2(_) => ScriptKind.PlutusV2
+    case DijkstraPlutusScript.V3(_) => ScriptKind.PlutusV3
+    case DijkstraPlutusScript.V4(_) => ScriptKind.PlutusV4
 
   extension (out: DijkstraTxOut)
     /** The shared representation, read only. */

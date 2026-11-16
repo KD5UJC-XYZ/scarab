@@ -9038,6 +9038,14 @@
     "def ledger.era.rules.major",
     "def ledger.era.rules.vocab"
    ]
+  },
+  {
+   "reason": "the conversions between Dijkstra's output and the output the store keeps, and the flat time-lock tree of a native reference script that holds no guard, which the stored output keeps beside its bytes; the reference keeps the era's output itself, its script as its bytes (`MemoBytes`), and has no counterpart (#85, #54)",
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraNativeScript#timelock",
+    "def ledger.era.dijkstra.DijkstraTxOut.fromStored",
+    "def ledger.era.dijkstra.DijkstraTxOut.toStored"
+   ]
   }
  ]
 }

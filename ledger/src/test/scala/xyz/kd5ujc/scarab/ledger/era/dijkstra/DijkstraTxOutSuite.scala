@@ -110,6 +110,50 @@ class DijkstraTxOutSuite extends FunSuite:
     assertEquals(prefixes.toSet, Set[Byte](0, 1, 2, 3, 4))
   }
 
+  test("every output the build read is written to the store's form and read back unchanged") {
+    outputs.foreach { (name, flat) =>
+      val out = node(flat.raw).flatMap(DijkstraTxOut.read).fold(e => fail(s"$name: $e"), identity)
+      val stored = DijkstraTxOut.toStored(out)
+      assertEquals(DijkstraTxOut.fromStored(stored), Right(out), name)
+      assertEquals(stored.raw, flat.raw, name)
+      assertEquals(stored.scriptRef.map(_.hash), flat.referenceScript.map(_.hash), name)
+    }
+  }
+
+  test("the store keeps each Dijkstra language's kind, PlutusV4 among them") {
+    val kinds = outputs.flatMap((_, flat) =>
+      node(flat.raw)
+        .flatMap(DijkstraTxOut.read)
+        .toOption
+        .flatMap(o => DijkstraTxOut.toStored(o).scriptRef)
+        .map(_.kind)
+    )
+    assertEquals(kinds.toSet, xyz.kd5ujc.scarab.ledger.ScriptKind.values.toSet)
+  }
+
+  test("a native reference script with a guard is stored without a tree and read back whole") {
+    val key = "8200581c" + "44" * 28
+    // all of a signature and a guard by a key credential
+    val native = "8201" + "82" + key + "8206" + "8200581c" + "55" * 28
+    val script = "82" + "00" + native
+    val wrapped = "d818" + f"58${script.length / 2}%02x" + script
+    val raw = hex("a3" + "00" + "581d61" + "66" * 28 + "01" + "1a000f4240" + "03" + wrapped)
+    val out = node(raw).flatMap(DijkstraTxOut.read).fold(e => fail(e.toString), identity)
+    val stored = DijkstraTxOut.toStored(out)
+    val kept = stored.scriptRef.getOrElse(fail("no reference script"))
+    assertEquals(kept.kind, xyz.kd5ujc.scarab.ledger.ScriptKind.Native)
+    assertEquals(kept.native, None)
+    assertEquals(DijkstraTxOut.fromStored(stored), Right(out))
+    val read = DijkstraTxOut
+      .fromStored(stored)
+      .toOption
+      .flatMap(_.rep.scriptRef)
+      .flatMap(DijkstraScript.instance.getNativeScript)
+      .flatMap(_.getRequireAllOf)
+      .getOrElse(fail("not all-of"))
+    assertEquals(read.flatMap(_.getRequireGuard).size, 1)
+  }
+
   test("an output's value size is the size of its value as it arrived") {
     // `{0: address, 1: [coin, assets]}` with the value an indefinite list
     val address = "581d61" + "00" * 28

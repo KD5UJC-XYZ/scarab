@@ -1,0 +1,3 @@
+### Added (ledger, #85)
+
+- Dijkstra's output to and from the output the store keeps (`DijkstraTxOut.toStored` and `fromStored`), as Conway's and Babbage's. Its reference script is kept by its kind and hash, PlutusV4 among the kinds, and a native script by its time-lock tree when it holds no guard; one that holds a guard is kept without a tree and read again whole from the output's bytes, which hold it, as the reference keeps a Dijkstra native script as its bytes (the owner's decision of 2026-11-16, #54). Every output of the Leios testnet corpus is written to the store's form and read back unchanged. The flat native-script check must not decide such a script before Dijkstra outputs are stored (#1126).
