@@ -12,7 +12,16 @@ import xyz.kd5ujc.scarab.ledger.{
   Voter,
   VotingProcedure
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag, VocabError}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Conway,
+  Credential,
+  EraTag,
+  KeyHash,
+  StakePool,
+  Staking,
+  VocabError
+}
 
 /** The fields every era's body has (`EraTxBody`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:223-295`): the ones of a body of any level
@@ -52,6 +61,25 @@ trait EraTxBody[E <: EraTag]:
     * body the UTxO set must hold, whether or not the transaction spends it.
     */
   def allInputs(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn]
+
+  /** `getTotalDepositsTxBody` (`Core.hs:267-277`, cardano-ledger f649f975): the deposits a
+    * top-level body pays, its contribution to what the transaction produces.
+    */
+  def getTotalDepositsTxBody(
+      pp: PParams[E],
+      isPoolRegistered: KeyHash[StakePool] => Boolean,
+      body: TxBody[TxLevel.Top, E]
+  ): Coin =
+    certsOf.getTotalDepositsTxCerts(pp, isPoolRegistered, certs[TxLevel.Top](body)(using top))
+
+  /** `getTotalRefundsTxBody` (`Core.hs:279-289`, cardano-ledger f649f975): the refunds a body
+    * collects, its contribution to what the transaction consumes.
+    */
+  def getTotalRefundsTxBody[L <: TxLevel](
+      pp: PParams[E],
+      lookupStakingDeposit: Credential[Staking] => Option[Coin],
+      body: TxBody[L, E]
+  )(using Level[L]): Coin = certsOf.getTotalRefundsTxCerts(pp, lookupStakingDeposit, certs(body))
 
 /** The protocol-parameter update of a body, up to Babbage (`ShelleyEraTxBody`, whose instances end
   * at Babbage: `AtMostEra "Babbage"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs:97`,
@@ -162,6 +190,19 @@ trait ConwayEraTxBody[E <: EraTag] extends BabbageEraTxBody[E]:
   ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]]
   def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[ProposalProcedure]
   def treasuryDonation[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Coin
+
+  /** `conwayProposalsDeposits` (`Conway/TxBody.hs:382-390`, cardano-ledger f649f975): the
+    * governance-action deposit of the parameters for each proposal.
+    */
+  protected final def conwayProposalsDeposits[L <: TxLevel](pp: PParams[E], body: TxBody[L, E])(
+      using
+      Level[L],
+      ConwayEraPParams[E]
+  ): Coin =
+    Coin(
+      BigInt(proposalProcedures(body).size) *
+        ConwayEraPParams.ppGovActionDepositCompactL[E].get(pp).toBigInt
+    )
 
 /** Why bytes or a stored value are not a value of an era. */
 enum EraTxError:

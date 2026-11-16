@@ -121,17 +121,84 @@ object EraPParams:
   given conway: ConwayEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: DijkstraEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
+  // The reference's lenses into the parameters, each `ppLensHKD` and the class's field at
+  // `Identity`. Those reading a coin are the compact ones: the reference's `Coin` lenses add
+  // `partialCompactCoinL`, whose setter is partial; a reader takes `toCoin` of the compact coin,
+  // which is its getter.
+
+  /** `ppTxFeePerByteL` (`Core/PParams.hs:516-517`, cardano-ledger f649f975). */
+  def ppTxFeePerByteL[E <: EraTag](using p: EraPParams[E]): Lens[PParams[E], CoinPerByte] =
+    PParams.lensHKD[E].andThen(p.hkdTxFeePerByteL[Identity])
+
+  /** `ppTxFeeFixedCompactL` (`Core/PParams.hs:532-533`, cardano-ledger f649f975). */
+  def ppTxFeeFixedCompactL[E <: EraTag](using p: EraPParams[E]): Lens[PParams[E], CompactCoin] =
+    PParams.lensHKD[E].andThen(p.hkdTxFeeFixedCompactL[Identity])
+
+  /** `ppMaxTxSizeL` (`Core/PParams.hs:540-541`, cardano-ledger f649f975). */
+  def ppMaxTxSizeL[E <: EraTag](using p: EraPParams[E]): Lens[PParams[E], Unsigned[W32]] =
+    PParams.lensHKD[E].andThen(p.hkdMaxTxSizeL[Identity])
+
+  /** `ppKeyDepositCompactL` (`Core/PParams.hs:552-553`, cardano-ledger f649f975). */
+  def ppKeyDepositCompactL[E <: EraTag](using p: EraPParams[E]): Lens[PParams[E], CompactCoin] =
+    PParams.lensHKD[E].andThen(p.hkdKeyDepositCompactL[Identity])
+
+  /** `ppPoolDepositCompactL` (`Core/PParams.hs:560-561`, cardano-ledger f649f975). */
+  def ppPoolDepositCompactL[E <: EraTag](using p: EraPParams[E]): Lens[PParams[E], CompactCoin] =
+    PParams.lensHKD[E].andThen(p.hkdPoolDepositCompactL[Identity])
+
 object AlonzoEraPParams:
   given conway: AlonzoEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: AlonzoEraPParams[Dijkstra] = DijkstraEraPParamsInstance
+
+  /** `ppPricesL` (`Alonzo/PParams.hs:160-161`, cardano-ledger f649f975). */
+  def ppPricesL[E <: EraTag](using p: AlonzoEraPParams[E]): Lens[PParams[E], Prices] =
+    PParams.lensHKD[E].andThen(p.hkdPricesL[Identity])
+
+  /** `ppMaxTxExUnitsL` (`Alonzo/PParams.hs:163-164`, cardano-ledger f649f975). */
+  def ppMaxTxExUnitsL[E <: EraTag](using p: AlonzoEraPParams[E]): Lens[PParams[E], ExUnits] =
+    PParams.lensHKD[E].andThen(p.hkdMaxTxExUnitsL[Identity])
+
+  /** `ppMaxValSizeL` (`Alonzo/PParams.hs:169-170`, cardano-ledger f649f975). */
+  def ppMaxValSizeL[E <: EraTag](using p: AlonzoEraPParams[E]): Lens[PParams[E], Unsigned[W32]] =
+    PParams.lensHKD[E].andThen(p.hkdMaxValSizeL[Identity])
+
+  /** `ppCollateralPercentageL` (`Alonzo/PParams.hs:172-173`, cardano-ledger f649f975). */
+  def ppCollateralPercentageL[E <: EraTag](using
+      p: AlonzoEraPParams[E]
+  ): Lens[PParams[E], Unsigned[W16]] =
+    PParams.lensHKD[E].andThen(p.hkdCollateralPercentageL[Identity])
 
 object BabbageEraPParams:
   given conway: BabbageEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: BabbageEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
+  /** `ppCoinsPerUTxOByteL` (`Babbage/PParams.hs:79-81`, cardano-ledger f649f975). */
+  def ppCoinsPerUTxOByteL[E <: EraTag](using
+      p: BabbageEraPParams[E]
+  ): Lens[PParams[E], CoinPerByte] =
+    PParams.lensHKD[E].andThen(p.hkdCoinsPerUTxOByteL[Identity])
+
 object ConwayEraPParams:
   given conway: ConwayEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: ConwayEraPParams[Dijkstra] = DijkstraEraPParamsInstance
+
+  /** `ppGovActionDepositCompactL` (`Conway/PParams.hs:240-242`, cardano-ledger f649f975). */
+  def ppGovActionDepositCompactL[E <: EraTag](using
+      p: ConwayEraPParams[E]
+  ): Lens[PParams[E], CompactCoin] =
+    PParams.lensHKD[E].andThen(p.hkdGovActionDepositCompactL[Identity])
+
+  /** `ppDRepDepositCompactL` (`Conway/PParams.hs:247-248`, cardano-ledger f649f975). */
+  def ppDRepDepositCompactL[E <: EraTag](using
+      p: ConwayEraPParams[E]
+  ): Lens[PParams[E], CompactCoin] =
+    PParams.lensHKD[E].andThen(p.hkdDRepDepositCompactL[Identity])
+
+  /** `ppMinFeeRefScriptCostPerByteL` (`Conway/PParams.hs:256-258`, cardano-ledger f649f975). */
+  def ppMinFeeRefScriptCostPerByteL[E <: EraTag](using
+      p: ConwayEraPParams[E]
+  ): Lens[PParams[E], NonNegativeInterval] =
+    PParams.lensHKD[E].andThen(p.hkdMinFeeRefScriptCostPerByteL[Identity])
 
 /** Conway's instances (`instance EraPParams ConwayEra` to `instance ConwayEraPParams ConwayEra`,
   * `Conway/PParams.hs:825-984`, cardano-ledger f649f975).
