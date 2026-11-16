@@ -63,3 +63,38 @@ docker build -f scripts/oracle/leios-testnet/Dockerfile -t scarab-leios-testnet:
 ```
 
 The cases come from `leios_cases.py`, run as the fixture README shows.
+
+## The chain's own transactions (#54)
+
+`leios_chain_scan.py` reads the database of a node of the testnet's build (the release's image
+`ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w44`, run as a following node
+with the [committed configuration](../../../fixtures/leios/testnet/config/)) and finds every
+transaction the ledger applies with a redeemer. Those are a ranking block's own transactions and,
+for a block carrying a Leios certificate, first the transactions of the endorser block its
+predecessor announced. At ouroboros-consensus `2416493b` a certifying block's body on the wire
+carries no transactions; applying it checks the certificate, then reads the announced endorser
+block's closure from the LeiosDB and applies its transactions in the endorser block's order, then
+the block (`Ouroboros/Consensus/Storage/LedgerDB/Forker.hs:623-687`, `resolveAndApplyLeiosClosure`
+at `:1066-1104`). The Dijkstra instance decodes each closure transaction in the block-body encoding,
+the validity flag included (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs:167-177`;
+`serializeTxForLeios`, `LeiosDemoTypes.hs:1234-1245`), and applies it with the ledger's `LEDGER`
+rule at `ValidateNone` (`Leios.hs:210-252`): the trust comes from the certificate, whose voters
+validated the closure in full, scripts included (`Forker.hs:897-913`; `validateEbClosure`,
+`LeiosVoting.hs:446-473`).
+
+`chain/` is a second harness of the same project (its image `scarab-leios-testnet-chain:local`
+derives from `scarab-leios-testnet:local`): the `kind` "context" above with the chain's environment
+in place of the fixed one, the protocol version and cost models in force and the chain's system
+start and slot length, so that a transaction's contexts are those its scripts were given on the
+chain. `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx` read nothing else of the protocol parameters
+(`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs:111-219`). Build it after the parent:
+
+```sh
+docker build --label xyz.kd5ujc.scarab.kind=oracle \
+  -f scripts/oracle/leios-testnet/chain/Dockerfile -t scarab-leios-testnet-chain:local .
+```
+
+The [chain contexts fixture](../../../fixtures/reference/leios-testnet-chain-contexts/README.md)
+says how its cases were extracted, and the
+[chain scripts fixture](../../../fixtures/reference/leios-testnet-chain-scripts/README.md) how the
+plutus 1.71.0.0 oracle judged them.
