@@ -59,6 +59,9 @@ reader, not the open `Word8` key of a Conway cost-model map. Shared Dijkstra enc
 `DijkstraCodecs` rebuilds Dijkstra certificates, proposals, parameter updates, scripts, datums, relays and outputs
 from their decoded values. Output re-encoding chooses the reference's list or map form; it does not replay the
 whole output's input bytes. Standalone DReps and pool metadata are decoded inside minimal certificates.
+Standalone Dijkstra block bodies are decoded inside a minimal Leios block; the selected production decoder
+judges their layout. A body it accepts still reports a missing encoder until production retains and writes
+that body's complete original encoding.
 Byte-exact rules consume the original bytes retained by their production decoder. These wire re-encodings do
 not change persisted-state codecs or the reference profile selected by the node.
 

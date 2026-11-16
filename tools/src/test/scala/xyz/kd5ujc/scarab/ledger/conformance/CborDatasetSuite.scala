@@ -179,6 +179,33 @@ class CborDatasetSuite extends FunSuite:
       assert(!proposals(empty), s"proposals $empty")
   }
 
+  test("a standalone Dijkstra block body is exercised by the selected production block decoder") {
+    val body = decoded(DijkstraRules.rules, "block_body")
+    assert(body("8380f6f6"), "the selected Leios build reads a three-field empty body")
+    assert(!body("84f680f6f6"), "the corpus build's four-field layout remains a disagreement")
+    assert(!body("83808100f6"), "the Leios certificate must have its production shape")
+    assertEquals(
+      DatasetCheck.check(
+        "block_body",
+        DijkstraRules.rules.get("block_body"),
+        Kind.Invalid,
+        hex("83808100f6"),
+        None
+      ),
+      Outcome.Met
+    )
+    assertEquals(
+      DatasetCheck.check(
+        "block_body",
+        DijkstraRules.rules.get("block_body"),
+        Kind.Valid,
+        hex("8380f6f6"),
+        Some(hex("8380f6f6"))
+      ),
+      Outcome.Failed(Category.Encode, Unwritten.NoEncoder.message)
+    )
+  }
+
   test(
     "the Dijkstra auxiliary_scripts rule is Timelock, while full auxiliary data permits guards"
   ) {

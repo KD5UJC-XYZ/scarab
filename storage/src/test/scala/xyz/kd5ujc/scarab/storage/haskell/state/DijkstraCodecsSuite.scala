@@ -4,8 +4,9 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
+import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.dijkstra.*
-import xyz.kd5ujc.scarab.models.runtime.Codec
+import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
 
 /** Hand-written encodings worked out from cardano-ledger 9df9f98c, independent of the corpus. They
   * check serialization choices that a value round trip alone cannot distinguish.
@@ -124,7 +125,10 @@ class DijkstraCodecsSuite extends FunSuite:
         "820102" -> "820102"
       )
     do reencode(DijkstraCodecs.balanceInterval, input, expected)
-    assert(DijkstraCodecs.balanceInterval.decodeBytes(hex("82f6f6")).isLeft)
+    assertEquals(
+      DijkstraCodecs.balanceInterval.decodeBytes(hex("82f6f6")).left.map(_.kind),
+      Left(DecodeError.Kind.Domain(LedgerDecodeError.Empty(DecodeField.AccountBalanceIntervals)))
+    )
   }
 
   test("checked writers refuse constructed out-of-range values and wrong parameter field types") {
@@ -136,9 +140,28 @@ class DijkstraCodecsSuite extends FunSuite:
         DijkstraParamUpdate(Map(10 -> Ratio(Rational(2, 1)))),
         DijkstraParamUpdate(Map(57 -> Number(0)))
       )
-    do assert(DijkstraCodecs.paramUpdate.write(value).isLeft, value.toString)
-    assert(DijkstraCodecs.relay.write(DijkstraRelay.SingleHostAddr(Some(-1), None, None)).isLeft)
-    assert(DijkstraCodecs.balanceInterval.write(DijkstraBalanceInterval.Exact(-1)).isLeft)
-    assert(DijkstraCodecs.datum.write(DijkstraDatum.NoDatum).isLeft)
-    assert(DijkstraCodecs.script.write(DijkstraScript.Native(hex("01"))).isLeft)
+    do
+      assertEquals(
+        DijkstraCodecs.paramUpdate.write(value).left.map(_.typeName),
+        Left("PParamsUpdate")
+      )
+    assertEquals(
+      DijkstraCodecs.relay
+        .write(DijkstraRelay.SingleHostAddr(Some(-1), None, None))
+        .left
+        .map(_.typeName),
+      Left("StakePoolRelay")
+    )
+    assertEquals(
+      DijkstraCodecs.balanceInterval.write(DijkstraBalanceInterval.Exact(-1)).left.map(_.typeName),
+      Left("AccountBalanceInterval")
+    )
+    assertEquals(
+      DijkstraCodecs.datum.write(DijkstraDatum.NoDatum).left.map(_.typeName),
+      Left("Datum")
+    )
+    assertEquals(
+      DijkstraCodecs.script.write(DijkstraScript.Native(hex("01"))).left.map(_.typeName),
+      Left("AlonzoScript")
+    )
   }

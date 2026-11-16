@@ -203,8 +203,6 @@ object DijkstraRules:
   private def writeMultiasset(assets: Map[Bytes, Map[Bytes, BigInt]]) =
     written(UtxoCodecs.multiasset)(assets)
 
-  private def notEmbedded(parent: String) = DatasetRule.Unmapped(Unmapped.NotEmbedded(parent))
-
   /** These types have the same `EncCBOR` in both eras: voters and votes
     * (`Conway/Governance/Procedures.hs:365-404,469-474`, cardano-ledger f649f975), vkey and
     * bootstrap witnesses (`Keys/WitVKey.hs:70-74`, `Keys/Bootstrap.hs:93-100`). The Leios pin
@@ -283,7 +281,17 @@ object DijkstraRules:
     "block_number" -> headerLeaf(0, Nil),
     "slot" -> headerLeaf(1, Nil),
     "eb_announcement" -> headerLeaf(11, Nil),
-    "block_body" -> notEmbedded("a Leios block, after its header"),
+    "block_body" -> DatasetRule.unwritten(
+      "Block.decodeShelley (LeiosBlock)",
+      Reach.Embedded("[8, [Leios header, block body]]")
+    )(b =>
+      Block
+        .decodeShelley(
+          hex("820882") ++ headerAround(headerBody(0, hex("00"), leios = true)) ++ b,
+          _ => version
+        )
+        .leftMap(Refusal.Chain(_))
+    ),
     "transaction" -> DatasetRule(
       "DijkstraTx.fromSubmission",
       Reach.Direct,
