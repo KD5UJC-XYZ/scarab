@@ -203,10 +203,10 @@ final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](co
   * resolves them against the backing store first, see [[UtxoNeeds]]).
   *
   * The Conway era is answered, and in every Shelley-based era the ledger state, the chain-dependent
-  * state, the UTxO, the reward provenance and the queries that read nothing of the era's own: their
-  * `IfCurrent` queries get `[result]`, queries naming another era get the era-mismatch reply, as
-  * the reference sends. The ledger state is read through [[ChainRead]]: from the mirror's records,
-  * whichever form the state is in.
+  * state, the UTxO, the reward provenance, the queries that read nothing of the era's own and those
+  * of the governance state: their `IfCurrent` queries get `[result]`, queries naming another era
+  * get the era-mismatch reply, as the reference sends. The ledger state is read through
+  * [[ChainRead]]: from the mirror's records, whichever form the state is in.
   */
 object QueryAnswers:
   @unused private val ConwayIndex = Era.Conway.index
@@ -313,10 +313,11 @@ object QueryAnswers:
       else ledgerAnswer(env, view, utxo, inner, version).map(r => CborOut.build(_.array(1).raw(r)))
 
   /** The queries answered in every Shelley-based era (the others are Conway's): the ledger state as
-    * the Haskell node writes it, the chain-dependent state, the UTxO, the reward provenance, and
-    * the queries that read nothing of the era's own, the ledger tip, the epoch, the proposed
-    * parameter updates, the genesis configuration, the chain account state and the maximum major
-    * protocol version. The reference answers each of them in every Shelley-based era, with the same
+    * the Haskell node writes it, the chain-dependent state, the UTxO, the reward provenance, the
+    * queries that read nothing of the era's own, the ledger tip, the epoch, the proposed parameter
+    * updates, the genesis configuration, the chain account state and the maximum major protocol
+    * version, and those of the governance state, the current parameters and the governance state.
+    * The reference answers each of them in every Shelley-based era, with the same
     * `answerPureBlockQuery` (`Ouroboros/Consensus/Shelley/Ledger/Query.hs:406-535`,
     * ouroboros-consensus 82ecba32), at every node-to-client version.
     */
@@ -326,7 +327,8 @@ object QueryAnswers:
         LedgerQuery.GetUTxOByAddress(_) | LedgerQuery.GetUTxOByTxIn(_) |
         LedgerQuery.GetRewardProvenance | LedgerQuery.GetLedgerTip | LedgerQuery.GetEpochNo |
         LedgerQuery.GetProposedPParamsUpdates | LedgerQuery.GetGenesisConfig |
-        LedgerQuery.GetAccountState | LedgerQuery.GetMaxMajorProtocolVersion =>
+        LedgerQuery.GetAccountState | LedgerQuery.GetMaxMajorProtocolVersion |
+        LedgerQuery.GetCurrentPParams | LedgerQuery.GetGovState =>
       true
     case _ => false
 
@@ -359,16 +361,12 @@ object QueryAnswers:
 
   import HaskellStateCodecs.{
     anchor,
-    committee,
     constitution,
-    futurePParams,
     govActionState,
     nodeCredential,
     nodeDRep,
     nodeDRepState,
     poolParams,
-    proposals as proposalStore,
-    pulsingSnapshot,
     ratifyState
   }
   import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
@@ -491,9 +489,10 @@ object QueryAnswers:
       case GetLedgerTip => Right(CborOut.build(point(_, view.point)))
       // `nesEL`, the epoch (Query.hs:410-411, 1009, ouroboros-consensus 82ecba32).
       case GetEpochNo => shelleyBased(f => coin.answer(f.epoch))
-      // The reference's LegacyPParams Conway instance delegates to the current codec, so unlike
-      // the Shelley genesis parameters these bytes do not change at NTC 21.
-      case GetCurrentPParams => conway(f => protocolParams.answer(f.l.params))
+      // The current parameters of the era's governance state, in the era's encoding, the legacy
+      // one below NTC 21 before Conway (Query.hs:415-416, 1011, 1098-1111, ouroboros-consensus
+      // 82ecba32; `GovStateAnswers`).
+      case GetCurrentPParams => shelleyBased(f => GovStateAnswers.currentPParams(f.l, version))
       // `ProposedPPUpdates Map.empty` whatever the state, the proposals of the eras before Conway
       // too (Query.hs:417-418, 1012, ouroboros-consensus 82ecba32).
       case GetProposedPParamsUpdates => Right(CborOut.build(_.map(0)))
@@ -579,8 +578,9 @@ object QueryAnswers:
             )
         }
       case GetConstitution => conway(f => constitution.answerRead(f.gov.map(_.constitution)))
-      case GetGovState =>
-        conway(f => govState.answerRead(f.gov.map(g => govStateOf(g))))
+      // The era's governance state, at every version (Query.hs:456-457, 1032, ouroboros-consensus
+      // 82ecba32; `GovStateAnswers`).
+      case GetGovState => shelleyBased(f => GovStateAnswers.govState(f.l))
       case GetDRepState(credentials) =>
         conway { f =>
           Wire
@@ -717,44 +717,6 @@ object QueryAnswers:
       case ChainDepState.TPraos(t) => HaskellStateCodecs.tpraosState.answer(t)
       case ChainDepState.Praos(p)  => HaskellStateCodecs.praosState.answer(p)
       case ChainDepState.PBft(_)   => Left(Unanswered.Unsupported)
-
-  /** The governance state (`ConwayGovState`) as `GetGovState` answers it: the proposals, the
-    * committee, the constitution, the current, previous and future parameters, and the completed
-    * pulser.
-    */
-  private type GovAnswer = (
-      Proposals,
-      Option[Committee],
-      Constitution,
-      ProtocolParams,
-      ProtocolParams,
-      FuturePParams,
-      (PulsingSnapshot, RatifyState)
-  )
-
-  private val govState: Codec[GovAnswer] =
-    Record.of[GovAnswer](
-      (
-        proposalStore,
-        Wire.strictMaybe(committee),
-        constitution,
-        protocolParams,
-        protocolParams,
-        futurePParams(protocolParams),
-        Record.of[(PulsingSnapshot, RatifyState)]((pulsingSnapshot, ratifyState))
-      )
-    )
-
-  private def govStateOf(g: ConwayGovState): GovAnswer =
-    (
-      g.proposals,
-      g.committee,
-      g.constitution,
-      g.curPParams,
-      g.prevPParams,
-      g.futurePParams,
-      (g.drepPulsing.snapshot, g.drepPulsing.ratify)
-    )
 
   /** The default vote of a pool: DefaultNo (0), DefaultAbstain (1) or DefaultNoConfidence (2), by
     * the DRep the pool's reward account delegates to.
