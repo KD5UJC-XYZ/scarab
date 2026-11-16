@@ -131,7 +131,8 @@ object POOL:
         val sppId = params.operator
         for
           globals <- ask.ask[Globals]
-          // `hardforkAlonzoValidatePoolAccountAddressNetID` (`Shelley/Era.hs:248-251`)
+          // `hardforkAlonzoValidatePoolAccountAddressNetID` (`Shelley/Era.hs:248-251`,
+          // cardano-ledger f649f975)
           _ <-
             if pv.pvMajor.value > 4 then
               Sts.predicate[F, PredicateFailure](
@@ -144,7 +145,8 @@ object POOL:
                 )
               )
             else Monad[F].unit
-          // `restrictPoolMetadataHash` (`Shelley/SoftForks.hs:11-14`): above protocol 4.0
+          // `restrictPoolMetadataHash` (`Shelley/SoftForks.hs:11-14`, cardano-ledger f649f975):
+          // above 4.0
           _ <-
             if pv.pvMajor.value > 4 || (pv.pvMajor.value == 4 && pv.pvMinor.value > 0) then
               stakePoolParams.metadataHash.traverse_(hash =>
@@ -285,7 +287,8 @@ object DELEG:
     val ppKeyDepositCompact = field[E, CompactCoin](pp)(p.hkdKeyDepositCompactL[Identity])
     val ppKeyDeposit = ppKeyDepositCompact.toBigInt
     val pvMajor = major[E](pp)
-    // `hardforkConwayDELEGIncorrectDepositsAndRefunds` (`Conway/Era.hs:266-267`)
+    // `hardforkConwayDELEGIncorrectDepositsAndRefunds` (`Conway/Era.hs:266-267`, cardano-ledger
+    // f649f975)
     val incorrectDepositsAndRefunds = pvMajor > 10
     def fail(f: DelegFailure): PredicateFailure = PredicateFailure.deleg(f)
     def accountsOf(certState: CertState[E]): Accounts[E] = c.certDStateL.get(certState).accounts
@@ -311,7 +314,8 @@ object DELEG:
         )
       def checkDRepRegistered(targetDRep: DRep) =
         ConwayEraCertState.dRepToCred(targetDRep).traverse_ { dRepCred =>
-          // `unless (hardforkConwayBootstrapPhase ...)` (`Conway/Era.hs:257-258`)
+          // `unless (hardforkConwayBootstrapPhase ...)` (`Conway/Era.hs:257-258`, cardano-ledger
+          // f649f975)
           if pvMajor == 9 then Monad[F].unit
           else
             Sts.predicate[F, PredicateFailure](
