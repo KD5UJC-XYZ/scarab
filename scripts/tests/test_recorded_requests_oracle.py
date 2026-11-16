@@ -6,7 +6,6 @@ import importlib.util
 import json
 from pathlib import Path
 import shutil
-import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -50,17 +49,57 @@ class RecordedRequestsOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "1 retained"):
             RUN.bind([row], [])
 
-    def test_an_image_with_another_harness_is_refused_before_it_answers(self):
+    def binding(self, accepted=None, **changes):
+        """The image binding of measurements that hold, with `changes` applied (None removes a key)."""
         release = RUN.GENERATED.RELEASES["1.70.0.0"]
-        stale = subprocess.CompletedProcess([], 0, stdout=f"{'0' * 64}\n{release['pin']}\nunchanged\n")
-        with patch.object(RUN.subprocess, "run", return_value=stale):
-            with self.assertRaisesRegex(ValueError, "not the build of the current harness"):
-                RUN.check_image(release, "test")
-        current = RUN.GENERATED.sha256(ROOT / release["harness"] / "Main.hs")
-        accepted = subprocess.CompletedProcess([], 0, stdout=f"{current}\n{release['pin']}\nunchanged\n")
-        with patch.object(RUN.subprocess, "run", return_value=accepted):
-            RUN.check_image(release, "test")
+        binary = "b" * 64
+        measured = {
+            f"file:{RUN.IMAGE_HARNESS}": RUN.GENERATED.sha256(ROOT / release["harness"] / "Main.hs"),
+            f"file:{RUN.IMAGE_BUILD[0]}": "c" * 64,
+            f"file:{RUN.IMAGE_BUILD[1]}": "d" * 64,
+            f"file:{RUN.IMAGE_BINARY}": binary,
+            "head": release["pin"], "pinned": "unchanged", "build": "current", "built": binary,
+        }
+        measured = {k: v for k, v in {**measured, **changes}.items() if v is not None}
+        with patch.object(RUN, "entrypoint", return_value=[RUN.IMAGE_BINARY]), \
+                patch.object(RUN, "measure", return_value=measured):
+            return RUN.image_binding(release, "sha256:" + "a" * 64, "test", accepted)
 
+    def test_an_image_that_runs_the_pinned_build_of_the_current_harness_is_bound(self):
+        bound = self.binding()
+        self.assertEqual(bound["imageId"], "sha256:" + "a" * 64)
+        self.assertEqual(bound["imageFilesSha256"][RUN.IMAGE_BINARY], "b" * 64)
+        self.binding(accepted={path: bound["imageFilesSha256"][path] for path in RUN.IMAGE_BUILD})
+
+    def test_another_harness_or_a_changed_plutus_is_refused_before_it_answers(self):
+        for changes, refusal in (({f"file:{RUN.IMAGE_HARNESS}": "0" * 64}, "stale oracle harness"),
+                                 ({"head": "0" * 40}, "plutus is not at"),
+                                 ({"pinned": None}, "plutus source differs")):
+            with self.assertRaisesRegex(ValueError, refusal):
+                self.binding(**changes)
+
+    def test_a_stale_executable_next_to_matching_sources_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "stale executable"):
+            self.binding(build=None)
+        with self.assertRaisesRegex(ValueError, "entry point is not the executable cabal built"):
+            self.binding(built="e" * 64)
+
+    def test_an_executable_other_than_the_accepted_one_is_refused(self):
+        accepted = {RUN.IMAGE_BUILD[0]: "c" * 64, RUN.IMAGE_BUILD[1]: "d" * 64, RUN.IMAGE_BINARY: "f" * 64}
+        with self.assertRaisesRegex(ValueError, "differ from the accepted oracle build"):
+            self.binding(accepted=accepted)
+
+    def test_an_image_with_another_entry_point_is_refused(self):
+        release = RUN.GENERATED.RELEASES["1.70.0.0"]
+        with patch.object(RUN, "entrypoint", return_value=["/bin/sh"]):
+            with self.assertRaisesRegex(ValueError, "does not run"):
+                RUN.image_binding(release, "sha256:" + "a" * 64, "test", None)
+
+    def test_the_retained_provenance_accepts_one_build(self):
+        accepted = RUN.accepted_build(RUN.DIRECTORY)
+        self.assertEqual(set(accepted), set(RUN.IMAGE_BUILD))
+        provenance = json.loads((RUN.DIRECTORY / "provenance.json").read_text())
+        self.assertEqual(provenance["oracleBinarySha256"], accepted[RUN.IMAGE_BINARY])
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,9 +1,15 @@
 {
   "release": "1.70.0.0",
   "plutusCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-  "sourceCommit": "37faf6462d8b612a1b9c09c93698b93d73f7b9cc",
+  "sourceCommit": "3de3fdb64cb7e7272b1fd8cb6afe4540b22062b4",
   "oracleImage": "sha256:0ba57aed177d7a9370c31a858ab963581b9e8320b69e2d3cfb8925e88b951002",
   "oracleBaseImage": "sha256:b50784fa61a079153e78ad8b0216ea5d2c35d98f5255f6b920993011007123cb",
+  "imageFilesSha256": {
+    "/source/scarab-oracle/Main.hs": "8c03e0538ff60a331a2172dcbc9a35329f71551aea22bca8fdce925011a69d77",
+    "/source/scarab-oracle/scarab-plutus-oracle.cabal": "71b84c4696082466585b042b031b531ccfb2ae9ab092cf5e991d0e05dc69939e",
+    "/source/cabal.project": "178b1a9497e5a9c70241b366f34de8aedbf64fe33c3ab9eff6eb29e7f3873689",
+    "/usr/local/bin/scarab-plutus-oracle": "4f86611f17aa3c04fc1496e49cabfd30c1aa35966df662250250bd0552f9a184"
+  },
   "cases": 49,
   "requests": 253,
   "costModels": 11,
@@ -53,8 +59,8 @@
     "scripts/oracle/plutus/generated/Main.hs": "8c03e0538ff60a331a2172dcbc9a35329f71551aea22bca8fdce925011a69d77",
     "scripts/oracle/plutus/generated/Dockerfile": "2ba7e280e8c886ac2cdfb1395ac2a13e952dff6393f386953f946f5dd233011e",
     "scripts/oracle/plutus/generated/run.py": "6e0d39e0f1a8efa9da8864231efe8f0804c19d08262ef94ba927452575d4deea",
-    "scripts/oracle/plutus/recorded/run.py": "3ec4453608cad7c017b2778c69d118855980000aceabd7ed7cb67afa9ea7d480"
+    "scripts/oracle/plutus/recorded/run.py": "8e967a88a7cb284cf91283e49ae87040a046812a649acc4013b0b47bdbba29b2"
   },
   "rawSha256": "2c525c08e8614fafa578d0e61192c2b3e85144be7d06d47d5f339b248b0fc08c",
-  "dateUtc": "2026-11-16T15:59:30.415333+00:00"
+  "dateUtc": "2026-11-16T17:45:35.347334+00:00"
 }

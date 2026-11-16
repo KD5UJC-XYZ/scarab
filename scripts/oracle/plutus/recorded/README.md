@@ -36,11 +36,23 @@ python3 -I scripts/oracle/plutus/recorded/run.py --verify-only
 
 `RecordedRequestsMain` writes `corpus.json` (the release, the recorded case files and their
 digests), `models.jsonl` and `requests.jsonl` into
-[the fixture](../../../../fixtures/reference/plutus-recorded-requests/README.md). Before it runs a
-request, `run.py` checks that the image holds the current harness source and the pinned plutus
-source unchanged; it fails on any tool error or a missing or reordered answer, writes
-`verdicts.jsonl`, `manifest.json` and `provenance.json`, and keeps the raw answers outside the
-checkout. `--verify-only` checks a retained fixture without Docker: its files and the digests of
-both runners and the harness are the ones the manifest binds, with one verdict per request in
-order. Ordinary `check` needs no Haskell: `RecordedRequestOracleSuite` collects the requests again
-and replays the retained verdicts.
+[the fixture](../../../../fixtures/reference/plutus-recorded-requests/README.md).
+
+`run.py` binds the requests the oracle reads to the fixture's digests, and resolves the image tag
+once to its immutable ID, which the check, the run and the record all use. Before a request runs, the
+image must run `/usr/local/bin/scarab-plutus-oracle` as its entry point, hold the repository's
+harness `Main.hs`, have plutus at the pin with `plutus-core`, `plutus-ledger-api` and `plutus-tx`
+equal to their commit (no change, staged or not, and no untracked or ignored file), and cabal must
+find the executable up to date with those sources and identical to the entry point. The executable,
+the harness's `.cabal` file and the `cabal.project` the image builds with must also be the ones the
+fixture's `provenance.json` accepted (`imageFilesSha256`, `oracleBinarySha256`); a new build is
+accepted only with `--accept-build`. `run.py` fails on any tool error or a missing or reordered
+answer, runs the image without network, and writes `verdicts.jsonl`, `manifest.json` and
+`provenance.json`. `--verify-only` checks a retained fixture without Docker: its files, the digests of
+both runners and the harness, and the image binding are the ones the manifest and provenance record,
+with one verdict per request in order. Ordinary `check` needs no Haskell: `RecordedRequestOracleSuite`
+collects the requests again and replays the retained verdicts.
+
+The [generated-program runner](../generated/run.py) runs the tag and resolves it again for its
+record, and checks neither the image's sources nor its executable when it runs (its Dockerfile checks
+the plutus source when the image is built); its fixture records its hash, so it is left unchanged.

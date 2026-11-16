@@ -5,7 +5,10 @@
 The requests are the ledger's, written by `RecordedRequestsMain` in full into the evidence directory and by digest
 into the fixture, which this runner checks against each other; the evaluator, its image and the shape of
 requests and answers are the generated-program oracle's (`scripts/oracle/plutus/generated`), whose runner this one
-loads unchanged and whose image it checks before use. `--verify-only` checks a retained fixture without Docker.
+loads unchanged. The image is resolved once to its immutable ID, which the check, the run and the record all use;
+before it answers, the image must run the build of the repository's harness at the pinned, unchanged plutus, with
+the executable and build files the fixture's provenance accepted. `--verify-only` checks a retained fixture without
+Docker.
 """
 import argparse
 from collections import Counter
@@ -14,7 +17,9 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
@@ -26,6 +31,24 @@ INPUTS = ("corpus.json", "models.jsonl", "requests.jsonl")
 FILES = INPUTS + ("verdicts.jsonl",)
 # The plutus source the harness Dockerfiles require unchanged at the pin.
 PINNED_TREES = ("plutus-core", "plutus-ledger-api", "plutus-tx")
+# What the image runs: the harness source (the repository's, by digest), and the build bound by the fixture's
+# provenance (the harness's package, the cabal project the parent oracle's Dockerfile edits, and the executable that
+# is the image's entry point), as the context-matrix runner binds its image (`image_binding`, `oracleBinarySha256`).
+IMAGE_HARNESS = "/source/scarab-oracle/Main.hs"
+IMAGE_BINARY = "/usr/local/bin/scarab-plutus-oracle"
+IMAGE_BUILD = ("/source/scarab-oracle/scarab-plutus-oracle.cabal", "/source/cabal.project", IMAGE_BINARY)
+# Run in the image (working directory /source, the plutus checkout): each line a key and a value. The plutus trees
+# must equal their commit (no change, staged or not, no untracked or ignored file), and cabal must find the
+# executable up to date with the sources the image holds.
+MEASURE = "\n".join([
+    *(f'echo "file:{path} $(sha256sum {path} | cut -d\' \' -f1)"' for path in (IMAGE_HARNESS, *IMAGE_BUILD)),
+    'echo "head $(git rev-parse HEAD)"',
+    f'git diff --quiet HEAD -- {" ".join(PINNED_TREES)}'
+    f' && test -z "$(git status --porcelain --ignored --untracked-files=all -- {" ".join(PINNED_TREES)})"'
+    ' && echo "pinned unchanged"',
+    'cabal build scarab-plutus-oracle --offline --dry-run 2>/dev/null | grep -qx "Up to date" && echo "build current"',
+    'echo "built $(sha256sum "$(cabal list-bin scarab-plutus-oracle)" | cut -d\' \' -f1)"',
+])
 
 
 def era(protocol):
@@ -42,16 +65,80 @@ def sources(release):
     return [harness / "Main.hs", harness / "Dockerfile", HERE.parent / "generated" / "run.py", HERE / "run.py"]
 
 
-def check_image(release, owner):
-    """The image holds the current harness source and the pinned, unchanged plutus source."""
-    script = ("sha256sum /source/scarab-oracle/Main.hs | cut -d' ' -f1 && git rev-parse HEAD"
-              f" && git diff --quiet --exit-code -- {' '.join(PINNED_TREES)} && echo unchanged")
-    command = ["docker", "run", "--rm", "--network", "none", *GENERATED.LABELS,
-               "--label", f"xyz.kd5ujc.scarab.owner={owner}", "--entrypoint", "sh", release["image"], "-c", script]
-    measured = subprocess.run(command, capture_output=True, text=True, check=True).stdout.split()
-    expected = [GENERATED.sha256(ROOT / release["harness"] / "Main.hs"), release["pin"], "unchanged"]
-    if measured != expected:
-        raise ValueError(f"{release['image']} is not the build of the current harness at {release['pin']}: {measured}")
+def resolve(image):
+    """The immutable ID of an image, resolved once: the check, the run and the record all name this ID."""
+    value = subprocess.run(["docker", "image", "inspect", image, "--format", "{{.Id}}"],
+                           capture_output=True, text=True, check=True).stdout.strip()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None:
+        raise ValueError(f"no immutable image ID for {image}")
+    return value
+
+
+def entrypoint(image_id):
+    return json.loads(subprocess.run(["docker", "image", "inspect", image_id, "--format", "{{json .Config.Entrypoint}}"],
+                                     capture_output=True, text=True, check=True).stdout)
+
+
+def container(image_id, owner, *options):
+    return ["docker", "run", "--rm", "--network", "none", *options, *GENERATED.LABELS,
+            "--label", f"xyz.kd5ujc.scarab.owner={owner}", image_id]
+
+
+def measure(image_id, owner):
+    """The keys and values MEASURE prints in the image."""
+    command = [*container(image_id, owner, "--entrypoint", "sh"), "-c", MEASURE]
+    output = subprocess.run(command, capture_output=True, text=True, check=True).stdout
+    return dict(line.split(" ", 1) for line in output.splitlines() if " " in line)
+
+
+def image_binding(release, image_id, owner, accepted):
+    """The image runs the build of the repository's harness at the pinned, unchanged plutus, and, unless `accepted`
+    is None (a build accepted anew), the executable and build files the fixture's provenance accepted."""
+    if entrypoint(image_id) != [IMAGE_BINARY]:
+        raise ValueError(f"{image_id} does not run {IMAGE_BINARY}")
+    measured = measure(image_id, owner)
+    files = {key[len("file:"):]: value for key, value in measured.items() if key.startswith("file:")}
+    refusals = [
+        (measured.get("head") == release["pin"], f"plutus is not at {release['pin']}"),
+        (measured.get("pinned") == "unchanged",
+         f"the plutus source differs from its commit under {', '.join(PINNED_TREES)}"),
+        (files.get(IMAGE_HARNESS) == GENERATED.sha256(ROOT / release["harness"] / "Main.hs"),
+         "stale oracle harness: the image's Main.hs is not the repository's"),
+        (measured.get("build") == "current", "stale executable: cabal would rebuild it from the image's sources"),
+        (measured.get("built") == files.get(IMAGE_BINARY), "the entry point is not the executable cabal built"),
+    ]
+    for holds, why in refusals:
+        if not holds:
+            raise ValueError(f"{image_id}: {why}")
+    build = {path: files[path] for path in IMAGE_BUILD}
+    if accepted is not None and build != accepted:
+        raise ValueError(f"{image_id}: executable or build files differ from the accepted oracle build "
+                         "(record with --accept-build only for a build reviewed anew)")
+    return {"imageId": image_id, "imageFilesSha256": {path: files[path] for path in (IMAGE_HARNESS, *IMAGE_BUILD)}}
+
+
+def accepted_build(fixtures):
+    """The build files the fixture's provenance accepted."""
+    provenance = json.loads((fixtures / "provenance.json").read_text())
+    if "imageFilesSha256" not in provenance:
+        raise ValueError("the fixture accepts no oracle build yet: record with --accept-build")
+    return {path: provenance["imageFilesSha256"][path] for path in IMAGE_BUILD}
+
+
+def execute(image_id, requests, raw, owner):
+    """The requests through the image, without network, one answer per request in order."""
+    with tempfile.TemporaryFile(mode="w+") as inputs:
+        inputs.writelines(GENERATED.dump(request) + "\n" for request in requests)
+        inputs.seek(0)
+        with raw.open("w") as results:
+            subprocess.run(container(image_id, owner, "-i"), stdin=inputs, stdout=results, check=True)
+    rows = lines(raw)
+    if len(rows) != len(requests):
+        raise ValueError(f"{len(rows)} results for {len(requests)} requests")
+    for request, row in zip(requests, rows):
+        if "toolError" in row or row.get("id") != request["id"]:
+            raise ValueError((request["id"], row))
+    return rows
 
 
 def validate(fixtures):
@@ -70,6 +157,12 @@ def validate(fixtures):
         raise ValueError("a missing, extra or reordered verdict")
     if len({r["id"] for r in requests}) != len(requests):
         raise ValueError("duplicate request id")
+    provenance = json.loads((fixtures / "provenance.json").read_text())
+    image = provenance["imageFilesSha256"]
+    if (provenance["imageId"] != manifest["oracleImage"] or image != manifest["imageFilesSha256"]
+            or provenance["oracleBinarySha256"] != image[IMAGE_BINARY]
+            or image[IMAGE_HARNESS] != GENERATED.sha256(ROOT / release["harness"] / "Main.hs")):
+        raise ValueError("the provenance does not bind the image, its executable and the current harness")
     return requests, verdicts
 
 
@@ -101,7 +194,7 @@ def bind(rows, full):
             raise ValueError(f"the oracle's request is not the retained one: {row['id']}")
 
 
-def record(fixtures, evidence, owner):
+def record(fixtures, evidence, owner, accept_build):
     corpus = json.loads((fixtures / "corpus.json").read_text())
     release = GENERATED.RELEASES[corpus["release"]]
     models = lines(fixtures / "models.jsonl")
@@ -109,16 +202,18 @@ def record(fixtures, evidence, owner):
     full = lines(evidence / "requests.jsonl")
     bind(rows, full)
     requests = [{**request, "costModel": models[request["model"]]["costModel"]} for request in full]
-    check_image(release, owner)
-    results = GENERATED.execute(release["image"], requests, evidence / "raw.jsonl", owner)
+    image_id = resolve(release["image"])
+    binding = image_binding(release, image_id, owner, None if accept_build else accepted_build(fixtures))
+    results = execute(image_id, requests, evidence / "raw.jsonl", owner)
     verdicts = [GENERATED.verdict(row) for row in results]
     (fixtures / "verdicts.jsonl").write_text("".join(GENERATED.dump(v) + "\n" for v in verdicts))
     manifest = {
         "release": corpus["release"],
         "plutusCommit": release["pin"],
         "sourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-        "oracleImage": GENERATED.image_id(release["image"]),
-        "oracleBaseImage": GENERATED.image_id(release["base"]),
+        "oracleImage": image_id,
+        "oracleBaseImage": resolve(release["base"]),
+        "imageFilesSha256": binding["imageFilesSha256"],
         "cases": corpus["cases"],
         "requests": len(requests),
         "costModels": len(models),
@@ -144,8 +239,10 @@ def record(fixtures, evidence, owner):
         "sourceNetworks": sorted(manifest["byNetwork"]),
         "cases": corpus["cases"],
         "requests": len(requests),
-        "imageId": manifest["oracleImage"],
+        "imageId": image_id,
         "baseImageId": manifest["oracleBaseImage"],
+        "imageFilesSha256": binding["imageFilesSha256"],
+        "oracleBinarySha256": binding["imageFilesSha256"][IMAGE_BINARY],
         "harnessSha256": manifest["toolSha256"][f'{release["harness"]}/Main.hs'],
         "runnerSha256": manifest["toolSha256"][str((HERE / "run.py").relative_to(ROOT))],
         "requestsSha256": manifest["sha256"]["requests.jsonl"],
@@ -162,9 +259,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixtures", type=Path, default=DIRECTORY)
     parser.add_argument("--evidence", type=Path,
-                        help="outside the checkout: the oracle's requests RecordedRequestsMain wrote, and the raw answers")
+                        help="a git-ignored directory: the oracle's requests RecordedRequestsMain wrote there, "
+                             "and the raw answers")
     parser.add_argument("--owner", default="plutus-recorded-requests")
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--accept-build", action="store_true",
+                        help="accept the image's build files and executable anew, instead of the ones recorded")
     args = parser.parse_args()
     if args.verify_only:
         requests, _ = validate(args.fixtures)
@@ -172,7 +272,7 @@ def main():
     elif args.evidence is None:
         parser.error("--evidence is required to record")
     else:
-        record(args.fixtures, args.evidence, args.owner)
+        record(args.fixtures, args.evidence, args.owner, args.accept_build)
 
 
 if __name__ == "__main__":
