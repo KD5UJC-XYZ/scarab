@@ -41,7 +41,7 @@ the linked source comparisons, fixtures and recorded runs.
 |---|---|
 | **Eras** | Byron (PBFT, ledger, update system) through Shelley, Allegra, Mary, Alonzo, Babbage and Conway, including the hard forks between them |
 | **Consensus** | TPraos and Praos header validation (VRF, KES, operational certificates, nonces, leader schedule), chain selection, the hard-fork combinator |
-| **Ledger** | Every Shelley-based rule set; native scripts and Plutus V1 to V3 (evaluator: [Scalus](https://github.com/scalus3/scalus), behind our own interface); all certificates; Conway governance (proposals, votes, DReps, ratification, enactment); the state is held in the Haskell node's own types (`NewEpochState`, `ExtLedgerState`, the hard-fork telescope), indexed by era so that a rule cannot touch another era's data |
+| **Ledger** | Every Shelley-based rule set; native scripts and Plutus V1 to V3 (evaluator: Scarab's own, the `uplc` module, behind our own interface); all certificates; Conway governance (proposals, votes, DReps, ratification, enactment); the state is held in the Haskell node's own types (`NewEpochState`, `ExtLedgerState`, the hard-fork telescope), indexed by era so that a rule cannot touch another era's data |
 | **Networking** | Node-to-node ChainSync, BlockFetch, TxSubmission2, KeepAlive and PeerSharing, client and server; inbound and duplex connections; the target-driven P2P governor ([as built](docs/design/peer-selection.md)) and connection manager; Ouroboros Genesis (GSM, LoE/GDD, LoP, ChainSync jumping, devoted fetching; [scope and limits](docs/compatibility/ouroboros-genesis.md)); serves a Haskell relay |
 | **Node** | Persistent chain (immutable and volatile stores, ledger snapshots, a RocksDB UTxO set), mempool, Praos block forging in Conway (other eras: [#544](https://github.com/KD5UJC-XYZ/scarab/issues/544)), node-to-client LocalStateQuery / LocalTxSubmission / LocalTxMonitor / ChainSync |
 | **Haskell formats** | Reads the Haskell ImmutableDB; reads and writes the Haskell ledger-state file byte for byte (see below) |
@@ -157,7 +157,8 @@ the dependencies.
 | `crypto` | Blake2b, strict Ed25519, VRF (verify and prove), Sum6 KES, BLS12-381, operational certificates |
 | `protocol` | Pure Ouroboros mini-protocol codecs and state machines |
 | `network` | fs2 bearer, multiplexer, handshake, client and server roles of every mini-protocol |
-| `plutus` | The Plutus evaluator algebra and its Scalus adapter |
+| `uplc` | Scarab's own Plutus evaluator: the term model, the Flat decoder, the CEK machine, the builtins and their costing |
+| `plutus` | The Plutus evaluator algebra and its adapter of the own evaluator (`uplc`) |
 | `ledger` | Blocks, headers, genesis, transactions, the Byron to Conway rules, and the era-indexed Haskell-shaped state (`ledger.state`) |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, the consensus side of the state (`consensus.state`) |
 | `storage` | Immutable and volatile stores, ledger snapshots, the UTxO store, format migrations, the Haskell ImmutableDB reader and ledger-state codec |

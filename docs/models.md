@@ -301,7 +301,7 @@ byte-only round trip does not establish that field values or optional presence a
 | Protocol state machines, agency, limits, timeouts | CDDL is only the message syntax (mini-protocol CDDL has no state) |
 | Mux framing, the handshake *policy* (version selection, magic agreement) | not message syntax |
 | Types with no CDDL in the pinned repositories | `tip` for ChainSync is in an override file we wrote; node-to-client query results and ledger state snapshots are partly Haskell-defined |
-| Scalus bridging, our own snapshot formats | not Cardano-specified |
+| Our own snapshot formats | not Cardano-specified |
 
 ## 10. Results on real data
 
