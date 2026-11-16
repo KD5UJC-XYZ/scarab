@@ -8852,7 +8852,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's; a value's serialised size is that of the node's stored value (Value.serializedSize), MaryValue's encoding at every version (Mary/Value.hs:342-350)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's; a value's serialised size is that of the node's stored value (Value.serializedSize), MaryValue's encoding (Mary/Value.hs:342-350) from protocol major 2, where a map of more than 23 entries is indefinite (Encoding/Encoder.hs:402-407); every major this check runs at is 5 or more",
    "digest": "ddeaa25cdd3171cb"
   },
   "def ledger.era.rules.BabbageUtxo.validateOutputTooSmallUTxO": {

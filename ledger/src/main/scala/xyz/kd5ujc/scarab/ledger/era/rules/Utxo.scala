@@ -227,8 +227,10 @@ object AlonzoUtxo:
   /** `validateOutputTooBigUTxO` (`Alonzo/Rules/Utxo.hs:412-431`, cardano-ledger f649f975): the
     * outputs whose value takes more than `ppMaxValSize` bytes serialised, collected by a left fold
     * that puts each one in front, so the last first. A value's serialised size is the size of the
-    * encoding the node keeps of it (`Value.serializedSize`), which is `MaryValue` 's encoder's at
-    * every protocol version (`Mary/Value.hs:342-350`, cardano-ledger f649f975).
+    * encoding the node keeps of it (`Value.serializedSize`), which is the encoding of `MaryValue`
+    * (`Mary/Value.hs:342-350`, cardano-ledger f649f975) from protocol major 2, where a map of more
+    * than 23 entries is indefinite (cardano-ledger-binary `Encoding/Encoder.hs:402-407`,
+    * cardano-ledger f649f975); every major an era with this check runs at is 5 or more.
     */
   def validateOutputTooBigUTxO[E <: EraTag](pp: PParams[E], outputs: Vector[TxOut[E]])(using
       o: EraTxOut[E],
