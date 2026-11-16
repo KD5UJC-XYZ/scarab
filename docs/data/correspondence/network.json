@@ -826,9 +826,10 @@
    ]
   },
   {
-   "reason": "the reference's credit and request rules (TxSubmissionPolicy) over era-tagged ids, comparing them by their hash as OneEraGenTxId's Eq and Ord do",
+   "reason": "the reference's credit and request rules (TxSubmissionPolicy) over era-tagged ids, comparing them by their hash as OneEraGenTxId's Eq and Ord do, a received transaction answering the request when its id is one asked for",
    "definitions": [
-    "val network.TxSubmission2Runtime.eraRules"
+    "val network.TxSubmission2Runtime.eraRules",
+    "def network.TxSubmission2Runtime.Rules#requested"
    ]
   }
  ]
