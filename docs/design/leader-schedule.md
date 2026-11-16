@@ -324,7 +324,7 @@ wake margin. A change of the schedule interrupts the sleep, and it takes the ear
 - it is under half of the devnet's 0.1 s slot, so the forging of a slot starts after the previous slot's onset;
 - it is far inside the reference's 2 s skew.
 
-At the wake:
+At the wake the fiber makes an **early attempt**. It is provisional until the slot's onset:
 
 1. If the slot has passed, it is passed over, as the reference passes over a slot its thread did not reach.
 2. The full traced sequence runs as now, from `startLeadershipCheck` (decision 1): the block context and the forecast
@@ -332,16 +332,34 @@ At the wake:
 3. The leader check is made again against the chain as it is then (decision 5). The inputs are derived as in §5.2. If
    they equal the schedule's, the slot's output is evaluated once more and the schedule's certificate is used. If they
    differ, `Leadership.check` decides afresh and proves a won slot, exactly as the per-slot loop would.
-4. The tick, the mempool snapshot, the block built and signed (`forgedBlock`, `forged`) as now.
-5. The block waits until the slot's onset, and is then handed to chain selection (`Follower.adoptForged`). If the tip
-   changed meanwhile (a late block of an earlier slot), the block is not handed over; the slot is forged again on the
-   new tip. The `forgedBlock` line and the forge counters are held until a block is handed over, so they cover only
-   the block published; a discarded attempt logs one Debug line ([#1101, Q4](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395)).
+4. The tick, the mempool snapshot, the block built and signed, as now. The attempt records what it was made from: its
+   block context (the parent and the block number), the slot's inputs (the nonce, the pool's stake and the total, the
+   VRF key), and the credentials in force (the KES key and the certificate, from the same reload). Its `forgedBlock`
+   line and the forge counters are held ([#1101, Q4](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395)).
+
+**An early refusal is retried up to the onset.** If the early attempt gives the slot up (`noLedgerView`,
+`slotIsImmutable` or `blockFromFuture` because the tip is not yet where it will be, or not led because the inputs it
+derived differ from the schedule's), the slot stays pending: the attempt is made again whenever the chain or the
+credentials change before the onset, and once more at the onset. Its refusal line is held, and the refusal that stands
+at the onset is logged once, as the reference logs it in the slot.
+
+**At the onset the pending block is checked against the node as it is then.** It is handed to chain selection
+(`Follower.adoptForged`), and its held line and counters are released, only if all three hold:
+
+- the block context at the onset (`blockContext` on the chain as it is then) is the one the block was built on;
+- the slot's inputs derived at the onset are those the attempt was made from;
+- forging is still enabled with the same credentials.
+
+If any of them differs, the pending block is discarded (one Debug line, Q4) and the slot is forged again at the onset
+from the node as it is then, exactly as the per-slot loop forges in the slot; that block is handed over as soon as it is
+built. A change of credentials before the onset (a SIGHUP that installs another VRF key, KES key or certificate, or
+that disables forging) discards a pending block at once, so nothing signed with replaced credentials is handed over.
 
 The forging fiber handles one slot at a time and does not cancel a forge under way when the schedule changes, as
-Amaru's stage does not; the HotKeys lock already orders signing against a reload. For a given slot, parent, mempool
-snapshot and credentials the block is byte-for-byte the one the per-slot loop would forge. The snapshot is taken up to
-the margin earlier, so a transaction that arrives in those milliseconds waits for the next block (part of decision 6).
+Amaru's stage does not; the HotKeys lock already orders signing against a reload. So the block handed over for a slot
+is the one the per-slot loop would forge at the onset from the same parent, inputs and credentials; only the mempool
+snapshot can be up to the margin older, so a transaction that arrives in those milliseconds waits for the next block
+(part of decision 6).
 
 ### 5.4 The clock watcher
 
@@ -457,6 +475,13 @@ Decision 9 names three pieces of evidence.
   boundary; a fork that replaces a block before the freeze while the schedule is computed; a SIGHUP that installs
   another VRF key mid-epoch; forging switched off and on; and a start mid-epoch. For every slot the clock reaches, the
   decision and the certificate it acts on must equal `Leadership.check` with the inputs in force at that slot.
+- **Tests of the early attempt (§5.3).** Deterministic, under `TestControl`, with one change at each point where it can
+  fall: between the wake and the re-check, between the re-check and the signing, and between the signing and the onset.
+  The changes are a block of an earlier slot that moves the tip; a fork that changes the nonce or the mark
+  distribution; a SIGHUP that installs another VRF key, KES key or certificate; and forging switched off. In each case
+  what is handed over at the onset, if anything, equals what the per-slot loop forges at the onset from the node as it
+  is then; an early refusal that clears before the onset is forged; a refusal that stands is logged once; and no block
+  signed with replaced credentials is handed over.
 - **The devnet `pool` scenario**: the reference node's `query leadership-schedule` is its oracle, and every scheduled
   slot is forged or taken by another pool's block. [CONTRIBUTING](../../CONTRIBUTING.md#the-one-scenario-per-area)
   also asks `kes-rotate`, since the KES evolution and the SIGHUP path change.
