@@ -38,8 +38,8 @@ import time
 
 from cleanup import container_labels
 from .. import cborspan, ledgercompare, ntccli, ntcquery, ntcsafety
-from ..ntclocal import (Session, backlog_follow, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id,
-                        has_tx_ids)
+from ..ntclocal import (Session, backlog_follow, compare_follow, first_instruction, live_follow, monitor_rounds,
+                        await_wakes, tx_id, has_tx_ids)
 from ..eraload import names_constructor
 from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -84,12 +84,16 @@ CLI_QUERIES = [
     # that on preprod is tens of megabytes (#353); the devnet's is small, so this checks the path and the output
     ("leadership-schedule --current", "leadership-schedule {leader} --current --output-json"),
     ("leadership-schedule --next", "leadership-schedule {leader} --next --output-json"),
+    # the genesis parameters, the era history, the protocol state, and the tip over a second connection's local
+    # ChainSync, which sends `RequestNext` with no intersection (#924)
+    ("kes-period-info", "kes-period-info --op-cert-file {opcert}"),
 ]
 
-# what `leadership-schedule` reads besides the socket: the Shelley genesis and pool 1's cold and VRF keys, copied
-# to one directory both CLI containers can write
+# what `leadership-schedule` and `kes-period-info` read besides the socket: the Shelley genesis, pool 1's cold and
+# VRF keys and its operational certificate, copied to one directory both CLI containers can write
 LEADER_DIR = "/tmp/leader"
-LEADER_FILES = [f"{ENV}/shelley-genesis.json", f"{ENV}/pools-keys/pool1/cold.vkey", f"{ENV}/pools-keys/pool1/vrf.skey"]
+LEADER_FILES = [f"{ENV}/shelley-genesis.json", f"{ENV}/pools-keys/pool1/cold.vkey", f"{ENV}/pools-keys/pool1/vrf.skey",
+                f"{ENV}/pools-keys/pool1/opcert.cert"]
 LEADER_ARGUMENTS = (f"--genesis {LEADER_DIR}/shelley-genesis.json --stake-pool-verification-key-file "
                     f"{LEADER_DIR}/cold.vkey --vrf-signing-key-file {LEADER_DIR}/vrf.skey")
 
@@ -479,6 +483,8 @@ def chain_sync_comparison(args, root, out):
         return open_s(root)
 
     try:
+        # no FindIntersect first, as `query kes-period-info` asks for the tip (#924)
+        out["noIntersection"] = {"reference": first_instruction(opener_h), "scala": first_instruction(opener_s)}
         out["fromOrigin"] = compare_follow(opener_h, opener_s, None, args.chain_sync_blocks, 150)
         live = live_follow(lambda: point_of(args, "s", root),
                            lambda tip: compare_follow(opener_h, opener_s, (tip[0], bytes.fromhex(tip[1])), 12, 150))
@@ -670,6 +676,7 @@ def ntc(args):
         info["stake"] = in_ref(args.name, f"{CLI} stake-address build --stake-verification-key-file {delegator} "
                                           f"--testnet-magic {MAGIC}").stdout.strip()
         info["leader"] = LEADER_ARGUMENTS
+        info["opcert"] = f"{LEADER_DIR}/opcert.cert"
         share_leader_files(args)
         commands = [(label, "query " + text.format(**info)) for label, text in CLI_QUERIES]
         cli_results = cli_comparison(args, root, commands)
@@ -745,6 +752,10 @@ def ntc(args):
                 failures.append(f"local ChainSync {key}: {part}")
         if chain_sync.get("error"):
             failures.append(f"local ChainSync: {chain_sync['error']}")
+        bare = chain_sync.get("noIntersection")
+        if bare is None or any(bare[key]["first"] != [3, "[]"] for key in ("reference", "scala")):
+            failures.append(f"local ChainSync: the first instruction without an intersection is not a roll-back "
+                            f"to Origin on both nodes: {bare}")
         if monitor.get("error") or monitor.get("differences") or monitor.get("nonEmpty", 0) < 3:
             failures.append(f"LocalTxMonitor: {json.dumps(monitor, default=str)[:600]}")
         missed = {k: v for k, v in monitor.get("heldFound", {}).items() if v["bothTrue"] != v["asked"]}
@@ -764,6 +775,12 @@ def ntc(args):
         docker("rm", "-f", f"{args.name}-scala", f"{args.name}-cli", check=False)
         if scala is not None:
             scala.wait()
+    # every adopted block names the tip its peer announced, never Origin or none (#924)
+    extended = [e for e in read_log(root / "follower.jsonl")[0] if e["event"] == "extended"]
+    unannounced = sum(1 for e in extended if e.get("peerTip") in (None, {"origin": True}))
+    summary["peerTip"] = {"extended": len(extended), "nullOrOrigin": unannounced}
+    if not extended or unannounced:
+        failures.append(f"extended.peerTip is null or Origin on {unannounced} of {len(extended)} lines")
     (root / "ntc-summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
     if failures:
