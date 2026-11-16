@@ -165,12 +165,12 @@ Rejected:
   known answers), not source-rebuilt.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
 - ~~The Plutus builtins and Scarab's MinSig run different blst builds: the same v0.3.15 source,
   compiled by two toolchains.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
-- Revisit when:
-  - scalus-crypto-jni changes: update the five pins, the jar hash, the licence texts in
-    `plutus/licenses/` and this record, and rerun the ISA check;
-  - Scarab rebuilds the library from source;
-  - a platform other than Linux/amd64 is deployed;
-  - Scalus gains BLS key generation (then [0012](0012-portable-blst.md)'s module could go).
+- ~~Revisit when:~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+  - ~~scalus-crypto-jni changes: update the five pins, the jar hash, the licence texts in
+    `plutus/licenses/` and this record, and rerun the ISA check;~~
+  - ~~Scarab rebuilds the library from source;~~
+  - ~~a platform other than Linux/amd64 is deployed;~~
+  - ~~Scalus gains BLS key generation (then [0012](0012-portable-blst.md)'s module could go).~~
 
 ## Amendment (2026-10-30): the Leios keys move to jblst
 
