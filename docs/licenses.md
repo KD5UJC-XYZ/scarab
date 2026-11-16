@@ -25,6 +25,15 @@ Their licences were read from the POMs of the declared versions on Maven Central
 Scalus 1.4.0 update found two more jars, alleycats-core and shapeless3-deriving (transitive through
 kittens), whose rows were added from their POMs in the Coursier cache.
 
+On 2026-11-15 the Scalus backend was removed
+([ADR 0027, amendment of 2026-11-15](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)).
+The rows of what only Scalus brought were removed from the tables below: Scalus itself; the runtime
+dependencies its POM declares that no other cached POM declares (paiges-core, upickle with ujson, upack,
+upickle-implicits, upickle-core and geny, jsoniter-scala-core and jsoniter-scala-macros, borer-core and
+borer-derivation); and scalus-crypto-jni with native-lib-loader. They were found by reading the POMs in the
+Coursier cache, not by a new resolution of the class path, which a release regeneration confirms. The counts
+above are those of 2026-10-25.
+
 `node` excludes `org.log4s:log4s_3` (#214), which http4s-core declares. On 2026-10-25 the class files of
 all 76 entries of `node/runtimeClasspathFile` (36,645 classes: every jar and the class directories of the
 project's modules) were searched for the names `org/log4s/` and `org.log4s`: only log4s's own classes
@@ -38,14 +47,10 @@ SLF4J (`node/log/LibraryLogs.scala`).
 ## Result
 
 - No dependency is GPL-only, LGPL, AGPL, proprietary or without a declared licence. Every artifact is
-  Apache-2.0, MIT, BSD-2/3-Clause, MPL-2.0, Bouncy Castle (MIT-style) or the RocksDB dual licence. All of
+  Apache-2.0, MIT, BSD-3-Clause, Bouncy Castle (MIT-style) or the RocksDB dual licence. All of
   these are compatible with distributing this project under Apache-2.0.
 - RocksDB (`rocksdbjni`) is `Apache-2.0 OR GPL-2.0-only`. The project uses it under Apache-2.0. The GPL
   option is not elected and no GPL-2.0-only obligations arise.
-- Borer (`borer-core`, `borer-derivation`, transitive through Scalus) is MPL-2.0, a file-level weak
-  copyleft licence. Using the unmodified jars from Maven Central imposes no obligation on this project's
-  code. If a borer source file were ever modified or vendored, that file would have to stay MPL-2.0 and
-  be made available. Earlier versions of `NOTICE` did not mention it.
 - Nothing is redistributed in this repository: dependencies are retrieved from Maven Central at build
   time. The node's assembly JAR (and the candidate OCI image, which adds only that JAR to its base)
   redistributes all of the below, so it carries their licence texts: see
@@ -61,8 +66,7 @@ SLF4J (`node/log/LibraryLogs.scala`).
 | Jar | Native content | Upstream licence | Note |
 |---|---|---|---|
 | `org.rocksdb:rocksdbjni:10.2.1` | `librocksdbjni` for Linux (x86, x86_64, aarch64, ppc64le, s390x, riscv64; glibc and musl), macOS (x86_64, arm64), Windows x64 | Apache-2.0 OR GPL-2.0-only (RocksDB) | The jar has no licence file. RocksDB statically links compression libraries (zlib, snappy, lz4, zstd, bzip2; BSD- or zlib-style licences) whose texts are not in the jar; the assembly adds them (see [Licence texts in binaries](#licence-texts-in-binaries)). Only the Linux x86_64 library is exercised by this project's Docker build. |
-| `tech.pegasys:jblst:0.3.18` | `libblst` (supranational/blst v0.3.17) for Linux amd64/aarch64, macOS x86_64/arm64, Windows amd64; the Linux amd64 one is a portable build | Apache-2.0 (supranational/blst) and MIT (the jblst repository's `LICENSE`) | No licence file in the jar, and its POM declares Apache-2.0 while the repository's `LICENSE` is MIT; both texts ship (`licenses/jblst-0.3.18/LICENSE`, `crypto/licenses/LICENSE-blst`). Used by the Leios BLS keys (`MinSig`) only; hashes pinned in [ADR 0025](adr/0025-jblst.md). |
-| `org.scalus:scalus-crypto-jni:0.1.0` | `libscalus_crypto` for Linux x86_64/arm64 (glibc 2.33 or newer), macOS x86_64/arm64, Windows x64; libsodium (IOG fork `dbb48cce`), libsecp256k1 v0.3.2 and blst v0.3.15 statically linked | Wrapper Apache-2.0 per its POM; libsodium ISC, libsecp256k1 MIT, blst Apache-2.0 | No licence file in the jar. The texts from the pinned upstream sources are in `plutus/licenses/` (`LICENSE-libsodium`, `LICENSE-libsecp256k1`) and `crypto/licenses/LICENSE-blst`. Pins and provenance in [ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md). |
+| `tech.pegasys:jblst:0.3.18` | `libblst` (supranational/blst v0.3.17) for Linux amd64/aarch64, macOS x86_64/arm64, Windows amd64; the Linux amd64 one is a portable build | Apache-2.0 (supranational/blst) and MIT (the jblst repository's `LICENSE`) | No licence file in the jar, and its POM declares Apache-2.0 while the repository's `LICENSE` is MIT; both texts ship (`licenses/jblst-0.3.18/LICENSE`, `crypto/licenses/LICENSE-blst`). Used by the Leios BLS keys (`MinSig`) and the BLS12-381 builtins of Plutus; hashes pinned in [ADR 0025](adr/0025-jblst.md). |
 
 Earlier `NOTICE` text said these natives are bundled "for linux x86_64"; the jars hold several platforms
 and `NOTICE` now says so.
@@ -80,13 +84,12 @@ were not regenerated here.
 | org.typelevel:cats-core_3 | 2.13.0 | MIT | direct |  |
 | org.typelevel:cats-effect_3 | 3.7.1 | Apache-2.0 | direct |  |
 | org.typelevel:cats-mtl_3 | 1.7.0 | Apache-2.0 | direct |  |
-| org.scalus:scalus_3 | 1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db | Apache-2.0 | direct |  |
 | dnsjava:dnsjava | 3.6.5 | BSD-3-Clause | direct | Relay-root DNS resolver. POM read from Maven Central. |
 | org.typelevel:kittens_3 | 3.5.0 | Apache-2.0 | direct | POM read from Maven Central. |
 | org.scodec:scodec-core_3 | 2.3.3 | BSD-3-Clause | direct | POM read from Maven Central. |
-| org.typelevel:cats-parse_3 | 1.1.0 | MIT | direct | Also transitive via Scalus; the build tool `models-gen` declares it directly. |
-| dev.optics:monocle-core_3 | 3.3.0 | MIT | direct | Also transitive via Scalus. |
-| dev.optics:monocle-macro_3 | 3.3.0 | MIT | direct | Also transitive via Scalus. |
+| org.typelevel:cats-parse_3 | 1.1.0 | MIT | direct | The build tool `models-gen` declares it directly as well. |
+| dev.optics:monocle-core_3 | 3.3.0 | MIT | direct |  |
+| dev.optics:monocle-macro_3 | 3.3.0 | MIT | direct |  |
 | org.slf4j:slf4j-api | 2.0.17 | MIT | direct | Declared at 2.0.17 in `Dependencies.scala`; POM parent states MIT. |
 | org.rocksdb:rocksdbjni | 10.2.1 | Apache-2.0 OR GPL-2.0-only | direct | Dual licence; Apache-2.0 elected. The jar bundles native libraries (see below). |
 | io.circe:circe-parser_3 | 0.14.16 | Apache-2.0 | direct |  |
@@ -101,15 +104,7 @@ were not regenerated here.
 | org.scala-lang:scala-library | 3.9.0 | Apache-2.0 | transitive | The Scala 3 standard library from Scala 3.8; the Scala 2.13 library is no longer on the class path. |
 | org.typelevel:cats-effect-kernel_3 | 3.7.1 | Apache-2.0 | transitive |  |
 | org.typelevel:cats-effect-std_3 | 3.7.1 | Apache-2.0 | transitive |  |
-| org.typelevel:paiges-core_3 | 0.4.4 | Apache-2.0 | transitive |  |
-| com.lihaoyi:upickle_3 | 4.4.3 | MIT | transitive |  |
-| com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-core_3 | 2.41.2 | MIT | transitive |  |
-| com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-macros_3 | 2.41.2 | MIT | transitive |  |
-| io.bullet:borer-core_3 | 1.18.0 | MPL-2.0 | transitive | MPL-2.0 is file-level copyleft: compatible when used unmodified as a separate jar (via Scalus); duties arise only if its files are modified. |
-| io.bullet:borer-derivation_3 | 1.18.0 | MPL-2.0 | transitive | As borer-core_3. |
 | tech.pegasys:jblst | 0.3.18 | Apache-2.0 AND MIT | direct (crypto, Leios BLS) | Bundles native libblst (supranational/blst v0.3.17, Apache-2.0) for Linux, macOS and Windows; its POM's Guava runtime dependency is excluded (no class uses it). |
-| org.scalus:scalus-crypto-jni | 0.1.0 | Apache-2.0 | transitive (Scalus) | Bundles `libscalus_crypto` (libsodium ISC, libsecp256k1 MIT, blst Apache-2.0) for Linux, macOS and Windows; the POM states Apache-2.0 for the wrapper. |
-| org.scijava:native-lib-loader | 2.5.0 | BSD-2-Clause | transitive (scalus-crypto-jni) | Extracts and loads `libscalus_crypto`. No licence file in the jar; the text from its tag `native-lib-loader-2.5.0` is `plutus/licenses/LICENSE-native-lib-loader`. |
 | io.circe:circe-jawn_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | io.circe:circe-core_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | org.http4s:http4s-ember-core_3 | 0.23.37 | Apache-2.0 | transitive |  |
@@ -119,9 +114,6 @@ were not regenerated here.
 | org.http4s:http4s-jawn_3 | 0.23.37 | Apache-2.0 | transitive |  |
 | org.scodec:scodec-bits_3 | 1.2.5 | BSD-3-Clause | transitive |  |
 | com.comcast:ip4s-core_3 | 3.8.0 | Apache-2.0 | transitive |  |
-| com.lihaoyi:ujson_3 | 4.4.3 | MIT | transitive |  |
-| com.lihaoyi:upack_3 | 4.4.3 | MIT | transitive |  |
-| com.lihaoyi:upickle-implicits_3 | 4.4.3 | MIT | transitive |  |
 | org.typelevel:cats-free_3 | 2.12.0 | MIT | transitive |  |
 | org.typelevel:jawn-parser_3 | 1.7.0 | MIT | transitive |  |
 | io.circe:circe-numbers_3 | 0.14.16 | Apache-2.0 | transitive |  |
@@ -135,8 +127,6 @@ were not regenerated here.
 | org.typelevel:algebra_3 | 2.13.0 | MIT | transitive |  |
 | org.typelevel:vault_3 | 3.7.0 | MIT | transitive |  |
 | org.typelevel:jawn-fs2_3 | 2.6.0 | Apache-2.0 | transitive |  |
-| com.lihaoyi:upickle-core_3 | 4.4.3 | MIT | transitive |  |
-| com.lihaoyi:geny_3 | 1.1.1 | MIT | transitive |  |
 | org.typelevel:alleycats-core_3 | 2.13.0 | MIT | transitive | Brought by kittens_3 (3.5.0). |
 | org.typelevel:shapeless3-deriving_3 | 3.5.0 | Apache-2.0 | transitive | Brought by kittens_3 (3.5.0). |
 
@@ -190,13 +180,13 @@ corpora unchanged.
 The assembly JAR (`node/assembly`, the artifact of `scripts/build_release_candidate.py`) carries, besides
 this repository's `LICENSE` and `NOTICE` in `META-INF/scarab/`, the licence texts of everything bundled in
 it under `META-INF/scarab/licenses/`, with `licenses/index.json` beside them (#75). The index names, for
-each of the 63 resolved runtime artifacts (`group:artifact:version`) and each of the 23 native libraries
+each of the 49 resolved runtime artifacts (`group:artifact:version`) and each of the 18 native libraries
 in the JAR, the texts its licence asks a binary to carry, and where each text comes from:
 
 - a file of an upstream Git revision (repository, tag and the commit the tag named when it was fetched);
 - the component's own jar, where the jar ships its text (slf4j-api, dnsjava, ip4s-core,
-  bcprov, borer);
-- or a text kept elsewhere in this repository with its own provenance (`plutus/licenses/`, `crypto/licenses/`),
+  bcprov);
+- or a text kept elsewhere in this repository with its own provenance (`crypto/licenses/`),
   packaged under the module's name.
 
 One text is not a dependency's: `ledger/licenses/LICENSE-musl`, the notice of the musl code that `MuslMath` and
@@ -210,11 +200,9 @@ What each licence asks of a binary, as its text says:
 
 | Licence | Clause | Components |
 |---|---|---|
-| MIT (and the Bouncy Castle licence, an MIT licence) | "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software." | cats, fs2, monocle, cats-parse, vault, idna4s, upickle, geny, jsoniter-scala, jawn, slf4j-api, bcprov, curve25519-elisabeth, libsecp256k1 |
-| BSD-2-Clause, BSD-3-Clause | "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution." | dnsjava, scodec, scodec-bits, the third-party sections of the COPYING files of cats, cats-mtl and cats-collections, the argonaut and ephox notices of circe, native-lib-loader, curve25519-dalek (in elisabeth's LICENSE), LevelDB (`LICENSE.leveldb` of RocksDB), snappy, lz4, zstd |
-| Apache-2.0 | §4(a) "give any other recipients of the Work or Derivative Works a copy of this License"; §4(d) "include a readable copy of the attribution notices contained within such NOTICE file" | Scala 3 and its standard library, cats-effect, circe, http4s, http4s-crypto, log4cats, kittens, ip4s, case-insensitive, literally, jawn-fs2, shapeless-3, paiges, hpack, RocksDB (Apache-2.0 elected), jblst (with its MIT text as well), blst, Scalus and scalus-crypto-jni; each NOTICE file upstream has is packaged |
-| ISC | "provided that the above copyright notice and this permission notice appear in all copies" | libsodium |
-| MPL-2.0 | §3.2(a): the recipients of the Executable Form must be told "how they can obtain a copy of such Source Code Form" | borer; `NOTICE` names the source (github.com/sirthias/borer, tag v1.18.0) |
+| MIT (and the Bouncy Castle licence, an MIT licence) | "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software." | cats, fs2, monocle, cats-parse, vault, idna4s, jawn, slf4j-api, bcprov, curve25519-elisabeth |
+| BSD-2-Clause, BSD-3-Clause | "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution." | dnsjava, scodec, scodec-bits, the third-party sections of the COPYING files of cats, cats-mtl and cats-collections, the argonaut and ephox notices of circe, curve25519-dalek (in elisabeth's LICENSE), LevelDB (`LICENSE.leveldb` of RocksDB), snappy, lz4, zstd |
+| Apache-2.0 | §4(a) "give any other recipients of the Work or Derivative Works a copy of this License"; §4(d) "include a readable copy of the attribution notices contained within such NOTICE file" | Scala 3 and its standard library, cats-effect, circe, http4s, http4s-crypto, log4cats, kittens, ip4s, case-insensitive, literally, jawn-fs2, shapeless-3, hpack, RocksDB (Apache-2.0 elected), jblst (with its MIT text as well), blst; each NOTICE file upstream has is packaged |
 | zlib, bzip2 | conditions on source distributions and misrepresentation only; the texts are included anyway | zlib, bzip2 |
 | CC0, public domain | none | eddsa-java, ref10 (both inside curve25519-elisabeth) |
 
