@@ -619,8 +619,12 @@ final class Forger[F[_]: Async, S](
       result: Deferred[F, Final[F]]
   ): F[Unit] =
     result.get.flatMap {
-      case Final.Lines(held) =>
-        announced(slot, kes, held).map(_ ++ startedIn(slot, kes, held)).flatMap(publish)
+      case Final.Lines(held, generation) =>
+        // the driver's update of the period stands for the forge's only if it was made with the
+        // same credentials: the driver may have read forging disabled, or other credentials
+        announced(slot, kes.filter(_._1 == generation), held)
+          .map(_ ++ startedIn(slot, generation, held))
+          .flatMap(publish)
       case Final.NotLed(discards, generation, info) =>
         publish(discards) *> notLed(slot, Some(generation -> info)).flatMap(publish)
       case Final.Skipped(discards) => publish(discards)
@@ -673,18 +677,14 @@ final class Forger[F[_]: Async, S](
     Held.Effect(shared.published.update(_.started(generation, period)))
 
   /** The mark of the period's `startLeadershipCheck` for the lines of a slot the forging fiber
-    * owned, where they hold one, whichever its attempt's end: a slot the slot driver ends later in
-    * the period logs none.
+    * owned, where they hold one, whichever its attempt's end, with the credentials' generation of
+    * that attempt (`generation`): a slot the slot driver ends later in the period logs none.
     */
-  private def startedIn(
-      slot: BigInt,
-      kes: Option[(Long, Forger.KesResult)],
-      held: Vector[Held[F]]
-  ): Vector[Held[F]] =
+  private def startedIn(slot: BigInt, generation: Long, held: Vector[Held[F]]): Vector[Held[F]] =
     val started = held
       .collect { case Held.Line(ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)), _) => s }
       .contains(slot)
-    kes.filter(_ => started).toVector.map((generation, _) => startOf(generation, kesPeriodOf(slot)))
+    Option.when(started)(startOf(generation, kesPeriodOf(slot))).toVector
 
   /** `held`, the lines of a slot the forging fiber owned, with the KES key's state of the period
     * after them if the period has not been announced and they do not announce it.
@@ -967,7 +967,9 @@ final class Forger[F[_]: Async, S](
       case built: Attempted.Built[F, S] =>
         holds(slot, built.prepared).flatMap {
           case None =>
-            handover(slot, built).map(lines => Final.Lines(discards ++ lines))
+            handover(slot, built).map(lines =>
+              Final.Lines(discards ++ lines, built.prepared.generation)
+            )
           case Some(why) =>
             discarded(slot, why, built).flatMap(line =>
               forgeNow(slot).map(_.after(discards :+ line))
@@ -1026,8 +1028,8 @@ final class Forger[F[_]: Async, S](
       else
         attempt(slot, scheduled, proceed(())).flatMap {
           case built: Attempted.Built[F, S] =>
-            handover(slot, built).map(Final.Lines(_))
-          case Attempted.Ended(_, Why.NotLed(generation, info)) =>
+            handover(slot, built).map(Final.Lines(_, built.prepared.generation))
+          case Attempted.Ended(_, Why.NotLed(generation, info), _) =>
             now.map(at =>
               Final.NotLed(
                 Vector(Held.Line(ForgeEvent.Discarded(slot, DiscardReason.NotLed, None), at)),
@@ -1035,7 +1037,8 @@ final class Forger[F[_]: Async, S](
                 info
               )
             )
-          case Attempted.Ended(held, Why.Refused | Why.Disabled) => F.pure(Final.Lines(held))
+          case Attempted.Ended(held, Why.Refused | Why.Disabled, generation) =>
+            F.pure(Final.Lines(held, generation))
         }
     }
 
@@ -1206,19 +1209,21 @@ final class Forger[F[_]: Async, S](
       decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]],
       gate: Step[Unit]
   )(using handle: Handle[F, NodeError], terminal: Raise[F, Fatal]): F[Attempted[F, S]] =
-    Ref.of[F, Vector[Held[F]]](Vector.empty).flatMap { held =>
-      val hold = Holding(held)
-      handle.attempt(F.defer(steps(slot, decide, hold, gate).value)).flatMap {
-        case Right(Right(prepared)) => held.get.map(Attempted.Built(prepared, _))
-        case Right(Left(why))       => held.get.map(Attempted.Ended(_, why))
-        case Left(e: ForgeError) =>
-          HotKeys
-            .infrastructureFailure(e)
-            .fold(hold.failed(slot, e) *> held.get.map(Attempted.Ended[F, S](_, Why.Refused)))(
-              _.raise[F, Attempted[F, S]]
-            )
-        case Left(other) => other.raise[F, Attempted[F, S]]
-      }
+    (Ref.of[F, Vector[Held[F]]](Vector.empty), hot.inForce.get.map(_.generation)).flatMapN {
+      (held, generation) =>
+        val hold = Holding(held)
+        handle.attempt(F.defer(steps(slot, decide, hold, gate).value)).flatMap {
+          case Right(Right(prepared)) => held.get.map(Attempted.Built(prepared, _))
+          case Right(Left(why))       => held.get.map(Attempted.Ended(_, why, generation))
+          case Left(e: ForgeError) =>
+            HotKeys
+              .infrastructureFailure(e)
+              .fold(
+                hold.failed(slot, e) *>
+                  held.get.map(Attempted.Ended[F, S](_, Why.Refused, generation))
+              )(_.raise[F, Attempted[F, S]])
+          case Left(other) => other.raise[F, Attempted[F, S]]
+        }
     }
 
   /** The gate of an attempt made before its slot's onset (§5.5): no attempt moves the KES key into
@@ -1915,15 +1920,19 @@ object Forger:
       generation: Long
   )
 
-  /** What an attempt came to before its block is handed over. */
+  /** What an attempt came to before its block is handed over; an attempt that ended carries the
+    * generation of the credentials in force when it began.
+    */
   private[forge] enum Attempted[F[_], S]:
     case Built(prepared: Prepared[S], held: Vector[Held[F]])
-    case Ended(held: Vector[Held[F]], why: Why)
+    case Ended(held: Vector[Held[F]], why: Why, generation: Long)
 
   /** The final result of a slot the forging fiber owns, which the slot driver publishes. */
   private[forge] enum Final[F[_]]:
-    /** A block handed over, or a refusal that stands: published as they are. */
-    case Lines(held: Vector[Held[F]])
+    /** A block handed over, or a refusal that stands: published as they are, with the generation of
+      * the credentials of the attempt they are of.
+      */
+    case Lines(held: Vector[Held[F]], generation: Long)
 
     /** Not led: published as any slot not led is, after the discarded attempts' lines. */
     case NotLed(discards: Vector[Held[F]], generation: Long, info: KesInfo)
@@ -1933,7 +1942,7 @@ object Forger:
 
     /** The same, after the lines of the attempts discarded before it. */
     def after(prefix: Vector[Held[F]]): Final[F] = this match
-      case Lines(held)               => Lines(prefix ++ held)
+      case Lines(held, g)            => Lines(prefix ++ held, g)
       case NotLed(discards, g, info) => NotLed(prefix ++ discards, g, info)
       case Skipped(discards)         => Skipped(prefix ++ discards)
 
