@@ -108,8 +108,8 @@ transaction larger than the whole capacity is refused with `Rejection.Full`. Wai
 queues, a peer's transaction taking the remote queue and then the common one and a local client's only the common
 one, so a local client passes the peers in line and only the head of the line waits for room. The wait is
 cancelable (a closed client or a lost peer leaves the line) and the `mempoolWaiting` event marks it. A peer's
-wait stalls that peer's TxSubmission2 replies, as in the reference, outside every protocol deadline. A transaction is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
-boundary). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
+wait stalls that peer's TxSubmission2 replies, as in the reference, outside every protocol deadline. A transaction is validated in the slot after the tip, on the ledger ticked to that slot, over an epoch boundary
+and into the next era when the slot is past them (`PoolLedger.at`). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
 state changes (one state lock, held for one validation or one revalidation, never while an add waits), offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
 that offer them again are not asked for the body.
 
