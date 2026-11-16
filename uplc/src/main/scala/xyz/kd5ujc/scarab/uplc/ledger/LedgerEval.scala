@@ -50,11 +50,11 @@ object LedgerEval:
   /** Why a script is not admitted: the reference refuses it, or this evaluator gives no verdict. */
   type NotAdmitted = LedgerOutcome.Refused | ScriptResult.Unavailable
 
-  /** `mkTermToEvaluate` (`Eval.hs:107-130`, plutus 1.70.0.0 and 1.71.0.0 alike), in its order: the
-    * term applied to the arguments as `data` constants, first argument innermost (`mkIterAppNoAnn`,
-    * `Eval.hs:120-121`); then the program's version, which must be one the language has at the
-    * protocol (`Eval.hs:123-127`, [[SerialisedScript.forEvaluation]]); then the scope of the
-    * applied term (`Eval.hs:129-130`, [[Scope.check]]).
+  /** `mkTermToEvaluate` (`Eval.hs:107-130` at plutus 1.70.0.0, unchanged at 1.71.0.0), in its
+    * order: the term applied to the arguments as `data` constants, first argument innermost
+    * (`mkIterAppNoAnn`, `Eval.hs:120-121`); then the program's version, which must be one the
+    * language has at the protocol (`Eval.hs:123-127`, [[SerialisedScript.forEvaluation]]); then the
+    * scope of the applied term (`Eval.hs:129-130`, [[Scope.check]]).
     */
   def mkTermToEvaluate(
       language: PlutusLanguage,
@@ -71,7 +71,7 @@ object LedgerEval:
       _ <- Scope.check(applied).leftMap(EvaluationError.DeBruijn(_))
     yield applied
 
-  /** `evaluateTerm` (`Eval.hs:228-245`, plutus 1.71.0.0): the machine of the protocol and the
+  /** `evaluateTerm` (`Eval.hs:228-242`, plutus 1.71.0.0): the machine of the protocol and the
     * program's version (`toMachineParameters`) on a term, with every log kept (`logEmitter`);
     * [[VerboseMode.Quiet]] drops them afterwards, which changes nothing else.
     *
@@ -89,7 +89,7 @@ object LedgerEval:
     guarded(context.at(protocol, version).map(CekMachine.run(_, mode, term)))(Left(_))
 
   /** `evaluateScriptRestricting` (`Eval.hs:254-276`, plutus 1.71.0.0): the script applied to `args`
-    * and run within `budget`, with the caser of its version (`Eval.hs:271-273`); on success the
+    * and run within `budget`, with the caser of its version (`Eval.hs:272-274`); on success the
     * budget spent, `budget` less what is left (`Eval.hs:276`).
     *
     * @param language
@@ -172,7 +172,7 @@ object LedgerEval:
   /** The evaluation behind the public functions, which catch what it throws. The reference looks
     * the machine up only once the term is checked (`evaluateTerm` is forced after
     * `mkTermToEvaluate`, `Eval.hs:270-274`, plutus 1.71.0.0), so a missing machine comes after a
-    * refused term. The caser is the one of the deserialised program's version (`Eval.hs:271`).
+    * refused term. The caser is the one of the deserialised program's version (`Eval.hs:272`).
     */
   private def run(
       language: PlutusLanguage,

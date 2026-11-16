@@ -103,9 +103,9 @@ final class Batch7Suite extends munit.FunSuite:
     assertEquals(valueOf(e(DropPolicies, byteStrings(), value(x))), x)
   }
 
-  /** A value of `n` currencies of two bytes each, one token apiece. */
-  private def currencies(n: Int): Value =
-    v((0 until n).map(i => f"$i%04x" -> Seq("01" -> BigInt(1)))*)
+  /** A value of `n` currencies of two bytes each, `tokens` tokens apiece. */
+  private def currencies(n: Int, tokens: Int = 1): Value =
+    v((0 until n).map(i => f"$i%04x" -> (1 to tokens).map(t => f"$t%02x" -> BigInt(1)))*)
 
   test(
     "keepPolicies and dropPolicies refuse a value of more than 8,191 currencies before they filter (1.71.0.0, Value.hs:464-503)"
@@ -129,4 +129,12 @@ final class Batch7Suite extends munit.FunSuite:
       refused(KeepPolicies)._2,
       Vector("keepPolicies: maximum number of policies (8191) exceeded")
     )
+    // the limit counts currencies, not assets (`Map.size outer`, `Value.hs:483,501`, plutus 1.71.0.0)
+    val wide = currencies(4096, tokens = 2)
+    assertEquals(wide.totalSize, 8192)
+    assertEquals(
+      valueOf(e(KeepPolicies, byteStrings("0000"), value(wide))),
+      currencies(1, tokens = 2)
+    )
+    assertEquals(valueOf(e(DropPolicies, byteStrings(), value(wide))), wide)
   }

@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.uplc.cost.Measure.{
 
 /** The costing of every builtin in one semantics variant from a cost model: the measures of the
   * unlifted arguments and the builtin's costing function, as `toBuiltinMeaning` pairs them
-  * (`PlutusCore/Default/Builtins.hs:1095-2544`, plutus 1.71.0.0 `261766ad`; the line of each
+  * (`PlutusCore/Default/Builtins.hs:1096-2544`, plutus 1.71.0.0 `261766ad`; the line of each
   * builtin's meaning at 1.70.0.0 is in [[DefaultFun]]'s table). Each costing function computes the
   * measures it reads only, once each, and gives the CPU and memory streams zipped as the machine
   * spends them (`runCostingFun*`,

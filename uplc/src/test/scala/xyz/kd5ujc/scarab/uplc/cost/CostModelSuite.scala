@@ -256,17 +256,20 @@ final class CostModelSuite extends munit.FunSuite:
 
   test("the policy filters cost the list's length times the value's outer depth (1.71.0.0)") {
     def key(i: Int) = Value.Key(Bytes.wrap(Array(i.toByte))).getOrElse(fail(s"key $i"))
-    def currencies(n: Int): Value =
+    def currencies(n: Int, tokens: Int): Value =
       Value
         .build(
-          (0 until n).map(i => key(i) -> Seq(key(1) -> Value.Quantity(1).getOrElse(fail("1"))))
+          (0 until n).map(i =>
+            key(i) -> (1 to tokens).map(t => key(t) -> Value.Quantity(1).getOrElse(fail("1")))
+          )
         )
         .fold(e => fail(e.toString), identity)
     val ids = Constant.List
       .of(DefaultUni.ByteString, Vector.fill(3)(Constant.ByteString(Bytes.empty)))
       .fold(e => fail(e.toString), identity)
-    // `ValueOuterDepth` (`ExMemoryUsage.hs:443-452`): 1 for no currency, `integerLog2 m + 1` else
-    val depths = Vector(0 -> 1, 1 -> 1, 3 -> 2, 4 -> 3)
+    // `ValueOuterDepth` (`ExMemoryUsage.hs:443-452`, plutus 1.71.0.0): 1 for no currency,
+    // `integerLog2 m + 1` for `m` currencies, whatever their tokens: (currencies, tokens, depth)
+    val depths = Vector((0, 1, 1), (1, 1, 1), (1, 4, 1), (3, 1, 2), (3, 4, 2), (4, 1, 3))
     // `multiplied_sizes` of `builtinCostModel*.json` at 1.71.0.0: intercept + slope * (x * y)
     val models = Vector(
       DefaultFun.KeepPolicies -> ((315357L, 45187L), (32L, 32L)),
@@ -276,13 +279,14 @@ final class CostModelSuite extends munit.FunSuite:
       val costing = DefaultCostModels.costs(variant).costing
       for
         (function, ((cpu0, cpu1), (mem0, mem1))) <- models
-        (size, depth) <- depths
+        (size, tokens, depth) <- depths
       do
-        val arguments = Vector(Argument.Con(ids), Argument.Con(Constant.Value(currencies(size))))
+        val arguments =
+          Vector(Argument.Con(ids), Argument.Con(Constant.Value(currencies(size, tokens))))
         assertEquals(
           costing(function)(arguments).total,
           ExBudget.of(cpu0 + cpu1 * 3 * depth, mem0 + mem1 * 3 * depth),
-          s"$variant $function, $size currencies"
+          s"$variant $function, $size currencies of $tokens tokens"
         )
     }
   }
