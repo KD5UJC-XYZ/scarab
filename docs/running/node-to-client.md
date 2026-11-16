@@ -39,12 +39,14 @@ pools), the stake distributions of the current stake (`stake-distribution`, `Get
 the retired `GetStakeDistribution`), the pools' reward information and the non-myopic member rewards
 (`GetRewardInfoPools`, `GetNonMyopicMemberRewards`) and the ledger peer snapshots
 (`GetLedgerPeerSnapshot`, both forms), each with its `GetCBOR` form, the ratios of the distributions
-untagged before Conway as the reference writes them.
+untagged before Conway as the reference writes them. The top-level `DebugLedgerConfig` is answered from
+node-to-client version 20, in every era, with the ledger configuration the node read at start (the era
+parameters and each era's genesis configuration, `Globals` and hard-fork trigger), as the reference
+answers it; below version 20 it ends the connection, as the reference refuses it there.
 The `ntc` gate requires the complete answer bytes to match at the same acquired point. It does not
 mask historical state gaps: any remaining difference fails the comparison and must be resolved.
 Earlier qualified measurements are retained in [compatibility.md](../compatibility.md). Not answered yet
-(the connection ends, the log line `inbound ... closed` names the query): `DebugLedgerConfig`
-([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924)), and every query but `ledger-state`, the
+(the connection ends, the log line `inbound ... closed` names the query): every query but `ledger-state`, the
 chain-dependent state, the UTxO queries, `GetRewardProvenance`, the six that read nothing of the era's own,
 the current protocol parameters, the governance state, the six of the certificate state, the distributions,
 the wallet's queries and the ledger peer snapshots in an era other than Conway, and these last ones in

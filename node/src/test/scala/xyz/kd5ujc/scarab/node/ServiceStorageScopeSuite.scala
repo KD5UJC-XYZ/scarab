@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, Mempool, MempoolEvents, Source, TxKit}
-import xyz.kd5ujc.scarab.node.ntc.{CborOut, QueryEnv, QueryView, StateQuerySource}
+import xyz.kd5ujc.scarab.node.ntc.{LedgerConfig, CborOut, QueryEnv, QueryView, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.Target
@@ -160,7 +160,8 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
       setup.globals.maxSupply,
       setup.genesis.raw,
       setup.mirrorEnv().ledger,
-      networkMagic = setup.genesis.networkMagic.toLong
+      networkMagic = setup.genesis.networkMagic.toLong,
+      ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
     )
     val era = QueryView(Point.Origin, None, setup.mirrorStart).era.index
     val query =

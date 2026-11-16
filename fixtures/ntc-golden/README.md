@@ -133,3 +133,26 @@ from synthetic chain state; no signing keys. Apache-2.0.
   pin the inputs and source identities. All 68 changed CBOR subtrees are exactly the corresponding
   cost-model maps: deleting the complete extra V2 vector produces native bytes, and inverse
   replacement reproduces all 265 old raw answers. No other bytes or subject/query rows changed.
+
+## `debug-ledger-config.json`: the reference's `DebugLedgerConfig`
+
+`debug-ledger-config.json` holds what the Haskell `cardano-node` 11.1.3 (the unmodified reference image
+`cardano-reference-11.1.3:local`) answered to the top-level `DebugLedgerConfig` query (`[4]`) on
+2026-11-16, for each of five genesis directories of the repository: `fixtures/devnet/lsq/genesis` (the
+Conway devnet, every era entered at epoch 0; 7,326 bytes), `fixtures/eras/genesis` (the eras capture,
+Shelley to Conway entered at epochs 1 to 8; 7,298 bytes), and `fixtures/preview/genesis`,
+`fixtures/preprod/genesis` and `fixtures/mainnet/genesis` (10,634, 10,876 and 10,666 bytes), whose eras
+are entered by protocol version (on preview, Babbage and Conway), and mainnet's without the network magic.
+For each, the node-to-client versions at which the node refused the query (it closed the connection at 16
+and 19) and those at which it answered (20 to 23), and the answer, the item of `MsgResult`, in hex, the
+same at every answering version. `LedgerConfigSuite` builds the node's setup from the same directory and
+requires the same bytes and the same refusal below version 20.
+
+The answer depends on the configuration only, not on the chain, so it was recorded from one node started
+on a copy of the directory with no peer (a local root it could not reach, so that it starts) and queried
+on its socket at genesis; none of the directories enables `ExperimentalHardForksEnabled`, so the reference
+reads no Dijkstra genesis file. Regenerating is recording the same query again from such a node; the
+answer changes only with the genesis files, the configuration or the reference.
+
+Provenance: produced by the unmodified reference node from public genesis files of this repository; no
+keys, no secrets. Licence of the file: Apache-2.0 (this repository).

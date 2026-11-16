@@ -12,5 +12,5 @@
   version.
 - The `ntc` scenario's version matrix compares its forms (Conway's version-limited queries, `GetCBOR` forms
   of them and queries of another era) with the reference node byte for byte at every version, where it used
-  to require a refusal outside the table. `DebugLedgerConfig` and the queries not implemented before
-  Conway remain unanswered.
+  to require a refusal outside the table. The queries not implemented before Conway remain
+  unanswered.

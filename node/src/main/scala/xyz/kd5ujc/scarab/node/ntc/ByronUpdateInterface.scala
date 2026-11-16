@@ -32,7 +32,7 @@ import xyz.kd5ujc.scarab.ledger.byron.{
   * Haskell type it is written as is [[Unanswered.Unwritable]].
   */
 object ByronUpdateInterface:
-  private type Out = Either[Unanswered, Bytes]
+  private[ntc] type Out = Either[Unanswered, Bytes]
 
   def encode(state: UpdateState): Out =
     // `currentEpoch`: only `initialState` writes it, with 0, and no rule changes it
@@ -53,11 +53,11 @@ object ByronUpdateInterface:
     )
 
   /** The parts written one after the other, in one buffer. */
-  private def concat(parts: Out*): Out =
+  private[ntc] def concat(parts: Out*): Out =
     parts.toVector.sequence.map(written => CborOut.build(w => written.foreach(w.raw)))
 
   /** An unsigned integer of a `bits`-wide `Word`. */
-  private def word(n: BigInt, bits: Int): Out =
+  private[ntc] def word(n: BigInt, bits: Int): Out =
     Either.cond(n >= 0 && n.bitLength <= bits, CborOut.build(_.uint(n)), Unanswered.Unwritable)
 
   /** A `Natural`, written as an `Integer` (`encodeInteger`: tag 2 past 64 bits). */
@@ -67,7 +67,7 @@ object ByronUpdateInterface:
   private def slot(n: BigInt): Out = word(n, 64)
 
   /** A hash of `size` bytes (`AbstractHash`), its digest as a byte string. */
-  private def hash(size: Int)(h: Bytes): Out =
+  private[ntc] def hash(size: Int)(h: Bytes): Out =
     Either.cond(h.size == size, CborOut.build(_.bytes(h)), Unanswered.Unwritable)
 
   private val upId: Bytes => Out = hash(32)
@@ -84,7 +84,7 @@ object ByronUpdateInterface:
     CborOut.build(_.array(3).uint(v.major).uint(v.minor).uint(v.alt))
 
   /** A definite map in ascending order of `order` of the keys. */
-  private def map[K, V, O: Ordering](entries: Vector[(K, V)])(
+  private[ntc] def map[K, V, O: Ordering](entries: Vector[(K, V)])(
       key: K => Out,
       value: V => Out
   )(order: K => O): Out =
@@ -95,11 +95,11 @@ object ByronUpdateInterface:
     )
 
   /** A `Set` at version 1: tag 258 around a definite list, in ascending order. */
-  private def set[A](items: Vector[A])(item: A => Out): Out =
+  private[ntc] def set[A](items: Vector[A])(item: A => Out): Out =
     concat(Right(CborOut.build(_.tag(258).array(items.size))) +: items.map(item)*)
 
   /** `ProtocolParameters` (`Update/ProtocolParameters.hs:168-184`): fourteen fields. */
-  private def params(p: ByronParams): Out =
+  private[ntc] def params(p: ByronParams): Out =
     concat(
       Right(CborOut.build(_.array(14))),
       word(p.scriptVersion, 16),

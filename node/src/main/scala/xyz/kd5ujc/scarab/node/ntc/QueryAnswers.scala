@@ -38,7 +38,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
 import xyz.kd5ujc.scarab.codec.Rational
 
 /** What the answers to a query depend on besides the acquired state: the chain's static
-  * configuration and the era transitions this node has seen.
+  * configuration and the era transitions this node has seen. `ledgerConfig` is the answer to
+  * `DebugLedgerConfig` ([[LedgerConfig]]), written once from the configuration, or why it has none.
   */
 final case class QueryEnv(
     systemStart: Instant,
@@ -49,7 +50,8 @@ final case class QueryEnv(
     shelleyGenesis: io.circe.Json,
     mirror: MirrorEnv,
     observedEras: Map[Era, BigInt] = Map.empty,
-    networkMagic: Long
+    networkMagic: Long,
+    ledgerConfig: Either[Unanswered, Bytes]
 ):
   /** What the mirror of the ledger state (`DebugEpochState`, `DebugNewEpochState`) reads. */
   def consensusMirror: ConsensusMirrorEnv = ConsensusMirrorEnv(mirror, forks, byron, observedEras)
@@ -71,6 +73,13 @@ enum Unanswered extends DomainError:
 
   /** Stored pool relays could not be decoded; retain every affected pool and typed cause. */
   case StoredRelays(pools: NonEmptyVector[xyz.kd5ujc.scarab.node.SkippedPool])
+
+  /** The ledger configuration (`DebugLedgerConfig`) could not be written from the configuration. */
+  case UnwritableLedgerConfig(cause: LedgerConfig.Error)
+
+  /** The genesis configuration (`GetGenesisConfig`) could not be written from the Shelley genesis.
+    */
+  case UnwritableGenesisConfig(cause: GenesisConfig.Error)
 
 /** The acquired state: the point it was taken at, the block number there and the state of the chain
   * (the mirror: [[ChainRead]] reads it).
@@ -260,7 +269,7 @@ object QueryAnswers:
           case None    => w.array(1).uint(0)
       })
     case NtcQuery.ChainPoint        => Right(CborOut.build(point(_, view.point)))
-    case NtcQuery.DebugLedgerConfig => Left(Unanswered.Unsupported)
+    case NtcQuery.DebugLedgerConfig => env.ledgerConfig
     case NtcQuery.HardFork(HardForkQuery.GetCurrentEra) =>
       Right(CborOut.build(_.uint(view.era.index)))
     case NtcQuery.HardFork(HardForkQuery.GetInterpreter) =>
@@ -532,7 +541,9 @@ object QueryAnswers:
       // `Query/LegacyShelleyGenesis.hs:39, 111`; `Shelley/Genesis.hs:595` at
       // cardano-ledger f649f975); the version selects the record (Query.hs:1019, 1113-1125).
       case GetGenesisConfig =>
-        GenesisConfig.encode(env.shelleyGenesis, version).leftMap(_ => Unanswered.Unwritable)
+        GenesisConfig
+          .encode(env.shelleyGenesis, version)
+          .leftMap(Unanswered.UnwritableGenesisConfig(_))
       case DebugChainDepState => chainDepState(view)
       // `snd $ getRewardProvenance globals st` (`Shelley/Ledger/Query.hs:438-439`, ouroboros-consensus
       // 82ecba32), which is `def` whatever the state (`Shelley/API/Wallet.hs:373-384`, cardano-ledger

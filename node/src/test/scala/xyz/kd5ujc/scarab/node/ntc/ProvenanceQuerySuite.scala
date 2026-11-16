@@ -35,7 +35,8 @@ class ProvenanceQuerySuite extends CatsEffectSuite:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     observed,
-    setup.genesis.networkMagic.toLong
+    setup.genesis.networkMagic.toLong,
+    LedgerConfig.answer(setup.ledgerConfig)
   )
 
   private def view(snapshot: StateSnapshot[MirrorState]): QueryView[MirrorState] =

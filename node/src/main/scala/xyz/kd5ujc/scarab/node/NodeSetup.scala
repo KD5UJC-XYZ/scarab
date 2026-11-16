@@ -78,7 +78,8 @@ final case class NodeSetup(
     byronParams: Option[ByronGenesis] = None,
     byronConfig: Option[ByronRules.Config] = None,
     identity: NetworkIdentity,
-    chainStoreK: ChainStoreK
+    chainStoreK: ChainStoreK,
+    ledgerConfig: Either[xyz.kd5ujc.scarab.node.ntc.LedgerConfig.Error, Bytes]
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
@@ -447,6 +448,25 @@ object NodeSetup:
       fromByron = FromByron(genDelegs, params, globals.maxSupply)
       env = mirrorEnvOf(genesis, globals, praos, Some(byronGenesis))
       shelleyHash = Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))
+      // what `DebugLedgerConfig` answers with, written once from the configuration as the reference
+      // reads it, whose `RequiresNetworkMagic` is `RequiresNoMagic` when absent (cardano-node 11.1.3
+      // `Configuration/POM.hs:598-599`); only the answer is kept, as the reference keeps no more of
+      // the genesis than its ledger configuration needs (`Shelley/Ledger/Config.hs:119-146`,
+      // ouroboros-consensus 82ecba32)
+      ledgerConfig = xyz.kd5ujc.scarab.node.ntc.LedgerConfig.encode(
+        xyz.kd5ujc.scarab.node.ntc.LedgerConfig.Source(
+          byronGenesis,
+          config.requiresNetworkMagic.getOrElse(false),
+          genesis.geometry,
+          files.shelley,
+          files.alonzo,
+          files.conway,
+          injections.delegs,
+          injections.initialDReps,
+          dijkstra,
+          config.hardForkEpochs
+        )
+      )
       start <- byronRules match
         case Some((ledger, _)) => byronStart(env, shelleyHash, ByronState.starting(ledger))
         case None =>
@@ -481,5 +501,6 @@ object NodeSetup:
       ),
       chainStoreK = chainStoreK,
       byronParams = Some(byronGenesis),
-      byronConfig = byronRules.map(_._2)
+      byronConfig = byronRules.map(_._2),
+      ledgerConfig = ledgerConfig
     )

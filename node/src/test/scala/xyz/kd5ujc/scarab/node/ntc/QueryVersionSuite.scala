@@ -8,15 +8,16 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.NtcVersion
 
 /** What the negotiated node-to-client version does to a query, as cardano-node 11.1.3 has it: it
-  * selects the encoding of some answers and nothing else. Its server decodes a block query alike at
-  * every version (`decodeNodeToClient _ _ = decodeShelleyQuery`,
-  * `Shelley/Node/Serialisation.hs:372`) and answers what it decodes
-  * (`MiniProtocol/LocalStateQuery/Server.hs:79-81`); the supported-version table
-  * (`blockQueryIsSupportedOnVersion`, `Shelley/Ledger/Query.hs:541-593`) binds its client encoder
-  * only (`Serialisation.hs:368`). The version selects the encoding of `GetGenesisConfig` and of the
-  * old ledger-peer snapshot (`encodeShelleyResult`, `Query.hs:1000-1043`), and `GetCBOR` writes at
-  * the latest (`Query.hs:424-428`), ouroboros-consensus 82ecba32. Live byte comparisons at every
-  * version against the pinned cardano-node are part of the `ntc` scenario (`ntcversions.py`).
+  * selects the encoding of some answers, and refuses `DebugLedgerConfig` below version 20
+  * (`QueryVersion3`, `Ledger/Query.hs:483-501`). Its server decodes a block query alike at every
+  * version (`decodeNodeToClient _ _ = decodeShelleyQuery`, `Shelley/Node/Serialisation.hs:372`) and
+  * answers what it decodes (`MiniProtocol/LocalStateQuery/Server.hs:79-81`); the supported-version
+  * table (`blockQueryIsSupportedOnVersion`, `Shelley/Ledger/Query.hs:541-593`) binds its client
+  * encoder only (`Serialisation.hs:368`). The version selects the encoding of `GetGenesisConfig`
+  * and of the old ledger-peer snapshot (`encodeShelleyResult`, `Query.hs:1000-1043`), and `GetCBOR`
+  * writes at the latest (`Query.hs:424-428`), ouroboros-consensus 82ecba32. Live byte comparisons
+  * at every version against the pinned cardano-node are part of the `ntc` scenario
+  * (`ntcversions.py`).
   */
 class QueryVersionSuite extends FunSuite:
   import LedgerQuery.*
@@ -54,6 +55,27 @@ class QueryVersionSuite extends FunSuite:
       val plain = NtcQuery.decode(raw)
       assert(plain.isRight, s"${raw.hex}: $plain")
       NtcVersion.All.foreach(v => assertEquals(NtcQuery.decode(raw, v), plain, s"${raw.hex} / $v"))
+    }
+  }
+
+  test(
+    "a top-level query is read from its query version: DebugLedgerConfig from V20, the others at every version"
+  ) {
+    def top(tag: Int): Bytes = CborOut.build(_.array(1).uint(tag))
+    val readEverywhere =
+      Vector(1 -> NtcQuery.SystemStart, 2 -> NtcQuery.ChainBlockNo, 3 -> NtcQuery.ChainPoint)
+    NtcVersion.All.foreach { v =>
+      readEverywhere.foreach((tag, q) =>
+        assertEquals(NtcQuery.decode(top(tag), v), Right(q), s"$tag / $v")
+      )
+      val expected =
+        if v.number >= 20 then Right(NtcQuery.DebugLedgerConfig)
+        else
+          Left(
+            NtcQuery.Error
+              .RequiresQueryVersion(NtcQuery.DebugLedgerConfig, QueryVersion.QueryVersion3)
+          )
+      assertEquals(NtcQuery.decode(top(4), v), expected, s"4 / $v")
     }
   }
 

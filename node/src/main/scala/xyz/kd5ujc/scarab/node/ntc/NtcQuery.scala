@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.Monad
 import cats.syntax.all.*
-import scala.annotation.{tailrec, unused}
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
@@ -133,7 +133,31 @@ enum NtcQuery:
   case ChainPoint
   case DebugLedgerConfig
 
+/** `QueryVersion` (`Ouroboros/Consensus/Ledger/Query/Version.hs:10-31`, ouroboros-consensus
+  * 82ecba32): the top-level queries a node-to-client version reads. Versions 16 to 19 are
+  * `QueryVersion2`, 20 to 23 `QueryVersion3`, which adds `DebugLedgerConfig`.
+  */
+enum QueryVersion:
+  case QueryVersion1, QueryVersion2, QueryVersion3
+
+object QueryVersion:
+  def of(version: NtcVersion): QueryVersion = version match
+    case NtcVersion.V16 | NtcVersion.V17 | NtcVersion.V18 | NtcVersion.V19 => QueryVersion2
+    case NtcVersion.V20 | NtcVersion.V21 | NtcVersion.V22 | NtcVersion.V23 => QueryVersion3
+
 object NtcQuery:
+  /** The query version a top-level query needs (`requireVersion`,
+    * `Ouroboros/Consensus/Ledger/Query.hs:483-501`, ouroboros-consensus 82ecba32): a block query
+    * and `GetSystemStart` the first, `GetChainBlockNo` and `GetChainPoint` the second,
+    * `DebugLedgerConfig` the third.
+    */
+  def requires(query: NtcQuery): QueryVersion = query match
+    case NtcQuery.IfCurrent(_, _) | NtcQuery.ByronUpdateInterfaceState | NtcQuery.EraStart(_) |
+        NtcQuery.HardFork(_) | NtcQuery.SystemStart =>
+      QueryVersion.QueryVersion1
+    case NtcQuery.ChainBlockNo | NtcQuery.ChainPoint => QueryVersion.QueryVersion2
+    case NtcQuery.DebugLedgerConfig                  => QueryVersion.QueryVersion3
+
   /** Logging must not call the recursively derived `toString` before truncating it. */
   def describe(query: NtcQuery): String = query match
     case NtcQuery.IfCurrent(era, inner) =>
@@ -196,6 +220,9 @@ object NtcQuery:
     /** An unsigned integer the reference reads with `decodeWord8`, past 255. */
     case Word8Range(field: String)
 
+    /** A top-level query that the negotiated version's query version does not read. */
+    case RequiresQueryVersion(query: NtcQuery, required: QueryVersion)
+
     def message: String = this match
       case MalformedCbor(detail)          => s"invalid query CBOR: $detail"
       case ExpectedArray(field)           => s"$field: expected array"
@@ -226,6 +253,8 @@ object NtcQuery:
       case Constructor(field, tag, arity) => s"$field: unknown tag $tag or arity $arity"
       case UnknownEra(index)              => s"era index: invalid index $index"
       case Word8Range(field)              => s"$field: expected an unsigned integer of 8 bits"
+      case RequiresQueryVersion(query, required) =>
+        s"Query: ${describe(query)} requires at least $required"
 
   private type R[A] = Either[Error, A]
 
@@ -326,15 +355,24 @@ object NtcQuery:
       case _ => Nil
     }
 
-  /** A query as a session reads it at its negotiated node-to-client version: alike at every
-    * version, as the reference reads it (`decodeNodeToClient _ _ = decodeShelleyQuery`,
-    * `Shelley/Node/Serialisation.hs:372`, ouroboros-consensus 82ecba32). The reference's table of
-    * the versions that support each query (`blockQueryIsSupportedOnVersion`,
+  /** A query as a session reads it at its negotiated node-to-client version. A block query is read
+    * alike at every version, as the reference reads it (`decodeNodeToClient _ _ =
+    * decodeShelleyQuery`, `Shelley/Node/Serialisation.hs:372`, ouroboros-consensus 82ecba32): the
+    * reference's table of the versions that support each query (`blockQueryIsSupportedOnVersion`,
     * `Shelley/Ledger/Query.hs:541-593`) binds its client encoder only (`Serialisation.hs:367-371`),
-    * and its server answers what it decodes (#924). The version is taken here, the one entry of a
-    * session, so that a reading that depends on it goes here too (#1002).
+    * and its server answers what it decodes (#924). A top-level query is refused below the query
+    * version it needs ([[requires]]; `queryDecodeNodeToClient`, `Ledger/Query.hs:470-501`): of the
+    * versions this node speaks, only `DebugLedgerConfig` below 20. The version is taken here, the
+    * one entry of a session, so that a reading that depends on it goes here too (#1002).
     */
-  def decode(raw: Bytes, @unused version: NtcVersion): R[NtcQuery] = decode(raw)
+  def decode(raw: Bytes, version: NtcVersion): R[NtcQuery] =
+    decode(raw).flatMap(query =>
+      Either.cond(
+        requires(query).ordinal <= QueryVersion.of(version).ordinal,
+        query,
+        Error.RequiresQueryVersion(query, requires(query))
+      )
+    )
 
   private def arr(n: Node, what: String): R[Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
