@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.{Script, TxOut, Utxo}
+
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.ledger.ProtocolParams
@@ -18,6 +20,11 @@ private[storage] object SnapshotSidecarV8:
   // The givens below that contain an era or the parameters are named as those of `NodeCodecs`, which they shadow:
   // the derivations here find them, and the other givens of `NodeCodecs`, unchanged.
   import NodeCodecs.given
+
+  given script: Codec[Script] = NodeCodecs.scriptOf(FrozenScriptKind.codec)
+  given txOut: Codec[TxOut] = Codec.auto
+  given utxoChange: Codec[Utxo.Change] = Codec.auto
+  given utxo: Codec[Utxo] = Codec.auto
 
   given era: Codec[Era] = FrozenEra.codec
   given protocolParams: Codec[ProtocolParams] = FrozenProtocolParams.codec

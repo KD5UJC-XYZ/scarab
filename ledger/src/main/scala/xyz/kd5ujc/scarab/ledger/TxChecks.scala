@@ -326,8 +326,12 @@ object TxChecks:
       datum match
         case Datum.Hash(_)   => None
         case Datum.Inline(_) => Option.when(!era.atLeast(ShelleyBasedEra.SBabbage))(in)
-        // Plutus V3 scripts need no datum (CIP-69)
-        case Datum.NoDatum => Option.when(kind != ScriptKind.PlutusV3)(in)
+        // From Plutus V3 a script needs no datum (CIP-69): `lang < PlutusV3`
+        // (`Alonzo/UTxO.hs:271-272`, cardano-ledger f649f975)
+        case Datum.NoDatum =>
+          kind match
+            case ScriptKind.Native | ScriptKind.PlutusV1 | ScriptKind.PlutusV2 => Some(in)
+            case ScriptKind.PlutusV3 | ScriptKind.PlutusV4                     => None
     }
     // Datum hashes the spent outputs ask for
     val requiredHashes = plutusLocked.collect { case (_, Datum.Hash(h), _) => h }.toSet

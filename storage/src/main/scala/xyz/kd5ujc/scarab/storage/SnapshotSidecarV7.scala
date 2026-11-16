@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.{Script, TxOut, Utxo}
+
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.{BinaryError, Bytes}
@@ -53,6 +55,11 @@ private[storage] object SnapshotSidecarV7:
   // unchanged. The eras and the parameters are the frozen ones of the files before V9
   // ([[FrozenEra]], [[FrozenProtocolParams]]).
   import NodeCodecs.given
+
+  given script: Codec[Script] = NodeCodecs.scriptOf(FrozenScriptKind.codec)
+  given txOut: Codec[TxOut] = Codec.auto
+  given utxoChange: Codec[Utxo.Change] = Codec.auto
+  given utxo: Codec[Utxo] = Codec.auto
 
   private val frozen: Codec[Frozen.UpdateState] = Codec.auto
 

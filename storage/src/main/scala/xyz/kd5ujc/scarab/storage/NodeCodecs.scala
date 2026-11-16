@@ -51,8 +51,12 @@ object NodeCodecs:
     * field `Script` gains is not persisted unless this codec writes it, which is a format change
     * (`CodecSuite` pins the shape and the bytes).
     */
-  given script: Codec[Script] =
-    val kind: Codec[ScriptKind] = Codec.auto
+  given script: Codec[Script] = scriptOf(Codec.auto)
+
+  /** The script's codec with the kind's codec `kind`: the live one, or a frozen one for a previous
+    * version's schema ([[FrozenScriptKind]]).
+    */
+  def scriptOf(kind: Codec[ScriptKind]): Codec[Script] =
     val hash = summon[Codec[Bytes]]
     val native = summon[Codec[Option[NativeScript]]]
     val plutus = summon[Codec[Option[Bytes]]]

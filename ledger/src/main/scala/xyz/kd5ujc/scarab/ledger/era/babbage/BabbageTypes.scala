@@ -66,9 +66,9 @@ object BabbagePlutusScript:
 
   /** The Babbage script of `kind`, if Babbage has the language. */
   private[babbage] def of(kind: ScriptKind): Option[Bytes => BabbagePlutusScript] = kind match
-    case ScriptKind.PlutusV1                     => Some(b => V1(Plutus(b)))
-    case ScriptKind.PlutusV2                     => Some(b => V2(Plutus(b)))
-    case ScriptKind.PlutusV3 | ScriptKind.Native => None
+    case ScriptKind.PlutusV1                                           => Some(b => V1(Plutus(b)))
+    case ScriptKind.PlutusV2                                           => Some(b => V2(Plutus(b)))
+    case ScriptKind.PlutusV3 | ScriptKind.PlutusV4 | ScriptKind.Native => None
 
 /** Babbage's script: `AlonzoScript BabbageEra` (`Babbage/Scripts.hs:41`, cardano-ledger f649f975),
   * a Babbage native script or a Babbage Plutus script.

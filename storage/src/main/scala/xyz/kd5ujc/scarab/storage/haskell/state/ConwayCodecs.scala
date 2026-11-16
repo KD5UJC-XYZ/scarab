@@ -536,7 +536,8 @@ object ConwayCodecs:
       alternative(out, 2, s.kind.tag)
       s.kind match
         case ScriptKind.Native => s.encoding.foreach(out.raw)
-        case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 =>
+        case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 |
+            ScriptKind.PlutusV4 =>
           s.plutus.foreach(out.bytes)
     }(kept)
 
@@ -545,8 +546,9 @@ object ConwayCodecs:
     * native script's encoding or a Plutus script's bytes.
     */
   private def payload(s: Script): Option[Bytes] = s.kind match
-    case ScriptKind.Native                                               => s.encoding
-    case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 => s.plutus
+    case ScriptKind.Native => s.encoding
+    case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 | ScriptKind.PlutusV4 =>
+      s.plutus
 
   /** The bytes a script is written as: those it was read from, which its hash is over
     * (`hashScript`, blake2b-224 of the language's tag and the bytes,
@@ -564,6 +566,10 @@ object ConwayCodecs:
         s.kind match
           case ScriptKind.Native => nativeScript(bytes, s.native)
           case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 => None
+          // Conway's languages are PlutusV1 to PlutusV3 (`data PlutusScript ConwayEra`,
+          // `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:90-94`, cardano-ledger f649f975)
+          case ScriptKind.PlutusV4 =>
+            Codec.refuse(true, "a Conway script", "PlutusV1 to PlutusV3", "PlutusV4")
       )
     }
 

@@ -200,6 +200,7 @@ enum ScriptKind(val tag: Int):
   case PlutusV1 extends ScriptKind(1)
   case PlutusV2 extends ScriptKind(2)
   case PlutusV3 extends ScriptKind(3)
+  case PlutusV4 extends ScriptKind(4)
 
   def isPlutus: Boolean = this != Native
 

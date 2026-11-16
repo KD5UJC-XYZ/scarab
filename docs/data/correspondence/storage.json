@@ -256,6 +256,28 @@
     "def storage.FileNumber.numberOf",
     "enum storage.FileNameProblem"
    ]
+  },
+  {
+   "reason": "the frozen kinds of a stored script in the sidecar schemas of the snapshot versions before V10, and the script's codec over a kind's codec: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#85, #54)",
+   "definitions": [
+    "object storage.FrozenScriptKind",
+    "enum storage.FrozenScriptKind.ScriptKind",
+    "def storage.FrozenScriptKind.live",
+    "val storage.FrozenScriptKind.codec",
+    "def storage.NodeCodecs.scriptOf",
+    "given storage.SnapshotSidecarV7.script",
+    "given storage.SnapshotSidecarV7.txOut",
+    "given storage.SnapshotSidecarV7.utxoChange",
+    "given storage.SnapshotSidecarV7.utxo",
+    "given storage.SnapshotSidecarV8.script",
+    "given storage.SnapshotSidecarV8.txOut",
+    "given storage.SnapshotSidecarV8.utxoChange",
+    "given storage.SnapshotSidecarV8.utxo",
+    "given storage.SnapshotSidecarV9.script",
+    "given storage.SnapshotSidecarV9.txOut",
+    "given storage.SnapshotSidecarV9.utxoChange",
+    "given storage.SnapshotSidecarV9.utxo"
+   ]
   }
  ]
 }
