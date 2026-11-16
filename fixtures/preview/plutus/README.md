@@ -13,7 +13,7 @@ Repository-wide fixture names and SHA-256 identities are pinned by
 
 ## Assertions and limits
 
-[The consuming code](../../../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PlutusCaseSuite.scala) defines the executable assertion. Replay checks the recorded validity flag and the assertions in the consuming suite. Explorer-derived outputs and Scala context cross-checks are not independent native goldens for every intermediate value. Regenerate with scripts/preview_plutus_cases.py or the documented capture command, retaining source points and cost models.
+[The consuming code](../../../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PlutusCaseSuite.scala) defines the executable assertion. Replay checks the recorded validity flag and the assertions in the consuming suite. The script contexts of every case are checked against the pinned Haskell collection in [recorded-contexts](../../reference/recorded-contexts/README.md), whose fixture binds each file by its hash: a changed or added case needs that collection recorded again. Explorer-derived outputs are not independent native goldens for every intermediate value. Regenerate with scripts/preview_plutus_cases.py or the documented capture command, retaining source points and cost models.
 Nested payload directories belong to this corpus unless they have their own documented contract.
 
 ## Changes and reproduction
