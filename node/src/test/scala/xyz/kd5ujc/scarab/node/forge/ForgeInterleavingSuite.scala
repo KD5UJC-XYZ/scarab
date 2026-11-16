@@ -279,20 +279,46 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     assertEquals(errors.map(_.error.info).distinct.size, 1, "one recorded result")
 
   test("a KES expiry boundary, the slot driver's update first") {
-    for
-      held <- holds(Forger.Point.Waking(expiry))
-      ran <- running(expiring, expiry - 2, held, kesStart = 0, epoch = 6) { (h, _) =>
-        held(Forger.Point.Waking(expiry)).reached.get *> h.settled(expiry) *>
-          held(Forger.Point.Waking(expiry)).free *> h.settled(expiry + 2)
-      }
-    yield poisonedOnce(ran)
-  }
-
-  test("a KES expiry boundary, a forge's update first") {
+    // the expiry's first slot is led, but no forge moves the key into a period the clock has not
+    // reached: the slot driver's update at the onset is the first, and ends the slot
     for
       held <- holds()
       ran <- running(expiring, expiry - 2, held, kesStart = 0, epoch = 6) { (h, _) =>
         h.settled(expiry + 2)
+      }
+    yield
+      poisonedOnce(ran)
+      assert(
+        !ran.events.contains(ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(expiry))),
+        "a forge reached the key"
+      )
+  }
+
+  /** The slot driver held before its update of the slot before the expiry until the clock is in the
+    * expiry's slot: the forging fiber, waiting for the slot driver's mark, wakes for the slot late,
+    * in its period, and claims it before the slot driver has updated the key there.
+    */
+  private def lateWake(h: Harness, held: Map[Forger.Point, Hold]): IO[Unit] =
+    held(Forger.Point.Updating(expiry - 1)).reached.get *> h.clocked(expiry) *>
+      held(Forger.Point.Updating(expiry - 1)).free
+
+  test("a KES expiry boundary, a forge's update first") {
+    for
+      held <- holds(Forger.Point.Updating(expiry - 1), Forger.Point.Updating(expiry))
+      ran <- running(expiring, expiry - 2, held, kesStart = 0, epoch = 6) { (h, _) =>
+        for
+          _ <- lateWake(h, held)
+          _ <- held(Forger.Point.Updating(expiry)).reached.get
+          // the forge claimed late ends before the slot driver goes on to the key
+          result <- h.forger.claimed.discrete
+            .map(_.owned.get(expiry))
+            .collectFirst { case Some(Forger.Claim.Forging(result)) => result }
+            .compile
+            .lastOrError
+          _ <- result.get
+          _ <- held(Forger.Point.Updating(expiry)).free
+          _ <- h.settled(expiry + 2)
+        yield ()
       }
     yield
       poisonedOnce(ran)
@@ -304,10 +330,18 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
 
   test("a KES expiry boundary, the slot driver waiting on the reservation of that slot's forge") {
     for
-      held <- holds(Forger.Point.Reserved(expiry))
+      held <- holds(
+        Forger.Point.Updating(expiry - 1),
+        Forger.Point.Updating(expiry),
+        Forger.Point.Reserved(expiry)
+      )
       ran <- running(expiring, expiry - 2, held, kesStart = 0, epoch = 6) { (h, _) =>
         for
+          _ <- lateWake(h, held)
+          // the forge claimed late holds the reservation; the slot driver goes on to the key
           _ <- held(Forger.Point.Reserved(expiry)).reached.get
+          _ <- held(Forger.Point.Updating(expiry)).reached.get
+          _ <- held(Forger.Point.Updating(expiry)).free
           // the clock passes the slot's onset: the slot driver waits on the reservation
           _ <- h.clocked(expiry + 1)
           _ <- held(Forger.Point.Reserved(expiry)).free
@@ -630,28 +664,33 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
   test(
     "forging disabled between the slot driver's take of a slot and its decision: a claim is awaited"
   ) {
-    // s is the first slot of epoch 6 and of KES period 60. The slot driver takes s with forging on
-    // (its `forgeEpoch` line of epoch 5 says it has), the forging fiber then claims s, and a reload
-    // that disables forging, holding the key's lock, makes the driver's update of the period find
-    // no credentials: it decides s `Decision.Disabled`, and must await the forge claimed before it
+    // s is the first slot of epoch 6 and of KES period 60. The slot driver is held before its
+    // update of s - 1 until the clock is in s, so that the forging fiber wakes for s late, in its
+    // period. The slot driver takes s with forging on (it reaches its update of s), the forging
+    // fiber then claims s, and a reload that disables forging, holding the key's lock, makes the
+    // driver's update of the period find no credentials: it decides s `Decision.Disabled`, and must
+    // await the forge claimed before it, which reaches the key once the reload is done
     val s = BigInt(6000)
     val seed = seedLeading(Vector(s))
     for
       readReached <- Deferred[IO, Unit]
       go <- Deferred[IO, Unit]
-      held <- holds(Forger.Point.Waking(s))
+      held <- holds(
+        Forger.Point.Updating(s - 1),
+        Forger.Point.Updating(s),
+        Forger.Point.Waking(s),
+        Forger.Point.Context(s)
+      )
       ran <- runningIn(seed, s - 2, held, epoch = 6, source = Some(gated(readReached, go))) { r =>
         for
-          _ <- held(Forger.Point.Waking(s)).reached.get
+          _ <- held(Forger.Point.Updating(s - 1)).reached.get
+          _ <- r.h.clocked(s)
           reload <- r.h.forger.reload.start
           _ <- readReached.get
-          _ <- r.h.events.discrete
-            .find(_.exists {
-              case ForgeEvent.EpochSummary(epoch, _) => epoch == 5
-              case _                                 => false
-            })
-            .compile
-            .drain
+          _ <- held(Forger.Point.Updating(s - 1)).free
+          _ <- held(Forger.Point.Updating(s)).reached.get
+          _ <- held(Forger.Point.Updating(s)).free
+          _ <- held(Forger.Point.Waking(s)).reached.get
           _ <- held(Forger.Point.Waking(s)).free
           _ <- r.h.forger.claimed.discrete
             .find(_.owned.get(s).exists {
@@ -660,8 +699,10 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
             })
             .compile
             .drain
+          _ <- held(Forger.Point.Context(s)).reached.get
           _ <- go.complete(())
           _ <- reload.joinWithNever
+          _ <- held(Forger.Point.Context(s)).free
           _ <- r.h.settled(s)
         yield ()
       }
