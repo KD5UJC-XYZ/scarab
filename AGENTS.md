@@ -51,8 +51,9 @@ Then:
   Keep session-specific proxy and certificate adjustments outside the repository, with TLS verification enabled.
 - Never run `java` or `sbt` on the host. Build and test in the JDK image (`scarab-jdk:local`, built
   from `docker/jdk.Dockerfile`), as [CONTRIBUTING.md](CONTRIBUTING.md#build-docker-only) shows.
-- For many small edits use a persistent sbt server container **of your own**, and give it a private
-  server socket with `-e SBT_GLOBAL_BASE=/tmp/sbt-global`
+- For many small edits use a persistent sbt server container **of your own**, with a private sbt global
+  directory (`-e SBT_GLOBAL_BASE=/tmp/sbt-global`); `scripts/sbtw` keeps the server's sockets in the
+  container's own temporary directory
   ([CONTRIBUTING.md](CONTRIBUTING.md#fast-iteration-a-persistent-sbt-server-optional) says why).
 - Use your own devnet name: `python3 scripts/devnet.py --name <yours> <scenario>`, then
   `python3 scripts/devnet.py --name <yours> down`. Run data goes to `${SCARAB_DATA_DIR:-/tmp/scarab}`,
