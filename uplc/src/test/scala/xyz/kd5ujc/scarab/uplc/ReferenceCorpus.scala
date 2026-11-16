@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 /** The vendored plutus reference data (`plutus-reference`, a test resource of `plutus` that this
   * module reads without depending on it) as the view of one release: the base release's files, less
   * those the release lists as `absent`, with its `overlays/<tag>/` files in their place. This is
-  * the rule of `PlutusReference` in the `plutus` tests, whose class path carries Scalus.
+  * the rule of `PlutusReference` in the `plutus` tests.
   */
 object ReferenceCorpus:
   /** The resource directory, also when the resources come in a jar (a `tools` program's class
