@@ -47,6 +47,20 @@ admission and stage, error class and constructor, budget spent and logs; and thr
 requires each transaction's recorded validity flag to be the reference's verdict on its scripts:
 valid if and only if every script succeeds within its redeemer's budget. No case is excluded.
 
+## A larger run (not retained)
+
+On 2026-11-16 the same rule with `--size 5000` took 5,000 of the chain's transactions with
+redeemers, the retained 200 among them (1,790 of ranking blocks, 3,210 of endorser blocks; 40 with
+sub-transactions), whose 5,113 scripts (165 PlutusV1, 219 PlutusV2, 4,681 PlutusV3 and 48 PlutusV4,
+182 distinct; 3,185 spending, 1,667 rewarding, 239 minting, 13 certifying, 7 guarding and 2
+proposing) went through the same oracles. Plutus 1.71.0.0 found every one admitted and succeeding
+within its redeemer's budget, up to 9,999,627,550 CPU steps. `GeneratedOracleReplayMain` (the same
+entry point as the suite's replay) found no disagreement in stage, error, budget or logs, and
+`LeiosChainContextsSuite` run on those cases found the node's collection of the 5,113 scripts the
+reference's and the 48 PlutusV4 arguments equal to the reference's. Its cases, contexts and verdicts
+are not published; `leios_chain_scan.py sample --size 5000` on the same chain writes the sample
+again.
+
 ## What it does not claim
 
 The requests are a sample of the chain's scripts (the [sampling](../leios-testnet-chain-contexts/README.md#where-the-transactions-come-from)),
