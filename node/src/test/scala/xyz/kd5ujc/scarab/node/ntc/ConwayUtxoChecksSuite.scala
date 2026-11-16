@@ -3,13 +3,34 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import java.nio.file.Path
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{PredicateFailure, Tx, TxIn, TxOut, Utxo}
-import xyz.kd5ujc.scarab.ledger.era.{EraTx, EraTxBody, Network, PParams, TxLevel, UTxO}
+import xyz.kd5ujc.scarab.ledger.era.{
+  EraTx,
+  EraTxBody,
+  EraUTxO,
+  Network,
+  PParams,
+  StoredTxOut,
+  TxLevel,
+  UTxO
+}
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{AllegraUtxo, AlonzoUtxo, BabbageUtxo, ShelleyUtxo}
-import xyz.kd5ujc.scarab.ledger.rules.{Test as Verdict, UtxoTests}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.RefScripts
+import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Deposits, Test as Verdict, UtxoTests}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Conway,
+  ConwayCertState,
+  ConwayLedgerState,
+  ConwayNewEpochState,
+  Credential,
+  KeyHash,
+  ShelleyBasedEra,
+  StakePool,
+  Staking
+}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
 import xyz.kd5ujc.scarab.protocol.Era
@@ -39,7 +60,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
       stored: Map[TxIn, TxOut],
       utxo: UTxO[Conway],
       flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
-      pp: PParams[Conway]
+      pp: PParams[Conway],
+      cert: ConwayCertState
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -72,7 +94,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
           stored,
           right(s"$what typed UTxO")(ConwayUTxO.fromStored(stored)),
           flatPp,
-          PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp)))
+          PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp))),
+          ConwayNewEpochState.ls.andThen(ConwayLedgerState.cert).get(nes)
         )
       }
     }
@@ -143,8 +166,98 @@ class ConwayUtxoChecksSuite extends FunSuite:
         "validateTooManyCollateralInputs",
         UtxoTests.tooManyCollateralInputs(s.flatPp, fb),
         AlonzoUtxo.validateTooManyCollateralInputs[Conway](s.pp, tb)
+      ),
+      (
+        "feesOK",
+        UtxoTests.feesOK[Conway](s.flatPp, Utxo.fromMap(s.stored), s.flat, flatMinFee(s)),
+        BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo)
+      ),
+      (
+        "validateMaxTxSizeUTxO",
+        UtxoTests.maxTxSize(s.flatPp, s.flat),
+        ShelleyUtxo.validateMaxTxSizeUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+          tx,
+          tx.bodyOf.top
+        )
+      ),
+      (
+        "validateExUnitsTooBigUTxO",
+        UtxoTests.exUnitsTooBig(s.flatPp, s.flat),
+        AlonzoUtxo.validateExUnitsTooBigUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+          tx,
+          tx.bodyOf.top
+        )
       )
     )
+
+  /** The flat path's minimum fee, as its UTXO computes it
+    * ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]]'s `validate`).
+    */
+  private def flatMinFee(s: Seen): BigInt =
+    val pp = s.flatPp
+    val units = s.flat.witnesses.totalExUnits
+    val scriptFee =
+      (pp.priceMem * Rational(units.mem) + pp.priceSteps * Rational(units.steps)).ceil
+    pp.minFeeA * s.flat.size + pp.minFeeB + scriptFee +
+      RefScripts.tierRefScriptFee(
+        pp.minFeeRefScriptCostPerByte,
+        RefScripts.refScriptsSize(Utxo.fromMap(s.stored), s.flat.body)
+      )
+
+  /** The flat path's value consumed and produced, as its UTXO computes them from the deposits and
+    * refunds of [[Deposits.of]].
+    */
+  private def flatBalance(
+      s: Seen
+  ): (xyz.kd5ujc.scarab.ledger.Value, xyz.kd5ujc.scarab.ledger.Value) =
+    import xyz.kd5ujc.scarab.ledger.Value as FlatValue
+    val body = s.flat.body
+    val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, body)
+    val spent = body.inputs.flatMap(s.stored.get)
+    val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
+    val consumed = spent.foldLeft(FlatValue.zero)(_ + _.value) +
+      FlatValue.coin(withdrawn + refunds) + FlatValue.minted(body.mint)
+    val produced = body.outputs.foldLeft(FlatValue.zero)(_ + _.value) +
+      FlatValue.coin(body.fee + deposits + body.donation) + FlatValue.burned(body.mint)
+    (consumed, produced)
+
+  private def lookupStakingDeposit(s: Seen)(c: Credential[Staking]): Option[Coin] =
+    CertLens.accounts.get(s.cert).get(c).map(_.deposit.toCoin)
+
+  private def isPoolRegistered(s: Seen)(k: KeyHash[StakePool]): Boolean =
+    CertLens.pools.get(s.cert).contains(k)
+
+  test("getMinFeeTxUtxo is the flat path's minimum fee on every Conway case"):
+    val u = EraUTxO.conway
+    seen.foreach { s =>
+      assertEquals(
+        u.getMinFeeTxUtxo[TxLevel.Top](s.pp, s.typed, s.utxo)(using u.txOf.bodyOf.top).value,
+        flatMinFee(s),
+        s.label
+      )
+    }
+
+  test("getConsumedValue and getProducedValue are the flat path's on every Conway case"):
+    val u = EraUTxO.conway
+    val stored = StoredTxOut.conway
+    seen.foreach { s =>
+      val tb = u.txOf.body[TxLevel.Top](s.typed)(using u.txOf.bodyOf.top)
+      val (consumed, produced) = flatBalance(s)
+      assertEquals(
+        stored.storedValue(
+          u.getConsumedValue[TxLevel.Top](s.pp, lookupStakingDeposit(s), s.utxo, tb)(using
+            u.txOf.bodyOf.top
+          )
+        ),
+        consumed,
+        s"${s.label}: consumed"
+      )
+      assertEquals(
+        stored.storedValue(u.getProducedValue(s.pp, isPoolRegistered(s), tb)),
+        produced,
+        s"${s.label}: produced"
+      )
+    }
 
   test("the corpus has Conway cases, each read by both paths"):
     assert(clue(seen.size) > 0)
