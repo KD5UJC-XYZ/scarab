@@ -1990,7 +1990,10 @@ object Main extends IOApp:
       _ <- forgeEvents(measured)
         .emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
         .whenA(forging.isEmpty)
-      _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
+      _ <- forging.traverse_(f =>
+        collectors.add(Collectors.forging(f.stats)) *>
+          collectors.add(Collectors.schedule(f.scheduleView))
+      )
       // the chain we start from is progress made: the watchdog counts from here
       _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
     yield

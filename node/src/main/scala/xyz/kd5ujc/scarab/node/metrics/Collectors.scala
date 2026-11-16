@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.network.{ConnectionManager, InboundGovernorCounters}
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 import xyz.kd5ujc.scarab.node.{BlockPool, OutboundPeers}
-import xyz.kd5ujc.scarab.node.forge.ForgeStats
+import xyz.kd5ujc.scarab.node.forge.{ForgeStats, Forger}
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 import xyz.kd5ujc.scarab.storage.ReceivedBlocks
 
@@ -179,6 +179,29 @@ object Collectors:
         metrics.set(slotsMissed, f.slotsMissed.toDouble) *>
         SkipLabel.values.toList.traverse_(label =>
           metrics.advance(forgeSkipped, label, skipped.getOrElse(label, 0L).toDouble)
+        )
+    }
+
+  /** The leader schedule (#1101, decision 7): of the epoch the clock is in and of the next, the led
+    * slots found so far, the expected number and whether it is complete, each absent while that
+    * epoch has no schedule; and the next led slot, absent when there is none.
+    */
+  def schedule[F[_]: Monad](view: F[Forger.ScheduleView])(using metrics: Metrics[F]): F[Unit] =
+    import Catalogue.*
+    def epoch(label: ScheduleEpochLabel, gauge: Option[Forger.ScheduleGauge]): F[Unit] =
+      gauge.fold(
+        metrics.clear(forgeScheduledLeaderSlots, label) *>
+          metrics.clear(forgeExpectedLeaderSlots, label) *>
+          metrics.clear(forgeScheduleComplete, label)
+      )(g =>
+        metrics.set(forgeScheduledLeaderSlots, label, g.led.toDouble) *>
+          metrics.set(forgeExpectedLeaderSlots, label, g.expected) *>
+          metrics.set(forgeScheduleComplete, label, if g.complete then 1.0 else 0.0)
+      )
+    view.flatMap { v =>
+      epoch(ScheduleEpochLabel.Current, v.current) *> epoch(ScheduleEpochLabel.Next, v.next) *>
+        v.nextLeader.fold(metrics.clear(forgeNextLeaderSlot))(s =>
+          metrics.set(forgeNextLeaderSlot, s.toDouble)
         )
     }
 

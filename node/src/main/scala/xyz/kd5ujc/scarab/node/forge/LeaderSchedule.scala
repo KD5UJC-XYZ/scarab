@@ -232,12 +232,24 @@ object LeaderSchedule:
     def of(inputs: EpochInputs): Option[EpochSchedule] =
       byEpoch.get(inputs.epoch).filter(_.inputs == inputs)
 
-    /** A schedule for each of `inputs`: kept if it was computed from them, else started again. */
+    /** The schedule of `epoch`, whatever its inputs. */
+    def epoch(epoch: BigInt): Option[EpochSchedule] = byEpoch.get(epoch)
+
+    /** The first slot after `after` that a schedule leads, whatever its inputs. */
+    def nextLed(after: BigInt): Option[BigInt] =
+      byEpoch.values.flatMap(_.led.keysIteratorFrom(after + 1).nextOption()).minOption
+
+    /** A schedule for each of `inputs`: kept if it was computed from them, else started again; the
+      * schedules of the epochs `inputs` does not name are dropped, so that forging switched off
+      * leaves none.
+      */
     private[forge] def started(inputs: Seq[EpochInputs]): Schedules =
-      Schedules(inputs.foldLeft(byEpoch) { (schedules, i) =>
-        if schedules.get(i.epoch).exists(_.inputs == i) then schedules
-        else schedules.updated(i.epoch, EpochSchedule.empty(i))
-      })
+      Schedules(
+        inputs.foldLeft(byEpoch.filter((e, _) => inputs.exists(_.epoch == e))) { (schedules, i) =>
+          if schedules.get(i.epoch).exists(_.inputs == i) then schedules
+          else schedules.updated(i.epoch, EpochSchedule.empty(i))
+        }
+      )
 
     /** With `chunk` added to its epoch's schedule, and that schedule, if it takes the chunk. */
     private[forge] def added(chunk: Decided): Option[(Schedules, EpochSchedule)] =

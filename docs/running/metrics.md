@@ -232,7 +232,7 @@ section and the catalogue differ.
 
 | Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
 |---|---|---|---|---|
-| `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots the forging loop started (TraceStartLeadershipCheck). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots the forger handled, led or not (TraceStartLeadershipCheck, whose line only a led slot logs). | same name; scraped from 11.1.3, which counts every slot its forging thread runs |
 | `cardano_node_metrics_Forge_slot_is_immutable_counter` | counter |  | Slots given up because the immutable tip is in the slot or a later one (TraceSlotIsImmutable). | same name; from the binary's trace name `Forge.slot-is-immutable` (`Tracers/Consensus.hs` 1509-1510), not scraped |
 | `cardano_node_metrics_Forge_block_from_future_counter` | counter |  | Slots given up because the tip of the chain is in a later slot (TraceBlockFromFuture). | same name; from the binary's trace name `Forge.block-from-future` (`Tracers/Consensus.hs` 1511-1512), not scraped |
 | `cardano_node_metrics_Forge_could_not_forge_counter` | counter |  | Slots given up for the ledger view or a leader slot that could not be forged (TraceNoLedgerState, TraceNoLedgerView, TraceNodeCannotForge). | same name; from the binary's trace name `Forge.could-not-forge` (`Tracers/Consensus.hs` 1513-1521), not scraped |
@@ -261,6 +261,16 @@ section and the catalogue differ.
 | `scarab_forge_failed_total` | counter |  | Slots given up for a reason of Scarab's own, which the reference does not have (forgeFailed). | none |
 | `scarab_forge_defects_total` | counter |  | Blocks built that failed a check only a bug of ours can fail; the slot ended without a block (forgeDefect). | none |
 | `scarab_forge_adoption_seconds` | histogram |  | Time from the start of the slot to the adoption of the block forged in it. | none |
+| `scarab_forge_scheduled_leader_slots` | gauge | `epoch` | The epoch's potential leader slots in the leader schedule, as far as it is computed (`epoch`: `current`, the epoch the clock is in, or `next`); a slot battle can still lose one, and a fork can change the schedule. Absent while the epoch has no schedule. | none: the reference does not publish its schedule |
+| `scarab_forge_expected_leader_slots` | gauge | `epoch` | The epoch's expected leader slots for the pool's stake, `slots × (1 - (1 - f)^σ)`, σ the pool's share of the distribution that elects the epoch's leaders: for comparison, computed in floating point and never used for a decision. | none |
+| `scarab_forge_next_leader_slot` | gauge |  | The first slot from the current one that the leader schedule leads; absent when there is none. | none |
+| `scarab_forge_schedule_complete` | gauge | `epoch` | 1 once the epoch's leader schedule covers all its slots, else 0; the counts above show the slots covered so far. | none |
+
+The four `scarab_forge_*` schedule gauges publish the pool's leader schedule ([#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101),
+an approved Deviation: the reference keeps it to itself), and so does the `leaderSchedule` log line
+([logging](logging.md)). Whoever can read the node's `/metrics` or its log learns in advance the slots in which the
+pool will lead, and so when to attack it or its relays. Exposing `/metrics` beyond the operator's own monitoring is
+the operator's choice; a node whose metrics are public publishes its schedule.
 
 ### Peers and connections
 
