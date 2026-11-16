@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import scala.collection.immutable.{SortedMap, SortedSet}
+import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{
-  GovActionId,
-  LedgerDecodeError,
-  RewardAccount,
-  TxIn,
-  Update,
-  Voter,
-  VotingProcedure
-}
+import xyz.kd5ujc.scarab.ledger.{LedgerDecodeError, RewardAccount, TxIn, Update}
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
@@ -185,10 +177,10 @@ trait ConwayEraTxBody[E <: EraTag] extends BabbageEraTxBody[E]:
   def scriptsOf: ConwayEraScript[E]
 
   def currentTreasuryValue[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Coin]
-  def votingProcedures[L <: TxLevel](body: TxBody[L, E])(using
+  def votingProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): VotingProcedures[E]
+  def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using
       Level[L]
-  ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]]
-  def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[ProposalProcedure]
+  ): OSet[ProposalProcedure[E]]
   def treasuryDonation[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Coin
 
   /** `conwayProposalsDeposits` (`Conway/TxBody.hs:382-391`, cardano-ledger f649f975): the
@@ -218,6 +210,11 @@ enum EraTxError:
     * length, an epoch out of `Word64`), which the decoder's own bounds rule out.
     */
   case Vocab(cause: VocabError)
+
+  /** A parameter the decoder read (in an update or a hard fork's version) that is not a value of
+    * its reference type, which the decoder's own bounds rule out.
+    */
+  case PParams(cause: PParamsError)
 
   /** The scripts of a witness set read again from its bytes are not the ones its decoder read. */
   case ScriptsReadAgain
