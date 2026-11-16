@@ -16,13 +16,13 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.{ForgeError, ValidationError}
 import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
-import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
+import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PoolDistribution}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals, PoolDistribution}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, TxClock}
@@ -460,20 +460,15 @@ final class Forger[F[_]: Async, S](
         )
       // the VRF key of the credentials in force: a reload replaces it with the key it read
       vrf <- perform(hot.locked(c => F.pure(c.vrf))).flatMap(_.fold(disabled)(proceed))
-      pools = crossed.pools
-      stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
-      cert <- perform(
-        F.blocking(
-          Leadership.check(
-            slot,
-            crossed.protocol.epochNonce,
-            vrf,
-            stake,
-            pools.total,
-            config.activeSlotsCoeff
-          )
-        )
-      ).flatMap {
+      inputs = Forger.inputsOf(
+        geometry,
+        epoch,
+        crossed.view,
+        credentials.poolId,
+        config.activeSlotsCoeff,
+        vrf
+      )
+      cert <- perform(F.blocking(Leadership.check(slot, inputs))).flatMap {
         case Right(cert)                   => proceed(cert)
         case Left(_: ForgeError.NotLeader) => giveUp(ForgeTrace.NodeNotLeader(slot))
         case Left(e)                       => perform(e.raise[F, VrfCert])
@@ -526,8 +521,8 @@ final class Forger[F[_]: Async, S](
             block.body.size,
             period,
             block.relativeKesPeriod,
-            stake,
-            pools.total,
+            inputs.stake,
+            inputs.total,
             block.counter
           )
         )
@@ -770,52 +765,50 @@ final class Forger[F[_]: Async, S](
       epoch: BigInt,
       slot: BigInt
   )(using Handle[F, NodeError]): F[Forger.Crossed] =
-    val state = current.state
     val key = (current.tipRef.map(_.hash), epoch)
     cache.get.flatMap {
       case Some(c) if c.key == key => F.pure(c)
       case _ =>
         for
-          nes <- lift(
-            ConwayView(state, current.tipRef).left.map(why =>
-              ForgeError.UnsupportedProtocol(why match
-                case ConwayView.Unavailable.InByron        => ForgeProtocolProblem.InByron
-                case ConwayView.Unavailable.InEarlier(era) => ForgeProtocolProblem.Earlier(era)
-                case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e))
-            )
-          )
-          _ <- lift(
-            Either.cond(
-              epoch >= nes.epoch.toBigInt,
-              (),
-              ForgeError.LedgerViewUnavailable(
-                slot,
-                ForgeLedgerProblem.EpochPrecedes(epoch, nes.epoch.toBigInt)
-              )
-            )
-          )
+          nes <- lift(Forger.conwayAt(current, epoch, slot))
           c <- F
             .blocking {
-              // the ledger view of the leader check is the forecast of the tip's ledger
-              // (`futureForecast`, which ticks with TICKF: cardano-ledger f649f975
-              // `Shelley/Rules/Tick.hs` 201-242, `Conway/Rules/Tickf.hs` 42-66): into the next
-              // epoch the mark distribution, in the tip's epoch and two or more epochs on the
-              // current one, as the header rules take it (`ShelleyHeaderForecast`)
-              val pools = MirrorEraRead(nes)(using ShelleyBasedEra.SConway)
-                .leaderPools(nextEpoch = epoch == nes.epoch.toBigInt + 1)
+              val view = Forger.leaderView(nes, current.state.protocol, epoch)
               // the boundaries between the tip's epoch and the slot's, for the block's own ledger
               // (`applyChainTick`); the slot's own work is done per attempt
               val start =
                 if epoch > nes.epoch.toBigInt then ticked(nes, geometry.firstSlot(epoch))
                 else Right(nes)
-              start.map(
-                Forger.Crossed(key, _, pools, Praos.tick(state.protocol, Era.Conway, epoch))
-              )
+              start.map(Forger.Crossed(key, _, view))
             }
             .flatMap(lift)
           _ <- cache.set(Some(c))
         yield c
     }
+
+  /** The inputs of the leader check of `slot` forecast from the tip of `base`, with the VRF key
+    * `vrf`: those [[attempt]] checks the slot with when `base` is the chain it builds on, by the
+    * same derivation ([[Forger.conwayAt]], [[Forger.leaderView]], [[Forger.inputsOf]]) without the
+    * cache and the tick of the block's own ledger.
+    */
+  private[forge] def inputsAt(
+      base: VolatileChain[S],
+      slot: BigInt,
+      vrf: Draft03Prover.SigningKey
+  ): Either[NodeError, EpochInputs] =
+    val epoch = geometry.epochOf(slot)
+    Forger
+      .conwayAt(base, epoch, slot)
+      .map(nes =>
+        Forger.inputsOf(
+          geometry,
+          epoch,
+          Forger.leaderView(nes, base.state.protocol, epoch),
+          credentials.poolId,
+          config.activeSlotsCoeff,
+          vrf
+        )
+      )
 
   /** Forged blocks that are no longer on our chain have been replaced by a better one. */
   private def watch: F[Unit] =
@@ -983,15 +976,81 @@ object Forger:
   def withinHorizon[S](using clock: TxClock[S]): (VolatileChain[S], BigInt) => Boolean =
     (current, slot) => clock.translates(current.state, slot)
 
-  /** The tip's ledger and chain-dependent state carried into an epoch, and the pool distribution of
-    * its forecast ledger view.
+  /** The tip's ledger state carried into an epoch, and the ledger view of the epoch's leader check.
     */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
       nes: NewEpochState[Conway],
-      pools: PoolDistribution,
-      protocol: ProtocolState
+      view: LeaderView
   )
+
+  /** What the leader check of a slot reads from the tip's state: the pool distribution of its
+    * forecast ledger view, and the chain-dependent state ticked into the slot's epoch.
+    */
+  final case class LeaderView(pools: PoolDistribution, protocol: ProtocolState)
+
+  /** The Conway ledger state at the tip of `current`, from which the ledger view of `slot`, in
+    * `epoch`, is forecast. The refusals are Scarab's own: only Praos with Conway transactions is
+    * forged, on a fully validated ledger, and an epoch before the tip's has no forecast.
+    */
+  private[forge] def conwayAt[S](current: VolatileChain[S], epoch: BigInt, slot: BigInt)(using
+      ChainRead[S]
+  ): Either[NodeError, NewEpochState[Conway]] =
+    for
+      nes <- ConwayView(current.state, current.tipRef).left.map(why =>
+        ForgeError.UnsupportedProtocol(why match
+          case ConwayView.Unavailable.InByron        => ForgeProtocolProblem.InByron
+          case ConwayView.Unavailable.InEarlier(era) => ForgeProtocolProblem.Earlier(era)
+          case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e))
+      )
+      _ <- Either.cond(
+        epoch >= nes.epoch.toBigInt,
+        (),
+        ForgeError.LedgerViewUnavailable(
+          slot,
+          ForgeLedgerProblem.EpochPrecedes(epoch, nes.epoch.toBigInt)
+        )
+      )
+    yield nes
+
+  /** The ledger view of the leader check of `epoch` from the tip's Conway state `nes` and its
+    * chain-dependent state `protocol`. The pool distribution is the forecast of the tip's ledger
+    * (`futureForecast`, which ticks with TICKF: cardano-ledger f649f975 `Shelley/Rules/Tick.hs`
+    * 201-242, `Conway/Rules/Tickf.hs` 42-66): into the next epoch the mark distribution, in the
+    * tip's epoch and two or more epochs on the current one, as the header rules take it
+    * (`ShelleyHeaderForecast`). The epoch nonce is that of the state ticked into `epoch`.
+    */
+  private[forge] def leaderView(
+      nes: NewEpochState[Conway],
+      protocol: ProtocolState,
+      epoch: BigInt
+  ): LeaderView =
+    LeaderView(
+      MirrorEraRead(nes)(using ShelleyBasedEra.SConway)
+        .leaderPools(nextEpoch = epoch == nes.epoch.toBigInt + 1),
+      Praos.tick(protocol, Era.Conway, epoch)
+    )
+
+  /** The inputs of the leader check of `epoch` from its ledger view: the epoch nonce, the stake of
+    * the pool `poolId` (none if the distribution does not have it) and the distribution's total.
+    */
+  private[forge] def inputsOf(
+      geometry: EpochGeometry,
+      epoch: BigInt,
+      view: LeaderView,
+      poolId: Bytes,
+      activeSlotsCoeff: Leader.Fraction,
+      vrf: Draft03Prover.SigningKey
+  ): EpochInputs =
+    EpochInputs.of(
+      geometry,
+      epoch,
+      view.protocol.epochNonce,
+      view.pools.stake.getOrElse(poolId, BigInt(0)),
+      view.pools.total,
+      activeSlotsCoeff,
+      vrf
+    )
 
   /** A block we forged and adopted, kept to notice if it is replaced later. */
   final case class Forged(ref: BlockRef, slot: BigInt)
