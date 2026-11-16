@@ -717,6 +717,42 @@ class MirrorAnswersSuite extends FunSuite:
     )
   }
 
+  test("a UTxO query of an earlier era is the era mismatch, whatever it asks for") {
+    val (in, out) =
+      TxIn(Bytes(Vector.fill(32)(1.toByte)), 0) -> output(s"82 581d60${"33" * 28} 1a0016e360")
+    val firsts = shelleyBased.groupBy(_._1.era).view.mapValues(_.head).toMap
+    val eras = firsts.keys.toVector.sortBy(_.index)
+    val pairs =
+      for
+        ledger <- eras
+        queried <- eras.filter(_.index < ledger.index)
+      yield (ledger, queried)
+    assertEquals(pairs.size, 15)
+    pairs.foreach { (ledger, queried) =>
+      val (block, state) = firsts(ledger)
+      def asked(q: LedgerQuery): Either[Unanswered, Bytes] =
+        QueryAnswers.answerOrWhy(
+          queryEnv,
+          view(block, state),
+          Map(in -> out),
+          NtcQuery.IfCurrent(QueryEra.of(queried), q)
+        )
+      val mismatch =
+        asked(LedgerQuery.GetLedgerTip).fold(e => fail(s"$ledger, $queried: $e"), identity)
+      // [[queried era's index, name], [ledger era's index, name]]
+      assertEquals(mismatch.value.head & 0xff, 0x82, s"$ledger, $queried")
+      List(
+        LedgerQuery.GetUTxOWhole,
+        LedgerQuery.GetUTxOByTxIn(Set.empty),
+        LedgerQuery.GetUTxOByTxIn(Set(in)),
+        LedgerQuery.GetUTxOByAddress(Set.empty),
+        LedgerQuery.GetUTxOByAddress(Set(out.address.raw))
+      ).foreach(q =>
+        assertEquals(asked(q).map(_.hex), Right(mismatch.hex), s"$ledger, $queried: $q")
+      )
+    }
+  }
+
   test(
     "the chain-dependent state is answered in every Shelley-based era, in the protocol's shape"
   ) {
