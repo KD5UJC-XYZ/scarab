@@ -892,7 +892,7 @@ final class Forger[F[_]: Async, S](
       else
         for
           seen <- seenNow
-          first <- attempt(slot, scheduled)
+          first <- attempt(slot, scheduled, reached(slot))
           _ <- pause(first match
             case _: Attempted.Built[F, S] => Forger.Point.Signed(slot)
             case _: Attempted.Ended[F, S] => Forger.Point.Refused(slot))
@@ -935,7 +935,7 @@ final class Forger[F[_]: Async, S](
                     case _: Attempted.Built[F, S] => DiscardReason.Credentials
                     case e: Attempted.Ended[F, S] => Forger.reasonOf(e.why)
                   discarded(slot, why, other).flatMap { line =>
-                    attempt(slot, scheduled)
+                    attempt(slot, scheduled, reached(slot))
                       .flatMap(again => provisional(slot, again, next, discards :+ line))
                   }
           }
@@ -1007,7 +1007,7 @@ final class Forger[F[_]: Async, S](
     hot.enabled.flatMap { on =>
       if !on then F.pure(Final.Skipped(Vector.empty))
       else
-        attempt(slot, scheduled).flatMap {
+        attempt(slot, scheduled, proceed(())).flatMap {
           case built: Attempted.Built[F, S] =>
             handover(slot, built).map(Final.Lines(_))
           case Attempted.Ended(_, Why.NotLed(generation, info)) =>
@@ -1057,7 +1057,7 @@ final class Forger[F[_]: Async, S](
 
   private def perSlot(slot: BigInt)(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
     hot.enabled.flatMap { on =>
-      attempt(slot, checked)
+      attempt(slot, checked, proceed(()))
         .flatMap {
           case built: Attempted.Built[F, S] =>
             handover(slot, built)
@@ -1185,16 +1185,19 @@ final class Forger[F[_]: Async, S](
 
   /** The slot, step by step as `forkBlockForging` 's `go` (`NodeKernel.hs` 573-796), up to the
     * block built and signed, with every line held: the block, or why the slot ended. `decide` is
-    * the leader check: the per-slot check, or the schedule's with its re-check. A failure of the
-    * forger's own (`forgeFailed`) ends the slot; one of the infrastructure stops the node.
+    * the leader check: the per-slot check, or the schedule's with its re-check. `gate` comes just
+    * before the update of the KES key: [[reached]] for an attempt made before the slot's onset,
+    * nothing for one made at the onset. A failure of the forger's own (`forgeFailed`) ends the
+    * slot; one of the infrastructure stops the node.
     */
   private def attempt(
       slot: BigInt,
-      decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]]
+      decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]],
+      gate: Step[Unit]
   )(using handle: Handle[F, NodeError], terminal: Raise[F, Fatal]): F[Attempted[F, S]] =
     Ref.of[F, Vector[Held[F]]](Vector.empty).flatMap { held =>
       val hold = Holding(held)
-      handle.attempt(F.defer(steps(slot, decide, hold).value)).flatMap {
+      handle.attempt(F.defer(steps(slot, decide, hold, gate).value)).flatMap {
         case Right(Right(prepared)) => held.get.map(Attempted.Built(prepared, _))
         case Right(Left(why))       => held.get.map(Attempted.Ended(_, why))
         case Left(e: ForgeError) =>
@@ -1207,10 +1210,26 @@ final class Forger[F[_]: Async, S](
       }
     }
 
+  /** The gate of an attempt made before its slot's onset (§5.5): no attempt moves the KES key into
+    * a period the clock has not reached, so one whose slot is of a later KES period than the
+    * clock's ends before the key's update, refused with no line of its own, and gives the
+    * reservation back; the slot waits, holding nothing, and is made at its onset, as after an early
+    * refusal (§5.3). It covers an attempt made again after a reload as well as the first: the wall
+    * clock, which a reload checks against, can be in the period before the slot's while the slot is
+    * pending, moved back within the rewind allowance.
+    */
+  private def reached(slot: BigInt): Step[Unit] =
+    EitherT(
+      now.map(at =>
+        Either.cond(kesPeriodOf(slot) <= kesPeriodOf(geometry.slotAt(at)), (), Why.Refused)
+      )
+    )
+
   private def steps(
       slot: BigInt,
       decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]],
-      hold: Holding
+      hold: Holding,
+      gate: Step[Unit]
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
     val epoch = geometry.epochOf(slot)
     val period = kesPeriodOf(slot)
@@ -1225,7 +1244,7 @@ final class Forger[F[_]: Async, S](
       crossed <- perform(crossedTo(context.base, epoch, slot))
       _ <- hold.say(ForgeTrace.LedgerView(slot))
       _ <- perform(pause(Forger.Point.Context(slot)))
-      prepared <- reserved(signing(slot, epoch, period, context, crossed, decide, hold))
+      prepared <- reserved(signing(slot, epoch, period, context, crossed, decide, hold, gate))
     yield prepared
 
   /** From the forge state's update to the block signed, with the KES key reserved:
@@ -1239,10 +1258,12 @@ final class Forger[F[_]: Async, S](
       context: Forger.Context[S],
       crossed: Forger.Crossed,
       decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]],
-      hold: Holding
+      hold: Holding,
+      gate: Step[Unit]
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
     for
       _ <- perform(pause(Forger.Point.Reserved(slot)))
+      _ <- gate
       record <- perform(recordedOrMade(period)).flatMap(_.fold(disabled)(proceed))
       (generation, result) = record
       key <- result match
