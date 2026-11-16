@@ -48,6 +48,19 @@ class StoredScriptKindSuite extends FunSuite:
       Left(LedgerDecodeError.UnknownTag(DecodeField.ScriptType, BigInt(4)))
     )
 
+  test("MemPack still names a reference script of tag 4 an unknown kind"):
+    val script = "8204" + "47" + plutus.hex
+    val wrapped = "d818" + f"58${script.length / 2}%02x" + script
+    val raw = Bytes
+      .fromHex("a3" + "00" + "581d61" + keyHash.hex + "01" + "1a000f4240" + "03" + wrapped)
+      .fold(e => fail(e.toString), identity)
+    val ref = Script(ScriptKind.PlutusV4, hashOf(ScriptKind.PlutusV4), None)
+    val out = TxOut(raw, address, Value.coin(1000000), Datum.NoDatum, Some(ref), 0)
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack.parts(out),
+      Left(xyz.kd5ujc.scarab.ledger.mempack.MemPack.Failure.UnknownScriptKind(BigInt(4)))
+    )
+
   test("Conway's Haskell state refuses a PlutusV4 script, which Conway's languages do not hold"):
     val v4 = Script(ScriptKind.PlutusV4, hashOf(ScriptKind.PlutusV4), None, Some(plutus))
     assertEquals(

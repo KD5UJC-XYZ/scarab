@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.ledger.{Script, TxOut, Utxo}
-
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.{BinaryError, Bytes}

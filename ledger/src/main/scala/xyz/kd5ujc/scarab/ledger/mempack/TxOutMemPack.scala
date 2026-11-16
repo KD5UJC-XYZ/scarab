@@ -110,7 +110,7 @@ object TxOutMemPack:
         script <- CborRead.decode(inner).leftMap(Failure.ScriptRefused(_))
         two <- CborRead.arrayN(script, 2, DecodeField.Script).leftMap(Failure.ScriptRefused(_))
         tag <- CborRead.uint(two(0), DecodeField.ScriptType).leftMap(Failure.ScriptRefused(_))
-        kind <- ScriptKind.values.find(_.tag == tag).toRight(Failure.UnknownScriptKind(tag))
+        kind <- packedKind(tag).toRight(Failure.UnknownScriptKind(tag))
         bytes <-
           if kind == ScriptKind.Native then Right(two(1).original)
           else CborRead.bytes(two(1), DecodeField.PlutusScript).leftMap(Failure.ScriptRefused(_))
@@ -319,6 +319,18 @@ object TxOutMemPack:
           requireTag[E](4, Feature.InlineDatum).as(Rep.CompactDatum(p.address, value, d))
     yield rep
 
+  /** The kind of a reference script's tag, of the kinds an output packed here can hold: no era
+    * packed here has PlutusV4 (Dijkstra's outputs are `NotYet`), so its tag is unknown here, as it
+    * was before the stored kind had it.
+    */
+  private def packedKind(tag: BigInt): Option[ScriptKind] =
+    ScriptKind.values.find(_.tag == tag).flatMap {
+      case ScriptKind.PlutusV4 => None
+      case k @ (ScriptKind.Native | ScriptKind.PlutusV1 | ScriptKind.PlutusV2 |
+          ScriptKind.PlutusV3) =>
+        Some(k)
+    }
+
   private def checkLanguage[E <: EraTag](s: RefScript)(using
       ShelleyBasedEra[E]
   ): Result[RefScript] =
@@ -327,10 +339,7 @@ object TxOutMemPack:
         Left(Failure.NotInEra(Feature.PlutusV2, eraOf[E]))
       case ScriptKind.PlutusV3 if languages[E] < 3 =>
         Left(Failure.NotInEra(Feature.PlutusV3, eraOf[E]))
-      // No era packed here has PlutusV4 (Dijkstra's outputs are `NotYet`): its tag is refused as
-      // it was before the stored kind had it.
-      case ScriptKind.PlutusV4 => Left(Failure.UnknownScriptKind(BigInt(ScriptKind.PlutusV4.tag)))
-      case _                   => Right(s)
+      case _ => Right(s)
 
   /** Tags 2 and 3 for an ada-only output to a base address, tags 0 and 1 otherwise. */
   private def compactOrAddr28[E <: EraTag](
