@@ -9,11 +9,11 @@ import xyz.kd5ujc.scarab.uplc.DefaultFun.*
   * ledger's decoder (`Common/SerialisedScript.hs:195-266`, `Common/Eval.hs:107-130`) and of the
   * Flat decoder (`UntypedPlutusCore/Core/Instance/Flat.hs:167-185`) as typed cases.
   *
-  * This is the own evaluator's copy, independent of the Scalus backend's `PlutusAvailability` (ADR
-  * 0027). A script's builtins and versions are those of the language it is evaluated as
-  * ([[PlutusLanguage.evaluatedAs]]): the node of 1.70.0.0 decodes a V4 script with plutus's V3
-  * functions. Plutus's own V4 rows are transcribed too ([[introductions]]); from protocol 12, the
-  * first at which a V4 script decodes, they equal V3's.
+  * Plutus 1.71.0.0 (`261766ad`) changes only the program versions ([[versionIntroductions]]): the
+  * builtins, the bounds and the decoders are 1.70.0.0's. A script's builtins and versions are those
+  * of the language it is evaluated as ([[PlutusLanguage.evaluatedAs]]): cardano-ledger 9df9f98c
+  * decodes a V4 script with plutus's V3 functions. Plutus's own V4 rows are transcribed too
+  * ([[introductions]]); from protocol 12, the first at which a V4 script decodes, they equal V3's.
   */
 object Availability:
 
@@ -216,8 +216,10 @@ object Availability:
         Future -> Vector(Batch7)
       )
 
-  /** `plcVersionsIntroducedIn` (`Versions.hs:362-382`, plutus 1.70.0.0), for plutus's own ledger
-    * language.
+  /** `plcVersionsIntroducedIn` (`Versions.hs:362-385`, plutus 1.71.0.0 `261766ad`), for plutus's
+    * own ledger language. 1.71.0.0 adds version 1.2.0 to every language from protocol 12
+    * (`Versions.hs:369,375,380,384`); the rows below 12 are 1.70.0.0's (`Versions.hs:362-382` at
+    * `507cab8c`).
     */
   def versionIntroductions(language: PlutusLanguage): Vector[(Arrival, Vector[ProgramVersion])] =
     language match
@@ -226,12 +228,22 @@ object Availability:
           if language == PlutusLanguage.V1 then ProtocolMajor.Alonzo else ProtocolMajor.Vasil
         Vector(
           At(first) -> Vector(ProgramVersion.V1_0_0),
-          At(ProtocolMajor.VanRossem) -> Vector(ProgramVersion.V1_1_0)
+          At(ProtocolMajor.VanRossem) -> Vector(ProgramVersion.V1_1_0),
+          At(ProtocolMajor.Dijkstra) -> Vector(ProgramVersion.V1_2_0)
         )
       case PlutusLanguage.V3 =>
-        Vector(At(ProtocolMajor.Chang) -> Vector(ProgramVersion.V1_0_0, ProgramVersion.V1_1_0))
+        Vector(
+          At(ProtocolMajor.Chang) -> Vector(ProgramVersion.V1_0_0, ProgramVersion.V1_1_0),
+          At(ProtocolMajor.Dijkstra) -> Vector(ProgramVersion.V1_2_0)
+        )
       case PlutusLanguage.V4 =>
-        Vector(At(ProtocolMajor.Dijkstra) -> Vector(ProgramVersion.V1_0_0, ProgramVersion.V1_1_0))
+        Vector(
+          At(ProtocolMajor.Dijkstra) -> Vector(
+            ProgramVersion.V1_0_0,
+            ProgramVersion.V1_1_0,
+            ProgramVersion.V1_2_0
+          )
+        )
 
   /** `ledgerLanguageIntroducedIn` (`Versions.hs:109-114`, plutus 1.70.0.0); for V4 also the
     * ledger's own guard.

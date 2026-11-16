@@ -77,19 +77,11 @@ enum Stage:
   * not count it as a failure of the script, nor as a success.
   */
 enum Unavailability:
-  /** Protocol 12 and later, which this evaluator does not run (ADR 0027, its amendment of
-    * 2026-11-12).
-    */
-  case UnsupportedProtocol(protocol: ProtocolMajor)
-
   /** The cost-model list did not make an evaluation context here. The reference makes one from
     * every list of `Int64` values ([[xyz.kd5ujc.scarab.uplc.cost.CostModelApplyError]]), so this is
     * a defect of this evaluator.
     */
   case CostModel(error: CostModelApplyError)
-
-  /** No builtins for a semantics variant plutus 1.70.0.0 does not have. */
-  case Variant(variant: SemanticsVariant)
 
   /** The context has no machine for the variant of the protocol: the reference's internal error of
     * `toMachineParameters` (`Common/Eval.hs:132-139`, plutus 1.70.0.0).

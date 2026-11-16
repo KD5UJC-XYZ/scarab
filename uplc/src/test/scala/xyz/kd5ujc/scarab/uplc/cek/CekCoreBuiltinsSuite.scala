@@ -17,12 +17,11 @@ import xyz.kd5ujc.scarab.uplc.cek.Terms.*
   */
 final class CekCoreBuiltinsSuite extends munit.FunSuite:
   private val parameters: MachineParameters =
-    StubBuiltins
-      .core(SemanticsVariant.E)
-      .fold(
-        e => fail(e.toString),
-        MachineParameters(StubBuiltins.distinctCosts, _, CaserBuiltin.WithoutData)
-      )
+    MachineParameters(
+      StubBuiltins.distinctCosts,
+      StubBuiltins.core(SemanticsVariant.E),
+      CaserBuiltin.WithoutData
+    )
 
   private def counting(term: Term): CekReport =
     CekMachine.run(parameters, BudgetMode.Counting, term)

@@ -1093,5 +1093,36 @@ object ParamNames:
   /** The parameters of PlutusV3. */
   val v3: Vector[String] = constructors(V3).map(show)
 
+  /** The eight parameters plutus 1.71.0.0 (`261766ad`) appends to the names of every language,
+    * those of `keepPolicies` and `dropPolicies` (`V1/ParamName.hs:364-371`,
+    * `V2/ParamName.hs:366-373`, `V3/ParamName.hs:382-389`; `V4/ParamName.hs` the same), with no
+    * other change.
+    */
+  val policyFilters: Vector[String] =
+    constructors(
+      """
+        KeepPolicies'cpu'arguments'intercept
+        KeepPolicies'cpu'arguments'slope
+        KeepPolicies'memory'arguments'intercept
+        KeepPolicies'memory'arguments'slope
+        DropPolicies'cpu'arguments'intercept
+        DropPolicies'cpu'arguments'slope
+        DropPolicies'memory'arguments'intercept
+        DropPolicies'memory'arguments'slope
+      """
+    ).map(show)
+
+  /** The names the own evaluator tags a language's cost-model list with: those of plutus 1.71.0.0,
+    * whose `mkEvaluationContext` uses its own tables at every protocol version
+    * (`V1/EvaluationContext.hs:41-64`, V2 the same, `V3/EvaluationContext.hs:38-58`). The ledger's
+    * readers keep [[v1]], [[v2]] and [[v3]], the names of 1.70.0.0: a list is read by position, and
+    * the eight names past 1.70.0.0's cost only `keepPolicies` and `dropPolicies`, which no protocol
+    * version makes available (`builtinsIntroducedIn`, `futurePV`).
+    */
+  def evaluation(language: PlutusLanguage): Vector[String] = language match
+    case PlutusLanguage.V1                     => v1 ++ policyFilters
+    case PlutusLanguage.V2                     => v2 ++ policyFilters
+    case PlutusLanguage.V3 | PlutusLanguage.V4 => v3 ++ policyFilters
+
   private def constructors(table: String): Vector[String] =
     table.linesIterator.map(_.trim).filter(_.nonEmpty).toVector

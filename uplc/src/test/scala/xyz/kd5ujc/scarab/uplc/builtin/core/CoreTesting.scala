@@ -47,8 +47,7 @@ object CoreTesting:
 
   def dataList(items: PlutusData*): Constant = list(DefaultUni.Data, items.map(Constant.Data(_))*)
 
-  def variant(v: SemanticsVariant): CoreVariant =
-    CoreVariant.of(v).fold(e => sys.error(e.toString), identity)
+  def variant(v: SemanticsVariant): CoreVariant = CoreVariant.of(v)
 
   /** The variant of `language` (1 to 3, as the fixture rows number them) at `protocol`. */
   def variantOf(language: Int, protocol: Int): CoreVariant =

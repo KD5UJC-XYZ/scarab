@@ -204,6 +204,11 @@ enum ValueFailure extends LogLines:
   /** `scaleValue` (`Value.hs:619-628`, plutus 1.70.0.0). */
   case ScaleOutOfBounds(factor: BigInt, quantity: BigInt)
 
+  /** `keepPolicies` or `dropPolicies` given a value of more than 8,191 currencies
+    * (`policyFilterOverflow`, `Value.hs:471-475`, plutus 1.71.0.0 `261766ad`).
+    */
+  case TooManyPolicies(function: xyz.kd5ujc.scarab.uplc.DefaultFun)
+
   def lines: Vector[String] = this match
     case InvalidCurrency(c)     => Vector(s"insertCoin: invalid currency: ${showWord8s(c)}")
     case InvalidToken(t)        => Vector(s"insertCoin: invalid token: ${showWord8s(t)}")
@@ -216,6 +221,10 @@ enum ValueFailure extends LogLines:
       Vector(s"valueData: maximum input size (${Values.ValueDataMaxSize}) exceeded")
     case UnValueData(cause)     => Vector(cause.line)
     case ScaleOutOfBounds(c, q) => Vector(s"scaleValue: quantity out of bounds: $c * $q")
+    case TooManyPolicies(function) =>
+      Vector(
+        s"${function.name}: maximum number of policies (${Values.PolicyFilterMaxSize}) exceeded"
+      )
 
 /** A library a builtin calls failed in a way the reference's cannot: a defect of this
   * implementation, never a verdict on the script. It has no log line, since the reference has none.

@@ -103,7 +103,7 @@ final class SliceByteStringReferenceSuite extends munit.FunSuite:
     assertEquals(probes.size, 124, "probes")
     assertEquals(verdicts.map(_.id).toSet, probes.keySet, "the ids of the verdicts")
     assertEquals(verdicts.size, 124 * 15, "rows")
-    assertEquals(verdicts.map(_.variant).toSet, CoreVariant.values.toSet, "variants")
+    assertEquals(verdicts.map(_.variant).toSet, CoreVariant.values.take(5).toSet, "variants A to E")
   }
 
   test("every verdict") {

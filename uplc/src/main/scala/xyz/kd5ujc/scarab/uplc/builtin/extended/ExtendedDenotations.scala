@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   UnliftingCause,
   UnliftingFailure
 }
-import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreVariant, UnsupportedVariant}
+import xyz.kd5ujc.scarab.uplc.builtin.core.CoreVariant
 
 import Lifted.*
 
@@ -35,17 +35,20 @@ import Lifted.*
   * meaning. Two meanings differ by variant (`ensurable`, `Builtins.hs:2788-2793`): the scalar of
   * `bls12_381_G1_scalarMul` and `bls12_381_G2_scalarMul` is bounded in D and E
   * (`Builtins.hs:1901-1917,1974-1990`), and `writeBits` refuses an input of more than 4096 bytes in
-  * D and E (`Builtins.hs:2199-2229`).
+  * D and E (`Builtins.hs:2199-2229`). Plutus 1.71.0.0 (`261766ad`) chooses both by
+  * `ensurableByteString`, so F and G bound them as D and E do (`Builtins.hs:1919-1935,1992-2008,
+  * 2217-2247` there).
   *
   * Batch 7 (`multiIndexArray`, `policies`, `assetCount`, `keepPolicies`, `dropPolicies`) is not
-  * available at protocols 5 to 11 ([[xyz.kd5ujc.scarab.uplc.Availability]]); its denotations are
-  * here all the same, as the reference has them in every variant.
+  * available at any protocol version ([[xyz.kd5ujc.scarab.uplc.Availability]]); its denotations are
+  * here all the same, as the reference has them in every variant. `keepPolicies` and `dropPolicies`
+  * are 1.71.0.0's, which refuses a `Value` of more than 8,191 currencies
+  * ([[Values.PolicyFilterMaxSize]]).
   */
 object ExtendedDenotations:
 
-  /** The denotations of `variant`, refused for the variants plutus 1.70.0.0 does not have. */
-  def of(variant: SemanticsVariant): Either[UnsupportedVariant, Map[DefaultFun, Denotation]] =
-    CoreVariant.of(variant).map(apply)
+  /** The denotations of `variant`. */
+  def of(variant: SemanticsVariant): Map[DefaultFun, Denotation] = apply(CoreVariant.of(variant))
 
   def apply(variant: CoreVariant): Map[DefaultFun, Denotation] = tables(variant.ordinal)
 
@@ -114,7 +117,7 @@ object ExtendedDenotations:
 
   private def table(variant: CoreVariant): Map[DefaultFun, Denotation] =
     import DefaultFun.*
-    val ensurable = variant.ensurable
+    val ensurable = variant.ensurableByteString
     // Hashes (`Builtins.hs:1397-1441,2059-2092,2297-2313`, plutus 1.70.0.0).
     val hashes: Map[DefaultFun, Denotation] = Map(
       Sha2_256 -> one[Bytes](b => pure(bytes(Hashes.sha2_256(b)))),
@@ -282,7 +285,9 @@ object ExtendedDenotations:
       ScaleValue -> two[BigInt, Value]((c, v) => valueResult(Values.scaleValue(c, v))(value))
     )
 
-    // Batch 7 (`Builtins.hs:2482-2527`, plutus 1.70.0.0).
+    // Batch 7 (`Builtins.hs:2482-2527`, plutus 1.70.0.0); `keepPolicies` and `dropPolicies` are
+    // 1.71.0.0's, `[ByteString] -> ValueOuterDepth -> BuiltinResult Value` (`Builtins.hs:2531-2544`
+    // at `261766ad`).
     val batch7: Map[DefaultFun, Denotation] = Map(
       MultiIndexArray -> denotation(cs =>
         for
@@ -297,10 +302,10 @@ object ExtendedDenotations:
       Policies -> one[Value](v => listOf(DefaultUni.ByteString, Values.policies(v).map(bytes))),
       AssetCount -> one[Value](v => pure(integer(v.totalSize))),
       KeepPolicies -> two[Vector[Bytes], Value]((ids, v) =>
-        pure(value(Values.keepPolicies(ids, v)))
+        valueResult(Values.keepPolicies(ids, v))(value)
       ),
       DropPolicies -> two[Vector[Bytes], Value]((ids, v) =>
-        pure(value(Values.dropPolicies(ids, v)))
+        valueResult(Values.dropPolicies(ids, v))(value)
       )
     )
 

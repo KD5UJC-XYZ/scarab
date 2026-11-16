@@ -5,12 +5,15 @@ import xyz.kd5ujc.scarab.uplc.SemanticsVariant
 
 /** The shape of every builtin's CPU and memory costing function in each semantics variant: the
   * `"type"` of each model in `plutus-core/cost-model/data/builtinCostModel{A..E}.json` at plutus
-  * 1.70.0.0 (`507cab8c`), which `cekCostModelForVariant` reads
-  * (`PlutusCore/Evaluation/Machine/ExBudgetingDefaults.hs:66-157`). The ledger's parameters carry
-  * numbers only, so the shape is the variant's and every coefficient comes from the parameters
-  * (`applyParams`, `CostModelInterface.hs:290-317`): at 1.70.0.0 every coefficient of a variant is
-  * a parameter of each language that uses it, so no default value is ever read (`CostModelSuite`).
-  * Generated from the vendored JSON; `CostModelSuite` compares every shape with it and with
+  * 1.71.0.0 (`261766ad`), which `cekCostModelForVariant` reads
+  * (`PlutusCore/Evaluation/Machine/ExBudgetingDefaults.hs:66-159`); variants F and G read D's and
+  * E's (lines 158-159). 1.71.0.0 changes the files of 1.70.0.0 (`507cab8c`) in the values of
+  * `insertCoin`, `unionValue`, `scaleValue` and `unValueData` only, which no shape holds, and adds
+  * `keepPolicies` and `dropPolicies`. The ledger's parameters carry numbers only, so the shape is
+  * the variant's and every coefficient comes from the parameters (`applyParams`,
+  * `CostModelInterface.hs:290-317`): every coefficient of a variant is a parameter of each language
+  * that uses it, so no default value is ever read (`CostModelSuite`). Generated from the vendored
+  * JSON; `CostModelSuite` compares every shape with it and with
   * `fixtures/reference/plutus-costing/cost-shapes.json`.
   */
 object BuiltinShapes:
@@ -30,15 +33,15 @@ object BuiltinShapes:
   private def fun[M[_]](cpu: M[Unit], memory: M[Unit]): CostingFun[M, Unit] =
     CostingFun(cpu, memory)
 
-  /** The shapes of `variant`; 1.70.0.0 has none for F and G, which are 1.71.0.0's. */
-  def of(variant: SemanticsVariant): Option[BuiltinCostModel[Unit]] = variant match
-    case SemanticsVariant.A => Some(A)
-    case SemanticsVariant.B => Some(B)
-    case SemanticsVariant.C => Some(C)
-    case SemanticsVariant.D => Some(D)
-    case SemanticsVariant.E => Some(E)
-    case SemanticsVariant.F => None
-    case SemanticsVariant.G => None
+  /** The shapes of `variant`: F has D's and G has E's (`cekCostModelForVariant`,
+    * `ExBudgetingDefaults.hs:158-159`, plutus 1.71.0.0).
+    */
+  def of(variant: SemanticsVariant): BuiltinCostModel[Unit] = variant match
+    case SemanticsVariant.A                      => A
+    case SemanticsVariant.B                      => B
+    case SemanticsVariant.C                      => C
+    case SemanticsVariant.D | SemanticsVariant.F => D
+    case SemanticsVariant.E | SemanticsVariant.G => E
 
   /** `builtinCostModelA.json`. */
   val A: BuiltinCostModel[Unit] = BuiltinCostModel(
@@ -150,7 +153,9 @@ object BuiltinShapes:
     scaleValue = fun(Two.LinearInY(linear), Two.LinearInY(linear)),
     multiIndexArray = fun(Two.QuadraticInY(quadratic), Two.LinearInY(linear)),
     assetCount = fun(One.ConstantCost(()), One.ConstantCost(())),
-    policies = fun(One.LinearInX(linear), One.LinearInX(linear))
+    policies = fun(One.LinearInX(linear), One.LinearInX(linear)),
+    keepPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear)),
+    dropPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear))
   )
 
   /** `builtinCostModelB.json`. */
@@ -263,7 +268,9 @@ object BuiltinShapes:
     scaleValue = fun(Two.LinearInY(linear), Two.LinearInY(linear)),
     multiIndexArray = fun(Two.QuadraticInY(quadratic), Two.LinearInY(linear)),
     assetCount = fun(One.ConstantCost(()), One.ConstantCost(())),
-    policies = fun(One.LinearInX(linear), One.LinearInX(linear))
+    policies = fun(One.LinearInX(linear), One.LinearInX(linear)),
+    keepPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear)),
+    dropPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear))
   )
 
   /** `builtinCostModelC.json`. */
@@ -380,7 +387,9 @@ object BuiltinShapes:
     scaleValue = fun(Two.LinearInY(linear), Two.LinearInY(linear)),
     multiIndexArray = fun(Two.QuadraticInY(quadratic), Two.LinearInY(linear)),
     assetCount = fun(One.ConstantCost(()), One.ConstantCost(())),
-    policies = fun(One.LinearInX(linear), One.LinearInX(linear))
+    policies = fun(One.LinearInX(linear), One.LinearInX(linear)),
+    keepPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear)),
+    dropPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear))
   )
 
   /** `builtinCostModelD.json`. */
@@ -495,7 +504,9 @@ object BuiltinShapes:
     scaleValue = fun(Two.LinearInY(linear), Two.LinearInY(linear)),
     multiIndexArray = fun(Two.QuadraticInY(quadratic), Two.LinearInY(linear)),
     assetCount = fun(One.ConstantCost(()), One.ConstantCost(())),
-    policies = fun(One.LinearInX(linear), One.LinearInX(linear))
+    policies = fun(One.LinearInX(linear), One.LinearInX(linear)),
+    keepPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear)),
+    dropPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear))
   )
 
   /** `builtinCostModelE.json`. */
@@ -612,5 +623,7 @@ object BuiltinShapes:
     scaleValue = fun(Two.LinearInY(linear), Two.LinearInY(linear)),
     multiIndexArray = fun(Two.QuadraticInY(quadratic), Two.LinearInY(linear)),
     assetCount = fun(One.ConstantCost(()), One.ConstantCost(())),
-    policies = fun(One.LinearInX(linear), One.LinearInX(linear))
+    policies = fun(One.LinearInX(linear), One.LinearInX(linear)),
+    keepPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear)),
+    dropPolicies = fun(Two.MultipliedSizes(linear), Two.MultipliedSizes(linear))
   )

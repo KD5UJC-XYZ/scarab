@@ -19,10 +19,11 @@ enum CostModelApplyWarn:
   case TooFewParameters(expected: Int, actual: Int)
 
 /** Why a cost-model list does not make an evaluation context. None of these depends on the values
-  * of the list, only on the parameter names and the shapes of the variants, and at 1.70.0.0 none
-  * occurs (`CostModelSuite`): the reference refuses no list of `Int64` values of any length
+  * of the list, only on the parameter names and the shapes of the variants, and none occurs
+  * (`CostModelSuite`): the reference refuses no list of `Int64` values of any length
   * (`tagWithParamNames` never fails, `ParamName.hs:86-112`, and `applyParams` parses every
-  * coefficient back as any `Int64`, `CostModelInterface.hs:290-317`).
+  * coefficient back as any `Int64`, `CostModelInterface.hs:290-317`, plutus 1.70.0.0 and 1.71.0.0
+  * alike).
   */
 enum CostModelApplyError:
   /** A parameter name that the variant's model has no coefficient for: the reference's
@@ -35,9 +36,6 @@ enum CostModelApplyError:
     * shapes of the default models but not their values, since every coefficient is a parameter.
     */
   case UnsuppliedParameter(name: String)
-
-  /** A variant that 1.70.0.0 defines no cost model for (F and G are 1.71.0.0's). */
-  case NoModel(variant: SemanticsVariant)
 
 /** The cost model of one variant once the ledger's parameters are applied: the machine's costs and
   * the builtins' costing functions (the reference's `CostModel CekMachineCosts BuiltinCostModel`,
@@ -56,13 +54,13 @@ final case class VariantCosts(
 )
 
 /** The costing part of a language's evaluation context (`EvaluationContext`,
-  * `PlutusLedgerApi/Common/Eval.hs:175-195`, plutus 1.70.0.0): the costs of every variant the
+  * `PlutusLedgerApi/Common/Eval.hs:177-195`, plutus 1.71.0.0): the costs of every variant the
   * language evaluates under, built once from the ledger's cost-model list and looked up by protocol
   * version.
   */
 final case class EvaluationContext(language: PlutusLanguage, variants: Vector[VariantCosts]):
 
-  /** The costs at `protocol` (`toMachineParameters`, `Common/Eval.hs:132-139`, plutus 1.70.0.0).
+  /** The costs at `protocol` (`toMachineParameters`, `Common/Eval.hs:133-141`, plutus 1.71.0.0).
     * The reference stops with an internal error when the variant of `protocol` has none; that
     * cannot happen, as [[SemanticsVariant.of]] gives a variant of [[SemanticsVariant.ofContext]].
     */
@@ -72,13 +70,12 @@ final case class EvaluationContext(language: PlutusLanguage, variants: Vector[Va
 
 object EvaluationContext:
 
-  /** The parameter names of the language whose evaluation context a script of `language` uses: a
-    * PlutusV4 script is evaluated with PlutusV3's ([[PlutusLanguage.evaluatedAs]]).
+  /** The parameter names of the language whose evaluation context a script of `language` uses, at
+    * plutus 1.71.0.0 ([[ParamNames.evaluation]]): a PlutusV4 script is evaluated with PlutusV3's
+    * ([[PlutusLanguage.evaluatedAs]]).
     */
-  def parameterNames(language: PlutusLanguage): Vector[String] = language.evaluatedAs match
-    case PlutusLanguage.V1                     => ParamNames.v1
-    case PlutusLanguage.V2                     => ParamNames.v2
-    case PlutusLanguage.V3 | PlutusLanguage.V4 => ParamNames.v3
+  def parameterNames(language: PlutusLanguage): Vector[String] =
+    ParamNames.evaluation(language.evaluatedAs)
 
   /** `tagWithParamNames` (`PlutusLedgerApi/Common/ParamName.hs:86-112`, plutus 1.70.0.0): the
     * values paired with the names in order; the values beyond the last name are dropped, and a name
@@ -97,8 +94,8 @@ object EvaluationContext:
     (warning, names.zip(values.padTo(expected, Long.MaxValue)).toMap)
 
   /** The evaluation context of `language` from the ledger's list (`mkEvaluationContext`,
-    * `PlutusLedgerApi/V1/EvaluationContext.hs:40-58`, V2 the same, `V3/EvaluationContext.hs:37-54`;
-    * `mkDynEvaluationContext`, `Common/Eval.hs:209-219`, plutus 1.70.0.0): the list tagged with the
+    * `PlutusLedgerApi/V1/EvaluationContext.hs:41-64`, V2 the same, `V3/EvaluationContext.hs:38-58`;
+    * `mkDynEvaluationContext`, `Common/Eval.hs:209-219`, plutus 1.71.0.0): the list tagged with the
     * names, then the model of every variant of the context made from the same parameters, in the
     * order of the variants, the first failure winning (`mkMachineVariantParametersFor`,
     * `MachineParameters/Default.hs:66-78`).
@@ -138,16 +135,20 @@ object EvaluationContext:
   ): Either[CostModelApplyError, VariantCosts] =
     val (machineParameters, builtinParameters) =
       parameters.partition((name, _) => name.startsWith(CekMachineCosts.Prefix))
+    val shapes = BuiltinShapes.of(variant)
     for
-      shapes <- BuiltinShapes.of(variant).toRight(CostModelApplyError.NoModel(variant))
       machine <- fill(machineParameters, CekMachineCosts.shape.leaves.map(_._1)) { lookup =>
         CekMachineCosts.shape.traverse((name, _) => lookup(name))
       }
       builtins <- fill(builtinParameters, shapes.leaves.map(_._1)) { lookup =>
         shapes.traverse((name, _) => lookup(name))
       }
-      costing <- BuiltinCosting.of(variant, builtins).toRight(CostModelApplyError.NoModel(variant))
-    yield VariantCosts(variant, CostModel(machine, builtins), machine.machineCosts, costing)
+    yield VariantCosts(
+      variant,
+      CostModel(machine, builtins),
+      machine.machineCosts,
+      BuiltinCosting.of(variant, builtins)
+    )
 
   private def fill[A](parameters: Map[String, Long], coefficients: Vector[String])(
       build: (String => Either[CostModelApplyError, SatInt]) => Either[CostModelApplyError, A]

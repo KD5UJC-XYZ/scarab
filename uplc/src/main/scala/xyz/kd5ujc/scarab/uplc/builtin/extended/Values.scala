@@ -3,11 +3,13 @@ package xyz.kd5ujc.scarab.uplc.builtin.extended
 
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.uplc.{PlutusData, Value}
+import xyz.kd5ujc.scarab.uplc.{DefaultFun, PlutusData, Value}
 import xyz.kd5ujc.scarab.uplc.Value.{Key, Quantity}
 
 /** The `Value` builtins of plutus 1.70.0.0 (`507cab8c`), `PlutusCore/Value.hs` (cited by line),
-  * over [[Value]]. The reference keeps three cached figures with a value and updates them as it
+  * over [[Value]], with the policy filters of 1.71.0.0 (`261766ad`). 1.71.0.0 caches one more
+  * figure with a value (the negative amounts of each currency, `Value.hs:184-208` there), which
+  * changes no result. The reference keeps three cached figures with a value and updates them as it
   * goes; [[Value]] computes them from the entries, so every result here is built through
   * [[Value.pack]] or [[Value.buildWith]].
   */
@@ -147,18 +149,37 @@ object Values:
     */
   private def currencies(ids: Vector[Bytes]): Set[Key] = ids.flatMap(Key(_)).toSet
 
-  /** `keepPolicies` (`Value.hs:425-436`, plutus 1.70.0.0): the value restricted to the currencies
-    * `ids` name.
+  /** `policyFilterMaxSize` (`Value.hs:466-469`, plutus 1.71.0.0 `261766ad`): the most currencies
+    * `keepPolicies` and `dropPolicies` accept in their value.
     */
-  def keepPolicies(ids: Vector[Bytes], value: Value): Value =
-    val kept = currencies(ids)
-    Value.pack(value.entries.filter((c, _) => kept.contains(c)))
+  val PolicyFilterMaxSize: Int = 8191
 
-  /** `dropPolicies` (`Value.hs:437-467`, plutus 1.70.0.0): the value without the currencies `ids`
-    * name.
+  /** The value, unless it has more than [[PolicyFilterMaxSize]] currencies, which `function`
+    * refuses (`policyFilterOverflow`, `Value.hs:471-475`, plutus 1.71.0.0) before it reads `ids`.
     */
-  def dropPolicies(ids: Vector[Bytes], value: Value): Value =
-    Value.pack(value.entries -- currencies(ids))
+  private def filterable(function: DefaultFun, value: Value): Either[ValueFailure, Value] =
+    Either.cond(
+      value.entries.sizeIs <= PolicyFilterMaxSize,
+      value,
+      ValueFailure.TooManyPolicies(function)
+    )
+
+  /** `keepPolicies` (`Value.hs:477-493`, plutus 1.71.0.0): the value restricted to the currencies
+    * `ids` name, refused for a value of more than [[PolicyFilterMaxSize]] currencies. 1.70.0.0
+    * (`Value.hs:425-436` at `507cab8c`) has no such limit; it keeps the same currencies.
+    */
+  def keepPolicies(ids: Vector[Bytes], value: Value): Either[ValueFailure, Value] =
+    filterable(DefaultFun.KeepPolicies, value).map { v =>
+      val kept = currencies(ids)
+      Value.pack(v.entries.filter((c, _) => kept.contains(c)))
+    }
+
+  /** `dropPolicies` (`Value.hs:495-503`, plutus 1.71.0.0): the value without the currencies `ids`
+    * name, refused for a value of more than [[PolicyFilterMaxSize]] currencies, which 1.70.0.0
+    * (`Value.hs:437-467` at `507cab8c`) does not refuse.
+    */
+  def dropPolicies(ids: Vector[Bytes], value: Value): Either[ValueFailure, Value] =
+    filterable(DefaultFun.DropPolicies, value).map(v => Value.pack(v.entries -- currencies(ids)))
 
   /** `scaleValue` (`Value.hs:604-628`, plutus 1.70.0.0): every quantity times `factor`, the empty
     * value for 0, the first product out of bounds in key order failing.

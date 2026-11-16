@@ -408,12 +408,11 @@
     {
       "module": "uplc",
       "path": "uplc/builtin/core",
-      "responsibility": "The unlifting of every builtin under variants A to E with each variant's bounds, and the denotations of the core builtins (integers, byte strings, strings, Bool, unit, trace, pairs, lists, Data and its CBOR serialisation)",
+      "responsibility": "The unlifting of every builtin under variants A to G with each variant's bounds, and the denotations of the core builtins (integers, byte strings, strings, Bool, unit, trace, pairs, lists, Data and its CBOR serialisation)",
       "entryPoints": [
         "CoreUnlifting",
         "CoreDenotations",
         "CoreVariant",
-        "UnsupportedVariant",
         "DataSerialisation"
       ],
       "suites": [
@@ -538,7 +537,7 @@
     {
       "module": "uplc",
       "path": "uplc/ledger",
-      "responsibility": "The ledger's evaluation of a script: mkTermToEvaluate (the arguments, the program's version, the scope check), the evaluation context of machines per variant, evaluateScriptRestricting and evaluateScriptCounting with the V3 unit rule, the per-language entry points, and no verdict for protocol 12 and later or for a defect of this evaluator",
+      "responsibility": "The ledger's evaluation of a script: mkTermToEvaluate (the arguments, the program's version, the scope check), the evaluation context of machines per variant, evaluateScriptRestricting and evaluateScriptCounting with the V3 unit rule, the per-language entry points (PlutusV4 evaluated as PlutusV3), total in the protocol version, and no verdict for a defect of this evaluator",
       "entryPoints": [
         "LedgerEval",
         "PlutusV1",

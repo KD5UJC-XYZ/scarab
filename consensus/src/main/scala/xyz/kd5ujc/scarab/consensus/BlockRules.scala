@@ -100,10 +100,9 @@ enum BlockNoVerdict:
                     LibraryDefect.DetachedMlResult
                   ) =>
                 Deterministic
-              // protocol 12 and later, and a cost model, variant, machine, denotation or arity
-              // this build lacks: the same until a restart
-              case Unavailability.UnsupportedProtocol(_) | Unavailability.CostModel(_) |
-                  Unavailability.Variant(_) | Unavailability.NoMachine(_, _) |
+              // a cost model, machine, denotation or arity this build lacks: the same until a
+              // restart
+              case Unavailability.CostModel(_) | Unavailability.NoMachine(_, _) |
                   Unavailability.NoDenotation(_, _) | Unavailability.BuiltinArity(_, _, _) =>
                 Deterministic
       case Verification(_) => Passing

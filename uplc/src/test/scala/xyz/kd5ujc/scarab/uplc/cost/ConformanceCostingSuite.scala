@@ -7,15 +7,19 @@ import xyz.kd5ujc.scarab.uplc.ReferenceCorpus.Expected
 import xyz.kd5ujc.scarab.uplc.builtin.{Argument, MachineValue}
 import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
-/** The costs of variant E against every budget the Haskell evaluator wrote for an upstream
-  * `builtin/semantics` program of plutus 1.70.0.0 that is one saturated application of a builtin to
+/** The costs of a release runner's variant (E for plutus 1.70.0.0, G for 1.71.0.0, each with its
+  * release's default parameters) against every budget the Haskell evaluator wrote for an upstream
+  * `builtin/semantics` program of the release that is one saturated application of a builtin to
   * constants, whatever the builtin, its denotation implemented or not: the program's budget is the
   * machine's start-up, one step per node (an apply per argument, a force per type argument, the
   * builtin, a constant per argument) and the builtin's cost, added with saturation. The machine
   * checks every program whose builtins have denotations ([[CekConformanceSuite]]); this suite
   * checks the costing of the others too.
   */
-final class ConformanceCostingSuite extends munit.FunSuite:
+abstract class ConformanceCostingGate(tag: String, defaults: => VariantCosts)
+    extends munit.FunSuite:
+  private lazy val costs: VariantCosts = defaults
+
   private given MachineValue[Constant] with
     def constantOf(value: Constant): Option[Constant] = Some(value)
     def ofConstant(constant: Constant): Constant = constant
@@ -42,12 +46,12 @@ final class ConformanceCostingSuite extends munit.FunSuite:
     )
 
   test(
-    "every single application of the upstream semantics programs costs what the Haskell budget says"
+    s"plutus $tag: every single application of the upstream semantics programs costs what the " +
+      "Haskell budget says"
   ) {
-    val costs = DefaultCostModels.costs(SemanticsVariant.E)
     val machine = costs.machineCosts
     val cases = ReferenceCorpus
-      .conformance(ReferenceCorpus.Pinned)
+      .conformance(tag)
       .fold(p => fail(p.toString), identity)
       .filter(_.name.startsWith("builtin/semantics/"))
     val checked = cases.flatMap { c =>
@@ -72,10 +76,22 @@ final class ConformanceCostingSuite extends munit.FunSuite:
     assertEquals(disagreements, Vector.empty[String])
     val builtins = checked.map(_._2).distinct
     println(
-      s"ConformanceCostingSuite: ${checked.size} single applications of ${builtins.size} builtins " +
+      s"ConformanceCostingSuite $tag: ${checked.size} single applications of ${builtins.size} builtins " +
         s"costed as the reference's budgets, of ${cases.size} builtin/semantics cases"
     )
     // The coverage this suite claims, bounded below so that a narrower selection shows.
     assert(checked.size >= 423, s"only ${checked.size} programs checked")
     assert(builtins.size >= 72, s"only ${builtins.size} builtins checked")
   }
+
+final class ConformanceCostingSuite
+    extends ConformanceCostingGate(
+      ReferenceCorpus.Plutus170,
+      DefaultCostModels.Plutus170.costs(SemanticsVariant.E)
+    )
+
+final class ConformanceCosting171Suite
+    extends ConformanceCostingGate(
+      ReferenceCorpus.Plutus171,
+      DefaultCostModels.costs(SemanticsVariant.G)
+    )

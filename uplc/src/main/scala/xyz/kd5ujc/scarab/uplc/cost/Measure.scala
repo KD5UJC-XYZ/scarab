@@ -77,6 +77,14 @@ object Measure:
     single(v.entries.size.toLong)
   }
 
+  /** `ValueOuterDepth` of plutus 1.71.0.0 (`261766ad`, `ExMemoryUsage.hs:434-452` there), the
+    * measure of the `Value` of `keepPolicies` and `dropPolicies`: `integerLog2 m + 1` for `m`
+    * currencies, and 1, not 0, for none.
+    */
+  val outerDepth: Measure = refining("ValueOuterDepth") { case Constant.Value(v) =>
+    single(if v.entries.isEmpty then 1L else depth(v.entries.size))
+  }
+
   /** `ValueMaxDepth` (lines 452-462): the sum of `integerLog2 n + 1` (0 for 0) over the number of
     * currencies and the size of the largest inner map.
     */

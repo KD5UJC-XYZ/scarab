@@ -15,7 +15,6 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.plutus.{BackendFailure, EvalFailure, ExUnits}
-import xyz.kd5ujc.scarab.uplc.ProtocolMajor
 import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
 import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -92,9 +91,6 @@ class NoVerdictBlocksSuite extends FunSuite:
             LibraryDefect.DetachedMlResult
           )
         )
-      ) -> Deterministic,
-      evaluation(
-        BackendFailure.Uplc(Unavailability.UnsupportedProtocol(ProtocolMajor.Dijkstra))
       ) -> Deterministic,
       evaluation(
         BackendFailure.Uplc(

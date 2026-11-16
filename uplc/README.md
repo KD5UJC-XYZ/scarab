@@ -1,8 +1,11 @@
 # uplc: the core model of Scarab's own evaluator
 
 Scarab's Plutus evaluator, the node's only one ([ADR 0027](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) and its [amendment of 2026-11-15](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)).
-This file records the core model the decoder, parser, machine, builtins and costing build on. Every type
-transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstream file and line.
+This file records the core model the decoder, parser, machine, builtins and costing build on. The evaluator
+implements plutus 1.71.0.0 (`261766ad`) at every protocol version, which below protocol 12 gives the verdicts of
+1.70.0.0 (`507cab8c`, the release the model was first transcribed from); the Scaladoc of each type cites the
+upstream file and line at the pin it names. What 1.71.0.0 changes, and where it reaches, is tabulated in
+[Plutus at protocol 12](../docs/compatibility/plutus-v4-dijkstra.md).
 
 ## The model
 
@@ -17,7 +20,7 @@ transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstrea
 | `Signature` | the `TypeScheme` of `makeBuiltinMeaning` | forces first; `Parameter.Opaque` (any value) or `Parameter.Constant` (monomorphic, or `SomeConstant` when it has variables) |
 | `TermF[+R]`, `Term = Fix[TermF]`, `Program` | `UntypedPlutusCore/Core/Type.hs` | de Bruijn only; `Traverse` visits subterms in Flat order |
 | `Word64`, `DeBruijn`, `ProgramVersion`, `ProtocolMajor` | `Word64`, `DeBruijn`, `Version`, `MajorProtocolVersion` | `ProgramVersion` components are unbounded naturals |
-| `SemanticsVariant` | `BuiltinSemanticsVariant DefaultFun` | `of(language, protocol)` and `ofContext(language)` from the V1 to V3 evaluation contexts |
+| `SemanticsVariant` | `BuiltinSemanticsVariant DefaultFun` | A to G; `of(language, protocol)` and `ofContext(language)` from the V1 to V3 evaluation contexts of 1.71.0.0 (F and G from protocol 12) |
 | `Availability` | `Common/Versions.hs`, `SerialisedScript.hs` | batches, program versions, `maxBounds`, and the decoder's refusals as `Refusal` |
 | `Schemes` | | `cata`, `ana`, `hylo`, `cataM`, `anaM`, all from one `tailRecM` machine, `hyloM` |
 
@@ -35,20 +38,24 @@ transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstrea
 - **Signatures at universe level.** The Haskell types that refine an argument for one variant
   (`Int`, `Word8`, `CInteger`, `TextCostedByByteLength`, `ValueTotalSize`, ...) bound unlifting or
   choose a costing measure. They are left to the builtins and the costing, since no variant of
-  1.70.0.0 changes a scheme. Whether a builtin can fail is also per variant and is not recorded.
-- **Two version gates.** The Flat decoder admits `constr` and `case` at `version >= 1.1.0`
+  1.70.0.0 or 1.71.0.0 changes a scheme. Whether a builtin can fail is also per variant and is not
+  recorded.
+- **Three version gates.** The Flat decoder admits `constr` and `case` at `version >= 1.1.0`
   (`ProgramVersion.allowsConstrAndCase`). The ledger requires the version to be in a set
-  (`Availability.programVersions`). Both are exposed.
+  (`Availability.programVersions`; 1.2.0 joins every language at protocol 12). From protocol 12 the
+  caser allows `case` on `Data` in a program of 1.2.0 or later only (`CaserBuiltin.forProtocol`, which
+  takes the program's version as 1.71.0.0's `defaultCaserBuiltinFor` does). All three are exposed.
 - **Language of evaluation.** `Availability.builtins`, `programVersions` and `SemanticsVariant.of`
-  take the script's language and use `PlutusLanguage.evaluatedAs`, because the node of 1.70.0.0
+  take the script's language and use `PlutusLanguage.evaluatedAs`, because cardano-ledger 9df9f98c
   decodes and evaluates V4 through plutus's V3 functions. Plutus's own V4 rows are transcribed and
   equal V3's from protocol 12. `languageIntroducedIn(V4)` is 12.
-- **Variants F and G** are modelled because they exist in 1.71.0.0, but plutus 1.71 and protocol 12
-  and later are out of scope ([ADR 0027](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)):
-  the backend refuses protocol 12 and later. `SemanticsVariant.of` and `Availability` transcribe the
-  reference's lookups for every protocol version a `ProtocolMajor` holds (a JVM `Int`, narrower than
-  the reference's; `futurePV` is never reached) (at 1.70.0.0, `of` returns D or E at protocol 12 and
-  later); admission is the backend's. `DefaultFun` and its tags are the same in both releases.
+- **Variants F and G** are 1.71.0.0's, for protocol 12 ([ADR 0027, amendment of 2026-11-15](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-plutus-17100-and-protocol-12)).
+  `CoreVariant` tells the variants apart by 1.71.0.0's two predicates, `ensurableInteger` (D, E) and
+  `ensurableByteString` (D to G), which split 1.70.0.0's `ensurable`; F and G have D's and E's cost
+  models. `SemanticsVariant.of` and `Availability` transcribe the reference's lookups for every
+  protocol version a `ProtocolMajor` holds (a JVM `Int`, narrower than the reference's; `futurePV` is
+  never reached), and the evaluation is total in the protocol version: from 12 on it is that of 12.
+  `DefaultFun` and its tags are the same in both releases.
 - **Not here.** The universe's Flat tags and the kinded form of a type (the decoder), names and
   alpha-equality (the parser), the caser builtins (the machine), and unlifting bounds (the builtins).
 
@@ -81,6 +88,11 @@ Packages `cost` and `builtin` (the lead's, frozen with the model):
   release are `serialiseData` and batch 7 (`multiIndexArray`, `policies`, `assetCount`,
   `keepPolicies`, `dropPolicies`).
 - In 1.70.0.0 the cost models have no entries for `keepPolicies` and `dropPolicies`, which use
-  `unimplementedCostingFun`.
+  `unimplementedCostingFun`; 1.71.0.0 gives them `multiplied_sizes` models in every variant, with
+  eight more cost-model parameter names in every language (`ParamNames.evaluation`), and refuses a
+  value of more than 8,191 currencies.
+- Run in the upstream executable's profile of each release, the conformance corpus of 1.70.0.0 (variant
+  E, `case` on `Data` allowed) and of 1.71.0.0 (variant G, the caser of protocol 12 for the program's
+  version) both pass whole (`CekConformance.Plutus170` and `Plutus171`).
 - The tests read `plutus-reference` from `plutus`'s test resources without depending on `plutus`
   (`build.sbt`). `ReferenceCorpus` repeats the view rule of `PlutusReference`.

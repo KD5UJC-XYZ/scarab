@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.uplc.cek
 import cats.Eval
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, SemanticsVariant, Signature, Text}
 import xyz.kd5ujc.scarab.uplc.builtin.*
-import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreDenotations, CoreUnlifting, UnsupportedVariant}
+import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreDenotations, CoreUnlifting}
 import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, MachineCosts}
 
 /** A handful of builtins with simple denotations and fixed costs, for testing the machine before
@@ -126,11 +126,14 @@ object StubBuiltins:
   /** The core builtins (`builtin.core`: their unlifting and denotations) of `variant`, costed by
     * [[costing]] until the cost model is in; a builtin outside the core keeps its stub meaning.
     */
-  def core(variant: SemanticsVariant): Either[UnsupportedVariant, Builtins] =
-    for
-      coreUnlifting <- CoreUnlifting.of(variant)
-      meanings <- CoreDenotations.of(variant)
-    yield Builtins(variant, coreUnlifting, f => meanings.getOrElse(f, denotations(f)), costing)
+  def core(variant: SemanticsVariant): Builtins =
+    val meanings = CoreDenotations.of(variant)
+    Builtins(
+      variant,
+      CoreUnlifting.of(variant),
+      f => meanings.getOrElse(f, denotations(f)),
+      costing
+    )
 
   /** The stub builtins with `function` costing `stream`, built afresh for each application. */
   def withCost(function: DefaultFun, stream: () => CostStream): Builtins =

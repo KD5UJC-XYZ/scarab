@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.uplc.{
   Constant,
   DefaultFun,
   DefaultUni,
+  ParamNames,
   PlutusLanguage,
   Program,
   ProtocolMajor,
@@ -127,23 +128,40 @@ final class CostingOracleSuite extends munit.FunSuite:
       val variant = SemanticsVariant.of(language, protocol)
       assertEquals(
         values,
-        DefaultCostModels.list(language, variant).map(_ * scale),
+        DefaultCostModels.Plutus170.list(language, variant).map(_ * scale),
         s"$language $protocol x$scale"
       )
       val (warnings, context) = EvaluationContext.build(language, values)
-      assertEquals(warnings, Vector.empty, s"$language $protocol x$scale")
+      // a list of 1.70.0.0's length is short of 1.71.0.0's names by the policy filters' eight
+      assertEquals(
+        warnings,
+        Vector(
+          CostModelApplyWarn.TooFewParameters(
+            EvaluationContext.parameterNames(language).size,
+            values.size
+          )
+        ),
+        s"$language $protocol x$scale"
+      )
+      assertEquals(
+        EvaluationContext.parameterNames(language).size - values.size,
+        ParamNames.policyFilters.size
+      )
       val costs = context
         .fold(e => fail(e.toString), identity)
         .at(protocol)
         .getOrElse(fail(s"no costs at $protocol"))
       assertEquals(costs.variant, variant)
+      val (filters, others) = (costs.model.machine.leaves ++ costs.model.builtins.leaves)
+        .map((n, v) => n -> v.toLong)
+        .toMap
+        .partition((n, _) => ParamNames.policyFilters.contains(n))
       assertEquals(
-        (costs.model.machine.leaves ++ costs.model.builtins.leaves)
-          .map((n, v) => n -> v.toLong)
-          .toMap,
-        DefaultCostModels.parameters(variant).map((n, v) => n -> v * scale),
+        others,
+        DefaultCostModels.Plutus170.parameters(variant).map((n, v) => n -> v * scale),
         s"$language $protocol x$scale"
       )
+      assertEquals(filters, ParamNames.policyFilters.map(_ -> Long.MaxValue).toMap)
     }
   }
 
@@ -191,7 +209,7 @@ final class CostingOracleSuite extends munit.FunSuite:
   /** The upstream programs of the oracle by script index, read from the 1.70.0.0 view's text. */
   private lazy val upstream: Vector[(Int, Program)] =
     val programs = ReferenceCorpus
-      .conformance(ReferenceCorpus.Pinned)
+      .conformance(ReferenceCorpus.Plutus170)
       .fold(p => fail(p.toString), identity)
       .map(c => c.name -> c.program)
       .toMap
@@ -336,7 +354,10 @@ final class CostingOracleSuite extends munit.FunSuite:
               case (Some(values), _)  => values
               case (None, Some(fill)) => Vector.fill(field[Int](model, "length"))(fill)
               case (None, None) =>
-                (DefaultCostModels.list(language, SemanticsVariant.of(language, protocol)) ++
+                (DefaultCostModels.Plutus170.list(
+                  language,
+                  SemanticsVariant.of(language, protocol)
+                ) ++
                   Vector.fill(60)(7L)).take(field[Int](model, "length"))
           val costs = EvaluationContext
             .build(language, values)
@@ -524,7 +545,10 @@ object CostingOracleReplay:
             case (Some(values), _)  => values
             case (None, Some(fill)) => Vector.fill(field[Int](model, "length"))(fill)
             case (None, None) =>
-              (DefaultCostModels.list(language, SemanticsVariant.of(language, protocol)) ++ Vector
+              (DefaultCostModels.Plutus170.list(
+                language,
+                SemanticsVariant.of(language, protocol)
+              ) ++ Vector
                 .fill(60)(7L))
                 .take(field[Int](model, "length"))
         val script =

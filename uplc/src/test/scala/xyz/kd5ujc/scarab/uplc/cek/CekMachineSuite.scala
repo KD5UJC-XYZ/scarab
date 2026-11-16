@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.uplc.{
   DefaultFun,
   DefaultUni,
   PlutusData,
+  ProgramVersion,
   ProtocolMajor,
   Signature,
   Term,
@@ -283,7 +284,7 @@ final class CekMachineSuite extends munit.FunSuite:
   test("case on a constant goes to the caser, which refuses every constant before protocol 11") {
     val before = StubBuiltins.parameters(
       StubBuiltins.distinctCosts,
-      CaserBuiltin.forProtocol(ProtocolMajor(10))
+      CaserBuiltin.forProtocol(ProtocolMajor(10), ProgramVersion.V1_1_0)
     )
     val refused = counting(caseOf(int(0), int(10)), before)
     assertEquals(
@@ -291,8 +292,21 @@ final class CekMachineSuite extends munit.FunSuite:
       CekError.CaseBuiltin(CaseBuiltinError.Unavailable(ProtocolMajor(10)))
     )
     assertEquals(errorOf(refused).errorClass, ErrorClass.Operational)
-    assertEquals(CaserBuiltin.forProtocol(ProtocolMajor(11)), CaserBuiltin.WithoutData)
-    assertEquals(CaserBuiltin.forProtocol(ProtocolMajor(12)), CaserBuiltin.WithData)
+    assertEquals(
+      CaserBuiltin.forProtocol(ProtocolMajor(11), ProgramVersion.V1_2_0),
+      CaserBuiltin.WithoutData
+    )
+    // plutus 1.71.0.0 (`Eval.hs:143-148`): `Data` from protocol 12 in a program of 1.2.0 or later
+    for
+      protocol <- Vector(12, 13, 40)
+      (version, caser) <- Vector(
+        ProgramVersion.V1_0_0 -> CaserBuiltin.WithoutData,
+        ProgramVersion.V1_1_0 -> CaserBuiltin.WithoutData,
+        ProgramVersion.V1_2_0 -> CaserBuiltin.WithData,
+        ProgramVersion.of(1, 1, 9).getOrElse(fail("1.1.9")) -> CaserBuiltin.WithoutData,
+        ProgramVersion.of(2, 0, 0).getOrElse(fail("2.0.0")) -> CaserBuiltin.WithData
+      )
+    do assertEquals(CaserBuiltin.forProtocol(ProtocolMajor(protocol), version), caser)
   }
 
   test("the caser selects by integer, bool, unit, list and pair") {

@@ -42,12 +42,10 @@ final class CostingWithUnliftingSuite extends munit.FunSuite:
     )
     EvaluationContext
       .costsOf(variant, parameters)
-      .toOption
-      .flatMap(costs => BuiltinCosting.of(variant, costs.model.builtins))
+      .map(costs => BuiltinCosting.of(variant, costs.model.builtins))
       .getOrElse(fail(s"no costing for $variant"))
 
-  private def core(variant: SemanticsVariant): CoreVariant =
-    CoreVariant.of(variant).fold(e => fail(e.toString), identity)
+  private def core(variant: SemanticsVariant): CoreVariant = CoreVariant.of(variant)
 
   private val oneLike: Set[UnliftingBound] =
     Set(UnliftingBound.Int, UnliftingBound.Word8, UnliftingBound.Word64)

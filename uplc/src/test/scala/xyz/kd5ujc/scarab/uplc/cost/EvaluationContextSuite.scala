@@ -26,10 +26,10 @@ final class EvaluationContextSuite extends munit.FunSuite:
     (costs.model.machine.leaves ++ costs.model.builtins.leaves).map((n, v) => n -> v.toLong).toMap
 
   test("a list of every length is used: the missing names get maxBound, extra values are dropped") {
-    // Lengths below, at and above each language's 343 or 361 names, those of the genesis fixture
-    // (`evaluation-models.jsonl`) among them.
-    val lengths = Vector(0, 1, 100, 166, 175, 185, 233, 251, 297, 300, 302, 342, 343, 344, 360, 361,
-      362, 400, 411)
+    // Lengths below, at and above each language's 351 or 369 names (1.71.0.0; 343 or 361 at
+    // 1.70.0.0), those of the genesis fixture (`evaluation-models.jsonl`) among them.
+    val lengths = Vector(0, 1, 100, 166, 175, 185, 233, 251, 297, 300, 302, 342, 343, 344, 350, 351,
+      352, 360, 361, 362, 368, 369, 370, 400, 411)
     languages.foreach { language =>
       val names = EvaluationContext.parameterNames(language)
       lengths.foreach { length =>
@@ -70,10 +70,12 @@ final class EvaluationContextSuite extends munit.FunSuite:
         8 -> "A",
         9 -> "B",
         10 -> "B",
-        11 -> "D"
+        11 -> "D",
+        12 -> "F",
+        13 -> "F"
       ),
-      PlutusLanguage.V2 -> Vector(7 -> "A", 8 -> "A", 9 -> "B", 10 -> "B", 11 -> "D"),
-      PlutusLanguage.V3 -> Vector(9 -> "C", 10 -> "C", 11 -> "E")
+      PlutusLanguage.V2 -> Vector(7 -> "A", 8 -> "A", 9 -> "B", 10 -> "B", 11 -> "D", 12 -> "F"),
+      PlutusLanguage.V3 -> Vector(9 -> "C", 10 -> "C", 11 -> "E", 12 -> "G", 13 -> "G")
     )
     expected.foreach { (language, rows) =>
       val (_, context) =
@@ -91,6 +93,7 @@ final class EvaluationContextSuite extends munit.FunSuite:
       built(PlutusLanguage.V4, DefaultCostModels.list(PlutusLanguage.V3, SemanticsVariant.E))
     assertEquals(v4.language, PlutusLanguage.V3)
     assertEquals(v4.at(ProtocolMajor(11)).map(_.variant), Some(SemanticsVariant.E))
+    assertEquals(v4.at(ProtocolMajor(12)).map(_.variant), Some(SemanticsVariant.G))
   }
 
   private type Built[A] =
@@ -100,7 +103,7 @@ final class EvaluationContextSuite extends munit.FunSuite:
     val result = EvaluationContext.make[Built](PlutusLanguage.V1, Vector.empty).run
     result match
       case Right((warnings, context)) =>
-        assertEquals(warnings, Vector(CostModelApplyWarn.TooFewParameters(343, 0)))
+        assertEquals(warnings, Vector(CostModelApplyWarn.TooFewParameters(351, 0)))
         assertEquals(context.language, PlutusLanguage.V1)
       case Left(error) => fail(error.toString)
   }
@@ -129,10 +132,6 @@ final class EvaluationContextSuite extends munit.FunSuite:
       EvaluationContext.costsOf(SemanticsVariant.A, parameters - "addInteger-cpu-arguments-slope"),
       Left(CostModelApplyError.UnsuppliedParameter("addInteger-cpu-arguments-slope"))
     )
-    assertEquals(
-      EvaluationContext.costsOf(SemanticsVariant.F, parameters),
-      Left(CostModelApplyError.NoModel(SemanticsVariant.F))
-    )
   }
 
   private def rows(path: Path): Vector[Json] =
@@ -141,9 +140,13 @@ final class EvaluationContextSuite extends munit.FunSuite:
   private def languageOf(number: Int): PlutusLanguage =
     PlutusLanguage.values.find(_.id + 1 == number).getOrElse(fail(s"language $number"))
 
+  /** The default list of the fixtures, which plutus 1.70.0.0's names give. */
   private def defaults(number: Int, protocol: Int): Vector[Long] =
     val language = languageOf(number)
-    DefaultCostModels.list(language, SemanticsVariant.of(language, ProtocolMajor(protocol)))
+    DefaultCostModels.Plutus170.list(
+      language,
+      SemanticsVariant.of(language, ProtocolMajor(protocol))
+    )
 
   test(
     "every list of the genesis cost-model fixture makes a context, as the reference's mkCostModel did"

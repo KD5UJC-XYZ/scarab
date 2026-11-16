@@ -5,15 +5,15 @@ import cats.Monad
 import cats.syntax.all.*
 
 /** The costing functions of the builtins, the reference's `BuiltinCostModelBase`
-  * (`PlutusCore/Evaluation/Machine/BuiltinCostModel.hs:82-203`, plutus 1.70.0.0 `507cab8c`), one
-  * field per builtin that has a cost-model entry, in the reference's order and under its JSON name
-  * (the field name less `param`, initial in lower case: `builtinCostModelOptions`, lines 211-215).
-  * `keepPolicies` and `dropPolicies` have none: they are costed by `unimplementedCostingFun`
-  * ([[BuiltinCosting]]).
+  * (`PlutusCore/Evaluation/Machine/BuiltinCostModel.hs:82-205`, plutus 1.71.0.0 `261766ad`), one
+  * field per builtin, in the reference's order and under its JSON name (the field name less
+  * `param`, initial in lower case: `builtinCostModelOptions`, lines 213-217). 1.71.0.0 adds the
+  * last two, `keepPolicies` and `dropPolicies` (lines 204-205), which 1.70.0.0 (`507cab8c`) costs
+  * by `unimplementedCostingFun` instead.
   *
   * The leaf type `A` is `Unit` for the shapes of a semantics variant ([[BuiltinShapes]]) and
   * [[SatInt]] for a model that costs. Generated from the reference's field list; `CostModelSuite`
-  * compares it with the vendored `builtinCostModel*.json` of the 1.70.0.0 view.
+  * compares it with the vendored `builtinCostModel*.json` of the 1.71.0.0 view.
   */
 final case class BuiltinCostModel[A](
     addInteger: CostingFun[TwoArguments, A],
@@ -119,7 +119,9 @@ final case class BuiltinCostModel[A](
     scaleValue: CostingFun[TwoArguments, A],
     multiIndexArray: CostingFun[TwoArguments, A],
     assetCount: CostingFun[OneArgument, A],
-    policies: CostingFun[OneArgument, A]
+    policies: CostingFun[OneArgument, A],
+    keepPolicies: CostingFun[TwoArguments, A],
+    dropPolicies: CostingFun[TwoArguments, A]
 ):
   /** Every coefficient, in field order, made into `B` by `f` with its parameter name; the first
     * failure of `G` wins.
@@ -244,6 +246,8 @@ final case class BuiltinCostModel[A](
       multiIndexArray <- this.multiIndexArray.traverse("multiIndexArray")(f)
       assetCount <- this.assetCount.traverse("assetCount")(f)
       policies <- this.policies.traverse("policies")(f)
+      keepPolicies <- this.keepPolicies.traverse("keepPolicies")(f)
+      dropPolicies <- this.dropPolicies.traverse("dropPolicies")(f)
     yield BuiltinCostModel(
       addInteger,
       subtractInteger,
@@ -348,7 +352,9 @@ final case class BuiltinCostModel[A](
       scaleValue,
       multiIndexArray,
       assetCount,
-      policies
+      policies,
+      keepPolicies,
+      dropPolicies
     )
 
   /** Every coefficient with its parameter name. */
@@ -457,7 +463,9 @@ final case class BuiltinCostModel[A](
       scaleValue.leaves("scaleValue"),
       multiIndexArray.leaves("multiIndexArray"),
       assetCount.leaves("assetCount"),
-      policies.leaves("policies")
+      policies.leaves("policies"),
+      keepPolicies.leaves("keepPolicies"),
+      dropPolicies.leaves("dropPolicies")
     ).flatten
 
   /** Every `"type"` key of the JSON encoding with the shape it names. */
@@ -566,5 +574,7 @@ final case class BuiltinCostModel[A](
       scaleValue.tags("scaleValue"),
       multiIndexArray.tags("multiIndexArray"),
       assetCount.tags("assetCount"),
-      policies.tags("policies")
+      policies.tags("policies"),
+      keepPolicies.tags("keepPolicies"),
+      dropPolicies.tags("dropPolicies")
     ).flatten

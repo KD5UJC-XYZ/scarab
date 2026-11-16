@@ -71,7 +71,7 @@ final class LedgerBoundaryOracleSuite extends munit.FunSuite:
       val where = s"${v.id} at V${v.language}/${v.protocol}"
       val lang = language(v.language)
       val protocol = ProtocolMajor(v.protocol)
-      val model = DefaultCostModels.list(lang, SemanticsVariant.of(lang, protocol))
+      val model = DefaultCostModels.Plutus170.list(lang, SemanticsVariant.of(lang, protocol))
       val modelSha = sha256(
         Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
       )

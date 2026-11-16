@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, UplcText}
 import xyz.kd5ujc.scarab.uplc.{Program, ProgramVersion, ProtocolMajor, Term}
-import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CekError, CekResult, MachineParameters}
+import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CekError, CekResult}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 import xyz.kd5ujc.scarab.uplc.flat.{FlatEncodeError, FlatEncoder}
 import xyz.kd5ujc.scarab.uplc.text.UplcParser
@@ -110,8 +110,7 @@ object OwnBackend extends UplcBackend:
   final case class Context(
       language: PlutusLanguage,
       protocol: ProtocolMajor,
-      ledger: LedgerContext,
-      machine: MachineParameters
+      ledger: LedgerContext
   )
 
   def context(
@@ -119,11 +118,10 @@ object OwnBackend extends UplcBackend:
       protocol: Int,
       costModel: Vector[Long]
   ): Either[Unanswered, Context] =
-    val major = ProtocolMajor(protocol)
-    for
-      ledger <- LedgerContext.make(language, costModel)._2.leftMap(Unanswered.Own(_))
-      machine <- ledger.at(major).leftMap(Unanswered.Own(_))
-    yield Context(language, major, ledger, machine)
+    LedgerContext
+      .make(language, costModel)
+      ._2
+      .bimap(Unanswered.Own(_), Context(language, ProtocolMajor(protocol), _))
 
   def script(context: Context, script: Bytes): Either[Run, Prepared] =
     LedgerEval.deserialiseScript(context.language, context.protocol, script) match
@@ -137,7 +135,7 @@ object OwnBackend extends UplcBackend:
       case Left(error @ EvaluationError.Codec(_)) =>
         Left(Run.Failed(Verdict.ParseDecode, UplcText.evaluation(error)))
       case Left(error) => Left(Run.Failed(Verdict.EvaluationFailure, UplcText.evaluation(error)))
-      case Right(term) => Right(Prepared(program.version, evaluate(context, term)))
+      case Right(term) => Right(Prepared(program.version, evaluate(context, program.version, term)))
 
   /** The `uplc` module's parser ([[UplcParser]], the grammar of plutus 1.70.0.0's) and its Flat
     * writer ([[FlatEncoder]]).
@@ -155,10 +153,13 @@ object OwnBackend extends UplcBackend:
   /** `evaluateTerm` (`LedgerEval.evaluateTerm`) within `limit`; a failure the ledger reads as a
     * defect of this implementation ([[LedgerEval.defect]]) is no verdict.
     */
-  private def evaluate(context: Context, term: Term)(limit: ExBudget): Run =
+  private def evaluate(context: Context, version: ProgramVersion, term: Term)(
+      limit: ExBudget
+  ): Run =
     LedgerEval.evaluateTerm(
       BudgetMode.Restricting(limit),
       context.protocol,
+      version,
       context.ledger,
       term
     ) match

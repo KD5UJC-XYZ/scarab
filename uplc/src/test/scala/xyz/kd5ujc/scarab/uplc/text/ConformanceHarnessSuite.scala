@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.uplc.cost.{ExBudget, SatInt}
 final class ConformanceHarnessSuite extends munit.FunSuite:
 
   private lazy val cases: Vector[ConformanceCase] =
-    ReferenceCorpus.conformance(ReferenceCorpus.Pinned).fold(p => fail(p.toString), identity)
+    ReferenceCorpus.conformance(ReferenceCorpus.Plutus170).fold(p => fail(p.toString), identity)
 
   /** What the reference recorded for each closed program of the corpus. */
   private lazy val recorded: Map[Program, Evaluation[Nothing]] =

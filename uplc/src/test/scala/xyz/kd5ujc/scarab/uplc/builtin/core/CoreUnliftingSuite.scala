@@ -2,14 +2,7 @@
 package xyz.kd5ujc.scarab.uplc.builtin.core
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.uplc.{
-  Constant,
-  DefaultFun,
-  DefaultUni,
-  PlutusData,
-  SemanticsVariant,
-  Signature
-}
+import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, PlutusData, Signature}
 import xyz.kd5ujc.scarab.uplc.builtin.{
   Argument,
   ErrorClass,
@@ -64,27 +57,43 @@ final class CoreUnliftingSuite extends munit.FunSuite:
         case Left(failure) => fail(s"$f in $v refused valid arguments: $failure")
   }
 
-  test("variants F and G are 1.71.0.0's and are refused, not taken as D and E") {
-    assertEquals(
-      CoreUnlifting.of(SemanticsVariant.F).map(_ => ()),
-      Left(UnsupportedVariant(SemanticsVariant.F))
-    )
-    assertEquals(
-      CoreUnlifting.of(SemanticsVariant.G).map(_ => ()),
-      Left(UnsupportedVariant(SemanticsVariant.G))
-    )
-    assertEquals(
-      CoreDenotations.of(SemanticsVariant.G).map(_ => ()),
-      Left(UnsupportedVariant(SemanticsVariant.G))
-    )
-    for v <- Vector(
-        SemanticsVariant.A,
-        SemanticsVariant.B,
-        SemanticsVariant.C,
-        SemanticsVariant.D,
-        SemanticsVariant.E
+  test("F and G keep D's and E's bounds on byte strings and drop the integer ones (1.71.0.0)") {
+    import CoreVariant.{D, E, F, G}
+    def integerBounds(v: CoreVariant) =
+      DefaultFun.values.toVector.flatMap(f =>
+        CoreUnlifting.bounds(v, f).collect { case (i, UnliftingBound.CInteger) => f -> i }
       )
-    do assert(CoreUnlifting.of(v).isRight, s"$v")
+    def otherBounds(v: CoreVariant) =
+      DefaultFun.values.toVector
+        .filterNot(_ == DefaultFun.ConsByteString)
+        .map(f => f -> CoreUnlifting.bounds(v, f).filter(_._2 != UnliftingBound.CInteger))
+    assertEquals(integerBounds(F), Vector.empty)
+    assertEquals(integerBounds(G), Vector.empty)
+    assert(integerBounds(D).nonEmpty)
+    assertEquals(otherBounds(F), otherBounds(D))
+    assertEquals(otherBounds(G), otherBounds(E))
+    // `Integer -> CByteString` in F, `Word8 -> CByteString` in G (`Builtins.hs:1261-1320`,
+    // plutus 1.71.0.0)
+    assertEquals(
+      CoreUnlifting.bounds(F, DefaultFun.ConsByteString),
+      Map(1 -> UnliftingBound.CByteString)
+    )
+    assertEquals(
+      CoreUnlifting.bounds(G, DefaultFun.ConsByteString),
+      CoreUnlifting.bounds(E, DefaultFun.ConsByteString)
+    )
+    assertEquals(
+      CoreVariant.values.toVector.map(v => (v.ensurableInteger, v.ensurableByteString)),
+      Vector(
+        (false, false),
+        (false, false),
+        (false, false),
+        (true, true),
+        (true, true),
+        (false, true),
+        (false, true)
+      )
+    )
   }
 
   test("each bound sits on a monomorphic parameter of the type it bounds") {
