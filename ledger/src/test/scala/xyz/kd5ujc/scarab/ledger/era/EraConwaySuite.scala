@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   ConwayParamUpdate,
   DecodeField,
-  GovAction,
+  GovAction as FlatGovAction,
   GovActionId,
   LedgerDecodeError,
   Metadatum,
@@ -27,10 +27,9 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.era.conway.{
-  ConwayGovAction,
   ConwayPParams,
   ConwayPlutusPurpose,
-  ConwayProposalProcedure,
+  ConwayProcedures,
   ConwayTxOut,
   ConwayTx,
   ConwayTxAuxData,
@@ -180,15 +179,13 @@ class EraConwaySuite extends munit.FunSuite:
       )
       // each proposal at the reference's types, with the flat proposal it was read as
       val proposals = body.proposalProcedures[TxLevel.Top](c).toVector
-      assertEquals(proposals.map(_.rep.read), flat.proposals)
+      assertEquals(proposals.map(_.read), flat.proposals)
       assertEquals(
-        proposals.map(pp =>
-          (pp.rep.pProcDeposit.value, pp.rep.pProcReturnAddr, pp.rep.pProcAnchor)
-        ),
+        proposals.map(pp => (pp.pProcDeposit.value, pp.pProcReturnAddr, pp.pProcAnchor)),
         flat.proposals.map(fp => (fp.deposit, fp.returnAccount, fp.anchor))
       )
       assertEquals(
-        proposals.map(pp => actionOf(pp.rep.pProcGovAction)),
+        proposals.map(pp => actionOf(pp.pProcGovAction)),
         flat.proposals.map(_.action)
       )
       assertEquals(body.treasuryDonation[TxLevel.Top](c).value, flat.donation)
@@ -583,41 +580,41 @@ class EraConwaySuite extends munit.FunSuite:
   }
 
   /** The flat action a typed one was read from, the update by the flat update it reads as. */
-  private def actionOf(a: ConwayGovAction): GovAction = a.rep match
-    case GovActionRep.ParameterChange(parent, update, guardrails) =>
-      GovAction.ParameterChange(
+  private def actionOf(a: GovAction[Conway]): FlatGovAction = a match
+    case GovAction.ParameterChange(parent, update, guardrails) =>
+      FlatGovAction.ParameterChange(
         parent.map(_.unGovPurposeId),
         updates.getOrElse(update, fail(s"an update not read from a recorded body: $update")),
         guardrails.map(_.bytes)
       )
-    case GovActionRep.HardForkInitiation(parent, v) =>
-      GovAction.HardFork(parent.map(_.unGovPurposeId), v.pvMajor.value, v.pvMinor.value)
-    case GovActionRep.TreasuryWithdrawals(withdrawals, guardrails) =>
-      GovAction.TreasuryWithdrawals(
+    case GovAction.HardForkInitiation(parent, v) =>
+      FlatGovAction.HardFork(parent.map(_.unGovPurposeId), v.pvMajor.value, v.pvMinor.value)
+    case GovAction.TreasuryWithdrawals(withdrawals, guardrails) =>
+      FlatGovAction.TreasuryWithdrawals(
         withdrawals.toVector.map((a, c) => a -> c.value),
         guardrails.map(_.bytes)
       )
-    case GovActionRep.NoConfidence(parent) => GovAction.NoConfidence(parent.map(_.unGovPurposeId))
-    case GovActionRep.UpdateCommittee(parent, removed, added, threshold) =>
-      GovAction.UpdateCommittee(
+    case GovAction.NoConfidence(parent) => FlatGovAction.NoConfidence(parent.map(_.unGovPurposeId))
+    case GovAction.UpdateCommittee(parent, removed, added, threshold) =>
+      FlatGovAction.UpdateCommittee(
         parent.map(_.unGovPurposeId),
         removed.map(Convert.back(_)),
         added.map((c, e) => Convert.back(c) -> e.toBigInt),
         threshold.rational
       )
-    case GovActionRep.NewConstitution(parent, constitution) =>
-      GovAction.NewConstitution(
+    case GovAction.NewConstitution(parent, constitution) =>
+      FlatGovAction.NewConstitution(
         parent.map(_.unGovPurposeId),
         constitution.script,
         constitution.anchor
       )
-    case GovActionRep.InfoAction => GovAction.Info
+    case GovAction.InfoAction() => FlatGovAction.Info
 
   /** Every update of a recorded Conway body, by the typed update it reads as. */
   private lazy val updates: Map[PParamsUpdate[Conway], ConwayParamUpdate] =
     bodies
       .flatMap(raw => FlatTxBody.decode(raw, Era.Conway).toOption.get.proposals)
-      .collect { case Proposal(_, _, GovAction.ParameterChange(_, u, _), _) =>
+      .collect { case Proposal(_, _, FlatGovAction.ParameterChange(_, u, _), _) =>
         PParamsUpdate[Conway](ConwayPParams.fromUpdate(u).toOption.get) -> u
       }
       .toMap
@@ -629,7 +626,7 @@ class EraConwaySuite extends munit.FunSuite:
     assert(proposals.nonEmpty, "no recorded Conway body has a proposal")
     assert(votes > 0, "no recorded Conway body has a vote")
     // each of the seven actions is among them, so every action's fields are compared above
-    val kinds = proposals.map(_.rep.pProcGovAction.rep.ordinal).toSet
+    val kinds = proposals.map(_.pProcGovAction.ordinal).toSet
     assertEquals(kinds, (0 to 6).toSet)
   }
 
@@ -642,9 +639,9 @@ class EraConwaySuite extends munit.FunSuite:
   private def proposal(
       action: String,
       deposit: String = "00"
-  ): (Either[LedgerDecodeError, Proposal], Either[EraTxError, ConwayProposalProcedure]) =
+  ): (Either[LedgerDecodeError, Proposal], Either[EraTxError, ProposalProcedure[Conway]]) =
     val flat = Proposal.decode(node(s"84$deposit$r1$action$anchor"), conwayVersion)
-    (flat, flat.leftMap(EraTxError.Decode(_)).flatMap(ConwayProposalProcedure.fromFlat))
+    (flat, flat.leftMap(EraTxError.Decode(_)).flatMap(ConwayProcedures.proposal))
 
   test("proposals are equal when they mean the same, whatever the order of their withdrawals") {
     // treasury withdrawals are a `Map AccountAddress Coin` (`Procedures.hs:826-834`, cardano-ledger
@@ -664,9 +661,9 @@ class EraConwaySuite extends munit.FunSuite:
     val cold = Credential.KeyHashObj[ColdCommittee](
       KeyHash.fromBytes(Bytes.fromHex(k).toOption.get).toOption.get
     )
-    val expected: Vector[(String, GovActionRep[PParamsUpdate[Conway]])] = Vector(
+    val expected: Vector[(String, GovAction[Conway])] = Vector(
       // a parameter change setting rho to one, guarded by a script
-      s"8400${id}a10ad81e820101581c$s" -> GovActionRep.ParameterChange(
+      s"8400${id}a10ad81e820101581c$s" -> GovAction.ParameterChange(
         parent,
         PParamsUpdate[Conway](
           ConwayPParams.emptyUpdate.copy(rho = THKD(UnitInterval.boundRational(Rational.one)))
@@ -674,39 +671,39 @@ class EraConwaySuite extends munit.FunSuite:
         Some(ScriptHash.fromBytes(Bytes.fromHex(s).toOption.get).toOption.get)
       ),
       // the highest version Conway's action reads, 12, and the highest minor version
-      s"8301${id}820c1affffffff" -> GovActionRep.HardForkInitiation(
+      s"8301${id}820c1affffffff" -> GovAction.HardForkInitiation(
         parent,
         ProtVer(Version.lit(12), Unsigned.lit[Unsigned.Width.W32](0xffffffffL))
       ),
-      s"8302a1${r2}1bfffffffffffffffff6" -> GovActionRep.TreasuryWithdrawals(
+      s"8302a1${r2}1bfffffffffffffffff6" -> GovAction.TreasuryWithdrawals(
         Map(
           RewardAccount.decode(Bytes.fromHex(r2.drop(4)).toOption.get).toOption.get ->
             Coin(BigInt("18446744073709551615"))
         ),
         None
       ),
-      s"8203$id" -> GovActionRep.NoConfidence(parent),
+      s"8203$id" -> GovAction.NoConfidence(parent),
       // a member until the last epoch, a threshold of one
-      s"8504f681$key" + s"a1${key}1bffffffffffffffff" + "d81e820101" -> GovActionRep
+      s"8504f681$key" + s"a1${key}1bffffffffffffffff" + "d81e820101" -> GovAction
         .UpdateCommittee(
           None,
           Set(cold),
           Map(cold -> EpochNo.fromUnsigned(-1L)),
           UnitInterval.boundRational(Rational.one).get
         ),
-      s"8305f682${anchor}f6" -> GovActionRep.NewConstitution(
+      s"8305f682${anchor}f6" -> GovAction.NewConstitution(
         None,
         xyz.kd5ujc.scarab.ledger.Constitution(
           xyz.kd5ujc.scarab.ledger.Anchor("a", Bytes.fromHex("cc" * 32).toOption.get),
           None
         )
       ),
-      "8106" -> GovActionRep.InfoAction
+      "8106" -> GovAction.InfoAction()
     )
     expected.foreach { (action, rep) =>
       val (flat, typed) = proposal(action)
       assert(flat.isRight, s"$action: $flat")
-      assertEquals(typed.map(_.rep.pProcGovAction.rep), Right(rep), action)
+      assertEquals(typed.map(_.pProcGovAction), Right(rep), action)
     }
   }
 

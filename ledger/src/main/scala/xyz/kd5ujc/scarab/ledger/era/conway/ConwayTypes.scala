@@ -32,6 +32,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   OSet,
   Plutus,
   PParams,
+  ProposalProcedure,
   Sized,
   Timelock,
   TimelockScripts,
@@ -39,7 +40,8 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxBody,
   TxLevel,
   Val,
-  ValidityInterval
+  ValidityInterval,
+  VotingProcedures
 }
 import xyz.kd5ujc.scarab.ledger.era.babbage.{
   BabbagePlutusScript,
@@ -185,11 +187,11 @@ object ConwayScript:
           ConwayPlutusPurpose.ConwayProposing(_) =>
         None
     override def mkProposingPurpose[F[_, _]](
-        proposal: F[Unsigned[Unsigned.Width.W32], ConwayProposalProcedure]
+        proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Conway]]
     ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayProposing(proposal)
     override def toProposingPurpose[F[_, _]](
         purpose: ConwayPlutusPurpose[F]
-    ): Option[F[Unsigned[Unsigned.Width.W32], ConwayProposalProcedure]] = purpose match
+    ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Conway]]] = purpose match
       case ConwayPlutusPurpose.ConwayProposing(proposal) => Some(proposal)
       case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
           ConwayPlutusPurpose.ConwayCertifying(_) | ConwayPlutusPurpose.ConwayWithdrawing(_) |
@@ -303,8 +305,8 @@ final class ConwayTxBody private (
     val scriptIntegrityHash: Option[Bytes],
     val auxDataHash: Option[Bytes],
     val networkId: Option[Network],
-    val votingProcedures: ConwayVotingProcedures,
-    val proposalProcedures: OSet[ConwayProposalProcedure],
+    val votingProcedures: VotingProcedures[Conway],
+    val proposalProcedures: OSet[ProposalProcedure[Conway]],
     val currentTreasuryValue: Option[Coin],
     val treasuryDonation: Coin
 ):
@@ -361,7 +363,7 @@ object ConwayTxBody:
       outputs <- b.outputs.traverse(sized)
       collateralReturn <- b.collateralReturn.traverse(sized)
       certs <- b.certificates.traverse(ConwayTxCert.fromFlat)
-      proposals <- b.proposals.traverse(ConwayProposalProcedure.fromFlat)
+      proposals <- b.proposals.traverse(ConwayProcedures.proposal)
       network <- b.networkId.traverse(v =>
         Network
           .of(v)
@@ -390,7 +392,7 @@ object ConwayTxBody:
       b.scriptDataHash,
       b.auxDataHash,
       network,
-      ConwayVotingProcedures.decoded(b.votes),
+      ConwayProcedures.votes(b.votes),
       OSet.decoded(proposals),
       b.currentTreasury.map(Coin(_)),
       Coin(b.donation)
@@ -499,12 +501,12 @@ object ConwayTxBody:
           case TopOnly.Top => body.currentTreasuryValue
       override def votingProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
-      ): ConwayVotingProcedures =
+      ): VotingProcedures[Conway] =
         l match
           case TopOnly.Top => body.votingProcedures
       override def proposalProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
-      ): OSet[ConwayProposalProcedure] =
+      ): OSet[ProposalProcedure[Conway]] =
         l match
           case TopOnly.Top => body.proposalProcedures
       override def treasuryDonation[L <: TxLevel](body: TxBody[L, Conway])(using

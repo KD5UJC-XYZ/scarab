@@ -97,23 +97,3 @@ type TxAuxData[E <: EraTag] = E match
   */
 type Tx[L <: TxLevel, E <: EraTag] = E match
   case Conway => AtTop[L, conway.ConwayTx]
-
-/** The governance action of era `E` (`data GovAction era`,
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs:815-868`, cardano-ledger
-  * f649f975): from Conway, each era's own type over the shared representation ([[GovActionRep]]).
-  */
-type GovAction[E <: EraTag] = E match
-  case Conway => conway.ConwayGovAction
-
-/** The governance proposal of era `E` (`data ProposalProcedure era`, `Procedures.hs:498-504`,
-  * cardano-ledger f649f975): from Conway, each era's own type over the shared representation
-  * ([[ProposalProcedureRep]]).
-  */
-type ProposalProcedure[E <: EraTag] = E match
-  case Conway => conway.ConwayProposalProcedure
-
-/** The votes of era `E` (`newtype VotingProcedures era`, `Procedures.hs:400-404`, cardano-ledger
-  * f649f975).
-  */
-type VotingProcedures[E <: EraTag] = E match
-  case Conway => conway.ConwayVotingProcedures

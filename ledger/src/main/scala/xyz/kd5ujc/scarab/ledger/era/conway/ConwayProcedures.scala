@@ -6,7 +6,7 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.{
   Constitution,
   DecodeField,
-  GovAction,
+  GovAction as FlatGovAction,
   GovActionId,
   Proposal,
   Unsigned,
@@ -16,42 +16,41 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.era.{
   EraTxError,
-  GovActionRep,
+  GovAction,
   GovPurposeId,
   PParamsError,
   PParamsUpdate,
-  ProposalProcedureRep,
+  ProposalProcedure,
   ProtVer,
   UnitInterval,
-  Version
+  Version,
+  VotingProcedures
 }
 import xyz.kd5ujc.scarab.ledger.state.{ColdCommittee, Coin, Conway, EpochNo, ScriptHash}
 
-// Conway's governance procedures: the opaque types are transparent in this file only, so only
-// this file makes a value of them, from what Conway's decoder read.
+// Conway's governance procedures, read from what Conway's decoder read: only this object makes a
+// Conway proposal or Conway's votes.
 
-/** Conway's governance action: `GovAction ConwayEra` (cardano-ledger f649f975
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs:815-868`), whose update is
-  * Conway's (`PParamsUpdate ConwayEra`).
+/** Conway's proposals and votes from the flat decoder's (`GovAction ConwayEra`,
+  * `ProposalProcedure ConwayEra`, `VotingProcedures ConwayEra`, cardano-ledger f649f975
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs:400-404,498-504,815-868`).
   */
-opaque type ConwayGovAction = GovActionRep[PParamsUpdate[Conway]]
-
-object ConwayGovAction:
+object ConwayProcedures:
   /** The action the flat decoder read, at the reference's types. The decoder bounded each field as
     * the reference's type does, so none of these refusals is reached from bytes it accepted: an
     * update outside its fields' types ([[ConwayPParams.fromUpdate]]), a version outside `Version`
     * and `Word32`, a script hash or committee credential of the wrong length, an epoch outside
     * `Word64` and a threshold outside `[0, 1]`.
     */
-  private[era] def fromFlat(a: GovAction): Either[EraTxError, ConwayGovAction] = a match
-    case GovAction.ParameterChange(previous, update, policy) =>
+  private[era] def govAction(a: FlatGovAction): Either[EraTxError, GovAction[Conway]] = a match
+    case FlatGovAction.ParameterChange(previous, update, policy) =>
       (
         ConwayPParams.fromUpdate(update).leftMap(EraTxError.PParams(_)),
         guardrails(policy)
       ).mapN((u, g) =>
-        GovActionRep.ParameterChange(previous.map(GovPurposeId(_)), PParamsUpdate[Conway](u), g)
+        GovAction.ParameterChange(previous.map(GovPurposeId(_)), PParamsUpdate[Conway](u), g)
       )
-    case GovAction.HardFork(previous, major, minor) =>
+    case FlatGovAction.HardFork(previous, major, minor) =>
       (
         Version
           .mkVersion(major)
@@ -61,16 +60,16 @@ object ConwayGovAction:
           .toRight(PParamsError.OutOfRange(DecodeField.Minor, minor))
       ).mapN(ProtVer(_, _))
         .leftMap(EraTxError.PParams(_))
-        .map(v => GovActionRep.HardForkInitiation(previous.map(GovPurposeId(_)), v))
-    case GovAction.TreasuryWithdrawals(withdrawals, policy) =>
+        .map(v => GovAction.HardForkInitiation(previous.map(GovPurposeId(_)), v))
+    case FlatGovAction.TreasuryWithdrawals(withdrawals, policy) =>
       // the decoder refused a repeated account (`decodeMap` from version 9), so the map holds
       // every withdrawal read
       guardrails(policy).map(g =>
-        GovActionRep.TreasuryWithdrawals(withdrawals.map((a, c) => a -> Coin(c)).toMap, g)
+        GovAction.TreasuryWithdrawals(withdrawals.map((a, c) => a -> Coin(c)).toMap, g)
       )
-    case GovAction.NoConfidence(previous) =>
-      Right(GovActionRep.NoConfidence(previous.map(GovPurposeId(_))))
-    case GovAction.UpdateCommittee(previous, removed, added, quorum) =>
+    case FlatGovAction.NoConfidence(previous) =>
+      Right(GovAction.NoConfidence(previous.map(GovPurposeId(_))))
+    case FlatGovAction.UpdateCommittee(previous, removed, added, quorum) =>
       (
         removed.toVector
           .traverse(Convert.credential[ColdCommittee](_))
@@ -83,61 +82,29 @@ object ConwayGovAction:
         UnitInterval
           .boundRational(quorum)
           .toRight(EraTxError.PParams(PParamsError.RatioOutOfBounds(DecodeField.Quorum, quorum)))
-      ).mapN((r, m, q) => GovActionRep.UpdateCommittee(previous.map(GovPurposeId(_)), r, m, q))
-    case GovAction.NewConstitution(previous, script, anchor) =>
+      ).mapN((r, m, q) => GovAction.UpdateCommittee(previous.map(GovPurposeId(_)), r, m, q))
+    case FlatGovAction.NewConstitution(previous, script, anchor) =>
       Right(
-        GovActionRep.NewConstitution(previous.map(GovPurposeId(_)), Constitution(anchor, script))
+        GovAction.NewConstitution(previous.map(GovPurposeId(_)), Constitution(anchor, script))
       )
-    case GovAction.Info => Right(GovActionRep.InfoAction)
+    case FlatGovAction.Info => Right(GovAction.InfoAction())
 
   private def guardrails(
       policy: Option[xyz.kd5ujc.scarab.codec.Bytes]
   ): Either[EraTxError, Option[ScriptHash]] =
     policy.traverse(ScriptHash.fromBytes).leftMap(EraTxError.Vocab(_))
 
-  extension (a: ConwayGovAction)
-    /** The shared representation, read only. */
-    def rep: GovActionRep[PParamsUpdate[Conway]] = a
+  /** The proposal the flat decoder read, its action at the reference's types ([[govAction]]). */
+  private[era] def proposal(p: Proposal): Either[EraTxError, ProposalProcedure[Conway]] =
+    govAction(p.action).map(a =>
+      ProposalProcedure[Conway](Coin(p.deposit), p.returnAccount, a, p.anchor, p)
+    )
 
-  given CanEqual[ConwayGovAction, ConwayGovAction] = CanEqual.derived
-
-/** Conway's governance proposal: `ProposalProcedure ConwayEra` (`Procedures.hs:498-504`,
-  * cardano-ledger f649f975), whose action is Conway's.
-  */
-opaque type ConwayProposalProcedure = ProposalProcedureRep[ConwayGovAction]
-
-object ConwayProposalProcedure:
-  /** The proposal the flat decoder read, its action at the reference's types
-    * ([[ConwayGovAction.fromFlat]]).
-    */
-  private[era] def fromFlat(p: Proposal): Either[EraTxError, ConwayProposalProcedure] =
-    ConwayGovAction
-      .fromFlat(p.action)
-      .map(a => ProposalProcedureRep(Coin(p.deposit), p.returnAccount, a, p.anchor, p))
-
-  extension (p: ConwayProposalProcedure)
-    /** The shared representation, read only. */
-    def rep: ProposalProcedureRep[ConwayGovAction] = p
-
-  given CanEqual[ConwayProposalProcedure, ConwayProposalProcedure] = CanEqual.derived
-
-/** Conway's votes: `VotingProcedures ConwayEra` (`newtype VotingProcedures era`,
-  * `Procedures.hs:400-404`, cardano-ledger f649f975), each voter's votes by the action voted on,
-  * both in the reference's order (`Ord Voter`, `Ord GovActionId`).
-  */
-opaque type ConwayVotingProcedures = SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]]
-
-object ConwayVotingProcedures:
   /** The votes the flat decoder read, which refused a repeated voter or action (`decodeMapByKey`)
     * and a voter without votes (`DecCBOR (VotingProcedures era)`, `Procedures.hs:408-416`,
     * cardano-ledger f649f975).
     */
-  private[era] def decoded(
-      votes: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
-  ): ConwayVotingProcedures =
-    SortedMap.from(votes.map((voter, vs) => voter -> SortedMap.from(vs)))
-
-  extension (v: ConwayVotingProcedures)
-    def unVotingProcedures: SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]] = v
-
-  given CanEqual[ConwayVotingProcedures, ConwayVotingProcedures] = CanEqual.derived
+  private[era] def votes(
+      all: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
+  ): VotingProcedures[Conway] =
+    VotingProcedures[Conway](SortedMap.from(all.map((voter, vs) => voter -> SortedMap.from(vs))))

@@ -6801,7 +6801,7 @@
    ],
    "digest": "aa9ea5cea0b68696"
   },
-  "enum ledger.era.GovActionRep": {
+  "enum ledger.era.GovAction": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6814,15 +6814,16 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
    "evidence": [
     "EraConwaySuite"
    ],
-   "note": "the representation the eras share, over the era's update; the constitution is the node's",
-   "digest": "69431d316a7f7131"
+   "note": "the constitution is the node's, its guardrails hash as bytes",
+   "digest": "a3498495bea06bee"
   },
-  "class ledger.era.ProposalProcedureRep": {
+  "class ledger.era.ProposalProcedure": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6840,10 +6841,10 @@
    "evidence": [
     "EraConwaySuite"
    ],
-   "note": "the representation the eras share, over the era's action, with the flat proposal it was read as",
-   "digest": "d2a906f922165bba"
+   "note": "with the flat proposal it was read as, which the flat failures carry",
+   "digest": "f1af56f54804e122"
   },
-  "val ledger.era.ProposalProcedureRep#pProcDeposit": {
+  "val ledger.era.ProposalProcedure#pProcDeposit": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6863,7 +6864,7 @@
    ],
    "digest": "83818d3c8b795fe8"
   },
-  "val ledger.era.ProposalProcedureRep#pProcReturnAddr": {
+  "val ledger.era.ProposalProcedure#pProcReturnAddr": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6883,7 +6884,7 @@
    ],
    "digest": "74c97a58e3679183"
   },
-  "val ledger.era.ProposalProcedureRep#pProcGovAction": {
+  "val ledger.era.ProposalProcedure#pProcGovAction": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6901,9 +6902,9 @@
    "evidence": [
     "EraConwaySuite"
    ],
-   "digest": "318b4d80ecf68566"
+   "digest": "db8582e0eba269f1"
   },
-  "val ledger.era.ProposalProcedureRep#pProcAnchor": {
+  "val ledger.era.ProposalProcedure#pProcAnchor": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6923,7 +6924,7 @@
    ],
    "digest": "d0e9d445e8d6332a"
   },
-  "def ledger.era.ProposalProcedureRep#equals": {
+  "def ledger.era.ProposalProcedure#equals": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6942,9 +6943,9 @@
     "EraConwaySuite"
    ],
    "note": "the derived Eq, without the flat proposal read",
-   "digest": "dd8c4b9510710f3f"
+   "digest": "dfbc0912b7bac695"
   },
-  "def ledger.era.ProposalProcedureRep#hashCode": {
+  "def ledger.era.ProposalProcedure#hashCode": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6965,7 +6966,7 @@
    "note": "consistent with the derived Eq",
    "digest": "b4080402bb768e10"
   },
-  "def ledger.era.ProposalProcedureRep#toString": {
+  "def ledger.era.ProposalProcedure#toString": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6985,112 +6986,7 @@
    ],
    "digest": "b90ef12dc9f301cb"
   },
-  "type ledger.era.GovAction": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "GovAction",
-     "lines": [
-      815,
-      815
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "note": "one case per era: Conway's",
-   "digest": "7345b48dfa20c3f9"
-  },
-  "type ledger.era.ProposalProcedure": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "ProposalProcedure",
-     "lines": [
-      498,
-      498
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "note": "one case per era: Conway's",
-   "digest": "3ef4108a7cd39295"
-  },
-  "type ledger.era.VotingProcedures": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "VotingProcedures",
-     "lines": [
-      400,
-      402
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "note": "one case per era: Conway's",
-   "digest": "98773e7371e8eb8d"
-  },
-  "type ledger.era.conway.ConwayGovAction": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "GovAction",
-     "lines": [
-      815,
-      868
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "note": "`GovAction ConwayEra`",
-   "digest": "6f42467122864363"
-  },
-  "type ledger.era.conway.ConwayProposalProcedure": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "ProposalProcedure",
-     "lines": [
-      498,
-      504
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "note": "`ProposalProcedure ConwayEra`",
-   "digest": "100b05e1c946ef95"
-  },
-  "type ledger.era.conway.ConwayVotingProcedures": {
+  "class ledger.era.VotingProcedures": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -7103,15 +6999,16 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
    "evidence": [
     "EraConwaySuite"
    ],
-   "note": "`VotingProcedures ConwayEra`",
-   "digest": "93626e4edf72c04c"
+   "note": "the voter, action id and procedure are the node's flat ones",
+   "digest": "9d9982c834381f88"
   },
-  "def ledger.era.conway.ConwayVotingProcedures.unVotingProcedures": {
+  "val ledger.era.VotingProcedures#unVotingProcedures": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -7129,7 +7026,252 @@
    "evidence": [
     "EraConwaySuite"
    ],
-   "digest": "7ad5ead4955d29e5"
+   "digest": "5dec20f5e4c42561"
+  },
+  "def ledger.era.VotingProcedures#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "symbol": "Eq",
+     "lines": [
+      403,
+      403
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraConwaySuite"
+   ],
+   "note": "the derived Eq",
+   "digest": "a02da3ac64cfa4c6"
+  },
+  "def ledger.era.VotingProcedures#hashCode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "symbol": "Eq",
+     "lines": [
+      403,
+      403
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraConwaySuite"
+   ],
+   "note": "consistent with the derived Eq",
+   "digest": "938f2ae84d8fe42c"
+  },
+  "def ledger.era.VotingProcedures#toString": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "symbol": "Show",
+     "lines": [
+      403,
+      403
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraConwaySuite"
+   ],
+   "digest": "946b64c597689d3d"
+  },
+  "def ledger.era.rules.ConwayEra.hardforkConwayBootstrapPhase": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
+     "symbol": "hardforkConwayBootstrapPhase",
+     "lines": [
+      257,
+      258
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "digest": "6049031f45bb2150"
+  },
+  "def ledger.era.rules.ConwayEra.hardforkConwayDisallowUnelectedCommitteeFromVoting": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
+     "symbol": "hardforkConwayDisallowUnelectedCommitteeFromVoting",
+     "lines": [
+      262,
+      263
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "digest": "c2bf3033a1f5a34f"
+  },
+  "def ledger.era.rules.ConwayCommittee.authorizedHotCommitteeCredentials": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "symbol": "authorizedHotCommitteeCredentials",
+     "lines": [
+      338,
+      343
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "digest": "71e271a690f6f820"
+  },
+  "def ledger.era.rules.ConwayCommittee.authorizedElectedHotCommitteeCredentials": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "authorizedElectedHotCommitteeCredentials",
+     "lines": [
+      581,
+      591
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "digest": "4d50d5759bcce0c7"
+  },
+  "def ledger.era.rules.ConwayGov.isBootstrapAction": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "symbol": "isBootstrapAction",
+     "lines": [
+      633,
+      639
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "digest": "d43b286d06ef4820"
+  },
+  "def ledger.era.rules.ConwayGov.checkBootstrapProposal": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "symbol": "checkBootstrapProposal",
+     "lines": [
+      435,
+      443
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "digest": "ed2dc445823c8b5d"
+  },
+  "def ledger.era.rules.ConwayGov.actionWellFormed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "symbol": "actionWellFormed",
+     "lines": [
+      393,
+      399
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "note": "the failure carries the action as read, a second argument, until each era's failures are named",
+   "digest": "06b583ce708c5706"
+  },
+  "def ledger.era.rules.ConwayGov.checkGuardrailsScriptHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "symbol": "checkGuardrailsScriptHash",
+     "lines": [
+      420,
+      426
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "digest": "ba3087accb37d886"
+  },
+  "def ledger.era.rules.ConwayGov.unelectedCommitteeVoters": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "symbol": "unelectedCommitteeVoters",
+     "lines": [
+      652,
+      665
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "note": "the voters' credentials are the node's flat ones, so the result is a set of flat credentials, in the reference's order",
+   "digest": "b295316aa64b531b"
   }
  },
  "glue": [
@@ -7294,27 +7436,30 @@
    ]
   },
   {
-   "reason": "Conway's governance procedures read from what the flat decoder read (the flat Proposal, GovAction and votes the flat rules and their failures carry), until the body is read by its own decoder (#85); the shared representations' read-only accessors, the companions, the names of the purposes' singleton types and their equality under strict equality",
+   "reason": "Conway's governance procedures read from what the flat decoder read (the flat Proposal, GovAction and votes the flat rules and their failures carry), until the body is read by its own decoder (#85); the flat proposal a proposal keeps; the companions, the names of the purposes' singleton types and their equality under strict equality; the GOV predicates' adapter to the node's flat failures, and the objects that stand for the reference's Conway/Era, Governance and Rules/Gov modules",
    "definitions": [
-    "def ledger.era.conway.ConwayGovAction.fromFlat",
-    "def ledger.era.conway.ConwayGovAction.rep",
-    "def ledger.era.conway.ConwayProposalProcedure.fromFlat",
-    "def ledger.era.conway.ConwayProposalProcedure.rep",
-    "def ledger.era.conway.ConwayVotingProcedures.decoded",
+    "def ledger.era.conway.ConwayProcedures.govAction",
+    "def ledger.era.conway.ConwayProcedures.proposal",
+    "def ledger.era.conway.ConwayProcedures.votes",
+    "def ledger.era.rules.govFailure",
+    "given ledger.era.GovAction.given_CanEqual_GovAction_E_GovAction_E",
     "given ledger.era.GovPurposeId.given_CanEqual_GovPurposeId_P_GovPurposeId_P",
-    "given ledger.era.conway.ConwayGovAction.given_CanEqual_ConwayGovAction_ConwayGovAction",
-    "given ledger.era.conway.ConwayProposalProcedure.given_CanEqual_ConwayProposalProcedure_ConwayProposalProcedure",
-    "given ledger.era.conway.ConwayVotingProcedures.given_CanEqual_ConwayVotingProcedures_ConwayVotingProcedures",
+    "given ledger.era.ProposalProcedure.given_CanEqual_ProposalProcedure_E_ProposalProcedure_E",
+    "given ledger.era.VotingProcedures.given_CanEqual_VotingProcedures_E_VotingProcedures_E",
+    "object ledger.era.GovAction",
     "object ledger.era.GovActionPurpose",
     "object ledger.era.GovPurposeId",
-    "object ledger.era.conway.ConwayGovAction",
-    "object ledger.era.conway.ConwayProposalProcedure",
-    "object ledger.era.conway.ConwayVotingProcedures",
+    "object ledger.era.ProposalProcedure",
+    "object ledger.era.VotingProcedures",
+    "object ledger.era.conway.ConwayProcedures",
+    "object ledger.era.rules.ConwayCommittee",
+    "object ledger.era.rules.ConwayEra",
+    "object ledger.era.rules.ConwayGov",
     "type ledger.era.GovActionPurpose.Committee",
     "type ledger.era.GovActionPurpose.Constitution",
     "type ledger.era.GovActionPurpose.HardFork",
     "type ledger.era.GovActionPurpose.PParamUpdate",
-    "val ledger.era.ProposalProcedureRep#read"
+    "val ledger.era.ProposalProcedure#read"
    ]
   }
  ]
