@@ -48,6 +48,7 @@ object DijkstraCodecs:
 
   /** `EncCBOR StakePoolRelay`, `State/StakePool.hs:440-455`: definite tagged records, nullable
     * ports and IP bytes. The decoded IPv6 already holds the reference's four little-endian words.
+    * Reference: cardano-ledger 9df9f98c.
     */
   val relay: Codec[DijkstraRelay] = codec("StakePoolRelay")(DijkstraRelay.decode) { (r, out) =>
     r match
@@ -66,7 +67,8 @@ object DijkstraCodecs:
   }(_ == _)
 
   /** `encodeScript`, `Alonzo/Scripts.hs:723-726`, with Dijkstra's language tags 0..4 and the
-    * memoized native-script payload (`Dijkstra/Scripts.hs:284-293`).
+    * memoized native-script payload (`Dijkstra/Scripts.hs:284-293`). Reference: cardano-ledger
+    * 9df9f98c.
     */
   val script: Codec[DijkstraScript] = codec("AlonzoScript")(DijkstraScript.script) { (s, out) =>
     s match
@@ -78,7 +80,9 @@ object DijkstraCodecs:
         out.bytes(code)
   }(_ == _)
 
-  /** `EncCBOR (Datum era)`, `Plutus/Data.hs:292-300`: hash or nested, byte-preserved data. */
+  /** `EncCBOR (Datum era)`, `Plutus/Data.hs:292-300`: hash or nested, byte-preserved data.
+    * Reference: cardano-ledger 9df9f98c.
+    */
   val datum: Codec[DijkstraDatum] = codec("Datum")(DijkstraDatum.decode) { (d, out) =>
     d match
       case DijkstraDatum.NoDatum =>
@@ -94,7 +98,7 @@ object DijkstraCodecs:
 
   /** `EncCBOR BabbageTxOut` and `encodeTxOut`, `Babbage/TxOut.hs:514-519,594-609`: legacy lists
     * without an inline datum or reference script, otherwise the sparse map, whose nested script is
-    * re-encoded and whose inline data keeps its own bytes.
+    * re-encoded and whose inline data keeps its own bytes. Reference: cardano-ledger 9df9f98c.
     */
   val txOut: Codec[DijkstraTxOut] = codec("BabbageTxOut")(DijkstraTxOut.decode) { (o, out) =>
     def value(): Unit = UtxoCodecs.value.encode(Value(o.value.coin, o.value.assets), out)
@@ -128,6 +132,7 @@ object DijkstraCodecs:
 
   /** `EncCBOR PParamsUpdate`, `Core/PParams.hs:250-264`, and Dijkstra's `eraPParams`: sparse
     * ascending update keys. The version-12 field decoders validate the key, value type and range.
+    * Reference: cardano-ledger 9df9f98c.
     */
   val paramUpdate: Codec[DijkstraParamUpdate] =
     codec("PParamsUpdate")(DijkstraParamUpdate.decode) { (u, out) =>
@@ -165,7 +170,8 @@ object DijkstraCodecs:
         values.foreach(Wire.unitInterval.encode(_, out))
 
   /** `EncCBOR AccountBalanceInterval`, `Dijkstra/Scripts.hs:677-682`: a bare exact coin or a pair
-    * of nullable bounds. The decoder refuses a pair with neither bound.
+    * of nullable bounds. The decoder refuses a pair with neither bound. Reference: cardano-ledger
+    * 9df9f98c.
     */
   val balanceInterval: Codec[DijkstraBalanceInterval] =
     codec("AccountBalanceInterval")(DijkstraTx.balanceInterval) { (interval, out) =>
@@ -233,7 +239,9 @@ object DijkstraCodecs:
         optional(policy, out)((p, w) => w.bytes(p))
       case InfoAction => alternative(out, 1, 6)
 
-  /** `EncCBOR ProposalProcedure`, `Procedures.hs:582-589`: deposit, account, action and anchor. */
+  /** `EncCBOR ProposalProcedure`, `Procedures.hs:582-589`: deposit, account, action and anchor.
+    * Reference: cardano-ledger 9df9f98c.
+    */
   val proposal: Codec[DijkstraProposal] = codec("ProposalProcedure")(DijkstraProposal.decode) {
     (p, out) =>
       out.arrayHead(4)
@@ -246,7 +254,7 @@ object DijkstraCodecs:
   /** `EncCBOR DijkstraTxCert`, `Dijkstra/TxCert.hs:98-140,255-259`: delegation, pool and Conway
     * governance certificates. Pool fields follow `withStakePoolParamsFlatEncoding`,
     * `State/StakePool.hs:716-739`; the BLS key slot is omitted when there is no key, even if the
-    * decoder read an explicit null slot.
+    * decoder read an explicit null slot. Reference: cardano-ledger 9df9f98c.
     */
   val certificate: Codec[DijkstraCert] = codec("DijkstraTxCert")(DijkstraCert.decode) { (c, out) =>
     import DijkstraCert.*
@@ -309,7 +317,8 @@ object DijkstraCodecs:
   }(_ == _)
 
   /** `EncCBOR OSet`, `Data/OSet/Strict.hs:112-113`: tag 258 and insertion order, with the
-    * reference's sequence framing. Decoding enforces uniqueness by the decoded value.
+    * reference's sequence framing. Decoding enforces uniqueness by the decoded value. Reference:
+    * cardano-ledger 9df9f98c.
     */
   val certificates: Codec[Vector[DijkstraCert]] = codec("OSet TxCert")(DijkstraCert.set) {
     (cs, out) =>

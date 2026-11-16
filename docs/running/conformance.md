@@ -49,6 +49,10 @@ protocol version and sample identities agree. Without comparable evidence that n
 The corpus and the node's reference build can name different upstream implementations even when the era and
 protocol version agree. The report uses the node's production decoders; it does not substitute another decoder
 to make a corpus sample pass. Triage a mismatch against both pinned implementations before changing admission.
+Check the actual native instance too: a corpus can use a test-only `DecCBOR` instance where the node uses
+`DecCBOR (Annotator ...)`, with different admission rules. A narrower standalone type also needs its own checks:
+the Dijkstra corpus's `auxiliary_scripts` is a sequence of `Timelock`, whereas full Dijkstra auxiliary data can
+carry the guard constructor of `DijkstraNativeScript`.
 A valid sample also needs a re-encoding: missing encoders and missing harness embeddings are conformance gaps,
 not evidence that the production decoder refused the sample. The `language` rule uses the bounded `Language`
 reader, not the open `Word8` key of a Conway cost-model map. Shared Dijkstra encoders consume decoded fields;

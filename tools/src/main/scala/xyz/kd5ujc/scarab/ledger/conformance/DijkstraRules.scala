@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Header,
   LedgerDecodeError,
   Metadatum,
+  NativeScript,
   RewardAccount,
   TxIn,
   Value,
@@ -349,10 +350,23 @@ object DijkstraRules:
     "auxiliary_data_map" -> auxiliaryRule(Shape.Tag259),
     "auxiliary_data_array" -> auxiliaryRule(Shape.Array),
     "auxiliary_scripts" -> DatasetRule(
-      "DijkstraAuxData.decode",
+      "DijkstraAuxData.decode and NativeScript.decode (Timelock)",
       Reach.Embedded("[{}, scripts]"),
       Writing.Kept("DijkstraAuxData.raw")
-    )(b => read(DijkstraAuxData.decode)(hex("82a0") ++ b))(a => Step.at(a.raw, List(Index(1)))),
+    )(b =>
+      // EraSpec.hs:280 (dataset ed6c49a4) declares StrictSeq (Timelock DijkstraEra). The full
+      // auxiliary-data decoder also reads Dijkstra's guard constructor; this rule's type does not.
+      read(DijkstraAuxData.decode)(hex("82a0") ++ b).flatMap { auxiliary =>
+        node(b)
+          .flatMap(n => ledger(V12.list(n, DecodeField.AuxiliaryNativeScripts)))
+          .flatMap(
+            _.traverse_(n =>
+              NativeScript.decode(n, NativeScript.Form.Timelock).leftMap(Refusal.Native(_))
+            )
+          )
+          .as(auxiliary)
+      }
+    )(a => Step.at(a.raw, List(Index(1)))),
     "metadatum" -> DatasetRule(
       "DijkstraAuxData.decode",
       Reach.Embedded("{0: metadatum}"),

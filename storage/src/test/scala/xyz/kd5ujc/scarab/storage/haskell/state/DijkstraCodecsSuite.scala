@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell.state
 
+import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
 import xyz.kd5ujc.scarab.ledger.dijkstra.*
@@ -24,10 +25,22 @@ class DijkstraCodecsSuite extends FunSuite:
     assertEquals(codec.write(value), Right(hex(expected)))
     value
 
-  test("pool registration drops the explicit absent BLS slot, and retains owner set tagging") {
+  test(
+    "pool registration omits an absent BLS slot and retains a present key and owner set tagging"
+  ) {
     val fields = hash28 + hash32
     val rest = "0000d81e820001" + account + "d901028080f6"
     reencode(DijkstraCodecs.certificate, "8b03" + fields + "f6" + rest, "8a03" + fields + rest)
+    // Existing public proto-devnet verification key and proof; provenance is in fixtures/leios/README.md.
+    val row = Files
+      .readString(Path.of("fixtures/leios/bls/devnet-pools.tsv"))
+      .linesIterator
+      .find(line => line.nonEmpty && !line.startsWith("#"))
+      .getOrElse(fail("missing public BLS fixture"))
+      .split("\t", -1)
+    assertEquals(row.length, 4)
+    val key = "825860" + row(2) + "5830" + row(3)
+    reencode(DijkstraCodecs.certificate, "8b03" + fields + key + rest, "8b03" + fields + key + rest)
   }
 
   test("Dijkstra delegation and governance certificate alternatives retain their tags") {

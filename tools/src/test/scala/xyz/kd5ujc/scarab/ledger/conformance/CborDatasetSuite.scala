@@ -179,6 +179,43 @@ class CborDatasetSuite extends FunSuite:
       assert(!proposals(empty), s"proposals $empty")
   }
 
+  test(
+    "the Dijkstra auxiliary_scripts rule is Timelock, while full auxiliary data permits guards"
+  ) {
+    val guard = "82068200581c" + zeros(28)
+    val scripts = "81" + guard
+    val auxiliary = "82a0" + scripts
+    for (rule, sample) <- Vector("native_script" -> guard, "auxiliary_data" -> auxiliary) do
+      assertEquals(
+        DatasetCheck
+          .check(rule, DijkstraRules.rules.get(rule), Kind.Valid, hex(sample), Some(hex(sample))),
+        Outcome.Met,
+        rule
+      )
+    for sample <- Vector(scripts, "818201" + scripts) do
+      assertEquals(
+        DatasetCheck.check(
+          "auxiliary_scripts",
+          DijkstraRules.rules.get("auxiliary_scripts"),
+          Kind.Invalid,
+          hex(sample),
+          None
+        ),
+        Outcome.Met
+      )
+    val timelock = "818204190001"
+    assertEquals(
+      DatasetCheck.check(
+        "auxiliary_scripts",
+        DijkstraRules.rules.get("auxiliary_scripts"),
+        Kind.Valid,
+        hex(timelock),
+        Some(hex(timelock))
+      ),
+      Outcome.Met
+    )
+  }
+
   test("Dijkstra's standalone parts use production writers and still reject an absent part") {
     val key = "581c" + zeros(28)
     val anchor = "82605820" + zeros(32)
