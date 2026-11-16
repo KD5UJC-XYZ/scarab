@@ -657,7 +657,11 @@ object Main extends IOApp:
   private[node] def configured(
       options: Options
   ): Either[ConfigError, (Options, NodeSetup, Option[Topology])] =
-    nodeSetup(options).flatMap(completed(options, _))
+    for
+      setup <- nodeSetup(options)
+      read <- readTopology(options, setup)
+      done <- completed(options, setup, read.map(_.topology))
+    yield done
 
   /** The node configuration and genesis the options point to. */
   private[node] def nodeSetup(options: Options): Either[ConfigError, NodeSetup] =
@@ -676,15 +680,16 @@ object Main extends IOApp:
       Option.when(options.configFile.isDefined)(setup.config.settings.socketPath).flatten
     )
 
-  /** The options completed from the configuration `setup` and the topology they point to. */
+  /** The options completed from the configuration `setup` and the `topology` read from the file
+    * they point to ([[readTopology]]).
+    */
   private[node] def completed(
       options: Options,
-      setup: NodeSetup
+      setup: NodeSetup,
+      topology: Option[Topology]
   ): Either[ConfigError, (Options, NodeSetup, Option[Topology])] =
     for
-      loadedTopology <- topologyRoots(options, setup)
-      topology = loadedTopology._1
-      roots = loadedTopology._2
+      roots <- topologyRoots(options, setup, topology)
       settings = setup.config.settings
       fromFile = options.configFile.isDefined
       peers = (options.peers ++ topology.toList.flatMap(_.peers)).distinct
@@ -704,46 +709,84 @@ object Main extends IOApp:
     )
 
   /** The roots of the topology read again at a SIGHUP (`updateTopologyConfiguration`, cardano-node
-    * 11.1.3 `Run.hs` 670-705): none without `--topology`, or when the file is refused, which is
-    * logged and leaves the roots in force. `options.peers` includes the topology loaded at
-    * start-up, so the roots are read with the command line's own peers only (`cliPeers`): a peer
-    * removed from the topology does not become permanent.
+    * 11.1.3 `Run.hs` 673-703): none without `--topology`, or when the file is refused, which is
+    * logged and leaves the roots in force. What the reading says of the topology is logged at every
+    * reload, as the reference's `readTopologyFile` traces it with the startup tracer.
+    * `options.peers` includes the topology loaded at start-up, so the roots are read with the
+    * command line's own peers only (`cliPeers`): a peer removed from the topology does not become
+    * permanent.
     */
   private def rereadRoots(options: Options, cliPeers: List[SocketAddress[Host]], loaded: NodeSetup)(
       using Log[IO]
   ): IO[Option[PeerNetwork.Roots]] =
+    val reread = options.copy(peers = cliPeers)
+    def refused(error: ConfigError): IO[Option[PeerNetwork.Roots]] =
+      Log[IO]
+        .emit[NodeEvent](
+          NodeEvent.Library(
+            "scarab.topology",
+            Severity.Warning,
+            s"topology reload refused: ${error.message}",
+            None
+          )
+        )
+        .as(None)
     options.topologyFile.flatTraverse { _ =>
-      IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
-        case Left(error) =>
-          Log[IO]
-            .emit[NodeEvent](
-              NodeEvent.Library(
-                "scarab.topology",
-                Severity.Warning,
-                s"topology reload refused: ${error.message}",
-                None
-              )
-            )
-            .as(None)
-        case Right((_, roots)) => IO.pure(Some(roots))
+      IO.blocking(readTopology(reread, loaded)).flatMap {
+        case Left(error) => refused(error)
+        case Right(read) =>
+          noticed(read) *>
+            IO.blocking(topologyRoots(reread, loaded, read.map(_.topology)))
+              .flatMap(_.fold(refused, roots => IO.pure(Some(roots))))
       }
     }
 
-  /** Read a complete topology and its optional snapshot before any running network state changes.
+  /** What the reading of the topology said of it, each as the reference traces it. */
+  private def noticed(read: Option[TopologyNotice.Read])(using Log[IO]): IO[Unit] =
+    read.toList
+      .flatMap(_.notices)
+      .traverse_(n => Log[IO].emit[NodeEvent](NodeEvent.NetworkConfigUpdate(n)))
+
+  /** The topology file as the reference's `readTopologyFile` reads it (cardano-node 11.1.3,
+    * `cardano-node/src/Cardano/Node/Configuration/TopologyP2P.hs` 53-108): parsed and checked
+    * ([[Topology.read]]), then what the consensus mode and the node's role call for, and in Genesis
+    * mode without its bootstrap peers ([[TopologyNotice.read]]). None without `--topology`.
+    */
+  private[node] def readTopology(
+      options: Options,
+      setup: NodeSetup
+  ): Either[ConfigError, Option[TopologyNotice.Read]] =
+    options.topologyFile.traverse(
+      Topology
+        .read(_)
+        .map(
+          TopologyNotice.read(_, setup.config.settings.consensusMode, NodeRole.of(options.forge))
+        )
+    )
+
+  /** The topology read from the file the options point to and its roots, the snapshot included,
+    * before any running network state changes.
     */
   private[node] def topologyRoots(
       options: Options,
       setup: NodeSetup
   ): Either[ConfigError, (Option[Topology], PeerNetwork.Roots)] =
     for
-      topology <- options.topologyFile.traverse(Topology.read)
-      _ <- Either.cond(
-        setup.config.settings.consensusMode !=
-          xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode ||
-          topology.flatMap(_.bootstrapPeers).isEmpty,
-        (),
-        ConfigError(ConfigProblem.BootstrapPeersInGenesisMode)
-      )
+      read <- readTopology(options, setup)
+      topology = read.map(_.topology)
+      roots <- topologyRoots(options, setup, topology)
+    yield (topology, roots)
+
+  /** The roots of the `topology` read ([[readTopology]]), with the peers of the command line and
+    * its optional snapshot. A topology that names no peer at all is not refused, as the reference
+    * does not refuse one (its own `testnet-template-topology-empty-p2p.json` is such a file).
+    */
+  private[node] def topologyRoots(
+      options: Options,
+      setup: NodeSetup,
+      topology: Option[Topology]
+  ): Either[ConfigError, PeerNetwork.Roots] =
+    for
       // `peerSnapshotFile` is relative to the topology file, as the reference reads it. A name the
       // JDK cannot make a path of (NUL, or a character its file-name encoding cannot encode) is a
       // typed refusal, not an exception, so a SIGHUP reload refuses it as any other topology (#953)
@@ -761,9 +804,7 @@ object Main extends IOApp:
           setup.config.settings.consensusMode
         )
         .leftMap(r => ConfigError(ConfigProblem.PeerSnapshot(r)))
-      roots = PeerNetwork.roots(options.peers, topology, snapshot)
-      _ <- Either.cond(roots.hasPeers, (), ConfigError(ConfigProblem.NoPeers))
-    yield (topology, roots)
+    yield PeerNetwork.roots(options.peers, topology, snapshot)
 
   /** The native library the JVM is going to load, checked before anything evaluates a script: the
     * BLS12-381 library of Leios certificates and of the own evaluator's BLS12-381 builtins (ADR
@@ -848,7 +889,13 @@ object Main extends IOApp:
           Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)) *>
             failedStart(error.message).as(ExitCode.Error),
         _ =>
-          IO.blocking(completed(requested, setup))
+          // what the reading of the topology says is logged before its snapshot is read, which
+          // may stop the start, as the reference's `readTopologyFile` traces before
+          // `updateLedgerPeerSnapshot` (`Run.hs` 349-379)
+          IO.blocking(readTopology(requested, setup))
+            .flatMap(admitted)
+            .flatTap(noticed)
+            .flatMap(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
             .flatMap(admitted)
             .flatMap((options, setup, topology) =>
               started(options, setup, topology, requested.peers, pool, layout, listening)

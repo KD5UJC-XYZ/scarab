@@ -21,7 +21,8 @@ import xyz.kd5ujc.scarab.node.{
   NodeConfig,
   StallDiagnostics,
   SyncAdvisory,
-  Topology
+  Topology,
+  TopologyNotice
 }
 import xyz.kd5ujc.scarab.network.{BearerServer, DiffusionFailure, LocalServer as LocalServerTraces}
 import xyz.kd5ujc.scarab.network.SocketConfigError as SocketConfig
@@ -170,6 +171,9 @@ enum NodeEvent:
     * `DiffusionErrored`).
     */
   case DiffusionErrored(failure: DiffusionFailure)
+
+  /** What the reading of the topology says of it ([[xyz.kd5ujc.scarab.node.TopologyNotice]]). */
+  case NetworkConfigUpdate(notice: TopologyNotice)
 
   /** A decision of the peer governor or what became of one (G1). */
   case PeerSelection(trace: Trace[SocketAddress[Host]])
@@ -394,6 +398,11 @@ object NodeEvent:
           case _                                   => None
         ).asJson
       )
+    case NetworkConfigUpdate(notice) =>
+      (notice.level match
+        case TopologyNotice.Level.Info    => EventKind.NetworkConfigUpdateInfo
+        case TopologyNotice.Level.Warning => EventKind.NetworkConfigUpdateWarning
+      ).line("message" -> notice.message.asJson)
     case ReferenceBuildChosen(build) =>
       EventKind.ReferenceBuild.line(xyz.kd5ujc.scarab.node.ReferenceBuildFlag.fields(build)*)
     case UnstableReferenceBuild(build) =>
