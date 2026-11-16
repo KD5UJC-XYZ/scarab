@@ -592,7 +592,7 @@ final class Forger[F[_]: Async, S](
         case Some(Claim.Forging(result)) => awaited(slot, kes, result)
         case Some(Claim.Handed(result))  => awaited(slot, kes, result)
         case Some(Claim.Driver())        => F.unit
-        case None                        => if on then own(slot, kes) else F.unit
+        case None                        => if on then own(slot, kes) else unowned(slot, kes)
       _ <- shared.claims.update(_.settled(slot))
       _ <- watch
     yield ()
@@ -602,7 +602,12 @@ final class Forger[F[_]: Async, S](
     * reload enabled forging, whose result is then awaited and published before the mark passes it.
     */
   private def unowned(slot: BigInt, kes: Option[(Long, Forger.KesResult)]): F[Unit] =
-    shared.claims.update(_.claim(slot, Claim.Driver())._1).void.flatTap(_ => F.pure(kes))
+    shared.claims.modify(_.claim(slot, Claim.Driver())).flatMap {
+      case None                        => F.unit
+      case Some(Claim.Forging(result)) => awaited(slot, kes, result)
+      case Some(Claim.Handed(result))  => awaited(slot, kes, result)
+      case Some(Claim.Driver())        => F.unit
+    }
 
   /** A slot the forging fiber owns: its final result, published. */
   private def awaited(
