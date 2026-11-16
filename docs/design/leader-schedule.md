@@ -329,9 +329,11 @@ a fixed number of slots (proposed: 100). For each chunk it evaluates the output-
 (`Leadership.decide`, the `output` and the threshold) and, for a led slot only, builds its proof; it then adds the
 chunk's led slots and certificates to the schedule and sleeps for
 
-`(time left until the epoch's first slot - margin) / (chunks left)`
+`(time left until the epoch's first slot - margin - chunks left × the last chunk's computation time) / (chunks left)`
 
-so the work is spread and done before the epoch starts. The proposed margin is a tenth of the time from the signal to
+but never so long that the next chunk, taking as long as the last, would end less than that time again before the
+onset of the first slot the schedule has not covered. So the work is spread and, whenever the chunks left fit in the
+time left less the margin, done before the epoch starts. The proposed margin is a tenth of the time from the signal to
 the epoch's first slot (4.8 hours on mainnet, 4 seconds on the trial devnet): room for a pause or a slow host, without
 crowding the end.
 
@@ -343,6 +345,15 @@ so, it stays ahead once a chunk ahead: each chunk's slots begin after the chunk 
 itself would not: the last chunks would be computed after their slots begin (on the trial devnet, a signal at slot 750
 of a 500-slot epoch ending at 1000 leaves a margin of about 25 slots, less than a chunk). A slot the clock reaches
 before the stream covers it gets the per-slot decision from the slot driver (§5.4, Q3 in §9).
+
+**What the pacing assumes of the host.** Once a chunk ahead, the stream stays ahead of the clock, each chunk computed
+before its first slot begins, as long as computing a chunk takes less than the time its slots take to pass, less one
+slot (99 s on mainnet, 9.9 s on the trial devnet, against about 0.1 s for 100 evaluations at the estimate of §6), and
+less than twice as long as the chunk before it: the time the last chunk took is the margin the pause keeps before
+the first slot not covered. A chunk that takes longer can end after the clock has reached its first slots; the
+stream then goes on from the clock's slot, and each slot the clock reaches before the stream covers it gets the
+per-slot decision from the slot driver (§5.4, Q3 in §9). An epoch whose chunks do not fit in the time left is computed
+without pauses and finished late, its first slots decided the same way.
 
 **State.** A `Ref` (or `SignallingRef`, so that the forging fiber wakes on a change) holding, per epoch, the inputs the
 schedule was computed from, how far it has got, and the led slots with their certificates. An answer for a slot is
