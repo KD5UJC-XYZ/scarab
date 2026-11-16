@@ -578,7 +578,8 @@ object QueryAnswers:
             )
         }
       case GetConstitution => conway(f => constitution.answerRead(f.gov.map(_.constitution)))
-      // The era's governance state, at every version (Query.hs:456-457, 1032; `GovStateAnswers`).
+      // The era's governance state, at every version (Query.hs:456-457, 1032, ouroboros-consensus
+      // 82ecba32; `GovStateAnswers`).
       case GetGovState => shelleyBased(f => GovStateAnswers.govState(f.l))
       case GetDRepState(credentials) =>
         conway { f =>
