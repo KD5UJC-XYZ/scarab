@@ -117,6 +117,15 @@ class DijkstraTxOutSuite extends FunSuite:
       assertEquals(DijkstraTxOut.fromStored(stored), Right(out), name)
       assertEquals(stored.raw, flat.raw, name)
       assertEquals(stored.scriptRef.map(_.hash), flat.referenceScript.map(_.hash), name)
+      // the kind, against the block decoder's language of the same script
+      assertEquals(
+        stored.scriptRef.map(_.kind.tag),
+        flat.referenceScript.map {
+          case FlatDijkstraScript.Native(_)           => 0
+          case FlatDijkstraScript.Plutus(language, _) => language.hashTag
+        },
+        name
+      )
     }
   }
 
