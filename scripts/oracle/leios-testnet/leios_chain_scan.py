@@ -16,8 +16,10 @@ used.
     python3 -I leios_chain_scan.py scan <db> --tip <hash> --out <dir>
     python3 -I leios_chain_scan.py sample --scan <dir> --out <dir> [--size 200]
     python3 -I leios_chain_scan.py cases <db> --tip <hash> --out <dir> --params <json> --genesis <json>
+    python3 -I chain/run.py --evidence <dir>       # the contexts of cases.json, through the checked image
     python3 -I leios_chain_scan.py requests --cases <cases.json> --results <results.json> --out <dir>
-    python3 -I leios_chain_scan.py verdicts --out <dir> --evidence <dir>
+    python3 -I leios_chain_scan.py verdicts --evidence <dir> [--out <dir>] [--contexts <dir>]
+    python3 -I chain/run.py --verify-only; python3 -I leios_chain_scan.py verdicts --verify-only
 
 `scan` reads the selected chain from its first block to the tip named (the node's last selected tip)
 and writes `summary.json` (the blocks, transactions, endorser blocks and proposals read, the tip)
@@ -25,17 +27,21 @@ and `plutus.jsonl`, one line per transaction with a redeemer in its own witness 
 sub-transaction's. `sample` takes a stratified sample of those (`sample.jsonl`). `cases` reads the
 chain again for the sampled transactions' bytes and the outputs they spend, reference and pledge as
 collateral, and writes `cases.json`, the input of the chain context oracle (`chain/Main.hs`), with
-the chain's protocol version, cost models, system start and slot length. `requests` turns the
-contexts that oracle collected into requests of the plutus 1.71.0.0 generated-program oracle, and
-`verdicts` runs that oracle on them.
+the chain's protocol version, cost models, system start and slot length; `chain/run.py` runs that
+oracle on them. `requests` turns the contexts it collected into requests of the plutus 1.71.0.0
+generated-program oracle, and `verdicts` runs that oracle on them. Both oracles run as an image
+checked to be the build of the repository's harness, and `--verify-only` checks the retained
+fixtures without Docker.
 """
 import argparse
 import functools
 import hashlib
+import importlib.util
 import json
 import multiprocessing
 import os
 import pathlib
+import re
 import sqlite3
 import sys
 
@@ -703,28 +709,41 @@ def purpose_of(language, arguments):
     return SCRIPT_INFO[constructor(context, info)[0]]
 
 
-def requests(args):
-    """The script requests of the reference's contexts: each context, in the order the reference
-    collected it, becomes a request of the generated-program oracle (`scripts/oracle/plutus/
-    generated-171`) with its own script, arguments, cost model and the redeemer's execution units as
-    its budget. Writes `models.jsonl` (each language's cost model, at the protocol) and
-    `requests.jsonl` (with the transaction's id and recorded validity flag)."""
-    chain = read_json(args.cases)
-    results = read_json(args.results)
+def module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
+# The chain context harness's runner (its record and the collections every level of an answer must hold), and the
+# recorded-request runner, whose check of the generated-program oracle's image the verdicts reuse.
+CHAIN = module("leios_chain_run", os.path.join(HERE, "chain", "run.py"))
+RECORDED = module("recorded_run", os.path.join(HERE, "..", "plutus", "recorded", "run.py"))
+SCRIPTS = pathlib.Path(HERE).parents[2] / "fixtures" / "reference" / "leios-testnet-chain-scripts"
+FILES = ("models.jsonl", "requests.jsonl", "verdicts.jsonl")
+RELEASE = "1.71.0.0"
+
+
+def derive(chain, results):
+    """The script requests of the reference's contexts: each context, in the order the reference collected it at
+    the top level and in each sub-transaction, becomes a request of the generated-program oracle with its own script,
+    arguments, cost model and the redeemer's execution units as its budget. A case the reference did not collect at
+    every level, with an explicit list of contexts, is refused (`levels`)."""
     if [c["name"] for c in chain["cases"]] != [r["name"] for r in results]:
-        raise SystemExit("the results are not those of the cases")
+        raise ValueError("the results are not those of the cases")
     models, rows = [], []
     for case, result in zip(chain["cases"], results):
-        outcome = result["result"]
-        if not outcome["accepted"] or outcome["failure"] is not None:
-            raise SystemExit(f"{case['name']}: the reference collected no contexts: {outcome}")
-        levels = [("top", outcome["top"])] + [(f"sub{n}", sub) for n, sub in enumerate(outcome["subtxs"])]
-        for level, collected in levels:
-            for k, pwc in enumerate(collected.get("contexts", [])):
+        try:
+            collections = CHAIN.levels(result["result"])
+        except ValueError as refused:
+            raise ValueError(f"{case['name']}: {refused}") from None
+        for n, contexts in enumerate(collections):
+            level = "top" if n == 0 else f"sub{n - 1}"
+            for k, pwc in enumerate(contexts):
                 fields = plutus_with_context(bytes.fromhex(pwc))
-                expected = chain["costModels"][LANGUAGE_NAMES[fields["language"]]]
-                if fields["costModel"] != expected:
-                    raise SystemExit(f"{case['name']}: the context's cost model is not the chain's")
+                if fields["costModel"] != chain["costModels"][LANGUAGE_NAMES[fields["language"]]]:
+                    raise ValueError(f"{case['name']}: the context's cost model is not the chain's")
                 model = {"language": fields["language"], "protocol": fields["protocol"], "costModel": fields["costModel"]}
                 if model not in models:
                     models.append(model)
@@ -734,51 +753,141 @@ def requests(args):
                              "protocol": fields["protocol"], "script": fields["script"],
                              "arguments": fields["arguments"], "cpu": fields["cpu"], "memory": fields["memory"],
                              "verbose": True})
+    return models, rows
+
+
+def dumped(lines):
+    return "".join(json.dumps(line, separators=(",", ":")) + "\n" for line in lines)
+
+
+def requests(args):
+    """`models.jsonl` (each language's cost model, at the protocol) and `requests.jsonl` (with the transaction's id,
+    its recorded validity flag and the purpose the context names) of the reference's contexts (`derive`)."""
+    try:
+        models, rows = derive(read_json(args.cases), read_json(args.results))
+    except ValueError as refused:
+        raise SystemExit(str(refused)) from None
     os.makedirs(args.out, exist_ok=True)
     for name, lines in (("models.jsonl", models), ("requests.jsonl", rows)):
         with open(os.path.join(args.out, name), "w") as f:
-            f.writelines(json.dumps(line, separators=(",", ":")) + "\n" for line in lines)
-    print(json.dumps({"transactions": len(results), "requests": len(rows), "models": len(models)}))
+            f.write(dumped(lines))
+    print(json.dumps({"transactions": len({r["tx"] for r in rows}), "requests": len(rows), "models": len(models)}))
+
+
+def verdict_sources():
+    """The files whose digests bind the verdicts: the harness the image was built from, and the runners that derive
+    the requests, check the image and map its answers."""
+    release = RECORDED.GENERATED.RELEASES[RELEASE]
+    root = pathlib.Path(HERE).parents[2]
+    harness = root / release["harness"]
+    return [harness / "Main.hs", harness / "Dockerfile", pathlib.Path(HERE) / "leios_chain_scan.py",
+            pathlib.Path(HERE) / "chain" / "run.py", root / "scripts/oracle/plutus/generated/run.py",
+            root / "scripts/oracle/plutus/recorded/run.py"]
+
+
+def verify_verdicts(out, contexts):
+    """A retained verdict fixture, without Docker: its files are the ones its manifest binds, its requests are those
+    the retained contexts give (`derive`), one verdict per request, and the provenance binds the image of the current
+    harness and its executable."""
+    root = pathlib.Path(HERE).parents[2]
+    manifest = read_json(out / "manifest.json")
+    for name in FILES:
+        if RECORDED.GENERATED.sha256(out / name) != manifest["sha256"][name]:
+            raise ValueError(f"changed fixture file: {name}")
+    current = {str(path.relative_to(root)): RECORDED.GENERATED.sha256(path) for path in verdict_sources()}
+    if current != manifest["toolSha256"]:
+        raise ValueError("changed harness or runner source: record the verdicts again")
+    chain, results = CHAIN.validate(contexts)
+    models, rows = derive(chain, results)
+    if (out / "models.jsonl").read_text() != dumped(models) or (out / "requests.jsonl").read_text() != dumped(rows):
+        raise ValueError("the requests are not those the retained contexts give")
+    verdicts = jsonl(out / "verdicts.jsonl")
+    if [r["id"] for r in rows] != [v["id"] for v in verdicts] or len(rows) != manifest["requests"]:
+        raise ValueError("a missing, extra or reordered verdict")
+    release = RECORDED.GENERATED.RELEASES[RELEASE]
+    provenance = read_json(out / "provenance.json")
+    image = RECORDED.build_files(provenance.get("imageFilesSha256"), "provenance.json")
+    RECORDED.build_files(manifest.get("imageFilesSha256"), "manifest.json")
+    if (re.fullmatch(r"sha256:[0-9a-f]{64}", str(provenance.get("imageId"))) is None
+            or provenance["imageId"] != manifest["oracleImage"] or image != manifest["imageFilesSha256"]
+            or provenance.get("oracleBinarySha256") != image[RECORDED.IMAGE_BINARY]
+            or image[RECORDED.IMAGE_HARNESS] != RECORDED.GENERATED.sha256(root / release["harness"] / "Main.hs")
+            or provenance.get("plutusSourceCommit") != release["pin"]):
+        raise ValueError("the provenance does not bind the image, its executable and the current harness")
+    return rows, verdicts
 
 
 def verdicts(args):
-    """The generated-program oracle of plutus 1.71.0.0 (`scripts/oracle/plutus/generated-171`, run as
-    `scripts/oracle/plutus/generated/run.py` runs it) on the requests, each with its model's cost
-    model: `verdicts.jsonl` in that oracle's form, the raw answers in `--evidence`, and
-    `manifest.json` binding the files, the image and the harness."""
-    generated = os.path.join(HERE, "..", "plutus", "generated")
-    sys.path.insert(0, generated)
-    import run as oracle  # noqa: E402  (the generated-program oracle's runner)
-
-    release = oracle.RELEASES["1.71.0.0"]
-    models = jsonl(os.path.join(args.out, "models.jsonl"))
-    rows = jsonl(os.path.join(args.out, "requests.jsonl"))
+    """The generated-program oracle of plutus 1.71.0.0 (`scripts/oracle/plutus/generated-171`) on the requests, each
+    with its model's cost model, through the image the recorded-request runner checks
+    (`scripts/oracle/plutus/recorded/run.py`: one immutable image ID, the repository's harness at the pinned,
+    unchanged plutus, an up-to-date executable as the entry point, and, unless `--accept-build`, the executable and
+    build files the fixture's provenance accepted), without network: `verdicts.jsonl` in that oracle's form, the raw
+    answers in `--evidence`, and `manifest.json` and `provenance.json` binding the files, the image and the sources.
+    With `--verify-only`, the retained fixture is checked without Docker."""
+    out = pathlib.Path(args.out)
+    contexts = pathlib.Path(args.contexts)
+    if args.verify_only:
+        try:
+            rows, _ = verify_verdicts(out, contexts)
+        except ValueError as refused:
+            raise SystemExit(str(refused)) from None
+        print(f"PASS: {len(rows)} requests, those of the retained contexts, each with its verdict; fixture files, "
+              "image binding and sources unchanged")
+        return
+    if args.evidence is None:
+        raise SystemExit("--evidence is required to record")
+    release = RECORDED.GENERATED.RELEASES[RELEASE]
+    models = jsonl(out / "models.jsonl")
+    rows = jsonl(out / "requests.jsonl")
     asked = [{k: v for k, v in {**row, "costModel": models[row["model"]]["costModel"]}.items()
               if k not in ("tx", "valid", "purpose")} for row in rows]
-    os.makedirs(args.evidence, exist_ok=True)
-    raw = pathlib.Path(args.evidence) / "raw.jsonl"
-    results = oracle.execute(release["image"], asked, raw, "leios-plutus")
-    with open(os.path.join(args.out, "verdicts.jsonl"), "w") as f:
-        f.writelines(oracle.dump(oracle.verdict(r)) + "\n" for r in results)
+    image_id = RECORDED.resolve(release["image"])
+    binding = RECORDED.image_binding(release, image_id, args.owner,
+                                     None if args.accept_build else RECORDED.accepted_build(out))
+    evidence = pathlib.Path(args.evidence)
+    evidence.mkdir(parents=True, exist_ok=True)
+    raw = evidence / "raw.jsonl"
+    results = RECORDED.execute(image_id, asked, raw, args.owner)
+    (out / "verdicts.jsonl").write_text("".join(RECORDED.GENERATED.dump(RECORDED.GENERATED.verdict(r)) + "\n"
+                                                for r in results))
     root = pathlib.Path(HERE).parents[2]
-    harness = [root / release["harness"] / name for name in ("Main.hs", "Dockerfile")]
-    files = ("models.jsonl", "requests.jsonl", "verdicts.jsonl")
     stages = {}
     for r in results:
         stages[r["reference"]["stage"]] = stages.get(r["reference"]["stage"], 0) + 1
     manifest = {
         "plutusCommit": release["pin"],
-        "oracleImage": oracle.image_id(release["image"]),
-        "oracleBaseImage": oracle.image_id(release["base"]),
+        "oracleImage": image_id,
+        "oracleBaseImage": RECORDED.resolve(release["base"]),
+        "imageFilesSha256": binding["imageFilesSha256"],
         "requests": len(rows),
         "transactions": len({r["tx"] for r in rows}),
         "stages": dict(sorted(stages.items())),
-        "sha256": {name: oracle.sha256(pathlib.Path(args.out) / name) for name in files},
-        "toolSha256": {str(p.relative_to(root)): oracle.sha256(p) for p in harness},
-        "rawSha256": oracle.sha256(raw),
+        "sha256": {name: RECORDED.GENERATED.sha256(out / name) for name in FILES},
+        "toolSha256": {str(p.relative_to(root)): RECORDED.GENERATED.sha256(p) for p in verdict_sources()},
+        "rawSha256": RECORDED.GENERATED.sha256(raw),
     }
-    with open(os.path.join(args.out, "manifest.json"), "w") as f:
-        f.write(json.dumps(manifest, indent=2) + "\n")
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    provenance = read_json(out / "provenance.json") if (out / "provenance.json").exists() else {}
+    provenance.update({
+        "schemaVersion": 1,
+        "plutusSourceCommit": release["pin"],
+        "requests": len(rows),
+        "transactions": manifest["transactions"],
+        "network": "none",
+        "imageId": image_id,
+        "baseImageId": manifest["oracleBaseImage"],
+        "imageFilesSha256": binding["imageFilesSha256"],
+        "oracleBinarySha256": binding["imageFilesSha256"][RECORDED.IMAGE_BINARY],
+        "harnessSha256": manifest["toolSha256"][f'{release["harness"]}/Main.hs'],
+        "contextsSha256": RECORDED.GENERATED.sha256(contexts / "results.json"),
+        "requestsSha256": manifest["sha256"]["requests.jsonl"],
+        "verdictsSha256": manifest["sha256"]["verdicts.jsonl"],
+        "modelsSha256": manifest["sha256"]["models.jsonl"],
+    })
+    provenance.pop("extractionSha256", None)
+    (out / "provenance.json").write_text(json.dumps(provenance, indent=1) + "\n")
+    verify_verdicts(out, contexts)
     print(json.dumps({k: manifest[k] for k in ("requests", "transactions", "stages")}))
 
 
@@ -799,8 +908,13 @@ def main():
     p.add_argument("--results", required=True)
     p.add_argument("--out", required=True)
     p = sub.add_parser("verdicts")
-    p.add_argument("--out", required=True, help="the directory `requests` wrote")
-    p.add_argument("--evidence", required=True, help="where the oracle's raw answers go, outside the checkout")
+    p.add_argument("--out", default=str(SCRIPTS), help="the directory `requests` wrote")
+    p.add_argument("--contexts", default=str(CHAIN.DIRECTORY), help="the contexts the requests are taken from")
+    p.add_argument("--evidence", help="where the oracle's raw answers go, outside the checkout")
+    p.add_argument("--owner", default="leios-chain-scripts")
+    p.add_argument("--verify-only", action="store_true")
+    p.add_argument("--accept-build", action="store_true",
+                   help="accept the image's build files and executable anew, instead of the ones recorded")
     p = sub.add_parser("sample")
     p.add_argument("--scan", required=True, help="the directory `scan` wrote")
     p.add_argument("--out", required=True)
