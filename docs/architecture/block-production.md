@@ -68,14 +68,16 @@ the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
    (`stateInfo`). At or past the window's end the key is poisoned (erased from memory) and every slot gives
    `forgeStateUpdateError` (`Critical`) until a reload installs another key; before the window's start the key
    is left as it is.
-5. The leader check is on the stake alone (`checkIsLeader`): `Leadership` proves
-   `Blake2b-256(slot || epochNonce)` with the VRF key and compares the output with the Praos threshold of the
+5. The leader check is on the stake alone (`checkIsLeader`): `Leadership` evaluates the VRF key on
+   `Blake2b-256(slot || epochNonce)` and compares the output with the Praos threshold of the
    pool's relative stake in the forecast ledger view's distribution, the same check and the same
    distribution as for received headers: the predecessor's current one in its own epoch and two or more
    epochs on, the mark snapshot in the next epoch (TICKF, cardano-ledger f649f975 `Shelley/Rules/Tick.hs`
-   201-242). A VRF key that
-   is not the registered one is found by the block's validation, as in the reference. Not elected:
-   `nodeNotLeader`. Elected with a certificate whose window has not begun: `nodeCannotForge`
+   201-242). Only a won slot is proved: the reference evaluates the certified VRF, output and proof, for
+   every slot (consensus 808e4005 `Protocol/Praos.hs` 408-434), and the decision and a won slot's VRF output
+   and proof are the same ([#1024](https://github.com/KD5UJC-XYZ/scarab/issues/1024#issuecomment-6902912834)).
+   A VRF key that is not the registered one is found by the block's validation, as in the reference. Not
+   elected: `nodeNotLeader`. Elected with a certificate whose window has not begun: `nodeCannotForge`
    (`PraosCannotForgeKeyNotUsableYet`). Otherwise `nodeIsLeader`.
 6. The ledger is ticked to the slot (`forgeTickedLedgerState`), and the transactions are taken from the mempool
    (`BlockBuilder.select`, `forgingMempoolSnapshot`): the held transactions are revalidated in order against the

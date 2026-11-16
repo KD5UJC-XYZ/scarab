@@ -40,27 +40,39 @@ object Draft03Prover:
       Arrays.fill(nonceKey, 0.toByte)
 
     def prove(alpha: Bytes): Either[Failure, Proved] =
+      evaluated(alpha) { g =>
+        val k = Scalar.fromBytesModOrderWide(Draft03Prover.sha512(nonceKey, g.hString))
+        val kB = Constants.ED25519_BASEPOINT_TABLE.multiply(k).compress().toByteArray
+        val kH = g.hPoint.multiply(k).compress().toByteArray
+        val c = Draft03Math.challenge(
+          g.h,
+          g.gammaString,
+          Ed25519Point.decode(kB),
+          Ed25519Point.decode(kH)
+        )
+        val cScalar = Scalar.fromBits(Arrays.copyOf(c, 32))
+        val s = cScalar.multiplyAndAdd(x, k).toByteArray
+        val proof = g.gammaString ++ c ++ s
+        Proved(Bytes.fromArray(proof), g.output)
+      }
+
+    /** The 64-byte output of `alpha` alone: the output [[prove]] certifies, from the same steps up
+      * to Gamma, without the nonce, the commitments, the challenge and the response that only the
+      * proof needs.
+      */
+    def output(alpha: Bytes): Either[Failure, Bytes] =
+      evaluated(alpha)(_.output)
+
+    /** Hash to curve and `Gamma = x*H`, the steps [[prove]] and [[output]] share, then `rest`;
+      * whatever throws in either is the one [[Failure.InternalFailure]].
+      */
+    private def evaluated[A](alpha: Bytes)(rest: Gamma => A): Either[Failure, A] =
       Either
         .catchNonFatal {
-          val pk = publicKey.toArray
-          val h = Draft03Math.h2c(pk, alpha.toArray)
+          val h = Draft03Math.h2c(publicKey.toArray, alpha.toArray)
           val hString = h.encode()
           val hPoint = Draft03Prover.toEdwards(hString)
-          val gammaString = hPoint.multiply(x).compress().toByteArray
-          val k = Scalar.fromBytesModOrderWide(Draft03Prover.sha512(nonceKey, hString))
-          val kB = Constants.ED25519_BASEPOINT_TABLE.multiply(k).compress().toByteArray
-          val kH = hPoint.multiply(k).compress().toByteArray
-          val c = Draft03Math.challenge(
-            h,
-            gammaString,
-            Ed25519Point.decode(kB),
-            Ed25519Point.decode(kH)
-          )
-          val cScalar = Scalar.fromBits(Arrays.copyOf(c, 32))
-          val s = cScalar.multiplyAndAdd(x, k).toByteArray
-          val proof = gammaString ++ c ++ s
-          val gamma = Ed25519Point.decode(gammaString)
-          Proved(Bytes.fromArray(proof), Bytes.fromArray(Draft03Math.output(gamma)))
+          rest(Gamma(h, hString, hPoint, hPoint.multiply(x).compress().toByteArray))
         }
         .leftMap(Failure.InternalFailure(_))
 
@@ -89,6 +101,18 @@ object Draft03Prover:
             key.forget()
             Left(Failure.PublicKeyMismatch)
         }
+
+  /** An input's hash-to-curve point H (variable-time, encoded, and constant-time) and the encoding
+    * of `Gamma = x*H`: what the output and the proof share.
+    */
+  private final class Gamma(
+      val h: Ed25519Point,
+      val hString: Array[Byte],
+      val hPoint: EdwardsPoint,
+      val gammaString: Array[Byte]
+  ):
+    /** The output from the encoding of Gamma, decoded as a verifier decodes the proof's. */
+    def output: Bytes = Bytes.fromArray(Draft03Math.output(Ed25519Point.decode(gammaString)))
 
   private def sha512(pieces: Array[Byte]*): Array[Byte] =
     val d = MessageDigest.getInstance("SHA-512")
