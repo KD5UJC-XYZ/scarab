@@ -352,11 +352,34 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     }
     assert(evolved > index(ran)(endedAt(s)), "the key reached period 51 only after s")
 
+  test("a led slot passed over by its time is still forged when the slot driver hands it over") {
+    // the forge of s holds the key past s + 1's onset; then the forging fiber's clock reads past
+    // s + 1's time (a late timer) before the clock fiber has published s + 2: the forging fiber
+    // passes s + 1 over, and the slot driver, taking s + 1 as the latest slot, hands it over
+    val s = BigInt(5003)
+    val seed = seedLeading(Vector(s, s + 1))
+    for
+      shift <- Ref.of[IO, Long](0L)
+      held <- holds(Forger.Point.Signing(s))
+      ran <- running(seed, s - 2, held, shift = Some(shift)) { (h, _) =>
+        for
+          _ <- held(Forger.Point.Signing(s)).reached.get
+          _ <- h.clocked(s + 1)
+          _ <- shift.set(geometry.slotLengthMillis)
+          _ <- held(Forger.Point.Signing(s)).free
+          _ <- h.settled(s + 1)
+        yield ()
+      }
+    yield
+      assertEquals(endedIn(ran.events).filter(e => e == s || e == s + 1), Vector(s, s + 1))
+      assert(forged(ran, s + 1).nonEmpty, "the slot handed over is forged")
+  }
+
   test("the clock never waits: with the slot driver blocked it publishes every slot on time") {
     val s = BigInt(5003)
     val seed = seedLeading(Vector(s))
     for
-      published <- Ref.of[IO, Vector[(BigInt, Instant)]](Vector.empty)
+      published <- fs2.concurrent.SignallingRef.of[IO, Vector[(BigInt, Instant)]](Vector.empty)
       held <- holds(Forger.Point.Signing(s))
       ran <- running(seed, s - 2, held) { (h, _) =>
         for
@@ -367,7 +390,7 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
             .drain
             .start
           _ <- held(Forger.Point.Signing(s)).reached.get
-          _ <- h.clocked(s + 3)
+          _ <- published.discrete.find(_.exists(_._1 >= s + 3)).compile.drain
           _ <- watcher.cancel
           _ <- held(Forger.Point.Signing(s)).free
           _ <- h.settled(s + 3)

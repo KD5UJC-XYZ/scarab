@@ -314,7 +314,10 @@ final class Forger[F[_]: Async, S](
           )
         )
       )
-      _ <- F.both(F.both(scheduling, clocked(None)), F.both(forging(BigInt(-1)), driving(None)))
+      _ <- F.both(
+        F.both(scheduling, clocked(None)),
+        F.both(forging(BigInt(-1), BigInt(-1)), driving(None))
+      )
     yield ()
   }
 
@@ -758,49 +761,57 @@ final class Forger[F[_]: Async, S](
 
   // ---- the forging fiber
 
-  /** The forging fiber: the earliest led slot after `last`, from the schedule or handed over by the
-    * slot driver. A scheduled slot is forged early ([[early]]) once its wake has come and every
-    * slot before it is settled; one handed over is forged at once. A change of the schedule or of
-    * the claims wakes it, and it takes the earliest again. It publishes nothing: each slot's final
-    * result goes to the slot driver.
+  /** The forging fiber: the earliest led slot after `last`, from the schedule, or a slot the slot
+    * driver handed over after `forged`, the last slot this fiber forged (a slot passed over is not
+    * one, so that a slot handed over after its scheduled wake was passed over is still forged). A
+    * scheduled slot is forged early ([[early]]) once its wake has come and every slot before it is
+    * settled; one handed over is forged at once. A change of the schedule or of the claims wakes
+    * it, and it takes the earliest again. It publishes nothing: each slot's final result goes to
+    * the slot driver.
     */
-  private def forging(last: BigInt)(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
+  private def forging(last: BigInt, forged: BigInt)(using
+      Handle[F, NodeError],
+      Raise[F, Fatal]
+  ): F[Unit] =
     (shared.claims.get, schedule.schedules.get, now)
       .flatMapN { (claims, schedules, at) =>
         val scheduled = schedules.nextLed(last)
-        claims.handedAfter(last).filter((t, _) => scheduled.forall(t <= _)) match
-          case Some((t, result)) => forgeNow(t).flatMap(result.complete).as(t)
+        def passed(t: BigInt) = F.pure((t, forged))
+        val waiting = F.pure((last, forged))
+        claims.handedAfter(forged) match
+          case Some((t, result)) => forgeNow(t).flatMap(result.complete).as((t.max(last), t))
           case None =>
             scheduled match
-              case None => changeOf(None, claims, schedules).as(last)
+              case None => changeOf(None, claims, schedules) *> waiting
               case Some(t) =>
                 val wake = geometry.slotStart(t).minusNanos(Forger.WakeMargin.toNanos)
-                if t <= claims.mark then F.pure(claims.mark)
-                else if claims.owned.contains(t) then F.pure(t)
+                if t <= claims.mark then passed(claims.mark)
+                else if claims.owned.contains(t) then passed(t)
                 // its time has passed and no one has claimed it: passed over, as the reference
-                // passes over a slot that passes while its forging thread is busy (C1)
-                else if !at.isBefore(geometry.slotStart(t + 1)) then F.pure(t)
+                // passes over a slot that passes while its forging thread is busy (C1); should
+                // the slot driver still hand it over, it is forged then
+                else if !at.isBefore(geometry.slotStart(t + 1)) then passed(t)
                 else if claims.mark < t - 1 || at.isBefore(wake) then
                   changeOf(
                     Option.when(at.isBefore(wake))(Forger.between(at, wake)),
                     claims,
                     schedules
-                  ).as(last)
+                  ) *> waiting
                 else
                   // a slot is forged only while forging is enabled, and only in a slot the clock
                   // can know, as the reference's watcher hands it only known slots
                   (hot.enabled, chain.get.map(horizon(_, t))).flatMapN { (on, known) =>
-                    if !on then F.pure(t)
-                    else if !known then changeOf(None, claims, schedules).as(last)
+                    if !on then passed(t)
+                    else if !known then changeOf(None, claims, schedules) *> waiting
                     else
                       pause(Forger.Point.Waking(t)) *> Deferred[F, Final[F]].flatMap { result =>
                         shared.claims.modify(_.forging(t, result)).flatMap { claimed =>
-                          if claimed then early(t, result).as(t) else F.pure(last)
+                          if claimed then early(t, result).as((t, t)) else waiting
                         }
                       }
                   }
       }
-      .flatMap(forging)
+      .flatMap(forging(_, _))
 
   /** Until `delay` has passed, or the claims or the schedule differ from `claims` and `schedules`.
     */
