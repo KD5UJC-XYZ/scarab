@@ -13,9 +13,11 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   Unlifting
 }
 
-/** The unlifting of every builtin of plutus 1.70.0.0 (`507cab8c`) under variants A to E: each
+/** The unlifting of every builtin of plutus 1.71.0.0 (`261766ad`) under variants A to G: each
   * argument in order, the first failure winning, as `toMonoF` reads them at full saturation
-  * (`PlutusCore/Builtin/Meaning.hs:304-330`).
+  * (`PlutusCore/Builtin/Meaning.hs:304-330`). Under A to E it is 1.70.0.0's (`507cab8c`), whose
+  * lines the bounds below cite; F and G read the arguments as 1.71.0.0's `ensurableInteger` and
+  * `ensurableByteString` choose ([[CoreVariant]]).
   *
   *   - An opaque parameter (`Opaque val rep`, a bare type variable) takes any value
   *     (`Builtin/KnownType.hs:496-498`).
@@ -35,29 +37,33 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   */
 object CoreUnlifting:
 
-  /** The unlifting of `variant`, refused for the variants plutus 1.70.0.0 does not have. */
-  def of(variant: SemanticsVariant): Either[UnsupportedVariant, Unlifting] =
-    CoreVariant.of(variant).map(apply)
+  /** The unlifting of `variant`. */
+  def of(variant: SemanticsVariant): Unlifting = apply(CoreVariant.of(variant))
 
   def apply(variant: CoreVariant): Unlifting = tables(variant.ordinal)
 
   /** The bounds on `function` 's arguments under `variant`, by position: where the Haskell type of
-    * its denotation in `toBuiltinMeaning` (`PlutusCore/Default/Builtins.hs`, cited by line) refines
-    * the argument's universe type. Every other argument is unbounded.
+    * its denotation in `toBuiltinMeaning` (`PlutusCore/Default/Builtins.hs`, cited by line at
+    * 1.70.0.0, where "D and E" is `ensurable`) refines the argument's universe type. Every other
+    * argument is unbounded. At 1.71.0.0 the `CInteger` bounds are those of `ensurableInteger` (D
+    * and E) and every other bound of D and E is that of `ensurableByteString` (D to G,
+    * `Builtins.hs:2806-2820` at `261766ad`).
     */
   def bounds(variant: CoreVariant, function: DefaultFun): Map[Int, UnliftingBound] =
     import DefaultFun.*
     import UnliftingBound.{CByteString, CInteger, Word64 as W64, Word8 as W8}
     val int = UnliftingBound.Int
-    val ensurable = variant.ensurable
+    def onChainIntegers(entries: (Int, UnliftingBound)*): Map[Int, UnliftingBound] =
+      if variant.ensurableInteger then entries.toMap else Map.empty
     def onChain(entries: (Int, UnliftingBound)*): Map[Int, UnliftingBound] =
-      if ensurable then entries.toMap else Map.empty
+      if variant.ensurableByteString then entries.toMap else Map.empty
     val none = Map.empty[Int, UnliftingBound]
     function match
-      // `CInteger -> CInteger` in D and E (`Builtins.hs:1099-1203,1211-1240`, plutus 1.70.0.0).
+      // `CInteger -> CInteger` in D and E (`Builtins.hs:1099-1203,1211-1240`, plutus 1.70.0.0;
+      // `ensurableInteger`, `Builtins.hs:1102-1243` at 1.71.0.0).
       case AddInteger | SubtractInteger | MultiplyInteger | DivideInteger | QuotientInteger |
           RemainderInteger | ModInteger | LessThanInteger | LessThanEqualsInteger =>
-        onChain(0 -> CInteger, 1 -> CInteger)
+        onChainIntegers(0 -> CInteger, 1 -> CInteger)
       // `Integer -> Integer` in every variant (`Builtins.hs:1204-1210`, plutus 1.70.0.0).
       case EqualsInteger => none
       // `CByteString -> CByteString` in D and E (`Builtins.hs:1242-1257,1351-1396`,
@@ -65,13 +71,15 @@ object CoreUnlifting:
       case AppendByteString | EqualsByteString | LessThanByteString | LessThanEqualsByteString =>
         onChain(0 -> CByteString, 1 -> CByteString)
       // `Integer` (A, B), `Word8` (C), `CInteger -> CByteString` (D), `Word8 -> CByteString` (E)
-      // (`Builtins.hs:1258-1308`, plutus 1.70.0.0).
+      // (`Builtins.hs:1258-1308`, plutus 1.70.0.0); `Integer -> CByteString` (F) and
+      // `Word8 -> CByteString` (G) (`Builtins.hs:1261-1320`, plutus 1.71.0.0).
       case ConsByteString =>
         variant match
           case CoreVariant.A | CoreVariant.B => none
           case CoreVariant.C                 => Map(0 -> W8)
           case CoreVariant.D                 => Map(0 -> CInteger, 1 -> CByteString)
-          case CoreVariant.E                 => Map(0 -> W8, 1 -> CByteString)
+          case CoreVariant.E | CoreVariant.G => Map(0 -> W8, 1 -> CByteString)
+          case CoreVariant.F                 => Map(1 -> CByteString)
       // `Int -> Int`, and `CByteString` in D and E (`Builtins.hs:1309-1323`, plutus 1.70.0.0).
       case SliceByteString => Map(0 -> int, 1 -> int) ++ onChain(2 -> CByteString)
       // `BS.ByteString` in every variant (`Builtins.hs:1324-1330`, plutus 1.70.0.0).

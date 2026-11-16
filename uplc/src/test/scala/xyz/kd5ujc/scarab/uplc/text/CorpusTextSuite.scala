@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.uplc.ReferenceCorpus.{ConformanceCase, Expected}
 final class CorpusTextSuite extends munit.FunSuite:
 
   private lazy val cases: Vector[ConformanceCase] =
-    ReferenceCorpus.conformance(ReferenceCorpus.Pinned).fold(p => fail(p.toString), identity)
+    ReferenceCorpus.conformance(ReferenceCorpus.Plutus170).fold(p => fail(p.toString), identity)
 
   test("the 1.70.0.0 view has 1,009 cases: 723 results with budgets, 222 failures, 64 refusals") {
     val all = cases

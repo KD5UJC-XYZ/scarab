@@ -34,8 +34,6 @@ private[plutus] object UplcText:
     case other                                  => other.productPrefix
 
   def unavailable(reason: Unavailability): String = reason match
-    case Unavailability.UnsupportedProtocol(protocol) =>
-      s"UnsupportedProtocol ${protocol.value}"
     case Unavailability.BuiltinDefect(function, defect) =>
       s"BuiltinDefect $function ${defect.productPrefix}"
     case Unavailability.BuiltinArity(function, expected, actual) =>

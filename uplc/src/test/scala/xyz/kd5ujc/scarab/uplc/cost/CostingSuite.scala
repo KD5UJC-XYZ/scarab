@@ -56,8 +56,9 @@ final class CostingSuite extends munit.FunSuite:
   private def cost(costs: VariantCosts, function: DefaultFun, arguments: Constant*): ExBudget =
     stream(costs, function, arguments*).total
 
+  // The costs of A to E at plutus 1.70.0.0's defaults, whose values the tests below spell out.
   private lazy val defaults: Map[SemanticsVariant, VariantCosts] =
-    DefaultCostModels.Variants.map(v => v -> DefaultCostModels.costs(v)).toMap
+    DefaultCostModels.Variants170.map(v => v -> DefaultCostModels.Plutus170.costs(v)).toMap
 
   /** The steps of a conformance program before its builtin is applied. */
   private final case class Steps(apply: Int, force: Int, builtin: Int, constant: Int)
@@ -69,7 +70,9 @@ final class CostingSuite extends munit.FunSuite:
   private def conformance(test: String, steps: Steps): ExBudget =
     val Array(builtin, name) = test.split('/'): @unchecked
     val text =
-      DefaultCostModels.read(s"conformance/builtin/semantics/$builtin/$name/$name.budget.expected")
+      DefaultCostModels.Plutus170.read(
+        s"conformance/builtin/semantics/$builtin/$name/$name.budget.expected"
+      )
     def field(key: String): Long =
       s"$key:\\s*(\\d+)".r
         .findFirstMatchIn(text)
@@ -370,15 +373,17 @@ final class CostingSuite extends munit.FunSuite:
     assertEquals(cost(d, InsertCoin, hex("cc"), hex("01"), int(5), v), ExBudget.of(430576, 129))
   }
 
-  /** The costs of `variant` from its default list with some parameters replaced by name. */
+  /** The costs of `variant` from its 1.70.0.0 default list with some parameters replaced by name.
+    */
   private def withParameters(variant: SemanticsVariant, changes: (String, Long)*): VariantCosts =
     val language = DefaultCostModels.languageOf(variant)
-    val names = EvaluationContext.parameterNames(language)
-    val values = DefaultCostModels.list(language, variant)
+    val names = DefaultCostModels.Plutus170.names(language)
+    val values = DefaultCostModels.Plutus170.list(language, variant)
     val changed = changes.toMap
     val list = names.zip(values).map((name, v) => changed.getOrElse(name, v))
     assertEquals(changed.keySet -- names, Set.empty[String], "names")
-    val (_, parameters) = EvaluationContext.tagWithParamNames(names, list)
+    val (_, parameters) =
+      EvaluationContext.tagWithParamNames(EvaluationContext.parameterNames(language), list)
     EvaluationContext.costsOf(variant, parameters).fold(e => fail(e.toString), identity)
 
   private def everyParameter(variant: SemanticsVariant, value: Long): VariantCosts =

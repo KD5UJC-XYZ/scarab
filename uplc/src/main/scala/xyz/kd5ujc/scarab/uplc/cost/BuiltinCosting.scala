@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.uplc.cost.Measure.{
   maxDepth,
   nodeCount,
   one,
+  outerDepth,
   outerSize,
   textBytes,
   totalSize,
@@ -17,10 +18,11 @@ import xyz.kd5ujc.scarab.uplc.cost.Measure.{
 
 /** The costing of every builtin in one semantics variant from a cost model: the measures of the
   * unlifted arguments and the builtin's costing function, as `toBuiltinMeaning` pairs them
-  * (`PlutusCore/Default/Builtins.hs:1092-2528`, plutus 1.70.0.0 `507cab8c`; the line of each
-  * builtin's meaning is in [[DefaultFun]]'s table). Each costing function computes the measures it
-  * reads only, once each, and gives the CPU and memory streams zipped as the machine spends them
-  * (`runCostingFun*`, `CostingFun/Core.hs:303-314,597-611,824-840,871-889,916-936,964-986`).
+  * (`PlutusCore/Default/Builtins.hs:1096-2544`, plutus 1.71.0.0 `261766ad`; the line of each
+  * builtin's meaning at 1.70.0.0 is in [[DefaultFun]]'s table). Each costing function computes the
+  * measures it reads only, once each, and gives the CPU and memory streams zipped as the machine
+  * spends them (`runCostingFun*`,
+  * `CostingFun/Core.hs:303-314,597-611,824-840,871-889,916-936,964-986`).
   *
   * An application is saturated when it is costed, so every argument is there; one that were not
   * would be measured as a value that is not a constant (1).
@@ -55,7 +57,8 @@ final class BuiltinCosting private (
       case LessThanInteger       => two(m.lessThanInteger, universe, universe)
       case LessThanEqualsInteger => two(m.lessThanEqualsInteger, universe, universe)
       case AppendByteString      => two(m.appendByteString, universe, universe)
-      // `Integer` in A, B and D, `Word8` in C and E (`Builtins.hs:1258-1308`, plutus 1.70.0.0).
+      // `Integer` in A, B, D and F, `Word8` in C, E and G (`Builtins.hs:1261-1320`, plutus
+      // 1.71.0.0).
       case ConsByteString           => two(m.consByteString, refined.consByteStringByte, universe)
       case SliceByteString          => three(m.sliceByteString, one, one, universe)
       case LengthOfByteString       => single(m.lengthOfByteString, universe)
@@ -71,8 +74,8 @@ final class BuiltinCosting private (
         three(m.verifyEcdsaSecp256k1Signature, universe, universe, universe)
       case VerifySchnorrSecp256k1Signature =>
         three(m.verifySchnorrSecp256k1Signature, universe, universe, universe)
-      // `Text` in A to C, `TextCostedByByteLength` in D and E (`Builtins.hs:1507-1587`,
-      // plutus 1.70.0.0).
+      // `Text` in A to C, `TextCostedByByteLength` in D to G (`Builtins.hs:1519-1605`,
+      // plutus 1.71.0.0).
       case AppendString => two(m.appendString, refined.text, refined.text)
       case EqualsString => two(m.equalsString, refined.text, refined.text)
       case EncodeUtf8   => single(m.encodeUtf8, refined.text)
@@ -89,7 +92,7 @@ final class BuiltinCosting private (
       case NullList     => single(m.nullList, universe)
       case ChooseData =>
         six(m.chooseData, universe, universe, universe, universe, universe, universe)
-      // `Integer` in A to C, `Word64` in D and E (`Builtins.hs:1745-1758`, plutus 1.70.0.0).
+      // `Integer` in A to C, `Word64` in D to G (`Builtins.hs:1763-1777`, plutus 1.71.0.0).
       case ConstrData               => two(m.constrData, refined.constrDataTag, universe)
       case MapData                  => single(m.mapData, universe)
       case ListData                 => single(m.listData, universe)
@@ -134,8 +137,8 @@ final class BuiltinCosting private (
       case ReadBit              => two(m.readBit, universe, one)
       case WriteBits            => three(m.writeBits, universe, universe, universe)
       case ReplicateByte        => two(m.replicateByte, words, one)
-      // `IntegerCostedLiterally` in A to C, `Int` in D and E (`Builtins.hs:2237-2266`,
-      // plutus 1.70.0.0).
+      // `IntegerCostedLiterally` in A to C, `Int` in D to G (`Builtins.hs:2255-2284`,
+      // plutus 1.71.0.0).
       case ShiftByteString             => two(m.shiftByteString, universe, refined.shift)
       case RotateByteString            => two(m.rotateByteString, universe, refined.shift)
       case CountSetBits                => single(m.countSetBits, universe)
@@ -158,22 +161,26 @@ final class BuiltinCosting private (
       case MultiIndexArray             => two(m.multiIndexArray, universe, universe)
       case Policies                    => single(m.policies, outerSize)
       case AssetCount                  => single(m.assetCount, totalSize)
-      // No cost-model entry: `unimplementedCostingFun` (`Builtins.hs:2513-2526`, plutus 1.70.0.0).
-      case KeepPolicies => unimplemented(universe, universe)
-      case DropPolicies => unimplemented(universe, universe)
+      // `[ByteString] -> ValueOuterDepth` costed by their own models in plutus 1.71.0.0
+      // (`Builtins.hs:2531-2544` at `261766ad`), by `unimplementedCostingFun` in 1.70.0.0
+      // (`Builtins.hs:2513-2526`).
+      case KeepPolicies => two(m.keepPolicies, universe, outerDepth)
+      case DropPolicies => two(m.dropPolicies, universe, outerDepth)
 
 object BuiltinCosting:
 
-  /** The costing of `variant` from `model`, none for a variant 1.70.0.0 does not define (F, G). */
-  def of(variant: SemanticsVariant, model: BuiltinCostModel[SatInt]): Option[BuiltinCosting] =
-    refinements(variant).map(new BuiltinCosting(model, _))
+  /** The costing of `variant` from `model`. */
+  def of(variant: SemanticsVariant, model: BuiltinCostModel[SatInt]): BuiltinCosting =
+    new BuiltinCosting(model, refinements(variant))
 
-  /** The measures that differ between the variants of 1.70.0.0: the first argument of
-    * `consByteString`, the texts of `appendString`, `equalsString` and `encodeUtf8`, the tag of
-    * `constrData` and the amount of `shiftByteString` and `rotateByteString`. Every other argument
-    * has the same measure in every variant (the `ensurable` variants D and E take `CInteger` and
-    * `CByteString`, whose measures are `Integer` 's and `ByteString` 's,
-    * `Default/Universe/Cardano.hs:22-27`).
+  /** The measures that differ between the variants: the first argument of `consByteString`, the
+    * texts of `appendString`, `equalsString` and `encodeUtf8`, the tag of `constrData` and the
+    * amount of `shiftByteString` and `rotateByteString`. Every other argument has the same measure
+    * in every variant (the variants that take `CInteger` and `CByteString` measure them as
+    * `Integer` and `ByteString`, `Default/Universe/Cardano.hs:22-27`, plutus 1.70.0.0 and
+    * 1.71.0.0). In plutus 1.71.0.0 F reads its arguments as D does and G as E does, but for the
+    * integers that F and G no longer bound (`ensurableInteger`, `Builtins.hs:2806-2811`), which
+    * `Integer` and `CInteger` measure alike.
     */
   private[cost] final case class Refinements(
       consByteStringByte: Measure,
@@ -182,28 +189,15 @@ object BuiltinCosting:
       shift: Measure
   )
 
-  private def refinements(variant: SemanticsVariant): Option[Refinements] = variant match
+  private def refinements(variant: SemanticsVariant): Refinements = variant match
     case SemanticsVariant.A | SemanticsVariant.B =>
-      Some(Refinements(universe, universe, universe, literal))
-    case SemanticsVariant.C => Some(Refinements(one, universe, universe, literal))
-    case SemanticsVariant.D => Some(Refinements(universe, textBytes, one, one))
-    case SemanticsVariant.E => Some(Refinements(one, textBytes, one, one))
-    case SemanticsVariant.F | SemanticsVariant.G => None
-
-  /** `makeUnimplementedCostingFun` (`CostingFun/Core.hs:128-132`, plutus 1.70.0.0): 100,000,000,000
-    * CPU and memory whatever the arguments.
-    */
-  val Unimplemented: Long = 100000000000L
+      Refinements(universe, universe, universe, literal)
+    case SemanticsVariant.C                      => Refinements(one, universe, universe, literal)
+    case SemanticsVariant.D | SemanticsVariant.F => Refinements(universe, textBytes, one, one)
+    case SemanticsVariant.E | SemanticsVariant.G => Refinements(one, textBytes, one, one)
 
   /** A builtin's argument measures and its costing function. */
   private final case class Costed(measures: Vector[Measure], function: CostingFunction)
-
-  private val unimplementedFunction: CostingFunction = new CostingFunction:
-    def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
-      CostStream.single(ExBudget.of(Unimplemented, Unimplemented))
-
-  private def unimplemented(m1: Measure, m2: Measure): Costed =
-    Costed(Vector(m1, m2), unimplementedFunction)
 
   private def measured[V](measure: Measure, arguments: Vector[Argument[V]], position: Int)(using
       MachineValue[V]

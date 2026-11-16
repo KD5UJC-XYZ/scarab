@@ -36,7 +36,7 @@ correctness checking. ~~Scalus stays the default and the fast path.~~ ([amended 
   a fold over the term, because programs loop and budgets depend on the reference's order of charges.
   Recursion schemes are used where the shape fits: Flat decoding, scope and size checks, printing,
   alpha-equality and term generation.
-- **Scope**: plutus 1.70.0.0 (`507cab8c`, the pin of node 11.1.3), protocols 5 to 11, V1 to V3. Plutus 1.71.0.0
+- **Scope**: ~~plutus 1.70.0.0 (`507cab8c`, the pin of node 11.1.3), protocols 5 to 11, V1 to V3~~ ([amended 2026-11-15](#amendment-2026-11-15-plutus-17100-and-protocol-12)). Plutus 1.71.0.0
   (`261766ad`, the Leios testnet build) ~~is a second phase~~ ([amended 2026-11-12](#amendment-2026-11-12-what-the-backends-share-forging-protocol-12-and-the-aim)); both corpora are vendored.
 - **Authority of the oracles, in order**: the upstream expected results and budgets of the conformance corpus
   (produced by the Haskell evaluator); the costing oracle (budgets from unchanged plutus 1.70.0.0); the
@@ -79,8 +79,8 @@ the owner decided the scope of the flag the same day ([#43 scope comment](https:
   following stays on this node, which stalls on the block, but a forged block whose transaction carries a wrong
   validity flag is refused by every other node (`ValidationTagMismatch`, cardano-ledger `f649f975`,
   `eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs`). ~~The owner may lift the refusal then.~~ ([amended 2026-11-13](#amendment-2026-11-13-the-own-evaluator-forges))
-- **No protocol 12.** The backend refuses protocol 12 and later, the Leios testnet's Dijkstra, with a typed
-  `Unsupported` failure; plutus 1.71.0.0 is out of scope for now.
+- ~~**No protocol 12.** The backend refuses protocol 12 and later, the Leios testnet's Dijkstra, with a typed
+  `Unsupported` failure; plutus 1.71.0.0 is out of scope for now.~~ ([amended 2026-11-15](#amendment-2026-11-15-plutus-17100-and-protocol-12))
 - **The aim, not a gate:** a mainnet sync from genesis to tip with only the own evaluator. Speed stays secondary
   but must keep such a sync practical. A rough extrapolation from late-Alonzo samples of 6 to 11 redeemers per
   block (table perf-20.t1 of [the mainnet follower measurements](../performance/mainnet-follower.md)) puts
@@ -101,8 +101,9 @@ The owner decided on 2026-11-13 that the node may forge with the own evaluator: 
   a wrong verdict at admission puts a transaction with a wrong validity flag in a block this node forges, and
   every node that follows the reference refuses that block (`ValidationTagMismatch`, as above): the pool loses
   the slot. The node's own check of the block it forged runs the same evaluator, so it does not catch this.
-- **Unchanged:** ~~Scalus stays the default, and changing it needs a further decision.~~ ([amended 2026-11-15](#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)) The own evaluator still
-  gives no verdict at protocol 12 and later, and the node treats that as it treats any missing verdict
+- **Unchanged:** ~~Scalus stays the default, and changing it needs a further decision.~~ ([amended 2026-11-15](#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)) ~~The own evaluator still
+  gives no verdict at protocol 12 and later, and the node treats that as it treats any missing verdict~~
+  ([amended 2026-11-15](#amendment-2026-11-15-plutus-17100-and-protocol-12))
   ([ADR 0017, amendment of 2026-10-28](0017-fibers-end-with-values.md#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)):
   a block that needs one is not adopted, a transaction that needs one is not admitted, and a block of its own
   whose check gets none is not published, its transactions leave the mempool and the forger goes on. The
@@ -139,9 +140,44 @@ two.
   amendment of 2026-11-12 stands: speed is secondary, but a sync from genesis must stay practical.
 - **Reopen.** The conditions struck through above were those of an opt-in second backend; the decision of
   2026-11-15 records none.
-- **Not changed by this amendment:** the scope (plutus 1.70.0.0, protocols 5 to 11, V1 to V3), the forging
-  decision of 2026-11-13 and the risk it names. The plutus 1.71.0.0 corpus ran on the Scalus backend only: until
-  the own evaluator runs it ([#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099)), it has no runner, an
-  incomplete gate and never a pass ([PlutusV4 and Dijkstra](../compatibility/plutus-v4-dijkstra.md)). The decision
+- **Not changed by this amendment:** ~~the scope (plutus 1.70.0.0, protocols 5 to 11, V1 to V3),~~
+  ([amended 2026-11-15](#amendment-2026-11-15-plutus-17100-and-protocol-12)) the forging decision of 2026-11-13 and
+  the risk it names. ~~The plutus 1.71.0.0 corpus ran on the Scalus backend only: until the own evaluator runs it
+  ([#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099)), it has no runner, an incomplete gate and never a
+  pass ([PlutusV4 and Dijkstra](../compatibility/plutus-v4-dijkstra.md)).~~
+  ([amended 2026-11-15](#amendment-2026-11-15-plutus-17100-and-protocol-12)) The decision
   of the same day to extend the own evaluator to plutus 1.71.0.0, PlutusV4 and protocol 12 has its own row in the
   [decisions register](../decisions.md#reference-fidelity) (#1099).
+
+## Amendment (2026-11-15): plutus 1.71.0.0 and protocol 12
+
+With the decision of 2026-11-15 that Scarab keeps one Plutus evaluator, its own
+([amendment of that date](#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)), the owner decided that
+the own evaluator is extended to plutus 1.71.0.0, PlutusV4 and protocol 12, which the Scalus backend alone covered
+until then. This
+reverses "plutus 1.71.0.0 is out of scope for now" and "no protocol 12" of the amendment of 2026-11-12 (#1099).
+
+- **Scope:** plutus 1.71.0.0 (`261766ad`: the Leios testnet build's, and the plutus cardano-node 11.2.1 links) at
+  every protocol version, V1 to V4. Below protocol 12 its verdicts are those of 1.70.0.0 (`507cab8c`): the two
+  releases differ there only in what the ledger cannot reach (the cost models and the 8,191-currency limit of
+  `keepPolicies` and `dropPolicies`, which no protocol version makes available; the default values of four
+  `Value` builtins' cost models, which on-chain parameters always replace) and in the warning of
+  `mkEvaluationContext` for a list of 1.70.0.0's length. [Plutus at protocol 12](../compatibility/plutus-v4-dijkstra.md)
+  tabulates every difference with its lines at both pins.
+- **From protocol 12:** builtin semantics variants F (V1, V2) and G (V3, V4), with D's and E's cost models, the
+  byte-string bounds of D and E and no integer bounds; program version 1.2.0 in every language; `case` on `Data`
+  in a program of 1.2.0 or later, the caser choosing by the program's version as `defaultCaserBuiltinFor` does;
+  a PlutusV4 script evaluated as PlutusV3, as cardano-ledger 9df9f98c evaluates it. Like the reference's, the
+  evaluation is total in the protocol version: every protocol from 12 on is evaluated as 12, so the backend's
+  typed refusal of protocol 12 and later is removed. A defect of the implementation is still no verdict, which
+  the node treats as [ADR 0017's amendment of 2026-10-28](0017-fibers-end-with-values.md#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)
+  says.
+- **Oracles:** the authority list above gains the conformance corpus of plutus 1.71.0.0 (results and budgets,
+  text and Flat forms, under its executable's profile) and a 1.71.0.0 build of the generated-script oracle
+  (`scripts/oracle/plutus/generated-171`, the unchanged source of `261766ad`), whose retained verdicts cover
+  protocols 5 to 12 and V1 to V4. The 1.70.0.0 corpus and oracles stay, and still pass.
+- **Cost-model names:** the evaluator tags a list with 1.71.0.0's parameter names at every protocol, as
+  1.71.0.0's `mkEvaluationContext` does. The ledger's readers of cost models keep the rule of the owner's
+  decision of 2026-11-04 (the mainnet lineage by the 1.70.0.0 names, the Leios testnet by the 1.71.0.0 names).
+- **Unchanged:** the node stops at `MaxMajorProtVer` 11, so it never evaluates at protocol 12; phase 2 and UTXOW
+  of the Dijkstra era in the ledger are #54's.

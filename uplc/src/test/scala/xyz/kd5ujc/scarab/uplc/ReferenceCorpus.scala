@@ -57,10 +57,15 @@ object ReferenceCorpus:
     val base = filesBelow(root).filterNot((name, _) => name.startsWith("overlays/"))
     base -- absent.getOrElse(Vector.empty) ++ filesBelow(root.resolve("overlays").resolve(tag))
 
-  val Releases: Vector[String] = Vector("1.70.0.0", "1.71.0.0")
+  /** Plutus 1.70.0.0 (`507cab8c`), the release of the reference node 11.1.3. */
+  val Plutus170: String = "1.70.0.0"
 
-  /** The release the own evaluator implements (plutus 1.70.0.0, `507cab8c`, ADR 0027). */
-  val Pinned: String = "1.70.0.0"
+  /** Plutus 1.71.0.0 (`261766ad`), the release the own evaluator implements (ADR 0027, amendment of
+    * 2026-11-15).
+    */
+  val Plutus171: String = "1.71.0.0"
+
+  val Releases: Vector[String] = Vector(Plutus170, Plutus171)
 
   /** The directory of the conformance cases in a view: upstream's
     * `plutus-conformance/test-cases/uplc/evaluation`.

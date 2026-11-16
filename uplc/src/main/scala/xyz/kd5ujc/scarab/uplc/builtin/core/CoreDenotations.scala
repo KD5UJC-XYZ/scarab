@@ -17,9 +17,10 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
 import Reading.{failed, list, listOf, pair, structural}
 
 /** The denotations of the core builtins of plutus 1.70.0.0 (`507cab8c`), the meanings of
-  * `toBuiltinMeaning` in `PlutusCore/Default/Builtins.hs` (cited by line): integers, byte strings,
-  * strings, `Bool`, unit, `trace`, pairs, lists and `Data`. The cryptographic, bitwise, conversion,
-  * `Value` and array builtins are not here.
+  * `toBuiltinMeaning` in `PlutusCore/Default/Builtins.hs` (cited by line), which plutus 1.71.0.0
+  * (`261766ad`) keeps under every variant, F and G included: integers, byte strings, strings,
+  * `Bool`, unit, `trace`, pairs, lists and `Data`. The cryptographic, bitwise, conversion, `Value`
+  * and array builtins are not here.
   *
   * Where the variants of a builtin differ, they differ only in the Haskell type an argument is read
   * as (`CInteger`, `Word8`, `Word64`, `CByteString`), so the variants share one meaning and differ
@@ -31,9 +32,8 @@ import Reading.{failed, list, listOf, pair, structural}
   */
 object CoreDenotations:
 
-  /** The core denotations of `variant`, refused for the variants plutus 1.70.0.0 does not have. */
-  def of(variant: SemanticsVariant): Either[UnsupportedVariant, Map[DefaultFun, Denotation]] =
-    CoreVariant.of(variant).map(apply)
+  /** The core denotations of `variant`. */
+  def of(variant: SemanticsVariant): Map[DefaultFun, Denotation] = apply(CoreVariant.of(variant))
 
   def apply(variant: CoreVariant): Map[DefaultFun, Denotation] = tables(variant.ordinal)
 
@@ -135,8 +135,8 @@ object CoreDenotations:
     )
 
     // `Builtins.hs:1242-1396` of plutus 1.70.0.0; ConsByteString: `fromIntegral` to a `Word8`
-    // keeps the low 8 bits (variants A, B and D); C and E read a `Word8`, so their argument is that
-    // byte already.
+    // keeps the low 8 bits (variants A, B and D, and F of 1.71.0.0, `Builtins.hs:1278-1284` at
+    // `261766ad`); C, E and G read a `Word8`, so their argument is that byte already.
     val byteStrings: Map[DefaultFun, Body] = Map(
       AppendByteString -> constant2[Bytes, Bytes]((x, y) => bytes(x ++ y)),
       ConsByteString -> constant2[BigInt, Bytes]((n, xs) =>

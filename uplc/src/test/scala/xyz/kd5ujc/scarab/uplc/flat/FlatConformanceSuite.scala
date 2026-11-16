@@ -8,33 +8,34 @@ import xyz.kd5ujc.scarab.uplc.cek.Terms.*
 import xyz.kd5ujc.scarab.uplc.cost.CekConformance
 import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
-/** The conformance cases of plutus 1.70.0.0 run on their `.flat` files, as the reference's runner
+/** The conformance cases of a plutus release run on their `.flat` files, as the reference's runner
   * runs them with `--format flat` ([[FlatConformance]]), through this module's Flat decoder and the
-  * evaluator of [[xyz.kd5ujc.scarab.uplc.text.ConformanceSuite]] in the runner's profile
+  * evaluator of [[xyz.kd5ujc.scarab.uplc.text.ConformanceSuite]] in the release's runner profile
   * ([[CekConformance]]). No case is excluded: every result equals the decoded `.flat.expected`
   * program and every budget `.budget.expected`.
   *
   * The 103 cases with no Flat form are the text parser's (`dirsWithNoFlatFiles`,
-  * `PlutusConformance/Common.hs:149-153`, `507cab8c`), which the runner skips in this format and
-  * the text gate runs.
+  * `PlutusConformance/Common.hs:149-153`, `507cab8c`; the same at `261766ad`), which the runner
+  * skips in this format and the text gate runs.
   */
-final class FlatConformanceSuite extends munit.FunSuite:
+abstract class FlatConformanceGate(runner: CekConformance) extends munit.FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
 
   private lazy val corpus =
-    ReferenceCorpus.flatConformance(ReferenceCorpus.Pinned).fold(p => fail(p.toString), identity)
+    ReferenceCorpus.flatConformance(runner.tag).fold(p => fail(p.toString), identity)
 
   test(
-    "the 906 cases with a Flat form, through the Flat decoder and the machine: results, budgets"
+    s"plutus ${runner.tag}: the 906 cases with a Flat form, through the Flat decoder and the " +
+      "machine: results, budgets"
   ) {
     assertEquals(corpus.cases.size, 906)
     assertEquals(corpus.textOnly.size, 103)
-    val report = FlatConformance.run(corpus.cases, CekConformance.backend.evaluate)
+    val report = FlatConformance.run(corpus.cases, runner.backend.evaluate)
     println(
-      s"plutus 1.70.0.0 conformance on the .flat files: ${report.conforming} of " +
+      s"plutus ${runner.tag} conformance on the .flat files: ${report.conforming} of " +
         s"${corpus.cases.size} cases conform"
     )
-    assert(report.mismatches.isEmpty, report.render(CekConformance.backend.show))
+    assert(report.mismatches.isEmpty, report.render(runner.backend.show))
   }
 
   /** `conformance-consistency` (`consistency/Spec.hs:48-154`, `507cab8c`): each `.flat` program
@@ -62,9 +63,9 @@ final class FlatConformanceSuite extends munit.FunSuite:
       case (t, f) => Some(s"the expectations differ: $t, $f")
     Option(input.toList ++ result.toList).filter(_.nonEmpty).map(_.mkString("; "))
 
-  test("each Flat program and result is the one its text form reads as") {
+  test(s"plutus ${runner.tag}: each Flat program and result is the one its text form reads as") {
     val texts = ReferenceCorpus
-      .conformance(ReferenceCorpus.Pinned)
+      .conformance(runner.tag)
       .fold(p => fail(p.toString), _.map(c => c.name -> c).toMap)
     val found = corpus.cases.flatMap { flat =>
       texts
@@ -76,7 +77,7 @@ final class FlatConformanceSuite extends munit.FunSuite:
     assertEquals(found, Vector.empty)
   }
 
-  test("a variable no lam binds is refused wherever it is, constr fields and case included") {
+  test(s"${runner.tag}: a variable no lam binds is refused wherever it is, constr and case too") {
     def refusal(term: Term) =
       FlatConformance.program(FlatWriter.flat(Program(ProgramVersion.V1_1_0, term))).left.toOption
     def free(index: Long) = Some(FlatRefusal.FreeVariable(DeBruijn(Word64.fromBits(index))))
@@ -89,3 +90,9 @@ final class FlatConformanceSuite extends munit.FunSuite:
     assertEquals(refusal(lam(lam(constr(0, v(1), v(2))))), None)
     assertEquals(FlatConformance.program(Bytes.empty), Left(FlatRefusal.Empty))
   }
+
+/** The Flat forms of plutus 1.70.0.0's cases in its runner's profile. */
+final class FlatConformanceSuite extends FlatConformanceGate(CekConformance.Plutus170)
+
+/** The Flat forms of plutus 1.71.0.0's cases in its runner's profile. */
+final class FlatConformance171Suite extends FlatConformanceGate(CekConformance.Plutus171)

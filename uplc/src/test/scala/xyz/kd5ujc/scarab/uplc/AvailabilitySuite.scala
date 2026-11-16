@@ -65,13 +65,18 @@ final class AvailabilitySuite extends munit.FunSuite:
     assertEquals(Availability.checkLanguage(V4, pv(12)), Right(()))
   }
 
-  test("program versions: 1.1.0 for V3 from 9 and for V1 and V2 from 11; nothing else") {
+  test("program versions: 1.1.0 for V3 from 9 and for V1 and V2 from 11, 1.2.0 for all from 12") {
     val both = Set(ProgramVersion.V1_0_0, ProgramVersion.V1_1_0)
     assertEquals(Availability.programVersions(V1, pv(10)), Set(ProgramVersion.V1_0_0))
     assertEquals(Availability.programVersions(V1, pv(11)), both)
     assertEquals(Availability.programVersions(V2, pv(6)), Set.empty[ProgramVersion])
     assertEquals(Availability.programVersions(V2, pv(7)), Set(ProgramVersion.V1_0_0))
     assertEquals(Availability.programVersions(V3, pv(9)), both)
+    assertEquals(Availability.programVersions(V3, pv(11)), both)
+    // plutus 1.71.0.0 (`Versions.hs:362-385`): 1.2.0 in every language from protocol 12
+    val all = both + ProgramVersion.V1_2_0
+    for language <- PlutusLanguage.values; p <- Vector(pv(12), pv(13)) do
+      assertEquals(Availability.programVersions(language, p), all, s"$language $p")
     val v101 = ProgramVersion.of(1, 0, 1).getOrElse(fail("1.0.1"))
     assertEquals(
       Availability.checkProgramVersion(V3, pv(9), v101),
@@ -111,16 +116,19 @@ final class AvailabilitySuite extends munit.FunSuite:
     for p <- 9 to 10 do
       assertEquals((SemanticsVariant.of(V1, pv(p)), SemanticsVariant.of(V2, pv(p))), (B, B))
       assertEquals(SemanticsVariant.of(V3, pv(p)), C)
-    for p <- 11 to 14 do
-      assertEquals((SemanticsVariant.of(V1, pv(p)), SemanticsVariant.of(V2, pv(p))), (D, D))
-      assertEquals((SemanticsVariant.of(V3, pv(p)), SemanticsVariant.of(V4, pv(p))), (E, E))
+    assertEquals((SemanticsVariant.of(V1, pv(11)), SemanticsVariant.of(V2, pv(11))), (D, D))
+    assertEquals((SemanticsVariant.of(V3, pv(11)), SemanticsVariant.of(V4, pv(11))), (E, E))
+    // plutus 1.71.0.0: F and G from protocol 12 (`Common/ProtocolVersions.hs:127-148`)
+    for p <- 12 to 14 do
+      assertEquals((SemanticsVariant.of(V1, pv(p)), SemanticsVariant.of(V2, pv(p))), (F, F))
+      assertEquals((SemanticsVariant.of(V3, pv(p)), SemanticsVariant.of(V4, pv(p))), (G, G))
     for language <- PlutusLanguage.values; p <- Protocols do
       assert(
         SemanticsVariant.ofContext(language).contains(SemanticsVariant.of(language, p)),
         s"$language $p"
       )
-    assertEquals(SemanticsVariant.ofContext(V2), Vector(A, B, D))
-    assertEquals(SemanticsVariant.ofContext(V3), Vector(C, E))
+    assertEquals(SemanticsVariant.ofContext(V2), Vector(A, B, D, F))
+    assertEquals(SemanticsVariant.ofContext(V3), Vector(C, E, G))
   }
 
   test("an arrival at futurePV is reached by no protocol") {

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.cost
 
-import xyz.kd5ujc.scarab.uplc.builtin.extended.ExtendedDenotations
 import cats.syntax.all.*
+import xyz.kd5ujc.scarab.uplc.builtin.extended.ExtendedDenotations
 import xyz.kd5ujc.scarab.uplc.{
   DefaultFun,
   Program,
+  ProgramVersion,
+  ProtocolMajor,
   ReferenceCorpus,
   Schemes,
   SemanticsVariant,
@@ -21,7 +23,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   MachineValue,
   Outcome
 }
-import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreDenotations, CoreUnlifting, CoreVariant}
+import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreDenotations, CoreUnlifting}
 import xyz.kd5ujc.scarab.uplc.cek.{
   BudgetMode,
   CaserBuiltin,
@@ -31,29 +33,81 @@ import xyz.kd5ujc.scarab.uplc.cek.{
 }
 import xyz.kd5ujc.scarab.uplc.text.{Conformance, Evaluation, Mismatch, Report}
 
-/** The CEK machine with the core builtins and this cost model, in the reference conformance
-  * runner's profile (`PlutusConformance/CekEvaluator.hs:46-61`, plutus 1.70.0.0): variant E with
-  * its default parameters (`defaultCostModelParamsForTesting`, `ExBudgetingDefaults.hs:281-282`),
-  * the counting budget and the caser with `data` (`CaserBuiltin.WithData`). A program that names a
-  * builtin with no denotation yet is [[Evaluation.Unavailable]] with those builtins.
+/** The CEK machine with every builtin and this cost model in the reference conformance runner's
+  * profile of a release: its default semantics variant with the default parameters
+  * (`defaultCostModelParamsForTesting`), the counting budget, and the caser of a program
+  * (`PlutusConformance/CekEvaluator.hs`). A program that names a builtin with no denotation is
+  * [[Evaluation.Unavailable]] with those builtins.
+  *
+  * @param tag
+  *   the release, a tag of [[ReferenceCorpus.Releases]]
+  * @param caser
+  *   the caser the runner gives a program of a version
   */
+final class CekConformance(
+    val tag: String,
+    variant: SemanticsVariant,
+    defaults: => VariantCosts,
+    caser: ProgramVersion => CaserBuiltin
+):
+  private lazy val costs: VariantCosts = defaults
+
+  private lazy val meanings: Map[DefaultFun, Denotation] = CekConformance.denotations(variant)
+
+  def evaluate(program: Program): Evaluation[Set[DefaultFun]] =
+    val absent = CekConformance.builtins(program).filterNot(meanings.contains)
+    if absent.nonEmpty then Evaluation.Unavailable(absent)
+    else
+      val parameters = CekConformance.machine(costs, caser(program.version))
+      val report = CekMachine.run(parameters, BudgetMode.Counting, program.term)
+      report.result match
+        case success: CekResult.Success => Evaluation.Evaluated(success.term, report.budget.spent)
+        case CekResult.Failure(_)       => Evaluation.Failed
+
+  lazy val backend: Conformance.Backend[Set[DefaultFun]] =
+    Conformance.Backend(
+      evaluate,
+      absent => s"no denotation yet for ${absent.map(_.name).toVector.sorted.mkString(", ")}"
+    )
+
 object CekConformance:
-  private val variant = SemanticsVariant.E
 
-  private lazy val costs: VariantCosts = DefaultCostModels.costs(variant)
-
-  private lazy val meanings: Map[DefaultFun, Denotation] = denotations(variant)
-
-  /** The denotations of `variant`: the core ones (work package 5) and the others (work package 6).
+  /** The runner of plutus 1.70.0.0 (`CekEvaluator.hs:46-61`, `507cab8c`): variant E (`def =
+    * maxBound`, `Builtins.hs:2546-2547`) with its default parameters
+    * (`ExBudgetingDefaults.hs:281-282`), and the default caser `caseBuiltin`, which allows `case`
+    * on every built-in type, `data` included (`PlutusCore/Builtin/Case.hs:60-61`), whatever the
+    * program's version.
     */
+  val Plutus170: CekConformance =
+    new CekConformance(
+      ReferenceCorpus.Plutus170,
+      SemanticsVariant.E,
+      DefaultCostModels.Plutus170.costs(SemanticsVariant.E),
+      _ => CaserBuiltin.WithData
+    )
+
+  /** The runner of plutus 1.71.0.0 (`CekEvaluator.hs:47-62`, `261766ad`): variant G (`def =
+    * maxBound`, `Builtins.hs:2564-2565`) with the default parameters of E
+    * (`defaultCostModelParamsForTesting`, `ExBudgetingDefaults.hs:301-302`), which G reads
+    * (`cekCostModelForVariant`, lines 158-159), and the ledger's caser at protocol 12 for the
+    * program's version (`defaultCaserBuiltinFor newestPV v`, `CekEvaluator.hs:54`; `newestPV =
+    * dijkstraPV`, `Common/ProtocolVersions.hs:114-115`).
+    */
+  val Plutus171: CekConformance =
+    new CekConformance(
+      ReferenceCorpus.Plutus171,
+      SemanticsVariant.G,
+      DefaultCostModels.costs(SemanticsVariant.G),
+      CaserBuiltin.forProtocol(ProtocolMajor.Dijkstra, _)
+    )
+
+  /** The runner of each release. */
+  def of(tag: String): CekConformance =
+    if tag == ReferenceCorpus.Plutus171 then Plutus171 else Plutus170
+
+  /** The denotations of `variant`: the core ones and the others. */
   def denotations(variant: SemanticsVariant): Map[DefaultFun, Denotation] =
-    val core =
-      CoreDenotations.of(variant).fold(e => throw new IllegalStateException(e.toString), identity)
-    val extended =
-      ExtendedDenotations
-        .of(variant)
-        .fold(e => throw new IllegalStateException(e.toString), identity)
-    core ++ extended
+    CoreDenotations.of(variant) ++ ExtendedDenotations.of(variant)
 
   // Every program is checked for builtins without a denotation before it runs, so this one is never
   // applied; it fails as a builtin of the program would.
@@ -61,19 +115,15 @@ object CekConformance:
     def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): Outcome[V] =
       Outcome.Failure(BuiltinFailure.Evaluation(EvaluationFailure.EmptyList), Vector.empty)
 
-  /** The machine of `costs` with the core builtins of its variant and `caser`. */
+  /** The machine of `costs` with the builtins of its variant and `caser`. */
   def machine(costs: VariantCosts, caser: CaserBuiltin): MachineParameters =
-    val core =
-      CoreVariant.of(costs.variant).fold(e => throw new IllegalStateException(e.toString), identity)
     val meanings = denotations(costs.variant)
     val total: Denotations = function => meanings.getOrElse(function, missing)
     MachineParameters(
       costs.machineCosts,
-      Builtins(costs.variant, CoreUnlifting(core), total, costs.costing),
+      Builtins(costs.variant, CoreUnlifting.of(costs.variant), total, costs.costing),
       caser
     )
-
-  private lazy val parameters: MachineParameters = machine(costs, CaserBuiltin.WithData)
 
   /** The builtins a program names. */
   def builtins(program: Program): Set[DefaultFun] =
@@ -82,55 +132,37 @@ object CekConformance:
       case layer                   => layer.foldLeft(Set.empty[DefaultFun])(_ ++ _)
     }
 
-  def evaluate(program: Program): Evaluation[Set[DefaultFun]] =
-    val absent = builtins(program).filterNot(meanings.contains)
-    if absent.nonEmpty then Evaluation.Unavailable(absent)
-    else
-      val report = CekMachine.run(parameters, BudgetMode.Counting, program.term)
-      report.result match
-        case success: CekResult.Success => Evaluation.Evaluated(success.term, report.budget.spent)
-        case CekResult.Failure(_)       => Evaluation.Failed
-
-  val backend: Conformance.Backend[Set[DefaultFun]] =
-    Conformance.Backend(
-      evaluate,
-      absent => s"no denotation yet for ${absent.map(_.name).toVector.sorted.mkString(", ")}"
-    )
-
-/** The 1,009 conformance cases of plutus 1.70.0.0 through the machine, the core builtins and this
-  * cost model: every case whose builtins have denotations must give the recorded result and the
-  * exact recorded budget, with no exclusion; the others (the cryptographic, bitwise, `Value` and
-  * array builtins of work package 6) are counted as incomplete, never as passed.
+/** The conformance cases of a plutus release through the machine, every builtin and this cost model
+  * in that release's runner profile ([[CekConformance]]): every case must give the recorded result
+  * and the exact recorded budget, with no exclusion; a case naming a builtin with no denotation
+  * would be counted as incomplete, never as passed.
+  *
+  * @param size
+  *   the number of cases of the release's corpus
   */
-final class CekConformanceSuite extends munit.FunSuite:
+abstract class CekConformanceGate(runner: CekConformance, size: Int) extends munit.FunSuite:
   private lazy val cases =
-    ReferenceCorpus.conformance(ReferenceCorpus.Pinned).fold(p => fail(p.toString), identity)
+    ReferenceCorpus.conformance(runner.tag).fold(p => fail(p.toString), identity)
 
-  private lazy val report = Conformance.run(cases, CekConformance.backend.evaluate)
+  private lazy val report = Conformance.run(cases, runner.backend.evaluate)
 
   private def unavailable(m: Mismatch[Set[DefaultFun]]): Boolean = m match
     case Mismatch.Unavailable(_) => true
     case _                       => false
 
-  test("every case whose builtins exist gives the reference's result and budget exactly") {
-    assertEquals(cases.size, 1009)
+  test(s"plutus ${runner.tag}: every case gives the reference's result and budget exactly") {
+    assertEquals(cases.size, size)
     val incomplete = report.verdicts.count(_._2.exists(unavailable))
     val wrong = report.verdicts.filter(_._2.exists(m => !unavailable(m)))
-    val absent = report.verdicts
-      .flatMap(_._2.collect { case Mismatch.Unavailable(fs) => fs })
-      .flatten
-      .distinct
-      .map(_.name)
-      .sorted
     println(
-      s"plutus 1.70.0.0 conformance, machine + builtins + cost model: ${report.conforming} conform, " +
-        s"${wrong.size} disagree, $incomplete incomplete (no denotation yet: ${absent.mkString(", ")})"
+      s"plutus ${runner.tag} conformance, machine + builtins + cost model: " +
+        s"${report.conforming} conform, ${wrong.size} disagree, $incomplete incomplete"
     )
-    assert(wrong.isEmpty, Report(wrong).render(CekConformance.backend.show))
+    assert(wrong.isEmpty, Report(wrong).render(runner.backend.show))
     assert(report.conforming + incomplete == cases.size)
   }
 
-  test("all 1,009 cases have every builtin they name") {
+  test(s"plutus ${runner.tag}: all $size cases have every builtin they name") {
     val incomplete = report.verdicts.filter(_._2.exists(unavailable))
     val absent =
       incomplete.flatMap(_._2.collect { case Mismatch.Unavailable(fs) => fs }).flatten.distinct
@@ -140,3 +172,11 @@ final class CekConformanceSuite extends munit.FunSuite:
         absent.map(_.name).sorted.mkString(", ")
     )
   }
+
+/** The 1,009 cases of plutus 1.70.0.0 in its runner's profile. */
+final class CekConformanceSuite extends CekConformanceGate(CekConformance.Plutus170, 1009)
+
+/** The 1,009 cases of plutus 1.71.0.0 in its runner's profile: variant G, the caser of protocol 12
+  * for each program's version.
+  */
+final class CekConformance171Suite extends CekConformanceGate(CekConformance.Plutus171, 1009)

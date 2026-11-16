@@ -5,7 +5,169 @@
   "plutus/src/main/scala",
   "uplc/src/main/scala"
  ],
- "entries": {},
+ "entries": {
+  "def uplc.ParamNames.evaluation": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/EvaluationContext.hs",
+     "symbol": "tagWithParamNames",
+     "lines": [
+      46,
+      48
+     ]
+    },
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/EvaluationContext.hs",
+     "symbol": "tagWithParamNames",
+     "lines": [
+      43,
+      45
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EvaluationContextSuite",
+    "CostModelSuite"
+   ],
+   "digest": "8b4a5e8e35d9e83c"
+  },
+  "def uplc.builtin.core.CoreVariant#ensurableByteString": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
+     "symbol": "ensurableByteString",
+     "lines": [
+      2813,
+      2820
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "CoreUnliftingSuite"
+   ],
+   "digest": "0bc1371c5d545e19"
+  },
+  "def uplc.builtin.core.CoreVariant#ensurableInteger": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
+     "symbol": "ensurableInteger",
+     "lines": [
+      2806,
+      2811
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "CoreUnliftingSuite"
+   ],
+   "digest": "b4256509198bb0e7"
+  },
+  "val uplc.ParamNames.policyFilters": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/ParamName.hs",
+     "symbol": "KeepPolicies'cpu'arguments'intercept",
+     "lines": [
+      364,
+      371
+     ]
+    },
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/ParamName.hs",
+     "symbol": "KeepPolicies'cpu'arguments'intercept",
+     "lines": [
+      382,
+      389
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "CostModelSuite"
+   ],
+   "digest": "56dc670836d4651b"
+  },
+  "val uplc.ProgramVersion.V1_2_0": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Version.hs",
+     "symbol": "plcVersion120",
+     "lines": [
+      70,
+      72
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "AvailabilitySuite"
+   ],
+   "digest": "77a4805f298098fc"
+  },
+  "val uplc.builtin.extended.Values.PolicyFilterMaxSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Value.hs",
+     "symbol": "policyFilterMaxSize",
+     "lines": [
+      466,
+      469
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ValuesSuite"
+   ],
+   "digest": "57083b824a44384f"
+  },
+  "val uplc.cost.Measure.outerDepth": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/ExMemoryUsage.hs",
+     "symbol": "ValueOuterDepth",
+     "lines": [
+      443,
+      452
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "CostModelSuite"
+   ],
+   "digest": "d13f55b1629de858"
+  }
+ },
  "glue": [
   {
    "reason": "Scarab's wiring of its one Plutus backend, the evaluator and the script decoder that the rules, the mempool and the forger each take; plutus has no counterpart",

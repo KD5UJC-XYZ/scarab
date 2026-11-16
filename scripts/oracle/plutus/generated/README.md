@@ -51,7 +51,8 @@ run them:
 python3 -I scripts/oracle/plutus/generated/run.py --evidence <a directory outside the checkout>
 ```
 
-(`run.py --fixtures <directory>` runs a corpus written elsewhere.)
+(`run.py --fixtures <directory>` runs a corpus written elsewhere; `run.py --release 1.71.0.0` runs the
+[1.71.0.0 build](../generated-171/README.md) and its fixture.)
 
 The arguments of `GeneratedOracleCorpusMain` after the directory replace the corpus seed, the programs
 per profile and the cost-model lists per profile. A corpus other than the retained one is replayed by

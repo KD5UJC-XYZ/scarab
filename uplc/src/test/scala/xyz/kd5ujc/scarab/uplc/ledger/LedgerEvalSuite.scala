@@ -41,8 +41,8 @@ import xyz.kd5ujc.scarab.uplc.cost.{
 import xyz.kd5ujc.scarab.uplc.flat.{FlatWriter, ScriptDecodeError}
 
 /** The rules of the ledger's evaluation of a script (`PlutusLedgerApi/Common/Eval.hs`, plutus
-  * 1.70.0.0 `507cab8c`), one by one, and the evaluator's own: protocol 12 and later and its defects
-  * give no verdict.
+  * 1.70.0.0 `507cab8c`, and 1.71.0.0 `261766ad` from protocol 12), one by one, and the evaluator's
+  * own: its defects give no verdict.
   */
 final class LedgerEvalSuite extends munit.FunSuite:
   private val V1 = PlutusLanguage.V1
@@ -232,13 +232,17 @@ final class LedgerEvalSuite extends munit.FunSuite:
     )
   }
 
-  test("protocol 12 and later give no verdict, from a program or from bytes, whatever the script") {
+  private val pv12 = ProtocolMajor.Dijkstra
+  private def v120(term: Term): Program = Program(ProgramVersion.V1_2_0, term)
+
+  test(
+    "protocol 12 and later are evaluated, as plutus 1.71.0.0 evaluates them, in every language"
+  ) {
     val script = v100(lam(unit))
     Vector(12, 13, Int.MaxValue).map(ProtocolMajor(_)).foreach { protocol =>
       Vector(V1, V2, V3, V4).foreach { language =>
-        val expected = ScriptResult.Unavailable(Unavailability.UnsupportedProtocol(protocol))
-        assertEquals(restricting(language, script, Vector(one), protocol), expected)
-        assertEquals(
+        assertSucceeds(restricting(language, script, Vector(one), protocol))
+        assertSucceeds(
           LedgerEval.evaluateScriptCounting(
             language,
             protocol,
@@ -246,43 +250,123 @@ final class LedgerEvalSuite extends munit.FunSuite:
             contexts(language),
             script,
             Vector(one)
-          ),
-          expected
+          )
         )
-        // bytes the decoder refuses are not judged either
         assertEquals(
-          LedgerEval.evaluateSerialised(
-            language,
-            protocol,
-            VerboseMode.Quiet,
-            contexts(language),
-            BudgetMode.Counting,
-            Bytes.fromHex("ff").fold(e => fail(e.toString), identity),
-            Vector.empty
-          ),
-          expected
+          LedgerEval
+            .evaluateSerialised(
+              language,
+              protocol,
+              VerboseMode.Quiet,
+              contexts(language),
+              BudgetMode.Counting,
+              Bytes.fromHex("ff").fold(e => fail(e.toString), identity),
+              Vector.empty
+            )
+            .failedAt,
+          Some(Stage.Decode)
         )
-        assertEquals(expected.failedAt, None)
       }
     }
-    assertEquals(LedgerEval.supported(pv11), Right(()))
   }
 
-  test("protocol 12 and later: no admission verdict, and evaluateTerm refuses it too") {
+  test("protocol 12: the variants F and G, and V4 evaluated as V3 (1.71.0.0)") {
+    Vector(V1, V2).foreach(l => assertEquals(SemanticsVariant.of(l, pv12), SemanticsVariant.F))
+    Vector(V3, V4).foreach(l => assertEquals(SemanticsVariant.of(l, pv12), SemanticsVariant.G))
+    assertEquals(SemanticsVariant.of(V1, pv11), SemanticsVariant.D)
+    assertEquals(SemanticsVariant.of(V3, pv11), SemanticsVariant.E)
+    assertEquals(
+      SemanticsVariant.ofContext(V1),
+      Vector(SemanticsVariant.A, SemanticsVariant.B, SemanticsVariant.D, SemanticsVariant.F)
+    )
+    assertEquals(
+      SemanticsVariant.ofContext(V3),
+      Vector(SemanticsVariant.C, SemanticsVariant.E, SemanticsVariant.G)
+    )
+    // `addInteger` of two integers past the on-chain `CInteger` bound: refused by D (protocol 11),
+    // read by F (protocol 12), which drops the integer bounds (`ensurableInteger`)
+    val big = BigInt(2).pow(262143)
+    val adding = v100(lam(lam(lam(app(builtin(DefaultFun.AddInteger), int(big), int(big))))))
+    assertEquals(
+      cekError(restricting(V1, adding, Vector(one, one, one), pv11)).errorClass,
+      ErrorClass.Operational
+    )
+    assertSucceeds(restricting(V1, adding, Vector(one, one, one), pv12))
+    // a V4 script and a V3 script give the same verdict and budget at protocol 12
+    val script = v110(lam(caseOf(constr(1), unit, unit)))
+    assertEquals(
+      restricting(V4, script, Vector(one), pv12),
+      restricting(V3, script, Vector(one), pv12)
+    )
+  }
+
+  test("protocol 12: program version 1.2.0, and `case` on `Data` from it only (1.71.0.0)") {
+    val good = FlatWriter.script(v120(lam(unit)))
+    Vector(V1, V2, V3, V4).foreach { language =>
+      assertEquals(LedgerEval.deserialiseScript(language, pv12, good), Right(v120(lam(unit))))
+      assertSucceeds(restricting(language, v120(lam(unit)), Vector(one), pv12))
+    }
+    // 1.2.0 is not a version of any language at protocol 11: a phase-2 failure at the version check
+    Vector(V1, V2, V3).foreach { language =>
+      assertEquals(
+        failure(restricting(language, v120(lam(unit)), Vector(one), pv11)),
+        EvaluationError.Codec(
+          Availability.Refusal.ProgramVersionNotAvailable(ProgramVersion.V1_2_0, language, pv11)
+        )
+      )
+    }
+    // `case` on a `Constr`: the branch of its tag, applied to its fields, in a 1.2.0 program at 12
+    val onData = (version: ProgramVersion) =>
+      Program(
+        version,
+        lam(caseOf(data(PlutusData.Constr(BigInt(1), Vector(one))), lam(unit), lam(unit)))
+      )
+    assertSucceeds(restricting(V3, onData(ProgramVersion.V1_2_0), Vector(one), pv12))
+    // a 1.1.0 program cases without `Data` at 12, and every program does at 11
+    assertEquals(
+      cekError(restricting(V3, onData(ProgramVersion.V1_1_0), Vector(one), pv12)),
+      CekError.CaseBuiltin(CaseBuiltinError.DataUnsupported)
+    )
+    assertEquals(
+      cekError(restricting(V3, onData(ProgramVersion.V1_1_0), Vector(one), pv11)),
+      CekError.CaseBuiltin(CaseBuiltinError.DataUnsupported)
+    )
+    assertEquals(
+      LedgerEval
+        .evaluateTerm(
+          BudgetMode.Counting,
+          pv12,
+          ProgramVersion.V1_2_0,
+          contexts(V3),
+          app(onData(ProgramVersion.V1_2_0).term, data(one))
+        )
+        .map(_.result),
+      LedgerEval
+        .evaluateTerm(
+          BudgetMode.Counting,
+          pv12,
+          ProgramVersion.V1_2_0,
+          contexts(V3),
+          app(lam(app(lam(unit), data(PlutusData.List(Vector(one))))), data(one))
+        )
+        .map(_.result)
+    )
+  }
+
+  test("deserialiseScript at protocols 11 and 12") {
     val good = FlatWriter.script(v100(lam(unit)))
-    val pv12 = ProtocolMajor.Dijkstra
-    val unsupported = ScriptResult.Unavailable(Unavailability.UnsupportedProtocol(pv12))
-    assertEquals(LedgerEval.deserialiseScript(V3, pv12, good), Left(unsupported))
-    assertEquals(PlutusV3.deserialiseScript(pv12, good), Left(unsupported))
+    assertEquals(LedgerEval.deserialiseScript(V3, pv12, good), Right(v100(lam(unit))))
+    assertEquals(PlutusV3.deserialiseScript(pv12, good), Right(v100(lam(unit))))
     assertEquals(
-      PlutusV1.deserialiseScript(pv12, Bytes.fromHex("ff").fold(e => fail(e.toString), identity)),
-      Left(ScriptResult.Unavailable(Unavailability.UnsupportedProtocol(pv12)))
+      PlutusV1
+        .deserialiseScript(pv12, Bytes.fromHex("ff").fold(e => fail(e.toString), identity))
+        .left
+        .map {
+          case LedgerOutcome.Refused(_) => "refused"
+          case other                    => other.toString
+        },
+      Left("refused")
     )
-    assertEquals(
-      LedgerEval.evaluateTerm(BudgetMode.Counting, pv12, contexts(V3), unit).map(_.result),
-      Left(Unavailability.UnsupportedProtocol(pv12))
-    )
-    // at protocol 11 the reference's verdicts
     assertEquals(PlutusV3.deserialiseScript(pv11, good), Right(v100(lam(unit))))
     val trailing = Bytes.wrap(good.toArray ++ Array[Byte](0))
     assertEquals(
@@ -293,7 +377,11 @@ final class LedgerEvalSuite extends munit.FunSuite:
       PlutusV2.deserialiseScript(pv11, trailing).map(_.version),
       Right(ProgramVersion.V1_0_0)
     )
-    assert(LedgerEval.evaluateTerm(BudgetMode.Counting, pv11, contexts(V3), unit).isRight)
+    assert(
+      LedgerEval
+        .evaluateTerm(BudgetMode.Counting, pv11, ProgramVersion.V1_0_0, contexts(V3), unit)
+        .isRight
+    )
   }
 
   test("from bytes: deserialiseScript's refusals are the decode stage, then the evaluation") {
@@ -497,21 +585,18 @@ final class LedgerEvalSuite extends munit.FunSuite:
       EvaluationError.DeBruijn(FreeVariableError.FreeIndex(Word64.fromBits(1)))
     )
     assertEquals(
-      LedgerContext.of(EvaluationContext(V3, Vector.empty)).map(_.at(pv11)),
+      LedgerContext.of(EvaluationContext(V3, Vector.empty)).map(_.at(pv11, ProgramVersion.V1_0_0)),
       Right(Left(Unavailability.NoMachine(V3, pv11)))
     )
   }
 
-  test("a variant without builtins here, and a refused costing context, are no verdict") {
-    val variantCosts = DefaultCostModels.costs(SemanticsVariant.E)
-    assertEquals(
-      LedgerContext.machine(variantCosts.copy(variant = SemanticsVariant.F)).map(_.variant),
-      Left(Unavailability.Variant(SemanticsVariant.F))
-    )
-    assertEquals(LedgerContext.machine(variantCosts).map(_.variant), Right(SemanticsVariant.E))
+  test("every variant has builtins here, and a refused costing context is no verdict") {
+    SemanticsVariant.values.foreach { variant =>
+      val variantCosts = DefaultCostModels.costs(variant)
+      assertEquals(LedgerContext.machine(variantCosts).map(_.variant), Right(variant))
+    }
     Vector(
       CostModelApplyError.UnsuppliedParameter("cekStartupCost-exBudgetCPU"),
-      CostModelApplyError.NoModel(SemanticsVariant.F),
       CostModelApplyError.UnknownParameter("x")
     ).foreach { error =>
       assertEquals(

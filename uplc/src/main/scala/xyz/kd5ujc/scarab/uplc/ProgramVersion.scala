@@ -25,9 +25,13 @@ object ProgramVersion:
       new ProgramVersion(major, minor, patch)
     )
 
-  /** `plcVersion100` and `plcVersion110` (`Version.hs:62-67`, plutus 1.70.0.0). */
+  /** `plcVersion100` and `plcVersion110` (`Version.hs:62-67`, plutus 1.70.0.0), and
+    * `plcVersion120`, new in 1.71.0.0 (`Version.hs:70-72` at `261766ad`), the version from which a
+    * program may `case` on `Data` ([[xyz.kd5ujc.scarab.uplc.cek.CaserBuiltin.forProtocol]]).
+    */
   val V1_0_0: ProgramVersion = new ProgramVersion(1, 0, 0)
   val V1_1_0: ProgramVersion = new ProgramVersion(1, 1, 0)
+  val V1_2_0: ProgramVersion = new ProgramVersion(1, 2, 0)
 
   given Ordering[ProgramVersion] =
     Ordering.by[ProgramVersion, (BigInt, BigInt, BigInt)](v => (v.major, v.minor, v.patch))

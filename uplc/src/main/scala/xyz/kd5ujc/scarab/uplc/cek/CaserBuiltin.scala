@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.cek
 
-import xyz.kd5ujc.scarab.uplc.{Constant, DefaultUni, PlutusData, ProtocolMajor, Term}
+import xyz.kd5ujc.scarab.uplc.{
+  Constant,
+  DefaultUni,
+  PlutusData,
+  ProgramVersion,
+  ProtocolMajor,
+  Term
+}
 
 /** How `case` treats a constant: the reference's `CaserBuiltin`
   * (`PlutusCore/Builtin/Case.hs:45-67`, plutus 1.70.0.0 `507cab8c`), a parameter of the machine.
-  * The ledger chooses it by protocol ([[CaserBuiltin.forProtocol]]); the upstream conformance
-  * executable uses [[WithData]] whatever the program
-  * (`plutus-conformance/src/PlutusConformance/CekEvaluator.hs:46-61`).
+  * The ledger chooses it by protocol and, from plutus 1.71.0.0, by the program's version
+  * ([[CaserBuiltin.forProtocol]]). The upstream conformance executable of 1.70.0.0 uses
+  * [[WithData]] whatever the program (`plutus-conformance/src/PlutusConformance/CekEvaluator.hs:
+  * 46-61`); that of 1.71.0.0 (`261766ad`) uses the ledger's choice at protocol 12 with the
+  * program's version (`defaultCaserBuiltinFor newestPV v`, `CekEvaluator.hs:47-54` there).
   */
 enum CaserBuiltin:
   /** `unavailableCaserBuiltin`: every constant is refused (`Case.hs:63-67`, plutus 1.70.0.0). */
@@ -74,12 +83,17 @@ enum CaserBuiltin:
       case _ => Refused(CaseBuiltinError.DataUnsupported)
 
 object CaserBuiltin:
-  /** `defaultCaserBuiltinFor` (`PlutusLedgerApi/Common/Eval.hs:142-146`, plutus 1.70.0.0):
-    * unavailable before van Rossem (protocol 11), without `Data` before Dijkstra (12).
+  /** `defaultCaserBuiltinFor` (`PlutusLedgerApi/Common/Eval.hs:143-148`, plutus 1.71.0.0
+    * `261766ad`): unavailable before van Rossem (protocol 11), without `Data` before Dijkstra (12)
+    * or for a program older than 1.2.0, with it otherwise. 1.70.0.0 (`Eval.hs:142-146` at
+    * `507cab8c`) does not read the version, so it allows `Data` in a program of 1.0.0 or 1.1.0 from
+    * protocol 12; below 12 the two agree.
     */
-  def forProtocol(protocol: ProtocolMajor): CaserBuiltin =
+  def forProtocol(protocol: ProtocolMajor, version: ProgramVersion): CaserBuiltin =
     if protocol.value < ProtocolMajor.VanRossem.value then Unavailable(protocol)
-    else if protocol.value < ProtocolMajor.Dijkstra.value then WithoutData
+    else if protocol.value < ProtocolMajor.Dijkstra.value ||
+      summon[Ordering[ProgramVersion]].lt(version, ProgramVersion.V1_2_0)
+    then WithoutData
     else WithData
 
   /** `HeadSpine`'s three cases (`PlutusCore/Builtin/KnownType.hs:339-343`, plutus 1.70.0.0). */

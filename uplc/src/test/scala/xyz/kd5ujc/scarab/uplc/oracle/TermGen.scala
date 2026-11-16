@@ -25,6 +25,12 @@ object Profile:
       (7 to 11).map(p => Profile(PlutusLanguage.V2, ProtocolMajor(p))) ++
       (9 to 11).map(p => Profile(PlutusLanguage.V3, ProtocolMajor(p)))
 
+  /** The profiles of protocol 12, the first of plutus 1.71.0.0's variants F and G and program
+    * version 1.2.0: V1 to V4, the last evaluated as V3 ([[PlutusLanguage.evaluatedAs]]).
+    */
+  val dijkstra: Vector[Profile] =
+    PlutusLanguage.values.toVector.map(Profile(_, ProtocolMajor.Dijkstra))
+
 /** A generated script: the program, the `Data` arguments the ledger applies it to, and the budget
   * it is evaluated within.
   */
@@ -430,13 +436,15 @@ object TermGen:
     yield caseOf(constr(tag, fields), others)
 
   /** `case` of a constant: a boolean, an integer, unit, a list or a pair (from protocol 11; before
-    * it the caser refuses every constant).
+    * it the caser refuses every constant), and from protocol 12 a `Data`, whose branches take the
+    * fields of a `Constr` as a list (in a program of 1.2.0; refused in one older).
     */
   private def constantCase(ctx: Ctx, g: Seed.Goal): Draw[Seed] =
     val b = C(DefaultUni.Bool)
+    val kinds = if ctx.profile.protocol.value >= ProtocolMajor.Dijkstra.value then 6 else 5
     for
       fs <- shares(g.fuel, 3)
-      kind <- below(5)
+      kind <- below(kinds)
       element <- uni(ctx, 0)
       seed <- kind match
         case 0 =>
@@ -465,6 +473,12 @@ object TermGen:
             goal(g.ty, g.env, fs(2), g.loops),
             between(1, 2)
           ).mapN((s, cons, nil, n) => caseOf(s, Vector(lams(2, cons), nil).take(n)))
+        case 5 =>
+          (
+            goal(C(DefaultUni.Data), g.env, fs(0), g.loops),
+            between(1, 3),
+            goal(g.ty, g.env :+ C(DefaultUni.List(DefaultUni.Data)), fs(1), g.loops)
+          ).mapN((s, n, t) => caseOf(s, Vector.fill(n)(lams(1, t))))
         case _ =>
           for
             second <- uni(ctx, 0, true)
@@ -588,7 +602,9 @@ object TermGen:
         Vector(
           (if profile.versions.contains(ProgramVersion.V1_1_0) then 85
            else 0) -> ProgramVersion.V1_1_0,
-          15 -> ProgramVersion.V1_0_0
+          15 -> ProgramVersion.V1_0_0,
+          (if profile.versions.contains(ProgramVersion.V1_2_0) then 100
+           else 0) -> ProgramVersion.V1_2_0
         )
       )
       odd <- chance(3)
@@ -605,7 +621,7 @@ object TermGen:
         else profile.builtins,
         faults
       )
-      expected = if profile.language == PlutusLanguage.V3 then 1 else 3
+      expected = if profile.language.evaluatedAs == PlutusLanguage.V3 then 1 else 3
       count <- weighted(Vector(4 -> 0, 5 -> expected, 1 -> (expected - 1), 1 -> (expected + 1)))
       lambdas <- weighted(Vector(19 -> count, 1 -> (count + 1)))
       arguments <- listOf(count, between(0, 3).flatMap(GeneratedConstants.data(_, wide = false)))
@@ -618,7 +634,7 @@ object TermGen:
         case None    => ty(ctx, 1).flatMap(t => goal(t, env, fuel, 0).map(t -> _))
       )
       condition <- goal(C(DefaultUni.Bool), env :+ t, fuel / 3, 0)
-      unitResult <- chance(if profile.language == PlutusLanguage.V3 then 90 else 30)
+      unitResult <- chance(if profile.language.evaluatedAs == PlutusLanguage.V3 then 90 else 30)
       tag <- below(1000)
       result = if unitResult then unit else variable(1)
       observe = force(

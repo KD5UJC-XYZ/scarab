@@ -35,8 +35,18 @@ class DefaultLocaleSuite extends FunSuite with DefaultLocaleFixture:
   private def reference(constructor: String): String =
     constructor.take(1).map(_.toLower) + constructor.drop(1).replace('\'', '-')
 
+  /** The names the own evaluator tags a list with: those plutus 1.71.0.0 records for the language a
+    * script is evaluated as (`ledger-api/` of its view of `plutus-reference`).
+    */
   private def referenceNames(language: PlutusLanguage): Vector[String] =
-    recorded(language.evaluatedAs.id + 1).map(reference)
+    PlutusReference
+      .view(PlutusRelease.Plutus1_71)
+      .read(s"ledger-api/V${language.evaluatedAs.id + 1}-param-names.txt")
+      .linesIterator
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map(reference)
+      .toVector
 
   /** The lists of the fixtures: every epoch of the Preview governance record (Koios's
     * `epoch_params`), the PlutusV3 list of the mainnet Conway genesis, and the reference's default
@@ -133,6 +143,13 @@ class DefaultLocaleSuite extends FunSuite with DefaultLocaleFixture:
     under.test(
       s"each real list's evaluation context is the one the reference's names give ($label)"
     ) { _ =>
+      PlutusLanguage.values.foreach { language =>
+        assertEquals(
+          EvaluationContext.parameterNames(language),
+          referenceNames(language),
+          s"the names, in order, the evaluator tags a $language list with"
+        )
+      }
       assert(lists.size >= 10, s"only ${lists.size} lists")
       lists.foreach { (name, language, values) =>
         val names = referenceNames(language)

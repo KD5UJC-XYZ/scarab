@@ -15,18 +15,23 @@ final class TermGenSuite extends ScalaCheckSuite:
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(300)
 
+  private val profiles = GeneratedCorpus.Plutus171.profiles
+
   private val generated: Gen[Generated] =
     for
-      profile <- Gen.oneOf(Profile.all)
+      profile <- Gen.oneOf(profiles)
       seed <- Gen.long
     yield TermGen.generate(profile, seed)
 
-  private lazy val contexts = Profile.all
-    .map(p => p -> Verdict.context(p.language, p.protocol, GeneratedCorpus.model(p)))
+  private lazy val contexts = profiles
+    .map(p =>
+      p -> Verdict
+        .context(p.language, p.protocol, GeneratedCorpus.model(GeneratedCorpus.Plutus171, p))
+    )
     .toMap
 
   property("a seed gives the same program, arguments and budget every time") {
-    Prop.forAll(Gen.oneOf(Profile.all), Gen.long) { (profile, seed) =>
+    Prop.forAll(Gen.oneOf(profiles), Gen.long) { (profile, seed) =>
       assertEquals(TermGen.generate(profile, seed), TermGen.generate(profile, seed))
     }
   }
@@ -54,7 +59,7 @@ final class TermGenSuite extends ScalaCheckSuite:
 
   test("the generator runs on a small stack") {
     val programs = SmallStack.run(
-      (0 until 30).map(n => TermGen.generate(Profile.all(n % Profile.all.size), n.toLong)).toVector
+      (0 until 38).map(n => TermGen.generate(profiles(n % profiles.size), n.toLong)).toVector
     )
-    assertEquals(programs.size, 30)
+    assertEquals(programs.size, 38)
   }

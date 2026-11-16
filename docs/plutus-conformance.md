@@ -3,7 +3,8 @@
 **Status: Current.** All 1,009 upstream evaluation cases of plutus 1.70.0.0 pass on the node's
 evaluator, its own ([ADR 0027, amendment of 2026-11-15](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)), with exact recorded results and budgets,
 without exclusions, and so do the 906 of them that upstream also gives in Flat form, run from their
-`.flat` files. The corpus of plutus 1.71.0.0 has no runner until [#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099): an incomplete gate, not a pass.
+`.flat` files. So do the 1,009 cases of plutus 1.71.0.0 and their 906 Flat forms, under that release's
+executable's profile ([below](#the-own-evaluator-at-plutus-17100-1099-2026-11-16), #1099).
 Ledger admission remains a separate tested boundary; recorded experiments remain tied to their source
 revisions.
 
@@ -49,11 +50,11 @@ refuses a variable that no `lam` binds anywhere in the term (`unDeBruijnProgram`
 ledger's scope check, looks inside `constr` and `case`), evaluates with the same profile, and compares
 the result with the decoded `.flat.expected` program and the budget with the shared
 `.budget.expected` (`Common.hs:347-417,550-575`, unchanged at 1.71.0.0). The own evaluator runs the 906
-of 1.70.0.0, the release it implements, that way through its own Flat decoder and machine, all passing
+of 1.70.0.0 that way through its own Flat decoder and machine, all passing
 with no exclusion ([below](#scarabs-own-evaluator), ADR 0027). Until 2026-11-15 `PlutusConformanceSuite`
 and `PlutusConformance171Suite` ran the 906 of each release through the Scalus backend's Flat walker and
-machine, all passing; the 1.71.0.0 cases have had no runner since, until [#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099), which is an incomplete
-gate, not a pass. Upstream's `conformance-consistency` check, that each Flat program and result decodes
+machine, all passing; the own evaluator runs the 906 of 1.71.0.0 the same way
+([below](#the-own-evaluator-at-plutus-17100-1099-2026-11-16), #1099). Upstream's `conformance-consistency` check, that each Flat program and result decodes
 to what its text form parses to, is mirrored with the own parser and decoder.
 
 ## 1. The reference evaluator
@@ -412,7 +413,7 @@ The node evaluates and admits its scripts with the `uplc` module, its only Plutu
 [`ScarabEvaluator`](../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluator.scala). It
 maps the own evaluator's results onto the algebra of `ScriptEvaluator`: a refusal of `deserialiseScript` and the program-version check of `mkTermToEvaluate`
 are decoding failures, the scope check `OpenTerm`, an overspent budget `OutOfBudget`, any other failure
-of the machine a script failure; protocol 12 and later, a defect of the implementation and any
+of the machine a script failure; a defect of the implementation and any
 `Throwable` that reaches the adapter are no verdict, never a failure of the script. The typed detail of
 its failures names their cases only, never a constant or a term of the script; a failure's text also
 carries the script's own `trace` output. The Scalus backend and the `--plutus-vm` flag that chose
@@ -475,3 +476,21 @@ decoding and 2 budget failures): no difference in verdict or failure class, the 
 execution units and logs (the suite compares units and logs on successes only), and every request has a
 verdict from both. A fatal-injection case of `FollowerStallSuite` fails intermittently on either
 backend (it involves no script); it passed in these runs.
+
+## The own evaluator at plutus 1.71.0.0 (#1099, 2026-11-16)
+
+The own evaluator implements plutus 1.71.0.0 (`261766ad`) at every protocol version
+([ADR 0027, amendment of 2026-11-15](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-plutus-17100-and-protocol-12));
+[Plutus at protocol 12](compatibility/plutus-v4-dijkstra.md) lists what 1.71.0.0 changes against
+1.70.0.0, with the lines at both pins, and where each change reaches. Its conformance evidence, with
+no exclusion and no tolerance:
+
+| Corpus | Profile | Result |
+|---|---|---|
+| plutus 1.70.0.0, 1,009 cases (906 with a Flat form) | the 1.70.0.0 executable's: variant E with its defaults, `case` on `Data` in every program | every result and budget, text and Flat (`ConformanceSuite`, `CekConformanceSuite`, `FlatConformanceSuite`); 423 single applications costed as recorded (`ConformanceCostingSuite`) |
+| plutus 1.71.0.0, 1,009 cases (906 with a Flat form) | the 1.71.0.0 executable's (`CekEvaluator.hs:47-62`): variant G with E's defaults, the caser of protocol 12 for each program's version | every result and budget, text and Flat (`Conformance171Suite`, `CekConformance171Suite`, `FlatConformance171Suite`); 423 single applications costed as recorded (`ConformanceCosting171Suite`) |
+| [generated scripts](../fixtures/reference/uplc-generated-171/README.md), 3,800 | the ledger's: `deserialiseScript` and `evaluateScriptRestricting` of unchanged plutus 1.71.0.0, protocols 5 to 12, V1 to V4 | the same admission, stage, error, budget and logs for every script (`GeneratedOracle171Suite`); the 3,000 of protocols 5 to 11 get 1.70.0.0's verdicts |
+
+The 1.70.0.0 oracles of the test tree (the costing oracle, the boundary corpora, the generated
+scripts of [uplc-generated](../fixtures/reference/uplc-generated/README.md)) replay through the
+1.71.0.0 evaluator with 1.70.0.0's default lists and agree, as they did before.

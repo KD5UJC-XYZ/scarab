@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.uplc.ledger.{
 /** How [[ScarabEvaluator]] reports each outcome of the own evaluator in the evaluation algebra, one
   * row of its mapping at a time. Where a budget is reported, it is the one the `uplc` module's
   * ledger interface spends on the same request, with its components in the ledger's order (memory,
-  * then steps). The no-verdict cases (protocol 12, defects) are never a failure of the script.
+  * then steps). The no-verdict cases (defects) are never a failure of the script.
   */
 class ScarabEvaluatorSuite extends FunSuite:
   private val scarab = ScarabEvaluator.interpreter
@@ -150,21 +150,14 @@ class ScarabEvaluatorSuite extends FunSuite:
     )
   }
 
-  test("protocol 12 and later gives no verdict, from the evaluator and the decoder") {
-    val dijkstra = request(unit, protocol = 12)
-    scarab.evaluate(dijkstra) match
-      case EvalResult.Failure(
-            EvalFailure.Unsupported(
-              BackendFailure.Uplc(Unavailability.UnsupportedProtocol(protocol))
-            ),
-            _,
-            _
-          ) =>
-        assertEquals(protocol, ProtocolMajor.Dijkstra)
-      case other => fail(other.toString)
-    scarab.validate(PlutusLanguage.V3, 12, dijkstra.script) match
-      case Left(ScriptDecodeFailure.Unavailable(BackendFailure.Uplc(_))) => ()
-      case other                                                         => fail(other.toString)
+  test(
+    "protocol 12 is evaluated as plutus 1.71.0.0 evaluates it, by the evaluator and the decoder"
+  ) {
+    Vector(PlutusLanguage.V3, PlutusLanguage.V4).foreach { language =>
+      val dijkstra = request(unit, language, protocol = 12)
+      assertEquals(kind(scarab.evaluate(dijkstra)), "success", s"$language")
+      assertEquals(scarab.validate(language, 12, dijkstra.script), Right(()), s"$language")
+    }
   }
 
   test("a budget beyond 64 bits gives no verdict") {

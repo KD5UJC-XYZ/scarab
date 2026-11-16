@@ -5,8 +5,8 @@ package xyz.kd5ujc.scarab.uplc
   * reference's `MajorProtocolVersion`, a newtype over `Int`
   * (`PlutusLedgerApi/Common/ProtocolVersions.hs:42-44`, plutus 1.70.0.0 `507cab8c`). The
   * reference's `Int` is 64 bits wide; this one is a JVM `Int`, so its domain is narrower. That is
-  * not a limit in practice: the own evaluator runs protocols 5 to 11 only and refuses 12 and later
-  * (ADR 0027).
+  * not a limit in practice: the own evaluator gives every protocol from 12 on the verdicts of 12,
+  * as plutus 1.71.0.0 does, and only `futurePV` (`maxBound`) lies beyond a JVM `Int`.
   */
 opaque type ProtocolMajor = Int
 

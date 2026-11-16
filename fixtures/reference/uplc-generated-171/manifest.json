@@ -1,0 +1,55 @@
+{
+  "plutusCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+  "sourceCommit": "3d7bbaf15f4176e551fc3813ccf0cdf4755422b1",
+  "oracleImage": "sha256:57d4e9fe87acef3ade739020795d75ef00948635d4895b730386afff04a9ec0e",
+  "oracleBaseImage": "sha256:54cb3d080e717085f07baba23067fd27dec7d335075dbad0c249b1938ceb0536",
+  "generator": {
+    "release": "1.71.0.0",
+    "seed": 43080001,
+    "perProfile": 200,
+    "modelsPerProfile": 2,
+    "generatorVersion": 1
+  },
+  "requests": 3800,
+  "profiles": 38,
+  "stages": {
+    "budget": 667,
+    "decode": 224,
+    "evaluation": 1396,
+    "scope": 16,
+    "setup": 73,
+    "success": 1424
+  },
+  "errors": {
+    "budget/operational/CekOutOfExError": 667,
+    "decode/-/-": 224,
+    "evaluation/-/InvalidReturnValue": 96,
+    "evaluation/operational/CekCaseBuiltinError": 129,
+    "evaluation/operational/CekEvaluationFailure": 865,
+    "evaluation/structural/BuiltinTermArgumentExpectedMachineError": 40,
+    "evaluation/structural/MissingCaseBranchMachineError": 100,
+    "evaluation/structural/NonConstrScrutinizedMachineError": 7,
+    "evaluation/structural/NonFunctionalApplicationMachineError": 24,
+    "evaluation/structural/NonPolymorphicInstantiationMachineError": 51,
+    "evaluation/structural/OpenTermEvaluatedMachineError": 1,
+    "evaluation/structural/UnexpectedBuiltinTermArgumentMachineError": 12,
+    "evaluation/structural/UnliftingMachineError": 71,
+    "scope/-/DeBruijnError": 16,
+    "setup/-/CodecError": 73,
+    "success/-/-": 1424
+  },
+  "withLogs": 2279,
+  "withArguments": 2334,
+  "sha256": {
+    "corpus.json": "119e8c6d2c412dc0d3281c4a71ded97fe7166d7b8d5fc65faa5123e0ddfda19b",
+    "models.jsonl": "a204450238692cb44ca4bc0caa207a49cdbaaab9bc5c61eef118703740d23c0f",
+    "requests.jsonl": "16ba66534970c8d336b10ef8115ed903fe3bd2e70c8f600cc486084c8ac9a43f",
+    "verdicts.jsonl": "411dd34186f1b7655c27283fd10611a67d91ebd0608003acbd6d659036b5b95f"
+  },
+  "toolSha256": {
+    "scripts/oracle/plutus/generated-171/Main.hs": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
+    "scripts/oracle/plutus/generated-171/Dockerfile": "d97c9965343eabc810da0804fe62c22bc84ebbea578148469852db8966a47a15"
+  },
+  "rawSha256": "654b78cbbe1e07742a7fd58074bdbb1ac2128244d49df8e731433b10e7b435a5",
+  "dateUtc": "2026-11-16T01:18:34.546879+00:00"
+}

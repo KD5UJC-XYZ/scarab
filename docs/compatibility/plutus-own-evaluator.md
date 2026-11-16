@@ -10,9 +10,8 @@ the `uplc` module is the node's only Plutus evaluator
 ([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)). It
 evaluates phase 2 and admits scripts in the block rules, the mempool and the forger; the Scalus backend and
 the `--plutus-vm` flag are removed ([flags](../running/flags.md)). The node forges with it
-([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)). Protocol 12 and
-later get no verdict until the evaluator is extended to them
-([#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099), decided on 2026-11-15). What each suite shows is
+([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)). It evaluates
+protocol 12 and later as plutus 1.71.0.0 does ([Plutus at protocol 12](plutus-v4-dijkstra.md), #1099). What each suite shows is
 in [the conformance profile](../plutus-conformance.md#scarabs-own-evaluator).
 
 ## Evidence
@@ -61,9 +60,11 @@ the commands below are those of that time.
   `pool` run's scripts are trivial (one that always succeeds and one that fails with `error`, in V1 and V2, at
   protocol 10): it shows the path of a validity flag from admission to a forged block that the Haskell pools
   adopt, not the evaluator's agreement on real scripts. Plutus V3 is not in its load.
-- **Protocol 12 and later** (Leios, PlutusV4) get no verdict until
-  [#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099) extends the evaluator to them; the plutus 1.71.0.0
-  corpus has no runner until then ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md)).
+- **Protocol 12 and later** (Leios, PlutusV4) are evaluated as plutus 1.71.0.0 does, against its conformance
+  corpus and generated scripts judged by its Haskell evaluator ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md),
+  #1099), but the node stops at `MaxMajorProtVer` 11 and never reaches them, and no recorded Leios-testnet
+  script has been evaluated and compared with the reference's result
+  ([#54 follow-up](https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-6905542791)).
 - **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch

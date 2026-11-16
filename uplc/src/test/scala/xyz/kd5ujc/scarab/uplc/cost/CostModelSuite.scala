@@ -19,15 +19,16 @@ import xyz.kd5ujc.scarab.uplc.bls.{G1Element, G2Element, MlResult}
 import xyz.kd5ujc.scarab.uplc.builtin.{Argument, MachineValue}
 
 /** The shapes of the cost models against the vendored `builtinCostModel{A..E}.json` and
-  * `cekMachineCosts{A..E}.json` of plutus 1.70.0.0 and the shape inventory of the costing oracle,
-  * the parameter names of each language against the coefficients of its variants, and a costing
-  * function for every builtin in every variant.
+  * `cekMachineCosts{A..E}.json` of plutus 1.71.0.0 (and 1.70.0.0's, which differ in values and in
+  * the two models 1.71.0.0 adds) and the shape inventory of the costing oracle, the parameter names
+  * of each language against the coefficients of its variants, and a costing function for every
+  * builtin in every variant.
   */
 final class CostModelSuite extends munit.FunSuite:
   import DefaultCostModels.Variants
 
   private def shapes(variant: SemanticsVariant): BuiltinCostModel[Unit] =
-    BuiltinShapes.of(variant).getOrElse(fail(s"no shapes for $variant"))
+    BuiltinShapes.of(variant)
 
   private def coefficients(variant: SemanticsVariant): Set[String] =
     (CekMachineCosts.shape.leaves ++ shapes(variant).leaves).map(_._1).toSet
@@ -59,23 +60,43 @@ final class CostModelSuite extends munit.FunSuite:
     }
   }
 
-  test("every builtin but keepPolicies and dropPolicies has an entry in every variant") {
-    val expected = DefaultFun.values.map(_.name).toSet - "keepPolicies" - "dropPolicies"
+  test("every builtin has an entry in every variant; 1.70.0.0 had none for the policy filters") {
+    val expected = DefaultFun.values.map(_.name).toSet
     Variants.foreach { variant =>
       assertEquals(DefaultCostModels.builtins(variant), expected, s"variant $variant")
     }
+    DefaultCostModels.Variants170.foreach { variant =>
+      assertEquals(
+        DefaultCostModels.Plutus170.builtins(variant),
+        expected - "keepPolicies" - "dropPolicies",
+        s"1.70.0.0 variant $variant"
+      )
+    }
   }
 
-  test("F and G have no model at 1.70.0.0") {
-    assertEquals(BuiltinShapes.of(SemanticsVariant.F), None)
-    assertEquals(BuiltinShapes.of(SemanticsVariant.G), None)
+  test("1.70.0.0's models have 1.71.0.0's shapes for every builtin they cost") {
+    DefaultCostModels.Variants170.foreach { variant =>
+      assertEquals(
+        DefaultCostModels.Plutus170.types(variant),
+        DefaultCostModels
+          .types(variant)
+          .filterNot((k, _) => k.startsWith("keepPolicies-") || k.startsWith("dropPolicies-")),
+        s"variant $variant"
+      )
+    }
+  }
+
+  test("F and G have D's and E's models (`ExBudgetingDefaults.hs:158-159`, 1.71.0.0)") {
+    assertEquals(BuiltinShapes.of(SemanticsVariant.F), BuiltinShapes.D)
+    assertEquals(BuiltinShapes.of(SemanticsVariant.G), BuiltinShapes.E)
   }
 
   test("the shapes agree with the costing oracle's inventory (cost-shapes.json)") {
     val inventory = parser
       .parse(Files.readString(Path.of("fixtures/reference/plutus-costing/cost-shapes.json")))
       .fold(throw _, identity)
-    Variants.foreach { variant =>
+    // the inventory is the 1.70.0.0 costing oracle's: A to E, without the policy filters' models
+    DefaultCostModels.Variants170.foreach { variant =>
       val tags = shapes(variant).tags
       DefaultFun.values.map(_.name).filterNot(Set("keepPolicies", "dropPolicies")).foreach { name =>
         Vector("cpu", "memory").foreach { part =>
@@ -119,7 +140,7 @@ final class CostModelSuite extends munit.FunSuite:
       val variant = SemanticsVariant.of(language, protocol)
       assertEquals(
         c.get[Vector[Long]]("costModel").getOrElse(fail("costModel")),
-        DefaultCostModels.list(language, variant),
+        DefaultCostModels.Plutus170.list(language, variant),
         s"$language at $protocol ($variant)"
       )
     }
@@ -209,7 +230,7 @@ final class CostModelSuite extends munit.FunSuite:
     }
 
   test(
-    "every builtin has a costing function in every variant, and the batch-7 Value two cost 10^11"
+    "every builtin has a costing function in every variant; the policy filters cost by their models"
   ) {
     Variants.foreach { variant =>
       val costing = DefaultCostModels.costs(variant).costing
@@ -217,13 +238,56 @@ final class CostModelSuite extends munit.FunSuite:
         val cost = costing(function)(arguments(function))
         assert(cost.prefix(1).nonEmpty, s"$variant $function")
       }
-      Vector(DefaultFun.KeepPolicies, DefaultFun.DropPolicies).foreach { function =>
+      // `multiplied_sizes` of the list's length and the value's outer depth, 1 for an empty
+      // value (`ValueOuterDepth`, `ExMemoryUsage.hs:434-452`, plutus 1.71.0.0): an empty list is
+      // measured 0, so the intercepts of `builtinCostModel*.json`
+      Vector(
+        DefaultFun.KeepPolicies -> ExBudget.of(315357, 32),
+        DefaultFun.DropPolicies -> ExBudget.of(356925, 32)
+      ).foreach { (function, expected) =>
         assertEquals(
-          costing(function)(arguments(function)),
-          CostStream.single(ExBudget.of(100000000000L, 100000000000L)),
-          s"$variant $function: unimplementedCostingFun"
+          costing(function)(arguments(function)).total,
+          expected,
+          s"$variant $function"
         )
       }
+    }
+  }
+
+  test("the policy filters cost the list's length times the value's outer depth (1.71.0.0)") {
+    def key(i: Int) = Value.Key(Bytes.wrap(Array(i.toByte))).getOrElse(fail(s"key $i"))
+    def currencies(n: Int, tokens: Int): Value =
+      Value
+        .build(
+          (0 until n).map(i =>
+            key(i) -> (1 to tokens).map(t => key(t) -> Value.Quantity(1).getOrElse(fail("1")))
+          )
+        )
+        .fold(e => fail(e.toString), identity)
+    val ids = Constant.List
+      .of(DefaultUni.ByteString, Vector.fill(3)(Constant.ByteString(Bytes.empty)))
+      .fold(e => fail(e.toString), identity)
+    // `ValueOuterDepth` (`ExMemoryUsage.hs:443-452`, plutus 1.71.0.0): 1 for no currency,
+    // `integerLog2 m + 1` for `m` currencies, whatever their tokens: (currencies, tokens, depth)
+    val depths = Vector((0, 1, 1), (1, 1, 1), (1, 4, 1), (3, 1, 2), (3, 4, 2), (4, 1, 3))
+    // `multiplied_sizes` of `builtinCostModel*.json` at 1.71.0.0: intercept + slope * (x * y)
+    val models = Vector(
+      DefaultFun.KeepPolicies -> ((315357L, 45187L), (32L, 32L)),
+      DefaultFun.DropPolicies -> ((356925L, 39755L), (32L, 36L))
+    )
+    Variants.foreach { variant =>
+      val costing = DefaultCostModels.costs(variant).costing
+      for
+        (function, ((cpu0, cpu1), (mem0, mem1))) <- models
+        (size, tokens, depth) <- depths
+      do
+        val arguments =
+          Vector(Argument.Con(ids), Argument.Con(Constant.Value(currencies(size, tokens))))
+        assertEquals(
+          costing(function)(arguments).total,
+          ExBudget.of(cpu0 + cpu1 * 3 * depth, mem0 + mem1 * 3 * depth),
+          s"$variant $function, $size currencies of $tokens tokens"
+        )
     }
   }
 

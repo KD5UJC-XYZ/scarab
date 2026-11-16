@@ -36,7 +36,7 @@ object CekThroughputMain:
       Workload("countdown 200000", Terms.countdown(200000), 0),
       Workload("constr sum 50000", Terms.constrSum(50000), BigInt(50000) * 50001 / 2)
     )
-    val core = StubBuiltins.core(SemanticsVariant.E).fold(e => sys.error(e.toString), identity)
+    val core = StubBuiltins.core(SemanticsVariant.E)
     val ours =
       CekConformance.machine(DefaultCostModels.costs(SemanticsVariant.E), CaserBuiltin.WithoutData)
     val free = new CostingFunction:
