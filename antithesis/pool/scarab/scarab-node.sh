@@ -4,6 +4,12 @@
 # (`scripts/devnet/scenarios/pool.py`) and the JVM settings of `scala_container` in `scripts/devnet/cluster.py`.
 # It starts from the classpath, as Antithesis's coverage instrumentation needs: the manifest's Enable-Native-Access
 # does not apply there, so the flag says it (as `scala_container` does).
+# One setting is the harness's alone: cats-effect's fiber tracing is off (`-Dcats.effect.tracing.mode=none`). Its
+# default, `cached`, records a trace event for each `flatMap`, `map` and `delay` a fiber runs, which cost s1 about 18%
+# of its CPU in a local probe (mostly allocation), and the platform simulates the whole cluster more slowly for it.
+# The price is diagnostic: an error's stack trace has no fiber frames, and a stall dump (`--stall-dump`) has no fiber
+# snapshot, which cats-effect 3.7.1 takes only while tracing is on (`FiberMonitor.scala` 185-186, 290-295). A node
+# run outside this harness keeps the default (#1024).
 set -euo pipefail
 
 pool=/env/net/pools-keys/pool1
@@ -53,6 +59,7 @@ if [ -n "${ANTITHESIS_OUTPUT_DIR:-}" ] && [ "${SCARAB_ASSERTIONS:-on}" != off ];
   assertions=(--assertions-file "$ANTITHESIS_OUTPUT_DIR/sdk.jsonl")
 fi
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+  -Dcats.effect.tracing.mode=none \
   -cp '/opt/scarab/*' xyz.kd5ujc.scarab.node.Main \
   follow \
   --genesis-dir /env/net/genesis \
