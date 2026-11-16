@@ -332,8 +332,10 @@ chunk's led slots and certificates to the schedule and sleeps for
 `(time left until the epoch's first slot - margin - chunks left × the last chunk's computation time) / (chunks left)`
 
 but never so long that the next chunk, taking as long as the last, would end less than that time again before the
-onset of the first slot the schedule has not covered. So the work is spread and, whenever the chunks left fit in the
-time left less the margin, done before the epoch starts. The proposed margin is a tenth of the time from the signal to
+onset of the first slot the schedule has not covered. So the work is spread and done before the epoch starts when each
+chunk takes no longer than the one before it and the chunks left fit in the time left less the margin; chunks that
+grow (1 s, 1.9 s, 3.7 s for a 300-slot epoch of 0.1 s slots, signalled 12 s before it) can end after the epoch's first
+slot, while the schedule still stays ahead of the clock. The proposed margin is a tenth of the time from the signal to
 the epoch's first slot (4.8 hours on mainnet, 4 seconds on the trial devnet): room for a pause or a slow host, without
 crowding the end.
 

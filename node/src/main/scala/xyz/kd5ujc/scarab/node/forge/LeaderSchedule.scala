@@ -266,8 +266,10 @@ object LeaderSchedule:
   /** The pacing of an epoch's walk (#1101). The pause after a chunk is the time left until the
     * deadline, less a margin and less the time the chunks left take to decide, shared among those
     * chunks; each chunk left is taken to need as long as the last one took. So the work is spread
-    * and, whenever it fits in the time left, done a margin before the deadline. The margin is a
-    * tenth of the time from the signal to the deadline.
+    * and done a margin before the deadline when each chunk takes no longer than the one before it
+    * and the chunks left fit in the time left; chunks that grow can end after the deadline, the
+    * schedule still ahead of the clock. The margin is a tenth of the time from the signal to the
+    * deadline.
     *
     * No pause is so long that the next chunk, taking as long as the last, would end less than that
     * time again before the onset of the first slot the schedule has not decided. Once a chunk ahead
