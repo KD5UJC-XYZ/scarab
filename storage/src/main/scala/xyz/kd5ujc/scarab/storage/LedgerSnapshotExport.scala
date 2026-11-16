@@ -131,7 +131,7 @@ object LedgerSnapshotExport:
       val snapshots = config.db / "snapshots"
       val prefix = config.slot.map { slot =>
         val number = slot.toBigInt
-        f"snapshot-$number%020d-"
+        s"snapshot-${FileNumber.padded(number, 20)}-"
       }
       guard(snapshots.toString)(JFiles.isDirectory(snapshots.toNioPath)).flatMap {
         case false => Error.MissingSnapshot(config.slot).raise[F, Path]

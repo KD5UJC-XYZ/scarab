@@ -164,7 +164,7 @@ object FileLedgerSnapshots:
   def closed(content: Array[Byte]): Array[Byte] = content ++ sha256(content)
 
   /** The name of the file of the snapshot at `a`. */
-  def nameOf(a: BlockRef): String = f"$Prefix${a.slot}%020d-${a.blockNo}$Suffix"
+  def nameOf(a: BlockRef): String = s"$Prefix${FileNumber.padded(a.slot, 20)}-${a.blockNo}$Suffix"
 
   /** Whether `name` is the name of a snapshot file. */
   def isSnapshot(name: String): Boolean = name.startsWith(Prefix) && name.endsWith(Suffix)

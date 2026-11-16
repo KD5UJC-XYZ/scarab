@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Storage format change for #998, confirming your 13:47Z choice of option A in the freeze guard's terms: the persisted script codec (NodeCodecs.script) changes from a derived codec to an explicit one over Script's four current fields, pinned by a shape test and byte goldens. Persisted bytes and every sidecar schema fingerprint stay identical; this was shown against main's derived codec over 20,000 generated scripts. The format-freeze guard sees a codec-definition change. May I record this storage format change as approved in docs/data/storage-format.json, in a `(storage)!` PR of its own?",
-  "asked_at": "2026-11-15T20:33:44Z",
-  "decision": "Approved: the persisted script codec becomes an explicit codec of Script's four current fields, pinned by a shape test and byte goldens, with persisted bytes and schema fingerprints unchanged, in a pull request of its own.",
-  "decided_at": "2026-11-15T20:34:46Z",
-  "surface_sha256": "8cc472555d0fdd4f53747edd2c7c2fcfa0fc56c75705c669c183cf021e59ed16"
+  "question": "Storage format change for the locale digits fix, confirming your 18:09Z yes in the freeze guard's terms. (1) Storage file names (immutable chunks, volatile log, ledger snapshots, checkpoints, snapshot exports) write their numbers through one helper in the root locale, so they're ASCII digits under every locale. Names under en_US stay byte-for-byte the same; no codec, version, fingerprint or fixture changes. (2) The guard's list of paths a storage format change may touch gains docs/data/correspondence/*.json. Without it, a storage format PR can't map or glue the definitions it adds (here the helper), because the correspondence map postdates the guard. May I record this storage format change as approved in docs/data/storage-format.json, in a `(storage)!` PR of its own?",
+  "asked_at": "2026-11-15T20:36:01Z",
+  "decision": "Approved: storage file names write their numbers through one root-locale helper, ASCII under every locale and unchanged under en_US; and the paths a storage format change may touch include docs/data/correspondence/*.json, in a pull request of its own.",
+  "decided_at": "2026-11-15T20:42:12Z",
+  "surface_sha256": "406333d85774545af06d538cd3547274ae7a1d81811cf90e1ece414f149dcdcc"
  },
  "surface": {
   "registry": {
@@ -292,9 +292,9 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.decodeAll": "71c21602799c1b3e385006e4d5d8a141a0842bf501e8d739772954f91c8c078a",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Scanned": "ba6d5c2c11c483a172b844043c61667f02bca8af8c03190fd7c986447b5005bc",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Suffix": "7c5d3843d3f0dbf69b4c1e26c8b50612ab46da3dac3bea1f227735bcced0064e",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.nameOf": "391068f4cdaf2e2f52b35aac3fbf3da474c15c7a8fa713e84eaf29676858d8ae",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "0f3bf7a892af26dfcbcb79eac68de48348a97810df036fbac8218e5451ce1c64",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "f0d96db9f6078ee0a1fd70da93ab9201a5b789113dc1d78aa00bbc7563a0fd74",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.nameOf": "b40dc2209694b6355c04f947e055e04d1b7773c21ddfefe547c7b66f50d6d289",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "3e02c1f07fcabd295641b04b18ea0839463922c35b6c5c3dc8e900d346b63d2f",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "67592a136e8c67596733bdaa48a11245fb6d121f38057d4e1f2a7543b03bd14d",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.Stem": "ebc2ae76bf4aab10145b5e249e2eb46ca5bba8540d2f3dd632bc058e335cc82f",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c"
   },

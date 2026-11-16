@@ -75,7 +75,7 @@ object StateBacking:
       Applicative[F].pure(Vector.empty[(String, StorageError)])
 
   /** The name shared by a snapshot file (`<stem>.bin`) and its checkpoint directory. */
-  def stem(a: BlockRef): String = f"snapshot-${a.slot}%020d-${a.blockNo}"
+  def stem(a: BlockRef): String = s"snapshot-${FileNumber.padded(a.slot, 20)}-${a.blockNo}"
 
   private val Stem = "snapshot-[0-9]{20}-[0-9]+".r
 
