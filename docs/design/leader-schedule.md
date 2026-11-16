@@ -288,7 +288,8 @@ four and is returned as now:
 
 - the **scheduler** (§5.2), which computes the schedule;
 - the **clock fiber** (§5.4), which reads the clock each slot and publishes the slot;
-- the **forging fiber** (§5.3), which wakes a margin before each led slot and forges it, and publishes nothing;
+- the **forging fiber** (§5.3), which wakes a margin before each led slot and forges it, but for a slot of a KES
+  period the clock has not reached, which it forges at the onset, and publishes nothing;
 - the **slot driver** (§5.4), which takes each slot from the clock fiber and is the only publisher of a slot's
   outcome: its lines, the forge counters and gauges, and the KES update of each period (§5.5).
 
@@ -347,7 +348,9 @@ until it is one chunk ahead of the clock, and then paces the rest to finish by t
 so, it stays ahead once a chunk ahead: each chunk's slots begin after the chunk is computed. Pacing to the epoch's end
 itself would not: the last chunks would be computed after their slots begin (on the trial devnet, a signal at slot 750
 of a 500-slot epoch ending at 1000 leaves a margin of about 25 slots, less than a chunk). A slot the clock reaches
-before the stream covers it gets the per-slot decision from the slot driver (§5.4, Q3 in §9).
+before the stream covers it gets the per-slot decision from the slot driver (§5.4, Q3 in §9). The schedule of such an
+epoch covers it from the clock's slot when its computation started, not from its first slot: complete, it reaches the
+epoch's last slot from there, and the slots before are in none of its counts (§5.6).
 
 **What the pacing assumes of the host.** Once a chunk ahead, the stream stays ahead of the clock, each chunk computed
 before its first slot begins, as long as computing a chunk takes less than the time its slots take to pass, less one
@@ -390,6 +393,15 @@ for it (§5.4 step 3), which it forges at once. The proposed margin is **50 ms**
   to spare;
 - it is half of the devnet's 0.1 s slot, so the forging of a slot still starts after the previous slot's onset;
 - it is far inside the reference's 2 s skew.
+
+**A slot of a KES period the clock has not reached is not forged ahead.** If the slot's KES period is later than the
+clock's at the wake, in practice when the slot is the first of a period, the fiber passes it over. An early forge's
+update of the key (§5.5) would move the key into the period before the clock does, and a SIGHUP in the margin, whose
+certificate is checked against the clock's period, would then be refused where the per-slot loop takes it; at the
+certificate's expiry the key would be erased early ([#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101), the
+review of [#1109](https://github.com/KD5UJC-XYZ/scarab/pull/1109)). The slot driver, at the onset and after its update
+of the period, finds the slot led and claims it for the forging fiber (§5.4 step 3), which forges it at once, as the
+per-slot loop forges it: such a slot's block is built after its onset, a Mirror (§5.7).
 
 At the wake the fiber makes an **early attempt**. It is provisional until the slot's onset:
 
@@ -508,8 +520,10 @@ For each slot it handles, while forging is enabled, the slot driver:
    (decision 1; [#1101, Q1](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395)). Either way the
    slot is counted in `ForgeEpochStats` (`slotsChecked`) and the about-to-lead counter, and the `ForgingStats` gauges
    are published, every slot, as now (Q2). `startLeadershipCheck` and `stateInfo` are logged only on led slots and at
-   a KES period change, except `stateInfo` at Warning or Alert (seven or fewer periods left), which is logged in every
-   slot whose checks reach the KES key, as the reference logs it (Q2);
+   a KES period change, where the slot not led that announces the period's `stateInfo` logs `startLeadershipCheck`
+   before it, as the reference orders a slot's lines; `stateInfo` at Warning or Alert (seven or fewer periods left)
+   is logged in every slot whose checks reach the KES key, without `startLeadershipCheck`, as the reference logs it
+   (Q2);
 5. checks the forged blocks replaced later (`watch`), as now after each slot.
 
 **The epoch's summary.** Before the first slot of a later epoch, the slot driver publishes the `forgeEpoch` line of
@@ -530,9 +544,11 @@ memory is zeroed as now (`Sum6KesSigning`'s `evolve`), so from the period's firs
 for an earlier period, as on a synced reference node, and the write-back of [ADR
 0015](../adr/0015-kes-key-written-back-and-checked-reload.md) replaces the earlier key in its file. Unlike the
 reference (§2.6), the key moves even while the node cannot forecast its slots, so it is never older than the clock's
-period. For a led slot in the first slot of a period, the forge's own update moves the key up to the wake margin
-before the period begins. While forging is disabled nothing updates the key, as no forging thread runs then in the
-reference (C19).
+period. It is never newer either: no forge is made ahead of a period the clock has not reached (§5.3), so a led slot
+in the first slot of a period is forged after the slot driver's update at its onset. A forge that makes a period's
+update first, on a late wake or as the first update after a reload has cleared the record, does so once the clock is
+in the period. While forging is disabled nothing updates the key, as no forging thread runs then in the reference
+(C19).
 
 **One result per period, read by every slot.** The first update of a period records its result: the key's state
 (`KesInfo`), or the failure that poisoned the key. The record belongs to the credentials it was made with: a reload
@@ -573,8 +589,8 @@ Decision 7 publishes the schedule; the reference keeps it to itself (C10).
 | `scarab_forge_scheduled_leader_slots` | gauge, label `epoch` (`current`, `next`) | The epoch's potential leader slots in the schedule. A slot battle can still lose one, and a fork can change the schedule. |
 | `scarab_forge_expected_leader_slots` | gauge, label `epoch` | `slots × (1 - (1 - f)^σ)`, σ the pool's share of the distribution: the expected number, for comparison. Display only: computed in floating point and never used for a decision. |
 | `scarab_forge_next_leader_slot` | gauge | The next led slot in the schedule; absent when there is none. |
-| `scarab_forge_schedule_complete` | gauge, label `epoch` | 1 once the epoch's schedule covers all its slots, else 0; the counts above show the slots covered so far (Q8, §9). |
-| `leaderSchedule` (namespace `Forge`, Info) | log line | When an epoch's schedule is complete, and again whenever a restart changes it: `epoch`, `slots` (the led slots), `expected`, and whether the nonce is settled. |
+| `scarab_forge_schedule_complete` | gauge, label `epoch` | 1 once the epoch's schedule reaches its last slot, else 0; the counts above show the slots covered so far (Q8, §9). For an epoch computed after it began (§5.2), the schedule covers it from the clock's slot when the computation started, and the slots before are in no count. |
+| `leaderSchedule` (namespace `Forge`, Info) | log line | When an epoch's schedule is complete, and again whenever a restart changes it: `epoch`, `slots` (the led slots), `expected`, and whether the nonce is settled. For an epoch computed after it began, `slots` are the led slots from the clock's slot when the computation started. |
 
 Anyone who can read the node's metrics or logs learns when the pool will lead. That is the purpose; it also means an
 operator who exposes `/metrics` publicly publishes the schedule. The metrics page says so (Q9, §9).
@@ -582,19 +598,20 @@ operator who exposes `/metrics` publicly publishes the schedule. The metrics pag
 ### 5.7 Mirror and Deviation
 
 What stays a **Mirror**: the decision of every slot and the certificate of every won slot (C4, decision 9); the forged
-block for a given slot, parent, snapshot and credentials; the full sequence of traces of a led slot, with the
-reference's names, order and severities, and its fields but for the two renderings that differ today (C2, C7, C21);
-the clock checks (C18); the KES key's states and its erasure (C6); the forecast check of a led slot (C16).
+block for a given slot, parent, snapshot and credentials; when the block of a led slot in the first slot of a KES
+period is built, after the onset (§5.3); the full sequence of traces of a led slot, with the reference's names, order
+and severities, and its fields but for the two renderings that differ today (C2, C7, C21); the clock checks (C18); the
+KES key's states and its erasure (C6); the forecast check of a led slot (C16).
 
 The **Deviations**, all approved on #1101. A pull request records each as a [REF-7](../design-rules.md#ref-7) row, and
 the change that first relies on them adds their rows to the [decisions register](../decisions.md):
 
 | Behaviour | Reference | Scarab | Approval |
 |---|---|---|---|
-| A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `stateInfo` only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
+| A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `startLeadershipCheck` and `stateInfo` before it at a KES period change, `stateInfo` otherwise only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
 | When the leader check runs | at the slot, in the forging thread (C1, C4) | ahead of the epoch, spread over the time left; again at a led slot | decisions 4, 5 |
-| When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset; handed to chain selection at the onset | decision 6 |
-| When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by the slot driver at the period's first slot, decision 3's timer; also at a led slot as now | decision 3 |
+| When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset, but after it in the first slot of a KES period (§5.3); handed to chain selection at the onset | decision 6 |
+| When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by the slot driver at the period's first slot, decision 3's timer; also at a led slot as now, never before the clock's period | decision 3 |
 | The schedule | not traced (C10) | three metrics and the `leaderSchedule` line | decision 7 |
 
 The per-slot loop is replaced with no flag (decision 8).
@@ -626,7 +643,8 @@ Three readings:
 - **What is saved is the per-slot loop's other work** (about 3% of CPU at 0.1 s slots, #1101) and two of its three
   Info lines per slot, against the clock fiber's and the slot driver's wake and the `nodeNotLeader` line (about 0.3%,
   decision 1). On mainnet, with 1 s slots, the CPU saved is small.
-- **What is gained is timing.** The check is off the slot's path, and the block of a led slot is ready at its onset.
+- **What is gained is timing.** The check is off the slot's path, and the block of a led slot is ready at its onset,
+  but in the first slot of a KES period (§5.3).
 
 Settlement is a state to report, not a gate. Decision 4 starts the schedule when the nonce is known, and on the
 devnet, where k = 5 and Antithesis injects faults, k + 1 blocks may not arrive before the boundary. A schedule from a
@@ -667,9 +685,14 @@ scenario.
   `slotsChecked`, `notLeader` and the about-to-lead counter, and no block. And when the slot driver claims a slot
   first and the forging fiber then wakes for it, the fiber finds the claim and leaves the slot.
 - **A KES expiry boundary (§5.5).** The certificate's window ends at a period's first slot. Run with the slot driver's
-update first, with a forge's update first, and with the slot driver waiting on the reservation held by a forge of that
-same slot: `KESCouldNotEvolve` appears once, in the first slot in slot order whose checks reach the KES key,
-`KESKeyAlreadyPoisoned` in each later one, and the gauges come from the one recorded result.
+update first, with a forge's update first (a forging fiber that wakes late, in the period), and with the slot driver
+waiting on the reservation held by a forge of that same slot: `KESCouldNotEvolve` appears once, in the first slot in
+slot order whose checks reach the KES key, `KESKeyAlreadyPoisoned` in each later one, and the gauges come from the one
+recorded result.
+- **A led first slot of a KES period (§5.3, §5.5).** In the differential test, a SIGHUP between the slot's wake and its
+  onset installs a certificate issued again for the same KES key, and the certificate's expiry falls on such a slot:
+  the reload is taken on both paths and the block is the per-slot decision's, and the key is erased no earlier than
+  on the per-slot path.
 - **The epoch's last slot (§5.4).** A forge of an epoch's last slot is suspended across the boundary: `forgeEpoch`
   comes after that slot's outcome and counts it.
 - **Forging follows slot order (§5.4).** The slot driver is suspended while it decides slot s, the last slot of KES
@@ -713,10 +736,13 @@ same slot: `KESCouldNotEvolve` appears once, in the first slot in slot order who
        at the first led slot's attempt, which carries the ledger as before, and at the follower's own crossing of
        the boundary.
      - The `stateInfo` of a period change is published at the first slot of the period the slot driver handles,
-       whether or not that slot's checks reach the key, so that the KES gauges move at the period's start.
+       whether or not that slot's checks reach the key, so that the KES gauges move at the period's start; on a slot
+       not led, after its `startLeadershipCheck`.
      - The KES key's own lines (`kesEvolved`, `kesFileAbsent`, `kesWrittenByRename`, `kesPersistFailed`) are
-       written where the key moves, by the forge that updates it up to the wake margin before the period, not held
-       with the slot's lines.
+       written where the key moves, by the slot driver's update of the period or by a forge's, never before the
+       clock's period, not held with the slot's lines.
+     - A led slot of a KES period the clock has not reached at the wake is not forged ahead: the slot driver hands it
+       over at its onset (§5.3, from the review of #1109's final diff).
      - A held transaction the selection has no verdict on leaves the mempool only when its attempt counts: before
        its block is handed over, or with the refusal that stands; a discarded attempt changes nothing in the
        mempool, so the slot forged again starts from the mempool the per-slot loop would see.
@@ -821,12 +847,13 @@ left open, or differs from it, §8 lists the point under S2; it is not repeated 
   slot of generated epochs, and the pacing's arithmetic. `LeaderScheduleStreamSuite`: the stream under `TestControl`.
   `ScheduledForgerSuite`: the differential, each slot's outcome and each block handed over against `Forger.step`, across
   an epoch boundary, forks past the freeze and across the previous boundary, a VRF key reload, forging switched off
-  and on, and a start mid-epoch. `ForgeInterleavingSuite`: the interleavings §7 lists, each placed with
-  `Forger.Point`.
+  and on, a start mid-epoch, and a led first slot of a KES period with a reload in its wake margin and with the
+  certificate's expiry. `ForgeInterleavingSuite`: the interleavings §7 lists, each placed with `Forger.Point`.
 - **The evidence (S3)** is in the [evidence log](../compatibility/evidence-log-5.md), the entries for #1101: the
   devnet `pool` and `kes-rotate` runs, and one Antithesis run of the trial's base configuration under node, clock and
   network faults, in which every property that must never fire held and forks past k came at the per-slot forger's
-  rate.
+  rate. The Antithesis run, and the devnet `pool` run beside it, were at 04b6b8447, before the fixes of the review of
+  the final diff: the first slot of a KES period forged at its onset, and `startLeadershipCheck` at a period change.
 
 What the measurements say about §6 and §9:
 
