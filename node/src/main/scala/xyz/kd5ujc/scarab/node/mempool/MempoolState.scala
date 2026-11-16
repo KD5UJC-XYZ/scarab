@@ -156,9 +156,13 @@ final case class MempoolEnv(
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
 ):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
-    * after the tip, in the epoch and the era of the fully ticked ledger.
+    * after the tip, in the epoch and the era of the fully ticked ledger, and at transaction index 0
+    * whatever its place in the pool: the reference's mempool applies every transaction at
+    * `ledgerIx = minBound` (`mkMempoolEnv`, `Shelley/API/Mempool.hs:363-377`, cardano-ledger
+    * f649f975), which before Conway is the transaction index of a registration's pointer
+    * (`Delegs.hs:194-197`).
     */
-  def txEnv(tipSlot: BigInt, ledger: PoolLedger, index: Int): TxEnv =
+  def txEnv(tipSlot: BigInt, ledger: PoolLedger): TxEnv =
     val slot = tipSlot + 1
     TxEnv(
       slot = slot,
@@ -166,7 +170,7 @@ final case class MempoolEnv(
       network = globals.network,
       firstSlotNextEpoch = geometry.firstSlot(ledger.epoch + 1),
       stabilityWindow = geometry.stabilityWindow.toBigInt,
-      txIndex = index,
+      txIndex = 0,
       updateQuorum = globals.updateQuorum,
       clock = Some(clock.fold(PosixClock.total(geometry))(_(ledger.era))),
       evaluator = evaluator,
@@ -297,7 +301,7 @@ final case class MempoolState(
           // [[Mempool]]), which refuses one none of whose inputs is unspent as "probably a
           // duplicate" with that alone, then LEDGER; before Conway LEDGER
           admitted <- ledger
-            .admit(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules, source)
+            .admit(tx, env.txEnv(tipSlot, baseLedger), env.rules, source)
             .leftMap(Rejection.Ledger(_))
           (next, held) = admitted
         yield (refScriptBytes, next, held)
@@ -365,7 +369,7 @@ final case class MempoolState(
             MempoolState.judging(
               state.current
                 .leftMap(Rejection.NoLedger(_))
-                .flatMap(MempoolState.revalidate(entry, _, l, env, slot, state.entries.size))
+                .flatMap(MempoolState.revalidate(entry, _, l, env, slot))
             ) match
               case Right((next, kept)) =>
                 (
@@ -471,10 +475,9 @@ object MempoolState:
       current: PoolLedger,
       ledger: PoolLedger,
       env: MempoolEnv,
-      slot: BigInt,
-      index: Int
+      slot: BigInt
   ): Either[Rejection, (PoolLedger, Entry)] =
-    val txEnv = env.txEnv(slot, ledger, index)
+    val txEnv = env.txEnv(slot, ledger)
     if entry.era == ledger.era then
       current.reapply(entry.tx, txEnv, env.rules).bimap(Rejection.Ledger(_), _ -> entry)
     else

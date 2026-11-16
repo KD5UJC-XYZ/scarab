@@ -167,7 +167,7 @@ object TxKit:
 
     /** The ledger after the transaction, which the test knows to be valid. */
     def applied(tx: Tx, slot: BigInt = 1000): MempoolLedger =
-      l.submit(tx, env.txEnv(slot, l, 0), env.rules).fold(f => sys.error(f.message), identity)
+      l.submit(tx, env.txEnv(slot, l), env.rules).fold(f => sys.error(f.message), identity)
 
   /** Alice pays `value - fee` to bob from `txIn(i)`. */
   def pay(i: Int, fee: BigInt = ada, value: BigInt = 100 * ada): (Bytes, Bytes) =
@@ -461,7 +461,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     val l = ledger(1).withProtocol(11)
     val parsed = MempoolState.parse(raw).fold(r => fail(r.toString), _._2)
     assertEquals(
-      l.reapply(parsed, env.txEnv(0, l, 0), env.rules).map(_ => ()),
+      l.reapply(parsed, env.txEnv(0, l), env.rules).map(_ => ()),
       Left(
         LedgerFailure.Rejected(
           id,
@@ -580,10 +580,9 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
 
   private def replay(s: MempoolState): Either[LedgerFailure, PoolLedger] =
     val base = s.base.fold(u => sys.error(u.toString), identity)
-    s.entries.zipWithIndex.foldLeft[Either[LedgerFailure, PoolLedger]](Right(base)) {
-      case (Right(l), (e, i)) =>
-        l.reapply(e.tx, env.txEnv(s.tipSlot, base, i), env.rules)
-      case (left, _) => left
+    s.entries.foldLeft[Either[LedgerFailure, PoolLedger]](Right(base)) {
+      case (Right(l), e) => l.reapply(e.tx, env.txEnv(s.tipSlot, base), env.rules)
+      case (left, _)     => left
     }
 
   property("held transactions always apply in order to the tip state; accounting stays exact") {

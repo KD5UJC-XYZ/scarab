@@ -58,13 +58,14 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       era: Era,
       i: Int = 1,
       extra: Vector[(Int, Vector[Byte])] = Vector.empty,
-      forged: Boolean = false
+      forged: Boolean = false,
+      paid: BigInt = 99 * ada
   ): (Bytes, Block.Transaction) =
     val body = Bytes(
       head(5, 4 + extra.size) ++
         Vector(0x00.toByte) ++ head(4, 1) ++ head(4, 2) ++ bstr(txIn(i).id) ++ head(0, 0) ++
         Vector(0x01.toByte) ++ head(4, 1) ++ head(4, 2) ++ bstr(bob.address().raw) ++
-        head(0, 99 * ada) ++
+        head(0, paid) ++
         Vector(0x02.toByte) ++ head(0, ada) ++
         Vector(0x03.toByte) ++ head(0, 100000) ++
         extra.flatMap((k, v) => head(0, k) ++ v)
@@ -392,8 +393,38 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val tx =
         xyz.kd5ujc.scarab.ledger.Tx.fromBlock(parts, era).fold(e => fail(e.message), identity)
       val l = ledger(era)
-      val txEnv = translating.txEnv(1000, l, 0)
+      val txEnv = translating.txEnv(1000, l)
       assert(l.submit(tx, txEnv, translating.rules).isLeft, s"$era: every check refuses it")
       assert(l.reapply(tx, txEnv, translating.rules).isRight, s"$era: reapplyTx does not verify it")
+    }
+  }
+
+  /** The pointers of the stake credentials registered in the pool's ledger. */
+  private def pointers(s: MempoolState): Set[xyz.kd5ujc.scarab.ledger.Ptr] = s.current match
+    case Right(l: EarlierLedger[e]) => l.pre.dState.get(l.ls).accounts.ptrs.keySet.toSet
+    case other                      => fail(s"not a ledger before Conway: $other")
+
+  shelleyBased.foreach { era =>
+    test(
+      s"$era: a registration held second gets the pointer of transaction index 0, as every held one"
+    ) {
+      // `mkMempoolEnv` applies every transaction of the mempool at `ledgerIx = minBound`
+      // (Shelley/API/Mempool.hs:363-377, cardano-ledger f649f975), and DELEGS makes the pointer of
+      // a registration of it (Delegs.hs:194-197)
+      val registration =
+        4 -> (head(4, 1) ++ head(4, 2) ++ head(0, 0) ++ head(4, 2) ++ head(0, 0) ++
+          bstr(Bytes(Vector.fill(28)(0x5a.toByte))))
+      val (first, _) = payment(era, i = 1)
+      val (second, _) = payment(era, i = 2, extra = Vector(registration), paid = 97 * ada)
+      val held = Vector(first, second).foldLeft(pool(era)) { (s, raw) =>
+        s.add(Submission(era.index, raw), translating, Source.Local)
+          .fold(r => fail(r.message), _._1)
+      }
+      val expected = Set(xyz.kd5ujc.scarab.ledger.Ptr(BigInt(1001), BigInt(0), BigInt(0)))
+      assertEquals(pointers(held), expected, "admitted")
+      val (synced, dropped) = held.sync(held.base, 1000, translating)
+      assertEquals(dropped, Vector.empty)
+      assertEquals(pointers(synced), expected, "revalidated")
+      assertEquals(synced.entries.map(_.ticket), Vector(1L, 2L), "the tickets keep their order")
     }
   }
