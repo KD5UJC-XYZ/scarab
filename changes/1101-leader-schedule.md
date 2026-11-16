@@ -1,7 +1,7 @@
 ### Changed (forging from a leader schedule, #1101)
 
 - The forger forges from a per-epoch leader schedule instead of a per-slot loop (an approved Deviation,
-  [docs/design/leader-schedule.md](../docs/design/leader-schedule.md)). The schedule of the current epoch, and of
+  `docs/design/leader-schedule.md`). The schedule of the current epoch, and of
   the next once its nonce is known, is computed ahead of the slots and spread over the time left; a led slot is
   checked again against the chain at the slot, its block is built 50 ms before the slot's onset and handed to
   chain selection at the onset, and built again if the chain, the slot's inputs or the credentials changed
