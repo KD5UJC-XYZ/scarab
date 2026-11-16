@@ -415,7 +415,11 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
         def failures(events: Vector[ForgeEvent]) = events.collect {
           case ForgeEvent.Loop(ForgeTrace.ForgeStateUpdateError(slot, error)) => slot -> error
         }
-        assertEquals(failures(c.scheduled), failures(c.perSlot), "the lines of the expiry")
+        assertEquals(
+          failures(c.scheduled),
+          failures(c.perSlot),
+          "each slot's KES failure line: its kind and the key's state"
+        )
         assert(
           failures(c.perSlot).headOption.exists {
             case (slot, KesEvolutionError.CouldNotEvolve(_, _))  => slot == expiry
