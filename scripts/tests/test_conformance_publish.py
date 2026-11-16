@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """`scripts/conformance/publish.py`: which files may be published, that a dry run runs nothing, and what `--apply`
-does, against real Git repositories in a temporary directory (a local bare remote with a first commit) and a fake
-`gh`: nothing leaves the test's directory."""
+does, against real Git repositories in a temporary directory (a local bare remote with a first commit), a fake `gh`
+and a synthetic site that is taken for the pinned one (`conformance_site`): nothing leaves the test's directory."""
 import hashlib
 import io
 import json
@@ -14,7 +14,9 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from conformance import publish  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from conformance import inputs, publish  # noqa: E402
+from conformance_site import ABSENT, gzipped, ledger_report, write_site  # noqa: E402
 
 COMMIT = "c" * 40
 LEDGER = "scarab-20261114-ledger-rules.json.gz"
@@ -32,6 +34,17 @@ def write_report(directory, name=LEDGER, body=b"\x1f\x8b report", **changes):
 
 def never(argv):
     raise AssertionError(f"ran {argv}")
+
+
+def verified_site(root):
+    """An inputs directory under `root` holding a synthetic site that `inputs.fetch` takes for the pinned one: two
+    ledger-rules fixtures, one vector and one benchmark."""
+    pin = inputs.load_pins()["site"]
+    target = write_site(Path(root, pin.directory), {"00001-pass": ABSENT, "00002-fail": {"predicate": "P"}},
+                        [{"id": "v", "plutus_version": "V3", "protocol_version": "10.0", "evaluation": "ok",
+                          "budget": None}], ["a.flat"])
+    Path(root, f"{pin.directory}.verified.json").write_text(json.dumps(inputs.receipt(pin, target)))
+    return Path(root)
 
 
 # Git as the tests run it: no global or system configuration (no signing, no hooks), and never a prompt.
@@ -148,6 +161,10 @@ class DryRunTest(unittest.TestCase):
                       "https://github.com/KD5UJC-XYZ/scarab-conformance.git", text)
         self.assertIn(f"-> reports/ledger-rules/{LEDGER}", text)
         self.assertIn("-> latest/ledger-rules.json.gz", text)
+        self.assertIn("# fetch the site at 9dc68a750478335755d057288cc8978c117d7ac4 into <temporary directory>/"
+                      "site-9dc68a750478, unless a verified copy is there", text)
+        self.assertIn("fetch -q --depth 1 --filter=blob:none --no-tags "
+                      "https://github.com/pragma-org/node-diversity-conformance 9dc68a75", text)
         self.assertIn("push --quiet origin HEAD:refs/heads/main", text)
 
     def test_explicit_dry_run_runs_nothing_and_excludes_apply(self):
@@ -180,6 +197,7 @@ class ApplyTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.out = self.root / "out"
         self.out.mkdir()
+        self.inputs = verified_site(self.root / "inputs")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -196,7 +214,8 @@ class ApplyTest(unittest.TestCase):
         with mock.patch("sys.stdout", new=io.StringIO()) as out, mock.patch("sys.stderr", new=io.StringIO()) as err, \
                 mock.patch.object(publish.tempfile, "TemporaryDirectory", side_effect=recording):
             code = publish.main([str(reports or self.out), "--apply", "--repo-url", remote.url,
-                                 "--identity", "Bot <bot@example.org>", *args], run=runner)
+                                 "--identity", "Bot <bot@example.org>", "--inputs", str(self.inputs), *args],
+                                run=runner)
         for directory in self.scratch:
             self.assertFalse(directory.exists(), f"publisher's temporary directory remains: {directory}")
         return code, out.getvalue() + err.getvalue()
@@ -222,6 +241,31 @@ class ApplyTest(unittest.TestCase):
         self.assertIn("Bot <bot@example.org>", log)
         self.assertIn(f"Scarab commit {COMMIT}", log)
         self.assertEqual(remote.commits(), 2)
+
+    def test_the_readme_scores_latest_by_the_site_s_rules(self):
+        remote = Remote(self.root)
+        write_report(self.out, body=gzipped(ledger_report([("00001", "pass"), ("00002", "Q")])))
+        code, said = self.publish(remote, Runner())
+        self.assertEqual(code, 0, said)
+        readme = remote.files()["README.md"].decode()
+        self.assertIn("do not edit it by hand", readme)
+        self.assertLess(readme.index("## Results"), readme.index("## Reports in `latest/`"))
+        self.assertIn("| `ledger-rules` | 1 | 2 | 50.00% | yes |", readme)
+        self.assertIn("| `uplc-conformance` | | | no report | yes |", readme)
+        self.assertIn("| `cbor-decoding`, Dijkstra | | | no report | no |", readme)
+        self.assertIn("| **Overall** | | | **12.50%** | |", readme)
+        self.assertIn("| [`ledger-rules`](latest/ledger-rules.json.gz) | 2026-11-14 |", readme)
+
+    def test_a_site_that_cannot_be_fetched_publishes_nothing(self):
+        remote, runner = Remote(self.root), Runner()
+        write_report(self.out)
+        with mock.patch.object(publish.inputs, "fetch", side_effect=inputs.InputError("site: checked out another")):
+            code, said = self.publish(remote, runner)
+        self.assertEqual(code, 1, said)
+        self.assertIn("the site at 9dc68a750 could not be fetched or read", said)
+        self.assertIn("nothing was published", said)
+        self.assertEqual(runner.verbs(), ["api"], "refused before the reports repository is cloned")
+        self.assertEqual(remote.commits(), 1)
 
     def test_a_failed_copy_publishes_nothing_and_a_retry_only_its_own_files(self):
         remote = Remote(self.root)
