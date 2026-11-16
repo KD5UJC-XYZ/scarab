@@ -137,8 +137,10 @@ object GovKernel
       h
     }.toSet
 
-  /** `unelectedCommitteeVoters` (`Gov.hs:652`): the hot credentials among the voters that no member
-    * of the current committee has authorised.
+  /** `unelectedCommitteeVoters` (`Gov.hs:652-665`, cardano-ledger f649f975): the hot credentials
+    * among the voters that no member of the current committee has authorised, as the reference's
+    * set (`Set (Credential HotCommitteeRole)`) lists them: each once, in the order of credentials,
+    * a script before a key and then by hash ([[node.Credential]]'s `Ordering`).
     */
   def unelected(
       committee: Option[Committee],
@@ -151,9 +153,13 @@ object GovKernel
             if committee.exists(_.members.contains(Convert.back(cold))) =>
           h
       }.toSet
-    voters.iterator.collect {
-      case Voter.CommitteeHot(h) if Convert.credential[HotCommittee](h).forall(!elected(_)) => h
-    }.toVector
+    voters.iterator
+      .collect {
+        case Voter.CommitteeHot(h) if Convert.credential[HotCommittee](h).forall(!elected(_)) => h
+      }
+      .toVector
+      .distinct
+      .sorted
 
   def transition[F[_]: Monad](env: GovViewEnv, signal: GovSignal)(using
       ask: Ask[F, Globals],

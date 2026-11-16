@@ -534,8 +534,12 @@ object TxChecks:
   private[ledger] def providedKeyHashes(tx: Tx, vkeyHashes: Vector[Bytes]): Set[Bytes] =
     vkeyHashes.toSet ++ tx.witnesses.bootstrap.map(_.addressRoot)
 
-  /** `validateVerifiedWits` (`Shelley/Rules/Utxow.hs:380-397`, cardano-ledger f649f975): the vkey
-    * and bootstrap witnesses whose signature of the body does not verify.
+  /** `validateVerifiedWits` (`Shelley/Rules/Utxow.hs:390-407`, cardano-ledger f649f975): the vkey
+    * and bootstrap witnesses whose signature of the body does not verify. The keys are listed as
+    * the reference lists them, the vkey witnesses' first and then the bootstrap witnesses', each in
+    * the order of its set (`Set.toList`): vkey witnesses by `Ord WitVKey`, the key's hash and then
+    * the signature's (`Keys/WitVKey.hs:58-68`), and bootstrap witnesses in the order their set is
+    * already read in ([[BootstrapWitness]]).
     */
   private[ledger] def verifiedWits(
       tx: Tx,
@@ -546,7 +550,8 @@ object TxChecks:
     // A verifier that fails is no verdict on the transaction (`LedgerFailure.Unverifiable`), never
     // an invalid witness: the reference's `verifyWitVKey` is a Boolean, and a failure of the library
     // is an exception (see `ProviderDefect`).
-    (wits.vkeys ++ wits.bootstrap.map(w => w.vkey -> w.signature))
+    val vkeys = wits.vkeys.sortBy((vkey, signature) => era.WitVKey(vkey, signature))
+    (vkeys ++ wits.bootstrap.map(w => w.vkey -> w.signature))
       .traverse((vkey, signature) =>
         verdicts.witness(vkey, signature, id).map(valid => Option.unless(valid)(vkey))
       )
