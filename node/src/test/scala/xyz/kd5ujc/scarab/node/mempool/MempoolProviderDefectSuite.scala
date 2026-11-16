@@ -58,7 +58,16 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
       mempool <- Mempool.create[IO](Right(ledger(3)), 1000, defective, None, MempoolEvents.none[IO])
       sink = mempool.sink(f => IO(fail(s"fatal: $f")))
       ended <- Handle
-        .allow[NetworkError](sink.submit(Vector(t1, t2)).as(Option.empty[NetworkError]))
+        .allow[NetworkError](
+          sink
+            .submit(
+              Vector(t1, t2).map(
+                xyz.kd5ujc.scarab.protocol.TxSubmission2
+                  .EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, _)
+              )
+            )
+            .as(Option.empty[NetworkError])
+        )
         .rescue(e => IO.pure(Some(e)))
       held <- mempool.snapshot
     yield

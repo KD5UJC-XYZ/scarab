@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, TxSubmission2}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 import Capacity.fits
@@ -425,26 +425,23 @@ object Mempool:
           yield out
         }
 
-      // The node-to-node codec carries Conway's `GenTx` only (`TxSubmission2`, #934), so only the
-      // held transactions of Conway are offered to peers: one of an earlier era written under
-      // Conway's tag would mean another transaction to a reference peer.
-      private def relayed(s: MempoolState, ticket: Long): Vector[Entry] =
-        s.after(ticket).filter(_.era == Era.Conway)
-
       val source: TxSubmissionClient.Source[F] = new TxSubmissionClient.Source[F]:
         def after(ticket: Long, max: Int) =
           state.get.map(
-            relayed(_, ticket).take(max).map(e => TxSubmissionClient.Held(e.id, e.size, e.ticket))
+            _.after(ticket)
+              .take(max)
+              .map(e => TxSubmissionClient.Held(e.id, e.size, e.ticket, e.era))
           )
         def awaitAfter(ticket: Long): F[Unit] =
           version.get.flatMap { seenVersion =>
             state.get.flatMap { s =>
-              if relayed(s, ticket).nonEmpty then F.unit
+              if s.after(ticket).nonEmpty then F.unit
               else version.waitUntil(_ > seenVersion) *> awaitAfter(ticket)
             }
           }
+        // the transaction as it is held now, in the era of the pool's ledger
         def body(id: Bytes) =
-          state.get.map(_.entries.find(e => e.id == id && e.era == Era.Conway).map(_.raw))
+          state.get.map(_.entries.find(_.id == id).map(e => TxSubmission2.EraTx(e.era, e.raw)))
         def reader = RelayedTransactions
 
       def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] =
@@ -466,11 +463,16 @@ object Mempool:
           // TxSubmission2 thread
           // (consensus 82ecba32 Node/NodeKernel.hs `getMempoolWriter`, `Mempool/Update.hs`
           // `doAddTx`, `Node/RethrowPolicy.hs:40-45`). The transactions after it are not offered.
-          def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) =
+          def submit(originals: Vector[TxSubmission2.EraTx])(using Raise[F, NetworkError]) =
             originals.traverse_ { original =>
               StorageBoundary
-                .run(fatal)(add(original, Source.Remote))
+                .run(fatal)(
+                  added(_ => Submission(original.era.index, original.original), Source.Remote)
+                )
                 .flatMap(
-                  _.left.toOption.flatMap(Mempool.peerConnectionEnd).traverse_(_.raise[F, Unit])
+                  _.left.toOption
+                    .map(_.rejection)
+                    .flatMap(Mempool.peerConnectionEnd)
+                    .traverse_(_.raise[F, Unit])
                 )
             }

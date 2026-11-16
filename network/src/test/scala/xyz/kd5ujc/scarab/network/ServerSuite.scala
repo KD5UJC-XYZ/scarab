@@ -99,7 +99,7 @@ class ServerSuite extends FailsOnUncaught:
   private val noTxs: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
     def reader = TxSubmission2Fixtures.structural
     def known(id: Bytes) = IO.pure(false)
-    def submit(originals: Vector[Bytes])(using
+    def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
         cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
     ) = IO.unit
 
@@ -298,13 +298,20 @@ class ServerSuite extends FailsOnUncaught:
             if h.exists(_.ticket > ticket) then IO.unit
             else emptied.complete(()) *> held.waitUntil(_.exists(_.ticket > ticket))
           )
-        def body(id: Bytes) = IO.pure(bodies.get(id))
+        def body(id: Bytes) = IO.pure(
+          bodies
+            .get(id)
+            .map(
+              xyz.kd5ujc.scarab.protocol.TxSubmission2
+                .EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, _)
+            )
+        )
       sink = new TxSubmissionServer.Sink[IO]:
         def reader = TxSubmission2Fixtures.structural
         def known(id: Bytes) = IO.pure(id == ids(1))
-        def submit(originals: Vector[Bytes])(using
+        def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
             cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
-        ) = received.update(_ ++ originals)
+        ) = received.update(_ ++ originals.map(_.original))
       outcome <- typed {
         linked(protocols = Set(4)).use { (client, server) =>
           for
@@ -317,11 +324,21 @@ class ServerSuite extends FailsOnUncaught:
             _ <- held.set(
               ids.zipWithIndex
                 .take(5)
-                .map((id, i) => TxSubmissionClient.Held(id, txs(i).size, i + 1L))
+                .map((id, i) =>
+                  TxSubmissionClient
+                    .Held(id, txs(i).size, i + 1L, xyz.kd5ujc.scarab.protocol.Era.Conway)
+                )
             )
             _ <- received.waitUntil(_.size >= 4).timeout(5.seconds)
             // later arrivals are offered too
-            _ <- held.update(_ :+ TxSubmissionClient.Held(ids(5), txs(5).size, 6L))
+            _ <- held.update(
+              _ :+ TxSubmissionClient.Held(
+                ids(5),
+                txs(5).size,
+                6L,
+                xyz.kd5ujc.scarab.protocol.Era.Conway
+              )
+            )
             _ <- received.waitUntil(_.size >= 5).timeout(5.seconds)
           yield ()
         }

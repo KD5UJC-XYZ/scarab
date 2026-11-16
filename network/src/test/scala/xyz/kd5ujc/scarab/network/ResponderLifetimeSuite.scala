@@ -79,7 +79,9 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
       val sink = new TxSubmissionServer.Sink[IO]:
         def reader = TxSubmission2Fixtures.structural
         def known(id: Bytes) = if parking then park(Protocols.TxSubmission2) else IO.pure(false)
-        def submit(originals: Vector[Bytes])(using Raise[IO, NetworkError]) = IO.unit
+        def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
+            Raise[IO, NetworkError]
+        ) = IO.unit
       val peers: PeerSharingServer.Source[IO] = _ =>
         if parking then park(Protocols.PeerSharing) else IO.pure(Vector.empty)
       ServerHandlers[IO, Bytes](

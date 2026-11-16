@@ -19,7 +19,9 @@ import Peers.*
 
 class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
   private def id(n: Int): Bytes = Bytes(Vector.fill(31)(0.toByte) :+ n.toByte)
-  private val all = Vector.tabulate(64)(n => TxSubmissionClient.Held(id(n), 5, n + 1L))
+  private val all = Vector.tabulate(64)(n =>
+    TxSubmissionClient.Held(id(n), 5, n + 1L, xyz.kd5ujc.scarab.protocol.Era.Conway)
+  )
   private val source: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
     def reader = TxSubmission2Fixtures.structural
     def after(ticket: Long, max: Int) = IO.pure(all.filter(_.ticket > ticket).take(max))
@@ -32,7 +34,12 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
     def reader = TxSubmission2Fixtures.structural
     def after(ticket: Long, max: Int) = IO.pure(all.filter(_.ticket > ticket).take(max))
     def awaitAfter(ticket: Long) = IO.unit
-    def body(txId: Bytes) = IO.pure(Some(transaction))
+    def body(txId: Bytes) = IO.pure(
+      Some(
+        xyz.kd5ujc.scarab.protocol.TxSubmission2
+          .EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, transaction)
+      )
+    )
 
   private def send(channel: MuxChannel[IO], state: State, role: Role, message: Message)(using
       Net
@@ -410,12 +417,22 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
     */
   private val readmitting: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
     private val held = Vector(0, 1, 0).zipWithIndex.map { (n, at) =>
-      TxSubmissionClient.Held(id(n), transaction.size, at + 1L)
+      TxSubmissionClient.Held(
+        id(n),
+        transaction.size,
+        at + 1L,
+        xyz.kd5ujc.scarab.protocol.Era.Conway
+      )
     }
     def reader = TxSubmission2Fixtures.structural
     def after(ticket: Long, max: Int) = IO.pure(held.filter(_.ticket > ticket).take(max))
     def awaitAfter(ticket: Long) = IO.unit
-    def body(txId: Bytes) = IO.pure(Some(transaction))
+    def body(txId: Bytes) = IO.pure(
+      Some(
+        xyz.kd5ujc.scarab.protocol.TxSubmission2
+          .EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, transaction)
+      )
+    )
 
   /** Sends `requests` to the offering side one at a time, each after the answer to the one before:
     * the answers, and how the side ended if it ended.
@@ -596,7 +613,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
           sink = new TxSubmissionServer.Sink[IO]:
             def reader = TxSubmission2Fixtures.structural
             def known(txId: Bytes) = called.set(true).as(false)
-            def submit(originals: Vector[Bytes])(using
+            def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
                 cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
             ) = called.set(true)
           result <- typed {
@@ -628,7 +645,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
   private val sink: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
     def reader = TxSubmission2Fixtures.structural
     def known(txId: Bytes) = IO.pure(false)
-    def submit(originals: Vector[Bytes])(using
+    def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
         cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
     ) = IO.unit
 

@@ -32,6 +32,8 @@ enum ProtocolError extends DomainError:
   case ExpectedCandidateArray
   case ExpectedConwayGenTx
   case ExpectedConwayTransactionID
+  case ExpectedShelleyBasedGenTx
+  case ExpectedShelleyBasedTransactionID
   case ExpectedDefiniteArray
   case ExpectedDefiniteByteString
   case ExpectedDefiniteMap
@@ -212,12 +214,15 @@ enum ProtocolError extends DomainError:
     case ExpectedCandidateArray                 => "expected candidate array"
     case ExpectedConwayGenTx                    => "expected Conway GenTx"
     case ExpectedConwayTransactionID            => "expected Conway transaction ID"
-    case ExpectedDefiniteArray                  => "expected definite array"
-    case ExpectedDefiniteByteString             => "expected definite byte string"
-    case ExpectedDefiniteMap                    => "expected definite map"
-    case ExpectedDefiniteTextString             => "expected definite text string"
-    case ExpectedDefiniteVersionMap             => "expected definite version map"
-    case ExpectedEraHeader                      => "expected [era, header]"
+    case ExpectedShelleyBasedGenTx => "expected [era, #6.24(transaction)] of a Shelley-based era"
+    case ExpectedShelleyBasedTransactionID =>
+      "expected [era, transaction ID] of a Shelley-based era"
+    case ExpectedDefiniteArray      => "expected definite array"
+    case ExpectedDefiniteByteString => "expected definite byte string"
+    case ExpectedDefiniteMap        => "expected definite map"
+    case ExpectedDefiniteTextString => "expected definite text string"
+    case ExpectedDefiniteVersionMap => "expected definite version map"
+    case ExpectedEraHeader          => "expected [era, header]"
     case ExpectedConwayTransactionMembers =>
       "expected a Conway transaction of three members, or four with its validity flag"
     case ExpectedIndefiniteProtocolList => "expected indefinite protocol list"

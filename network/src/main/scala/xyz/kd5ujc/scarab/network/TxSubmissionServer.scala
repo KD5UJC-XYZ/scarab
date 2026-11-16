@@ -5,6 +5,7 @@ import cats.effect.Temporal
 import cats.mtl.Raise
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.TxSubmission2
+import xyz.kd5ujc.scarab.protocol.TxSubmission2.{EraTx, EraTxId}
 
 import NetworkError.RuntimeViolation
 
@@ -17,16 +18,18 @@ import NetworkError.RuntimeViolation
   */
 object TxSubmissionServer:
   trait Sink[F[_]]:
-    /** Whether the transaction is already held (in the mempool or recently seen). */
+    /** Whether the transaction is already held (in the mempool or recently seen), whatever its era:
+      * the reference compares ids by their hash alone.
+      */
     def known(id: Bytes): F[Boolean]
 
-    /** Offer fetched transactions (original bytes). Rejections are the sink's business: a refused
-      * transaction is not a protocol error. A failure of the node's own library, which gives no
-      * verdict on a transaction, ends the session through the caller's `Raise`: the connection
-      * closes and the peer is tried again later, as the reference's `ShutdownPeer` does for an
-      * exception in the inbound TxSubmission2 thread.
+    /** Offer fetched transactions, each with the era its `GenTx` names. Rejections are the sink's
+      * business: a refused transaction is not a protocol error. A failure of the node's own
+      * library, which gives no verdict on a transaction, ends the session through the caller's
+      * `Raise`: the connection closes and the peer is tried again later, as the reference's
+      * `ShutdownPeer` does for an exception in the inbound TxSubmission2 thread.
       */
-    def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]): F[Unit]
+    def submit(originals: Vector[EraTx])(using Raise[F, NetworkError]): F[Unit]
 
     /** How the transactions it takes are read: the codec refuses a reply whose transaction it
       * cannot read, and the transaction id is the hash of the body it reads.
@@ -43,25 +46,19 @@ object TxSubmissionServer:
       sink: Sink[F],
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
-    val typedSink = new TxSubmission2Runtime.Sink[F, Bytes, Bytes]:
-      def known(id: Bytes) = sink.known(id)
-      def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) = sink.submit(originals)
-    val rules = new TxSubmission2Runtime.Rules[Bytes]:
-      def acknowledge[A](unacked: Vector[A], blocking: Boolean, ack: Int, request: Int) =
-        TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)
-      def bodies(unacked: Vector[TxSubmission2Runtime.Advertised[Bytes]], ids: Vector[Bytes]) =
-        TxSubmissionPolicy.bodies(unacked, ids)
-      def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
+    val typedSink = new TxSubmission2Runtime.Sink[F, EraTxId, EraTx]:
+      def known(id: EraTxId) = sink.known(id.id)
+      def submit(originals: Vector[EraTx])(using Raise[F, NetworkError]) = sink.submit(originals)
     // The configured UInt16 request count is independent of the reply-list batch ceiling.
     TxSubmission2Runtime.server(
       channel,
       typedSink,
-      TxSubmission2.codec(sink.reader),
-      rules,
+      TxSubmission2.eraCodec(sink.reader),
+      TxSubmission2Runtime.eraRules,
       TxSubmission2Runtime
         .ServerSettings(
           settings.idsPerRequest,
           maxUnacked = settings.idsPerRequest
         ),
-      message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message))
+      message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEraEngine(message))
     )

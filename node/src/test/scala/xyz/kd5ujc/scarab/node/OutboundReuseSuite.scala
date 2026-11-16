@@ -52,7 +52,9 @@ class OutboundReuseSuite extends FailsOnUncaught:
       new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
-        def submit(originals: Vector[Bytes])(using Raise[IO, NetworkError]) = IO.unit
+        def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
+            Raise[IO, NetworkError]
+        ) = IO.unit
     )
 
   /** A transport that dials nothing: reuse must not need it. */

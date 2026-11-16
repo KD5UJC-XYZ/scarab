@@ -273,11 +273,15 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       _ <- pool.sync(Right(base), 1000)
       invalidKnown <- sink.known(childId)
       rolledBack <- pool.snapshot
-      _ <- sink.submit(Vector(parent, child))
+      _ <- sink.submit(
+        Vector(parent, child).map(
+          xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, _)
+        )
+      )
       offered <- pool.source.after(first.last.ticket, 10)
     yield
       assert(!adoptedKnown)
-      assertEquals(retained, Some(child))
+      assertEquals(retained.map(_.original), Some(child))
       assert(!invalidKnown)
       assertEquals(rolledBack.entries, Vector.empty)
       assertEquals(offered.map(e => e.id), Vector(parentId, childId))
@@ -327,7 +331,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assertEquals(dropped.map(_._1.raw), Vector(raw))
       assert(!known)
       assertEquals(retried, Right(id))
-      assertEquals(body, Some(raw))
+      assertEquals(body, Some(xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx(Era.Conway, raw)))
   }
 
   test("a refused conflicting transaction remains requestable after a fork frees its input") {
@@ -640,7 +644,12 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
         _ <- mempool
           .sink(failure => IO(fail(s"unexpected fatal: $failure")))
-          .submit(Vector(t2, Bytes(Vector(1, 2))))
+          .submit(
+            Vector(t2, Bytes(Vector(1, 2))).map(
+              xyz.kd5ujc.scarab.protocol.TxSubmission2
+                .EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, _)
+            )
+          )
         // as a client we offer what we hold, once per peer cursor
         offered <- mempool.source.after(0L, 10)
         later <- mempool.source.after(offered.head.ticket, 10)
@@ -658,7 +667,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         assert(knownBefore && !knownOther)
         assertEquals(offered.map(_.id), Vector(id1, id2))
         assertEquals(later.map(_.id), Vector(id2))
-        assertEquals(body, Some(t2))
+        assertEquals(body.map(_.original), Some(t2))
         assert(log.exists { case MempoolEvent.Added(`id3`, _, 3, _) => true; case _ => false })
         assert(log.exists {
           case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false

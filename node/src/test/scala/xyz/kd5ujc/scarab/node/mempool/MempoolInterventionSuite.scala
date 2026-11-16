@@ -229,7 +229,12 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       )
       sink = pool.sink(f => IO(fail(s"unexpected fatal: $f")))
       local <- pool.add(failing.raw(true), Source.Local)
-      _ <- sink.submit(Vector(failing.raw(true)))
+      _ <- sink.submit(
+        Vector(
+          xyz.kd5ujc.scarab.protocol.TxSubmission2
+            .EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, failing.raw(true))
+        )
+      )
       held <- pool.snapshot
     yield
       assert(tagMismatch(true).applyOrElse(local, _ => false), local.toString)

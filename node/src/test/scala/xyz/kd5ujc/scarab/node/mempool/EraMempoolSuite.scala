@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import munit.FunSuite
+import cats.effect.IO
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.node.assertions.Assertions
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ProtocolError, TxSubmission2, TxSubmission2Engine}
+import xyz.kd5ujc.scarab.protocol.TxSubmission2.{EraTx, EraTxId}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{Block, TestLedger}
@@ -28,7 +33,16 @@ import TxKit.{ada, alice, bob, bstr, head}
   * ledger's. The refusals of each era's rules, through this same path, are checked byte for byte
   * against the reference's in `ReferenceRefusalSuite`.
   */
-class EraMempoolSuite extends FunSuite:
+class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
+  private given cats.mtl.Raise[IO, StorageError] with
+    def functor = cats.Functor[IO]
+    def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
+  private given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError] with
+    def functor = cats.effect.IO.asyncForIO
+    def raise[E <: xyz.kd5ujc.scarab.network.NetworkError, A](error: E): IO[A] =
+      IO(fail(error.message))
+
   private val shelleyBased = Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage)
   private val eras = shelleyBased :+ Era.Conway
 
@@ -270,4 +284,102 @@ class EraMempoolSuite extends FunSuite:
     Vector(Era.Alonzo, Era.Babbage, Era.Conway).foreach(e =>
       assertEquals(EraInjection.envelope(parts, e), xyz.kd5ujc.scarab.ledger.Tx.envelope(parts))
     )
+  }
+
+  // ---- node to node: the hard-fork combinator's GenTx and GenTxId of each era (#934)
+
+  private val codec = TxSubmission2.eraCodec(RelayedTransactions)
+
+  private def roundTrip(
+      state: TxSubmission2.State,
+      sender: ChainSync.Role,
+      message: TxSubmission2Engine.Message[EraTxId, EraTx]
+  ): (Bytes, TxSubmission2Engine.Message[EraTxId, EraTx]) =
+    val wire = codec.encode(state, sender, message).fold(e => fail(e.message), identity)
+    codec.decodePrefix(state, sender, wire) match
+      case ChainSync.DecodeResult.Decoded(decoded, n) if n == wire.size => (wire, decoded)
+      case other => fail(s"not decoded whole: $other")
+
+  test("TxSubmission2 carries each era's transaction and id under the era's index") {
+    eras.foreach { era =>
+      val (raw, parts) = payment(era)
+      val id = EraTxId(era, parts.id)
+      val (offered, ids) = roundTrip(
+        TxSubmission2.State.Ids(true),
+        ChainSync.Role.Client,
+        TxSubmission2Engine.Message.ReplyIds(Vector(TxSubmission2Engine.Offer(id, 100L)))
+      )
+      assertEquals(
+        ids,
+        TxSubmission2Engine.Message.ReplyIds(Vector(TxSubmission2Engine.Offer(id, 100L)))
+      )
+      assert(
+        offered.hex.contains("82" + f"${era.index}%02x" + "5820" + parts.id.hex),
+        s"$era: the id is [${era.index}, id]"
+      )
+      val (sent, txs) = roundTrip(
+        TxSubmission2.State.Txs,
+        ChainSync.Role.Client,
+        TxSubmission2Engine.Message.ReplyTxs(Vector(EraTx(era, raw)))
+      )
+      assertEquals(txs, TxSubmission2Engine.Message.ReplyTxs(Vector(EraTx(era, raw))))
+      assert(
+        sent.hex.contains("82" + f"${era.index}%02x" + "d818"),
+        s"$era: [${era.index}, #6.24(tx)]"
+      )
+      assertEquals(codec.bodyId(EraTx(era, raw)), Right(id), s"$era: the id of the body")
+    }
+  }
+
+  test("a Byron GenTx and a transaction its era does not read end the protocol") {
+    val (raw, _) = payment(Era.Conway)
+    val byron = TxSubmission2Engine.Message.ReplyTxs(Vector(EraTx(Era.Byron, raw)))
+    assert(codec.encode(TxSubmission2.State.Txs, ChainSync.Role.Client, byron).isLeft)
+    // a Conway body with a Shelley tag: Shelley's record has three items, not four
+    val shelley = TxSubmission2Engine.Message.ReplyTxs(Vector(EraTx(Era.Shelley, raw)))
+    val wire = TxSubmission2
+      .codec(RelayedTransactions)
+      .encode(
+        TxSubmission2.State.Txs,
+        ChainSync.Role.Client,
+        TxSubmission2Engine.Message.ReplyTxs(Vector(raw))
+      )
+      .fold(e => fail(e.message), identity)
+    // the same bytes, the era index 6 written as 1
+    val tagged = Bytes(
+      wire.value
+        .updated(wire.value.indexOfSlice(Vector(0x82, 0x06, 0xd8).map(_.toByte)) + 1, 0x01.toByte)
+    )
+    codec.decodePrefix(TxSubmission2.State.Txs, ChainSync.Role.Client, tagged) match
+      case ChainSync.DecodeResult.Failed(_: ProtocolError) => ()
+      case other => fail(s"a Conway transaction read as Shelley's: $other")
+    assert(codec.encode(TxSubmission2.State.Txs, ChainSync.Role.Client, shelley).isLeft)
+  }
+
+  test(
+    "the pool offers its peers the transactions of its era, and takes theirs of an earlier era"
+  ) {
+    val (babbage, babbageParts) = payment(Era.Babbage, i = 1)
+    val (mary, maryParts) = payment(Era.Mary, i = 2)
+    for
+      pool <- Mempool
+        .create[IO](Right(ledger(Era.Babbage)), 1000, translating, None, MempoolEvents.none[IO])
+      local <- pool.submit(Submission(Era.Babbage.index, babbage), Source.Local)
+      sink = pool.sink(failure => IO(fail(s"unexpected fatal: $failure")))
+      _ <- sink.submit(Vector(EraTx(Era.Mary, mary)))
+      offered <- pool.source.after(0L, 10)
+      bodies <- offered.traverse(h => pool.source.body(h.id))
+    yield
+      assertEquals(local, Right(babbageParts.id))
+      assertEquals(
+        offered.map(h => (h.id, h.era)),
+        Vector(babbageParts.id -> Era.Babbage, maryParts.id -> Era.Babbage)
+      )
+      assertEquals(
+        bodies,
+        Vector(
+          Some(EraTx(Era.Babbage, babbage)),
+          Some(EraTx(Era.Babbage, EraInjection.envelope(maryParts, Era.Babbage)))
+        )
+      )
   }

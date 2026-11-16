@@ -137,10 +137,15 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     assertEquals(id.hex, PreprodDeepTx.Id)
     val offered = new TxSubmissionClient.Source[IO]:
       def reader = RelayedTransactions
-      private val one = TxSubmissionClient.Held(id, tx.size, 1L)
+      private val one =
+        TxSubmissionClient.Held(id, tx.size, 1L, xyz.kd5ujc.scarab.protocol.Era.Conway)
       def after(ticket: Long, max: Int) = IO.pure(Vector(one).filter(_.ticket > ticket))
       def awaitAfter(ticket: Long) = if ticket < 1 then IO.unit else IO.never
-      def body(wanted: Bytes) = IO.pure(Option.when(wanted == id)(tx))
+      def body(wanted: Bytes) = IO.pure(
+        Option.when(wanted == id)(
+          xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, tx)
+        )
+      )
     pool.flatMap { mempool =>
       typed {
         Peers.linked(protocols = Set(4)).use { (client, server) =>
