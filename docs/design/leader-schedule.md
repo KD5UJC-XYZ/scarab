@@ -396,6 +396,19 @@ the clock's period. A led slot still runs the forge state update and `checkCanFo
 for a led slot in the first slot of a period this evolves the key up to the wake margin before the period begins. While
 forging is disabled the timer does nothing, as no forging thread runs then in the reference (C19).
 
+**The timer waits for a forge in flight.** A forge holds one reservation of the key from its own forge state update
+(`HotKeys.update`, §5.3 step 2) until its block is signed, and the timer takes the same reservation before it evolves
+the key. So the key's evolution stays sequential, as in the reference, whose single forging thread updates the key and
+forges in one action, and updates it again only in the next slot's action (C2, C6). Both take the reservation before
+the HotKeys lock, so neither can deadlock the other. A reload takes the HotKeys lock alone and does not wait for the
+reservation: a reload during a forge changes the credentials, and §5.3 discards that attempt. Without the reservation
+the timer could move the key to the next period between a forge's update and its signature; `Sum6KesSigning` refuses
+to evolve a key backward, so that block would be lost.
+
+On a slow host, a forge of the last slot of period p that is still running when period p+1 begins keeps the key at p
+until it has signed, and the timer evolves the key to p+1 as soon as the reservation is free. The key then reaches
+p+1 late by the rest of that forge, as in the reference, where the next slot's update waits for the action under way.
+
 ### 5.6 What the operator sees
 
 Decision 7 publishes the schedule; the reference keeps it to itself (C10).
@@ -482,6 +495,9 @@ Decision 9 names three pieces of evidence.
   what is handed over at the onset, if anything, equals what the per-slot loop forges at the onset from the node as it
   is then; an early refusal that clears before the onset is forged; a refusal that stands is logged once; and no block
   signed with replaced credentials is handed over.
+- **A KES boundary during assembly (§5.5).** Under `TestControl`, a forge of a period's last slot is suspended just
+  before it signs while the clock crosses into the next period: the timer waits, the block is signed with the key of its
+  own period and handed over, and the key moves to the next period after the signature, written back once.
 - **The devnet `pool` scenario**: the reference node's `query leadership-schedule` is its oracle, and every scheduled
   slot is forged or taken by another pool's block. [CONTRIBUTING](../../CONTRIBUTING.md#the-one-scenario-per-area)
   also asks `kes-rotate`, since the KES evolution and the SIGHUP path change.
