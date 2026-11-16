@@ -20,7 +20,7 @@
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Certs.scala": 25,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraLedger.scala": 8,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/GenesisStart.scala": 12,
-  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Gov.scala": 7,
+  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Gov.scala": 6,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Handover.scala": 2,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala": 5,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/TickFailure.scala": 1,
