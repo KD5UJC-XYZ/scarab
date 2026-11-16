@@ -526,6 +526,19 @@ Conway's rules on the classes follow as the rest of stage 2.
     members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction
     annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do not have
     yet (on #85's checklist).
+- **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `ProposalProcedure[E]`,
+  `GovAction[E]` and `VotingProcedures[E]` are families, Conway's case its own opaque type over a representation
+  the eras share, parameterised by what differs: the action over the era's update (`GovActionRep[U]`, `U` being
+  `PParamsUpdate[Conway]`) and the proposal over its action. Each parent is the id of its action's purpose
+  (`GovPurposeId[P]`, nominal in `P` as the reference's). Conway's body and proposing purpose carry them. A proposal
+  keeps the flat `Proposal` it was read as, which the flat rules' failures carry, and is equal by its typed fields.
+  - Read from the flat decoder's proposals, the typed action refuses nothing that decoder accepts: every recorded
+    Conway proposal, of each of the seven actions, reads with the flat fields, and crafted proposals at each bound
+    and past it give the same verdict.
+  - A family with one case reduces, in generic code, to that case, so a function generic in `E` reading a
+    proposal's fields compiles while Conway is the only case and fails once a second era has one. A rule generic in
+    its era (GOV, shared by Conway and Dijkstra) needs another way to read them; the reference reads them from its
+    one data type and has no class for it.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
