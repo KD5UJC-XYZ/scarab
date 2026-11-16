@@ -73,7 +73,7 @@ object EraInjection:
 
   /** The whole transaction of `era` as the reference writes it, to relay and to list: before Alonzo
     * the record `[body, witnesses, auxiliary data or null]` (`EncCBOR (ShelleyTx l era)`,
-    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Tx.hs:250-258`, cardano-ledger f649f975), from
+    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Tx.hs:247-262`, cardano-ledger f649f975), from
     * Alonzo the four items with the flag ([[Tx.envelope]]). Each part keeps the bytes it was read
     * from, as the ledger's memoized parts do.
     */

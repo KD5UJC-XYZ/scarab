@@ -14,5 +14,8 @@
   the held transactions follow it in the same way, and one that does not reach it leaves the pool.
 - LocalTxMonitor `NextTx` lists each transaction under the era it is held in, where it used to name
   Conway always.
-- Node-to-node transaction submission still carries Conway transactions only: the node offers its peers
-  the transactions it holds in Conway, and no others.
+- Node-to-node transaction submission carries the transactions and ids of every Shelley-based era under
+  the era's index, as the reference's hard-fork combinator does: the node offers its peers each
+  transaction it holds under the era it holds it in, and reads a peer's with the decoders of the era it
+  names, then takes it as a local client's. It used to read and write Conway's alone, and a peer's
+  transaction of another era ended the connection. A Byron transaction from a peer still ends it.

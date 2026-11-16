@@ -126,8 +126,8 @@ object Capacity:
   /** The second phase (`txMeasurePhase2`, `txMeasureRefScripts`, Conway): the reference-script
     * bytes of the transaction's inputs and reference inputs in the state after the held
     * transactions against the per-transaction maximum, both the reference's 64-bit `Int`. Before
-    * Conway the phase is trivial (`TrivialTxMeasurePhase2`, `Shelley/Ledger/Mempool.hs:522-561,
-    * 751-761`, ouroboros-consensus 82ecba32, Babbage's included): nothing is measured.
+    * Conway the phase is trivial (`TrivialTxMeasurePhase2`, `Shelley/Ledger/Mempool.hs:522-544,
+    * 668-677, 751-761`, ouroboros-consensus 82ecba32, Babbage's included): nothing is measured.
     */
   def phase2(ledger: PoolLedger, tx: Tx): Either[PredicateFailure, Long] = ledger match
     case conway: MempoolLedger =>
