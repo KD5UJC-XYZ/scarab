@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.uplc.ledger.{
 /** How [[ScarabEvaluator]] reports each outcome of the own evaluator in the evaluation algebra, one
   * row of its mapping at a time. Where a budget is reported, it is the one the `uplc` module's
   * ledger interface spends on the same request, with its components in the ledger's order (memory,
-  * then steps). The no-verdict cases (protocol 12, defects) are never a failure of the script.
+  * then steps). The no-verdict cases (defects) are never a failure of the script.
   */
 class ScarabEvaluatorSuite extends FunSuite:
   private val scarab = ScarabEvaluator.interpreter

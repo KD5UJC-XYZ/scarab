@@ -162,7 +162,7 @@ class UplcConformanceMainSuite extends FunSuite:
   }
 
   test("no verdict is written as such, with why, and never as one of the README's outcomes") {
-    val why = Unanswered.Own(Unavailability.UnsupportedProtocol(ProtocolMajor.Dijkstra))
+    val why = Unanswered.Own(Unavailability.NoMachine(V3, ProtocolMajor.Dijkstra))
     val json = item(scenario("x", V3, 11), None, Run.NoVerdict(why))
     assertEquals(evaluation(json), Some("no verdict"))
     assertEquals(budget(json), Some(Json.Null))

@@ -60,9 +60,11 @@ the commands below are those of that time.
   `pool` run's scripts are trivial (one that always succeeds and one that fails with `error`, in V1 and V2, at
   protocol 10): it shows the path of a validity flag from admission to a forged block that the Haskell pools
   adopt, not the evaluator's agreement on real scripts. Plutus V3 is not in its load.
-- **Protocol 12 and later** (Leios, PlutusV4) get no verdict until
-  [#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099) extends the evaluator to them; the plutus 1.71.0.0
-  corpus has no runner until then ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md)).
+- **Protocol 12 and later** (Leios, PlutusV4) are evaluated as plutus 1.71.0.0 does, against its conformance
+  corpus and generated scripts judged by its Haskell evaluator ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md),
+  #1099), but the node stops at `MaxMajorProtVer` 11 and never reaches them, and no recorded Leios-testnet
+  script has been evaluated and compared with the reference's result
+  ([#54 follow-up](https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-6905542791)).
 - **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch

@@ -21,9 +21,9 @@ import xyz.kd5ujc.scarab.uplc.ledger.{
 }
 
 /** The [[ScriptEvaluator]] and [[ScriptDecoder]] interpreters backed by Scarab's own evaluator, the
-  * `uplc` module (ADR 0027): `deserialiseScript` and `evaluateScriptRestricting` of plutus 1.70.0.0
-  * as [[LedgerEval]] transcribes them. It is the node's only Plutus evaluator
-  * ([[PlutusBackend.default]]).
+  * `uplc` module (ADR 0027): `deserialiseScript` and `evaluateScriptRestricting` of plutus 1.71.0.0
+  * as [[LedgerEval]] transcribes them, which below protocol 12 give 1.70.0.0's verdicts. It is the
+  * node's only Plutus evaluator ([[PlutusBackend.default]]).
   *
   * The request is built by the ledger code: the script bytes, data arguments, cost model and
   * budget. Its results map onto the algebra as follows:
@@ -36,10 +36,10 @@ import xyz.kd5ujc.scarab.uplc.ledger.{
   *   - the machine overspent the budget: [[EvalFailure.OutOfBudget]];
   *   - any other failure of the machine, or a V3 script that did not return `()`:
   *     [[EvalFailure.Script]] with [[ScriptFailure.Uplc]];
-  *   - no verdict ([[ScriptResult.Unavailable]]: protocol 12 and later, a defect, a cost model the
-  *     evaluator could not take, an exception it threw), any `Throwable` that reaches the adapter
-  *     ([[guarded]]), and a budget beyond 64 bits: [[EvalFailure.Unsupported]], and
-  *     [[ScriptDecodeFailure.Unavailable]] from the decoder, never a failure of the script.
+  *   - no verdict ([[ScriptResult.Unavailable]]: a defect, a cost model the evaluator could not
+  *     take, an exception it threw), any `Throwable` that reaches the adapter ([[guarded]]), and a
+  *     budget beyond 64 bits: [[EvalFailure.Unsupported]], and [[ScriptDecodeFailure.Unavailable]]
+  *     from the decoder, never a failure of the script.
   *
   * Evaluation is a deterministic function of the request, so [[pure]] is the interpreter the pure
   * ledger rules use. The two caches (the evaluation context of each language and cost-model list,
