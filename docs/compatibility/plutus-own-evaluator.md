@@ -66,9 +66,12 @@ the commands below are those of that time.
   adopt, not the evaluator's agreement on real scripts. Plutus V3 is not in its load.
 - **Protocol 12 and later** (Leios, PlutusV4) are evaluated as plutus 1.71.0.0 does, against its conformance
   corpus and generated scripts judged by its Haskell evaluator ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md),
-  #1099), but the node stops at `MaxMajorProtVer` 11 and never reaches them, and no recorded Leios-testnet
-  script has been evaluated and compared with the reference's result
-  ([#54 follow-up](https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-6905542791)).
+  #1099), and on a sample of 273 scripts recorded on the public Leios testnet's chain, PlutusV1 to PlutusV4,
+  whose verdicts, budgets and logs equal plutus 1.71.0.0's
+  ([leios-testnet-chain-scripts](../../fixtures/reference/leios-testnet-chain-scripts/README.md)); but the node
+  stops at `MaxMajorProtVer` 11 and never reaches them, the chain's scripts in the sample all succeed (the
+  chain has no transaction with a false validity flag), and their arguments are the reference's, the node
+  building only the PlutusV4 ones ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md)).
 - **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch
