@@ -5,26 +5,6 @@
   "storage/src/main/scala"
  ],
  "entries": {
-  "val storage.haskell.state.UtxoCodecs.multiasset": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
-     "symbol": "MultiAsset",
-     "lines": [
-      154,
-      156
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "CborDatasetSuite"
-   ],
-   "digest": "2c6f65524d451b42"
-  },
   "val storage.haskell.state.DijkstraCodecs.relay": {
    "upstream": [
     {
@@ -234,9 +214,35 @@
     "CborDatasetSuite"
    ],
    "digest": "c91c5ee433130114"
+  },
+  "val storage.haskell.state.UtxoCodecs.multiasset": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "symbol": "MultiAsset",
+     "lines": [
+      154,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "CborDatasetSuite"
+   ],
+   "digest": "2c6f65524d451b42"
   }
  },
  "glue": [
+  {
+   "reason": "Groups Dijkstra wire codecs and validates constructed values by decoding their serialization with the production ledger decoder and comparing values. The encoded forms are mapped separately; these codecs are not persisted-state formats.",
+   "definitions": [
+    "object storage.haskell.state.DijkstraCodecs"
+   ]
+  },
   {
    "reason": "the decimal numbers in Scarab's own storage file names, written in ASCII digits under every locale; the reference writes the numbers of its own file names with show, which writes ASCII digits",
    "definitions": [
@@ -249,12 +255,6 @@
    "definitions": [
     "def storage.FileNumber.numberOf",
     "enum storage.FileNameProblem"
-   ]
-  },
-  {
-   "reason": "Groups Dijkstra wire codecs and validates constructed values by decoding their serialization with the production ledger decoder and comparing values. The encoded forms are mapped separately; these codecs are not persisted-state formats.",
-   "definitions": [
-    "object storage.haskell.state.DijkstraCodecs"
    ]
   }
  ]
