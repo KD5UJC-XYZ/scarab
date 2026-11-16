@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
+import fs2.concurrent.SignallingRef
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -125,13 +126,21 @@ trait ForgeFixture:
   final class Harness(
       val follower: Follower[IO, MirrorState],
       val forger: Forger[IO, MirrorState],
-      val ref: Ref[IO, VolatileChain[MirrorState]],
+      val ref: SignallingRef[IO, VolatileChain[MirrorState]],
       val mempool: Mempool[IO],
-      val events: Ref[IO, Vector[ForgeEvent]],
+      val events: SignallingRef[IO, Vector[ForgeEvent]],
       val raws: Ref[IO, Map[Bytes, Bytes]]
   ):
     def chain: IO[VolatileChain[MirrorState]] = ref.get
     def seen: IO[Vector[ForgeEvent]] = events.get
+
+    /** Until every slot up to `slot` is settled: a report of the slot driver. */
+    def settled(slot: BigInt): IO[Unit] =
+      forger.settledThrough.discrete.find(_ >= slot).compile.drain
+
+    /** Until the clock fiber has published `slot` or a later one. */
+    def clocked(slot: BigInt): IO[Unit] =
+      forger.clockSlot.discrete.find(_.exists(_ >= slot)).compile.drain
 
   def harness(
       p: Pool,
@@ -150,18 +159,20 @@ trait ForgeFixture:
       enabled: Boolean = true,
       protocolVersion: (BigInt, BigInt) = ConfigSettings().protocolVersion,
       network: Int = globals.network,
-      assertions: Assertions[IO] = Assertions.noop[IO]
+      assertions: Assertions[IO] = Assertions.noop[IO],
+      pause: Option[Forger.Point => IO[Unit]] = None,
+      praos: PraosConfig = config
   )(using Handle[IO, NodeError]): IO[Harness] =
     given Assertions[IO] = assertions
     val rulesGlobals = globals.copy(network = network)
     for
       start <- IO.pure(mirrorState(ledger))
-      ref <- Ref.of[IO, VolatileChain[MirrorState]](
+      ref <- SignallingRef.of[IO, VolatileChain[MirrorState]](
         VolatileChain.genesis(geometry.k.toInt, start)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
       realRules = MirrorRules[IO](
-        config.copy(verdicts = verdicts),
+        praos.copy(verdicts = verdicts),
         rulesGlobals,
         None,
         None,
@@ -256,12 +267,12 @@ trait ForgeFixture:
           )
         )
       )
-      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      seen <- SignallingRef.of[IO, Vector[ForgeEvent]](Vector.empty)
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       // horizon: a live loop over a chain left at genesis while the clock is thousands of slots on:
       // the era history at that tip would not translate the slot, so such tests lift the horizon
       forger <- Forger.create[IO, MirrorState](
-        config,
+        praos,
         rulesGlobals,
         xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
         protocolVersion,
@@ -279,7 +290,9 @@ trait ForgeFixture:
         sleep = if live then None else Some(_ => IO.unit),
         horizon = Option.when(unbounded)((_, _) => true),
         source = source,
-        enabled = enabled
+        enabled = enabled,
+        chains = Some(ref),
+        pause = pause
       )
     yield new Harness(follower, forger, ref, mempool, seen, raws)
 
