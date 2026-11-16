@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 /** Writes the script requests of the recorded Preview and preprod transactions for the pinned
   * evaluator by hand ([[RecordedRequests.write]]):
-  * `sbt "tools/runMain xyz.kd5ujc.scarab.ledger.RecordedRequestsMain [directory]"`.
+  * `sbt "tools/runMain xyz.kd5ujc.scarab.ledger.RecordedRequestsMain <requests directory> [fixture directory]"`.
   */
 object RecordedRequestsMain:
   def main(args: Array[String]): Unit = RecordedRequests.write(args)

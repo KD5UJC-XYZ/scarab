@@ -14,8 +14,8 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
   * preprod transactions (`fixtures/preview/plutus`, `fixtures/preprod/plutus`), written as requests
   * of the pinned evaluator of `scripts/oracle/plutus/generated` (plutus 1.70.0.0): the script the
   * ledger holds, the `Data` arguments as CBOR, the cost-model list the ledger passes, the protocol,
-  * and the redeemer's execution units as the budget. `RecordedRequestsMain` writes them outside the
-  * checkout and their record into [[Directory]] (the script and the arguments by digest),
+  * and the redeemer's execution units as the budget. `RecordedRequestsMain` writes them into an
+  * ignored directory and their record into [[Directory]] (the script and the arguments by digest),
   * `scripts/oracle/plutus/recorded/run.py` has the pinned evaluator judge them, and
   * `RecordedRequestOracleSuite` collects them again and replays the verdicts.
   */
@@ -200,8 +200,9 @@ object RecordedRequests:
       jsonl(numbered.map(oracleJson))
     )
 
-  /** Writes the requests the oracle reads into `args(0)/requests.jsonl` (a directory outside the
-    * checkout), and `corpus.json`, `models.jsonl` and `requests.jsonl` into the fixture directory
+  /** Writes the requests the oracle reads into `args(0)/requests.jsonl` (a git-ignored directory of
+    * the checkout, such as `.workspace/data/recorded-requests`, which `run.py --evidence` then
+    * names), and `corpus.json`, `models.jsonl` and `requests.jsonl` into the fixture directory
     * `args(1)` ([[Directory]] by default).
     */
   def write(args: Array[String]): Unit =

@@ -70,8 +70,9 @@ control, with every cost parameter doubled no success spends the recorded budget
 ## Reproduce
 
 With the [runner](../../../scripts/oracle/plutus/recorded/README.md): the requests are written by
-`tools/runMain xyz.kd5ujc.scarab.ledger.RecordedRequestsMain <directory outside the checkout>`, the
-verdicts by `run.py` in the image `scarab-plutus-generated-oracle:local`, and
+`tools/runMain xyz.kd5ujc.scarab.ledger.RecordedRequestsMain <directory>` into a git-ignored
+directory of the checkout, the verdicts by `run.py --evidence <directory>` in the image
+`scarab-plutus-generated-oracle:local`, which must be the build `provenance.json` accepts, and
 `run.py --verify-only` checks the retained fixture without Docker. Raw oracle output is not
 published.
 

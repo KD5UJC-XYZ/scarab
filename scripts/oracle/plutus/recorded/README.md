@@ -26,17 +26,23 @@ spent (on success and on failure) and the logs.
 ## Build and run (Docker only, from the repository root)
 
 The image is built as the [generated-program oracle's README](../generated/README.md) says. Write
-the requests in the repository's JDK container, then run them on the host:
+the requests in the repository's JDK container, then run them on the host, both from the
+repository's root:
 
 ```sh
-./scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.ledger.RecordedRequestsMain'
-python3 -I scripts/oracle/plutus/recorded/run.py --evidence <a directory outside the checkout>
+./scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.ledger.RecordedRequestsMain .workspace/data/recorded-requests'
+python3 -I scripts/oracle/plutus/recorded/run.py --evidence .workspace/data/recorded-requests
 python3 -I scripts/oracle/plutus/recorded/run.py --verify-only
 ```
 
-`RecordedRequestsMain` writes `corpus.json` (the release, the recorded case files and their
-digests), `models.jsonl` and `requests.jsonl` into
-[the fixture](../../../../fixtures/reference/plutus-recorded-requests/README.md).
+`RecordedRequestsMain` takes the directory for the requests the oracle reads, script and argument
+bytes included (`requests.jsonl` there), and writes `corpus.json` (the release, the recorded case
+files and their digests), `models.jsonl` and `requests.jsonl` by digest into
+[the fixture](../../../../fixtures/reference/plutus-recorded-requests/README.md). The JDK container
+mounts the checkout at `/work` and runs sbt there, so a directory given relative to the checkout is
+`/work/<directory>` in the container and `<checkout>/<directory>` on the host: the same relative path
+is then `run.py`'s `--evidence`. `.workspace/` is ignored by git; the requests and the raw answers
+written there are not published.
 
 `run.py` binds the requests the oracle reads to the fixture's digests, and resolves the image tag
 once to its immutable ID, which the check, the run and the record all use. Before a request runs, the
