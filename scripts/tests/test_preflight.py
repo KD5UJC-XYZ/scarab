@@ -102,6 +102,27 @@ class WorkflowLintTest(unittest.TestCase):
             self.assertIn(f"{work}:/repo:ro", lint)
 
 
+class ArgumentsTest(unittest.TestCase):
+    def test_help_prints_the_description_and_runs_no_step(self):
+        before = tree_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            for flag in ("--help", "-h"):
+                result = preflight(flag, docker=str(pathlib.Path(tmp) / "absent"))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(result.stdout.startswith("The repository-wide checks CI runs"), result.stdout)
+                self.assertIn("`--check` also runs", result.stdout)
+                self.assertNotIn("INCOMPLETE:", result.stdout, "no gate is attempted")
+        self.assertEqual(tree_state(), before, "--help must not write into the repository")
+
+    def test_an_unknown_argument_is_refused_before_any_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for arguments in (("--chek",), ("--check", "--doctor"), ("check",)):
+                result = preflight(*arguments, docker=str(pathlib.Path(tmp) / "absent"))
+                self.assertEqual(result.returncode, 2, arguments)
+                self.assertIn("preflight: unknown arguments", result.stderr)
+                self.assertEqual(result.stdout, "", "nothing runs")
+
+
 class DoctorTest(unittest.TestCase):
     def test_doctor_without_docker_exits_zero_and_writes_nothing(self):
         before = tree_state()
