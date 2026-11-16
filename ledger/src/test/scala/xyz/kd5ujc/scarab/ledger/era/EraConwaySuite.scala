@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   Certificate,
   ConwayParamUpdate,
+  DecodeField,
   GovAction,
   GovActionId,
   LedgerDecodeError,
@@ -710,21 +711,69 @@ class EraConwaySuite extends munit.FunSuite:
   }
 
   test("what the typed proposal would refuse, the flat decoder refuses first, with its error") {
-    Vector(
-      // a ratio above one in the update, a guardrails hash of 27 bytes
-      s"8400f6a10ad81e820302f6",
-      s"8400f6a0581b${"51" * 27}",
-      // the major version 13, past Conway's 12
-      "8301f6820d00",
-      // a committee member's hash of 27 bytes, a threshold above one
-      s"8504f680a18200581b${"4b" * 27}01d81e820101",
-      s"8504f680a0d81e820302",
-      // a guardrails hash of 27 bytes on withdrawals
-      s"8302a0581b${"51" * 27}"
-    ).foreach { action =>
+    // each bound the typed action checks, passed: the flat decoder refuses the proposal at that
+    // field, and the typed path reports that refusal
+    val h27 = s"581b${"51" * 27}"
+    val key27 = s"8200581b${"4b" * 27}"
+    val rho = "a10ad81e820101"
+    val word32 = BigInt(1) << 32
+    def bignum(e: LedgerDecodeError): Boolean = e match
+      case LedgerDecodeError.Expected(
+            DecodeField.MemberTerm,
+            LedgerDecodeError.Shape.Unsigned,
+            _
+          ) =>
+        true
+      case _ => false
+    Vector[(String, String, LedgerDecodeError => Boolean)](
+      (
+        "a ratio above one in the update",
+        "8400f6a10ad81e820302f6",
+        _ == LedgerDecodeError.RationalOutOfBounds(DecodeField.Rho, 3, 2)
+      ),
+      (
+        "a guardrails hash of 27 bytes on a change",
+        s"8400f6$rho$h27",
+        _ == LedgerDecodeError.ByteLength(DecodeField.PolicyHash, 28, 27)
+      ),
+      (
+        "major version 13",
+        "8301f6820d00",
+        _ == LedgerDecodeError.NumberOutOfRange(DecodeField.Major, 13, 0, 12)
+      ),
+      (
+        "minor version 2^32",
+        "8301f6820c1b0000000100000000",
+        _ == LedgerDecodeError.NumberOutOfRange(DecodeField.Minor, word32, 0, word32 - 1)
+      ),
+      (
+        "a committee member's hash of 27 bytes",
+        s"8504f680a1${key27}01d81e820101",
+        _ == LedgerDecodeError.ByteLength(DecodeField.CommitteeMember, 28, 27)
+      ),
+      // a CBOR unsigned integer is at most 2^64 - 1, and a bignum is not one
+      (
+        "a member's term as a bignum, 2^64",
+        s"8504f680a1${key}c249010000000000000000d81e820101",
+        bignum
+      ),
+      (
+        "a threshold above one",
+        "8504f680a0d81e820302",
+        _ == LedgerDecodeError.RationalOutOfBounds(DecodeField.Quorum, 3, 2)
+      ),
+      (
+        "a guardrails hash of 27 bytes on withdrawals",
+        s"8302a0$h27",
+        _ == LedgerDecodeError.ByteLength(DecodeField.PolicyHash, 28, 27)
+      )
+    ).foreach { (what, action, expected) =>
       val (flat, typed) = proposal(action)
-      assert(flat.isLeft, s"$action: $flat")
-      assertEquals(typed, flat.leftMap(EraTxError.Decode(_)).map(_ => fail("unreachable")), action)
+      flat match
+        case Left(e) =>
+          assert(expected(e), s"$what: $e")
+          assertEquals(typed, Left(EraTxError.Decode(e)), what)
+        case Right(p) => fail(s"$what: the flat decoder accepts it: $p")
     }
   }
 
