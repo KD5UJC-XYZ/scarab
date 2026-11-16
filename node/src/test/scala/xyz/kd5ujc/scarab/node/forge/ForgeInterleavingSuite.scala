@@ -688,13 +688,16 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       ran.events.toString
     )
 
-  test("a published slot gone back after an unknown spell licenses no change of the key above it") {
+  test(
+    "a slot handed over keeps its admission when the published slot goes back after an unknown spell"
+  ) {
     // 5100, the first slot of period 51, is handed over at its onset, and its forge is held before
     // the key. The clock then finds 5101 unknown, and after its backoff reads the wall clock moved
     // back two minutes: it publishes 5041, below 5100. A reload installs another KES key under a
-    // certificate from period 50 (counter 0), taken at relative period 0; the forge goes on; a slot
-    // later the same key's certificate issued again (counter 1) is installed, the clock still in
-    // period 50. No change of the key for 5100 is made before 5100 is published again
+    // certificate from period 50 (counter 0), taken at relative period 0; the forge goes on, admitted
+    // at 5100 when it was handed over, and moves the key to 5100's period, as the per-slot decision
+    // of 5100, under way, would; a slot later the same key's certificate issued again (counter 1),
+    // the clock still in period 50, is refused
     val s = BigInt(5100)
     val seed = seedLeading(Vector(s))
     val other = seed + 200
@@ -730,11 +733,11 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     yield
       assertEquals(
         ran.events.collect { case r: ForgeEvent.KesReloadRefused => r },
-        Vector.empty,
-        "a reload refused"
+        Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0))),
+        "the reissue refused"
       )
-      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.KesReloaded]), 2, "both reloads")
-      assertEquals(forged(ran, s).map(_.opCertCounter), Some(BigInt(1)), "signed under the reissue")
+      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.KesReloaded]), 1, "the first reload")
+      assertEquals(forged(ran, s).map(_.opCertCounter), Some(BigInt(0)), "signed under the first")
   }
 
   test("credentials replaced after an early block is signed and checked, before its handover") {
@@ -830,8 +833,8 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
           _ <- held(Forger.Point.Waking(s)).free
           _ <- r.h.forger.claimed.discrete
             .find(_.owned.get(s).exists {
-              case Forger.Claim.Forging(_)                        => true
-              case Forger.Claim.Handed(_) | Forger.Claim.Driver() => false
+              case Forger.Claim.Forging(_)                           => true
+              case Forger.Claim.Handed(_, _) | Forger.Claim.Driver() => false
             })
             .compile
             .drain

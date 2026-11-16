@@ -534,6 +534,61 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     }
   }
 
+  test("a slot handed over keeps its admission when the published slot goes back, as per slot") {
+    // 5100, the first slot of period 51, is handed over at its onset and its attempt is held before
+    // the key. The scheduled run's clock finds 5101 unknown and, after its backoff, reads the wall
+    // clock moved back into period 50 and publishes 5090; a reload installs another KES key under a
+    // certificate from period 50 (counter 0), taken at relative period 0. The attempt goes on,
+    // admitted at 5100, and moves the key to 5100's period, as the per-slot decision of 5100 does;
+    // before its block is handed over, that key's certificate issued again (counter 1) is refused
+    val s = BigInt(5100)
+    val seed = seedLeading(Vector(s))
+    val other = seed + 200
+    val installed: Change = side =>
+      side.way match
+        case Way.Scheduled =>
+          side.h.events.discrete
+            .find(_.exists {
+              case ForgeEvent.Clock(_: ClockTrace.CurrentSlotUnknown) => true
+              case _                                                  => false
+            })
+            .compile
+            .drain *> side.rewind(71.seconds) *>
+            side.h.forger.clockSlot.discrete.find(_.exists(_ < s)).compile.drain *>
+            otherKes(other, 50, counter = 0)(side)
+        case Way.PerSlot => side.rewind(10.seconds) *> otherKes(other, 50, counter = 0)(side)
+    withHandle {
+      compared(
+        Scenario(
+          seed,
+          alone,
+          s - 2,
+          s,
+          known = slot => slot <= s || slot >= s + 1000,
+          within = Vector(
+            Forger.Point.Context(s) -> installed,
+            Forger.Point.Handing(s) -> otherKes(other, 50)
+          )
+        )
+      ).map { c =>
+        def refused(events: Vector[ForgeEvent]) = events.collect {
+          case r: ForgeEvent.KesReloadRefused => r
+        }
+        assertEquals(refused(c.scheduled), refused(c.perSlot), "the reloads refused")
+        assertEquals(
+          refused(c.perSlot),
+          Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0)))
+        )
+        same(c)
+        def counter(events: Vector[ForgeEvent]) = events.collect {
+          case f: ForgeEvent.Forged if f.slot == s => f.opCertCounter
+        }
+        assertEquals(counter(c.scheduled), counter(c.perSlot), "the certificate signed under")
+        assertEquals(counter(c.perSlot), Vector(BigInt(0)))
+      }
+    }
+  }
+
   // ---- what an operator sees of the slots not led (#1101, Q1 and Q2)
 
   /** The scheduled forger's events from `from` to `until`, and its counters of epoch 5. */

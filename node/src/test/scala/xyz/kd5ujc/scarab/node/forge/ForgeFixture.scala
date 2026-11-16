@@ -314,13 +314,11 @@ trait ForgeFixture:
   def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))
 
-  /** The update of `keys` to KES `period`, at the period's first slot, the clock having published
-    * it.
-    */
+  /** The update of `keys` to KES `period`, at the period's first slot, admitted there. */
   def toPeriod(keys: HotKeys[IO], period: BigInt)(using
       Raise[IO, xyz.kd5ujc.scarab.node.Fatal]
-  ): IO[Option[Either[Unpublished, HotKeys.KesUpdate]]] =
-    keys.update(period * slotsPerKes, PublishedSlot.at(period * slotsPerKes))
+  ): IO[Option[Either[NotAdmitted, HotKeys.KesUpdate]]] =
+    keys.update(period * slotsPerKes, Admitted.at(period * slotsPerKes))
 
   /** The credentials in use; fails while forging is disabled. */
   def currentHot(keys: HotKeys[IO]): IO[PoolCredentials] =
