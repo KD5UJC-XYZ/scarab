@@ -39,8 +39,7 @@ registration with the explorer data and recomputes the script data hash with tho
 `plutus/slot125...json` and the other `plutus/` cases dated slot 90526940 and later: Plutus
 transactions of the blocks above in the format `follow --plutus-cases` writes (the spent and
 referenced outputs come from Koios `utxo_info`, re-encoded). They are replayed by `PlutusCaseSuite`
-(script data hash, phase-2 verdict equal to `is_valid`, budgets) and `ScriptContextOracleSuite`
-(contexts equal Scalus's). They include `Proposing` redeemers of parameter changes and treasury
+(script data hash, phase-2 verdict equal to `is_valid`, budgets). They include `Proposing` redeemers of parameter changes and treasury
 withdrawals running the real guardrails script, `Voting` redeemers of script committee members and
 V3 spends, mints and rewards. `scripts/preview_plutus_cases.py` rebuilds them.
 
