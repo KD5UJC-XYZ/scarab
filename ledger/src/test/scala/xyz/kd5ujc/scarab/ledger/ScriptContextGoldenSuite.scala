@@ -182,3 +182,36 @@ class ScriptContextGoldenSuite extends FunSuite:
     assertEquals(i, info)
     assertEquals(p, constr(1, constr(0, constr(0, PlutusData.B(in.id)), pint(0))))
   }
+
+  // `getConwayScriptsNeeded` gives a voting redeemer the index of its voter among the keys of the
+  // `VotingProcedures` map (`Conway/UTxO.hs:82-87`, cardano-ledger f649f975), which `Ord Voter`
+  // orders (`Voter.ordering`, checked against the reference's derived order by `VoterOrderSuite`):
+  // not the order in which the transaction lists them.
+  test("voting redeemer indices name the voters in Ord Voter's order, not the transaction's") {
+    def hash(b: Int) = Bytes.fromArray(Array.fill(28)(b.toByte))
+    val ballot = Vector(GovActionId(Bytes.fromArray(Array.fill(32)(1.toByte)), 0) -> Vote.Yes)
+    val listed = Vector(
+      Voter.Pool(hash(1)),
+      Voter.DRepVoter(Credential.Key(hash(2))),
+      Voter.DRepVoter(Credential.Script(hash(3))),
+      Voter.CommitteeHot(Credential.Key(hash(4))),
+      Voter.CommitteeHot(Credential.Script(hash(0xff)))
+    )
+    val body =
+      TestLedger.body("votes", Vector.empty, Vector.empty, 0, votes = listed.map(_ -> ballot))
+    val expected = Vector(
+      Voter.CommitteeHot(Credential.Script(hash(0xff))),
+      Voter.CommitteeHot(Credential.Key(hash(4))),
+      Voter.DRepVoter(Credential.Script(hash(3))),
+      Voter.DRepVoter(Credential.Key(hash(2))),
+      Voter.Pool(hash(1))
+    )
+    expected.zipWithIndex.foreach { (voter, index) =>
+      assertEquals(
+        Purpose.resolve(body, Map.empty, 4, index),
+        Some(Purpose.Voting(index, voter)),
+        s"voting redeemer $index"
+      )
+    }
+    assertEquals(Purpose.resolve(body, Map.empty, 4, listed.size), None)
+  }
