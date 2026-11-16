@@ -67,7 +67,9 @@ class ProtocolErrorSuite extends FunSuite:
     )
   }
 
-  test("functional handshake encoding refuses hostile depth on a small stack") {
+  test(
+    "functional handshake encoding writes a term deeper than a message holds on a small stack"
+  ) {
     val nested = (0 until 100000).foldLeft[Handshake.Term](Handshake.Term.Integer(0)) {
       (inner, _) => Handshake.Term.Tag(24, inner)
     }
@@ -89,9 +91,10 @@ class ProtocolErrorSuite extends FunSuite:
       256 * 1024
     )
     thread.start()
+    // [1, 14, nested]: three bytes, two a tag, and the integer
     assertEquals(
-      completed.get(10, java.util.concurrent.TimeUnit.SECONDS),
-      Left(ProtocolError.CBORResourceLimitExceeded)
+      completed.get(10, java.util.concurrent.TimeUnit.SECONDS).map(_.size),
+      Right(3 + 2 * 100000 + 1)
     )
     thread.join()
   }

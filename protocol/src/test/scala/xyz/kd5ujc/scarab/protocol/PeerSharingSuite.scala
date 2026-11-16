@@ -106,21 +106,68 @@ class PeerSharingSuite extends munit.ScalaCheckSuite:
     )
   }
 
-  test("the key and the arity must fit the state and the message") {
+  test("the key must fit the state") {
     assertEquals(failure(State.Idle, Role.Client, "820100"), Error.UnexpectedKey(State.Idle, 1))
     assertEquals(failure(State.Idle, Role.Client, "8103"), Error.UnexpectedKey(State.Idle, 3))
     assertEquals(failure(State.Busy, Role.Server, "820000"), Error.UnexpectedKey(State.Busy, 0))
     assertEquals(failure(State.Busy, Role.Server, "8102"), Error.UnexpectedKey(State.Busy, 2))
-    assertEquals(failure(State.Idle, Role.Client, "83000000"), Error.Arity(2, 3))
-    assertEquals(failure(State.Idle, Role.Client, "820200"), Error.Arity(1, 2))
-    assertEquals(failure(State.Busy, Role.Server, "8301" + "80" + "00"), Error.Arity(2, 3))
+  }
+
+  // The pinned codec reads the length of a message's array and of an address's and ignores it
+  // (`decodeMsg`, Codec.hs:63, and `decodeRemoteAddress`, PeerSelection/PeerSharing/Codec.hs:51,
+  // ouroboros-network c45735a5): it reads the fields its key or tag names, and an item declared
+  // beyond them is left to the next message.
+  test("a wrong declared length is read and ignored, as the pinned codec reads it (#1029)") {
+    val share8 = Message.ShareRequest(amount(8))
+    // longer than the message: the surplus item is not read
     assertEquals(
-      failure(State.Busy, Role.Server, "820181" + "82001a7f000001"),
-      Error.Arity(3, 2)
+      decodePrefix(State.Idle, Role.Client, b("83000800")),
+      Decoding.Decoded(share8, 3)
+    )
+    assertEquals(decode(State.Idle, Role.Client, b("83000800")), Left(Error.Trailing(1)))
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, b("820200")),
+      Decoding.Decoded(Message.Done, 2)
     )
     assertEquals(
-      failure(State.Busy, Role.Server, "820181" + "8501000000" + "00"),
-      Error.Arity(6, 5)
+      decode(State.Busy, Role.Server, b("8301" + "80")),
+      Right(Message.SharePeers(Vector.empty))
+    )
+    // shorter than the message, and empty
+    assertEquals(decode(State.Idle, Role.Client, b("810008")), Right(share8))
+    assertEquals(decode(State.Idle, Role.Client, b("800008")), Right(share8))
+    assertEquals(decode(State.Idle, Role.Client, b("8002")), Right(Message.Done))
+    // a length in eight bytes that an Int holds
+    assertEquals(decode(State.Idle, Role.Client, b("9b7fffffffffffffff" + "0008")), Right(share8))
+    // an address of IPv4 declared 2 and 0, of IPv6 declared 5
+    assertEquals(
+      decode(State.Busy, Role.Server, b("820181" + "82001a7f000001190bb9")),
+      Right(Message.SharePeers(Vector(loopback)))
+    )
+    assertEquals(
+      decode(State.Busy, Role.Server, b("82019f" + "80001a7f000001190bb9" + "ff")),
+      Right(Message.SharePeers(Vector(loopback)))
+    )
+    assertEquals(
+      decode(State.Busy, Role.Server, b("820181" + "8501" + "000000" + "01" + "190bb9")),
+      Right(Message.SharePeers(Vector(loopback6)))
+    )
+    // the fields the tag names are read past the declared end: an address declared 2 waits for its
+    // port
+    assertEquals(
+      decodePrefix(State.Busy, Role.Server, b("820181" + "82001a7f000001")),
+      Decoding.NeedMore
+    )
+  }
+
+  test("a declared length of 2^63 or more is refused, as cborg's decodeListLen refuses it") {
+    assertEquals(
+      failure(State.Idle, Role.Client, "9b8000000000000000" + "0008"),
+      Error.Unexpected(Expectation.DefiniteArray, 0x9b)
+    )
+    assertEquals(
+      failure(State.Busy, Role.Server, "820181" + "9bffffffffffffffff" + "001a7f000001190bb9"),
+      Error.Unexpected(Expectation.DefiniteArray, 0x9b)
     )
   }
 
@@ -157,25 +204,28 @@ class PeerSharingSuite extends munit.ScalaCheckSuite:
     )
   }
 
-  test("a message over the limit is refused when encoded and when decoded") {
+  // The reference's encodeMsg writes a message of any size and its driver sends it
+  // (`sendMessage`, Driver/Limits.hs:109-117, ouroboros-network c45735a5); the limit of the state is
+  // applied on receipt only (`runDecoderWithLimit`, 295-331).
+  test("a message over the limit is written, and refused when read (#1029)") {
     val many = Vector.tabulate(300)(i =>
       v6(0xffffffffL, 0xfffffff0L + i % 16, 0xffffffffL, 0xffffffffL, 65535 - i)
     )
     val reply = Message.SharePeers(many)
-    val big = Limits(1_000_000)
-    assertEquals(encode(State.Busy, Role.Server, reply), Left(Error.TooLarge(UpstreamMessageBytes)))
-    val wire = encode(State.Busy, Role.Server, reply, big).fold(e => fail(e.message), identity)
+    val wire = encode(State.Busy, Role.Server, reply).fold(e => fail(e.message), identity)
     assert(wire.size > UpstreamMessageBytes, wire.size)
     assertEquals(
       decodePrefix(State.Busy, Role.Server, wire),
       Decoding.Failed(Error.TooLarge(UpstreamMessageBytes))
     )
     assertEquals(
-      decodePrefix(State.Busy, Role.Server, wire, big),
+      decodePrefix(State.Busy, Role.Server, wire, Limits(1_000_000)),
       Decoding.Decoded(reply, wire.size)
     )
     // the largest answer of ten peers fits
-    assert(encode(State.Busy, Role.Server, Message.SharePeers(many.take(10))).isRight)
+    assert(
+      encode(State.Busy, Role.Server, Message.SharePeers(many.take(10))).exists(_.size <= 5760)
+    )
     // a list that claims far more items than the limit holds fails on the first byte past it
     val claims = b("82019b00ffffffffffffff" + "83001a7f000001190bb9" * 800)
     assertEquals(

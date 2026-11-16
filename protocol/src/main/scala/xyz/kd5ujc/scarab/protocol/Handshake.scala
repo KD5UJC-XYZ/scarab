@@ -1,40 +1,156 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Tree, TreeFold}
+import xyz.kd5ujc.scarab.codec.Tree.{treeHash, treeString}
 import java.nio.ByteBuffer
 import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCharsets}
+import scala.annotation.tailrec
 import scala.concurrent.duration.*
 import cats.syntax.all.*
 
 /** Handshake-only source conformance to ouroboros-network c45735a56c567fa977969173d18943bac6bb3821.
   * Independently implemented from Protocol/Handshake/{Codec,Client,Server}.hs and Cardano version
-  * codecs. Resource policy (stricter than wire): depth 24, 512 terms, 4096 string bytes, 1024
-  * refusal bytes. Unknown map entries are parsed as bounded generic CBOR before being skipped.
-  * Refusal arrays must have exact arity locally; the pinned decoder reads but ignores that length.
+  * codecs. A message is bounded as the reference bounds it, at [[MaxMessageBytes]]
+  * (`byteLimitsHandshake`, `Codec.hs:54-68`), and by nothing else: the generic terms and strings it
+  * reads (`CBOR.decodeTerm` and `CBOR.decodeString`, `Codec.hs:152-195`, `217-243`, `264-288`) have
+  * no depth, count or size of their own (cborg's `decodeTerm`,
+  * `cborg/src/Codec/CBOR/Term.hs:126-198`, cborg 0.2.10.0, the version ouroboros-network 1.2.0.0
+  * builds with). A term is parsed on a stack on the heap, so one nested as deep as the message is
+  * long decodes on any thread's stack (ADR 0011). Unknown map entries are parsed as generic CBOR
+  * before being skipped. A refusal's reason is read as `decodeRefuseReason` reads it
+  * (`Codec.hs:264-288`): its declared length is read and ignored, and its tag names its items.
   */
 object Handshake:
   val MaxMessageBytes = 5760
   val DefaultPhaseTimeout: FiniteDuration = 10.seconds
-  val MaxDepth = 24
-  val MaxItems = 512
-  val MaxStringBytes = 4096
-  val MaxRefusalBytes = 1024
 
   enum Suite:
     case NodeToNode, NodeToClient
   enum State:
     case Propose, Confirm, Done
+
+  /** A generic CBOR term as cborg's `Term` holds one (`cborg/src/Codec/CBOR/Term.hs:64-82`, cborg
+    * 0.2.10.0): an indefinite string keeps its chunks, as `TStringI` and `TBytesI` do, so that it
+    * is written again as cborg's `encodeTerm` writes it. Its chunks are never empty: they are read
+    * into a lazy `Text` or `ByteString` (`Term.hs:203-216`), whose `chunk` drops an empty one
+    * (`Data/Text/Internal/Lazy.hs:91-94`, text 2.1.3; `Data/ByteString/Lazy/Internal.hs:211-213`,
+    * bytestring 0.12.2.0). `TextChunks` and `ByteChunks` are the indefinite text and byte strings;
+    * two of either are equal when their contents are, whatever their chunks, as two lazy strings
+    * are (`Data/Text/Internal/Lazy.hs:138-149`; `Data/ByteString/Lazy/Internal.hs:261-268`).
+    */
   enum Term:
     case Integer(value: BigInt)
     case Bool(value: Boolean)
     case Arr(values: Vector[Term], definite: Boolean = true)
     case Map(values: Vector[(Term, Term)], definite: Boolean = true)
-    case Text(value: String, definite: Boolean = true)
+    case Text(value: String)
+    case TextChunks(chunks: Vector[String])
     case ByteString(value: Bytes)
+    case ByteChunks(chunks: Vector[Bytes])
     case Tag(number: BigInt, value: Term)
     case Simple(value: Int)
     case FloatBits(width: Int, bits: BigInt)
+
+    // Structural and stack-safe: a term nests as deep as its message is long.
+    override def equals(that: Any): Boolean = that match
+      case o: Term => sameTerms(this, o)
+      case _       => false
+    override def hashCode(): Int = this.treeHash
+    override def toString: String = this.treeString
+
+  private def joined(chunks: Vector[Bytes]): Bytes = chunks.foldLeft(Bytes.empty)(_ ++ _)
+
+  /** The number of a term's children: the items of an array, the keys and values of a map in turn,
+    * a tag's one term.
+    */
+  private def arity(t: Term): Int = t match
+    case Term.Arr(values, _) => values.size
+    case Term.Map(values, _) => values.size * 2
+    case Term.Tag(_, _)      => 1
+    case _                   => 0
+
+  /** The child `i` of a term with `i` below its [[arity]]. */
+  private def child(t: Term, i: Int): Term = t match
+    case Term.Arr(values, _) => values(i)
+    case Term.Map(values, _) => if i % 2 == 0 then values(i / 2)._1 else values(i / 2)._2
+    case Term.Tag(_, value)  => value
+    case leaf                => leaf
+
+  /** Two terms that agree on everything but their children, and have as many. */
+  private def sameNode(x: Term, y: Term): Boolean = x match
+    case Term.Integer(a) => y match { case Term.Integer(b) => a == b; case _ => false }
+    case Term.Bool(a)    => y match { case Term.Bool(b) => a == b; case _ => false }
+    case Term.Arr(a, d) =>
+      y match { case Term.Arr(b, e) => d == e && a.sizeCompare(b) == 0; case _ => false }
+    case Term.Map(a, d) =>
+      y match { case Term.Map(b, e) => d == e && a.sizeCompare(b) == 0; case _ => false }
+    case Term.Text(a) => y match { case Term.Text(b) => a == b; case _ => false }
+    case Term.TextChunks(a) =>
+      y match { case Term.TextChunks(b) => a.mkString == b.mkString; case _ => false }
+    case Term.ByteString(a) => y match { case Term.ByteString(b) => a == b; case _ => false }
+    case Term.ByteChunks(a) =>
+      y match { case Term.ByteChunks(b) => joined(a) == joined(b); case _ => false }
+    case Term.Tag(a, _) => y match { case Term.Tag(b, _) => a == b; case _ => false }
+    case Term.Simple(a) => y match { case Term.Simple(b) => a == b; case _ => false }
+    case Term.FloatBits(w, a) =>
+      y match { case Term.FloatBits(v, b) => w == v && a == b; case _ => false }
+
+  /** An open pair of containers being compared, and the index of their next children. */
+  private final case class Compared(left: Term, right: Term, next: Int)
+
+  /** Structural equality, its open containers in a list on the heap: a term nests as deep as its
+    * message is long. A pair of children is compared when it is reached, so nothing is copied.
+    */
+  private def sameTerms(x: Term, y: Term): Boolean =
+    @tailrec def go(open: List[Compared]): Boolean = open match
+      case Nil => true
+      case Compared(left, right, i) :: outer =>
+        if i >= arity(left) then go(outer)
+        else
+          val a = child(left, i)
+          val b = child(right, i)
+          val rest = Compared(left, right, i + 1) :: outer
+          if a eq b then go(rest)
+          else if !sameNode(a, b) then false
+          else if arity(a) == 0 then go(rest)
+          else go(Compared(a, b, 0) :: rest)
+    (x eq y) || sameNode(x, y) && go(List(Compared(x, y, 0)))
+
+  private given Tree[Term] with
+    def children(t: Term): IndexedSeq[Term] = t match
+      case Term.Arr(values, _) => values
+      case Term.Map(values, _) => TreeFold.flatten(values)
+      case Term.Tag(_, value)  => Vector(value)
+      case _                   => Vector.empty
+    def sameLabel(x: Term, y: Term): Boolean = sameNode(x, y)
+    def labelHash(t: Term): Int = t match
+      case Term.Integer(a)      => 41 + a.hashCode
+      case Term.Bool(a)         => if a then 43 else 47
+      case Term.Arr(_, d)       => if d then 53 else 59
+      case Term.Map(_, d)       => if d then 61 else 67
+      case Term.Text(a)         => 71 + a.hashCode
+      case Term.TextChunks(a)   => 97 + a.mkString.hashCode
+      case Term.ByteString(a)   => 73 + a.hashCode
+      case Term.ByteChunks(a)   => 101 + joined(a).hashCode
+      case Term.Tag(a, _)       => 79 + a.hashCode
+      case Term.Simple(a)       => 83 + a
+      case Term.FloatBits(w, a) => 89 + 31 * w + a.hashCode
+    def name(t: Term): String =
+      def form(definite: Boolean) = if definite then "" else "(indefinite)"
+      t match
+        case Term.Integer(a)      => s"Integer($a)"
+        case Term.Bool(a)         => s"Bool($a)"
+        case Term.Arr(_, d)       => s"Arr${form(d)}"
+        case Term.Map(_, d)       => s"Map${form(d)}"
+        case Term.Text(a)         => s"Text(${Tree.shown(a)})"
+        case Term.TextChunks(a)   => s"TextChunks(${a.size} chunks, ${Tree.shown(a.mkString)})"
+        case Term.ByteString(a)   => s"ByteString(${Tree.shown(a)})"
+        case Term.ByteChunks(a)   => s"ByteChunks(${a.size} chunks, ${Tree.shown(joined(a))})"
+        case Term.Tag(a, _)       => s"Tag($a)"
+        case Term.Simple(a)       => s"Simple($a)"
+        case Term.FloatBits(w, a) => s"FloatBits($w, $a)"
+
   enum Reason:
     case VersionMismatch(versions: Vector[Int], unknown: Vector[BigInt] = Vector.empty)
     case DecodeError(version: Int, text: String)
@@ -184,9 +300,13 @@ object Handshake:
   ): Term =
     if entries.map(_._1).distinct.sizeIs != entries.size then bad(ProtocolError.DuplicateVersion)
     Term.Map(entries.sortBy(_._1).map { case (v, d) => (versionTerm(v), d) })
+
+  /** `decodeString` (`Codec.hs:282`, `287`, ouroboros-network c45735a5): a definite text of any
+    * length within the message.
+    */
   private def text(t: Term)(using ProtocolWire.Scope): String = t match
-    case Term.Text(s, true) if s.getBytes(StandardCharsets.UTF_8).length <= MaxRefusalBytes => s
-    case _ => bad(ProtocolError.InvalidOrOversizedRefusalText)
+    case Term.Text(s) => s
+    case _            => bad(ProtocolError.InvalidOrOversizedRefusalText)
   private def reason[V: VersionCodec](term: Term)(using ProtocolWire.Scope): WireReason[V] =
     arr(term) match
       case Vector(Term.Integer(tag), versions) if tag == 0 =>
@@ -205,9 +325,9 @@ object Handshake:
       case WireReason.VersionMismatch(vs, _) =>
         Term.Arr(Vector(Term.Integer(0), Term.Arr(vs.map(versionTerm(_)))))
       case WireReason.DecodeError(v, s) =>
-        text(Term.Text(s)); Term.Arr(Vector(Term.Integer(1), versionTerm(v), Term.Text(s)))
+        Term.Arr(Vector(Term.Integer(1), versionTerm(v), Term.Text(s)))
       case WireReason.Refused(v, s) =>
-        text(Term.Text(s)); Term.Arr(Vector(Term.Integer(2), versionTerm(v), Term.Text(s)))
+        Term.Arr(Vector(Term.Integer(2), versionTerm(v), Term.Text(s)))
   private def message[V: VersionCodec: Ordering](state: State, term: Term)(using
       ProtocolWire.Scope
   ): WireMessage[V] =
@@ -235,11 +355,8 @@ object Handshake:
       bytes: Bytes
   ): Either[DecodeError, (WireMessage[V], Bytes)] =
     new Parser(bytes)
-      .term(0)
-      .run(Cursor(0, 0))
-      .flatMap { case (cursor, term) =>
-        attempt((message[V](state, term), bytes.drop(cursor.position)))
-      }
+      .message(state)
+      .flatMap((end, term) => attempt((message[V](state, term), bytes.drop(end))))
       .left
       .map(e => DecodeError(e, e.incomplete))
   def decode[V: VersionCodec: Ordering](
@@ -266,12 +383,10 @@ object Handshake:
     attempt(encodeTerm(reasonTerm(value)))
   def decodeReason[V: VersionCodec](bytes: Bytes): Either[DecodeError, WireReason[V]] =
     new Parser(bytes)
-      .term(0)
-      .run(Cursor(0, 0))
-      .flatMap { case (cursor, term) =>
-        if cursor.position != bytes.size then Left(ProtocolError.TrailingBytes)
-        else attempt(reason[V](term))
-      }
+      .reason(0)
+      .flatMap((end, term) =>
+        if end != bytes.size then Left(ProtocolError.TrailingBytes) else attempt(reason[V](term))
+      )
       .left
       .map(e => DecodeError(e, e.incomplete))
 
@@ -290,10 +405,8 @@ object Handshake:
     private def typedReason(r: Reason): Either[ProtocolError, WireReason[V]] = r match
       case Reason.VersionMismatch(vs, unknown) =>
         vs.traverse(version).map(WireReason.VersionMismatch(_, unknown))
-      case Reason.DecodeError(v, s) =>
-        attempt(text(Term.Text(s))).flatMap(_ => version(v)).map(WireReason.DecodeError(_, s))
-      case Reason.Refused(v, s) =>
-        attempt(text(Term.Text(s))).flatMap(_ => version(v)).map(WireReason.Refused(_, s))
+      case Reason.DecodeError(v, s) => version(v).map(WireReason.DecodeError(_, s))
+      case Reason.Refused(v, s)     => version(v).map(WireReason.Refused(_, s))
     private def untypedReason(r: WireReason[V]): Reason = r match
       case WireReason.VersionMismatch(vs, unknown) =>
         Reason.VersionMismatch(vs.map(number), unknown)
@@ -459,34 +572,56 @@ object Handshake:
         case _ => Left(ProtocolError.ResponderExpectsProposal)
     }
 
-  private final case class Cursor(position: Int, items: Int)
-  private type ResultOf[A] = Either[ProtocolError, A]
-  private type Read[A] = cats.data.StateT[ResultOf, Cursor, A]
+  /** A container the parser has opened and not yet closed: the items read so far, and how many it
+    * still needs (a definite one) or that a break closes it (an indefinite one).
+    */
+  private enum Open:
+    case Items(remaining: Int, done: Vector[Term])
+    case OpenItems(done: Vector[Term])
+    case Entries(remaining: Int, done: Vector[(Term, Term)], key: Option[Term])
+    case OpenEntries(done: Vector[(Term, Term)], key: Option[Term])
+    case Tagged(number: BigInt)
 
-  /** Handshake negotiation is infrequent: keep its bounded parser as immutable state. */
+  /** What one head starts: a whole term, or a container whose items follow it. */
+  private enum Start:
+    case Whole(term: Term)
+    case Container(open: Open)
+
+  /** A container with one more item: closed into its term, or still open. */
+  private enum Added:
+    case Closed(term: Term)
+    case Still(open: Open)
+
+  private def add(open: Open, item: Term): Added = open match
+    case Open.Items(1, done)            => Added.Closed(Term.Arr(done :+ item))
+    case Open.Items(remaining, done)    => Added.Still(Open.Items(remaining - 1, done :+ item))
+    case Open.OpenItems(done)           => Added.Still(Open.OpenItems(done :+ item))
+    case Open.Entries(n, done, None)    => Added.Still(Open.Entries(n, done, Some(item)))
+    case Open.Entries(1, done, Some(k)) => Added.Closed(Term.Map(done :+ (k -> item)))
+    case Open.Entries(n, done, Some(k)) =>
+      Added.Still(Open.Entries(n - 1, done :+ (k -> item), None))
+    case Open.OpenEntries(done, None)    => Added.Still(Open.OpenEntries(done, Some(item)))
+    case Open.OpenEntries(done, Some(k)) => Added.Still(Open.OpenEntries(done :+ (k -> item), None))
+    case Open.Tagged(number)             => Added.Closed(Term.Tag(number, item))
+
+  /** Handshake negotiation is infrequent: the parser reads immutable input and keeps its open
+    * containers in a list on the heap, so the depth of a term is bounded by the message's bytes (a
+    * level takes one) and not by the thread's stack. A position at or past [[MaxMessageBytes]] is
+    * refused as the driver refuses a message longer than its limit (`runDecoderWithLimit`,
+    * `ouroboros-network/framework/lib/Ouroboros/Network/Driver/Limits.hs:295-331`, c45735a5).
+    */
   private final class Parser(input: Bytes):
-    private def pure[A](value: A): Read[A] = cats.data.StateT.pure(value)
-    private def failed[A](error: ProtocolError): Read[A] = checked(Left(error))
-    private def checked[A](result: Either[ProtocolError, A]): Read[A] =
-      cats.data.StateT.liftF(result)
-    private def cursor: Read[Cursor] = cats.data.StateT.get
-    private def read(): Read[Int] = cats.data.StateT { state =>
-      if state.position >= MaxMessageBytes then Left(ProtocolError.HandshakeByteLimitExceeded)
-      else
-        input
-          .lift(state.position)
-          .toRight(ProtocolError.IncompleteCbor)
-          .map(b => (state.copy(position = state.position + 1), b & 255))
-    }
-    private def peekBreak: Read[Boolean] = cursor.map { state =>
-      input.lift(state.position).contains(0xff.toByte)
-    }
-    private def count: Read[Unit] = cats.data.StateT { state =>
-      if state.items >= MaxItems then Left(ProtocolError.CBORItemLimitExceeded)
-      else Right((state.copy(items = state.items + 1), ()))
-    }
-    private def argument(ai: Int): Read[BigInt] =
-      if ai < 24 then pure(BigInt(ai))
+    private def byte(at: Int): Either[ProtocolError, Int] =
+      if at >= MaxMessageBytes then Left(ProtocolError.HandshakeByteLimitExceeded)
+      else input.lift(at).toRight(ProtocolError.IncompleteCbor).map(_ & 255)
+
+    private def isBreak(at: Int): Boolean = input.lift(at).contains(0xff.toByte)
+
+    /** The argument of a head whose additional information is `ai`, read from `at`: the position
+      * after it and its value.
+      */
+    private def argument(ai: Int, at: Int): Either[ProtocolError, (Int, BigInt)] =
+      if ai < 24 then Right((at, BigInt(ai)))
       else
         val width = ai match
           case 24 => Right(1)
@@ -494,13 +629,22 @@ object Handshake:
           case 26 => Right(4)
           case 27 => Right(8)
           case _  => Left(ProtocolError.ReservedCBORArgument)
-        checked(width).flatMap(n =>
-          Vector.fill(n)(read()).sequence.map(_.foldLeft(BigInt(0))((a, b) => (a << 8) | b))
-        )
-    private def size(n: BigInt, bound: Int): Read[Int] =
-      if n < 0 || n > bound then failed(ProtocolError.CBORResourceLimitExceeded)
-      else pure(n.toInt)
-    private def utf8(bytes: Vector[Byte]): Either[ProtocolError, String] =
+        @tailrec def go(width: Int, i: Int, value: BigInt): Either[ProtocolError, (Int, BigInt)] =
+          if i == width then Right((at + width, value))
+          else
+            byte(at + i) match
+              case Left(error) => Left(error)
+              case Right(b)    => go(width, i + 1, (value << 8) | b)
+        width.flatMap(go(_, 0, BigInt(0)))
+
+    /** A declared count of items of at least `per` bytes each, from `at`: one the message cannot
+      * hold could never be read within its bound, and is refused at once.
+      */
+    private def fits(count: BigInt, per: Int, at: Int): Either[ProtocolError, Int] =
+      if count.isValidInt && count.toInt <= (MaxMessageBytes - at) / per then Right(count.toInt)
+      else Left(ProtocolError.HandshakeByteLimitExceeded)
+
+    private def utf8(bytes: Bytes): Either[ProtocolError, String] =
       Either
         .catchOnly[CharacterCodingException](
           StandardCharsets.UTF_8
@@ -511,172 +655,300 @@ object Handshake:
             .toString
         )
         .leftMap(_ => ProtocolError.InvalidUTF8)
-    private def chunk(major: Int, ai: Int, remaining: Int): Read[Vector[Byte]] =
+
+    /** A definite string of `major` (each chunk of a text is UTF-8 itself). */
+    private def chunk(major: Int, ai: Int, at: Int): Either[ProtocolError, (Int, Bytes)] =
       for
-        length <- argument(ai).flatMap(size(_, remaining))
-        bytes <- Vector.fill(length)(read().map(_.toByte)).sequence
-        _ <- if major == 3 then checked(utf8(bytes)).void else pure(())
-      yield bytes
-    private def string(major: Int, ai: Int): Read[Term] =
-      val bytes =
-        if ai != 31 then chunk(major, ai, MaxStringBytes)
+        (start, declared) <- argument(ai, at)
+        length <- fits(declared, 1, start)
+        _ <- Either.cond(length <= input.size - start, (), ProtocolError.IncompleteCbor)
+        bytes = input.slice(start, start + length)
+        _ <- if major == 3 then utf8(bytes).void else Right(())
+      yield (start + length, bytes)
+
+    /** A definite string, or an indefinite one as its chunks, the empty ones dropped as cborg's
+      * `decodeBytesIndefLen` and `decodeStringIndefLen` drop them (`Term.hs:203-216`, cborg
+      * 0.2.10.0).
+      */
+    private def string(major: Int, ai: Int, at: Int): Either[ProtocolError, (Int, Term)] =
+      // the chunks of an indefinite string up to its break
+      @tailrec def chunks(
+          position: Int,
+          collected: Vector[Bytes]
+      ): Either[ProtocolError, (Int, Vector[Bytes])] =
+        if isBreak(position) then byte(position).as((position + 1, collected))
         else
-          cats.Monad[Read].tailRecM(Vector.empty[Byte]) { collected =>
-            peekBreak.flatMap {
-              case true => read().as(Right(collected))
-              case false =>
-                for
-                  _ <- count
-                  head <- read()
-                  _ <-
-                    if head / 32 != major || (head & 31) == 31 then
-                      failed[Unit](ProtocolError.InvalidIndefiniteStringChunk)
-                    else pure(())
-                  next <- chunk(major, head & 31, MaxStringBytes - collected.size)
-                yield Left(collected ++ next)
-            }
+          val next = byte(position).flatMap { head =>
+            if head / 32 != major || (head & 31) == 31 then
+              Left(ProtocolError.InvalidIndefiniteStringChunk)
+            else chunk(major, head & 31, position + 1)
           }
-      bytes.flatMap { value =>
-        if major == 2 then pure(Term.ByteString(Bytes(value)))
-        else checked(utf8(value)).map(Term.Text(_, ai != 31))
-      }
-    private def indefinite[A](item: Read[A]): Read[Vector[A]] =
-      cats.Monad[Read].tailRecM(Vector.empty[A]) { collected =>
-        peekBreak.flatMap {
-          case true  => read().as(Right(collected))
-          case false => item.map(value => Left(collected :+ value))
-        }
-      }
-    def term(depth: Int): Read[Term] =
-      for
-        _ <-
-          if depth > MaxDepth then failed[Unit](ProtocolError.CBORDepthLimitExceeded) else pure(())
-        _ <- count
-        head <- read()
-        major = head / 32
-        ai = head & 31
-        value <- major match
-          case 0     => argument(ai).map(Term.Integer(_))
-          case 1     => argument(ai).map(n => Term.Integer(-1 - n))
-          case 2 | 3 => string(major, ai)
-          case 4 =>
-            val values =
-              if ai == 31 then indefinite(term(depth + 1))
-              else
-                for
-                  state <- cursor; n <- argument(ai).flatMap(size(_, MaxItems - state.items));
-                  values <- Vector.fill(n)(term(depth + 1)).sequence
-                yield values
-            values.map(Term.Arr(_, ai != 31))
-          case 5 =>
-            val pair = (term(depth + 1), term(depth + 1)).tupled
-            val values =
-              if ai == 31 then indefinite(pair)
-              else
-                for
-                  state <- cursor; n <- argument(ai).flatMap(size(_, (MaxItems - state.items) / 2));
-                  values <- Vector.fill(n)(pair).sequence
-                yield values
-            values.map(Term.Map(_, ai != 31))
-          case 6 => (argument(ai), term(depth + 1)).mapN(Term.Tag(_, _))
-          case _ =>
-            ai match
-              case 20 => pure(Term.Bool(false))
-              case 21 => pure(Term.Bool(true))
-              case 25 | 26 | 27 =>
-                argument(ai).map(
-                  Term.FloatBits(if ai == 25 then 2 else if ai == 26 then 4 else 8, _)
-                )
-              case 31           => failed(ProtocolError.UnexpectedBreak)
-              case 28 | 29 | 30 => failed(ProtocolError.ReservedCBORSimpleValue)
-              case 24 =>
-                read().flatMap(n =>
-                  if n < 32 then failed(ProtocolError.InvalidExtendedCBORSimpleValue)
-                  else pure(Term.Simple(n))
-                )
-              case n => pure(Term.Simple(n))
-      yield value
-
-  private final case class Written(bytes: Vector[Byte], items: Int)
-  private type Write[A] = cats.data.StateT[ResultOf, Written, A]
-
-  private def encodeTerm(term: Term)(using ProtocolWire.Scope): Bytes =
-    def checked[A](result: Either[ProtocolError, A]): Write[A] = cats.data.StateT.liftF(result)
-    def emit(bytes: Vector[Byte]): Write[Unit] = cats.data.StateT { state =>
-      if bytes.sizeIs > MaxMessageBytes - state.bytes.size then
-        Left(ProtocolError.HandshakeByteLimitExceeded)
-      else Right((state.copy(bytes = state.bytes ++ bytes), ()))
-    }
-    def byte(value: Int): Write[Unit] = emit(Vector(value.toByte))
-    def number(value: BigInt, width: Int): Vector[Byte] =
-      (0 until width).reverseIterator.map(i => ((value >> (i * 8)) & 255).toByte).toVector
-    def head(major: Int, n: BigInt): Write[Unit] =
-      if n < 0 || n >= (BigInt(1) << 64) then checked(Left(ProtocolError.CBORIntegerOutsideUint64))
-      else if n < 24 then byte(major * 32 + n.toInt)
+          next match
+            case Left(error) => Left(error)
+            case Right((after, bytes)) =>
+              chunks(after, if bytes.isEmpty then collected else collected :+ bytes)
+      if ai != 31 then
+        chunk(major, ai, at).flatMap((end, bytes) =>
+          if major == 2 then Right((end, Term.ByteString(bytes)))
+          else utf8(bytes).map(text => (end, Term.Text(text)))
+        )
       else
-        val width =
-          if n <= 255 then 1 else if n <= 65535 then 2 else if n <= 0xffffffffL then 4 else 8
-        byte(
-          major * 32 + (if width == 1 then 24
-                        else if width == 2 then 25
-                        else if width == 4 then 26
-                        else 27)
-        ) *> emit(number(n, width))
-    def raw(major: Int, bytes: Vector[Byte]): Write[Unit] =
-      if bytes.sizeIs > MaxStringBytes then checked(Left(ProtocolError.StringByteLimitExceeded))
-      else head(major, bytes.size) *> emit(bytes)
-    def count(depth: Int): Write[Unit] = cats.data.StateT { state =>
-      if state.items >= MaxItems || depth > MaxDepth then
-        Left(ProtocolError.CBORResourceLimitExceeded)
-      else Right((state.copy(items = state.items + 1), ()))
-    }
-    def unicode(value: String): Either[ProtocolError, Vector[Byte]] =
-      Either
-        .catchOnly[CharacterCodingException](
-          StandardCharsets.UTF_8
-            .newEncoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .encode(java.nio.CharBuffer.wrap(value))
+        chunks(at, Vector.empty).flatMap((end, parts) =>
+          if major == 2 then Right((end, Term.ByteChunks(parts)))
+          else parts.traverse(utf8).map(texts => (end, Term.TextChunks(texts)))
         )
-        .bimap(
-          _ => ProtocolError.InvalidUnicodeText,
-          encoded => Vector.tabulate(encoded.remaining())(i => encoded.get(i))
+
+    /** Major type 7 as cborg's `decodeTerm` reads it (`Term.hs:192-198`, cborg 0.2.10.0, with the
+      * token types of `Read.hs:1492-1501`): `0xf8` and the byte after it are a simple value of any
+      * value, those below 32 included (`tryConsumeSimple`, `Read.hs:2457`), and `0xf4` and `0xf5`
+      * the booleans.
+      */
+    private def simple(ai: Int, at: Int): Either[ProtocolError, (Int, Term)] = ai match
+      case 20 => Right((at, Term.Bool(false)))
+      case 21 => Right((at, Term.Bool(true)))
+      case 25 | 26 | 27 =>
+        argument(ai, at).map((next, bits) =>
+          (next, Term.FloatBits(if ai == 25 then 2 else if ai == 26 then 4 else 8, bits))
         )
-    def go(value: Term, depth: Int): Write[Unit] = count(depth).flatMap { _ =>
-      value match
-        case Term.Integer(n) => if n >= 0 then head(0, n) else head(1, -1 - n)
-        case Term.Bool(b)    => byte(if b then 245 else 244)
-        case Term.Arr(values, definite) =>
-          (if definite then head(4, values.size) else byte(159)) *> values.traverse_(
-            go(_, depth + 1)
-          ) *> (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](()) else byte(255))
-        case Term.Map(values, definite) =>
-          (if definite then head(5, values.size) else byte(191)) *> values.traverse_((k, v) =>
-            go(k, depth + 1) *> go(v, depth + 1)
-          ) *> (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](()) else byte(255))
-        case Term.Text(value, definite) =>
-          checked(unicode(value)).flatMap(bytes =>
-            (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](())
-             else byte(127)) *> raw(
-              3,
-              bytes
-            ) *> (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](())
-                  else byte(255))
-          )
-        case Term.ByteString(bytes)  => raw(2, bytes.value)
-        case Term.Tag(number, value) => head(6, number) *> go(value, depth + 1)
-        case Term.Simple(n) =>
-          if n < 0 || n > 255 || (n >= 20 && n <= 21) || (n >= 24 && n < 32) then
-            checked(Left(ProtocolError.InvalidSimpleValue))
-          else if n < 24 then byte(224 + n)
-          else byte(248) *> byte(n)
-        case Term.FloatBits(width, bits) =>
-          if !Set(2, 4, 8).contains(width) || bits < 0 || bits >= (BigInt(1) << (width * 8)) then
-            checked(Left(ProtocolError.InvalidFloatBits))
-          else
-            byte(if width == 2 then 249 else if width == 4 then 250 else 251) *> emit(
-              number(bits, width)
-            )
-    }
-    Bytes(ProtocolWire.get(go(term, 0).runS(Written(Vector.empty, 0))).bytes)
+      case 31           => Left(ProtocolError.UnexpectedBreak)
+      case 28 | 29 | 30 => Left(ProtocolError.ReservedCBORSimpleValue)
+      case 24           => byte(at).map(n => (at + 1, Term.Simple(n)))
+      case n            => Right((at, Term.Simple(n)))
+
+    /** The head at `at` and what it starts. */
+    private def start(at: Int): Either[ProtocolError, (Int, Start)] =
+      byte(at).flatMap { head =>
+        val major = head / 32
+        val ai = head & 31
+        val after = at + 1
+        def whole(read: Either[ProtocolError, (Int, Term)]) =
+          read.map((next, term) => (next, Start.Whole(term)))
+        major match
+          case 0     => whole(argument(ai, after).map((next, n) => (next, Term.Integer(n))))
+          case 1     => whole(argument(ai, after).map((next, n) => (next, Term.Integer(-1 - n))))
+          case 2 | 3 => whole(string(major, ai, after))
+          case 4 if ai == 31 => Right((after, Start.Container(Open.OpenItems(Vector.empty))))
+          case 4 =>
+            for
+              (next, declared) <- argument(ai, after)
+              n <- fits(declared, 1, next)
+            yield
+              if n == 0 then (next, Start.Whole(Term.Arr(Vector.empty)))
+              else (next, Start.Container(Open.Items(n, Vector.empty)))
+          case 5 if ai == 31 =>
+            Right((after, Start.Container(Open.OpenEntries(Vector.empty, None))))
+          case 5 =>
+            for
+              (next, declared) <- argument(ai, after)
+              n <- fits(declared, 2, next)
+            yield
+              if n == 0 then (next, Start.Whole(Term.Map(Vector.empty)))
+              else (next, Start.Container(Open.Entries(n, Vector.empty, None)))
+          case 6 => argument(ai, after).map((next, n) => (next, Start.Container(Open.Tagged(n))))
+          case _ => whole(simple(ai, after))
+      }
+
+    /** One term from `at`: the position after it, and the term. */
+    def term(at: Int): Either[ProtocolError, (Int, Term)] =
+      // `open`: the containers open around the position, innermost first; `read`: a term just
+      // read, for the innermost to take
+      @tailrec def go(
+          position: Int,
+          open: List[Open],
+          read: Option[Term]
+      ): Either[ProtocolError, (Int, Term)] = read match
+        case Some(term) =>
+          open match
+            case Nil => Right((position, term))
+            case inner :: outer =>
+              add(inner, term) match
+                case Added.Closed(closed) => go(position, outer, Some(closed))
+                case Added.Still(still)   => go(position, still :: outer, None)
+        case None =>
+          open match
+            case Open.OpenItems(done) :: outer if isBreak(position) =>
+              byte(position) match
+                case Left(error) => Left(error)
+                case Right(_)    => go(position + 1, outer, Some(Term.Arr(done, false)))
+            case Open.OpenEntries(done, None) :: outer if isBreak(position) =>
+              byte(position) match
+                case Left(error) => Left(error)
+                case Right(_)    => go(position + 1, outer, Some(Term.Map(done, false)))
+            case _ =>
+              start(position) match
+                case Left(error)                             => Left(error)
+                case Right((next, Start.Whole(term)))        => go(next, open, Some(term))
+                case Right((next, Start.Container(started))) => go(next, started :: open, None)
+      go(at, Nil, None)
+
+    /** `count` terms from `at`, in order. */
+    @tailrec private def terms(
+        at: Int,
+        count: Int,
+        done: Vector[Term]
+    ): Either[ProtocolError, (Int, Vector[Term])] =
+      if done.sizeIs == count then Right((at, done))
+      else
+        term(at) match
+          case Left(error)         => Left(error)
+          case Right((next, item)) => terms(next, count, done :+ item)
+
+    /** The length of the definite array whose head is at `at`, if the item there is one: the
+      * position after its head and the length, read as cborg's `decodeListLen` reads it, into an
+      * `Int` (`tryConsumeListLen`, `cborg/src/Codec/CBOR/Read.hs:1925-1964`, with `word64ToInt`,
+      * `Codec/CBOR/Magic.hs:506-519`, cborg 0.2.10.0, on a 64-bit machine).
+      */
+    private def listLength(at: Int): Either[ProtocolError, Option[(Int, Long)]] =
+      byte(at).flatMap { head =>
+        if head / 32 != 4 || (head & 31) == 31 then Right(None)
+        else
+          argument(head & 31, at + 1).map((next, n) => Option.when(n.isValidLong)((next, n.toLong)))
+      }
+
+    /** A refusal's reason as `decodeRefuseReason` reads it (`Codec.hs:264-288`, ouroboros-network
+      * c45735a5): the length of its array is read and ignored (268), then its tag (269), then the
+      * items the tag names: the list of versions for 0 (271-277), a version and a text for 1 and 2
+      * (278-287). An item the array declares beyond them is left to whatever follows. Any other tag
+      * is refused (288) once the items its array declares are read, and an item that is no definite
+      * array is read as a term and refused when the reason is checked.
+      */
+    def reason(at: Int): Either[ProtocolError, (Int, Term)] =
+      listLength(at).flatMap {
+        case None => term(at)
+        case Some((next, declared)) =>
+          def named(tag: Term, after: Int): Either[ProtocolError, Int] = tag match
+            case Term.Integer(t) if t == 0           => Right(1)
+            case Term.Integer(t) if t == 1 || t == 2 => Right(2)
+            case _ => fits(BigInt(math.max(declared - 1, 0L)), 1, after)
+          for
+            (afterTag, tag) <- term(next)
+            count <- named(tag, afterTag)
+            (end, items) <- terms(afterTag, count, Vector.empty)
+          yield (end, Term.Arr(tag +: items))
+      }
+
+    /** The message from the start of the input. In `StConfirm` a message of two items whose key is
+      * 2 is a refusal (`Codec.hs:177-178`, ouroboros-network c45735a5), and its reason is read as
+      * [[reason]] reads it; anything else is one term, checked when it is read as a message.
+      */
+    def message(state: State): Either[ProtocolError, (Int, Term)] =
+      if state != State.Confirm then term(0)
+      else
+        listLength(0).flatMap {
+          case Some((next, length)) if length == 2 =>
+            term(next).flatMap {
+              case (afterKey, key @ Term.Integer(k)) if k == 2 =>
+                reason(afterKey).map((end, r) => (end, Term.Arr(Vector(key, r))))
+              case (afterKey, key) =>
+                term(afterKey).map((end, item) => (end, Term.Arr(Vector(key, item))))
+            }
+          case _ => term(0)
+        }
+
+  /** One step of writing a term: an item to write, or bytes that close an indefinite container. */
+  private enum Pending:
+    case Item(term: Term)
+    case Raw(bytes: Vector[Byte])
+
+  private def number(value: BigInt, width: Int): Vector[Byte] =
+    (0 until width).reverseIterator.map(i => ((value >> (i * 8)) & 255).toByte).toVector
+
+  private def headBytes(major: Int, n: BigInt): Either[ProtocolError, Vector[Byte]] =
+    if n < 0 || n >= (BigInt(1) << 64) then Left(ProtocolError.CBORIntegerOutsideUint64)
+    else if n < 24 then Right(Vector((major * 32 + n.toInt).toByte))
+    else
+      val width =
+        if n <= 255 then 1 else if n <= 65535 then 2 else if n <= 0xffffffffL then 4 else 8
+      val ai = if width == 1 then 24 else if width == 2 then 25 else if width == 4 then 26 else 27
+      Right((major * 32 + ai).toByte +: number(n, width))
+
+  private def unicode(value: String): Either[ProtocolError, Vector[Byte]] =
+    Either
+      .catchOnly[CharacterCodingException](
+        StandardCharsets.UTF_8
+          .newEncoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .encode(java.nio.CharBuffer.wrap(value))
+      )
+      .bimap(
+        _ => ProtocolError.InvalidUnicodeText,
+        encoded => Vector.tabulate(encoded.remaining())(i => encoded.get(i))
+      )
+
+  /** A definite text, as `encodeString` writes it. */
+  private def writtenText(value: String): Either[ProtocolError, Vector[Byte]] =
+    unicode(value).flatMap(bytes => headBytes(3, bytes.size).map(_ ++ bytes))
+
+  /** A definite byte string, as `encodeBytes` writes it. */
+  private def writtenBytes(bytes: Bytes): Either[ProtocolError, Vector[Byte]] =
+    headBytes(2, bytes.size).map(_ ++ bytes.value)
+
+  /** The bytes of one item's head (all of a string or a leaf), and the items under it, in order:
+    * cborg's `encodeTerm` (`cborg/src/Codec/CBOR/Term.hs:90-121`, cborg 0.2.10.0). An indefinite
+    * string is its chunks between `0x7f` or `0x5f` and a break, an empty one is no chunk at all
+    * (`7f ff`), and an indefinite array or map its items between `0x9f` or `0xbf` and a break.
+    */
+  private def written(term: Term): Either[ProtocolError, (Vector[Byte], List[Pending])] =
+    val break = Pending.Raw(Vector(0xff.toByte))
+    term match
+      case Term.Integer(n) =>
+        (if n >= 0 then headBytes(0, n) else headBytes(1, -1 - n)).map(_ -> Nil)
+      case Term.Bool(b) => Right(Vector((if b then 245 else 244).toByte) -> Nil)
+      case Term.Arr(values, definite) =>
+        val items = values.iterator.map(Pending.Item(_)).toList
+        if definite then headBytes(4, values.size).map(_ -> items)
+        else Right(Vector(0x9f.toByte) -> (items :+ break))
+      case Term.Map(values, definite) =>
+        val items =
+          values.iterator.flatMap((k, v) => Iterator(Pending.Item(k), Pending.Item(v))).toList
+        if definite then headBytes(5, values.size).map(_ -> items)
+        else Right(Vector(0xbf.toByte) -> (items :+ break))
+      case Term.Text(value) => writtenText(value).map(_ -> Nil)
+      case Term.TextChunks(chunks) =>
+        chunks
+          .filter(_.nonEmpty)
+          .flatTraverse(writtenText)
+          .map(written => ((Vector(0x7f.toByte) ++ written) :+ 0xff.toByte) -> Nil)
+      case Term.ByteString(bytes) => writtenBytes(bytes).map(_ -> Nil)
+      case Term.ByteChunks(chunks) =>
+        chunks
+          .filter(_.nonEmpty)
+          .flatTraverse(writtenBytes)
+          .map(written => ((Vector(0x5f.toByte) ++ written) :+ 0xff.toByte) -> Nil)
+      case Term.Tag(number, value) => headBytes(6, number).map(_ -> List(Pending.Item(value)))
+      // encodeSimple (`Encoding.hs:335-336`, cborg 0.2.10.0) is written by `simpleMP`
+      // (`Write.hs:563-566`): a value of at most 23 in the head, `0xe0 + n`, a larger one after
+      // `0xf8`; so 20 and 21 are written as the booleans' heads and 22 and 23 as null's and
+      // undefined's, as cborg writes them
+      case Term.Simple(n) =>
+        if n < 0 || n > 255 then Left(ProtocolError.InvalidSimpleValue)
+        else if n <= 23 then Right(Vector((0xe0 + n).toByte) -> Nil)
+        else Right(Vector(0xf8.toByte, n.toByte) -> Nil)
+      case Term.FloatBits(width, bits) =>
+        if !Set(2, 4, 8).contains(width) || bits < 0 || bits >= (BigInt(1) << (width * 8)) then
+          Left(ProtocolError.InvalidFloatBits)
+        else
+          val initial = if width == 2 then 249 else if width == 4 then 250 else 251
+          Right((initial.toByte +: number(bits, width)) -> Nil)
+
+  /** A term in pre-order from a stack on the heap. Nothing bounds its bytes: the reference's driver
+    * sends what the codec encodes (`sendMessage`,
+    * `ouroboros-network/framework/lib/Ouroboros/Network/Driver/Limits.hs:109-117`, c45735a5) and
+    * bounds a message on receipt only (`runDecoderWithLimit`, 295-331), as [[Parser]] does.
+    */
+  private def encodeTerm(term: Term)(using ProtocolWire.Scope): Bytes =
+    @tailrec def go(
+        pending: List[Pending],
+        out: Vector[Byte]
+    ): Either[ProtocolError, Vector[Byte]] =
+      pending match
+        case Nil => Right(out)
+        case next :: rest =>
+          val step = next match
+            case Pending.Raw(bytes) => Right((bytes, Nil))
+            case Pending.Item(item) => written(item)
+          step match
+            case Left(error)           => Left(error)
+            case Right((bytes, items)) => go(items ::: rest, out ++ bytes)
+    Bytes(ProtocolWire.get(go(List(Pending.Item(term)), Vector.empty)))

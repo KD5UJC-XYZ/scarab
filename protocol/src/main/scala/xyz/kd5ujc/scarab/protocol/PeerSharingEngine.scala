@@ -25,11 +25,15 @@ object PeerSharingEngine:
     def decode(item: Bytes): Either[ProtocolError, P]
     private[protocol] def readFrom(cursor: Cursor): Parse[P] =
       cursor.item().flatMapF(item => decode(item).left.map(e => Stop.Fail(Error.PeerItem(e))))
-    private[protocol] def writeTo(writer: Writer, peer: P, limits: Limits): Either[Error, Unit] =
+
+    /** The item must be one complete CBOR item; its own bytes are its only bound, as the reference
+      * bounds a message on receipt only.
+      */
+    private[protocol] def writeTo(writer: Writer, peer: P): Either[Error, Unit] =
       for
         item <- encode(peer).left.map(Error.PeerItem.apply)
         _ <- ProtocolWire
-          .validateItem(item, itemLimits(limits.maxMessageBytes))
+          .validateItem(item, itemLimits(item.size).copy(maxItems = math.max(item.size, 1)))
           .left
           .map(Error.PeerItem.apply)
       yield writer.raw(item)
@@ -79,12 +83,17 @@ object PeerSharingEngine:
     def raw(value: Bytes): Unit = out.write(value.toArray)
     def result: Bytes = Bytes.fromArray(out.toByteArray)
 
+  /** `encodeMsg` (`Codec.hs:44-56`, ouroboros-network c45735a5), a list of peers written as
+    * `encodeListWith` writes it (81-84). Nothing bounds the message written: the driver sends what
+    * the codec encodes (`sendMessage`, `framework/lib/Ouroboros/Network/Driver/Limits.hs:109-117`)
+    * and bounds a message on receipt only (`runDecoderWithLimit`, 295-331), which [[decodeTyped]]
+    * mirrors.
+    */
   private[protocol] def encodeTyped[P](
       state: State,
       sender: Role,
       message: Message[P],
-      peer: PeerCodec[P],
-      limits: Limits
+      peer: PeerCodec[P]
   ): Either[Error, Bytes] =
     transitionTyped(state, sender, message).flatMap { _ =>
       val writer = new Writer
@@ -101,30 +110,22 @@ object PeerSharingEngine:
             writer.byte(0x9f)
             peers
               .foldLeft[Either[Error, Unit]](Right(()))((done, value) =>
-                done.flatMap(_ => peer.writeTo(writer, value, limits))
+                done.flatMap(_ => peer.writeTo(writer, value))
               )
               .map(_ => writer.byte(0xff))
         case Message.Done =>
           writer.head(4, 1); writer.head(0, 2)
           Right(())
-      written.flatMap { _ =>
-        val bytes = writer.result
-        Either.cond(
-          bytes.size <= limits.maxMessageBytes,
-          bytes,
-          Error.TooLarge(limits.maxMessageBytes)
-        )
-      }
+      written.map(_ => writer.result)
     }
 
   def encode[P](
       state: State,
       sender: Role,
       message: Message[P],
-      peer: PeerCodec[P],
-      limits: Limits = Limits()
+      peer: PeerCodec[P]
   ): Either[ProtocolError, Bytes] =
-    encodeTyped(state, sender, message, peer, limits).left.map(ProtocolError.PeerSharing.apply)
+    encodeTyped(state, sender, message, peer).left.map(ProtocolError.PeerSharing.apply)
 
   /** Why a read stopped: the input ended, or the bytes are wrong. */
   private[protocol] enum Stop:
@@ -188,9 +189,14 @@ object PeerSharingEngine:
     def ranged(field: Field, max: BigInt): Parse[Long] =
       uint().flatMapF(v => if v > max then fail(Error.OutOfRange(field, v)) else Right(v.toLong))
 
-    def definiteArray(): Parse[BigInt] =
+    /** The length of a definite array, as cborg's `decodeListLen` reads it: into an `Int`, so that
+      * a length of 2^63 or more is refused as a head that is no array is (`tryConsumeListLen`,
+      * `cborg/src/Codec/CBOR/Read.hs:1925-1964`, with `word64ToInt`, `Codec/CBOR/Magic.hs:506-519`,
+      * cborg 0.2.10.0, the version ouroboros-network 1.2.0.0 builds with, on a 64-bit machine).
+      */
+    def definiteArray(): Parse[Long] =
       head().flatMapF {
-        case Head(_, 4, Some(n)) => Right(n)
+        case Head(_, 4, Some(n)) if n.isValidLong => Right(n.toLong)
         case Head(initial, _, _) => fail(Error.Unexpected(Expectation.DefiniteArray, initial))
       }
 
@@ -229,9 +235,6 @@ object PeerSharingEngine:
           case DecodeResult.Decoded(value, consumed) => Right((at + consumed, value))
       }
 
-  private[protocol] def arity(found: BigInt, expected: Int): Parse[Unit] =
-    stopped(if found == BigInt(expected) then Right(()) else fail(Error.Arity(expected, found)))
-
   /** The peers of a `MsgSharePeers`: a definite or an indefinite list (`Codec.hs:89-93`,
     * ouroboros-network c45735a5).
     */
@@ -253,6 +256,13 @@ object PeerSharingEngine:
 
   /** One message from the front of `bytes`; surplus bytes are left to the caller. The ceiling is
     * checked as fields are read; the caller bounds bytes retained while a message is incomplete.
+    *
+    * `decodeMsg` (`Codec.hs:58-77`, ouroboros-network c45735a5): the length of the message's array
+    * is read and ignored, then its key; the fields read are those the key names, so a message whose
+    * declared length is wrong is read as if it were right, and an item it declares beyond them is
+    * left to the next message. The ceiling is the driver's: a message is refused once its decoding
+    * would pass the limit (`runDecoderWithLimit`,
+    * `ouroboros-network/framework/lib/Ouroboros/Network/Driver/Limits.hs:295-331`).
     */
   private[protocol] def decodeTyped[P](
       state: State,
@@ -268,20 +278,15 @@ object PeerSharingEngine:
       case State.Busy => Either.cond(sender == Role.Server, (), Error.WrongAgency(state, sender))
     val message: Parse[Message[P]] =
       for
-        n <- cursor.definiteArray()
+        _ <- cursor.definiteArray()
         key <- cursor.uint()
         message <- (state, key) match
           case (State.Idle, k) if k == 0 =>
-            for
-              _ <- arity(n, 2)
-              amount <- cursor.ranged(Field.Amount, BigInt(Amount.Max))
-            yield Message.ShareRequest(Amount.trusted(amount))
-          case (State.Busy, k) if k == 1 =>
-            for
-              _ <- arity(n, 2)
-              found <- peers(cursor, peer)
-            yield Message.SharePeers(found)
-          case (State.Idle, k) if k == 2 => arity(n, 1).as(Message.Done)
+            cursor
+              .ranged(Field.Amount, BigInt(Amount.Max))
+              .map(amount => Message.ShareRequest(Amount.trusted(amount)))
+          case (State.Busy, k) if k == 1 => peers(cursor, peer).map(Message.SharePeers(_))
+          case (State.Idle, k) if k == 2 => stopped(Right(Message.Done))
           case _                         => stopped(fail(Error.UnexpectedKey(state, key)))
       yield message
     agency.left.map(Stop.Fail(_)).flatMap(_ => message.run(0)) match

@@ -143,16 +143,12 @@ class PeerSharingSuite extends FailsOnUncaught:
       yield api
     }
 
-  private def sharePeers(
-      peers: Vector[Address],
-      limits: PeerSharing.Limits = PeerSharing.Limits()
-  ) =
+  private def sharePeers(peers: Vector[Address]) =
     PeerSharing
       .encode(
         PeerSharing.State.Busy,
         PeerSharing.Role.Server,
-        PeerSharing.Message.SharePeers(peers),
-        limits
+        PeerSharing.Message.SharePeers(peers)
       )
       .fold(e => fail(e.message), identity)
 
@@ -195,8 +191,7 @@ class PeerSharingSuite extends FailsOnUncaught:
       .map(r => assertEquals(r, Right(Vector(addr(1), addr(2)))))
 
   test("an answer over 5760 bytes ends the conversation"):
-    val big = PeerSharing.Limits(100000)
-    typed(scripted(_ => sharePeers(Vector.tabulate(300)(fat), big)).use(_.request(amount(255))))
+    typed(scripted(_ => sharePeers(Vector.tabulate(300)(fat))).use(_.request(amount(255))))
       .map(r =>
         assert(
           r.left.exists {

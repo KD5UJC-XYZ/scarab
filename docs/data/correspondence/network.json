@@ -97,16 +97,25 @@
      "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
      "symbol": "decodeMsg",
      "lines": [
-      62,
-      75
+      58,
+      77
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "symbol": "decodeListWith",
+     "lines": [
+      86,
+      93
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "the outer array's declared length must match the message here; the reference reads and ignores it",
-   "digest": "8e8040c3046fd913"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the length of the message's array is read and ignored (a definite array whose length cborg's decodeListLen holds in an Int), then the key as a word; in StIdle 0 is MsgShareRequest with its Word8 amount and 2 is MsgDone, in StBusy 1 is MsgSharePeers with a definite or indefinite list of peers (decodeListWith), and any other key is refused. Agency, which the reference has in its state tokens, is the same table checked at run time; the byte limit its Cursor applies while reading is the driver's (runDecoderWithLimit, framework Driver/Limits.hs:295-331, with byteLimitsPeerSharing)",
+   "digest": "2ccdf6e799463953"
   },
   "enum protocol.ChainSync.Message": {
    "upstream": [
@@ -239,20 +248,30 @@
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
      "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "decodeRefuseReason",
+     "symbol": "decodeMsg",
      "lines": [
-      264,
-      289
+      152,
+      195
      ]
     },
     {
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
      "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "decodeMsg",
+     "symbol": "decodeRefuseReason",
      "lines": [
-      152,
-      195
+      264,
+      288
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "encodeMsg",
+     "lines": [
+      119,
+      150
      ]
     },
     {
@@ -268,9 +287,9 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "its private parsers refuse a refusal of another declared length and apply depth, term and string caps; the reference reads and ignores the length and bounds only the message, at 5760 bytes",
-   "digest": "d73f9b7236651464"
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+   "note": "its private parser reads a message as one generic term and checks it afterwards, where decodeMsg reads the list length and key and checks (key, length) before reading on, so a malformed message can be refused at another item and with other text (#796). As the reference since #1029: a refusal's reason is read as decodeRefuseReason reads it, its length read and ignored; generic terms and strings have no depth, count or size cap, only the message's 5760 bytes on receipt (runDecoderWithLimit); the encoder writes a message of any size, as encodeMsg does and the driver sends it (sendMessage, Driver/Limits.hs:109-117); a term keeps an indefinite string's chunks and writes them, an empty indefinite text and its simple values as cborg 0.2.10.0's encodeTerm writes them; and a simple value after 0xf8 is read whatever its value, as decodeTerm reads it. Still different, also #796: a float keeps its width and NaN payload when written, where cborg writes every NaN as f97e00 (Write.hs:580); and tags 2 and 3 are kept with any payload, where decodeTerm reads them as integers and refuses a payload that is not bytes",
+   "digest": "6081cc83eb8aecd1"
   },
   "object protocol.KeepAlive.UpstreamTimeLimits": {
    "upstream": [
@@ -295,18 +314,27 @@
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
      "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs",
-     "symbol": "decodeListLen",
+     "symbol": "encodeRemoteAddress",
+     "lines": [
+      29,
+      42
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs",
+     "symbol": "decodeRemoteAddress",
      "lines": [
       49,
       65
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "an address's declared length must be 3 or 6 here (its private address reader); the reference reads and ignores it",
-   "digest": "916d2007d053b7ca"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its private address reader is decodeRemoteAddress: the address's length is read and ignored, then its tag as a word (0 or 1, any other refused), then one or four Word32 and the port as a Word16; its private writer is encodeRemoteAddress, [0, word32, port] and [1, word32 x 4, port]. The rest converts between the facade's messages and PeerSharingEngine's",
+   "digest": "a5ff280aecb871e4"
   },
   "object protocol.TxSubmission2": {
    "upstream": [
@@ -390,44 +418,6 @@
    "note": "StPropose and StConfirm: shortWait, 10 seconds (node-to-node; node-to-client runs noTimeLimitsHandshake, Codec.hs:91-99)",
    "digest": "a1bd5ee80c0e37d5"
   },
-  "val protocol.Handshake.MaxDepth": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "94de53e5e8af49b5"
-  },
-  "val protocol.Handshake.MaxItems": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "1c17b58b1d6ca8d0"
-  },
   "val protocol.Handshake.MaxMessageBytes": {
    "upstream": [
     {
@@ -455,44 +445,6 @@
    "structure": "same",
    "note": "StPropose and StConfirm both take maxTransmissionUnit, 4 * 1440 = 5760 bytes",
    "digest": "0dfd0613c6b3e091"
-  },
-  "val protocol.Handshake.MaxRefusalBytes": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "18ca90d020934111"
-  },
-  "val protocol.Handshake.MaxStringBytes": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "487dcf4fb68b772e"
   },
   "val protocol.KeepAlive.CodecVersion": {
    "upstream": [
@@ -802,6 +754,14 @@
    "reason": "Scarab's own typed outcome of a hot peer's ChainSync session, which the node places on the governor's asynchronous demotion for its log line and its Antithesis assertions (#1032); the governor decides nothing on it",
    "definitions": [
     "enum network.selection.ReturnReason"
+   ]
+  },
+  {
+   "reason": "stack-safe structural equality, hashing and rendering of a generic term (codec.Tree), which nests as deep as a 5760-byte message allows; the reference's CBOR.Term derives Eq and Show",
+   "definitions": [
+    "def protocol.Handshake.Term#equals",
+    "def protocol.Handshake.Term#hashCode",
+    "def protocol.Handshake.Term#toString"
    ]
   }
  ]

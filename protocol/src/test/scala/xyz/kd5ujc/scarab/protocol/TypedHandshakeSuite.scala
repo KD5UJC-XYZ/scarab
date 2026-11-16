@@ -96,17 +96,40 @@ class TypedHandshakeSuite extends munit.FunSuite:
     assertEquals(Handshake.encodeReason(expected), Right(bytes("8200810e")))
   }
 
-  test("integer facades retain duplicate and refusal-text validation precedence") {
+  test("integer facades retain duplicate validation; a refusal text has no cap of its own") {
     val duplicate = Message.Propose(Vector(99 -> Term.Integer(0), 99 -> Term.Integer(1)))
     assertEquals(
       Handshake.encode(Handshake.Suite.NodeToNode, duplicate),
       Left(ProtocolError.DuplicateVersion)
     )
-    val oversized = "x" * (Handshake.MaxRefusalBytes + 1)
-    Vector(Reason.DecodeError(99, oversized), Reason.Refused(99, oversized)).foreach { reason =>
+    // encodeRefuseReason writes any text (Codec.hs:252-261, ouroboros-network c45735a5): only the
+    // message's 5760 bytes bound it, on receipt
+    val long = "x" * 2000
+    Vector(Reason.DecodeError(14, long), Reason.Refused(14, long)).foreach { reason =>
+      val message = Message.Refuse(reason)
+      val written = Handshake.encode(Handshake.Suite.NodeToNode, message)
       assertEquals(
-        Handshake.encode(Handshake.Suite.NodeToNode, Message.Refuse(reason)),
-        Left(ProtocolError.InvalidOrOversizedRefusalText)
+        written.flatMap(w =>
+          Handshake.decode(Handshake.Suite.NodeToNode, State.Confirm, w).left.map(_.cause)
+        ),
+        Right(message)
       )
     }
+    Vector(Reason.DecodeError(99, long), Reason.Refused(99, long)).foreach { reason =>
+      assertEquals(
+        Handshake.encode(Handshake.Suite.NodeToNode, Message.Refuse(reason)),
+        Left(ProtocolError.UnsupportedLogicalVersion)
+      )
+    }
+  }
+
+  test("decodeReason reads a reason's declared length and ignores it (#1029)") {
+    assertEquals(
+      Handshake.decodeReason[NtnVersion](bytes("85010e6178")),
+      Right(WireReason.DecodeError(NtnVersion.V14, "x"))
+    )
+    assertEquals(
+      Handshake.decodeReason[NtnVersion](bytes("8100820e0f")),
+      Right(WireReason.VersionMismatch(Vector(NtnVersion.V14, NtnVersion.V15)))
+    )
   }

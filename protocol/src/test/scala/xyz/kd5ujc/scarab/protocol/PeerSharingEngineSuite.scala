@@ -56,7 +56,7 @@ class PeerSharingEngineSuite extends FunSuite:
     )
   }
 
-  test("agency is checked before item framing and a generic reply keeps the message byte ceiling") {
+  test("agency is checked before item framing; a generic reply is bounded on receipt only") {
     assertEquals(
       PeerSharingEngine.decodePrefix(State.Busy, Role.Client, Bytes.empty, opaque),
       DecodeResult.Failed(ProtocolError.PeerSharing(Error.WrongAgency(State.Busy, Role.Client)))
@@ -64,8 +64,14 @@ class PeerSharingEngineSuite extends FunSuite:
     val message = Message.SharePeers(Vector(bytes("00")))
     val limit = Limits(maxMessageBytes = 4)
     assertEquals(
-      PeerSharingEngine.encode(State.Busy, Role.Server, message, opaque, limit),
-      Left(ProtocolError.PeerSharing(Error.TooLarge(4)))
+      PeerSharingEngine.encode(State.Busy, Role.Server, message, opaque),
+      Right(bytes("82019f00ff"))
+    )
+    // an item has no bound but its own bytes
+    val large = bytes("5918a0" + "00" * 6304)
+    assertEquals(
+      PeerSharingEngine.encode(State.Busy, Role.Server, Message.SharePeers(Vector(large)), opaque),
+      Right(bytes("82019f") ++ large ++ bytes("ff"))
     )
     assertEquals(
       PeerSharingEngine.decodePrefix(State.Busy, Role.Server, bytes("82019f00ff"), opaque, limit),

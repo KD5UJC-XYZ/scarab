@@ -29,7 +29,9 @@ object PeerSharingServer:
 
   final case class Settings(limits: PeerSharing.Limits = PeerSharing.Limits())
 
-  /** The longest prefix of `peers`, at most `amount` of them, that encodes within the limit. */
+  /** The longest prefix of `peers`, at most `amount` of them, whose encoding is within the limit.
+    * The codec writes a message of any size, as the reference's does; the bound is the server's.
+    */
   private[network] def fitting(
       peers: Vector[Address],
       amount: Amount,
@@ -40,10 +42,9 @@ object PeerSharingServer:
         .encode(
           PeerSharing.State.Busy,
           PeerSharing.Role.Server,
-          PeerSharing.Message.SharePeers(peers.take(n)),
-          settings.limits
+          PeerSharing.Message.SharePeers(peers.take(n))
         )
-        .isRight
+        .exists(_.size <= settings.limits.maxMessageBytes)
     // binary search: the encoding only grows with n
     @tailrec def search(low: Int, high: Int): Int =
       if low >= high then low
@@ -80,8 +81,7 @@ object PeerSharingServer:
           .encode(
             PeerSharing.State.Busy,
             PeerSharing.Role.Server,
-            fitting(values, amount, settings),
-            settings.limits
+            fitting(values, amount, settings)
           )
           .fold(e => illegal[Unit](ProtocolError.PeerSharing(e)), channel.send)
     PeerSharingRuntime.server(wire, source)

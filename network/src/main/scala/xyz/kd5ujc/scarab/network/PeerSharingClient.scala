@@ -43,7 +43,7 @@ object PeerSharingClient:
         Raise[F, NetworkError]
     ): F[Unit] =
       PeerSharing
-        .encode(state, PeerSharing.Role.Client, message, settings.limits)
+        .encode(state, PeerSharing.Role.Client, message)
         .fold(e => illegal(ProtocolError.PeerSharing(e)), channel.send)
 
     val wire = new PeerSharingRuntime.ClientWire[F, Address]:

@@ -15,7 +15,6 @@ enum ProtocolError extends DomainError:
   case CBORDepthLimitExceeded
   case CBORIntegerOutsideUint64
   case CBORItemLimitExceeded
-  case CBORResourceLimitExceeded
   case CandidateLimitExceeded
   case CardanoPointHashMustContain32Bytes(actual: Int)
   case ClientIsNotAwaitingConfirmation
@@ -56,7 +55,6 @@ enum ProtocolError extends DomainError:
   case IncompleteCbor
   case InvalidBlockFetchLimits
   case InvalidBlockingInventoryRequest
-  case InvalidExtendedCBORSimpleValue
   case InvalidExtendedSimpleValue
   case InvalidFloatBits
   case InvalidIndefiniteStringChunk
@@ -109,7 +107,6 @@ enum ProtocolError extends DomainError:
   case SizeHint(value: BigInt)
   case SizeOutsideUint32
   case SizesArity
-  case StringByteLimitExceeded
   case StringLimitExceeded
   case TipArity
   case TrailingBlockFetchBytes
@@ -198,7 +195,6 @@ enum ProtocolError extends DomainError:
     case CBORDepthLimitExceeded                 => "CBOR depth limit exceeded"
     case CBORIntegerOutsideUint64               => "CBOR integer outside uint64"
     case CBORItemLimitExceeded                  => "CBOR item limit exceeded"
-    case CBORResourceLimitExceeded              => "CBOR resource limit exceeded"
     case CandidateLimitExceeded                 => "candidate limit exceeded"
     case CardanoPointHashMustContain32Bytes(_)  => "Cardano point hash must contain 32 bytes"
     case ClientIsNotAwaitingConfirmation        => "client is not awaiting confirmation"
@@ -241,7 +237,6 @@ enum ProtocolError extends DomainError:
     case IncompleteCbor                          => "incomplete CBOR"
     case InvalidBlockFetchLimits                 => "invalid BlockFetch limits"
     case InvalidBlockingInventoryRequest         => "invalid blocking inventory request"
-    case InvalidExtendedCBORSimpleValue          => "invalid extended CBOR simple value"
     case InvalidExtendedSimpleValue              => "invalid extended simple value"
     case InvalidFloatBits                        => "invalid float bits"
     case InvalidIndefiniteStringChunk            => "invalid indefinite string chunk"
@@ -295,7 +290,6 @@ enum ProtocolError extends DomainError:
     case SizeHint(_)                      => "size hint"
     case SizeOutsideUint32                => "size outside uint32"
     case SizesArity                       => "sizes arity"
-    case StringByteLimitExceeded          => "string byte limit exceeded"
     case StringLimitExceeded              => "string limit exceeded"
     case TipArity                         => "tip arity"
     case TrailingBlockFetchBytes          => "trailing BlockFetch bytes"
