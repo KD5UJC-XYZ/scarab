@@ -17,7 +17,7 @@
   ahead of its slot shows a `forged` time before the slot's onset. `adopted`'s `latencyMs`,
   `scarab_forge_adoption_seconds` and `forgeLatencyMs` stay measured from the slot's onset.
 - The KES key evolves at the first slot of each period, also while the node cannot forecast its slots, and never
-  before the clock reaches the period.
+  for a slot before the clock has published it.
 
 ### Added (forging from a leader schedule, #1101)
 

@@ -73,16 +73,16 @@ at once, and a fatal outcome of any of them ends the others and is the run's res
   (`forgeDiscarded`). Every line of an attempt is held, with the time it was made, until the slot's outcome is
   final, and the slot driver publishes them in slot order. A slot the slot driver hands over is forged at once. A
   led slot of a KES period the clock has not reached at the wake, in practice a period's first slot, is not forged
-  ahead: the slot driver hands it over at its onset, after its update of the period, so that no forge moves the KES
-  key ahead of the clock and a reload in the margin is checked against the key the per-slot loop would have. Every
-  attempt made before the onset, one made again after a reload included, checks the clock just before its update of
-  the key and ends there, refused, where the slot's period is later than the clock's; the slot is then made at its
-  onset.
+  ahead, which saves a futile attempt: the slot driver hands it over at its onset, after its update of the period.
 
 **The KES key at each period.** The slot driver updates the key at the first slot of each period it handles,
 under a reservation that a forge holds from its own update to its signature, so that the key cannot move to the
-next period between a forge's update and its signature, and no forge moves it into a period the clock has not
-reached; the lock order is the reservation, then the key's lock. One update is recorded per period and credentials
+next period between a forge's update and its signature; the lock order is the reservation, then the key's lock. No
+change of the KES state for a slot (an evolution, a poisoning, a period's update to record) is made before the clock
+fiber has published the slot: `HotKeys`' changing operations take the published slot and check it under the key's
+lock, which a reload takes too, so that a reload in a slot's wake margin finds the key the per-slot loop would have.
+Before then an attempt only reads the period's recorded update and signs with a key already at the slot's period;
+where it would change the state it ends and the slot is made at its onset. One update is recorded per period and credentials
 (a reload clears it), and every slot of the period reads it: the first failure is published as `KESCouldNotEvolve`
 in the first slot, in slot order, whose checks reach the key, and `KESKeyAlreadyPoisoned` in each later one, as the
 reference's poisoned key answers.

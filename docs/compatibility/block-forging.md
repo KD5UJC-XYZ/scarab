@@ -17,9 +17,9 @@ led slot 50 ms before its onset, the leader check made again against the chain t
 selection at the onset only if its
 block context, inputs and credentials still hold, else forges it again; a led slot of a KES period the clock has not
 reached at the wake, in practice a period's first slot, is forged at its onset, as the reference forges it, once the
-slot driver has updated the key and hands it over, and every attempt made before the onset, one made again after a
-reload included, ends before its update of the key where the slot's period is later than the clock's, so that no forge
-moves the key ahead of the clock; the KES key is
+slot driver has updated the key and hands it over; no change of the KES state for a slot (an evolution, a poisoning, a
+period's update to record) is made before the clock fiber has published the slot, checked by `HotKeys` under the key's
+lock, and an attempt that would change it before then ends and is made at the onset; the KES key is
 updated at each period's first slot under a reservation that a forge holds from its update
 to its signature; the schedule is published in four gauges and the `leaderSchedule` line; the forged body is encoded as the reference encodes it, each of its four parts definite up to 23 entries and indefinite above (#987); the two checks of the block just built (body size, decoding) are forge defects: the slot ends without a block, the block's transactions leave the mempool and the node goes on, logged as `forgeDefect` and counted in `scarab_forge_defects_total` (owner decision of 2026-11-14, #987); G7-F3 retains typed terminal storage/unavailable/internal/defect outcomes, prevents signing after key-update failure and preserves the KES failure event/metric; the leader check computes the VRF output of every slot and builds the proof only for a won slot, where the reference evaluates the certified VRF (output and proof) for every slot (`checkIsLeader`, consensus 808e4005 `Protocol/Praos.hs` 408-434): the decision of every slot and a won slot's VRF output and proof are the same, and only the work changes: a lost slot builds no proof, and a won slot computes its output once more while it is proved (#1024); ECVRF draft-03 proving, Sum6 KES generate/sign/evolve, opcert loading; typed operational-certificate input/verifier causes retained through OCERT, credential checks and reload refusals (#82); KES signing-key validation returns closed error cases with depth/period/length payloads, preserved through `ForgeError.KesKey` and `KesEvolution` (#82); dynamic block forging as cardano-node 11.1.3 (`Run.hs` 620-668, #906): a SIGHUP that finds the VRF key, the certificate or the KES key file absent disables forging (no slot started, no block, no KES write-back, `blockForgingUpdate` `DisabledBlockForging`, `forging_enabled_int` 0), a later SIGHUP that finds good files enables it, and `--start-as-non-producing-node`, `--non-producing-node` and `StartAsNonProducingNode` start with forging disabled; a reload forges with the VRF key it read, and from the opening of the stores a SIGHUP is the reference's initial one (topology read again, `blockForgingUpdate` `NotEffective`) and then the full one on every node (#919)
 
@@ -35,7 +35,7 @@ that slot, slots the schedule does not cover, a SIGHUP of the VRF key, forging o
 early attempt with each change at each point where it can fall, a led first slot of a KES period with a
 certificate issued again for the same KES key installed in its wake margin and with the certificate's expiry, and a
 pending early attempt made again after a reload of another KES key, the clock moved back into the period before, then
-that key's certificate issued again);
+that key's certificate issued again, also with the attempt held before its signature);
 `ForgeInterleavingSuite` (a KES boundary
 during assembly, two fibers on one slot in each order, the KES key's expiry in each order, an epoch's last slot
 across the boundary, forging in slot order across a KES boundary, a clock that never waits); the devnet `pool` and
@@ -51,7 +51,7 @@ since. A held
 transaction the selection has no verdict on is reachable in the wired forger only through a test's ledger (the
 state's parameters cannot hold a deposit beyond its range); the differential test reaches it so. The KES key's
 write-back and its `kesEvolved` line come from whichever of the slot driver and a forge moves the key in the period,
-never before the clock reaches it, and are not held with the slot's lines. A slot not led whose ledger cannot be
+never for a slot the clock has not published, and are not held with the slot's lines. A slot not led whose ledger cannot be
 carried into its epoch (a failed boundary tick) logs `nodeNotLeader`
 where the per-slot loop logged `forgeFailed`, as the reference, which ticks the ledger to a slot only for a slot it leads.
 
