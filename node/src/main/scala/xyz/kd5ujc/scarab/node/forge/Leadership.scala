@@ -51,6 +51,10 @@ object Leadership:
   ): Either[ForgeError, VrfCert] =
     decide(slot, epochNonce, Evaluator.of(key), stake, totalStake, activeSlotsCoeff)
 
+  /** [[check]] of `slot` with the inputs of its epoch. */
+  def check(slot: BigInt, inputs: EpochInputs): Either[ForgeError, VrfCert] =
+    check(slot, inputs.nonce, inputs.key, inputs.stake, inputs.total, inputs.activeSlotsCoeff)
+
   /** [[check]] with the key's evaluations given: the output, its leader value and the threshold
     * decide the slot, and only a won slot is proved.
     */
