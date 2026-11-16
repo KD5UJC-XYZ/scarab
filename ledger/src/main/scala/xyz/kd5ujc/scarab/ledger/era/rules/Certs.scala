@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import cats.Monad
+import cats.{Monad, Order}
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
@@ -66,7 +66,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Staking,
   VRFVerKeyHash,
   VState,
-  VocabError
+  VocabError,
+  Word64,
+  addInterval
 }
 import xyz.kd5ujc.scarab.protocol.StateLayout
 
@@ -91,6 +93,12 @@ private def major[E <: EraTag](pp: PParams[E])(using p: EraPParams[E]): Int =
 private def vocab[F[_]: Monad, A](result: Either[VocabError, A])(using
     Raise[F, LedgerFailure]
 ): F[A] = Sts.lift[F, LedgerFailure, A](result.leftMap(LedgerFailure.Vocab(_)))
+
+/** `binOpEpochNo` (`cardano-slotting/src/Cardano/Slotting/Slot.hs:153-154`, cardano-base c1e1ed8d):
+  * `op` on the epochs' `Word64` s, as `+` and `-` wrap.
+  */
+private def binOpEpochNo(op: (Word64, Word64) => Word64)(a: EpochNo, b: EpochNo): EpochNo =
+  EpochNo.fromUnsigned(op(a.word, b.word).bits)
 
 /** `PoolEnv` (`Shelley/Rules/Pool.hs:74-76`, cardano-ledger f649f975). */
 final case class PoolEnv[E <: EraTag](epoch: EpochNo, pp: PParams[E])
@@ -225,9 +233,9 @@ object POOL:
           _ <- st.set(next)
         yield ()
       case PoolCert.RetirePool(sppId, e) =>
-        val cEpoch = env.epoch.toBigInt
-        // `addEpochInterval cEpoch (pp ^. ppEMaxL)`
-        val limitEpoch = cEpoch + field[E, EpochInterval](pp)(p.hkdEMaxL[Identity]).toLong
+        val cEpoch = env.epoch
+        // `addEpochInterval cEpoch (pp ^. ppEMaxL)`, a `Word64` sum that wraps
+        val limitEpoch = cEpoch.addInterval(field[E, EpochInterval](pp)(p.hkdEMaxL[Identity]))
         for
           ps <- st.get
           _ <- Sts.predicate[F, PredicateFailure](
@@ -235,11 +243,11 @@ object POOL:
             fail(PoolFailure.StakePoolNotRegisteredOnKey(sppId.bytes))
           )
           _ <- Sts.predicate[F, PredicateFailure](
-            cEpoch < e.toBigInt && e.toBigInt <= limitEpoch,
+            Order[EpochNo].lt(cEpoch, e) && Order[EpochNo].lteqv(e, limitEpoch),
             fail(
               PoolFailure.StakePoolRetirementWrongEpoch(
-                Mismatch(e.toBigInt, cEpoch),
-                Mismatch(e.toBigInt, limitEpoch)
+                Mismatch(e.toBigInt, cEpoch.toBigInt),
+                Mismatch(e.toBigInt, limitEpoch.toBigInt)
               )
             )
           )
@@ -501,7 +509,6 @@ object GOVCERT:
       p: ConwayEraPParams[E],
       c: ConwayEraCertState[E],
       st: Stateful[F, CertState[E]],
-      raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     given a: ConwayEraAccounts[E] = c.accountsOf
@@ -549,11 +556,8 @@ object GOVCERT:
               deposit.value == ppDRepDeposit,
               fail(GovCertFailure.DRepIncorrectDeposit(Mismatch(deposit.value, ppDRepDeposit)))
             )
-            expiry <- vocab[F, EpochNo](
-              computeDRepExpiryVersioned[E](pp, env.currentEpoch, dormant)
-            )
             drepState = DRepState(
-              expiry,
+              computeDRepExpiryVersioned[E](pp, env.currentEpoch, dormant),
               mAnchor,
               ppDRepDepositCompact,
               Sorted.emptySet[Credential[Staking]]
@@ -590,16 +594,18 @@ object GOVCERT:
             dRepsL.get(certState).contains(cred),
             fail(GovCertFailure.DRepNotRegistered(Convert.back(cred)))
           ) *>
-            dRepsL.get(certState).get(cred).traverse_ { drepState =>
-              vocab[F, EpochNo](computeDRepExpiry(ppDRepActivity, env.currentEpoch, dormant))
-                .flatMap(expiry =>
-                  st.set(
-                    dRepsL.modify(
-                      _.updated(cred, drepState.copy(expiry = expiry, anchor = mAnchor))
-                    )(certState)
+            st.set(
+              dRepsL.modify(
+                _.updatedWith(cred)(
+                  _.map(
+                    _.copy(
+                      expiry = computeDRepExpiry(ppDRepActivity, env.currentEpoch, dormant),
+                      anchor = mAnchor
+                    )
                   )
                 )
-            }
+              )(certState)
+            )
         case ConwayGovCert.ConwayAuthCommitteeHotKey(coldCred, hotCred) =>
           checkAndOverwriteCommitteeMemberState(
             certState,
@@ -615,29 +621,29 @@ object GOVCERT:
     }
 
   /** `computeDRepExpiryVersioned` (`Conway/Rules/GovCert.hs:278-292`, cardano-ledger f649f975): in
-    * the bootstrap phase (version 9) the dormant epochs are not taken off. An expiry outside
-    * `EpochNo` is refused here, where the reference's `Word64` arithmetic wraps; the flat rules do
-    * the same, and no epoch reaches it.
+    * the bootstrap phase (version 9) the dormant epochs are not taken off.
     */
   def computeDRepExpiryVersioned[E <: EraTag](
       pp: PParams[E],
       currentEpoch: EpochNo,
       numDormantEpochs: EpochNo
-  )(using p: ConwayEraPParams[E]): Either[VocabError, EpochNo] =
+  )(using p: ConwayEraPParams[E]): EpochNo =
     val ppDRepActivity = field[E, EpochInterval](pp)(p.hkdDRepActivityL[Identity])
-    if major[E](pp) == 9 then EpochNo.fromBigInt(currentEpoch.toBigInt + ppDRepActivity.toLong)
+    if major[E](pp) == 9 then currentEpoch.addInterval(ppDRepActivity)
     else computeDRepExpiry(ppDRepActivity, currentEpoch, numDormantEpochs)
 
   /** `computeDRepExpiry` (`Conway/Rules/GovCert.hs:294-306`, cardano-ledger f649f975): the epoch a
-    * DRep acting now is active until, the dormant epochs taken off.
+    * DRep acting now is active until, the dormant epochs taken off, in `Word64` arithmetic that
+    * wraps (`binOpEpochNo (-)` of `addEpochInterval`).
     */
   def computeDRepExpiry(
       ppDRepActivity: EpochInterval,
       currentEpoch: EpochNo,
       numDormantEpochs: EpochNo
-  ): Either[VocabError, EpochNo] =
-    EpochNo.fromBigInt(
-      currentEpoch.toBigInt + ppDRepActivity.toLong - numDormantEpochs.toBigInt
+  ): EpochNo =
+    binOpEpochNo(Word64.wrappingSubtract)(
+      currentEpoch.addInterval(ppDRepActivity),
+      numDormantEpochs
     )
 
 /** `CertEnv` (`Conway/Rules/Cert.hs:77-83`, cardano-ledger f649f975). */
@@ -824,15 +830,12 @@ object CERTS:
             )
           )
       }
-      dormant = updateDormantDRepExpiries[E](env.tx, env.currentEpoch, certState)
       voted <- vocab[F, CertState[E]](
-        dormant.flatMap(
-          updateVotingDRepExpiries[E](
-            env.tx,
-            env.currentEpoch,
-            field[E, EpochInterval](env.pp)(p.hkdDRepActivityL[Identity]),
-            _
-          )
+        updateVotingDRepExpiries[E](
+          env.tx,
+          env.currentEpoch,
+          field[E, EpochInterval](env.pp)(p.hkdDRepActivityL[Identity]),
+          updateDormantDRepExpiries[E](env.tx, env.currentEpoch, certState)
         )
       )
       _ <- st.set(accountsL.modify(EraAccounts.drainAccounts[E](withdrawals, _))(voted))
@@ -849,13 +852,11 @@ object CERTS:
       t: EraTx[E],
       b: ConwayEraTxBody[E],
       c: ConwayEraCertState[E]
-  ): Either[VocabError, CertState[E]] =
+  ): CertState[E] =
     val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
     val hasProposals = b.proposalProcedures[TxLevel.Top](body)(using b.top).size > 0
-    if hasProposals then
-      updateDormantDRepExpiry(currentEpoch, c.certVStateL.get(certState))
-        .map(c.certVStateL.replace(_)(certState))
-    else Right(certState)
+    if hasProposals then c.certVStateL.modify(updateDormantDRepExpiry(currentEpoch, _))(certState)
+    else certState
 
   /** `updateVotingDRepExpiries` (`Conway/Rules/Certs.hs:272-292`, cardano-ledger f649f975): each
     * registered DRep that votes in the transaction is active until `computeDRepExpiry` 's epoch.
@@ -883,30 +884,32 @@ object CERTS:
               dreps.get(cred) match
                 case None => Right(dreps)
                 case Some(d) =>
-                  GOVCERT
-                    .computeDRepExpiry(drepActivity, currentEpoch, numDormantEpochs)
-                    .map(e => dreps.updated(cred, d.copy(expiry = e)))
+                  Right(
+                    dreps.updated(
+                      cred,
+                      d.copy(expiry =
+                        GOVCERT.computeDRepExpiry(drepActivity, currentEpoch, numDormantEpochs)
+                      )
+                    )
+                  )
             }
           case _ => Right(dreps)
       }
       .map(dRepsL.replace(_)(certState))
 
   /** `updateDormantDRepExpiry` (`Conway/Rules/Certs.hs:308-328`, cardano-ledger f649f975): every
-    * DRep's expiry moved up by the dormant epochs, unless that is still before `currentEpoch`, and
-    * the count reset.
+    * DRep's expiry moved up by the dormant epochs in `Word64` arithmetic that wraps (`binOpEpochNo
+    * (+)`), unless that is before `currentEpoch`, and the count reset.
     */
-  def updateDormantDRepExpiry(currentEpoch: EpochNo, vState: VState): Either[VocabError, VState] =
+  def updateDormantDRepExpiry(currentEpoch: EpochNo, vState: VState): VState =
     val numDormantEpochs = vState.numDormantEpochs
-    if numDormantEpochs.word.isZero then Right(vState)
+    if numDormantEpochs.word.isZero then vState
     else
-      vState.dreps.toList
-        .traverse { (cred, d) =>
-          val actualExpiry = d.expiry.toBigInt + numDormantEpochs.toBigInt
-          if actualExpiry < currentEpoch.toBigInt then Right(cred -> d)
-          else EpochNo.fromBigInt(actualExpiry).map(e => cred -> d.copy(expiry = e))
-        }
-        .flatMap(dreps =>
-          EpochNo
-            .fromBigInt(0)
-            .map(zero => vState.copy(dreps = Sorted.map(dreps), numDormantEpochs = zero))
-        )
+      vState.copy(
+        dreps = vState.dreps.transform { (_, d) =>
+          val actualExpiry = binOpEpochNo(Word64.wrappingAdd)(numDormantEpochs, d.expiry)
+          if Order[EpochNo].lt(actualExpiry, currentEpoch) then d
+          else d.copy(expiry = actualExpiry)
+        },
+        numDormantEpochs = EpochNo.fromUnsigned(0L)
+      )
