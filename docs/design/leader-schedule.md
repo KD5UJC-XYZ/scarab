@@ -357,6 +357,19 @@ stream then goes on from the clock's slot, and each slot the clock reaches befor
 per-slot decision from the slot driver (§5.4, Q3 in §9). An epoch whose chunks do not fit in the time left is computed
 without pauses and finished late, its first slots decided the same way.
 
+**It degrades, it does not fail.** The schedule's guarantees come in three tiers, and each slot is decided under the
+best one the host allows:
+
+1. **The target:** the whole epoch's schedule before the epoch starts. This is what the operator's metrics (§5.6) rely
+   on to show the epoch's potential leader slots ahead of it, and it leaves a day or more of slack on mainnet.
+2. **Late, but ahead:** chunks that finish after the epoch has started are not a fault. The requirement that matters
+   is that each chunk is computed before its own first slot, and the pause's cap keeps that while the host meets the
+   assumption above.
+3. **Per slot:** a slot the clock reaches before the schedule covers it is decided at the slot by the slot driver,
+   with `Leadership.check` and the inputs in force, as the per-slot loop decides every slot today.
+
+So a slow or paused host costs only how early the schedule is known, never a slot's decision (decision 9).
+
 **State.** A `Ref` (or `SignallingRef`, so that the forging fiber wakes on a change) holding, per epoch, the inputs the
 schedule was computed from, how far it has got, and the led slots with their certificates. An answer for a slot is
 given only by a schedule whose inputs equal the inputs in force for that slot: a schedule computed from replaced inputs
