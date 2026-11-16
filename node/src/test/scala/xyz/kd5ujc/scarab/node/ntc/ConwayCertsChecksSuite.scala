@@ -317,7 +317,7 @@ class ConwayCertsChecksSuite extends FunSuite:
                   right(s"$at#$k typed")(ConwayTx.decode(t))
                 )
               )
-            case _ => Vector.empty
+            case other => fail(s"$at: not a Conway block: $other")
         }
     }
 
@@ -753,6 +753,28 @@ class ConwayCertsChecksSuite extends FunSuite:
         case xyz.kd5ujc.scarab.ledger.state.Credential.ScriptHashObj(h) =>
           arr(uint(3), bytesN(h.bytes))
       }
+      val registeredDRep = s.cert.vState.dreps.keys.toVector.collect {
+        case xyz.kd5ujc.scarab.ledger.state.Credential.KeyHashObj(h) =>
+          arr(uint(0), bytesN(h.bytes))
+        case xyz.kd5ujc.scarab.ledger.state.Credential.ScriptHashObj(h) =>
+          arr(uint(1), bytesN(h.bytes))
+      }
+      val quiet = edited(s)(_.filterNot(f => isKey(5)(f._1) || isKey(19)(f._1) || isKey(20)(f._1)))
+      val votingOnly = edited(s)(fields =>
+        fields.filterNot(f => isKey(5)(f._1) || isKey(19)(f._1) || isKey(20)(f._1)) ++ Option
+          .when(voters.nonEmpty)(
+            uint(19) -> node(
+              Value.Map(
+                voters.map(v =>
+                  v -> node(
+                    Value.Map(Vector(arr(bytesN(hash(63, 32)), uint(0)) -> arr(uint(1), nul)))
+                  )
+                )
+              )
+            )
+          )
+          .toVector
+      )
       val proposing = edited(s)(fields =>
         fields.filterNot(f => isKey(19)(f._1) || isKey(20)(f._1)) ++ Vector(
           uint(20) -> arr(
@@ -784,6 +806,20 @@ class ConwayCertsChecksSuite extends FunSuite:
           Vector.empty
         ),
         accepted(proposing, "a proposal and votes", Vector.empty),
+        // with no proposal the dormant epochs stay counted: a DRep registered (versioned at 9) and
+        // updated, a registered one updated, and the DReps' votes, each with the count taken off
+        accepted(
+          quiet.copy(cert = dormant),
+          "DReps registered and updated, dormant epochs",
+          Vector(C.regDRep(80, s.flatPp.drepDeposit), C.updateDRep(80)) ++ registeredDRep.map(c =>
+            arr(uint(18), c, nul)
+          )
+        ),
+        accepted(
+          votingOnly.copy(cert = dormant),
+          "votes without a proposal, dormant epochs",
+          Vector.empty
+        ),
         compared(withdrawing, "withdrawals", Vector.empty),
         accepted(draining, "a draining withdrawal", Vector(C.regDeposit(61, keyDeposit(s))))
       ) ++ voting.flatMap(c =>
