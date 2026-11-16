@@ -10,9 +10,8 @@ the `uplc` module is the node's only Plutus evaluator
 ([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)). It
 evaluates phase 2 and admits scripts in the block rules, the mempool and the forger; the Scalus backend and
 the `--plutus-vm` flag are removed ([flags](../running/flags.md)). The node forges with it
-([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)). Protocol 12 and
-later get no verdict until the evaluator is extended to them
-([#1099](https://github.com/KD5UJC-XYZ/scarab/issues/1099), decided on 2026-11-15). What each suite shows is
+([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)). It evaluates
+protocol 12 and later as plutus 1.71.0.0 does ([Plutus at protocol 12](plutus-v4-dijkstra.md), #1099). What each suite shows is
 in [the conformance profile](../plutus-conformance.md#scarabs-own-evaluator).
 
 ## Evidence

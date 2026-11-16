@@ -1438,7 +1438,7 @@
       "id": "plutus-own-evaluator",
       "component": "Plutus: Scarab's own evaluator, the node's only one (I2)",
       "status": "partial",
-      "summary": "The node's only Plutus evaluator (the uplc module), for phase 2 and script admission in the rules, the mempool and the forger; the Scalus backend and --plutus-vm are removed; protocol 12 gets no verdict until #1099",
+      "summary": "The node's only Plutus evaluator (the uplc module), for phase 2 and script admission in the rules, the mempool and the forger; the Scalus backend and --plutus-vm are removed; protocol 12 and later are evaluated as plutus 1.71.0.0 does (#1099)",
       "evidence": {
         "suites": [
           "CekConformanceSuite",
