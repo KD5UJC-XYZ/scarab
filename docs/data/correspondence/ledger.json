@@ -6339,7 +6339,7 @@
    "note": "the `DeltaCoin` as an integer of either sign; the outputs' lovelace wraps modulo 2^64 as `sumAllCoin` (`State/UTxO.hs:207-212`) adds it in a `Word64`, which no reachable input reaches: the collateral outputs are distinct UTxO entries, whose sum is at most the supply. The flat path adds exactly; the two differ only past that bound",
    "digest": "900d1cb4bda04881"
   },
-"def ledger.era.rules.ShelleyUtxow.validateVerifiedWits": {
+  "def ledger.era.rules.ShelleyUtxow.validateVerifiedWits": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -6358,7 +6358,7 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence where the reference's is a set; the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
+   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence where the reference's is a set; the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check. The flat check lists the failing keys as they arrived, a difference in the refusal's content tracked on #796 (https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038); it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
    "digest": "07bebd19d3681314"
   },
   "def ledger.era.rules.AlonzoUtxow.checkScriptIntegrityHash": {
@@ -6381,7 +6381,7 @@
     "EraUtxowSuite"
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
-   "digest": "a80980cb73ef7155"
+   "digest": "b51763c3f2f28614"
   },
   "def ledger.era.rules.BabbageUtxow.babbageMissingScripts": {
    "upstream": [
@@ -6442,10 +6442,11 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraUtxowSuite"
+    "EraUtxowSuite",
+    "ConwayUtxowChecksSuite"
    ],
-   "note": "the reference's empty redeemers carry the bytes mkMemoizedEra gave them at the era's eraProtVerLow; the era's witness set keeps none for a set without redeemers, so the empty redeemers' encoding at the era's lowest version is written here, from the era's witness (ShelleyBasedEra) and its decoder version; compared byte for byte with the flat preimage",
-   "digest": "cd2c605975701249"
+   "note": "the reference's empty redeemers carry the bytes mkMemoizedEra gave them at the era's eraProtVerLow; the era's witness set keeps none for a set without redeemers, so their encoding at the era's lowest version (Era) is written here; compared byte for byte with the flat preimage",
+   "digest": "01f8eb6a445acef0"
   },
   "def ledger.era.ScriptIntegrity.hashScriptIntegrity": {
    "upstream": [
@@ -6466,7 +6467,7 @@
     "EraUtxowSuite"
    ],
    "note": "blake2b-256 of the original bytes",
-   "digest": "766a7f6980913529"
+   "digest": "d2779f4d49b5e1c3"
   },
   "def ledger.era.ScriptIntegrity.mkScriptIntegrity": {
    "upstream": [
@@ -6551,6 +6552,174 @@
    ],
    "note": "the views in the short-lex order of their tags",
    "digest": "a39fd38019b36661"
+  },
+  "trait ledger.era.Era": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs",
+     "symbol": "Era",
+     "lines": [
+      35,
+      64
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the class's protocol versions only, as values (the type families ProtVerLow and ProtVerHigh as the members eraProtVerLow and eraProtVerHigh); the era's name and its previous era are not here",
+   "digest": "d8a15eea4cc264a3"
+  },
+  "def ledger.era.Era#eraProtVerLow": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "eraProtVerLow",
+     "lines": [
+      182,
+      183
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "digest": "beaee9960cc9b79c"
+  },
+  "def ledger.era.Era#eraProtVerHigh": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "eraProtVerHigh",
+     "lines": [
+      186,
+      187
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "digest": "8ed61b8007748fd7"
+  },
+  "given ledger.era.Era.allegra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs",
+     "symbol": "Era AllegraEra",
+     "lines": [
+      99,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "digest": "55a3691663f3bf59"
+  },
+  "given ledger.era.Era.mary": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs",
+     "symbol": "Era MaryEra",
+     "lines": [
+      106,
+      109
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "digest": "5f89b5884a70de0d"
+  },
+  "given ledger.era.Era.babbage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs",
+     "symbol": "Era BabbageEra",
+     "lines": [
+      121,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "digest": "bd261914d88bd764"
+  },
+  "given ledger.era.Era.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs",
+     "symbol": "Era ConwayEra",
+     "lines": [
+      129,
+      133
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the era's versions as values, compared with the flat decoders' range of the era",
+   "digest": "2aec1287f877a3ef"
+  },
+  "given ledger.era.Era.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs",
+     "symbol": "Era DijkstraEra",
+     "lines": [
+      137,
+      141
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the era's versions as values, compared with the flat decoders' range of the era, at the Leios testnet's build",
+   "digest": "4490ac8f7a690eb5"
   }
  },
  "glue": [
@@ -6709,6 +6878,16 @@
    "definitions": [
     "given ledger.era.LangDepView.given_CanEqual_LangDepView_LangDepView",
     "given ledger.era.LangDepView.ordering",
+    "object ledger.era.LangDepView",
+    "object ledger.era.ScriptIntegrity"
+   ]
+  },
+  {
+   "reason": "the companions of the script integrity's types and of the era's versions, holding their instances, their equality and the Scala Ordering of a language view, whose order the reference derives",
+   "definitions": [
+    "given ledger.era.LangDepView.given_CanEqual_LangDepView_LangDepView",
+    "given ledger.era.LangDepView.ordering",
+    "object ledger.era.Era",
     "object ledger.era.LangDepView",
     "object ledger.era.ScriptIntegrity"
    ]

@@ -511,14 +511,20 @@ Conway's rules on the classes follow as the rest of stage 2.
     witnesses, an extraneous script, a wrong integrity hash at versions 10 and 11, and datums without
     redeemers, whose integrity is over the era's empty redeemers. The integrity's bytes equal the flat
     preimage for every set of languages.
+  - A witness set without redeemers has the era's empty redeemers, whose bytes the reference encodes at the
+    era's lowest protocol version. That version comes from the reference's `Era` class, here a class of its
+    own with `eraProtVerLow` and `eraProtVerHigh` (`era/Era.scala`), with instances for Allegra, Mary,
+    Babbage, Conway and Dijkstra. Each instance's versions equal the range the flat decoders read the era at.
   - The signature check lists the keys of failing key witnesses in the witness set's order (`Ord WitVKey`),
     as the reference does; the flat check lists them as they arrived, so the two differ in the refusal's
-    content when two witnesses fail out of that order. The bootstrap witnesses are listed in the order of
+    content when two witnesses fail out of that order: a Gap of the flat path's refusal content, tracked on
+    [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038). The bootstrap witnesses are listed in the order of
     `bootAddrTxWits`, a sequence where the reference's is a set; no case fails one.
   - The scripts needed and provided (`ScriptsNeeded`, `getScriptsProvided`), the needed key witnesses
     (`getWitsVKeyNeeded`), the failing native scripts, the datums and the redeemers wait for `EraUTxO`'s
-    members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction annotated with its
-    decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do not have yet.
+    members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction
+    annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do not have
+    yet (on #85's checklist).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

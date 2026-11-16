@@ -671,6 +671,7 @@
         "EraTxWits",
         "EraTxAuxData",
         "EraScript",
+        "Era",
         "NativeScriptRep",
         "BabbageTxOutRep",
         "EraPParams",
