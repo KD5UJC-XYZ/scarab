@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.node.assertions.Assertions
@@ -515,4 +515,38 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     yield
       assertEquals(offered.map(h => (h.id, h.era)), Vector(parts.id -> Era.Conway))
       assertEquals(body, Some(EraTx(Era.Conway, babbage)))
+  }
+
+  test(
+    "a peer's transaction keeps the era it is sent in: under 11.1 a Babbage pool holds a Babbage one and refuses a Conway one its era reads"
+  ) {
+    // the combinator matches a transaction in the era it names before any injection, and one of a
+    // later era than the ledger's is a mismatch (`matchPolyTx'`, `HardFork/Combinator/InjectTxs.hs:60-82`,
+    // ouroboros-consensus 82ecba32), though Babbage reads these bytes
+    val (conway, _) = payment(Era.Conway, i = 1)
+    val (babbage, parts) = payment(Era.Babbage, i = 2)
+    for
+      log <- Ref.of[IO, Vector[MempoolEvent]](Vector.empty)
+      pool <- Mempool.create[IO](
+        Right(ledger(Era.Babbage)),
+        1000,
+        translating,
+        None,
+        event => log.update(_ :+ event)
+      )
+      sink = pool.sink(failure => IO(fail(s"unexpected fatal: $failure")))
+      _ <- sink.submit(Vector(EraTx(Era.Conway, conway), EraTx(Era.Babbage, babbage)))
+      offered <- pool.source.after(0L, 10)
+      events <- log.get
+    yield
+      assertEquals(
+        offered.map(h => (h.id, h.era)),
+        Vector(parts.id -> Era.Babbage),
+        "the Babbage one is held and offered as Babbage's"
+      )
+      assertEquals(
+        events.collect { case MempoolEvent.Rejected(_, reason) => reason },
+        Vector(Rejection.WrongEra(Era.Conway.index, Era.Babbage)),
+        "the Conway one is refused with the era mismatch"
+      )
   }
