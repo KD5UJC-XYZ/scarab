@@ -45,8 +45,10 @@ state with its DRep pulser, stake and pool distributions, ...; containers of mor
 indefinite as in the ledger's `variableListLenEncoding`). The only effect is reading UTxO entries not
 in the retained state from the backing store (`UtxoNeeds`). Only the era the ledger is in is
 answered: in Conway every query, before it the ledger states, the chain-dependent state, the UTxO
-queries, the reward provenance and the queries that read nothing of the era's own
-(`QueryAnswers.inEveryEra`); a query for another era gets the combinator's mismatch reply. The era history is built
+queries, the reward provenance, the queries that read nothing of the era's own and those of the
+governance state, the current protocol parameters and the governance state (`QueryAnswers.inEveryEra`;
+`GovStateAnswers` writes the last two with the era's codecs, and the parameters below version 21 in the
+legacy encoding the reference uses before Conway); a query for another era gets the combinator's mismatch reply. The era history is built
 from the configured hard-fork epochs, the transitions this run observed and the safe zone of the
 current era (`EraHistory`); a version-triggered hard fork that happened before this run cannot be
 placed and is assumed to start with the previous era. As on the reference, a result has no byte or item
