@@ -21,10 +21,8 @@ each release with its pinned upstream archive.
 
 The profile follows `PlutusConformance/CekEvaluator.hs:46-61` at Plutus commit
 `507cab8cf6192e5143f12be5b2d3005a2928dc6d`: check the whole term for free variables, then evaluate
-the original term with variant E and saturating counting. On the Scalus backend, until 2026-11-15, the
-machine was the one production builds:
-`ScalusEvaluator.corrected` made the evaluation context of the request's language, protocol and
-cost model, and `CorrectedVm.cek` the CEK machine, with the corrected builtin runtimes. Two
+the original term with variant E and saturating counting, on the evaluation context and machine
+production builds (until 2026-11-15, those of the Scalus backend with its corrected builtin runtimes). Two
 settings differ from the ledger's, both because the reference executable differs from the ledger
 there. The budget is the counting one (`counting`) where the ledger restricts. `case` on `Data` is
 allowed (the executable's default caser is `caseBuiltin`) where the ledger refuses it from protocol

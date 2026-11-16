@@ -376,7 +376,7 @@ suite fails if a deliberate change is made to the functional form's filler failu
 variable ordinals (each tried once). The benchmark also compares every input it times before timing it.
 
 **Harness.** No JMH (the build has no plugin); a timed loop in the style of `CastErasureBench`,
-[FlatScanBench](../../tools/src/main/scala/xyz/kd5ujc/scarab/bench/FlatScanBench.scala), with the current thread's
+FlatScanBench (removed with the Scalus backend on 2026-11-15), with the current thread's
 allocated bytes (`ThreadMXBean.getCurrentThreadAllocatedBytes`). Per workload: eight warm-up passes of each
 variant of about 50 ms, then ten rounds of about 250 ms each in ABBA order, the same number of passes for both;
 the reported figure of a JVM is the median of its ten rounds. Workloads:
