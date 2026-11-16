@@ -5,6 +5,27 @@
   "ledger/src/main/scala"
  ],
  "entries": {
+  "def ledger.dijkstra.DijkstraTx.balanceInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "symbol": "DecCBOR (AccountBalanceInterval era)",
+     "lines": [
+      684,
+      696
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "b43979b3ae22c3a1"
+  },
   "def ledger.CborRead.language": {
    "upstream": [
     {

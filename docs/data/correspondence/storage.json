@@ -5,6 +5,216 @@
   "storage/src/main/scala"
  ],
  "entries": {
+  "val storage.haskell.state.DijkstraCodecs.relay": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "EncCBOR StakePoolRelay",
+     "lines": [
+      440,
+      455
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "c17caa82be9dc3ac"
+  },
+  "val storage.haskell.state.DijkstraCodecs.script": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "encodeScript",
+     "lines": [
+      723,
+      726
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "31a1379fa4505b51"
+  },
+  "val storage.haskell.state.DijkstraCodecs.datum": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "EncCBOR (Datum era)",
+     "lines": [
+      294,
+      299
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "86ea45e938c1abfb"
+  },
+  "val storage.haskell.state.DijkstraCodecs.paramUpdate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParamsUpdate era)",
+     "lines": [
+      250,
+      264
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "e41457e10171a2f0"
+  },
+  "val storage.haskell.state.DijkstraCodecs.balanceInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "symbol": "EncCBOR (AccountBalanceInterval era)",
+     "lines": [
+      677,
+      682
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "4122d44cfd7d3c7b"
+  },
+  "val storage.haskell.state.DijkstraCodecs.proposal": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "symbol": "EncCBOR (ProposalProcedure era)",
+     "lines": [
+      582,
+      589
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "4229d0550646dd76"
+  },
+  "val storage.haskell.state.DijkstraCodecs.certificate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "symbol": "EncCBOR (DijkstraTxCert era)",
+     "lines": [
+      255,
+      259
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "18eedaf4f88a2b34"
+  },
+  "val storage.haskell.state.DijkstraCodecs.certificates": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-data/src/Data/OSet/Strict.hs",
+     "symbol": "EncCBOR (OSet",
+     "lines": [
+      112,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "5559b26bb85b8eed"
+  },
+  "val storage.haskell.state.DijkstraCodecs.proposals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-data/src/Data/OSet/Strict.hs",
+     "symbol": "EncCBOR (OSet",
+     "lines": [
+      112,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "78a021dd17b26cd2"
+  },
+  "val storage.haskell.state.DijkstraCodecs.txOut": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "symbol": "EncCBOR (BabbageTxOut era)",
+     "lines": [
+      514,
+      519
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "c91c5ee433130114"
+  },
   "val storage.haskell.state.UtxoCodecs.multiasset": {
    "upstream": [
     {
@@ -12,16 +222,27 @@
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
      "symbol": "MultiAsset",
-     "lines": [154, 156]
+     "lines": [
+      154,
+      156
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": ["CborDatasetSuite"],
+   "evidence": [
+    "CborDatasetSuite"
+   ],
    "digest": "2c6f65524d451b42"
   }
  },
  "glue": [
+  {
+   "reason": "Groups Dijkstra wire codecs and validates constructed values by decoding their serialization with the production ledger decoder and comparing values. The encoded forms are mapped separately; these codecs are not persisted-state formats.",
+   "definitions": [
+    "object storage.haskell.state.DijkstraCodecs"
+   ]
+  },
   {
    "reason": "the decimal numbers in Scarab's own storage file names, written in ASCII digits under every locale; the reference writes the numbers of its own file names with show, which writes ASCII digits",
    "definitions": [

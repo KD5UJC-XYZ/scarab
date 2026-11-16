@@ -179,6 +179,106 @@ class CborDatasetSuite extends FunSuite:
       assert(!proposals(empty), s"proposals $empty")
   }
 
+  test("a standalone Dijkstra block body is exercised by the selected production block decoder") {
+    val body = decoded(DijkstraRules.rules, "block_body")
+    assert(body("8380f6f6"), "the selected Leios build reads a three-field empty body")
+    assert(!body("84f680f6f6"), "the corpus build's four-field layout remains a disagreement")
+    assert(!body("83808100f6"), "the Leios certificate must have its production shape")
+    assertEquals(
+      DatasetCheck.check(
+        "block_body",
+        DijkstraRules.rules.get("block_body"),
+        Kind.Invalid,
+        hex("83808100f6"),
+        None
+      ),
+      Outcome.Met
+    )
+    assertEquals(
+      DatasetCheck.check(
+        "block_body",
+        DijkstraRules.rules.get("block_body"),
+        Kind.Valid,
+        hex("8380f6f6"),
+        Some(hex("8380f6f6"))
+      ),
+      Outcome.Failed(Category.Encode, Unwritten.NoEncoder.message)
+    )
+  }
+
+  test(
+    "the Dijkstra auxiliary_scripts rule is Timelock, while full auxiliary data permits guards"
+  ) {
+    val guard = "82068200581c" + zeros(28)
+    val scripts = "81" + guard
+    val auxiliary = "82a0" + scripts
+    for (rule, sample) <- Vector("native_script" -> guard, "auxiliary_data" -> auxiliary) do
+      assertEquals(
+        DatasetCheck
+          .check(rule, DijkstraRules.rules.get(rule), Kind.Valid, hex(sample), Some(hex(sample))),
+        Outcome.Met,
+        rule
+      )
+    for sample <- Vector(scripts, "818201" + scripts) do
+      assertEquals(
+        DatasetCheck.check(
+          "auxiliary_scripts",
+          DijkstraRules.rules.get("auxiliary_scripts"),
+          Kind.Invalid,
+          hex(sample),
+          None
+        ),
+        Outcome.Met
+      )
+    val timelock = "818204190001"
+    assertEquals(
+      DatasetCheck.check(
+        "auxiliary_scripts",
+        DijkstraRules.rules.get("auxiliary_scripts"),
+        Kind.Valid,
+        hex(timelock),
+        Some(hex(timelock))
+      ),
+      Outcome.Met
+    )
+  }
+
+  test("Dijkstra's standalone parts use production writers and still reject an absent part") {
+    val key = "581c" + zeros(28)
+    val anchor = "82605820" + zeros(32)
+    val samples = Vector(
+      ("certificate", "83078200" + key + "00", "83078200" + key + "00"),
+      ("certificates", "8183078200" + key + "00", "d901028183078200" + key + "00"),
+      ("pool_metadata", "8261784100", "8261784100"),
+      ("drep", "8102", "8102"),
+      ("relay", "82026178", "82026178"),
+      ("dns_name", "6178", "6178"),
+      ("ipv4", "4401020304", "4401020304"),
+      ("ipv6", "50" + zeros(16), "50" + zeros(16)),
+      ("protocol_version", "820d00", "820d00"),
+      ("major_protocol_version", "0d", "0d"),
+      ("gov_action", "8106", "8106"),
+      ("constitution", "82" + anchor + "f6", "82" + anchor + "f6"),
+      ("account_balance_interval", "190001", "01"),
+      ("ex_units", "820102", "820102"),
+      ("protocol_param_update", "a200010102", "a200010102")
+    )
+    for (rule, sample, expected) <- samples do
+      assertEquals(
+        DatasetCheck
+          .check(rule, DijkstraRules.rules.get(rule), Kind.Valid, hex(sample), Some(hex(expected))),
+        Outcome.Met,
+        rule
+      )
+    for (rule, sample) <- Vector(
+        "pool_metadata" -> "f6",
+        "drep" -> "8104",
+        "ipv4" -> "f6",
+        "account_balance_interval" -> "82f6f6"
+      )
+    do assert(!decoded(DijkstraRules.rules, rule)(sample), s"$rule $sample")
+  }
+
   test("a Conway block is read with each of its transactions, as BlockTransport reads one") {
     val block = decoded(ConwayRules.rules, "block")
     val header = Embedding.headerAround(Embedding.headerBody(0, hex("00"))).hex
