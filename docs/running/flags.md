@@ -4,7 +4,11 @@
 Part of [Running the node and the devnet scenarios](../running.md).
 
 Flags, as parsed by `Main.parse` (`node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala`). Every flag takes a
-value except `--forge`, `--dump-state-full` and `--adopt-legacy-network-identity`. An unknown flag, a repeated flag (except `--peer`, `--log-severity` and `--log-every`, which accumulate) and a flag without its value are refused with a typed `ConfigError` (M1).
+value except `--forge`, `--dump-state-full` and `--adopt-legacy-network-identity`. An unknown flag, a repeated flag (except `--peer`, `--log-severity` and `--log-every`, which accumulate) and a flag without its value are refused with a typed `ConfigError` (M1). `--plutus-vm`, which chose the Plutus
+evaluator until 2026-11-15, is such an unknown flag: Scarab's own evaluator (the `uplc` module) is the only Plutus
+evaluator of phase 2 and of script admission, in the block rules, the mempool and the forger
+([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)),
+and a command line that names it is refused (`ConfigProblem.UnknownFlag`, exit status 2) before the node starts.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -37,7 +41,6 @@ value except `--forge`, `--dump-state-full` and `--adopt-legacy-network-identity
 | `--chain-sync-low N` | `200` | Native rolling ChainSync low watermark; zero is allowed, and it must not exceed the high watermark |
 | `--chain-sync-high N` | `300` | Native rolling ChainSync high watermark and maximum outstanding requests; 1 to 65,535 |
 | `--plutus-workers N` | min(4, available CPUs), at least 1 | node-wide bound for dependency-batched Plutus transaction jobs; `1` uses exact serial block validation; ledger application stays ordered; see [design](../design/parallel-plutus.md) |
-| `--plutus-vm` | removed | removed with the Scalus backend ([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)): Scarab's own evaluator (the `uplc` module) is the only Plutus evaluator of phase 2 and of script admission, in the block rules, the mempool and the forger. A command line that names it is refused as any unknown flag is (`ConfigProblem.UnknownFlag`, exit status 2), and the node does not start. The BLS12-381 library check (`blst`) runs before anything evaluates. What the evaluator is checked against: [plutus-conformance.md](../plutus-conformance.md#scarabs-own-evaluator) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`scarab-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--dump-state <dir>` | off | write a ledger-state digest (`<slot>-<hash>.json`) at the points of `--dump-state-at`, for the db-analyser comparison below |
 | `--dump-state-at <points>` | `epoch-boundaries` | with `--dump-state`: `epoch-boundaries` (the first block of every epoch), `epoch-boundaries/N` (every Nth epoch) or `slot,slot,...` (the first block at or after each slot, what `db-analyser --store-ledger` stores) |
