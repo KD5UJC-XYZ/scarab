@@ -14,7 +14,9 @@ import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 import xyz.kd5ujc.scarab.ledger.{Header, NodeError, Nonce}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EpochNo, NewEpochState, PoolDistr, SnapShots}
-import xyz.kd5ujc.scarab.node.mempool.TxKit
+import xyz.kd5ujc.scarab.node.mempool.{MempoolLedger, TxKit}
+import xyz.kd5ujc.scarab.protocol.ChainSync
+import scala.concurrent.duration.*
 
 /** The pieces of the tests of the scheduled forger (#1101, §7): a pool forged with in two harnesses
   * at once, the scheduled forger on the test clock and the per-slot decision ([[Forger.step]]) slot
@@ -129,6 +131,10 @@ trait ScheduleFixture extends ForgeFixture:
   def otherCertificate(kesSeed: Int, start: Int): Change =
     reloaded(side => HotKeySource.Reading.Found(certified(side.pool, kesOf(kesSeed), start, 1)))
 
+  /** The pool's credentials with another KES key, under a certificate issued for it (counter 1). */
+  def certifiedFor(p: Pool, kesSeed: Int): HotKeySource.Candidate[IO] =
+    certified(p, kesOf(kesSeed), p.creds.opCert.kesPeriod.toInt, 1)
+
   private def certified(
       p: Pool,
       kes: Sum6KesSigning.SigningKey,
@@ -191,13 +197,24 @@ trait ScheduleFixture extends ForgeFixture:
       before: Vector[(BigInt, Change)] = Vector.empty,
       at: Vector[(Forger.Point, BigInt, Change)] = Vector.empty,
       scheduler: Boolean = true,
-      committed: Boolean = false
+      committed: Boolean = false,
+      setup: Change = _ => IO.unit,
+      selection: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None
   ):
     def changesAt(slot: BigInt): Vector[Change] =
       before.filter(_._1 == slot).map(_._2) ++ at.filter(_._2 == slot).map(_._3)
 
-  /** The scheduled forger's run of `sc` on the test clock, and what it published. */
-  def scheduledRun(sc: Scenario, p: Pool): IO[Vector[ForgeEvent]] =
+    /** The longest the scheduled run may take on the test clock, past which it fails. */
+    def bound: FiniteDuration = ((until - from).toLong + 120).seconds
+
+  /** What a path published, and the transactions its mempool held at the end. */
+  final case class Outcome(events: Vector[ForgeEvent], mempool: Vector[Bytes])
+
+  /** The scheduled forger's run of `sc` on the test clock, and what it published, bounded by
+    * `sc.bound` on that clock: a settlement that never comes fails the run, and the forger is
+    * cancelled whatever happened.
+    */
+  def scheduledRun(sc: Scenario, p: Pool): IO[Outcome] =
     TestControl.executeEmbed(
       withHandle {
         for
@@ -219,6 +236,7 @@ trait ScheduleFixture extends ForgeFixture:
             source = Some(keysFrom(reading)),
             praos = sc.praos,
             committedChain = sc.committed,
+            selectionLedger = sc.selection,
             pause = Some(point =>
               stalled(point) *> hooks
                 .modify(m => (m - point, m.get(point)))
@@ -226,12 +244,13 @@ trait ScheduleFixture extends ForgeFixture:
             )
           )
           _ <- side.complete(Side(h, reading, p))
+          _ <- sc.setup(Side(h, reading, p))
           fiber <- h.forger.run.start
-          _ <- sc.before.traverse_((slot, change) =>
+          ended <- (sc.before.traverse_((slot, change) =>
             h.settled(slot - 1) *> change(Side(h, reading, p))
-          )
-          ended <- IO.race(h.settled(sc.until), fiber.join)
-          _ <- fiber.cancel
+          ) *> IO.race(h.settled(sc.until), fiber.join))
+            .timeout(sc.bound)
+            .guarantee(fiber.cancel)
           _ <- ended.fold(
             _ => IO.unit,
             o => IO.raiseError(new AssertionError(s"the forger ended: $o"))
@@ -242,13 +261,14 @@ trait ScheduleFixture extends ForgeFixture:
             .raiseError(new AssertionError(s"points never reached: ${left.keys}"))
             .whenA(left.nonEmpty)
           events <- h.seen
-        yield events
+          held <- h.mempool.snapshot
+        yield Outcome(events, held.entries.map(_.id))
       }
     )
 
   /** The per-slot decision of every slot of `sc`, at the slot's onset, the changes made before it.
     */
-  def perSlotRun(sc: Scenario, p: Pool)(using Handle[IO, NodeError]): IO[Vector[ForgeEvent]] =
+  def perSlotRun(sc: Scenario, p: Pool)(using Handle[IO, NodeError]): IO[Outcome] =
     for
       at <- Ref.of[IO, Instant](geometry.slotStart(sc.from))
       reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
@@ -257,9 +277,11 @@ trait ScheduleFixture extends ForgeFixture:
         sc.ledger(p),
         source = Some(keysFrom(reading)),
         clock = Some(at.get),
-        praos = sc.praos
+        praos = sc.praos,
+        selectionLedger = sc.selection
       )
       side = Side(h, reading, p)
+      _ <- sc.setup(side)
       _ <- (sc.from to sc.until).toList.traverse_ { s =>
         at.set(geometry.slotStart(s)) *> sc.changesAt(s).traverse_(_(side)) *>
           h.forger
@@ -267,7 +289,8 @@ trait ScheduleFixture extends ForgeFixture:
             .flatMap(_.fold(f => IO.raiseError(new AssertionError(f.message)), IO.pure))
       }
       events <- h.seen
-    yield events
+      held <- h.mempool.snapshot
+    yield Outcome(events, held.entries.map(_.id))
 
   /** The line that ended each slot, by its name, in the order published. */
   def endings(events: Vector[ForgeEvent], from: BigInt, until: BigInt): Vector[(BigInt, String)] =
@@ -297,7 +320,9 @@ trait ScheduleFixture extends ForgeFixture:
       scheduled: Vector[ForgeEvent],
       perSlot: Vector[ForgeEvent],
       from: BigInt,
-      until: BigInt
+      until: BigInt,
+      scheduledMempool: Vector[Bytes] = Vector.empty,
+      perSlotMempool: Vector[Bytes] = Vector.empty
   ):
     def scheduledEndings: Vector[(BigInt, String)] = endings(scheduled, from, until)
     def perSlotEndings: Vector[(BigInt, String)] = endings(perSlot, from, until)
@@ -306,7 +331,9 @@ trait ScheduleFixture extends ForgeFixture:
 
   def compared(sc: Scenario)(using Handle[IO, NodeError]): IO[Compared] =
     val (p, twin) = twins(sc.kesStart, sc.seed)
-    (scheduledRun(sc, p), perSlotRun(sc, twin)).mapN(Compared(_, _, sc.from, sc.until))
+    (scheduledRun(sc, p), perSlotRun(sc, twin)).mapN((a, b) =>
+      Compared(a.events, b.events, sc.from, sc.until, a.mempool, b.mempool)
+    )
 
   /** The genesis state of `ledger` with `nonce` as the epoch nonce in force. */
   def stateWith(ledger: NewEpochState[Conway], nonce: Nonce): MirrorState =

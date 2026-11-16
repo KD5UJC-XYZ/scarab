@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.IO
+import scala.concurrent.duration.*
 import cats.mtl.Handle
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -362,8 +363,10 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
             forecastWindow = forecastWindow
           )
           fiber <- h.forger.run.start
-          _ <- h.settled(until)
-          _ <- fiber.cancel
+          _ <- h
+            .settled(until)
+            .timeout(((until - from).toLong + 120).seconds)
+            .guarantee(fiber.cancel)
           events <- h.seen
           stats <- h.forger.stats.epoch(5)
         yield (events, stats)
@@ -430,8 +433,7 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
         for
           h <- harness(p, alone(p), live = true, unbounded = true)
           fiber <- h.forger.run.start
-          _ <- h.settled(5020)
-          _ <- fiber.cancel
+          _ <- h.settled(5020).timeout(2.minutes).guarantee(fiber.cancel)
           stamped <- h.stamped.get
         yield
           val forged = stamped.collect { case (at, f: ForgeEvent.Forged) => f.slot -> at }
@@ -447,4 +449,62 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
           )
       }
     )
+  }
+
+  test(
+    "a transaction withheld by a discarded early attempt stays in the mempool for the re-forge"
+  ) {
+    // the early attempt of the slot, on its first parent, has no verdict on a held registration
+    // (its deposit beyond the ledger's range, a ledger no chain state holds): it would leave the
+    // mempool; before the onset a block of the slot before moves the tip, the attempt is
+    // discarded, and the slot is forged again on the new parent, where the registration applies
+    import xyz.kd5ujc.scarab.node.mempool.TxKit.*
+    val keyHash = Bytes.fromArray(Array.fill(28)(9.toByte))
+    val certificate =
+      head(4, 1) ++ head(4, 2) ++ head(0, 0) ++ head(4, 2) ++ head(0, 0) ++ bstr(keyHash)
+    // 100 ada in, 97 out, a fee of 1 and the key deposit of 2
+    val (registration, id) = TxKit.tx(
+      Vector(xyz.kd5ujc.scarab.ledger.TestLedger.txIn(1)),
+      Vector(bob.address() -> BigInt(97000000)),
+      BigInt(1000000),
+      Vector(alice),
+      certificates = certificate
+    )
+    val s = pair.slot
+    val b = pool(kesStart = 50, seed = pair.b)
+    val withheldEarly: (
+        BigInt,
+        xyz.kd5ujc.scarab.protocol.ChainSync.Point,
+        xyz.kd5ujc.scarab.node.mempool.MempoolLedger
+    ) => xyz.kd5ujc.scarab.node.mempool.MempoolLedger =
+      (slot, prev, ledger) =>
+        prev match
+          case xyz.kd5ujc.scarab.protocol.ChainSync.Point.Block(at, _) if at.value == s - 1 =>
+            ledger
+          case _ if slot == s => ledger.withParams(_.copy(keyDeposit = BigInt(1) << 64))
+          case _              => ledger
+    withHandle {
+      compared(
+        Scenario(
+          pair.a,
+          halves(b),
+          s - 1,
+          s + 1,
+          setup = side => side.h.mempool.add(registration, Source.Local).void,
+          selection = Some(withheldEarly),
+          at = Vector((Forger.Point.Signed(s), s, fromOther(b, s - 1)))
+        )
+      ).map { c =>
+        same(c)
+        assertEquals(c.scheduledMempool, c.perSlotMempool, "the mempool at the end")
+        assert(
+          c.scheduled.exists {
+            case ForgeEvent.Forged(slot, _, _, _, _, txs, _, _, _, _, _, _) =>
+              slot == s && txs.contains(id)
+            case _ => false
+          },
+          "the re-forged block holds the registration"
+        )
+      }
+    }
   }

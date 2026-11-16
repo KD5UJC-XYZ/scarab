@@ -163,7 +163,10 @@ trait ForgeFixture:
       assertions: Assertions[IO] = Assertions.noop[IO],
       pause: Option[Forger.Point => IO[Unit]] = None,
       praos: PraosConfig = config,
-      committedChain: Boolean = false
+      committedChain: Boolean = false,
+      selectionLedger: Option[
+        (BigInt, xyz.kd5ujc.scarab.protocol.ChainSync.Point, MempoolLedger) => MempoolLedger
+      ] = None
   )(using Handle[IO, NodeError]): IO[Harness] =
     given Assertions[IO] = assertions
     val rulesGlobals = globals.copy(network = network)
@@ -299,7 +302,8 @@ trait ForgeFixture:
         source = source,
         enabled = enabled,
         chains = Option.unless(committedChain)(ref),
-        pause = pause
+        pause = pause,
+        selectionLedger = selectionLedger
       )
     yield new Harness(follower, forger, ref, mempool, seen, raws, stamped)
 

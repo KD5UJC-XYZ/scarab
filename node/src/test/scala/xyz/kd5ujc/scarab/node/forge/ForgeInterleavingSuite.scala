@@ -5,6 +5,7 @@ import cats.effect.{Deferred, IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import java.time.Instant
+import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.ClockProblem
 import xyz.kd5ujc.scarab.consensus.VolatileChain
@@ -28,12 +29,31 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       .traverse(p => (Deferred[IO, Unit], Deferred[IO, Unit]).mapN((r, f) => p -> Hold(r, f)))
       .map(_.toMap)
 
-  /** What the scheduled forger did in a run: its events, and its counters of each epoch. */
-  private final case class Ran(events: Vector[ForgeEvent], stats: Map[BigInt, ForgeEpochStats])
-
-  /** The pool of `seed` alone, forging from slot `from` on the test clock, with `held` points and
-    * `observe` called at every point; `body` drives the run and ends it.
+  /** What the scheduled forger did in a run: its events, the time of each held line, and its
+    * counters of each epoch.
     */
+  private final case class Ran(
+      events: Vector[ForgeEvent],
+      stamped: Vector[(Instant, ForgeEvent)],
+      stats: Map[BigInt, ForgeEpochStats]
+  )
+
+  /** A run under way: the harness, the forger's outcome once it ends, the pool, and what a reload
+    * finds (the pool's own credentials at first).
+    */
+  private final case class Run(
+      h: Harness,
+      ended: IO[Either[Fatal, Unit]],
+      pool: Pool,
+      reading: Ref[IO, HotKeySource.Reading[IO]]
+  ):
+    /** A SIGHUP that finds `found`. */
+    def reload(found: HotKeySource.Reading[IO]): IO[Unit] =
+      reading.set(found) *> h.forger.reload.flatMap(
+        _.fold(f => IO.raiseError(new AssertionError(f.message)), IO.pure)
+      )
+
+  /** [[runningIn]] with the body given the harness and the forger's outcome. */
   private def running(
       seed: Int,
       from: BigInt,
@@ -42,13 +62,39 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       epoch: BigInt = 5,
       source: Option[HotKeySource[IO]] = None,
       shift: Option[Ref[IO, Long]] = None,
-      observe: Harness => Forger.Point => IO[Unit] = _ => _ => IO.unit
+      observe: Harness => Forger.Point => IO[Unit] = _ => _ => IO.unit,
+      bound: FiniteDuration = Bound
   )(body: (Harness, IO[Either[Fatal, Unit]]) => IO[Unit]): IO[Ran] =
+    runningIn(seed, from, held, kesStart, epoch, source, shift, observe, bound = bound)(r =>
+      body(r.h, r.ended)
+    )
+
+  /** The longest a run may take on the test clock: past it, the run fails rather than waits. */
+  private val Bound: FiniteDuration = 5.minutes
+
+  /** The pool of `seed` alone, forging from slot `from` on the test clock, with `held` points and
+    * `observe` called at every point; `body` drives the run and ends it. The run is bounded on the
+    * test clock (`bound`): a point or a settlement that never comes fails the test rather than
+    * hangs it, and the forger is cancelled and every hold released whatever the body did.
+    */
+  private def runningIn(
+      seed: Int,
+      from: BigInt,
+      held: Map[Forger.Point, Hold],
+      kesStart: Int = 50,
+      epoch: BigInt = 5,
+      source: Option[HotKeySource[IO]] = None,
+      shift: Option[Ref[IO, Long]] = None,
+      observe: Harness => Forger.Point => IO[Unit] = _ => _ => IO.unit,
+      enabled: Boolean = true,
+      bound: FiniteDuration = Bound
+  )(body: Run => IO[Unit]): IO[Ran] =
     TestControl.executeEmbed(
       withHandle {
         for
           self <- Deferred[IO, Harness]
           p = pool(kesStart, seed)
+          reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, seed))
           offset = ((from - 5000) * 1000).toLong
           h <- harness(
             p,
@@ -56,23 +102,26 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
             live = true,
             offsetMillis = offset,
             unbounded = true,
-            source = source,
+            source = source.orElse(Some(keysFrom(reading))),
             clock = shift.map(s =>
               (s.get, IO.realTimeInstant).mapN((back, t) =>
                 t.plusSeconds(5000).plusMillis(offset + back)
               )
             ),
+            enabled = enabled,
             pause = Some(point =>
               self.get.flatMap(observe(_)(point)) *> held.get(point).fold(IO.unit)(_.at)
             )
           )
           _ <- self.complete(h)
           fiber <- h.forger.run.start
-          _ <- body(h, fiber.join.flatMap(_.embedNever))
-          _ <- fiber.cancel
+          _ <- body(Run(h, fiber.join.flatMap(_.embedNever), p, reading))
+            .timeout(bound)
+            .guarantee(fiber.cancel *> held.values.toList.traverse_(_.free))
           events <- h.seen
+          stamped <- h.stamped.get
           stats <- h.forger.stats.byEpoch
-        yield Ran(events, stats.toMap)
+        yield Ran(events, stamped, stats.toMap)
       }
     )
 
@@ -435,4 +484,132 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       case Some(Left(Fatal.Internal(ClockProblem.SystemClockMovedBack(last, now)))) =>
         assert(now < last, s"$now is not before $last")
       case other => fail(s"expected the node to stop on the clock: $other")
+  }
+
+  // ---- the review's interleavings (#1101)
+
+  test(
+    "a forging claim made while the slot driver read forging disabled is awaited and published"
+  ) {
+    // forging is off; the slot driver reads it so for s and is suspended; a reload turns it on and
+    // the forging fiber claims s; the slot driver, resumed, must wait for that forge, not pass s
+    val s = BigInt(5003)
+    val seed = seedLeading(Vector(s))
+    for
+      held <- holds(Forger.Point.Disabled(s))
+      ran <- runningIn(seed, s - 2, held, enabled = false) { r =>
+        for
+          _ <- held(Forger.Point.Disabled(s)).reached.get
+          _ <- r.reload(found(r.pool, seed))
+          _ <- r.h.forger.claimed.discrete.find(_.owned.contains(s)).compile.drain
+          _ <- held(Forger.Point.Disabled(s)).free
+          _ <- r.h.settled(s + 1)
+        yield ()
+      }
+    yield
+      assertEquals(endedIn(ran.events).filter(_ == s), Vector(s), "the forge's outcome, once")
+      assert(forged(ran, s).nonEmpty, "its block, published")
+  }
+
+  test("the same across a KES boundary: the key does not move on before the claimed slot signs") {
+    // s is the last slot of period 50; its forge waits before it reserves the key until the clock
+    // is in period 51, and must still sign with the key of period 50
+    val s = BigInt(5099)
+    val seed = seedLeading(Vector(s))
+    for
+      held <- holds(Forger.Point.Disabled(s), Forger.Point.Context(s))
+      ran <- runningIn(seed, s - 2, held, enabled = false) { r =>
+        for
+          _ <- held(Forger.Point.Disabled(s)).reached.get
+          _ <- r.reload(found(r.pool, seed))
+          _ <- held(Forger.Point.Context(s)).reached.get
+          _ <- held(Forger.Point.Disabled(s)).free
+          _ <- r.h.clocked(s + 1)
+          _ <- held(Forger.Point.Context(s)).free
+          _ <- r.h.settled(s + 1)
+        yield ()
+      }
+    yield
+      assertEquals(forged(ran, s).map(_.kesPeriod), Some(BigInt(50)), "signed in its period")
+      assert(!ran.events.exists(_.isInstanceOf[ForgeEvent.Failed]), ran.events.toString)
+  }
+
+  test("a clock moved back during the early wait: the block is handed over at the onset by it") {
+    // the block is built ahead of its slot; the wall clock then moves back ten seconds, within the
+    // twenty the clock allows: the handover waits until the wall clock reaches the slot's onset
+    val s = BigInt(5003)
+    val seed = seedLeading(Vector(s))
+    for
+      shift <- Ref.of[IO, Long](0L)
+      held <- holds(Forger.Point.Waiting(s))
+      ran <- running(seed, s - 2, held, shift = Some(shift)) { (h, _) =>
+        // the forge has read the clock and set its timer for the onset, 50 ms on
+        held(Forger.Point.Waiting(s)).reached.get *> shift.set(-10000L) *>
+          held(Forger.Point.Waiting(s)).free *> h.settled(s)
+      }
+    yield
+      val adopted = ran.stamped.collect {
+        case (at, ForgeEvent.Loop(ForgeTrace.AdoptedBlock(slot, _, _, _))) if slot == s => at
+      }
+      assertEquals(adopted.size, 1, ran.stamped.toString)
+      assert(!adopted.head.isBefore(geometry.slotStart(s)), s"handed over at ${adopted.head}")
+  }
+
+  private def credentialsReplaced(ran: Ran, s: BigInt)(using munit.Location): Unit =
+    assertEquals(forged(ran, s), None, "no block of replaced credentials is handed over")
+    assert(
+      ran.events.exists {
+        case ForgeEvent.Discarded(slot, DiscardReason.Credentials, Some(_)) => slot == s
+        case _                                                              => false
+      },
+      ran.events.toString
+    )
+
+  test("credentials replaced after an early block is signed and checked, before its handover") {
+    val s = BigInt(5003)
+    val seed = seedLeading(Vector(s))
+    for
+      held <- holds(Forger.Point.Handing(s))
+      ran <- runningIn(seed, s - 2, held) { r =>
+        for
+          _ <- held(Forger.Point.Handing(s)).reached.get
+          _ <- r.reload(HotKeySource.Reading.Absent(java.nio.file.Path.of("kes.skey")))
+          _ <- held(Forger.Point.Handing(s)).free
+          _ <- r.h.settled(s)
+        yield ()
+      }
+    yield credentialsReplaced(ran, s)
+  }
+
+  test("credentials replaced after a block forged at once is signed, before its handover") {
+    // the forging fiber wakes for s only once the clock is in s: the slot is forged at once
+    val s = BigInt(5003)
+    val seed = seedLeading(Vector(s))
+    for
+      held <- holds(Forger.Point.Waking(s), Forger.Point.Handing(s))
+      ran <- runningIn(seed, s - 2, held) { r =>
+        for
+          _ <- held(Forger.Point.Waking(s)).reached.get
+          _ <- r.h.clocked(s)
+          _ <- held(Forger.Point.Waking(s)).free
+          _ <- held(Forger.Point.Handing(s)).reached.get
+          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, seed + 100)))
+          _ <- held(Forger.Point.Handing(s)).free
+          _ <- r.h.settled(s)
+        yield ()
+      }
+    yield credentialsReplaced(ran, s)
+  }
+
+  test("a run whose settlement never comes fails within its bound on the test clock") {
+    val seed = seedLeading(Vector(BigInt(5003)))
+    for
+      held <- holds()
+      result <- running(seed, 5001, held, bound = 30.seconds)((h, _) =>
+        h.settled(BigInt(10000000))
+      ).attempt
+    yield assert(
+      result.left.exists(_.isInstanceOf[java.util.concurrent.TimeoutException]),
+      result.toString
+    )
   }
