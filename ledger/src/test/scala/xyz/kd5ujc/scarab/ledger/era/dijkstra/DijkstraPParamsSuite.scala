@@ -743,18 +743,20 @@ class DijkstraPParamsSuite extends DisciplineSuite:
     val max64 = "1bffffffffffffffff"
     val half64 = "1b8000000000000000"
     def unit(d: Int) = f"d81e8201$d%02x"
+    val minFeeA = "00" + max64
+    val prices = "13" + "82d81e820102d81e820304" // 1/2 and 3/4
+    val maxTxExUnits = "14" + "820506"
+    val maxBlockExUnits = "15" + "820708"
+    val poolThresholds = "1819" + "85" + (5 to 9).map(unit).mkString // 1/5 to 1/9
+    val drepThresholds = "181a" + "8a" + (10 to 19).map(unit).mkString // 1/10 to 1/19
+    val govActionDeposit = "181e" + half64
+    val maxEndorserBlockExUnits = "182f" + "82090a"
+    val refInputsCostPerMultiAssetPolicy = "1837" + max64
+    val refInputsCostPerDatumByte = "1838" + half64
     val bytes = hex(
-      "aa" +
-        "00" + max64 + // minFeeA
-        "13" + "82d81e820102d81e820304" + // prices 1/2, 3/4
-        "14" + "820506" + // maxTxExUnits
-        "15" + "820708" + // maxBlockExUnits
-        "1819" + "85" + (5 to 9).map(unit).mkString + // pool thresholds 1/5 to 1/9
-        "181a" + "8a" + (10 to 19).map(unit).mkString + // DRep thresholds 1/10 to 1/19
-        "181e" + half64 + // govActionDeposit
-        "182f" + "82090a" + // maxEndorserBlockExUnits
-        "1837" + max64 + // refInputsCostPerMultiAssetPolicy
-        "1838" + half64 // refInputsCostPerDatumByte
+      "aa" + minFeeA + prices + maxTxExUnits + maxBlockExUnits + poolThresholds + drepThresholds +
+        govActionDeposit + maxEndorserBlockExUnits + refInputsCostPerMultiAssetPolicy +
+        refInputsCostPerDatumByte
     )
     val u = decoded(bytes).fold(e => fail(e.toString), identity)
     val update = DijkstraPParams.fromUpdate(u).fold(e => fail(e.toString), identity)
