@@ -594,9 +594,10 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     "a forging claim made while the slot driver read forging disabled is awaited and published"
   ) {
     // forging is off; the slot driver reads it so for s and is suspended; a reload turns it on and
-    // the forging fiber claims s; the slot driver, resumed, must wait for that forge, not pass s
+    // the forging fiber claims s; the slot driver, resumed, must wait for that forge, not pass s.
+    // The slot after s, not led, ends in the slot driver
     val s = BigInt(5003)
-    val seed = seedLeading(Vector(s))
+    val seed = seedLeading(Vector(s), Vector(s + 1))
     for
       held <- holds(Forger.Point.Disabled(s))
       ran <- runningIn(seed, s - 2, held, enabled = false) { r =>
@@ -611,6 +612,24 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     yield
       assertEquals(endedIn(ran.events).filter(_ == s), Vector(s), "the forge's outcome, once")
       assert(forged(ran, s).nonEmpty, "its block, published")
+      // the period's start line once, the forge's, and its KES state once
+      assertEquals(
+        ran.events.collect { case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(slot)) =>
+          slot
+        },
+        Vector(s),
+        "the period's start lines"
+      )
+      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.StateInfo]), 1, "the KES state")
+      assertEquals(
+        ran.events.collect { case ForgeEvent.Loop(ForgeTrace.NodeNotLeader(slot)) => slot },
+        Vector(s + 1)
+      )
+      assertEquals(
+        ran.stats.getOrElse(5, ForgeEpochStats()).slotsChecked,
+        endedIn(ran.events).count(geometry.epochOf(_) == 5).toLong,
+        "each slot counted once"
+      )
   }
 
   test("the same across a KES boundary: the key does not move on before the claimed slot signs") {
