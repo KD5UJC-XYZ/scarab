@@ -606,8 +606,6 @@ def pool(args):
         program += ["--local-socket", "/ipc/node.socket"]
         for n in others:
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
-        if getattr(args, "plutus_vm", None):
-            program += ["--plutus-vm", args.plutus_vm]
         program += args.scala_flags.split()
         command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
@@ -752,7 +750,6 @@ def pool(args):
         matched = [c for c in comparisons if c.get("matched")]
         disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
         oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled, until=cutoff)
-        vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
         height = max((e["blockNo"] for e in forged), default=-1)
         logs, undrained = drain_reference_logs(
             others, height, lambda n: tip_at(args.name, f"{ENV}/socket/node{n}/sock"),
@@ -805,7 +802,6 @@ def pool(args):
             "scheduling": scheduling_summary(events, log, args),
             "slotClock": slot_clock(events, shelley),
             "forgerStats": forging_stats,
-            "plutusVm": vm,
             "forgeTiming": {**forge_timing(events, shelley, kinds), "rules": rules},
             "referenceInvalidBlocks": reference_invalid_blocks(logs),
             "referenceLogCounts": {pool: v.get("counts") for pool, v in logs.items()},
@@ -850,8 +846,6 @@ def pool(args):
                             f"the Haskell ledger counts {haskell_count}")
         if not txs:
             failures.append("no transaction was included in a Scala-forged block")
-        if getattr(args, "plutus_vm", None) and vm != args.plutus_vm:
-            failures.append(f"the Scala node logged the Plutus evaluator {vm!r}, the run asked for {args.plutus_vm!r}")
         if summary["referenceInvalidBlocks"]:
             failures.append(f"a Haskell pool's log traces an invalid block or could not be read: "
                             f"{summary['referenceInvalidBlocks']}")

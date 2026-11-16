@@ -7,7 +7,7 @@ import sys
 import time
 from .cluster import database_mounts, freeze_classes, scala_container
 from .consensus import configuration
-from .util import ENTRY, SINGLE_FOLLOWER, FollowerSite, data_root, docker, read_log, stall_dump_arguments
+from .util import ENTRY, SINGLE_FOLLOWER, data_root, docker, read_log, stall_dump_arguments
 
 STOP_SECONDS = 30  # `docker stop -t`: SIGTERM, a kill after this long; the node ends far sooner (issue 89)
 
@@ -21,8 +21,7 @@ def own_build(args):
 def follow(args):
     root = data_root(args.name)
     ports = json.loads((root / "ports.json").read_text())
-    # `--instance`: one of several followers of the run, each with names, directories and ports of its own
-    site = FollowerSite(getattr(args, "instance", None))
+    site = SINGLE_FOLLOWER
     classes = site.directory(root, "classes")
     classpath = freeze_classes(root, getattr(args, "classes", None) or os.environ.get("SCARAB_FOLLOW_CLASSES"),
                                frozen=classes)
@@ -39,8 +38,6 @@ def follow(args):
         # a stall leaves its pipeline state and a fiber dump in the run directory (issue 371)
         stall_flags, stall_mount = stall_dump_arguments(root, site)
         program += stall_flags
-    if getattr(args, "plutus_vm", None):
-        program += ["--plutus-vm", args.plutus_vm]
     if args.seconds:
         program += ["--seconds", str(args.seconds)]
     mounts = [f"{root / 'genesis'}:/genesis:ro"]
@@ -76,35 +73,33 @@ def follow(args):
         sys.exit(proc.wait())
 
 
-def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None, local_socket=False, plutus_vm=None,
-                   site=SINGLE_FOLLOWER):
-    """The `devnet.py follow` process of one follower of the run (`site`: its names and ports)."""
+def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None, local_socket=False):
+    """The `devnet.py follow` process of the run's follower."""
     return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow",
                              *(["--consensus-mode", consensus_mode] if consensus_mode is not None else []),
                              *(["--dump-state"] if oracle else []),
                              *(["--local-socket"] if local_socket else []),
-                             *(["--scala-cpus", str(scala_cpus)] if scala_cpus is not None else []),
-                             *(["--plutus-vm", plutus_vm] if plutus_vm is not None else []),
-                             *(["--instance", site.key] if site.key is not None else [])],
+                             *(["--scala-cpus", str(scala_cpus)] if scala_cpus is not None else [])],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def follower_problem(root, follower, site=SINGLE_FOLLOWER):
-    """A reason to abort the run if the follower of `site` died or logged an error, else None."""
-    events, other = read_log(site.log(root))
+def follower_problem(root, follower):
+    """A reason to abort the run if the follower died or logged an error, else None."""
+    events, other = read_log(SINGLE_FOLLOWER.log(root))
     errors = [e for e in events if e["event"] == "error"]
     if errors:
-        return f"{site.role} error: {errors[0].get('message', errors[0])}"
+        return f"follower error: {errors[0].get('message', errors[0])}"
     if other:
-        return f"unexpected {site.role} output: {other[0][:200]}"
+        return f"unexpected follower output: {other[0][:200]}"
     if follower.poll() is not None:
-        return f"{site.role} exited with {follower.returncode}"
+        return f"follower exited with {follower.returncode}"
     return None
 
 
 def stop_followers(name, root, followers, settle_seconds=2, attempts=15, node=1):
-    """Stop a run's followers (site -> `follow` process) on purpose, so that each one's log is whole and its final tip
-    recorded before it is judged (`site.final_tip`, as `oracle.devnet.stop_follower` records the oracle's).
+    """Stop the run's follower (`followers`: site -> `follow` process, the run's one follower) on purpose, so that its
+    log is whole and its final tip recorded before it is judged (`site.final_tip`, as `oracle.devnet.stop_follower`
+    records the oracle's).
 
     Their only peer, reference node `node`, is frozen (SIGSTOP by PID), so no block or rollback reaches them, and a
     follower's tip is taken as final once two readings of its `/tip`, `settle_seconds` apart, agree (at most
@@ -114,7 +109,7 @@ def stop_followers(name, root, followers, settle_seconds=2, attempts=15, node=1)
     are stopped with SIGTERM (`docker stop -t STOP_SECONDS`, whose own status is checked), so each node ends its
     log itself and its `follow` process writes every line; they ended on the run's request (`endedBy` `stop`). The
     node is continued in every case. A tip is recorded only for a follower that ended on the request. Each record is
-    also written to the run dir (`follower-stop.json`, or `follower-stop-<key>.json`). Returns ({site: {"premature":
+    also written to the run dir (`site.stop_record`, `follower-stop.json`). Returns ({site: {"premature":
     status or None, "endedBy", "endedAt", "finalTip", "exit"}}, problems): what went wrong with the stop itself (a
     stop command that failed, a follower that did not end, a node that could not be continued); `stop_failures`
     judges the statuses."""
@@ -168,7 +163,7 @@ def stop_followers(name, root, followers, settle_seconds=2, attempts=15, node=1)
             try:
                 report[site].update(exit=followers[site].wait(timeout=60), endedBy="stop")
             except subprocess.TimeoutExpired:
-                problems.append(f"the {site.role} did not end within {STOP_SECONDS + 60} s of its stop")
+                problems.append(f"the follower did not end within {STOP_SECONDS + 60} s of its stop")
     finally:
         if pid is not None and not resumed:
             resumed = any(oracle_devnet.signal_node(name, pid, "CONT") for _ in range(3))
@@ -179,7 +174,7 @@ def stop_followers(name, root, followers, settle_seconds=2, attempts=15, node=1)
             record["finalTip"] = None
         elif record["finalTip"] is not None:
             site.final_tip(root).write_text(json.dumps(record["finalTip"]))
-        (root / f"{site.named('follower-stop')}.json").write_text(json.dumps(record))
+        site.stop_record(root).write_text(json.dumps(record))
     return report, problems
 
 

@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from . import util
 from cleanup import container_labels
-from .util import ALL_FOLLOWERS, ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
+from .util import ENV, SINGLE_FOLLOWER, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
 
 
 # Where `up --node-image` mounts the other images' `cardano-node` binaries and the script that picks one per pool.
@@ -753,9 +753,8 @@ def keep_native_evidence(name, root):
 
 
 def down(args, quiet=False):
-    # every Scala node a run may have started: its only follower, or one per evaluator (`util.FollowerSite`)
-    # and the containers `up --node-image` copies binaries out of, should a SIGKILL have left one
-    for c in (*(site.container(args.name) for site in ALL_FOLLOWERS), f"{args.name}-cli", ref(args.name),
+    # the Scala node, and the containers `up --node-image` copies binaries out of, should a SIGKILL have left one
+    for c in (SINGLE_FOLLOWER.container(args.name), f"{args.name}-cli", ref(args.name),
               *(extraction_container(args.name, pool) for pool in POOLS)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)

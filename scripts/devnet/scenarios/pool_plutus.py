@@ -5,7 +5,7 @@ Beside the payment load, rounds of the legacy V1 and V2 cases of `eraplutus.exer
 Haskell pool: per language a script that succeeds and one that fails (`error`), each submitted with the validity
 flag it needs (the failing one with false, so its collateral is taken) and each with the opposite flag, which the
 reference refuses (`ValidationTagMismatch`). The Scala pool's mempool receives the accepted ones from its Haskell
-peers over TxSubmission and sets their flag by running the scripts with the run's evaluator (`MempoolState.admit`,
+peers over TxSubmission and sets their flag by running the scripts with its evaluator (`MempoolState.admit`,
 the reference's `DoNotIntervene`), so a wrong verdict there puts a wrong flag into a block the Scala pool forges,
 which the Haskell pools refuse. The refused ones never leave the reference's mempool, so they are also submitted to
 the Scala node's local socket, which must refuse them for the same rule.

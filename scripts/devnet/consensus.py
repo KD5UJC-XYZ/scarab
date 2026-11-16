@@ -5,8 +5,7 @@ import os
 
 
 def write_whole(path, text):
-    """Write `path` so that a reader sees the old file or the new one, never a part: the followers of a run with
-    one per evaluator each write the same files while the other's node may be reading them."""
+    """Write `path` so that a reader sees the old file or the new one, never a part."""
     part = path.with_name(f".{path.name}.{os.getpid()}")
     part.write_text(text)
     part.replace(path)

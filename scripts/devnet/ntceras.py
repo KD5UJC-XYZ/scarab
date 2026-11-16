@@ -158,7 +158,6 @@ class EraBattery:
         """At most `ATTEMPTS` rounds for one follower, each at its tip then, until one is complete."""
         socket = str(site.directory(self.root, "scala-sock") / "node.socket")
         dump = site.directory(self.root, "ntc-eras")
-        tag = {} if site.key is None else {"follower": site.key}
         errors = []
         for attempt in range(ATTEMPTS):
             if self.stop.is_set():
@@ -176,7 +175,7 @@ class EraBattery:
                 with self.lock:
                     self.reports[site].append(partial)
                 errors.append({"attempt": attempt, "error": str(e)[:300], "kind": "roundError"})
-                self.log({"ntcEras": partial["era"], "protocolMajor": partial["protocolMajor"], **tag,
+                self.log({"ntcEras": partial["era"], "protocolMajor": partial["protocolMajor"],
                           "partial": partial["endedOn"], "failures": partial["failures"][:5]})
                 continue
             except (Exception, SystemExit) as e:  # a point lost, a deadline, a closed connection: a new point
@@ -187,7 +186,7 @@ class EraBattery:
                 report["requestedIn"] = era
             with self.lock:
                 self.reports[site].append(report)
-            self.log({"ntcEras": report["era"], "protocolMajor": report["protocolMajor"], **tag,
+            self.log({"ntcEras": report["era"], "protocolMajor": report["protocolMajor"],
                       **{k: report[k] for k in ("compared", *COUNTS)}, "seconds": report["seconds"],
                       "refusedConnects": report["refusedConnects"], "failures": report["failures"][:5]})
             return
@@ -196,7 +195,7 @@ class EraBattery:
                 self.cancelled[site].append(era)
                 return
             self.unjudged[site].append({"era": era, "attemptErrors": errors})
-        self.log({"ntcEras": era, **tag, "notJudged": errors[-1:]})
+        self.log({"ntcEras": era, "notJudged": errors[-1:]})
 
     def report(self, site):
         """The follower's verdict, its rounds, the requests without a complete round, the cancelled ones, the

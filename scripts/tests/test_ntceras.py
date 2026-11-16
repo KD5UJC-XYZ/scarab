@@ -972,20 +972,6 @@ class EraBatteryTest(unittest.TestCase):
         unjudged = battery.report(self.site)["notJudged"]
         self.assertEqual([e["kind"] for e in unjudged[0]["attemptErrors"]], ["incomparable"])
 
-    def test_the_followers_rounds_of_a_request_run_at_once(self):
-        # each round waits until the other follower's is in progress too
-        together = threading.Barrier(2, timeout=10)
-
-        def judged(name, ref_socket, socket, **k):
-            together.wait()
-            return self.matching(3, 4)
-
-        sites = [FollowerSite("scalus"), FollowerSite("scarab")]
-        battery = ntceras.EraBattery("n", self.root, sites, threading.Event(), rounds=judged)
-        battery.request("mary")
-        battery.step("mary")
-        self.assertEqual([battery.report(site)["perEra"]["mary"]["rounds"] for site in sites], [1, 1])
-
     def test_the_thread_runs_the_requests_and_ends_on_the_stop(self):
         done = threading.Event()
 
