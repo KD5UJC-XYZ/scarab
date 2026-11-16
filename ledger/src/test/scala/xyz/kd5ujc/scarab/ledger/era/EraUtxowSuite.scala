@@ -220,7 +220,8 @@ class EraUtxowSuite extends munit.FunSuite:
     def view(pp: PParams[Conway], l: PlutusLanguage) = LangDepView.getLanguageView(pp, l)
     // PlutusV1: the tag serialised twice (`41 00`), the model an indefinite list serialised as bytes
     assertEquals(view(all, PlutusLanguage.V1), LangDepView(hex("4100"), hex("459f010203ff")))
-    // a missing model is `null`, serialised as bytes for PlutusV1 (`Alonzo/PParams.hs:573-584`)
+    // a missing model is `null`, serialised as bytes for PlutusV1 (`Alonzo/PParams.hs:571-584`,
+    // cardano-ledger f649f975)
     assertEquals(view(none, PlutusLanguage.V1), LangDepView(hex("4100"), hex("41f6")))
     // PlutusV2 and V3: the tag serialised once, the model a definite list
     assertEquals(view(all, PlutusLanguage.V2), LangDepView(hex("01"), hex("8404050607")))
