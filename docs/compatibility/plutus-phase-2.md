@@ -5,7 +5,7 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 
 ## Status as recorded
 
-implemented: Scarab's own evaluator (`uplc`) behind `ScriptEvaluator[F]`, the node's only one since 2026-11-15 ([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator), [its page](plutus-own-evaluator.md)); native era-specific contexts, ordered preparation, cost models/integrity hashes, language/protocol/Flat gates; the cryptographic builtins on the JVM and, for BLS12-381, on jblst's libblst, checked at start-up ([ADR 0025](../adr/0025-jblst.md)). Until 2026-11-15 the node's default evaluator was Scalus 1.4.0, with corrected builtin runtimes and its cryptographic builtins on `libscalus_crypto` ([ADR 0020](../adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md))
+implemented: Scarab's own evaluator (`uplc`) behind `ScriptEvaluator[F]`, the node's only one since 2026-11-15 ([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator), [its page](plutus-own-evaluator.md)); native era-specific contexts, ordered preparation, cost models/integrity hashes, language/protocol/Flat gates; the cryptographic builtins on the JVM and, for BLS12-381, on jblst's libblst, checked at start-up ([ADR 0025](../adr/0025-jblst.md)). Until 2026-11-15 the node's default evaluator was the Scalus backend, with corrected builtin runtimes and its cryptographic builtins on `libscalus_crypto` ([ADR 0020](../adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md))
 
 ## Evidence
 
