@@ -180,13 +180,16 @@ Build the reviewed Linux amd64 verifier with Docker (an existing clean pinned up
 be supplied with `--source`; otherwise the script fetches it):
 
 ```sh
-python3 scripts/prepare_mithril_client.py --out /tmp/scarab/mithril-client
+python3 scripts/prepare_mithril_client.py --out "${SCARAB_DATA_DIR:-/tmp/scarab}/bin/mithril-client"
 ```
 
-The script verifies source, Cargo lockfile, immutable Docker image, integration patch and resulting
-executable digest. Mount that executable, configuration and two trusted verification-key files into
-the JDK container. Mount the destination's parent writable so its sibling ownership lease and staging
-directory share the same filesystem. Then run inside the container:
+`--out` is the file the executable is copied to. It must not be the script's working directory
+(`--work`, by default `${SCARAB_DATA_DIR:-/tmp/scarab}/mithril-client`), where the source is cloned and
+built: the final copy onto that directory fails. The script verifies source, Cargo lockfile, immutable
+Docker image, integration patch and resulting executable digest, and prints one JSON line with the
+executable's digest and path. Mount that executable, configuration and two trusted verification-key
+files into the JDK container. Mount the destination's parent writable so its sibling ownership lease
+and staging directory share the same filesystem. Then run inside the container:
 
 ```sh
 java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-mithril \
@@ -196,13 +199,29 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
   --mithril-client <pinned executable> --db <fresh database> --config <config.json>
 ```
 
+**The inputs.** The Mithril repository's `networks.json` lists, for each network (`release-mainnet`,
+`release-preprod`, ...), the aggregator's URL and the URLs of its genesis and ancillary verification
+keys; take the keys from there or from another source you trust. `--artifact` is the hash of one
+certified Cardano database snapshot; the pinned client lists the aggregator's snapshots, each with its
+`Hash` and the `Cardano node` that wrote it:
+
+```sh
+<pinned executable> --aggregator-endpoint <https aggregator URL> cardano-db snapshot list
+```
+
+The snapshot's ledger state must decode completely in the layout of the default reference build
+(`--reference-build`, [flags](flags.md)): `import-mithril` takes no `--reference-build`, and a state
+that does not decode in it is refused with a typed `error` before anything is published. Follow the
+result with the default build too.
+
 `--genesis-dir <directory>` can replace `--config`. The destination must not exist. The default is
 an official full download including ancillary files; `--source-db <Haskell database>` instead copies
 an offline cache into private staging and runs full certification verification there. Metadata and
 certificate retrieval still use the configured aggregator. An isolated loopback HTTP aggregator is
 accepted for recorded offline fixtures; public endpoints require HTTPS. No implicit `latest`, range,
 overwrite or missing-file acceptance is available. `--timeout-seconds N` bounds the verifier process
-(default 1,800 seconds).
+(default 1,800 seconds, at most seven days). With the default source the verifier downloads the whole
+database within that bound, so the default is too short for a full mainnet download on most links.
 
 Certification and ancillary trust are separate: the genesis key verifies the Mithril certificate
 chain and immutable proof; the ancillary key authenticates the ledger snapshot and unfinished trio.

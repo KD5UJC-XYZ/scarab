@@ -119,19 +119,17 @@ python3 -c 'import json, sys; c = json.load(open(sys.argv[1])); c["ConsensusMode
   "$D/mainnet/config/config.json" "$D/mainnet/config/config-praos.json"
 ```
 
-**The Mithril verifier.** Build the reviewed client
-([snapshots.md](snapshots.md#import-mithril-certified-bootstrap-into-a-fresh-database)). Give it an output path
-other than the script's working directory, `$D/mithril-client`:
+**The Mithril verifier, the trust inputs and the artifact.**
+[snapshots.md](snapshots.md#import-mithril-certified-bootstrap-into-a-fresh-database) says how the reviewed client
+is built, where the aggregator, the two verification keys and the artifact hash come from, which snapshots the
+import takes, and how long it may run. With this page's variables:
 
 ```sh
 python3 scripts/prepare_mithril_client.py --out "$D/bin/mithril-client"
 ```
 
 **Success:** one JSON line whose `binarySha256` is the digest pinned in `scripts/prepare_mithril_client.py` and whose
-`executable` is the path given; any other digest stops the script.
-
-**The trust inputs.** The Mithril repository's `networks.json` lists, for `release-mainnet`, the aggregator's URL and
-the URLs of its genesis and ancillary verification keys. Take them from there, or from another source you trust:
+`executable` is the path given; any other digest stops the script. Then the `release-mainnet` inputs:
 
 ```sh
 mkdir -p "$D/mainnet/mithril"
@@ -140,21 +138,19 @@ curl -fsSL -o "$D/mainnet/mithril/genesis.vkey" <the release-mainnet genesis ver
 curl -fsSL -o "$D/mainnet/mithril/ancillary.vkey" <the release-mainnet ancillary verification key URL>
 ```
 
-**The artifact.** `import-mithril` takes the exact hash of one certified Cardano database snapshot and refuses
-`latest`. The verifier lists the aggregator's snapshots:
+**The artifact**, the exact hash of one certified Cardano database snapshot (`latest` is refused):
 
 ```sh
 docker run --rm -v "$D/bin":/mithril:ro --entrypoint /mithril/mithril-client scarab-jdk:local \
   --aggregator-endpoint "$AGGREGATOR" cardano-db snapshot list
 ```
 
-Take the `Hash` of a recent row. Its ledger state must decode in the layout of the reference build the node runs
-(`--reference-build`, [flags.md](flags.md)): the `Cardano node` column says which node wrote it, and a state in
-another layout is refused by the import.
+Take the `Hash` of a recent row whose ledger state the import reads
+([snapshots.md](snapshots.md#import-mithril-certified-bootstrap-into-a-fresh-database)).
 
-**The import.** The destination must not exist, and its parent (`/data`) must be writable. The verifier downloads
-the whole database within `--timeout-seconds`, whose default ([snapshots.md](snapshots.md#import-mithril-certified-bootstrap-into-a-fresh-database))
-is too short for a mainnet download on most links; at most seven days are accepted:
+**The import.** The destination must not exist, and its parent (`/data`) must be writable. Give
+`--timeout-seconds` the time the whole download needs
+([snapshots.md](snapshots.md#import-mithril-certified-bootstrap-into-a-fresh-database)):
 
 ```sh
 scarab --rm -v "$D/bin":/mithril:ro -- import-mithril \
