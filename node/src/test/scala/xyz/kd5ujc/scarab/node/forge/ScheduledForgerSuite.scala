@@ -60,17 +60,21 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
         }
         val first = c.scheduled.indexWhere(e => endedIn(Vector(e)).exists(_ >= 6000))
         assert(scheduled >= 0 && scheduled < first, "epoch 6's schedule before its first slot")
-        val slots = c.scheduled.collect {
-          case ForgeEvent.Scheduled(epoch, s, _, _) if epoch == 6 => s
-        }
+        val lines = c.scheduled.collect { case s: ForgeEvent.Scheduled if s.epoch == 6 => s }
         val led = c.perSlot.collect {
           case ForgeEvent.Loop(ForgeTrace.NodeIsLeader(s)) if s >= 6000 => s
         }
+        // one line: the inputs derived from a tip in epoch 5 past the freeze are those of a tip in 6
+        assertEquals(lines.size, 1, lines.toString)
         assertEquals(
-          slots.last.filter(_ <= 6030),
+          lines.head.slots.filter(_ <= 6030),
           led,
           "the schedule's led slots are the per-slot check's"
         )
+        // all the stake at f = 1/2: half the epoch's 1000 slots, on average
+        assertEqualsDouble(lines.head.expected, 500.0, 1e-9)
+        // k = 5 blocks past the freeze slot made a block at or after it immutable before the epoch
+        assert(lines.head.settled, lines.head.toString)
       }
     }
   }
