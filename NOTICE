@@ -102,33 +102,17 @@ The reference Cardano node binaries used by scripts/prepare_reference_image.py a
 the official IntersectMBO 11.1.3 release (Apache-2.0); they are downloaded by the
 user and never redistributed in this repository.
 
-Plutus evaluation: the node depends at runtime on Scalus (org.scalus:scalus_3 1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db,
-https://github.com/scalus3/scalus, Apache-2.0) for the UPLC machine and its builtins only; the
-script context, cost-model selection and phase-2 rules are original code written against the
-Cardano ledger's published behaviour. Scalus brings org.scalus:scalus-crypto-jni 0.1.0 (Apache-2.0),
-whose jar bundles one native library per platform (Linux x86_64/arm64, macOS x86_64/arm64,
-Windows x64), extracted at run time by org.scijava:native-lib-loader 2.5.0 (BSD-2-Clause). Each
-library statically links libsodium (ISC; the IOG fork, commit dbb48cce), libsecp256k1 v0.3.2
-(bitcoin-core, MIT) and blst v0.3.15 (supranational, Apache-2.0). Their licence texts, taken from
-the pinned upstream sources because the jars carry none, are plutus/licenses/LICENSE-libsodium,
-plutus/licenses/LICENSE-libsecp256k1, plutus/licenses/LICENSE-native-lib-loader and
-crypto/licenses/LICENSE-blst. The jars are retrieved from Maven Central at build time and never
-redistributed in this repository. Scalus's own ledger-to-script-context translation is consulted
-only as a test oracle.
+Plutus evaluation runs in Scarab's own code (the uplc and plutus modules); no third-party Plutus
+evaluator is a dependency.
 
 Third-party runtime dependencies. None is redistributed in this repository: they are retrieved
 from Maven Central at build time and keep their own licenses (as declared in their POMs at the
 versions pinned in build.sbt). The node's assembly JAR bundles them; it carries the full licence
 and notice texts of every bundled library and native library under META-INF/scarab/licenses/,
 listed with their sources in META-INF/scarab/licenses/index.json (licenses/ in this repository).
-borer is MPL-2.0: its Source Code Form is https://github.com/sirthias/borer at tag v1.18.0.
 
-  Scalus (org.scalus:scalus_3 1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db)                       Apache-2.0   UPLC machine and builtins
   jblst (tech.pegasys:jblst 0.3.18)                        Apache-2.0   bundles supranational/blst v0.3.17
                                                            AND MIT      (Leios BLS); repository LICENSE is MIT
-  scalus-crypto-jni (org.scalus 0.1.0)                     Apache-2.0   bundles libsodium (ISC), libsecp256k1
-                                                           (MIT) and blst (Apache-2.0)
-  native-lib-loader (org.scijava 2.5.0)                    BSD-2-Clause
   RocksDB JNI (org.rocksdb:rocksdbjni 10.2.1)              Apache-2.0 OR GPL-2.0-only; the Apache-2.0
                                                            option is elected here. Bundles the native library.
   Bouncy Castle (org.bouncycastle:bcprov-jdk18on 1.86)     Bouncy Castle Licence (MIT-style)
@@ -145,7 +129,6 @@ borer is MPL-2.0: its Source Code Form is https://github.com/sirthias/borer at t
   scodec-core 2.3.3                                        BSD-3-Clause
   fs2-core, fs2-io 3.14.0                                  MIT (Typelevel)
   http4s-ember-server, http4s-dsl, http4s-circe 0.23.37    Apache-2.0
-  borer-core, borer-derivation 1.18.0 (via Scalus)         MPL-2.0 (file-level copyleft; used unmodified)
   circe-parser 0.14.16                                     Apache-2.0
   Scala 3 library 3.9.0                                    Apache-2.0
   Test only: munit, munit-scalacheck, munit-cats-effect (Apache-2.0), discipline-munit (BSD-3-Clause),
