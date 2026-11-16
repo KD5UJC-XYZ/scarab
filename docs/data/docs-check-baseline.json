@@ -194,18 +194,6 @@
   {
    "kind": "missing-path",
    "path": "docs/architecture/ledger.md",
-   "key": "plutus/PlutusAvailability.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture/ledger.md",
-   "key": "plutus/ScalusEvaluator.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture/ledger.md",
    "key": "plutus/ScriptEvaluator.scala",
    "count": 1
   },

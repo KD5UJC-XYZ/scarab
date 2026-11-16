@@ -5,8 +5,8 @@
     "crypto": "Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational certificates",
     "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
     "network": "Effectful bearer, multiplexer, connections, peer selection",
-    "uplc": "Scarab's own UPLC evaluator, with no Scalus on its class path (ADR 0027)",
-    "plutus": "Plutus evaluation through Scalus, or through the own evaluator (--plutus-vm)",
+    "uplc": "Scarab's own UPLC evaluator, the node's only Plutus evaluator (ADR 0027)",
+    "plutus": "Plutus evaluation through the own evaluator",
     "ledger": "Blocks, transactions, rules, native ledger state",
     "consensus": "Praos family, chain selection, hard fork, state mirror",
     "storage": "Stores, snapshots, migrations, Haskell formats, SCLS, Mithril",
@@ -311,7 +311,6 @@
         "Availability"
       ],
       "suites": [
-        "NoScalusSuite",
         "PlutusDataSuite",
         "DefaultFunSuite",
         "TermFLawsSuite",
@@ -510,7 +509,6 @@
         "SerialisedScriptSuite",
         "FlatReferenceCorporaSuite",
         "FlatConformanceSuite",
-        "OwnFlatDecoderParitySuite",
         "FlatEncoderSuite"
       ],
       "docs": [
@@ -568,45 +566,23 @@
     {
       "module": "plutus",
       "path": "plutus",
-      "responsibility": "Script evaluator algebra, the Scalus adapter and the adapter of the own evaluator (uplc), the backend choice of --plutus-vm, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
+      "responsibility": "Script evaluator algebra and its interpreter over the own evaluator (uplc), the one backend of the rules, the mempool and the forger; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
       "entryPoints": [
         "ScriptEvaluator",
-        "ScalusEvaluator",
         "ScarabEvaluator",
-        "PlutusVm",
-        "PlutusAvailability",
-        "RetryingMemo"
+        "PlutusBackend"
       ],
       "suites": [
-        "ScalusEvaluatorSuite",
         "ScarabEvaluatorSuite",
-        "PlutusBackendsSuite",
         "PlutusDataSuite",
-        "PlutusAvailabilitySuite",
-        "BuiltinCostingSuite",
-        "ScalusReproducersSuite",
-        "NativeTextReferenceSuite"
+        "BuiltinCostingOracleSuite",
+        "PlutusBoundaryOracleSuite"
       ],
       "docs": [
-        "docs/adr/0003-plutus-through-scalus.md",
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md",
         "docs/adr/0018-parallel-plutus-after-ordered-preparation.md",
         "docs/design/parallel-plutus.md",
         "docs/design/script-results.md"
-      ]
-    },
-    {
-      "module": "plutus",
-      "path": "scalus/uplc",
-      "responsibility": "Scarab view over Scalus programs, in Scalus' own package",
-      "entryPoints": [
-        "ScarabProgramView"
-      ],
-      "suites": [
-        "ScalusEvaluatorSuite"
-      ],
-      "docs": [
-        "docs/adr/0003-plutus-through-scalus.md"
       ]
     },
     {
@@ -628,10 +604,8 @@
         "ProtocolParamsSuite",
         "PreparedBlockSuite",
         "RatifySuite",
-        "ScriptContextOracleSuite",
         "VotingProceduresSuite",
-        "WithdrawalContextsSuite",
-        "PlutusBackendDifferentialSuite"
+        "WithdrawalContextsSuite"
       ],
       "docs": [
         "docs/adr/0007-era-indexed-state.md",
@@ -1381,8 +1355,7 @@
       "path": "bench",
       "responsibility": "Hand-run benchmarks for the `bench` package (its package, for its package-private access)",
       "entryPoints": [
-        "CastErasureBench",
-        "FlatScanBench"
+        "CastErasureBench"
       ],
       "suites": [],
       "docs": []
@@ -1624,7 +1597,7 @@
     {
       "module": "tools",
       "path": "plutus/ndc",
-      "responsibility": "Hand-run writers of Scarab's reports for the uplc-conformance and uplc-turbo scenarios of pragma-org's node-diversity-conformance site, on either Plutus evaluator (in the `plutus` package for the Scalus backend's package-private machine)",
+      "responsibility": "Hand-run writers of Scarab's reports for the uplc-conformance and uplc-turbo scenarios of pragma-org's node-diversity-conformance site, on the node's Plutus evaluator",
       "entryPoints": [
         "UplcConformanceMain",
         "UplcTurboMain",
@@ -1685,7 +1658,7 @@
     {
       "module": "tools",
       "path": "uplc",
-      "responsibility": "Hand-run benchmarks for the `uplc` package: the own CEK machine's throughput against Scalus's",
+      "responsibility": "Hand-run benchmarks for the `uplc` package: the own CEK machine's throughput",
       "entryPoints": [
         "CekThroughputMain"
       ],

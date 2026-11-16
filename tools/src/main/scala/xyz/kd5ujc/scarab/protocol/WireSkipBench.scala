@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Development tool: the imperative CBOR walk of [[ProtocolWire.Reader]] (`item`, production's)
   * against [[WireSkipFunctional]] (the same checks without mutation), timed and with the thread's
-  * allocation counted (issue 657; the method of `docs/performance.md` §40, `FlatScanBench`).
+  * allocation counted (issue 657; the method of `docs/performance.md` §40).
   *
   * `tools/runMain xyz.kd5ujc.scarab.protocol.WireSkipBench [imperative|functional] [rounds]`
   *
