@@ -576,7 +576,8 @@ nonce that a fork then replaces is replaced by the restart, and a led slot is ch
 
 ## 7. Conformance evidence
 
-Decision 9 names three pieces of evidence. The first, the differential test, is the first three items below.
+Decision 9 names three pieces of evidence. The first, the differential test, is every item below before the devnet
+scenario.
 
 - **A differential test of both paths.** The per-slot decision is the `Leadership.check` of today. Over generated
   epochs (lengths, slot ranges across a boundary), nonces (neutral and hashed), stakes (zero, all, between), totals,
@@ -588,7 +589,7 @@ Decision 9 names three pieces of evidence. The first, the differential test, is 
   from that state; slots the clock reaches before the schedule covers them, decided inline (§5.4); a SIGHUP that
   installs another VRF key mid-epoch; forging switched off and on; and a start mid-epoch. For every slot the clock
   reaches, the decision and the certificate it acts on must equal `Leadership.check` with the inputs in force at that
-  slot. The early attempt and a KES boundary during assembly have the tests of the next two items.
+  slot. The early attempt, the KES key and the slot driver have the tests of the items that follow.
 - **Tests of the early attempt (§5.3).** Deterministic, under `TestControl`, with one change at each point where it can
   fall: between the wake and the re-check, between the re-check and the signing, and between the signing and the onset.
   The changes are a block of an earlier slot that moves the tip; a fork that changes the nonce or the mark
@@ -597,8 +598,23 @@ Decision 9 names three pieces of evidence. The first, the differential test, is 
   is then; an early refusal that clears before the onset is forged; a refusal that stands is logged once; and no block
   signed with replaced credentials is handed over.
 - **A KES boundary during assembly (§5.5).** Under `TestControl`, a forge of a period's last slot is suspended just
-  before it signs while the clock crosses into the next period: the timer waits, the block is signed with the key of its
-  own period and handed over, and the key moves to the next period after the signature, written back once.
+  before it signs while the clock crosses into the next period: the slot driver waits on the reservation, the block is
+  signed with the key of its own period and handed over, and the key moves to the next period after the signature,
+  written back once.
+- **Two fibers, one slot (§5.4).** A slot led under inputs A has its early attempt under way when a fork changes the
+  inputs to B, under which it is not led, before the onset; run with the forging fiber's claim first and with the slot
+  driver reaching the slot first. In both orders the slot has one outcome, `nodeNotLeader`, counted once in
+  `slotsChecked`, `notLeader` and the about-to-lead counter, and no block. And when the slot driver claims a slot
+  first and the forging fiber then wakes for it, the fiber finds the claim and leaves the slot.
+- **A KES expiry boundary (§5.5).** The certificate's window ends at a period's first slot. Run with the slot driver's
+  update first, with a forge's update first, and with the slot driver waiting on a reservation held by a forge of a
+  later slot: `KESCouldNotEvolve` appears once, in the first slot in slot order whose checks reach the KES key,
+  `KESKeyAlreadyPoisoned` in each later one, and the gauges come from the one recorded result.
+- **The epoch's last slot (§5.4).** A forge of an epoch's last slot is suspended across the boundary: `forgeEpoch`
+  comes after that slot's outcome and counts it.
+- **The clock never waits (§5.4).** With the slot driver blocked on a suspended forge, the clock fiber keeps
+  publishing slots and its traces on time, a clock moved back by more than 20 s still stops the node, and the slots
+  that passed meanwhile get no line and no count.
 - **The devnet `pool` scenario**: the reference node's `query leadership-schedule` is its oracle, and every scheduled
   slot is forged or taken by another pool's block. [CONTRIBUTING](../../CONTRIBUTING.md#the-one-scenario-per-area)
   also asks `kes-rotate`, since the KES evolution and the SIGHUP path change.
