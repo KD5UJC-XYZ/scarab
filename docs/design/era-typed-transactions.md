@@ -478,9 +478,20 @@ Conway's rules on the classes follow as the rest of stage 2.
     comparison could not show them. The collateral count is now narrowed to a `Word16` in both, as the
     reference's `fromIntegral` narrows it. `validateWrongNetwork` keeps each address's raw bytes where the
     reference collects decoded addresses, equal by value: a Gap of the refusal's content, tracked on #796.
-  - The predicates whose failures carry outputs (the output sizes and the bootstrap attributes) wait for each
-    era's failure types (§3.4); the fee, the value conserved and the collateral wait for the UTxO class
-    (`EraUTxO`) and the certificate state's.
+- **The UTxO class and the fees** (`ledger/.../era/EraUTxO.scala`, `era/rules/`): `EraUTxO` with
+  `getConsumedValue`, `getProducedValue` and `getMinFeeTxUtxo` (`State/UTxO.hs:242-285`), and Conway's
+  instance of them, with the deposit and refund totals of certificates and bodies, `sizeTxF`, `getMinFeeTx`
+  and the reference's parameter lenses they read. Then `feesOK` with the collateral checks,
+  `validateMaxTxSizeUTxO` and `validateExUnitsTooBigUTxO`.
+  - On every Conway case of the refusal corpora the minimum fee and the values consumed and produced equal
+    the flat rule's, and each predicate's verdict equals the flat one's; each refuses somewhere in the corpus.
+  - A failure that carries an output or a value carries the node's stored form of it, through a glue class
+    (`StoredTxOut`) with Conway's instance only, until each era's failure types (§3.4).
+  - `EraUTxO` lands without the members UTXOW reads (the scripts needed and provided, the witnesses needed)
+    and without `AlonzoEraUTxO`, tracked on #85.
+  - Still to port before UTXO is whole: the value conserved (with the certificate state's class), the output
+    sizes (with `Val`'s `pointwise` and the serialised size of a value), the bootstrap attributes and
+    `validateOutsideForecast`, then `babbageUtxoValidation` put together.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

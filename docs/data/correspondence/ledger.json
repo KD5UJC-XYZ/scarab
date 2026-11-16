@@ -5118,6 +5118,1185 @@
    ],
    "note": "`SlotInterval 0` of the empty record",
    "digest": "8c0cb1e6f81ac495"
+  },
+  "def ledger.era.EraPParams.ppTxFeePerByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppTxFeePerByteL",
+     "lines": [
+      516,
+      517
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "be6902a90b054e37"
+  },
+  "def ledger.era.EraPParams.ppTxFeeFixedCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppTxFeeFixedCompactL",
+     "lines": [
+      532,
+      533
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "7ede3bb8105b7f8e"
+  },
+  "def ledger.era.EraPParams.ppMaxTxSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppMaxTxSizeL",
+     "lines": [
+      540,
+      541
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "283d958456551db3"
+  },
+  "def ledger.era.EraPParams.ppKeyDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppKeyDepositCompactL",
+     "lines": [
+      552,
+      553
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "3f9f6755b1276909"
+  },
+  "def ledger.era.EraPParams.ppPoolDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "ppPoolDepositCompactL",
+     "lines": [
+      560,
+      561
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "3b87e8637af0b534"
+  },
+  "def ledger.era.AlonzoEraPParams.ppPricesL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "ppPricesL",
+     "lines": [
+      160,
+      161
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "28c2d801a4e53db4"
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxTxExUnitsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "ppMaxTxExUnitsL",
+     "lines": [
+      163,
+      164
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "7b79fe631be848ae"
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxValSizeL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "ppMaxValSizeL",
+     "lines": [
+      169,
+      170
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "f1fa9e376feb2d89"
+  },
+  "def ledger.era.AlonzoEraPParams.ppCollateralPercentageL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "ppCollateralPercentageL",
+     "lines": [
+      172,
+      173
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "247a5cbcb00635d4"
+  },
+  "def ledger.era.BabbageEraPParams.ppCoinsPerUTxOByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "symbol": "ppCoinsPerUTxOByteL",
+     "lines": [
+      79,
+      81
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "edbf3411e84c80b4"
+  },
+  "def ledger.era.ConwayEraPParams.ppGovActionDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "ppGovActionDepositCompactL",
+     "lines": [
+      240,
+      242
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "bc161588c7432220"
+  },
+  "def ledger.era.ConwayEraPParams.ppDRepDepositCompactL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "ppDRepDepositCompactL",
+     "lines": [
+      247,
+      248
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "548c5f2fc4aaef77"
+  },
+  "def ledger.era.ConwayEraPParams.ppMinFeeRefScriptCostPerByteL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "ppMinFeeRefScriptCostPerByteL",
+     "lines": [
+      256,
+      258
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "digest": "92c9e2cbe248dc0e"
+  },
+  "def ledger.era.AlonzoTx.alonzoMinFeeTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "alonzoMinFeeTx",
+     "lines": [
+      445,
+      458
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "fc8652dc45bd088e"
+  },
+  "def ledger.era.AlonzoTx.totExUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "totExUnits",
+     "lines": [
+      460,
+      464
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the units are the witness decoder's, which it reads as unsigned integers, so the sum is the reference's `ExUnits` of naturals",
+   "digest": "740632db8e8b6a25"
+  },
+  "def ledger.era.AlonzoTx.txscriptfee": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "symbol": "txscriptfee",
+     "lines": [
+      185,
+      190
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "f97fc976e17c58f6"
+  },
+  "def ledger.era.BabbageUTxO.getReferenceScriptsNonDistinct": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "symbol": "getReferenceScriptsNonDistinct",
+     "lines": [
+      157,
+      166
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "3caeb6fa86f93ead"
+  },
+  "def ledger.era.ConwayEraTxBody#conwayProposalsDeposits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs",
+     "symbol": "conwayProposalsDeposits",
+     "lines": [
+      383,
+      390
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "digest": "2f6c41458344c9d0"
+  },
+  "def ledger.era.ConwayEraTxCert#conwayTotalDepositsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "symbol": "conwayTotalDepositsTxCerts",
+     "lines": [
+      817,
+      826
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "digest": "2b223419a43e8264"
+  },
+  "def ledger.era.ConwayEraTxCert#conwayDRepDepositsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "symbol": "conwayDRepDepositsTxCerts",
+     "lines": [
+      828,
+      836
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "digest": "f066e90d957a632f"
+  },
+  "def ledger.era.ConwayEraTxCert#conwayTotalRefundsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "symbol": "conwayTotalRefundsTxCerts",
+     "lines": [
+      839,
+      848
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "digest": "d886ba1047f50a01"
+  },
+  "def ledger.era.ConwayEraTxCert#conwayDRepRefundsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "symbol": "conwayDRepRefundsTxCerts",
+     "lines": [
+      852,
+      858
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "digest": "197725423e4134af"
+  },
+  "def ledger.era.EraTxCert#shelleyTotalDepositsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "symbol": "shelleyTotalDepositsTxCerts",
+     "lines": [
+      611,
+      630
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "digest": "09624ebc5a99a2ea"
+  },
+  "def ledger.era.EraTxCert#shelleyTotalRefundsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "symbol": "shelleyTotalRefundsTxCerts",
+     "lines": [
+      633,
+      660
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "digest": "186187ab26ee314a"
+  },
+  "def ledger.era.EraTx#getMinFeeTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "getMinFeeTx",
+     "lines": [
+      215,
+      221
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "60e174376525a533"
+  },
+  "def ledger.era.EraTx#sizeTxF": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "sizeTxF",
+     "lines": [
+      198,
+      199
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a function of the transaction where the reference has a getter (`SimpleGetter`), and a `Long` where the reference's `Word32` is bounded by `errorFail`; Conway's counts the list header and the parts' bytes, as `sizeAlonzoTxF` serialises them",
+   "digest": "91afe090e4ddaccd"
+  },
+  "def ledger.era.EraTxBody#getTotalDepositsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "getTotalDepositsTxBody",
+     "lines": [
+      267,
+      277
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "342d65335253af7b"
+  },
+  "def ledger.era.EraTxBody#getTotalRefundsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "getTotalRefundsTxBody",
+     "lines": [
+      279,
+      289
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "49228a73375d0ef5"
+  },
+  "def ledger.era.EraTxCert#getTotalDepositsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs",
+     "symbol": "getTotalDepositsTxCerts",
+     "lines": [
+      91,
+      97
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the certificates as an `Iterable`, Scala's form of the reference's `Foldable f`",
+   "digest": "563df22e6731a662"
+  },
+  "def ledger.era.EraTxCert#getTotalRefundsTxCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs",
+     "symbol": "getTotalRefundsTxCerts",
+     "lines": [
+      100,
+      106
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the certificates as an `Iterable`, Scala's form of the reference's `Foldable f`",
+   "digest": "a522e6485b9360d2"
+  },
+  "def ledger.era.EraUTxO#getConsumedValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "getConsumedValue",
+     "lines": [
+      248,
+      254
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "c457a39d75f72045"
+  },
+  "def ledger.era.EraUTxO#getProducedValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "getProducedValue",
+     "lines": [
+      256,
+      261
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "a8ffc573a5561b90"
+  },
+  "def ledger.era.EraUTxO#getMinFeeTxUtxo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "getMinFeeTxUtxo",
+     "lines": [
+      284,
+      285
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "45f89d01674a1652"
+  },
+  "val ledger.era.EraUTxO#txOf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "EraUTxO",
+     "lines": [
+      242,
+      242
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the superclass `EraTx era` as a member, as the other classes' superclasses of other families are",
+   "digest": "392cee3615a646f5"
+  },
+  "trait ledger.era.EraUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "EraUTxO",
+     "lines": [
+      242,
+      285
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "note": "the members UTXOW reads (`ScriptsNeeded`, `getScriptsProvided`, `getScriptsNeeded`, `getScriptsHashesNeeded`, `getWitsVKeyNeeded`) and the subclass `AlonzoEraUTxO` come with UTXOW",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023765",
+   "digest": "022250243e0f55d0"
+  },
+  "val ledger.era.conway.ConwayUTxO.instance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "EraUTxO ConwayEra",
+     "lines": [
+      119,
+      137
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the instance of the class's members so far: `getConsumedMaryValue`, `conwayProducedValue` and `getConwayMinFeeTxUtxo`",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023765",
+   "digest": "85e1bbbaa934fef4"
+  },
+  "def ledger.era.UTxOs.txInsFilter": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "txInsFilter",
+     "lines": [
+      168,
+      174
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "b7adceaf7fdedca7"
+  },
+  "def ledger.era.UTxOs.sumUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "sumUTxO",
+     "lines": [
+      185,
+      186
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "5737f6639c875a11"
+  },
+  "def ledger.era.UTxOs.sumAllValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "sumAllValue",
+     "lines": [
+      199,
+      200
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the outputs as an `Iterable`, Scala's form of the reference's `Foldable f`",
+   "digest": "f52e4666f2520c28"
+  },
+  "def ledger.era.ShelleyUTxO.shelleyProducedValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "symbol": "shelleyProducedValue",
+     "lines": [
+      131,
+      143
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "cbac0bd759edea3e"
+  },
+  "def ledger.era.MaryUTxO.getConsumedMaryValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/UTxO.hs",
+     "symbol": "getConsumedMaryValue",
+     "lines": [
+      65,
+      81
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the constraint `Value era ~ MaryValue` as evidence `Value[E] =:= MultiAssetValue`",
+   "digest": "251586eedc3ced81"
+  },
+  "def ledger.era.MaryUTxO.getProducedMaryValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/UTxO.hs",
+     "symbol": "getProducedMaryValue",
+     "lines": [
+      83,
+      91
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the constraint `Value era ~ MaryValue` as evidence `Value[E] =:= MultiAssetValue`",
+   "digest": "2d1cd157b9297f11"
+  },
+  "def ledger.era.MaryUTxO.burnedMultiAssets": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/UTxO.hs",
+     "symbol": "burnedMultiAssets",
+     "lines": [
+      93,
+      97
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "78934dcef05939bb"
+  },
+  "def ledger.era.Val#inject": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "inject",
+     "lines": [
+      1032,
+      1033
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the superclass `Inject Coin t` of `Val` (`Val.hs:32`) as a member",
+   "digest": "d1e795b1abb9e3ae"
+  },
+  "def ledger.era.conway.ConwayTx.getConwayMinFeeTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Tx.hs",
+     "symbol": "getConwayMinFeeTx",
+     "lines": [
+      100,
+      118
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "d212d2e18a9c7bda"
+  },
+  "def ledger.era.conway.ConwayTx.tierRefScriptFee": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Tx.hs",
+     "symbol": "tierRefScriptFee",
+     "lines": [
+      122,
+      142
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the multiplier a `PositiveInterval` and the increment a `NonZero` word, the parameters' own types, so the reference's error on a value that is not positive has no input that reaches it",
+   "digest": "f5414e342c5dee09"
+  },
+  "def ledger.era.conway.ConwayUTxO.conwayProducedValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "conwayProducedValue",
+     "lines": [
+      107,
+      117
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "f03484cbb41ec15a"
+  },
+  "def ledger.era.conway.ConwayUTxO.getConwayMinFeeTxUtxo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "getConwayMinFeeTxUtxo",
+     "lines": [
+      146,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "430a91c90d5f90fe"
+  },
+  "def ledger.era.conway.ConwayUTxO.txNonDistinctRefScriptsSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "txNonDistinctRefScriptsSize",
+     "lines": [
+      165,
+      170
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "d9ae2a078cebc6df"
+  },
+  "def ledger.era.rules.ShelleyUtxo.validateMaxTxSizeUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "validateMaxTxSizeUTxO",
+     "lines": [
+      563,
+      577
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "a7272c253a43d9be"
+  },
+  "def ledger.era.rules.AlonzoUtxo.vKeyLocked": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "isKeyHashAddr",
+     "lines": [
+      252,
+      255
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "vKeyLocked",
+     "lines": [
+      262,
+      266
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "`isKeyHashAddr` and `vKeyLocked` in one, over the output's address",
+   "digest": "5addaf9c76b6cf98"
+  },
+  "def ledger.era.rules.AlonzoUtxo.validateScriptsNotPaidUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateScriptsNotPaidUTxO",
+     "lines": [
+      327,
+      332
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "3ada3a506ea3db01"
+  },
+  "def ledger.era.rules.AlonzoUtxo.validateInsufficientCollateral": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateInsufficientCollateral",
+     "lines": [
+      335,
+      350
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "675120505614d5dc"
+  },
+  "def ledger.era.rules.AlonzoUtxo.validateExUnitsTooBigUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateExUnitsTooBigUTxO",
+     "lines": [
+      451,
+      465
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "c63361548d976670"
+  },
+  "def ledger.era.rules.BabbageUtxo.feesOK": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "symbol": "feesOK",
+     "lines": [
+      168,
+      197
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "2c4fc3a92cc5ba94"
+  },
+  "def ledger.era.rules.BabbageUtxo.validateTotalCollateral": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "symbol": "validateTotalCollateral",
+     "lines": [
+      216,
+      241
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "fae9a72578e19530"
+  },
+  "def ledger.era.rules.BabbageUtxo.validateCollateralContainsNonADA": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "symbol": "validateCollateralContainsNonADA",
+     "lines": [
+      253,
+      292
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "4f6336d9fa747a5b"
+  },
+  "def ledger.era.rules.BabbageUtxo.validateCollateralEqBalance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "symbol": "validateCollateralEqBalance",
+     "lines": [
+      295,
+      300
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "f0b1b3611d0ddf1f"
+  },
+  "def ledger.era.rules.BabbageUtxo.collAdaBalance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "symbol": "collAdaBalance",
+     "lines": [
+      30,
+      41
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the `DeltaCoin` as an integer of either sign",
+   "digest": "8f0d93c4ae79db5d"
   }
  },
  "glue": [
@@ -5148,6 +6327,7 @@
   {
    "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives",
    "definitions": [
+    "given ledger.era.EraUTxO.conway",
     "given ledger.era.PPGroups.given_Ordering_PPGroups",
     "given ledger.era.Version.given_Ordering_Version",
     "object ledger.era.AlonzoEraPParams",
@@ -5156,6 +6336,7 @@
     "object ledger.era.ConwayEraPParams",
     "object ledger.era.CostModels",
     "object ledger.era.EraPParams",
+    "object ledger.era.EraUTxO",
     "object ledger.era.ExUnits",
     "object ledger.era.HKD",
     "object ledger.era.HKDFunctor",
@@ -5223,18 +6404,33 @@
   {
    "reason": "the era-typed predicates' adapters to the node's flat failure types (UtxoFailure under PredicateFailure, and Network as the wire value they carry), until each era's failures are named (§3.4 of docs/design/era-typed-transactions.md), and the objects that stand for the reference's Rules/Utxo modules",
    "definitions": [
+    "def ledger.era.StoredTxOut#storedValue",
+    "def ledger.era.StoredTxOut#toStored",
     "def ledger.era.rules.failure",
     "def ledger.era.rules.wire",
+    "given ledger.era.StoredTxOut.conway",
+    "object ledger.era.StoredTxOut",
     "object ledger.era.rules.AllegraUtxo",
     "object ledger.era.rules.AlonzoUtxo",
     "object ledger.era.rules.BabbageUtxo",
-    "object ledger.era.rules.ShelleyUtxo"
+    "object ledger.era.rules.ShelleyUtxo",
+    "trait ledger.era.StoredTxOut"
    ]
   },
   {
    "reason": "how an output holds its reference script: by its hash and tree, without the bytes a script read from them keeps, which the output re-reads from its own encoding (#998); the reference's output holds the script whole, so this representation has no counterpart",
    "definitions": [
     "def ledger.Script#withoutBytes"
+   ]
+  },
+  {
+   "reason": "objects that stand for the reference's modules of functions (`State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`), which Scala needs to hold top-level functions under a name",
+   "definitions": [
+    "object ledger.era.AlonzoTx",
+    "object ledger.era.BabbageUTxO",
+    "object ledger.era.MaryUTxO",
+    "object ledger.era.ShelleyUTxO",
+    "object ledger.era.UTxOs"
    ]
   }
  ]
