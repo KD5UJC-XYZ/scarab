@@ -630,31 +630,43 @@ final class Forger[F[_]: Async, S](
     * then `nodeNotLeader`.
     */
   private def notLed(slot: BigInt, kes: Option[(Long, KesInfo)]): F[Vector[Held[F]]] =
-    ended(slot, kes, reached = true)(Forger.traced(ForgeTrace.NodeNotLeader(slot)))
+    ended(slot, kes.map((generation, info) => generation -> Some(info)), reached = true)(
+      Forger.traced(ForgeTrace.NodeNotLeader(slot))
+    )
 
-  /** The lines of a slot the slot driver ends itself: the slot counted (the reference's
-    * `StartLeadershipCheck`, whose line a slot not led logs only where it announces the KES
-    * period's state), the KES key's state if its period has not been announced, or if the slot's
-    * checks reached the key near its expiry, then the lines that end the slot (`last`).
+  /** The lines of a slot the slot driver ends itself, `kes` the generation of the period's update
+    * and the key's state where it succeeded: the slot counted (the reference's
+    * `StartLeadershipCheck`, whose line a slot not led logs only at a KES period change, once in
+    * the period, whether its update succeeded or failed), the KES key's state if its period has not
+    * been announced, or if the slot's checks reached the key near its expiry, then the lines that
+    * end the slot (`last`).
     */
-  private def ended(slot: BigInt, kes: Option[(Long, KesInfo)], reached: Boolean)(
+  private def ended(slot: BigInt, kes: Option[(Long, Option[KesInfo])], reached: Boolean)(
       last: Instant => Vector[Held[F]]
   ): F[Vector[Held[F]]] =
     (now, shared.published.get).mapN { (at, published) =>
-      val announcing = kes.exists((generation, _) =>
-        !published.announced.contains(generation -> kesPeriodOf(slot))
-      )
+      val period = kesPeriodOf(slot)
+      val announcing = kes.collect {
+        case (generation, _) if !published.announced.contains(generation -> period) => generation
+      }
       val start = ForgeTrace.StartLeadershipCheck(slot)
       // at a KES period change the line too, first, as the reference orders a slot's lines (#1101,
-      // Q2); counted once either way, the line's publication counting it
-      val counted: Held[F] =
-        if announcing then Held.Line(ForgeEvent.Loop(start), at)
-        else Held.Effect(stats.record(geometry.epochOf(slot), start))
+      // Q2), and the period announced with it, so that a failed update's period has it once;
+      // counted once either way, the line's publication counting it
+      val counted: Vector[Held[F]] = announcing.fold(
+        Vector(Held.Effect(stats.record(geometry.epochOf(slot), start)))
+      )(generation =>
+        Vector(
+          Held.Line(ForgeEvent.Loop(start), at),
+          Held.Effect(shared.published.update(_.announced(generation, period)))
+        )
+      )
       val state = kes.collect {
-        case (generation, info) if announcing || (reached && info.remaining <= Forger.KesWarning) =>
+        case (generation, Some(info))
+            if announcing.isDefined || (reached && info.remaining <= Forger.KesWarning) =>
           Held.Kes[F](slot, generation, Right(info), at)
       }
-      (counted +: state.toVector) ++ last(at)
+      counted ++ state.toVector ++ last(at)
     }
 
   /** `held`, the lines of a slot the forging fiber owned, with the KES key's state of the period
@@ -719,7 +731,11 @@ final class Forger[F[_]: Async, S](
       Raise[F, Fatal]
   ): F[Forger.Decision[F]] =
     val epoch = geometry.epochOf(slot)
-    val info = kes.collect { case (g, Right(Right(i))) => g -> i }
+    val info = kes.map((g, result) =>
+      g -> (result match
+        case Right(Right(i))          => Some(i)
+        case Right(Left(_)) | Left(_) => None)
+    )
     def ends(trace: ForgeTrace, reached: Boolean = false) =
       ended(slot, info, reached)(Forger.traced(trace)).map(Forger.Decision.Ends(_))
     kes match
@@ -773,7 +789,7 @@ final class Forger[F[_]: Async, S](
   /** A slot the driver ends with Scarab's `forgeFailed`, or the node stops if the failure is one of
     * the infrastructure (as [[attempt]] treats it).
     */
-  private def failedEnd(slot: BigInt, e: ForgeError, info: Option[(Long, KesInfo)])(using
+  private def failedEnd(slot: BigInt, e: ForgeError, info: Option[(Long, Option[KesInfo])])(using
       Raise[F, Fatal]
   ): F[Forger.Decision[F]] =
     HotKeys
@@ -1098,7 +1114,13 @@ final class Forger[F[_]: Async, S](
         shared.published.update(_.announced(generation, kesPeriodOf(slot))) *>
           events.emitAt(at, ForgeEvent.StateInfo(info))
       case Held.Kes(slot, generation, Left(failure), at) =>
-        shared.published.modify(_.named(generation, slot, failure)).flatMap(trace(_, at))
+        // a failed update's line announces its period, as a state's line does
+        shared.published
+          .modify { p =>
+            val (named, line) = p.named(generation, slot, failure)
+            (named.announced(generation, kesPeriodOf(slot)), line)
+          }
+          .flatMap(trace(_, at))
       case Held.Effect(run)     => run
       case Held.Withdrawal(run) => run
     }

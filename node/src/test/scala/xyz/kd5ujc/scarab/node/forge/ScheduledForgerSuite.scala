@@ -380,10 +380,11 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
   }
 
   test("the certificate's expiry at a led first slot of a KES period: the key erased no earlier") {
-    // a certificate from period 0: its window ends at period 62, whose first slot the pool leads; the
-    // key's state is read between each slot's wake and its onset on both paths
+    // a certificate from period 0: its window ends at period 62, whose first slot the pool leads and
+    // whose second it does not; the key's state is read between each slot's wake and its onset on
+    // both paths
     val expiry = BigInt(6200)
-    val seed = seedLeading(Vector(expiry))
+    val seed = seedLeading(Vector(expiry), Vector(expiry + 1))
     withHandle {
       for
         erased <- Ref.of[IO, Vector[(Way, BigInt, Boolean)]](Vector.empty)
@@ -432,6 +433,13 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
           Vector.empty,
           "an attempt at the expiry slot made before its period and discarded"
         )
+        // the expiry is a KES period change: the slot driver, which ends its first slot at the key's
+        // failure, logs that slot's start first, and once in the period (#1101, Q2)
+        def lines(slot: BigInt) = c.scheduled.collect {
+          case ForgeEvent.Loop(t) if t.slot == slot => t.productPrefix
+        }
+        assertEquals(lines(expiry), Vector("StartLeadershipCheck", "ForgeStateUpdateError"))
+        assertEquals(lines(expiry + 1), Vector("ForgeStateUpdateError"))
     }
   }
 
