@@ -62,27 +62,42 @@ client behind the volatile chain is served from the `ImmutableStore`. `ChainServ
 volatile chain. Without `--db` only the volatile chain can be served.
 
 **Mempool** (`mempool/`). `MempoolState` is pure: the transactions are kept in arrival order, and
-the invariant is that they apply in order to the ledger state at the tip through the real
-the ledger's `Ledger` rule (`ledger/rules/Ledger.scala`: phase 1, phase 2 and the Conway rules). `add` validates against the state after all held
+the invariant is that they apply in order to the ledger state at the tip, ticked to the slot after it by the
+hard-fork combinator's tick (`PoolLedger.at`, `Hfc.tick`), so in the era that slot is in. Every era from Shelley to
+Conway has a pool (#934): each applies a transaction by its own rule, LEDGER from Shelley to Babbage
+(`EarlierLedger`, `ledger/rules/ShelleyLedger.scala`) and MEMPOOL then LEDGER in Conway (`MempoolLedger`), always at
+transaction index 0 as the reference's `mkMempoolEnv` does, and every held transaction is of the pool's era; a
+Byron or Dijkstra ledger has no pool (`NoLedger`). A submission names its era (`Submission`); one of another era is
+brought into the pool's era as the selected reference build does (`EraInjection`): under `11.1` it is translated
+forward through each era between, as cardano-node 11.1.3's `hardForkInjectTxs` does, and a later era's or a Byron
+transaction is refused with the combinator's era mismatch; under `11.2` and the Leios build it is serialised in its
+era and decoded in the pool's, earlier or later. When `sync` brings a ledger of a later era, the held transactions
+follow it the same way and keep their tickets: reapplied under `11.1`, applied with every check as from a peer under
+the other builds; one that does not reach the era leaves the pool with the mismatch. `add` validates against the state after all held
 transactions, so a transaction may spend the output of one before it. Rejections are typed
 (`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `add` takes the
 `Source` of the transaction, as the reference's `WhetherToIntervene`: a transaction from a local client
 (`Local`) is validated as received, one from a peer (`Remote`, TxSubmission2) is validated with
 `is_valid` forced to true and, when only that flag is wrong because a script fails, held with
-`is_valid` false (the submitter loses the collateral) ([IN-80](../implementer-notes.md)). A transaction
+`is_valid` false (the submitter loses the collateral), from Alonzo on, as `applyAlonzoBasedTx` does
+([IN-80](../implementer-notes.md)); before Alonzo a peer's transaction is validated as received. A transaction
 may come without its flag, and is then valid, as the reference reads it (`Tx.envelopeParts`, #699);
-whatever its form, it is held and relayed as the reference relays it (`Tx.envelope`): a definite list
-of four with the flag of the verdict and the other parts' original bytes. `sync(ledger, slot)`
+whatever its form, it is held and relayed as the reference relays it (`EraInjection.envelope`): from Alonzo a
+definite list of four with the flag of the verdict and the other parts' original bytes, before Alonzo the record of
+three. TxSubmission2 carries each transaction and id under its era's index (`TxSubmission2.eraCodec`): the pool
+offers a peer each held transaction under the era it holds it in, and reads a peer's with the decoders of the era
+it names; ids compare by their hash, whatever the era; a Byron `GenTx` from a peer ends the connection (#934). `sync(ledger, slot)`
 runs on every new tip, rollback or fork switch, keeps what still applies and reports the rest;
-transactions that a block contains leave as adopted. Before the transaction rules, `add` applies the
+transactions that a block contains leave as adopted. In Conway, before the transaction rules, `add` applies the
 ledger's MEMPOOL rule: a transaction none of whose inputs is unspent is refused with that alone
 (`ConwayMempoolFailure`, "All inputs are spent..."), as is a vote of an unelected committee member
 before protocol version 11. Before either, `add` measures the transaction as `Mempool/Update.hs` does
-(`Capacity`): its size against `maxTxSize` and its execution units against `maxTxExUnits` (phase 1, both failures
-reported when both are exceeded, `Rejection.Limits`), then its reference-script bytes in the state after the held
-transactions against 200 KiB (phase 2, `TxRefScriptsSizeTooBig`); a refusal there is the only failure returned and
+(`Capacity`): its size against `maxTxSize` and, from Alonzo, its execution units against `maxTxExUnits` (phase 1,
+both failures reported when both are exceeded, `Rejection.Limits`), then, in Conway, its reference-script bytes in the
+state after the held transactions against 200 KiB (phase 2, `TxRefScriptsSizeTooBig`; trivial before Conway); a refusal there is the only failure returned and
 the ledger does not run. The capacity is a vector of bytes (size plus 4), execution-unit memory, steps and
-reference-script bytes, `computeMempoolCapacity` of the parameters of the ticked base: two blocks without
+reference-script bytes, of which an era has the components its measure has (bytes alone to Mary, execution units
+from Alonzo, reference scripts in Conway: `Capacity.Shape`), `computeMempoolCapacity` of the parameters of the ticked base: two blocks without
 `--mempool-bytes`, the override rounded up to whole blocks with it, recomputed at every `sync` and never trimming a
 pool that a parameter change left over it. A transaction that would exceed any component finds no room; the
 check runs after phase 1 (without the reference-script component) and again after phase 2, as `doAddTx` and
