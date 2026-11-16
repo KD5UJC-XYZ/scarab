@@ -349,8 +349,11 @@ so, it stays ahead once a chunk ahead: each chunk's slots begin after the chunk 
 itself would not: the last chunks would be computed after their slots begin (on the trial devnet, a signal at slot 750
 of a 500-slot epoch ending at 1000 leaves a margin of about 25 slots, less than a chunk). A slot the clock reaches
 before the stream covers it gets the per-slot decision from the slot driver (§5.4, Q3 in §9). The schedule of such an
-epoch covers it from the clock's slot when its computation started, not from its first slot: complete, it reaches the
-epoch's last slot from there, and the slots before are in none of its counts (§5.6).
+epoch covers it from the clock's slot where its computation started, not from its first slot, and a computation that
+falls behind the clock resumes at the clock's slot and drops the range it had (`EpochSchedule.next` and `added`): the
+schedule then covers the epoch from there. Complete, it reaches the epoch's last slot from where its range starts; its
+led slots, in the gauge and the `leaderSchedule` line, are that range's, and the expected count is the whole epoch's
+(§5.6).
 
 **What the pacing assumes of the host.** Once a chunk ahead, the stream stays ahead of the clock, each chunk computed
 before its first slot begins, as long as computing a chunk takes less than the time its slots take to pass, less one
@@ -589,10 +592,10 @@ Decision 7 publishes the schedule; the reference keeps it to itself (C10).
 | Name | Kind | Meaning |
 |---|---|---|
 | `scarab_forge_scheduled_leader_slots` | gauge, label `epoch` (`current`, `next`) | The epoch's potential leader slots in the schedule. A slot battle can still lose one, and a fork can change the schedule. |
-| `scarab_forge_expected_leader_slots` | gauge, label `epoch` | `slots × (1 - (1 - f)^σ)`, σ the pool's share of the distribution: the expected number, for comparison. Display only: computed in floating point and never used for a decision. |
+| `scarab_forge_expected_leader_slots` | gauge, label `epoch` | `slots × (1 - (1 - f)^σ)`, σ the pool's share of the distribution: the expected number over the whole epoch, for comparison, also where the schedule covers only part of it. Display only: computed in floating point and never used for a decision. |
 | `scarab_forge_next_leader_slot` | gauge | The next led slot in the schedule; absent when there is none. |
-| `scarab_forge_schedule_complete` | gauge, label `epoch` | 1 once the epoch's schedule reaches its last slot, else 0; the counts above show the slots covered so far (Q8, §9). For an epoch computed after it began (§5.2), the schedule covers it from the clock's slot when the computation started, and the slots before are in no count. |
-| `leaderSchedule` (namespace `Forge`, Info) | log line | When an epoch's schedule is complete, and again whenever a restart changes it: `epoch`, `slots` (the led slots), `expected`, and whether the nonce is settled. For an epoch computed after it began, `slots` are the led slots from the clock's slot when the computation started. |
+| `scarab_forge_schedule_complete` | gauge, label `epoch` | 1 once the epoch's schedule reaches its last slot, else 0; the scheduled count shows the led slots covered so far (Q8, §9). The schedule covers the epoch from its first slot or, for an epoch computed after it began or a computation that fell behind the clock (§5.2), from the clock's slot where its computation started or resumed, without the slots before. |
+| `leaderSchedule` (namespace `Forge`, Info) | log line | When an epoch's schedule is complete, and again whenever a restart changes it: `epoch`, `slots` (the led slots of the range the schedule covers), `expected` (the whole epoch's), and whether the nonce is settled. |
 
 Anyone who can read the node's metrics or logs learns when the pool will lead. That is the purpose; it also means an
 operator who exposes `/metrics` publicly publishes the schedule. The metrics page says so (Q9, §9).
