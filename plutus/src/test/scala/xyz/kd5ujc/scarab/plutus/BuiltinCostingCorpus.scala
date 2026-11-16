@@ -3,25 +3,26 @@ package xyz.kd5ujc.scarab.plutus
 
 import io.circe.Json
 import java.nio.file.{Files, Path}
-import scalus.uplc.{Program, Term, Constant}
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.uplc.{Constant, Term}
+import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
 /** Deterministic inputs for the independent Haskell ledger-API costing matrix. */
 object BuiltinCostingCorpus:
   final case class Probe(id: String, script: Bytes, builtins: Set[String])
-  private val source = s"${PlutusConformanceSuite.Conformance}/builtin/semantics"
+  private val source = s"${PlutusConformance.Conformance}/builtin/semantics"
   private def compile(id: String, text: String): Probe =
-    val p = Program.parseUplc(text).fold(e => sys.error(s"$id: $e"), identity)
+    val p = UplcParser.program(text).fold(e => sys.error(s"$id: $e"), identity)
     locally {
-      val ignored = Term.Apply(Term.LamAbs("ignored", Term.Const(Constant.Unit)), p.term)
+      val ignored = Term.app(Term.lam(Term.constant(Constant.Unit)), p.term)
       Probe(
         id,
-        Bytes.fromArray(Program(p.version, ignored).cborEncoded),
+        UplcScripts.script(p.copy(term = ignored)),
         "\\(builtin\\s+([^\\s)]+)".r.findAllMatchIn(text).map(_.group(1)).toSet
       )
     }
   lazy val upstream: Vector[Probe] =
-    PlutusConformanceSuite.reference
+    PlutusConformance.reference
       .under(source)
       .collect {
         case (id, p) if id.endsWith(".uplc") => compile("upstream/" + id, Files.readString(p))
@@ -112,9 +113,9 @@ object BuiltinCostingCorpus:
       else if protocol < 9 then "A"
       else if protocol < 11 then "B"
       else "D"
-    val builtins = PlutusConformanceSuite.json(s"builtinCostModel$variant.json")
-    val machine = PlutusConformanceSuite.json(s"cekMachineCosts$variant.json")
-    PlutusConformanceSuite
+    val builtins = PlutusConformance.json(s"builtinCostModel$variant.json")
+    val machine = PlutusConformance.json(s"cekMachineCosts$variant.json")
+    PlutusConformance
       .resource(s"V$language-param-names.txt")
       .linesIterator
       .filter(_.nonEmpty)

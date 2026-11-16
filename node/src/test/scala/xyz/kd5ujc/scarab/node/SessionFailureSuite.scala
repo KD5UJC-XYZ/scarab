@@ -145,10 +145,12 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                     EvalFailure
                       .Unsupported(
-                        xyz.kd5ujc.scarab.plutus.BackendFailure
-                          .BuiltinUnavailable(
-                            xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature
+                        xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+                          xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+                            xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+                            Set(xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature)
                           )
+                        )
                       )
                   )
                 )
@@ -227,12 +229,12 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       yield left
     }
 
-  /** A block with no verdict: Scalus threw on its scripts (a defect the block triggers). */
+  /** A block with no verdict: the evaluator threw on its scripts (a defect the block triggers). */
   private val heldFailure: LedgerFailure.Unavailable = LedgerFailure.Unavailable(
     Bytes.empty,
     ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
     EvalFailure.Unsupported(
-      xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new NullPointerException("in Scalus"))
+      xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new NullPointerException("in the evaluator"))
     )
   )
 

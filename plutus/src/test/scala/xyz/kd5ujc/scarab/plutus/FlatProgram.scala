@@ -3,9 +3,9 @@ package xyz.kd5ujc.scarab.plutus
 
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** Plutus scripts written byte by byte in the flat encoding, for what Scalus's own encoder cannot
-  * produce: it normalises `value` constants and narrows variable indices, so a script the reference
-  * decodes differently has to be assembled by hand. A tiny term language and its flat writer
+/** Plutus scripts written byte by byte in the flat encoding, for what a text parser and encoder
+  * would normalise (`value` constants, wide variable indices): a script the reference decodes
+  * differently has to be assembled by hand. A tiny term language and its flat writer
   * (`PlutusCore/FlatInstances.hs`, `UntypedPlutusCore/Core/Instance/Flat.hs`); test code, so plain
   * recursion over small terms.
   */

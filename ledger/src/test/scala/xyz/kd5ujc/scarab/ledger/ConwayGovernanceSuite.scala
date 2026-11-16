@@ -242,8 +242,8 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       stabilityWindow = 20,
       txIndex = n,
       clock = Some(PosixClock.Total(slot => slot * 1000 + 1596059091000L)),
-      evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
 
   /** Submit one transaction paid by `payer`; `deposits` and `refunds` balance the certificates. */

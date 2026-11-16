@@ -13,8 +13,8 @@ import scala.jdk.CollectionConverters.*
 class FlatDecodeOracleSuite extends FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
 
-  private val evaluator = ScalusEvaluator.pure
-  private val decoder = ScalusEvaluator.pureDecoder
+  private val evaluator = ScarabEvaluator.pure
+  private val decoder = ScarabEvaluator.pureDecoder
   private val rows = Files
     .readAllLines(Path.of(s"${FlatDecodeCorpus.Directory}/verdicts.jsonl"))
     .asScala
@@ -49,10 +49,10 @@ class FlatDecodeOracleSuite extends FunSuite:
         val modelBytes =
           Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
         assertEquals(
-          NativeCrypto.sha256Hex(probe.script.toArray),
+          UplcScripts.sha256Hex(probe.script.toArray),
           field[String](row, "scriptSha256")
         )
-        assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+        assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
         val where = s"$language/$protocol"
         val admitted = decoder.validate(language, protocol, probe.script).isRight
         assertEquals(admitted, field[Boolean](row, "admitted"), where)

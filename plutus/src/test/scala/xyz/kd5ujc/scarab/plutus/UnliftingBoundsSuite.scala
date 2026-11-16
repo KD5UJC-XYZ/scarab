@@ -6,29 +6,25 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import scalus.uplc.{DefaultFun, Program}
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** The `ensurable` variants' unlifting bounds (issue 498, [[UnliftingBounds]]): from protocol 11 an
-  * integer argument outside `±2^262143` or a byte string argument longer than 65,536 bytes of the
-  * builtins that take `CInteger` or `CByteString` fails the script, as in plutus 1.70.0.0; before
-  * protocol 11 (variants A to C) it does not.
+/** The `ensurable` variants' unlifting bounds (issue 498) through the node's evaluator: from
+  * protocol 11 an integer argument outside `±2^262143` or a byte string argument longer than 65,536
+  * bytes of the builtins that take `CInteger` or `CByteString` fails the script, as in plutus
+  * 1.70.0.0; before protocol 11 (variants A to C) it does not. The table of the bounded arguments
+  * is `uplc` 's, which `CoreUnliftingSuite` checks.
   */
 class UnliftingBoundsSuite extends FunSuite:
   // the corpus parses 142 scripts with constants at the bounds (78,914-digit integers, 65 KB byte
   // strings) and evaluates 426 requests
   override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
-  private val evaluator = ScalusEvaluator.pure
+  private val evaluator = ScarabEvaluator.pure
   private val budget = ExUnits(BigInt(1) << 40, BigInt(1) << 60)
 
   // the value is discarded (`(lam r (con unit ()))`), so a V3 script returns unit; version 1.0.0
   // is accepted by every language at every protocol here
   private def script(body: String): Bytes =
-    Bytes.fromArray(
-      Program
-        .parseUplc(s"(program 1.0.0 [ (lam r (con unit ())) $body ])")
-        .fold(e => fail(e.toString), _.cborEncoded)
-    )
+    UplcScripts.compile(s"(program 1.0.0 [ (lam r (con unit ())) $body ])")
 
   private def run(language: PlutusLanguage, protocol: Int, body: String): EvalResult =
     evaluator.evaluate(
@@ -97,37 +93,6 @@ class UnliftingBoundsSuite extends FunSuite:
     val cons =
       s"[ [ (builtin consByteString) ${integer(BigInt(1) << 262143)} ] (con bytestring #00) ]"
     fails(PlutusLanguage.V2, 11, cons)
-    assertEquals(
-      UnliftingBounds.of(DefaultFun.ConsByteString, SemanticsVariant.E).map(_._1),
-      Vector(1)
-    )
-  }
-
-  test("variants F and G (protocol 12) bound byte strings and not integers (plutus 1.71.0.0)") {
-    val big = integer(BigInt(1) << 262143)
-    PlutusLanguage.values.foreach { language =>
-      succeeds(language, 12, s"[ [ (builtin addInteger) $big ] (con integer 1) ]")
-      fails(language, 12, hash(bytes(65537)))
-      succeeds(language, 12, hash(bytes(65536)))
-    }
-    // F takes consByteString's integer unbounded, modulo 256; G takes a Word8
-    succeeds(PlutusLanguage.V2, 12, s"[ [ (builtin consByteString) $big ] (con bytestring #00) ]")
-    fails(PlutusLanguage.V4, 12, s"[ [ (builtin consByteString) $big ] (con bytestring #00) ]")
-    assertEquals(
-      UnliftingBounds.of(DefaultFun.AddInteger, SemanticsVariant.F),
-      Vector.empty
-    )
-    assertEquals(
-      UnliftingBounds.of(DefaultFun.ConsByteString, SemanticsVariant.D).map(_._1),
-      Vector(0, 1)
-    )
-  }
-
-  test("35 builtins have a bounded argument, as the ensurable branches of Builtins.hs type them") {
-    val bounded =
-      DefaultFun.values.filter(f => UnliftingBounds.of(f, SemanticsVariant.D).nonEmpty)
-    assertEquals(bounded.size, 35)
-    assert(!bounded.contains(DefaultFun.EqualsInteger))
   }
 
   // the reference's verdict on every probe of UnliftingBoundsCorpus (plutus 1.70.0.0, the costing
@@ -166,8 +131,8 @@ class UnliftingBoundsSuite extends FunSuite:
       val model = PlutusBoundaryCorpus.costModel(language, protocol)
       val modelBytes =
         Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-      assertEquals(NativeCrypto.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
-      assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+      assertEquals(UplcScripts.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
+      assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
       val ours = evaluator.evaluate(
         EvalRequest(
           language,

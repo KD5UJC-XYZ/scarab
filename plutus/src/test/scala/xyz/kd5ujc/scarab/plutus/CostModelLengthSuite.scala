@@ -6,10 +6,9 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** The evaluator (Scalus 1.4.0's machine, with the reference's budget arithmetic of
-  * [[ReferenceCosting]] and [[ReferenceBudget]]) against the unchanged Plutus 1.70.0.0 evaluator
-  * under cost-model lists of every length and of extreme or mixed-sign values. The ledger stores
-  * whatever length an update or a genesis gives from decoder version 9 and hands the list to
+/** The node's evaluator ([[ScarabEvaluator]]) against the unchanged Plutus 1.70.0.0 evaluator under
+  * cost-model lists of every length and of extreme or mixed-sign values. The ledger stores whatever
+  * length an update or a genesis gives from decoder version 9 and hands the list to
   * `mkEvaluationContext` (`CostModels.hs` `mkCostModel`, cardano-ledger `f649f975`), whose
   * `tagWithParamNames` pads a short list with `maxBound` and drops the values beyond the last name
   * (`PlutusLedgerApi/Common/ParamName.hs` lines 86-112 at plutus `507cab8c`), each with a warning
@@ -83,9 +82,9 @@ class CostModelLengthSuite extends FunSuite:
     val code = Bytes.fromHex(scripts(script)).fold(e => fail(e.toString), identity)
     val lang = language(model)
     val protocol = field[Int](model, "protocol")
-    val admitted = ScalusEvaluator.pureDecoder.validate(lang, protocol, code).isRight
+    val admitted = ScarabEvaluator.pureDecoder.validate(lang, protocol, code).isRight
     assertEquals(admitted, field[Boolean](row, "admitted"), row.noSpaces)
-    val actual = ScalusEvaluator.pure.evaluate(
+    val actual = ScarabEvaluator.pure.evaluate(
       EvalRequest(lang, protocol, code, Vector.empty, values(model), unlimited)
     )
     val id = field[String](row, "id")
@@ -107,7 +106,7 @@ class CostModelLengthSuite extends FunSuite:
     assertEquals(disagreements(observations), Vector.empty[String])
   }
 
-  test("Scalus builds a machine for every list the reference's mkCostModel accepted in the sweep") {
+  test("the evaluator builds a machine for every list the reference's mkCostModel accepted") {
     val sweep = jsonOf(directory.resolve("sweep.json"))
     val extremes = Vector(Long.MinValue, -1L, 0L, Long.MaxValue)
     val code = Bytes
@@ -125,7 +124,7 @@ class CostModelLengthSuite extends FunSuite:
         for
           index <- base.indices.toVector
           value <- extremes
-          result = ScalusEvaluator.pure.evaluate(
+          result = ScarabEvaluator.pure.evaluate(
             EvalRequest(lang, protocol, code, Vector.empty, base.updated(index, value), unlimited)
           )
           if result match

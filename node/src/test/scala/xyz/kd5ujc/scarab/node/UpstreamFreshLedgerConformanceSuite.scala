@@ -103,8 +103,8 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
       )
     ),
-    evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-    decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+    evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+    decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
   )
   private def sameUtxo(found: UTxOState[Conway], wanted: UTxOState[Conway]): Unit =
     def parts(s: UTxOState[Conway]) = s.utxo.utxo.toMap.toVector

@@ -131,7 +131,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
   }
 
   private val unavailable: ScriptDecoder[Id] = (_, _, _) =>
-    Left(ScriptDecodeFailure.Unavailable(BackendFailure.NoResult))
+    Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
   test("an auxiliary backend outage is unavailable for either validity tag") {
     for valid <- Vector(true, false) do
       TxChecks.auxiliaryChecks(
@@ -143,7 +143,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
               LedgerFailure.Unavailable(
                 _,
                 _: ScriptLocation.Phase1,
-                EvalFailure.Unsupported(BackendFailure.NoResult)
+                EvalFailure.Unsupported(BackendFailure.StackExhausted)
               )
             ) =>
           ()
@@ -189,7 +189,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
       val initial = PreparedBlockFixture.state
       val transactions = PreparedBlockFixture.txs.map(_.copy(isValid = valid))
       val bad = transactions.updated(1, withAuxiliary(transactions(1), auxiliary("v1-malformed")))
-      val program = body(bad, valid, PlutusBackends.decoder)
+      val program = body(bad, valid, ScarabEvaluator.defaultDecoder)
       val serial = program.serial
       val plan = program.prepare
       assertEquals(plan.jobs.size, 1)
@@ -204,7 +204,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
           ()
         case other => fail(s"late auxiliary failure did not refuse BBODY: $other")
       assertEquals(PreparedBlockFixture.state, initial)
-      body(transactions, valid, PlutusBackends.decoder).serial match
+      body(transactions, valid, ScarabEvaluator.defaultDecoder).serial match
         case EraBlock.Outcome.Applied(_: EraNes, _) => ()
         case other => fail(s"refused block contaminated the reusable state: $other")
   }
@@ -223,7 +223,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
         .code
       val decoder: ScriptDecoder[Id] = (language, major, script) =>
         if script == code then unavailable.validate(language, major, script)
-        else PlutusBackends.decoder.validate(language, major, script)
+        else ScarabEvaluator.defaultDecoder.validate(language, major, script)
       val program =
         body(transactions.updated(1, withAuxiliary(transactions(1), supplied)), valid, decoder)
       val serial = program.serial
@@ -244,7 +244,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
     val shortBytes = f"${0x40 + good.size}%02x" + good.hex
     val decoder: ScriptDecoder[Id] = (language, major, script) =>
       if script == good then unavailable.validate(language, major, script)
-      else PlutusBackends.decoder.validate(language, major, script)
+      else ScarabEvaluator.defaultDecoder.validate(language, major, script)
     for scripts <- Vector("41ff" + shortBytes, shortBytes + "41ff"); valid <- Vector(true, false) do
       val supplied = hex("d90103a10282" + scripts)
       TxChecks.auxiliaryChecks(

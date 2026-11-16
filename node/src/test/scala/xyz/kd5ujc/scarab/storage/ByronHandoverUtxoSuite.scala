@@ -143,7 +143,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
             setup.byronRules,
             setup.handOver,
             setup.byronHistory,
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+            xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
             utxoStore = Some(store)
           )
           // the Byron blocks, then each one's state reaches the immutable tip in turn

@@ -163,8 +163,8 @@ object TestLedger:
       stabilityWindow = 100,
       updateQuorum = 2,
       clock = Some(PosixClock.Total(slot => slot * 1000 + 1596059091000L)),
-      evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
 
   /** An evaluator whose verdict is fixed: every script succeeds or every script fails. */
@@ -175,8 +175,10 @@ object TestLedger:
         xyz.kd5ujc.scarab.plutus.EvalResult
           .Failure(
             xyz.kd5ujc.scarab.plutus.EvalFailure.Script(
-              xyz.kd5ujc.scarab.plutus.ScriptFailure
-                .Thrown(new IllegalStateException("scripted failure"), Vector.empty)
+              xyz.kd5ujc.scarab.plutus.ScriptFailure.Uplc(
+                xyz.kd5ujc.scarab.uplc.ledger.EvaluationError.InvalidReturnValue,
+                Vector.empty
+              )
             ),
             ExUnits(1, 1),
             Vector.empty

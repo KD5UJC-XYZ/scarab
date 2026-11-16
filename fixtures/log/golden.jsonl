@@ -3,8 +3,6 @@
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":["adx","bmi2"]},"library":{"build":"portable"}}
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"Other","cpu":{"features":null},"library":{"build":"other","sha256":"00ff"}}
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":[]},"library":{"build":"library-path"}}
-{"event":"plutusCrypto","at":"2026-10-16T12:00:00Z","platform":"linux_64","library":{"source":"resource","path":"natives/linux_64/libscalus_crypto.so","sha256":"ca17484cefcd8e6ecf5c706d1fa1144a874283516eb78e52a535daa02894934a"}}
-{"event":"plutusCrypto","at":"2026-10-16T12:00:00Z","platform":"linux_arm64","library":{"source":"library-path","path":"/usr/lib/libscalus_crypto.so","sha256":"8473caf6b844af4a40e502ffb8d6e210c3ff43867558ef3aeff17359198f293d"}}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"NoIntersection","message":"the peer's chain shares no point with ours"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: Syntax(UnexpectedEnd)"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}
@@ -233,5 +231,3 @@
 {"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"11.2","stability":"pre-release","node":"11.2.1","ledger":"29a7d65663f476909981d2757da2b07f16d21040","ledgerBinary":"29a7d65663f476909981d2757da2b07f16d21040","consensus":"808e400545729b1246ba4393c69326ec4a04a730"}
 {"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","stability":"unstable","node":"b004fe0c50913dcdaa827a98e68a43d0ccce152a","ledger":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","ledgerBinary":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","consensus":"2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"}
 {"event":"unstableReferenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","experimentalHardForksEnabled":false}
-{"event":"plutusVm","at":"2026-10-16T12:00:00Z","vm":"scalus"}
-{"event":"plutusVm","at":"2026-10-16T12:00:00Z","vm":"scarab"}

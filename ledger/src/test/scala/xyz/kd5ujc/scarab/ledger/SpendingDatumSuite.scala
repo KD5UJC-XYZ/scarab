@@ -8,7 +8,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{PlutusBackends, PlutusData, PlutusLanguage}
+import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage, ScarabEvaluator}
 
 /** Actual reference submissions bind phase-1 datum admission to the independently usable context
   * translation: getSpendingDatum returns Maybe (Alonzo/UTxO.hs:229-240, cardano-ledger f649f975),
@@ -141,7 +141,7 @@ class SpendingDatumSuite extends FunSuite:
             c.spent,
             c.references,
             c.posix,
-            PlutusBackends.evaluator
+            ScarabEvaluator.default
           )
           .map {
             case Phase2.Outcome.Passed(report) => report.scripts;

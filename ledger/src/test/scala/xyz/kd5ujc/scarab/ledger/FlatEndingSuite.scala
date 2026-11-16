@@ -5,7 +5,13 @@ import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.*
-import xyz.kd5ujc.scarab.uplc.flat.{FlatError, ScriptDecodeError}
+import xyz.kd5ujc.scarab.uplc.flat.{
+  Checks,
+  FlatDecoder,
+  FlatError,
+  ScriptDecodeError,
+  SerialisedScript
+}
 
 /** The end of a script's flat program as the ledger meets it, with the real decoder and evaluator:
   * bits or bytes after the program's filler are a malformed script (the reference's strict
@@ -27,7 +33,9 @@ class FlatEndingSuite extends FunSuite:
       .collectFirst { case Script(ScriptKind.PlutusV2, _, _, Some(bytes), _) => bytes }
       .getOrElse(fail("fixture has no Plutus V2 script with its bytes"))
   private val flat =
-    PlutusScriptBytes.flatOf(code.toArray).getOrElse(fail("fixture script is not a byte string"))
+    SerialisedScript
+      .byteString(code)
+      .fold(_ => fail("fixture script is not a byte string"), _._1.toArray)
 
   private def wrapped(content: Array[Byte]): Bytes =
     Bytes.fromArray(FlatProgram.cborByteString(content))
@@ -45,8 +53,8 @@ class FlatEndingSuite extends FunSuite:
       c.slot,
       189,
       0,
-      evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
 
   /** The verdict of the phase-1 script checks (`MalformedScriptWitnesses`,
@@ -63,10 +71,10 @@ class FlatEndingSuite extends FunSuite:
     )
 
   test("the fixture's own script ends exactly behind its filler") {
-    assert(FlatScan.decode(flat).isRight)
+    assert(FlatDecoder.program(Bytes.fromArray(flat), Checks.unrestricted).isRight)
     assertEquals(
-      FlatScan.decode(flat :+ 0x00.toByte).map(_ => ()),
-      Left(FlatScan.Failure.TooMuchSpace(8))
+      FlatDecoder.program(Bytes.fromArray(flat :+ 0x00.toByte), Checks.unrestricted).map(_ => ()),
+      Left(FlatError.TooMuchSpace(flat.length.toLong * 8))
     )
   }
 
@@ -136,7 +144,7 @@ class FlatEndingSuite extends FunSuite:
             FlatDecodeCorpus.budget
           )
         ),
-        PlutusBackends.evaluator
+        ScarabEvaluator.default
       )
     for protocol <- Vector(5, 6) do
       assert(run(wrapped(validator), protocol).passed, s"control at protocol $protocol")
@@ -144,14 +152,11 @@ class FlatEndingSuite extends FunSuite:
         run(Bytes.fromArray(wrapped(validator).toArray :+ 0x00.toByte), protocol).passed,
         s"remainder at protocol $protocol"
       )
-      // each backend's decoder names the reference's `tooMuchSpace` in its own terms: FlatScan by
-      // the bits after the filler, the own decoder by where the filler ends
-      val expected = PlutusBackends.vm match
-        case PlutusVm.Scalus => ScriptProblem.Flat(FlatScan.Failure.TooMuchSpace(8))
-        case PlutusVm.Scarab =>
-          ScriptProblem.Uplc(
-            ScriptDecodeError.Flat(FlatError.TooMuchSpace(validator.length.toLong * 8))
-          )
+      // the decoder names the reference's `tooMuchSpace` by where the filler ends
+      val expected =
+        ScriptProblem.Uplc(
+          ScriptDecodeError.Flat(FlatError.TooMuchSpace(validator.length.toLong * 8))
+        )
       run(wrapped(validator :+ 0x00.toByte), protocol) match
         case Phase2.Outcome.Failed(_, failures) =>
           assertEquals(failures.map(_.reason).toVector, Vector(EvalFailure.Decode(expected)))

@@ -36,7 +36,7 @@ object MirrorSteps:
       byron.orElse(setup.byronRules),
       setup.handOver,
       setup.byronHistory,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+      xyz.kd5ujc.scarab.plutus.PlutusBackend.default
     )
 
   /** The ledger state of the Shelley-based era a mirror is in, read as a test reads it. */

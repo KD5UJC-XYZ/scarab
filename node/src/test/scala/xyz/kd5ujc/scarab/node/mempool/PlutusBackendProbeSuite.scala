@@ -10,11 +10,10 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.{Build, Conway}
 import xyz.kd5ujc.scarab.plutus.*
 
-/** The backend the node is given is the one its paths evaluate and admit scripts with
-  * (`--plutus-vm`, ADR 0027): a probe backend that has no verdict on anything, and counts what it
-  * is asked, put where the node puts its backend. A path that kept another evaluator would admit
-  * the transaction, which the Scalus backend and the own evaluator both pass, and leave the probe
-  * unasked.
+/** The backend the node is given is the one its paths evaluate and admit scripts with: a probe
+  * backend that has no verdict on anything, and counts what it is asked, put where the node puts
+  * its backend. A path that kept another evaluator would admit the transaction, which the node's
+  * evaluator passes, and leave the probe unasked.
   *
   * The paths: the mempool's admission ([[MempoolEnv]], built by `Main` from the run's one
   * [[PlutusBackend]]) and the rules of a block
@@ -32,9 +31,8 @@ class PlutusBackendProbeSuite extends FunSuite:
   private final class Probe(admits: Boolean = false):
     val evaluated = AtomicInteger(0)
     val decoded = AtomicInteger(0)
-    private val why = BackendFailure.NoResult
+    private val why = BackendFailure.StackExhausted
     val backend: PlutusBackend = PlutusBackend(
-      PlutusVm.Scarab,
       _ =>
         evaluated.incrementAndGet()
         EvalResult.Failure(EvalFailure.Unsupported(why), ExUnits.zero, Vector.empty)
@@ -81,9 +79,8 @@ class PlutusBackendProbeSuite extends FunSuite:
         Source.Local
       )
 
-  test("the mempool admits the transaction with either real backend") {
-    for vm <- PlutusVm.values do
-      assert(admit(PlutusBackend.of(vm)).isRight, s"${vm.name}: ${admit(PlutusBackend.of(vm))}")
+  test("the mempool admits the transaction with the node's backend") {
+    assert(admit(PlutusBackend.default).isRight, s"${admit(PlutusBackend.default)}")
   }
 
   test("the mempool asks the backend it is given, and nothing else") {
@@ -101,7 +98,7 @@ class PlutusBackendProbeSuite extends FunSuite:
     def noVerdict(outcome: rules.EraBlock.Outcome): Boolean = outcome match
       case rules.EraBlock.Outcome.Refused(BlockFailure.Tx(_: LedgerFailure.Unavailable)) => true
       case _                                                                             => false
-    val reference = ctx(PlutusBackend.of(PlutusVm.Scalus)).serial
+    val reference = ctx(PlutusBackend.default).serial
     assert(!noVerdict(reference), s"the fixture block has a verdict: $reference")
     val serial = ctx(probe.backend).serial
     assert(noVerdict(serial), s"serial: $serial")

@@ -41,8 +41,12 @@ class NodeAssertionsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       hash,
       ScriptLocation.Phase1(hash),
       xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(
-        xyz.kd5ujc.scarab.plutus.BackendFailure
-          .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+        xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+          xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+            xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+            Set(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+          )
+        )
       )
     )
   )

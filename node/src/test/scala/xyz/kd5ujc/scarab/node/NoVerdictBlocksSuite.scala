@@ -48,8 +48,8 @@ class NoVerdictBlocksSuite extends FunSuite:
 
   test("whether a cause is judged again: a total match on the cause") {
     import BlockNoVerdict.Recovery.{Deterministic, Passing}
-    // the own evaluator (`--plutus-vm scarab`): an exception or a library that failed may pass,
-    // what this build lacks does not
+    // the own evaluator: an exception or a library that failed may pass, what this build lacks
+    // does not
     // HashedOutsideGroup and DetachedMlResult: a library that answered what it cannot does so again
     // for the same input and build
     val cases = List(
@@ -57,16 +57,15 @@ class NoVerdictBlocksSuite extends FunSuite:
       evaluation(
         BackendFailure.Defect(new java.util.concurrent.RejectedExecutionException("pool"))
       ) -> Passing,
-      evaluation(BackendFailure.NoResult) -> Passing,
       evaluation(BackendFailure.StackExhausted) -> Deterministic,
       evaluation(BackendFailure.BudgetOutOfRange(ExUnits(BigInt(2).pow(64), 0))) -> Deterministic,
       evaluation(
-        BackendFailure.BuiltinUnavailable(
-          xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup
+        BackendFailure.Uplc(
+          Unavailability.NoDenotation(
+            xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+            Set(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+          )
         )
-      ) -> Deterministic,
-      evaluation(
-        BackendFailure.CostingUnmirrored(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
       ) -> Deterministic,
       evaluation(BackendFailure.Uplc(Unavailability.Thrown(new IllegalStateException("x")))) ->
         Passing,

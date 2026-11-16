@@ -4,15 +4,16 @@ package xyz.kd5ujc.scarab.plutus.ndc
 import io.circe.Json
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
-import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.uplc.{ProtocolMajor, SemanticsVariant}
 import xyz.kd5ujc.scarab.uplc.cost.DefaultCostModels
+import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
 import xyz.kd5ujc.scarab.uplc.flat.FlatWriter
 import xyz.kd5ujc.scarab.uplc.text.{UplcParser, UplcPrinter}
 
 /** The harness of the `uplc-conformance` scenario on hand-written programs (the corpus carries no
   * licence, so none of it is checked in): ids, the context of a scenario, the classes the README
-  * names and the report's items, on both backends.
+  * names and the report's items.
   */
 class UplcConformanceMainSuite extends FunSuite:
   import UplcConformanceMain.*
@@ -42,9 +43,10 @@ class UplcConformanceMainSuite extends FunSuite:
   private def scenario(id: String, language: PlutusLanguage, protocol: Int) =
     Scenario(id, "t", "g", NdcReport.languageName(language), NdcReport.protocolName(protocol))
 
-  /** The report's item of `input` on `vm`. */
-  private def observed(vm: PlutusVm, language: PlutusLanguage, protocol: Int, input: Input): Json =
-    val backend = UplcBackend.of(vm)
+  private val backend = OwnBackend
+
+  /** The report's item of `input`. */
+  private def observed(language: PlutusLanguage, protocol: Int, input: Input): Json =
     val context = backend
       .context(language, protocol, costs(language, protocol))
       .fold(e => fail(e.message), identity)
@@ -78,111 +80,93 @@ class UplcConformanceMainSuite extends FunSuite:
     assertEquals(NdcReport.protocolName(8), "8.0")
   }
 
-  PlutusVm.values.foreach { vm =>
-    test(s"${vm.name}: a result is the program's text and the budget it spent") {
-      val text = Input.Text("(program 1.0.0 [(lam x x) (con integer 42)])")
-      val json = observed(vm, V3, 11, text)
-      assertEquals(evaluation(json), Some("(program 1.0.0 (con integer 42))"))
-      // the start-up cost, and four steps of 16000 CPU and 100 memory units in variant E
-      assertEquals(
-        budget(json),
-        Some(Json.obj("cpu" -> Json.fromLong(64100), "mem" -> Json.fromLong(500)))
-      )
-      assertEquals(json.hcursor.downField("error").focus, None)
-    }
-
-    test(
-      s"${vm.name}: a Flat script is admitted as the ledger admits it at its language and protocol"
-    ) {
-      val v110 = Input.Script(program((1, 1, 0), unit))
-      assertEquals(
-        evaluation(observed(vm, PlutusLanguage.V1, 10, v110)),
-        Some("parse/decode error")
-      )
-      assertEquals(budget(observed(vm, PlutusLanguage.V1, 10, v110)), Some(Json.Null))
-      assertEquals(
-        evaluation(observed(vm, PlutusLanguage.V1, 11, v110)),
-        Some("(program 1.1.0 (con unit ()))")
-      )
-      assertEquals(evaluation(observed(vm, V3, 10, v110)), Some("(program 1.1.0 (con unit ()))"))
-    }
-
-    test(
-      s"${vm.name}: a free variable fails the evaluation, as the ledger's scope check fails it"
-    ) {
-      assertEquals(
-        evaluation(observed(vm, V3, 11, Input.Script(program((1, 0, 0), free)))),
-        Some("evaluation failure")
-      )
-    }
-
-    test(s"${vm.name}: a program that runs past the README's budget is out of budget") {
-      val omega = Input.Text("(program 1.0.0 [(lam x [x x]) (lam x [x x])])")
-      val json = observed(vm, V3, 11, omega)
-      assertEquals(evaluation(json), Some("out of budget"))
-      assertEquals(budget(json), Some(Json.Null))
-    }
-
-    test(s"${vm.name}: text the backend's parser refuses is a parse/decode error") {
-      val backend = UplcBackend.of(vm)
-      val context = backend.context(V3, 11, costs(V3, 11)).fold(e => fail(e.message), identity)
-      val text = Input.Text("(program 1.0.0 (con integer))")
-      assertEquals(evaluation(observed(vm, V3, 11, text)), Some("parse/decode error"))
-      assertEquals(evaluate(backend)(context, text)._1, Route.Refused)
-    }
-
-    test(s"${vm.name}: text the parser reads is admitted in Flat by the backend's decoder") {
-      // 1.1.0 is not V1's at protocol 10: the production check refuses what the parser read
-      val text = Input.Text("(program 1.1.0 (con unit ()))")
-      assertEquals(
-        evaluation(observed(vm, PlutusLanguage.V1, 10, text)),
-        Some("parse/decode error")
-      )
-      val backend = UplcBackend.of(vm)
-      val context = backend
-        .context(V3, 11, costs(V3, 11))
-        .fold(e => fail(e.message), identity)
-      assertEquals(evaluate(backend)(context, text)._1, Route.Encoded)
-    }
-
-    test(s"${vm.name}: the program's version is checked before its scope, as in production") {
-      val both = Input.Script(program((1, 1, 0), free))
-      assertEquals(
-        evaluation(observed(vm, PlutusLanguage.V1, 10, both)),
-        Some("parse/decode error")
-      )
-    }
-
-    test(s"${vm.name}: a BLS12-381 constant read from text evaluates to itself") {
-      val g1 =
-        "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
-      val text = s"(program 1.0.0 (con bls12_381_G1_element $g1))"
-      assertEquals(evaluation(observed(vm, V3, 11, Input.Text(text))), Some(text))
-      val backend = UplcBackend.of(vm)
-      val context = backend.context(V3, 11, costs(V3, 11)).fold(e => fail(e.message), identity)
-      assertEquals(evaluate(backend)(context, Input.Text(text))._1, Route.Unencodable)
-    }
+  test("a result is the program's text and the budget it spent") {
+    val text = Input.Text("(program 1.0.0 [(lam x x) (con integer 42)])")
+    val json = observed(V3, 11, text)
+    assertEquals(evaluation(json), Some("(program 1.0.0 (con integer 42))"))
+    // the start-up cost, and four steps of 16000 CPU and 100 memory units in variant E
+    assertEquals(
+      budget(json),
+      Some(Json.obj("cpu" -> Json.fromLong(64100), "mem" -> Json.fromLong(500)))
+    )
+    assertEquals(json.hcursor.downField("error").focus, None)
   }
 
-  test("without the native crypto library the Scalus backend gives no context, never a verdict") {
-    val language = V3
+  test(
+    "a Flat script is admitted as the ledger admits it at its language and protocol"
+  ) {
+    val v110 = Input.Script(program((1, 1, 0), unit))
     assertEquals(
-      ScalusBackend
-        .contextWith(nativeCrypto = false)(language, 11, costs(language, 11))
-        .left
-        .toOption,
-      Some(Unanswered.NativeCryptoMissing)
+      evaluation(observed(PlutusLanguage.V1, 10, v110)),
+      Some("parse/decode error")
     )
-    assert(
-      ScalusBackend.contextWith(nativeCrypto = true)(language, 11, costs(language, 11)).isRight
+    assertEquals(budget(observed(PlutusLanguage.V1, 10, v110)), Some(Json.Null))
+    assertEquals(
+      evaluation(observed(PlutusLanguage.V1, 11, v110)),
+      Some("(program 1.1.0 (con unit ()))")
     )
+    assertEquals(evaluation(observed(V3, 10, v110)), Some("(program 1.1.0 (con unit ()))"))
+  }
+
+  test(
+    "a free variable fails the evaluation, as the ledger's scope check fails it"
+  ) {
+    assertEquals(
+      evaluation(observed(V3, 11, Input.Script(program((1, 0, 0), free)))),
+      Some("evaluation failure")
+    )
+  }
+
+  test("a program that runs past the README's budget is out of budget") {
+    val omega = Input.Text("(program 1.0.0 [(lam x [x x]) (lam x [x x])])")
+    val json = observed(V3, 11, omega)
+    assertEquals(evaluation(json), Some("out of budget"))
+    assertEquals(budget(json), Some(Json.Null))
+  }
+
+  test("text the backend's parser refuses is a parse/decode error") {
+    val context = backend.context(V3, 11, costs(V3, 11)).fold(e => fail(e.message), identity)
+    val text = Input.Text("(program 1.0.0 (con integer))")
+    assertEquals(evaluation(observed(V3, 11, text)), Some("parse/decode error"))
+    assertEquals(evaluate(backend)(context, text)._1, Route.Refused)
+  }
+
+  test("text the parser reads is admitted in Flat by the backend's decoder") {
+    // 1.1.0 is not V1's at protocol 10: the production check refuses what the parser read
+    val text = Input.Text("(program 1.1.0 (con unit ()))")
+    assertEquals(
+      evaluation(observed(PlutusLanguage.V1, 10, text)),
+      Some("parse/decode error")
+    )
+    val context = backend
+      .context(V3, 11, costs(V3, 11))
+      .fold(e => fail(e.message), identity)
+    assertEquals(evaluate(backend)(context, text)._1, Route.Encoded)
+  }
+
+  test("the program's version is checked before its scope, as in production") {
+    val both = Input.Script(program((1, 1, 0), free))
+    assertEquals(
+      evaluation(observed(PlutusLanguage.V1, 10, both)),
+      Some("parse/decode error")
+    )
+  }
+
+  test("a BLS12-381 constant read from text evaluates to itself") {
+    val g1 =
+      "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
+    val text = s"(program 1.0.0 (con bls12_381_G1_element $g1))"
+    assertEquals(evaluation(observed(V3, 11, Input.Text(text))), Some(text))
+    val context = backend.context(V3, 11, costs(V3, 11)).fold(e => fail(e.message), identity)
+    assertEquals(evaluate(backend)(context, Input.Text(text))._1, Route.Unencodable)
   }
 
   test("no verdict is written as such, with why, and never as one of the README's outcomes") {
-    val json = item(scenario("x", V3, 11), None, Run.NoVerdict(Unanswered.NoFlatContent))
+    val why = Unanswered.Own(Unavailability.UnsupportedProtocol(ProtocolMajor.Dijkstra))
+    val json = item(scenario("x", V3, 11), None, Run.NoVerdict(why))
     assertEquals(evaluation(json), Some("no verdict"))
     assertEquals(budget(json), Some(Json.Null))
-    assertEquals(json.hcursor.get[String]("error").toOption, Some(Unanswered.NoFlatContent.message))
+    assertEquals(json.hcursor.get[String]("error").toOption, Some(why.message))
   }
 
   test("an item has the schema's fields and keeps the scenario's names and versions") {
@@ -212,22 +196,4 @@ class UplcConformanceMainSuite extends FunSuite:
       UplcPrinter.program(parsed),
       "(program 1.0.0 [(lam x-0 x-0) (lam x-0 (lam x-1 x-0))])"
     )
-  }
-
-  test("terms with every kind of constant convert to Scalus and back unchanged") {
-    val text =
-      """(program 1.1.0 [(lam x (constr 3 x (case (con integer 1) (error))))
-        |  (con (list (pair integer bytestring)) [(1, #ff), (-2, #)])])""".stripMargin
-    val constants = Vector(
-      "(con data (Constr 1 [I 2, B #0a, List [Map [(I 1, I 2)]]]))",
-      "(con string \"é\")",
-      "(con (array bool) [True, False])",
-      "(con value [(#aa, [(#bb, 5)])])",
-      "(con bls12_381_G2_element 0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8)"
-    )
-    (text +: constants.map(c => s"(program 1.0.0 $c)")).foreach { source =>
-      val program = UplcParser.program(source).fold(e => fail(s"$source: $e"), identity)
-      val back = ScalusTerms.toScalus(program.term).flatMap(ScalusTerms.fromScalus)
-      assertEquals(back, Right(program.term), source)
-    }
   }

@@ -6,7 +6,7 @@ import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.plutus.PlutusBackends
+import xyz.kd5ujc.scarab.plutus.ScarabEvaluator
 
 class ScriptResultWireSuite extends FunSuite:
   import ContextReferenceCases.{field, hex, Recorded}
@@ -29,7 +29,7 @@ class ScriptResultWireSuite extends FunSuite:
           hex(field[String](reference, "contextCbor"))
         )
       }
-      val outcome = Phase2.run(requests, PlutusBackends.evaluator)
+      val outcome = Phase2.run(requests, ScarabEvaluator.default)
       val valid = !outcome.passed
       val failure = outcome match
         case Phase2.Outcome.Passed(_) => UtxosFailure.ValidationTagMismatch(false, None)

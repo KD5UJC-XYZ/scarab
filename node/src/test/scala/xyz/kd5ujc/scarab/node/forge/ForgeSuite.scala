@@ -1094,8 +1094,8 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     def pick(entries: Vector[xyz.kd5ujc.scarab.node.mempool.Entry], room: Long) =
       BlockBuilder
         .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))(
-          xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
-          xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+          xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+          xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
         )
         .chosen
         .map(_._1.id)

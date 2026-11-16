@@ -12,7 +12,7 @@ import java.io.RandomAccessFile
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.security.MessageDigest
 import java.nio.charset.StandardCharsets
-import xyz.kd5ujc.scarab.plutus.{DataSerialiser, ScalusEvaluator}
+import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
@@ -107,7 +107,7 @@ object RecordedReplay extends munit.Assertions:
           "protocol" -> evaluation.request.protocolMajor.asJson,
           "script" -> evaluation.request.script.hex.asJson,
           "arguments" -> evaluation.request.args
-            .map(arg => Bytes.fromArray(DataSerialiser.serialise(ScalusEvaluator.toData(arg))).hex)
+            .map(arg => DataSerialisation.serialise(arg).hex)
             .asJson,
           "costModel" -> evaluation.request.costModel.asJson,
           "budgetMemory" -> evaluation.request.budget.mem.toString.asJson,
@@ -153,7 +153,7 @@ object RecordedReplay extends munit.Assertions:
         setup.byronRules,
         setup.handOver,
         setup.byronHistory,
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+        xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
         phase2Observer = if observe then Some(observations.observe) else None,
         utxoStore = Some(store),
         parallelPlutus = parallel

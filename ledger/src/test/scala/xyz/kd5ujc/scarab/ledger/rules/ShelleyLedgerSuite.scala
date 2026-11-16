@@ -953,11 +953,7 @@ class ShelleyLedgerSuite extends FunSuite:
     // a script that deserialises, as Babbage requires
     private val plutus = Script.plutus(
       ScriptKind.PlutusV1,
-      Bytes.fromArray(
-        scalus.uplc
-          .Program((1, 0, 0), scalus.uplc.Term.Builtin(scalus.uplc.DefaultFun.AddInteger))
-          .cborEncoded
-      )
+      xyz.kd5ujc.scarab.plutus.UplcScripts.compile("(program 1.0.0 (builtin addInteger))")
     )
     private val scriptAddress =
       Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e.toString), identity)

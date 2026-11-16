@@ -52,7 +52,7 @@ class PreparedBlockSuite extends FunSuite:
   test("typed evaluator unavailability stays distinct for both validity flags") {
     val unsupported: ScriptEvaluator[Id] = _ =>
       EvalResult.Failure(
-        EvalFailure.Unsupported(BackendFailure.NoResult),
+        EvalFailure.Unsupported(BackendFailure.StackExhausted),
         ExUnits.zero,
         Vector.empty
       )

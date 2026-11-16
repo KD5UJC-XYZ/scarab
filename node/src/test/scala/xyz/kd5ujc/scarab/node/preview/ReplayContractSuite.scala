@@ -5,6 +5,8 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Phase2, PlutusCase, PreparedBlockFixture, PreprodDeepTx, Redeemer}
 import xyz.kd5ujc.scarab.plutus.*
+import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
+import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 
 class ReplayContractSuite extends FunSuite:
   import ReplayTrace.*
@@ -89,20 +91,15 @@ class ReplayContractSuite extends FunSuite:
     assertEquals(ReplayTrace.compare(original, original), None)
   }
 
-  test("same-backend native failure diagnostics compare as evidence without exception identity") {
-    def failure(error: Throwable) =
-      Failure.from(EvalFailure.Script(ScriptFailure.Thrown(error, Vector("trace"))))
-    assertEquals(
-      failure(new IllegalArgumentException("first")),
-      failure(new IllegalArgumentException("first"))
-    )
+  test("script failures compare by their typed error and their trace output") {
+    def failure(error: EvaluationError, trace: String) =
+      Failure.from(EvalFailure.Script(ScriptFailure.Uplc(error, Vector(trace))))
+    val explicit = EvaluationError.Cek(CekFailure(CekError.ErrorTerm, None))
+    assertEquals(failure(explicit, "trace"), failure(explicit, "trace"))
+    assertNotEquals(failure(explicit, "trace"), failure(explicit, "other"))
     assertNotEquals(
-      failure(new IllegalArgumentException("first")),
-      failure(new IllegalArgumentException("second"))
-    )
-    assertNotEquals(
-      failure(new IllegalArgumentException("first")),
-      failure(new IllegalStateException("first"))
+      failure(explicit, "trace"),
+      failure(EvaluationError.InvalidReturnValue, "trace")
     )
     assertNotEquals(Failure.from(EvalFailure.OutOfBudget), Failure.from(EvalFailure.OpenTerm(0)))
   }

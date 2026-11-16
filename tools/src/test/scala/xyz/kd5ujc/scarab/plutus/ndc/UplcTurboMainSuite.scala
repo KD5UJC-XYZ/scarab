@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.plutus.ndc
 import io.circe.Json
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
@@ -26,52 +26,50 @@ class UplcTurboMainSuite extends FunSuite:
     assertEquals(languageOf("00AB-1-CD-v2.uplc"), None)
   }
 
-  PlutusVm.values.foreach { vm =>
-    test(s"${vm.name}: a program is run fifty times and measured with the budget it spent") {
-      val backend = UplcBackend.of(vm)
-      val language = PlutusLanguage.V2
-      val context = defaultCostModel(language, 8)
-        .fold(e => fail(e.message), backend.context(language, 8, _))
-        .fold(e => fail(e.message), identity)
-      val program = UplcParser
-        .program("(program 1.0.0 [(lam x [(builtin addInteger) x x]) (con integer 21)])")
-        .fold(e => fail(e.toString), identity)
-      val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
-      val measured =
-        measure(prepared, counterOverhead(), Limit).fold(e => fail(e.message), identity)
-      assert(measured.cpuMicros > 0, "a time is measured")
-      assert(measured.allocated.forall(_ >= 0), "allocation is never negative")
-      assert(measured.spent.cpu.toLong > 0 && measured.spent.memory.toLong > 0, "a budget is spent")
-      val json = item(Bench("b-0-c-v2.flat", language, 8, Bytes.empty), measured, Memory.Unreported)
-      assertEquals(
-        json.asObject.map(_.keys.toVector),
-        Some(
-          Vector(
-            "bench",
-            "plutus_version",
-            "protocol_version",
-            "budget_cpu",
-            "budget_mem",
-            "cpu_us",
-            "mem_bytes"
-          )
+  test("a program is run fifty times and measured with the budget it spent") {
+    val backend = OwnBackend
+    val language = PlutusLanguage.V2
+    val context = defaultCostModel(language, 8)
+      .fold(e => fail(e.message), backend.context(language, 8, _))
+      .fold(e => fail(e.message), identity)
+    val program = UplcParser
+      .program("(program 1.0.0 [(lam x [(builtin addInteger) x x]) (con integer 21)])")
+      .fold(e => fail(e.toString), identity)
+    val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
+    val measured =
+      measure(prepared, counterOverhead(), Limit).fold(e => fail(e.message), identity)
+    assert(measured.cpuMicros > 0, "a time is measured")
+    assert(measured.allocated.forall(_ >= 0), "allocation is never negative")
+    assert(measured.spent.cpu.toLong > 0 && measured.spent.memory.toLong > 0, "a budget is spent")
+    val json = item(Bench("b-0-c-v2.flat", language, 8, Bytes.empty), measured, Memory.Unreported)
+    assertEquals(
+      json.asObject.map(_.keys.toVector),
+      Some(
+        Vector(
+          "bench",
+          "plutus_version",
+          "protocol_version",
+          "budget_cpu",
+          "budget_mem",
+          "cpu_us",
+          "mem_bytes"
         )
       )
-      assertEquals(json.hcursor.get[String]("protocol_version").toOption, Some("8.0"))
-      assert(json.hcursor.downField("mem_bytes").focus.exists(_.isNull), "null when not reported")
-    }
+    )
+    assertEquals(json.hcursor.get[String]("protocol_version").toOption, Some("8.0"))
+    assert(json.hcursor.downField("mem_bytes").focus.exists(_.isNull), "null when not reported")
+  }
 
-    test(s"${vm.name}: a program that fails is not measured") {
-      val backend = UplcBackend.of(vm)
-      val language = PlutusLanguage.V1
-      val context = defaultCostModel(language, 9)
-        .fold(e => fail(e.message), backend.context(language, 9, _))
-        .fold(e => fail(e.message), identity)
-      val program =
-        UplcParser.program("(program 1.0.0 (error))").fold(e => fail(e.toString), identity)
-      val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
-      assert(measure(prepared, Some(0L), Limit).isLeft)
-    }
+  test("a program that fails is not measured") {
+    val backend = OwnBackend
+    val language = PlutusLanguage.V1
+    val context = defaultCostModel(language, 9)
+      .fold(e => fail(e.message), backend.context(language, 9, _))
+      .fold(e => fail(e.message), identity)
+    val program =
+      UplcParser.program("(program 1.0.0 (error))").fold(e => fail(e.toString), identity)
+    val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
+    assert(measure(prepared, Some(0L), Limit).isLeft)
   }
 
   test("the README's budget is the restricting limit, and the default of the options") {

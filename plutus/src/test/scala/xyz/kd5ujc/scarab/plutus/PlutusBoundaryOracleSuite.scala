@@ -9,8 +9,8 @@ import scala.jdk.CollectionConverters.*
 
 /** Executed plutus-1.70.0.0 verdicts with its real crypto backend, not source-only predictions. */
 class PlutusBoundaryOracleSuite extends FunSuite:
-  private val evaluator = ScalusEvaluator.pure
-  private val decoder = ScalusEvaluator.pureDecoder
+  private val evaluator = ScarabEvaluator.pure
+  private val decoder = ScarabEvaluator.pureDecoder
   private val rows = Files
     .readAllLines(Path.of("fixtures/reference/plutus-boundaries/verdicts.jsonl"))
     .asScala
@@ -48,10 +48,10 @@ class PlutusBoundaryOracleSuite extends FunSuite:
         val modelBytes =
           Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
         assertEquals(
-          NativeCrypto.sha256Hex(probe.script.toArray),
+          UplcScripts.sha256Hex(probe.script.toArray),
           field[String](row, "scriptSha256")
         )
-        assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+        assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
         val admitted = decoder.validate(language, protocol, probe.script).isRight
         assertEquals(admitted, field[Boolean](row, "admitted"), s"$language/$protocol")
         val result = evaluator.evaluate(

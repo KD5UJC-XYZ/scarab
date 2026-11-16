@@ -15,13 +15,13 @@ import TestLedger.*
 /** Preprod transaction aee75c1c (block 4,045,972, epoch 248, protocol 10): an output carries a
   * Plutus V2 reference script whose bytes are the CBOR-wrapped flat program twice over. The
   * reference `deserialiseScript` decodes the first item and, for V1 and V2, ignores the remainder
-  * (V3 raises `RemainderError`); Scalus's `fromCbor` rejects the trailing input, which made the
-  * node report `MalformedReferenceScripts` on a transaction the chain accepted.
+  * (V3 raises `RemainderError`). The chain accepted the transaction, so the node must not report
+  * `MalformedReferenceScripts` for it.
   */
 class PreprodMalformedRefScriptSuite extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-aee75c1c.json"))
   private val ada = BigInt(1000000)
-  private val decoder = PlutusBackends.decoder
+  private val decoder = ScarabEvaluator.defaultDecoder
 
   private val script: Bytes =
     c.tx.body.outputs.flatMap(_.referenceScript).head.plutus.get
@@ -61,7 +61,7 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     firstSlotNextEpoch = c.slot + 100,
     stabilityWindow = 129600,
     clock = None,
-    evaluator = PlutusBackends.evaluator,
+    evaluator = ScarabEvaluator.default,
     decoder = decoder
   )
 
@@ -76,11 +76,9 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
   }
 
   test("the same bytes are a RemainderError as Plutus V3") {
-    // the second copy is the remainder: each backend names it in its own terms
+    // the second copy is the remainder
     val remainder = Bytes(script.value.drop(1078))
-    val expected = PlutusBackends.vm match
-      case PlutusVm.Scalus => ScriptProblem.TrailingBytes(remainder.size)
-      case PlutusVm.Scarab => ScriptProblem.Uplc(ScriptDecodeError.Remainder(remainder))
+    val expected = ScriptProblem.Uplc(ScriptDecodeError.Remainder(remainder))
     assertEquals(
       decoder.validate(PlutusLanguage.V3, 10, script),
       Left(ScriptDecodeFailure.Malformed(expected))

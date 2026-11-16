@@ -291,45 +291,24 @@ class MainArgsSuite extends munit.FunSuite:
       assert(Main.parse(base ++ List("--plutus-workers", value)).isLeft)
   }
 
-  test("--plutus-vm chooses the evaluator, scalus by default, and refuses an unknown one") {
-    import xyz.kd5ujc.scarab.plutus.{PlutusVm, UnknownPlutusVm}
+  test("--plutus-vm is refused as an unknown flag: the node has one Plutus evaluator") {
     import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
-    assertEquals(Main.parse(base).map(_.plutusVm), Right(PlutusVm.Scalus))
-    assertEquals(
-      Main.parse(base ++ List("--plutus-vm", "scalus")).map(_.plutusVm),
-      Right(PlutusVm.Scalus)
-    )
-    assertEquals(
-      Main.parse(base ++ List("--plutus-vm", "scarab")).map(_.plutusVm),
-      Right(PlutusVm.Scarab)
-    )
-    Main.parse(base ++ List("--plutus-vm", "Scarab")) match
+    val keys = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
+    for
+      value <- List("scalus", "scarab")
+      flags <- List(base ++ List("--plutus-vm", value), base ++ keys ++ List("--plutus-vm", value))
+    do
+      Main.parse(flags) match
+        case Left(
+              ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag("--plutus-vm"), _))
+            ) =>
+          ()
+        case other => fail(s"$flags: $other")
+    Main.parse(base ++ List("--plutus-vm")) match
       case Left(
-            ConfigError(
-              ConfigProblem.WithUsage(ConfigProblem.PlutusVmUnknown(UnknownPlutusVm("Scarab")), _)
-            )
+            ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlagValue("--plutus-vm"), _))
           ) =>
         ()
       case other => fail(s"$other")
-    assert(Main.parse(base ++ List("--plutus-vm", "scalus", "--plutus-vm", "scarab")).isLeft)
-    assert(Main.parse(base ++ List("--plutus-vm")).isLeft)
-  }
-
-  test(
-    "--forge is taken with either evaluator, in either order (ADR 0027, amendment of 2026-11-13)"
-  ) {
-    import xyz.kd5ujc.scarab.plutus.PlutusVm
-    val keys = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
-    for
-      vm <- PlutusVm.values.toList
-      order <- List(keys ++ List("--plutus-vm", vm.name), List("--plutus-vm", vm.name) ++ keys)
-    do
-      Main.parse(base ++ order) match
-        case Right(options) =>
-          assert(options.forge.isDefined, s"$order: no forging options")
-          assertEquals(options.plutusVm, vm, s"$order")
-        case other => fail(s"$order: $other")
-    assert(
-      Main.parse(base ++ keys).exists(o => o.forge.isDefined && o.plutusVm == PlutusVm.Default)
-    )
+    assert(Main.parse(base ++ keys).exists(_.forge.isDefined))
   }

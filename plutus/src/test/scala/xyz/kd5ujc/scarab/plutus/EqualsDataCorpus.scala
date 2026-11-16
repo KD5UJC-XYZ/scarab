@@ -3,10 +3,9 @@ package xyz.kd5ujc.scarab.plutus
 
 import io.circe.Json
 import java.nio.file.{Files, Path}
-import scalus.cardano.onchain.plutus.prelude.List as PList
-import scalus.uplc.{Constant, DefaultFun, NamedDeBruijn, Program, Term}
-import scalus.uplc.builtin.Data
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, Program, ProgramVersion, Term}
+import xyz.kd5ujc.scarab.uplc.cek.Terms
 
 /** Phase-2 probes of `equalsData` on maps whose entries are reordered, repeated or nested. Every
   * probe ends in `()` when `equalsData left right` is `True` and in `error` otherwise; nothing here
@@ -14,14 +13,14 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * `fixtures/reference/plutus-equals-data/verdicts.jsonl`.
   */
 object EqualsDataCorpus:
-  final case class Probe(id: String, left: Data, right: Data):
+  final case class Probe(id: String, left: PlutusData, right: PlutusData):
     def script: Bytes = EqualsDataCorpus.compiled(left, right)
 
-  private def i(n: Int): Data = Data.I(BigInt(n))
-  private def map(entries: (Data, Data)*): Data = Data.Map(PList.from(entries.toList))
-  private def list(items: Data*): Data = Data.List(PList.from(items.toList))
-  private def constr(tag: Int, fields: Data*): Data =
-    Data.Constr(BigInt(tag), PList.from(fields.toList))
+  private def i(n: Int): PlutusData = PlutusData.I(BigInt(n))
+  private def map(entries: (PlutusData, PlutusData)*): PlutusData = PlutusData.Map(entries.toVector)
+  private def list(items: PlutusData*): PlutusData = PlutusData.List(items.toVector)
+  private def constr(tag: Int, fields: PlutusData*): PlutusData =
+    PlutusData.Constr(BigInt(tag), fields.toVector)
 
   private val ab = map(i(1) -> i(1), i(2) -> i(2))
   private val ba = map(i(2) -> i(2), i(1) -> i(1))
@@ -29,12 +28,12 @@ object EqualsDataCorpus:
   private val abReps = map(i(1) -> i(1), i(1) -> i(2))
   private val baReps = map(i(1) -> i(2), i(1) -> i(1))
 
-  /** The depth of the nested probes: Scalus encodes the script's constants with a CBOR writer that
-    * stops at 1000 levels, so deeper data is passed as arguments in the unit tests instead.
+  /** The depth of the nested probes, as the reference's verdicts were recorded; deeper data is
+    * passed as arguments in the unit tests instead.
     */
   val Depth = 900
 
-  private def nest(levels: Int, bottom: Data)(wrap: Data => Data): Data =
+  private def nest(levels: Int, bottom: PlutusData)(wrap: PlutusData => PlutusData): PlutusData =
     (1 to levels).foldLeft(bottom)((inner, _) => wrap(inner))
 
   val probes: Vector[Probe] = Vector(
@@ -91,35 +90,22 @@ object EqualsDataCorpus:
     Vector(PlutusLanguage.V1, PlutusLanguage.V2, PlutusLanguage.V3)
   val protocols: Vector[Int] = Vector(9, 10, 11)
 
-  private def data(d: Data): Term = Term.Const(Constant.Data(d))
+  private val version: ProgramVersion = ProgramVersion.V1_0_0
 
   /** `force (ifThenElse (equalsData left right) (delay ()) (delay error))`. */
-  def compiled(left: Data, right: Data): Bytes =
-    val equal = Term.Apply(Term.Apply(Term.Builtin(DefaultFun.EqualsData), data(left)), data(right))
-    Bytes.fromArray(Program((1, 0, 0), check(equal)).cborEncoded)
+  def compiled(left: PlutusData, right: PlutusData): Bytes =
+    val equal = Terms.app(Terms.builtin(DefaultFun.EqualsData), Terms.data(left), Terms.data(right))
+    UplcScripts.script(Program(version, check(equal)))
 
   private def check(condition: Term): Term =
-    Term.Force(
-      Term.Apply(
-        Term.Apply(
-          Term.Apply(Term.Force(Term.Builtin(DefaultFun.IfThenElse)), condition),
-          Term.Delay(Term.Const(Constant.Unit))
-        ),
-        Term.Delay(Term.Error())
-      )
-    )
+    Terms.ifThenElse(condition, Terms.con(Constant.Unit), Terms.error)
 
   /** `\\a b -> force (ifThenElse (equalsData a b) (delay ()) (delay error))`: the data is applied
     * as arguments, which the machine takes without encoding it, so it can be as deep as a datum.
     */
   val withArguments: Bytes =
-    val equal = Term.Apply(
-      Term.Apply(Term.Builtin(DefaultFun.EqualsData), Term.Var(NamedDeBruijn("a", 2))),
-      Term.Var(NamedDeBruijn("b", 1))
-    )
-    Bytes.fromArray(
-      Program((1, 0, 0), Term.LamAbs("a", Term.LamAbs("b", check(equal)))).cborEncoded
-    )
+    val equal = Terms.app(Terms.builtin(DefaultFun.EqualsData), Terms.v(2), Terms.v(1))
+    UplcScripts.script(Program(version, Terms.lam(Terms.lam(check(equal)))))
 
   /** Writes the requests for the reference costing oracle (`scripts/oracle/plutus/costing`). */
   def write(args: Array[String]): Unit =

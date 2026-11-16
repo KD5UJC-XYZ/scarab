@@ -57,7 +57,6 @@ class LogGoldenSuite extends CatsEffectSuite:
             .Started(build, peers, setup.genesis, xyz.kd5ujc.scarab.node.NodeConfig.empty, None)
         )
         _ <- blstReports.traverse_(r => node(NodeEvent.Blst(r)))
-        _ <- plutusCryptoReports.traverse_(r => node(NodeEvent.PlutusCrypto(r)))
         _ <- errors.traverse_(e => node(NodeEvent.Failed(e)))
         _ <- node(
           NodeEvent.AssertionsFailed(
@@ -237,8 +236,6 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(
           NodeEvent.UnstableReferenceBuild(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)
         )
-        _ <- xyz.kd5ujc.scarab.plutus.PlutusVm.values.toList
-          .traverse_(vm => node(NodeEvent.PlutusVmChosen(vm)))
         all <- lines.get
       yield all
     }

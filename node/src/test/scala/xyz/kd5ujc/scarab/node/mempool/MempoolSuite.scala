@@ -44,8 +44,8 @@ object TxKit:
         securityParam = TestGeometry.k(5),
         activeSlotsCoeff = TestGeometry.f("0.5")
       ),
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
 
   def head(major: Int, n: BigInt): Vector[Byte] =

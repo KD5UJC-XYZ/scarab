@@ -6,8 +6,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import scalus.cardano.onchain.plutus.prelude.List as PList
-import scalus.uplc.builtin.{Builtins, ByteString}
+import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** `serialiseData` of constructor data with a wide index against the executed reference (plutus
@@ -26,12 +25,9 @@ class SerialiseDataReferenceSuite extends FunSuite:
 
   for v <- SerialiseDataCorpus.vectors do
     test(s"constructor index ${v.name} bits: bytes and digest match the reference") {
-      val bytes = DataSerialiser.serialise(ConstrIndex.constr(v.index, PList.Nil))
-      assertEquals(Bytes.fromArray(bytes), hex(v.bytes))
-      assertEquals(
-        Bytes.fromArray(Builtins.sha2_256(ByteString.fromArray(bytes)).bytes),
-        hex(v.sha)
-      )
+      val bytes = DataSerialisation.serialise(PlutusData.Constr(v.index, Vector.empty))
+      assertEquals(bytes, hex(v.bytes))
+      assertEquals(hex(UplcScripts.sha256Hex(bytes.toArray)), hex(v.sha))
     }
 
   private val rows = Files
@@ -58,7 +54,7 @@ class SerialiseDataReferenceSuite extends FunSuite:
     assertEquals(actual, expected)
   }
 
-  private val evaluator = ScalusEvaluator.pure
+  private val evaluator = ScarabEvaluator.pure
 
   private def stageOf(probe: SerialiseDataCorpus.Probe, row: Json): String =
     val languageId = field[Int](row, "language")
@@ -68,8 +64,8 @@ class SerialiseDataReferenceSuite extends FunSuite:
     val protocol = field[Int](row, "protocol")
     val model = PlutusBoundaryCorpus.costModel(language, protocol)
     val modelBytes = Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-    assertEquals(NativeCrypto.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
-    assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+    assertEquals(UplcScripts.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
+    assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
     evaluator.evaluate(
       EvalRequest(
         language,

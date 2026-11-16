@@ -25,8 +25,8 @@ object FlatDecodeCorpus:
   def nestedList(levels: Int): Array[Byte] =
     Array.fill[Byte](levels)(0x81.toByte) :+ 0x00.toByte
 
-  /** The fewest levels Scalus 1.3.0's `Data` decoder refuses (borer's 1000 nesting levels, counted
-    * from the outermost list after its first two).
+  /** A depth beyond 1000 levels of nesting, counted from the outermost list after its first two: a
+    * decoder with a nesting limit of 1000 refuses it, the reference does not.
     */
   val BeyondBorer = 1003
 

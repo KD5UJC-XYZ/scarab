@@ -5,23 +5,16 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CollectError, Phase2, Redeemer}
 import xyz.kd5ujc.scarab.plutus.*
 
-/** Typed replay observations with same-backend diagnostic evidence. Replay additionally compares
-  * provider diagnostic text, concrete exception classes and trace output; it does not establish
-  * Haskell presentation parity, which remains required under #796. All other evaluator failures
-  * retain their original typed payload.
+/** Typed replay observations: every evaluator failure retains its original typed payload, its trace
+  * output included. Replay does not establish Haskell presentation parity, which remains required
+  * under #796.
   */
 object ReplayTrace:
-  final case class ScriptCause(kind: Class[? <: Throwable], diagnostic: Option[String])
-
   enum Failure:
     case Evaluator(reason: EvalFailure)
-    case Script(cause: ScriptCause, traces: Vector[String])
 
   object Failure:
-    def from(reason: EvalFailure): Failure = reason match
-      case EvalFailure.Script(ScriptFailure.Thrown(cause, traces)) =>
-        Script(ScriptCause(cause.getClass, Option(cause.getMessage)), traces)
-      case other => Evaluator(other)
+    def from(reason: EvalFailure): Failure = Evaluator(reason)
 
   enum Result:
     case Passed(spent: ExUnits, logs: Vector[String])

@@ -83,7 +83,7 @@ class ScriptResultBlockSuite extends FunSuite:
         0L,
         evaluator = evaluator,
         observer = Some(seen),
-        decoder = PlutusBackends.decoder
+        decoder = ScarabEvaluator.defaultDecoder
       )
     )(state, header, block, transactions.map(Right(_)), PlutusStats.zero)
 
@@ -94,10 +94,10 @@ class ScriptResultBlockSuite extends FunSuite:
       ) {
         val serialSeen = Vector.newBuilder[Phase2.Observation]
         val preparedSeen = Vector.newBuilder[Phase2.Observation]
-        val requests = body(recorded, valid, PlutusBackends.evaluator, _ => ()).prepare.jobs
+        val requests = body(recorded, valid, ScarabEvaluator.default, _ => ()).prepare.jobs
           .flatMap(_.requests.fold(e => fail(e.toString), identity))
         val results = requests.map { case (_, request) =>
-          request -> PlutusBackends.evaluator.evaluate(request)
+          request -> ScarabEvaluator.default.evaluate(request)
         }.toMap
         val evaluator: ScriptEvaluator[Id] =
           request => results.getOrElse(request, fail("foreign request"))
@@ -133,11 +133,11 @@ class ScriptResultBlockSuite extends FunSuite:
   }
 
   private val mixed = cases.find(_.name == "api-v2-failpassfail").getOrElse(fail("no mixed case"))
-  private val limit = EvalFailure.Unsupported(BackendFailure.NoResult)
+  private val limit = EvalFailure.Unsupported(BackendFailure.StackExhausted)
 
   test("prepared and serial landing preserve a backend outage after an earlier script failure") {
     val evaluator: ScriptEvaluator[Id] = request =>
-      val result = PlutusBackends.evaluator.evaluate(request)
+      val result = ScarabEvaluator.default.evaluate(request)
       if result.isSuccess then EvalResult.Failure(limit, ExUnits.zero, Vector.empty) else result
     for valid <- Vector(true, false) do
       val program = body(mixed, valid, evaluator, _ => ())
@@ -152,7 +152,7 @@ class ScriptResultBlockSuite extends FunSuite:
   test("a defect after the first script failure is original in serial and prepared landing") {
     val defect = new IllegalStateException("mixed transaction backend defect")
     val evaluator: ScriptEvaluator[Id] = request =>
-      val result = PlutusBackends.evaluator.evaluate(request)
+      val result = ScarabEvaluator.default.evaluate(request)
       if result.isSuccess then throw defect else result
     val program = body(mixed, false, evaluator, _ => ())
     assert(intercept[IllegalStateException](program.serial) eq defect)

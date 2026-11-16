@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import io.circe.{Json, JsonObject}
 import munit.FunSuite
-import scalus.uplc.Program
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.plutus.*
 
@@ -93,23 +92,18 @@ class CostModelNameTablesSuite extends FunSuite:
   }
 
   test("an evaluation gives the same verdict and budget for a list of 361 values or more") {
-    val script = Bytes.fromArray(
-      Program
-        .parseUplc(
-          "(program 1.1.0 [ (lam r (con unit ())) " +
-            "[ [ (builtin appendByteString) (con bytestring #0102) ] (con bytestring #03) ] ])"
-        )
-        .fold(e => fail(e.toString), _.cborEncoded)
+    val script = UplcScripts.compile(
+      "(program 1.1.0 [ (lam r (con unit ())) " +
+        "[ [ (builtin appendByteString) (con bytestring #0102) ] (con bytestring #03) ] ])"
     )
-    val base = scalus.cardano.ledger.CardanoInfo.mainnet.protocolParams.costModels
-      .models(PlutusLanguage.V3.id)
-      .toVector
+    // the reference's default PlutusV3 parameters at protocol 11, as many as the list has names
+    val base = PlutusBoundaryCorpus.costModel(PlutusLanguage.V3, 11)
     def model(length: Int): Vector[Long] = base.padTo(length, 1000L).take(length)
     for
-      (language, protocol) <- Vector(PlutusLanguage.V3 -> 11, PlutusLanguage.V4 -> 12)
+      (language, protocol) <- Vector(PlutusLanguage.V3 -> 11)
       length <- lengths
     do
-      def run(m: Vector[Long]) = ScalusEvaluator.pure.evaluate(
+      def run(m: Vector[Long]) = ScarabEvaluator.pure.evaluate(
         EvalRequest(
           language,
           protocol,

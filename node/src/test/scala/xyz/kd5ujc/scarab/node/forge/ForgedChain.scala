@@ -132,7 +132,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       None,
       None,
       mirrorEnv.byron,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+      xyz.kd5ujc.scarab.plutus.PlutusBackend.default
     )
 
   private def hex(b: Array[Byte]) = Bytes.fromArray(b)
@@ -305,7 +305,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
             None,
             None,
             mirrorEnv.byron,
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+            xyz.kd5ujc.scarab.plutus.PlutusBackend.default
           )
           mempoolBase <- cats.mtl
             .Raise[IO, NodeError]
@@ -319,8 +319,8 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                     MempoolEnv(
                       globals,
                       geometry,
-                      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-                      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+                      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
                     )
                   )
                 )
@@ -336,8 +336,8 @@ class ForgedChainSetup(val geometry: EpochGeometry):
             MempoolEnv(
               globals,
               geometry,
-              xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-              xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+              xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+              xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
             ),
             None,
             MempoolEvents.none[IO]
@@ -374,8 +374,8 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                           MempoolEnv(
                             globals,
                             geometry,
-                            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-                            xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+                            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
                           )
                         )
                         .left
@@ -392,7 +392,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
           forger <- Forger.create[IO, MirrorState](
             config,
             globals,
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+            xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
             ConfigSettings().protocolVersion,
             p.creds,
             follower,
@@ -419,7 +419,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                   None,
                   None,
                   mirrorEnv.byron,
-                  xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+                  xyz.kd5ujc.scarab.plutus.PlutusBackend.default
                 )
                 .toOption
                 .get

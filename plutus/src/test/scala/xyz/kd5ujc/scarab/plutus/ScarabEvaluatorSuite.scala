@@ -5,18 +5,25 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.FlatProgram.*
 import xyz.kd5ujc.scarab.uplc.ProtocolMajor
+import xyz.kd5ujc.scarab.uplc.cek.BudgetMode
+import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
-import xyz.kd5ujc.scarab.uplc.ledger.{EvaluationError, ScriptResult, Unavailability}
+import xyz.kd5ujc.scarab.uplc.ledger.{
+  EvaluationError,
+  LedgerContext,
+  LedgerEval,
+  ScriptResult,
+  Unavailability,
+  VerboseMode
+}
 
-/** How [[ScarabEvaluator]] reports each outcome of the own evaluator in the shared algebra, one row
-  * of its mapping at a time. Where both backends give a verdict, the row is the class the Scalus
-  * backend gives the same request: a verdict means the same whichever backend gave it. The own
-  * evaluator's no-verdict cases (protocol 12, defects) are checked on their own: no verdict is
-  * never a failure of the script.
+/** How [[ScarabEvaluator]] reports each outcome of the own evaluator in the evaluation algebra, one
+  * row of its mapping at a time. Where a budget is reported, it is the one the `uplc` module's
+  * ledger interface spends on the same request, with its components in the ledger's order (memory,
+  * then steps). The no-verdict cases (protocol 12, defects) are never a failure of the script.
   */
 class ScarabEvaluatorSuite extends FunSuite:
   private val scarab = ScarabEvaluator.interpreter
-  private val scalus = ScalusEvaluator.pure
 
   private def request(
       body: Tm,
@@ -47,23 +54,39 @@ class ScarabEvaluatorSuite extends FunSuite:
         case EvalFailure.Script(_)      => "script"
         case EvalFailure.OpenTerm(_)    => "scope"
 
-  private def both(request: EvalRequest): (EvalResult, EvalResult) =
-    val ours = scarab.evaluate(request)
-    val theirs = scalus.evaluate(request)
-    assertEquals(kind(ours), kind(theirs), s"own $ours, Scalus $theirs")
-    (ours, theirs)
+  /** What `evaluateScriptRestricting` of the `uplc` module spends on `request`, as `ExUnits`. */
+  private def spentByLedgerEval(request: EvalRequest): ExUnits =
+    val context = LedgerContext
+      .make(request.language.evaluatedAs, request.costModel)
+      ._2
+      .fold(e => fail(e.toString), identity)
+    val limit = ExBudget.of(request.budget.steps.toLong, request.budget.mem.toLong)
+    LedgerEval.evaluateSerialised(
+      request.language,
+      ProtocolMajor(request.protocolMajor),
+      VerboseMode.Verbose,
+      context,
+      BudgetMode.Restricting(limit),
+      request.script,
+      request.args
+    ) match
+      case ScriptResult.Success(spent, _)    => ExUnits(spent.memory.toBigInt, spent.cpu.toBigInt)
+      case ScriptResult.Failure(_, spent, _) => ExUnits(spent.memory.toBigInt, spent.cpu.toBigInt)
+      case other                             => fail(other.toString)
 
-  test("a script that returns () succeeds with the budget the Scalus backend spends") {
-    both(request(unit)) match
-      case (EvalResult.Success(ours, _), EvalResult.Success(theirs, _)) =>
-        assertEquals(ours, theirs)
+  test("a script that returns () succeeds with the budget the ledger interface spends") {
+    val unitRequest = request(unit)
+    scarab.evaluate(unitRequest) match
+      case EvalResult.Success(spent, _) =>
+        assertEquals(spent, spentByLedgerEval(unitRequest))
+        assert(spent.mem > 0 && spent.steps > spent.mem, spent.toString)
       case other => fail(other.toString)
   }
 
   test("deserialiseScript's refusal is a decoding failure, and Malformed from the decoder") {
     val notBytes = Bytes.fromArray(Array(0x01.toByte))
-    both(request(unit).copy(script = notBytes)) match
-      case (EvalResult.Failure(EvalFailure.Decode(ScriptProblem.Uplc(error)), spent, logs), _) =>
+    scarab.evaluate(request(unit).copy(script = notBytes)) match
+      case EvalResult.Failure(EvalFailure.Decode(ScriptProblem.Uplc(error)), spent, logs) =>
         assertEquals(error, ScriptDecodeError.ExpectedBytes)
         assertEquals(spent, ExUnits.zero)
         assertEquals(logs, Vector.empty)
@@ -77,11 +100,11 @@ class ScarabEvaluatorSuite extends FunSuite:
     assertEquals(scarab.validate(PlutusLanguage.V3, 10, request(unit).script), Right(()))
   }
 
-  test("a program version the language lacks at the protocol is a decoding failure, as Scalus's") {
+  test("a program version the language lacks at the protocol is a decoding failure") {
     // version 1.1.0 is not a PlutusV1 program's before protocol 11
     // (`PlutusLedgerApi/Common/Eval.hs:123-127`, plutus 1.70.0.0)
-    both(request(unit, PlutusLanguage.V1, 7)) match
-      case (EvalResult.Failure(EvalFailure.Decode(ScriptProblem.UplcVersion(_)), _, _), _) => ()
+    scarab.evaluate(request(unit, PlutusLanguage.V1, 7)) match
+      case EvalResult.Failure(EvalFailure.Decode(ScriptProblem.UplcVersion(_)), _, _) => ()
       case other => fail(other.toString)
     // the decoder does not check the version: it is the evaluation's check
     assertEquals(
@@ -90,41 +113,33 @@ class ScarabEvaluatorSuite extends FunSuite:
     )
   }
 
-  test("a free variable is OpenTerm with the index the Scalus backend reports") {
-    both(request(Var(5))) match
-      case (
-            EvalResult.Failure(EvalFailure.OpenTerm(ours), _, _),
-            EvalResult.Failure(EvalFailure.OpenTerm(theirs), _, _)
-          ) =>
-        assertEquals(ours, theirs)
-      case other => fail(other.toString)
+  test("a free variable is OpenTerm with its de Bruijn index") {
+    // `Var(5)` under the script's one context lambda: the index the scope check reports
+    scarab.evaluate(request(Var(5))) match
+      case EvalResult.Failure(EvalFailure.OpenTerm(index), _, _) => assertEquals(index, BigInt(5))
+      case other                                                 => fail(other.toString)
   }
 
-  test("an overspent budget is OutOfBudget, having spent what the Scalus backend spent") {
-    both(request(unit, budget = ExUnits(0, 0))) match
-      case (
-            EvalResult.Failure(EvalFailure.OutOfBudget, ours, _),
-            EvalResult.Failure(_, theirs, _)
-          ) =>
-        assertEquals(ours, theirs)
+  test("an overspent budget is OutOfBudget, having spent what the ledger interface spends") {
+    val overspent = request(unit, budget = ExUnits(0, 0))
+    scarab.evaluate(overspent) match
+      case EvalResult.Failure(EvalFailure.OutOfBudget, spent, _) =>
+        assertEquals(spent, spentByLedgerEval(overspent))
       case other => fail(other.toString)
   }
 
   test("the error term fails the script with the reference's EvaluationError") {
-    both(request(Error)) match
-      case (EvalResult.Failure(EvalFailure.Script(ScriptFailure.Uplc(error, _)), _, _), _) =>
+    scarab.evaluate(request(Error)) match
+      case EvalResult.Failure(EvalFailure.Script(ScriptFailure.Uplc(error, _)), _, _) =>
         assert(error.isInstanceOf[EvaluationError.Cek], error.toString)
       case other => fail(other.toString)
   }
 
   test("a V3 script that returns other than () fails the script") {
-    both(request(integer(1))) match
-      case (
-            EvalResult.Failure(
-              EvalFailure.Script(ScriptFailure.Uplc(EvaluationError.InvalidReturnValue, _)),
-              _,
-              _
-            ),
+    scarab.evaluate(request(integer(1))) match
+      case EvalResult.Failure(
+            EvalFailure.Script(ScriptFailure.Uplc(EvaluationError.InvalidReturnValue, _)),
+            _,
             _
           ) =>
         ()
@@ -152,13 +167,10 @@ class ScarabEvaluatorSuite extends FunSuite:
       case other                                                         => fail(other.toString)
   }
 
-  test("a budget beyond 64 bits gives no verdict, as on the Scalus backend") {
+  test("a budget beyond 64 bits gives no verdict") {
     val huge = ExUnits(BigInt(Long.MaxValue) + 1, 1)
-    both(request(unit, budget = huge)) match
-      case (
-            EvalResult.Failure(EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(b)), _, _),
-            _
-          ) =>
+    scarab.evaluate(request(unit, budget = huge)) match
+      case EvalResult.Failure(EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(b)), _, _) =>
         assertEquals(b, huge)
       case other => fail(other.toString)
   }
@@ -214,13 +226,4 @@ class ScarabEvaluatorSuite extends FunSuite:
         case other                            => fail(s"not a failure: $other")),
       "script does not decode: deserialiseScript refused it: Flat Refused"
     )
-  }
-
-  test("the Scalus backend's script failure reads as it did before the own evaluator") {
-    val cause = new IllegalStateException("x")
-    assertEquals(
-      EvalFailure.Script(ScriptFailure.Thrown(cause, Vector("a", "b"))).toString,
-      s"Script(ScriptFailure($cause,Vector(a, b)))"
-    )
-    assertEquals(ScriptFailure.Thrown(cause, Vector("a")).message, "x; trace: a")
   }
