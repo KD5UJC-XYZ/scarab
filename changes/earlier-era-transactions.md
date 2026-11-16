@@ -1,0 +1,18 @@
+### Fixed (transactions of an earlier era, and the mempool before Conway, #934)
+
+- The mempool holds transactions in every era from Shelley to Conway: those of the era of its ledger,
+  the ledger state at the tip ticked to the slot after it, which may already be the next era. Each era
+  validates them by its own rule, LEDGER from Shelley to Babbage and MEMPOOL in Conway, with its own
+  measures, and a refusal is sent in that era's predicate-failure encoding. Before, the mempool took
+  Conway transactions only and refused every transaction while the chain was before Conway.
+- LocalTxSubmission takes a transaction of an earlier era as the selected reference build does: under
+  `11.1` it is translated forward through each era, as cardano-node 11.1.3 does; under `11.2` and the
+  Leios build it is decoded in the ledger's era, as cardano-node 11.2.1 does, which also takes a
+  later-era transaction whose bytes that era reads. A Byron transaction, one that does not reach the
+  ledger's era, and under `11.1` one of a later era, get the hard-fork combinator's era mismatch with
+  the ledger's era, where it used to name Conway whatever the ledger. When the ledger enters a new era,
+  the held transactions follow it in the same way, and one that does not reach it leaves the pool.
+- LocalTxMonitor `NextTx` lists each transaction under the era it is held in, where it used to name
+  Conway always.
+- Node-to-node transaction submission still carries Conway transactions only: the node offers its peers
+  the transactions it holds in Conway, and no others.
