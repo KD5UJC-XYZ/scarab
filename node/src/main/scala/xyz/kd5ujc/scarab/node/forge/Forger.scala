@@ -524,7 +524,7 @@ final class Forger[F[_]: Async, S](
               else
                 (Fatal.Internal(ClockProblem.SystemClockMovedBack(last, slot)): Fatal)
                   .raise[F, Unit]
-            case _ =>
+            case Some(_) | None =>
               for
                 started <- F.monotonic
                 _ <- shared.clock.set(Some(slot))
@@ -640,13 +640,13 @@ final class Forger[F[_]: Async, S](
         val period = kesPeriodOf(slot)
         val inHeld = held.exists {
           case Held.Kes(s, g, Right(_), _) => g == generation && kesPeriodOf(s) == period
-          case _                           => false
+          case Held.Kes(_, _, Left(_), _) | Held.Line(_, _) | Held.Effect(_) => false
         }
         shared.published.get.flatMap { published =>
           if inHeld || published.announced.contains(generation -> period) then F.pure(held)
           else now.map(at => held :+ Held.Kes(slot, generation, Right(info), at))
         }
-      case _ => F.pure(held)
+      case Some((_, Right(Left(_)))) | Some((_, Left(_))) | None => F.pure(held)
 
   /** A slot no fiber has claimed: decided (§5.4), and either ended here or handed to the forging
     * fiber, which forges it at once.
@@ -730,7 +730,9 @@ final class Forger[F[_]: Async, S](
                                   F.blocking(Leadership.check(slot, inputs)).flatMap {
                                     case Left(_: ForgeError.NotLeader) =>
                                       ends(ForgeTrace.NodeNotLeader(slot), reached = true)
-                                    case _ => F.pure(Forger.Decision.Led())
+                                    // led, or a check that fails otherwise: the forging fiber's
+                                    // attempt ends the slot as the reference would
+                                    case Left(_) | Right(_) => F.pure(Forger.Decision.Led())
                                   }
                               }
                           })
@@ -920,10 +922,10 @@ final class Forger[F[_]: Async, S](
                       vrf
                     ) == prepared.inputs =>
                   None
-                case _ => Some(DiscardReason.Inputs)
+                case Right(_) | Left(_) => Some(DiscardReason.Inputs)
               }
             }
-          case _ => F.pure(Some(DiscardReason.BlockContext))
+          case Right(_) | Left(_) => F.pure(Some(DiscardReason.BlockContext))
     }
 
   /** The Debug line of an attempt that does not count. */
