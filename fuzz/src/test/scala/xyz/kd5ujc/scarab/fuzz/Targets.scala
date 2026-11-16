@@ -416,6 +416,31 @@ object Targets:
         case _ => Vector.empty
     }
 
+  /** A handshake term as it reads again once written: cborg writes the simple values 20 and 21 as
+    * the booleans' heads (`simpleMP`, `Write.hs:563-566`, cborg 0.2.10.0), which read back as
+    * booleans; every other term reads back as itself.
+    */
+  private def rewritten(term: Handshake.Term): Handshake.Term =
+    import xyz.kd5ujc.scarab.codec.TreeFold
+    import TreeFold.Step
+    TreeFold.fold[Handshake.Term, Handshake.Term](term) {
+      case Handshake.Term.Simple(20) => Step.Leaf(Handshake.Term.Bool(false))
+      case Handshake.Term.Simple(21) => Step.Leaf(Handshake.Term.Bool(true))
+      case Handshake.Term.Arr(items, definite) =>
+        Step.Branch(items, built => Right(Handshake.Term.Arr(built, definite)))
+      case Handshake.Term.Map(entries, definite) =>
+        Step.Branch(
+          TreeFold.flatten(entries),
+          built => Right(Handshake.Term.Map(TreeFold.pairs(built), definite))
+        )
+      case Handshake.Term.Tag(number, value) =>
+        Step.Branch(
+          Vector(value),
+          built => Right(Handshake.Term.Tag(number, built.headOption.getOrElse(value)))
+        )
+      case leaf => Step.Leaf(leaf)
+    }
+
   private def handshake(name: String, suite: Handshake.Suite, rule: String): Target =
     Target(
       name,
@@ -430,9 +455,15 @@ object Targets:
                 case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
                 case Right(enc) =>
                   // the versions a refusal lists that we do not know are parsed, not re-encodable
+                  // and the simple values 20 and 21 read back as booleans, as in cborg
                   val kept = message match
                     case Handshake.Message.Refuse(r: Handshake.Reason.VersionMismatch) =>
                       Handshake.Message.Refuse(r.copy(unknown = Vector.empty))
+                    case Handshake.Message.Propose(vs) =>
+                      Handshake.Message.Propose(vs.map((v, t) => v -> rewritten(t)))
+                    case Handshake.Message.Accept(v, t) => Handshake.Message.Accept(v, rewritten(t))
+                    case Handshake.Message.QueryReply(vs) =>
+                      Handshake.Message.QueryReply(vs.map((v, t) => v -> rewritten(t)))
                     case other => other
                   req(
                     Handshake.decode(suite, state, enc) == Right(kept),
@@ -485,7 +516,11 @@ object Targets:
           val kept = message match
             case Handshake.WireMessage.Refuse(reason) =>
               Handshake.WireMessage.Refuse(knownReason(reason))
-            case other => other
+            case Handshake.WireMessage.Propose(vs) =>
+              Handshake.WireMessage.Propose(vs.map((v, t) => v -> rewritten(t)))
+            case Handshake.WireMessage.Accept(v, t) => Handshake.WireMessage.Accept(v, rewritten(t))
+            case Handshake.WireMessage.QueryReply(vs) =>
+              Handshake.WireMessage.QueryReply(vs.map((v, t) => v -> rewritten(t)))
           Handshake.encode(message) match
             case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
             case Right(encoded) =>

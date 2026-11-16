@@ -231,7 +231,6 @@ class HandshakeSuite extends munit.FunSuite:
       "8200a1186361ff" -> ProtocolError.InvalidUTF8,
       "8200a118639bffffffffffffffff" -> ProtocolError.HandshakeByteLimitExceeded,
       "8200a118635a00010000" -> ProtocolError.HandshakeByteLimitExceeded,
-      "8200a11863f818" -> ProtocolError.InvalidExtendedCBORSimpleValue,
       "8200a11863ff" -> ProtocolError.UnexpectedBreak,
       "8200a118631c" -> ProtocolError.ReservedCBORArgument
     )
@@ -451,4 +450,34 @@ class HandshakeSuite extends munit.FunSuite:
     val empties = "9f" + "7fff" * 2876 + "ff"
     assertEquals(accepted(empties).size, 5757)
     assertEquals(roundTrip(empties), Right(accepted(empties)))
+  }
+
+  // cborg's decodeTerm reads 0xf8 and any byte after it as TSimple (tryConsumeSimple, Read.hs:2457,
+  // cborg 0.2.10.0), and its encodeTerm writes TSimple n as simpleMP does (Write.hs:563-566): 0xe0 + n
+  // up to 23, else 0xf8 and n. So f814 is written f4, which reads back as a boolean, as in cborg.
+  test("a simple value after 0xf8 of any value is read, and written as cborg writes it (#1029)") {
+    def accepted(hex: String) = bytes("83010e" + hex)
+    Vector(
+      ("f800", 0, "e0"),
+      ("f813", 19, "f3"),
+      ("f814", 20, "f4"),
+      ("f815", 21, "f5"),
+      ("f816", 22, "f6"),
+      ("f817", 23, "f7"),
+      ("f818", 24, "f818"),
+      ("f81f", 31, "f81f"),
+      ("f8ff", 255, "f8ff")
+    ).foreach { (input, value, output) =>
+      val read = decode(ntn, State.Confirm, accepted(input))
+      assertEquals(read, Right(Message.Accept(14, Term.Simple(value))), input)
+      assertEquals(read.left.map(_.cause).flatMap(encode(ntn, _)), Right(accepted(output)), input)
+    }
+    // the unknown version's data is skipped: the proposal the reference decodes is decoded
+    assertEquals(read("8200a11863f818", state = State.Propose), Message.Propose(Vector.empty))
+    // 20 and 21 written are the booleans' heads, and read back as booleans
+    assertEquals(read("83010ef4"), Message.Accept(14, Term.Bool(false)))
+    assertEquals(
+      encode(ntn, Message.Accept(14, Term.Simple(256))),
+      Left(ProtocolError.InvalidSimpleValue)
+    )
   }

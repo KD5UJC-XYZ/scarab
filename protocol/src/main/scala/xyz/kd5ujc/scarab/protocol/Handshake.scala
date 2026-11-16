@@ -654,6 +654,11 @@ object Handshake:
           else parts.traverse(utf8).map(texts => (end, Term.TextChunks(texts)))
         )
 
+    /** Major type 7 as cborg's `decodeTerm` reads it (`Term.hs:192-198`, cborg 0.2.10.0, with the
+      * token types of `Read.hs:1492-1501`): `0xf8` and the byte after it are a simple value of any
+      * value, those below 32 included (`tryConsumeSimple`, `Read.hs:2457`), and `0xf4` and `0xf5`
+      * the booleans.
+      */
     private def simple(ai: Int, at: Int): Either[ProtocolError, (Int, Term)] = ai match
       case 20 => Right((at, Term.Bool(false)))
       case 21 => Right((at, Term.Bool(true)))
@@ -663,12 +668,8 @@ object Handshake:
         )
       case 31           => Left(ProtocolError.UnexpectedBreak)
       case 28 | 29 | 30 => Left(ProtocolError.ReservedCBORSimpleValue)
-      case 24 =>
-        byte(at).flatMap(n =>
-          if n < 32 then Left(ProtocolError.InvalidExtendedCBORSimpleValue)
-          else Right((at + 1, Term.Simple(n)))
-        )
-      case n => Right((at, Term.Simple(n)))
+      case 24           => byte(at).map(n => (at + 1, Term.Simple(n)))
+      case n            => Right((at, Term.Simple(n)))
 
     /** The head at `at` and what it starts. */
     private def start(at: Int): Either[ProtocolError, (Int, Start)] =
@@ -868,11 +869,14 @@ object Handshake:
           .flatTraverse(writtenBytes)
           .map(written => ((Vector(0x5f.toByte) ++ written) :+ 0xff.toByte) -> Nil)
       case Term.Tag(number, value) => headBytes(6, number).map(_ -> List(Pending.Item(value)))
+      // encodeSimple (`Encoding.hs:335-336`, cborg 0.2.10.0) is written by `simpleMP`
+      // (`Write.hs:563-566`): a value of at most 23 in the head, `0xe0 + n`, a larger one after
+      // `0xf8`; so 20 and 21 are written as the booleans' heads and 22 and 23 as null's and
+      // undefined's, as cborg writes them
       case Term.Simple(n) =>
-        if n < 0 || n > 255 || (n >= 20 && n <= 21) || (n >= 24 && n < 32) then
-          Left(ProtocolError.InvalidSimpleValue)
-        else if n < 24 then Right(Vector((224 + n).toByte) -> Nil)
-        else Right(Vector(248.toByte, n.toByte) -> Nil)
+        if n < 0 || n > 255 then Left(ProtocolError.InvalidSimpleValue)
+        else if n <= 23 then Right(Vector((0xe0 + n).toByte) -> Nil)
+        else Right(Vector(0xf8.toByte, n.toByte) -> Nil)
       case Term.FloatBits(width, bits) =>
         if !Set(2, 4, 8).contains(width) || bits < 0 || bits >= (BigInt(1) << (width * 8)) then
           Left(ProtocolError.InvalidFloatBits)

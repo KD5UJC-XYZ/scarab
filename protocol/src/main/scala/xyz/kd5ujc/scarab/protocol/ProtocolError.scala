@@ -55,7 +55,6 @@ enum ProtocolError extends DomainError:
   case IncompleteCbor
   case InvalidBlockFetchLimits
   case InvalidBlockingInventoryRequest
-  case InvalidExtendedCBORSimpleValue
   case InvalidExtendedSimpleValue
   case InvalidFloatBits
   case InvalidIndefiniteStringChunk
@@ -238,7 +237,6 @@ enum ProtocolError extends DomainError:
     case IncompleteCbor                          => "incomplete CBOR"
     case InvalidBlockFetchLimits                 => "invalid BlockFetch limits"
     case InvalidBlockingInventoryRequest         => "invalid blocking inventory request"
-    case InvalidExtendedCBORSimpleValue          => "invalid extended CBOR simple value"
     case InvalidExtendedSimpleValue              => "invalid extended simple value"
     case InvalidFloatBits                        => "invalid float bits"
     case InvalidIndefiniteStringChunk            => "invalid indefinite string chunk"

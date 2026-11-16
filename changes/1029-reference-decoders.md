@@ -15,6 +15,8 @@
   on the heap, so its depth does not reach the thread's stack.
 - A refusal's reason is read as the reference's `decodeRefuseReason` reads it: its declared length is
   read and ignored, and its tag names the items read (the list of versions, or a version and a text).
+- A simple value written after `0xf8` is read whatever its value, as cborg's `decodeTerm` reads it; one
+  below 32 was refused. It is written back as cborg writes it, in the head up to 23 (`f8 14` as `f4`).
 
 ### Changed (PeerSharing and Handshake encoding, #1029)
 
