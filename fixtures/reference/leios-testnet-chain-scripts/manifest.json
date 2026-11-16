@@ -1,0 +1,20 @@
+{
+  "plutusCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+  "oracleImage": "sha256:57d4e9fe87acef3ade739020795d75ef00948635d4895b730386afff04a9ec0e",
+  "oracleBaseImage": "sha256:54cb3d080e717085f07baba23067fd27dec7d335075dbad0c249b1938ceb0536",
+  "requests": 273,
+  "transactions": 200,
+  "stages": {
+    "success": 273
+  },
+  "sha256": {
+    "models.jsonl": "e7073ddacb10be5cc32585fb7a80fcb4fefa777f979efa6a6cee7ee76a9aea7a",
+    "requests.jsonl": "a434f2eb7ec52a2c4b9eba709618263919c790a50dce2c075a7d390128a05c4d",
+    "verdicts.jsonl": "ebbd8adaf03f978240a42767c28f5e49e8ed5e7c685f8dd21a899e260b2918d1"
+  },
+  "toolSha256": {
+    "scripts/oracle/plutus/generated-171/Main.hs": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
+    "scripts/oracle/plutus/generated-171/Dockerfile": "d97c9965343eabc810da0804fe62c22bc84ebbea578148469852db8966a47a15"
+  },
+  "rawSha256": "00549f213abace8c7ba40d7ee1dd960fb85211c459050fff730aa13c9f7f394a"
+}

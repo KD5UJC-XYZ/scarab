@@ -1,0 +1,18 @@
+{
+ "schemaVersion": 1,
+ "scope": "Admission, stage, error class and constructor, budget spent and logs of the Plutus scripts of a stratified sample of transactions recorded on the public Leios testnet's chain, at protocol 12, under deserialiseScript and evaluateScriptRestricting of plutus 1.71.0.0, with the arguments the testnet's build collected for them, the chain's cost models and the redeemers' execution units as budgets",
+ "plutusSourceCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+ "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+ "measuredAt": "2026-11-16",
+ "network": "the public Leios testnet's chain, network magic 164 (fixtures/reference/leios-testnet-chain-contexts)",
+ "requests": 273,
+ "transactions": 200,
+ "imageId": "sha256:57d4e9fe87acef3ade739020795d75ef00948635d4895b730386afff04a9ec0e",
+ "baseImageId": "sha256:54cb3d080e717085f07baba23067fd27dec7d335075dbad0c249b1938ceb0536",
+ "harnessSha256": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
+ "extractionSha256": "d96c0a4e1bfea78211c36ab50a84dadddfb4cd23129e71609ba31cfe2f1b2993",
+ "contextsSha256": "949533993581c7074252aad5cf1dd1618efc02c5c8115a882bb56d234c7cd3a6",
+ "requestsSha256": "a434f2eb7ec52a2c4b9eba709618263919c790a50dce2c075a7d390128a05c4d",
+ "verdictsSha256": "ebbd8adaf03f978240a42767c28f5e49e8ed5e7c685f8dd21a899e260b2918d1",
+ "modelsSha256": "e7073ddacb10be5cc32585fb7a80fcb4fefa777f979efa6a6cee7ee76a9aea7a"
+}
