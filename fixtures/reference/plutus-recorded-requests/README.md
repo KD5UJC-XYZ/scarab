@@ -57,8 +57,10 @@ control, with every cost parameter doubled no success spends the recorded budget
 
 - The requests are the ledger's own collection: this fixture judges the evaluation of the scripts,
   arguments, cost models and budgets Scarab builds, not whether cardano-ledger would build the same
-  ones. The script contexts have their own oracles (`ContextMatrixSuite`, `V1ContextSuite`,
-  `ScriptResultOracleSuite`, `BoundaryTransactionsSuite`).
+  ones. That the pinned Haskell collection builds the same 253 requests is `RecordedScriptContextsSuite`'s
+  to show ([recorded-contexts](../recorded-contexts/README.md)); other context corpora have their own
+  oracles (`ContextMatrixSuite`, `V1ContextSuite`, `ScriptResultOracleSuite`,
+  `BoundaryTransactionsSuite`).
 - Nearly every request succeeds; the two failures run out of a budget of 10 steps and 10 units of
   memory, with 100 of each spent. The failure paths of the evaluator are covered by the generated
   scripts of [`uplc-generated`](../uplc-generated/README.md) and the boundary corpora, not here.

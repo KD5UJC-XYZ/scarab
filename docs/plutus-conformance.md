@@ -385,15 +385,17 @@ Broader CEK aggregation/log behavior is separate from this context-collection bo
 The contexts of the recorded chain transactions had Scalus's ledger-to-Plutus translation as their
 only second builder, and that went with the Scalus backend. The unchanged context-matrix observer now
 collects them ([corpus](../fixtures/reference/recorded-contexts/README.md)): all 45 recorded Preview
-transactions and three of the four recorded preprod ones, at each one's own era (Babbage 7 and 8,
-Conway 10 and 11), protocol version and network clock, 95 requests in PlutusV1, V2 and V3; and four
+transactions and all 4 recorded preprod ones, at each one's own era (Babbage 7 and 8, Conway 10 and
+11), protocol version and network clock, 253 requests in PlutusV1, V2 and V3, the same requests the
+own evaluator replays against the reference in `RecordedRequestOracleSuite`; and four
 API-only variants of a recorded vote with five voters (script and key committee members, script and
 key DReps, a pool) written out of `Ord Voter` order, whose voting redeemers sit at the indices of
 `Ord Voter` (collected), of the transaction's order and of canonical CBOR key order (refused for the
 script voters they miss), and at every index. `RecordedScriptContextsSuite` requires the node's
 requests in the reference's order, every argument byte for byte, and its refusals for the same voters
-in the same order. The left-out preprod transaction, the size of its answer and the clock each side
-reads are on the corpus page.
+in the same order. The 158 requests of one preprod transaction are kept as digests (the SHA-256 of
+the script and of each argument) for the size of their answer; that and the clock each side reads are
+on the corpus page.
 
 ## Original CBOR byte-string chunks
 

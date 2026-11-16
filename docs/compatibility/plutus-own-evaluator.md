@@ -76,7 +76,10 @@ the commands below are those of that time.
   state unchanged would not show.
 - **Recorded script requests:** of the 253 Preview and preprod requests the reference judged, 251 succeed and the
   2 that fail run out of a budget of 10 steps and 10 units of memory, so failures of real chain scripts are barely
-  sampled. The requests are the ledger's own collection; whether cardano-ledger builds the same ones is for the
-  script-context oracles to show.
+  sampled. The requests are the ledger's own collection; that cardano-ledger builds the same ones is shown by
+  `RecordedScriptContextsSuite` ([recorded contexts](../../fixtures/reference/recorded-contexts/README.md)): for
+  all 253, the pinned Haskell collection gives the same requests in the same order, with the same script,
+  arguments (datum, redeemer and context, byte for byte; by SHA-256 for the 158 of preprod `tx-c70243bb`),
+  budget, cost model and protocol version.
 - **ExUnits conversion:** the conversion of a redeemer's `ExUnits` to a budget is not compared with cardano-ledger's own.
 - **Finite samples:** no corpus shows equality for every program, size or cost-model list.
