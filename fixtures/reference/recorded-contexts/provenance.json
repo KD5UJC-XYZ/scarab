@@ -1,0 +1,39 @@
+{
+ "schemaVersion": 1,
+ "scope": "The script contexts the unchanged released Haskell collection (collectPlutusScriptsWithContext, at each transaction's own era type and protocol version) builds for the recorded Preview and preprod Plutus transactions and for API-only Conway transactions with several voters: for each, every collected request's complete ToCBOR PlutusWithContext encoding in the reference's order, or the collection's refusal. API replay, not signature checking or ledger admission.",
+ "observer": "scripts/oracle/plutus/context-matrix, unchanged: the executable and image of fixtures/reference/context-matrix",
+ "inputs": "scripts/oracle/plutus/recorded-contexts/prepare.py",
+ "ledgerSourceRevision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+ "referenceNode": "11.1.3",
+ "referenceGitRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+ "plutusRevision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+ "oracleCompiler": "GHC9.10.3",
+ "oracleCabal": "3.14.1.1",
+ "oracleBaseImage": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+ "slotClocks": {
+  "preview": "system start 1666656000 s, 1000 ms slots: Shelley-based from slot 0 (fixtures/preview/genesis)",
+  "preprod": "system start 1655683200 s, 1000 ms slots: the Shelley line of fixtures/preprod/genesis (slot 86400 at 1655769600 s after four Byron epochs of 20 s slots), valid for every Shelley-based slot"
+ },
+ "leftOut": {
+  "fixtures/preprod/plutus/tx-c70243bb.json": "158 spending requests of a 159-input transaction: 19.6 MB of answer"
+ },
+ "apiOnly": true,
+ "wholeLedgerAdmissionClaim": false,
+ "date": "2026-11-16",
+ "oracleImage": "sha256:345960f221ef0e5dd5d6b2db8f085d832212ffa91374b5c54113eb1af5a4a7f5",
+ "oracleBinarySha256": "d4e4c0ebd0952fe3eb6fe17df9814a877a3d12c3dbcdd9b2035bd1cc8602dab9",
+ "oracleSourcesSha256": {
+  "scripts/oracle/plutus/context/prepare.py": "63528cf12295a674b4ca75a05acb2dd9c57b156d2443919122b7dcc337411daf",
+  "scripts/oracle/plutus/context-matrix/Dockerfile": "7536fcb7c8ab036482319fcb2537c96afd9c5f1512c9a8b2a328b7ef99029f64",
+  "scripts/oracle/plutus/context-matrix/Dockerfile.dockerignore": "00342f4e549328a067e172a9ecf528f2e8afab21f2fae2fc2bf6218e50348bd3",
+  "scripts/oracle/plutus/context-matrix/Main.hs": "ee72f46dfcaa98989be4ef4001297c8abec200c8dbd9d875841c694988b26c9b",
+  "scripts/oracle/plutus/context-matrix/cabal.project": "c8e3e046ac067d88cb9315a4f962bf318b7184ab95f5c2d1f5ef059b01b95618",
+  "scripts/oracle/plutus/context-matrix/cabal.project.freeze": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+  "scripts/oracle/plutus/context-matrix/prepare.py": "9144b529d2085ddd636bd7813a0b8b33914ed062ee1be6ae6404096d50a8dcc6",
+  "scripts/oracle/plutus/context-matrix/run.py": "d2d419ad9642eab2c213f575ecb7c298ddf042995426af088f71c149c4b40e1a",
+  "scripts/oracle/plutus/context-matrix/scarab-context-oracle.cabal": "82890af53432e16b7690e7f3cf1845aa3562d6b6f2d6b1140d1c7ae7908b8e4f",
+  "scripts/oracle/plutus/recorded-contexts/prepare.py": "dd14e6674441669d8dffd0fcd894235e4c127fcda515cec49ebe93fcb44100e8",
+  "scripts/oracle/plutus/recorded-contexts/run.py": "71fd6f08780b029f6130650521888aa9e3dfb591cdc59b5f1296bd44ec9f2736"
+ },
+ "observations": 52
+}
