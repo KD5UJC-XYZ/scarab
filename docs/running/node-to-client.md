@@ -45,12 +45,13 @@ parameters and each era's genesis configuration, `Globals` and hard-fork trigger
 answers it; below version 20 it ends the connection, as the reference refuses it there.
 The `ntc` gate requires the complete answer bytes to match at the same acquired point. It does not
 mask historical state gaps: any remaining difference fails the comparison and must be resolved.
-Earlier qualified measurements are retained in [compatibility.md](../compatibility.md). Not answered yet
-(the connection ends, the log line `inbound ... closed` names the query): every query but `ledger-state`, the
-chain-dependent state, the UTxO queries, `GetRewardProvenance`, the six that read nothing of the era's own,
-the current protocol parameters, the governance state, the six of the certificate state, the distributions,
-the wallet's queries and the ledger peer snapshots in an era other than Conway, and these last ones in
-Dijkstra (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+Earlier qualified measurements are retained in [compatibility.md](../compatibility.md). From Shelley to
+Babbage every block query the reference's decoder takes in the era is answered, and `DebugLedgerConfig` in
+every era. A query the reference's decoder refuses (a Conway-only query in an earlier era, `DebugLedgerConfig`
+below version 20) ends the connection, as on the reference. Not answered yet (the connection ends, the log
+line `inbound ... closed` names the query): the current protocol parameters, the governance state, the six
+of the certificate state, the distributions, the wallet's queries and the ledger peer snapshots in Dijkstra
+(roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
 Fresh native genesis retains injected pool records with an empty VRF registry, matching the

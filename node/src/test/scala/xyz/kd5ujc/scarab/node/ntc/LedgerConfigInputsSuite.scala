@@ -387,4 +387,48 @@ class LedgerConfigInputsSuite extends FunSuite:
         )
       )
     )
+    val shortDelegate = shelley.mapObject(
+      _.add(
+        "genDelegs",
+        Json.obj(
+          "01" * 28 -> Json.obj(
+            "delegate" -> Json.fromString("02" * 27),
+            "vrf" -> Json.fromString("03" * 32)
+          )
+        )
+      )
+    )
+    assertEquals(
+      GenesisConfig.encode(shortDelegate).left.toOption,
+      Some(
+        GenesisConfig.Error.InvalidHash(
+          "delegate",
+          VocabError.WrongHashLength(VocabError.Kind.KeyHash, 28, 27)
+        )
+      )
+    )
+    val longEntropy = shelley.mapObject(
+      _.add(
+        "protocolParams",
+        shelley.hcursor
+          .downField("protocolParams")
+          .focus
+          .fold(Json.obj())(identity)
+          .mapObject(
+            _.add(
+              "extraEntropy",
+              Json.obj("tag" -> Json.fromString("Nonce"), "contents" -> Json.fromString("04" * 33))
+            )
+          )
+      )
+    )
+    assertEquals(
+      GenesisConfig.encode(longEntropy).left.toOption,
+      Some(
+        GenesisConfig.Error.InvalidHash(
+          "contents",
+          VocabError.WrongHashLength(VocabError.Kind.Hash32, 32, 33)
+        )
+      )
+    )
   }

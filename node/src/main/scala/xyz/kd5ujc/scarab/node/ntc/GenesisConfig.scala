@@ -9,8 +9,17 @@ import xyz.kd5ujc.scarab.protocol.NtcVersion
 import xyz.kd5ujc.scarab.ledger.{ConfigError, GenesisFile, GenesisSchema, Nonce}
 import xyz.kd5ujc.scarab.ledger.json.{BoundedRatio, NumberError}
 import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
-import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Genesis,
+  GenesisDelegate,
+  Hash32,
+  KeyHash,
+  ProtVer,
+  ShelleyBasedEra,
+  VocabError,
+  VRFVerKeyHash
+}
+import xyz.kd5ujc.scarab.storage.haskell.state.{Versions, Wire}
 
 /** `GetGenesisConfig`: the compact Shelley genesis (`CompactGenesis`, whose initial funds and
   * staking are dropped) in the 15-field encoding of node-to-client versions 16–23 (the one without
@@ -25,6 +34,9 @@ object GenesisConfig:
   enum Error extends xyz.kd5ujc.scarab.codec.DomainError:
     case InvalidField(field: String, cause: io.circe.DecodingFailure)
     case InvalidHex(field: String, cause: Bytes.HexError)
+
+    /** A hash whose length is not its type's. */
+    case InvalidHash(field: String, cause: VocabError)
     case InvalidActiveSlotsCoeff(cause: NumberError)
     case InvalidSystemStart(value: String, cause: Throwable)
 
@@ -44,6 +56,7 @@ object GenesisConfig:
     def message: String = this match
       case InvalidField(field, detail)  => s"genesis $field: $detail"
       case InvalidHex(field, detail)    => s"genesis $field: $detail"
+      case InvalidHash(field, e)        => s"genesis $field: ${e.show}"
       case InvalidActiveSlotsCoeff(e)   => s"genesis activeSlotsCoeff: ${e.message}"
       case InvalidSystemStart(value, _) => s"systemStart $value"
       case InvalidRatio(e)              => e.message
@@ -55,18 +68,17 @@ object GenesisConfig:
 
   /** The version the answer is written at: the lowest of the Conway era (`Versions.eraLow`). */
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
-  import NodeOrders.given
 
   /** The genesis delegates: genesis key hash to the delegate's key hash and VRF key hash, a `Map`
     * written by `encodeMap` at `shelleyProtVer`: definite up to 23 pairs, indefinite beyond
     * (`Binary/Encoding/Encoder.hs:391-408`, cardano-ledger-binary 048b78d2).
     */
   private val delegateCodec = Wire.sortedMapOf(
-    xyz.kd5ujc.scarab.models.runtime.Codec.bytes,
-    Wire.writeOnly[(Bytes, Bytes)]("a genesis delegate") { (d, out) =>
+    Wire.writeOnly[KeyHash[Genesis]]("a genesis key hash")((g, out) => out.bytes(g.bytes)),
+    Wire.writeOnly[(KeyHash[GenesisDelegate], VRFVerKeyHash)]("a genesis delegate") { (d, out) =>
       out.arrayHead(2)
-      out.bytes(d._1)
-      out.bytes(d._2)
+      out.bytes(d._1.bytes)
+      out.bytes(d._2.bytes)
     }
   )
 
@@ -83,6 +95,10 @@ object GenesisConfig:
 
   private def hex(c: ACursor, name: String): R[Bytes] =
     get[String](c, name).flatMap(s => Bytes.fromHex(s).leftMap(Error.InvalidHex(name, _)))
+
+  /** A hash field read as its type, which checks its length. */
+  private def hash[A](c: ACursor, name: String)(of: Bytes => Either[VocabError, A]): R[A] =
+    hex(c, name).flatMap(b => of(b).leftMap(Error.InvalidHash(name, _)))
 
   /** `value`, if it is a word of `width`. */
   private def bounded(field: String, value: BigInt, width: WordWidth): R[BoundedWord] =
@@ -125,7 +141,7 @@ object GenesisConfig:
       slotMicros: BigInt,
       quorum: BoundedWord,
       supply: BoundedWord,
-      delegates: Map[Bytes, (Bytes, Bytes)],
+      delegates: Map[KeyHash[Genesis], (KeyHash[GenesisDelegate], VRFVerKeyHash)],
       params: CborOut => Unit
   )
 
@@ -169,9 +185,12 @@ object GenesisConfig:
         .flatMap(
           _.getOrElse(Map.empty).toVector.traverse { case (g, j) =>
             for
-              genesis <- Bytes.fromHex(g).leftMap(Error.InvalidHex("genesis key", _))
-              delegate <- hex(j.hcursor, "delegate")
-              vrf <- hex(j.hcursor, "vrf")
+              genesis <- Bytes
+                .fromHex(g)
+                .leftMap(Error.InvalidHex("genesis key", _))
+                .flatMap(KeyHash.fromBytes[Genesis](_).leftMap(Error.InvalidHash("genesis key", _)))
+              delegate <- hash(j.hcursor, "delegate")(KeyHash.fromBytes[GenesisDelegate])
+              vrf <- hash(j.hcursor, "vrf")(VRFVerKeyHash.fromBytes)
             yield genesis -> (delegate, vrf)
           }
         )
@@ -331,7 +350,8 @@ object GenesisConfig:
         .leftMap(e => Error.InvalidField("extraEntropy", e))
         .flatMap {
           case None | Some("NeutralNonce") => Right(None)
-          case Some(_) => hex(p.downField("extraEntropy"), "contents").map(Some(_))
+          case Some(_) =>
+            hash(p.downField("extraEntropy"), "contents")(Hash32.fromBytes).map(Some(_))
         }
       major <- word(p.downField("protocolVersion"), "major", WordWidth.W64)
       minor <- word(p.downField("protocolVersion"), "minor", WordWidth.W32)
@@ -342,7 +362,9 @@ object GenesisConfig:
       w.word(minFeeA).word(minFeeB).word(maxBody).word(maxTx).word(maxHeader)
       w.word(keyDeposit).word(poolDeposit).word(eMax).word(nOpt)
       List(a0, rho, tau, d).foreach(r => w.ratio(r))
-      w.raw(Wire.nonce.encodeUnchecked(entropy.fold[Nonce](Nonce.Neutral)(Nonce.Hash(_))))
+      w.raw(
+        Wire.nonce.encodeUnchecked(entropy.fold[Nonce](Nonce.Neutral)(h => Nonce.Hash(h.bytes)))
+      )
       if !legacy then w.array(2)
       w.word(major).word(minor)
       w.word(minUtxo).word(minPool)
