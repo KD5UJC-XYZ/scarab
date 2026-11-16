@@ -73,7 +73,6 @@ object StringParsers {
 
   /** Plutus and uplc: builtin and cost-model parameter names, and the textual syntax of UPLC. */
   private val plutusAndUplc: Seq[String] = Seq(
-    "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/PlutusVm.scala",
     "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/DefaultFun.scala",
     "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/EvaluationContext.scala",
     "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/text/UplcParser.scala"
