@@ -188,7 +188,7 @@ object PeerError:
   enum Unavailability:
     case Network(
         cause: NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout |
-          NetworkError.ProtocolIdleTimeout | NetworkError.BearerClosed
+          NetworkError.ProtocolIdleTimeout | NetworkError.BearerClosed | NetworkError.NotKept
     )
     case Connection(cause: xyz.kd5ujc.scarab.protocol.ConnectionError)
     case Resolution(host: String, cause: java.io.IOException)

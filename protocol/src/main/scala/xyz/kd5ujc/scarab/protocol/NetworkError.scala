@@ -31,6 +31,13 @@ enum NetworkError extends DomainError:
   )
   case BearerClosed(reason: NetworkError.Closure)
 
+  /** A ChainSync client's next block, the one after `after`, is not kept: the node has no chain
+    * database, and the block has left its volatile chain. No instruction can follow, so the server
+    * ends the connection instead of leaving the client to wait. The reference always keeps its
+    * immutable chain and has no such case.
+    */
+  case NotKept(protocol: Int, after: ChainSync.Point)
+
   /** An accepted connection stayed silent after its handshake for the protocol idle timeout: no
     * remote-initiated mini-protocol sent a byte (ouroboros-network c45735a5,
     * `defaultProtocolIdleTimeout`).
@@ -94,6 +101,11 @@ enum NetworkError extends DomainError:
     case StateAcquireFailure(point, flushed, pinned, selected) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} acquired UTxO view at $point with stamp $pinned; expected $flushed..$selected"
     case BearerClosed(r) => s"connection closed: ${r.message}"
+    case NotKept(p, after) =>
+      val point = after match
+        case ChainSync.Point.Origin            => "origin"
+        case ChainSync.Point.Block(slot, hash) => s"${slot.value}@${hash.hex.take(16)}"
+      s"${Protocols.name(p)}: the block after $point is not kept: the node keeps no chain database"
     case ProtocolIdleTimeout(after) =>
       s"no mini-protocol activity within ${after.toSeconds} s of the handshake"
     case Defect(t) => s"network defect: ${NetworkError.describe(t)}"

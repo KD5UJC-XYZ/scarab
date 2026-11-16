@@ -139,6 +139,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       source.poll.flatMap {
         case Some(Update.RollForward(h, _))  => loop(acc :+ (h.raw.value.head & 0xff))
         case Some(Update.RollBackward(_, _)) => loop(acc)
+        case Some(Update.NotKept(after))     => IO(fail(s"not kept after $after"))
         case None                            => IO.pure(acc)
       }
     loop(Nil)
@@ -204,6 +205,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 source.poll.flatMap {
                   case Some(Update.RollForward(b, _))  => loop(acc :+ b.bytes)
                   case Some(Update.RollBackward(_, _)) => loop(acc)
+                  case Some(Update.NotKept(after))     => IO(fail(s"not kept after $after"))
                   case None                            => IO.pure(acc)
                 }
               source.intersect(Vector(Point.Origin)) *> loop(Nil)
@@ -246,6 +248,62 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
       }
     }
+  }
+
+  /** A server with no store whose chain of `blocks` blocks has its first `blocks - k` immutable. */
+  private def withoutStore(blocks: Int): IO[ChainServer[IO]] =
+    ok {
+      for
+        server <- ChainServer.open[IO](None, None, headerOf, fatal)
+        persistence = server.persistence[Unit]
+        _ <- (1 to blocks).toList.traverse_ { i =>
+          val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
+          persistence.extended(ref(i), raw(i), immutable, Anchor[Unit](immutable.headOption, ()))
+        }
+      yield server
+    }
+
+  test("a new follower's first instruction is a roll-back to Origin, with or without a store") {
+    // the reference's follower starts in `FollowerInit`, whose instruction is `RollBack
+    // GenesisPoint` (`ChainDB/Impl/Follower.hs` 108, 245-246, 282-286, ouroboros-consensus
+    // 82ecba32): `cardano-cli`'s `getLocalChainTip` takes the tip from that first reply
+    for
+      server <- withoutStore(8)
+      tip <- server.tip
+      blocks <- server.blockSource.use(_.poll)
+      headers <- server.source.use(_.poll)
+    yield
+      assertEquals(blocks, Some(Update.RollBackward(Point.Origin, tip)))
+      assertEquals(headers, Some(Update.RollBackward(Point.Origin, tip)))
+      assertEquals(tip.blockNo.value, BigInt(8))
+  }
+
+  test("without a store, a follower whose next block is no longer kept is not left waiting") {
+    for
+      server <- withoutStore(8)
+      // from Origin, past the first instruction: block 1 is immutable and not kept
+      fromOrigin <- server.blockSource.use(source =>
+        source.poll *> (source.poll, source.await).tupled
+      )
+      // at a volatile point that becomes immutable before the follower asks again
+      persistence = server.persistence[Unit]
+      overtaken <- server.blockSource.use { source =>
+        source.intersect(Vector(ref(6).point)) *> source.poll *>
+          ok(
+            (9 to 12).toList.traverse_ { i =>
+              val immutable = Vector(ref(i - k))
+              persistence.extended(
+                ref(i),
+                raw(i),
+                immutable,
+                Anchor[Unit](immutable.headOption, ())
+              )
+            }
+          ) *> source.poll
+      }
+    yield
+      assertEquals(fromOrigin, (Some(Update.NotKept(Point.Origin)), Update.NotKept(Point.Origin)))
+      assertEquals(overtaken, Some(Update.NotKept(ref(6).point)))
   }
 
   test("a client waiting at the tip is woken by the next block and by a rollback") {

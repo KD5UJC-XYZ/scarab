@@ -105,10 +105,16 @@ final case class ServedChain(
     case Cursor.RollbackTo(p) => Read.Backward(p)
     case Cursor.At(p)         => successor(p)
 
+  /** A new follower, whose first instruction is a roll-back to Origin, as the reference's follower
+    * starts in `FollowerInit`, whose instruction is `RollBack GenesisPoint` (ouroboros-consensus
+    * 82ecba32, `Storage/ChainDB/Impl/Follower.hs` 108, 245-246 and 282-286), for the node-to-node
+    * and the node-to-client server alike (`MiniProtocol/ChainSync/Server.hs` 46-59). A client that
+    * asks for the next instruction without an intersection gets the tip at once (#924).
+    */
   def open(): (ServedChain, Long) =
     (
       copy(
-        followers = followers + (nextFollower -> Cursor.At(Point.Origin)),
+        followers = followers + (nextFollower -> Cursor.RollbackTo(Point.Origin)),
         nextFollower = nextFollower + 1
       ),
       nextFollower

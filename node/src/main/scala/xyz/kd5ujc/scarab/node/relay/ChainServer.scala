@@ -22,8 +22,9 @@ import xyz.kd5ujc.scarab.storage.{ChainPersistence, ImmutableStore}
   * [[ChainPersistence]]), never by what a peer announced, so a client only ever sees blocks this
   * node has validated.
   *
-  * Without a store only the volatile chain is served, and a client that starts from Origin once the
-  * chain is longer than `k` is told there is no intersection.
+  * Without a store only the volatile chain is served: a client that starts from Origin once the
+  * chain is longer than `k` is told there is no intersection, and a client whose next block is no
+  * longer volatile is told it is not kept, which ends its connection.
   */
 final class ChainServer[F[_]: Async] private (
     state: Ref[F, ServedChain],
@@ -145,14 +146,16 @@ final class ChainServer[F[_]: Async] private (
             }
       }
 
-  /** The block after `point` in the immutable store, for a client that has not caught up. */
+  /** The block after `point` in the immutable store, for a client that has not caught up. Without a
+    * store that block is not kept, and the client is told so rather than left waiting (#924).
+    */
   private def immutableNext[P](
       id: Long,
       point: Point,
       ofStored: Bytes => Option[P]
   )(using Raise[F, StorageError]): F[Option[ChainSyncServer.Update[P]]] =
     store match
-      case None => F.pure(None)
+      case None => F.pure(Some(ChainSyncServer.Update.NotKept(point)))
       case Some(s) =>
         s.stream(point).take(1).compile.last.flatMap {
           case None => F.pure(None)
