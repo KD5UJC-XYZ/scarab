@@ -323,25 +323,92 @@ class ConwayUtxowChecksSuite extends FunSuite:
       )
     )
 
-  /** The keys of the forged witnesses each path reports, for `fills`. */
-  private def forgedReported(fills: Vector[Int]): (Vector[Bytes], Vector[Bytes]) =
-    val c = edited(seen.head, 1)(fields =>
-      fields.map((k, v) =>
-        if isKey(0)(k) then
-          def added(n: Node): Node = n.value match
-            case Value.Arr(ws)   => leaf(Value.Arr(ws ++ fills.map(forged)))
-            case Value.Tag(t, x) => leaf(Value.Tag(t, added(x)))
-            case other           => fail(s"key witnesses that are not a list: $other")
-          k -> added(v)
-        else k -> v
+  /** A bootstrap witness whose signature cannot verify: a key of `fill` bytes, a zero signature, a
+    * chain code of 32 zero bytes and empty attributes (`[vkey, signature, chain_code,
+    * attributes]`).
+    */
+  private def forgedBootstrap(fill: Int): Node =
+    def bytes(b: Vector[Byte]) = leaf(Value.ByteString(Bytes(b)))
+    leaf(
+      Value.Arr(
+        Vector(
+          bytes(Vector.fill(32)(fill.toByte)),
+          bytes(Vector.fill(64)(0.toByte)),
+          bytes(Vector.fill(32)(0.toByte)),
+          bytes(Vector(0xa0.toByte))
+        )
       )
+    )
+
+  /** The address root of [[forgedBootstrap]], the reference's order of bootstrap witnesses. */
+  private def bootstrapRoot(fill: Int): Bytes =
+    xyz.kd5ujc.scarab.ledger
+      .BootstrapWitness(
+        Bytes(Vector.fill(32)(fill.toByte)),
+        Bytes(Vector.fill(64)(0.toByte)),
+        Bytes(Vector.fill(32)(0.toByte)),
+        Bytes(Vector(0xa0.toByte))
+      )
+      .addressRoot
+
+  /** The keys of the forged witnesses each path reports, for key witnesses of `fills` and bootstrap
+    * witnesses of `boots`, each added to the recorded witnesses of its kind (key 0 or 2).
+    */
+  private def forgedReported(
+      fills: Vector[Int],
+      boots: Vector[Int] = Vector.empty
+  ): (Vector[Bytes], Vector[Bytes]) =
+    def added(more: Vector[Node])(n: Node): Node = n.value match
+      case Value.Arr(ws)   => leaf(Value.Arr(ws ++ more))
+      case Value.Tag(t, x) => leaf(Value.Tag(t, added(more)(x)))
+      case other           => fail(s"witnesses that are not a list: $other")
+    def withMore(key: Int, more: Vector[Node])(fields: Vector[(Node, Node)]) =
+      if more.isEmpty then fields
+      else if fields.exists((k, _) => isKey(key)(k)) then
+        fields.map((k, v) => if isKey(key)(k) then k -> added(more)(v) else k -> v)
+      else fields :+ (leaf(Value.UInt(key)) -> leaf(Value.Arr(more)))
+    val c = edited(seen.head, 1)(fields =>
+      withMore(2, boots.map(forgedBootstrap))(withMore(0, fills.map(forged))(fields))
     )
     val (_, flat, typed) = pairs(c).find(_._1 == "validateVerifiedWits").get
     def keys(r: Either[LedgerDefect, Vector[PredicateFailure]]) =
-      right(s"forged $fills")(r).collect {
+      right(s"forged $fills $boots")(r).collect {
         case PredicateFailure.Utxow(UtxowFailure.InvalidWitnesses(ks)) => ks
       }.flatten
     (keys(flat), keys(typed))
+
+  private def key(fill: Int): Bytes = Bytes(Vector.fill(32)(fill.toByte))
+
+  /** The reference's order of failing keys (`failed <> failedBootstrap`,
+    * `Shelley/Rules/Utxow.hs:393, 398-407`, cardano-ledger f649f975): the key witnesses' in `Ord
+    * WitVKey` order, then the bootstrap witnesses' in `Ord BootstrapWitness` order (the address
+    * root, `Keys/Bootstrap.hs:108-109`).
+    */
+  private def referenceOrder(fills: Vector[Int], boots: Vector[Int]): Vector[Bytes] =
+    fills.distinct.map(key).sortBy(k => WitVKey(k, Bytes(Vector.fill(64)(0.toByte)))) ++
+      boots.distinct.sortBy(bootstrapRoot).map(key)
+
+  test(
+    "crafted: forged bootstrap witnesses, alone and with forged key witnesses, in the reference's order"
+  ):
+    Vector(
+      (Vector.empty[Int], Vector(5)),
+      (Vector.empty[Int], Vector(6, 7)),
+      (Vector.empty[Int], Vector(7, 6)),
+      (Vector(1, 2), Vector(5)),
+      (Vector(2, 1), Vector(7, 6))
+    ).foreach { (fills, boots) =>
+      val (flat, typed) = forgedReported(fills, boots)
+      val expected = referenceOrder(fills, boots)
+      assertEquals(typed, expected, s"forged $fills, bootstrap $boots")
+      // the flat check lists the bootstrap keys in the same order; only its key witnesses' differ (#796)
+      assertEquals(
+        flat.drop(fills.size),
+        expected.drop(fills.size),
+        s"forged $fills, bootstrap $boots"
+      )
+      assertEquals(flat.take(fills.size), fills.map(key), s"forged $fills, bootstrap $boots")
+    }
 
   test("crafted: forged key witnesses refuse in both paths, the same keys"):
     Vector(Vector(1, 2), Vector(2, 1)).foreach { fills =>

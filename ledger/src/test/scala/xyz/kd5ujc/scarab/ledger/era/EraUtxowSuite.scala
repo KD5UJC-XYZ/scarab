@@ -204,3 +204,58 @@ class EraUtxowSuite extends munit.FunSuite:
       DecoderVersion.range(Era.Dijkstra)
     )
   }
+
+  private def hex(s: String): Bytes = Bytes.fromHex(s).toOption.get
+
+  /** Conway's parameters with the cost models `models`, by language tag. */
+  private def withModels(models: Map[Int, Vector[BigInt]]): PParams[Conway] =
+    PParams[Conway](
+      ConwayPParams.fromStored(TestLedger.params(9).copy(costModels = models)).toOption.get
+    )
+
+  test("each language's view, with and without its cost model, written out (getLanguageView)") {
+    val all =
+      withModels(Map(0 -> Vector(1, 2, 3), 1 -> Vector(4, 5, 6, 7), 2 -> Vector(8, -1, 300)))
+    val none = withModels(Map.empty)
+    def view(pp: PParams[Conway], l: PlutusLanguage) = LangDepView.getLanguageView(pp, l)
+    // PlutusV1: the tag serialised twice (`41 00`), the model an indefinite list serialised as bytes
+    assertEquals(view(all, PlutusLanguage.V1), LangDepView(hex("4100"), hex("459f010203ff")))
+    // a missing model is `null`, serialised as bytes for PlutusV1 (`Alonzo/PParams.hs:573-584`)
+    assertEquals(view(none, PlutusLanguage.V1), LangDepView(hex("4100"), hex("41f6")))
+    // PlutusV2 and V3: the tag serialised once, the model a definite list
+    assertEquals(view(all, PlutusLanguage.V2), LangDepView(hex("01"), hex("8404050607")))
+    assertEquals(view(none, PlutusLanguage.V2), LangDepView(hex("01"), hex("f6")))
+    assertEquals(view(all, PlutusLanguage.V3), LangDepView(hex("02"), hex("83082019012c")))
+    assertEquals(view(none, PlutusLanguage.V3), LangDepView(hex("02"), hex("f6")))
+    // the three in one map, in the short-lex order of their tags: V2, V3, then V1's two-byte tag
+    assertEquals(
+      LangDepView.encodeLangViews(
+        Set(PlutusLanguage.V1, PlutusLanguage.V2, PlutusLanguage.V3).map(view(all, _))
+      ),
+      hex("a3" + "01" + "8404050607" + "02" + "83082019012c" + "4100" + "459f010203ff")
+    )
+    assertEquals(LangDepView.encodeLangViews(Set.empty), hex("a0"))
+  }
+
+  test("views of one tag are encoded in their derived order, whatever order the set was built in") {
+    // `Set.toList` of the views in the derived (tag, parameters) order, then the stable sort by tag
+    // (`Alonzo/PParams.hs:547-548, 587-597`, cardano-ledger f649f975)
+    val a = LangDepView(hex("01"), hex("8102"))
+    val b = LangDepView(hex("01"), hex("8101"))
+    val expected = hex("a2" + "01" + "8101" + "01" + "8102")
+    assertEquals(LangDepView.encodeLangViews(Set(a, b)), expected)
+    assertEquals(LangDepView.encodeLangViews(Set(b, a)), expected)
+    // a shorter tag first, whatever its bytes; and a shorter parameter first among equal tags
+    assertEquals(
+      LangDepView.encodeLangViews(
+        Set(LangDepView(hex("4100"), hex("00")), LangDepView(hex("ff"), hex("00")))
+      ),
+      hex("a2" + "ff00" + "410000")
+    )
+    assertEquals(
+      LangDepView.encodeLangViews(
+        Set(LangDepView(hex("01"), hex("8101")), LangDepView(hex("01"), hex("81")))
+      ),
+      hex("a2" + "0181" + "018101")
+    )
+  }

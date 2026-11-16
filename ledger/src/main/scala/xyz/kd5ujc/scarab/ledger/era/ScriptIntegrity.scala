@@ -54,12 +54,16 @@ object LangDepView:
         Cbor.head(4, BigInt(params.size)) ++ items
 
   /** `encodeLangViews` (`Alonzo/PParams.hs:587-597`, cardano-ledger f649f975): a definite map of
-    * each view's tag to its parameters, already encoded, in the short-lex order of the tags.
+    * each view's tag to its parameters, already encoded, in the short-lex order of the tags. The
+    * reference sorts `Set.toList views`, the views in their derived order (the tag, then the
+    * parameters, each compared as `ByteString` s: lexicographically, unsigned), with the stable
+    * `sortBy`, so views of one tag keep that order: the same here.
     */
   def encodeLangViews(views: Set[LangDepView]): Bytes =
     val shortLex: Ordering[Bytes] = (a, b) =>
       if a.size != b.size then Integer.compare(a.size, b.size) else a.compareTo(b)
-    val ascending = views.toVector.sortBy(_.tag)(using shortLex)
+    // `sortBy` is stable on a `Vector`, as Haskell's is on a list
+    val ascending = views.toVector.sorted(using ordering).sortBy(_.tag)(using shortLex)
     ascending.foldLeft(Cbor.head(5, BigInt(views.size)))((acc, v) => acc ++ v.tag ++ v.params)
 
   /** The CBOR heads a language view needs: an unsigned or negative integer, a byte string's and a
