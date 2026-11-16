@@ -283,7 +283,7 @@ def run_one(args: argparse.Namespace, checkout: Checkout, scenario: Scenario, pi
             "scarab": {"repository": os.environ.get("GITHUB_REPOSITORY", REPOSITORY),
                        "commit": checkout.commit, "dirty": checkout.dirty},
             "tool": {"main": scenario.main, "arguments": scenario.arguments(context, era, "/out"),
-                     "jvm": list(scenario.jvm), "plutus_vm": scenario.plutus_vm, "exit_status": tool.returncode},
+                     "jvm": list(scenario.jvm), "exit_status": tool.returncode},
             "inputs": [pins[name].record() for name in scenario.inputs],
             "environment": env,
             "timings_seconds": {"build": round(build_seconds, 1), "fetch": round(fetch_seconds, 1),

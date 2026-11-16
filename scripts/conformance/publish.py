@@ -179,8 +179,7 @@ def readme(clone: Path, site: score.Site) -> str:
 Generated reports of [Scarab](https://github.com/{SCARAB}), a Cardano node in Scala, for pragma-org's
 [node-diversity-conformance]({SITE}) site. They are written by `scripts/conformance/run.py` and published on
 demand by `scripts/conformance/publish.py` of the Scarab repository (`docs/running/conformance.md` there), which
-also writes this file: do not edit it by hand. The Plutus scenarios report Scarab's own evaluator
-(`--plutus-vm scarab`).
+also writes this file: do not edit it by hand. Scarab's Plutus evaluator is its own (`uplc`).
 
 - `latest/<scenario>[-<era>].json.gz`: the newest report of each scenario and era, which the site reads from
   `{RAW}/latest/`, with its `.provenance.json` beside it.
