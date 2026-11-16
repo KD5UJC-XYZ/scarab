@@ -62,9 +62,13 @@ container alive and talk to its sbt server:
 2. Run sbt once inside it with the server enabled (a copy of `scripts/sbtw` without
    `-Dsbt.server.autostart=false`, kept outside the repository).
 3. Send commands with `docker exec scarab-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
-4. Give the server a socket of its own: start the container with `-e SBT_GLOBAL_BASE=/tmp/sbt-global`
-   (`scripts/sbtw` passes it as `sbt.global.base`). Containers that share the dependency cache share one
-   socket path otherwise, and a client reaches whichever server started first, possibly another session's.
+4. The server's sockets are private to their container. sbt names its boot socket (under `XDG_RUNTIME_DIR`) and its
+   command server's (under `SBT_GLOBAL_SERVER_DIR`) from a hash of the build's path, and `scripts/sbtw` puts both in
+   the container's own temporary directory, so containers that share the dependency cache and mount their checkouts
+   at the same path still get sockets of their own, while every `docker exec` in one container reaches that
+   container's server. The launcher copy of step 2 keeps those lines of `scripts/sbtw`. Start the container with
+   `-e SBT_GLOBAL_BASE=/tmp/sbt-global` too (`scripts/sbtw` passes it as `sbt.global.base`), so that sbt's global
+   directory is private as well.
    Remove your container when you are done; `scripts/cleanup.py --owner <issue> --apply` removes it once stopped.
 
 Two traps: a running JVM loads classes lazily from `target/`, so never recompile under a live

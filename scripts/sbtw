@@ -18,8 +18,24 @@ if [ ! -f "$jar" ]; then
   curl --fail --location --proto '=https' "https://repo.maven.apache.org/maven2/org/scala-sbt/sbt-launch/$version/sbt-launch-$version.jar" -o "$jar"
 fi
 printf '%s  %s\n' "$sha" "$jar" | sha256sum --check --status
-export XDG_RUNTIME_DIR="$cache/run"
-mkdir -p "$XDG_RUNTIME_DIR"
+# sbt has two sockets, each named from a hash of the build's path: the boot socket under XDG_RUNTIME_DIR, and the
+# command server's under SBT_GLOBAL_SERVER_DIR (by default under the global base, which may be the shared cache).
+# Containers mount their checkouts at one path and share the cache, so sockets there were shared, and a client could
+# reach another container's server (#1094). Both go in the machine's own temporary directory instead: private to a
+# container, and shared by the commands run in it. A Unix socket's path holds at most 107 bytes, and the longer of
+# sbt's two adds 50 bytes to this directory (`/.sbt/sbt-socket<hash>/sbt-load.sock`, a signed 64-bit hash).
+runtime="${TMPDIR:-/tmp}/scarab-sbt-$(id -u)"
+if [ "$(printf %s "$runtime" | wc -c)" -gt 57 ]; then
+  echo "sbtw: $runtime is longer than 57 bytes, too long for sbt's socket paths; set TMPDIR to a shorter directory" >&2
+  exit 1
+fi
+mkdir -p "$runtime"
+if [ -L "$runtime" ] || [ ! -O "$runtime" ]; then
+  echo "sbtw: $runtime is a symbolic link or belongs to another user; sbt's sockets need a directory of this user's" >&2
+  exit 1
+fi
+chmod 700 "$runtime"
+export XDG_RUNTIME_DIR="$runtime" SBT_GLOBAL_SERVER_DIR="$runtime/server"
 export COURSIER_CACHE="$cache/coursier"
 processors="${SCARAB_BUILD_PROCESSORS:-4}"
 repositories=project/repositories
