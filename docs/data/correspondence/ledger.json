@@ -6874,15 +6874,6 @@
    ]
   },
   {
-   "reason": "the companions of the script integrity's types, holding their equality and the Scala Ordering of a language view, whose order the reference derives",
-   "definitions": [
-    "given ledger.era.LangDepView.given_CanEqual_LangDepView_LangDepView",
-    "given ledger.era.LangDepView.ordering",
-    "object ledger.era.LangDepView",
-    "object ledger.era.ScriptIntegrity"
-   ]
-  },
-  {
    "reason": "the companions of the script integrity's types and of the era's versions, holding their instances, their equality and the Scala Ordering of a language view, whose order the reference derives",
    "definitions": [
     "given ledger.era.LangDepView.given_CanEqual_LangDepView_LangDepView",
