@@ -74,7 +74,10 @@ at once, and a fatal outcome of any of them ends the others and is the run's res
   final, and the slot driver publishes them in slot order. A slot the slot driver hands over is forged at once. A
   led slot of a KES period the clock has not reached at the wake, in practice a period's first slot, is not forged
   ahead: the slot driver hands it over at its onset, after its update of the period, so that no forge moves the KES
-  key ahead of the clock and a reload in the margin is checked against the key the per-slot loop would have.
+  key ahead of the clock and a reload in the margin is checked against the key the per-slot loop would have. Every
+  attempt made before the onset, one made again after a reload included, checks the clock just before its update of
+  the key and ends there, refused, where the slot's period is later than the clock's; the slot is then made at its
+  onset.
 
 **The KES key at each period.** The slot driver updates the key at the first slot of each period it handles,
 under a reservation that a forge holds from its own update to its signature, so that the key cannot move to the

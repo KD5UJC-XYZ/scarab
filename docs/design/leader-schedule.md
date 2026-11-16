@@ -404,7 +404,11 @@ certificate is checked against the clock's period, would then be refused where t
 certificate's expiry the key would be erased early ([#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101), the
 review of [#1109](https://github.com/KD5UJC-XYZ/scarab/pull/1109)). The slot driver, at the onset and after its update
 of the period, finds the slot led and claims it for the forging fiber (§5.4 step 3), which forges it at once, as the
-per-slot loop forges it: such a slot's block is built after its onset, a Mirror (§5.7).
+per-slot loop forges it: such a slot's block is built after its onset, a Mirror (§5.7). The same holds in every attempt
+made before the onset, the first and any made again: just before its update of the key it checks the clock, and where
+the slot's period is later than the clock's (a pending slot whose attempt is made again after a reload, the wall clock
+moved back within the rewind allowance into the period before), it ends there, refused with no line of its own, gives
+the reservation back, and the slot is made at its onset, as after an early refusal (below).
 
 At the wake the fiber makes an **early attempt**. It is provisional until the slot's onset:
 
@@ -549,8 +553,8 @@ memory is zeroed as now (`Sum6KesSigning`'s `evolve`), so from the period's firs
 for an earlier period, as on a synced reference node, and the write-back of [ADR
 0015](../adr/0015-kes-key-written-back-and-checked-reload.md) replaces the earlier key in its file. Unlike the
 reference (§2.6), the key moves even while the node cannot forecast its slots, so it is never older than the clock's
-period. It is never newer either: no forge is made ahead of a period the clock has not reached (§5.3), so a led slot
-in the first slot of a period is forged after the slot driver's update at its onset. A forge that makes a period's
+period. It is never newer either: no attempt made before its slot's onset updates the key for a period the clock has
+not reached (§5.3), so a led slot in the first slot of a period is forged after the slot driver's update at its onset. A forge that makes a period's
 update first, on a late wake or as the first update after a reload has cleared the record, does so once the clock is
 in the period. While forging is disabled nothing updates the key, as no forging thread runs then in the reference
 (C19).
@@ -697,7 +701,8 @@ recorded result.
 - **A led first slot of a KES period (§5.3, §5.5).** In the differential test, a SIGHUP between the slot's wake and its
   onset installs a certificate issued again for the same KES key, and the certificate's expiry falls on such a slot:
   the reload is taken on both paths and the block is the per-slot decision's, and the key is erased no earlier than
-  on the per-slot path.
+  on the per-slot path. And a pending early attempt made again after a reload of another KES key, the wall clock moved
+  back into the period before, then that key's certificate issued again: both reloads are taken on both paths.
 - **The epoch's last slot (§5.4).** A forge of an epoch's last slot is suspended across the boundary: `forgeEpoch`
   comes after that slot's outcome and counts it.
 - **Forging follows slot order (§5.4).** The slot driver is suspended while it decides slot s, the last slot of KES
@@ -748,7 +753,12 @@ recorded result.
        written where the key moves, by the slot driver's update of the period or by a forge's, never before the
        clock's period, not held with the slot's lines.
      - A led slot of a KES period the clock has not reached at the wake is not forged ahead: the slot driver hands it
-       over at its onset (§5.3, from the review of #1109's final diff).
+       over at its onset (§5.3, from the review of #1109's final diff). An attempt made before the onset, a pending
+       one made again after a reload included, checks the clock just before its update of the key and ends there,
+       refused, where the slot's period is later than the clock's (§5.3, from the second review).
+     - The slot driver records the period whose `startLeadershipCheck` it published, whichever fiber made the line,
+       apart from the KES state's announcement, which drives `stateInfo`: a slot not led logs that line once per
+       period and credentials (§5.4 step 4).
      - A held transaction the selection has no verdict on leaves the mempool only when its attempt counts: before
        its block is handed over, or with the refusal that stands; a discarded attempt changes nothing in the
        mempool, so the slot forged again starts from the mempool the per-slot loop would see.
@@ -853,8 +863,8 @@ left open, or differs from it, §8 lists the point under S2; it is not repeated 
   slot of generated epochs, and the pacing's arithmetic. `LeaderScheduleStreamSuite`: the stream under `TestControl`.
   `ScheduledForgerSuite`: the differential, each slot's outcome and each block handed over against `Forger.step`, across
   an epoch boundary, forks past the freeze and across the previous boundary, a VRF key reload, forging switched off
-  and on, a start mid-epoch, and a led first slot of a KES period with a reload in its wake margin and with the
-  certificate's expiry. `ForgeInterleavingSuite`: the interleavings §7 lists, each placed with `Forger.Point`.
+  and on, a start mid-epoch, a led first slot of a KES period with a reload in its wake margin and with the
+  certificate's expiry, and a pending attempt made again after a reload with the clock moved back a period. `ForgeInterleavingSuite`: the interleavings §7 lists, each placed with `Forger.Point`.
 - **The evidence (S3)** is in the [evidence log](../compatibility/evidence-log-5.md), the entries for #1101: the
   devnet `pool` and `kes-rotate` runs, and one Antithesis run of the trial's base configuration under node, clock and
   network faults, in which every property that must never fire held and forks past k came at the per-slot forger's

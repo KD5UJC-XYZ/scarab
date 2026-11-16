@@ -17,7 +17,9 @@ led slot 50 ms before its onset, the leader check made again against the chain t
 selection at the onset only if its
 block context, inputs and credentials still hold, else forges it again; a led slot of a KES period the clock has not
 reached at the wake, in practice a period's first slot, is forged at its onset, as the reference forges it, once the
-slot driver has updated the key and hands it over, so that no forge moves the key ahead of the clock; the KES key is
+slot driver has updated the key and hands it over, and every attempt made before the onset, one made again after a
+reload included, ends before its update of the key where the slot's period is later than the clock's, so that no forge
+moves the key ahead of the clock; the KES key is
 updated at each period's first slot under a reservation that a forge holds from its update
 to its signature; the schedule is published in four gauges and the `leaderSchedule` line; the forged body is encoded as the reference encodes it, each of its four parts definite up to 23 entries and indefinite above (#987); the two checks of the block just built (body size, decoding) are forge defects: the slot ends without a block, the block's transactions leave the mempool and the node goes on, logged as `forgeDefect` and counted in `scarab_forge_defects_total` (owner decision of 2026-11-14, #987); G7-F3 retains typed terminal storage/unavailable/internal/defect outcomes, prevents signing after key-update failure and preserves the KES failure event/metric; the leader check computes the VRF output of every slot and builds the proof only for a won slot, where the reference evaluates the certified VRF (output and proof) for every slot (`checkIsLeader`, consensus 808e4005 `Protocol/Praos.hs` 408-434): the decision of every slot and a won slot's VRF output and proof are the same, and only the work changes: a lost slot builds no proof, and a won slot computes its output once more while it is proved (#1024); ECVRF draft-03 proving, Sum6 KES generate/sign/evolve, opcert loading; typed operational-certificate input/verifier causes retained through OCERT, credential checks and reload refusals (#82); KES signing-key validation returns closed error cases with depth/period/length payloads, preserved through `ForgeError.KesKey` and `KesEvolution` (#82); dynamic block forging as cardano-node 11.1.3 (`Run.hs` 620-668, #906): a SIGHUP that finds the VRF key, the certificate or the KES key file absent disables forging (no slot started, no block, no KES write-back, `blockForgingUpdate` `DisabledBlockForging`, `forging_enabled_int` 0), a later SIGHUP that finds good files enables it, and `--start-as-non-producing-node`, `--non-producing-node` and `StartAsNonProducingNode` start with forging disabled; a reload forges with the VRF key it read, and from the opening of the stores a SIGHUP is the reference's initial one (topology read again, `blockForgingUpdate` `NotEffective`) and then the full one on every node (#919)
 
@@ -30,8 +32,10 @@ forger on the test clock and through the per-slot check at each slot's onset wit
 slot's outcome and every block's hash equal (an epoch boundary, a fork past the next epoch's freeze while its
 schedule is computed, a fork that changes the mark distribution, a led epoch's first slot whose tip holds a block of
 that slot, slots the schedule does not cover, a SIGHUP of the VRF key, forging off and on, a start mid-epoch, the
-early attempt with each change at each point where it can fall, and a led first slot of a KES period with a
-certificate issued again for the same KES key installed in its wake margin and with the certificate's expiry);
+early attempt with each change at each point where it can fall, a led first slot of a KES period with a
+certificate issued again for the same KES key installed in its wake margin and with the certificate's expiry, and a
+pending early attempt made again after a reload of another KES key, the clock moved back into the period before, then
+that key's certificate issued again);
 `ForgeInterleavingSuite` (a KES boundary
 during assembly, two fibers on one slot in each order, the KES key's expiry in each order, an epoch's last slot
 across the boundary, forging in slot order across a KES boundary, a clock that never waits); the devnet `pool` and
