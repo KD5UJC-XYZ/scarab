@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.conformance
 
 import cats.syntax.all.*
+import java.util.Locale
 import java.util.concurrent.FutureTask
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -83,6 +84,32 @@ class CborDatasetSuite extends FunSuite:
     assertEquals(
       CborDatasetMain.vectorTable(readme),
       Vector("0001-indefinite-array", "0020-bignum-too-large")
+    )
+  }
+
+  /** The default locale, and its display and format locales, set to Persian for one test and given
+    * back after it. The build runs one suite at a time, so no other suite runs under it.
+    */
+  private val persian = FunFixture[(Locale, Locale, Locale)](
+    setup = _ =>
+      val saved = (
+        Locale.getDefault,
+        Locale.getDefault(Locale.Category.DISPLAY),
+        Locale.getDefault(Locale.Category.FORMAT)
+      )
+      Locale.setDefault(Locale.forLanguageTag("fa-IR"))
+      saved
+    ,
+    teardown = (default, display, format) =>
+      Locale.setDefault(default)
+      Locale.setDefault(Locale.Category.DISPLAY, display)
+      Locale.setDefault(Locale.Category.FORMAT, format)
+  )
+
+  persian.test("a vector's name has ASCII digits under a locale with other digits") { _ =>
+    assertEquals(
+      CborDatasetMain.vectorTable("| 1 | indefinite-array | `9f0102ff` | `820102` | x |"),
+      Vector("0001-indefinite-array")
     )
   }
 
