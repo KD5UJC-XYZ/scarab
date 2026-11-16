@@ -9,17 +9,17 @@ import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.uplc.{ProtocolMajor, SemanticsVariant}
 import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
 
 /** The `uplc-turbo` scenario of pragma-org's node-diversity-conformance site: the time, the memory
-  * and the budget of every program of its corpus on one of the node's Plutus evaluators, written as
-  * the scenario's report (`scenarios/uplc-turbo/README.md`, `CHANGELOG.md` and `schema.json` at the
+  * and the budget of every program of its corpus on the node's Plutus evaluator, written as the
+  * scenario's report (`scenarios/uplc-turbo/README.md`, `CHANGELOG.md` and `schema.json` at the
   * site's commit 9dc68a75).
   *
-  * `tools/runMain xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain <scalus|scarab> <corpus-dir>
-  * <report.json> [--memory allocated|null] [--warm-up <passes>] [--memory-limit <units>]`
+  * `tools/runMain xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain <corpus-dir> <report.json> [--memory
+  * allocated|null] [--warm-up <passes>] [--memory-limit <units>]`
   *
   * Each `<epoch>/<name>-v<n>.flat` of the corpus is a script as the ledger holds it (a CBOR byte
   * string around the Flat program), of language `n`, at the protocol the README gives the epoch
@@ -284,21 +284,18 @@ object UplcTurboMain extends IOApp:
 
   def run(args: List[String]): IO[ExitCode] =
     args match
-      case vmName :: corpusDir :: reportFile :: rest =>
-        (PlutusVm.parse(vmName), options(rest)) match
-          case (Left(unknown), _)    => IO.println(unknown.message).as(ExitCode(2))
-          case (Right(vm), Some(so)) => bench(vm, Path.of(corpusDir), Path.of(reportFile), so)
-          case (Right(_), None)      => usage
+      case corpusDir :: reportFile :: rest =>
+        options(rest).fold(usage)(bench(Path.of(corpusDir), Path.of(reportFile), _))
       case _ => usage
 
   private val usage: IO[ExitCode] =
     IO.println(
-      "usage: UplcTurboMain <scalus|scarab> <corpus-dir> <report.json> " +
+      "usage: UplcTurboMain <corpus-dir> <report.json> " +
         "[--memory allocated|null] [--warm-up <passes>] [--memory-limit <units>]"
     ).as(ExitCode(2))
 
-  private def bench(vm: PlutusVm, root: Path, out: Path, so: Options): IO[ExitCode] =
-    val backend = UplcBackend.of(vm)
+  private def bench(root: Path, out: Path, so: Options): IO[ExitCode] =
+    val backend = OwnBackend
     NdcReport.bigStack.use { stack =>
       for
         read <- corpus(root).timed
@@ -325,7 +322,7 @@ object UplcTurboMain extends IOApp:
               machine <- NdcReport.machine
               report = UplcTurboMain.report(
                 Json.obj(
-                  "name" -> Json.fromString(NdcReport.implementation(vm)),
+                  "name" -> Json.fromString(NdcReport.implementation),
                   "language" -> Json.fromString("Scala")
                 ),
                 generated,
@@ -341,7 +338,7 @@ object UplcTurboMain extends IOApp:
               written <- NdcReport.write(out, report).timed
               _ <- failed.traverse_((b, why) => IO.println(s"${b.name}: ${why.message}"))
               _ <- IO.println(
-                s"${vm.name}: ${items.size} of ${programs.size} programs measured, ${failed.size} not; " +
+                s"${items.size} of ${programs.size} programs measured, ${failed.size} not; " +
                   s"sum of cpu_us ${items.map(_._2.cpuMicros).sum.round} us; read ${read._1.toMillis} ms, " +
                   s"prepare ${prepared._1.toMillis} ms, warm-up ${warm._1.toMillis} ms (${so.passes} passes, memory limit ${so.limit.memory.toLong}), " +
                   s"measure ${measured._1.toMillis} ms, write ${written._1.toMillis} ms"

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-/** A small synchronised LRU map: the memoisation of both backends ([[ScalusEvaluator]],
-  * [[ScarabEvaluator]]), which never changes a result.
+/** A small synchronised LRU map: the memoisation of [[ScarabEvaluator]], which never changes a
+  * result.
   */
 private[plutus] final class BoundedCache[K, V](limit: Int):
   private val map = new java.util.LinkedHashMap[K, V](16, 0.75f, true):

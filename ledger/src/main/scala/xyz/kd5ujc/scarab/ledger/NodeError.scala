@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.crypto.bls.BlstProblem
-import xyz.kd5ujc.scarab.plutus.NativeCryptoProblem
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
@@ -761,15 +760,8 @@ enum NativeLibraryProblem:
     */
   case Bls(problem: BlstProblem)
 
-  /** The native library of the Plutus builtins is not the pinned build, did not load, or computes a
-    * wrong answer (ADR 0020). Without it no Ed25519, secp256k1 or BLS12-381 builtin can be
-    * evaluated.
-    */
-  case PlutusCrypto(problem: NativeCryptoProblem)
-
   def message: String = this match
-    case Bls(problem)          => problem.message
-    case PlutusCrypto(problem) => problem.message
+    case Bls(problem) => problem.message
 
 /** A native library failed its start-up check. */
 final case class NativeLibraryError(problem: NativeLibraryProblem) extends NodeError:

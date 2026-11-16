@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.state.Alonzo
   * whose key is one of the transaction's witnesses, holding the value the transaction needs (the
   * first one takes all of it). Nothing here depends on the made-up values, which the checks that
   * are timed only read. Transactions with redeemers are timed in the checks that do not evaluate a
-  * script; scripts are not run (a script evaluation is another cost, `ScalusEvaluator`). Signatures
+  * script; scripts are not run (a script evaluation is another cost, `ScarabEvaluator`). Signatures
   * are not verified (the cache does that off the apply thread, issue 125).
   *
   * Prints, per pass, microseconds per transaction for each shared predicate of `TxChecks` on its
@@ -84,7 +84,7 @@ object ApplyBenchMain:
       var mem = BigInt(0)
       var steps = BigInt(0)
       val recording: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[cats.Id] = r =>
-        val result = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator.evaluate(r)
+        val result = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default.evaluate(r)
         scripts += 1
         mem += result.spent.mem
         steps += result.spent.steps

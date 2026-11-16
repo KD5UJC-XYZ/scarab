@@ -65,8 +65,8 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   * @param byronParams
   *   the Byron parameters of the era history, where the telescopes are placed
   * @param plutus
-  *   the Plutus backend of the blocks' scripts (`--plutus-vm`, ADR 0027): their evaluation and
-  *   their admission, with no default
+  *   the Plutus backend of the blocks' scripts ([[PlutusBackend]]): their evaluation and their
+  *   admission, with no default
   *
   * @param utxoStore
   *   The backing store of the UTxO set. Without one the state's set holds all of it.

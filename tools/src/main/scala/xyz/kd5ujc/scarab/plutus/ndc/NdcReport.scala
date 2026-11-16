@@ -11,15 +11,15 @@ import java.time.Instant
 import java.util.concurrent.{ExecutorService, Executors}
 import scala.jdk.CollectionConverters.*
 import scala.concurrent.ExecutionContext
-import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 
 /** The parts the reports of pragma-org's node-diversity-conformance scenarios share (schema version
   * 1): the header, the budget object, and the names and versions of a program's context.
   */
 object NdcReport:
-  /** The `implementation.name` of a report of `vm`, which names the evaluator. */
-  def implementation(vm: PlutusVm): String = s"Scarab (--plutus-vm ${vm.name})"
+  /** The `implementation.name` of a report. */
+  val implementation: String = "Scarab"
 
   def header(scenario: String, generated: Instant, implementation: Json): Vector[(String, Json)] =
     Vector(
@@ -60,9 +60,7 @@ object NdcReport:
 
   def now: IO[Instant] = IO.realTimeInstant
 
-  /** Scalus's machine recurses on the term, so `ScalusEvaluator` runs it on threads of this stack
-    * size (`ScalusEvaluator.StackSize`); the harness runs every evaluation on one such thread.
-    */
+  /** The stack size of the one thread the harness runs every evaluation on. */
   val StackSize: Long = 256L * 1024 * 1024
 
   /** A thread of [[StackSize]] to evaluate on, for as long as the resource is held. */

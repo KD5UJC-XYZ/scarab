@@ -188,8 +188,8 @@ trait ForgeEvents[F[_]]:
   * @param stats
   *   Per-epoch counters (H5) and the reference's `ForgingStats`, folded over the traces.
   * @param plutus
-  *   The node's Plutus backend (`--plutus-vm`, ADR 0027), with which the block's transactions are
-  *   applied again.
+  *   The node's Plutus backend ([[PlutusBackend]]), with which the block's transactions are applied
+  *   again.
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,

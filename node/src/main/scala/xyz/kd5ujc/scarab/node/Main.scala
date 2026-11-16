@@ -12,13 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.crypto.bls.{Blst, BlstProblem, BlstReport}
-import xyz.kd5ujc.scarab.plutus.{
-  NativeCrypto,
-  NativeCryptoProblem,
-  NativeCryptoReport,
-  PlutusBackend,
-  PlutusVm
-}
+import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ClockProblem,
@@ -127,10 +121,9 @@ import scala.concurrent.duration.*
   * [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full]
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
   * N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N]
-  * [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--plutus-vm
-  * scalus|scarab] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
-  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state
+  * <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]]
+  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -377,9 +370,6 @@ object Main extends IOApp:
     *   `--churn-interval <Ns|Nm>`, for tests: the churn governor's rounds follow each other this
     *   often and no step waits longer than it (the reference's are 3300 s and 900 s with fuzz and
     *   waits of up to 300 s). Off by default.
-    * @param plutusVm
-    *   `--plutus-vm scalus|scarab`: the Plutus evaluator of the rules, the mempool and the forger
-    *   (ADR 0027); `scalus` by default. Either one forges.
     * @param assertionsFile
     *   `--assertions-file <path>`: record the node's Antithesis assertions there, in the fallback
     *   SDK's lines ([[xyz.kd5ujc.scarab.node.assertions.Assertions.recording]], #1032). Off by
@@ -424,7 +414,6 @@ object Main extends IOApp:
       keyLock: Boolean = true,
       referenceBuild: ReferenceBuild = ReferenceBuild.Default,
       startAsNonProducingNode: Boolean = false,
-      plutusVm: PlutusVm = PlutusVm.Default,
       assertionsFile: Option[Path] = None
   ):
     /** `ncStartAsNonProducingNode` of the reference: the flags give `Just True` or nothing
@@ -776,12 +765,10 @@ object Main extends IOApp:
       _ <- Either.cond(roots.hasPeers, (), ConfigError(ConfigProblem.NoPeers))
     yield (topology, roots)
 
-  /** The native libraries the JVM is going to load, checked before anything evaluates a script. The
-    * BLS12-381 library of Leios certificates: one built for processor features this one lacks kills
-    * the JVM with SIGILL, with no event (ADR 0012); it is also the library of the BLS12-381
-    * builtins of the own evaluator, `--plutus-vm scarab` (ADR 0025, ADR 0027). The library of the
-    * Plutus builtins: without the pinned build no signature builtin can be evaluated (ADR 0020).
-    * Each report is logged; a refusal is a [[NativeLibraryError]].
+  /** The native library the JVM is going to load, checked before anything evaluates a script: the
+    * BLS12-381 library of Leios certificates and of the own evaluator's BLS12-381 builtins (ADR
+    * 0012, ADR 0025, ADR 0027). One built for processor features this one lacks kills the JVM with
+    * SIGILL, with no event (ADR 0012). The report is logged; a refusal is a [[NativeLibraryError]].
     */
   private def nativeLibrary(using Handle[IO, NodeError], Log[IO]): IO[Unit] =
     Handle
@@ -790,15 +777,7 @@ object Main extends IOApp:
         Handle[IO, NodeError]
           .raise[NodeError, BlstReport](NativeLibraryError(NativeLibraryProblem.Bls(problem)))
       )
-      .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.Blst(report))) *>
-      Handle
-        .allow[NativeCryptoProblem](NativeCrypto.verify[IO])
-        .rescue(problem =>
-          Handle[IO, NodeError].raise[NodeError, NativeCryptoReport](
-            NativeLibraryError(NativeLibraryProblem.PlutusCrypto(problem))
-          )
-        )
-        .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.PlutusCrypto(report)))
+      .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.Blst(report)))
 
   /** A start that fails says why on standard error as well as in the log, as the reference's
     * top-level handler does before it exits with 1 (cardano-node 11.1.3,
@@ -878,7 +857,6 @@ object Main extends IOApp:
     yield code
     for
       _ <- nativeLibrary
-      _ <- Log[IO].emit[NodeEvent](NodeEvent.PlutusVmChosen(requested.plutusVm))
       // the configuration, then the VRF key's permissions, then the genesis and the credentials
       // (`Run.hs` 183-201)
       _ <- requested.configFile.traverse_(file =>
@@ -1005,10 +983,10 @@ object Main extends IOApp:
   ):
     def genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis = setup.genesis
 
-    /** The Plutus backend of `--plutus-vm`, one for the run: the rules, the mempool and the forger
-      * evaluate and admit scripts with it, and with nothing else (ADR 0027).
+    /** The Plutus backend, one for the run: the rules, the mempool and the forger evaluate and
+      * admit scripts with it, and with nothing else (ADR 0027).
       */
-    val plutus: PlutusBackend = PlutusBackend.of(options.plutusVm)
+    val plutus: PlutusBackend = PlutusBackend.default
 
   /** What a SIGHUP does before the node runs its forger and its network: the reference's initial
     * handler (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 412-435), installed
@@ -2266,7 +2244,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--plutus-vm scalus|scarab] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -2302,7 +2280,6 @@ object Main extends IOApp:
     "max-inbound",
     "cpu-threads",
     "plutus-workers",
-    "plutus-vm",
     "dump-state",
     "dump-state-at",
     "local-socket",
@@ -2500,15 +2477,6 @@ object Main extends IOApp:
                 .flatMap(n => ParallelPlutus.Workers.from(n).toOption)
                 .toRight(invalid("plutus-workers"))
             )
-          plutusVm <- flags
-            .get("plutus-vm")
-            .fold(Right(PlutusVm.Default))(v =>
-              PlutusVm
-                .parse(v)
-                .leftMap(e =>
-                  ConfigError(ConfigProblem.WithUsage(ConfigProblem.PlutusVmUnknown(e), Usage))
-                )
-            )
           dump <- flags.get("dump-state").traverse { d =>
             flags
               .get("dump-state-at")
@@ -2565,7 +2533,6 @@ object Main extends IOApp:
           referenceBuild = referenceBuild,
           startAsNonProducingNode =
             flags.contains("start-as-non-producing-node") || flags.contains("non-producing-node"),
-          plutusVm = plutusVm,
           assertionsFile = flags.get("assertions-file").map(Path.of(_))
         )
       case _ => Left(usage)
