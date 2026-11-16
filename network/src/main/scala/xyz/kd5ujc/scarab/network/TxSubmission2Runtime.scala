@@ -46,6 +46,11 @@ private[network] object TxSubmission2Runtime:
     ): Either[RuleError, Vector[Advertised[I]]]
     def offers(ids: Vector[I], requested: Int): Either[RuleError, Unit]
 
+    /** Whether a received transaction's id `id` is one of the ids `wanted` of the request it
+      * answers: by equality of the ids.
+      */
+    def requested(wanted: Vector[I], id: I): Boolean = wanted.contains(id)
+
   /** The reference's credit and request rules ([[TxSubmissionPolicy]]) over the hard-fork
     * combinator's ids, which compare by their hash alone, whatever their era (`OneEraGenTxId`'s
     * order, `HardFork/Combinator/AcrossEras.hs:167-181`, ouroboros-consensus 82ecba32).
@@ -65,6 +70,10 @@ private[network] object TxSubmission2Runtime:
         .map(marked => unacked.zip(marked).map((a, m) => a.copy(requested = m.requested)))
     def offers(ids: Vector[TxSubmission2.EraTxId], requested: Int) =
       TxSubmissionPolicy.offers(ids.map(_.id), requested)
+    // a peer that crossed a hard fork since it offered the id sends the transaction as it holds it
+    // now, under the new era's index
+    override def requested(wanted: Vector[TxSubmission2.EraTxId], id: TxSubmission2.EraTxId) =
+      wanted.exists(_.id == id.id)
 
   final case class ServerSettings(
       idsPerRequest: Int = 3,
@@ -232,7 +241,7 @@ private[network] object TxSubmission2Runtime:
                       .fold(
                         error => illegal(error),
                         id =>
-                          if group.contains(id) then F.pure(original)
+                          if rules.requested(group, id) then F.pure(original)
                           else illegal(NetworkError.RuntimeViolation.TransactionNotRequested)
                       )
                   )

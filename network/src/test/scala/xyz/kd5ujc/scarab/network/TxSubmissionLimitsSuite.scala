@@ -603,6 +603,72 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         )
       )
 
+  test("server takes a transaction sent under another era than its id was offered under"):
+    import xyz.kd5ujc.scarab.protocol.{Era, TxSubmission2Engine}
+    import xyz.kd5ujc.scarab.protocol.TxSubmission2.{EraTx, EraTxId}
+    // the structural reader, in every era
+    val anyEra = new TxSubmission2.TransactionReader:
+      def body(original: Bytes) = TxSubmission2Fixtures.structural.body(original)
+      def read(original: Bytes) = TxSubmission2Fixtures.structural.read(original)
+      override def body(original: Bytes, era: Era) = body(original)
+      override def read(original: Bytes, era: Era) = read(original)
+    val eras = TxSubmission2.eraCodec(anyEra)
+    val id = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(Bytes(Vector(0xa0.toByte)))
+    def put(
+        channel: MuxChannel[IO],
+        state: State,
+        message: TxSubmission2Engine.Message[EraTxId, EraTx]
+    )(using
+        Net
+    ) = eras.encode(state, Role.Client, message).fold(e => fail(e.toString), channel.send)
+    TestControl
+      .executeEmbed(for
+        taken <- Ref.of[IO, Vector[EraTx]](Vector.empty)
+        sink = new TxSubmissionServer.Sink[IO]:
+          def reader = anyEra
+          def known(txId: Bytes) = IO.pure(false)
+          def submit(originals: Vector[EraTx])(using
+              cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+          ) = taken.update(_ ++ originals)
+        requested <- typed {
+          linked(protocols = Set(4)).use { (client, server) =>
+            for
+              c <- client.channel(4)
+              s <- server.channel(4)
+              running <- typed(TxSubmissionServer.run(s, sink)).start
+              _ <- send(c, State.Init, Role.Client, Message.Init)
+              _ <- receive(c, State.Idle, Role.Server)
+              _ <- put(
+                c,
+                State.Ids(true),
+                TxSubmission2Engine.Message.ReplyIds(
+                  Vector(TxSubmission2Engine.Offer(EraTxId(Era.Babbage, id), 10))
+                )
+              )
+              request <- c.recv(TxSubmission2.maxMessageBytes(State.Idle))(
+                eras.decodePrefix(State.Idle, Role.Server, _)
+              )
+              _ <- put(
+                c,
+                State.Txs,
+                TxSubmission2Engine.Message.ReplyTxs(Vector(EraTx(Era.Conway, transaction)))
+              )
+              // the server takes it and asks for more ids
+              _ <- receive(c, State.Idle, Role.Server)
+              _ <- running.cancel
+            yield request
+          }
+        }
+        got <- taken.get
+      yield (requested, got))
+      .map { (requested, got) =>
+        assertEquals(
+          requested,
+          Right(TxSubmission2Engine.Message.RequestTxs(Vector(EraTxId(Era.Babbage, id))))
+        )
+        assertEquals(got, Vector(EraTx(Era.Conway, transaction)))
+      }
+
   for duplicate <- List(false, true) do
     test(
       s"server rejects ${if duplicate then "duplicate" else "excess"} offers before calling sink"
