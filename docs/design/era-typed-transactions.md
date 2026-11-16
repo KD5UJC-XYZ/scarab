@@ -526,19 +526,28 @@ Conway's rules on the classes follow as the rest of stage 2.
     members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction
     annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do not have
     yet (on #85's checklist).
-- **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `ProposalProcedure[E]`,
-  `GovAction[E]` and `VotingProcedures[E]` are families, Conway's case its own opaque type over a representation
-  the eras share, parameterised by what differs: the action over the era's update (`GovActionRep[U]`, `U` being
-  `PParamsUpdate[Conway]`) and the proposal over its action. Each parent is the id of its action's purpose
-  (`GovPurposeId[P]`, nominal in `P` as the reference's). Conway's body and proposing purpose carry them. A proposal
-  keeps the flat `Proposal` it was read as, which the flat rules' failures carry, and is equal by its typed fields.
-  - Read from the flat decoder's proposals, the typed action refuses nothing that decoder accepts: every recorded
-    Conway proposal, of each of the seven actions, reads with the flat fields, and crafted proposals at each bound
-    and past it give the same verdict.
-  - A family with one case reduces, in generic code, to that case, so a function generic in `E` reading a
-    proposal's fields compiles while Conway is the only case and fails once a second era has one. A rule generic in
-    its era (GOV, shared by Conway and Dijkstra) needs another way to read them; the reference reads them from its
-    one data type and has no class for it.
+- **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
+  `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
+  `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in
+  generic code, to that case, so a rule generic in its era (GOV, shared by Conway and Dijkstra) could read a
+  proposal's fields only while Conway is the only case. What differs between the eras is the update
+  (`PParamsUpdate[E]`), so `GovAction[Conway]` and `GovAction[Dijkstra]` are distinct types. Each parent is the id
+  of its action's purpose (`GovPurposeId[P]`, nominal in `P`). Conway's values are made only from what its decoder
+  read; a proposal keeps the flat `Proposal` it was read as, which the flat failures carry, and is equal by its
+  typed fields. Every recorded Conway proposal, of each of the seven actions, reads with the flat fields, and
+  crafted proposals at each bound and past it give the flat decoder's verdict and error.
+- **GOV's first functions** (`era/rules/Gov.scala`): `isBootstrapAction`, `checkBootstrapProposal`,
+  `actionWellFormed`, `checkGuardrailsScriptHash` and `unelectedCommitteeVoters`, with Conway's version gates and the
+  committee's authorised hot credentials, each generic in its era over the reference's classes. They report the
+  node's flat failures; `actionWellFormed` takes the action as read for its failure.
+  - `ConwayGovChecksSuite` compares the failures they report with those the flat GOV rule records for the same
+    checks, on every Conway case of the refusal corpus and on crafted ones. The corpus never fails
+    `checkBootstrapProposal`; a crafted case does.
+  - The comparison found one difference in a refusal's content: the flat rule lists unelected committee voters in
+    the order the body's map arrived in, where the reference reports the ascending list of a set. Reported, not
+    changed here.
+  - The functions that read the stored proposals, and the checks `conwayGovTransition` writes inline, wait for the
+    governance state's era types (`EraGov`, tracked on #85).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
