@@ -170,6 +170,29 @@ class ConwayUtxoChecksSuite extends FunSuite:
         AlonzoUtxo.validateTooManyCollateralInputs[Conway](s.pp, tb)
       ),
       (
+        "validateOutputTooSmallUTxO",
+        UtxoTests.outputTooSmall[Conway](s.flatPp, outs),
+        BabbageUtxo.validateOutputTooSmallUTxO[Conway](
+          s.pp,
+          body.allSizedOutputs[TxLevel.Top](tb)(using top)
+        )(using body.outputsOf)
+      ),
+      (
+        "validateOutputTooBigUTxO",
+        UtxoTests.outputTooBig[Conway](s.flatPp, outs),
+        AlonzoUtxo.validateOutputTooBigUTxO[Conway](
+          s.pp,
+          body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+        )(using body.outputsOf)
+      ),
+      (
+        "validateOutputBootAddrAttrsTooBig",
+        UtxoTests.bootAddrAttrsTooBig(outs),
+        ShelleyUtxo.validateOutputBootAddrAttrsTooBig[Conway](
+          body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+        )(using body.outputsOf)
+      ),
+      (
         "feesOK",
         UtxoTests.feesOK[Conway](s.flatPp, Utxo.fromMap(s.stored), s.flat, flatMinFee(s)),
         BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo)
@@ -550,6 +573,14 @@ class ConwayUtxoChecksSuite extends FunSuite:
     )
     compared(wrong, "feesOK")
 
+  test("crafted from a recorded case: values over a 1-byte limit, reported last output first"):
+    val s = withParams(
+      seen
+        .find(s => s.flat.body.outputs.size + s.flat.body.collateralReturn.size >= 2)
+        .getOrElse(fail("no case with two outputs"))
+    )(_.copy(maxValueSize = 1))
+    compared(s, "validateOutputTooBigUTxO")
+
   test("the corpus fails the predicates it can tell apart, and names the rest"):
     val all = pairs(seen.head).map(_._1).toSet
     assertEquals(all -- refusedSomewhere, NeverRefused)
@@ -557,4 +588,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
   /** The predicates no Conway case of the corpus fails: for these the comparison saw passes only.
     */
   private val NeverRefused: Set[String] =
-    Set("disjointRefInputs", "validateTooManyCollateralInputs", "validateInputSetEmptyUTxO")
+    Set(
+      "disjointRefInputs",
+      "validateTooManyCollateralInputs",
+      "validateInputSetEmptyUTxO",
+      "validateOutputTooBigUTxO"
+    )

@@ -94,6 +94,29 @@ object ShelleyUtxo:
       failure(UtxoFailure.MaxTxSize(Mismatch(txSize, maxTxSize)))
     )
 
+  /** `validateOutputBootAddrAttrsTooBig` (`Shelley/Rules/Utxo.hs:544-558`, cardano-ledger
+    * f649f975): the outputs to a bootstrap address whose attributes take more than 64 bytes. It
+    * reports Shelley's own failure; each later era's UTXO injects it as its build has it, which the
+    * era's rule does when it runs this. A bootstrap address the node cannot read has no attributes,
+    * as in the flat check (a stored output's address was read when its output was).
+    */
+  def validateOutputBootAddrAttrsTooBig[E <: EraTag](outputs: Vector[TxOut[E]])(using
+      o: EraTxOut[E],
+      s: StoredTxOut[E]
+  ): Test[PredicateFailure] =
+    val outputsAttrsTooBig = outputs.filter(out =>
+      o.address(out).kind match
+        case Address.Kind.Byron(_) =>
+          xyz.kd5ujc.scarab.ledger.byron.ByronAddress
+            .decode(o.address(out).raw)
+            .toOption
+            .exists(_.attributesSize > 64)
+        case Address.Kind.Shelley(_, _, _, _) => false
+    )
+    Test.failureOnNonEmpty(outputsAttrsTooBig)(_.isEmpty)(big =>
+      failure(UtxoFailure.OutputBootAddrAttrsTooBig(big.map(s.toStored)))
+    )
+
 /** Allegra's predicates of UTXO (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs`,
   * cardano-ledger f649f975).
   */
@@ -199,6 +222,28 @@ object AlonzoUtxo:
     Test.failureUnless(
       totalExUnits.fits(maxTxExUnits),
       failure(UtxoFailure.ExUnitsTooBig(Mismatch(totalExUnits, maxTxExUnits)))
+    )
+
+  /** `validateOutputTooBigUTxO` (`Alonzo/Rules/Utxo.hs:412-431`, cardano-ledger f649f975): the
+    * outputs whose value takes more than `ppMaxValSize` bytes serialised, collected by a left fold
+    * that puts each one in front, so the last first. A value's serialised size is the size of the
+    * encoding the node keeps of it (`Value.serializedSize`), which is `MaryValue` 's encoder's at
+    * every protocol version (`Mary/Value.hs:342-350`, cardano-ledger f649f975).
+    */
+  def validateOutputTooBigUTxO[E <: EraTag](pp: PParams[E], outputs: Vector[TxOut[E]])(using
+      o: EraTxOut[E],
+      p: AlonzoEraPParams[E],
+      s: StoredTxOut[E]
+  ): Test[PredicateFailure] =
+    val maxValSize = AlonzoEraPParams.ppMaxValSizeL[E].get(pp).value
+    val outputsTooBig = outputs.foldLeft(List.empty[(Int, Int, xyz.kd5ujc.scarab.ledger.TxOut)]) {
+      (ans, txOut) =>
+        val serSize = s.storedValue(o.value(txOut)).serializedSize
+        if BigInt(serSize) > maxValSize then (serSize, maxValSize.toInt, s.toStored(txOut)) :: ans
+        else ans
+    }
+    Test.failureOnNonEmpty(outputsTooBig.toVector)(_.isEmpty)(big =>
+      failure(UtxoFailure.OutputTooBig(big))
     )
 
 /** Babbage's predicates of UTXO (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs`,
@@ -333,3 +378,30 @@ object BabbageUtxo:
         Word64Values
     b.sizedCollateralReturn(txBody)
       .fold(colbal)(r => colbal - o.valueOps.coin(o.value(r.value)).value)
+
+  /** `validateOutputTooSmallUTxO` (`Babbage/Rules/Utxo.hs:302-323`, cardano-ledger f649f975): the
+    * outputs whose value is not pointwise at least `inject` of their least lovelace
+    * (`getMinCoinSizedTxOut`, Babbage's [[BabbageTxOuts.babbageMinUTxOValue]]), with that least
+    * lovelace. Against `inject` of a coin, whose asset map is empty, `pointwise (>=)` is the coin
+    * at least the least lovelace and every quantity at least zero: `pointWise` of a map against an
+    * empty one tests each value against zero (`Data/CanonicalMaps.hs:104-106`, cardano-ledger
+    * f649f975), so the order of the maps' trees does not enter.
+    */
+  def validateOutputTooSmallUTxO[E <: EraTag](pp: PParams[E], outs: Vector[Sized[TxOut[E]]])(using
+      o: EraTxOut[E],
+      p: BabbageEraPParams[E],
+      v: Value[E] =:= MultiAssetValue,
+      s: StoredTxOut[E]
+  ): Test[PredicateFailure] =
+    val outsWithMin = outs.map(out => (out.value, BabbageTxOuts.babbageMinUTxOValue(pp, out)))
+    val outputsTooSmall = outsWithMin.filterNot { (out, minSize) =>
+      val value = v(o.value(out))
+      value.lovelace >= minSize.value && value.assets.valuesIterator.forall(
+        _.valuesIterator.forall(_ >= 0)
+      )
+    }
+    Test.failureOnNonEmpty(outputsTooSmall)(_.isEmpty)(small =>
+      failure(
+        UtxoFailure.BabbageOutputTooSmall(small.map((out, min) => (s.toStored(out), min.value)))
+      )
+    )
