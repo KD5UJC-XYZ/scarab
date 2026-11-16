@@ -202,8 +202,10 @@ object DijkstraRules:
 
   /** These types have the same `EncCBOR` in both eras: voters and votes
     * (`Conway/Governance/Procedures.hs:365-404,469-474`, cardano-ledger f649f975), vkey and
-    * bootstrap witnesses (`Keys/WitVKey.hs:101-104`, `Keys/Bootstrap.hs:83-90`). Their Dijkstra
-    * decoders remain the readers; only decoded fields are passed to the shared writers.
+    * bootstrap witnesses (`Keys/WitVKey.hs:70-74`, `Keys/Bootstrap.hs:93-100`). The Leios pin
+    * 9df9f98c keeps these encodings (`Procedures.hs:394-405,508-513`, `WitVKey.hs:100-104`,
+    * `Bootstrap.hs:100-107`). Their Dijkstra decoders remain the readers; only decoded fields are
+    * passed to the shared writers.
     */
   private def conwayVoter(v: DijkstraVoter): Voter = v match
     case DijkstraVoter.Committee(c) => Voter.CommitteeHot(c)
