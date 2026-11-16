@@ -553,7 +553,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   records the node keeps), and run on the same judgment as the flat rules.
   - From the same ticked state they judge every transaction of the recorded Conway refusal corpora, at its
     protocol version and at 9, 10 and 11, as the flat rules do: the failures in order, or the certificate
-    state (`ConwayCertsChecksSuite`). A refusal carries no state, so crafted sequences the rules accept
+    state (`ConwayCertsChecksSuite`); so do the transactions of the recorded Preview Conway blocks, judged
+    against a recorded state at 9, 10 and 11. A refusal carries no state, so crafted sequences the rules accept
     compare the states of delegations moved, pools re-registered and retired, and committee members.
   - The corpus records most of their failures; a pool's wrong network, oversized metadata hash, low cost
     and repeated VRF key, and a resigned committee member, only crafted certificates reach. A test fails if

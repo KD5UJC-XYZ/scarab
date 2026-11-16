@@ -269,6 +269,12 @@ class ConwayCertsChecksSuite extends FunSuite:
       s"ConwayCertsChecksSuite: ${seen.size} Conway cases, $withCerts with certificates, " +
         s"$refused refused by CERTS"
     )
+    def carrying(kind: PartialFunction[ConwayTxCert, Unit]): Int =
+      seen.count(s => s.typed.body.certs.toVector.exists(kind.isDefinedAt))
+    val deleg = carrying { case ConwayTxCert.ConwayTxCertDeleg(_) => () }
+    val pool = carrying { case ConwayTxCert.ConwayTxCertPool(_) => () }
+    val gov = carrying { case ConwayTxCert.ConwayTxCertGov(_) => () }
+    println(s"  cases carrying a DELEG certificate: $deleg, POOL: $pool, GOVCERT: $gov")
     every.toVector.sortBy(_._2).foreach { (r, name) =>
       println(s"  $name: ${corpusReach.getOrElse(r, 0)} corpus cases")
     }
@@ -287,6 +293,50 @@ class ConwayCertsChecksSuite extends FunSuite:
         s.label
       )
       assertEquals(Obligations.sumObligation(o).value, stake + pool + drep, s.label)
+    }
+
+  // ---- recorded blocks
+
+  /** The transactions of the recorded Conway blocks (Preview), each read by both decoders. */
+  private lazy val blockTxs: Vector[(String, Tx, ConwayTx)] =
+    Vector("fixtures/preview/conway.hex", "fixtures/preview/conway-governance.hex").flatMap { f =>
+      java.nio.file.Files
+        .readString(Path.of(f))
+        .linesIterator
+        .zipWithIndex
+        .map((l, i) => (s"$f:${i + 1}", l.trim.split("\\s+").last))
+        .filter((_, hex) => hex.nonEmpty)
+        .toVector
+        .flatMap { (at, hex) =>
+          xyz.kd5ujc.scarab.ledger.Block.decodeShelley(right(s"$at hex")(Bytes.fromHex(hex))) match
+            case Right(b: xyz.kd5ujc.scarab.ledger.Block.Shelley) if b.era == Era.Conway =>
+              b.transactions.zipWithIndex.map((t, k) =>
+                (
+                  s"$at#$k",
+                  right(s"$at#$k flat")(Tx.fromBlock(t, Era.Conway)),
+                  right(s"$at#$k typed")(ConwayTx.decode(t))
+                )
+              )
+            case _ => Vector.empty
+        }
+    }
+
+  test(
+    "CERTS on the era types judges every recorded Conway block's transaction as the flat rule does"
+  ):
+    assert(clue(blockTxs.size) > 0)
+    val tx = EraTx.conway
+    val body = EraTxBody.conway
+    Vector(9, 10, 11).map(atVersion(base, _)).foreach { s =>
+      blockTxs.foreach { (at, flat, typed) =>
+        val tb = tx.body[TxLevel.Top](typed)(using tx.bodyOf.top)
+        val on = s.copy(label = s"${s.label} $at", flat = flat, typed = typed)
+        assertEquals(
+          typedOf(on, body.certs[TxLevel.Top](tb)(using body.top)),
+          flatOf(on, flat.body.certificates),
+          on.label
+        )
+      }
     }
 
   // ---- crafted certificates, read by both decoders
@@ -379,15 +429,16 @@ class ConwayCertsChecksSuite extends FunSuite:
       nodes.map(n => right("typed certificate")(ConwayTxCert.decode(n)))
     )
 
-  /** A recorded state to craft against: one with pools, accounts and DReps registered. */
+  /** A recorded state to craft against: one with two pools, an account and a DRep registered, so
+    * the crafted delegations have somewhere to move.
+    */
   private lazy val base: Seen =
     seen
       .find(s =>
         s.cert.pState.stakePools.size >= 2 && s.cert.dState.accounts.states.nonEmpty &&
           s.cert.vState.dreps.nonEmpty
       )
-      .orElse(seen.find(s => s.cert.pState.stakePools.nonEmpty))
-      .getOrElse(fail("no recorded Conway state with a registered pool"))
+      .getOrElse(fail("no recorded Conway state with two pools, an account and a DRep"))
 
   /** Both judgments of `certs` from `s`, which must agree; what they reached is recorded. */
   private def compared(s: Seen, name: String, certs: Vector[Node]): Verdict =
