@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.syntax.all.*
 import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -561,6 +561,86 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         }
         .map(result => assertEquals(result, Right(Right(last)), s"seed $n"))
     }
+
+  // A send either queues its message and returns, or queues nothing and raises the closure: the
+  // caller learns what happened to the message. In UpstreamMuxLifecycleSuite a server's last
+  // response was queued, written and read by the client, whose clean close then reached the server
+  // before the send had returned; the send raised `PeerClosed` and the server never read the
+  // client's last message (#389). Each seed orders the send, the closure and the writer
+  // differently, and replays that order on every run; the seeds reach both outcomes.
+  for parked <- Vector(false, true) do
+    val where = if parked then "parked on its lane's budget" else "admitted at once"
+    test(s"a send $where raises the closure only when it queued nothing (#389)"):
+      val first = Bytes(Vector(0x01.toByte))
+      val last = Bytes(Vector(0x81.toByte, 0x02.toByte))
+      val reason = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
+      (1 to 200).toList
+        .traverse { n =>
+          val seed = java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
+          Settled
+            .seeded(seed) { settle =>
+              typed {
+                for
+                  gate <- Deferred[IO, Unit]
+                  written <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+                  bearer = new Bearer[IO]:
+                    def reads = fs2.Stream.never[IO]
+                    def write(bytes: Chunk[Byte]) =
+                      gate.get *> WireMux
+                        .decode(Bytes.wrap(bytes.toArray))
+                        .fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure)
+                        .flatMap(sdu => written.update(_ :+ sdu.payload))
+                    def close = IO.unit
+                  result <- Mux.resource(bearer, Set(2), Mux.Config(egressBufferBytes = 1)).use {
+                    mux =>
+                      for
+                        channel <- mux.channel(2)
+                        outcome <-
+                          if parked then
+                            for
+                              // the lane holds its whole budget until the writer has written
+                              // `first`, so the send waits for the writer to admit it
+                              _ <- channel.send(first)
+                              outcome <- Resource
+                                .make(typed(channel.send(last)).start)(_.cancel)
+                                .use { sending =>
+                                  settle *>
+                                    (gate.complete(()).void, mux.abort(reason)).parTupled *>
+                                    sending.joinWithNever
+                                }
+                            yield outcome
+                          else
+                            gate.complete(()) *>
+                              (typed(channel.send(last)), mux.abort(reason)).parTupled.map(_._1)
+                        _ <- settle
+                        sent <- written.get
+                      yield (outcome, sent)
+                  }
+                yield result
+              }
+            }
+            .map {
+              case Right((Right(()), sent)) =>
+                assertEquals(
+                  sent,
+                  Vector(first).filter(_ => parked) :+ last,
+                  s"seed $n: the send returned, so its message is queued"
+                )
+                true
+              case Right((Left(raised), sent)) =>
+                assertEquals(raised, reason, s"seed $n")
+                assertEquals(
+                  sent,
+                  Vector(first).filter(_ => parked),
+                  s"seed $n: the send raised the closure, so its message is not queued"
+                )
+                false
+              case Left(error) => fail(s"seed $n: $error")
+            }
+        }
+        .map(returned =>
+          assertEquals(returned.toSet, Set(true, false), "the seeds reach a send of each outcome")
+        )
 
   for
     protocol <- Vector(Protocols.Handshake, 99)

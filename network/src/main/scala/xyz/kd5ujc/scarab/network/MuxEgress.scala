@@ -63,17 +63,35 @@ private[network] object MuxEgress:
   )(using F: Concurrent[F]):
     private def empty: Budget[F] = Budget(0L, Fifo.empty)
 
-    /** Admit `bytes` on the lane now, or park a waiter. Admission and queueing are one atomic step
-      * against release, so a message is never queued without its bytes counted. A cancelled waiter
-      * owns nothing: it is removed while parked, and once granted its message is already queued
-      * (cancellation after submission leaves work queued) and the writer releases its bytes.
+    /** Admit `bytes` on the lane now, or park a waiter until the lane has room or `abandon`
+      * completes. `Right` once the message is queued, `Left` with what `abandon` gave when it never
+      * will be.
+      *
+      * Admission and queueing are one atomic step against release, so a message is never queued
+      * without its bytes counted; and a waiter that gives up is withdrawn in one atomic step
+      * against release too, so the result says what became of the message whichever of the two
+      * comes first. A message admitted at once is queued whatever `abandon` does (issue 389: a send
+      * raced the connection's closure against its own admission, and reported the closure for a
+      * message that was queued, written and read by the peer). A cancelled waiter owns nothing: it
+      * is withdrawn while parked, and once granted its message is already queued (cancellation
+      * after submission leaves work queued) and the writer releases its bytes.
       */
-    def send(protocol: Int, role: Mux.Role, bytes: Bytes): F[Unit] =
+    def send[A](protocol: Int, role: Mux.Role, bytes: Bytes, abandon: F[A]): F[Either[A, Unit]] =
       val lane = Lane(protocol, role)
       val command: Command[F] = Command.Send(lane, bytes)
       F.uncancelable { poll =>
         Deferred[F, Unit].flatMap { admitted =>
           val waiter = Waiter[F](command, bytes.size.toLong, admitted)
+          // true while the waiter was still parked, false once release has granted it
+          val withdraw: F[Boolean] = budgets.modify { all =>
+            all.get(lane).filter(_.waiters.exists(_.admitted eq admitted)).fold(all -> false) {
+              budget =>
+                all.updated(
+                  lane,
+                  budget.copy(waiters = budget.waiters.filterNot(_.admitted eq admitted))
+                ) -> true
+            }
+          }
           budgets
             .modify { all =>
               val budget = all.getOrElse(lane, empty)
@@ -82,18 +100,19 @@ private[network] object MuxEgress:
               else (all.updated(lane, budget.copy(waiters = budget.waiters.enqueue(waiter))), false)
             }
             .flatMap {
-              case true => inbox.offer(command)
+              case true => inbox.offer(command).as(Right(()))
               case false =>
-                poll(admitted.get).onCancel(
-                  budgets.update(all =>
-                    all.get(lane).fold(all) { budget =>
-                      all.updated(
-                        lane,
-                        budget.copy(waiters = budget.waiters.filterNot(_.admitted eq admitted))
+                poll(F.race(abandon, admitted.get))
+                  .onCancel(withdraw.void)
+                  .flatMap {
+                    case Right(_) => F.pure(().asRight[A])
+                    // a granted waiter's message is queued by release before `admitted` completes
+                    case Left(reason) =>
+                      withdraw.ifM(
+                        ifTrue = F.pure(reason.asLeft[Unit]),
+                        ifFalse = admitted.get.as(().asRight[A])
                       )
-                    }
-                  )
-                )
+                  }
             }
         }
       }

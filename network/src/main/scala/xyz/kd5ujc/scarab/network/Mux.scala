@@ -25,7 +25,9 @@ import scala.concurrent.duration.*
 trait MuxChannel[F[_]]:
   def protocol: Int
 
-  /** Queue one complete protocol message; it is split into SDUs by the writer. */
+  /** Queue one complete protocol message; it is split into SDUs by the writer. It returns once the
+    * message is queued, and raises the connection's closure only when the message was not.
+    */
   def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit]
 
   /** Completes once everything queued on the connection so far has been written to the bearer (or
@@ -796,13 +798,14 @@ object Mux:
            )
            .raise
        else
+         // The outbox queues the message or reports the closure, never both (issue 389). The
+         // reference's send likewise returns once its message is in the egress buffer, and never
+         // looks at the mux's status (network-mux `Network/Mux.hs` 694-710, `muxChannel`,
+         // ouroboros-network c45735a5).
          closed.tryGet.flatMap {
            case Some(reason) => reason.raise[F, Unit]
            case None =>
-             F.race(closed.get, outbound.send(id, role, message)).flatMap {
-               case Left(reason) => reason.raise[F, Unit]
-               case Right(_)     => F.unit
-             }
+             outbound.send(id, role, message, closed.get).flatMap(_.fold(_.raise[F, Unit], F.pure))
          })
 
     def flush: F[Unit] = F.race(closed.get, outbound.flush).void
