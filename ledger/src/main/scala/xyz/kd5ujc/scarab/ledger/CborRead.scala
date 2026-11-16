@@ -37,6 +37,17 @@ private[ledger] object CborRead:
     case Value.NInt(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))
 
+  /** `DecCBOR Language = decodeEnumBounded` (`Plutus/Language.hs:331-333`, cardano-ledger
+    * f649f975): an integer naming one of the four languages, independent of which languages an era
+    * permits in its scripts or cost models.
+    */
+  def language(n: Node): Result[xyz.kd5ujc.scarab.plutus.PlutusLanguage] =
+    int(n, DecodeField.CostModelLanguage).flatMap { id =>
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.values
+        .find(l => BigInt(l.id) == id)
+        .toRight(LedgerDecodeError.UnknownTag(DecodeField.CostModelLanguage, id))
+    }
+
   /** A byte string in a form `strings` reads ([[ByteStrings]]): an indefinite (chunked) string,
     * whose head is `0x5f`, is refused where only a definite one is read. The value is the joined
     * chunks, and the node keeps its original bytes either way. A node built by hand without

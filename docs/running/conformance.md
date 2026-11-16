@@ -46,6 +46,14 @@ report. Missing or invalid report evidence is **INCOMPLETE**, never a conformanc
 With `--previous <earlier-run-dir>`, the summarizer identifies new and resolved disagreements only when dataset,
 protocol version and sample identities agree. Without comparable evidence that number is unknown, not zero.
 
+The corpus and the node's reference build can name different upstream implementations even when the era and
+protocol version agree. The report uses the node's production decoders; it does not substitute another decoder
+to make a corpus sample pass. Triage a mismatch against both pinned implementations before changing admission.
+A valid sample also needs a re-encoding: missing encoders and missing harness embeddings are conformance gaps,
+not evidence that the production decoder refused the sample. The `language` rule uses the bounded `Language`
+reader, not the open `Word8` key of a Conway cost-model map. Shared Dijkstra encoders consume decoded fields;
+byte-exact rules consume the original bytes retained by their production decoder.
+
 ## Nightly CBOR detector
 
 The existing workflow runs `cbor-decoding` nightly, with both complete pinned era corpora and all normalisation

@@ -393,6 +393,78 @@ class CborDatasetSuite extends FunSuite:
       assertEquals(conway(rule, Kind.Valid, sample, Some(expected)), Outcome.Met, s"$rule $sample")
   }
 
+  test("Dijkstra's shared values use the production encoders after its own decoder") {
+    val sharedWriters = Set(
+      "voter",
+      "voting_procedure",
+      "voting_procedures",
+      "vkeywitness",
+      "bootstrap_witness",
+      "metadatum"
+    )
+    for (rule, sample, expected) <- encoded if sharedWriters(rule) do
+      assertEquals(
+        DatasetCheck
+          .check(rule, DijkstraRules.rules.get(rule), Kind.Valid, hex(sample), Some(hex(expected))),
+        Outcome.Met,
+        rule
+      )
+    for (rule, sample, expected) <- encoded if Set("vkeywitness", "bootstrap_witness")(rule) do
+      val wide = "98" + (if rule == "vkeywitness" then "02" else "04") + sample.drop(2)
+      DijkstraRules.rules.get(rule) match
+        case Some(DatasetRule.Mapped(_, _, _, run)) =>
+          assertEquals(run(hex(wide)), Right(Right(hex(expected))), rule)
+        case other => fail(s"$rule is not mapped: $other")
+    val assets = "a1581c" + zeros(28) + "a14001"
+    for (rule, sample) <- Vector(
+        "value" -> ("8200" + assets),
+        "%multiasset<positive_coin>" -> assets
+      )
+    do
+      assertEquals(
+        DatasetCheck
+          .check(rule, DijkstraRules.rules.get(rule), Kind.Valid, hex(sample), Some(hex(sample))),
+        Outcome.Met
+      )
+    assertEquals(
+      DatasetCheck.check(
+        "%multiasset<positive_coin>",
+        DijkstraRules.rules.get("%multiasset<positive_coin>"),
+        Kind.Invalid,
+        hex("a0"),
+        None
+      ),
+      Outcome.Met,
+      "Dijkstra refuses the empty multiasset that Conway accepts"
+    )
+  }
+
+  test("Dijkstra redeemers preserve their exact bytes from the decoded witness set") {
+    val sample = "bf820000829f01ff821903e81b0000000100000000ff"
+    assertEquals(
+      DatasetCheck.check(
+        "redeemers",
+        DijkstraRules.rules.get("redeemers"),
+        Kind.Valid,
+        hex(sample),
+        Some(hex(sample))
+      ),
+      Outcome.Met
+    )
+    val changed = "a1820000828101821903e81b0000000100000000"
+    assert(
+      DatasetCheck.check(
+        "redeemers",
+        DijkstraRules.rules.get("redeemers"),
+        Kind.Valid,
+        hex(sample),
+        Some(hex(changed))
+      ) match
+        case Outcome.Failed(Category.Encode, _) => true
+        case _                                  => false
+    )
+  }
+
   test("the encoder, not the sample's bytes, writes a set, voters and cost models") {
     val rewritten = Set(
       "certificate",
@@ -442,9 +514,71 @@ class CborDatasetSuite extends FunSuite:
       case _                          => false)
   }
 
+  test("a language is read as a bounded enum and re-encoded from its value in either era") {
+    for
+      rules <- Vector(ConwayRules.rules, DijkstraRules.rules)
+      id <- 0 to 3
+    do
+      val expected = hex("0" + id.toHexString)
+      val sample = hex("1b000000000000000" + id.toString)
+      assertEquals(
+        DatasetCheck.check("language", rules.get("language"), Kind.Valid, sample, Some(expected)),
+        Outcome.Met
+      )
+      rules.get("language") match
+        case Some(DatasetRule.Mapped(_, _, _, run)) =>
+          assertEquals(run(sample), Right(Right(expected)))
+        case other => fail(s"language is not mapped: $other")
+    for
+      rules <- Vector(ConwayRules.rules, DijkstraRules.rules)
+      invalid <- Vector("20", "04", "1818", "1bffffffffffffffff", "f6", "c24100")
+    do
+      assertEquals(
+        DatasetCheck.check("language", rules.get("language"), Kind.Invalid, hex(invalid), None),
+        Outcome.Met,
+        invalid
+      )
+    assertEquals(
+      conway("language", Kind.Invalid, "00", None),
+      Outcome.Failed(Category.Decode, "succeeded when expected to fail")
+    )
+  }
+
+  test("an empty MultiAsset is written as a map, while an empty mint remains refused") {
+    for sample <- Vector("a0", "bfff") do
+      assertEquals(
+        conway("%multiasset<positive_coin>", Kind.Valid, sample, Some("a0")),
+        Outcome.Met
+      )
+      assertEquals(ran("%multiasset<positive_coin>", sample), Right(Right(hex("a0"))))
+      assert(!decoded(ConwayRules.rules, "mint")(sample))
+      assert(!decoded(DijkstraRules.rules, "mint")(sample))
+    val nonempty = "a1581c" + zeros(28) + "a14001"
+    assertEquals(
+      conway("%multiasset<positive_coin>", Kind.Valid, nonempty, Some(nonempty)),
+      Outcome.Met
+    )
+  }
+
+  test("an address's embedded Byron payload is re-encoded, including its checksum") {
+    // A hand-written address: root bytes all zero, no attributes, type 0. The payload array's
+    // wide head is shortened on re-encoding; each CRC-32 covers its own payload bytes.
+    val sample = "582c82d81858229803581c" + zeros(28) + "a0001ab183b518"
+    val expected = "582b82d818582183581c" + zeros(28) + "a0001ade77bc61"
+    assertNotEquals(normal(sample), normal(expected))
+    for rules <- Vector(ConwayRules.rules, DijkstraRules.rules) do
+      assertEquals(
+        DatasetCheck
+          .check("address", rules.get("address"), Kind.Valid, hex(sample), Some(hex(expected))),
+        Outcome.Met
+      )
+      assert(!decoded(rules, "address")(sample.dropRight(2) + "00"), "a wrong CRC is refused")
+  }
+
   test("a rule Scarab has no decoder of fails every sample, valid or invalid") {
+    val unmapped = DatasetRule.Unmapped(Unmapped.NoDecoder)
     for kind <- Kind.values do
-      assert(conway("language", kind, "00", Some("00")) match
+      assert(DatasetCheck.check("unmapped", Some(unmapped), kind, hex("00"), Some(hex("00"))) match
         case Outcome.Failed(Category.Decode, _) => true
         case _                                  => false)
     assert(DatasetCheck.check("no-such-rule", None, Kind.Invalid, hex("00"), None) match
