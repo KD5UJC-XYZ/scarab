@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.node.ntc
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import scala.annotation.unused
-import scala.collection.immutable.SortedMap
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
@@ -13,7 +12,7 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ConsensusMirrorEnv, Placement}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.rules.StakeDistribution
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, StakeDistribution}
 import xyz.kd5ujc.scarab.ledger.state as mirror
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
@@ -113,6 +112,17 @@ sealed class EraFacts[E <: EraTag](val l: EraRead[E]):
 
   def epoch: BigInt = l.epoch.toBigInt
 
+  /** `currentSnapshot` (`Shelley/API/Wallet.hs:261-268`, cardano-ledger f649f975): the stake of the
+    * current ledger state as a snapshot, made as SNAP makes the mark (`snapShotFromInstantStake`),
+    * with the stake of the pointer addresses before Conway. The wallet queries and
+    * `GetStakeDistribution2` read it.
+    */
+  lazy val currentStake: Read[mirror.SnapShot] = l.nes.map { nes =>
+    given ShelleyBasedEra[E] = l.era
+    val ls = nes.es.ls
+    StakeDistribution.snapshot(EraLedger.activeStake(ls), EraLedger.pState(ls).stakePools)
+  }
+
   /** The same view, as Conway's, if the era is Conway. */
   def conway: Option[ConwayFacts] = None
 
@@ -136,7 +146,6 @@ final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](co
   lazy val cert: Read[ConwayCertState] = l.cert
   lazy val gov: Read[ConwayGovState] = l.gov
   lazy val snapshots: Read[mirror.SnapShots] = l.snapshots
-  lazy val instantStake: Read[mirror.ConwayInstantStake] = l.instantStake
 
   /** The accounts by credential, in the vocabulary of the node (what the queries are asked in). */
   lazy val accounts: Read[Map[Credential, mirror.ConwayAccountState]] =
@@ -174,28 +183,6 @@ final class ConwayFacts(conwayRead: EraRead[Conway]) extends EraFacts[Conway](co
         }
         .toMap
     )
-
-  /** The current stake as a snapshot, which `GetStakeDistribution2` reports: the instant stake of
-    * the UTxO and the rewards, over the accounts that delegate to a registered pool.
-    */
-  lazy val currentStake: Read[mirror.SnapShot] =
-    for
-      c <- cert
-      instant <- instantStake
-      active = StakeDistribution
-        .resolve(
-          instant.credentialStake,
-          EraViews
-            .accounts[Conway](c)
-            .map((k, a) =>
-              k -> xyz.kd5ujc.scarab.ledger.rules.EraLedger
-                .AccountView(a.balance, a.deposit, a.pool)
-            ),
-          SortedMap.empty[Ptr, mirror.Credential[mirror.Staking]],
-          SortedMap.empty[Ptr, mirror.CompactCoin]
-        )
-      snap = StakeDistribution.snapshot(active, c.pState.stakePools)
-    yield snap
 
 /** Pure answers to node-to-client queries. `answer` returns the result item of the `MsgResult`
   * (`None` for a query this node does not answer; the connection then ends, as a decode failure
