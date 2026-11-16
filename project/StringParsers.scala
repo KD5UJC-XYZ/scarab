@@ -82,6 +82,7 @@ object StringParsers {
   /** Storage: file and directory names, manifests, Mithril artifacts and the format text of the stores. */
   private val storage: Seq[String] = Seq(
     "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala",
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FileNumber.scala",
     "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala",
     "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExport.scala",
     "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotImport.scala",

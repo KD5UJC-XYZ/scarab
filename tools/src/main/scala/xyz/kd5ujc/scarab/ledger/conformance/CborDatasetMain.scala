@@ -11,6 +11,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.ledger.DecoderVersion
+import xyz.kd5ujc.scarab.storage.FileNumber
 
 /** Runs one era of the cardano-cbor-dataset (r2rationality/cardano-cbor-dataset) through Scarab's
   * production decoders and encoders ([[ConwayRules]], [[DijkstraRules]]) and writes the version 2
@@ -157,7 +158,7 @@ object CborDatasetMain extends IOApp:
     */
   def vectorTable(readme: String): Vector[String] =
     readme.linesIterator.toVector.collect { case tableRow(n, name) =>
-      f"${n.toInt}%04d-$name"
+      s"${FileNumber.padded(n.toInt, 4)}-$name"
     }
 
   /** How many vectors the normaliser meets, or why the run stops before it reads the corpus: the

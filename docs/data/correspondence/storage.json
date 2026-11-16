@@ -12,6 +12,13 @@
     "object storage.FileNumber",
     "def storage.FileNumber.padded"
    ]
+  },
+  {
+   "reason": "the numbers of Scarab's own storage file names read back from ASCII digits only, and a name in a locale's digits refused as a typed error; the reference reads the numbers of its own file names with readMaybe, which takes ASCII digits only, and passes over a name it cannot read",
+   "definitions": [
+    "def storage.FileNumber.numberOf",
+    "enum storage.FileNameProblem"
+   ]
   }
  ]
 }
