@@ -186,6 +186,45 @@ class CollectorsSuite extends CatsEffectSuite:
       assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.Other), Some(0.0))
   }
 
+  test("the schedule collector sets each epoch's gauges, and clears them when there is none") {
+    import xyz.kd5ujc.scarab.node.forge.Forger.{ScheduleGauge, ScheduleView}
+    def gauges(s: Snapshot, label: ScheduleEpochLabel) =
+      (
+        gauge(s, Catalogue.forgeScheduledLeaderSlots, label),
+        gauge(s, Catalogue.forgeExpectedLeaderSlots, label),
+        gauge(s, Catalogue.forgeScheduleComplete, label)
+      )
+    for
+      metrics <- registry
+      both <- {
+        given Metrics[IO] = metrics
+        Collectors.schedule(
+          IO.pure(
+            ScheduleView(
+              Some(ScheduleGauge(12, 11.5, true)),
+              Some(ScheduleGauge(3, 11.5, false)),
+              Some(BigInt(4207))
+            )
+          )
+        ) *> metrics.snapshot
+      }
+      none <- {
+        given Metrics[IO] = metrics
+        Collectors.schedule(
+          IO.pure(ScheduleView(Some(ScheduleGauge(12, 11.5, true)), None, None))
+        ) *>
+          metrics.snapshot
+      }
+    yield
+      assertEquals(gauges(both, ScheduleEpochLabel.Current), (Some(12.0), Some(11.5), Some(1.0)))
+      assertEquals(gauges(both, ScheduleEpochLabel.Next), (Some(3.0), Some(11.5), Some(0.0)))
+      assertEquals(gauge(both, Catalogue.forgeNextLeaderSlot, ()), Some(4207.0))
+      // an epoch with no schedule, and no led slot ahead: absent, not stale
+      assertEquals(gauges(none, ScheduleEpochLabel.Current), (Some(12.0), Some(11.5), Some(1.0)))
+      assertEquals(gauges(none, ScheduleEpochLabel.Next), (None, None, None))
+      assertEquals(gauge(none, Catalogue.forgeNextLeaderSlot, ()), None)
+  }
+
   test("the JVM collector reads the memory, the threads and the process") {
     for
       metrics <- registry

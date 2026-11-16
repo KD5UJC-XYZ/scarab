@@ -190,7 +190,8 @@ trait ScheduleFixture extends ForgeFixture:
       praos: PraosConfig = config,
       before: Vector[(BigInt, Change)] = Vector.empty,
       at: Vector[(Forger.Point, BigInt, Change)] = Vector.empty,
-      scheduler: Boolean = true
+      scheduler: Boolean = true,
+      committed: Boolean = false
   ):
     def changesAt(slot: BigInt): Vector[Change] =
       before.filter(_._1 == slot).map(_._2) ++ at.filter(_._2 == slot).map(_._3)
@@ -217,6 +218,7 @@ trait ScheduleFixture extends ForgeFixture:
             unbounded = true,
             source = Some(keysFrom(reading)),
             praos = sc.praos,
+            committedChain = sc.committed,
             pause = Some(point =>
               stalled(point) *> hooks
                 .modify(m => (m - point, m.get(point)))
