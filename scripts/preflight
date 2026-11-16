@@ -20,10 +20,10 @@ docker=${SCARAB_PREFLIGHT_DOCKER:-docker}
 incomplete=3
 failed=()
 
-usage() { sed -n '4,/^set -uo pipefail$/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '4,/^set -uo pipefail$/p' "$root/scripts/preflight" | sed '$d' | sed 's/^# \{0,1\}//'; }
 case "$#:${1:-}" in
   0: | 1:--check | 1:--doctor) ;;
-  1:-h | 1:--help) usage; exit 0 ;;
+  1:-h | 1:--help) usage; exit ;;
   *) printf 'preflight: unknown arguments: %s\n' "$*" >&2; usage >&2; exit 2 ;;
 esac
 

@@ -114,6 +114,15 @@ class ArgumentsTest(unittest.TestCase):
                 self.assertNotIn("INCOMPLETE:", result.stdout, "no gate is attempted")
         self.assertEqual(tree_state(), before, "--help must not write into the repository")
 
+    def test_help_works_when_the_script_is_named_from_another_directory(self):
+        env = dict(os.environ, SCARAB_PREFLIGHT_DOCKER="absent-docker", PYTHONDONTWRITEBYTECODE="1")
+        for cwd, path in ((ROOT / "scripts", "./preflight"), (ROOT / "docs", "../scripts/preflight")):
+            result = subprocess.run(["bash", path, "--help"], cwd=cwd, capture_output=True, text=True, env=env,
+                                    timeout=120, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "", path)
+            self.assertTrue(result.stdout.startswith("The repository-wide checks CI runs"), path)
+
     def test_an_unknown_argument_is_refused_before_any_step(self):
         with tempfile.TemporaryDirectory() as tmp:
             for arguments in (("--chek",), ("--check", "--doctor"), ("check",)):
