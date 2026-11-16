@@ -1,0 +1,3 @@
+### Changed (storage, #85)
+
+- The stored script kind gains PlutusV4, the language of a Dijkstra reference script, so that a Dijkstra output whose reference script is PlutusV4 can be stored. Snapshot format V10 is changed in place, before any deployment, by the owner's decision of 2026-11-16: its sidecar's schema fingerprint moves and its fixtures are regenerated, while kinds 0 to 3 keep their bytes and the frozen schemas of V5 to V9 keep their fingerprints. Every reader of an era before Dijkstra still refuses a PlutusV4 script as before, so an 11.x node's stored values and behaviour do not change.

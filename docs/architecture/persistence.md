@@ -91,7 +91,7 @@ the `Legacy` binding and is restored with a `snapshotUnbound` warning, a V7 file
 sidecar rewritten in the V8 schema, a V8 file to V9 with its sidecar rewritten in the V9 one, and a
 V9 file to V10 with the 11.1 build recorded, the binding and the Haskell bytes kept byte for byte
 and the sidecar rewritten in the V10 schema, which holds the follow state where V9's holds the
-bootstrap state (#988). A V10 file
+bootstrap state (#988), and whose kinds of a stored script include PlutusV4 (#85). A V10 file
 recorded under a build whose layout is not the configured one is not decoded
 (`StorageError.ReferenceBuildMismatch`, or `UnknownReferenceBuild` for a name this build does not
 know): there is no conversion between builds, and the restore treats it as any snapshot that does
