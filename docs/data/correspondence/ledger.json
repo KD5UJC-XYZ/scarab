@@ -7886,8 +7886,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+   "note": "the members are the reference's; the Eq, Show, Default, encoding, JSON, NFData and NoThunks superclasses have no counterpart here, and AccountState has Conway's case only until each earlier era's instance (#85)",
    "digest": "04e97fab72afa0f1"
   },
   "trait ledger.era.EraCertState": {
@@ -7977,9 +7979,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "note": "Conway's two certificate-state instances in one value, given in the root class's companion; the deposit and refund totals of a body are not yet members",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923360005",
+   "note": "Conway's two certificate-state instances in one value, given in the root class's companion; certsTotalDepositsTxBody and certsTotalRefundsTxBody are not yet members",
    "digest": "38ae8c62134141a7"
   },
   "class ledger.era.rules.CERT": {
@@ -8438,13 +8441,13 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the base case's DRep expiries: epochs are summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it; it records the node's flat failures, so its judgment is compared with the flat rule's",
+   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the withdrawals' and votes' credentials are read into the state's vocabulary, refused as a Vocab defect as the flat rule does, which no decoded transaction holds; the DReps' expiries are computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
    "digest": "fd50dfc2781becd5"
   },
   "def ledger.era.rules.CERTS.updateDormantDRepExpiries": {
@@ -8460,14 +8463,14 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "epochs are summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it",
-   "digest": "7a37afce17930c9a"
+   "note": "the dormant shift in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "digest": "e8d933980088b775"
   },
   "def ledger.era.rules.CERTS.updateDormantDRepExpiry": {
    "upstream": [
@@ -8482,14 +8485,14 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "epochs are summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it",
-   "digest": "a3051e1b87b6ff56"
+   "note": "the dormant shift in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "digest": "03ce213b8238c023"
   },
   "def ledger.era.rules.CERTS.updateVotingDRepExpiries": {
    "upstream": [
@@ -8504,14 +8507,14 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "epochs are summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it",
-   "digest": "f3d2184f54a3a89d"
+   "note": "each voting DRep's credential is read into the state's vocabulary first, refused as a Vocab defect as the flat rule does, which no decoded vote is; the expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "digest": "141460c261b7b6f2"
   },
   "def ledger.era.rules.DELEG#transition": {
    "upstream": [
@@ -8607,14 +8610,14 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "epochs are summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it",
-   "digest": "6dc8e3023d88c34f"
+   "note": "computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "digest": "8fce2c980d120907"
   },
   "def ledger.era.rules.GOVCERT.computeDRepExpiryVersioned": {
    "upstream": [
@@ -8629,14 +8632,14 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "epochs are summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it",
-   "digest": "32e9ded0768af2f8"
+   "note": "computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "digest": "0e4aae59b8535e66"
   },
   "def ledger.era.rules.GOVCERT.conwayGovCertTransition": {
    "upstream": [
@@ -8651,14 +8654,14 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "the reference's transition generic in its era over ConwayEraPParams and ConwayEraCertState; a DRep's expiry: epochs are summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it; it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "074bc975cd0bd066"
+   "note": "the reference's transition generic in its era over ConwayEraPParams and ConwayEraCertState; a DRep's expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
+   "digest": "8d0d8975709c0ac6"
   },
   "def ledger.era.rules.POOL#transition": {
    "upstream": [
@@ -8697,10 +8700,11 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite"
    ],
-   "note": "the pool id, VRF key hash, reward account and owners are converted into the state's vocabulary as the flat rule does (a Vocab defect on a value no decoder admits); a new pool is made in the layout of the build the node follows (its voting key in the Leios layout), as the flat rule does; the retirement limit is summed as integers and a result outside EpochNo is refused (a Vocab defect), as the flat rules do, where the reference's addEpochInterval and binOpEpochNo wrap Word64; no real epoch reaches it (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "68e7a8a6a9df02c2"
+   "note": "the pool id, VRF key hash, reward account and owners are converted into the state's vocabulary as the flat rule does (a Vocab defect on a value no decoder admits); a new pool is made in the layout of the build the node follows (its voting key in the Leios layout), as the flat rule does; the retirement limit is summed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
+   "digest": "ec04d0564c91a3f5"
   },
   "type ledger.era.EraAccounts.Undrained": {
    "upstream": [
@@ -8722,6 +8726,26 @@
    ],
    "note": "the result of withdrawalsThatDoNotDrainAccounts",
    "digest": "3f33403acacec8ea"
+  },
+  "def ledger.era.rules.binOpEpochNo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+     "file": "cardano-slotting/src/Cardano/Slotting/Slot.hs",
+     "symbol": "binOpEpochNo",
+     "lines": [
+      153,
+      154
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "CertsEpochWrapSuite"
+   ],
+   "digest": "66818e2242149dda"
   }
  },
  "glue": [

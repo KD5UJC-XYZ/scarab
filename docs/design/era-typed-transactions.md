@@ -559,9 +559,12 @@ Conway's rules on the classes follow as the rest of stage 2.
   - The corpus records most of their failures; a pool's wrong network, oversized metadata hash, low cost
     and repeated VRF key, and a resigned committee member, only crafted certificates reach. A test fails if
     any failure of the rules is reached by neither.
+  - The epoch sums (a DRep's expiry, the dormant shift, the retirement limit) wrap in `Word64` as the
+    reference's `addEpochInterval` and `binOpEpochNo` do (`CertsEpochWrapSuite`). The flat rules sum them
+    as integers, refusing an expiry outside `EpochNo` and comparing a retirement with an unbounded limit, so
+    the two paths differ only past epoch 2^64; that gap is the flat rules' (#85), which stage 3 deletes.
   - `EraCertState` lands without the deposit and refund totals of a body, which come with the body's totals.
-    Three gaps the flat rules share are on #85: the epoch sums refused outside `EpochNo` where the
-    reference wraps `Word64`, the committee and its proposals as the node's records in the environments,
+    Two more gaps are on #85: the committee and its proposals as the node's records in the environments,
     and a pool's parameters with the node's field types.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
