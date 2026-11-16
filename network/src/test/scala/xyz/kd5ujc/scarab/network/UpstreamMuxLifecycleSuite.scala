@@ -19,12 +19,18 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
     case CleanShutdown, CloseOnWrite, CloseOnRead
 
   private final case class CloseCase(
+      seed: Int,
       fault: Fault,
       sduSize: Int,
       requests: Vector[Bytes],
       responses: Vector[Bytes]
   )
-  private final case class TrailingCase(reminder: Bytes, received: Bytes, expected: Bytes)
+  private final case class TrailingCase(
+      seed: Int,
+      reminder: Bytes,
+      received: Bytes,
+      expected: Bytes
+  )
 
   private def hex(value: String): Bytes =
     Bytes.fromHex(value).fold(error => fail(error.message), identity)
@@ -63,15 +69,40 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
         "clean"
       else "early"
     )
-    CloseCase(fault, row(5).toInt, requests, responses)
+    CloseCase(row(1).toInt, fault, row(5).toInt, requests, responses)
   }
 
-  test("native close-on-write/read preserves the complete observed response prefix and terminates"):
+  /** The most tasks a step of [[simulatedThenReal]] runs before every fiber is blocked: the largest
+    * step of its programs here takes 5,578 (300 seeds of each, issue 1110), and a fiber that never
+    * waits then fails the case in seconds, not at the suite's time limit.
+    */
+  private val Steps = 100000L
+
+  /** Runs `program`, and `check` on its result, first on the simulated runtime of [[Settled]],
+    * where a hang fails the case once every fiber is blocked, whatever the load of the machine, and
+    * a failure prints the scheduling seed that replays it; then on the suite's runtime, whose
+    * 5-second bound starts only once the same program has run in this JVM. The first run in a cold
+    * JVM loads and first runs the code, which on a starved CPU can take longer than that bound
+    * though nothing hangs (issue 1110).
+    */
+  private def simulatedThenReal[A](program: IO[A])(check: (String, A) => Unit): IO[Unit] =
+    Settled.limited(Steps)(_ => program.map(check("simulated", _))) *>
+      program.timeout(5.seconds).map(check("real", _))
+
+  test("the close experiments are the 24 upstream seeds and cover all three faults"):
     val cases = closeCases
-    assertEquals(cases.size, 24)
+    assertEquals(cases.map(_.seed), (511001 to 511024).toVector)
     assertEquals(cases.map(_.fault).toSet, Fault.values.toSet)
-    cases.traverse_ { sample =>
-      Peers
+
+  // One test per experiment, each with the suite's time limit to itself: run as one test, the 24
+  // took most of that limit in a cold JVM on a starved CPU (issue 1110).
+  for seed <- 511001 to 511024 do
+    test(
+      s"native close-on-write/read at upstream seed $seed preserves the complete observed " +
+        "response prefix and terminates"
+    ):
+      val sample = closeCases.find(_.seed == seed).getOrElse(fail(s"no close case at seed $seed"))
+      val exchange = Peers
         .typed {
           for
             pair <- Bearer.inMemory[IO]()
@@ -111,24 +142,38 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
             }
           yield result
         }
-        .timeout(5.seconds)
-        .map { result =>
-          val (observed, ended, clean) = result.fold(e => fail(e.message), identity)
-          assertEquals(observed, sample.responses)
-          if clean then assertEquals(ended, Right(hex("8102")))
-          else assertEquals(ended, Left(NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)))
-        }
-    }
+      simulatedThenReal(exchange) { (runtime, result) =>
+        val (observed, ended, clean) = result.fold(e => fail(s"$runtime: ${e.message}"), identity)
+        assertEquals(observed, sample.responses, runtime)
+        if clean then assertEquals(ended, Right(hex("8102")), runtime)
+        else
+          assertEquals(
+            ended,
+            Left(NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)),
+            runtime
+          )
+      }
 
-  test("native trailing-byte order survives ending and resuming a channel consumer"):
-    val cases = rows.filter(_.head == "mux-trailing-v1").map { row =>
+  private def trailingCases: Vector[TrailingCase] =
+    rows.filter(_.head == "mux-trailing-v1").map { row =>
       assertEquals(row.size, 9)
       assertEquals(row.takeRight(2), Vector("pass", "pass"), s"native IO/IOSim at seed ${row(1)}")
-      TrailingCase(hex(row(4)), hex(row(5)), hex(row(6)))
+      TrailingCase(row(1).toInt, hex(row(4)), hex(row(5)), hex(row(6)))
     }
-    assertEquals(cases.size, 24)
-    cases.traverse_ { sample =>
-      Peers
+
+  test("the trailing-byte experiments are the 24 upstream seeds"):
+    assertEquals(trailingCases.map(_.seed), (511001 to 511024).toVector)
+
+  // One test per experiment, as for the close experiments: run as one test, the 24 took up to 18 of
+  // the suite's 30 seconds in a cold JVM on a starved CPU (issue 1110).
+  for seed <- 511001 to 511024 do
+    test(
+      s"native trailing-byte order at upstream seed $seed survives ending and resuming a " +
+        "channel consumer"
+    ):
+      val sample =
+        trailingCases.find(_.seed == seed).getOrElse(fail(s"no trailing case at seed $seed"))
+      val exchange = Peers
         .typed {
           Peers
             .linked(
@@ -148,9 +193,9 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
               yield got
             }
         }
-        .timeout(5.seconds)
-        .map(result => assertEquals(result, Right(sample.expected)))
-    }
+      simulatedThenReal(exchange)((runtime, result) =>
+        assertEquals(result, Right(sample.expected), runtime)
+      )
 
   // Controlled local observations supplement, rather than impersonate, native scheduler tests.
   test("abort releases blocked send, flush and receives with the first typed reason"):
@@ -202,7 +247,7 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
       }
 
   test("cancelling the owner joins both blocked Mux workers before the resource returns"):
-    (for
+    val cancelling = for
       ready <- Deferred[IO, Unit]
       reading <- Deferred[IO, Unit]
       writing <- Deferred[IO, Unit]
@@ -226,9 +271,10 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
         }
       reader <- readerStopped.tryGet
       writer <- writerStopped.tryGet
-    yield (cancelled.isCanceled, reader, writer))
-      .timeout(5.seconds)
-      .map(result => assertEquals(result, (true, Some(()), Some(()))))
+    yield (cancelled.isCanceled, reader, writer)
+    simulatedThenReal(cancelling)((runtime, result) =>
+      assertEquals(result, (true, Some(()), Some(())), runtime)
+    )
 
   test("cancelling a partial receive releases its lock and preserves buffered bytes"):
     TestControl
