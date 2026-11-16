@@ -37,21 +37,30 @@ PINNED_TREES = ("plutus-core", "plutus-ledger-api", "plutus-tx")
 IMAGE_HARNESS = "/source/scarab-oracle/Main.hs"
 IMAGE_BINARY = "/usr/local/bin/scarab-plutus-oracle"
 IMAGE_BUILD = ("/source/scarab-oracle/scarab-plutus-oracle.cabal", "/source/cabal.project", IMAGE_BINARY)
-# The plutus trees equal their commit: no change, staged or not, and no untracked or ignored file. `git status` is
-# captured by an assignment, whose exit status is the command's, so a status that fails prints nothing rather than an
-# empty listing that reads as clean.
-PINNED_CHECK = (f'listing=$(git status --porcelain --ignored --untracked-files=all -- {" ".join(PINNED_TREES)})'
-                f' && git diff --quiet HEAD -- {" ".join(PINNED_TREES)}'
-                ' && test -z "$listing" && echo "pinned unchanged"')
-# Run in the image (working directory /source, the plutus checkout): each line a key and a value. A measurement that
-# fails prints no value or an empty one, which `image_binding` refuses; cabal must find the executable up to date
-# with the sources the image holds.
+# Run in the image by bash (working directory /source, the plutus checkout), printing one key and value a line. Every
+# producer's output is taken by an assignment at the top level, so under `set -euo pipefail` a command that fails,
+# whatever it printed, ends the measurement with its status, and `measure` refuses the image; the last line says the
+# measurement ran to its end. The plutus trees must equal their commit (no change, staged or not, no untracked or
+# ignored file: `git diff` exits 1 for a difference and above 1 for a failure), and cabal must find the executable
+# up to date with the sources the image holds.
 MEASURE = "\n".join([
-    *(f'echo "file:{path} $(sha256sum {path} | cut -d\' \' -f1)"' for path in (IMAGE_HARNESS, *IMAGE_BUILD)),
-    'echo "head $(git rev-parse HEAD)"',
-    PINNED_CHECK,
-    'cabal build scarab-plutus-oracle --offline --dry-run 2>/dev/null | grep -qx "Up to date" && echo "build current"',
-    'echo "built $(sha256sum "$(cabal list-bin scarab-plutus-oracle)" | cut -d\' \' -f1)"',
+    "set -euo pipefail",
+    f'for path in {" ".join((IMAGE_HARNESS, *IMAGE_BUILD))}; do',
+    '  line=$(sha256sum "$path")',
+    '  echo "file:$path ${line%% *}"',
+    "done",
+    "head=$(git rev-parse HEAD)",
+    'echo "head $head"',
+    f'listing=$(git status --porcelain --ignored --untracked-files=all -- {" ".join(PINNED_TREES)})',
+    f'differs=0; git diff --quiet HEAD -- {" ".join(PINNED_TREES)} || differs=$?',
+    '[ "$differs" -le 1 ] || exit "$differs"',
+    'if [ "$differs" -eq 0 ] && [ -z "$listing" ]; then echo "pinned unchanged"; fi',
+    "dry=$(cabal build scarab-plutus-oracle --offline --dry-run 2>/dev/null)",
+    'if printf "%s\\n" "$dry" | grep -qx "Up to date"; then echo "build current"; fi',
+    "binary=$(cabal list-bin scarab-plutus-oracle)",
+    'line=$(sha256sum "$binary")',
+    'echo "built ${line%% *}"',
+    'echo "measured all"',
 ])
 
 
@@ -102,10 +111,14 @@ def container(image_id, owner, *options):
 
 
 def measure(image_id, owner):
-    """The keys and values MEASURE prints in the image."""
-    command = [*container(image_id, owner, "--entrypoint", "sh"), "-c", MEASURE]
-    output = subprocess.run(command, capture_output=True, text=True, check=True).stdout
-    return dict(line.split(" ", 1) for line in output.splitlines() if " " in line)
+    """The keys and values MEASURE prints in the image, which must run to its end."""
+    command = [*container(image_id, owner, "--entrypoint", "bash"), "-c", MEASURE]
+    result = subprocess.run(command, capture_output=True, text=True)
+    measured = dict(line.split(" ", 1) for line in result.stdout.splitlines() if " " in line)
+    if result.returncode != 0 or measured.get("measured") != "all":
+        raise ValueError(f"{image_id}: the image could not be measured (exit {result.returncode}): "
+                         f"{result.stderr.strip()[-400:]}")
+    return measured
 
 
 def image_binding(release, image_id, owner, accepted):

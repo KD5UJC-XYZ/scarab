@@ -1,7 +1,7 @@
 {
   "release": "1.70.0.0",
   "plutusCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-  "sourceCommit": "9de0c281de68f137d4ad9be07d9725c11b14e766",
+  "sourceCommit": "8216fab0574ed40356a463aef7733006da893c56",
   "oracleImage": "sha256:0ba57aed177d7a9370c31a858ab963581b9e8320b69e2d3cfb8925e88b951002",
   "oracleBaseImage": "sha256:b50784fa61a079153e78ad8b0216ea5d2c35d98f5255f6b920993011007123cb",
   "imageFilesSha256": {
@@ -59,8 +59,8 @@
     "scripts/oracle/plutus/generated/Main.hs": "8c03e0538ff60a331a2172dcbc9a35329f71551aea22bca8fdce925011a69d77",
     "scripts/oracle/plutus/generated/Dockerfile": "2ba7e280e8c886ac2cdfb1395ac2a13e952dff6393f386953f946f5dd233011e",
     "scripts/oracle/plutus/generated/run.py": "6e0d39e0f1a8efa9da8864231efe8f0804c19d08262ef94ba927452575d4deea",
-    "scripts/oracle/plutus/recorded/run.py": "8e78dd3ecefcdef5a9c891456b82eb9da911ee42c7831ba404c1cde0f6b24237"
+    "scripts/oracle/plutus/recorded/run.py": "4d665f72033d7125145d1341e958626b6674fbc9634b3ccea472d7461af49c5f"
   },
   "rawSha256": "2c525c08e8614fafa578d0e61192c2b3e85144be7d06d47d5f339b248b0fc08c",
-  "dateUtc": "2026-11-16T17:59:29.022047+00:00"
+  "dateUtc": "2026-11-16T18:03:20.765358+00:00"
 }

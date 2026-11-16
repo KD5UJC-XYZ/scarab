@@ -103,21 +103,55 @@ class RecordedRequestsOracleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "could not be measured"):
                 self.binding(**changes)
 
-    def pinned_check(self, status_exit, listing=""):
-        """What PINNED_CHECK prints with a `git` whose `status` exits `status_exit` after printing `listing`."""
-        with tempfile.TemporaryDirectory() as stubs:
-            git = Path(stubs) / "git"
-            git.write_text("#!/bin/sh\n"
-                           f'if [ "$1" = status ]; then printf %s "{listing}"; exit {status_exit}; fi\n'
-                           "exit 0\n")
-            git.chmod(0o755)
-            env = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}"}
-            return subprocess.run(["sh", "-c", RUN.PINNED_CHECK], env=env, capture_output=True, text=True).stdout
+    STUB = """#!/bin/sh
+name=$(basename "$0")
+case "$name $1" in
+  "git rev-parse") printf '%s\\n' 507cab8cf6192e5143f12be5b2d3005a2928dc6d ;;
+  "git status") [ -z "$LISTING" ] || printf '%s\\n' "$LISTING" ;;
+  "git diff") code=${DIFF_EXIT:-0} ;;
+  "cabal build") printf 'Resolving dependencies...\\nUp to date\\n' ;;
+  "cabal list-bin") printf '%s\\n' /stub/bin ;;
+  sha256sum*) printf '%064d  %s\\n' 0 "$1" ;;
+esac
+if [ "$FAIL" = "$name $1" ] || [ "$FAIL" = "$name" ]; then exit 128; fi
+exit ${code:-0}
+"""
 
-    def test_the_pinned_check_fails_closed_when_git_status_fails(self):
-        self.assertEqual(self.pinned_check(0), "pinned unchanged\n")
-        self.assertEqual(self.pinned_check(128), "")
-        self.assertEqual(self.pinned_check(0, listing="?? plutus-core/Extra.hs"), "")
+    def run_measure(self, **env):
+        """MEASURE under bash with stub `git`, `cabal` and `sha256sum` that print valid output; `FAIL` names the
+        one that then exits 128, `LISTING` is what `git status` lists and `DIFF_EXIT` what `git diff` exits with."""
+        with tempfile.TemporaryDirectory() as stubs:
+            for name in ("git", "cabal", "sha256sum"):
+                stub = Path(stubs) / name
+                stub.write_text(self.STUB)
+                stub.chmod(0o755)
+            environment = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", **env}
+            result = subprocess.run(["bash", "-c", RUN.MEASURE], env=environment, capture_output=True, text=True)
+            return result.returncode, dict(line.split(" ", 1) for line in result.stdout.splitlines() if " " in line)
+
+    def test_a_measurement_that_holds_runs_to_its_end(self):
+        status, measured = self.run_measure()
+        self.assertEqual(status, 0)
+        self.assertEqual((measured["pinned"], measured["build"], measured["measured"]), ("unchanged", "current", "all"))
+        self.assertEqual(measured["built"], "0" * 64)
+
+    def test_a_producer_that_fails_after_valid_output_ends_the_measurement(self):
+        for failing in ("sha256sum", "git rev-parse", "git status", "git diff", "cabal build", "cabal list-bin"):
+            status, measured = self.run_measure(FAIL=failing)
+            self.assertNotEqual(status, 0, failing)
+            self.assertNotIn("measured", measured, failing)
+
+    def test_a_changed_or_extra_plutus_file_is_measured_as_not_unchanged(self):
+        for env in ({"LISTING": "?? plutus-core/Extra.hs"}, {"DIFF_EXIT": "1"}):
+            status, measured = self.run_measure(**env)
+            self.assertEqual((status, measured.get("measured")), (0, "all"), env)
+            self.assertNotIn("pinned", measured, env)
+
+    def test_an_image_whose_measurement_fails_is_refused(self):
+        failed = subprocess.CompletedProcess([], 128, stdout="head x\nmeasured all\n", stderr="fatal: stub")
+        with patch.object(RUN.subprocess, "run", return_value=failed):
+            with self.assertRaisesRegex(ValueError, "could not be measured \\(exit 128\\)"):
+                RUN.measure("sha256:" + "a" * 64, "test")
 
     def test_a_binding_without_every_build_file_fails_validation(self):
         with tempfile.TemporaryDirectory() as scratch:
