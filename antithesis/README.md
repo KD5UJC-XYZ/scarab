@@ -141,9 +141,6 @@ and none of those runs on the platform ended with a property report; the k = 5 r
 the report. The owner made k = 5 the canary then. At k = 5 this topology forks past k under the platform's network
 faults, a cardano-node in s1's seat as well, so the canary's verdict is s1's answer and the two refusal detectors,
 not the fork depth.
-`pool/config-canary-scarab-vm` runs the canary with s1 on Scarab's own Plutus evaluator (`PLUTUS_VM: scarab`,
-passed as `--plutus-vm scarab`). The advisory's fix was made in the Scalus path, and the own evaluator has a limit of
-its own; this checks it end to end.
 
 The genesis starts at protocol 11. cardano-node reads a Conway genesis only with create-env's 251 PlutusV3
 parameters, which do not price `writeBits`. So the driver's setup enacts the reference's 361-parameter model at
@@ -169,7 +166,6 @@ SCARAB_JAR=node/target/scala-3.9.0/scarab-node-<version>-assembly.jar \
 antithesis/pool/scripts/validate.sh                   # snouty validate: setup complete locally, then cleaned up
 antithesis/pool/scripts/launch.sh on 15m              # validate, then a run with faults
 CONFIG=config-canary antithesis/pool/scripts/launch.sh off 15m   # the canary
-CONFIG=config-canary-scarab-vm antithesis/pool/scripts/launch.sh off 15m   # the canary, own evaluator
 CONFIG=config-k200 antithesis/pool/scripts/launch.sh on 15m  # k = 200
 CONFIG=config-late-start antithesis/pool/scripts/launch.sh on 15m  # experiment: the earlier start order
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
