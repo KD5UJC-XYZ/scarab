@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Forging from a per-epoch leader schedule
 
-**Status**: Proposal; owner decisions of 2026-11-16 on [#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101)
-approve it, pending the independent check of its reference claims. Not implemented. **No persisted format
+**Status**: Accepted 2026-11-16: the owner's decisions on [#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101),
+and its reference claims checked independently at their pins (the pull request's review). Not implemented. **No persisted format
 changes**: the schedule is held in memory only (§5.2, [FMT-1](../design-rules.md#fmt-1)).
 
 Pins. The forger cites the `11.1` build: cardano-node 11.1.3, ouroboros-consensus 82ecba32, cardano-ledger f649f975,
