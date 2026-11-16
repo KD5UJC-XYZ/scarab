@@ -464,29 +464,47 @@ slot order, `ForgingStats` folds them in slot order (Q7).
 
 ### 5.5 The KES key at each period
 
-At start, and then at the onset of the first slot of each KES period, the timer calls `HotKeys.update(period)`
-(decision 3). It evolves the key and writes it back, or poisons it past its certificate's window, as the per-slot loop
-does. It emits `stateInfo`, which writes the KES gauges, or `forgeStateUpdateError`. The old key's memory is zeroed as
-now (`Sum6KesSigning`'s `evolve`), so from the period's first slot the key in memory cannot sign for an earlier
-period, as on a synced reference node, and the write-back of [ADR
+The slot driver makes decision 3's update at the first slot of each KES period it handles, and at the first slot it
+handles after a start or after forging is switched on. It takes the key reservation, which waits for any forge in
+flight to sign, then calls `HotKeys.update(period)`, which evolves the key and writes it back, or poisons it past its
+certificate's window, as the per-slot loop does; the KES gauges are written from the result. A forge holds the same
+reservation from its own forge state update (§5.3 step 2) until its block is signed. Whichever of the two takes the
+reservation first in a period makes the period's update; the other finds the key already at that period. The old key's
+memory is zeroed as now (`Sum6KesSigning`'s `evolve`), so from the period's first slot the key in memory cannot sign
+for an earlier period, as on a synced reference node, and the write-back of [ADR
 0015](../adr/0015-kes-key-written-back-and-checked-reload.md) replaces the earlier key in its file. Unlike the
 reference (§2.6), the key moves even while the node cannot forecast its slots, so it is never older than the clock's
-period. A led slot still runs the forge state update and `checkCanForge` in its own sequence (§5.3, step 2); for a led
-slot in the first slot of a period this evolves the key up to the wake margin before the period begins. While forging
-is disabled the timer does nothing, as no forging thread runs then in the reference (C19).
+period. For a led slot in the first slot of a period, the forge's own update moves the key up to the wake margin
+before the period begins. While forging is disabled nothing updates the key, as no forging thread runs then in the
+reference (C19).
 
-**The timer waits for a forge in flight.** A forge holds one reservation of the key from its own forge state update
-(`HotKeys.update`, §5.3 step 2) until its block is signed, and the timer takes the same reservation before it evolves
-the key. So the key's evolution stays sequential, as in the reference, whose single forging thread updates the key and
-forges in one action, and updates it again only in the next slot's action (C2, C6). Both take the reservation before
-the HotKeys lock, so neither can deadlock the other. A reload takes the HotKeys lock alone and does not wait for the
-reservation: a reload during a forge changes the credentials, and §5.3 discards that attempt. Without the reservation
-the timer could move the key to the next period between a forge's update and its signature; `Sum6KesSigning` refuses
-to evolve a key backward, so that block would be lost.
+**One result per period, read by every slot.** The first update of a period records its result: the key's state
+(`KesInfo`), or the failure that poisoned the key. The record belongs to the credentials it was made with: a reload
+that installs another KES key or certificate clears it, and the next slot the slot driver handles makes the update
+again. No check reads the key itself: the KES check of every slot in the period (§5.4 step 4) and the forge state of a
+led slot's sequence both take the recorded result, so a slot's outcome does not depend on which fiber reached the key
+first. The update comes before the slot's checks, as the reference updates the forge state before its leader check in
+the same action (C2, C3). The slot driver, the only publisher, publishes from the record in slot order:
+
+- after a successful update, `stateInfo` at the period change (Q2), and `stateInfo` at Warning or Alert in every slot
+  whose checks reach the KES key while seven or fewer periods are left;
+- after a failure, `forgeStateUpdateError` with `KESCouldNotEvolve` in the first slot, in slot order, whose checks
+  reach the KES key, and with `KESKeyAlreadyPoisoned` in each later one, whichever fiber made the update. That is the
+  sequence the reference gives: it updates only in slots that reach that check, the first failure poisons the key, and
+  a poisoned key answers every later update with `KESKeyAlreadyPoisoned` (C6). A forge's result carries the recorded
+  result, not a rendered line, so the slot driver names the kind when it publishes it.
+
+**The reservation and the locks.** The slot driver and a forge both take the reservation before the HotKeys lock, so
+neither can deadlock the other. The slot driver holds the reservation only for the update itself and waits for no
+attempt's result while it holds it; a forge holds it from its update to its signature and never waits on the slot
+driver. A reload takes the HotKeys lock alone and does not wait for the reservation: a reload during a forge changes
+the credentials, and §5.3 discards that attempt. Without the reservation the key could move to the next period between
+a forge's update and its signature; `Sum6KesSigning` refuses to evolve a key backward, so that block would be lost.
 
 On a slow host, a forge of the last slot of period p that is still running when period p+1 begins keeps the key at p
-until it has signed, and the timer evolves the key to p+1 as soon as the reservation is free. The key then reaches
-p+1 late by the rest of that forge, as in the reference, where the next slot's update waits for the action under way.
+until it has signed, and the slot driver, waiting on the reservation, then evolves the key to p+1. The key reaches p+1
+late by the rest of that forge, and slots that pass meanwhile are skipped (§5.4), as in the reference, where the next
+slot's update waits for the action under way and the slots that pass during it are skipped (C1).
 
 ### 5.6 What the operator sees
 
@@ -518,7 +536,7 @@ the change that first relies on them adds their rows to the [decisions register]
 | A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `stateInfo` only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
 | When the leader check runs | at the slot, in the forging thread (C1, C4) | ahead of the epoch, spread over the time left; again at a led slot | decisions 4, 5 |
 | When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset; handed to chain selection at the onset | decision 6 |
-| When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by a timer at the period's first slot; also at a led slot as now | decision 3 |
+| When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by the slot driver at the period's first slot, decision 3's timer; also at a led slot as now | decision 3 |
 | The schedule | not traced (C10) | three metrics and the `leaderSchedule` line | decision 7 |
 
 The per-slot loop is replaced with no flag (decision 8).
