@@ -1223,17 +1223,25 @@
     },
     {
       "id": "plutus-v4-dijkstra",
-      "component": "Plutus at protocol 12: PlutusV4 and case on Data (#54)",
+      "component": "Plutus at protocol 12: PlutusV4 and case on Data (#54, #1099)",
       "status": "partial",
-      "summary": "The Leios testnet build's Plutus from protocol 12 (plutus 1.71.0.0): program version 1.2.0, case on Data, variants F and G, PlutusV4 as cardano-ledger 9df9f98c runs it, and the PlutusV4 script context of a Dijkstra transaction; the node does not reach protocol 12; no evaluator of the node runs it until #1099, and the 1.71.0.0 corpus has no runner (an incomplete gate)",
+      "summary": "The Leios testnet build's Plutus from protocol 12 (plutus 1.71.0.0) on Scarab's own evaluator: program version 1.2.0, case on Data, variants F and G, PlutusV4 as cardano-ledger 9df9f98c runs it, and the PlutusV4 script context of a Dijkstra transaction; the node does not reach protocol 12",
       "evidence": {
         "suites": [
+          "Conformance171Suite",
+          "CekConformance171Suite",
+          "FlatConformance171Suite",
+          "ConformanceCosting171Suite",
+          "GeneratedOracle171Suite",
+          "LedgerEvalSuite",
           "DijkstraScriptContextsSuite",
           "DijkstraContextWireSuite",
           "CostModelNameTablesSuite"
         ],
         "paths": [
           "plutus/src/test/resources/plutus-reference/README.md",
+          "fixtures/reference/uplc-generated-171/README.md",
+          "scripts/oracle/plutus/generated-171/README.md",
           "fixtures/reference/leios-testnet-contexts/README.md",
           "scripts/oracle/leios-testnet/leios_context_cases.py"
         ]

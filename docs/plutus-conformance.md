@@ -475,3 +475,21 @@ decoding and 2 budget failures): no difference in verdict or failure class, the 
 execution units and logs (the suite compares units and logs on successes only), and every request has a
 verdict from both. A fatal-injection case of `FollowerStallSuite` fails intermittently on either
 backend (it involves no script); it passed in these runs.
+
+## The own evaluator at plutus 1.71.0.0 (#1099, 2026-11-16)
+
+The own evaluator implements plutus 1.71.0.0 (`261766ad`) at every protocol version
+([ADR 0027, amendment of 2026-11-15](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-plutus-17100-and-protocol-12));
+[Plutus at protocol 12](compatibility/plutus-v4-dijkstra.md) lists what 1.71.0.0 changes against
+1.70.0.0, with the lines at both pins, and where each change reaches. Its conformance evidence, with
+no exclusion and no tolerance:
+
+| Corpus | Profile | Result |
+|---|---|---|
+| plutus 1.70.0.0, 1,009 cases (906 with a Flat form) | the 1.70.0.0 executable's: variant E with its defaults, `case` on `Data` in every program | every result and budget, text and Flat (`ConformanceSuite`, `CekConformanceSuite`, `FlatConformanceSuite`); 423 single applications costed as recorded (`ConformanceCostingSuite`) |
+| plutus 1.71.0.0, 1,009 cases (906 with a Flat form) | the 1.71.0.0 executable's (`CekEvaluator.hs:47-62`): variant G with E's defaults, the caser of protocol 12 for each program's version | every result and budget, text and Flat (`Conformance171Suite`, `CekConformance171Suite`, `FlatConformance171Suite`); 423 single applications costed as recorded (`ConformanceCosting171Suite`) |
+| [generated scripts](../fixtures/reference/uplc-generated-171/README.md), 3,800 | the ledger's: `deserialiseScript` and `evaluateScriptRestricting` of unchanged plutus 1.71.0.0, protocols 5 to 12, V1 to V4 | the same admission, stage, error, budget and logs for every script (`GeneratedOracle171Suite`); the 3,000 of protocols 5 to 11 get 1.70.0.0's verdicts |
+
+The 1.70.0.0 oracles of the test tree (the costing oracle, the boundary corpora, the generated
+scripts of [uplc-generated](../fixtures/reference/uplc-generated/README.md)) replay through the
+1.71.0.0 evaluator with 1.70.0.0's default lists and agree, as they did before.
