@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import scala.concurrent.duration.*
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -481,6 +481,55 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
           Vector(BigInt(1)),
           "signed under the reissued certificate"
         )
+      }
+    }
+  }
+
+  test(
+    "an early attempt held before its signature while the clock moves back and a key is installed"
+  ) {
+    // 5101 is led and built early, the clock in 5100 (period 51); the attempt is held before its
+    // signature. In the slot's wake margin the wall clock moves back a second, into period 50, a
+    // reload installs another KES key with the same VRF key under a certificate from period 50
+    // (counter 0), taken at relative period 0, and the attempt goes on; a step later the same key's
+    // certificate issued again (counter 1) is installed, the clock still in period 50
+    val s = BigInt(5101)
+    val seed = seedLeading(Vector(s))
+    val other = seed + 200
+    withHandle {
+      (Deferred[IO, Unit], Deferred[IO, Unit]).flatMapN { (scheduledGate, perSlotGate) =>
+        def gate(way: Way) = way match
+          case Way.Scheduled => scheduledGate
+          case Way.PerSlot   => perSlotGate
+        compared(
+          Scenario(
+            seed,
+            alone,
+            s - 2,
+            s + 1,
+            behind = Some(s -> 1.second),
+            at = Vector((Forger.Point.Signing(s), s, side => gate(side.way).get)),
+            margin = Vector(
+              s -> (side =>
+                otherKes(other, 50, counter = 0)(side) *> gate(side.way).complete(()).void
+              ),
+              s -> otherKes(other, 50)
+            )
+          )
+        ).map { c =>
+          assertEquals(
+            c.scheduled.collect { case r: ForgeEvent.KesReloadRefused => r },
+            Vector.empty,
+            "the scheduled forger refused a reload"
+          )
+          reloaded(c)
+          same(c)
+          def counter(events: Vector[ForgeEvent]) = events.collect {
+            case f: ForgeEvent.Forged if f.slot == s => f.opCertCounter
+          }
+          assertEquals(counter(c.perSlot), Vector(BigInt(1)), "the per-slot decision's certificate")
+          assertEquals(counter(c.scheduled), Vector(BigInt(1)), "signed under the reissue")
+        }
       }
     }
   }
