@@ -29,7 +29,7 @@ NOT_STARTED = "not started: the forger was still on an earlier slot"
 
 # The forger's traces that end a slot without a block, as the reference names them; `blockFromFuture` names its
 # slot `current slot`. Since #1101 a slot the pool does not lead logs only one of these (`nodeNotLeader`, or the
-# line of a check before the leader check), after `startLeadershipCheck` and `stateInfo` only at a KES period
+# line of a check before the leader check), after `startLeadershipCheck` (and `stateInfo`) only at a KES period
 # change, and a led slot its whole sequence from `startLeadershipCheck`.
 ENDING_EVENTS = ("slotIsImmutable", "blockFromFuture", "noLedgerView", "forgeStateUpdateError", "nodeCannotForge",
                  "nodeNotLeader", "forgedInvalidBlock", "didntAdoptBlock")
