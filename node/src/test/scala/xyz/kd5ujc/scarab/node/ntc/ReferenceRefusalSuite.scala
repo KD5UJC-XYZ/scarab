@@ -21,25 +21,12 @@ import xyz.kd5ujc.scarab.ledger.{
   ConfigError,
   LedgerDecodeError,
   LedgerDefect,
-  PlutusStats,
-  PosixClock,
   PredicateFailure,
-  Tx,
-  TxEnv,
   TxIn,
   TxOut,
   Utxo
 }
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Counted,
-  Judgment,
-  PreConway,
-  ShelleyLedger,
-  ShelleyLedgerEnv,
-  Sts,
-  Tick,
-  TickFailure
-}
+import xyz.kd5ujc.scarab.ledger.rules.{PreConway, Sts, Tick, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{
   Allegra,
   Alonzo,
@@ -57,6 +44,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.{
+  EarlierLedger,
   LocalSubmission,
   MempoolEnv,
   MempoolLedger,
@@ -79,9 +67,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * Each Conway case puts the submitted bytes through Scarab's own path: `LocalSubmission.unwrap`, a
   * mempool whose ledger is the reference's state ticked to the successor of the recorded tip
   * (`MempoolLedger.tick`), `MempoolState.add`, and `LocalSubmission.reasonItem`. The bytes must
-  * equal the reference's. An earlier-era case goes through its LEDGER rule and encoding
-  * ([[replayPreConway]]). Every difference fails its case. A family the manifest requires for an
-  * era and no case covers fails that era's coverage test (an incomplete gate is never a pass).
+  * equal the reference's. An earlier-era case goes the same path, its pool's ledger the era's
+  * ([[replayPreConway]], #934). Every difference fails its case. A family the manifest requires for
+  * an era and no case covers fails that era's coverage test (an incomplete gate is never a pass).
   *
   * Each corpus is replayed under the rules of the reference build that recorded it
   * ([[recordedBuild]]): `NodeSetup.fromFiles` with that build, which sets the ledger's build
@@ -240,10 +228,10 @@ class ReferenceRefusalSuite extends FunSuite:
       )
     )
 
-  /** A pre-Conway case through the era's LEDGER rule and its predicate-failure encoding: Scarab's
-    * mempool and LocalTxSubmission serve Conway only, so this is the rule and the encoder, not the
-    * node-to-client path. The state is ticked to the successor of the tip, as the reference's
-    * mempool does, and the transaction judged as the first of a block in that slot.
+  /** A pre-Conway case through Scarab's own path, as a Conway case goes: `LocalSubmission.unwrap`,
+    * a mempool whose ledger is the reference's state ticked to the successor of the recorded tip
+    * (an [[EarlierLedger]], whose rule is the era's LEDGER), `MempoolState.add`, and
+    * `LocalSubmission.reasonItem` in the era's encoding.
     */
   private def replayPreConway[E <: EraTag](c: Corpus, rc: RefusalCase, rules: ReferenceBuild)(using
       pre: PreConway[E]
@@ -256,54 +244,14 @@ class ReferenceRefusalSuite extends FunSuite:
         .fromBigInt(rc.tipSlot + 1)
         .leftMap(e => ReplayProblem.Tick(TickFailure.Vocab(e)))
       ticked <- Sts(Tick.sts[E])(env.rules, (), at.nes, slot).leftMap(ReplayProblem.Tick(_))
-      tx <- preConwayTx(rc.item, rc.era.wire)
     yield
-      val txEnv = TxEnv(
-        slot = slot.toBigInt,
-        epoch = ticked.epoch.toBigInt,
-        network = env.globals.network,
-        firstSlotNextEpoch = env.geometry.firstSlot(ticked.epoch.toBigInt + 1),
-        stabilityWindow = env.geometry.stabilityWindow.toBigInt,
-        txIndex = 0,
-        updateQuorum = env.globals.updateQuorum,
-        clock = Some(PosixClock.total(env.geometry)),
-        evaluator = env.evaluator,
-        decoder = env.decoder,
-        referenceBuild = env.globals.referenceBuild
-      )
-      Judgment
-        .run(ShelleyLedger.sts[E], Judgment.Policy.Accumulate)(
-          env.rules,
-          ShelleyLedgerEnv(txEnv, ticked.es.chainAccount),
-          Counted(ticked.es.ls, PlutusStats.zero),
-          tx
-        )
-        .fold(
-          Judgement.NotRefused(_),
-          _.fold(
-            failures =>
-              PreConwayFailureCbor
-                .applyTxError(rc.era.wire, failures.toChain.toVector)
-                .fold(error => fail(error.message), identity)
-                .fold(Judgement.Unencodable(failures))(Judgement.Refused(_)),
-            _ => Judgement.Accepted
-          )
-        )
-
-  /** The original transaction of a LocalTxSubmission item `[era index, #6.24(tx)]`. */
-  private def preConwayTx(item: Bytes, expected: Era): Either[ReplayProblem, Tx] =
-    val inner = Cbor.decode(item).toOption.map(_.value).collect {
-      case Value.Arr(Vector(era, payload)) if era.value == Value.UInt(BigInt(expected.index)) =>
-        payload.value match
-          case Value.Tag(t, bytes) if t == 24 =>
-            bytes.value match
-              case Value.ByteString(b) => Some(b)
-              case _                   => None
-          case _ => None
-    }
-    inner.flatten
-      .toRight(ReplayProblem.Item)
-      .flatMap(Tx.fromEnvelope(_, expected).leftMap(ReplayProblem.Transaction(_)))
+      val ledger =
+        EarlierLedger(pre, ticked.es.ls, ticked.es.chainAccount, ticked.epoch.toBigInt)
+      val pool = MempoolState.empty(Right(ledger), rc.tipSlot, None)
+      LocalSubmission
+        .unwrap(rc.item)
+        .flatMap(submission => pool.add(submission, env, Source.Local).map(_ => ()))
+        .fold(judge(_, rc.era.wire), _ => Judgement.Accepted)
 
   private def replayConway(
       c: Corpus,
@@ -318,8 +266,8 @@ class ReferenceRefusalSuite extends FunSuite:
       val pool = MempoolState.empty(Right(ledger), rc.tipSlot, None)
       LocalSubmission
         .unwrap(rc.item)
-        .flatMap(tx => pool.add(tx, env, Source.Local).map(_ => ()))
-        .fold(judge, _ => Judgement.Accepted)
+        .flatMap(submission => pool.add(submission, env, Source.Local).map(_ => ()))
+        .fold(judge(_, Era.Conway), _ => Judgement.Accepted)
 
   /** Where the two refusals part: the failure counts and the first failure that differs. */
   private def difference(scarab: Bytes, rc: RefusalCase): String =
@@ -330,9 +278,9 @@ class ReferenceRefusalSuite extends FunSuite:
     s"Scarab's refusal differs from the reference's: Scarab reports ${ours.size} failure(s), the " +
       s"reference ${theirs.size} (${rc.families.mkString(", ")}); they part at failure ${at + 1}"
 
-  private def judge(rejection: Rejection): Judgement =
+  private def judge(rejection: Rejection, era: Era): Judgement =
     LocalSubmission
-      .reasonItem(rejection)
+      .reasonItem(rejection, Some(era))
       .fold(Judgement.Unavailable(_), Judgement.Refused(_))
 
 object ReferenceRefusalSuite:

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.network.Settled
 import cats.effect.{IO, Ref}
@@ -300,7 +301,7 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
         case Left(full: Rejection.Full) =>
           assertEquals(full.needed.bytes, cost(oversized))
           assertEquals(full.dimension, CapacityDimension.Bytes)
-          assert(LocalSubmission.reasonItem(full).isRight)
+          assert(LocalSubmission.reasonItem(full, Some(Era.Conway)).isRight)
         case other => fail(s"expected the capacity refusal, received $other")
       }
       assertEquals(waits, Vector.empty)

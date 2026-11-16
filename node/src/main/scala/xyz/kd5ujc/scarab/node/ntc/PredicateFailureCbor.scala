@@ -99,12 +99,15 @@ object PredicateFailureCbor:
     */
   private def notInConway(w: W): Unit = { w.nul; () }
 
-  /** The hard-fork-combinator era mismatch: the era of the transaction, then the ledger's. */
-  def eraMismatch(transactionEra: Int, transactionEraName: String): Bytes =
+  /** The hard-fork-combinator era mismatch (`encodeEitherMismatch`, `Left`,
+    * `HardFork/Combinator/Serialisation/Common.hs:570-582`, ouroboros-consensus 82ecba32): the era
+    * of the transaction, then the ledger's, each its index and its name (`singleEraName`).
+    */
+  def eraMismatch(transactionEra: Int, transactionEraName: String, ledger: Era): Bytes =
     CborOut.build { w =>
       w.array(2)
       w.array(2).uint(transactionEra).text(transactionEraName)
-      w.array(2).uint(ConwayIndex).text("Conway")
+      w.array(2).uint(ledger.index).text(ledger.toString)
     }
 
   // ---- helpers

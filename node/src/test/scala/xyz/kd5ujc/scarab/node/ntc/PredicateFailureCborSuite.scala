@@ -281,7 +281,7 @@ class PredicateFailureCborSuite extends FunSuite:
   test("a transaction of another era gets the hard-fork combinator's era mismatch") {
     // Babbage transaction against a Conway ledger: [[5, "Babbage"], [6, "Conway"]]
     assertEquals(
-      PredicateFailureCbor.eraMismatch(5, "Babbage").hex,
+      PredicateFailureCbor.eraMismatch(5, "Babbage", Era.Conway).hex,
       "8282056742616262616765820666436f6e776179"
     )
   }

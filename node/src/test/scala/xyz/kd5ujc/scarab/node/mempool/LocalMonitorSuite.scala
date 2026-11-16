@@ -52,11 +52,14 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     assertEquals(snap.slot, BigInt(1001))
     assertEquals(
       snap.txs.map(_.tx),
-      Vector(LocalMonitor.wrapTx(t1), LocalMonitor.wrapTx(t2))
+      Vector(LocalMonitor.wrapTx(Era.Conway, t1), LocalMonitor.wrapTx(Era.Conway, t2))
     )
-    assertEquals(snap.has(LocalMonitor.wrapId(id1)), Right(true))
-    assertEquals(snap.has(LocalMonitor.wrapId(id2)), Right(true))
-    assertEquals(snap.has(LocalMonitor.wrapId(Bytes(Vector.fill(32)(7.toByte)))), Right(false))
+    assertEquals(snap.has(LocalMonitor.wrapId(Era.Conway, id1)), Right(true))
+    assertEquals(snap.has(LocalMonitor.wrapId(Era.Conway, id2)), Right(true))
+    assertEquals(
+      snap.has(LocalMonitor.wrapId(Era.Conway, Bytes(Vector.fill(32)(7.toByte)))),
+      Right(false)
+    )
   }
 
   private def hex(s: String): Bytes = Bytes.fromHex(s).toOption.get
@@ -213,9 +216,9 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
   }
 
   test("the wire forms: [6, #6.24(tx)] and [6, h'id']") {
-    assertEquals(LocalMonitor.wrapTx(Bytes(Vector(1, 2, 3))).hex, "8206d81843010203")
+    assertEquals(LocalMonitor.wrapTx(Era.Conway, Bytes(Vector(1, 2, 3))).hex, "8206d81843010203")
     assertEquals(
-      LocalMonitor.wrapId(Bytes(Vector.fill(32)(0x11.toByte))).hex,
+      LocalMonitor.wrapId(Era.Conway, Bytes(Vector.fill(32)(0x11.toByte))).hex,
       "82065820" + "11" * 32
     )
   }
@@ -404,7 +407,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       yield
         assertEquals(first.txs.size, 0)
         assertEquals(second.txs.size, 1)
-        assertEquals(second.has(LocalMonitor.wrapId(id1)), Right(true))
+        assertEquals(second.has(LocalMonitor.wrapId(Era.Conway, id1)), Right(true))
         assertEquals(second.slot, BigInt(1001))
         // the transaction still applies at the new tip, only the slot moved
         assertEquals(third.slot, BigInt(1002))

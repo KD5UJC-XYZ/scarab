@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.Era
 import munit.FunSuite
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 
@@ -20,13 +21,13 @@ class InputDefectSuite extends FunSuite:
   }
 
   test("control: a decoder's own refusal passes through unchanged") {
-    val refused = Rejection.WrongEra(5)
+    val refused = Rejection.WrongEra(5, Era.Conway)
     assertEquals(MempoolState.decoding[Unit](Left(refused)), Left(refused))
   }
 
   test("the local client gets no rejection bytes: its connection ends with the defect") {
-    LocalSubmission.response(Rejection.InputDefect(cause)) match
+    LocalSubmission.response(Refused(Rejection.InputDefect(cause), None)) match
       case LocalTxSubmissionServer.Response.InputDefect(thrown) => assert(thrown eq cause)
       case other                                                => fail(s"unexpected $other")
-    assert(LocalSubmission.reasonItem(Rejection.InputDefect(cause)).isLeft)
+    assert(LocalSubmission.reasonItem(Rejection.InputDefect(cause), None).isLeft)
   }

@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** What a transaction counts for in the mempool, and how much the mempool may hold: the measures of
   * `ouroboros-consensus-cardano` `Shelley/Ledger/Mempool.hs` (`txInBlockSize`, `txMeasureAlonzo`,
@@ -56,7 +57,15 @@ object Capacity:
     * `Long`.
     */
   def of(params: ProtocolParams, capacityOverride: Option[Word32]): TxMeasure =
-    val unit = blockUnit(params)
+    blocks(blockUnit(params), capacityOverride)
+
+  /** [[of]] in the measure of the ledger's era ([[Shape]]): `blockCapacityTxMeasure` of the era,
+    * injected into the hard-fork combinator's measure.
+    */
+  def of(ledger: PoolLedger, capacityOverride: Option[Word32]): TxMeasure =
+    blocks(Shape.of(ledger.era).project(blockUnit(ledger.params)), capacityOverride)
+
+  private def blocks(unit: TxMeasure, capacityOverride: Option[Word32]): TxMeasure =
     val count = capacityOverride.fold(DefaultBlocks) { o =>
       val bytes = o.toLong
       if unit.bytes <= 0 then 1L
@@ -95,18 +104,62 @@ object Capacity:
       .fromList(tooBig.toList ++ tooMuch.toList)
       .toLeft(TxMeasure(tx.size + PerTxOverhead, units.mem, units.steps, 0L))
 
+  /** [[phase1]] in the measure of the ledger's era ([[Shape]]): from Shelley to Mary the size alone
+    * (`txInBlockSize`, `Shelley/Ledger/Mempool.hs:402-415`, ouroboros-consensus 82ecba32, the
+    * instances of lines 522-544), from Alonzo the size and the execution units (`txMeasureAlonzo`,
+    * lines 590-612, 668-677, 752-772).
+    */
+  def phase1(tx: Tx, ledger: PoolLedger): Either[NonEmptyList[PredicateFailure], TxMeasure] =
+    val params = ledger.params
+    Shape.of(ledger.era) match
+      case Shape.Bytes =>
+        Either.cond(
+          tx.size <= params.maxTxSize,
+          TxMeasure(tx.size + PerTxOverhead, BigInt(0), BigInt(0), 0L),
+          NonEmptyList.one(
+            PredicateFailure
+              .utxo(UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), params.maxTxSize)))
+          )
+        )
+      case Shape.Alonzo | Shape.Conway => phase1(tx, params)
+
   /** The second phase (`txMeasurePhase2`, `txMeasureRefScripts`, Conway): the reference-script
     * bytes of the transaction's inputs and reference inputs in the state after the held
-    * transactions against the per-transaction maximum, both the reference's 64-bit `Int`.
+    * transactions against the per-transaction maximum, both the reference's 64-bit `Int`. Before
+    * Conway the phase is trivial (`TrivialTxMeasurePhase2`, `Shelley/Ledger/Mempool.hs:522-561,
+    * 751-761`, ouroboros-consensus 82ecba32, Babbage's included): nothing is measured.
     */
-  def phase2(ledger: MempoolLedger, tx: Tx): Either[PredicateFailure, Long] =
-    val size = MempoolState.refScriptBytes(ledger, tx)
-    val limit = RefScripts.MaxRefScriptSizePerTx.toLong
-    Either.cond(
-      size <= limit,
-      size,
-      PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(size, limit))
-    )
+  def phase2(ledger: PoolLedger, tx: Tx): Either[PredicateFailure, Long] = ledger match
+    case conway: MempoolLedger =>
+      val size = MempoolState.refScriptBytes(conway, tx)
+      val limit = RefScripts.MaxRefScriptSizePerTx.toLong
+      Either.cond(
+        size <= limit,
+        size,
+        PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(size, limit))
+      )
+    case _: EarlierLedger[?] => Right(0L)
+
+  /** Which components of the measure an era has, in the hard-fork combinator's measure
+    * (`hardForkInjTxMeasurePhase1` and `hardForkInjTxMeasurePhase2`,
+    * `Cardano/CanHardFork.hs:226-278`, ouroboros-consensus 82ecba32): Byron to Mary measure bytes
+    * alone (`fromByteSize`, no execution units), Alonzo and Babbage bytes and execution units, and
+    * only Conway and Dijkstra reference-script bytes (`fromTrivial` before them).
+    */
+  enum Shape:
+    case Bytes, Alonzo, Conway
+
+    /** `m` with the components this shape does not have set to zero. */
+    def project(m: TxMeasure): TxMeasure = this match
+      case Bytes  => TxMeasure(m.bytes, BigInt(0), BigInt(0), 0L)
+      case Alonzo => m.copy(refScriptsBytes = 0L)
+      case Conway => m
+
+  object Shape:
+    def of(era: Era): Shape = era match
+      case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary => Bytes
+      case Era.Alonzo | Era.Babbage                         => Alonzo
+      case Era.Conway | Era.Dijkstra                        => Conway
 
   extension (m: TxMeasure)
     /** Within `limit` in every component. */

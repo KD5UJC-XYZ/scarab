@@ -10,8 +10,7 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
-import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
+import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, EpochGeometry, PosixClock}
 import xyz.kd5ujc.scarab.ledger.{
@@ -19,33 +18,16 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerDecodeError,
   LedgerFailure,
   LedgerGlobals,
-  PlutusStats,
   PredicateFailure,
   RefScripts,
   Tx,
-  TxEnv,
-  Utxo,
-  UtxoFailure,
-  UtxosFailure,
-  UtxowFailure
+  TxEnv
 }
-import xyz.kd5ujc.scarab.ledger.rules.{
-  ConwayLedger,
-  Counted,
-  Globals,
-  JudgedSts,
-  Judgment,
-  LedgerEnv,
-  Mempool,
-  Sts,
-  Tick,
-  TickFailure
-}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, LedgerState, NewEpochState, SlotNo, UtxoTables}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 
 /** Why a transaction is not (or no longer) in the mempool. */
 enum Rejection:
-  /** The bytes are not a Conway transaction `[body, witnesses, is_valid, auxiliary_data]`. */
+  /** The bytes are not a transaction of the era the submission names. */
   case Malformed(cause: TransactionDecodeProblem)
 
   /** The same transaction is already held. */
@@ -68,11 +50,14 @@ enum Rejection:
     */
   case Full(needed: TxMeasure, free: TxMeasure)
 
-  /** The submission names an era other than the ledger's (Conway). */
-  case WrongEra(era: Int)
+  /** The submission is of an era other than the ledger's, `ledger`, and does not reach it
+    * ([[EraInjection]]): the hard-fork combinator's `HardForkApplyTxErrWrongEra`, naming the era
+    * `transaction` (its index in the combinator's era list) it is reported in.
+    */
+  case WrongEra(transaction: Int, ledger: Era)
 
-  /** The chain has no Conway ledger state to validate against (it is in Byron or an earlier era, or
-    * its state cannot be read): the pool takes nothing until it has.
+  /** The chain has no ledger state the pool validates against (it is in Byron or Dijkstra, or its
+    * state cannot be read): the pool takes nothing until it has.
     */
   case NoLedger(why: ConwayView.Unavailable)
 
@@ -101,8 +86,8 @@ enum Rejection:
     case Limits(id, fs) =>
       s"tx ${id.hex.take(16)} violates ${fs.map(_.detail).toList.mkString("; ")}"
     case f: Full        => f.problem.message
-    case WrongEra(e)    => s"era $e is not Conway"
-    case NoLedger(why)  => s"no Conway ledger state: ${cats.Show[ConwayView.Unavailable].show(why)}"
+    case WrongEra(e, l) => s"era $e is not the ledger's, $l"
+    case NoLedger(why)  => s"no ledger state: ${cats.Show[ConwayView.Unavailable].show(why)}"
     case InputDefect(t) => s"the transaction decoder threw: $t"
     case RulesDefect(t) => s"the ledger rules threw on the transaction: $t"
 
@@ -132,33 +117,48 @@ enum Source:
     */
   case Remote
 
-/** A held transaction. `ticket` grows with arrival order and is how peers are given each
-  * transaction once. `refScriptBytes` is the size of the reference scripts the transaction names
-  * (the union of its spent and reference inputs, each output once, as the ledger's
-  * `txNonDistinctRefScriptsSize`), measured against the state it was added to; LocalTxMonitor
+/** A held transaction of `era`, the era of the pool's ledger: its parts, with the flag of the
+  * verdict, and the transaction they make in that era. `ticket` grows with arrival order and is how
+  * peers are given each transaction once. `refScriptBytes` is the size of the reference scripts the
+  * transaction names (the union of its spent and reference inputs, each output once, as the
+  * ledger's `txNonDistinctRefScriptsSize`), measured against the state it was added to in Conway,
+  * and zero before (the measure of those eras has no such component, [[Capacity]]); LocalTxMonitor
   * reports it.
   */
-final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptBytes: Long = 0L):
+final case class Entry(
+    era: Era,
+    parts: Block.Transaction,
+    tx: Tx,
+    ticket: Long,
+    refScriptBytes: Long = 0L
+):
+  /** The id: the hash of the body. */
+  def id: Bytes = parts.id
+
+  /** The transaction as the reference holds, lists and relays it ([[EraInjection.envelope]]). */
+  lazy val raw: Bytes = EraInjection.envelope(parts, era)
+
   def size: Int = raw.size
 
 /** What the transaction rules need besides the ledger state. `clock` is the slot to time
   * translation of the era history at the chain tip the pool is judged against, with its forecast
-  * horizon; none is the geometry alone, without a horizon, for pools of tests that have no chain.
-  * `verdicts` are the signature verifiers of the witness checks. `evaluator` and `decoder` are the
-  * node's Plutus backend (`PlutusBackend`), with no default.
+  * horizon, for a transaction of the era it is given (the era of the pool's ledger); none is the
+  * geometry alone, without a horizon, for pools of tests that have no chain. `verdicts` are the
+  * signature verifiers of the witness checks. `evaluator` and `decoder` are the node's Plutus
+  * backend (`PlutusBackend`), with no default.
   */
 final case class MempoolEnv(
     globals: LedgerGlobals,
     geometry: EpochGeometry,
     evaluator: ScriptEvaluator[Id],
     decoder: ScriptDecoder[Id],
-    clock: Option[PosixClock] = None,
+    clock: Option[Era => PosixClock] = None,
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
 ):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
-    * after the tip, in the epoch of the fully ticked ledger.
+    * after the tip, in the epoch and the era of the fully ticked ledger.
     */
-  def txEnv(tipSlot: BigInt, ledger: MempoolLedger, index: Int): TxEnv =
+  def txEnv(tipSlot: BigInt, ledger: PoolLedger, index: Int): TxEnv =
     val slot = tipSlot + 1
     TxEnv(
       slot = slot,
@@ -168,7 +168,7 @@ final case class MempoolEnv(
       stabilityWindow = geometry.stabilityWindow.toBigInt,
       txIndex = index,
       updateQuorum = globals.updateQuorum,
-      clock = Some(clock.getOrElse(PosixClock.total(geometry))),
+      clock = Some(clock.fold(PosixClock.total(geometry))(_(ledger.era))),
       evaluator = evaluator,
       decoder = decoder,
       verdicts = verdicts,
@@ -178,128 +178,24 @@ final case class MempoolEnv(
   /** The constants the rules of the era-indexed state read. */
   def rules: Globals = Globals(globals, geometry)
 
-/** The ledger a transaction is validated against: the Conway ledger state at the chain tip, the
-  * treasury of the chain account (the transaction's `currentTreasuryValue` is checked against it)
-  * and the epoch. The mempool is Conway's: the transaction is `[body, witnesses, is_valid,
-  * auxiliary_data]`, and the rules are those of the era-indexed state ([[Ledger]]).
+  /** How a transaction of another era is taken: the selected reference build's way (REF-3). */
+  def injection: EraInjection = EraInjection.of(globals.referenceBuild)
+
+/** A transaction as a client or a peer hands it over: the era its `GenTx` names, as its index in
+  * the hard-fork combinator's era list (`[era, tx]`, `dispatchDecoder`,
+  * `HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:362-374`, ouroboros-consensus
+  * 82ecba32), and the transaction's bytes.
   */
-final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt):
-  /** The protocol parameters in force. */
-  def params: xyz.kd5ujc.scarab.ledger.ProtocolParams = ls.utxo.gov.curPParams
-
-  /** The handle on the UTxO set. */
-  def utxo: Utxo = ls.utxo.utxo.utxo
-
-  def withUtxo(u: Utxo): MempoolLedger =
-    copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
-
-  /** A transaction validated before, applied again: MEMPOOL and LEDGER without their static checks
-    * (`reapplyTx`, ouroboros-consensus 82ecba32 `Shelley/Ledger/Mempool.hs` 325–338; cardano-ledger
-    * f649f975 `Shelley/API/Mempool.hs` 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The
-    * pool revalidates its transactions so, and so does block production (`revalidateTxsFor`,
-    * `Mempool/Impl/Common.hs` 403–422): no signature is verified and no script is evaluated again
-    * ([[TxEnv.Validation]]). Its refusal holds every predicate failure, in the reference's order,
-    * as `applySTSNonStatic` returns them (`Shelley/API/Mempool.hs`; issue 412).
-    */
-  def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    judged(Mempool, Judgment.Policy.Accumulate)(
-      tx,
-      env.copy(validation = TxEnv.Validation.NonStatic),
-      rules
-    )
-
-  /** The transaction applied by the MEMPOOL rule of the ledger (`Conway/Rules/Mempool.hs`), whose
-    * refusal holds every predicate failure the reference reports, in its order.
-    */
-  def submit(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    judged(Mempool, Judgment.Policy.Accumulate)(tx, env, rules)
-
-  private def judged(
-      rule: JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, LedgerFailure],
-      policy: Judgment.Policy
-  )(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    Judgment
-      .run(rule, policy)(rules, LedgerEnv(env, treasury), Counted(ls, PlutusStats.zero), tx)
-      .flatMap(_.leftMap(LedgerFailure.Rejected(tx.body.id, _)))
-      .map(after => copy(ls = after.state))
-
-  /** The transaction admitted from `source`, with the transaction as it is to be held (its
-    * `is_valid` possibly changed). A local transaction is applied as received. A remote one is
-    * applied with `is_valid` true; when exactly that flag is what the rules refuse, because a
-    * script fails (`UtxosFailure.ValidationTagMismatch(true, _)`), it is applied again with
-    * `is_valid` false and that result is the answer. This is `applyAlonzoBasedTx` with
-    * `DoNotIntervene`
-    * (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Eras.hs` at
-    * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `isIncorrectClaimedFlag`). The reference takes a
-    * refusal that is the only element of the failure list, and so does this one
-    * ([[LedgerFailure.Rejected.Single]]): the scripts run only when nothing failed before them
-    * (`whenFailureFree`), so a mismatch is the only failure when it is the reason of the refusal.
-    */
-  def admit(
-      tx: Tx,
-      env: TxEnv,
-      rules: Globals,
-      source: Source
-  ): Either[LedgerFailure, (MempoolLedger, Tx)] =
-    source match
-      case Source.Local => submit(tx, env, rules).map(_ -> tx)
-      case Source.Remote =>
-        val claimed = tx.copy(isValid = true)
-        submit(claimed, env, rules) match
-          case Left(
-                LedgerFailure.Rejected.Single(
-                  _,
-                  PredicateFailure.Utxow(
-                    UtxowFailure.Utxo(
-                      UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, _))
-                    )
-                  )
-                )
-              ) =>
-            val failed = tx.copy(isValid = false)
-            submit(failed, env, rules).map(_ -> failed)
-          case other => other.map(_ -> claimed)
-
-object MempoolLedger:
-  /** The ledger of the new-epoch state at the tip. */
-  def of(nes: NewEpochState[Conway]): MempoolLedger =
-    MempoolLedger(nes.es.ls, nes.es.chainAccount.treasury, nes.epoch.toBigInt)
-
-  /** Tick the complete Conway state before projecting its transaction view. This is
-    * `tickLedgerState (ForgeInUnknownSlot _)` in consensus Mempool/Impl/Common.hs: the next
-    * available slot, including epoch transitions, rewards, certificate state and treasury. `None`
-    * denotes Origin, whose next available slot is zero. The selected state's epoch agrees with its
-    * tip, so its successor crosses at most one epoch boundary. Conway is the final era: no
-    * hard-fork translation precedes this tick. Reference: ouroboros-consensus
-    * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `Mempool/Impl/Common.hs`, `tickLedgerState`.
-    */
-  def tick(
-      nes: NewEpochState[Conway],
-      tipSlot: Option[BigInt],
-      env: MempoolEnv
-  ): Either[TickFailure, MempoolLedger] =
-    for
-      slot <- SlotNo.fromBigInt(tipSlot.fold(BigInt(0))(_ + 1)).leftMap(TickFailure.Vocab(_))
-      next <- Sts(Tick.sts[Conway])(env.rules, (), nes, slot)
-    yield of(next)
-
-  /** The next-slot transaction view of a selected chain. A tick failure is an internal ledger
-    * failure, distinct from the chain being in an unsupported era.
-    */
-  def at[S: ChainRead](
-      s: S,
-      tip: Option[BlockRef],
-      env: MempoolEnv
-  ): Either[TickFailure, Either[ConwayView.Unavailable, MempoolLedger]] =
-    ConwayView(s, tip).traverse(tick(_, tip.map(_.slot), env))
+final case class Submission(era: Int, raw: Bytes)
 
 /** The mempool as a value. The invariant, for every state reachable through this API:
   *
-  * `entries` applied in order to `base` through the transaction rules succeed and give `current`.
+  * `entries` applied in order to `base` through the transaction rules succeed and give `current`,
+  * and every entry is of the era of `base` and `current`.
   *
   * `base` is the complete ledger ticked to the successor of the chain tip the pool was last
-  * synchronised with. `tipSlot` is -1 at Origin, making its successor slot zero. Every operation is
-  * a pure function; [[Mempool]] serialises them.
+  * synchronised with, in the era of that slot ([[PoolLedger]]). `tipSlot` is -1 at Origin, making
+  * its successor slot zero. Every operation is a pure function; [[Mempool]] serialises them.
   *
   * @param tipHash
   *   The hash of that chain tip, none at Origin: the reference's `snapshotStateHash`, the
@@ -308,21 +204,25 @@ object MempoolLedger:
   *   (`TraceForgingMempoolSnapshot`).
   */
 final case class MempoolState(
-    base: Either[ConwayView.Unavailable, MempoolLedger],
+    base: Either[ConwayView.Unavailable, PoolLedger],
     tipSlot: BigInt,
-    current: Either[ConwayView.Unavailable, MempoolLedger],
+    current: Either[ConwayView.Unavailable, PoolLedger],
     entries: Vector[Entry],
     bytes: Long,
     nextTicket: Long,
     capacityOverride: Option[Word32],
     tipHash: Option[Bytes] = None
 ):
+  /** The era of the pool's ledger, which its transactions are of; none while it has no ledger. */
+  def era: Option[Era] = base.toOption.map(_.era)
+
   /** The capacity: `computeMempoolCapacity` of the parameters of the ticked ledger at the base of
-    * the pool, so it follows a parameter change at the next revalidation ([[sync]]), and is zero
-    * while there is no ledger. A pool over its capacity is not trimmed.
+    * the pool, in the measure of its era ([[Capacity.of]]), so it follows a parameter change at the
+    * next revalidation ([[sync]]), and is zero while there is no ledger. A pool over its capacity
+    * is not trimmed.
     */
   def capacity: TxMeasure =
-    base.fold(_ => TxMeasure.zero, l => Capacity.of(l.params, capacityOverride))
+    base.fold(_ => TxMeasure.zero, l => Capacity.of(l, capacityOverride))
 
   /** What the held transactions count for, the sum of their measures. */
   def used: TxMeasure = entries.foldLeft(TxMeasure.zero)(_ + Capacity.measure(_))
@@ -341,61 +241,79 @@ final case class MempoolState(
 
   def contains(id: Bytes): Boolean = entries.exists(_.id == id)
 
-  /** Validate and append a transaction (original bytes) submitted from `source`. A remote
-    * transaction may be held with the `is_valid` flag it did not carry ([[MempoolLedger.admit]]).
-    * What is held and relayed is the transaction the reference relays ([[Tx.envelope]]): the
-    * received parts and the flag of the verdict, in a definite list of four whether or not it came
-    * with its flag or in an indefinite list.
-    *
-    * The order is that of `Mempool/Update.hs` `doAddTx` and `pureTryAddTx`: the first measure (size
-    * and execution units against the parameters), the capacity in those components, the second
-    * measure (reference scripts against the state after the held transactions), the capacity in all
-    * of them, and only then the rules of the ledger. A refusal of a measure is the only failure
-    * returned; the ledger does not run. Scarab checks for a duplicate between the first measure and
-    * the capacity: the reference has none (a duplicate fails the MEMPOOL rule, after waiting for
-    * room), so a duplicate here is answered even by a full pool. A held transaction passes both
-    * measures, which its revalidation keeps true (the LEDGER rule checks the same limits), so the
-    * check does not hide a measure refusal.
+  /** Validate and append a transaction of the pool's own era (original bytes) submitted from
+    * `source`: a submission that names that era.
     */
   def add(raw: Bytes, env: MempoolEnv, source: Source): Either[Rejection, (MempoolState, Entry)] =
+    add(Submission(era.fold(Era.Conway.index)(_.index), raw), env, source)
+
+  /** Validate and append a submitted transaction from `source`. It is read in the era it names, and
+    * one of another era than the ledger's is brought into it as the selected build does
+    * ([[EraInjection]]) or refused with the era mismatch. A remote transaction may be held with the
+    * `is_valid` flag it did not carry ([[PoolLedger.admit]]). What is held and relayed is the
+    * transaction the reference relays ([[Entry.raw]]): the received parts and the flag of the
+    * verdict, in the record of the ledger's era.
+    *
+    * The order is that of `Mempool/Update.hs` `doAddTx` and `pureTryAddTx`: the first measure
+    * (size, and execution units from Alonzo, against the parameters), the capacity in those
+    * components, the second measure (reference scripts against the state after the held
+    * transactions, in Conway), the capacity in all of them, and only then the rules of the ledger.
+    * A refusal of a measure is the only failure returned; the ledger does not run. In Conway,
+    * Scarab checks for a duplicate between the first measure and the capacity: the reference has
+    * none (a duplicate fails the MEMPOOL rule, after waiting for room), so a duplicate here is
+    * answered even by a full pool. A held transaction passes both measures, which its revalidation
+    * keeps true (the LEDGER rule checks the same limits), so the check does not hide a measure
+    * refusal. Before Conway there is no MEMPOOL rule and so no such check: LEDGER refuses a
+    * duplicate, whose inputs the held transaction spent.
+    */
+  def add(
+      submission: Submission,
+      env: MempoolEnv,
+      source: Source
+  ): Either[Rejection, (MempoolState, Entry)] =
     for
-      parsed <- MempoolState.parseParts(raw)
-      MempoolState.Parsed(id, tx, parts) = parsed
+      read <- MempoolState.read(submission)
       ledger <- current.leftMap(Rejection.NoLedger(_))
       baseLedger <- base.leftMap(Rejection.NoLedger(_))
+      in <- MempoolState.inject(read, env.injection, ledger.era)
+      id = in.parts.id
+      tx = in.tx
       // the measures and the rules run as `pureTryAddTx` does in the caller's thread: an exception
       // of theirs is no verdict and ends the submitter's connection, not the node (issue 564)
       judged <- MempoolState.judging(
         for
-          phase1 <- Capacity.phase1(tx, ledger.params).leftMap(Rejection.Limits(id, _))
-          _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
+          phase1 <- Capacity.phase1(tx, ledger).leftMap(Rejection.Limits(id, _))
+          _ <- Either.cond(
+            ledger.era != Era.Conway || !contains(id),
+            (),
+            Rejection.AlreadyHeld(id)
+          )
           _ <- room(phase1)
           refScriptBytes <- Capacity
             .phase2(ledger, tx)
             .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(id, f)))
           _ <- room(phase1.copy(refScriptsBytes = refScriptBytes))
-          // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`, [[Mempool]]) judges the
-          // transaction: one none of whose inputs is unspent is "probably a duplicate" and is
-          // refused with that alone; then LEDGER.
+          // the era's rule judges the transaction: in Conway MEMPOOL (`Rules/Mempool.hs`,
+          // [[Mempool]]), which refuses one none of whose inputs is unspent as "probably a
+          // duplicate" with that alone, then LEDGER; before Conway LEDGER
           admitted <- ledger
             .admit(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules, source)
             .leftMap(Rejection.Ledger(_))
-          (_, held) = admitted
-          // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
-          // transaction is relayed with its other three parts as received and the flag of the
-          // verdict, as the reference relays `[body, witnesses, flag, auxiliary_data]` it rebuilt.
-          kept = Tx.envelope(parts.copy(isValid = held.isValid))
-        yield (refScriptBytes, admitted, kept)
+          (next, held) = admitted
+        yield (refScriptBytes, next, held)
       )
-      (refScriptBytes, admitted, kept) = judged
+      (refScriptBytes, next, held) = judged
     yield
-      val (next, held) = admitted
-      val entry = Entry(id, kept, held, nextTicket, refScriptBytes)
+      // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
+      // transaction is relayed with its other parts as received and the flag of the verdict, as
+      // the reference relays the transaction it rebuilt.
+      val entry =
+        Entry(ledger.era, in.parts.copy(isValid = held.isValid), held, nextTicket, refScriptBytes)
       (
         copy(
           current = Right(next),
           entries = entries :+ entry,
-          bytes = bytes + kept.size,
+          bytes = bytes + entry.size,
           nextTicket = nextTicket + 1
         ),
         entry
@@ -408,9 +326,15 @@ final case class MempoolState(
     * and the revalidation goes on: a failure of the node's own implementation on one held
     * transaction does not stop the node (owner decision 2026-10-28, issue 567; the reference's
     * revalidation watcher is linked to its node, `Mempool/Init.hs` 64–77, and stops it).
+    *
+    * When `ledger` is of another era than the held transactions, each is brought into it as the
+    * selected build does ([[EraInjection]]): the reference's `reapplyTxs` of the hard-fork
+    * combinator (`HardFork/Combinator/Mempool.hs:144-239`, ouroboros-consensus 82ecba32; lines
+    * 132-222 at 808e4005). One that does not reach the era leaves the pool with the era mismatch;
+    * the others are validated there as [[EraInjection.revalidation]] says, and keep their tickets.
     */
   def sync(
-      ledger: Either[ConwayView.Unavailable, MempoolLedger],
+      ledger: Either[ConwayView.Unavailable, PoolLedger],
       slot: BigInt,
       env: MempoolEnv
   ): (MempoolState, Vector[(Entry, Rejection)]) =
@@ -441,17 +365,14 @@ final case class MempoolState(
             MempoolState.judging(
               state.current
                 .leftMap(Rejection.NoLedger(_))
-                .flatMap(
-                  _.reapply(entry.tx, env.txEnv(slot, l, state.entries.size), env.rules)
-                    .leftMap(Rejection.Ledger(_))
-                )
+                .flatMap(MempoolState.revalidate(entry, _, l, env, slot, state.entries.size))
             ) match
-              case Right(next) =>
+              case Right((next, kept)) =>
                 (
                   state.copy(
                     current = Right(next),
-                    entries = state.entries :+ entry,
-                    bytes = state.bytes + entry.size
+                    entries = state.entries :+ kept,
+                    bytes = state.bytes + kept.size
                   ),
                   dropped
                 )
@@ -502,12 +423,80 @@ object MempoolState:
     RefScripts.refScriptsSize(ledger.utxo, tx.body)
 
   def empty(
-      ledger: Either[ConwayView.Unavailable, MempoolLedger],
+      ledger: Either[ConwayView.Unavailable, PoolLedger],
       tipSlot: BigInt,
       capacityOverride: Option[Word32],
       tipHash: Option[Bytes] = None
   ): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride, tipHash)
+
+  /** A submission as read before the ledger is consulted: a transaction of a Shelley-based era up
+    * to Conway, decoded in that era, or the index of an era whose transactions the pool does not
+    * read (Byron, Dijkstra, or no era of the combinator's list), which is refused with the era
+    * mismatch.
+    */
+  enum Read:
+    case Decoded(era: Era, transaction: EraTx)
+    case Foreign(index: Int)
+
+  /** The submission read in the era it names ([[Read]]). */
+  def read(submission: Submission): Either[Rejection, Read] =
+    Era.fromIndex(BigInt(submission.era)) match
+      case Some(
+            era @ (Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway)
+          ) =>
+        parseIn(submission.raw, era).map(p => Read.Decoded(era, EraTx(p.parts, p.tx)))
+      case Some(Era.Byron | Era.Dijkstra) | None => Right(Read.Foreign(submission.era))
+
+  /** The transaction read, in the ledger's era `to`, or the era mismatch. */
+  private[mempool] def inject(
+      read: Read,
+      injection: EraInjection,
+      to: Era
+  ): Either[Rejection, EraTx] =
+    read match
+      case Read.Foreign(index) => Left(Rejection.WrongEra(index, to))
+      case Read.Decoded(from, transaction) =>
+        decoding(
+          injection.into(transaction, from, to).leftMap(e => Rejection.WrongEra(e.index, to))
+        )
+
+  /** A held transaction validated again on `current`, the state after the transactions kept before
+    * it, whose base `ledger` is ticked to the successor of `slot`: in its own era it is applied
+    * without the static checks (`reapplyTx`); of another era, it is brought into the ledger's
+    * ([[EraInjection.into]]) and validated as the build says ([[EraInjection.revalidation]]).
+    */
+  private def revalidate(
+      entry: Entry,
+      current: PoolLedger,
+      ledger: PoolLedger,
+      env: MempoolEnv,
+      slot: BigInt,
+      index: Int
+  ): Either[Rejection, (PoolLedger, Entry)] =
+    val txEnv = env.txEnv(slot, ledger, index)
+    if entry.era == ledger.era then
+      current.reapply(entry.tx, txEnv, env.rules).bimap(Rejection.Ledger(_), _ -> entry)
+    else
+      for
+        in <- decoding(
+          env.injection
+            .into(EraTx(entry.parts, entry.tx), entry.era, ledger.era)
+            .leftMap(e => Rejection.WrongEra(e.index, ledger.era))
+        )
+        moved = entry.copy(era = ledger.era, parts = in.parts, tx = in.tx)
+        out <- env.injection.revalidation match
+          case EraInjection.Revalidation.Reapply =>
+            current.reapply(in.tx, txEnv, env.rules).bimap(Rejection.Ledger(_), _ -> moved)
+          case EraInjection.Revalidation.Apply =>
+            current
+              .admit(in.tx, txEnv, env.rules, Source.Remote)
+              .bimap(
+                Rejection.Ledger(_),
+                (next, held) =>
+                  next -> moved.copy(parts = in.parts.copy(isValid = held.isValid), tx = held)
+              )
+      yield out
 
   /** A submitted transaction is read as the reference's mempool reads it, with no budget but its
     * size (`unwrapCBORinCBOR (eraDecoder @era decCBOR)`, `Shelley/Ledger/Mempool.hs:261-266`,
@@ -521,11 +510,16 @@ object MempoolState:
     */
   final case class Parsed(id: Bytes, tx: Tx, parts: Block.Transaction)
 
-  /** Split a whole transaction ([[Tx.envelopeParts]]) keeping each component's original bytes. */
+  /** Split a whole Conway transaction ([[Tx.envelopeParts]]) keeping each component's original
+    * bytes.
+    */
   def parse(raw: Bytes): Either[Rejection, (Bytes, Tx)] =
     parseParts(raw).map(p => (p.id, p.tx))
 
-  def parseParts(raw: Bytes): Either[Rejection, Parsed] = decoding(decodeParts(raw))
+  def parseParts(raw: Bytes): Either[Rejection, Parsed] = parseIn(raw, Era.Conway)
+
+  /** [[parseParts]] of a transaction of `era`. */
+  def parseIn(raw: Bytes, era: Era): Either[Rejection, Parsed] = decoding(decodeParts(raw, era))
 
   /** `judge` with an exception of the rules as [[Rejection.RulesDefect]]: no verdict on the
     * transaction, the connection's end rather than the node's (issue 564).
@@ -539,20 +533,20 @@ object MempoolState:
   private[mempool] def decoding[A](decode: => Either[Rejection, A]): Either[Rejection, A] =
     Either.catchNonFatal(decode).fold(cause => Left(Rejection.InputDefect(cause)), identity)
 
-  /** [[parseParts]] with the decoders' own exceptions not yet caught. */
-  private def decodeParts(raw: Bytes): Either[Rejection, Parsed] =
+  /** [[parseIn]] with the decoders' own exceptions not yet caught. */
+  private def decodeParts(raw: Bytes, era: Era): Either[Rejection, Parsed] =
     // a transaction holding a `RecD` record written as an empty indefinite list is read as the
     // reference reads it, its parts spanning the fields after the list (`DetachedRecords`)
-    DetachedRecords.read(raw, limits, DetachedRecords.Shapes.transaction(Era.Conway))(e =>
+    DetachedRecords.read(raw, limits, DetachedRecords.Shapes.transaction(era))(e =>
       Rejection.Malformed(TransactionDecodeProblem.Syntax(e))
-    )(envelope)
+    )(envelope(_, era))
 
-  /** The parts of the transaction `root`, and the transaction they make. */
-  private def envelope(root: Node): Either[Rejection, Parsed] =
+  /** The parts of the transaction `root` of `era`, and the transaction they make. */
+  private def envelope(root: Node, era: Era): Either[Rejection, Parsed] =
     def malformed(cause: LedgerDecodeError) =
       Rejection.Malformed(TransactionDecodeProblem.Ledger(cause))
     // with or without its validity flag, as the reference reads it
     for
-      transaction <- Tx.envelopeParts(root, Era.Conway).leftMap(malformed)
-      tx <- Tx.fromBlock(transaction, Era.Conway).leftMap(malformed)
+      transaction <- Tx.envelopeParts(root, era).leftMap(malformed)
+      tx <- Tx.fromBlock(transaction, era).leftMap(malformed)
     yield Parsed(Blake2b.hash256.hash(transaction.body), tx, transaction)

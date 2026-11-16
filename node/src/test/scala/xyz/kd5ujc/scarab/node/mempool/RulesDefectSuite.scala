@@ -22,15 +22,15 @@ class RulesDefectSuite extends FunSuite:
   }
 
   test("control: the rules' own refusal passes through unchanged") {
-    val refused = Rejection.WrongEra(5)
+    val refused = Rejection.WrongEra(5, xyz.kd5ujc.scarab.protocol.Era.Conway)
     assertEquals(MempoolState.judging[Unit](Left(refused)), Left(refused))
   }
 
   test("the local client gets no rejection bytes: its connection ends, the node goes on") {
-    LocalSubmission.response(Rejection.RulesDefect(cause)) match
+    LocalSubmission.response(Refused(Rejection.RulesDefect(cause), None)) match
       case LocalTxSubmissionServer.Response.ServingDefect(thrown) => assert(thrown eq cause)
       case other                                                  => fail(s"unexpected $other")
-    assert(LocalSubmission.reasonItem(Rejection.RulesDefect(cause)).isLeft)
+    assert(LocalSubmission.reasonItem(Rejection.RulesDefect(cause), None).isLeft)
   }
 
   test("a peer's session ends with ServingDefect for the rules, DecoderDefect for the decoder") {
@@ -45,5 +45,8 @@ class RulesDefectSuite extends FunSuite:
   }
 
   test("control: a refusal of the peer's transaction ends nothing") {
-    assertEquals(Mempool.peerConnectionEnd(Rejection.WrongEra(5)), None)
+    assertEquals(
+      Mempool.peerConnectionEnd(Rejection.WrongEra(5, xyz.kd5ujc.scarab.protocol.Era.Conway)),
+      None
+    )
   }

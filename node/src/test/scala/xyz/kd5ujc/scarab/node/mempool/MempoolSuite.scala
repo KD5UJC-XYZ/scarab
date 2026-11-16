@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
@@ -191,7 +192,9 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     s.add(raw, env, Source.Local).map(_._1)
 
   private def reasonItem(rejection: Rejection): Bytes =
-    LocalSubmission.reasonItem(rejection).fold(error => fail(error.message), identity)
+    LocalSubmission
+      .reasonItem(rejection, Some(Era.Conway))
+      .fold(error => fail(error.message), identity)
 
   test("the next-slot view applies the full epoch transition before transaction validation") {
     import xyz.kd5ujc.scarab.ledger.state.{DeltaCoin, FuturePParams, PulsingRewUpdate, RewardUpdate}
@@ -390,7 +393,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
     // a transaction of another era is the combinator's era mismatch
     assertEquals(
-      reasonItem(Rejection.WrongEra(5)).hex,
+      reasonItem(Rejection.WrongEra(5, Era.Conway)).hex,
       "8282056742616262616765820666436f6e776179"
     )
     assert(ghostId.size == 32)
@@ -571,9 +574,9 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
   )
 
-  private def replay(s: MempoolState): Either[LedgerFailure, MempoolLedger] =
+  private def replay(s: MempoolState): Either[LedgerFailure, PoolLedger] =
     val base = s.base.fold(u => sys.error(u.toString), identity)
-    s.entries.zipWithIndex.foldLeft[Either[LedgerFailure, MempoolLedger]](Right(base)) {
+    s.entries.zipWithIndex.foldLeft[Either[LedgerFailure, PoolLedger]](Right(base)) {
       case (Right(l), (e, i)) =>
         l.reapply(e.tx, env.txEnv(s.tipSlot, base, i), env.rules)
       case (left, _) => left
@@ -591,7 +594,13 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
           s = s.remove(Set(candidates(i)._2), env)._1
         case Op.Block(n) =>
           val adopted = s.entries.take(n)
-          val base = s.base.fold(u => sys.error(u.toString), identity)
+          val base = s.base.fold(
+            u => sys.error(u.toString),
+            {
+              case conway: MempoolLedger => conway
+              case other                 => sys.error(s"not a Conway ledger: ${other.era}")
+            }
+          )
           val l1 = adopted.foldLeft(base)((l, e) => l.applied(e.tx, s.tipSlot))
           history = base :: history
           s = s.sync(Right(l1), s.tipSlot + 1, env)._1

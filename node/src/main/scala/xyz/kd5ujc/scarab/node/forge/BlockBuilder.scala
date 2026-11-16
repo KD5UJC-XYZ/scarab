@@ -216,6 +216,9 @@ object BlockBuilder:
     @tailrec
     def go(rest: List[Entry], acc: Acc): Acc = rest match
       case Nil => acc
+      // a Conway block takes Conway transactions: the pool's ledger is of the era of the slot
+      // after the tip, and the forger forges only on a Conway tip, so the pool it reads is Conway's
+      case entry :: more if entry.era != Era.Conway => go(more, acc)
       case entry :: more =>
         val env = TxEnv(
           slot,

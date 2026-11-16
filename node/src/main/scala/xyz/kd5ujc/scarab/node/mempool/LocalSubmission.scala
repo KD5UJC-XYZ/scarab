@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.mempool
 import xyz.kd5ujc.scarab.ledger.{TransactionDecodeProblem, MempoolProblem, MempoolLedgerProblem}
 import cats.effect.Async
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Value}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.{PredicateFailureCbor, RefusalPresentationError}
@@ -13,15 +13,24 @@ import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 
 /** Transactions submitted by local clients (`cardano-cli transaction submit` over the
   * node-to-client socket). The client sends the hard-fork-combinator wrapped transaction
-  * `[era, tx]` where the Conway era is 6 and `tx` is the transaction itself or, as on node-to-node,
-  * CBOR-in-CBOR (tag 24).
+  * `[era, tx]`, where `era` is the index of the transaction's era (Conway is 6) and `tx` is the
+  * transaction itself or, as on node-to-node, CBOR-in-CBOR (tag 24).
   */
 object LocalSubmission:
   /** What has no rejection bytes to send: an implementation limit, a crypto provider that failed on
-    * a witness, or a decoder or the rules that threw on the transaction.
+    * a witness, a decoder or the rules that threw on the transaction, or a refusal this build has
+    * no encoding for.
     */
   type NoReply = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | Rejection.InputDefect |
-    Rejection.RulesDefect | RefusalPresentationError
+    Rejection.RulesDefect | RefusalPresentationError | NoEncoding
+
+  /** A refusal by the rules of `era` that this build cannot write: one of `failures` has no
+    * encoding in that era's ledger ([[PreConwayFailureCbor]]). There is no free-text failure before
+    * Conway to send instead, so there is no reply.
+    */
+  final case class NoEncoding(era: Era, failures: Vector[PredicateFailure]) extends DomainError:
+    def message: String =
+      s"no $era encoding of the refusal: ${failures.map(_.detail).mkString("; ")}"
 
   extension (reason: NoReply)
     def message: String = reason match
@@ -30,11 +39,12 @@ object LocalSubmission:
       case d: Rejection.InputDefect      => d.message
       case d: Rejection.RulesDefect      => d.message
       case d: RefusalPresentationError   => d.message
+      case d: NoEncoding                 => d.message
 
   val ConwayEra = 6
 
-  /** The original transaction bytes inside a wrapped one. */
-  def unwrap(item: Bytes): Either[Rejection, Bytes] =
+  /** The transaction inside a wrapped one, with the era it names. */
+  def unwrap(item: Bytes): Either[Rejection, Submission] =
     Cbor
       .decode(item, Cbor.Limits.Unbounded)
       .left
@@ -43,53 +53,56 @@ object LocalSubmission:
         root.value match
           case Value.Arr(Vector(era, payload)) =>
             era.value match
-              case Value.UInt(e) if e == ConwayEra =>
+              case Value.UInt(e) if e.isValidInt =>
                 payload.value match
                   case Value.Tag(t, inner) if t == 24 =>
                     inner.value match
-                      case Value.ByteString(b) => Right(b)
+                      case Value.ByteString(b) => Right(Submission(e.toInt, b))
                       case _ =>
                         Left(
                           Rejection.Malformed(TransactionDecodeProblem.TaggedPayload(inner.value))
                         )
-                  case _ => Right(payload.original)
-              case Value.UInt(e) if e.isValidInt => Left(Rejection.WrongEra(e.toInt))
+                  case _ => Right(Submission(e.toInt, payload.original))
               case Value.UInt(e) =>
                 Left(Rejection.Malformed(TransactionDecodeProblem.EraOutOfRange(e)))
               case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraExpected(era.value)))
           case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraEnvelope(root.value)))
       }
 
-  /** The rejection as sent to the client: the ledger's `ApplyTxErr` for a refused transaction (the
-    * predicate failures `cardano-cli` renders), the hard-fork combinator's era mismatch for a
-    * transaction of another era. What the ledger does not report as a predicate failure (a
-    * malformed transaction, a full mempool) is sent as its free-text `ConwayMempoolFailure`. An
-    * implementation limit, and a crypto provider that failed on a witness, remain typed values and
-    * have no rejection bytes: there is no verdict to send.
+  /** The rejection as sent to the client, the pool's ledger being of `era` (none while it has no
+    * ledger): the ledger's `ApplyTxErr` of that era for a refused transaction (the predicate
+    * failures `cardano-cli` renders), the hard-fork combinator's era mismatch for a transaction of
+    * another era that does not reach the ledger's. What the ledger does not report as a predicate
+    * failure (a malformed transaction, a full mempool) is sent as Conway's free-text
+    * `ConwayMempoolFailure`. An implementation limit, a crypto provider that failed on a witness,
+    * and a refusal of an earlier era with no encoding here remain typed values and have no
+    * rejection bytes: there is no verdict to send.
     */
   def reasonItem(
-      rejection: Rejection
+      rejection: Rejection,
+      era: Option[Era]
   ): Either[NoReply, Bytes] =
     rejection match
       case Rejection.Ledger(error: LedgerFailure.Unavailable)  => Left(error)
       case Rejection.Ledger(error: LedgerFailure.Unverifiable) => Left(error)
       case defect: Rejection.InputDefect                       => Left(defect)
       case defect: Rejection.RulesDefect                       => Left(defect)
-      case Rejection.WrongEra(era) =>
+      case Rejection.WrongEra(transaction, ledger) =>
         Right(
           PredicateFailureCbor.eraMismatch(
-            era,
-            Era.fromIndex(BigInt(era)).fold("Unknown")(_.toString)
+            transaction,
+            Era.fromIndex(BigInt(transaction)).fold("Unknown")(_.toString),
+            ledger
           )
         )
       case Rejection.Ledger(LedgerFailure.Rejected(_, failures)) =>
-        PredicateFailureCbor.applyTxError(failures.toChain.toVector)
+        inEra(era, failures.toChain.toVector)
       case Rejection.Ledger(error) => text(MempoolProblem.Ledger(error))
       case Rejection.AlreadyHeld(_) =>
         text(MempoolProblem.AllInputsSpent)
       case Rejection.Malformed(cause) => text(MempoolProblem.Malformed(cause))
       case Rejection.Limits(_, failures) =>
-        PredicateFailureCbor.applyTxError(failures.toList.toVector)
+        inEra(era, failures.toList.toVector)
       case full: Rejection.Full => text(full.problem)
       case Rejection.NoLedger(why) =>
         val cause = why match
@@ -101,14 +114,28 @@ object LocalSubmission:
             MempoolLedgerProblem.Refused(error)
         text(MempoolProblem.NoLedger(cause))
 
+  /** The `ApplyTxErr` of `failures` in the ledger's era: Conway's, with its free text for a failure
+    * of a rule Conway does not have ([[PredicateFailureCbor.applyTxError]]), when the pool has a
+    * Conway ledger or none; the era's own before Conway ([[PreConwayFailureCbor]]).
+    */
+  private def inEra(era: Option[Era], failures: Vector[PredicateFailure]): Either[NoReply, Bytes] =
+    era match
+      case Some(e @ (Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage)) =>
+        PredicateFailureCbor
+          .applyTxError(e, failures)
+          .leftMap[NoReply](identity)
+          .flatMap(_.toRight[NoReply](NoEncoding(e, failures)))
+      case Some(Era.Byron | Era.Conway | Era.Dijkstra) | None =>
+        PredicateFailureCbor.applyTxError(failures)
+
   private def text(message: MempoolProblem): Either[RefusalPresentationError, Bytes] =
     PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
 
   /** Service unavailability has no ledger rejection bytes. The transport closes this connection;
     * admitting an external transaction does not require stopping the node.
     */
-  private[mempool] def response(rejection: Rejection): LocalTxSubmissionServer.Response =
-    reasonItem(rejection).fold(
+  private[mempool] def response(refused: Refused): LocalTxSubmissionServer.Response =
+    reasonItem(refused.rejection, refused.era).fold(
       {
         case error: LedgerFailure.Unavailable =>
           LocalTxSubmissionServer.Response.ServiceUnavailable(
@@ -119,6 +146,10 @@ object LocalSubmission:
             LocalTxSubmissionServer.Unavailable.Verification(error)
           )
         case error: RefusalPresentationError =>
+          LocalTxSubmissionServer.Response.ServiceUnavailable(
+            LocalTxSubmissionServer.Unavailable.Presentation(error)
+          )
+        case error: NoEncoding =>
           LocalTxSubmissionServer.Response.ServiceUnavailable(
             LocalTxSubmissionServer.Unavailable.Presentation(error)
           )
@@ -135,10 +166,10 @@ object LocalSubmission:
       mempool: Mempool[F]
   )(fatal: Fatal => F[Unit]): Bytes => F[LocalTxSubmissionServer.Response] = item =>
     unwrap(item) match
-      case Left(rejection) => Async[F].pure(response(rejection))
-      case Right(tx) =>
+      case Left(rejection) => Async[F].pure(response(Refused(rejection, None)))
+      case Right(submission) =>
         StorageBoundary.run(fatal) {
           mempool
-            .add(tx, Source.Local)
+            .submit(submission, Source.Local)
             .map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
         }

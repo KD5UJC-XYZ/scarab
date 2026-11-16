@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 import Capacity.fits
@@ -50,6 +51,11 @@ enum MempoolEvent:
     */
   case Removed(id: Bytes)
   case Synced(count: Int, bytes: Long, dropped: Int)
+
+/** A refused submission, with the era of the pool's ledger it met (none when the pool had none): a
+  * refusal of the rules or of a limit is written in that era ([[LocalSubmission.reasonItem]]).
+  */
+final case class Refused(rejection: Rejection, era: Option[Era])
 
 /** Why a held transaction left the pool with a reason ([[MempoolEvent.Dropped]], #1032). */
 enum DropCause:
@@ -99,6 +105,14 @@ trait Mempool[F[_]]:
     */
   def add(raw: Bytes, source: Source)(using Raise[F, StorageError]): F[Either[Rejection, Bytes]]
 
+  /** [[add]] of a transaction in the era `submission` names, which is brought into the era of the
+    * pool's ledger as the selected build does or refused with the era mismatch
+    * ([[MempoolState.add]]). A refusal comes with the era of the ledger it met ([[Refused]]).
+    */
+  def submit(submission: Submission, source: Source)(using
+      Raise[F, StorageError]
+  ): F[Either[Refused, Bytes]]
+
   /** The submissions in line behind the ones being served (see [[add]]). */
   def lines: F[Mempool.Lines]
 
@@ -122,7 +136,7 @@ trait Mempool[F[_]]:
     * leaves the pool with its reason, as a refused one does ([[MempoolState.sync]]).
     */
   def sync(
-      ledger: Either[ConwayView.Unavailable, MempoolLedger],
+      ledger: Either[ConwayView.Unavailable, PoolLedger],
       tipSlot: BigInt,
       adopted: Set[Bytes] = Set.empty,
       tipHash: Option[Bytes] = None
@@ -191,7 +205,7 @@ object Mempool:
     * the pool that the step looked at.
     */
   private enum Attempt:
-    case Done(result: Either[Rejection, Bytes])
+    case Done(result: Either[Refused, Bytes])
     case Wait(seen: Long, id: Option[Bytes], full: Rejection.Full)
 
   /** @param capacityOverride
@@ -206,7 +220,7 @@ object Mempool:
     *   The hash of the chain tip at `tipSlot` ([[MempoolState.tipHash]]).
     */
   def create[F[_]: Async](
-      ledger: Either[ConwayView.Unavailable, MempoolLedger],
+      ledger: Either[ConwayView.Unavailable, PoolLedger],
       tipSlot: BigInt,
       env: MempoolEnv,
       capacityOverride: Option[Word32],
@@ -252,15 +266,25 @@ object Mempool:
       )
 
       def add(raw: Bytes, source: Source)(using Raise[F, StorageError]) =
+        // a transaction of the pool's own era, whichever it is when its turn comes
+        added(s => Submission(s.era.fold(Era.Conway.index)(_.index), raw), source)
+          .map(_.leftMap(_.rejection))
+
+      def submit(submission: Submission, source: Source)(using Raise[F, StorageError]) =
+        added(_ => submission, source)
+
+      private def added(submission: MempoolState => Submission, source: Source)(using
+          Raise[F, StorageError]
+      ): F[Either[Refused, Bytes]] =
         inLine(source) {
           F.tailRecM(false) { announced =>
-            attempt(raw, source).flatMap {
+            attempt(submission, source).flatMap {
               case Attempt.Done(result) => F.pure(result.asRight[Boolean])
               case Attempt.Wait(seen, id, full) =>
                 events
                   .emit(MempoolEvent.Waiting(id, full.needed, full.free))
                   .unlessA(announced) *>
-                  version.waitUntil(_ > seen).as(true.asLeft[Either[Rejection, Bytes]])
+                  version.waitUntil(_ > seen).as(true.asLeft[Either[Refused, Bytes]])
             }
           }
         }
@@ -270,43 +294,44 @@ object Mempool:
         * that was measured and the wait cannot miss a change. The step starts from the first
         * measure again each time: a new tip may have changed the parameters and the capacity.
         */
-      private def attempt(raw: Bytes, source: Source)(using
+      private def attempt(of: MempoolState => Submission, source: Source)(using
           Raise[F, StorageError]
       ): F[Attempt] = lock.lock.surround {
         for
           held <- state.get
-          current <- MempoolState.parse(raw) match
-            case Right((_, tx)) =>
+          submission = of(held)
+          // the submission as read in the era it names: its id and inputs, whatever its era
+          read = MempoolState.read(submission).toOption.collect {
+            case MempoolState.Read.Decoded(_, transaction) => transaction
+          }
+          current <- read match
+            case Some(transaction) =>
               held.current.fold(
                 _ => F.pure(held),
                 current =>
                   UtxoStore
-                    .complete(utxoStore, current.utxo, UtxoStore.readSet(Some(tx)))
+                    .complete(utxoStore, current.utxo, UtxoStore.readSet(Some(transaction.tx)))
                     .map(u => held.copy(current = Right(current.withUtxo(u))))
               )
-            case Left(_) => F.pure(held)
+            case None => F.pure(held)
           activeEnv <- readEnv
-          result <- F.blocking(current.add(raw, activeEnv, source))
+          result <- F.blocking(current.add(submission, activeEnv, source))
+          era = current.era
           out <- result match
             case Right((next, entry)) =>
               state.set(next) *> version.update(_ + 1) *>
                 events
                   .emit(MempoolEvent.Added(entry.id, entry.size, next.entries.size, next.bytes))
-                  .as(Attempt.Done(entry.id.asRight[Rejection]))
+                  .as(Attempt.Done(entry.id.asRight[Refused]))
             case Left(full: Rejection.Full) if full.needed.fits(current.capacity) =>
-              version.get.map(
-                Attempt.Wait(_, MempoolState.parse(raw).toOption.map(_._1), full)
-              )
+              version.get.map(Attempt.Wait(_, read.map(_.parts.id), full))
             case Left(reason) =>
               val id = reason match
                 case Rejection.AlreadyHeld(i) => Some(i)
                 case _                        => None
               events
-                .emit(
-                  MempoolEvent
-                    .Rejected(id.orElse(MempoolState.parse(raw).toOption.map(_._1)), reason)
-                )
-                .as(Attempt.Done(reason.asLeft[Bytes]))
+                .emit(MempoolEvent.Rejected(id.orElse(read.map(_.parts.id)), reason))
+                .as(Attempt.Done(Refused(reason, era).asLeft[Bytes]))
         yield out
       }
 
@@ -325,7 +350,7 @@ object Mempool:
       def forBlock(maxBytes: Long) = state.get.map(_.forBlock(maxBytes))
 
       def sync(
-          ledger: Either[ConwayView.Unavailable, MempoolLedger],
+          ledger: Either[ConwayView.Unavailable, PoolLedger],
           tipSlot: BigInt,
           adopted: Set[Bytes],
           tipHash: Option[Bytes]
@@ -400,19 +425,26 @@ object Mempool:
           yield out
         }
 
+      // The node-to-node codec carries Conway's `GenTx` only (`TxSubmission2`, #934), so only the
+      // held transactions of Conway are offered to peers: one of an earlier era written under
+      // Conway's tag would mean another transaction to a reference peer.
+      private def relayed(s: MempoolState, ticket: Long): Vector[Entry] =
+        s.after(ticket).filter(_.era == Era.Conway)
+
       val source: TxSubmissionClient.Source[F] = new TxSubmissionClient.Source[F]:
         def after(ticket: Long, max: Int) =
           state.get.map(
-            _.after(ticket).take(max).map(e => TxSubmissionClient.Held(e.id, e.size, e.ticket))
+            relayed(_, ticket).take(max).map(e => TxSubmissionClient.Held(e.id, e.size, e.ticket))
           )
         def awaitAfter(ticket: Long): F[Unit] =
           version.get.flatMap { seenVersion =>
             state.get.flatMap { s =>
-              if s.after(ticket).nonEmpty then F.unit
+              if relayed(s, ticket).nonEmpty then F.unit
               else version.waitUntil(_ > seenVersion) *> awaitAfter(ticket)
             }
           }
-        def body(id: Bytes) = state.get.map(_.entries.find(_.id == id).map(_.raw))
+        def body(id: Bytes) =
+          state.get.map(_.entries.find(e => e.id == id && e.era == Era.Conway).map(_.raw))
         def reader = RelayedTransactions
 
       def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] =

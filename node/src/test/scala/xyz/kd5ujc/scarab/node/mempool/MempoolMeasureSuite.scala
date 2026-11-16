@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.data.NonEmptyList
 import munit.ScalaCheckSuite
@@ -35,7 +36,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     MempoolState.parse(raw).fold(r => fail(r.message), _._2.size)
 
   private def refused(rejection: Rejection): Bytes =
-    LocalSubmission.reasonItem(rejection).fold(e => fail(e.message), identity)
+    LocalSubmission.reasonItem(rejection, Some(Era.Conway)).fold(e => fail(e.message), identity)
 
   // a transaction that no rule of the ledger would admit: its input does not exist
   private def unknownInput(exUnits: Option[(BigInt, BigInt)] = None): (Bytes, Bytes) =

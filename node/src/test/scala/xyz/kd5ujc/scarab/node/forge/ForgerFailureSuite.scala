@@ -627,8 +627,13 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       Vector(xyz.kd5ujc.scarab.node.mempool.TxKit.alice),
       referenceScript = Some(script.kind -> code)
     )
-    val tx = xyz.kd5ujc.scarab.node.mempool.MempoolState.parse(raw).fold(e => fail(e.message), _._2)
-    val entry = xyz.kd5ujc.scarab.node.mempool.Entry(id, raw, tx, 0)
+    val parsed =
+      xyz.kd5ujc.scarab.node.mempool.MempoolState
+        .parseParts(raw)
+        .fold(e => fail(e.message), identity)
+    assertEquals(parsed.id, id)
+    val entry = xyz.kd5ujc.scarab.node.mempool
+      .Entry(xyz.kd5ujc.scarab.protocol.Era.Conway, parsed.parts, parsed.tx, 0)
     val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
       xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
         xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
@@ -656,7 +661,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         Vector(id)
       )
     }
-    val invalid = entry.copy(tx = tx.copy(body = tx.body.copy(fee = -1)))
+    val invalid = entry.copy(tx = parsed.tx.copy(body = parsed.tx.body.copy(fee = -1)))
     assertEquals(
       BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,

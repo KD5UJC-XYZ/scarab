@@ -104,7 +104,7 @@ object RejectionLabel:
     case Rejection.Ledger(_)      => Ledger
     case Rejection.Limits(_, _)   => Ledger
     case Rejection.Full(_, _)     => Full
-    case Rejection.WrongEra(_)    => WrongEra
+    case Rejection.WrongEra(_, _) => WrongEra
     case Rejection.NoLedger(_)    => NoLedger
     case Rejection.InputDefect(_) => InputDefect
     case Rejection.RulesDefect(_) => RulesDefect
