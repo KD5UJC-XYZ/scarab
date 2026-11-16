@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import traceback
-from .. import eraload, govextra, ntceras, protocolversions, protocolwalk
+from .. import eraload, eramonitor, govextra, ntceras, protocolversions, protocolwalk
 from ..cluster import down, freeze_classes, keep_native_evidence, scala_container, up_eras
 from ..compare import PROJECTION_SCOPE, Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower, stop_failures, stop_followers
@@ -244,6 +244,9 @@ def e2e(args):
                 return
             loader = eraload.EraLoad(args.name, lambda: lsq(args.name), log=lambda m: print(json.dumps(m), flush=True))
             loader.dynamic_forks = True  # the protocol walk drives the Conway versions
+            # LocalTxMonitor once per era on the follower's local socket and the reference's (#934)
+            scala_socket = str(site.directory(root, "scala-sock") / "node.socket")
+            loader.monitor = lambda era: eramonitor.walk(loader, era, scala_socket)
             loader.ready.set()
             if not args.no_compare:
                 battery = ntceras.EraBattery(args.name, root, [site], loader.stop,
@@ -365,6 +368,9 @@ def e2e(args):
         if loader is not None:
             from ..eraplutus import coverage_failures
             failures += coverage_failures(loader.plutus_evidence)
+            failures += eramonitor.failures(loader.monitor_evidence)
+            incomplete += eramonitor.incomplete(loader.monitor_evidence,
+                                                [e["era"] for e in expected if e["era"] in eramonitor.ORDER])
             from ..eraauxiliary import coverage_failures as auxiliary_coverage_failures
             failures += auxiliary_coverage_failures(loader.auxiliary_evidence)
         if loader is not None and loader.ext is not None:
@@ -414,6 +420,7 @@ def e2e(args):
             summary["legacyPlutus"] = loader.plutus_evidence
             summary["auxiliaryPlutus"] = loader.auxiliary_evidence
             summary["refusals"] = loader.refusal_evidence
+            summary["localTxMonitor"] = loader.monitor_evidence
             # whether each expected refusal was exactly the expected failure list, or held others too
             summary["refusalMatches"] = {"mustReject": eraload.match_counts(loader.must_reject_matches),
                                          "expectRejected": eraload.match_counts(loader.negative_matches)}
