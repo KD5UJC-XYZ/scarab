@@ -10,7 +10,8 @@ import ExtendedTesting.*
 
 /** Batch 7 (`multiIndexArray`, `policies`, `assetCount`, `keepPolicies`, `dropPolicies`,
   * `Default/Builtins.hs:2482-2527`, `PlutusCore/Arrays.hs`, `PlutusCore/Value.hs:419-475`, plutus
-  * 1.70.0.0), which no protocol from 5 to 11 makes available and the corpus has no case of.
+  * 1.70.0.0; the policy filters' limit is 1.71.0.0's, `Value.hs:464-503` at `261766ad`), which no
+  * protocol makes available and the corpus has no case of.
   */
 final class Batch7Suite extends munit.FunSuite:
   private def key(hex: String): Value.Key =
@@ -100,4 +101,32 @@ final class Batch7Suite extends munit.FunSuite:
     )
     assertEquals(valueOf(e(KeepPolicies, byteStrings(), value(x))), Value.empty)
     assertEquals(valueOf(e(DropPolicies, byteStrings(), value(x))), x)
+  }
+
+  /** A value of `n` currencies of two bytes each, one token apiece. */
+  private def currencies(n: Int): Value =
+    v((0 until n).map(i => f"$i%04x" -> Seq("01" -> BigInt(1)))*)
+
+  test(
+    "keepPolicies and dropPolicies refuse a value of more than 8,191 currencies before they filter (1.71.0.0, Value.hs:464-503)"
+  ) {
+    val most = currencies(8191)
+    val over = currencies(8192)
+    assertEquals(most.entries.size, 8191)
+    assertEquals(valueOf(e(KeepPolicies, byteStrings("0000"), value(most))), currencies(1))
+    assertEquals(
+      valueOf(e(DropPolicies, byteStrings("0000"), value(most))).entries.size,
+      8190
+    )
+    def refused(function: xyz.kd5ujc.scarab.uplc.DefaultFun) =
+      EvaluationFailure.ValueOperation(ValueFailure.TooManyPolicies(function)) ->
+        Vector(s"${function.name}: maximum number of policies (8191) exceeded")
+    // refused whatever the ids, even when the result would be empty or under the limit
+    for ids <- Vector(byteStrings(), byteStrings("0000"), byteStrings("0000", "0001")) do
+      assertEquals(failureOf(e(KeepPolicies, ids, value(over))), refused(KeepPolicies))
+      assertEquals(failureOf(e(DropPolicies, ids, value(over))), refused(DropPolicies))
+    assertEquals(
+      refused(KeepPolicies)._2,
+      Vector("keepPolicies: maximum number of policies (8191) exceeded")
+    )
   }
