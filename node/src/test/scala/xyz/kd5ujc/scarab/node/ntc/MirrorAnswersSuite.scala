@@ -43,9 +43,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   *   - a Shelley-based era answers both queries (and their `GetCBOR` forms), in the era's own
   *     encoding version, the chain-dependent state, the UTxO queries, the reward provenance, the
   *     queries that read nothing of the era's own, its current parameters and governance state and
-  *     its pool distributions (as the reference wrote them in its own snapshots of each era), and
-  *     the stake distributions, the pools' reward information, the non-myopic member rewards and
-  *     the ledger peers of its current stake, and only these (the other queries stay Conway's);
+  *     its pool distributions (as the reference wrote them in its own snapshots of each era), the
+  *     stake distributions, the pools' reward information and the non-myopic member rewards of its
+  *     current stake, and its ledger peers (the pools of its pool distribution with the relays of
+  *     their current and pending registrations), and only these (the other queries stay Conway's);
   *   - a query for another era is the era mismatch, and Byron is refused.
   */
 class MirrorAnswersSuite extends FunSuite:
@@ -570,18 +571,22 @@ class MirrorAnswersSuite extends FunSuite:
 
   /** `GetStakeDistribution2` and `GetStakeDistribution`, `GetRewardInfoPools`,
     * `GetNonMyopicMemberRewards` and `GetLedgerPeerSnapshot` in its three forms, plain and through
-    * `GetCBOR`, asked of `view` in `era` at versions 16 and 23, against the current stake of the
-    * state: each pool's stake as a fraction of the lovelace in circulation, written here, the ratio
-    * untagged before Conway and under tag 30 in it (`encodeRatio`,
-    * `Binary/Encoding/Encoder.hs:301-306`, cardano-ledger f649f975), and the rewards and the peers
-    * as the Conway answers write them. How many pools have stake.
+    * `GetCBOR`, asked of `view` in `era` at versions 16 and 23. The first four are answered from
+    * the current stake of the state: the stake distributions give each pool's stake as a fraction
+    * of the lovelace in circulation, written here, the ratio untagged before Conway and under tag
+    * 30 in it (`encodeRatio`, `Binary/Encoding/Encoder.hs:301-306`, cardano-ledger f649f975), the
+    * rewards as the Conway answers write them. The ledger peers are not: they are the pools of the
+    * pool distribution in force (`nesPd`) with the relays of their current and pending
+    * registrations (`queryStakePoolRelays`, `Api/State/Query.hs:720-736`, cardano-ledger f649f975;
+    * `LedgerPeersSource.of`), as the Conway answers write them. How many pools have stake in the
+    * current stake.
     */
-  private def asksCurrentStake[S](label: String, era: Era, view: QueryView[S]): Int =
+  private def asksStakeAndPeers[S](label: String, era: Era, view: QueryView[S]): Int =
     view.ledger.toOption.flatten match
-      case Some(InEra.Of(_, l)) => asksCurrentStakeOf(label, era, view, l)
+      case Some(InEra.Of(_, l)) => asksStakeAndPeersOf(label, era, view, l)
       case None                 => fail(s"$label: no Shelley-based state")
 
-  private def asksCurrentStakeOf[S, E <: EraTag](
+  private def asksStakeAndPeersOf[S, E <: EraTag](
       label: String,
       era: Era,
       view: QueryView[S],
@@ -656,12 +661,12 @@ class MirrorAnswersSuite extends FunSuite:
     pd.distribution.size
 
   test(
-    "every state of every Shelley-based era answers its stake distribution, the pools' rewards and the ledger peers of its current stake"
+    "every state of every Shelley-based era answers the stake distribution and the pools' rewards of its current stake, and its ledger peers"
   ) {
     val staked = shelleyBased.map { (block, state) =>
       val tip = Point.Block(UInt64.saturating(BigInt(block.header.slot.toLong)), block.header.hash)
       val era = state.era
-      era -> asksCurrentStake(
+      era -> asksStakeAndPeers(
         s"$era block ${block.header.blockNo}",
         era,
         QueryView(tip, Some(block.header.blockNo), state)
@@ -675,10 +680,10 @@ class MirrorAnswersSuite extends FunSuite:
   }
 
   test(
-    "a state the reference wrote answers its stake distribution, the pools' rewards and the ledger peers of its current stake"
+    "a state the reference wrote answers the stake distribution and the pools' rewards of its current stake, and its ledger peers"
   ) {
     val staked = referenceStates.map { (name, era, state, _) =>
-      era -> asksCurrentStake(name, era, QueryView(Point.Origin, None, state))
+      era -> asksStakeAndPeers(name, era, QueryView(Point.Origin, None, state))
     }
     assert(staked.forall(_._2 > 0), s"a reference state with no stake delegated to a pool: $staked")
   }
