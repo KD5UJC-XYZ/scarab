@@ -48,8 +48,11 @@ answered: in Conway every query, before it the ledger states, the chain-dependen
 queries, the reward provenance, the queries that read nothing of the era's own and those of the
 governance state, the current protocol parameters and the governance state (`QueryAnswers.inEveryEra`;
 `GovStateAnswers` writes the last two with the era's codecs, and the parameters below version 21 in the
-legacy encoding the reference uses before Conway), and from Shelley to Conway the distributions, the
-wallet's queries and the ledger peers: the pool distribution in force as the state holds it (`nesPd`), the
+legacy encoding the reference uses before Conway), and from Shelley to Conway those of the certificate
+state, the delegations, pools and deposits (`CertStateAnswers` reads the era's accounts and pools and writes
+the six at the era's lowest version, but for `GetStakePools`, a plain `toCBOR` set, tag 258 around a
+definite array in every era, `Shelley/Ledger/Query.hs:1024` at ouroboros-consensus 82ecba32), and the
+distributions, the wallet's queries and the ledger peers: the pool distribution in force as the state holds it (`nesPd`), the
 stake distributions, the reward information and the non-myopic member rewards of the current stake
 (`EraFacts.currentStake`, the snapshot SNAP would take, with the pointer stake before Conway) and the ledger
 peer snapshots, the distributions written at the era's lowest version; a query for another era gets the combinator's mismatch reply. The era history is built

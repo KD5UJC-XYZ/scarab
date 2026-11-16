@@ -46,7 +46,7 @@
   "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/ByronUpdateInterface.scala": 11,
   "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/NtcQuery.scala": 1,
   "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PreConwayFailureCbor.scala": 2,
-  "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/QueryAnswers.scala": 4,
+  "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/QueryAnswers.scala": 2,
   "node/src/test/scala/xyz/kd5ujc/scarab/node/ConfigSuite.scala": 2,
   "node/src/test/scala/xyz/kd5ujc/scarab/node/PipelineBackpressureSuite.scala": 1,
   "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGenesisReplay.scala": 2,
