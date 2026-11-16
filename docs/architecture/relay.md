@@ -65,7 +65,7 @@ volatile chain. Without `--db` only the volatile chain can be served.
 the invariant is that they apply in order to the ledger state at the tip, ticked to the slot after it by the
 hard-fork combinator's tick (`PoolLedger.at`, `Hfc.tick`), so in the era that slot is in. Every era from Shelley to
 Conway has a pool (#934): each applies a transaction by its own rule, LEDGER from Shelley to Babbage
-(`EarlierLedger`, `ledger/rules/ShelleyLedger.scala`) and MEMPOOL then LEDGER in Conway (`MempoolLedger`), always at
+(`EarlierLedger` over the rule `ShelleyLedger`) and MEMPOOL then LEDGER in Conway (`MempoolLedger`), always at
 transaction index 0 as the reference's `mkMempoolEnv` does, and every held transaction is of the pool's era; a
 Byron or Dijkstra ledger has no pool (`NoLedger`). A submission names its era (`Submission`); one of another era is
 brought into the pool's era as the selected reference build does (`EraInjection`): under `11.1` it is translated
