@@ -129,7 +129,8 @@ trait ForgeFixture:
       val ref: SignallingRef[IO, VolatileChain[MirrorState]],
       val mempool: Mempool[IO],
       val events: SignallingRef[IO, Vector[ForgeEvent]],
-      val raws: Ref[IO, Map[Bytes, Bytes]]
+      val raws: Ref[IO, Map[Bytes, Bytes]],
+      val stamped: Ref[IO, Vector[(Instant, ForgeEvent)]]
   ):
     def chain: IO[VolatileChain[MirrorState]] = ref.get
     def seen: IO[Vector[ForgeEvent]] = events.get
@@ -161,7 +162,8 @@ trait ForgeFixture:
       network: Int = globals.network,
       assertions: Assertions[IO] = Assertions.noop[IO],
       pause: Option[Forger.Point => IO[Unit]] = None,
-      praos: PraosConfig = config
+      praos: PraosConfig = config,
+      committedChain: Boolean = false
   )(using Handle[IO, NodeError]): IO[Harness] =
     given Assertions[IO] = assertions
     val rulesGlobals = globals.copy(network = network)
@@ -268,6 +270,11 @@ trait ForgeFixture:
         )
       )
       seen <- SignallingRef.of[IO, Vector[ForgeEvent]](Vector.empty)
+      stamped <- Ref.of[IO, Vector[(Instant, ForgeEvent)]](Vector.empty)
+      sink = new ForgeEvents[IO]:
+        def emit(e: ForgeEvent) = seen.update(_ :+ e)
+        override def emitAt(at: Instant, e: ForgeEvent) =
+          stamped.update(_ :+ (at -> e)) *> seen.update(_ :+ e)
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       // horizon: a live loop over a chain left at genesis while the clock is thousands of slots on:
       // the era history at that tip would not translate the slot, so such tests lift the horizon
@@ -279,7 +286,7 @@ trait ForgeFixture:
         p.creds,
         follower,
         mempool,
-        e => seen.update(_ :+ e),
+        sink,
         forecastWindow = Some(forecastWindow),
         now = clock.orElse(
           Some(
@@ -291,10 +298,10 @@ trait ForgeFixture:
         horizon = Option.when(unbounded)((_, _) => true),
         source = source,
         enabled = enabled,
-        chains = Some(ref),
+        chains = Option.unless(committedChain)(ref),
         pause = pause
       )
-    yield new Harness(follower, forger, ref, mempool, seen, raws)
+    yield new Harness(follower, forger, ref, mempool, seen, raws, stamped)
 
   def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))

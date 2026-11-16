@@ -221,6 +221,33 @@ class LogRouterSuite extends CatsEffectSuite:
     }
   }
 
+  test("a forge line held until its slot's outcome is final is written with the time it was made") {
+    tempDir.flatMap { dir =>
+      val file = dir.resolve("node.jsonl")
+      val s = settings("log-stdout" -> "off", "log-file" -> file.toString)
+      val made = java.time.Instant.parse("2026-10-16T11:59:59.950Z")
+      LogRouter
+        .resource[IO](s)
+        .use { log =>
+          given Log[IO] = log
+          val forge = Log.forge(
+            new xyz.kd5ujc.scarab.node.forge.ForgeEvents[IO]:
+              def emit(event: ForgeEvent) = IO.unit
+          )
+          forge.emitAt(made, ForgeEvent.Loop(ForgeTrace.NodeIsLeader(7))) *>
+            forge.emit(ForgeEvent.Loop(ForgeTrace.NodeNotLeader(8)))
+        }
+        .map { _ =>
+          val at = lines(file)
+            .flatMap(l => parse(l).toOption.flatMap(_.hcursor.get[String]("at").toOption))
+          assertEquals(at.size, 2)
+          // the held line keeps its own time; the other is written at the time of writing
+          assertEquals(at.head, made.toString)
+          assertNotEquals(at(1), made.toString)
+        }
+    }
+  }
+
   test("the human format: time, namespace, severity, event and fields") {
     val line = summon[Traced[NodeEvent]].line(
       NodeEvent.Inbound(

@@ -25,17 +25,52 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     assertEquals(c.scheduledEndings, c.perSlotEndings, "each slot's outcome")
     assertEquals(c.scheduledBlocks, c.perSlotBlocks, "each block handed over, by its hash")
 
+  /** Each SIGHUP of the scenario switched the credentials or disabled forging on both paths: a
+    * reload refused on both would leave them equal and test nothing.
+    */
+  private def reloaded(c: Compared)(using munit.Location): Unit =
+    def switched(events: Vector[ForgeEvent]) = events.count {
+      case _: ForgeEvent.KesReloaded                                             => true
+      case ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging) => true
+      case _                                                                     => false
+    }
+    assert(switched(c.scheduled) > 0, "the reload took effect on the scheduled path")
+    assertEquals(switched(c.scheduled), switched(c.perSlot), "the reloads on both paths")
+    assert(
+      !c.scheduled.exists(_.isInstanceOf[ForgeEvent.KesReloadRefused]),
+      c.scheduled.collect { case r: ForgeEvent.KesReloadRefused => r }.toString
+    )
+
   private def mixed(c: Compared)(using munit.Location): Unit =
     val kinds = c.perSlotEndings.map(_._2).toSet
     assert(kinds.contains("NodeNotLeader"), s"some slot is not led: $kinds")
     assert(c.perSlotBlocks.nonEmpty, "some slot is led and forged")
 
   test("an epoch boundary: each slot's outcome and each block are the per-slot decision's") {
+    // on the follower's committed chain, as the node runs it: the next epoch's schedule is computed
+    // from it once the tip passes the freeze slot, and is complete before the epoch starts
     withHandle {
-      compared(Scenario(9, alone, 5950, 6030)).map { c =>
+      compared(Scenario(9, alone, 5950, 6030, committed = true)).map { c =>
         same(c)
         mixed(c)
         assert(c.perSlotBlocks.exists(_._1 >= 6000), "the next epoch is led too")
+        val scheduled = c.scheduled.indexWhere {
+          case ForgeEvent.Scheduled(epoch, _, _, _) => epoch == 6
+          case _                                    => false
+        }
+        val first = c.scheduled.indexWhere(e => endedIn(Vector(e)).exists(_ >= 6000))
+        assert(scheduled >= 0 && scheduled < first, "epoch 6's schedule before its first slot")
+        val slots = c.scheduled.collect {
+          case ForgeEvent.Scheduled(epoch, s, _, _) if epoch == 6 => s
+        }
+        val led = c.perSlot.collect {
+          case ForgeEvent.Loop(ForgeTrace.NodeIsLeader(s)) if s >= 6000 => s
+        }
+        assertEquals(
+          slots.last.filter(_ <= 6030),
+          led,
+          "the schedule's led slots are the per-slot check's"
+        )
       }
     }
   }
@@ -132,6 +167,7 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
       compared(Scenario(9, alone, 5000, 5030, before = Vector(BigInt(5015) -> otherVrf(31, 9))))
         .map { c =>
           same(c)
+          reloaded(c)
           // blocks of the other key are refused by the rules, which find it is not the registered one
           assert(
             c.perSlotEndings.exists((s, kind) => s >= 5015 && kind == "ForgedInvalidBlock"),
@@ -153,6 +189,7 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
         )
       ).map { c =>
         same(c)
+        reloaded(c)
         assert(!c.perSlotEndings.exists((s, _) => s >= 5010 && s < 5020), "nothing while off")
         assert(c.perSlotEndings.exists(_._1 >= 5020), "forging again once on")
       }
@@ -209,24 +246,29 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     "between the signing and the onset" -> (s => Forger.Point.Signed(s))
   )
 
-  private def changes(b: Pool)(using Handle[IO, NodeError]): Vector[(String, Change)] = Vector(
-    "a block of an earlier slot that moves the tip" -> fromOther(b, pair.slot - 1),
-    "a fork that changes the nonce" -> (side =>
-      forkedTo(
-        stateWith(halves(b)(side.pool), Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(8)))))
-      )(side)
-    ),
-    "a SIGHUP that installs another VRF key" -> otherVrf(33, pair.a),
-    "a SIGHUP that installs another KES key" -> otherKes(pair.a + 200, 50),
-    "a SIGHUP that installs another certificate" -> otherCertificate(pair.a, 50),
-    "forging switched off" -> forgingOff
-  )
+  /** Each change, and whether it is a reload, which must take effect on both paths. */
+  private def changes(b: Pool)(using Handle[IO, NodeError]): Vector[(String, Change, Boolean)] =
+    Vector(
+      ("a block of an earlier slot that moves the tip", fromOther(b, pair.slot - 1), false),
+      (
+        "a fork that changes the nonce",
+        side =>
+          forkedTo(
+            stateWith(halves(b)(side.pool), Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(8)))))
+          )(side),
+        false
+      ),
+      ("a SIGHUP that installs another VRF key", otherVrf(33, pair.a), true),
+      ("a SIGHUP that installs another KES key", otherKes(pair.a + 200, 50), true),
+      ("a SIGHUP that installs another certificate", otherCertificate(pair.a, 50), true),
+      ("forging switched off", forgingOff, true)
+    )
 
   points.foreach { (where, point) =>
     test(s"the early attempt: each change $where gives the per-slot decision's outcome") {
       val b = pool(kesStart = 50, seed = pair.b)
       withHandle {
-        changes(b).traverse_ { (what, change) =>
+        changes(b).traverse_ { (what, change, reload) =>
           compared(
             Scenario(
               pair.a,
@@ -238,6 +280,7 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
           ).map { c =>
             assertEquals(c.scheduledEndings, c.perSlotEndings, what)
             assertEquals(c.scheduledBlocks, c.perSlotBlocks, what)
+            if reload then reloaded(c)
             // a block built before a change of credentials is never handed over
             val discarded = c.scheduled.collect {
               case ForgeEvent.Discarded(s, DiscardReason.Credentials, Some(hash)) => (s, hash)
@@ -374,4 +417,30 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
       val started = traced[ForgeTrace.StartLeadershipCheck](events).map(_.slot)
       assert(started.size < refused.size, started.toString)
     }
+  }
+
+  test("a block forged ahead of its slot keeps its time: forged before the onset, adopted after") {
+    val p = pool(kesStart = 50, seed = 9)
+    cats.effect.testkit.TestControl.executeEmbed(
+      withHandle {
+        for
+          h <- harness(p, alone(p), live = true, unbounded = true)
+          fiber <- h.forger.run.start
+          _ <- h.settled(5020)
+          _ <- fiber.cancel
+          stamped <- h.stamped.get
+        yield
+          val forged = stamped.collect { case (at, f: ForgeEvent.Forged) => f.slot -> at }
+          val adopted = stamped.collect {
+            case (at, ForgeEvent.Loop(ForgeTrace.AdoptedBlock(slot, _, _, _))) => slot -> at
+          }
+          // the first slot is forged at once; the later led slots ahead of their onsets
+          val ahead = forged.filter((slot, at) => at.isBefore(geometry.slotStart(slot)))
+          assert(ahead.size >= forged.size - 1 && ahead.nonEmpty, forged.toString)
+          assert(
+            adopted.forall((slot, at) => !at.isBefore(geometry.slotStart(slot))),
+            adopted.toString
+          )
+      }
+    )
   }
