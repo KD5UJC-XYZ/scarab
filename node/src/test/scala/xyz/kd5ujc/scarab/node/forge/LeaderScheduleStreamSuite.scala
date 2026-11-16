@@ -6,6 +6,7 @@ import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicLong
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -17,8 +18,12 @@ import LeaderSchedule.{Answer, EpochSchedule, InForce, Schedules}
 
 /** The leader schedule's stream (#1101) on `TestControl` 's clock, which starts at the epoch of
   * `Instant`: the computation is paced to finish before its deadline and, once caught up, stays
-  * ahead of the clock; a new value of the signal cancels the work under way, and a schedule of
-  * replaced inputs never answers.
+  * ahead of the clock, also when deciding a chunk takes time; a new value of the signal cancels the
+  * work under way, and a schedule of replaced inputs never answers.
+  *
+  * A chunk's decisions take no time on `TestControl` 's clock. Where a test gives them time, each
+  * evaluation of the VRF key moves the clock the schedule reads (`now`) on by `perEvaluation`, as
+  * if the evaluation had taken that long.
   */
 class LeaderScheduleStreamSuite extends FailsOnUncaught:
   private def key(seed: Int): Draft03Prover.SigningKey =
@@ -60,34 +65,44 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
       Option.when(got != expected)((slot, got, expected))
     }
 
-  /** The schedules the stream reports from `initial`, each with the time it is reported at, until
-    * `done` holds of the state after one; and the state then. `onEach` sees each report first.
+  /** The schedules the stream reports from `initial`, each with the time its chunk was done, until
+    * `done` holds of the reports so far; and the state then. `onEach` sees each report first. Each
+    * evaluation of the VRF key takes `perEvaluation`.
     */
   private def recorded(
       g: EpochGeometry,
       initial: InForce,
-      done: Schedules => Boolean,
-      onEach: (SignallingRef[IO, InForce], EpochSchedule) => IO[Unit] = (_, _) => IO.unit
+      done: Vector[(Instant, EpochSchedule)] => Boolean,
+      onEach: (SignallingRef[IO, InForce], EpochSchedule) => IO[Unit] = (_, _) => IO.unit,
+      perEvaluation: FiniteDuration = 0.nanos
   ): IO[(Vector[(Instant, EpochSchedule)], Schedules)] =
     TestControl.executeEmbed(
       for
-        schedule <- LeaderSchedule.create[IO](g)
+        spent <- IO(new AtomicLong(0))
+        now = IO.realTimeInstant.flatMap(t => IO(t.plusNanos(spent.get)))
+        evaluator = (i: EpochInputs) =>
+          new Leadership.Evaluator:
+            def output(alpha: Bytes): Either[Draft03Prover.Failure, Bytes] =
+              spent.addAndGet(perEvaluation.toNanos)
+              i.key.output(alpha)
+            def prove(alpha: Bytes): Either[Draft03Prover.Failure, Draft03Prover.Proved] =
+              i.key.prove(alpha)
+        schedule <- LeaderSchedule.evaluatedWith[IO](g, Some(now), None, evaluator)
         signal <- SignallingRef.of[IO, InForce](initial)
         log <- schedule
           .computed(signal)
-          .evalTap(s => onEach(signal, s))
-          .evalMap(s =>
-            (IO.realTimeInstant, schedule.schedules.get).tupled.map((t, all) => (t, s, all))
-          )
-          .takeThrough((_, _, all) => !done(all))
-          .map((t, s, _) => t -> s)
+          .evalTap(a => onEach(signal, a.schedule))
+          .map(a => a.at -> a.schedule)
+          .scan(Vector.empty[(Instant, EpochSchedule)])(_ :+ _)
+          .takeThrough(log => !done(log))
           .compile
-          .toVector
+          .lastOrError
         state <- schedule.schedules.get
       yield (log, state)
     )
 
-  private def complete(i: EpochInputs)(state: Schedules): Boolean = state.of(i).exists(_.complete)
+  private def complete(i: EpochInputs)(log: Vector[(Instant, EpochSchedule)]): Boolean =
+    log.exists((_, s) => s.inputs == i && s.complete)
 
   /** The reports after which the clock reached a slot the schedule had not decided before the next
     * report: its time and slot, and how far the schedule covered.
@@ -100,6 +115,73 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
           (next, g.slotAt(next), before.until)
       }
       .toVector
+
+  /** The reports from the first a chunk ahead of the clock (or covering the epoch). */
+  private def caughtUp(g: EpochGeometry, log: Vector[(Instant, EpochSchedule)]) =
+    log.dropWhile((t, s) => !s.complete && s.until < g.slotAt(t) + LeaderSchedule.ChunkSlots)
+
+  test(
+    "a chunk that takes time is decided before its first slot begins: 2.5 s chunks of 0.1 s slots"
+  ) {
+    // an epoch of 300 slots of 0.1 s, signalled at its onset, each chunk taking 2.5 s; the last
+    // chunk, whose slots begin at 20 s, is decided by 17.5 s, not from 18 s to 20.5 s
+    val g = geometry(100, 300, 0.seconds)
+    val current = inputs(g, 0)
+    recorded(g, InForce.of(current), complete(current), perEvaluation = 25.millis).map {
+      (log, state) =>
+        assertEquals(log.map(_._2.until), Vector(BigInt(100), BigInt(200), BigInt(300)))
+        assertEquals(log.map(_._1), Vector(at(2.5), at(5), at(17.5)))
+        assertEquals(caughtUp(g, log).size, 2)
+        assertEquals(overtaken(g, caughtUp(g, log)), Vector.empty)
+        assertEquals(mismatches(state, current), Vector.empty)
+    }
+  }
+
+  test(
+    "a begun epoch, its chunks taking up to 80% of their slots' time: ahead of the clock once caught up"
+  ) {
+    // 0.1 s slots, epochs of 2000, the clock at slot 300: a chunk's slots take 10 s to pass
+    val g = geometry(100, 2000, 30.seconds)
+    val current = inputs(g, 0)
+    val (deadline, margin) = LeaderSchedule.Pacing.target(g, current, Instant.EPOCH) match
+      case LeaderSchedule.Pacing.Target.Begun(d, m) => (d, m)
+      case other                                    => fail(s"not begun: $other")
+    List(0, 10, 25, 50, 80)
+      .traverse(ms =>
+        recorded(g, InForce.of(current), complete(current), perEvaluation = ms.millis).map(ms -> _)
+      )
+      .map(_.foreach { (ms, run) =>
+        val (log, _) = run
+        assert(caughtUp(g, log).nonEmpty, s"$ms ms an evaluation: never a chunk ahead")
+        assertEquals(overtaken(g, caughtUp(g, log)), Vector.empty, s"$ms ms an evaluation")
+        assertEquals(log.last._2.until, current.end)
+        // done by the deadline whenever the decisions fit before it, less the margin
+        val left = java.time.Duration.between(Instant.EPOCH, deadline).toNanos.nanos - margin
+        val fits = (ms.millis * 100) * log.size.toLong <= left
+        assert(!fits || !log.last._1.isAfter(deadline), s"$ms ms: done at ${log.last._1}")
+      })
+  }
+
+  test(
+    "an epoch ahead is done a margin before its first slot whenever its decisions fit, and stays ahead when not"
+  ) {
+    // 1 s slots, epochs of 1000, the clock at slot 300: epoch 1 starts in 700 s, of which 70 s
+    // are the margin; ten chunks of up to 63 s fit, and of 80 s do not
+    val g = geometry(1000, 1000, 300.seconds)
+    val next = inputs(g, 1)
+    List(0, 100, 500, 630, 800)
+      .traverse(ms =>
+        recorded(g, InForce.of(next), complete(next), perEvaluation = ms.millis).map(ms -> _)
+      )
+      .map(_.foreach { (ms, run) =>
+        val (log, state) = run
+        assertEquals(log.map(_._2.until).last, next.end, s"$ms ms an evaluation")
+        assertEquals(overtaken(g, log), Vector.empty, s"$ms ms an evaluation")
+        if ms <= 630 then assert(!log.last._1.isAfter(at(630)), s"$ms ms: done at ${log.last._1}")
+        else assert(log.last._1.isAfter(g.slotStart(next.first)), s"$ms ms: done at ${log.last._1}")
+        assertEquals(mismatches(state, next), Vector.empty)
+      })
+  }
 
   test("an epoch ahead is done before its first slot, its chunks spread over the time left") {
     // 1 s slots, epochs of 1000 slots, the clock at slot 300: epoch 1 starts in 700 s, and a
@@ -181,7 +263,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     recorded(
       g,
       InForce.of(current),
-      state => complete(current)(state) && complete(next)(state),
+      log => complete(current)(log) && complete(next)(log),
       (signal, s) =>
         signal.set(InForce.of(current, next)).whenA(s.inputs == current && s.until == 400)
     ).map { (log, state) =>
