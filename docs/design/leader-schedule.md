@@ -54,8 +54,10 @@ All of §2 is derived from source, not from a capture. §2.9 lists each claim wi
 ### 2.1 The forging thread, once per slot
 
 `forkBlockForging` runs the forging action under `knownSlotWatcher` of the blockchain time, which calls it whenever
-the known slot changes (C1). At 82ecba32 the action is the local `go` of `NodeKernel.hs`; at 808e4005 it is `forge` of
-`NodeKernel/Forge.hs`, with the same steps and traces (C2):
+the known slot changes (C1). The watcher runs the action to its end, then waits for a slot other than the last one it
+handled and takes the latest: a slot that passes while an action runs is skipped, with no trace ("some updates may be
+missed", in the `Watcher`'s own comment). At 82ecba32 the action is the local `go` of `NodeKernel.hs`; at 808e4005 it
+is `forge` of `NodeKernel/Forge.hs`, with the same steps and traces (C2):
 
 1. `TraceStartLeadershipCheck`.
 2. The block context from the current chain (`mkCurrentBlockContext`): the tip if it is in an earlier slot; an
@@ -206,7 +208,7 @@ until the forging area moves with #1002.
 
 | # | Claim | `11.1` build | `11.2` build | Checked |
 |---|---|---|---|---|
-| C1 | The forging thread runs its action under `knownSlotWatcher`, on each change of the known slot; the watcher retries while the slot is unknown. | 82ecba32 `NodeKernel.hs` 549-572; `BlockchainTime/API.hs` 57-77 | 808e4005 `NodeKernel.hs` 533-561; `BlockchainTime/API.hs` 57-77 | yes. That a slot passed while the action runs is skipped follows from the `Watcher` reading the latest value; its implementation was not read: unverified |
+| C1 | The forging thread runs its action under `knownSlotWatcher`, on each change of the known slot; the watcher retries while the slot is unknown. `runWatcher` runs the action, then blocks until the slot differs from the last one handled and takes the latest, so slots that pass during an action are skipped. | 82ecba32 `NodeKernel.hs` 549-572; `BlockchainTime/API.hs` 57-77; `Util/STM.hs` 47-56, 104-152 | 808e4005 `NodeKernel.hs` 533-561; `BlockchainTime/API.hs` 57-77; `Util/STM.hs` the same lines (identical) | yes |
 | C2 | The steps and traces of a slot, in the order of §2.1. | 82ecba32 `NodeKernel.hs` 573-800, `mkCurrentBlockContext` 831-891 | 808e4005 `NodeKernel/Forge.hs` `forge` 61-151, helpers 166-495 | yes |
 | C3 | `checkShouldForge`: `updateForgeState`, then the forge state traced, then `checkIsLeader`, then `checkCanForge`; a suppressed update is `NotLeader`. | 82ecba32 `Block/Forging.hs` 180-226 | 808e4005 `Block/Forging.hs` 163-209 | yes; what produces a suppressed update was not read |
 | C4 | `checkIsLeader`: `VRF.evalCertified` of `mkInputVRF slot eta0` against `meetsLeaderThreshold` of the ledger view's pool distribution. | 82ecba32 `Protocol/Praos.hs` 402-424, 535-555 | 808e4005 `Protocol/Praos.hs` 408-430, 541-561 | yes |
