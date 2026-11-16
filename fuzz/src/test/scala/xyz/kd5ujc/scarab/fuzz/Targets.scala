@@ -455,18 +455,22 @@ object Targets:
                 case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
                 case Right(enc) =>
                   // the versions a refusal lists that we do not know are parsed, not re-encodable
-                  // and the simple values 20 and 21 read back as booleans, as in cborg
                   val kept = message match
                     case Handshake.Message.Refuse(r: Handshake.Reason.VersionMismatch) =>
                       Handshake.Message.Refuse(r.copy(unknown = Vector.empty))
+                    case other => other
+                  // or with the simple values 20 and 21 read back as booleans, as in cborg; the
+                  // rewritten message is built only when the first comparison fails
+                  def rewrittenKept: Handshake.Message = kept match
                     case Handshake.Message.Propose(vs) =>
                       Handshake.Message.Propose(vs.map((v, t) => v -> rewritten(t)))
                     case Handshake.Message.Accept(v, t) => Handshake.Message.Accept(v, rewritten(t))
                     case Handshake.Message.QueryReply(vs) =>
                       Handshake.Message.QueryReply(vs.map((v, t) => v -> rewritten(t)))
                     case other => other
+                  val again = Handshake.decode(suite, state, enc)
                   req(
-                    Handshake.decode(suite, state, enc) == Right(kept),
+                    again == Right(kept) || again == Right(rewrittenKept),
                     s"$state: $message re-decodes differently"
                   )
             case Left(_) => ()
@@ -516,16 +520,22 @@ object Targets:
           val kept = message match
             case Handshake.WireMessage.Refuse(reason) =>
               Handshake.WireMessage.Refuse(knownReason(reason))
+            case other => other
+          // or with the simple values 20 and 21 read back as booleans, as in cborg; the rewritten
+          // message is built only when the first comparison fails
+          def rewrittenKept: Handshake.WireMessage[MockVersion] = kept match
             case Handshake.WireMessage.Propose(vs) =>
               Handshake.WireMessage.Propose(vs.map((v, t) => v -> rewritten(t)))
             case Handshake.WireMessage.Accept(v, t) => Handshake.WireMessage.Accept(v, rewritten(t))
             case Handshake.WireMessage.QueryReply(vs) =>
               Handshake.WireMessage.QueryReply(vs.map((v, t) => v -> rewritten(t)))
+            case other => other
           Handshake.encode(message) match
             case Left(e) => throw new Violation(s"$state: decoded $message does not encode: $e")
             case Right(encoded) =>
+              val again = Handshake.decode[MockVersion](state, encoded)
               req(
-                Handshake.decode[MockVersion](state, encoded) == Right(kept),
+                again == Right(kept) || again == Right(rewrittenKept),
                 s"$state: $message re-decodes differently"
               )
         }

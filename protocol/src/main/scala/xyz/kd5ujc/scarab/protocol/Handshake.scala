@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Tree, TreeFold}
-import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
+import xyz.kd5ujc.scarab.codec.Tree.{treeHash, treeString}
 import java.nio.ByteBuffer
 import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCharsets}
 import scala.annotation.tailrec
@@ -54,12 +54,68 @@ object Handshake:
 
     // Structural and stack-safe: a term nests as deep as its message is long.
     override def equals(that: Any): Boolean = that match
-      case o: Term => this.treeEquals(o)
+      case o: Term => sameTerms(this, o)
       case _       => false
     override def hashCode(): Int = this.treeHash
     override def toString: String = this.treeString
 
   private def joined(chunks: Vector[Bytes]): Bytes = chunks.foldLeft(Bytes.empty)(_ ++ _)
+
+  /** The number of a term's children: the items of an array, the keys and values of a map in turn,
+    * a tag's one term.
+    */
+  private def arity(t: Term): Int = t match
+    case Term.Arr(values, _) => values.size
+    case Term.Map(values, _) => values.size * 2
+    case Term.Tag(_, _)      => 1
+    case _                   => 0
+
+  /** The child `i` of a term with `i` below its [[arity]]. */
+  private def child(t: Term, i: Int): Term = t match
+    case Term.Arr(values, _) => values(i)
+    case Term.Map(values, _) => if i % 2 == 0 then values(i / 2)._1 else values(i / 2)._2
+    case Term.Tag(_, value)  => value
+    case leaf                => leaf
+
+  /** Two terms that agree on everything but their children, and have as many. */
+  private def sameNode(x: Term, y: Term): Boolean = x match
+    case Term.Integer(a) => y match { case Term.Integer(b) => a == b; case _ => false }
+    case Term.Bool(a)    => y match { case Term.Bool(b) => a == b; case _ => false }
+    case Term.Arr(a, d) =>
+      y match { case Term.Arr(b, e) => d == e && a.sizeCompare(b) == 0; case _ => false }
+    case Term.Map(a, d) =>
+      y match { case Term.Map(b, e) => d == e && a.sizeCompare(b) == 0; case _ => false }
+    case Term.Text(a) => y match { case Term.Text(b) => a == b; case _ => false }
+    case Term.TextChunks(a) =>
+      y match { case Term.TextChunks(b) => a.mkString == b.mkString; case _ => false }
+    case Term.ByteString(a) => y match { case Term.ByteString(b) => a == b; case _ => false }
+    case Term.ByteChunks(a) =>
+      y match { case Term.ByteChunks(b) => joined(a) == joined(b); case _ => false }
+    case Term.Tag(a, _) => y match { case Term.Tag(b, _) => a == b; case _ => false }
+    case Term.Simple(a) => y match { case Term.Simple(b) => a == b; case _ => false }
+    case Term.FloatBits(w, a) =>
+      y match { case Term.FloatBits(v, b) => w == v && a == b; case _ => false }
+
+  /** An open pair of containers being compared, and the index of their next children. */
+  private final case class Compared(left: Term, right: Term, next: Int)
+
+  /** Structural equality, its open containers in a list on the heap: a term nests as deep as its
+    * message is long. A pair of children is compared when it is reached, so nothing is copied.
+    */
+  private def sameTerms(x: Term, y: Term): Boolean =
+    @tailrec def go(open: List[Compared]): Boolean = open match
+      case Nil => true
+      case Compared(left, right, i) :: outer =>
+        if i >= arity(left) then go(outer)
+        else
+          val a = child(left, i)
+          val b = child(right, i)
+          val rest = Compared(left, right, i + 1) :: outer
+          if a eq b then go(rest)
+          else if !sameNode(a, b) then false
+          else if arity(a) == 0 then go(rest)
+          else go(Compared(a, b, 0) :: rest)
+    (x eq y) || sameNode(x, y) && go(List(Compared(x, y, 0)))
 
   private given Tree[Term] with
     def children(t: Term): IndexedSeq[Term] = t match
@@ -67,19 +123,7 @@ object Handshake:
       case Term.Map(values, _) => TreeFold.flatten(values)
       case Term.Tag(_, value)  => Vector(value)
       case _                   => Vector.empty
-    def sameLabel(x: Term, y: Term): Boolean = (x, y) match
-      case (Term.Integer(a), Term.Integer(b))           => a == b
-      case (Term.Bool(a), Term.Bool(b))                 => a == b
-      case (Term.Arr(_, a), Term.Arr(_, b))             => a == b
-      case (Term.Map(_, a), Term.Map(_, b))             => a == b
-      case (Term.Text(a), Term.Text(b))                 => a == b
-      case (Term.TextChunks(a), Term.TextChunks(b))     => a.mkString == b.mkString
-      case (Term.ByteString(a), Term.ByteString(b))     => a == b
-      case (Term.ByteChunks(a), Term.ByteChunks(b))     => joined(a) == joined(b)
-      case (Term.Tag(a, _), Term.Tag(b, _))             => a == b
-      case (Term.Simple(a), Term.Simple(b))             => a == b
-      case (Term.FloatBits(w, a), Term.FloatBits(v, b)) => w == v && a == b
-      case _                                            => false
+    def sameLabel(x: Term, y: Term): Boolean = sameNode(x, y)
     def labelHash(t: Term): Int = t match
       case Term.Integer(a)      => 41 + a.hashCode
       case Term.Bool(a)         => if a then 43 else 47
@@ -597,8 +641,8 @@ object Handshake:
       * hold could never be read within its bound, and is refused at once.
       */
     private def fits(count: BigInt, per: Int, at: Int): Either[ProtocolError, Int] =
-      if count * per > MaxMessageBytes - at then Left(ProtocolError.HandshakeByteLimitExceeded)
-      else Right(count.toInt)
+      if count.isValidInt && count.toInt <= (MaxMessageBytes - at) / per then Right(count.toInt)
+      else Left(ProtocolError.HandshakeByteLimitExceeded)
 
     private def utf8(bytes: Bytes): Either[ProtocolError, String] =
       Either
@@ -712,25 +756,29 @@ object Handshake:
           position: Int,
           open: List[Open],
           read: Option[Term]
-      ): Either[ProtocolError, (Int, Term)] = (read, open) match
-        case (Some(term), Nil) => Right((position, term))
-        case (Some(term), inner :: outer) =>
-          add(inner, term) match
-            case Added.Closed(closed) => go(position, outer, Some(closed))
-            case Added.Still(still)   => go(position, still :: outer, None)
-        case (None, Open.OpenItems(done) :: outer) if isBreak(position) =>
-          byte(position) match
-            case Left(error) => Left(error)
-            case Right(_)    => go(position + 1, outer, Some(Term.Arr(done, false)))
-        case (None, Open.OpenEntries(done, None) :: outer) if isBreak(position) =>
-          byte(position) match
-            case Left(error) => Left(error)
-            case Right(_)    => go(position + 1, outer, Some(Term.Map(done, false)))
-        case (None, _) =>
-          start(position) match
-            case Left(error)                             => Left(error)
-            case Right((next, Start.Whole(term)))        => go(next, open, Some(term))
-            case Right((next, Start.Container(started))) => go(next, started :: open, None)
+      ): Either[ProtocolError, (Int, Term)] = read match
+        case Some(term) =>
+          open match
+            case Nil => Right((position, term))
+            case inner :: outer =>
+              add(inner, term) match
+                case Added.Closed(closed) => go(position, outer, Some(closed))
+                case Added.Still(still)   => go(position, still :: outer, None)
+        case None =>
+          open match
+            case Open.OpenItems(done) :: outer if isBreak(position) =>
+              byte(position) match
+                case Left(error) => Left(error)
+                case Right(_)    => go(position + 1, outer, Some(Term.Arr(done, false)))
+            case Open.OpenEntries(done, None) :: outer if isBreak(position) =>
+              byte(position) match
+                case Left(error) => Left(error)
+                case Right(_)    => go(position + 1, outer, Some(Term.Map(done, false)))
+            case _ =>
+              start(position) match
+                case Left(error)                             => Left(error)
+                case Right((next, Start.Whole(term)))        => go(next, open, Some(term))
+                case Right((next, Start.Container(started))) => go(next, started :: open, None)
       go(at, Nil, None)
 
     /** `count` terms from `at`, in order. */
