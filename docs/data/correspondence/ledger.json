@@ -8703,7 +8703,7 @@
     "ConwayCertsChecksSuite",
     "CertsEpochWrapSuite"
    ],
-   "note": "the pool id, VRF key hash, reward account and owners are converted into the state's vocabulary as the flat rule does (a Vocab defect on a value no decoder admits); a new pool is made in the layout of the build the node follows (its voting key in the Leios layout), as the flat rule does; the retirement limit is summed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
+   "note": "the pool id, VRF key hash, reward account and owners are converted into the state's vocabulary as the flat rule does (a Vocab defect on a value no decoder admits); a new pool is made in the layout of the build the node follows (its voting key in the Leios layout), as the flat rule does; the retirement limit is summed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rule compares the retirement epoch with an unbounded integer sum, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
    "digest": "ec04d0564c91a3f5"
   },
   "type ledger.era.EraAccounts.Undrained": {
