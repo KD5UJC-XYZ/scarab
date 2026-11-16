@@ -893,7 +893,7 @@ final class Forger[F[_]: Async, S](
           .flatMap {
             // the monotonic timer is only a wake: the wall clock, read again, says whether the
             // onset has come (a clock moved back within the rewind allowance has it later)
-            case Left(_) => atOnset(slot, current, discards)
+            case Left(_) => provisional(slot, current, seen, discards)
             case Right(next) =>
               current match
                 case built: Attempted.Built[F, S] if next.generation == built.prepared.generation =>
