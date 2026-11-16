@@ -619,7 +619,8 @@ final class Forger[F[_]: Async, S](
       result: Deferred[F, Final[F]]
   ): F[Unit] =
     result.get.flatMap {
-      case Final.Lines(held) => announced(slot, kes, held).flatMap(publish)
+      case Final.Lines(held) =>
+        announced(slot, kes, held).map(_ ++ startedIn(slot, kes, held)).flatMap(publish)
       case Final.NotLed(discards, generation, info) =>
         publish(discards) *> notLed(slot, Some(generation -> info)).flatMap(publish)
       case Final.Skipped(discards) => publish(discards)
@@ -646,28 +647,44 @@ final class Forger[F[_]: Async, S](
   ): F[Vector[Held[F]]] =
     (now, shared.published.get).mapN { (at, published) =>
       val period = kesPeriodOf(slot)
-      val announcing = kes.collect {
-        case (generation, _) if !published.announced.contains(generation -> period) => generation
+      val starting = kes.collect {
+        case (generation, _) if !published.started.contains(generation -> period) => generation
       }
       val start = ForgeTrace.StartLeadershipCheck(slot)
       // at a KES period change the line too, first, as the reference orders a slot's lines (#1101,
-      // Q2), and the period announced with it, so that a failed update's period has it once;
-      // counted once either way, the line's publication counting it
-      val counted: Vector[Held[F]] = announcing.fold(
+      // Q2), once in the period for these credentials; counted once either way, the line's
+      // publication counting it
+      val counted: Vector[Held[F]] = starting.fold(
         Vector(Held.Effect(stats.record(geometry.epochOf(slot), start)))
-      )(generation =>
-        Vector(
-          Held.Line(ForgeEvent.Loop(start), at),
-          Held.Effect(shared.published.update(_.announced(generation, period)))
-        )
-      )
+      )(generation => Vector(Held.Line(ForgeEvent.Loop(start), at), startOf(generation, period)))
       val state = kes.collect {
         case (generation, Some(info))
-            if announcing.isDefined || (reached && info.remaining <= Forger.KesWarning) =>
+            if !published.announced.contains(generation -> period) ||
+              (reached && info.remaining <= Forger.KesWarning) =>
           Held.Kes[F](slot, generation, Right(info), at)
       }
       counted ++ state.toVector ++ last(at)
     }
+
+  /** The mark that the `startLeadershipCheck` of `period` was published under the credentials of
+    * `generation`, made where it is.
+    */
+  private def startOf(generation: Long, period: BigInt): Held[F] =
+    Held.Effect(shared.published.update(_.started(generation, period)))
+
+  /** The mark of the period's `startLeadershipCheck` for the lines of a slot the forging fiber
+    * owned, where they hold one, whichever its attempt's end: a slot the slot driver ends later in
+    * the period logs none.
+    */
+  private def startedIn(
+      slot: BigInt,
+      kes: Option[(Long, Forger.KesResult)],
+      held: Vector[Held[F]]
+  ): Vector[Held[F]] =
+    val started = held
+      .collect { case Held.Line(ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)), _) => s }
+      .contains(slot)
+    kes.filter(_ => started).toVector.map((generation, _) => startOf(generation, kesPeriodOf(slot)))
 
   /** `held`, the lines of a slot the forging fiber owned, with the KES key's state of the period
     * after them if the period has not been announced and they do not announce it.
@@ -1114,13 +1131,7 @@ final class Forger[F[_]: Async, S](
         shared.published.update(_.announced(generation, kesPeriodOf(slot))) *>
           events.emitAt(at, ForgeEvent.StateInfo(info))
       case Held.Kes(slot, generation, Left(failure), at) =>
-        // a failed update's line announces its period, as a state's line does
-        shared.published
-          .modify { p =>
-            val (named, line) = p.named(generation, slot, failure)
-            (named.announced(generation, kesPeriodOf(slot)), line)
-          }
-          .flatMap(trace(_, at))
+        shared.published.modify(_.named(generation, slot, failure)).flatMap(trace(_, at))
       case Held.Effect(run)     => run
       case Held.Withdrawal(run) => run
     }
@@ -1989,15 +2000,20 @@ object Forger:
       }
 
   /** What the slot driver has published that names the next lines: the KES period whose state it
-    * announced, with the credentials' generation, and the generation whose poisoned key it has
-    * reported as `KESCouldNotEvolve`.
+    * announced, the KES period whose `startLeadershipCheck` it published (a slot not led logs one
+    * once per period, #1101 Q2), each with the credentials' generation, and the generation whose
+    * poisoned key it has reported as `KESCouldNotEvolve`.
     */
   private[forge] final case class Published(
       announced: Option[(Long, BigInt)],
+      started: Option[(Long, BigInt)],
       poisoned: Option[Long]
   ):
     def announced(generation: Long, period: BigInt): Published =
       copy(announced = Some(generation -> period))
+
+    def started(generation: Long, period: BigInt): Published =
+      copy(started = Some(generation -> period))
 
     /** The failed update's line at `slot`: `KESCouldNotEvolve` the first time for `generation`,
       * then `KESKeyAlreadyPoisoned`, as the reference's key answers every update after the one that
@@ -2043,7 +2059,7 @@ object Forger:
         SignallingRef.of[F, Claims[F]](Claims(BigInt(-1), SortedMap.empty)),
         Ref.of[F, Map[(Long, BigInt), KesResult]](Map.empty),
         Mutex[F],
-        Ref.of[F, Published](Published(None, None))
+        Ref.of[F, Published](Published(None, None, None))
       ).mapN(Shared(_, _, _, _, _))
 
   /** What the blockchain time reads: the wait for the system start, an unknown slot, or the slot.

@@ -63,11 +63,21 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       source: Option[HotKeySource[IO]] = None,
       shift: Option[Ref[IO, Long]] = None,
       observe: Harness => Forger.Point => IO[Unit] = _ => _ => IO.unit,
-      bound: FiniteDuration = Bound
+      bound: FiniteDuration = Bound,
+      forecastWindow: BigInt = 1000000
   )(body: (Harness, IO[Either[Fatal, Unit]]) => IO[Unit]): IO[Ran] =
-    runningIn(seed, from, held, kesStart, epoch, source, shift, observe, bound = bound)(r =>
-      body(r.h, r.ended)
-    )
+    runningIn(
+      seed,
+      from,
+      held,
+      kesStart,
+      epoch,
+      source,
+      shift,
+      observe,
+      bound = bound,
+      forecastWindow = forecastWindow
+    )(r => body(r.h, r.ended))
 
   /** The longest a run may take on the test clock: past it, the run fails rather than waits. */
   private val Bound: FiniteDuration = 5.minutes
@@ -88,7 +98,8 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       observe: Harness => Forger.Point => IO[Unit] = _ => _ => IO.unit,
       enabled: Boolean = true,
       bound: FiniteDuration = Bound,
-      rulesPause: Header => IO[Unit] = _ => IO.unit
+      rulesPause: Header => IO[Unit] = _ => IO.unit,
+      forecastWindow: BigInt = 1000000
   )(body: Run => IO[Unit]): IO[Ran] =
     TestControl.executeEmbed(
       withHandle {
@@ -111,6 +122,7 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
             ),
             enabled = enabled,
             rulesPause = rulesPause,
+            forecastWindow = forecastWindow,
             pause = Some(point =>
               self.get.flatMap(observe(_)(point)) *> held.get(point).fold(IO.unit)(_.at)
             )
@@ -332,6 +344,53 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       assert(
         ran.events.contains(ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(expiry))),
         "the forge reached the key first"
+      )
+  }
+
+  test(
+    "a KES expiry boundary, a forge claimed late refused before the key: one start in the period"
+  ) {
+    // the ledger view of no slot can be forecast from the chain's origin (`noLedgerView`): the forge
+    // of the expiry's first slot, claimed on a late wake, ends before the KES check, and the slot
+    // driver's update poisons the key; the next slots, not led, end in the slot driver, with no
+    // second `startLeadershipCheck` for the period
+    val seed = seedLeading(Vector(expiry), Vector(expiry + 1, expiry + 2))
+    for
+      held <- holds(Forger.Point.Updating(expiry - 1), Forger.Point.Updating(expiry))
+      ran <- running(seed, expiry - 2, held, kesStart = 0, epoch = 6, forecastWindow = 100) {
+        (h, _) =>
+          for
+            _ <- lateWake(h, held)
+            _ <- held(Forger.Point.Updating(expiry)).reached.get
+            // the forge claimed late ends before the slot driver goes on to the key
+            result <- h.forger.claimed.discrete
+              .map(_.owned.get(expiry))
+              .collectFirst { case Some(Forger.Claim.Forging(result)) => result }
+              .compile
+              .lastOrError
+            _ <- result.get
+            _ <- held(Forger.Point.Updating(expiry)).free
+            _ <- h.settled(expiry + 2)
+          yield ()
+      }
+    yield
+      val period = ran.events.collect {
+        case ForgeEvent.Loop(t) if t.slot >= expiry => t.slot -> t.productPrefix
+      }
+      assertEquals(
+        period.filter(_._2 == "StartLeadershipCheck").map(_._1),
+        Vector(expiry),
+        period.toString
+      )
+      assertEquals(
+        period.filter(_._2 == "NoLedgerView").map(_._1),
+        Vector(expiry, expiry + 1, expiry + 2),
+        "each slot refused before the key"
+      )
+      assertEquals(
+        ran.stats.getOrElse(6, ForgeEpochStats()).slotsChecked,
+        endedIn(ran.events).count(geometry.epochOf(_) == 6).toLong,
+        "each slot counted once"
       )
   }
 
