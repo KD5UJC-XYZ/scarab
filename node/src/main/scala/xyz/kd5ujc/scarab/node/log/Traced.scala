@@ -64,6 +64,12 @@ object Traced:
       line.fields ++ scheduled.report.map(r => "scheduling" -> Reports.scheduling(r))
     )
 
+  /** An event that happened at `at`, logged later: its line keeps that time as its `at`. */
+  final case class Timed[E](event: E, at: java.time.Instant)
+
+  given withTime[E](using traced: Traced[E]): Traced[Timed[E]] = timed =>
+    traced.line(timed.event).copy(time = Some(timed.at))
+
   /** The follower's events that make a line: [[FollowerEvent.Immutable]] is bookkeeping for the
     * metrics (a block moved past `k`), one per block, and has none.
     */

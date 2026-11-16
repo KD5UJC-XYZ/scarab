@@ -7,6 +7,7 @@ import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import fs2.concurrent.{Signal, SignallingRef}
 import java.nio.file.{NoSuchFileException, Path}
 import java.io.IOException
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -145,6 +146,9 @@ object HotKeySource:
   * @param renamed
   *   Whether a write-back has already replaced the key file by the rename, without the atomic
   *   exchange, which is said once.
+  * @param installed
+  *   Which credentials are in force: a number that every reload that switches them or disables
+  *   forging moves on, and their VRF key. It is set under the lock, with `state`.
   */
 final class HotKeys[F[_]: Async] private (
     state: Ref[F, Either[Fatal, Option[PoolCredentials]]],
@@ -154,9 +158,16 @@ final class HotKeys[F[_]: Async] private (
     config: PraosConfig,
     events: ForgeEvents[F],
     poolId: Bytes,
-    renamed: Ref[F, Boolean]
+    renamed: Ref[F, Boolean],
+    installed: SignallingRef[F, HotKeys.Installed]
 ):
   private val F = Async[F]
+
+  /** The credentials in force as they change (#1101): the forger's leader schedule is computed with
+    * their VRF key, and a block built before its slot is handed over only if they have not changed
+    * since.
+    */
+  def inForce: Signal[F, HotKeys.Installed] = installed
 
   /** The credentials in use; none while forging is disabled. */
   def current(using Raise[F, Fatal]): F[Option[PoolCredentials]] =
@@ -262,21 +273,40 @@ final class HotKeys[F[_]: Async] private (
   def update(kesPeriod: BigInt)(using
       Raise[F, Fatal]
   ): F[Option[Either[ForgeError, Either[KesEvolutionError, KesInfo]]]] =
-    usingKey { c =>
-      val now = HotKeys.info(c, config)
-      poisoned.get.flatMap {
-        case Some(stale) =>
-          F.pure(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(stale, kesPeriod))))
-        case None if kesPeriod < now.start => F.pure(Right(Right(now)))
-        case None if kesPeriod >= now.end =>
-          F.delay(c.kes.forget()) *> poisoned
-            .set(Some(now))
-            .as(Right(Left(KesEvolutionError.CouldNotEvolve(now, kesPeriod))))
-        case None if kesPeriod - now.start <= c.kes.period => F.pure(Right(Right(now)))
-        case None =>
-          evolved(c, kesPeriod).map(_.map(_ => Right(HotKeys.info(c, config))))
-      }
+    usingKey(updated(_, kesPeriod))
+
+  /** [[update]], with the generation of the credentials it was made with ([[HotKeys.Installed]]),
+    * read under the same lock.
+    */
+  def updateIn(kesPeriod: BigInt)(using
+      Raise[F, Fatal]
+  ): F[Option[(Long, Either[ForgeError, Either[KesEvolutionError, KesInfo]])]] =
+    usingKey(c => installed.get.flatMap(i => updated(c, kesPeriod).map(i.generation -> _)))
+
+  private def updated(c: PoolCredentials, kesPeriod: BigInt)(using
+      Raise[F, Fatal]
+  ): F[Either[ForgeError, Either[KesEvolutionError, KesInfo]]] =
+    val now = HotKeys.info(c, config)
+    poisoned.get.flatMap {
+      case Some(stale) =>
+        F.pure(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(stale, kesPeriod))))
+      case None if kesPeriod < now.start => F.pure(Right(Right(now)))
+      case None if kesPeriod >= now.end =>
+        F.delay(c.kes.forget()) *> poisoned
+          .set(Some(now))
+          .as(Right(Left(KesEvolutionError.CouldNotEvolve(now, kesPeriod))))
+      case None if kesPeriod - now.start <= c.kes.period => F.pure(Right(Right(now)))
+      case None =>
+        evolved(c, kesPeriod).map(_.map(_ => Right(HotKeys.info(c, config))))
     }
+
+  /** Run `use` with healthy credentials and their generation, which cannot change meanwhile; none
+    * while forging is disabled.
+    */
+  def lockedIn[A](use: (PoolCredentials, Long) => Raise[F, Fatal] ?=> F[A])(using
+      Raise[F, Fatal]
+  ): F[Option[A]] =
+    usingKey(c => installed.get.flatMap(i => use(c, i.generation)))
 
   /** `updateBlockForging` of the reference (cardano-node 11.1.3,
     * `cardano-node/src/Cardano/Node/Run.hs` 620-668), run on SIGHUP: read the credentials again. A
@@ -318,7 +348,7 @@ final class HotKeys[F[_]: Async] private (
     */
   private def disable(inUse: Option[PoolCredentials]): F[Unit] =
     inUse.traverse_(c => F.delay(c.kes.forget())) *> state.set(Right(None)) *>
-      poisoned.set(None) *>
+      poisoned.set(None) *> installed.update(i => HotKeys.Installed(i.generation + 1, None)) *>
       events.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
 
   private def refuse(why: ReloadRefusal)(using Raise[F, Fatal]): F[Unit] =
@@ -346,6 +376,7 @@ final class HotKeys[F[_]: Async] private (
       _ <- F.delay(if kept.isDefined then candidate.kes.forget() else inUse.foreach(_.kes.forget()))
       _ <- state.set(Right(Some(next)))
       _ <- poisoned.set(None)
+      _ <- installed.update(i => HotKeys.Installed(i.generation + 1, Some(found.vrf)))
       _ <- found.adopt
       // the key in use, further on than the file it was read again from, is written there too
       _ <- write(next, kesPeriod).whenA(kept.isDefined)
@@ -365,6 +396,11 @@ final class HotKeys[F[_]: Async] private (
     yield ()
 
 object HotKeys:
+  /** The credentials in force: `generation` moves on at every reload that switches them or disables
+    * forging, and `vrf` is their VRF key, none while forging is disabled.
+    */
+  final case class Installed(generation: Long, vrf: Option[Draft03Prover.SigningKey])
+
   /** @param enabled
     *   Forge with `credentials` from the start; false for `--start-as-non-producing-node`, which
     *   reads and checks the credentials at start-up but does not forge until a reload finds them
@@ -384,8 +420,9 @@ object HotKeys:
       ),
       Ref.of[F, Option[KesInfo]](None),
       Mutex[F],
-      Ref.of[F, Boolean](false)
-    ).mapN { (state, poisoned, lock, renamed) =>
+      Ref.of[F, Boolean](false),
+      SignallingRef.of[F, Installed](Installed(0, Option.when(enabled)(credentials.vrf)))
+    ).mapN { (state, poisoned, lock, renamed, installed) =>
       new HotKeys[F](
         state,
         poisoned,
@@ -394,7 +431,8 @@ object HotKeys:
         config,
         events,
         credentials.poolId,
-        renamed
+        renamed,
+        installed
       )
     }
 

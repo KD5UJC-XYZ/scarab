@@ -2,15 +2,22 @@
 package xyz.kd5ujc.scarab.node.log
 
 import io.circe.Json
+import java.time.Instant
 
 /** What one event says in the log: its kind (which gives its namespace), its severity, and the
   * fields of its JSON line after `event` and `at`, in order. Only this package builds one, from an
   * event through its [[Traced]] instance.
+  *
+  * @param time
+  *   When the event happened, if that is not when it is written: a line the forger held until its
+  *   slot's outcome was final (#1101). The log writes it as the line's `at`; otherwise `at` is the
+  *   time of writing.
   */
 final case class Line private[log] (
     kind: EventKind,
     severity: Severity,
-    fields: List[(String, Json)]
+    fields: List[(String, Json)],
+    time: Option[Instant] = None
 ):
   /** The line at another severity than its kind's usual one. */
   private[log] def at(other: Severity): Line = copy(severity = other)

@@ -1916,7 +1916,7 @@ object Main extends IOApp:
 
   /** What the forger reports: to the log and the metrics. */
   private def forgeEvents(measured: EventMetrics[IO])(using Log[IO]): ForgeEvents[IO] =
-    Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge)
+    Log.forge(measured.forge)
 
   /** The services beside the peer network: the node-to-client server, the forger with `--forge`,
     * the stall watchdog and the memory report.
