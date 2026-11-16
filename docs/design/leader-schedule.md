@@ -355,8 +355,11 @@ At the wake the fiber makes an **early attempt**. It is provisional until the sl
    differ, `Leadership.check` decides afresh and proves a won slot, exactly as the per-slot loop would.
 4. The tick, the mempool snapshot, the block built and signed, as now. The attempt records what it was made from: its
    block context (the parent and the block number), the slot's inputs (the nonce, the pool's stake and the total, the
-   VRF key), and the credentials in force (the KES key and the certificate, from the same reload). Its `forgedBlock`
-   line and the forge counters are held ([#1101, Q4](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395)).
+   VRF key), and the credentials in force (the KES key and the certificate, from the same reload). **Every line of the
+   early attempt, from `startLeadershipCheck` to `forgedBlock`, and the forge counters are held** until the block is
+   handed over or the slot's refusal is final, so the log shows one attempt per slot, the one that counted
+   ([#1101, Q4](https://github.com/KD5UJC-XYZ/scarab/issues/1101#issuecomment-6905164395): lines cover only what is
+   final).
 
 **An early refusal is retried up to the onset.** If the early attempt gives the slot up (`noLedgerView`,
 `slotIsImmutable` or `blockFromFuture` because the tip is not yet where it will be, or not led because the inputs it
@@ -371,10 +374,13 @@ at the onset is logged once, as the reference logs it in the slot.
 - the slot's inputs derived at the onset are those the attempt was made from;
 - forging is still enabled with the same credentials.
 
-If any of them differs, the pending block is discarded (one Debug line, Q4) and the slot is forged again at the onset
-from the node as it is then, exactly as the per-slot loop forges in the slot; that block is handed over as soon as it is
-built. A change of credentials before the onset (a SIGHUP that installs another VRF key, KES key or certificate, or
+If any of them differs, the pending block is discarded and the slot is forged again at the onset from the node as it
+is then, exactly as the per-slot loop forges in the slot; that block is handed over as soon as it is built. The
+discarded attempt's held lines are dropped and it logs one Debug line instead (Q4), so the slot's sequence appears
+once, the re-forge's. A change of credentials before the onset (a SIGHUP that installs another VRF key, KES key or certificate, or
 that disables forging) discards a pending block at once, so nothing signed with replaced credentials is handed over.
+Where the reference cancels its forging thread on such a reload (`blockForgingController`, C19), the attempt here runs
+to that check and is discarded there; nothing an operator sees differs but the one Debug line.
 
 The forging fiber handles one slot at a time and does not cancel a forge under way when the schedule changes, as
 Amaru's stage does not; the HotKeys lock already orders signing against a reload. So the block handed over for a slot
