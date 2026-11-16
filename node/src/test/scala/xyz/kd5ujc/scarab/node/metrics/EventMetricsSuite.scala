@@ -56,12 +56,16 @@ class EventMetricsSuite extends CatsEffectSuite:
   test("an applied block counts under its era, sets the era gauge and the peer's tip") {
     fixture.flatMap { (metrics, em) =>
       for
-        _ <- em.follower.emit(FollowerEvent.Extended(block(1), 0, tip(5000, 400), Era.Babbage))
-        _ <- em.follower.emit(FollowerEvent.Extended(block(2), 0, tip(5010, 401), Era.Conway))
+        _ <- em.follower.emit(
+          FollowerEvent.Extended(block(1), 0, Some(tip(5000, 400)), Era.Babbage)
+        )
+        _ <- em.follower.emit(FollowerEvent.Extended(block(2), 0, Some(tip(5010, 401)), Era.Conway))
+        // no peer has announced a tip: the gauges keep the last one announced
+        _ <- em.follower.emit(FollowerEvent.Extended(block(3), 0, None, Era.Conway))
         s <- metrics.snapshot
       yield
         assertEquals(counter(s, Catalogue.blocksApplied, Era.Babbage), Some(1.0))
-        assertEquals(counter(s, Catalogue.blocksApplied, Era.Conway), Some(1.0))
+        assertEquals(counter(s, Catalogue.blocksApplied, Era.Conway), Some(2.0))
         assertEquals(gauge(s, Catalogue.currentEra, Era.Conway), Some(1.0))
         assertEquals(gauge(s, Catalogue.currentEra, Era.Babbage), Some(0.0))
         assertEquals(gauge(s, Catalogue.peerTipSlot, ()), Some(5010.0))

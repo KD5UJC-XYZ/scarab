@@ -86,7 +86,7 @@ object Traced:
         "block" -> block(b),
         "epoch" -> epoch.asJson,
         "era" -> era.toString.asJson,
-        "peerTip" -> point(tip.point)
+        "peerTip" -> tip.fold(Json.Null)(t => point(t.point))
       )
     case FollowerEvent.RolledBack(from, to, depth) =>
       EventKind.RolledBack.line("from" -> point(from), "to" -> point(to), "depth" -> depth.asJson)

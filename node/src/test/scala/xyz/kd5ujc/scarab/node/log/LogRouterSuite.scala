@@ -130,7 +130,7 @@ class LogRouterSuite extends CatsEffectSuite:
     lines(p).flatMap(l => parse(l).toOption.flatMap(_.hcursor.get[String]("event").toOption))
 
   private def extended(n: Int) =
-    FollowerEvent.Extended(block.copy(slot = n), BigInt(0), tip, Era.Conway)
+    FollowerEvent.Extended(block.copy(slot = n), BigInt(0), Some(tip), Era.Conway)
 
   test("a sampled namespace keeps the first line of every N, the others all of theirs") {
     tempDir.flatMap { dir =>

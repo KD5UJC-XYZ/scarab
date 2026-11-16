@@ -42,7 +42,7 @@ object LogRouterBenchMain extends IOApp.Simple:
     FollowerEvent.Extended(
       block,
       BigInt(0),
-      ChainSync.Tip(block.point, ChainSync.UInt64.saturating(17)),
+      Some(ChainSync.Tip(block.point, ChainSync.UInt64.saturating(17))),
       Era.Conway
     )
 
