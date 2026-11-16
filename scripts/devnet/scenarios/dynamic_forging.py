@@ -145,7 +145,9 @@ class Toggle:
         low, high = window
         scheduled = sorted(s for slots in schedules.values() for s in slots if low < s < high)
         forged = [e["slot"] for e in events if e["event"] == "forged" and low < e["slot"] < high]
-        checked = [e["slot"] for e in events if e["event"] == "startLeadershipCheck" and low < e["slot"] < high]
+        # `pool` imports this module, so its helper is taken at the call
+        from .pool import handled_slots
+        checked = sorted(s for s in handled_slots(events) if low < s < high)
         after = [e["slot"] for e in events if e["event"] == "forged" and e["slot"] > high]
         summary.update({"scheduledWhileDisabled": scheduled, "forgedWhileDisabled": forged,
                         "slotsStartedWhileDisabled": len(checked), "forgedAfterEnabled": len(after)})
