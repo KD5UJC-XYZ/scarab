@@ -177,10 +177,10 @@ class DeepQuerySuite extends FailsOnUncaught:
 
   test("unsupported and malformed deep queries return typed failures on a small stack") {
     onSmallStack {
-      // GetEpochNo of a state before Conway, which the node decodes but does not answer: every
+      // GetStakePools of a state before Conway, which the node decodes but does not answer: every
       // query of Conway is answered at every version (#924)
       val early = QueryView(Point.Origin, None, shelleyState)
-      val query = decoded(nested(1, era = Era.Shelley))
+      val query = decoded(nested(16, era = Era.Shelley))
       assertEquals(QueryAnswers.utxoNeeds(early, query), QueryAnswers.UtxoNeeds.Nothing)
       assertEquals(
         QueryAnswers.answerOrWhy(env, early, Map.empty, query),
@@ -202,7 +202,7 @@ class DeepQuerySuite extends FailsOnUncaught:
         (0 until depth).foldLeft(leaf)((q, _) => LedgerQuery.GetCBOR(q))
       )
       assertEquals(
-        QueryAnswers.answerOrWhy(env, early, Map.empty, wrapped(LedgerQuery.GetEpochNo)),
+        QueryAnswers.answerOrWhy(env, early, Map.empty, wrapped(LedgerQuery.GetStakePools)),
         Left(Unanswered.Unsupported)
       )
       val answer = QueryAnswers
@@ -242,7 +242,7 @@ class DeepQuerySuite extends FailsOnUncaught:
   test("a session answers and returns a refusal diagnostic at 20000 layers on a small stack") {
     onSmallStack {
       val program = for
-        // a state before Conway, where GetEpochNo is decoded but not answered
+        // a state before Conway, where GetStakePools is decoded but not answered
         chain <- Ref.of[IO, VolatileChain[MirrorState]](
           VolatileChain(5, Anchor(None, shelleyState), Vector.empty)
         )
@@ -258,7 +258,7 @@ class DeepQuerySuite extends FailsOnUncaught:
             session =>
               for
                 answered <- session.answer(nested(7, era = Era.Shelley))
-                refused <- session.answer(nested(1, era = Era.Shelley))
+                refused <- session.answer(nested(16, era = Era.Shelley))
               yield answered -> refused
           )
         }
@@ -270,7 +270,7 @@ class DeepQuerySuite extends FailsOnUncaught:
           Right(
             Left(
               Refusal.Unsupported(
-                s"IfCurrent(${Era.Shelley.index},GetCBOR[$depth](GetEpochNo))"
+                s"IfCurrent(${Era.Shelley.index},GetCBOR[$depth](GetStakePools))"
               )
             )
           )

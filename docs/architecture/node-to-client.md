@@ -43,8 +43,10 @@ answer from the state of the chain as a pure function (the state is read through
 31-element Conway protocol parameters, outputs in the canonical array or keyed form, the governance
 state with its DRep pulser, stake and pool distributions, ...; containers of more than 23 elements are
 indefinite as in the ledger's `variableListLenEncoding`). The only effect is reading UTxO entries not
-in the retained state from the backing store (`UtxoNeeds`). Only the current era (Conway) is
-answered; a query for another era gets the combinator's mismatch reply. The era history is built
+in the retained state from the backing store (`UtxoNeeds`). Only the era the ledger is in is
+answered: in Conway every query, before it the ledger states, the chain-dependent state, the UTxO
+queries, the reward provenance and the queries that read nothing of the era's own
+(`QueryAnswers.inEveryEra`); a query for another era gets the combinator's mismatch reply. The era history is built
 from the configured hard-fork epochs, the transitions this run observed and the safe zone of the
 current era (`EraHistory`); a version-triggered hard fork that happened before this run cannot be
 placed and is assumed to start with the previous era. As on the reference, a result has no byte or item
