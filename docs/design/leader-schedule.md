@@ -117,10 +117,12 @@ What follows is derived, not a line of the reference:
 - **Determined.** Once a chain holds a block at or after `F`, every block that can extend it is at a later slot and
   leaves the candidate unchanged, so on that chain the next epoch's nonce is fixed. Before that, a late block in a slot
   before `F` can still extend the chain and change it, with no rollback: passing `F` on the clock is not enough.
-- **Settled.** After that, only a fork that replaces the last block before `F` changes it. Chain selection rolls back
-  at most k blocks, so the nonce is settled once k blocks are on the chain after that block, that is, k blocks at or
-  after `F`. The k-block bound is Scarab's (`VolatileChain`), which mirrors the reference's chain database; it was not
-  read again for this document.
+- **Settled.** After that, only a fork that rolls back past every block at or after `F` can change it: one that
+  replaces a block before `F`, or one that removes the blocks at or after `F` and appends a block in a slot before `F`.
+  So the nonce is settled once a block at or after `F` is immutable. Scarab's `VolatileChain` keeps the last k blocks
+  and cannot roll back past its anchor, so the first block at or after `F` becomes immutable when k blocks follow it:
+  once k + 1 blocks at or after `F` are on the chain. The k-block bound mirrors the reference's chain database; that
+  bound was not read again for this document.
 
 ### 2.4 The stake distribution of the next epoch
 
@@ -200,7 +202,7 @@ until the forging area moves with #1002.
 | C11 | Per header: evolving nonce extended; candidate set only if `slot + window < firstSlotNextEpoch`; `labNonce` from the previous hash. | 82ecba32 `Protocol/Praos.hs` 500-533 | 808e4005 `Protocol/Praos.hs` 506-539 | yes |
 | C12 | Window: 4k/f for Praos but Babbage, 3k/f for Babbage; TPraos UPDN uses the ledger's `stabilityWindow`, 3k/f. | 82ecba32 `Cardano/Node.hs` 683-697, 788-799; 4c81e909 `Shelley/StabilityWindow.hs` 14-35, `Shelley/Genesis.hs` 786-789; f649f975 `TPraos/Rules/Updn.hs` 60-75 | 808e4005 `Cardano/Node.hs` 627-641, 732-743; 29a7d656 the same ledger lines | yes |
 | C13 | At a new epoch: epoch nonce `candidate ⭒ lastEpochBlockNonce`; previous epoch nonce the old one; `lastEpochBlockNonce` the `labNonce`. | 82ecba32 `Protocol/Praos.hs` 436-463 | 808e4005 `Protocol/Praos.hs` 442-469 | yes |
-| C14 | The nonce is determined once a block at or after the freeze slot is on the chain, and settled k blocks later. | derived from C11, C13 and the k-block rollback bound | the same | derived; the rollback bound not re-read |
+| C14 | The nonce is determined once a block at or after the freeze slot is on the chain, and settled once a block at or after it is immutable: k + 1 blocks at or after it. | derived from C11, C13 and the k-block rollback bound | the same | derived; the rollback bound not re-read |
 | C15 | NEWEPOCH sets `nesPd` to `ssStakeMarkPoolDistr` before SNAP; SNAP sets that field to the new mark's pool distribution; TICKF into the next epoch takes the same field. | f649f975 `Conway/Rules/NewEpoch.hs` 154-188, `Conway/Rules/Tickf.hs` 42-66; 4c81e909 `Shelley/Rules/Snap.hs` 94-102 | 29a7d656 the same Conway lines; `Snap.hs` 94-103 | yes |
 | C16 | The ledger view is forecast only before the stability window after the state's slot's successor. | 82ecba32 `Shelley/Ledger/SupportsProtocol.hs` 100-127 | 808e4005 the same lines | yes |
 | C17 | A header up to the skew early is held until its onset; earlier, the client disconnects; the skew is 2 s; cardano-node sets no other. | 82ecba32 `MiniProtocol/ChainSync/Client/InFutureCheck.hs` 134-176, 205-207; `MiniProtocol/ChainSync/Client.hs` 1751-1775; `Node.hs` 589, 1107-1108; 11.1.3 `Run.hs` | 808e4005 the same `InFutureCheck.hs` lines; `Client.hs` 1757-1781; `Node.hs` 592, 1140-1141; 11.2.1 `Run.hs` | yes; "no override" by search of `Run.hs`. The chain database's handling of a future block: unverified |
@@ -218,8 +220,8 @@ pragma-org/amaru forges from a schedule computed once per epoch. This is its eng
   the epoch's led slots (89-95);
 - only the next led slot is armed, 50 ms before its onset; the block is sent to chain selection at onset, not before,
   "so we do not publish a future header" (95-97);
-- the schedule is not settled until k blocks are adopted past the freeze, a rollback past the window recomputes it,
-  and at start-up the current epoch is computed from the tip's nonce (99-103).
+- a rollback that reaches back before the window can change the candidate and recomputes the schedule, and at
+  start-up the current epoch is computed from the tip's nonce (99-103).
 
 Its `crates/amaru-consensus/src/stages/forge_block/schedule.rs` keys a pending computation by its nonce and drops a
 result computed from a replaced one (15-19, 94-114). Its `crates/amaru-ouroboros/src/praos/leader.rs` builds the full
@@ -454,11 +456,11 @@ the devnet `pool` scenario): k = 5, f = 0.05, 500-slot epochs of 0.1 s slots. On
 |---|---|---|
 | Randomness window 4k/f | 172,800 slots (48 h) | 400 slots (40 s) |
 | Freeze slot, into the epoch | 259,200 (3 days in) | 100 (10 s in) |
-| Expected time from the freeze to settlement (k blocks at f per slot: k/f) | 43,200 slots (12 h) | 100 slots (10 s) |
-| From settlement, expected, to the epoch's start (3k/f) | 129,600 slots (36 h) | 300 slots (30 s) |
+| Expected time from the freeze to settlement (k + 1 blocks at f per slot: (k + 1)/f) | 43,220 slots (about 12 h and 20 s) | 120 slots (12 s) |
+| From settlement, expected, to the epoch's start ((3k - 1)/f) | 129,580 slots (about 36 h less 20 s) | 280 slots (28 s) |
 | Outputs to evaluate per epoch | 432,000 | 500 |
 | Evaluations per second, spread from the freeze to the epoch's start | 2.5 | 12.5 |
-| The same, from expected settlement | 3.3 | 16.7 |
+| The same, from expected settlement | 3.3 | 17.9 |
 | The per-slot loop today | 1 | 10 |
 | CPU per epoch at 1 ms each | about 432 s (0.25% of a core over 48 h, 0.1% over the epoch) | about 0.5 s (1.25% of a core over 40 s, 1% over the epoch) |
 | Expected led slots (decision 7's gauge) | about 22 for a pool with 0.1% of the stake | about 8.5 for a pool with a third |
@@ -474,8 +476,8 @@ Three readings:
 - **What is gained is timing.** The check is off the slot's path, and the block of a led slot is ready at its onset.
 
 Settlement is a state to report, not a gate. Decision 4 starts the schedule when the nonce is known, and on the
-devnet, where k = 5 and Antithesis injects faults, k blocks may not arrive before the boundary. A schedule from a nonce
-that a fork then replaces is replaced by the restart, and a led slot is checked again at the slot (§9 Q10).
+devnet, where k = 5 and Antithesis injects faults, k + 1 blocks may not arrive before the boundary. A schedule from a
+nonce that a fork then replaces is replaced by the restart, and a led slot is checked again at the slot (§9 Q10).
 
 ## 7. Conformance evidence
 
