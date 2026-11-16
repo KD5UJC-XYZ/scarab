@@ -126,10 +126,10 @@ class CheckCase(unittest.TestCase):
         self.assertTrue(any("duplicate entry codec:codec" in f for f in found))
         self.assertTrue(any("ghost:ghost: module is not defined" in f for f in found))
 
-    def test_scalus_style_package_outside_scarab_root(self):
+    def test_package_outside_scarab_root(self):
         def add(root):
-            write(root, "codec/src/main/scala/scalus/uplc/V.scala", "object V\n")
-        found = self.check([ENTRY, {**ENTRY, "path": "scalus/uplc", "entryPoints": ["V"]}], mutate=add)
+            write(root, "codec/src/main/scala/org/example/V.scala", "object V\n")
+        found = self.check([ENTRY, {**ENTRY, "path": "org/example", "entryPoints": ["V"]}], mutate=add)
         self.assertEqual(found, ["stale markdown"])
 
 

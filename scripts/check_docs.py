@@ -23,7 +23,7 @@ code blocks are never inspected. Every finding is a `Violation` of one `Kind`:
   FILE_SIZE         a file above the per-file byte budget (measure: bytes). Report-only
   TABLE_CELL        a table cell above the per-cell character budget (measure: characters). Report-only
   UNREGISTERED_PIN  (only when `docs/data/reference-pins.json` exists) a cited upstream version (`cardano-node 11.1.3`,
-                    `Scalus 1.3.0`, ...) or 7-40 hex commit id (in a GitHub commit/tree/blob URL, or on a line that
+                    `jblst 0.3.18`, ...) or 7-40 hex commit id (in a GitHub commit/tree/blob URL, or on a line that
                     names an upstream repository) that no registered pin covers
   PIN_REGISTRY      a registry defect: a dependent path that does not exist, or a dependent that no longer mentions
                     the pin's version or revision
@@ -31,7 +31,7 @@ code blocks are never inspected. Every finding is a `Violation` of one `Kind`:
                     from `changes/`, from `CHANGELOG.md` and from release notes, so its links are absolute URLs
                     (pinned to a revision for a historical reference), as docs/changelog-preparation.md says
   STALE_CURRENT     a version called latest or current that is not the current one: a watched name with a registered
-                    version (`Scalus 1.3.0 (the latest release)`), or a ledger snapshot magic other than the newest
+                    version (`cardano-node 11.1.3 (the latest release)`), or a ledger snapshot magic other than the newest
                     one of `PersistedFormat.scala` (`SCRBSNP5`), within a few words of `latest`, `current`,
                     `currently` or `now`. History that names an older version without calling it current is not
                     reported
@@ -106,11 +106,11 @@ class BranchName(str, Enum):
 
 BRANCH_NAMES = frozenset(b.value for b in BranchName)
 # Names whose cited versions must be registered. A registry entry adds its own name and aliases.
-WATCHED_VERSION_NAMES = ("cardano-node", "Scalus", "Mithril", "cuddle", "jblst", "blst", "plutus-core")
+WATCHED_VERSION_NAMES = ("cardano-node", "Mithril", "cuddle", "jblst", "blst", "plutus-core")
 # Repository names that make a nearby bare commit id a citation of an upstream revision.
 UPSTREAM_REPOS = (
     "cardano-node", "cardano-ledger", "ouroboros-network", "ouroboros-consensus", "plutus", "formal-ledger-specifications",
-    "constrained-generators", "cardano-blueprint", "mithril", "blst", "scalus", "cardano-cls", "cuddle",
+    "constrained-generators", "cardano-blueprint", "mithril", "blst", "cardano-cls", "cuddle",
 )
 
 

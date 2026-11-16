@@ -11,12 +11,12 @@ DECLARATIONS = """\
 object Dependencies {
   object V {
     val cats = "2.13.0"
-    val scalus = "1.3.0"
+    val kittens = "3.5.0"
     val dnsjava = "3.6.5" // a comment
   }
   object Libraries {
     val cats = "org.typelevel" %% "cats-core" % V.cats
-    val scalus = "org.scalus" %% "scalus" % V.scalus
+    val kittens = "org.typelevel" %% "kittens" % V.kittens
     val dnsjava = "dnsjava" % "dnsjava" % V.dnsjava
     val munitTest = "org.scalameta" %% "munit" % "1.0.2" % Test
   }
@@ -29,7 +29,7 @@ class ParseTest(unittest.TestCase):
         parsed = parse_dependencies(DECLARATIONS)
         self.assertEqual(
             [(d.artifact, d.version, d.test_only) for d in parsed],
-            [("cats-core", "2.13.0", False), ("scalus", "1.3.0", False), ("dnsjava", "3.6.5", False), ("munit", "1.0.2", True)],
+            [("cats-core", "2.13.0", False), ("kittens", "3.5.0", False), ("dnsjava", "3.6.5", False), ("munit", "1.0.2", True)],
         )
 
 
@@ -38,39 +38,39 @@ class FindingsTest(unittest.TestCase):
         return parse_dependencies(DECLARATIONS)
 
     def test_records_naming_every_artifact_at_the_declared_version_pass(self):
-        notice = "cats-core, cats-kernel 2.13.0\nScalus (org.scalus:scalus_3 1.3.0)\ndnsjava 3.6.5\nmunit 1.0.2\n"
-        inventory = "org.typelevel:cats-core_3 | 2.13.0\norg.scalus:scalus_3 | 1.3.0\ndnsjava:dnsjava | 3.6.5\n"
+        notice = "cats-core, cats-kernel 2.13.0\nKittens (org.typelevel:kittens_3 3.5.0)\ndnsjava 3.6.5\nmunit 1.0.2\n"
+        inventory = "org.typelevel:cats-core_3 | 2.13.0\norg.typelevel:kittens_3 | 3.5.0\ndnsjava:dnsjava | 3.6.5\n"
         self.assertEqual(findings(self.deps(), notice, inventory), [])
 
     def test_a_missing_runtime_record_is_reported_per_file(self):
-        notice = "cats-core 2.13.0\nScalus 1.3.0 scalus_3\ndnsjava 3.6.5\nmunit 1.0.2\n"
+        notice = "cats-core 2.13.0\nKittens 3.5.0 kittens_3\ndnsjava 3.6.5\nmunit 1.0.2\n"
         self.assertEqual(
             findings(self.deps(), notice, "org.typelevel:cats-core_3 | 2.13.0\n"),
-            ["scalus: not named in docs/licenses.md (declared 1.3.0)",
+            ["kittens: not named in docs/licenses.md (declared 3.5.0)",
              "dnsjava: not named in docs/licenses.md (declared 3.6.5)"],
         )
 
     def test_a_test_only_library_needs_only_the_notice(self):
-        notice = "cats-core 2.13.0\nscalus 1.3.0\ndnsjava 3.6.5\n"
-        rows = findings(self.deps(), notice, "cats-core 2.13.0\nscalus 1.3.0\ndnsjava 3.6.5\n")
+        notice = "cats-core 2.13.0\nkittens 3.5.0\ndnsjava 3.6.5\n"
+        rows = findings(self.deps(), notice, "cats-core 2.13.0\nkittens 3.5.0\ndnsjava 3.6.5\n")
         self.assertEqual([row for row in rows if "munit" in row], ["munit: not named in NOTICE (declared 1.0.2)"])
 
     def test_a_stale_version_next_to_the_artifact_is_a_mismatch(self):
-        notice = "cats-core 2.13.0\nScalus (org.scalus:scalus_3 1.2.0)\ndnsjava 3.6.5\nmunit 1.0.2\n"
-        rows = findings(self.deps(), notice, "org.typelevel:cats-core_3 | 2.13.0\norg.scalus:scalus_3 | 1.3.0\ndnsjava 3.6.5\n")
-        self.assertEqual(rows, ["scalus: NOTICE names 1.2.0, Dependencies.scala declares 1.3.0"])
+        notice = "cats-core 2.13.0\nKittens (org.typelevel:kittens_3 3.4.0)\ndnsjava 3.6.5\nmunit 1.0.2\n"
+        rows = findings(self.deps(), notice, "org.typelevel:cats-core_3 | 2.13.0\norg.typelevel:kittens_3 | 3.5.0\ndnsjava 3.6.5\n")
+        self.assertEqual(rows, ["kittens: NOTICE names 3.4.0, Dependencies.scala declares 3.5.0"])
 
     def test_content_versioned_dependency_is_checked_without_dropping_its_suffix(self):
         from check_notice import Dependency
-        dependency = Dependency("scalus", "scalus", "1.4.0-scarab-abc123", False)
-        notice = "org.scalus:scalus_3 1.4.0-scarab-abc123"
+        dependency = Dependency("kittens", "kittens", "3.5.0-scarab-abc123", False)
+        notice = "org.typelevel:kittens_3 3.5.0-scarab-abc123"
         self.assertEqual(findings([dependency], notice, notice), [])
         self.assertTrue(findings([dependency], notice.replace("abc123", "wrong"), notice))
-        self.assertTrue(findings([dependency], "org.scalus:scalus_3 1.4.0", notice))
+        self.assertTrue(findings([dependency], "org.typelevel:kittens_3 3.5.0", notice))
 
     def test_suffixed_neighbours_and_licence_names_do_not_count_as_versions_or_artifacts(self):
-        notice = "cats-core 2.13.0\nscalus-secp256k1-jni 0.6.0 Apache-2.0\nscalus_3 1.3.0\ndnsjava 3.6.5\nmunit 1.0.2\n"
-        self.assertEqual(findings(self.deps(), notice, "cats-core 2.13.0\nscalus_3 1.3.0\ndnsjava 3.6.5\n"), [])
+        notice = "cats-core 2.13.0\nkittens-laws 0.6.0 Apache-2.0\nkittens_3 3.5.0\ndnsjava 3.6.5\nmunit 1.0.2\n"
+        self.assertEqual(findings(self.deps(), notice, "cats-core 2.13.0\nkittens_3 3.5.0\ndnsjava 3.6.5\n"), [])
 
 
 class RepositoryTest(unittest.TestCase):
