@@ -38,9 +38,11 @@ enum PoolCert:
   * derived `Eq` compares the decoded `StrictSeq StakePoolRelay` and `PoolMetadata`: an empty relay
   * list read as `80` and as `9800` is one list. `sppId`, the pool's key hash, is the operator's 28
   * bytes as the reference types them (`sppId :: KeyHash StakePool`). The metadata's hash (`pmHash`
-  * of `sppMetadata`) is read when the parameters are, so POOL reads it as the reference's field.
+  * of `sppMetadata`) is read when the parameters are, so POOL reads it as the reference's field;
+  * only [[of]] makes one, so the key hash is always the operator's and the hash always that of the
+  * metadata it keeps.
   */
-final class StakePoolParams private[era] (
+final class StakePoolParams private (
     val sppId: KeyHash[StakePool],
     val value: PoolParams,
     val metadataHash: Option[Bytes]
@@ -66,7 +68,7 @@ object StakePoolParams:
       value.metadata
         .traverse(PoolParams.metadataHash(_)(using ByteStrings.Chunked))
         .leftMap(EraTxError.Decode(_))
-    ).mapN(StakePoolParams(_, value, _))
+    ).mapN(new StakePoolParams(_, value, _))
 
 /** What a Conway delegation delegates to (`data Delegatee`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:379-383`, cardano-ledger f649f975): a
