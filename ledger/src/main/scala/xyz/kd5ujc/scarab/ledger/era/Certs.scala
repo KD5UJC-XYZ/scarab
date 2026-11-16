@@ -59,6 +59,29 @@ enum Delegatee:
   case DelegVote(drep: DRep)
   case DelegStakeVote(pool: KeyHash[StakePool], drep: DRep)
 
+object Delegatee:
+  /** `mkDelegatee` (`Conway/TxCert.hs:439-445`, cardano-ledger f649f975): what a pool and a DRep
+    * delegate to, none if neither is given.
+    */
+  def mkDelegatee(pool: Option[KeyHash[StakePool]], drep: Option[DRep]): Option[Delegatee] =
+    (pool, drep) match
+      case (None, None)       => None
+      case (Some(p), None)    => Some(DelegStake(p))
+      case (None, Some(d))    => Some(DelegVote(d))
+      case (Some(p), Some(d)) => Some(DelegStakeVote(p, d))
+
+  /** `getStakePoolDelegatee` (`Conway/TxCert.hs:447-451`, cardano-ledger f649f975). */
+  def getStakePoolDelegatee(d: Delegatee): Option[KeyHash[StakePool]] = d match
+    case DelegStake(pool)        => Some(pool)
+    case DelegVote(_)            => None
+    case DelegStakeVote(pool, _) => Some(pool)
+
+  /** `getDRepDelegatee` (`Conway/TxCert.hs:453-456`, cardano-ledger f649f975). */
+  def getDRepDelegatee(d: Delegatee): Option[DRep] = d match
+    case DelegStake(_)           => None
+    case DelegVote(drep)         => Some(drep)
+    case DelegStakeVote(_, drep) => Some(drep)
+
 /** The staking certificates from Conway (`data ConwayDelegCert`, `Conway/TxCert.hs:473-486`,
   * cardano-ledger f649f975).
   */
