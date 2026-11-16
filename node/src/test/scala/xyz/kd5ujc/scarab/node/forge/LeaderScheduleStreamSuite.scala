@@ -292,3 +292,36 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
       assertEquals(mismatches(state, current, from = 1300), Vector.empty)
     }
   }
+
+  test("a value replaced before its computation began never undoes the schedule after it") {
+    // the signal gives no inputs, then at once an epoch's, which is the value in force: fs2's
+    // `switchMap` can start the first value's computation after the second's ends, whichever order
+    // the fibers released together run in (`TestControl` 's seed); the epoch's schedule, once
+    // complete, stays
+    val g = geometry(100, 300, 0.seconds)
+    val i = inputs(g, 1)
+    val replaced = new fs2.concurrent.Signal[IO, InForce]:
+      def discrete = fs2.Stream(InForce.none, InForce.of(i)) ++ fs2.Stream.never[IO]
+      def continuous = fs2.Stream.repeatEval(get)
+      def get = IO.pure(InForce.of(i))
+    (1 to 64).toVector
+      .traverse { n =>
+        val seed = java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
+        for
+          control <- TestControl.execute(
+            for
+              schedule <- LeaderSchedule.create[IO](g)
+              _ <- schedule.computed(replaced).compile.drain.start
+            yield schedule,
+            seed = Some(seed)
+          )
+          _ <- control.tickAll
+          result <- control.results
+          kept <- result match
+            case Some(cats.effect.kernel.Outcome.Succeeded(schedule)) =>
+              schedule.schedules.get.map(_.of(i).exists(_.complete))
+            case other => IO.raiseError(new AssertionError(s"the program did not start: $other"))
+        yield n -> kept
+      }
+      .map(kept => assertEquals(kept.filterNot(_._2).map(_._1), Vector.empty, "seeds that lost it"))
+  }
