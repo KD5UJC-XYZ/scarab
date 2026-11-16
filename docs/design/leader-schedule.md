@@ -294,10 +294,12 @@ four and is returned as now:
 Decision 2's per-slot clock watcher is the clock fiber together with the slot driver's per-slot work, and decision 3's
 timer is the slot driver's update at the first slot of each KES period.
 
-They share three pieces of state: the schedule (§5.2); one claim per slot, which says who owns the slot's outcome
-(§5.4); and the key reservation with the result of each KES period's update (§5.5). No fiber waits on the slot driver:
-the clock fiber only writes the slot, and the forging fiber writes its results and moves on. The slot driver waits on
-the forging fiber's results and on the key reservation, never on both at once, so no cycle of waits can form.
+They share three pieces of state: the schedule (§5.2); one claim per slot and the slot driver's resolved-through mark,
+which say who owns a slot's outcome and how far the outcomes are settled (§5.4); and the key reservation with the
+result of each KES period's update (§5.5). The clock fiber waits on no one. The forging fiber waits only for the slot
+driver's mark, before a forge starts and holding nothing; the slot driver waits on the forging fiber's result for the
+slot just past the mark, which the forging fiber can always forge, and on the key reservation, never on both at once.
+So no cycle of waits can form (§5.4).
 
 Time comes only from the `now` and `sleep` the forger already takes, so every test runs under `TestControl`
 ([EFF-6](../design-rules.md#eff-6), [TST-2](../design-rules.md#tst-2)). The per-slot loop (`loop`, `stepInScope`) is
@@ -348,9 +350,9 @@ persisted format, frozen by [FMT-1](../design-rules.md#fmt-1). A restart compute
 ### 5.3 Forging a led slot
 
 The forging fiber takes the earliest led slot after the last it handled, and sleeps until the slot's onset less the
-wake margin. A change of the schedule interrupts the sleep, and it takes the earliest again; so does a slot the slot
-driver claims for it (§5.4 step 3), which it forges at once. The proposed margin is
-**50 ms**:
+wake margin and until the slot driver has settled every slot before it (the mark of §5.4, forging follows slot order).
+A change of the schedule interrupts the sleep, and it takes the earliest again; so does a slot the slot driver claims
+for it (§5.4 step 3), which it forges at once. The proposed margin is **50 ms**:
 
 - Amaru uses it;
 - twenty devnet `pool` runs with Scarab on one CPU measured a median of 4 to 10 ms from a slot's start to its
@@ -430,12 +432,34 @@ during its forging action. While forging is disabled it handles nothing, as the 
 (C19).
 
 **One owner per slot.** Each slot has at most one claim, set once and atomically (a compare-and-set on a map from slot
-to claim). The claim is either the forging fiber's, made at its wake or at the slot driver's request, which carries
-the attempt's final result once it is known (a `Deferred`), or the slot driver's own. Whichever comes second finds the
-claim and leaves the slot to its owner. The map also holds the last slot the slot driver has handled or passed over,
-in the same atomic update, and a claim of a slot at or below it fails: the forging fiber cannot claim a slot the slot
-driver has already skipped. The slot driver is the only publisher of every slot's outcome, whoever owns the slot, and
-the forging fiber never waits for it.
+to claim). The claim is either the forging fiber's, made when it starts a forge (below) or at the slot driver's
+request, which carries the attempt's final result once it is known (a `Deferred`), or the slot driver's own. Whichever
+comes second finds the claim and leaves the slot to its owner. The map also holds the slot driver's resolved-through
+mark, in the same atomic update: the highest slot whose outcome it has settled, a slot it passed over while blocked
+included. A claim of a slot at or below the mark fails, so the forging fiber cannot claim a slot the slot driver has
+already skipped. The slot driver is the only publisher of every slot's outcome, whoever owns the slot, and the forging
+fiber waits for it only through the mark below.
+
+**Forging follows slot order.** The forging fiber starts the forge of slot t, and claims t, only once the mark has
+reached t - 1. So every slot before t is decided first, and an earlier led slot that the slot driver hands over is the
+earliest slot the forging fiber then takes. The invariant: forges, and so their signatures, run in slot order, and the
+KES key never moves past a period that an earlier slot may still need. Without it, a forge of a later slot in the next
+KES period could advance the key while the slot driver was still deciding an earlier slot; that slot, once found led,
+would have no key left for its period (`Sum6KesSigning` refuses to evolve backward), or would find the tip already
+past it.
+
+There is no cycle of waits. The forging fiber waits only for the mark, and only before a forge starts, holding neither
+the reservation nor the HotKeys lock. The slot driver, at a slot u claimed for forging, waits for u's result; the mark
+is then u - 1, so the forging fiber can always start u, and no other forge can hold the reservation, since none of a
+later slot can have started. At the first slot of a KES period the slot driver waits on the reservation only while a
+forge of that same slot holds it, and that forge waits on nothing the slot driver holds.
+
+The cost is normally none. The slot driver settles slot t - 1 within milliseconds of its onset, before t's wake at t's
+onset less the 50 ms margin. That holds while the slot driver's handling of a slot, the wait for a led slot's result
+included, stays under the slot length less the margin: 50 ms on the trial devnet, 950 ms on mainnet. When it does not,
+on a slow host or after a led slot whose adoption is slow, the early forge of t starts later, when the mark arrives,
+which is still correct. If t's slot passes before then, t is passed over with no line and no count, as the reference
+skips a slot that passes during its forging action (C1).
 
 For each slot it handles, while forging is enabled, the slot driver:
 
@@ -498,15 +522,17 @@ the same action (C2, C3). The slot driver, the only publisher, publishes from th
 
 **The reservation and the locks.** The slot driver and a forge both take the reservation before the HotKeys lock, so
 neither can deadlock the other. The slot driver holds the reservation only for the update itself and waits for no
-attempt's result while it holds it; a forge holds it from its update to its signature and never waits on the slot
-driver. A reload takes the HotKeys lock alone and does not wait for the reservation: a reload during a forge changes
-the credentials, and §5.3 discards that attempt. Without the reservation the key could move to the next period between
-a forge's update and its signature; `Sum6KesSigning` refuses to evolve a key backward, so that block would be lost.
+attempt's result while it holds it; a forge holds it from its update to its signature and waits on nothing the slot
+driver holds (it waits for the mark only before it starts, §5.4). A reload takes the HotKeys lock alone and does not
+wait for the reservation: a reload during a forge changes the credentials, and §5.3 discards that attempt. Without the
+reservation the key could move to the next period between a forge's update and its signature; `Sum6KesSigning` refuses
+to evolve a key backward, so that block would be lost.
 
 On a slow host, a forge of the last slot of period p that is still running when period p+1 begins keeps the key at p
-until it has signed, and the slot driver, waiting on the reservation, then evolves the key to p+1. The key reaches p+1
-late by the rest of that forge, and slots that pass meanwhile are skipped (§5.4), as in the reference, where the next
-slot's update waits for the action under way and the slots that pass during it are skipped (C1).
+until it has signed: no forge of a slot in p+1 starts until that slot is settled (§5.4), and the slot driver reaches
+p+1 only after it, then evolves the key to p+1. The key reaches p+1 late by the rest of that forge, and slots that
+pass meanwhile are skipped (§5.4), as in the reference, where the next slot's update waits for the action under way
+and the slots that pass during it are skipped (C1).
 
 ### 5.6 What the operator sees
 
@@ -609,11 +635,16 @@ scenario.
   `slotsChecked`, `notLeader` and the about-to-lead counter, and no block. And when the slot driver claims a slot
   first and the forging fiber then wakes for it, the fiber finds the claim and leaves the slot.
 - **A KES expiry boundary (§5.5).** The certificate's window ends at a period's first slot. Run with the slot driver's
-  update first, with a forge's update first, and with the slot driver waiting on a reservation held by a forge of a
-  later slot: `KESCouldNotEvolve` appears once, in the first slot in slot order whose checks reach the KES key,
-  `KESKeyAlreadyPoisoned` in each later one, and the gauges come from the one recorded result.
+update first, with a forge's update first, and with the slot driver waiting on the reservation held by a forge of that
+same slot: `KESCouldNotEvolve` appears once, in the first slot in slot order whose checks reach the KES key,
+`KESKeyAlreadyPoisoned` in each later one, and the gauges come from the one recorded result.
 - **The epoch's last slot (§5.4).** A forge of an epoch's last slot is suspended across the boundary: `forgeEpoch`
   comes after that slot's outcome and counts it.
+- **Forging follows slot order (§5.4).** The slot driver is suspended while it decides slot s, the last slot of KES
+  period p, before it hands s over; a scheduled wake for a later slot t in period p+1 comes; then the slot driver
+  resumes and finds s led. s is forged and signed first, with the key of period p, and t after it, and t's forge does
+  not start before s is settled. Likewise two consecutive led slots across a KES boundary: the first is signed in its
+  period, the second's early forge starts once the first is settled, and the key reaches the second period only then.
 - **The clock never waits (§5.4).** With the slot driver blocked on a suspended forge, the clock fiber keeps
   publishing slots and its traces on time, a clock moved back by more than 20 s still stops the node, and the slots
   that passed meanwhile get no line and no count.
