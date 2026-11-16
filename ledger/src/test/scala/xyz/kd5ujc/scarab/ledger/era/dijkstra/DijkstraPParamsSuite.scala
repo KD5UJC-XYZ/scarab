@@ -666,8 +666,8 @@ class DijkstraPParamsSuite extends DisciplineSuite:
       periods <- Gen.listOfN(3, genW32)
       age <- genW32
       round <- Gen.option(genW32)
-      policy <- Gen.choose(0L, Long.MaxValue).map(n => Coin(BigInt(n)))
-      perByte <- Gen.choose(0L, Long.MaxValue).map(CompactCoin.fromUnsigned)
+      policy <- Gen.choose(BigInt(0), BigInt(2).pow(80)).map(Coin(_))
+      perByte <- Gen.long.map(CompactCoin.fromUnsigned)
       endorser <- genUnits
     yield pp.copy(
       maxRefScriptSizePerBlock = THKD(sizes(0)),
@@ -700,36 +700,115 @@ class DijkstraPParamsSuite extends DisciplineSuite:
       assertEquals(DijkstraPParams.fromStored(DijkstraPParams.toStored(pp, testnet)), Right(pp))
     }
 
-  test("the downgrade keeps Conway's fields, which Conway's record writes as Dijkstra's does"):
-    val pp = stored(testnet)
-    val conway = DijkstraPParams.downgrade(pp)
-    assertEquals(
-      ConwayPParams.toStored(conway, Params.base),
-      DijkstraPParams
-        .toStored(pp, Params.base)
-        .copy(
-          maxRefScriptSizePerBlock = Params.base.maxRefScriptSizePerBlock,
-          maxRefScriptSizePerTx = Params.base.maxRefScriptSizePerTx,
-          refScriptCostStride = Params.base.refScriptCostStride,
-          refScriptCostMultiplier = Params.base.refScriptCostMultiplier,
-          maxPledgeLeverage = Params.base.maxPledgeLeverage,
-          minPoolMargin = Params.base.minPoolMargin,
-          leiosAnnouncementPeriodLength = Params.base.leiosAnnouncementPeriodLength,
-          leiosVotePeriodLength = Params.base.leiosVotePeriodLength,
-          leiosDiffusionPeriodLength = Params.base.leiosDiffusionPeriodLength,
-          leiosCommitteeSize = Params.base.leiosCommitteeSize,
-          leiosQuorumStakeThreshold = Params.base.leiosQuorumStakeThreshold,
-          maxEndorserBlockReferencesSize = Params.base.maxEndorserBlockReferencesSize,
-          maxEndorserBlockTxsSize = Params.base.maxEndorserBlockTxsSize,
-          maxEndorserBlockExUnits = Params.base.maxEndorserBlockExUnits,
-          maxRefScriptSizePerEndorserBlock = Params.base.maxRefScriptSizePerEndorserBlock,
-          perasMinCandidateBlockAge = Params.base.perasMinCandidateBlockAge,
-          perasHealingFactor = Params.base.perasHealingFactor,
-          perasCertBoost = Params.base.perasCertBoost,
-          perasTargetCommitteeSize = Params.base.perasTargetCommitteeSize,
-          perasBootstrapRound = Params.base.perasBootstrapRound,
-          perasQuorumThresholdSafetyMargin = Params.base.perasQuorumThresholdSafetyMargin,
-          refInputsCostPerMultiAssetPolicy = Params.base.refInputsCostPerMultiAssetPolicy,
-          refInputsCostPerDatumByte = Params.base.refInputsCostPerDatumByte
-        )
+  test("the downgrade is Conway's record of the same stored parameters"):
+    // each of Conway's fields distinct, so a field taken for another of its type is seen
+    val distinct = testnet.copy(
+      minFeeA = 1,
+      minFeeB = 2,
+      maxBlockBodySize = 3,
+      maxTxSize = 4,
+      maxBlockHeaderSize = 5,
+      keyDeposit = 6,
+      poolDeposit = 7,
+      eMax = 8,
+      nOpt = 9,
+      a0 = Rational(1, 10),
+      rho = Rational(1, 11),
+      tau = Rational(1, 12),
+      minPoolCost = 13,
+      coinsPerUTxOByte = 14,
+      priceMem = Rational(1, 15),
+      priceSteps = Rational(1, 16),
+      maxTxExUnits = xyz.kd5ujc.scarab.plutus.ExUnits(17, 18),
+      maxBlockExUnits = xyz.kd5ujc.scarab.plutus.ExUnits(19, 20),
+      maxValueSize = 21,
+      collateralPercentage = 22,
+      maxCollateralInputs = 23,
+      committeeMinSize = 24,
+      committeeMaxTermLength = 25,
+      govActionLifetime = 26,
+      govActionDeposit = 27,
+      drepDeposit = 28,
+      drepActivity = 29,
+      minFeeRefScriptCostPerByte = Rational(1, 30)
     )
+    assertEquals(
+      Right(DijkstraPParams.downgrade(stored(distinct))),
+      ConwayPParams.fromStored(distinct)
+    )
+
+  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.toString), identity)
+
+  test("an update of unequal components and words at their bounds, through the record and flat"):
+    val max64 = "1bffffffffffffffff"
+    val half64 = "1b8000000000000000"
+    def unit(d: Int) = f"d81e8201$d%02x"
+    val bytes = hex(
+      "aa" +
+        "00" + max64 + // minFeeA
+        "13" + "82d81e820102d81e820304" + // prices 1/2, 3/4
+        "14" + "820506" + // maxTxExUnits
+        "15" + "820708" + // maxBlockExUnits
+        "1819" + "85" + (5 to 9).map(unit).mkString + // pool thresholds 1/5 to 1/9
+        "181a" + "8a" + (10 to 19).map(unit).mkString + // DRep thresholds 1/10 to 1/19
+        "181e" + half64 + // govActionDeposit
+        "182f" + "82090a" + // maxEndorserBlockExUnits
+        "1837" + max64 + // refInputsCostPerMultiAssetPolicy
+        "1838" + half64 // refInputsCostPerDatumByte
+    )
+    val u = decoded(bytes).fold(e => fail(e.toString), identity)
+    val update = DijkstraPParams.fromUpdate(u).fold(e => fail(e.toString), identity)
+    val written =
+      DijkstraPParams.toStored(DijkstraPParams.applyUpdates(stored(testnet), update), testnet)
+    val flat = ProtocolParams
+      .update(testnet, raw(bytes))(using ShelleyBasedEra.SDijkstra)
+      .flatMap(DijkstraParams.update(_, raw(bytes)))
+      .fold(e => fail(e.toString), identity)
+    assertEquals(written, flat)
+    val two64 = BigInt(2).pow(64)
+    assertEquals(
+      written,
+      testnet.copy(
+        minFeeA = two64 - 1,
+        priceMem = Rational(1, 2),
+        priceSteps = Rational(3, 4),
+        maxTxExUnits = xyz.kd5ujc.scarab.plutus.ExUnits(5, 6),
+        maxBlockExUnits = xyz.kd5ujc.scarab.plutus.ExUnits(7, 8),
+        poolVotingThresholds = xyz.kd5ujc.scarab.ledger.PoolVotingThresholds(
+          Rational(1, 5),
+          Rational(1, 6),
+          Rational(1, 7),
+          Rational(1, 8),
+          Rational(1, 9)
+        ),
+        drepVotingThresholds = xyz.kd5ujc.scarab.ledger.DRepVotingThresholds(
+          Rational(1, 10),
+          Rational(1, 11),
+          Rational(1, 12),
+          Rational(1, 13),
+          Rational(1, 14),
+          Rational(1, 15),
+          Rational(1, 16),
+          Rational(1, 17),
+          Rational(1, 18),
+          Rational(1, 19)
+        ),
+        govActionDeposit = two64 / 2,
+        maxEndorserBlockExUnits = xyz.kd5ujc.scarab.plutus.ExUnits(9, 10),
+        refInputsCostPerMultiAssetPolicy = two64 - 1,
+        refInputsCostPerDatumByte = two64 / 2
+      )
+    )
+
+  test("a stored word past its width is refused; the reference-input policy cost is any integer"):
+    val two64 = BigInt(2).pow(64)
+    assertEquals(
+      DijkstraPParams.fromStored(testnet.copy(minFeeA = two64)),
+      Left(PParamsError.OutOfRange(DecodeField.MinFeeA, two64))
+    )
+    assertEquals(
+      DijkstraPParams.fromStored(testnet.copy(refInputsCostPerDatumByte = two64)),
+      Left(PParamsError.OutOfRange(DecodeField.RefInputsCostPerDatumByte, two64))
+    )
+    val large = testnet.copy(refInputsCostPerMultiAssetPolicy = BigInt(2).pow(80))
+    assertEquals(DijkstraPParams.toStored(stored(large), large), large)
