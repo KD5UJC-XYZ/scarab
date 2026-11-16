@@ -9,14 +9,21 @@ import cats.mtl.Raise
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode, Value}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorProvenance, MirrorState}
-import xyz.kd5ujc.scarab.ledger.{Block, StorageError, TxIn, TxOut}
-import xyz.kd5ujc.scarab.ledger.state.{EraTag, LedgerState, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.{Block, Credential, StorageError, TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, StakeDistribution}
+import xyz.kd5ujc.scarab.ledger.state.{
+  EraTag,
+  LedgerState,
+  NewEpochState,
+  PoolDistr,
+  ShelleyBasedEra
+}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.node.read.InEra
+import xyz.kd5ujc.scarab.node.read.{EraRead, InEra}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion}
 import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
@@ -35,9 +42,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   *     and that writes the answer again byte for byte;
   *   - a Shelley-based era answers both queries (and their `GetCBOR` forms), in the era's own
   *     encoding version, the chain-dependent state, the UTxO queries, the reward provenance, the
-  *     queries that read nothing of the era's own, and its current parameters and governance state
-  *     (as the reference wrote them in its own snapshots of each era), and only these (the other
-  *     queries stay Conway's);
+  *     queries that read nothing of the era's own, its current parameters and governance state and
+  *     its pool distributions (as the reference wrote them in its own snapshots of each era), and
+  *     the stake distributions, the pools' reward information, the non-myopic member rewards and
+  *     the ledger peers of its current stake, and only these (the other queries stay Conway's);
   *   - a query for another era is the era mismatch, and Byron is refused.
   */
 class MirrorAnswersSuite extends FunSuite:
@@ -444,6 +452,235 @@ class MirrorAnswersSuite extends FunSuite:
       eras,
       Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
     )
+  }
+
+  /** The pool distribution in a new-epoch state as the ledger writes it, `nesPd`: its sixth item
+    * (`[epoch, blocks, blocks, epoch state, reward update, pool distribution, ..]`,
+    * `LedgerState/Types.hs`, cardano-ledger f649f975), `[pools, total active stake]`, each pool's
+    * `[ratio, stake, VRF key hash]` (`State/PoolDistr.hs:70-77, 117-122`).
+    */
+  private def pdIn(newEpochState: Bytes): CborNode = item(newEpochState, 5)
+
+  /** `GetPoolDistr2` and `GetPoolDistr`, plain and through `GetCBOR`, asked of `view` in `era` at
+    * versions 16 and 23, against the pool distribution `pd` as the ledger state holds it: the whole
+    * distribution for no set and for the empty one (#933), the entry of the pool a set names, none
+    * for a pool the distribution does not hold, the total whatever is chosen; the retired form each
+    * chosen pool's ratio and VRF key hash. How many pools the distribution holds.
+    */
+  private def asksPoolDistr[S](label: String, era: Era, view: QueryView[S], pd: CborNode): Int =
+    val fields = pd.items.map(_.toVector).getOrElse(fail(s"$label: no pool distribution"))
+    assertEquals(fields.size, 2, s"$label: the pool distribution")
+    val pools = fields(0).entries.map(_.toVector).getOrElse(fail(s"$label: no pools"))
+    def written(chosen: Vector[(CborNode, CborNode)]): Bytes = CborOut.build { w =>
+      w.array(2).map(chosen.size)
+      chosen.foreach((id, share) => w.raw(id.original).raw(share.original))
+      w.raw(fields(1).original)
+    }
+    def legacy(chosen: Vector[(CborNode, CborNode)]): Bytes = CborOut.build { w =>
+      w.map(chosen.size)
+      chosen.foreach { (id, share) =>
+        val parts = share.items.map(_.toVector).getOrElse(fail(s"$label: a pool's share"))
+        assertEquals(parts.size, 3, s"$label: a pool's share")
+        w.raw(id.original).array(2).raw(parts(0).original).raw(parts(2).original)
+      }
+    }
+    def idOf(n: CborNode): Bytes = n.value match
+      case Value.ByteString(b) => b
+      case other               => fail(s"$label: a pool id $other")
+    val one = pools.take(1)
+    val named = Some(one.map((id, _) => idOf(id)).toSet)
+    val unknown = Some(Set(Bytes(Vector.fill(28)(0.toByte))))
+    List(NtcVersion.V16, NtcVersion.V23).foreach { version =>
+      def asked(q: LedgerQuery): Either[Unanswered, String] =
+        QueryAnswers
+          .answerOrWhy(queryEnv, view, Map.empty, NtcQuery.IfCurrent(QueryEra.of(era), q), version)
+          .map(_.hex)
+      def both(q: LedgerQuery, expected: Bytes): Unit =
+        val at = s"$label at ${version.number}: $q"
+        assertEquals(asked(q), Right("81" + expected.hex), at)
+        assertEquals(asked(LedgerQuery.GetCBOR(q)), Right("81" + wrapped(expected)), at)
+      both(LedgerQuery.GetPoolDistr2(None), written(pools))
+      both(LedgerQuery.GetPoolDistr2(Some(Set.empty)), written(pools))
+      both(LedgerQuery.GetPoolDistr2(named), written(one))
+      both(LedgerQuery.GetPoolDistr2(unknown), written(Vector.empty))
+      both(LedgerQuery.GetPoolDistr(None), legacy(pools))
+      both(LedgerQuery.GetPoolDistr(Some(Set.empty)), legacy(pools))
+      both(LedgerQuery.GetPoolDistr(named), legacy(one))
+      both(LedgerQuery.GetPoolDistr(unknown), legacy(Vector.empty))
+    }
+    pools.size
+
+  test(
+    "every state of every Shelley-based era answers its pool distribution, as its new-epoch state holds it, every pool for the empty set (#933)"
+  ) {
+    val held = shelleyBased.map { (block, state) =>
+      val era = state.era
+      val label = s"$era block ${block.header.blockNo}"
+      val nes = ask(era, block, state, LedgerQuery.DebugNewEpochState)
+        .map(result)
+        .getOrElse(fail(s"$label: DebugNewEpochState is not answered"))
+      era -> asksPoolDistr(label, era, view(block, state), pdIn(nes))
+    }
+    // the capture's distribution holds no pool in Shelley and Allegra: its stake is first in force
+    // in Mary
+    assertEquals(
+      held.collect { case (era, pools) if pools > 0 => era }.distinct,
+      Vector(Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway),
+      "the eras with a state whose distribution holds a pool"
+    )
+  }
+
+  /** The ledger snapshots of [[referenceSnapshots]], each with its era, a state of the mirror over
+    * it and the reference's own bytes of its new-epoch state.
+    */
+  private lazy val referenceStates: Vector[(String, Era, MirrorState, Bytes)] =
+    // the queries asked of these read the ledger state only; the rest of the mirror is a capture
+    // state's
+    val (_, capture) = shelleyBased.head
+    referenceSnapshots.map { name =>
+      val raw = Bytes.fromArray(Files.readAllBytes(Path.of(s"fixtures/haskell-state/$name/state")))
+      val file = HaskellLedgerFile.decode(raw).fold(e => fail(s"$name: ${e.render}"), identity)
+      val ext = file.ext.getOrElse(fail(s"$name: no Shelley-based state"))
+      // the file is `[1, [ledger telescope, header state]]`, the telescope's last item the current
+      // era's `[start, [2, [tip, new-epoch state, transition]]]`
+      val current = item(raw, 1, 0).items.flatMap(_.toVector.lastOption).getOrElse(fail(name))
+      val nes = item(current.original, 1, 1, 1).original
+      (name, file.era, MirrorState(ext, capture.extras, MirrorProvenance.complete), nes)
+    }
+
+  test(
+    "a state the reference wrote answers its pool distribution with the reference's bytes, every pool for the empty set (#933)"
+  ) {
+    val held = referenceStates.map { (name, era, state, nes) =>
+      era -> asksPoolDistr(name, era, QueryView(Point.Origin, None, state), pdIn(nes))
+    }
+    // the reference's Shelley snapshot is of the era's first epoch, whose distribution is empty
+    assertEquals(
+      held,
+      Vector(
+        Era.Shelley -> 0,
+        Era.Allegra -> 3,
+        Era.Mary -> 3,
+        Era.Alonzo -> 3,
+        Era.Babbage -> 3,
+        Era.Conway -> 3
+      )
+    )
+  }
+
+  /** `GetStakeDistribution2` and `GetStakeDistribution`, `GetRewardInfoPools`,
+    * `GetNonMyopicMemberRewards` and `GetLedgerPeerSnapshot` in its three forms, plain and through
+    * `GetCBOR`, asked of `view` in `era` at versions 16 and 23, against the current stake of the
+    * state: each pool's stake as a fraction of the lovelace in circulation, written here, the ratio
+    * untagged before Conway and under tag 30 in it (`encodeRatio`,
+    * `Binary/Encoding/Encoder.hs:301-306`, cardano-ledger f649f975), and the rewards and the peers
+    * as the Conway answers write them. How many pools have stake.
+    */
+  private def asksCurrentStake[S](label: String, era: Era, view: QueryView[S]): Int =
+    view.ledger.toOption.flatten match
+      case Some(InEra.Of(_, l)) => asksCurrentStakeOf(label, era, view, l)
+      case None                 => fail(s"$label: no Shelley-based state")
+
+  private def asksCurrentStakeOf[S, E <: EraTag](
+      label: String,
+      era: Era,
+      view: QueryView[S],
+      l: EraRead[E]
+  ): Int =
+    val nes = l.nes.fold(e => fail(s"$label: $e"), identity)
+    val ls = nes.es.ls
+    val current = StakeDistribution.snapshot(
+      EraLedger.activeStake(ls)(using l.era),
+      EraLedger.pState(ls)(using l.era).stakePools
+    )
+    val circulation = queryEnv.maxSupply - nes.es.chainAccount.reserves.value
+    val pd = PoolDistr.of(current)
+    def ratio(w: CborOut, n: BigInt, d: BigInt): Unit =
+      val g = n.gcd(d)
+      if era == Era.Conway then w.tag(30)
+      w.array(2).integer(n / g).integer(d / g)
+    def fraction(w: CborOut, stake: BigInt): Unit =
+      if circulation == 0 then ratio(w, 0, 1) else ratio(w, stake, circulation)
+    val distribution = CborOut.build { w =>
+      w.array(2).map(pd.distribution.size)
+      pd.distribution.foreach { (id, p) =>
+        w.bytes(id.bytes).array(3)
+        fraction(w, p.totalPoolStake.toBigInt)
+        w.integer(p.totalPoolStake.toBigInt).bytes(p.vrf.bytes)
+      }
+      w.integer(pd.totalActiveStake.value.value)
+    }
+    val retired = CborOut.build { w =>
+      w.map(pd.distribution.size)
+      pd.distribution.foreach { (id, p) =>
+        w.bytes(id.bytes).array(2)
+        fraction(w, p.totalPoolStake.toBigInt)
+        w.bytes(p.vrf.bytes)
+      }
+    }
+    val members = Vector[Either[BigInt, Credential]](Left(BigInt(0)), Left(BigInt(1000000000))) ++
+      current.activeStake.entries.keysIterator.take(2).map(c => Right(EraRead.credential(c)))
+    val rewardInfo = RewardQueries.info(l.params, circulation, current, nes.es.nonMyopic)
+    val memberRewards = RewardQueries
+      .members(l.params, circulation, current, nes.es.nonMyopic, members)
+      .fold(e => fail(s"$label: $e"), identity)
+    val peers = xyz.kd5ujc.scarab.node.LedgerPeersSource
+      .of(l)
+      .fold(e => fail(s"$label: $e"), _.pools)
+    val magic = queryEnv.networkMagic
+    List(NtcVersion.V16, NtcVersion.V23).foreach { version =>
+      def asked(q: LedgerQuery): Either[Unanswered, String] =
+        QueryAnswers
+          .answerOrWhy(queryEnv, view, Map.empty, NtcQuery.IfCurrent(QueryEra.of(era), q), version)
+          .map(_.hex)
+      def both(q: LedgerQuery, expected: Bytes, latest: Bytes): Unit =
+        val at = s"$label at ${version.number}: $q"
+        assertEquals(asked(q), Right("81" + expected.hex), at)
+        assertEquals(asked(LedgerQuery.GetCBOR(q)), Right("81" + wrapped(latest)), at)
+      def same(q: LedgerQuery, expected: Bytes): Unit = both(q, expected, expected)
+      same(LedgerQuery.GetStakeDistribution2, distribution)
+      same(LedgerQuery.GetStakeDistribution, retired)
+      same(LedgerQuery.GetRewardInfoPools, rewardInfo)
+      same(LedgerQuery.GetNonMyopicMemberRewards(members), memberRewards)
+      val big = PeerSnapshotQueries.encode(peers, view.point, magic, Some(LedgerPeerKind.Big), true)
+      same(LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.Big), big)
+      val all = PeerSnapshotQueries.encode(peers, view.point, magic, Some(LedgerPeerKind.All), true)
+      same(LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.All), all)
+      // the retired form takes the version's SRV choice, `GetCBOR` the latest's
+      both(
+        LedgerQuery.GetLedgerPeerSnapshotLegacy,
+        PeerSnapshotQueries.encode(peers, view.point, magic, None, version.number >= 22),
+        PeerSnapshotQueries.encode(peers, view.point, magic, None, true)
+      )
+    }
+    pd.distribution.size
+
+  test(
+    "every state of every Shelley-based era answers its stake distribution, the pools' rewards and the ledger peers of its current stake"
+  ) {
+    val staked = shelleyBased.map { (block, state) =>
+      val tip = Point.Block(UInt64.saturating(BigInt(block.header.slot.toLong)), block.header.hash)
+      val era = state.era
+      era -> asksCurrentStake(
+        s"$era block ${block.header.blockNo}",
+        era,
+        QueryView(tip, Some(block.header.blockNo), state)
+      )
+    }
+    assertEquals(
+      staked.collect { case (era, pools) if pools > 0 => era }.distinct,
+      Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway),
+      "every era has a state with stake delegated to a pool"
+    )
+  }
+
+  test(
+    "a state the reference wrote answers its stake distribution, the pools' rewards and the ledger peers of its current stake"
+  ) {
+    val staked = referenceStates.map { (name, era, state, _) =>
+      era -> asksCurrentStake(name, era, QueryView(Point.Origin, None, state))
+    }
+    assert(staked.forall(_._2 > 0), s"a reference state with no stake delegated to a pool: $staked")
   }
 
   test("the other queries stay Conway's: a state of an earlier era answers none") {
