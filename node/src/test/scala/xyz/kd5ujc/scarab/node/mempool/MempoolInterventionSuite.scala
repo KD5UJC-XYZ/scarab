@@ -209,8 +209,8 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       synced.entries,
       BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
     )(
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
     )
     assertEquals(selected, BlockBuilder.Selection(selected.chosen, Vector.empty))
     assertEquals(selected.chosen.map(_._1.id), Vector(entry.id))
@@ -246,10 +246,10 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val verified = new java.util.concurrent.atomic.AtomicInteger(0)
     val evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[cats.Id] = request =>
       evaluated.incrementAndGet()
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator.evaluate(request)
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default.evaluate(request)
     val decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (language, pv, script) =>
       decoded.incrementAndGet()
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder.validate(language, pv, script)
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder.validate(language, pv, script)
     val verdicts = new Verdicts:
       export Verdicts.Direct.{keyHash, opCert, praosVrf, takePrepared, tpraosVrf}
       def witness(vkey: Bytes, signature: Bytes, message: Bytes) =

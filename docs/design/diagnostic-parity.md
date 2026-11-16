@@ -111,10 +111,8 @@ reference budget/slippage values, failing term and discharge environment, wide i
 expected/actual universes. Keep the original provider cause for defect provenance. A diagnostic
 presentation input must not offer generic provider text as a rendering alternative.
 
-If Scalus needs a hook, use a minimal pinned patch with an immutable identity, checksums and member
-controls. Prove equivalence to the default evaluator for verdicts, failure order, spent units and
-serial/prepared behavior, including refused/held/NoVerdict routing. A real semantics or routing change
-is separately classified and tested; it must not hide in presentation work.
+A real semantics or routing change (verdicts, failure order, spent units, serial/prepared behavior,
+refused/held/NoVerdict routing) is separately classified and tested; it must not hide in presentation work.
 
 Complete immutable document layout with native `layoutPretty` and `layoutSmart` selection semantics,
 then typed UPLC terms, constants, universe/types and every derived error/context/outer failure and

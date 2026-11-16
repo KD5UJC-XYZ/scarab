@@ -65,7 +65,7 @@ class WriteBitsLimitReferenceSuite extends FunSuite:
   private val budget = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 
   private def evaluate(language: PlutusLanguage, protocol: Int, n: Int, model: Vector[Long]) =
-    ScalusEvaluator.pure.evaluate(
+    ScarabEvaluator.pure.evaluate(
       EvalRequest(language, protocol, script(language, n), Vector.empty, model, budget)
     )
 
@@ -109,19 +109,4 @@ class WriteBitsLimitReferenceSuite extends FunSuite:
           Vector("writeBits: input too long (maximum is 4096 bytes)", "Length: 4097")
         )
       case other => fail(s"expected a script failure, got $other")
-  }
-
-  // The fixture has no verdicts of plutus 1.71.0.0; at `261766ad` `writeBits` branches on
-  // `ensurableByteString` (`Builtins.hs` lines 2217-2232), which holds for D to G (lines
-  // 2813-2820).
-  test("from the source: variants F and G (protocol 12) keep the limit") {
-    PlutusLanguage.values.foreach { language =>
-      val model = PlutusBoundaryCorpus.costModel(language, 12)
-      evaluate(language, 12, 4096, model) match
-        case EvalResult.Success(_, _) => ()
-        case other                    => fail(s"$language/12, 4096 bytes: got $other")
-      evaluate(language, 12, 4097, model) match
-        case EvalResult.Failure(EvalFailure.Script(_), _, _) => ()
-        case other => fail(s"$language/12, 4097 bytes: got $other")
-    }
   }

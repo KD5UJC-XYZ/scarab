@@ -13,4 +13,4 @@ implemented for runtime layers and adapters: closed domain/service cases, associ
 
 ## Explicitly unchecked or unconfirmed
 
-lexical declared-channel guard cannot establish error semantics or resolve every Scala type construct; Scalus callback ABI and compiler/AST follow-ups remain [M11-E](../design/domain-errors.md#review-and-remaining-work); fiber ownership remains #180
+lexical declared-channel guard cannot establish error semantics or resolve every Scala type construct; compiler/AST follow-ups remain [M11-E](../design/domain-errors.md#review-and-remaining-work); fiber ownership remains #180

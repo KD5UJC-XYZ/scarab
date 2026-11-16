@@ -78,7 +78,7 @@ class SliceByteStringReferenceSuite extends FunSuite:
       }
     }
 
-  private val evaluator = ScalusEvaluator.pure
+  private val evaluator = ScarabEvaluator.pure
 
   /** Scarab's outcome as the reference's row records it: the stage and, on success, the budget. */
   private def outcome(probe: SliceByteStringCorpus.Probe, row: Json): (Stage, Option[ExUnits]) =
@@ -89,8 +89,8 @@ class SliceByteStringReferenceSuite extends FunSuite:
     val protocol = field[Int](row, "protocol")
     val model = BuiltinCostingCorpus.parameters(languageId, protocol)
     val modelBytes = Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-    assertEquals(NativeCrypto.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
-    assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+    assertEquals(UplcScripts.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
+    assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
     evaluator.evaluate(
       EvalRequest(
         language,

@@ -24,8 +24,7 @@ keeps it complete and current. The rule it enforces is [REF-6](../design-rules.m
 | `plutus` | `plutus/src/main/scala`, `uplc/src/main/scala` | plutus; cardano-ledger for script contexts and cost models |
 | `storage` | `storage/src/main/scala` | ouroboros-consensus's storage layer; cardano-ledger's state encoders |
 
-The areas are chosen by module source root, not by package. `tools` reuses these packages, and `plutus` holds a
-`scalus.uplc` file. The `node` module is outside the five areas, although its mempool, forging, node-to-client
+The areas are chosen by module source root, not by package. `tools` reuses these packages. The `node` module is outside the five areas, although its mempool, forging, node-to-client
 and governor code mirrors consensus and network code. Whether it joins them is the owner's decision.
 
 ## What a definition is

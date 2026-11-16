@@ -58,7 +58,7 @@ jobs:
           paths=(
             fuzz codec crypto protocol ledger uplc plutus storage consensus node models models-gen fixtures
             network/src/test/resources/upstream/ouroboros-network-protocol-codecs
-            build.sbt project scripts/sbtw scripts/prepare_scalus.py patches/scalus
+            build.sbt project scripts/sbtw
             scripts/ci_changes.py .github/workflows/fuzz-gate.yml
           )
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -88,7 +88,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .cache/scarab
-          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw') }}
           restore-keys: |
             sbt-${{ runner.os }}-
       - name: Fuzz the decoders (100000 cases, seeds 1 to 4)

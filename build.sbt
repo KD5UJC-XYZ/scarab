@@ -219,17 +219,13 @@ lazy val network = scarab("network")
     )
   )
 
-val scalusPrepared = ScalusPatch.requirePrepared(Dependencies.V.scalus)
-
-// Scarab's own UPLC evaluator (ADR 0027): the term model, Flat decoder, CEK machine, builtins, costing
-// and budget, with no Scalus on its class path. `checkUplcClasspath` (part of `check`) fails the build
-// when a Scalus artifact reaches it, and `NoScalusSuite` checks the test JVM's own class path.
-lazy val checkUplcClasspath = taskKey[Unit]("Fail if a Scalus artifact is on the uplc class path")
+// Scarab's own UPLC evaluator (ADR 0027), the node's only Plutus evaluator: the term model, Flat
+// decoder, CEK machine, builtins, costing and budget.
 // Libraries.catsParse: The textual syntax of UPLC (`uplc.text.UplcParser`), which the node itself
 // never reads.
 // Test / unmanagedResourceDirectories: The vendored plutus reference corpus (`plutus-reference`)
-// and the Wycheproof vectors, read as test resources without a dependency on `plutus`, whose class
-// path carries Scalus (`LocalProject`, as `plutus` itself depends on this project).
+// and the Wycheproof vectors, read as test resources without a dependency on `plutus`
+// (`LocalProject`, as `plutus` itself depends on this project).
 lazy val uplc = scarab("uplc")
   .dependsOn(
     codec % "compile->compile;test->test",
@@ -241,21 +237,11 @@ lazy val uplc = scarab("uplc")
       Libraries.catsMtl,
       Libraries.catsParse
     ),
-    Test / unmanagedResourceDirectories += (LocalProject("plutus") / baseDirectory).value / "src/test/resources",
-    checkUplcClasspath := {
-      val reached = ((Compile / dependencyClasspath).value ++ (Test / dependencyClasspath).value)
-        .flatMap { entry =>
-          val byModule = entry.get(moduleID.key).filter(_.organization.toLowerCase.contains("scalus"))
-          val byFile = Option(entry.data.getName).filter(_.toLowerCase.contains("scalus"))
-          byModule.map(m => s"${m.organization}:${m.name}") ++ byFile
-        }
-        .distinct
-      if (reached.nonEmpty)
-        sys.error(s"uplc must not depend on Scalus (ADR 0027), but its class path has: ${reached.mkString(", ")}")
-    }
+    Test / unmanagedResourceDirectories += (LocalProject("plutus") / baseDirectory).value / "src/test/resources"
   )
 
-// The Plutus (UPLC) machine and builtins through Scalus; the script context and the rules are ours.
+// The evaluation algebra the ledger rules use (`ScriptEvaluator`, `ScriptDecoder`) and its interpreter
+// over the own evaluator (`ScarabEvaluator`).
 lazy val plutus = scarab("plutus")
   .dependsOn(
     codec % "compile->compile;test->test",
@@ -265,21 +251,8 @@ lazy val plutus = scarab("plutus")
     libraryDependencies ++= Seq(
       Libraries.cats,
       Libraries.catsEffect,
-      Libraries.scalus,
       Libraries.circeParserTest
-    ),
-    Test / testGrouping := {
-      // NativeCryptoAbsentSuite needs a JVM in which libscalus_crypto cannot load (ADR 0020): its
-      // java.io.tmpdir does not exist, so native-lib-loader cannot extract the library.
-      val (absent, others) =
-        (Test / definedTests).value.partition(_.name.endsWith(".NativeCryptoAbsentSuite"))
-      val options = Vector("-Djava.io.tmpdir=/nonexistent/scarab-no-tmpdir") ++ jdk25Flags
-      val fork = (Test / forkOptions).value.withRunJVMOptions(options)
-      Seq(
-        Tests.Group("plutus", others, Tests.InProcess),
-        Tests.Group("native-crypto-absent", absent, Tests.SubProcess(fork))
-      )
-    }
+    )
   )
 
 // The pure ledger rules and types: blocks, headers, genesis, transactions, scripts, governance,
@@ -716,12 +689,12 @@ val modules = Seq(
   "tools"
 )
 
-// `check` runs these in order: formatting, the SPDX headers, the uplc class path and every module's test sources
+// `check` runs these in order: formatting, the SPDX headers, every module's test sources
 // compiled, every module's tests, then scalafix. CI runs the same commands in two parts (.github/workflows/ci.yml):
 // its build job runs `checkBuild`, which is `check` without the tests, and its test shards run every suite of every
 // module (scripts/ci_test_shards.py, over the suites `testSuiteInventory` lists).
 val checkBeforeTests =
-  Seq("scalafmtCheckAll", "headerCheckAll", "checkUplcClasspath") ++ modules.map(m => s"$m/Test/compile")
+  Seq("scalafmtCheckAll", "headerCheckAll") ++ modules.map(m => s"$m/Test/compile")
 val checkTests = modules.map(m => s"$m/Test/test")
 val checkAfterTests = Seq("scalafixAll --check")
 addCommandAlias("check", (checkBeforeTests ++ checkTests ++ checkAfterTests).mkString(";", ";", ""))

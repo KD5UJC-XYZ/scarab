@@ -202,19 +202,20 @@ forger.
   the language's cost model and the declared budget. The result is `Success(spent, logs)` or
   `Failure(reason, spent, logs)` with a closed `EvalFailure` (`Decode`, `Unsupported`,
   `OutOfBudget`, `Script`).
-- **Interpreter** (`plutus/ScalusEvaluator.scala`): the UPLC machine and builtins of Scalus (Apache-2.0,
-  `org.scalus:scalus_3:1.4.0`); nothing else of Scalus is used by the node. Ed25519, secp256k1 and
-  BLS12-381 run on `libscalus_crypto` of `org.scalus:scalus-crypto-jni:0.1.0` (libsodium,
-  libsecp256k1 and portable blst linked into one library per platform), which the JVM extracts to
-  its temporary directory. `NativeCrypto` pins its sha-256 and checks known answers at start-up, and
-  every builtin it backs is a typed `BuiltinUnavailable` when it did not load
-  ([ADR 0020](../adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). `ScalusEvaluatorSuite`
-  evaluates a BLS pairing and an ECDSA verification (also run inside the Temurin 21 Docker image).
+- **Interpreter** (`ScarabEvaluator.scala` in `plutus`): Scarab's own evaluator, the `uplc` module
+  ([ADR 0027](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)): `deserialiseScript` and
+  `evaluateScriptRestricting` of plutus 1.70.0.0 as `LedgerEval` transcribes them, over its own Flat
+  decoder, CEK machine, builtins and costing. Ed25519 and secp256k1 run on the JVM (the `crypto` module
+  and Bouncy Castle), BLS12-381 on jblst's portable libblst, whose start-up check the node runs
+  ([ADR 0025](../adr/0025-jblst.md)). A request the evaluator gives no verdict on (a defect, an exception
+  it threw, a budget beyond 64 bits) is `Unsupported`, never a failure of the script.
 - **Pure or effectful**: evaluation is a deterministic function of the request, so the ledger rules,
-  which are pure functions, take a `ScriptEvaluator[Id]` (`TxEnv.evaluator`, default
-  `ScalusEvaluator.default`). The interpreter only memoises decoded scripts and machines per cost
-  model. `ScalusEvaluator.suspended[F]` is the same interpreter in `F` (`Sync.interruptible`) for a
-  node that wants evaluation off the main thread. The machine runs on a thread with a large stack.
+  which are pure functions, take a `ScriptEvaluator[Id]` (`TxEnv.evaluator`); the node gives them the one of
+  `PlutusBackend.default`, `ScarabEvaluator.default`. The interpreter only memoises the evaluation context
+  of each language and cost-model list and the decoded program of each script.
+  `ScarabEvaluator.suspended[F]` is the same interpreter in `F` (`Sync.interruptible`) for a node that wants
+  evaluation off the main thread. The machine and the Flat decoder keep their stacks on the heap
+  ([ADR 0011](../adr/0011-stack-safety.md)).
 - **Block scheduling** (`ledger/rules/EraBlock.scala`, `node/ParallelPlutus.scala`): ordered
   preparation freezes each transaction's requests after the existing ordinary checks. A private plan
   retains tentative state while dependency batches run under one shared block-validation worker
@@ -236,9 +237,9 @@ forger.
   reuse a duplicate certificate's first pointer; Conway and Dijkstra use its own position. The
   bootstrap-phase and protocol-11 checks, and the version handed to the evaluator, remain version
   tests (`ScriptContextEraSuite`, `ScriptContextUsualVersionSuite`; #883).
-- **Availability** (`plutus/PlutusAvailability.scala`): the builtins and UPLC program versions a script
-  may use in each (language, protocol major), transcribed from plutus-ledger-api
-  (`Common/Versions.hs`). `ScalusEvaluator` rejects a script that uses another builtin as a decode
+- **Availability** (`Availability.scala` in `uplc`): the builtins, UPLC program versions and decoder bounds a
+  script may use in each (language, protocol major), transcribed from plutus-ledger-api
+  (`Common/Versions.hs`). `ScarabEvaluator` rejects a script that uses another builtin as a decode
   failure; `ScriptDecoder[F]` (same interpreter, shared cache) is the pure check the phase-1 rule
   `TxChecks.scriptsWellFormed` uses from Babbage on for witness-set and output scripts.
 - **Cost models**: per language from the protocol parameters in force. The genesis cost model is a

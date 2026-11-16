@@ -34,8 +34,8 @@ object EraBlock:
     * and a hook on phase-2 evaluations. `clock` is the slot to time translation of the block's
     * scripts, the era history of the ledger state the block is applied to (the node's blocks always
     * carry it); none is the geometry alone, without a forecast horizon, for fixtures with no era
-    * history. The evaluator and the decoder have no default: the node passes the backend it was
-    * started with (`--plutus-vm`, ADR 0027).
+    * history. The evaluator and the decoder have no default: the node passes its backend
+    * (`PlutusBackend`).
     */
   final case class Context(
       globals: Globals,

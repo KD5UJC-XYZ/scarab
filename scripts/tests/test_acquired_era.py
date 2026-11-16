@@ -99,15 +99,12 @@ class TallyTest(unittest.TestCase):
 
     def round(self, state_of=lambda site: json.loads(json.dumps(TallyTest.STATE)), parameters=lambda: {},
               closing=None):
-        """`compare_era` for an alonzo round whose acquired state is babbage, with two followers: (tallies, agreement)."""
+        """`compare_era` for an alonzo round whose acquired state is babbage: the run's follower's tallies."""
         import tempfile
-        from devnet.util import FollowerSite
-        sites = (FollowerSite("scalus"), FollowerSite("scarab"))
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = pathlib.Path(directory.name)
-        tallies = [compare.Comparisons(root, site) for site in sites]
-        agreement = compare.FollowerAgreement(root, sites)
+        tallies = [compare.Comparisons(root, compare.SINGLE_FOLLOWER)]
         view = {**json.loads(json.dumps(self.STATE)), "_era": "babbage"}
         context = unittest.mock.MagicMock()
         if closing is not None:
@@ -118,23 +115,20 @@ class TallyTest(unittest.TestCase):
                 patch.object(compare, "awaited_state", side_effect=lambda n, t, site, *a: state_of(site)), \
                 patch.object(compare, "whole_state", return_value={"skipped": "none"}), \
                 patch.object(compare.time, "sleep"):
-            compare.compare_era("n", "alonzo", "x", tallies, agreement)
-        return tallies, agreement
+            compare.compare_era("n", "alonzo", "x", tallies)
+        return tallies
 
-    def test_a_round_that_acquires_babbage_counts_and_agrees_in_babbage(self):
-        tallies, agreement = self.round()
+    def test_a_round_that_acquires_babbage_counts_in_babbage(self):
+        tallies = self.round()
         for tally in tallies:
             self.assertEqual((tally.per_era["babbage"]["matched"], tally.per_era["alonzo"]["matched"]), (1, 0))
-        self.assertEqual((agreement.per_era["babbage"]["agreed"], agreement.per_era["alonzo"]["agreed"]), (1, 0))
 
     def test_a_failure_after_the_state_was_acquired_counts_for_the_acquired_era(self):
         def broken(site):
             raise ValueError("unreadable")
-        tallies, agreement = self.round(broken)
+        tallies = self.round(broken)
         for tally in tallies:
             self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
-        self.assertEqual((agreement.per_era["babbage"]["notCompared"], agreement.per_era["alonzo"]["notCompared"]),
-                         (1, 0))
 
     def after_the_read(self, failure):
         """A round whose second read of the parameters, after the reference state was read, raises `failure`."""
@@ -148,22 +142,22 @@ class TallyTest(unittest.TestCase):
         return self.round(parameters=parameters)
 
     def test_a_retryable_failure_after_the_reference_read_counts_for_the_acquired_era(self):
-        tallies, agreement = self.after_the_read(RuntimeError("closed"))
+        tallies = self.after_the_read(RuntimeError("closed"))
         for tally in tallies:
             self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
 
     def test_an_exit_after_the_reference_read_counts_for_the_acquired_era(self):
-        tallies, agreement = self.after_the_read(SystemExit("command failed"))
+        tallies = self.after_the_read(SystemExit("command failed"))
         for tally in tallies:
             self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
 
     def test_a_retryable_failure_while_the_session_closes_counts_for_the_acquired_era(self):
-        tallies, agreement = self.round(closing=RuntimeError("closing"))
+        tallies = self.round(closing=RuntimeError("closing"))
         for tally in tallies:
             self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
 
     def test_an_exit_while_the_session_closes_counts_for_the_acquired_era(self):
-        tallies, agreement = self.round(closing=SystemExit("closing"))
+        tallies = self.round(closing=SystemExit("closing"))
         for tally in tallies:
             self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
 

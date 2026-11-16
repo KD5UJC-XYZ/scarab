@@ -102,8 +102,8 @@ with a pattern that matches your own shell command line.
   what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards. `check` ends with it, so CI runs it too.
 - **Coverage** is off by default: `coverage; test; coverageReport` (reports under
   `target/scala-3.9.0/scoverage-report`), then `coverageOff`.
-- **`dependencyUpdates`** lists newer versions of the dependencies and plugins (it only reads; the
-  Scalus artifacts move together). **`dependencyTree`** (also `node/dependencyTree`) prints the
+- **`dependencyUpdates`** lists newer versions of the dependencies and plugins (it only reads).
+  **`dependencyTree`** (also `node/dependencyTree`) prints the
   resolved graph, to see where a transitive version comes from.
 - **sbt-buildinfo** generates `xyz.kd5ujc.scarab.node.BuildInfo` (version, Scala and sbt versions,
   Git commit, build mode, release channel and selected tag). `project/GitHead.scala` reads visible
@@ -199,7 +199,7 @@ belong to nightly CI, not to a change.
 
 ### Nightly CI is the safety net
 
-`.github/workflows/e2e.yml` runs soak, e2e (one Scala follower per Plutus evaluator, `--plutus-vm scalus --plutus-vm scarab`), relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
+`.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
 version tags; `fuzz.yml` runs the longer fuzzing (rotating daily seeds); `cuddle-crosscheck.yml` runs the CDDL cross-check on every pull request, every push to `main` and nightly; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check` (built once, its tests in parallel shards), the script tests, actionlint, a gitleaks
 scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or

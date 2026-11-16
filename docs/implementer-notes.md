@@ -452,7 +452,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Per language and protocol version, as listed.
 - **Upstream reference:** plutus-ledger-api 1.70.0.0 `PlutusLedgerApi.Common.Versions.builtinsAvailableIn`; cardano-ledger `validateScriptsWellFormed`; `mkTermToEvaluate`.
 - **Chain evidence:** Preview from genesis to epoch 168: 975,398 Plutus transactions evaluated successfully and 86 to failure, every verdict equal to `is_valid`. Roadmap B9.
-- **Pinned by:** [`PlutusAvailabilitySuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusAvailabilitySuite.scala), [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala)
+- **Pinned by:** [`AvailabilitySuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/AvailabilitySuite.scala), [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-44 V1 and V2 `TxInfo` differ from V3; interval bounds change at Conway
@@ -470,7 +470,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** V1 and V2 ignore the remainder; V3 fails.
 - **Upstream reference:** plutus-ledger-api `PlutusLedgerApi/Common/SerialisedScript.hs` lines 251-263.
 - **Chain evidence:** Preprod tx aee75c1c (block 4,045,972, slot 105,654,302, epoch 248, protocol 10): an output carries the V2 reference script 5272e713 as a 1078-byte item twice (2156 bytes), created by this transaction. Roadmap B16.
-- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala), [`fixtures/preprod/tx-aee75c1c.hex`](../fixtures/preprod/tx-aee75c1c.hex), [`PlutusScriptBytesSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusScriptBytesSuite.scala)
+- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala), [`fixtures/preprod/tx-aee75c1c.hex`](../fixtures/preprod/tx-aee75c1c.hex), [`SerialisedScriptSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/flat/SerialisedScriptSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-46 Native script `n_of_k`: `n` is a signed 64-bit integer; slots are unsigned 64-bit
@@ -497,7 +497,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Plutus V2 onwards.
 - **Upstream reference:** `PlutusCore.Crypto.Secp256k1` over `Cardano.Crypto.DSIGN.EcdsaSecp256k1` and libsecp256k1 (`secp256k1_ec_pubkey_parse`, `secp256k1_ecdsa_signature_parse_compact`).
 - **Chain evidence:** Preprod tx 97b31e35 (slot 92,114,397, epoch 217, Plutus V2) calls the builtin with an all-zero signature. Roadmap B15.
-- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala), [`fixtures/preprod/tx-97b31e35.hex`](../fixtures/preprod/tx-97b31e35.hex)
+- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodSecp256k1RulesSuite.scala), [`SignaturesSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/SignaturesSuite.scala), [`fixtures/preprod/tx-97b31e35.hex`](../fixtures/preprod/tx-97b31e35.hex)
 - **Status:** confirmed in source
 
 #### IN-49 `serialiseData` writes a constructor index outside 0 to 127 as an unsigned 64-bit integer
@@ -506,7 +506,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Not gated.
 - **Upstream reference:** `PlutusCore.Data.encodeData`; file and line not recorded in our docs.
 - **Chain evidence:** Preprod tx 2edd684f (slot 80,239,053, epoch 189): a Hydra head fanout whose outputs carry datums with such indices. Filed as B12 in findings.md (the same label as the value-size row of the roadmap).
-- **Pinned by:** [`PreprodConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodConwayRulesSuite.scala), `fixtures/preprod/plutus/tx-2edd684f.json`, [`DataSerialiserSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/DataSerialiserSuite.scala)
+- **Pinned by:** [`PreprodConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodConwayRulesSuite.scala), `fixtures/preprod/plutus/tx-2edd684f.json`, [`SerialiseDataSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/core/SerialiseDataSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-50 BLS12-381 in the reference is built portable, without `mulx`/`adcx`
@@ -661,7 +661,7 @@ are the ones most in need of a second reading.
 
 ## Part B: specification or CDDL versus implementation
 
-14 entries. The first six concern the ledger and Plutus specifications, the next six the Scalus Plutus library (our Plutus evaluator is built on it), and the last two the Leios proposal. Scalus is not the reference; it is listed because an implementation that uses it meets the same differences.
+14 entries. The first six concern the ledger and Plutus specifications, the next six the Scalus Plutus library (Scarab's Plutus evaluator was built on it until 2026-11-15, when Scarab's own replaced it; those entries record what was met then), and the last two the Leios proposal. Scalus is not the reference; it is listed because an implementation that uses it meets the same differences.
 
 ### IN-66 Pointer address fields: unbounded in the encoding, bounded and era-dependent in the decoder
 
@@ -709,7 +709,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** The CDDL types a Plutus script as `bytes`, and the ledger API describes it as a CBOR-wrapped flat program. No text says what follows the first CBOR item.
 - **Implementation does:** `deserialiseScript` ignores the remainder for V1 and V2 and raises `RemainderError` for V3. A reference script that carries its item twice (2156 bytes) is valid on chain and is the same script.
 - **Evidence:** Preprod tx aee75c1c (block 4,045,972, protocol 10). Roadmap B16.
-- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala), [`PlutusScriptBytesSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusScriptBytesSuite.scala). Upstream reference in the Part A entry on script bytes.
+- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala), [`SerialisedScriptSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/flat/SerialisedScriptSuite.scala). Upstream reference in the Part A entry on script bytes.
 - **Suggested upstream action:** Plutus (plutus-ledger-api): document the language-dependent remainder rule next to `deserialiseScript`.
 - **Status:** confirmed in source
 
@@ -729,7 +729,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** The Plutus cost model for `verifyEd25519Signature` under variant A does not depend on the message length.
 - **Implementation does:** Scalus 1.2.0 costs it wrongly under variant A; the same code is in Scalus 1.3.0. Fixed in Scalus 1.4.0, which Scarab adopts; the wrapper's correction is removed ([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
 - **Evidence:** Preview Alonzo sync (commit f8209b4). Filed as [scalus3/scalus#387](https://github.com/scalus3/scalus/issues/387). Roadmap B11.
-- **Pinned by:** [`BuiltinCostingSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/BuiltinCostingSuite.scala) (cost independent of the message under variant A, linear under B to E), [`ScalusReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusReproducersSuite.scala) (now a regression test of the fix).
+- **Pinned by:** `BuiltinCostingSuite` (cost independent of the message under variant A, linear under B to E) and `ScalusReproducersSuite` (a regression test of the fix), both removed with the Scalus backend on 2026-11-15.
 - **Suggested upstream action:** Scalus: fix the costing (issue filed, #387).
 - **Status:** observed
 
@@ -739,7 +739,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** The V3 script context holds a new constitution as `[previous, Constr 0 [Maybe ScriptHash]]`; `Constitution` is a constructor of its own.
 - **Implementation does:** Scalus 1.2.0 builds it without the `Constitution` constructor, `[previous, Maybe ScriptHash]`. Unchanged in Scalus 1.3.0; fixed in Scalus 1.4.0.
 - **Evidence:** Preview slot 116,688,298 (commit 5bc16a2). Filed as [scalus3/scalus#388](https://github.com/scalus3/scalus/issues/388). Roadmap B11.
-- **Pinned by:** `fixtures/preview/plutus/slot116688298-89d3a627.json`, [`ScalusReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusReproducersSuite.scala).
+- **Pinned by:** `fixtures/preview/plutus/slot116688298-89d3a627.json`; `ScalusReproducersSuite` until it was removed with the Scalus backend on 2026-11-15.
 - **Suggested upstream action:** Scalus: fix the context (issue filed, #388).
 - **Status:** observed
 
@@ -749,8 +749,8 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** The Plutus conformance suite (plutus 1.70.0.0, 1009 evaluation cases) fixes the behaviour of the reference.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 pass the same 987. Differences: (1) the flat decoder accepts `value` constants that `buildValueWith` rejects (unsorted or repeated currency symbols or token names, an empty inner map, a zero quantity); (2) `case` on a `Data.Constr` is enabled from protocol 12 in 1.3.0, so `data-01` and `data-02` fail at protocol 11; (3) `bls12_381_G1/G2_hashToGroup` with a 255-byte DST, and with a 32-byte DST of arbitrary bytes, returns another point; (4) the flat encoder writes a BLS12-381 constant as an application of `uncompress`, and the units spent after an out-of-budget `dropList` with a huge count wrap negative.
 - **Evidence:** Roadmap I1. Item (1) is filed as scalus3/scalus#396. Triage (AUD-03, [plutus-conformance.md](plutus-conformance.md)): item (1) is reachable by a transaction and handled in the node (`FlatScan`); item (2) is not a divergence (the reference ledger refuses `case` on `Data` below protocol 12 too); item (3) is reachable for a domain separation tag with a byte of 0x80 or more, cause: the tag is handed to blst as a Latin-1 string; fixed in Scalus 1.4.0, which passes the tag as bytes; item (4): the flat refusal agrees; the units spent are now the reference's, since the evaluator spends through `ReferenceBudget` (IN-84).
-- **Pinned by:** [`ScalusConformanceReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusConformanceReproducersSuite.scala), `PlutusConformanceSuite`.
-- **Suggested upstream action:** Scalus: item (1) is reported as scalus3/scalus#396; item (3) is fixed in Scalus 1.4.0, adopted with the node's raw-DST path removed; (2) is fixed in 1.3.0; (4) needs no report. IN-75 is fixed in Scalus 1.4.0; IN-76 and IN-77 are worked around in the node (`PlutusScriptBytes`, `DataSerialiser`) and remain upstream candidates.
+- **Pinned by:** `ScalusConformanceReproducersSuite` and `PlutusConformanceSuite`, both removed with the Scalus backend on 2026-11-15.
+- **Suggested upstream action:** Scalus: item (1) is reported as scalus3/scalus#396; item (3) is fixed in Scalus 1.4.0, adopted with the node's raw-DST path removed; (2) is fixed in 1.3.0; (4) needs no report. IN-75 is fixed in Scalus 1.4.0; IN-76 and IN-77 were worked around in the node (`PlutusScriptBytes`, `DataSerialiser`) until 2026-11-15 and remain upstream candidates.
 - **Status:** observed
 
 ### IN-75 Scalus: `verifyEcdsaSecp256k1Signature` raises where the reference returns `False`
@@ -759,7 +759,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** See the Part A entry on secp256k1: zero `r` or `s` and a high `s` give `False`.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 require `r > 0` and `s > 0` and raise an error. Fixed in Scalus 1.4.0 (verification through libsecp256k1 in scalus-crypto-jni); the node's replacement of the builtin is removed.
 - **Evidence:** Preprod tx 97b31e35 (slot 92,114,397, epoch 217). Roadmap B15. Not filed upstream yet.
-- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala).
+- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodSecp256k1RulesSuite.scala); `Secp256k1Suite` until it was removed with the Scalus backend on 2026-11-15.
 - **Suggested upstream action:** None: fixed in Scalus 1.4.0.
 - **Status:** confirmed in source
 
@@ -767,7 +767,7 @@ are the ones most in need of a second reading.
 
 - **Era:** Babbage onwards
 - **Specification or CDDL says:** See the Part A entry on script bytes: V1 and V2 ignore a remainder.
-- **Implementation does:** `DeBruijnedProgram.fromCbor` fails on any trailing input.
+- **Implementation does:** DeBruijnedProgram.fromCbor fails on any trailing input.
 - **Evidence:** Preprod tx aee75c1c. Roadmap B16. Not filed upstream yet.
 - **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala).
 - **Suggested upstream action:** Scalus: expose the first-item length or accept a remainder for V1 and V2 (not filed yet).
@@ -779,7 +779,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** See the Part A entry on `serialiseData`: an unsigned 64-bit index, no depth limit.
 - **Implementation does:** Scalus 1.2.0 wrote the index through a `Long` (fixed in 1.3.0). The borer encoder of 1.3.0 still stops at 1000 levels of array nesting (`Exceeded 1000 maximum array/map nesting levels`), where the reference has no limit and a datum can be as deep as a block. The flat codec of `Data` constants shared the truncation in 1.2.0.
 - **Evidence:** Preprod tx 2edd684f (slot 80,239,053, epoch 189). Not filed upstream yet.
-- **Pinned by:** [`DataSerialiserSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/DataSerialiserSuite.scala), [`ScalusConformanceReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusConformanceReproducersSuite.scala).
+- **Pinned by:** `DataSerialiserSuite` and `ScalusConformanceReproducersSuite`, both removed with the Scalus backend on 2026-11-15.
 - **Suggested upstream action:** Scalus: remove the nesting limit in the `Data` encoder (not filed yet).
 - **Status:** confirmed in source
 
@@ -852,8 +852,8 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** plutus 1.70.0.0 (`507cab8c`) computes every cost and the remaining budget in `SatInt`, which saturates at `Int64`'s bounds (`Data/SatInt.hs` lines 51-195; `ExMemory.hs` lines 72-75, 114). It measures arguments as trees of costs flattened into streams (`ExMemoryUsage.hs`), runs the costing functions over the streams in a fixed order of saturating operations (`CostingFun/Core.hs`, `CostStream.hs`), charges a builtin's budget stream element by element, counts machine steps and charges them per kind every 200 steps and on return (`Cek/Internal.hs` lines 1011-1064), and compares the remaining budget with zero after every charge (`restricting`, `Cek/ExBudgetMode.hs` lines 126-172). An argument it cannot unlift costs nothing (`Builtin/Meaning.hs` lines 245-262).
 - **Implementation does:** Scalus 1.4.0 keeps the remaining budget in a `Long` that wraps (`RestrictingBudgetSpender`), charges every step at once, sums each argument into one number, evaluates its costing functions in another order of the same operations, halves `expModInteger`'s penalty with Java's division instead of `dividedBy`, and saturates the product of -1 and `Int64`'s minimum at the minimum. With every parameter at `Int64`'s minimum the startup cost alone wraps the remaining budget below zero, so Scalus reports an exhausted budget where the reference evaluates ([#485](https://github.com/KD5UJC-XYZ/scarab/issues/485)). With the published parameters the two agree.
 - **Evidence:** 5,661 observations of unchanged Plutus 1.70.0.0 (111 programs under 51 lists, among them all `Int64` minimum, negated defaults and lists of mixed signs up to the bounds; `fixtures/reference/genesis-cost-models`): Scalus alone differs on 506 (173 under the all-minimum lists, 333 under the mixed ones).
-- **Scarab does:** `ScalusEvaluator.CorrectedVm` costs every builtin with `ReferenceCosting` and spends through `ReferenceBudget` (`Steps`, `Restricting`); the 5,661 observations agree in stage and exact budget, with none excluded. Not filed upstream yet.
-- **Pinned by:** [`ReferenceBudgetSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ReferenceBudgetSuite.scala) (reproducers of each Scalus difference and the corrections), [`CostModelLengthSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/CostModelLengthSuite.scala), `BuiltinCostingOracleSuite`, `PlutusConformanceSuite`.
+- **Scarab does:** its own evaluator computes costs and the remaining budget in `SatInt`, as the reference does, and the 5,661 observations are among the oracles of its costing ([the own evaluator](compatibility/plutus-own-evaluator.md)). Until 2026-11-15 the Scalus backend's wrapper (`CorrectedVm`) costed every builtin with `ReferenceCosting` and spent through `ReferenceBudget` (`Steps`, `Restricting`); the 5,661 observations agreed in stage and exact budget, with none excluded. Not filed upstream yet.
+- **Pinned by:** [`CostingOracleSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CostingOracleSuite.scala), [`SatIntSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/SatIntSuite.scala), [`CostModelLengthSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/CostModelLengthSuite.scala); [`BuiltinCostingOracleSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/BuiltinCostingOracleSuite.scala), on the own evaluator since 2026-11-15; `ReferenceBudgetSuite` and `PlutusConformanceSuite` until they were removed with the Scalus backend on 2026-11-15.
 - **Suggested upstream action:** Scalus: saturate the restricting spender and the costing arithmetic as the reference does (not filed yet; tracked with the other upstream Scalus items in [#473](https://github.com/KD5UJC-XYZ/scarab/issues/473)).
 - **Status:** confirmed in source
 

@@ -5,7 +5,8 @@ import xyz.kd5ujc.scarab.ledger.testByteStrings
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Tree, Value as C}
 import xyz.kd5ujc.scarab.ledger.Block
-import xyz.kd5ujc.scarab.plutus.{DataSerialiser, PlutusData, ScalusEvaluator}
+import xyz.kd5ujc.scarab.plutus.PlutusData
+import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
@@ -192,16 +193,12 @@ class DeepNestingSuite extends FunSuite:
       onSmallStack {
         val data = decodeData(wire)
         assertEquals(depthOf(data), levels)
-        // through the machine's Data and the reference's serialiseData, and back
-        val scalus = ScalusEvaluator.toData(data)
-        val serialised = Bytes.fromArray(DataSerialiser.serialise(scalus))
+        // through the reference's serialiseData, and back
+        val serialised = DataSerialisation.serialise(data)
         // compared through their encodings: `==` on the case classes recurses
         val back = decodeData(serialised)
         assertEquals(depthOf(back), levels)
-        assertEquals(
-          Bytes.fromArray(DataSerialiser.serialise(ScalusEvaluator.toData(back))),
-          serialised
-        )
+        assertEquals(DataSerialisation.serialise(back), serialised)
       }
     }
   }

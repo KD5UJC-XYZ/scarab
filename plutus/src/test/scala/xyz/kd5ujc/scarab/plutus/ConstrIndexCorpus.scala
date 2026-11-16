@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.plutus
 import io.circe.Json
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import scalus.uplc.Program
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Phase-2 probes of `constrData` at the sign and Word64 boundaries of its index, each followed by
@@ -62,10 +61,7 @@ object ConstrIndexCorpus:
         " (delay (con unit ())) (delay (error)) (delay (error)) (delay (error)) (delay (error)) ])")
     )
 
-  private def compiled(body: String): Bytes =
-    Bytes.fromArray(
-      Program.parseUplc(s"(program 1.0.0 $body)").fold(e => sys.error(e.toString), _.cborEncoded)
-    )
+  private def compiled(body: String): Bytes = UplcScripts.compile(s"(program 1.0.0 $body)")
 
   val probes: Vector[Probe] = for
     index <- indices

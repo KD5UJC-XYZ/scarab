@@ -21,20 +21,17 @@ import xyz.kd5ujc.scarab.uplc.ledger.{
 }
 
 /** The [[ScriptEvaluator]] and [[ScriptDecoder]] interpreters backed by Scarab's own evaluator, the
-  * `uplc` module, which has no Scalus in it (ADR 0027): `deserialiseScript` and
-  * `evaluateScriptRestricting` of plutus 1.70.0.0 as [[LedgerEval]] transcribes them. The node runs
-  * it with `--plutus-vm scarab`; the Scalus backend ([[ScalusEvaluator]]) stays the default.
+  * `uplc` module (ADR 0027): `deserialiseScript` and `evaluateScriptRestricting` of plutus 1.70.0.0
+  * as [[LedgerEval]] transcribes them. It is the node's only Plutus evaluator
+  * ([[PlutusBackend.default]]).
   *
-  * The request is the one the Scalus backend gets: the same script bytes, data arguments, cost
-  * model and budget, built by the same ledger code (ADR 0027's amendment says what the two backends
-  * share). Its results map onto the shared algebra so that a verdict means the same whichever
-  * backend gave it:
+  * The request is built by the ledger code: the script bytes, data arguments, cost model and
+  * budget. Its results map onto the algebra as follows:
   *
   *   - `deserialiseScript` refused the script: [[EvalFailure.Decode]] with [[ScriptProblem.Uplc]],
   *     and [[ScriptDecodeFailure.Malformed]] from [[ScriptDecoder.validate]];
   *   - the program's version check of `mkTermToEvaluate` refused it: [[EvalFailure.Decode]] with
-  *     [[ScriptProblem.UplcVersion]], where the Scalus backend's `admitted` reports its own version
-  *     check;
+  *     [[ScriptProblem.UplcVersion]];
   *   - the scope check refused the applied term: [[EvalFailure.OpenTerm]];
   *   - the machine overspent the budget: [[EvalFailure.OutOfBudget]];
   *   - any other failure of the machine, or a V3 script that did not return `()`:
@@ -55,7 +52,7 @@ object ScarabEvaluator:
     */
   private val Contexts = 16
 
-  /** Programs kept, as many as the Scalus backend keeps. */
+  /** Programs kept. */
   private val Programs = 512
 
   /** A fresh interpreter with its own caches. */
@@ -89,8 +86,8 @@ object ScarabEvaluator:
   private type Admitted = Either[LedgerEval.NotAdmitted, Program]
 
   private final class Interpreter extends ScriptEvaluator[Id] with ScriptDecoder[Id]:
-    // Instance-scoped caches, as the Scalus backend's: `evaluate` is a pure function of its
-    // request; BoundedCache is synchronized, and an attempt with no verdict is never retained.
+    // Instance-scoped caches: `evaluate` is a pure function of its request; BoundedCache is
+    // synchronized, and an attempt with no verdict is never retained.
     private val contexts =
       BoundedCache[ContextKey, Either[Unavailability, LedgerContext]](Contexts)
     private val programs = BoundedCache[ProgramKey, Admitted](Programs)
@@ -166,7 +163,7 @@ object ScarabEvaluator:
     case _                                 => true
 
   /** The budget as the machine's: the ledger's `ExUnits` are memory and steps, `ExBudget` is CPU
-    * and memory. A component beyond 64 bits gets no verdict, as on the Scalus backend.
+    * and memory. A component beyond 64 bits gets no verdict.
     */
   private def bounded(budget: ExUnits): Either[EvalFailure, ExBudget] =
     Either.cond(
@@ -186,9 +183,8 @@ object ScarabEvaluator:
     * adapter or an error of the JVM. A stack overflow is [[BackendFailure.StackExhausted]] (the
     * machine and the decoder keep their stacks on the heap, so it is a defect too); a non-fatal
     * exception is [[Unavailability.Thrown]]; any other `Throwable` (a `LinkageError` of a native
-    * library, an `OutOfMemoryError`) is [[BackendFailure.Defect]], as on the Scalus backend, whose
-    * worker turns every `Throwable` into one. None is ever an error that ends the thread the ledger
-    * rules run on, nor a failure of the script.
+    * library, an `OutOfMemoryError`) is [[BackendFailure.Defect]]. None is ever an error that ends
+    * the thread the ledger rules run on, nor a failure of the script.
     */
   private[plutus] def guarded[A](unavailable: BackendFailure => A)(body: => A): A =
     Either

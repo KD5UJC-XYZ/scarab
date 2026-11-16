@@ -1,6 +1,6 @@
 # 0020. Plutus native crypto through scalus-crypto-jni
 
-- **Status**: Accepted; partially supersedes [0012](0012-portable-blst.md) (its Plutus part)
+- **Status**: Superseded by [0027](0027-own-uplc-evaluator-as-a-correctness-backend.md) ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped)); it had partially superseded [0012](0012-portable-blst.md) (its Plutus part)
 - **Date**: 2026-10-23
 - **Issue**: roadmap B11, I1; follow-ups [#406](https://github.com/KD5UJC-XYZ/scarab/issues/406) to [#409](https://github.com/KD5UJC-XYZ/scarab/issues/409)
 
@@ -19,14 +19,14 @@ scalus-secp256k1-jni and depends on `org.scalus:scalus-crypto-jni:0.1.0`, whose
 (`Secp256k1`) and every BLS12-381 operation (`Blst`) run there. Read from the Scalus 1.4.0 class
 files, 22 builtins reach it. Eighteen do so through `JVMPlatformSpecific`. The compress and equal
 builtins of G1 and G2 do so through the methods of `G1Element` and `G2Element`. That is the set
-`ScalusEvaluator.nativeCrypto` guards.
+ScalusEvaluator.nativeCrypto guards.
 
 How the library loads, read from the class files:
 
-1. `CryptoJni.<clinit>` calls `NativeLoader.loadLibrary("scalus_crypto")` and catches only
+1. `CryptoJni.<clinit>` calls NativeLoader.loadLibrary("scalus_crypto") and catches only
    `IOException` and `UnsatisfiedLinkError`. Either one is printed to stderr and leaves
    `isEnabled` false. Every entry point then throws `IllegalStateException` from `requireEnabled`.
-2. `NativeLoader.loadLibrary` first tries `System.loadLibrary` (`java.library.path`). Only after
+2. NativeLoader.loadLibrary first tries `System.loadLibrary` (`java.library.path`). Only after
    that fails does it extract `natives/<platform>/libscalus_crypto.so`, then `<platform>/…`, then
    `META-INF/lib/<platform>/…`, to a new directory under `java.io.tmpdir`, and `System.load` it from
    there.
@@ -74,8 +74,8 @@ Platform limits, read with `objdump -T`:
 
 ## Decision
 
-**Adopt Scalus 1.4.0 with scalus-crypto-jni, and make the library's presence a start-up
-condition, as ADR 0012 did for libblst.**
+~~**Adopt Scalus 1.4.0 with scalus-crypto-jni, and make the library's presence a start-up
+condition, as ADR 0012 did for libblst.**~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
 
 - The wrapper corrections that 1.4.0 makes unnecessary are removed:
   - the variant-A Ed25519 costing;
@@ -83,14 +83,14 @@ condition, as ADR 0012 did for libblst.**
   - the raw-DST `hashToGroup` adapter and its ASCII-only refusal;
   - the `BinaryDstUnavailable` and `NativeHashToGroupUnavailable` cases of `BackendFailure`;
   - the `ScalusDeviations` context patch.
-- Every builtin the library backs is wrapped by `CorrectedVm.nativeGuarded`. It checks
-  `NativeCrypto.available`, which never throws: an initialisation `LinkageError` counts as not
+- Every builtin the library backs is wrapped by CorrectedVm.nativeGuarded. It checks
+  NativeCrypto.available, which never throws: an initialisation `LinkageError` counts as not
   loaded. When the library is missing, the builtin returns `EvalFailure.Unsupported`
-  (`BackendFailure.BuiltinUnavailable`). That is never a script verdict or a consensus predicate
+  (BackendFailure.BuiltinUnavailable). That is never a script verdict or a consensus predicate
   failure.
-- **Start-up check (`NativeCrypto.verify`)**. `follow` runs it after `Blst.verify`, before
+- **Start-up check (NativeCrypto.verify)**. `follow` runs it after `Blst.verify`, before
   anything evaluates a script, and `BlstCheckMain` runs it too:
-  1. `NativeLibraryUtil.getArchitecture` names the platform. A platform without a pinned library is
+  1. NativeLibraryUtil.getArchitecture names the platform. A platform without a pinned library is
      `UnsupportedPlatform`.
   2. `locate` resolves the library in native-lib-loader's order without loading it: a file on
      `java.library.path` first, then the three resource locations. `admissible` accepts it only if
@@ -157,25 +157,41 @@ Rejected:
 
 ## Consequences
 
-- A node needs, on Linux, glibc 2.33 or newer and a `java.io.tmpdir` that exists, is writable and
+- ~~A node needs, on Linux, glibc 2.33 or newer and a `java.io.tmpdir` that exists, is writable and
   allows execution. Otherwise it refuses to start with `NativeLibraryError`. The release images
-  already mount `/tmp` with `exec`.
-- The trusted computing base grows to the upstream nix build of `libscalus_crypto`, pinned by hash
+  already mount `/tmp` with `exec`.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+- ~~The trusted computing base grows to the upstream nix build of `libscalus_crypto`, pinned by hash
   but not reproduced. The SBOM marks the Linux/amd64 library as runtime-verified (start-up pin and
-  known answers), not source-rebuilt.
-- The Plutus builtins and Scarab's MinSig run different blst builds: the same v0.3.15 source,
-  compiled by two toolchains.
-- Revisit when:
-  - scalus-crypto-jni changes: update the five pins, the jar hash, the licence texts in
-    `plutus/licenses/` and this record, and rerun the ISA check;
-  - Scarab rebuilds the library from source;
-  - a platform other than Linux/amd64 is deployed;
-  - Scalus gains BLS key generation (then [0012](0012-portable-blst.md)'s module could go).
+  known answers), not source-rebuilt.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+- ~~The Plutus builtins and Scarab's MinSig run different blst builds: the same v0.3.15 source,
+  compiled by two toolchains.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+- ~~Revisit when:~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+  - ~~scalus-crypto-jni changes: update the five pins, the jar hash, the licence texts in
+    plutus/licenses/ and this record, and rerun the ISA check;~~
+  - ~~Scarab rebuilds the library from source;~~
+  - ~~a platform other than Linux/amd64 is deployed;~~
+  - ~~Scalus gains BLS key generation (then [0012](0012-portable-blst.md)'s module could go).~~
 
 ## Amendment (2026-10-30): the Leios keys move to jblst
 
 [ADR 0025](0025-jblst.md) replaces blst-java and the library of ADR 0012 with `tech.pegasys:jblst`
 0.3.18 (blst v0.3.17) for the Leios BLS keys (`MinSig`). The start-up check of ADR 0012 stays, in
 `crypto`, and now pins jblst's libraries. The raw-DST entry points above went with that library, so
-#408 is moot. The Plutus builtins are unaffected: they still run on `libscalus_crypto`, under this
-record.
+#408 is moot. ~~The Plutus builtins are unaffected: they still run on `libscalus_crypto`, under this
+record.~~ ([amended 2026-11-15](#amendment-2026-11-15-superseded-the-library-is-no-longer-shipped))
+
+## Amendment (2026-11-15): superseded, the library is no longer shipped
+
+The owner decided on 2026-11-15 that Scarab keeps one Plutus evaluator, its own, and removes the Scalus backend
+([ADR 0027, amendment of 2026-11-15](0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator),
+[decisions register](../decisions.md#reference-fidelity)). The own evaluator takes its cryptography from Bouncy
+Castle, the `crypto` module and jblst ([ADR 0027](0027-own-uplc-evaluator-as-a-correctness-backend.md)), so nothing
+loads `libscalus_crypto` and it is no longer shipped.
+
+- **Removed:** scalus-crypto-jni, the node's start-up check of `libscalus_crypto` with its pins and known answers,
+  the `plutusCrypto` event, the suites of this record, and the library's licence entries.
+- **Kept:** the start-up check of jblst's libraries ([ADR 0025](0025-jblst.md)).
+- **No subject left:** the consequences struck through above, and the follow-ups that concern this library alone
+  ([#406](https://github.com/KD5UJC-XYZ/scarab/issues/406), [#407](https://github.com/KD5UJC-XYZ/scarab/issues/407)).
+- **Historical:** the context, the provenance table and the measurements above describe the library shipped until
+  2026-11-15.

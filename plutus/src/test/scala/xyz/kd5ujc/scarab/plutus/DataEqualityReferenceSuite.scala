@@ -6,8 +6,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import scalus.cardano.onchain.plutus.prelude.List as PList
-import scalus.uplc.builtin.Data
 
 /** `equalsData` against the executed reference (plutus 1.70.0.0, `PlutusCore/Data.hs`, derived
   * `Eq`: the entries of a `Map` are an ordered list; recipe in `scripts/oracle/plutus/README.md`):
@@ -15,76 +13,6 @@ import scalus.uplc.builtin.Data
   * [[EqualsDataCorpus]] in V1 to V3 at protocols 9 to 11.
   */
 class DataEqualityReferenceSuite extends FunSuite:
-  private def i(n: Int): Data = Data.I(BigInt(n))
-  private def map(entries: (Data, Data)*): Data = Data.Map(PList.from(entries.toList))
-  private def list(items: Data*): Data = Data.List(PList.from(items.toList))
-
-  private val ab = map(i(1) -> i(1), i(2) -> i(2))
-  private val ba = map(i(2) -> i(2), i(1) -> i(1))
-
-  test("reproducer: Scalus compares a Data.Map as a set of its entries") {
-    // The reference says False for both pairs; the machine's builtin must not use `==`.
-    assertEquals(ab, ba, "fixed upstream? Scalus now compares the entries in order")
-    assertEquals(ab, map(i(1) -> i(1), i(2) -> i(2), i(1) -> i(1)), "fixed upstream?")
-  }
-
-  test("DataEquality compares the entries of a map in order, and repeated entries") {
-    assert(!DataEquality.equal(ab, ba))
-    assert(!DataEquality.equal(ab, map(i(1) -> i(1), i(2) -> i(2), i(1) -> i(1))))
-    assert(!DataEquality.equal(map(i(1) -> i(1), i(1) -> i(1)), map(i(1) -> i(1))))
-    assert(!DataEquality.equal(list(ab), list(ba)))
-    assert(DataEquality.equal(ab, map(i(1) -> i(1), i(2) -> i(2))))
-    assert(DataEquality.equal(map(), map()))
-    assert(!DataEquality.equal(map(), list()))
-    assert(!DataEquality.equal(map(i(1) -> i(2)), map(i(2) -> i(1))))
-  }
-
-  test("DataEquality reads a constructor through its accessor and compares the field count") {
-    def constr(tag: Int, fields: Data*): Data = Data.Constr(BigInt(tag), PList.from(fields.toList))
-    assert(DataEquality.equal(constr(3, i(1)), constr(3, i(1))))
-    assert(!DataEquality.equal(constr(3, i(1)), constr(4, i(1))))
-    assert(!DataEquality.equal(constr(3, i(1)), constr(3, i(1), i(1))))
-    assert(!DataEquality.equal(constr(0), list()))
-  }
-
-  private def onSmallStack[A](body: => A): A =
-    var result: Option[Either[Throwable, A]] = None
-    val worker = Thread(
-      null,
-      () =>
-        result = Some(
-          try Right(body)
-          catch case e: Throwable => Left(e)
-        ),
-      "small-stack",
-      256L * 1024
-    )
-    worker.start()
-    worker.join()
-    result.getOrElse(fail("worker did not finish")).fold(throw _, identity)
-
-  private def nested(levels: Int, bottom: Data)(wrap: Data => Data): Data =
-    (1 to levels).foldLeft(bottom)((inner, _) => wrap(inner))
-
-  test("DataEquality is stack-safe on data 200,000 levels deep (small-stack thread)") {
-    val levels = 200000
-    val (listA, listB) =
-      (nested(levels, ab)(x => list(x)), nested(levels, ab)(x => list(x)))
-    val listDifferent = nested(levels, ba)(x => list(x))
-    val mapA = nested(levels, ab)(x => map(i(0) -> x))
-    val mapB = nested(levels, ab)(x => map(i(0) -> x))
-    val mapDifferent = nested(levels, ba)(x => map(i(0) -> x))
-    val results = onSmallStack(
-      Vector(
-        DataEquality.equal(listA, listB),
-        DataEquality.equal(listA, listDifferent),
-        DataEquality.equal(mapA, mapB),
-        DataEquality.equal(mapA, mapDifferent)
-      )
-    )
-    assertEquals(results, Vector(true, false, true, false))
-  }
-
   private val rows = Files
     .readAllLines(Path.of("fixtures/reference/plutus-equals-data/verdicts.jsonl"))
     .asScala
@@ -109,13 +37,13 @@ class DataEqualityReferenceSuite extends FunSuite:
     assertEquals(actual, expected)
   }
 
-  test("the reference accepts every script and disagrees with Scalus's equality on the probes") {
+  test("the reference accepts every script, and some probes are unequal") {
     assert(rows.forall(row => field[Boolean](row, "admitted")))
     val success = rows.filter(row => field[String](row, "stage") == "success")
     assert(success.nonEmpty && success.size < rows.size)
   }
 
-  private val evaluator = ScalusEvaluator.pure
+  private val evaluator = ScarabEvaluator.pure
 
   /** Scarab's outcome as the reference's row records it: the stage and, on success, the budget. */
   private def outcome(probe: EqualsDataCorpus.Probe, row: Json): (String, Option[ExUnits]) =
@@ -127,8 +55,8 @@ class DataEqualityReferenceSuite extends FunSuite:
     val model = PlutusBoundaryCorpus.costModel(language, protocol)
     val modelBytes = Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
     val script = probe.script
-    assertEquals(NativeCrypto.sha256Hex(script.toArray), field[String](row, "scriptSha256"))
-    assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+    assertEquals(UplcScripts.sha256Hex(script.toArray), field[String](row, "scriptSha256"))
+    assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
     evaluator.evaluate(
       EvalRequest(language, protocol, script, Vector.empty, model, PlutusBoundaryCorpus.budget)
     ) match

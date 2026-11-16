@@ -88,7 +88,7 @@ class CiGateTests(unittest.TestCase):
         self.assertIn("run: bash scripts/sbtw checkBuild node/runtimeClasspathFile testSuiteInventory\n", build)
         self.assertIn("python3 scripts/ci_test_shards.py plan --inventory target/ci/test-suites.tsv", build)
         self.assertIn("scripts/check_native_identity.py", build)
-        self.assertIn("scripts/check_native_isa.py", build)
+        self.assertNotIn("libscalus_crypto", build, "no Scalus native library is shipped or checked")
         self.assertNotIn("scripts/check_build_identity.py", build)
         self.assertIn("uses: actions/cache@", build, "the build job saves the dependency cache")
         self.assertIn("tar --format=posix", build)
@@ -111,7 +111,7 @@ class CiGateTests(unittest.TestCase):
         self.assertEqual(key.findall(shards), key.findall(self.job("scala-build")), "the shards read what the build saved")
         self.assertEqual(len(key.findall(shards)), 1)
         self.assertIn("          fail-on-cache-miss: true\n", shards)
-        self.assertNotIn("restore-keys", shards, "an older cache could make a shard build the prepared Scalus")
+        self.assertNotIn("restore-keys", shards, "a shard reads exactly the cache the build saved")
         retention = re.findall(r"^          retention-days: (\d+)$", self.job("scala-build"), re.MULTILINE)
         self.assertEqual(retention, ["7", "7"], "a failed shard can be re-run while the plan's reports are kept")
 
@@ -124,7 +124,7 @@ class CiGateTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"addCommandAlias\(\s*\"check", self.build)), 2)
         before = re.search(r"^val checkBeforeTests =\n  (.*)$", self.build, re.MULTILINE)
         self.assertIsNotNone(before)
-        self.assertEqual(before.group(1), 'Seq("scalafmtCheckAll", "headerCheckAll", "checkUplcClasspath") ++ '
+        self.assertEqual(before.group(1), 'Seq("scalafmtCheckAll", "headerCheckAll") ++ '
                                           'modules.map(m => s"$m/Test/compile")')
         self.assertIn('val checkAfterTests = Seq("scalafixAll --check")\n', self.build)
 

@@ -64,8 +64,12 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(xyz.kd5ujc.scarab.codec.Bytes.empty),
       xyz.kd5ujc.scarab.plutus.EvalFailure
         .Unsupported(
-          xyz.kd5ujc.scarab.plutus.BackendFailure
-            .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature)
+          xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+            xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+              xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+              Set(xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature)
+            )
+          )
         )
     )
     withHandle {
@@ -175,8 +179,8 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     val registering = MempoolStateFixture.entry(raw)
     val paying = MempoolStateFixture.entry(TxKit.pay(2)._1)
     BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(registering, paying), limit)(
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
     ) match
       case BlockBuilder.Selection(
             chosen,
@@ -625,8 +629,12 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     )
     val tx = xyz.kd5ujc.scarab.node.mempool.MempoolState.parse(raw).fold(e => fail(e.message), _._2)
     val entry = xyz.kd5ujc.scarab.node.mempool.Entry(id, raw, tx, 0)
-    val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure
-      .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+    val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+      xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+        xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+        Set(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+      )
+    )
     def failing(
         reason: xyz.kd5ujc.scarab.plutus.BackendFailure
     ): xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] =
@@ -641,7 +649,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         BlockBuilder
           .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(
             failing(reason),
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
           )
           .chosen
           .map(_._1.id),
@@ -651,8 +659,8 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     val invalid = entry.copy(tx = tx.copy(body = tx.body.copy(fee = -1)))
     assertEquals(
       BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
       ),
       BlockBuilder.Selection(Vector.empty, Vector.empty)
     )

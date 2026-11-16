@@ -57,7 +57,7 @@ class PlutusCaseSuite extends FunSuite:
     }
 
     test(s"${c.name} (${c.kind}): phase 2 agrees with is_valid = ${c.tx.isValid}") {
-      evaluate(c, PlutusBackends.evaluator) match
+      evaluate(c, ScarabEvaluator.default) match
         case Right(Phase2.Outcome.Passed(report)) =>
           assert(
             c.tx.isValid,
@@ -72,7 +72,7 @@ class PlutusCaseSuite extends FunSuite:
 
   test("with no budget every valid transaction fails phase 2 with OutOfBudget") {
     val starved: ScriptEvaluator[Id] =
-      r => PlutusBackends.evaluator.evaluate(r.copy(budget = ExUnits(0, 0)))
+      r => ScarabEvaluator.default.evaluate(r.copy(budget = ExUnits(0, 0)))
     cases.filter(_.tx.isValid).foreach { c =>
       evaluate(c, starved) match
         case Right(Phase2.Outcome.Failed(_, failures)) =>
@@ -85,7 +85,7 @@ class PlutusCaseSuite extends FunSuite:
     cases.filter(_.tx.isValid).foreach { c =>
       val spent = collection.mutable.Buffer.empty[(ExUnits, ExUnits)]
       val recording: ScriptEvaluator[Id] = r =>
-        val result = PlutusBackends.evaluator.evaluate(r)
+        val result = ScarabEvaluator.default.evaluate(r)
         spent += (result.spent -> r.budget)
         result
       evaluate(c, recording)

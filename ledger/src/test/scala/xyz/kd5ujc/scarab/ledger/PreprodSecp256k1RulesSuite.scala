@@ -13,8 +13,8 @@ import xyz.kd5ujc.scarab.protocol.Era
 import TestLedger.*
 
 /** Preprod transaction 97b31e35 (block 3,498,869, epoch 217): a Plutus V2 spend whose script calls
-  * `verifyEcdsaSecp256k1Signature` with an all-zero signature; the reference answers `False`,
-  * Scalus 1.2.0 and 1.3.0 fail (`Secp256k1`).
+  * `verifyEcdsaSecp256k1Signature` with an all-zero signature; the reference answers `False`
+  * (`Secp256k1`).
   */
 class PreprodSecp256k1RulesSuite extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-97b31e35.json"))
@@ -59,7 +59,7 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
       xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => (BigInt(1655769600) + slot - 86400) * 1000)
     ),
     evaluator = evaluator,
-    decoder = PlutusBackends.decoder
+    decoder = ScarabEvaluator.defaultDecoder
   )
 
   test("the recorded transaction is a Conway spend, valid on chain") {
@@ -71,7 +71,7 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
     "the Conway rules accept it: the script gets False, not an error, for the all-zero signature"
   ) {
     val after = NativeRules
-      .txIn[Conway](world, c.tx, env(PlutusBackends.evaluator))
+      .txIn[Conway](world, c.tx, env(ScarabEvaluator.default))
       .fold(f => fail(f.message), identity)
     assertEquals(after.plutus.succeeded, 1L)
     assertEquals(after.state.es.ls.utxo.fees.value, c.tx.body.fee)

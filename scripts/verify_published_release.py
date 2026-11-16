@@ -117,7 +117,7 @@ def jar_smoke(artifact, source):
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
         rows = [decode_json(line) for line in native.stdout.splitlines() if line.startswith("{")]
         require(native.returncode == 0 and any(row.get("ok") is True and row.get("library") == "portable" for row in rows),
-                "downloaded JAR portable native/Plutus checks failed")
+                "downloaded JAR portable native checks failed")
 
 
 def docker_image_smoke(reference, expected_oci, jar_hash, tools, output, anonymous, jdk_image, source):
@@ -173,7 +173,7 @@ def image_runtime_smoke(reference, expected_oci, jar_hash, output, jdk_image, so
                             stderr=subprocess.STDOUT, text=True, timeout=120)
     rows = [decode_json(line) for line in native.stdout.splitlines() if line.startswith("{")]
     require(native.returncode == 0 and any(row.get("ok") is True and row.get("library") == "portable" for row in rows),
-            "published image portable native/Plutus checks failed")
+            "published image portable native checks failed")
     return environment
 
 

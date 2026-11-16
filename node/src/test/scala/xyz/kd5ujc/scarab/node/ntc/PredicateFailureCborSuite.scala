@@ -26,8 +26,8 @@ class PredicateFailureCborSuite extends FunSuite:
   private val keyHash = hex("683acdaa374d6ef02de93bea119185477b17c8298d59967b06528a2d")
 
   test("typed script failures render only at the wire boundary without changing rejection bytes") {
-    val cause = new IllegalArgumentException("failure")
-    val evaluation = EvalFailure.Script(ScriptFailure.Thrown(cause, Vector("trace")))
+    val evaluation =
+      EvalFailure.Script(ScriptFailure.Uplc(EvaluationError.InvalidReturnValue, Vector("trace")))
     val failure = PredicateFailure.utxo(
       UtxoFailure.Utxos(
         UtxosFailure.ValidationTagMismatch(
@@ -38,7 +38,9 @@ class PredicateFailureCborSuite extends FunSuite:
     )
     // Alonzo/Rules/Utxos.hs:259-309 (f649f975): PlutusFailure keeps constructor tag 1,
     // its rendered text and opaque reconstruction bytes. The outer UTXOS tag stays 0.
-    val utxos = "8300f58201818301756661696c7572653b2074726163653a207472616365420102"
+    // the text is the failure's: "InvalidReturnValue; trace: trace"
+    val utxos =
+      "8300f582018183017820496e76616c696452657475726e56616c75653b2074726163653a207472616365420102"
     assertEquals(reason(failure), "81820681820182008200" + utxos)
     for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
       val encoded = PredicateFailureCbor
@@ -47,8 +49,8 @@ class PredicateFailureCborSuite extends FunSuite:
         .getOrElse(fail(s"missing $era validity-tag encoding"))
       assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
     evaluation match
-      case EvalFailure.Script(ScriptFailure.Thrown(original, logs)) =>
-        assert(original eq cause)
+      case EvalFailure.Script(ScriptFailure.Uplc(original, logs)) =>
+        assertEquals(original, EvaluationError.InvalidReturnValue)
         assertEquals(logs, Vector("trace"))
       case other => fail(s"changed evaluator cause: $other")
   }
@@ -56,7 +58,7 @@ class PredicateFailureCborSuite extends FunSuite:
   test(
     "malformed contexts retain their typed defect and original evaluator cause in every Plutus era"
   ) {
-    val original = new scalus.uplc.eval.EvaluationFailure(Vector.empty)
+    val original = EvaluationError.Cek(CekFailure(CekError.ErrorTerm, None))
     val request = xyz.kd5ujc.scarab.plutus.EvalRequest(
       xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1,
       10,
@@ -66,7 +68,7 @@ class PredicateFailureCborSuite extends FunSuite:
       ExUnits.zero
     )
     val failure = PlutusFailure(
-      EvalFailure.Script(ScriptFailure.Thrown(original, Vector("trace"))),
+      EvalFailure.Script(ScriptFailure.Uplc(original, Vector("trace"))),
       hex("0304"),
       Some(request)
     )
@@ -79,8 +81,8 @@ class PredicateFailureCborSuite extends FunSuite:
           assertEquals(cause, PlutusContextText.Error.Arguments(request.language, 0))
           assert(retained eq failure)
           retained.cause match
-            case EvalFailure.Script(ScriptFailure.Thrown(throwable, logs)) =>
-              assert(throwable eq original)
+            case EvalFailure.Script(ScriptFailure.Uplc(error, logs)) =>
+              assertEquals(error, original)
               assertEquals(logs, Vector("trace"))
             case other => fail(s"changed evaluator cause: $other")
         case other => fail(s"$era silently encoded malformed context: $other")
@@ -89,7 +91,7 @@ class PredicateFailureCborSuite extends FunSuite:
 
   // A malformed context makes the explicit-error description observable: it is a presentation
   // defect only on that path, and every other path keeps the provider's description.
-  test("the own evaluator's explicit error is described as Scalus's is; its other errors are not") {
+  test("the evaluator's explicit error is described; its other errors are not") {
     def request(language: xyz.kd5ujc.scarab.plutus.PlutusLanguage) =
       xyz.kd5ujc.scarab.plutus.EvalRequest(
         language,

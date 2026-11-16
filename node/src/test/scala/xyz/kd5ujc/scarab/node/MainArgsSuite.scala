@@ -291,45 +291,23 @@ class MainArgsSuite extends munit.FunSuite:
       assert(Main.parse(base ++ List("--plutus-workers", value)).isLeft)
   }
 
-  test("--plutus-vm chooses the evaluator, scalus by default, and refuses an unknown one") {
-    import xyz.kd5ujc.scarab.plutus.{PlutusVm, UnknownPlutusVm}
-    import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
-    assertEquals(Main.parse(base).map(_.plutusVm), Right(PlutusVm.Scalus))
-    assertEquals(
-      Main.parse(base ++ List("--plutus-vm", "scalus")).map(_.plutusVm),
-      Right(PlutusVm.Scalus)
-    )
-    assertEquals(
-      Main.parse(base ++ List("--plutus-vm", "scarab")).map(_.plutusVm),
-      Right(PlutusVm.Scarab)
-    )
-    Main.parse(base ++ List("--plutus-vm", "Scarab")) match
-      case Left(
-            ConfigError(
-              ConfigProblem.WithUsage(ConfigProblem.PlutusVmUnknown(UnknownPlutusVm("Scarab")), _)
-            )
-          ) =>
-        ()
-      case other => fail(s"$other")
-    assert(Main.parse(base ++ List("--plutus-vm", "scalus", "--plutus-vm", "scarab")).isLeft)
-    assert(Main.parse(base ++ List("--plutus-vm")).isLeft)
-  }
-
   test(
-    "--forge is taken with either evaluator, in either order (ADR 0027, amendment of 2026-11-13)"
+    "--plutus-vm is refused as a removed flag that says what to do: the node has one evaluator"
   ) {
-    import xyz.kd5ujc.scarab.plutus.PlutusVm
+    import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
     val keys = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
-    for
-      vm <- PlutusVm.values.toList
-      order <- List(keys ++ List("--plutus-vm", vm.name), List("--plutus-vm", vm.name) ++ keys)
-    do
-      Main.parse(base ++ order) match
-        case Right(options) =>
-          assert(options.forge.isDefined, s"$order: no forging options")
-          assertEquals(options.plutusVm, vm, s"$order")
-        case other => fail(s"$order: $other")
-    assert(
-      Main.parse(base ++ keys).exists(o => o.forge.isDefined && o.plutusVm == PlutusVm.Default)
-    )
+    val named = List("scalus", "scarab").flatMap { value =>
+      List(base ++ List("--plutus-vm", value), base ++ keys ++ List("--plutus-vm", value))
+    }
+    for flags <- named :+ (base ++ List("--plutus-vm")) do
+      Main.parse(flags) match
+        case Left(
+              e @ ConfigError(
+                ConfigProblem.WithUsage(ConfigProblem.RemovedFlag("plutus-vm"), _)
+              )
+            ) =>
+          assert(e.message.contains("--plutus-vm was removed"), e.message)
+          assert(e.message.contains("only Plutus evaluator; drop the flag"), e.message)
+        case other => fail(s"$flags: $other")
+    assert(Main.parse(base ++ keys).exists(_.forge.isDefined))
   }

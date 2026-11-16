@@ -13,8 +13,8 @@ original script bytes and the canonical JSON cost-model list by SHA-256 and reco
 admission, the stage (`success`, `decode`, `setup`, `scope`, `budget`, `evaluation`) and, for a
 success, the budget the reference spent (CPU and memory). Budgets are compared exactly.
 
-The probes cover `data` constants of 1,001, 1,003 (the fewest that Scalus 1.3.0's borer-based
-`Data` decoder refuses) and 16,000 levels of nesting (a script of the last is just under mainnet's
+The probes cover `data` constants of 1,001, 1,003 (the fewest that a `Data` decoder with a limit of
+1,000 nesting levels refuses) and 16,000 levels of nesting (a script of the last is just under mainnet's
 16,384-byte `maxTxSize`), each ignored, returned and serialised, and two 1,003-level constants
 compared; bytes after the CBOR item of a `data` constant (the reference's
 `deserialiseOrFail` keeps the first item, `Codec/Serialise.hs` 134-143 of serialise 0.2.6.1); a

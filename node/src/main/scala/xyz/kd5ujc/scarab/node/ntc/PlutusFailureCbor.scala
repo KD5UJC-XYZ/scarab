@@ -5,12 +5,11 @@ import xyz.kd5ujc.scarab.codec.HaskellShow
 import java.util.Base64
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptFailure}
-import scalus.uplc.eval.EvaluationFailure
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalRequest, PlutusLanguage, ScriptFailure}
+import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
 import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 import xyz.kd5ujc.scarab.ledger.PlutusFailure
-import xyz.kd5ujc.scarab.plutus.{DataSerialiser, EvalRequest, PlutusLanguage, ScalusEvaluator}
 
 /** Wire presentation only: ledger-core/Plutus/Evaluate.hs `ToCBOR PlutusWithContext` and
   * Alonzo/Rules/Utxos.hs `scriptFailureToFailureDescription`, pinned at f649f975.
@@ -21,9 +20,8 @@ private[ntc] object PlutusFailureCbor:
     w.array(2).uint(request.language.id).bytes(request.script)
     // PlutusV3 and PlutusV4 arguments are one script context, not a list
     if request.language.evaluatedAs != PlutusLanguage.V3 then w.array(request.args.size)
-    request.args.foreach(arg =>
-      w.raw(Bytes.fromArray(DataSerialiser.serialise(ScalusEvaluator.toData(arg))))
-    )
+    // each argument as `encodeData` writes it, the bytes of the `serialiseData` builtin
+    request.args.foreach(arg => w.raw(DataSerialisation.serialise(arg)))
     w.array(2).uint(request.budget.mem).uint(request.budget.steps)
     w.array(request.costModel.size)
     request.costModel.foreach(value => w.int(BigInt(value)))
@@ -66,11 +64,8 @@ private[ntc] object PlutusFailureCbor:
             }
       case None => Right(None)
 
-  /** An evaluation that ended at an explicit `error` term, from either backend: Scalus's
-    * `EvaluationFailure`, or the own evaluator's `CekError.ErrorTerm`.
-    */
+  /** An evaluation that ended at an explicit `error` term (`CekError.ErrorTerm`). */
   private def explicitError(cause: EvalFailure): Boolean = cause match
-    case EvalFailure.Script(ScriptFailure.Thrown(_: EvaluationFailure, _)) => true
     case EvalFailure.Script(
           ScriptFailure.Uplc(EvaluationError.Cek(CekFailure(CekError.ErrorTerm, _)), _)
         ) =>

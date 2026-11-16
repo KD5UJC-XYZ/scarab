@@ -5,7 +5,7 @@ import munit.FunSuite
 
 class ParamNamesSuite extends FunSuite:
   private def recorded(version: Int): Vector[String] =
-    PlutusConformanceSuite
+    PlutusConformance
       .resource(s"V$version-param-names.txt")
       .linesIterator
       .map(_.trim)

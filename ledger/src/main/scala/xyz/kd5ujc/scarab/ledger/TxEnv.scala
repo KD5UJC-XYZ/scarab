@@ -149,7 +149,7 @@ object LedgerFailure:
   *   forecast horizon (needed for the script context).
   * @param evaluator
   *   The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`). No default: the
-  *   node passes the backend it was started with (`--plutus-vm`, ADR 0027) on every path.
+  *   node passes its backend (`PlutusBackend`) on every path.
   * @param decoder
   *   Decides whether a Plutus script deserialises (phase 1 from Babbage on); the same backend's.
   * @param observer

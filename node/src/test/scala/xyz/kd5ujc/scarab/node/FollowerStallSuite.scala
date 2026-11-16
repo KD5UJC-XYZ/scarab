@@ -550,10 +550,12 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                   EvalFailure
                     .Unsupported(
-                      xyz.kd5ujc.scarab.plutus.BackendFailure
-                        .BuiltinUnavailable(
-                          xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature
+                      xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+                        xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+                          xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+                          Set(xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature)
                         )
+                      )
                     )
                 )
                 cats.mtl

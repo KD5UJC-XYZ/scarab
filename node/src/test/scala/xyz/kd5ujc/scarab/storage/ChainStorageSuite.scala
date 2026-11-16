@@ -115,7 +115,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       setup.byronRules,
       setup.handOver,
       setup.byronHistory,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+      xyz.kd5ujc.scarab.plutus.PlutusBackend.default
     )
 
   /** Open the storage, follow blocks `[from, until)` with the real follower, wait for snapshots. */
@@ -179,7 +179,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 setup.byronRules,
                 setup.handOver,
                 setup.byronHistory,
-                xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+                xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
                 utxoStore = utxoStore
               )
             ChainStorage
@@ -337,7 +337,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                       LedgerFailure.Unavailable(
                         Bytes.empty,
                         location,
-                        EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.NoResult)
+                        EvalFailure.Unsupported(
+                          xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted
+                        )
                       )
                     )
                   )
@@ -559,7 +561,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   setup.byronRules,
                   setup.handOver,
                   setup.byronHistory,
-                  xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+                  xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
                   utxoStore = Some(store)
                 ),
                 setup.mirrorStart,
@@ -730,7 +732,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.byronRules,
               setup.handOver,
               setup.byronHistory,
-              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+              xyz.kd5ujc.scarab.plutus.PlutusBackend.default
             )
           )
           ChainStorage

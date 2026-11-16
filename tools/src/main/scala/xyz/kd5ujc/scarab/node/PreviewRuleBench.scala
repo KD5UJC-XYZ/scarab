@@ -83,8 +83,8 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
           globals,
           _ => None,
           0L,
-          evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-          decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+          evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+          decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
         )
         val name = "snapshot-00000000000125231955-4753556"
         for

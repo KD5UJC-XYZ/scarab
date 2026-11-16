@@ -242,7 +242,7 @@ so these are shares of samples, not of wall time). `jdk.ThreadStart` counted 133
 <!-- /register -->
 
 What the thread dumps called `PreConwayRules.apply` was the sum of the rules and the machine; the rules alone are a fifth of
-the path. The `new Thread` frames were `ScalusEvaluator.onBigStack`: a `Thread` with a 256 MB stack per script, 220 a second
+the path. The `new Thread` frames were ScalusEvaluator.onBigStack: a `Thread` with a 256 MB stack per script, 220 a second
 (8.5 scripts a block; the log has 5.9 evaluated per block in epoch 328).
 
 **Changes** (each in code the new rules share: `Address.scala`, `Purpose`, `ScriptContexts`, `ScriptIntegrity`, `Bytes`, the
@@ -288,7 +288,7 @@ decisive measurement is a JFR of the follower after a deploy, with the same clas
 **Not done, and why.**
 - The CEK machine itself is 23% of the samples. Inside Scalus 1.3.0 (the version these samples ran on) the machine's environment is an
   `ArraySeq` extended with `:+` (a copy of the whole environment per binding: `Array.copyOf` was 18% of the evaluator's
-  samples) and `CorrectedVm.runtime` was 14% (the `getBuiltinRuntime` call; a per-ordinal memo made no difference on the
+  samples) and CorrectedVm.runtime was 14% (the `getBuiltinRuntime` call; a per-ordinal memo made no difference on the
   Preview scripts and was dropped). A faster machine means a change upstream; the redeemers of one transaction are independent,
   but the owner rule is that transactions stay sequential, and a parallel evaluation of one transaction's few redeemers was
   not tried.

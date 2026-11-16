@@ -6,9 +6,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import scalus.cardano.onchain.plutus.prelude.List as PList
-import scalus.uplc.builtin.Data
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 
 /** `constrData` at the sign and Word64 boundaries of its index against the executed reference
   * (plutus 1.70.0.0, `Builtins.hs` `ConstrData`; recipe in `scripts/oracle/plutus/README.md`): the
@@ -18,32 +17,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
 class ConstrIndexReferenceSuite extends FunSuite:
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.toString), identity)
 
-  private val one = PList.from(List(Data.I(1)))
-
-  test("a negative index builds and reads back through every Data.Constr reader") {
-    val negative = ConstrIndex.constr(BigInt(-1), one)
-    negative match
-      case Data.Constr(i, fields) =>
-        assertEquals(i, BigInt(-1))
-        assertEquals(fields, one)
-      case other => fail(s"not a constructor: $other")
-    assertEquals(negative, ConstrIndex.constr(BigInt(-1), one))
-    assertEquals(negative.hashCode, ConstrIndex.constr(BigInt(-1), one).hashCode)
-    assertNotEquals(negative, Data.Constr(BigInt(0), one))
-    assertNotEquals[Data, Data](Data.Constr(BigInt(0), one), negative)
-    assertNotEquals(negative, ConstrIndex.constr(BigInt(-2), one))
-  }
-
-  test("a non-negative index is an ordinary Scalus Data.Constr") {
-    assertEquals(ConstrIndex.constr(BigInt(3), one).getClass, classOf[Data.Constr])
-  }
-
   for index <- ConstrIndexCorpus.indices do
     test(s"serialiseData of constructor ${index.value}: the reference's bytes") {
-      val empty = DataSerialiser.serialise(ConstrIndex.constr(index.value, PList.Nil))
-      val field = DataSerialiser.serialise(ConstrIndex.constr(index.value, one))
-      assertEquals(Bytes.fromArray(empty), hex(index.empty))
-      assertEquals(Bytes.fromArray(field), hex(index.oneField))
+      val empty = DataSerialisation.serialise(PlutusData.Constr(index.value, Vector.empty))
+      val field =
+        DataSerialisation.serialise(PlutusData.Constr(index.value, Vector(PlutusData.I(1))))
+      assertEquals(empty, hex(index.empty))
+      assertEquals(field, hex(index.oneField))
     }
 
   private val rows = Files
@@ -72,7 +52,7 @@ class ConstrIndexReferenceSuite extends FunSuite:
     assertEquals(actual, expected)
   }
 
-  private val evaluator = ScalusEvaluator.pure
+  private val evaluator = ScarabEvaluator.pure
 
   /** Scarab's outcome as the reference's row records it: the stage and, on success, the budget. */
   private def outcome(probe: ConstrIndexCorpus.Probe, row: Json): (String, Option[ExUnits]) =
@@ -83,8 +63,8 @@ class ConstrIndexReferenceSuite extends FunSuite:
     val protocol = field[Int](row, "protocol")
     val model = PlutusBoundaryCorpus.costModel(language, protocol)
     val modelBytes = Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-    assertEquals(NativeCrypto.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
-    assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+    assertEquals(UplcScripts.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
+    assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
     evaluator.evaluate(
       EvalRequest(
         language,

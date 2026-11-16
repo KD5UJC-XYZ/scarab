@@ -145,7 +145,7 @@ final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptByt
   * translation of the era history at the chain tip the pool is judged against, with its forecast
   * horizon; none is the geometry alone, without a horizon, for pools of tests that have no chain.
   * `verdicts` are the signature verifiers of the witness checks. `evaluator` and `decoder` are the
-  * node's Plutus backend (`--plutus-vm`, ADR 0027), with no default.
+  * node's Plutus backend (`PlutusBackend`), with no default.
   */
 final case class MempoolEnv(
     globals: LedgerGlobals,

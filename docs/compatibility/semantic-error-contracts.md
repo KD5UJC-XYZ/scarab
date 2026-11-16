@@ -13,4 +13,4 @@ fixed rejection bytes, original cause identity, compiler rejection of raw skip s
 
 ## Explicitly unchecked or unconfirmed
 
-compiler/AST enforcement and Scalus callback ABI remain M11-E; broader effect/fiber/recovery policy remains #180; generated-model adoption remains #87
+compiler/AST enforcement remains M11-E; broader effect/fiber/recovery policy remains #180; generated-model adoption remains #87

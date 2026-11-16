@@ -348,7 +348,7 @@ Final verification confirms all original inputs, copied classes and bound source
 
 ## 40. Flat script decoding: an imperative walker against a functional one
 
-**2026-10-25, level 2.** `FlatScan.decode` reads the flat bytes of every Plutus script in every block. Until
+**2026-10-25, level 2.** FlatScan.decode reads the flat bytes of every Plutus script in every block. Until
 this measurement it was a pure function outside and an imperative walker inside: the bit position in a `var`,
 `ArrayDeque` stacks of tasks, terms and constants, a mutable field count, and `boundary`/`break` for the typed
 failures. AGENTS.md admits that form only on a performance-critical path with measurements, so the same contract
@@ -376,7 +376,7 @@ suite fails if a deliberate change is made to the functional form's filler failu
 variable ordinals (each tried once). The benchmark also compares every input it times before timing it.
 
 **Harness.** No JMH (the build has no plugin); a timed loop in the style of `CastErasureBench`,
-[FlatScanBench](../../tools/src/main/scala/xyz/kd5ujc/scarab/bench/FlatScanBench.scala), with the current thread's
+FlatScanBench (removed with the Scalus backend on 2026-11-15), with the current thread's
 allocated bytes (`ThreadMXBean.getCurrentThreadAllocatedBytes`). Per workload: eight warm-up passes of each
 variant of about 50 ms, then ten rounds of about 250 ms each in ABBA order, the same number of passes for both;
 the reported figure of a JVM is the median of its ten rounds. Workloads:
@@ -433,12 +433,12 @@ Allocation of the functional form while it was written (sbt `runMain`, one JVM, 
 ratios on real scripts are worth quoting): a plain version returning a fresh `Right` per read, frames in a `List`
 and a tuple per variable allocated 1.70×; caching the 256 results of a read of up to eight bits and dropping the
 tuple brought it to 1.55×; making each frame hold the frames below it (no list cell per frame) to 1.38×. A JFR
-allocation profile of the second version put the list cells of the frames and the `Next.Give` values first.
+allocation profile of the second version put the list cells of the frames and the Next.Give values first.
 
 **Recommendation and decision.** Switch, and keep the functional form: the time is within the 10–15% the owner set
 for this choice on real scripts, and the allocation increase is moderate, short-lived and already paid for in the
 measured time. The imperative exception of AGENTS.md is not justified for
-this path. `FlatScan.decode` keeps its contract (`Decoded`, `FlatScan`, `ValueFault`, `Failure` unchanged); the
+this path. FlatScan.decode keeps its contract (`Decoded`, `FlatScan`, `ValueFault`, `Failure` unchanged); the
 equivalence suite keeps the old walker as its reference so a later change to either is caught.
 
 **To repeat.** In the JDK container: `bash scripts/sbtw "tools/runMain xyz.kd5ujc.scarab.bench.FlatScanBench

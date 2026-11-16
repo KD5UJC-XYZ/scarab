@@ -3,7 +3,7 @@
 and arguments, and the checks a report must pass beyond the scenario's schema before it is named for publication.
 
 The tools are the `tools` module's entry points; their Scaladoc documents the arguments used here. The Plutus
-scenarios report Scarab's own evaluator (`scarab`, the tools' `--plutus-vm` value).
+scenarios report Scarab's Plutus evaluator, its own (`uplc`).
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from typing import Any, Callable
 
 from conformance.schema import date_time
 
-PLUTUS_VM = "scarab"
 JDK_FLAGS = ("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow")
 # The thread stack sbt's own JVM has (`scripts/sbtw`), where `tools/runMain` runs these tools.
 TOOL_JVM = ("-Xss8m", "-Xmx4g", *JDK_FLAGS)
@@ -50,7 +49,6 @@ class Scenario:
     arguments: Callable[[Context, str | None, str], list[str]]
     entries: Callable[[dict], int]
     checks: Callable[[dict, Context, str | None], list[str]]
-    plutus_vm: str | None = PLUTUS_VM
     in_ci: bool = True
 
     @property
@@ -105,8 +103,7 @@ def _ledger_arguments(context: Context, era: str | None, out: str) -> list[str]:
     site, documents = context.mounted["site"], context.mounted["ledger-rules-documents"]
     return [f"{site}/scenarios/ledger-rules/fixtures/scenarios", documents, f"{out}/report.json",
             "--sidecar", f"{out}/sidecar.json",
-            "--dataset-commit", context.pins["ledger-rules-documents"].spec["commit"],
-            "--plutus-vm", PLUTUS_VM]
+            "--dataset-commit", context.pins["ledger-rules-documents"].spec["commit"]]
 
 
 def _ledger_checks(report: dict, context: Context, era: str | None) -> list[str]:
@@ -133,7 +130,7 @@ def uplc_expected(site: Path) -> Counter:
 
 
 def _uplc_arguments(context: Context, era: str | None, out: str) -> list[str]:
-    return [PLUTUS_VM, context.mounted["uplc-conformance-corpus"],
+    return [context.mounted["uplc-conformance-corpus"],
             f"{context.mounted['site']}/scenarios/uplc-conformance/expectations.json", f"{out}/report.json"]
 
 
@@ -147,7 +144,7 @@ def _uplc_checks(report: dict, context: Context, era: str | None) -> list[str]:
 
 
 def _turbo_arguments(context: Context, era: str | None, out: str) -> list[str]:
-    return [PLUTUS_VM, context.mounted["uplc-turbo-corpus"], f"{out}/report.json"]
+    return [context.mounted["uplc-turbo-corpus"], f"{out}/report.json"]
 
 
 def era_of_protocol(protocol_version: object) -> str | None:
@@ -201,7 +198,7 @@ SCENARIOS: dict[str, Scenario] = {scenario.id: scenario for scenario in (
     Scenario("cbor-decoding", "xyz.kd5ujc.scarab.ledger.conformance.CborDatasetMain",
              "tools/src/main/scala/xyz/kd5ujc/scarab/ledger/conformance/CborDatasetMain.scala",
              ("site", "cbor-dataset"), ("conway", "dijkstra"), TOOL_JVM,
-             _cbor_arguments, lambda report: len(report.get("results", {})), _cbor_checks, plutus_vm=None),
+             _cbor_arguments, lambda report: len(report.get("results", {})), _cbor_checks),
 )}
 
 def label(scenario: str, era: str | None) -> str:

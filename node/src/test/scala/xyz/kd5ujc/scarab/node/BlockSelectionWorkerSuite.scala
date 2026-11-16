@@ -150,10 +150,14 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   }
 
   List(
-    "a missing implementation" -> xyz.kd5ujc.scarab.plutus.BackendFailure
-      .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+    "a missing implementation" -> xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+      xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+        xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+        Set(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+      )
+    ),
     "an evaluator defect a block triggers" -> xyz.kd5ujc.scarab.plutus.BackendFailure
-      .Defect(new NullPointerException("Scalus"))
+      .Defect(new NullPointerException("evaluator"))
   ).foreach { (name, missing) =>
     // issue 567: no verdict on a block withholds it; selection, and the node, go on
     test(s"$name withholds the block: no stop, no invalid record, no blame") {
@@ -234,8 +238,12 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       _ <- node(
         Set.empty,
         unavailable = Map(
-          bodies(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure
-            .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+          bodies(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+            xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+              xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+              Set(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+            )
+          )
         ),
         assertions = assertions
       ) { n =>
@@ -267,8 +275,12 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         Set.empty,
         beforeRule = h => judged.update(m => m.updated(h.hash, m.getOrElse(h.hash, 0) + 1)),
         unavailable = Map(
-          bodies(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure
-            .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+          bodies(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+            xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+              xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+              Set(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+            )
+          )
         )
       ) { n =>
         n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
@@ -300,7 +312,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         Set.empty,
         unavailable = Map(
           left(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure
-            .Defect(new NullPointerException("Scalus"))
+            .Defect(new NullPointerException("evaluator"))
         )
       ) { n =>
         n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
@@ -787,10 +799,12 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   }
 
   List(
-    xyz.kd5ujc.scarab.plutus.BackendFailure
-      .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
-    xyz.kd5ujc.scarab.plutus.BackendFailure
-      .CostingUnmirrored(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+    xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
+      xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
+        xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
+        Set(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+      )
+    ),
     xyz.kd5ujc.scarab.plutus.BackendFailure
       .BudgetOutOfRange(xyz.kd5ujc.scarab.plutus.ExUnits(BigInt(2).pow(64), BigInt(0))),
     xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted

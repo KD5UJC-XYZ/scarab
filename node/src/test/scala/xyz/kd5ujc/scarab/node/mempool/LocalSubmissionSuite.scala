@@ -292,10 +292,12 @@ class LocalSubmissionSuite extends FailsOnUncaught:
   }
 
   test("a malformed refusal context sends no MsgRejectTx and a fresh client can still submit") {
-    val original = new scalus.uplc.eval.EvaluationFailure(Vector.empty)
+    val original = xyz.kd5ujc.scarab.uplc.ledger.EvaluationError.Cek(
+      xyz.kd5ujc.scarab.uplc.cek.CekFailure(xyz.kd5ujc.scarab.uplc.cek.CekError.ErrorTerm, None)
+    )
     val failure = xyz.kd5ujc.scarab.ledger.PlutusFailure(
       xyz.kd5ujc.scarab.plutus.EvalFailure
-        .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure.Thrown(original, Vector("trace"))),
+        .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure.Uplc(original, Vector("trace"))),
       Bytes.empty,
       Some(
         xyz.kd5ujc.scarab.plutus.EvalRequest(
@@ -395,8 +397,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
               assert(error.failure eq failure)
               error.failure.cause match
                 case xyz.kd5ujc.scarab.plutus.EvalFailure
-                      .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure.Thrown(cause, _)) =>
-                  assert(cause eq original)
+                      .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure.Uplc(cause, _)) =>
+                  assertEquals(cause, original)
                 case other => fail(s"original evaluator cause lost: $other")
             case other => fail(s"unexpected server end: $other")
           assertEquals(healthy, Right(LocalTxSubmission.Message.AcceptTx))

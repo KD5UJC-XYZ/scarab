@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, PlutusBackends}
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScarabEvaluator}
 
 /** Complete reference submissions, including phase-1 refusals that never enter evaluation. Unlike
   * the context-only harness, decode refusals cannot supply an invalid-tag collateral verdict.
@@ -158,7 +158,7 @@ class BoundaryTransactionsSuite extends FunSuite:
             c.spent,
             c.references,
             c.posix,
-            PlutusBackends.evaluator
+            ScarabEvaluator.default
           )(using TestLedger.usualEra((c.params).protocolMajor.toInt))
           (stage, outcome) match
             case (Stage.Success, Right(Phase2.Outcome.Passed(_))) => ()

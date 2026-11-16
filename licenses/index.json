@@ -8,13 +8,6 @@
       },
       "sha256": "0e01f1549c9022f406392ac2947d32223b7c2e977d21ea2f8c182fdeb4dae5fd"
     },
-    "borer-1.18.0/LICENSE": {
-      "source": {
-        "jar": "io.bullet:borer-core_3:1.18.0",
-        "entry": "LICENSE"
-      },
-      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
-    },
     "bzip2-1.0.8/LICENSE": {
       "source": {
         "git": "https://sourceware.org/git/bzip2.git",
@@ -169,15 +162,6 @@
       },
       "sha256": "b1cc7dc351701678120bf7b8ee82f282ab3cbaa5d53c62fe8d7d64deee91af43"
     },
-    "geny-1.1.1/LICENSE": {
-      "source": {
-        "git": "https://github.com/com-lihaoyi/geny",
-        "ref": "1.1.1",
-        "commit": "9b290357503e5601a650bc469a072bb9a2266efb",
-        "path": "LICENSE"
-      },
-      "sha256": "f8a443667d027fd656ab15ad601b7a12489f3f8bbe0ee528b558a0b7fd1863db"
-    },
     "hpack-1.0.2/LICENSE": {
       "source": {
         "git": "https://github.com/twitter/hpack",
@@ -264,15 +248,6 @@
       },
       "sha256": "543068930e623b7a226885f3033244b3b0321011a0f2f56f184ff7157435daa1"
     },
-    "jsoniter-scala-2.41.2/LICENSE": {
-      "source": {
-        "git": "https://github.com/plokhotnyuk/jsoniter-scala",
-        "ref": "v2.41.2",
-        "commit": "54f66936271e08fc92679181ca86f5afcbbbd36e",
-        "path": "LICENSE"
-      },
-      "sha256": "1d827e11e21a5f51f0b13ba37268515cbb312f2e39476744327a76726ca16084"
-    },
     "kittens-3.5.0/LICENSE": {
       "source": {
         "git": "https://github.com/typelevel/kittens",
@@ -324,33 +299,6 @@
       },
       "sha256": "bbce64ec06dded6c5234fac28777b40f3d317cde9769b31d9afef5b8e141712b"
     },
-    "paiges-0.4.4/LICENSE": {
-      "source": {
-        "git": "https://github.com/typelevel/paiges",
-        "ref": "v0.4.4",
-        "commit": "4d6217ade3aae6b625dd7ac3fe2337fd88dd0433",
-        "path": "LICENSE"
-      },
-      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
-    },
-    "plutus/LICENSE-libsecp256k1": {
-      "source": {
-        "file": "plutus/licenses/LICENSE-libsecp256k1"
-      },
-      "sha256": "a735999c7e5649df6fcda6fb06ab97435851c392b1b93494ae8725f37441632f"
-    },
-    "plutus/LICENSE-libsodium": {
-      "source": {
-        "file": "plutus/licenses/LICENSE-libsodium"
-      },
-      "sha256": "dea1855c9809f3faf22aa4a1fba20ec8af5a5587f23115012e5b98279cedc4af"
-    },
-    "plutus/LICENSE-native-lib-loader": {
-      "source": {
-        "file": "plutus/licenses/LICENSE-native-lib-loader"
-      },
-      "sha256": "fd5c26e1223b6fed176743658a42f19eb7f73740b38d00f0eb07a1cc97a6a370"
-    },
     "rocksdb-10.2.1/LICENSE.Apache": {
       "source": {
         "git": "https://github.com/facebook/rocksdb",
@@ -386,24 +334,6 @@
         "path": "NOTICE.md"
       },
       "sha256": "9c8404faff38eaedeeab5839fd98ac4d883eb0117a8dd53b878336f4cfa06d70"
-    },
-    "scalus-1.4.0/LICENSE": {
-      "source": {
-        "git": "https://github.com/scalus3/scalus",
-        "ref": "v1.4.0",
-        "commit": "b836856a5b4e54cd40fe0aa5947922478e8f1237",
-        "path": "LICENSE"
-      },
-      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-    },
-    "scalus-crypto-jni-0.1.0/LICENSE": {
-      "source": {
-        "git": "https://github.com/scalus3/scalus",
-        "ref": "crypto-jni-v0.1.0",
-        "commit": "1d04d06772632ff78c10b81a227d32df99bfbf57",
-        "path": "LICENSE"
-      },
-      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
     },
     "scodec-2.3.3/LICENSE": {
       "source": {
@@ -475,15 +405,6 @@
       },
       "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5"
     },
-    "upickle-4.4.3/LICENSE": {
-      "source": {
-        "git": "https://github.com/com-lihaoyi/upickle",
-        "ref": "4.4.3",
-        "commit": "87e0b24b8c811e174ebd680839e4edf1e62abe71",
-        "path": "LICENSE"
-      },
-      "sha256": "fc06ee462a6d140906b364eb86b1f0c86fc9134827f7605df49b84190d1e2120"
-    },
     "vault-3.7.0/LICENSE": {
       "source": {
         "git": "https://github.com/typelevel/vault",
@@ -541,54 +462,6 @@
         "ip4s-3.8.0/NOTICE"
       ]
     },
-    "com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-core_3:2.41.2": {
-      "licence": "MIT",
-      "texts": [
-        "jsoniter-scala-2.41.2/LICENSE"
-      ]
-    },
-    "com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-macros_3:2.41.2": {
-      "licence": "MIT",
-      "texts": [
-        "jsoniter-scala-2.41.2/LICENSE"
-      ]
-    },
-    "com.lihaoyi:geny_3:1.1.1": {
-      "licence": "MIT",
-      "texts": [
-        "geny-1.1.1/LICENSE"
-      ]
-    },
-    "com.lihaoyi:ujson_3:4.4.3": {
-      "licence": "MIT",
-      "texts": [
-        "upickle-4.4.3/LICENSE"
-      ]
-    },
-    "com.lihaoyi:upack_3:4.4.3": {
-      "licence": "MIT",
-      "texts": [
-        "upickle-4.4.3/LICENSE"
-      ]
-    },
-    "com.lihaoyi:upickle-core_3:4.4.3": {
-      "licence": "MIT",
-      "texts": [
-        "upickle-4.4.3/LICENSE"
-      ]
-    },
-    "com.lihaoyi:upickle-implicits_3:4.4.3": {
-      "licence": "MIT",
-      "texts": [
-        "upickle-4.4.3/LICENSE"
-      ]
-    },
-    "com.lihaoyi:upickle_3:4.4.3": {
-      "licence": "MIT",
-      "texts": [
-        "upickle-4.4.3/LICENSE"
-      ]
-    },
     "com.twitter:hpack:1.0.2": {
       "licence": "Apache-2.0",
       "texts": [
@@ -619,20 +492,6 @@
       "texts": [
         "dnsjava-3.6.5/LICENSE"
       ]
-    },
-    "io.bullet:borer-core_3:1.18.0": {
-      "licence": "MPL-2.0",
-      "texts": [
-        "borer-1.18.0/LICENSE"
-      ],
-      "note": "Source Code Form: https://github.com/sirthias/borer at tag v1.18.0 (MPL-2.0 section 3.2; NOTICE says so)."
-    },
-    "io.bullet:borer-derivation_3:1.18.0": {
-      "licence": "MPL-2.0",
-      "texts": [
-        "borer-1.18.0/LICENSE"
-      ],
-      "note": "Source Code Form: https://github.com/sirthias/borer at tag v1.18.0 (MPL-2.0 section 3.2; NOTICE says so)."
     },
     "io.circe:circe-core_3:0.14.16": {
       "licence": "Apache-2.0",
@@ -752,24 +611,6 @@
       "texts": [
         "scala3-3.9.0/LICENSE",
         "scala3-3.9.0/NOTICE.md"
-      ]
-    },
-    "org.scalus:scalus-crypto-jni:0.1.0": {
-      "licence": "Apache-2.0",
-      "texts": [
-        "scalus-crypto-jni-0.1.0/LICENSE"
-      ]
-    },
-    "org.scalus:scalus_3:1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db": {
-      "licence": "Apache-2.0",
-      "texts": [
-        "scalus-1.4.0/LICENSE"
-      ]
-    },
-    "org.scijava:native-lib-loader:2.5.0": {
-      "licence": "BSD-2-Clause",
-      "texts": [
-        "plutus/LICENSE-native-lib-loader"
       ]
     },
     "org.scodec:scodec-bits_3:1.2.5": {
@@ -911,12 +752,6 @@
         "log4cats-2.8.0/LICENSE"
       ]
     },
-    "org.typelevel:paiges-core_3:0.4.4": {
-      "licence": "Apache-2.0",
-      "texts": [
-        "paiges-0.4.4/LICENSE"
-      ]
-    },
     "org.typelevel:shapeless3-deriving_3:3.5.0": {
       "licence": "Apache-2.0",
       "texts": [
@@ -967,22 +802,6 @@
         "snappy-1.2.1/COPYING",
         "lz4-1.9.4/lib/LICENSE",
         "zstd-1.5.5/LICENSE"
-      ]
-    },
-    {
-      "paths": [
-        "natives/linux_64/libscalus_crypto.so",
-        "natives/linux_arm64/libscalus_crypto.so",
-        "natives/osx_64/libscalus_crypto.dylib",
-        "natives/osx_arm64/libscalus_crypto.dylib",
-        "natives/windows_64/scalus_crypto.dll"
-      ],
-      "contents": "scalus-crypto-jni 0.1.0; statically links libsodium (IOG fork dbb48cce), libsecp256k1 v0.3.2 and blst v0.3.15 (ADR 0020)",
-      "texts": [
-        "scalus-crypto-jni-0.1.0/LICENSE",
-        "plutus/LICENSE-libsodium",
-        "plutus/LICENSE-libsecp256k1",
-        "crypto/LICENSE-blst"
       ]
     },
     {

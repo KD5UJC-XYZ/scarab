@@ -45,12 +45,12 @@ class BoundaryTransactionScriptsSuite extends FunSuite:
         val model = PlutusBoundaryCorpus.costModel(PlutusLanguage.V3, protocol)
         val modelBytes =
           Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-        assertEquals(NativeCrypto.sha256Hex(script.toArray), field[String](row, "scriptSha256"))
-        assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+        assertEquals(UplcScripts.sha256Hex(script.toArray), field[String](row, "scriptSha256"))
+        assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
         val admitted =
-          ScalusEvaluator.pureDecoder.validate(PlutusLanguage.V3, protocol, script).isRight
+          ScarabEvaluator.pureDecoder.validate(PlutusLanguage.V3, protocol, script).isRight
         assertEquals(admitted, field[Boolean](row, "admitted"))
-        val outcome = ScalusEvaluator.pure.evaluate(
+        val outcome = ScarabEvaluator.pure.evaluate(
           EvalRequest(
             PlutusLanguage.V3,
             protocol,

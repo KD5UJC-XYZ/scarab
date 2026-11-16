@@ -615,12 +615,14 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
 
   test("from Babbage a Plutus script must deserialise: an unavailable builtin is phase-1 invalid") {
-    import scalus.uplc.{DefaultFun, Program, Term}
-    def plutus(kind: ScriptKind, f: DefaultFun) =
-      Script.plutus(kind, Bytes.fromArray(Program((1, 0, 0), Term.Builtin(f)).cborEncoded))
-    val keccakV2 = plutus(ScriptKind.PlutusV2, DefaultFun.Keccak_256) // V2: protocol 11
-    val ripemdV3 = plutus(ScriptKind.PlutusV3, DefaultFun.Ripemd_160) // V3: protocol 10
-    val addV2 = plutus(ScriptKind.PlutusV2, DefaultFun.AddInteger)
+    def plutus(kind: ScriptKind, f: String) =
+      Script.plutus(
+        kind,
+        xyz.kd5ujc.scarab.plutus.UplcScripts.compile(s"(program 1.0.0 (builtin $f))")
+      )
+    val keccakV2 = plutus(ScriptKind.PlutusV2, "keccak_256") // V2: protocol 11
+    val ripemdV3 = plutus(ScriptKind.PlutusV3, "ripemd_160") // V3: protocol 10
+    val addV2 = plutus(ScriptKind.PlutusV2, "addInteger")
     def check(protocol: Int, scripts: Vector[Script], referenced: Vector[Script]) =
       wellFormed(protocol, scripts, referenced)
     assertEquals(check(8, Vector(keccakV2), Vector.empty), "MalformedScriptWitnesses")

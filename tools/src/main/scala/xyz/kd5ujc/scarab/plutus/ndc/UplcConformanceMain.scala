@@ -8,18 +8,18 @@ import io.circe.{Decoder, Json, parser}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
-import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.uplc.{Program, ProgramVersion}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 import xyz.kd5ujc.scarab.uplc.text.UplcPrinter
 
 /** The `uplc-conformance` scenario of pragma-org's node-diversity-conformance site: every vector of
-  * its corpus evaluated by one of the node's Plutus evaluators, written as the scenario's report
+  * its corpus evaluated by the node's Plutus evaluator, written as the scenario's report
   * (`scenarios/uplc-conformance/README.md`, `CHANGELOG.md` and `schema.json` at the site's commit
   * 9dc68a75).
   *
-  * `tools/runMain xyz.kd5ujc.scarab.plutus.ndc.UplcConformanceMain <scalus|scarab> <corpus-dir>
-  * <expectations.json> <report.json>`
+  * `tools/runMain xyz.kd5ujc.scarab.plutus.ndc.UplcConformanceMain <corpus-dir> <expectations.json>
+  * <report.json>`
   *
   * The scenarios come from the site's `expectations.json`, of which only the names and the versions
   * of each scenario are read (`id`, `title`, `group`, `plutus_version`, `protocol_version`), never
@@ -27,20 +27,19 @@ import xyz.kd5ujc.scarab.uplc.text.UplcPrinter
   * found under `protocol-version-<major>/v<n>/<group>/`, the directory whose name gives the
   * scenario's id. The folders give its language and protocol, and the corpus's
   * `cost-models/protocol-version-<major>/v<n>.json` its cost-model list, which goes unchanged to
-  * the backend's evaluation context as the ledger's would.
+  * the evaluator's evaluation context as the ledger's would.
   *
   * A vector with a `.flat` file (the hex of a Flat program) is admitted as the ledger admits a
-  * script: the program in a CBOR byte string through the backend's `deserialiseScript`. One with
-  * only a `.uplc` file is read by the backend's own text parser, whose refusal is a parse/decode
-  * error, written in Flat and admitted the same way ([[UplcBackend.source]]); one whose constants
-  * Flat cannot write (BLS12-381) goes to the checks of `mkTermToEvaluate` without a Flat admission,
-  * which no ledger could give it. Then the program's version and scope are checked as
-  * `mkTermToEvaluate` checks them, and the machine of the protocol runs within 10,000,000,000 CPU
-  * and 14,000,000 memory units, restricting, as the README sets. The result is written in the
-  * textual syntax with the names the reference gives a de Bruijn term
-  * ([[UplcPrinter.Naming.Fresh]]), and the budget spent with it; a refusal or failure is one of the
-  * README's three strings with no budget. A backend that gives no verdict writes `no verdict` and
-  * why, under `error`: never a pass.
+  * script: the program in a CBOR byte string through `deserialiseScript`. One with only a `.uplc`
+  * file is read by the `uplc` module's text parser, whose refusal is a parse/decode error, written
+  * in Flat and admitted the same way ([[UplcBackend.source]]); one whose constants Flat cannot
+  * write (BLS12-381) goes to the checks of `mkTermToEvaluate` without a Flat admission, which no
+  * ledger could give it. Then the program's version and scope are checked as `mkTermToEvaluate`
+  * checks them, and the machine of the protocol runs within 10,000,000,000 CPU and 14,000,000
+  * memory units, restricting, as the README sets. The result is written in the textual syntax with
+  * the names the reference gives a de Bruijn term ([[UplcPrinter.Naming.Fresh]]), and the budget
+  * spent with it; a refusal or failure is one of the README's three strings with no budget. An
+  * evaluation that gives no verdict writes `no verdict` and why, under `error`: never a pass.
   */
 object UplcConformanceMain extends IOApp:
 
@@ -243,18 +242,14 @@ object UplcConformanceMain extends IOApp:
       .map(_.flatten.sortBy(_._1).map(_._2))
 
   def run(args: List[String]): IO[ExitCode] = args match
-    case List(vmName, corpusDir, expectationsFile, reportFile) =>
-      PlutusVm.parse(vmName) match
-        case Left(unknown) => IO.println(unknown.message).as(ExitCode(2))
-        case Right(vm) =>
-          conform(vm, Path.of(corpusDir), Path.of(expectationsFile), Path.of(reportFile))
+    case List(corpusDir, expectationsFile, reportFile) =>
+      conform(Path.of(corpusDir), Path.of(expectationsFile), Path.of(reportFile))
     case _ =>
-      IO.println(
-        "usage: UplcConformanceMain <scalus|scarab> <corpus-dir> <expectations.json> <report.json>"
-      ).as(ExitCode(2))
+      IO.println("usage: UplcConformanceMain <corpus-dir> <expectations.json> <report.json>")
+        .as(ExitCode(2))
 
-  private def conform(vm: PlutusVm, corpus: Path, expectations: Path, out: Path): IO[ExitCode] =
-    val backend = UplcBackend.of(vm)
+  private def conform(corpus: Path, expectations: Path, out: Path): IO[ExitCode] =
+    val backend = OwnBackend
     NdcReport.bigStack.use { stack =>
       for
         read <- IO
@@ -275,7 +270,7 @@ object UplcConformanceMain extends IOApp:
                 NdcReport.header(
                   "uplc-conformance",
                   generated,
-                  Json.obj("name" -> Json.fromString(NdcReport.implementation(vm)))
+                  Json.obj("name" -> Json.fromString(NdcReport.implementation))
                 ) :+ ("scenarios" -> Json.fromValues(results))
               )
               written <- NdcReport.write(out, report).timed
@@ -287,7 +282,7 @@ object UplcConformanceMain extends IOApp:
                 .mapValues(_.size)
                 .toMap
               _ <- IO.println(
-                s"${vm.name}: ${results.size} scenarios $counts; routes $routes; read ${readTime.toMillis} ms, " +
+                s"${results.size} scenarios $counts; routes $routes; read ${readTime.toMillis} ms, " +
                   s"run ${runTime.toMillis} ms, write ${written._1.toMillis} ms"
               )
             yield ExitCode.Success

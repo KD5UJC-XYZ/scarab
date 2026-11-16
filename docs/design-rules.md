@@ -332,8 +332,8 @@ Imperative, side-effecting code is kept only for:
 - (a) a performance-critical path, with profiling or benchmark evidence recorded in
   [performance.md](performance.md) and a written reason for that specific path;
 - (b) a third-party interface that requires it;
-- (c) a callback whose contract signals failure by exception or keeps its state by mutation (Scalus's
-  `BudgetSpender` and builtin functions), in the smallest definition that implements it;
+- (c) a callback whose contract signals failure by exception or keeps its state by mutation, in the
+  smallest definition that implements it;
 - (d) secret key material that must be erased in place, so that no copy outlives its use (a KES signing key
   evolves by zeroing the periods it leaves, `Sum6KesSigning.SigningKey`);
 - (e) the timed region of a measurement tool, where a wrapper would add allocation to what is timed

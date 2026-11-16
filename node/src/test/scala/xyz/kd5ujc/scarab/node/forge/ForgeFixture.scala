@@ -166,7 +166,7 @@ trait ForgeFixture:
         None,
         None,
         mirrorEnv.byron,
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+        xyz.kd5ujc.scarab.plutus.PlutusBackend.default
       )
       rules = new xyz.kd5ujc.scarab.consensus.BlockRules[IO, MirrorState]:
         def apply(state: MirrorState, header: Header, raw: Bytes)(using
@@ -193,8 +193,8 @@ trait ForgeFixture:
                 MempoolEnv(
                   rulesGlobals,
                   geometry,
-                  xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-                  xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                  xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+                  xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
                 )
               )
             )
@@ -207,8 +207,8 @@ trait ForgeFixture:
         MempoolEnv(
           rulesGlobals,
           geometry,
-          xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-          xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+          xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+          xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
         ),
         None,
         MempoolEvents.none[IO]
@@ -242,8 +242,8 @@ trait ForgeFixture:
                     MempoolEnv(
                       rulesGlobals,
                       geometry,
-                      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-                      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+                      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
                     )
                   )
                   .left
@@ -263,7 +263,7 @@ trait ForgeFixture:
       forger <- Forger.create[IO, MirrorState](
         config,
         rulesGlobals,
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+        xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
         protocolVersion,
         p.creds,
         follower,

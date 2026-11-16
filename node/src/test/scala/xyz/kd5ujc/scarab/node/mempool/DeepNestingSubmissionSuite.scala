@@ -42,8 +42,8 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
   private val env = MempoolEnv(
     globals,
     geometry,
-    xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-    xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+    xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+    xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
   )
   private val tipSlot = PreprodDeepTx.Slot - 1
 
@@ -175,8 +175,8 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
         Vector(entry),
         limit
       )(
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
       )
     )
     val selected = chosen match

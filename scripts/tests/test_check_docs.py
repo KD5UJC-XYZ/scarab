@@ -200,22 +200,22 @@ class FragmentLinkTest(DocsCase):
 
 
 class StaleCurrentTest(DocsCase):
-    PINS = {"schemaVersion": 1, "pins": [{"name": "Scalus", "version": "1.4.0", "dependents": ["scripts/ref.py"]}]}
+    PINS = {"schemaVersion": 1, "pins": [{"name": "jblst", "version": "0.3.18", "dependents": ["scripts/ref.py"]}]}
     FORMAT = 'FormatVersion.V5 -> "SCRBSNP5",\nFormatVersion.V7 -> "SCRBSNP7"\n'
-    FILES = {"docs/data/reference-pins.json": json.dumps(PINS), "scripts/ref.py": "1.4.0",
+    FILES = {"docs/data/reference-pins.json": json.dumps(PINS), "scripts/ref.py": "0.3.18",
              check_docs.PERSISTED_FORMAT_PATH: FORMAT}
 
     def test_an_older_version_called_current_is_reported(self):
-        doc = ("Scalus 1.3.0 (the latest release) and the current Scalus 1.4.0.\n"
+        doc = ("jblst 0.3.17 (the latest release) and the current jblst 0.3.18.\n"
                "Snapshots are currently `SCRBSNP5`. The current magic is `SCRBSNP7`.\n")
         self.assertEqual(sorted(self.kinds({"docs/x.md": doc, **self.FILES}), key=str), sorted([
-            (Kind.UNREGISTERED_PIN, "scalus 1.3.0"),
-            (Kind.STALE_CURRENT, "scalus 1.3.0"),
+            (Kind.UNREGISTERED_PIN, "jblst 0.3.17"),
+            (Kind.STALE_CURRENT, "jblst 0.3.17"),
             (Kind.STALE_CURRENT, "SCRBSNP5"),
         ], key=str))
 
     def test_history_that_does_not_call_a_version_current_is_not_reported(self):
-        doc = ("Scalus 1.2.0 costed it wrongly; fixed in a later release that this sentence describes at length.\n"
+        doc = ("jblst 0.3.16 packaged it wrongly; fixed in a later release that this sentence describes at length.\n"
                "A V5 file is the same from the sidecar on, under the magic `SCRBSNP5`.\n")
         kinds = self.kinds({"docs/x.md": doc, **self.FILES})
         self.assertNotIn(Kind.STALE_CURRENT, [k for k, _ in kinds])

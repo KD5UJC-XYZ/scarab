@@ -113,7 +113,7 @@ object PreparedBlockFixture:
       observer: Option[Phase2.Observation => Unit] = None,
       verdicts: Verdicts = Verdicts.Direct,
       decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[Id] =
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
   ): EraBlock.Body =
     val block = Block.Shelley(
       Era.Conway,
@@ -166,7 +166,7 @@ object PreparedBlockFixture:
       _ => None,
       0L,
       evaluator = evaluator,
-      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
     EraBlock.program(ctx)(
       EraNes.InEra(ShelleyBasedEra.SBabbage, from),

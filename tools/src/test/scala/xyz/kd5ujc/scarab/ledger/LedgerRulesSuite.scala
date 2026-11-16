@@ -7,12 +7,12 @@ import io.circe.syntax.*
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.plutus.{PlutusBackend, PlutusLanguage, PlutusVm}
+import xyz.kd5ujc.scarab.plutus.{PlutusBackend, PlutusLanguage}
 
 class LedgerRulesSuite extends FunSuite:
   import LedgerRulesSuite.*
 
-  private val backend = PlutusBackend.of(PlutusVm.Default)
+  private val backend = PlutusBackend.default
 
   private def judge(fixture: Json, documents: Map[String, String] = Documents): LedgerRulesVerdict =
     LedgerRulesRun.judge("fixture.json", fixture.noSpaces, documents.get, backend)
@@ -335,10 +335,7 @@ class LedgerRulesSuite extends FunSuite:
     assert(LedgerRulesMain.config(paths ++ List("--unknown", "x")).isLeft)
     assert(LedgerRulesMain.config(paths ++ List("--sidecar", "a", "--sidecar", "b")).isLeft)
     assert(LedgerRulesMain.config(List("s", "d")).isLeft)
-    assertEquals(
-      LedgerRulesMain.config(paths ++ List("--plutus-vm", "scarab")).map(_.vm),
-      Right(PlutusVm.Scarab)
-    )
+    assert(LedgerRulesMain.config(paths ++ List("--plutus-vm", "scarab")).isLeft)
     assertEquals(
       LedgerRulesMain.config(paths).map(_.selection),
       Right(Selection.ExpectedInFailures)

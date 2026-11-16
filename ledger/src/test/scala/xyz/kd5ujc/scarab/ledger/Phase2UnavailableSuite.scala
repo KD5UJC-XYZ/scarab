@@ -6,6 +6,9 @@ import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.*
+import xyz.kd5ujc.scarab.uplc.{DefaultFun, SemanticsVariant}
+import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
+import xyz.kd5ujc.scarab.uplc.ledger.{EvaluationError, Unavailability}
 
 class Phase2UnavailableSuite extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
@@ -14,7 +17,7 @@ class Phase2UnavailableSuite extends FunSuite:
       .flatMap(_.referenceScript)
       .map(script => script.hash -> script)
       .toMap ++ c.tx.witnesses.scriptsByHash
-  private val limit = EvalFailure.Unsupported(BackendFailure.NoResult)
+  private val limit = EvalFailure.Unsupported(BackendFailure.StackExhausted)
   private val unavailable: ScriptEvaluator[Id] = _ =>
     EvalResult.Failure(limit, ExUnits.zero, Vector.empty)
 
@@ -31,7 +34,7 @@ class Phase2UnavailableSuite extends FunSuite:
           PosixClock.Total(slot => c.posix(slot).fold(error => fail(error.message), identity))
         ),
         evaluator = evaluator,
-        decoder = PlutusBackends.decoder
+        decoder = ScarabEvaluator.defaultDecoder
       ),
       scripts,
       tx.body.inputs.flatMap(in => c.spent.get(in).map(in -> _)).toMap,
@@ -70,9 +73,10 @@ class Phase2UnavailableSuite extends FunSuite:
       case other => fail(s"unexpected script-failure outcome: $other")
   }
 
-  test("a validity-tag mismatch retains the evaluator cause and its original exception") {
-    val defect = new IllegalArgumentException("script machine refused")
-    val reason = EvalFailure.Script(ScriptFailure.Thrown(defect, Vector("before refusal")))
+  test("a validity-tag mismatch retains the evaluator cause and the script's trace") {
+    val reason = EvalFailure.Script(
+      ScriptFailure.Uplc(EvaluationError.InvalidReturnValue, Vector("before refusal"))
+    )
     val evaluator: ScriptEvaluator[Id] = _ => EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
     checked(c.tx.copy(isValid = true), evaluator) match
       case Left(
@@ -88,8 +92,8 @@ class Phase2UnavailableSuite extends FunSuite:
         assert(failures.forall(_.cause == reason))
         assert(failures.forall(_.request.isDefined))
         failures.headOption.map(_.cause) match
-          case Some(EvalFailure.Script(ScriptFailure.Thrown(cause, logs))) =>
-            assert(cause eq defect)
+          case Some(EvalFailure.Script(ScriptFailure.Uplc(cause, logs))) =>
+            assertEquals(cause, EvaluationError.InvalidReturnValue)
             assertEquals(logs, Vector("before refusal"))
           case other => fail(s"lost evaluator cause: $other")
       case other => fail(s"unexpected script-failure outcome: $other")
@@ -99,7 +103,7 @@ class Phase2UnavailableSuite extends FunSuite:
     val script =
       scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
     val decoder: ScriptDecoder[Id] =
-      (_, _, _) => Left(ScriptDecodeFailure.Unavailable(BackendFailure.NoResult))
+      (_, _, _) => Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
     for valid <- Vector(true, false); witness <- Vector(true, false) do
       val base = c.tx.copy(isValid = valid, witnesses = c.tx.witnesses.copy(scripts = Vector.empty))
       val tx =
@@ -110,7 +114,7 @@ class Phase2UnavailableSuite extends FunSuite:
       TxChecks.scriptsWellFormed(
         c.params,
         tx,
-        TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
+        TxEnv(c.slot, 189, 0, evaluator = ScarabEvaluator.default, decoder = decoder)
       )(using
         TestLedger.usualEra((c.params).protocolMajor.toInt)
       ) match
@@ -124,7 +128,8 @@ class Phase2UnavailableSuite extends FunSuite:
     val script =
       scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
     val decoder: ScriptDecoder[Id] =
-      (_, _, _) => Left(ScriptDecodeFailure.Malformed(ScriptProblem.CborByteStringExpected))
+      (_, _, _) =>
+        Left(ScriptDecodeFailure.Malformed(ScriptProblem.Uplc(ScriptDecodeError.ExpectedBytes)))
     for valid <- Vector(true, false) do
       val tx = c.tx.copy(isValid = valid, witnesses = c.tx.witnesses.copy(scripts = Vector(script)))
       val expected = LedgerFailure.Rejected(
@@ -136,7 +141,7 @@ class Phase2UnavailableSuite extends FunSuite:
           .scriptsWellFormed(
             c.params,
             tx,
-            TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
+            TxEnv(c.slot, 189, 0, evaluator = ScarabEvaluator.default, decoder = decoder)
           )(using
             TestLedger.usualEra((c.params).protocolMajor.toInt)
           )
@@ -161,8 +166,9 @@ class Phase2UnavailableSuite extends FunSuite:
       val witnessed = tx.copy(witnesses = tx.witnesses.copy(scripts = Vector(script)))
       for reason <- Vector(
           BackendFailure.StackExhausted,
-          BackendFailure.BuiltinUnavailable(
-            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup
+          BackendFailure.Uplc(
+            Unavailability
+              .NoDenotation(SemanticsVariant.E, Set(DefaultFun.Bls12_381_G1_hashToGroup))
           )
         )
       do
@@ -170,7 +176,7 @@ class Phase2UnavailableSuite extends FunSuite:
         TxChecks.scriptsWellFormed(
           c.params,
           witnessed,
-          TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
+          TxEnv(c.slot, 189, 0, evaluator = ScarabEvaluator.default, decoder = decoder)
         )(using TestLedger.usualEra((c.params).protocolMajor.toInt)) match
           case Left(failure: LedgerFailure.Unavailable) =>
             assertEquals(failure.reason, EvalFailure.Unsupported(reason))

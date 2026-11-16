@@ -1225,13 +1225,9 @@
       "id": "plutus-v4-dijkstra",
       "component": "Plutus at protocol 12: PlutusV4 and case on Data (#54)",
       "status": "partial",
-      "summary": "The Leios testnet build's Plutus from protocol 12 (plutus 1.71.0.0): program version 1.2.0, case on Data, variants F and G, PlutusV4 as cardano-ledger 9df9f98c runs it, and the PlutusV4 script context of a Dijkstra transaction; the node does not reach protocol 12",
+      "summary": "The Leios testnet build's Plutus from protocol 12 (plutus 1.71.0.0): program version 1.2.0, case on Data, variants F and G, PlutusV4 as cardano-ledger 9df9f98c runs it, and the PlutusV4 script context of a Dijkstra transaction; the node does not reach protocol 12; no evaluator of the node runs it until #1099, and the 1.71.0.0 corpus has no runner (an incomplete gate)",
       "evidence": {
         "suites": [
-          "PlutusConformance171Suite",
-          "CaseOnDataSuite",
-          "PlutusAvailabilitySuite",
-          "UnliftingBoundsSuite",
           "DijkstraScriptContextsSuite",
           "DijkstraContextWireSuite",
           "CostModelNameTablesSuite"
@@ -1244,7 +1240,8 @@
       },
       "limitations": {
         "issues": [
-          54
+          54,
+          1099
         ]
       },
       "page": "docs/compatibility/plutus-v4-dijkstra.md"
@@ -1431,9 +1428,9 @@
     },
     {
       "id": "plutus-own-evaluator",
-      "component": "Plutus: Scarab's own evaluator (--plutus-vm scarab, I2)",
+      "component": "Plutus: Scarab's own evaluator, the node's only one (I2)",
       "status": "partial",
-      "summary": "An opt-in, Scalus-free UPLC evaluator for phase 2 and script admission in the rules, the mempool and the forger; protocol 12 unsupported by decision",
+      "summary": "The node's only Plutus evaluator (the uplc module), for phase 2 and script admission in the rules, the mempool and the forger; the Scalus backend and --plutus-vm are removed; protocol 12 gets no verdict until #1099",
       "evidence": {
         "suites": [
           "CekConformanceSuite",
@@ -1442,9 +1439,7 @@
           "GeneratedOracleSuite",
           "LedgerBoundaryOracleSuite",
           "FlatReferenceCorporaSuite",
-          "ScarabEvaluatorSuite",
-          "PlutusBackendDifferentialSuite",
-          "NoScalusSuite"
+          "ScarabEvaluatorSuite"
         ],
         "docs": [
           "docs/plutus-conformance.md#scarabs-own-evaluator",
@@ -1453,7 +1448,8 @@
       },
       "limitations": {
         "issues": [
-          43
+          43,
+          1099
         ]
       },
       "page": "docs/compatibility/plutus-own-evaluator.md"

@@ -7,7 +7,6 @@ what they leave out, and every result names the Scala fields the reference side 
 state (`whole_state`): `DebugNewEpochState`, whose UTxO is an empty map on both nodes, and `GetUTxOWhole`, every
 byte of each, and the complete comparison is what covers the fields the projection leaves out (#433).
 """
-import hashlib
 import json
 import pathlib
 import subprocess
@@ -165,23 +164,8 @@ def awaited_state(name, tip, site, tries, pause):
 
 
 class Sample(NamedTuple):
-    """One follower's comparison at a reference block: the result as recorded, and the digest of the follower's
-    projected state (the part of its `/state` the reference view was compared with), None when none was taken."""
+    """The follower's comparison at a reference block: the result as recorded."""
     result: dict
-    projection: str | None = None
-
-
-def projection_digest(view):
-    """SHA-256 of a projected state in a canonical JSON form (keys sorted, each tagged with its type), so two
-    followers' projections at one block can be judged equal without keeping either."""
-    def canonical(v):
-        if isinstance(v, dict):
-            return {f"{type(k).__name__}:{k}": canonical(x) for k, x in v.items()}
-        if isinstance(v, (list, tuple)):
-            return [canonical(x) for x in v]
-        return v
-    text = json.dumps(canonical(view), sort_keys=True, separators=(",", ":"), default=repr)
-    return hashlib.sha256(text.encode()).hexdigest()
 
 
 BUNDLE = [("ls", "query ledger-state"), ("utxo", "query utxo --whole-utxo"), ("protocol", "query protocol-state"),
@@ -296,13 +280,12 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
 
 
 def compare_followers_detailed(name, sites, attempts=10, scala_wait=30):
-    """`compare_once_detailed` for several followers. Each attempt reads the reference at one block and asks every
-    follower not judged yet for that block. A follower that answers is judged there and then, and its judgment
-    stands: a later attempt never replaces it, so a difference is never retried away. Only the followers that did
-    not answer are asked again, at the next attempt's block; after the last one each still without a judgment has
-    an error of its own. Followers judged at different blocks are not compared with each other
-    (`FollowerAgreement`). Returns ([Sample per site], failures), or (None, failures) when no attempt read the
-    reference."""
+    """`compare_once_detailed` for the followers of `sites` (a run has one, `util.SINGLE_FOLLOWER`). Each attempt
+    reads the reference at one block and asks every follower not judged yet for that block. A follower that answers
+    is judged there and then, and its judgment stands: a later attempt never replaces it, so a difference is never
+    retried away. Only a follower that did not answer is asked again, at the next attempt's block; after the last
+    one each still without a judgment has an error of its own. Returns ([Sample per site], failures), or (None,
+    failures) when no attempt read the reference."""
     failures, judged, asked = [], {}, None
     for attempt in range(attempts):
         pending = [site for site in sites if site not in judged]
@@ -364,7 +347,7 @@ def conway_sample(after, utxo, full_utxo, reference, scala):
                    "poolStake": reference["stakeDistrib"],
                    "matched": not differences, "differences": [
                        {"path": p, "reference": str(a)[:200], "scala": str(b)[:200]} for p, a, b in differences[:25]],
-                   "differenceCount": len(differences)}, projection_digest(scala_view))
+                   "differenceCount": len(differences)})
 
 
 def compare_once(name, attempts=10, scala_wait=30):
@@ -515,7 +498,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
 
     reselections = (1 if attempts > 1 else 0) if reselections is None else reselections
     other_node = "reference" if anchor == "scala" else "scala"
-    identity = {"anchor": anchor, "other": other_node, **({} if site.key is None else {"follower": site.key})}
+    identity = {"anchor": anchor, "other": other_node}
     history, now = [], {"stage": None, "point": None, "queries": None, "era": None}
 
     def scala():
@@ -635,9 +618,9 @@ def compare_pre_conway(name, era, attempts=10):
 
 
 def compare_pre_conway_followers(name, era, sites, attempts=10):
-    """`compare_pre_conway` for several followers, as `compare_followers_detailed`: each attempt reads the reference
-    at one block, every follower not judged yet is asked for it, a judgment stands once made, and only the
-    followers that did not answer are asked again. Returns [Sample per site]."""
+    """`compare_pre_conway` for the followers of `sites`, as `compare_followers_detailed`: each attempt reads the
+    reference at one block, every follower not judged yet is asked for it, a judgment stands once made, and only a
+    follower that did not answer is asked again. Returns [Sample per site]."""
     judged, acquired = {}, None
     for attempt in range(attempts):
         pending = [site for site in sites if site not in judged]
@@ -718,19 +701,17 @@ def pre_conway_sample(tip, reference, reference_encodings, evidence, scala, acqu
                                         "rewards": len((reference["rewardUpdate"] or {}).get("rs", {}))}},
                    "matched": not differences, "differenceCount": len(differences),
                    "differences": [{"path": p, "reference": str(a)[:300], "scala": str(b)[:300]}
-                                   for p, a, b in differences[:25]]}, projection_digest(scala_view))
+                                   for p, a, b in differences[:25]]})
 
 
 class Comparisons:
-    """Thread-safe tally of one follower's ledger comparisons per era; every result is appended to compare.jsonl
-    (`compare-<key>.jsonl` for a keyed follower, `site`)."""
+    """Thread-safe tally of the follower's (`site`'s) ledger comparisons per era; every result is appended to
+    compare.jsonl."""
 
     def __init__(self, root, site=SINGLE_FOLLOWER):
         self.lock = threading.Lock()
         self.site = site
-        self.file = root / f"{site.named('compare')}.jsonl"
-        # what the printed progress lines say of the follower: nothing for a run's only one
-        self.tag = {} if site.key is None else {"follower": site.key}
+        self.file = root / "compare.jsonl"
         self.per_era = {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS}
         self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger; the "
                                          "Byron UTxO is compared through the first Shelley epoch")
@@ -764,7 +745,7 @@ class Comparisons:
                         k: answer.get(k) for k in ("firstDifference", "referenceBytes", "scalaBytes", "kept")}})
             with self.file.open("a") as f:
                 f.write(json.dumps({"era": era, "label": label, "wholeState": result}) + "\n")
-        print(json.dumps({"wholeState": era, "label": label, **self.tag,
+        print(json.dumps({"wholeState": era, "label": label,
                           "matched": {q: a.get("matched") for q, a in answers.items()},
                           "note": result.get("skipped") or result.get("error")}), flush=True)
 
@@ -783,76 +764,17 @@ class Comparisons:
                     self.mismatches.append({"era": era, "label": label, **result})
             with self.file.open("a") as f:
                 f.write(json.dumps({"era": era, "label": label, **result}) + "\n")
-        print(json.dumps({"compare": era, "label": label, **self.tag, "matched": result.get("matched"),
+        print(json.dumps({"compare": era, "label": label, "matched": result.get("matched"),
                           "slot": (result.get("tip") or {}).get("slot"),
                           "differences": result.get("differenceCount"),
                           "note": result.get("skipped") or result.get("error"),
                           "queryFailures": result.get("queryFailures")}), flush=True)
 
 
-class FollowerAgreement:
-    """Thread-safe tally of the followers' projected states against each other, per era: at each reference block
-    where `compare_era` compared every follower with the reference, whether all their projections (the part of
-    `/state` the reference view is compared with) are equal, by `projection_digest`. Fields the reference has no
-    counterpart for are not compared here either. Every point is appended to `compare-followers.jsonl`."""
-
-    def __init__(self, root, sites):
-        self.lock = threading.Lock()
-        self.file = root / "compare-followers.jsonl"
-        self.keys = [site.key for site in sites]
-        self.per_era = {e: {"agreed": 0, "differed": 0, "notCompared": 0} for e in ERAS}
-        self.differences = []
-
-    def record(self, era, label, samples):
-        """Tally one point: `samples`, one Sample per follower in the order of the sites. Only a point where every
-        follower was judged, all at one block, compares them; any other is `notCompared`, with each one's block."""
-        digests = {key: sample.projection for key, sample in zip(self.keys, samples)}
-        blocks = {key: ((s.result.get("tip") or {}).get("slot"), (s.result.get("tip") or {}).get("hash"))
-                  for key, s in zip(self.keys, samples)}
-        one_block = len(set(blocks.values())) == 1
-        outcome = ("notCompared" if any(d is None for d in digests.values()) or not one_block
-                   else "agreed" if len(set(digests.values())) == 1 else "differed")
-        slot, block_hash = next(iter(blocks.values())) if one_block else (None, None)
-        row = {"era": era, "label": label, "slot": slot, "hash": block_hash, "outcome": outcome,
-               "projections": digests, **({} if one_block else {"blocks": blocks})}
-        with self.lock:
-            self.per_era[era][outcome] += 1
-            if outcome == "differed" and len(self.differences) < 10:
-                self.differences.append(row)
-            with self.file.open("a") as f:
-                f.write(json.dumps(row) + "\n")
-
-    def report(self):
-        return {"perEra": self.per_era, "differences": self.differences}
-
-
-def agreement_failures(per_era, minimum=1):
-    """Failures from a `FollowerAgreement` tally: any point where the followers' projections differ, or a
-    Shelley-based era with fewer than `minimum` points where every follower was compared and all agreed."""
-    failures = []
-    for era in ERAS[1:]:
-        row = per_era[era]
-        if row["differed"]:
-            failures.append(f"{era}: the followers' projected states differ at {row['differed']} of "
-                            f"{row['agreed'] + row['differed']} reference blocks where every follower was compared")
-        if row["agreed"] < minimum:
-            failures.append(f"{era}: only {row['agreed']} reference blocks where every follower was compared and all "
-                            f"projected states agreed (need {minimum})")
-    return failures
-
-
-def compared_era(era, samples):
-    """The era the `samples` were compared in: the one every sample of one compared state carries (`acquiredEra`),
-    else the caller's `era`."""
-    eras = {sample.result.get("acquiredEra") for sample in samples}
-    return era if len(eras) != 1 or None in eras else next(iter(eras))
-
-
-def compare_era(name, era, label, comparisons, agreement=None):
-    """Compare the Scala ledger of each follower with the reference in `era`, all with one reference block:
-    `comparisons` holds one `Comparisons` per follower (its `site`), and `agreement` (a `FollowerAgreement`, with
-    several followers) tallies their projections against each other. Then each follower's complete same-point
-    state (`whole_state`, at its own tip). Never raises."""
+def compare_era(name, era, label, comparisons):
+    """Compare the Scala ledger of the follower with the reference in `era` at one reference block: `comparisons`
+    holds one `Comparisons` per follower (its `site`; a run has one). Then the follower's complete same-point state
+    (`whole_state`, at its own tip). Never raises."""
     sites = [tally.site for tally in comparisons]
     try:
         if era == "conway":
@@ -869,8 +791,6 @@ def compare_era(name, era, label, comparisons, agreement=None):
         samples = [Sample({"error": repr(e), "traceback": traceback.format_exc()[-1500:]}) for _ in sites]
     for tally, sample in zip(comparisons, samples):
         tally.record(sample.result.get("acquiredEra", era), label, sample.result)
-    if agreement is not None:
-        agreement.record(compared_era(era, samples), label, samples)
     for tally in comparisons:
         try:
             whole = whole_state(name, era, site=tally.site, reselections=WHOLE_STATE_RESELECTIONS)

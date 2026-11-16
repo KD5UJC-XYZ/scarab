@@ -184,8 +184,8 @@ class PastHorizonReferenceSuite extends FunSuite:
     val env = MempoolEnv(
       setup.globals,
       setup.geometry,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
     val nes = stateOf[E](r)
     val slot = SlotNo.fromBigInt(r.tip + 1).fold(e => fail(e.toString), identity)
@@ -224,8 +224,8 @@ class PastHorizonReferenceSuite extends FunSuite:
     val env = MempoolEnv(
       setup.globals,
       setup.geometry,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
       clock = Some(clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip))
     )
     val ledger =
@@ -265,8 +265,8 @@ class PastHorizonReferenceSuite extends FunSuite:
       val env = MempoolEnv(
         setup.globals,
         setup.geometry,
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
         clock = Some(bounded)
       )
       val ledger = MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
@@ -287,8 +287,8 @@ class PastHorizonReferenceSuite extends FunSuite:
             limits,
             Some(clock)
           )(
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
           )
           .match
             case BlockBuilder.Selection(chosen, Vector()) => chosen.size

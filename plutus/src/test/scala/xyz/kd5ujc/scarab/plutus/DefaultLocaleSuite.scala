@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.uplc.cost.EvaluationContext
   */
 class DefaultLocaleSuite extends FunSuite with DefaultLocaleFixture:
   private def recorded(version: Int): Vector[String] =
-    PlutusConformanceSuite
+    PlutusConformance
       .resource(s"V$version-param-names.txt")
       .linesIterator
       .map(_.trim)
@@ -99,6 +99,24 @@ class DefaultLocaleSuite extends FunSuite with DefaultLocaleFixture:
       PlutusBoundaryCorpus.budget
     )
 
+  private val requests = for
+    list <- lists
+    protocol <- Vector(10, 11)
+  yield (list, protocol)
+
+  /** The result of each request, evaluated when the suite is made, under the JVM's default locale
+    * then; each succeeds. The root locale is one of those the test runs under.
+    */
+  private val underRoot: Map[(String, Int), EvalResult] =
+    val scarab = ScarabEvaluator.pure
+    requests.map { case ((name, language, values), protocol) =>
+      val result = scarab.evaluate(request(language, protocol, values))
+      result match
+        case EvalResult.Success(_, _) => ()
+        case other                    => fail(s"$name protocol $protocol: $other")
+      (name, protocol) -> result
+    }.toMap
+
   DefaultLocale.checked.foreach { locale =>
     val under = underDefault(locale)
     val label = DefaultLocale.label(locale)
@@ -131,19 +149,12 @@ class DefaultLocaleSuite extends FunSuite with DefaultLocaleFixture:
     }
 
     under.test(
-      s"a script of iData, indexByteString and ifThenElse costs the same on both backends ($label)"
+      s"a script of iData, indexByteString and ifThenElse costs the same in every locale ($label)"
     ) { _ =>
       val scarab = ScarabEvaluator.pure
-      val scalus = ScalusEvaluator.pure
       for
-        (name, language, values) <- lists
-        protocol <- Vector(10, 11)
-      do
-        val r = request(language, protocol, values)
-        val theirs = scalus.evaluate(r)
-        theirs match
-          case EvalResult.Success(_, _) => ()
-          case other                    => fail(s"$name protocol $protocol: Scalus $other")
-        assertEquals(scarab.evaluate(r), theirs, s"$name protocol $protocol")
+        ((name, language, values), protocol) <- requests
+        r = request(language, protocol, values)
+      do assertEquals(scarab.evaluate(r), underRoot((name, protocol)), s"$name protocol $protocol")
     }
   }

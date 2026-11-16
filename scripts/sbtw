@@ -39,14 +39,6 @@ export XDG_RUNTIME_DIR="$runtime" SBT_GLOBAL_SERVER_DIR="$runtime/server"
 export COURSIER_CACHE="$cache/coursier"
 processors="${SCARAB_BUILD_PROCESSORS:-4}"
 repositories=project/repositories
-# The small standalone version-contract fixture has no Scalus dependency or patch manifest.
-# A real build also requires this repository in build.sbt and cannot fall back to upstream 1.4.0.
-if [ -f patches/scalus/manifest.json ]; then
-  scalus_options=()
-  if [ "${SCARAB_OFFLINE:-0}" = 1 ]; then scalus_options+=(--offline); fi
-  repositories=$(python3 scripts/prepare_scalus.py --cache "$cache" --launcher "$jar" \
-    --processors "$processors" "${scalus_options[@]}")
-fi
 # -Xss is the compiler's thread stack: an incremental recompile of node's Main.scala overflows the
 # 1 MiB default in PostTyper. Forked test JVMs take their own javaOptions, and the stack-safety
 # suites pin explicit small-stack threads, so this does not reach them.

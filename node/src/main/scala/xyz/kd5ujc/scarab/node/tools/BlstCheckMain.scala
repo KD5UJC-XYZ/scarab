@@ -6,8 +6,6 @@ import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
-import scalus.cardano.ledger.CardanoInfo
-import scalus.uplc.Program
 import supranational.blst.{P1, P2, PT}
 import xyz.kd5ujc.scarab.crypto.bls.{Blst, BlstProblem, BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -16,21 +14,21 @@ import xyz.kd5ujc.scarab.plutus.{
   EvalRequest,
   EvalResult,
   ExUnits,
+  ParamNames,
   PlutusData,
-  NativeCrypto,
-  NativeCryptoProblem,
-  NativeCryptoReport,
   PlutusLanguage,
-  ScalusEvaluator
+  ScarabEvaluator
 }
+import xyz.kd5ujc.scarab.uplc.flat.FlatEncoder
+import xyz.kd5ujc.scarab.uplc.text.UplcParser
 import cats.mtl.Handle
 
-/** `BlstCheckMain [bench]`: the start-up checks of the BLS12-381 library of Leios certificates (ADR
-  * 0012) and of libscalus_crypto, the native library of the Plutus builtins (ADR 0020), the Plutus
-  * BLS12-381 builtins through the node's evaluator, and with `bench` the rates of G1 and G2
-  * uncompression, the pairing and the verification of a Leios certificate. One JSON object on
-  * stdout; exit 0 when both libraries are usable and the builtins evaluate. Run it on a processor
-  * without ADX/BMI2 to see both libraries work there.
+/** `BlstCheckMain [bench]`: the start-up check of the BLS12-381 library of Leios certificates and
+  * of the Plutus BLS12-381 builtins (ADR 0012, ADR 0025), those builtins through the node's
+  * evaluator, and with `bench` the rates of G1 and G2 uncompression, the pairing and the
+  * verification of a Leios certificate. One JSON object on stdout; exit 0 when the library is
+  * usable and the builtins evaluate. Run it on a processor without ADX/BMI2 to see the library work
+  * there.
   */
 object BlstCheckMain extends IOApp:
   private val g1Hex =
@@ -43,22 +41,10 @@ object BlstCheckMain extends IOApp:
       IO.println(Json.obj("ok" -> false.asJson, "refused" -> message.asJson).noSpaces)
         .as(ExitCode(1))
     Handle
-      .allow[BlstProblem](
-        Blst
-          .verify[IO]
-          .flatMap(report =>
-            Handle
-              .allow[NativeCryptoProblem](
-                NativeCrypto
-                  .verify[IO]
-                  .flatMap(crypto => rest(report, crypto, args.contains("bench")))
-              )
-              .rescue(problem => refused(problem.message))
-          )
-      )
+      .allow[BlstProblem](Blst.verify[IO].flatMap(rest(_, args.contains("bench"))))
       .rescue(problem => refused(problem.message))
 
-  private def rest(report: BlstReport, crypto: NativeCryptoReport, bench: Boolean): IO[ExitCode] =
+  private def rest(report: BlstReport, bench: Boolean): IO[ExitCode] =
     for
       builtins <- IO.blocking(evaluateBuiltins)
       rates <- if bench then IO.blocking(benchmark).map(Some(_)) else IO.pure(None)
@@ -75,10 +61,6 @@ object BlstCheckMain extends IOApp:
               case LibraryBuild.Portable      => "portable".asJson
               case LibraryBuild.Other(sha256) => s"other $sha256".asJson
               case LibraryBuild.OnLibraryPath => "library-path".asJson),
-            "plutusCrypto" -> Json.obj(
-              "platform" -> crypto.platform.directory.asJson,
-              "sha256" -> crypto.library.digest.hex.asJson
-            ),
             "builtins" -> builtins.toMap.asJson,
             "opsPerSecond" -> rates.map(_.toMap).asJson
           )
@@ -90,8 +72,12 @@ object BlstCheckMain extends IOApp:
   // defect of the command, which ends it.
   @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   private def program(body: String): Bytes =
-    val parsed = Program.parseUplc(s"(program 1.0.0 (lam ctx $body))")
-    Bytes.fromArray(parsed.fold(sys.error, identity).cborEncoded)
+    UplcParser
+      .program(s"(program 1.0.0 (lam ctx $body))")
+      .fold(
+        e => sys.error(e.toString),
+        FlatEncoder.script(_).fold(e => sys.error(e.toString), identity)
+      )
 
   private def assertion(cond: String): String =
     s"(force [ (force (builtin ifThenElse)) $cond (delay (con unit ())) (delay (error)) ])"
@@ -118,8 +104,10 @@ object BlstCheckMain extends IOApp:
               s"[ (builtin bls12_381_millerLoop) ${mul1(15)} g2 ] ]"
           )}) $g2 ]) $g1 ]"
     )
-    val model = CardanoInfo.mainnet.protocolParams.costModels.models(2).toVector
-    val evaluator = ScalusEvaluator.pure
+    // the scripts check the builtins' answers, not their costs: every parameter of the PlutusV3
+    // cost model is zero
+    val model = ParamNames.v3.map(_ => 0L)
+    val evaluator = ScarabEvaluator.pure
     scripts.map { (name, body) =>
       val result = evaluator.evaluate(
         EvalRequest(

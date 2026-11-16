@@ -198,7 +198,7 @@
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
       "resolution": "Retain explicit DER assertions, original vectors and exact 242 compact/234 DER-boundary counts.",
       "evidence": [
-        "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/WycheproofSecp256k1Suite.scala"
+        "uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/WycheproofEcdsaSuite.scala"
       ],
       "candidateRequired": false
     },
@@ -605,11 +605,11 @@
       "rationale": "Java surrogate replacement and 16-bit escape truncation differ from native scalar Text; repeated encoding is not a stored measure.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/485",
-      "resolution": "NativeTextReferenceSuite enforces the complete bounded fixture. Generic foreign Flat/helpers and native CEK budget/demand semantics are outside this representation/parser scope.",
+      "resolution": "UplcParserSuite (kind parse and pack) and CoreDenotationsSuite (kind pack and decode) enforce the complete bounded fixture. Native CEK budget/demand semantics are outside this representation/parser scope.",
       "evidence": [
-        "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/NativeTextReferenceSuite.scala",
-        "fixtures/reference/plutus-text/README.md",
-        "patches/scalus/README.md"
+        "uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/text/UplcParserSuite.scala",
+        "uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/core/CoreDenotationsSuite.scala",
+        "fixtures/reference/plutus-text/README.md"
       ],
       "candidateRequired": true
     },

@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * `PlutusCore/Default/Universe.hs:139`, plutus 1.70.0.0 `507cab8c`), a sequence of Unicode scalar
   * values. A surrogate code point is not a scalar value: `Data.Text.pack` replaces each one with
   * U+FFFD, which is how the reference's text parser makes a string from separate surrogate escapes
-  * (`docs/plutus-conformance.md`, `patches/scalus/README.md`).
+  * (`docs/plutus-conformance.md`, `uplc/README.md`).
   *
   * Both lengths the costing reads are kept with the value, computed once: [[codePoints]] is
   * `T.length`, the measure of `ExMemoryUsage Text` (variants A to C), and [[utf8Length]] the byte

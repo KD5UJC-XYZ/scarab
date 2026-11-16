@@ -4,7 +4,8 @@ package xyz.kd5ujc.scarab.ledger
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
-import xyz.kd5ujc.scarab.plutus.{DataSerialiser, PlutusLanguage, ScalusEvaluator}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
+import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 
 /** Complete CBOR bytes captured before #883 from 021142722c583c2ec962efb2a7ec6146ed636827: a
   * deterministic transaction, every supported language at each usual major version 5 to 12. These
@@ -156,7 +157,7 @@ class ScriptContextUsualVersionSuite extends FunSuite:
       val info = ScriptContexts
         .txInfo(language, Tx(body, Witnesses.empty, 0, true, None), env)
         .fold(e => fail(e.toString), identity)
-      val bytes = Bytes.wrap(DataSerialiser.serialise(ScalusEvaluator.toData(info)))
+      val bytes = DataSerialisation.serialise(info)
       assertEquals(bytes.hex, expected)
     }
   }

@@ -3,14 +3,16 @@ package xyz.kd5ujc.scarab.plutus
 
 import io.circe.Json
 import java.nio.file.{Files, Path}
-import scalus.uplc.{Constant, DefaultFun, Program, Term}
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, Program, TermF}
+import xyz.kd5ujc.scarab.uplc.cek.Terms
+import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
 import FlatProgram.*
 
-/** Original-byte boundary probes for the pinned ledger API, independent of Scalus's text parser for
-  * constants it normalises. The malformed value entries preserve the upstream conformance literals,
-  * including their order and duplicates.
+/** Original-byte boundary probes for the pinned ledger API, written byte by byte ([[FlatProgram]])
+  * where a text parser would normalise a constant. The malformed value entries preserve the
+  * upstream conformance literals, including their order and duplicates.
   */
 object PlutusBoundaryCorpus:
   final case class Probe(id: String, script: Bytes, crypto: Boolean = false)
@@ -26,11 +28,7 @@ object PlutusBoundaryCorpus:
   private def raw(id: String, term: Tm, version: (Int, Int, Int) = v100): Probe =
     Probe(id, script(version, term))
   private def text(id: String, program: String, crypto: Boolean = false): Probe =
-    Probe(
-      id,
-      Bytes.fromArray(Program.parseUplc(program).fold(e => sys.error(e.toString), _.cborEncoded)),
-      crypto
-    )
+    Probe(id, UplcScripts.compile(program), crypto)
 
   val malformedValues: Vector[Probe] = Vector(
     raw(
@@ -123,28 +121,16 @@ object PlutusBoundaryCorpus:
   ).map { id =>
     val name = id.split('/').last
     val base = s"$id/$name"
-    val actual =
-      Program.parseUplc(conformance(base + ".uplc")).fold(e => sys.error(e.toString), identity)
-    val expected = Program
-      .parseUplc(conformance(base + ".uplc.expected"))
-      .fold(e => sys.error(e.toString), identity)
-    val equal = expected.term match
-      case Term.Const(Constant.Bool(true), _) => actual.term
+    def parsed(name: String): Program =
+      UplcParser.program(conformance(name)).fold(e => sys.error(e.toString), identity)
+    val actual = parsed(base + ".uplc")
+    val expected = parsed(base + ".uplc.expected")
+    val equal = expected.term.unfix match
+      case TermF.Constant(Constant.Bool(true)) => actual.term
       case _ =>
-        Term.Apply(
-          Term.Apply(Term.Builtin(DefaultFun.EqualsByteString), actual.term),
-          expected.term
-        )
-    val asserted = Term.Force(
-      Term.Apply(
-        Term.Apply(
-          Term.Apply(Term.Force(Term.Builtin(DefaultFun.IfThenElse)), equal),
-          Term.Delay(Term.Const(Constant.Unit))
-        ),
-        Term.Delay(Term.Error())
-      )
-    )
-    Probe(id, Bytes.fromArray(Program(actual.version, asserted).cborEncoded), true)
+        Terms.app(Terms.builtin(DefaultFun.EqualsByteString), actual.term, expected.term)
+    val asserted = Terms.ifThenElse(equal, Terms.unit, Terms.error)
+    Probe(id, UplcScripts.script(Program(actual.version, asserted)), true)
   } ++ hashVectors.flatMap { vector =>
     val dst = vector.hcursor.get[String]("dst").fold(throw _, identity)
     Vector("G1", "G2").map { group =>
@@ -170,9 +156,9 @@ object PlutusBoundaryCorpus:
       .toVector
       .map(line => io.circe.parser.parse(line).fold(throw _, identity))
 
-  /** A file of the conformance cases [[PlutusConformanceSuite]] runs. */
+  /** A file of the conformance cases [[PlutusConformance]] runs. */
   private def conformance(name: String): String =
-    PlutusConformanceSuite.reference.read(s"${PlutusConformanceSuite.Conformance}/$name")
+    PlutusConformance.reference.read(s"${PlutusConformance.Conformance}/$name")
 
   def costModel(plutusLanguage: PlutusLanguage, protocol: Int): Vector[Long] =
     // a PlutusV4 cost model is a PlutusV3 one (`plutusVXParamNames`, cardano-ledger 9df9f98c)
@@ -181,9 +167,9 @@ object PlutusBoundaryCorpus:
       if language == PlutusLanguage.V3 then (if protocol < 11 then "C" else "E")
       else if protocol < 11 then "B"
       else "D"
-    val builtins = PlutusConformanceSuite.json(s"builtinCostModel$variant.json")
-    val machine = PlutusConformanceSuite.json(s"cekMachineCosts$variant.json")
-    PlutusConformanceSuite
+    val builtins = PlutusConformance.json(s"builtinCostModel$variant.json")
+    val machine = PlutusConformance.json(s"cekMachineCosts$variant.json")
+    PlutusConformance
       .resource(s"V${language.id + 1}-param-names.txt")
       .linesIterator
       .filter(_.nonEmpty)
@@ -201,8 +187,8 @@ object PlutusBoundaryCorpus:
 
   def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/requests.jsonl"))
-    val evaluator = ScalusEvaluator.pure
-    val decoder = ScalusEvaluator.pureDecoder
+    val evaluator = ScarabEvaluator.pure
+    val decoder = ScarabEvaluator.pureDecoder
     val rows = for
       probe <- probes
       language <- PlutusLanguage.values.toVector.filterNot(_ == PlutusLanguage.V4)
@@ -228,7 +214,7 @@ object PlutusBoundaryCorpus:
         "script" -> Json.fromString(probe.script.hex),
         "crypto" -> Json.fromBoolean(probe.crypto),
         "costModel" -> Json.arr(model.map(Json.fromLong)*),
-        "scalus" -> Json.obj(
+        "scarab" -> Json.obj(
           "admitted" -> Json.fromBoolean(admitted),
           "stage" -> Json.fromString(stage)
         )

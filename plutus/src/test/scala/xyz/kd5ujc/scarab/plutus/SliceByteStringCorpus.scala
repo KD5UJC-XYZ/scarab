@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.plutus
 
 import io.circe.Json
 import java.nio.file.{Files, Path}
-import scalus.uplc.Program
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Phase-2 probes of `sliceByteString from len bs` whose `from` or `len` lies outside the 32-bit
@@ -129,12 +128,7 @@ object SliceByteStringCorpus:
     case Kind.Wrapped    => equalTo(probe, wrapped(probe.from, probe.len, probe.bytes))
     case Kind.OutOfRange => s"[ (lam ignored (con unit ())) ${slice(probe)} ]"
 
-  private def compiled(probe: Probe): Bytes =
-    Bytes.fromArray(
-      Program
-        .parseUplc(s"(program 1.0.0 ${body(probe)})")
-        .fold(e => sys.error(s"${probe.id}: $e"), _.cborEncoded)
-    )
+  private def compiled(probe: Probe): Bytes = UplcScripts.compile(s"(program 1.0.0 ${body(probe)})")
 
   /** Every ledger profile of the costing matrix: V1 at protocols 5 to 11, V2 at 7 to 11 and V3 at 9
     * to 11, which between them run builtin semantics variants A to E.

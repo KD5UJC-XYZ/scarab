@@ -10,33 +10,32 @@ import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit}
 import xyz.kd5ujc.scarab.plutus.*
 
 /** The block rules of the node (`MirrorRules`, which `Main` builds with the run's one
-  * [[PlutusBackend]]) admit a block's scripts with the backend they are given (`--plutus-vm`, ADR
-  * 0027). A block is forged on the real rules with a transaction whose output carries a PlutusV3
-  * reference script, which the rules admit in phase 1 (`MalformedReferenceScripts`) through the
-  * backend's decoder; the same block is then applied by `MirrorRules` with a decoder that has no
-  * verdict and counts what it is asked. Rules that kept another backend would accept the block,
-  * which both real backends accept, and leave the probe unasked.
+  * [[PlutusBackend]]) admit a block's scripts with the backend they are given. A block is forged on
+  * the real rules with a transaction whose output carries a PlutusV3 reference script, which the
+  * rules admit in phase 1 (`MalformedReferenceScripts`) through the backend's decoder; the same
+  * block is then applied by `MirrorRules` with a decoder that has no verdict and counts what it is
+  * asked. Rules that kept another backend would accept the block, which the node's backend accepts,
+  * and leave the probe unasked.
   */
 class PlutusBackendBlockProbeSuite
     extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     with ForgeFixture:
 
-  /** A PlutusV3 validator that returns `()`: well formed for both backends. */
+  /** A PlutusV3 validator that returns `()`: well formed. */
   private val script: Bytes = FlatProgram.script((1, 1, 0), FlatProgram.Lam(FlatProgram.unit))
 
   private final class Probe:
     val decoded = AtomicInteger(0)
     val backend: PlutusBackend = PlutusBackend(
-      PlutusVm.Scarab,
       _ =>
         EvalResult.Failure(
-          EvalFailure.Unsupported(BackendFailure.NoResult),
+          EvalFailure.Unsupported(BackendFailure.StackExhausted),
           ExUnits.zero,
           Vector.empty
         ),
       (_, _, _) =>
         decoded.incrementAndGet()
-        Left(ScriptDecodeFailure.Unavailable(BackendFailure.NoResult))
+        Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
     )
 
   test("the block rules ask the backend they are given, and nothing else") {
@@ -75,8 +74,7 @@ class PlutusBackendBlockProbeSuite
             mirrorEnv.byron,
             backend
           )
-        for vm <- PlutusVm.values do
-          assert(apply(PlutusBackend.of(vm)).isRight, s"${vm.name}: ${apply(PlutusBackend.of(vm))}")
+        assert(apply(PlutusBackend.default).isRight, s"${apply(PlutusBackend.default)}")
         val probe = Probe()
         apply(probe.backend) match
           case Left(BlockFailure.Tx(LedgerFailure.Unavailable(_, ScriptLocation.Phase1(_), _))) =>

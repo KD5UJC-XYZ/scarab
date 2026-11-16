@@ -77,20 +77,17 @@ enum BlockNoVerdict:
     this match
       case Evaluation(_, unavailable) =>
         unavailable.reason.reason match
-          // a Throwable on the evaluator's worker (an OutOfMemoryError, a rejected task) or no
-          // result from it: the environment, which may change
-          case BackendFailure.Defect(_) | BackendFailure.NoResult => Passing
-          // the same script exhausts the evaluator's stack of fixed size again, and a budget, a
-          // builtin or a costing function this build lacks stays lacking until a restart
-          case BackendFailure.StackExhausted | BackendFailure.BudgetOutOfRange(_) |
-              BackendFailure.BuiltinUnavailable(_) | BackendFailure.CostingUnmirrored(_) =>
-            Deterministic
+          // a Throwable that reached the evaluator's adapter (an OutOfMemoryError, a linkage
+          // error): the environment, which may change
+          case BackendFailure.Defect(_) => Passing
+          // the same script exhausts the stack again, and a budget beyond 64 bits stays so
+          case BackendFailure.StackExhausted | BackendFailure.BudgetOutOfRange(_) => Deterministic
           case BackendFailure.Uplc(reason) =>
             import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
             import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
             reason match
               // an exception inside the own evaluator, or a builtin's library that threw: the
-              // environment, as a Throwable on the Scalus backend's worker
+              // environment
               case Unavailability.Thrown(_) |
                   Unavailability.BuiltinDefect(_, LibraryDefect.Thrown(_)) =>
                 Passing

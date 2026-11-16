@@ -141,12 +141,10 @@ Lexically scoped `scala.util.boundary` exits return typed failures from these lo
 domain exceptions. This work supplies no new performance measurements or general exemption for
 imperative code.
 
-One foreign callback seam remains explicit: Scalus `BuiltinRuntime.f` returns a `CekValue` and
-its CEK implementation turns thrown callback signals into a builtin error. It offers no
-failure-value return. `ScalusEvaluator` records the typed `EvalFailure` in an evaluation-local
-log, signals with the upstream `BuiltinException`, and recovers the recorded value before leaving
-the worker. This is a foreign ABI limitation, not a custom domain exception or a performance
-exception. A value-capable upstream integration is follow-up work.
+The foreign callback seam of the Scalus backend (`BuiltinRuntime.f`, whose CEK implementation turned a
+thrown callback signal into a builtin error) went with that backend
+([ADR 0027, amendment of 2026-11-15](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-15-the-own-evaluator-is-the-only-evaluator)):
+the own evaluator's builtins return a typed `BuiltinFailure`.
 
 ## Review and remaining work
 
@@ -192,7 +190,7 @@ bounded contracts identified after #188:
   emitted from the pinned configuration match the previous generator byte for byte, and 384
   fixed-seed recursive/compound samples retain their baseline fingerprint.
 
-Compiler/AST enforcement and the Scalus callback seam remain explicit M11-E follow-ups; absence
+Compiler/AST enforcement remains an explicit M11-E follow-up; absence
 of declared `Either[String, ...]` alone does not establish semantic completeness. The original
 reorganisation issue #82 is closed. Era-indexed consensus
 [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85) and generated-model node adoption

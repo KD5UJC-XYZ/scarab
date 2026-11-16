@@ -120,8 +120,8 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
           BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
         )
       ),
-      evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
 
   private def paymentContext: Vector[Node] = node("LEDGER-2", "context").value match
@@ -376,8 +376,8 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
           mempool.MempoolEnv(
             globals.ledger,
             geometry,
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-            xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
           )
         )
         .fold(error => fail(s"native-accepted $id refused: $error"), identity)
@@ -481,8 +481,8 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
             BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
           )
         ),
-        evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-        decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+        evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+        decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
       )
       val actual = JudgedSts
         .apply(Ledger)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(tx.body.id, _))(

@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.plutus
 import io.circe.Json
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import scalus.uplc.Program
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Phase-2 probes for `serialiseData` of constructor data with a wide index: a script hashes the
@@ -54,7 +53,7 @@ object SerialiseDataCorpus:
          |        (con bytestring #$digest) ]
          |      (delay (con unit ()))
          |      (delay (error)) ]))""".stripMargin
-    Bytes.fromArray(Program.parseUplc(program).fold(e => sys.error(e.toString), _.cborEncoded))
+    UplcScripts.compile(program)
 
   val probes: Vector[Probe] = vectors.flatMap { v =>
     val reference = Probe(s"constr-index-${v.name}-reference-digest", script(v.index, v.sha), v)

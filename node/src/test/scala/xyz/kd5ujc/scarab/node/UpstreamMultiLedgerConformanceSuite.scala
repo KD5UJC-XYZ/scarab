@@ -132,8 +132,8 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
                 BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
               )
             ),
-            evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
-            decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+            evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+            decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
           ),
           account.treasury
         ),

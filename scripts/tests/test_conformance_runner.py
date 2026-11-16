@@ -326,13 +326,21 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual(scenarios.era_of_protocol("12.0"), "dijkstra")
         self.assertIsNone(scenarios.era_of_protocol("9.0"))
 
-    def test_the_plutus_scenarios_use_the_own_evaluator(self):
+    def test_the_plutus_scenarios_name_no_evaluator(self):
+        # Scarab's Plutus evaluator is its own (`uplc`), the only one: no tool takes an evaluator argument
         mounted = {name: f"/inputs/{name}" for name in inputs.load_pins()}
         ctx = scenarios.Context(COMMIT, inputs.load_pins(), {}, mounted)
         for name in ("ledger-rules", "uplc-conformance", "uplc-turbo"):
-            scenario = scenarios.SCENARIOS[name]
-            self.assertIn("scarab", scenario.arguments(ctx, None, "/out"), name)
-            self.assertNotIn("--memory-limit", scenario.arguments(ctx, None, "/out"))
+            arguments = scenarios.SCENARIOS[name].arguments(ctx, None, "/out")
+            for absent in ("scarab", "scalus", "--plutus-vm", "--memory-limit"):
+                self.assertNotIn(absent, arguments, name)
+        self.assertEqual(scenarios.SCENARIOS["uplc-conformance"].arguments(ctx, None, "/out"),
+                         [mounted["uplc-conformance-corpus"],
+                          f"{mounted['site']}/scenarios/uplc-conformance/expectations.json", "/out/report.json"])
+        self.assertEqual(scenarios.SCENARIOS["uplc-turbo"].arguments(ctx, None, "/out"),
+                         [mounted["uplc-turbo-corpus"], "/out/report.json"])
+        self.assertEqual(scenarios.SCENARIOS["ledger-rules"].arguments(ctx, None, "/out")[-2:],
+                         ["--dataset-commit", ctx.pins["ledger-rules-documents"].spec["commit"]])
         self.assertIn(COMMIT, scenarios.SCENARIOS["cbor-decoding"].arguments(ctx, "conway", "/out"))
         self.assertFalse(scenarios.SCENARIOS["uplc-turbo"].in_ci)
 

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.plutus
 import io.circe.{Decoder, Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
+import xyz.kd5ujc.scarab.uplc.{Availability, ProtocolMajor}
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Exact ledger-API budgets produced by executing unchanged Plutus 1.70 with real crypto. */
@@ -21,8 +22,8 @@ class BuiltinCostingOracleSuite extends FunSuite:
   private val scripts = rows("scripts.jsonl")
   private val models = rows("models.jsonl")
   private val verdicts = rows("verdicts.jsonl")
-  private val evaluator = ScalusEvaluator.pure
-  private val decoder = ScalusEvaluator.pureDecoder
+  private val evaluator = ScarabEvaluator.pure
+  private val decoder = ScarabEvaluator.pureDecoder
   private val unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 
   private def stage(result: EvalResult, admitted: Boolean): String = result match
@@ -38,7 +39,7 @@ class BuiltinCostingOracleSuite extends FunSuite:
       parser.parse(Files.readString(directory.resolve("manifest.json"))).fold(throw _, identity)
     val hashes = field[Map[String, String]](manifest, "sha256")
     hashes.foreach { (name, hash) =>
-      assertEquals(NativeCrypto.sha256Hex(Files.readAllBytes(directory.resolve(name))), hash, name)
+      assertEquals(UplcScripts.sha256Hex(Files.readAllBytes(directory.resolve(name))), hash, name)
     }
     assertEquals(field[Int](manifest, "scripts"), scripts.size)
     assertEquals(field[Int](manifest, "upstreamScripts"), 797)
@@ -65,13 +66,13 @@ class BuiltinCostingOracleSuite extends FunSuite:
 
   test("every released builtin has measured inputs; unreleased cost names remain explicit") {
     val names = BuiltinCostingCorpus.probes.flatMap(_.builtins).toSet
-    val released = PlutusAvailability.builtinsAvailableIn(PlutusLanguage.V3, 11).map { builtin =>
+    val released = Availability.builtins(PlutusLanguage.V3, ProtocolMajor(11)).map { builtin =>
       val name = builtin.toString
       name.head.toLower.toString + name.tail
     }
     assertEquals(names, released)
     assertEquals(released.size, 101)
-    val costNames = PlutusConformanceSuite
+    val costNames = PlutusConformance
       .json("builtinCostModelE.json")
       .asObject
       .fold(fail("cost model object"))(_.keys.toSet)

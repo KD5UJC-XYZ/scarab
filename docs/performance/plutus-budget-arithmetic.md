@@ -5,7 +5,7 @@ Part of the [performance log](../performance.md).
 
 ## 44. The reference's budget arithmetic in the evaluator (#485)
 
-`ScalusEvaluator.CorrectedVm` now costs every builtin with `ReferenceCosting` (argument measures as
+ScalusEvaluator.CorrectedVm now costs every builtin with `ReferenceCosting` (argument measures as
 cost streams, costing functions in `SatInt`) and spends through `ReferenceBudget` (steps counted
 and charged per kind every 200 steps, a saturating remaining budget). Both spenders keep mutable
 counters because Scalus's `BudgetSpender` is a mutable callback that signals an exhausted budget

@@ -188,8 +188,8 @@ object BlockBuilder:
     * `NodeKernel.hs` `forkBlockForging`). This is the owner's explicit decision of 2026-10-28
     * (issue 584, ADR 0017).
     *
-    * `decoder` and `evaluator` are the node's backend (`--plutus-vm`, ADR 0027), passed on every
-    * path; the static checks they serve do not run on a reapplication.
+    * `decoder` and `evaluator` are the node's backend (`PlutusBackend`), passed on every path; the
+    * static checks they serve do not run on a reapplication.
     */
   def select(
       ticked: MempoolLedger,

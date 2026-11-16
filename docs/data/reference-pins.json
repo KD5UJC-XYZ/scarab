@@ -384,19 +384,6 @@
    ]
   },
   {
-   "name": "Scalus",
-   "aliases": [
-    "scalus"
-   ],
-   "repository": "scalus3/scalus",
-   "version": "1.4.0",
-   "urlPattern": "https://central.sonatype.com/artifact/org.scalus/scalus_3/{version}",
-   "role": "UPLC machine and builtins used by the plutus module.",
-   "dependents": [
-    "project/Dependencies.scala"
-   ]
-  },
-  {
    "name": "jblst",
    "repository": "Consensys-Incorporated/jblst",
    "version": "0.3.18",
@@ -412,9 +399,8 @@
    "repository": "supranational/blst",
    "version": "0.3.15",
    "urlPattern": "https://github.com/supranational/blst/releases/tag/v{version}",
-   "role": "The blst inside libscalus_crypto (Plutus, ADR 0020); the reference node's version, and the library ADR 0012 built until 2026-10-30.",
+   "role": "The reference node's blst version, and the library ADR 0012 built until 2026-10-30.",
    "dependents": [
-    "plutus/licenses/README.md",
     "docs/adr/0012-portable-blst.md"
    ]
   },

@@ -38,8 +38,8 @@ class UpstreamPlutusBoundarySuite extends FunSuite:
     Bytes.fromHex(field[String](row, "script")).fold(error => fail(error.message), identity)
   private val scripts = rows(root.resolve("scripts.jsonl"))
   private val observations = rows(root.resolve("verdicts.jsonl"))
-  private val decoder = ScalusEvaluator.pureDecoder
-  private val evaluator = ScalusEvaluator.pure
+  private val decoder = ScarabEvaluator.pureDecoder
+  private val evaluator = ScarabEvaluator.pure
 
   private def observed(stage: Json): (Boolean, Stage) =
     (field[Boolean](stage, "admitted"), field[Stage](stage, "stage"))
@@ -96,11 +96,11 @@ class UpstreamPlutusBoundarySuite extends FunSuite:
       .parse(Files.readString(root.resolve("manifest.json")))
       .fold(error => fail(error.message), identity)
     field[Map[String, String]](manifest, "fixtureSha256").foreach { case (path, expected) =>
-      assertEquals(NativeCrypto.sha256Hex(Files.readAllBytes(root.resolve(path))), expected, path)
+      assertEquals(UplcScripts.sha256Hex(Files.readAllBytes(root.resolve(path))), expected, path)
     }
     val patch = field[Json](manifest, "boundsBackport")
     assertEquals(
-      NativeCrypto.sha256Hex(Files.readAllBytes(root.resolve(field[String](patch, "patch")))),
+      UplcScripts.sha256Hex(Files.readAllBytes(root.resolve(field[String](patch, "patch")))),
       field[String](patch, "patchSha256")
     )
   }
@@ -120,8 +120,8 @@ class UpstreamPlutusBoundarySuite extends FunSuite:
           .noSpaces
           .getBytes(StandardCharsets.UTF_8)
         val original = bytes(script)
-        assertEquals(NativeCrypto.sha256Hex(original.toArray), field[String](row, "scriptSha256"))
-        assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+        assertEquals(UplcScripts.sha256Hex(original.toArray), field[String](row, "scriptSha256"))
+        assertEquals(UplcScripts.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
         val admitted = decoder.validate(language, protocol, original).isRight
         val result = evaluator.evaluate(
           EvalRequest(

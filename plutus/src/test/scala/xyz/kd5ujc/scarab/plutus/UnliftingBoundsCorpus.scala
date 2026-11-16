@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.plutus
 
 import io.circe.Json
 import java.nio.file.{Files, Path}
-import scalus.uplc.Program
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Phase-2 probes of the `ensurable` variants' unlifting bounds (issue 498): for each of the 35
@@ -114,11 +113,7 @@ object UnliftingBoundsCorpus:
     fun.endsWith("Integer") && !fun.startsWith("byteString") || (fun == "consByteString" && at == 0)
 
   private def compiled(body: String): Bytes =
-    Bytes.fromArray(
-      Program
-        .parseUplc(s"(program 1.0.0 [ (lam r (con unit ())) $body ])")
-        .fold(e => sys.error(e.toString), _.cborEncoded)
-    )
+    UplcScripts.compile(s"(program 1.0.0 [ (lam r (con unit ())) $body ])")
 
   lazy val probes: Vector[Probe] = for
     (fun, fills) <- holes

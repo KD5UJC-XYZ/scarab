@@ -130,9 +130,6 @@ enum ConfigProblem:
   /** A `--reference-build` value that names a build not implemented yet (#826). */
   case ReferenceBuildNotYet(cause: xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet)
 
-  /** A `--plutus-vm` value that names no evaluator. */
-  case PlutusVmUnknown(cause: xyz.kd5ujc.scarab.plutus.UnknownPlutusVm)
-
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
@@ -180,7 +177,6 @@ enum ConfigProblem:
       s"byron genesis avvmDistr: $value is $n bytes, a redeem key is 32"
     case ReferenceBuildUnknown(cause) => s"--reference-build: ${cause.message}"
     case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
-    case PlutusVmUnknown(cause)       => s"--plutus-vm: ${cause.message}"
     case MempoolCapacity(actual) =>
       s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
     case ListenAddress(address, cause) => s"--listen $address: ${cause.show}"

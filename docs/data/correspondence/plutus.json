@@ -1,5 +1,5 @@
 {
- "_comment": "Plutus: the script evaluator algebra and its backends (module plutus) and the own UPLC evaluator (module uplc). Its reference is plutus, and cardano-ledger for the script context and cost models. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "_comment": "Plutus: the script evaluator algebra and its interpreter over the own evaluator (module plutus) and the own UPLC evaluator (module uplc). Its reference is plutus, and cardano-ledger for the script context and cost models. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
  "area": "plutus",
  "roots": [
   "plutus/src/main/scala",
@@ -8,18 +8,9 @@
  "entries": {},
  "glue": [
   {
-   "reason": "Scarab's loading of scalus-crypto-jni's native library for the cryptographic builtins (ADR 0020): each platform's class path resource and the sha-256 pinned for its bytes, the digest type that compares them, and the compile-time check of a pin; plutus has no counterpart",
+   "reason": "Scarab's wiring of its one Plutus backend, the evaluator and the script decoder that the rules, the mempool and the forger each take; plutus has no counterpart",
    "definitions": [
-    "def plutus.LibraryDigest.hex",
-    "def plutus.LibraryDigest.of",
-    "def plutus.LibraryDigest.pinned",
-    "def plutus.LibraryDigestLiteral.checked",
-    "object plutus.LibraryDigest",
-    "object plutus.LibraryDigestLiteral",
-    "type plutus.LibraryDigest",
-    "val plutus.CryptoPlatform#architecture",
-    "val plutus.CryptoPlatform#resource",
-    "val plutus.CryptoPlatform#sha256"
+    "val plutus.PlutusBackend.default"
    ]
   }
  ]

@@ -5,7 +5,8 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
-import scalus.uplc.builtin.{Builtins, ByteString}
+import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 
 /** Native CLI parser/hash verdicts, including the original chunk framing that CBOR joins. */
 class PlutusDataChunkSuite extends FunSuite:
@@ -40,10 +41,9 @@ class PlutusDataChunkSuite extends FunSuite:
       if !probe.accepted then
         assertEquals(decoded, Left(PlutusData.DecodeError.ByteStringChunkLimit), probe.id)
       decoded.foreach { data =>
-        val encoded = Bytes.fromArray(DataSerialiser.serialise(ScalusEvaluator.toData(data)))
-        val hashed = Builtins.blake2b_256(ByteString.fromArray(encoded.toArray))
+        val encoded = DataSerialisation.serialise(data)
         assertEquals(
-          Bytes.fromArray(hashed.bytes).hex,
+          Blake2b.hash256.hash(encoded).hex,
           probe.hash,
           s"${probe.id}: native script-data hash"
         )

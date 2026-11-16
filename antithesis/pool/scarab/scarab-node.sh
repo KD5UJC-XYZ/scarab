@@ -42,12 +42,6 @@ if [ -d /logs ]; then
 fi
 # A killed node leaves its socket file behind.
 rm -f /ipc/node.socket
-# PLUTUS_VM, when the compose file sets it, names s1's Plutus evaluator (`--plutus-vm`, ADR 0027); without it the node
-# takes its default.
-vm=()
-if [ -n "${PLUTUS_VM:-}" ]; then
-  vm=(--plutus-vm "$PLUTUS_VM")
-fi
 # Where Antithesis injects ANTITHESIS_OUTPUT_DIR (every container it runs), the node writes its own assertions there in
 # the fallback SDK's format (`--assertions-file`, #1032); the platform keeps each container's file apart from the
 # driver's. A local run sets the variable itself to read them. SCARAB_ASSERTIONS=off, set on s1 in the compose file,
@@ -73,5 +67,4 @@ exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory
   --vrf-skey "$keys/vrf.skey" \
   --kes-skey "$keys/kes.skey" \
   --opcert "$keys/opcert.cert" \
-  "${vm[@]}" \
   "${assertions[@]}"
