@@ -5616,7 +5616,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "a function of the transaction where the reference has a getter (`SimpleGetter`), and a `Long` where the reference's `Word32` is bounded by `errorFail`, which fails past 2^32-1 bytes; no transaction that large reaches the rules, the multiplexer's ingress limits holding a transaction to tens of kilobytes (`network/.../IngressLimits.scala`) and a block to its body size. Conway's counts the list header and the parts' bytes, as `sizeAlonzoTxF` serialises them",
+   "note": "a function of the transaction where the reference has a getter (`SimpleGetter`), and a `Long` where the reference's `Word32` is bounded by `errorFail`, which fails past 2^32-1 bytes; no transaction that large reaches the rules: a transaction is read from one byte string, a block's or a submitted message's, whose length is a JVM `Int` (`Bytes.size`, `Cbor.Limits`), so below 2^31. Conway's counts the list header and the parts' bytes, as `sizeAlonzoTxF` serialises them",
    "digest": "91afe090e4ddaccd"
   },
   "def ledger.era.EraTxBody#getTotalDepositsTxBody": {

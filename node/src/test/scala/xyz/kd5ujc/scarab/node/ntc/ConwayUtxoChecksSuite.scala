@@ -422,16 +422,25 @@ class ConwayUtxoChecksSuite extends FunSuite:
   ):
     val base = seen.head
     val spent = base.flat.body.inputs.toVector
+    // the same script on a spent output and on a reference output, and another on a second one
+    val ref2 = TxIn(Bytes(Vector.fill(32)(9.toByte)), 1)
     val ref = TxIn(Bytes(Vector.fill(32)(9.toByte)), 0)
     val stored =
-      base.stored ++ spent.map(_ -> withRefScript(base, 900)) + (ref -> withRefScript(base, 3))
+      base.stored ++ spent.map(_ -> withRefScript(base, 900)) +
+        (ref -> withRefScript(base, 900)) + (ref2 -> withRefScript(base, 3))
     val s0 = base.copy(stored = stored, utxo = right("typed UTxO")(ConwayUTxO.fromStored(stored)))
     val s = edited(s0, envelope(s0))(fields =>
       val inputs =
         fields.collectFirst { case (k, v) if isKey(0)(k) => v }.getOrElse(fail("no inputs"))
       val refs = inputs.value match
         case Value.Arr(xs) =>
-          leaf(Value.Arr(xs :+ leaf(Value.Arr(Vector(bytesOf(ref.id), uint(0))))))
+          leaf(
+            Value.Arr(
+              xs ++ Vector(ref, ref2).map(in =>
+                leaf(Value.Arr(Vector(bytesOf(in.id), uint(in.index))))
+              )
+            )
+          )
         case other => fail(s"inputs: $other")
       fields.filterNot((k, _) => isKey(18)(k)) :+ (key(18) -> refs)
     )
@@ -486,7 +495,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
   test(
     "deposits and refunds of crafted certificates, proposals aside, are the flat path's, as is the donation"
   ):
-    val base = seen.head
+    // a pool deposit of its own, so the pools' share of the deposits is seen
+    val base = withParams(seen.head)(_.copy(poolDeposit = 500000000))
     val certs = Vector(
       leaf(Value.Arr(Vector(uint(7), keyCred(0x41), uint(base.flatPp.keyDeposit)))),
       leaf(Value.Arr(Vector(uint(8), keyCred(0x41), uint(base.flatPp.keyDeposit)))),
@@ -514,7 +524,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
       b.getTotalRefundsTxBody[TxLevel.Top](s.pp, lookupStakingDeposit(s), body)(using tb).value,
       refunds
     )
-    assert(refunds > 0 && deposits > 0)
+    assert(refunds > 0, "refunds")
+    assert(deposits >= 2 * base.flatPp.poolDeposit, "two new pools' deposits")
     val u = EraUTxO.conway
     val (consumed, produced) = flatBalance(s)
     assertEquals(

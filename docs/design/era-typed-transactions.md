@@ -485,10 +485,11 @@ Conway's rules on the classes follow as the rest of stage 2.
   `validateMaxTxSizeUTxO` and `validateExUnitsTooBigUTxO`.
   - On every Conway case of the refusal corpora the minimum fee and the values consumed and produced equal
     the flat rule's, and each predicate's verdict equals the flat one's. `feesOK`, the size and the units each
-    refuse somewhere in the corpus, but the corpus holds no reference script, no pool or staking certificate,
-    no donation and no wrong declared total collateral, so crafted cases compare those branches: repeated
-    reference scripts past the first fee tier, the tiers' boundaries, deposits and refunds of crafted
-    certificates, and a declared total that is not the balance.
+    refuse somewhere in the corpus. The corpus holds no reference script, no pool registration, no
+    registration and unregistration of one credential in a body, no donation and no wrong declared total
+    collateral, so crafted cases compare those branches: a script carried by two outputs, past the first
+    fee tier; the tiers' boundaries; the deposits and refunds of crafted certificates with a pool deposit;
+    and a declared total that is not the balance.
   - `collAdaBalance` adds the lovelace in a wrapping `Word64`, as `sumAllCoin` does; the flat path adds
     exactly. They differ only past the supply, which no set of collateral outputs reaches.
   - A failure that carries an output or a value carries the node's stored form of it, through a glue class
