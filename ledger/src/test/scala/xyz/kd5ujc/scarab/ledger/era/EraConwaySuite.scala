@@ -184,10 +184,8 @@ class EraConwaySuite extends munit.FunSuite:
         proposals.map(pp => (pp.pProcDeposit.value, pp.pProcReturnAddr, pp.pProcAnchor)),
         flat.proposals.map(fp => (fp.deposit, fp.returnAccount, fp.anchor))
       )
-      assertEquals(
-        proposals.map(pp => actionOf(pp.pProcGovAction)),
-        flat.proposals.map(_.action)
-      )
+      assertEquals(proposals.size, flat.proposals.size)
+      proposals.zip(flat.proposals).foreach((pp, fp) => agrees(pp.pProcGovAction, fp.action))
       assertEquals(body.treasuryDonation[TxLevel.Top](c).value, flat.donation)
       // a certificate's script witness is the one the flat rules ask for
       val typed = body.certs[TxLevel.Top](c).toVector
@@ -579,14 +577,41 @@ class EraConwaySuite extends munit.FunSuite:
     assertNotEquals(ConwayTxOut.fromStored(stored("1a000f4241")), a)
   }
 
-  /** The flat action a typed one was read from, the update by the flat update it reads as. */
+  /** The typed action agrees with the flat one the decoder read: a parameter change field by field
+    * ([[sameUpdate]]), any other action as the flat action it reads back as.
+    */
+  private def agrees(typed: GovAction[Conway], flat: FlatGovAction): Unit = (typed, flat) match
+    case (
+          GovAction.ParameterChange(parent, update, guardrails),
+          FlatGovAction.ParameterChange(flatParent, flatUpdate, flatGuardrails)
+        ) =>
+      assertEquals(parent.map(_.unGovPurposeId), flatParent)
+      assertEquals(guardrails.map(_.bytes), flatGuardrails)
+      sameUpdate(update, flatUpdate)
+    case (other, _) => assertEquals(actionOf(other), flat)
+
+  private val conwayPParams = summon[ConwayEraPParams[Conway]]
+
+  /** The typed update sets as many fields as the flat one, and applied to the same parameters gives
+    * the parameters the flat update gives: each through the existing flat code (`applyTo`) and the
+    * record's own application, neither of them the conversion the update was read by.
+    */
+  private def sameUpdate(typed: PParamsUpdate[Conway], flat: ConwayParamUpdate): Unit =
+    val set = typed.hkd.productIterator.count {
+      case Some(_) => true
+      case _       => false
+    }
+    assertEquals(set, flat.params.size)
+    val base = xyz.kd5ujc.scarab.ledger.TestLedger.params(10)
+    val typedBase = PParams[Conway](ConwayPParams.fromStored(base).toOption.get)
+    assertEquals(
+      ConwayPParams.toStored(conwayPParams.applyPPUpdates(typedBase, typed).hkd, base),
+      flat.applyTo(base)
+    )
+
+  /** The flat action an action other than a parameter change reads back as. */
   private def actionOf(a: GovAction[Conway]): FlatGovAction = a match
-    case GovAction.ParameterChange(parent, update, guardrails) =>
-      FlatGovAction.ParameterChange(
-        parent.map(_.unGovPurposeId),
-        updates.getOrElse(update, fail(s"an update not read from a recorded body: $update")),
-        guardrails.map(_.bytes)
-      )
+    case GovAction.ParameterChange(_, _, _) => fail("a parameter change is compared by its fields")
     case GovAction.HardForkInitiation(parent, v) =>
       FlatGovAction.HardFork(parent.map(_.unGovPurposeId), v.pvMajor.value, v.pvMinor.value)
     case GovAction.TreasuryWithdrawals(withdrawals, guardrails) =>
@@ -609,15 +634,6 @@ class EraConwaySuite extends munit.FunSuite:
         constitution.anchor
       )
     case GovAction.InfoAction() => FlatGovAction.Info
-
-  /** Every update of a recorded Conway body, by the typed update it reads as. */
-  private lazy val updates: Map[PParamsUpdate[Conway], ConwayParamUpdate] =
-    bodies
-      .flatMap(raw => FlatTxBody.decode(raw, Era.Conway).toOption.get.proposals)
-      .collect { case Proposal(_, _, FlatGovAction.ParameterChange(_, u, _), _) =>
-        PParamsUpdate[Conway](ConwayPParams.fromUpdate(u).toOption.get) -> u
-      }
-      .toMap
 
   test("the recorded Conway bodies carry votes and proposals of every action") {
     val read = bodies.map(raw => ConwayTxBody.decode(raw).toOption.get)
@@ -772,6 +788,15 @@ class EraConwaySuite extends munit.FunSuite:
           assertEquals(typed, Left(EraTxError.Decode(e)), what)
         case Right(p) => fail(s"$what: the flat decoder accepts it: $p")
     }
+  }
+
+  test("parents are ordered as their action ids, as the derived Ord compares them") {
+    def id(b: Int, ix: Int) = GovPurposeId[GovActionPurpose.HardFork](
+      GovActionId(Bytes(Vector.fill(32)(b.toByte)), ix)
+    )
+    val ids = Vector(id(2, 0), id(1, 5), id(1, 2))
+    assertEquals(ids.sorted.map(_.unGovPurposeId), ids.map(_.unGovPurposeId).sorted)
+    assertEquals(ids.sorted, Vector(id(1, 2), id(1, 5), id(2, 0)))
   }
 
   test("a parent is of its action's purpose") {

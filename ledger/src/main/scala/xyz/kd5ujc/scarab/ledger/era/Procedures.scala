@@ -46,6 +46,11 @@ object GovPurposeId:
 
   given [P <: GovActionPurpose]: CanEqual[GovPurposeId[P], GovPurposeId[P]] = CanEqual.derived
 
+  /** The derived `Ord (GovPurposeId p)` (`Procedures.hs:651-654`, cardano-ledger f649f975): its
+    * action id's ([[GovActionId.ordering]]).
+    */
+  given ordering[P <: GovActionPurpose]: Ordering[GovPurposeId[P]] = GovActionId.ordering
+
 /** A governance action of era `E` (`data GovAction era`, `Procedures.hs:815-868`, cardano-ledger
   * f649f975), its update the era's (`PParamsUpdate era`) and each parent of the action's purpose.
   * Equal as the reference derives `Eq`: treasury withdrawals as the `Map AccountAddress Coin` they

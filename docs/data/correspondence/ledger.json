@@ -6816,11 +6816,11 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896247213",
    "evidence": [
     "EraConwaySuite"
    ],
-   "note": "the constitution is the node's, its guardrails hash as bytes",
+   "note": "no Ord until an update's order is the reference's; the constitution is the node's, its guardrails hash as bytes (#85)",
    "digest": "a3498495bea06bee"
   },
   "class ledger.era.ProposalProcedure": {
@@ -6836,12 +6836,13 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896247213",
    "evidence": [
     "EraConwaySuite"
    ],
-   "note": "with the flat proposal it was read as, which the flat failures carry",
+   "note": "keeps the flat proposal it was read as, which the flat failures carry; no Ord until an update's order is the reference's",
    "digest": "f1af56f54804e122"
   },
   "val ledger.era.ProposalProcedure#pProcDeposit": {
@@ -6945,47 +6946,6 @@
    "note": "the derived Eq, without the flat proposal read",
    "digest": "dfbc0912b7bac695"
   },
-  "def ledger.era.ProposalProcedure#hashCode": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "Eq",
-     "lines": [
-      504,
-      504
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "note": "consistent with the derived Eq",
-   "digest": "b4080402bb768e10"
-  },
-  "def ledger.era.ProposalProcedure#toString": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "Show",
-     "lines": [
-      504,
-      504
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "digest": "b90ef12dc9f301cb"
-  },
   "class ledger.era.VotingProcedures": {
    "upstream": [
     {
@@ -7048,47 +7008,6 @@
    ],
    "note": "the derived Eq",
    "digest": "a02da3ac64cfa4c6"
-  },
-  "def ledger.era.VotingProcedures#hashCode": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "Eq",
-     "lines": [
-      403,
-      403
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "note": "consistent with the derived Eq",
-   "digest": "938f2ae84d8fe42c"
-  },
-  "def ledger.era.VotingProcedures#toString": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "Show",
-     "lines": [
-      403,
-      403
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "EraConwaySuite"
-   ],
-   "digest": "946b64c597689d3d"
   },
   "def ledger.era.rules.ConwayEra.hardforkConwayBootstrapPhase": {
    "upstream": [
@@ -7303,6 +7222,7 @@
    "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives",
    "definitions": [
     "given ledger.era.EraUTxO.conway",
+    "given ledger.era.GovPurposeId.ordering",
     "given ledger.era.PPGroups.given_Ordering_PPGroups",
     "given ledger.era.Version.given_Ordering_Version",
     "object ledger.era.AlonzoEraPParams",
@@ -7460,6 +7380,15 @@
     "type ledger.era.GovActionPurpose.HardFork",
     "type ledger.era.GovActionPurpose.PParamUpdate",
     "val ledger.era.ProposalProcedure#read"
+   ]
+  },
+  {
+   "reason": "Scala runtime support with no counterpart: a hashCode consistent with the equality the reference derives, and a toString, which the reference's derived Show renders differently",
+   "definitions": [
+    "def ledger.era.ProposalProcedure#hashCode",
+    "def ledger.era.ProposalProcedure#toString",
+    "def ledger.era.VotingProcedures#hashCode",
+    "def ledger.era.VotingProcedures#toString"
    ]
   }
  ]
