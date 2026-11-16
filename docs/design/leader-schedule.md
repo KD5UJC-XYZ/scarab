@@ -81,22 +81,32 @@ a slot given up at step 2 or 3 evolves nothing.
 
 ### 2.2 Its traces
 
-Every constructor of the trace type carries the slot being forged; none names a later slot (C10). The severities are
-the same at both builds (C7): `StartLeadershipCheck`, `NodeNotLeader`, `NodeIsLeader`, `ForgedBlock` and
-`AdoptedBlock` Info; `BlockContext`, `LedgerState`, `LedgerView`, `ForgeTickedLedgerState` and
-`ForgingMempoolSnapshot` Debug; `SlotIsImmutable`, `BlockFromFuture`, `NoLedgerState`, `NoLedgerView`,
-`NodeCannotForge`, `DidntAdoptBlock` and `ForgedInvalidBlock` Error; `ForgeStateUpdateError` Critical. `StateInfo` is
-Info, Warning with seven KES periods left or fewer, and Alert with one or none. So a slot not led that reaches the
-leader check gives three Info lines (`StartLeadershipCheck`, `StateInfo`, `NodeNotLeader`) and three Debug lines.
+Every constructor of the trace type carries the slot being forged, and `TraceBlockFromFuture` also the later slot of
+the chain's tip; no constructor publishes a leadership schedule (C10). The severities are the same at both builds
+(C7): `StartLeadershipCheck`, `NodeNotLeader`, `NodeIsLeader`, `ForgedBlock` and `AdoptedBlock` Info; `BlockContext`,
+`LedgerState`, `LedgerView`, `ForgeTickedLedgerState` and `ForgingMempoolSnapshot` Debug; `SlotIsImmutable`,
+`BlockFromFuture`, `NoLedgerState`, `NoLedgerView`, `NodeCannotForge`, `DidntAdoptBlock` and `ForgedInvalidBlock`
+Error; `ForgeStateUpdateError` Critical. `StateInfo` is Info, Warning with seven KES periods left or fewer, and Alert
+with one or none. So a slot not led that reaches the leader check, after a forge state update that succeeded with more
+than seven KES periods left, gives three Info lines (`StartLeadershipCheck`, `StateInfo`, `NodeNotLeader`) and three
+Debug lines.
 
-The counters follow the traces (C8): `Forge.about-to-lead` counts `StartLeadershipCheck`, `Forge.node-not-leader`
-counts `NodeNotLeader`, and so on. The `ForgingStats` gauges (`nodeIsLeader`, `nodeCannotForge`, `blocksForged`,
-`slotsMissed`) are folded over the traces and published only when `StartLeadershipCheck` is traced; `slotsMissed`
-adds the gap between the slot of a `NodeNotLeader` and the last slot seen (C9).
+The metrics follow the traces, but not one to one (C8). `Forge.about-to-lead` counts `StartLeadershipCheck`,
+`Forge.node-not-leader` counts `NodeNotLeader` and `Forge.node-is-leader` counts `NodeIsLeader`; `SlotIsImmutable`,
+`BlockFromFuture`, `DidntAdoptBlock`, `ForgedInvalidBlock`, `AdoptedBlock` and `AdoptionThreadDied` have a counter
+each; `NoLedgerState`, `NoLedgerView` and `NodeCannotForge` share `Forge.could-not-forge`; `ForgedBlock` adds to
+`Forge.forged` and sets the `forgedSlotLast` gauge; `ForgeStateUpdateError` counts nothing and writes gauges:
+`Forge.StateUpdateError`, the slot, and, when the error carries the key's state, the certificate's start and expiry
+periods and zero for the current and remaining periods; the five Debug steps write no metric. The `ForgingStats`
+gauges (`nodeIsLeader`, `nodeCannotForge`, `blocksForged`, `slotsMissed`) are folded over the traces and published
+only when `StartLeadershipCheck` is traced. `NodeIsLeader` and `NodeNotLeader` both set the last slot seen, and
+`slotsMissed` adds the gap between the slot of a `NodeNotLeader` and that last slot (C9).
 
-Scarab mirrors every one of these traces with its severity and fields ([logging](../running/logging.md), the rows
-from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`), except `NoLedgerState` and `AdoptionThreadDied`,
-which cannot happen in Scarab (`ForgeTrace`).
+Scarab mirrors every one of these traces with its severity, and their fields but for two renderings (C21): its
+`forgedInvalidBlock` `reason` is Scarab's rendering of its own rules' refusal, not the reference's
+`ExtValidationError`, and its `adoptedBlock` never carries the `txIds` the reference adds at its `DDetailed` level
+([logging](../running/logging.md), the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`).
+`NoLedgerState` and `AdoptionThreadDied` have no case in Scarab, which cannot reach them (`ForgeTrace`).
 
 ### 2.3 The epoch nonce: frozen, then fixed at the boundary
 
@@ -200,9 +210,9 @@ until the forging area moves with #1002.
 | C5 | `checkCanForge` is `praosCheckCanForge`: the certificate's first KES period not after the slot's. | 82ecba32 `Shelley/Node/Praos.hs` 86-89; `Protocol/Praos.hs` 691-711 | 808e4005 the same file 86-89; `Protocol/Praos.hs` 697-717 | yes |
 | C6 | `updateForgeState` is `HotKey.evolve` to `slot div slotsPerKESPeriod`; `evolveKey` keeps, poisons, or evolves with `forgetSignKeyKES` of each old key. | 82ecba32 `Shelley/Node/Praos.hs` 56-58, 83-85; `Protocol/Ledger/HotKey.hs` 359-370, 385-440 | 808e4005 the same lines (`HotKey.hs` identical) | yes |
 | C7 | The severities of §2.2. | 11.1.3 `Tracing/Tracers/Consensus.hs` 1580-1599; `Tracing/Tracers/KESInfo.hs` 129-150 | 808e4005 `Tracing/Consensus.hs` 1739-1758; `Tracing/KESInfo.hs` 219-241 | yes |
-| C8 | One counter per trace (`Forge.about-to-lead`, `Forge.node-not-leader`, ...). | 11.1.3 `Tracing/Tracers/Consensus.hs` 1507-1538 | 808e4005 `Tracing/Consensus.hs` 1665-1697 | yes |
-| C9 | `ForgingStats` is folded over the traces and published at `StartLeadershipCheck`; `slotsMissed` from the gaps between `NodeNotLeader` slots. | 11.1.3 `Tracing/Tracers/ForgingStats.hs` 83-121 | 11.2.1 the same file 146-197, with the resume generation (24-79) | yes; differs (§2.8) |
-| C10 | Every forging trace carries the slot being forged; none lists later slots. | 82ecba32 `Node/Tracers.hs` 272-404 | 808e4005 `Node/Tracers.hs` 291-423 | yes, for the forging traces; other trace types were not surveyed |
+| C8 | The metrics of the traces as §2.2 maps them: a counter for some, `Forge.could-not-forge` shared by three refusals, gauges for `ForgeStateUpdateError` and `ForgedBlock`, none for the Debug steps. | 11.1.3 `Tracing/Tracers/Consensus.hs` 1487-1538 | 808e4005 `Tracing/Consensus.hs` 1646-1697 | yes |
+| C9 | `ForgingStats` is folded over the traces and published at `StartLeadershipCheck`; `NodeIsLeader` and `NodeNotLeader` set the last slot; `slotsMissed` adds the gap at a `NodeNotLeader`. | 11.1.3 `Tracing/Tracers/ForgingStats.hs` 83-121 (`NodeIsLeader` 102-105) | 11.2.1 the same file 146-197 (`NodeIsLeader` 167-174), with the resume generation (24-79) | yes; differs (§2.8) |
+| C10 | Every forging trace carries the slot being forged (`TraceBlockFromFuture` also the tip's later slot); no constructor publishes a leadership schedule. | 82ecba32 `Node/Tracers.hs` 272-404 (`TraceBlockFromFuture` 295-304) | 808e4005 `Node/Tracers.hs` 291-423 (314-323) | yes, for the forging traces; other trace types were not surveyed |
 | C11 | Per header: evolving nonce extended; candidate set only if `slot + window < firstSlotNextEpoch`; `labNonce` from the previous hash. | 82ecba32 `Protocol/Praos.hs` 500-533 | 808e4005 `Protocol/Praos.hs` 506-539 | yes |
 | C12 | Window: 4k/f for Praos but Babbage, 3k/f for Babbage; TPraos UPDN uses the ledger's `stabilityWindow`, 3k/f. | 82ecba32 `Cardano/Node.hs` 683-697, 788-799; 4c81e909 `Shelley/StabilityWindow.hs` 14-35, `Shelley/Genesis.hs` 786-789; f649f975 `TPraos/Rules/Updn.hs` 60-75 | 808e4005 `Cardano/Node.hs` 627-641, 732-743; 29a7d656 the same ledger lines | yes |
 | C13 | At a new epoch: epoch nonce `candidate ⭒ lastEpochBlockNonce`; previous epoch nonce the old one; `lastEpochBlockNonce` the `labNonce`. | 82ecba32 `Protocol/Praos.hs` 436-463 | 808e4005 `Protocol/Praos.hs` 442-469 | yes |
@@ -213,6 +223,7 @@ until the forging area moves with #1002.
 | C18 | The blockchain time is its own thread; `checkValidClockChange`; rewind limit 20 s, backoff 60 s. | 82ecba32 `BlockchainTime/WallClock/HardFork.hs` 68-178; `Node.hs` 547-561 | 808e4005 the same `HardFork.hs` lines; `Node.hs` 550-564 | yes |
 | C19 | `setBlockForging` hands a list of credentials to `blockForgingController`, which cancels the forging threads and forks one per entry: with none, no forging thread runs and no slot is traced. | 82ecba32 `NodeKernel.hs` 416, 428-439 | 808e4005 `NodeKernel.hs` 399, 411-422 | yes |
 | C20 | With a key file (`KESKeyFilePath`), the node reads the KES signing key from it, checked against the certificate (`readLeaderCredentialsSingleton`, `opCertKesKeyCheck`); the reader writes nothing back. | 11.1.3 `Protocol/Shelley.hs` 191-195, 220-231 | 11.2.1 `Protocol/Shelley.hs` 187-191, 216-227 | yes for the reader; that nothing else in the node rewrites the file is from [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md), not re-read |
+| C21 | The machine rendering of `TraceForgedInvalidBlock` carries the reference's `ExtValidationError`; that of `TraceAdoptedBlock` adds `txIds` at `DDetailed` only. | 11.1.3 `Tracing/Tracers/Consensus.hs` 1374-1399 | 808e4005 `Tracing/Consensus.hs` 1519-1546 | yes |
 
 ## 3. Prior art: Amaru
 
@@ -437,8 +448,8 @@ operator who exposes `/metrics` publicly publishes the schedule. The metrics pag
 
 What stays a **Mirror**: the decision of every slot and the certificate of every won slot (C4, decision 9); the forged
 block for a given slot, parent, snapshot and credentials; the full sequence of traces of a led slot, with the
-reference's names, order, severities and fields (C2, C7); the clock checks (C18); the KES key's states and its erasure
-(C6); the forecast check of a led slot (C16).
+reference's names, order and severities, and its fields but for the two renderings that differ today (C2, C7, C21);
+the clock checks (C18); the KES key's states and its erasure (C6); the forecast check of a led slot (C16).
 
 The **Deviations**, all approved on #1101. A pull request records each as a [REF-7](../design-rules.md#ref-7) row, and
 the change that first relies on them adds their rows to the [decisions register](../decisions.md):
