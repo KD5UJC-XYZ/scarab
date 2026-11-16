@@ -2,22 +2,26 @@
 package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
-import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, LedgerDecodeError}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
+import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, LedgerDecodeError, Unsigned}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
   AlonzoEraTxAuxData,
+  AlonzoTx,
+  ConwayEraPParams,
   AlonzoEraTxWits,
   EraTxAuxData,
   EraTxBody,
   EraTxError,
   EraTxWits,
   IsPhase2Valid,
+  PParams,
+  PositiveInterval,
   TopOnly,
   TxLevel
 }
-import xyz.kd5ujc.scarab.ledger.state.Conway
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag, NonZero}
 
 /** A Conway transaction: `AlonzoTx TopTx ConwayEra` (`data AlonzoTx l era`, cardano-ledger f649f975
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:205-212`): its body, witness set, phase-two
@@ -64,28 +68,85 @@ object ConwayTx:
       .leftMap(EraTxError.Decode(_))
       .flatMap(decode)
 
-  val instance: AlonzoEraTx[Conway] = new AlonzoEraTx[Conway]:
-    override val bodyOf: EraTxBody.conway.type = EraTxBody.conway
-    override def witsOf: AlonzoEraTxWits[Conway] = EraTxWits.conway
-    override def auxDataOf: AlonzoEraTxAuxData[Conway] = EraTxAuxData.conway
-    override def body[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
-        l: TopOnly[L]
-    ): xyz.kd5ujc.scarab.ledger.era.TxBody[L, Conway] =
-      l match
-        case TopOnly.Top => tx.body
-    override def wits[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
-        l: TopOnly[L]
-    ): ConwayTxWits =
-      l match
-        case TopOnly.Top => tx.wits
-    override def auxData[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
-        l: TopOnly[L]
-    ): Option[ConwayTxAuxData] =
-      l match
-        case TopOnly.Top => tx.auxData
-    override def sizeTxForFeeCalculation[L <: TxLevel](
-        tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway]
-    )(using l: TopOnly[L]): Long =
-      l match
-        case TopOnly.Top => tx.sizeTxForFeeCalculation
-    override def isValid(tx: ConwayTx): IsPhase2Valid = tx.isValid
+  val instance: AlonzoEraTx[Conway] { val bodyOf: EraTxBody.conway.type } =
+    new AlonzoEraTx[Conway]:
+      override val bodyOf: EraTxBody.conway.type = EraTxBody.conway
+      override def witsOf: AlonzoEraTxWits[Conway] = EraTxWits.conway
+      override def auxDataOf: AlonzoEraTxAuxData[Conway] = EraTxAuxData.conway
+      override def body[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
+          l: TopOnly[L]
+      ): xyz.kd5ujc.scarab.ledger.era.TxBody[L, Conway] =
+        l match
+          case TopOnly.Top => tx.body
+      override def wits[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
+          l: TopOnly[L]
+      ): ConwayTxWits =
+        l match
+          case TopOnly.Top => tx.wits
+      override def auxData[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
+          l: TopOnly[L]
+      ): Option[ConwayTxAuxData] =
+        l match
+          case TopOnly.Top => tx.auxData
+      override def sizeTxForFeeCalculation[L <: TxLevel](
+          tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway]
+      )(using l: TopOnly[L]): Long =
+        l match
+          case TopOnly.Top => tx.sizeTxForFeeCalculation
+      // `sizeTxF = conwayTxL . sizeAlonzoTxF`, `Conway/Tx.hs:86`, cardano-ledger f649f975: a list
+      // header of one byte and the parts' bytes, the count `sizeTxForFeeCalculation` makes
+      override def sizeTxF[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
+          l: TopOnly[L]
+      ): Long =
+        l match
+          case TopOnly.Top => tx.sizeTxForFeeCalculation
+      // `getMinFeeTx = getConwayMinFeeTx`, `Conway/Tx.hs:92`, cardano-ledger f649f975
+      override def getMinFeeTx[L <: TxLevel](
+          pp: PParams[Conway],
+          tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway],
+          refScriptsSize: Long
+      )(using l: TopOnly[L]): Coin =
+        getConwayMinFeeTx[Conway, L](pp, tx, refScriptsSize)(using this, l)
+      override def isValid(tx: ConwayTx): IsPhase2Valid = tx.isValid
+
+  /** `getConwayMinFeeTx` (`Conway/Tx.hs:100-118`, cardano-ledger f649f975): Alonzo's minimum fee
+    * and the fee of the reference scripts.
+    */
+  def getConwayMinFeeTx[E <: EraTag, L <: TxLevel](
+      pp: PParams[E],
+      tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, E],
+      refScriptsSize: Long
+  )(using t: AlonzoEraTx[E], l: t.bodyOf.Level[L], p: ConwayEraPParams[E]): Coin =
+    Coin(
+      AlonzoTx.alonzoMinFeeTx[E, L](pp, tx).value +
+        tierRefScriptFee(
+          p.ppRefScriptCostMultiplierG.get(pp),
+          p.ppRefScriptCostStrideG.get(pp),
+          ConwayEraPParams.ppMinFeeRefScriptCostPerByteL[E].get(pp).rational,
+          refScriptsSize
+        ).value
+    )
+
+  /** `tierRefScriptFee` (`Conway/Tx.hs:120-142`, cardano-ledger f649f975): the price per byte
+    * starts at `baseFee` and is multiplied by `multiplier` for each `sizeIncrement` bytes. The
+    * reference refuses a multiplier or an increment that is not positive with an error; their types
+    * here have no such value. The size is a 64-bit `Int`, as the reference's.
+    */
+  def tierRefScriptFee(
+      multiplier: PositiveInterval,
+      sizeIncrement: NonZero[Unsigned[Unsigned.Width.W32]],
+      baseFee: Rational,
+      totalSize: Long
+  ): Coin =
+    val increment = sizeIncrement.value.value.toLong
+    val sizeIncrementRational = Rational(BigInt(increment))
+    @annotation.tailrec
+    def go(acc: Rational, curTierPrice: Rational, n: Long): Coin =
+      if n < increment then Coin((acc + Rational(BigInt(n)) * curTierPrice).floor)
+      else
+        go(
+          acc + sizeIncrementRational * curTierPrice,
+          multiplier.rational * curTierPrice,
+          n - increment
+        )
+    go(Rational(BigInt(0)), baseFee, totalSize)
