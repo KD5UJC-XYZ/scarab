@@ -1185,8 +1185,11 @@ class PoolOracleTest(unittest.TestCase):
         ev = [{"event": "extended", "at": self.at(5), "block": {"slot": 5, "hash": "a"}}]
         ev += [{"event": "forged", "at": self.at(s), "slot": s, "hash": f"f{s}"} for s in forged]
         ev += [{"event": "extended", "at": self.at(s), "block": {"slot": s, "hash": f"o{s}"}} for s in other]
-        # every slot of the window is started but 30, which the loop passed over
-        ev += [{"event": "startLeadershipCheck", "at": self.at(s), "slot": s} for s in range(6, end) if s != 30]
+        # every slot of the window is handled but 30, which the forger passed over: a led slot logs
+        # `startLeadershipCheck`, one not led only the line that ends it (#1101)
+        ev += [{"event": "startLeadershipCheck" if s % 2 else "nodeNotLeader", "at": self.at(s), "slot": s}
+               for s in range(6, end) if s not in (30, 50)]
+        ev += [{"event": "startLeadershipCheck", "at": self.at(50), "slot": 50}]
         ev += [{"event": "extended", "at": self.at(end), "block": {"slot": end, "hash": "z"}}]
         return ev
 
@@ -1851,14 +1854,21 @@ class SlotClockTest(unittest.TestCase):
         return {"event": kind, "at": stamp, **extra}
 
     def test_a_clock_in_step_and_a_clock_a_second_behind(self):
-        in_step = [self.event("forged", 10, 12, hash="a", slot=10),
+        # a block forged 50 ms ahead of its slot and handed over (adopted) at its onset (#1101)
+        in_step = [self.event("forged", 10, -50, hash="a", slot=10),
+                   self.event("adopted", 10, 12, block={"slot": 10, "hash": "a"}),
                    self.event("extended", 20, 8, block={"slot": 20, "hash": "b"})]
         self.assertEqual(pool.slot_clock(in_step, self.SHELLEY), {"forgeLatencyMs": 12, "arrivalMs": 8})
-        behind = [self.event("forged", 10, 1010, hash="a", slot=10),
+        behind = [self.event("forged", 10, 960, hash="a", slot=10),
+                  self.event("adopted", 10, 1010, block={"slot": 10, "hash": "a"}),
                   self.event("extended", 20, 9, block={"slot": 20, "hash": "b"}),
                   self.event("extended", 10, 12, block={"slot": 10, "hash": "a"})]
         clock = pool.slot_clock(behind, self.SHELLEY)
         self.assertEqual((clock["forgeLatencyMs"], clock["arrivalMs"]), (1010, 9))
+        # a clock a second ahead hands its blocks over a second early
+        ahead = [self.event("adopted", 10, -990, block={"slot": 10, "hash": "a"}),
+                 self.event("extended", 20, 9, block={"slot": 20, "hash": "b"})]
+        self.assertEqual(pool.slot_clock(ahead, self.SHELLEY)["forgeLatencyMs"], -990)
         self.assertEqual(pool.slot_clock([], self.SHELLEY), {"forgeLatencyMs": None, "arrivalMs": None})
 
     def test_the_host_is_overloaded_when_its_load_exceeds_its_cpus(self):
