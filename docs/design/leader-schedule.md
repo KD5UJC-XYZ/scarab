@@ -707,15 +707,25 @@ same slot: `KESCouldNotEvolve` appears once, in the first slot in slot order who
    - Where the build differs from §5, or settles what §5 leaves open:
      - The slot driver derives a slot's inputs from the ledger view forecast from the block the slot would build on,
        with no ledger tick (Q1); a slot not led whose ledger cannot be carried into its epoch so logs
-       `nodeNotLeader` where the per-slot loop logged `forgeFailed`. A led slot's attempt carries the ledger as
-       before.
+       `nodeNotLeader` where the per-slot loop logged `forgeFailed`, because the reference ticks the ledger to a slot
+       only for a slot it leads and Q1 asks for the reference's line. The failure still surfaces, as `forgeFailed`,
+       at the first led slot's attempt, which carries the ledger as before, and at the follower's own crossing of
+       the boundary.
      - The `stateInfo` of a period change is published at the first slot of the period the slot driver handles,
        whether or not that slot's checks reach the key, so that the KES gauges move at the period's start.
      - The KES key's own lines (`kesEvolved`, `kesFileAbsent`, `kesWrittenByRename`, `kesPersistFailed`) are
        written where the key moves, by the forge that updates it up to the wake margin before the period, not held
        with the slot's lines.
-     - A forge made ahead of its slot runs the mempool's housekeeping as the per-slot loop did (a held transaction
-       with no verdict leaves the pool), even if the attempt is then discarded.
+     - A held transaction the selection has no verdict on leaves the mempool only when its attempt counts: before
+       its block is handed over, or with the refusal that stands; a discarded attempt changes nothing in the
+       mempool, so the slot forged again starts from the mempool the per-slot loop would see.
+     - The handover re-reads the wall clock after its timer: a clock moved back within the rewind allowance
+       delays it to the onset by the clock. The credentials a block was signed with are checked, and the block
+       submitted, under the key's lock, so that no reload lands between them; a block whose credentials were
+       replaced or whose forging was disabled is not handed over and logs one Debug line, as the reference's
+       forging thread of replaced credentials ends (C19).
+     - While forging is disabled the slot driver still claims each slot, so that a forge claimed by a reload's
+       forging fiber in the meantime is awaited and published before the mark passes it.
      - The forging fiber forges a slot only once the clock can know it (the era history's horizon), as the
        reference's watcher hands it only known slots; a forging fiber woken before the clock has published a slot
        waits for the slot driver's mark.
