@@ -57,7 +57,8 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def payment(
       era: Era,
       i: Int = 1,
-      extra: Vector[(Int, Vector[Byte])] = Vector.empty
+      extra: Vector[(Int, Vector[Byte])] = Vector.empty,
+      forged: Boolean = false
   ): (Bytes, Block.Transaction) =
     val body = Bytes(
       head(5, 4 + extra.size) ++
@@ -71,7 +72,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val id = Blake2b.hash256.hash(body)
     val witnesses = Bytes(
       head(5, 1) ++ Vector(0x00.toByte) ++ head(4, 1) ++ head(4, 2) ++ bstr(alice.vkey) ++
-        bstr(alice.sign(id))
+        bstr(alice.sign(if forged then Blake2b.hash256.hash(id) else id))
     )
     val parts = Block.Transaction(body, witnesses, None, true)
     (EraInjection.envelope(parts, era), parts)
@@ -382,4 +383,17 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           Some(EraTx(Era.Babbage, EraInjection.envelope(maryParts, Era.Babbage)))
         )
       )
+  }
+
+  shelleyBased.foreach { era =>
+    test(s"$era: a held transaction is applied again without the static checks") {
+      // a signature over other bytes: the witness check, a static one, refuses it once
+      val (_, parts) = payment(era, forged = true)
+      val tx =
+        xyz.kd5ujc.scarab.ledger.Tx.fromBlock(parts, era).fold(e => fail(e.message), identity)
+      val l = ledger(era)
+      val txEnv = translating.txEnv(1000, l, 0)
+      assert(l.submit(tx, txEnv, translating.rules).isLeft, s"$era: every check refuses it")
+      assert(l.reapply(tx, txEnv, translating.rules).isRight, s"$era: reapplyTx does not verify it")
+    }
   }
