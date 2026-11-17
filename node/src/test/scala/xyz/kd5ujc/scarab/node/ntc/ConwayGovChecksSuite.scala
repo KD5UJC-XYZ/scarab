@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{GovFailure, PredicateFailure, ProtocolParams, Tx}
+import xyz.kd5ujc.scarab.ledger.{Credential, GovFailure, PredicateFailure, ProtocolParams, Tx}
 import xyz.kd5ujc.scarab.ledger.era.{EraPParams, EraTx, EraTxBody, GovAction, PParams, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayEra, ConwayGov}
@@ -61,7 +61,7 @@ class ConwayGovChecksSuite extends FunSuite:
       val codecs = right(s"${c.path} layout")(stateCodecs(c.build))
       c.cases.map { rc =>
         val what = s"${c.path}/${rc.label}"
-        val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item))
+        val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
         val nes = right(s"$what state")(
           codecs.newEpochState[Conway].decodeBytes(c.states(rc.state), HaskellState.limits)
         )
@@ -282,18 +282,29 @@ class ConwayGovChecksSuite extends FunSuite:
   test("crafted: at version 11, votes of committee keys no elected member authorised"):
     refused(unelectedVotes(hotScript, hotKey), "unelectedCommitteeVoters")
 
-  test("a difference found: the flat rule lists unelected voters in the body's order"):
-    // The reference collects them into a `Set (Credential HotCommitteeRole)` and reports its
-    // ascending list (`Conway/Rules/Gov.hs:478-481,652-665`, cardano-ledger f649f975); the flat rule
-    // lists them in the order the body's map arrived in, which the decoder does not require to be
-    // the map's order. Reported to the lead; the flat path is not changed here.
-    val s = unelectedVotes(hotKey, hotScript)
-    val (flat, typed) = (flatFailures(s), typedFailures(s))
+  /** The reference collects the unelected voters into a `Set (Credential HotCommitteeRole)` and
+    * reports its ascending list (`Conway/Rules/Gov.hs:478-481,652-665`, cardano-ledger f649f975), a
+    * script credential before a key one, whatever order the body's map arrived in; both paths do.
+    */
+  test("both paths list unelected voters in the reference's order, whatever the body's"):
     def voters(fs: Map[PredicateFailure, Int]) = fs.keys.collect {
       case PredicateFailure.Gov(GovFailure.UnelectedCommitteeVoters(cs)) => cs
     }.toVector
-    assertEquals(voters(typed).map(_.toSet), voters(flat).map(_.toSet))
-    assertEquals(voters(typed).map(_.reverse), voters(flat))
+    val reported = Vector((hotKey, hotScript), (hotScript, hotKey)).map { (first, second) =>
+      val s = unelectedVotes(first, second)
+      val (flat, typed) = (voters(flatFailures(s)), voters(typedFailures(s)))
+      assertEquals(typed, flat, s"$first first")
+      assertEquals(typed.map(_.size), Vector(2), s"$first first")
+      typed
+    }
+    assertEquals(reported(0), reported(1))
+    assert(
+      reported(0).flatten.headOption.exists {
+        case Credential.Script(_) => true
+        case Credential.Key(_)    => false
+      },
+      s"a script credential first: ${reported(0)}"
+    )
 
   test("the corpus fails the predicates it can tell apart, and names the rest"):
     val all = Set(

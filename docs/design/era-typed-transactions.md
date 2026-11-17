@@ -543,9 +543,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   - `ConwayGovChecksSuite` compares the failures they report with those the flat GOV rule records for the same
     checks, on every Conway case of the refusal corpus and on crafted ones. The corpus never fails
     `checkBootstrapProposal`; a crafted case does.
-  - The comparison found one difference in a refusal's content: the flat rule lists unelected committee voters in
-    the order the body's map arrived in, where the reference reports the ascending list of a set. Reported, not
-    changed here.
+  - Both paths list unelected committee voters as the reference does, the ascending list of a set, whatever order
+    the body's map arrived in.
   - The functions that read the stored proposals, and the checks `conwayGovTransition` writes inline, wait for the
     governance state's era types (`EraGov`, tracked on #85).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
