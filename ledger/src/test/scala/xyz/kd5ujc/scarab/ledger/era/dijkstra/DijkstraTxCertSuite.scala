@@ -1,0 +1,224 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.ledger.era.dijkstra
+
+import munit.FunSuite
+import java.nio.file.{Files, Path}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.ledger.{CborRead, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraCert, DijkstraGenesis, DijkstraPurposes, Params}
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayDelegCert,
+  ConwayGovCert,
+  Delegatee,
+  EraTxCert,
+  PParams,
+  PoolCert
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Credential,
+  DRep,
+  DRepRole,
+  Dijkstra,
+  EpochNo,
+  HotCommittee,
+  KeyHash,
+  KeyRole,
+  ScriptHash,
+  StakePool,
+  Staking
+}
+
+/** Dijkstra's certificates on the era types ([[DijkstraTxCert]], cardano-ledger 9df9f98c
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs`): each builder makes the certificate
+  * the Leios build's block decoder ([[DijkstraCert.decode]]) reads from its bytes, with the
+  * witnesses the reference gives it and the script witness the block's rules ask for; the readers
+  * read only their own form; the refunds are the certificates' own; and a Conway certificate is
+  * carried in as `upgradeTxCert` carries it.
+  */
+class DijkstraTxCertSuite extends FunSuite:
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
+  private def node(s: String): Node = CborRead.decode(hex(s)).fold(e => fail(e.toString), identity)
+
+  private val s = "51" * 28
+  private val k = "4b" * 28
+  private val p = "50" * 28
+  private val script = s"8201581c$s"
+  private val key = s"8200581c$k"
+  private val pool = s"581c$p"
+  private val abstain = "8102"
+
+  private val pk = KeyHash.fromBytes[StakePool](hex(p)).fold(e => fail(e.toString), identity)
+  private def cred[R <: KeyRole]: Credential[R] =
+    Credential.ScriptHashObj[R](ScriptHash.fromBytes(hex(s)).fold(e => fail(e.toString), identity))
+  private def keyCred[R <: KeyRole]: Credential[R] =
+    Credential.KeyHashObj[R](KeyHash.fromBytes[R](hex(k)).fold(e => fail(e.toString), identity))
+  private val drep = DRep.DRepAlwaysAbstain
+  private val epoch = EpochNo.fromUnsigned(10)
+
+  private val c = EraTxCert.dijkstra
+
+  // (bytes, the certificate its builder makes), one per form the block decoder reads but the
+  // pool registration, whose voting key the era types do not hold yet
+  private val built: Vector[(String, DijkstraTxCert)] = Vector(
+    s"8302$script$pool" -> c.mkDelegTxCert(cred, Delegatee.DelegStake(pk)),
+    s"8304${pool}0a" -> c.mkRetirePoolTxCert(pk, epoch),
+    s"8307${script}05" -> c.mkRegDepositTxCert(cred, Coin(5)),
+    s"8308${script}05" -> c.mkUnRegDepositTxCert(cred, Coin(5)),
+    s"8309$script$abstain" -> c.mkDelegTxCert(cred, Delegatee.DelegVote(drep)),
+    s"840a$script$pool$abstain" -> c.mkDelegTxCert(cred, Delegatee.DelegStakeVote(pk, drep)),
+    s"840b$script${pool}05" -> c.mkRegDepositDelegTxCert(cred, Delegatee.DelegStake(pk), Coin(5)),
+    s"840c$script${abstain}05" -> c
+      .mkRegDepositDelegTxCert(cred, Delegatee.DelegVote(drep), Coin(5)),
+    s"850d$script$pool${abstain}05" ->
+      c.mkRegDepositDelegTxCert(cred, Delegatee.DelegStakeVote(pk, drep), Coin(5)),
+    s"830e$script$key" -> c.mkAuthCommitteeHotKeyTxCert(cred, keyCred[HotCommittee]),
+    s"830f${script}f6" -> c.mkResignCommitteeColdTxCert(cred, None),
+    s"8410${script}05f6" -> c.mkRegDRepTxCert(cred, Coin(5), None),
+    s"8311${script}05" -> c.mkUnRegDRepTxCert(cred, Coin(5)),
+    s"8312${script}f6" -> c.mkUpdateDRepTxCert(cred, None)
+  )
+
+  test(
+    "each builder makes a certificate of a form the block decoder reads, with its script witness"
+  ) {
+    assertEquals(built.map(_._1.take(4)).distinct.size, built.size)
+    built.foreach { (h, cert) =>
+      val flat = DijkstraCert.decode(node(h)).fold(e => fail(s"$h: $e"), identity)
+      // `getScriptWitnessDijkstraTxCert` (`TxCert.hs:323-340`): a pool is never a script
+      val expected = cert match
+        case DijkstraTxCert.DijkstraTxCertPool(_) => None
+        case DijkstraTxCert.DijkstraTxCertDeleg(_) | DijkstraTxCert.DijkstraTxCertGov(_) =>
+          Some(hex(s))
+      assertEquals(c.getScriptWitnessTxCert(cert), expected, h)
+      assertEquals(DijkstraPurposes.certificateScript(flat), expected, h)
+    }
+  }
+
+  test("Dijkstra has no certificate without a deposit: the block decoder refuses tags 0 and 1") {
+    // `DecCBOR (DijkstraTxCert era)` (`TxCert.hs:239-250`) fails both before their fields
+    Vector(0 -> s"8200$script", 1 -> s"8201$script").foreach { (tag, h) =>
+      DijkstraCert.decode(node(h)) match
+        case Left(LedgerDecodeError.UnknownTag(_, t)) => assertEquals(t, BigInt(tag), h)
+        case other                                    => fail(s"$h: $other")
+    }
+  }
+
+  test("every staking certificate is witnessed by its credential, a registration too") {
+    // `getVKeyWitnessDijkstraTxCert` (`TxCert.hs:342-351`): unlike Conway's tag 0, a registration
+    // always pays a deposit and is always witnessed
+    val forms = Vector(
+      c.mkRegDepositTxCert(keyCred, Coin(5)),
+      c.mkUnRegDepositTxCert(keyCred, Coin(5)),
+      c.mkDelegTxCert(keyCred, Delegatee.DelegVote(drep)),
+      c.mkRegDepositDelegTxCert(keyCred, Delegatee.DelegStake(pk), Coin(5)),
+      c.mkRegDRepTxCert(keyCred, Coin(5), None),
+      c.mkResignCommitteeColdTxCert(keyCred, None)
+    )
+    forms.foreach { cert =>
+      assertEquals(c.getVKeyWitnessTxCert(cert), Some(hex(k)), cert.toString)
+      assertEquals(c.getScriptWitnessTxCert(cert), None, cert.toString)
+    }
+    val retire = c.mkRetirePoolTxCert(pk, epoch)
+    assertEquals(c.getVKeyWitnessTxCert(retire), Some(hex(p)))
+    assertEquals(c.getVKeyWitnessTxCert(c.mkRegDepositTxCert(cred, Coin(5))), None)
+  }
+
+  test("each reader reads back what its builder took, and nothing from another form") {
+    val certs = built.map(_._2)
+    def only[A](read: DijkstraTxCert => Option[A], cert: DijkstraTxCert, value: A): Unit =
+      certs.foreach(other =>
+        assertEquals(read(other), if other == cert then Some(value) else None, other.toString)
+      )
+    only(c.getRegDepositTxCert, c.mkRegDepositTxCert(cred, Coin(5)), (cred[Staking], Coin(5)))
+    only(c.getUnRegDepositTxCert, c.mkUnRegDepositTxCert(cred, Coin(5)), (cred[Staking], Coin(5)))
+    only(c.getRetirePoolTxCert, c.mkRetirePoolTxCert(pk, epoch), (pk, epoch))
+    only(
+      c.getAuthCommitteeHotKeyTxCert,
+      c.mkAuthCommitteeHotKeyTxCert(cred, keyCred[HotCommittee]),
+      (cred, keyCred[HotCommittee])
+    )
+    only(c.getResignCommitteeColdTxCert, c.mkResignCommitteeColdTxCert(cred, None), (cred, None))
+    only(
+      c.getRegDRepTxCert,
+      c.mkRegDRepTxCert(cred, Coin(5), None),
+      (cred[DRepRole], Coin(5), None)
+    )
+    only(c.getUnRegDRepTxCert, c.mkUnRegDRepTxCert(cred, Coin(5)), (cred[DRepRole], Coin(5)))
+    only(c.getUpdateDRepTxCert, c.mkUpdateDRepTxCert(cred, None), (cred[DRepRole], None))
+    assertEquals(certs.flatMap(c.getDelegTxCert).size, 3)
+    assertEquals(certs.flatMap(c.getRegDepositDelegTxCert).size, 3)
+    assertEquals(certs.flatMap(c.getRegPoolTxCert), Vector.empty)
+    // `lookupRegStakeTxCert` and `lookupUnRegStakeTxCert` (`TxCert.hs:311-317`)
+    assertEquals(certs.flatMap(c.lookupRegStakeTxCert).size, 4)
+    assertEquals(certs.flatMap(c.lookupUnRegStakeTxCert), Vector(cred[Staking]))
+  }
+
+  test("the refunds are those the unregistrations name, whatever the state holds") {
+    // the Leios testnet's parameters, with deposits of their own
+    val testnet = io.circe.parser
+      .parse(Files.readString(Path.of("fixtures/leios/testnet/config/dijkstra-genesis.json")))
+      .fold(e => fail(e.message), identity)
+    val stored = DijkstraGenesis
+      .read(testnet)
+      .fold(e => fail(e.message), _.upgrade(Params.base))
+      .copy(keyDeposit = 2000000, poolDeposit = 500000000, drepDeposit = 7)
+    val pp = PParams[Dijkstra](
+      DijkstraPParams.fromStored(stored).fold(e => fail(e.toString), identity)
+    )
+    val certs = built.map(_._2) ++ Vector(c.mkUnRegDepositTxCert(keyCred, Coin(11)))
+    // `dijkstraTotalRefundsTxCerts` (`TxCert.hs:261-272`): the lookup is not read
+    assertEquals(c.getTotalRefundsTxCerts(pp, _ => Some(Coin(1000)), certs), Coin(5 + 5 + 11))
+    assertEquals(c.getTotalRefundsTxCerts(pp, _ => None, certs), Coin(21))
+    // `conwayTotalDepositsTxCerts`: four registrations at the key deposit and one DRep's
+    assertEquals(
+      c.getTotalDepositsTxCerts(pp, _ => false, certs),
+      Coin(BigInt(4) * 2000000 + 7)
+    )
+  }
+
+  test("a Conway certificate is carried in as upgradeTxCert carries it") {
+    val conway = Vector(
+      ConwayTxCert.ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(cred, Some(Coin(5)))),
+      ConwayTxCert.ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(cred, Some(Coin(5)))),
+      ConwayTxCert.ConwayTxCertDeleg(
+        ConwayDelegCert.ConwayDelegCert(cred, Delegatee.DelegStake(pk))
+      ),
+      ConwayTxCert.ConwayTxCertDeleg(
+        ConwayDelegCert.ConwayRegDelegCert(cred, Delegatee.DelegVote(drep), Coin(5))
+      ),
+      ConwayTxCert.ConwayTxCertPool(PoolCert.RetirePool(pk, epoch)),
+      ConwayTxCert.ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(cred, Coin(5)))
+    )
+    val dijkstra = Vector(
+      c.mkRegDepositTxCert(cred, Coin(5)),
+      c.mkUnRegDepositTxCert(cred, Coin(5)),
+      c.mkDelegTxCert(cred, Delegatee.DelegStake(pk)),
+      c.mkRegDepositDelegTxCert(cred, Delegatee.DelegVote(drep), Coin(5)),
+      c.mkRetirePoolTxCert(pk, epoch),
+      c.mkUnRegDRepTxCert(cred, Coin(5))
+    )
+    assertEquals(
+      conway.map(DijkstraTxCert.translate),
+      dijkstra.map(Right[DijkstraTxCertUpgradeError, DijkstraTxCert](_))
+    )
+    assertEquals(
+      DijkstraTxCert.translate(
+        ConwayTxCert.ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(cred, None))
+      ),
+      Left(DijkstraTxCertUpgradeError.RegTxCertExpunged)
+    )
+    assertEquals(
+      DijkstraTxCert.translate(
+        ConwayTxCert.ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(cred, None))
+      ),
+      Left(DijkstraTxCertUpgradeError.UnRegTxCertExpunged)
+    )
+    // and `dijkstraToConwayDelegCert` (`TxCert.hs:396-401`) takes a staking certificate back
+    conway.zip(dijkstra).foreach {
+      case (ConwayTxCert.ConwayTxCertDeleg(back), DijkstraTxCert.DijkstraTxCertDeleg(d)) =>
+        assertEquals(DijkstraTxCert.dijkstraToConwayDelegCert(d), back)
+      case _ => ()
+    }
+  }
