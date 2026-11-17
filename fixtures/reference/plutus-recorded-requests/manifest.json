@@ -1,0 +1,66 @@
+{
+  "release": "1.70.0.0",
+  "plutusCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+  "sourceCommit": "8216fab0574ed40356a463aef7733006da893c56",
+  "oracleImage": "sha256:0ba57aed177d7a9370c31a858ab963581b9e8320b69e2d3cfb8925e88b951002",
+  "oracleBaseImage": "sha256:b50784fa61a079153e78ad8b0216ea5d2c35d98f5255f6b920993011007123cb",
+  "imageFilesSha256": {
+    "/source/scarab-oracle/Main.hs": "8c03e0538ff60a331a2172dcbc9a35329f71551aea22bca8fdce925011a69d77",
+    "/source/scarab-oracle/scarab-plutus-oracle.cabal": "71b84c4696082466585b042b031b531ccfb2ae9ab092cf5e991d0e05dc69939e",
+    "/source/cabal.project": "178b1a9497e5a9c70241b366f34de8aedbf64fe33c3ab9eff6eb29e7f3873689",
+    "/usr/local/bin/scarab-plutus-oracle": "4f86611f17aa3c04fc1496e49cabfd30c1aa35966df662250250bd0552f9a184"
+  },
+  "cases": 49,
+  "requests": 253,
+  "costModels": 11,
+  "byNetwork": {
+    "preprod": 163,
+    "preview": 90
+  },
+  "byEra": {
+    "Babbage": 191,
+    "Conway": 62
+  },
+  "byProtocol": {
+    "10": 11,
+    "11": 51,
+    "7": 22,
+    "8": 169
+  },
+  "byLanguage": {
+    "V1": 5,
+    "V2": 200,
+    "V3": 48
+  },
+  "stages": {
+    "budget": 2,
+    "success": 251
+  },
+  "stagesByLanguage": {
+    "V1/success": 5,
+    "V2/budget": 2,
+    "V2/success": 198,
+    "V3/success": 48
+  },
+  "errors": {
+    "budget/operational/CekOutOfExError": 2,
+    "success/-/-": 251
+  },
+  "withLogs": 181,
+  "withArguments": 253,
+  "sha256": {
+    "corpus.json": "47f843bd142e803f884a820538963335c071cd6bae4aeaf4963cbd2d299dced1",
+    "models.jsonl": "fa83cbedd0e1f365497f67fb3f2c4d5714cc3394e1b7f6866dd947364029657f",
+    "requests.jsonl": "d02cf101a68798a8e0232c0aa88f3fb1808884a1a688fc4474071bfc47135507",
+    "verdicts.jsonl": "9ae355fa502210b292fd450495db12c7ed277c49c3d0c9fe41205a4491e5036e"
+  },
+  "oracleRequestsSha256": "4f29673a7799d4bbeea4bbc657b5f1bcf0ad0b6e1dbbfebf033cee38646d0851",
+  "toolSha256": {
+    "scripts/oracle/plutus/generated/Main.hs": "8c03e0538ff60a331a2172dcbc9a35329f71551aea22bca8fdce925011a69d77",
+    "scripts/oracle/plutus/generated/Dockerfile": "2ba7e280e8c886ac2cdfb1395ac2a13e952dff6393f386953f946f5dd233011e",
+    "scripts/oracle/plutus/generated/run.py": "6e0d39e0f1a8efa9da8864231efe8f0804c19d08262ef94ba927452575d4deea",
+    "scripts/oracle/plutus/recorded/run.py": "4d665f72033d7125145d1341e958626b6674fbc9634b3ccea472d7461af49c5f"
+  },
+  "rawSha256": "2c525c08e8614fafa578d0e61192c2b3e85144be7d06d47d5f339b248b0fc08c",
+  "dateUtc": "2026-11-16T18:03:20.765358+00:00"
+}

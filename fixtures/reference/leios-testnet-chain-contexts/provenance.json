@@ -1,0 +1,100 @@
+{
+ "schemaVersion": 1,
+ "measuredAt": "2026-11-16",
+ "scope": "The Plutus script contexts the build of the public Leios testnet (release rc-2026w44) collects (mkDijkstraStAnnTopTx) for a stratified sample of the transactions with redeemers recorded on the testnet's chain, in the chain's environment (protocol version 12.0, the cost models in force, the chain's system start and slot length): for each transaction the ToCBOR PlutusWithContext encoding of every context of the top-level transaction and of each sub-transaction.",
+ "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+ "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+ "plutusSourceCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+ "reference": {
+  "release": "input-output-hk/ouroboros-leios rc-2026w44",
+  "cardanoNode": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+  "cardanoLedger": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+  "ouroborosConsensus": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+  "plutus": "plutus-core and plutus-ledger-api 1.71.0.0 (261766ad1d582bce8c86bad1af7a3b0e5355b21c)"
+ },
+ "chain": {
+  "network": "the public Leios testnet, network magic 164, as restarted on 2026-10-18",
+  "follower": "ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w44 (sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca; cardano-node 11.2.0.164, git rev b004fe0c50913dcdaa827a98e68a43d0ccce152a), run as a following node: no forging keys, no port published, nothing submitted",
+  "config": "fixtures/leios/testnet/config (the live files of 2026-11-16, byte for byte the committed ones)",
+  "syncedAt": "2026-11-16 (from Origin at 15:50 UTC to the tip, stopped at 17:56 UTC)",
+  "tip": {
+   "number": 113880,
+   "slot": 2570179,
+   "hash": "7d601b3deb9e67c2557bb90e67cfdf311d3d4abffc37b795db00eb326a4a8631"
+  },
+  "blocks": 113881,
+  "certifyingBlocks": 40336,
+  "transactions": {
+   "rb": 10110184,
+   "eb": 51840765
+  },
+  "invalidTransactions": 0,
+  "plutusTransactions": {
+   "rb": 9793,
+   "eb": 98038
+  },
+  "proposals": [
+   {
+    "id": "a1f781c4c4bb5c380fd0331cfc3ca3b4a3740491e274dcf8e58b0fe459a0d479",
+    "slot": 488445,
+    "action": 0,
+    "update": [
+     45,
+     46
+    ]
+   },
+   {
+    "id": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821",
+    "slot": 1553679,
+    "action": 0,
+    "update": [
+     47,
+     48
+    ]
+   }
+  ],
+  "protocolParameters": "cardano-cli query protocol-parameters at the tip: protocol version 12.0; cost models PlutusV1 (332), PlutusV2 (332) and PlutusV3 (350) those of alonzo-genesis.json extraConfig, PlutusV4 (251) that of dijkstra-genesis.json, unchanged over the chain: its only two proposals are parameter changes of keys 45 and 46, then 47 and 48 (the endorser block limits), none of cost models (key 18) or the protocol version"
+ },
+ "extraction": {
+  "script": "scripts/oracle/leios-testnet/leios_chain_scan.py",
+  "sha256": "d96c0a4e1bfea78211c36ab50a84dadddfb4cd23129e71609ba31cfe2f1b2993",
+  "revision": "the script as it extracted these cases on 2026-11-16, not the current one; a later revision read the same database again to the same cases.json (README)",
+  "sample": "leios_chain_scan.py sample --size 200: every one of the 62 strata (source, validity flag, Plutus languages given, redeemer purposes, sub-transactions, validity interval), then ordinary transactions by cost per new script"
+ },
+ "harness": {
+  "source": "scripts/oracle/leios-testnet/chain/Main.hs",
+  "sha256": "3802eeecf8a60b679048da94bf995abdbe87187e9ead2eda1a3b7e91304b902a"
+ },
+ "compiler": "GHC 9.10.3 (the release builds with 9.6)",
+ "cases": {
+  "file": "cases.json",
+  "count": 200,
+  "sha256": "ea4056fd123abaf46a627ea649e7c241aac5b7aff5f593d43838c37b6d2ba3a8"
+ },
+ "results": {
+  "file": "results.json",
+  "sha256": "949533993581c7074252aad5cf1dd1618efc02c5c8115a882bb56d234c7cd3a6",
+  "accepted": 200,
+  "refused": 0
+ },
+ "oracle": {
+  "imageId": "sha256:d577dbf1b7c28514384896540f192599b2f3a99b7305fcbe006ceda545d77203",
+  "imageFilesSha256": {
+   "/oracle/leios-testnet/chain/Main.hs": "3802eeecf8a60b679048da94bf995abdbe87187e9ead2eda1a3b7e91304b902a",
+   "/oracle/leios-testnet/chain/scarab-leios-testnet-chain.cabal": "6eac84f5898c1da90eb3b08895e1a13b669ed68b8cc8cb851c7d8c7edcdc0ea4",
+   "/oracle/leios-testnet/cabal.project": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
+   "/oracle/leios-testnet/cabal.project.local": "211f4820919eb9a086db3cef543758dd8e7f870fbf722920b27b31467f0df549",
+   "/usr/local/bin/scarab-leios-testnet-chain": "7e6091a46c49f369afb89f709b4080bd5e298e4b9ec8fb9f57f996260b88a863"
+  },
+  "oracleBinarySha256": "7e6091a46c49f369afb89f709b4080bd5e298e4b9ec8fb9f57f996260b88a863",
+  "pinnedSources": {
+   "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c": "unchanged",
+   "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
+  },
+  "runnerSha256": {
+   "scripts/oracle/leios-testnet/chain/run.py": "c78f85b81b727281d4481264217fd4eaea5c9c5749fad9d2aff0f8e40344b771",
+   "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a"
+  },
+  "network": "none"
+ }
+}

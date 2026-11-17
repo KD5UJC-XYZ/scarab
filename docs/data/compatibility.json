@@ -1237,6 +1237,8 @@
           "LedgerEvalSuite",
           "DijkstraScriptContextsSuite",
           "DijkstraContextWireSuite",
+          "LeiosChainContextsSuite",
+          "LeiosChainScriptsSuite",
           "CostModelNameTablesSuite"
         ],
         "paths": [
@@ -1244,7 +1246,10 @@
           "fixtures/reference/uplc-generated-171/README.md",
           "scripts/oracle/plutus/generated-171/README.md",
           "fixtures/reference/leios-testnet-contexts/README.md",
-          "scripts/oracle/leios-testnet/leios_context_cases.py"
+          "scripts/oracle/leios-testnet/leios_context_cases.py",
+          "fixtures/reference/leios-testnet-chain-contexts/README.md",
+          "fixtures/reference/leios-testnet-chain-scripts/README.md",
+          "scripts/oracle/leios-testnet/leios_chain_scan.py"
         ]
       },
       "limitations": {
@@ -1448,7 +1453,8 @@
           "GeneratedOracleSuite",
           "LedgerBoundaryOracleSuite",
           "FlatReferenceCorporaSuite",
-          "ScarabEvaluatorSuite"
+          "ScarabEvaluatorSuite",
+          "RecordedRequestOracleSuite"
         ],
         "docs": [
           "docs/plutus-conformance.md#scarabs-own-evaluator",

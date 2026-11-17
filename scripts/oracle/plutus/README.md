@@ -95,3 +95,5 @@ same driver with `--out fixtures/reference/plutus-slice-bytestring/verdicts.json
 
 Generated programs of the own evaluator (`uplc`) run through a harness derived from the costing oracle's that also
 reports the budget spent on failure, the class and constructor of the error and the logs: [generated/](generated/README.md).
+The script requests the ledger collects for the recorded Preview and preprod transactions run through the same harness
+and image: [recorded/](recorded/README.md).

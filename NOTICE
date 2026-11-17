@@ -91,7 +91,9 @@ cardano-ledger-conformance-NOTICE, blueprint-conformance-LICENSE and amaru-LICEN
 
 Captured chain data (fixtures/mainnet, fixtures/preview, fixtures/mempack): public blockchain data fetched from the
 public Cardano relays (fixtures/mempack: 95 ledger outputs of the Mithril preprod snapshot); fixtures/preview also holds records derived from the Koios public API
-(https://koios.rest). fixtures/eras, fixtures/haskell-state (ledger snapshots written by the reference
+(https://koios.rest). fixtures/reference/leios-testnet-chain-contexts and fixtures/reference/leios-testnet-chain-scripts
+hold transactions, spent outputs and script arguments of the public Leios testnet's chain (network magic 164), read
+from a node of the testnet's own build that followed it. fixtures/eras, fixtures/haskell-state (ledger snapshots written by the reference
 node 11.1.3 tooling) and fixtures/kes-gen are produced from a throwaway local cluster
 and carry no third-party data. fixtures/dijkstra-devnet is produced from a throwaway local cluster of the
 Leios testnet image of input-output-hk/ouroboros-leios (Apache-2.0); its Alonzo, Conway and Dijkstra
@@ -212,6 +214,25 @@ v1-context/context-errors corpora and explicitly marked API-only derivations, wi
 released Haskell era-specific context/evaluation outputs. No signature revalidation or whole-ledger
 admission is claimed for derivations. Original Apache-2.0 observer/generation code; upstream package
 licenses and notices remain under fixtures/licenses and in fetched source distributions.
+
+fixtures/reference/plutus-recorded-requests contains the script requests Scarab's ledger collects for
+the public Preview and preprod transactions retained in fixtures/preview/plutus and
+fixtures/preprod/plutus, kept as identifiers, budgets, the cost-model lists in force (public protocol
+parameters) and the SHA-256 of each script and argument, with the verdicts, budgets and logs of
+unchanged released Plutus 1.70.0.0 (Apache-2.0) behind the original Apache-2.0 harness and runners of
+scripts/oracle/plutus/generated and scripts/oracle/plutus/recorded. No script, argument or
+transaction bytes are kept, and no signing keys; the pins and the digests of the image and its
+executable are in its provenance.json. Upstream package licenses and notices remain under fixtures/licenses and in
+fetched source distributions.
+
+fixtures/reference/recorded-contexts contains the script contexts that unchanged released Cardano Ledger
+(f649f9751074d2ab3de033fc3912f29c9862c1f5, cardano-node 11.1.3) and Plutus 1.70.0.0 collect for the
+same public Preview and preprod transactions (the 158 contexts of preprod tx-c70243bb kept as
+digests), and for explicitly marked API-only Conway derivations with several voters, which use
+placeholder hashes and an Apache-2.0 test script, are not signature-revalidated and make no
+ledger-admission claim. The observer is the unchanged context-matrix executable; the input
+preparation is original Apache-2.0 code. Upstream package licenses and notices remain under
+fixtures/licenses and in fetched source distributions. No signing keys.
 
 fixtures/reference/auxiliary-scripts contains original synthetic auxiliary CBOR with decoder and
 script-validity observations from unchanged released Haskell ledger APIs. This API corpus makes no

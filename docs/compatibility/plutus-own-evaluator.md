@@ -31,6 +31,10 @@ the commands below are those of that time.
   also agreed ([corpus](../../fixtures/reference/uplc-generated/README.md)).
 - **Differential:** both backends on 752 recorded script requests, with no difference in verdict or
   failure class; the successes also agree in execution units and logs.
+- **Recorded script requests**, 2026-11-16: the 253 script requests the ledger collects for the recorded
+  Preview and preprod transactions, judged by the pinned Haskell evaluator of plutus 1.70.0.0, agree with
+  the node's evaluator in stage, error, budget (on success and on failure) and logs
+  (`RecordedRequestOracleSuite`, [fixture](../../fixtures/reference/plutus-recorded-requests/README.md)).
 - **Devnet `e2e`**, at `b736b7fa7` and again at `766324062` after a rebase, with `--plutus-vm scarab`:
   Byron to Conway, with every projected and whole-state comparison matched and the Plutus cases accepted
   or refused as the reference does.
@@ -62,16 +66,23 @@ the commands below are those of that time.
   adopt, not the evaluator's agreement on real scripts. Plutus V3 is not in its load.
 - **Protocol 12 and later** (Leios, PlutusV4) are evaluated as plutus 1.71.0.0 does, against its conformance
   corpus and generated scripts judged by its Haskell evaluator ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md),
-  #1099), but the node stops at `MaxMajorProtVer` 11 and never reaches them, and no recorded Leios-testnet
-  script has been evaluated and compared with the reference's result
-  ([#54 follow-up](https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-6905542791)).
+  #1099), and on a sample of 273 scripts recorded on the public Leios testnet's chain, PlutusV1 to PlutusV4,
+  whose verdicts, budgets and logs equal plutus 1.71.0.0's
+  ([leios-testnet-chain-scripts](../../fixtures/reference/leios-testnet-chain-scripts/README.md)); but the node
+  stops at `MaxMajorProtVer` 11 and never reaches them, the chain's scripts in the sample all succeed (the
+  chain has no transaction with a false validity flag), and their arguments are the reference's, the node
+  building only the PlutusV4 ones ([PlutusV4 and Dijkstra](plutus-v4-dijkstra.md)).
 - **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch
   boundaries. It compares no single script's verdict or budget; a different verdict that left the projected
   state unchanged would not show.
-- **Recorded script requests:** the 752 recorded requests of the differential were compared between the two
-  backends, not with the reference, and in execution units and logs on successes only; that comparison went
-  with the Scalus backend.
+- **Recorded script requests:** of the 253 Preview and preprod requests the reference judged, 251 succeed and the
+  2 that fail run out of a budget of 10 steps and 10 units of memory, so failures of real chain scripts are barely
+  sampled. The requests are the ledger's own collection; that cardano-ledger builds the same ones is shown by
+  `RecordedScriptContextsSuite` ([recorded contexts](../../fixtures/reference/recorded-contexts/README.md)): for
+  all 253, the pinned Haskell collection gives the same requests in the same order, with the same script,
+  arguments (datum, redeemer and context, byte for byte; by SHA-256 for the 158 of preprod `tx-c70243bb`),
+  budget, cost model and protocol version.
 - **ExUnits conversion:** the conversion of a redeemer's `ExUnits` to a budget is not compared with cardano-ledger's own.
 - **Finite samples:** no corpus shows equality for every program, size or cost-model list.

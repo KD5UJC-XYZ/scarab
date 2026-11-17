@@ -1,0 +1,10 @@
+cabal-version: 3.0
+-- SPDX-License-Identifier: Apache-2.0
+name: scarab-leios-testnet-chain
+version: 0.1.0.0
+build-type: Simple
+executable scarab-leios-testnet-chain
+  main-is: Main.hs
+  build-depends: base, cardano-ledger-dijkstra, cardano-ledger-alonzo, cardano-ledger-core, cardano-ledger-binary, cardano-binary, cardano-crypto-class, cardano-slotting, time, containers, bytestring, aeson, base16-bytestring, text, microlens
+  default-language: Haskell2010
+  ghc-options: -Wall -Werror

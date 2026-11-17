@@ -380,6 +380,23 @@ normalization while preserving original signed bytes and body hashes. Reference 
 nonempty-list framing. Small-stack regressions exercise 20,000 errors, distinct pointers and anchored votes.
 Broader CEK aggregation/log behavior is separate from this context-collection boundary.
 
+## Recorded transactions' contexts (#43, 2026-11-16)
+
+The contexts of the recorded chain transactions had Scalus's ledger-to-Plutus translation as their
+only second builder, and that went with the Scalus backend. The unchanged context-matrix observer now
+collects them ([corpus](../fixtures/reference/recorded-contexts/README.md)): all 45 recorded Preview
+transactions and all 4 recorded preprod ones, at each one's own era (Babbage 7 and 8, Conway 10 and
+11), protocol version and network clock, 253 requests in PlutusV1, V2 and V3, the same requests the
+own evaluator replays against the reference in `RecordedRequestOracleSuite`; and four
+API-only variants of a recorded vote with five voters (script and key committee members, script and
+key DReps, a pool) written out of `Ord Voter` order, whose voting redeemers sit at the indices of
+`Ord Voter` (collected), of the transaction's order and of canonical CBOR key order (refused for the
+script voters they miss), and at every index. `RecordedScriptContextsSuite` requires the node's
+requests in the reference's order, every argument byte for byte, and its refusals for the same voters
+in the same order. The 158 requests of one preprod transaction are kept as digests (the SHA-256 of
+the script and of each argument) for the size of their answer; that and the clock each side reads are
+on the corpus page.
+
 ## Original CBOR byte-string chunks
 
 `PlutusData.decode` and `fromNode` enforce the original per-chunk 64-byte bound for byte strings
@@ -438,6 +455,12 @@ The integration adds:
 
 - [`ScarabEvaluatorSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluatorSuite.scala):
   each row of the mapping, and the own evaluator's protocol-12 and defect handling;
+- [`RecordedRequestOracleSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/RecordedRequestOracleSuite.scala):
+  every script request the ledger collects for the recorded Preview and preprod transactions, judged by the
+  pinned Haskell evaluator of plutus 1.70.0.0
+  ([fixture](../fixtures/reference/plutus-recorded-requests/README.md)), collected again and evaluated through
+  `ScarabEvaluator` with the same stage, error class and constructor, budget on success and on failure, and
+  logs;
 - [`PlutusBackendProbeSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/PlutusBackendProbeSuite.scala)
   and [`PlutusBackendBlockProbeSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/forge/PlutusBackendBlockProbeSuite.scala):
   a backend with no verdict on anything, put where the node puts its backend (the mempool's admission, a
@@ -460,7 +483,9 @@ hooks, the corrections of its builtins and budget arithmetic, its Flat walker, i
 its agreement with the reference corpora, among them `PlutusConformanceSuite` and
 `PlutusConformance171Suite`. Every suite that needs an evaluator runs the own evaluator, and the `uplc`
 suites above are its evidence against the reference. `BlstCheckMain` evaluates its BLS12-381 scripts with
-the node's evaluator.
+the node's evaluator. The differential's comparison of the recorded Preview and preprod requests is replaced by
+`RecordedRequestOracleSuite` (above), against the reference rather than a second implementation; the
+reference corpora it also covered keep their own oracle suites.
 
 **Evidence (2026-11-12, at `860684ae2`, the integration's draft head on top of the WP8 oracles;
 `scripts/preflight --check` passed again at `b736b7fa7` and, after the rebase onto `f1f553c1d`, at

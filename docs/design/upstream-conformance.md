@@ -139,7 +139,7 @@ existing local checks; these are not additional native/formal HEAD executions:
 | Collateral-input existence | UTXO checks spending, collateral and reference inputs together; `ConwayLedgerSuite` invokes current production rules and rejects missing collateral even without redeemers |
 | Exclusive upper validity bound | Conway uses `slot < ttl`; `ShelleyLedgerSuite` boundary controls distinguish original Shelley's inclusive bound from successors; `ScriptContextGoldenSuite` separately checks the Conway translated bound |
 | Componentwise execution units | Transaction and block rules call `ExUnits.fits`; `BlockExUnitsSuite` checks each independently exceeded component and equality, and `BbodySuite` checks block-prefix refusal |
-| Vote indexing | `Purpose` orders voters before indexing. No native-Haskell vote-index oracle checks it; the comparison of three V3 voting redeemer contexts against Scalus's translation (`ScriptContextGoldenSuite`) went with the Scalus backend ([#43](https://github.com/KD5UJC-XYZ/scarab/issues/43)) |
+| Vote indexing | `Purpose` orders voters before indexing. The unchanged Haskell collection of a vote by five voters of every kind, written out of `Ord Voter` order, with its redeemers at the indices of `Ord Voter`, of the transaction's order, of canonical CBOR key order and at every index, is retained in [recorded-contexts](../../fixtures/reference/recorded-contexts/README.md); `RecordedScriptContextsSuite` requires the node's contexts and refusals to equal it ([#43](https://github.com/KD5UJC-XYZ/scarab/issues/43)) |
 
 The [published Conway pool vectors](../../fixtures/reference/ledger-api-pool-goldens/README.md)
 add a complete 740-byte production `GetStakePoolParams` answer comparison against
