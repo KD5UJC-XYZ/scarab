@@ -711,8 +711,8 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         def persist(key: Sum6KesSigning.SigningKey) =
           IO.pure(Persisted.Written(WriteProtocol.Renamed(NoExchange.Refused(22))))
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
-      _ <- Forger.scoped(keys.update(51))
-      _ <- Forger.scoped(keys.update(52))
+      _ <- Forger.scoped(toPeriod(keys, 51))
+      _ <- Forger.scoped(toPeriod(keys, 52))
       events <- seen.get
     yield assertEquals(
       events.collect { case e: ForgeEvent.KesWrittenByRename => e },
@@ -814,10 +814,13 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       keys <- HotKeys.create[IO](p.creds, None, config, e => seen.update(_ :+ e))
-      result <- Forger.scoped(keys.locked(c => keys.evolved(c, 49)))
+      // a key past the slot's period changes nothing, with no admission
+      result <- Forger.scoped(keys.locked(c => keys.evolvedFor(c, 4900, None)))
       _ = assertEquals(
         result,
-        Right(Some(Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1)))))
+        Right(
+          Some(Right(Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1)))))
+        )
       )
       _ = assertEquals(p.creds.kes.period, 0)
       _ = assertEquals(p.creds.kes.toBytes, before)
@@ -1585,7 +1588,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       for
         seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
         keys <- HotKeys.create[IO](p.creds, None, wideWindow, e => seen.update(_ :+ e))
-        result <- Forger.scoped(keys.update(target))
+        result <- Forger.scoped(toPeriod(keys, target))
         later <- Forger.scoped(keys.locked(_ => IO.unit))
         events <- seen.get
       yield
@@ -1639,10 +1642,13 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       keys <- HotKeys.create[IO](p.creds, None, wideWindow, e => seen.update(_ :+ e))
-      result <- Forger.scoped(keys.update(63))
+      result <- Forger.scoped(toPeriod(keys, 63))
       events <- seen.get
     yield
-      assertEquals(result, Right(Some(Right(Right(KesInfo(0, wideWindow.maxKesEvolutions, 63))))))
+      assertEquals(
+        result,
+        Right(Some(Right(Right(Right(KesInfo(0, wideWindow.maxKesEvolutions, 63))))))
+      )
       assertEquals(p.creds.kes.period, 63)
       assertEquals(events, Vector(ForgeEvent.KesEvolved(63, 63)))
   }
@@ -1652,11 +1658,17 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val info = KesInfo(0, 64, 0)
     for
       keys <- HotKeys.create[IO](p.creds, None, config.copy(maxKesEvolutions = 64), _ => IO.unit)
-      first <- Forger.scoped(keys.update(64))
-      later <- Forger.scoped(keys.update(65))
+      first <- Forger.scoped(toPeriod(keys, 64))
+      later <- Forger.scoped(toPeriod(keys, 65))
     yield
-      assertEquals(first, Right(Some(Right(Left(KesEvolutionError.CouldNotEvolve(info, 64))))))
-      assertEquals(later, Right(Some(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(info, 65))))))
+      assertEquals(
+        first,
+        Right(Some(Right(Right(Left(KesEvolutionError.CouldNotEvolve(info, 64))))))
+      )
+      assertEquals(
+        later,
+        Right(Some(Right(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(info, 65))))))
+      )
       assert(p.creds.kes.isForgotten, "expiry erases the key")
   }
 

@@ -122,6 +122,16 @@ object SkipLabel:
     case ForgeEpochStats.Skip.BlockFromFuture => BlockFromFuture
     case ForgeEpochStats.Skip.NoLedgerView    => NoLedgerView
 
+/** Which epoch's leader schedule a gauge shows: the one the clock is in, or the next (#1101). */
+enum ScheduleEpochLabel:
+  case Current, Next
+
+object ScheduleEpochLabel:
+  given LabelValue[ScheduleEpochLabel] = LabelValue.instance {
+    case Current => "current"
+    case Next    => "next"
+  }
+
 /** What became of a reload of the KES key and certificate: the credentials were replaced (or
   * confirmed), or the reload was refused and the old ones kept.
   */
@@ -226,7 +236,7 @@ object Catalogue:
 
   val forgeAboutToLead = CounterDef(
     MetricName("cardano_node_metrics_Forge_about_to_lead_counter"),
-    "Slots the forging loop started (TraceStartLeadershipCheck)."
+    "Slots the forger handled, led or not (TraceStartLeadershipCheck, whose line a slot not led logs only at a KES period change)."
   )
   val forgeSlotIsImmutable = CounterDef(
     MetricName("cardano_node_metrics_Forge_slot_is_immutable_counter"),
@@ -337,6 +347,25 @@ object Catalogue:
   val forgeDefects = CounterDef(
     MetricName("scarab_forge_defects_total"),
     "Blocks built that failed a check only a bug of ours can fail; the slot ended without a block (forgeDefect)."
+  )
+  val forgeScheduledLeaderSlots = GaugeDef(
+    MetricName("scarab_forge_scheduled_leader_slots"),
+    "The epoch's potential leader slots in the leader schedule, as far as it is computed; a slot battle can still lose one, and a fork can change the schedule.",
+    Labels.one[ScheduleEpochLabel](LabelName("epoch"))
+  )
+  val forgeExpectedLeaderSlots = GaugeDef(
+    MetricName("scarab_forge_expected_leader_slots"),
+    "The epoch's expected leader slots for the pool's stake, slots x (1 - (1 - f)^sigma): for comparison, computed in floating point and never used for a decision.",
+    Labels.one[ScheduleEpochLabel](LabelName("epoch"))
+  )
+  val forgeNextLeaderSlot = GaugeDef(
+    MetricName("scarab_forge_next_leader_slot"),
+    "The first slot from the current one that the leader schedule leads; absent when there is none."
+  )
+  val forgeScheduleComplete = GaugeDef(
+    MetricName("scarab_forge_schedule_complete"),
+    "1 once the epoch's leader schedule reaches the epoch's last slot, else 0. The schedule covers the epoch from its first slot or, for an epoch computed after it began or a computation that fell behind the clock, from the clock's slot where its computation started or resumed, without the slots before; its led slots are counted over that range, the expected ones over the whole epoch.",
+    Labels.one[ScheduleEpochLabel](LabelName("epoch"))
   )
   val forgeAdoptionSeconds = HistogramDef(
     MetricName("scarab_forge_adoption_seconds"),
@@ -1182,6 +1211,10 @@ object Catalogue:
     forgeFailed,
     forgeDefects,
     forgeAdoptionSeconds,
+    forgeScheduledLeaderSlots,
+    forgeExpectedLeaderSlots,
+    forgeNextLeaderSlot,
+    forgeScheduleComplete,
     inboundConns,
     outboundConns,
     duplexConns,

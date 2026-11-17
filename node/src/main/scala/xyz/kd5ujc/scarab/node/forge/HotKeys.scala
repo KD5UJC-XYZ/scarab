@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import cats.Functor
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import fs2.Stream
+import fs2.concurrent.{Signal, SignallingRef}
 import java.nio.file.{NoSuchFileException, Path}
 import java.io.IOException
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -68,6 +71,38 @@ enum ReloadRefusal:
     case Expired(p, s, e)        => s"KES period $p is past the certificate's window [$s, ${s + e})"
     case KeyPastPeriod(k, w) => s"the KES key is at period $k, past the period $w it must sign in"
     case Counter(e)          => e.message
+
+/** An attempt's admission (#1101): when it began, or was made again, the forger's clock fiber had
+  * published `through`, or the slot driver had taken that publication, so every slot up to it is
+  * admitted, as the reference's blockchain time had handed it to the forging thread. Only an
+  * admitted attempt changes the KES state for its slot (the key evolved, or poisoned and erased, or
+  * a period's update made for the forger to record); it keeps its admission for its duration, as
+  * the per-slot loop goes on with a slot it has begun should the clock go back meanwhile (after a
+  * spell in which the slot was unknown, as the reference's can, `checkValidClockChange`). Made only
+  * from the clock fiber's published slot, which the slot driver keeps as it takes it, and for the
+  * per-slot decision of a slot, admitted at the slot it decides.
+  */
+final class Admitted private (val through: BigInt):
+  /** Whether it admits a change for `slot`. */
+  def admits(slot: BigInt): Boolean = slot <= through
+
+object Admitted:
+  /** The admission of `slot` if the clock fiber has published it, or a later slot, now. */
+  private[forge] def now[F[_]: Functor](
+      slot: BigInt,
+      shared: Forger.Shared[F]
+  ): F[Option[Admitted]] =
+    shared.clock.get.map(_.filter(_ >= slot).map(new Admitted(_)))
+
+  /** Each slot the clock fiber publishes, as the admission of it and of every slot before it. */
+  private[forge] def published[F[_]](shared: Forger.Shared[F]): Stream[F, Admitted] =
+    shared.clock.discrete.collect { case Some(slot) => new Admitted(slot) }
+
+  /** The per-slot decision of `slot` and the tests: admitted at the slot it decides. */
+  private[forge] def at(slot: BigInt): Admitted = new Admitted(slot)
+
+/** A change of the KES state for `slot` not made: the attempt was not admitted at it. */
+final case class NotAdmitted(slot: BigInt)
 
 /** Where the credentials rotation replaces come from and where the evolved KES key is written back.
   * The node reads from it at a reload (SIGHUP, as the Haskell node does); a test supplies its own.
@@ -145,6 +180,9 @@ object HotKeySource:
   * @param renamed
   *   Whether a write-back has already replaced the key file by the rename, without the atomic
   *   exchange, which is said once.
+  * @param installed
+  *   Which credentials are in force: a number that every reload that switches them or disables
+  *   forging moves on, and their VRF key. It is set under the lock, with `state`.
   */
 final class HotKeys[F[_]: Async] private (
     state: Ref[F, Either[Fatal, Option[PoolCredentials]]],
@@ -154,9 +192,16 @@ final class HotKeys[F[_]: Async] private (
     config: PraosConfig,
     events: ForgeEvents[F],
     poolId: Bytes,
-    renamed: Ref[F, Boolean]
+    renamed: Ref[F, Boolean],
+    installed: SignallingRef[F, HotKeys.Installed]
 ):
   private val F = Async[F]
+
+  /** The credentials in force as they change (#1101): the forger's leader schedule is computed with
+    * their VRF key, and a block built before its slot is handed over only if they have not changed
+    * since.
+    */
+  def inForce: Signal[F, HotKeys.Installed] = installed
 
   /** The credentials in use; none while forging is disabled. */
   def current(using Raise[F, Fatal]): F[Option[PoolCredentials]] =
@@ -227,9 +272,10 @@ final class HotKeys[F[_]: Async] private (
 
   /** Evolve to the exact relative period and write it back (the lock is held). An exhausted signing
     * lifetime is terminal, as `HotKey.hs:411-438` at consensus 82ecba32 fails when `updateKES`
-    * cannot reach an in-window target. A backward target retains its crypto cause.
+    * cannot reach an in-window target. A backward target retains its crypto cause. Unchecked: for a
+    * slot it is made only through [[evolvedFor]] or [[update]], and for a reload by [[adopt]].
     */
-  private[forge] def evolved(c: PoolCredentials, kesPeriod: BigInt)(using
+  private def evolved(c: PoolCredentials, kesPeriod: BigInt)(using
       Raise[F, Fatal]
   ): F[Either[ForgeError, Unit]] =
     val relative = kesPeriod - c.opCert.kesPeriod
@@ -248,35 +294,82 @@ final class HotKeys[F[_]: Async] private (
         }
     }
 
-  /** `updateForgeState` of the reference at a slot whose KES period is `kesPeriod`: `HotKey.evolve`
+  /** `updateForgeState` of the reference at `slot`, to its KES period: `HotKey.evolve`
     * (`evolveKey`, consensus 82ecba329 `Protocol/Ledger/HotKey.hs` 385-418, called from
-    * `Shelley/Node/Praos.hs` 83-85). Before the certificate's window the key is left as it is (the
-    * leader check then finds it not usable yet); inside it, the key evolves to the period when that
-    * is later than its own, and is written back before anything signs with it; at or past the end
-    * of the window it is poisoned and the update fails (`KESCouldNotEvolve`), as every later one
-    * does (`KESKeyAlreadyPoisoned`) until a reload installs another key. The key's state after the
-    * update is the value, none while forging is disabled. An exhausted signing lifetime inside the
-    * configured window stops this forging worker with its typed crypto cause; a failed write also
-    * stops the worker.
+    * `Shelley/Node/Praos.hs` 83-85). Made only for a slot `admitted` admits, checked under the
+    * key's lock; otherwise it is [[NotAdmitted]] and nothing changes. Before the certificate's
+    * window the key is left as it is (the leader check then finds it not usable yet); inside it,
+    * the key evolves to the period when that is later than its own, and is written back before
+    * anything signs with it; at or past the end of the window it is poisoned and the update fails
+    * (`KESCouldNotEvolve`), as every later one does (`KESKeyAlreadyPoisoned`) until a reload
+    * installs another key. The key's state after the update is the value, none while forging is
+    * disabled. An exhausted signing lifetime inside the configured window stops this forging worker
+    * with its typed crypto cause; a failed write also stops the worker.
     */
-  def update(kesPeriod: BigInt)(using
+  def update(slot: BigInt, admitted: Admitted)(using
       Raise[F, Fatal]
-  ): F[Option[Either[ForgeError, Either[KesEvolutionError, KesInfo]]]] =
-    usingKey { c =>
-      val now = HotKeys.info(c, config)
-      poisoned.get.flatMap {
-        case Some(stale) =>
-          F.pure(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(stale, kesPeriod))))
-        case None if kesPeriod < now.start => F.pure(Right(Right(now)))
-        case None if kesPeriod >= now.end =>
-          F.delay(c.kes.forget()) *> poisoned
-            .set(Some(now))
-            .as(Right(Left(KesEvolutionError.CouldNotEvolve(now, kesPeriod))))
-        case None if kesPeriod - now.start <= c.kes.period => F.pure(Right(Right(now)))
-        case None =>
-          evolved(c, kesPeriod).map(_.map(_ => Right(HotKeys.info(c, config))))
-      }
+  ): F[Option[Either[NotAdmitted, HotKeys.KesUpdate]]] =
+    usingKey(c => admittedFor(slot, Some(admitted))(updated(c, periodOf(slot))))
+
+  /** [[update]], with the generation of the credentials it was made with ([[HotKeys.Installed]]),
+    * read under the same lock: the forger records the period's update only from this.
+    */
+  def updateIn(slot: BigInt, admitted: Admitted)(using
+      Raise[F, Fatal]
+  ): F[Option[(Long, Either[NotAdmitted, HotKeys.KesUpdate])]] =
+    usingKey(c =>
+      installed.get.flatMap(i =>
+        admittedFor(slot, Some(admitted))(updated(c, periodOf(slot))).map(i.generation -> _)
+      )
+    )
+
+  /** The key of `c` at the KES period of `slot`, to sign in it (the lock is held): as it is where
+    * it is there already, which changes nothing and needs no admission; evolved to it and written
+    * back where it must move forward, only for a slot `admitted` admits, else [[NotAdmitted]] and
+    * nothing changes. A key past the period cannot go back, and stays as it is.
+    */
+  private[forge] def evolvedFor(c: PoolCredentials, slot: BigInt, admitted: Option[Admitted])(using
+      Raise[F, Fatal]
+  ): F[Either[NotAdmitted, Either[ForgeError, Unit]]] =
+    val kesPeriod = periodOf(slot)
+    F.delay(kesPeriod - c.opCert.kesPeriod > c.kes.period).flatMap { forward =>
+      if forward then admittedFor(slot, admitted)(evolved(c, kesPeriod))
+      else evolved(c, kesPeriod).map(Right(_))
     }
+
+  /** `change`, made only for a slot `admitted` admits (the lock is held). */
+  private def admittedFor[A](slot: BigInt, admitted: Option[Admitted])(
+      change: => F[A]
+  ): F[Either[NotAdmitted, A]] =
+    if admitted.exists(_.admits(slot)) then change.map(Right(_))
+    else F.pure(Left(NotAdmitted(slot)))
+
+  private def periodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
+
+  private def updated(c: PoolCredentials, kesPeriod: BigInt)(using
+      Raise[F, Fatal]
+  ): F[HotKeys.KesUpdate] =
+    val now = HotKeys.info(c, config)
+    poisoned.get.flatMap {
+      case Some(stale) =>
+        F.pure(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(stale, kesPeriod))))
+      case None if kesPeriod < now.start => F.pure(Right(Right(now)))
+      case None if kesPeriod >= now.end =>
+        F.delay(c.kes.forget()) *> poisoned
+          .set(Some(now))
+          .as(Right(Left(KesEvolutionError.CouldNotEvolve(now, kesPeriod))))
+      case None if kesPeriod - now.start <= c.kes.period => F.pure(Right(Right(now)))
+      case None =>
+        evolved(c, kesPeriod).map(_.map(_ => Right(HotKeys.info(c, config))))
+    }
+
+  /** Run `use` with healthy credentials and their generation, which cannot change meanwhile; none
+    * while forging is disabled.
+    */
+  def lockedIn[A](use: (PoolCredentials, Long) => Raise[F, Fatal] ?=> F[A])(using
+      Raise[F, Fatal]
+  ): F[Option[A]] =
+    usingKey(c => installed.get.flatMap(i => use(c, i.generation)))
 
   /** `updateBlockForging` of the reference (cardano-node 11.1.3,
     * `cardano-node/src/Cardano/Node/Run.hs` 620-668), run on SIGHUP: read the credentials again. A
@@ -318,7 +411,7 @@ final class HotKeys[F[_]: Async] private (
     */
   private def disable(inUse: Option[PoolCredentials]): F[Unit] =
     inUse.traverse_(c => F.delay(c.kes.forget())) *> state.set(Right(None)) *>
-      poisoned.set(None) *>
+      poisoned.set(None) *> installed.update(i => HotKeys.Installed(i.generation + 1, None)) *>
       events.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
 
   private def refuse(why: ReloadRefusal)(using Raise[F, Fatal]): F[Unit] =
@@ -346,6 +439,7 @@ final class HotKeys[F[_]: Async] private (
       _ <- F.delay(if kept.isDefined then candidate.kes.forget() else inUse.foreach(_.kes.forget()))
       _ <- state.set(Right(Some(next)))
       _ <- poisoned.set(None)
+      _ <- installed.update(i => HotKeys.Installed(i.generation + 1, Some(found.vrf)))
       _ <- found.adopt
       // the key in use, further on than the file it was read again from, is written there too
       _ <- write(next, kesPeriod).whenA(kept.isDefined)
@@ -365,6 +459,16 @@ final class HotKeys[F[_]: Async] private (
     yield ()
 
 object HotKeys:
+  /** The update of the KES key to a period: the key's state, its failure, or a failure of the
+    * forger's own.
+    */
+  type KesUpdate = Either[ForgeError, Either[KesEvolutionError, KesInfo]]
+
+  /** The credentials in force: `generation` moves on at every reload that switches them or disables
+    * forging, and `vrf` is their VRF key, none while forging is disabled.
+    */
+  final case class Installed(generation: Long, vrf: Option[Draft03Prover.SigningKey])
+
   /** @param enabled
     *   Forge with `credentials` from the start; false for `--start-as-non-producing-node`, which
     *   reads and checks the credentials at start-up but does not forge until a reload finds them
@@ -384,8 +488,9 @@ object HotKeys:
       ),
       Ref.of[F, Option[KesInfo]](None),
       Mutex[F],
-      Ref.of[F, Boolean](false)
-    ).mapN { (state, poisoned, lock, renamed) =>
+      Ref.of[F, Boolean](false),
+      SignallingRef.of[F, Installed](Installed(0, Option.when(enabled)(credentials.vrf)))
+    ).mapN { (state, poisoned, lock, renamed, installed) =>
       new HotKeys[F](
         state,
         poisoned,
@@ -394,7 +499,8 @@ object HotKeys:
         config,
         events,
         credentials.poolId,
-        renamed
+        renamed,
+        installed
       )
     }
 

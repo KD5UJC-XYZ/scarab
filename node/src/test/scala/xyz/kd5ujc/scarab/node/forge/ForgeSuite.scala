@@ -160,12 +160,15 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
           events <- h.seen
         yield
           assertEquals(forged.map(_.slot.toInt).filter(_ < 5200), leads.toVector)
-          // every slot is started once, none twice and none passed over
+          // every slot is ended once, none twice and none passed over; only the led ones, and the
+          // first slot of each KES period (5000 and 5100), are started with a line of their own
+          // (#1101)
+          assertEquals(endedIn(events).map(_.toInt).filter(_ < 5200), (5000 until 5200).toVector)
           assertEquals(
             events
               .collect { case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) => s.toInt }
               .filter(_ < 5200),
-            (5000 until 5200).toVector
+            (leads ++ Vector(5000, 5100)).distinct.sorted.toVector
           )
       }
     )
@@ -219,10 +222,11 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     }
   }
 
-  test("slots that pass while a step is still running are passed over, and nothing is said") {
+  test("slots that pass while a slot is still handled are passed over, and nothing is said") {
     val p = pool(kesStart = 50, seed = 10)
     // the key is written back at the period boundary of slot 5100 and that write takes 3.5 s:
-    // slots 5101 and 5102 pass meanwhile (`knownSlotWatcher` notifies the slot it reads next)
+    // slots 5101 and 5102 pass meanwhile (`knownSlotWatcher` notifies the slot it reads next);
+    // a slot among them that the pool leads is passed over too, its time gone
     TestControl.executeEmbed(
       withHandle {
         for
@@ -246,10 +250,8 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
           fiber <- h.forger.run.start
           _ <- IO.sleep(6500.millis)
           _ <- fiber.cancel
-          started <- tracesIn(h).map(_.collect { case ForgeTrace.StartLeadershipCheck(s) =>
-            s.toInt
-          })
           events <- h.seen
+          started = endedIn(events).map(_.toInt)
         yield
           assertEquals(started.take(4), Vector(5099, 5100, 5103, 5104))
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
@@ -265,8 +267,8 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         fiber <- h.forger.run.start
         _ <- IO.sleep(millis.millis)
         _ <- fiber.cancel
-        traces <- tracesIn(h)
-      yield traces.collect { case ForgeTrace.StartLeadershipCheck(s) => s.toInt }
+        events <- h.seen
+      yield endedIn(events).map(_.toInt)
     TestControl.executeEmbed(
       withHandle {
         for
@@ -345,9 +347,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         case Some(cats.effect.kernel.Outcome.Succeeded(h)) => h.seen
         case other => IO.raiseError(new AssertionError(s"the harness did not start: $other"))
     yield
-      val attempted = events.collect { case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) =>
-        s
-      }
+      val attempted = endedIn(events)
       val movedBack = events.collect { case ForgeEvent.Clock(c: ClockTrace.SystemClockMovedBack) =>
         c
       }

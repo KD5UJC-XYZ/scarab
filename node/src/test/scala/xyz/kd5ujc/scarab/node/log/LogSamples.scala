@@ -64,6 +64,7 @@ import xyz.kd5ujc.scarab.node.forge.{
   NoExchange,
   BlockForgingState,
   CannotForge,
+  DiscardReason,
   ClockTrace,
   ForgeEpochStats,
   ForgeEvent,
@@ -548,7 +549,14 @@ object LogSamples:
       Vector.empty
     ),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
-    ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())
+    ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats()),
+    ForgeEvent.Scheduled(BigInt(4), Vector(BigInt(4207), BigInt(4291)), 8.3333333, settled = true),
+    ForgeEvent.Scheduled(BigInt(5), Vector.empty, 0.0, settled = false),
+    ForgeEvent.Discarded(BigInt(4207), DiscardReason.BlockContext, Some(hash)),
+    ForgeEvent.Discarded(BigInt(4208), DiscardReason.Inputs, Some(hash)),
+    ForgeEvent.Discarded(BigInt(4209), DiscardReason.Credentials, Some(hash)),
+    ForgeEvent.Discarded(BigInt(4210), DiscardReason.Refused, None),
+    ForgeEvent.Discarded(BigInt(4211), DiscardReason.NotLed, None)
   )
 
   val scheduling: SchedulingReport = SchedulingReport(

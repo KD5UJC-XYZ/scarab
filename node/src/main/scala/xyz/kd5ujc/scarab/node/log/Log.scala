@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
-import cats.{Applicative, Monad}
+import cats.{Applicative, Apply, Monad}
 import cats.mtl.Tell
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{FollowerEvent, FollowerEvents, SchedulingStats}
 import xyz.kd5ujc.scarab.node.InboundEvents
-import xyz.kd5ujc.scarab.node.log.Traced.{FollowerLine, Scheduled}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
+import xyz.kd5ujc.scarab.node.log.Traced.{FollowerLine, Scheduled, Timed}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.node.metrics.EventSink
 
@@ -48,6 +49,13 @@ object Log:
         )
     case FollowerEvent.Immutable(_) => Monad[F].unit
     case e: FollowerLine            => log.emit[FollowerLine](e)
+
+  /** The forger's events, then `also`'s: a line the forger held keeps the time it was made. */
+  def forge[F[_]: Apply](also: ForgeEvents[F])(using log: Log[F]): ForgeEvents[F] =
+    new ForgeEvents[F]:
+      def emit(event: ForgeEvent) = log.emit(event) *> also.emit(event)
+      override def emitAt(at: java.time.Instant, event: ForgeEvent) =
+        log.emit(Timed(event, at)) *> also.emitAt(at, event)
 
   /** The mempool's events; a resynchronisation that dropped nothing (one per block) has no line. */
   def mempool[F[_]: Applicative](using log: Log[F]): MempoolEvents[F] =

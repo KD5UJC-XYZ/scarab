@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{
   NoExchange,
   CannotForge,
+  DiscardReason,
   ForgeEvent,
   ClockTrace,
   ForgeTrace,
@@ -63,6 +64,12 @@ object Traced:
     line.copy(fields =
       line.fields ++ scheduled.report.map(r => "scheduling" -> Reports.scheduling(r))
     )
+
+  /** An event that happened at `at`, logged later: its line keeps that time as its `at`. */
+  final case class Timed[E](event: E, at: java.time.Instant)
+
+  given withTime[E](using traced: Traced[E]): Traced[Timed[E]] = timed =>
+    traced.line(timed.event).copy(time = Some(timed.at))
 
   /** The follower's events that make a line: [[FollowerEvent.Immutable]] is bookkeeping for the
     * metrics (a block moved past `k`), one per block, and has none.
@@ -514,6 +521,25 @@ object Traced:
       EventKind.Adopted.line("block" -> block(b), "latencyMs" -> latency.asJson)
     case ForgeEvent.EpochSummary(epoch, stats) =>
       EventKind.ForgeEpoch.line(("epoch" -> epoch.asJson) +: Reports.forgeStats(stats)*)
+    case ForgeEvent.Scheduled(epoch, slots, expected, settled) =>
+      EventKind.LeaderSchedule.line(
+        "epoch" -> epoch.asJson,
+        "slots" -> slots.asJson,
+        "expected" -> BigDecimal(expected).setScale(2, BigDecimal.RoundingMode.HALF_EVEN).asJson,
+        "settled" -> settled.asJson
+      )
+    case ForgeEvent.Discarded(slot, reason, hash) =>
+      val why = reason match
+        case DiscardReason.BlockContext => "blockContext"
+        case DiscardReason.Inputs       => "inputs"
+        case DiscardReason.Credentials  => "credentials"
+        case DiscardReason.Refused      => "refused"
+        case DiscardReason.NotLed       => "notLeader"
+      EventKind.ForgeDiscarded.line(
+        "slot" -> slot.asJson,
+        "reason" -> why.asJson,
+        "hash" -> hash.map(_.hex).asJson
+      )
     case ForgeEvent.Lost(slot, hash, reason) =>
       EventKind.Lost.line(
         "slot" -> slot.asJson,

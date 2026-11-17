@@ -535,7 +535,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
               case _: ForgeEvent.KesPersistFailed => reporting.complete(()) *> release.get
               case _                              => IO.unit)
         )
-        failing <- Forger.scoped(keys.update(51)).start
+        failing <- Forger.scoped(toPeriod(keys, 51)).start
         _ <- reporting.get.timeout(3.seconds)
         signer <- Forger
           .scoped(

@@ -93,7 +93,7 @@ object LogRouter:
       routes.filter(_.admits(line)) match
         case Nil => Sync[F].unit
         case admitted =>
-          mutex.lock.surround(Clock[F].realTimeInstant.flatMap { at =>
+          mutex.lock.surround(line.time.fold(Clock[F].realTimeInstant)(Sync[F].pure).flatMap { at =>
             val text = Rendered(line, at)
             admitted.traverse_(r => kept(r, line.kind).ifM(r.write(text(r.format)), Sync[F].unit))
           })

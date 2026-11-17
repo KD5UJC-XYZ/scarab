@@ -23,14 +23,24 @@ from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, adapt_reference_config, d
 
 POOL_KES_SLOTS = 250   # slotsPerKESPeriod of the pool scenario (the sandbox default, 129600, never changes period)
 
-# A scheduled slot the forging loop never started: it was still on an earlier slot, and the reference's
+# A scheduled slot the forger never handled: it was still on an earlier slot, and the reference's
 # `knownSlotWatcher` passes over such a slot without a trace, as the Scala node does.
 NOT_STARTED = "not started: the forger was still on an earlier slot"
 
-# The forging loop's traces that end a slot without a block, as the reference names them; `blockFromFuture`
-# names its slot `current slot`.
+# The forger's traces that end a slot without a block, as the reference names them; `blockFromFuture` names its
+# slot `current slot`. Since #1101 a slot the pool does not lead logs only one of these (`nodeNotLeader`, or the
+# line of a check before the leader check), after `startLeadershipCheck` (and `stateInfo`) only at a KES period
+# change, and a led slot its whole sequence from `startLeadershipCheck`.
 ENDING_EVENTS = ("slotIsImmutable", "blockFromFuture", "noLedgerView", "forgeStateUpdateError", "nodeCannotForge",
                  "nodeNotLeader", "forgedInvalidBlock", "didntAdoptBlock")
+
+
+def handled_slots(events):
+    """The slots the forger handled: each has a line of its own, `startLeadershipCheck` (a led slot's, or that of a
+    slot not led at a KES period change), one of the ending traces, `adoptedBlock`, or Scarab's `forgeFailed` or
+    `forgeDefect`. A slot passed over has none."""
+    return {e["current slot"] if e["event"] == "blockFromFuture" else e["slot"] for e in events
+            if e["event"] in ("startLeadershipCheck", "adoptedBlock", "forgeFailed", "forgeDefect") + ENDING_EVENTS}
 
 # Traces that a healthy pool never logs: the run fails on any of them.
 FORGE_PROBLEMS = ("forgeFailed", "forgeStateUpdateError", "nodeCannotForge", "forgedInvalidBlock")
@@ -193,10 +203,12 @@ def slot_at(shelley, stamp):
 
 def slot_clock(events, shelley):
     """How the Scala node's slot clock stands against the reference nodes', in milliseconds after the slot's start
-    by the genesis: when the Scala node logged a block it forged (`forgeLatencyMs`, normally a few ms) and when it
-    received a block another pool forged (`arrivalMs`, normally a few ms). A forge latency of a second or more
-    with normal arrivals means the Scala node believes it is an earlier slot than the network does, so its
-    leader slots find the tip already past them and are silently skipped."""
+    by the genesis: when the Scala node adopted a block it forged (`forgeLatencyMs`, the `adopted` line: the block is
+    forged ahead of its slot, but in a KES period's first slot at its onset, and handed over at the slot's onset, so
+    normally a few ms, #1101) and when it received a
+    block another pool forged (`arrivalMs`, normally a few ms). A forge latency of a second or more either way with
+    normal arrivals means the Scala node believes it is another slot than the network does, so its leader slots
+    find the tip already past them and are silently skipped."""
     system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
     length = shelley["slotLength"]
 
@@ -209,7 +221,7 @@ def slot_clock(events, shelley):
         return round(values[len(values) // 2]) if values else None
 
     mine = {e["hash"] for e in events if e["event"] == "forged"}
-    return {"forgeLatencyMs": median([late(e, e["slot"]) for e in events if e["event"] == "forged"]),
+    return {"forgeLatencyMs": median([late(e, e["block"]["slot"]) for e in events if e["event"] == "adopted"]),
             "arrivalMs": median([late(e, e["block"]["slot"]) for e in events
                                  if e["event"] == "extended" and e["block"]["hash"] not in mine])}
 
@@ -218,12 +230,15 @@ FORGE_PHASES = ("toForged", "checkToForgedBlock", "leaderToForgedBlock", "forged
 
 
 def forge_timing(events, shelley, kinds=None):
-    """What the forger took in the slots it forged in, in milliseconds, per block: from the slot's start by the
-    genesis to `forged` (`toForged`); from `startLeadershipCheck` to `forgedBlock` of the same slot, which does not
-    depend on the slot clock (`checkToForgedBlock`); from `nodeIsLeader` to `forgedBlock`: the tick, the mempool's
-    revalidation and selection, the body and the signature (`leaderToForgedBlock`); from `forged` to
-    `adoptedBlock`: the node's own rules on the block and its commit (`forgedToAdopted`); and `adopted`'s own
-    `latencyMs`, slot start to adoption (`adoptedLatency`). Each as `spread`, over every forged block and, given
+    """What the forger took in the slots it forged in, in milliseconds, per block: when the block was built,
+    relative to its slot's onset by the genesis (`toForged`, the time of `forged`, which keeps the time it was made:
+    negative for a block built ahead of its slot, #1101); from `startLeadershipCheck` to `forgedBlock` of the same
+    slot, which does not depend on the slot clock (`checkToForgedBlock`); from `nodeIsLeader` to `forgedBlock`: the
+    tick, the mempool's revalidation and selection, the body and the signature (`leaderToForgedBlock`); from
+    `forged` to `adoptedBlock`: for a block built ahead of its slot the wait for the onset, then the node's own rules
+    on the block and its commit (`forgedToAdopted`); and `adopted`'s own `latencyMs`, the slot's onset to the
+    adoption, which is how late the block was handed over and adopted (`adoptedLatency`; the handover itself has no
+    line). Each as `spread`, over every forged block and, given
     `kinds` ({hash: kind}, `pool_plutus.block_kinds`), over the blocks of each kind (`withPlutus`, `withoutPlutus`,
     `unknown`; a block `kinds` does not name is unknown)."""
     system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
@@ -485,7 +500,7 @@ def missed_leader_slots(events, schedules, shelley, excluded=None, until=None):
     scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1]
                        and not (excluded and excluded[0] <= s and (excluded[1] is None or s <= excluded[1])))
     mine = set(forged.values())
-    started = {e["slot"] for e in events if e["event"] == "startLeadershipCheck"}
+    started = handled_slots(events)
     # the trace that ended each slot the loop started without a block, by the reference's name
     ended = {e["current slot"] if e["event"] == "blockFromFuture" else e["slot"]: e["event"]
              for e in events if e["event"] in ENDING_EVENTS}

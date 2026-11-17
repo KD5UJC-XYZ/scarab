@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
+import fs2.concurrent.SignallingRef
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -125,13 +126,22 @@ trait ForgeFixture:
   final class Harness(
       val follower: Follower[IO, MirrorState],
       val forger: Forger[IO, MirrorState],
-      val ref: Ref[IO, VolatileChain[MirrorState]],
+      val ref: SignallingRef[IO, VolatileChain[MirrorState]],
       val mempool: Mempool[IO],
-      val events: Ref[IO, Vector[ForgeEvent]],
-      val raws: Ref[IO, Map[Bytes, Bytes]]
+      val events: SignallingRef[IO, Vector[ForgeEvent]],
+      val raws: Ref[IO, Map[Bytes, Bytes]],
+      val stamped: Ref[IO, Vector[(Instant, ForgeEvent)]]
   ):
     def chain: IO[VolatileChain[MirrorState]] = ref.get
     def seen: IO[Vector[ForgeEvent]] = events.get
+
+    /** Until every slot up to `slot` is settled: a report of the slot driver. */
+    def settled(slot: BigInt): IO[Unit] =
+      forger.settledThrough.discrete.find(_ >= slot).compile.drain
+
+    /** Until the clock fiber has published `slot` or a later one. */
+    def clocked(slot: BigInt): IO[Unit] =
+      forger.clockSlot.discrete.find(_.exists(_ >= slot)).compile.drain
 
   def harness(
       p: Pool,
@@ -147,21 +157,29 @@ trait ForgeFixture:
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None,
       unbounded: Boolean = false,
+      known: Option[BigInt => Boolean] = None,
       enabled: Boolean = true,
       protocolVersion: (BigInt, BigInt) = ConfigSettings().protocolVersion,
       network: Int = globals.network,
-      assertions: Assertions[IO] = Assertions.noop[IO]
+      assertions: Assertions[IO] = Assertions.noop[IO],
+      pause: Option[Forger.Point => IO[Unit]] = None,
+      praos: PraosConfig = config,
+      committedChain: Boolean = false,
+      selectionLedger: Option[
+        (BigInt, xyz.kd5ujc.scarab.protocol.ChainSync.Point, MempoolLedger) => MempoolLedger
+      ] = None,
+      rulesPause: Header => IO[Unit] = _ => IO.unit
   )(using Handle[IO, NodeError]): IO[Harness] =
     given Assertions[IO] = assertions
     val rulesGlobals = globals.copy(network = network)
     for
       start <- IO.pure(mirrorState(ledger))
-      ref <- Ref.of[IO, VolatileChain[MirrorState]](
+      ref <- SignallingRef.of[IO, VolatileChain[MirrorState]](
         VolatileChain.genesis(geometry.k.toInt, start)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
       realRules = MirrorRules[IO](
-        config.copy(verdicts = verdicts),
+        praos.copy(verdicts = verdicts),
         rulesGlobals,
         None,
         None,
@@ -174,7 +192,7 @@ trait ForgeFixture:
             Raise[IO, StorageError],
             Raise[IO, ChainError]
         ): IO[MirrorState] =
-          rulesThrow.fold(
+          rulesPause(header) *> rulesThrow.fold(
             chainFailure.fold(
               ruleFailure.fold(realRules(state, header, raw))(failure =>
                 ValidationError(header.point, failure).raise[IO, MirrorState]
@@ -256,19 +274,24 @@ trait ForgeFixture:
           )
         )
       )
-      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      seen <- SignallingRef.of[IO, Vector[ForgeEvent]](Vector.empty)
+      stamped <- Ref.of[IO, Vector[(Instant, ForgeEvent)]](Vector.empty)
+      sink = new ForgeEvents[IO]:
+        def emit(e: ForgeEvent) = seen.update(_ :+ e)
+        override def emitAt(at: Instant, e: ForgeEvent) =
+          stamped.update(_ :+ (at -> e)) *> seen.update(_ :+ e)
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       // horizon: a live loop over a chain left at genesis while the clock is thousands of slots on:
       // the era history at that tip would not translate the slot, so such tests lift the horizon
       forger <- Forger.create[IO, MirrorState](
-        config,
+        praos,
         rulesGlobals,
         xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
         protocolVersion,
         p.creds,
         follower,
         mempool,
-        e => seen.update(_ :+ e),
+        sink,
         forecastWindow = Some(forecastWindow),
         now = clock.orElse(
           Some(
@@ -277,14 +300,25 @@ trait ForgeFixture:
           )
         ),
         sleep = if live then None else Some(_ => IO.unit),
-        horizon = Option.when(unbounded)((_, _) => true),
+        horizon = known
+          .map(k => (_: VolatileChain[MirrorState], slot: BigInt) => k(slot))
+          .orElse(Option.when(unbounded)((_, _) => true)),
         source = source,
-        enabled = enabled
+        enabled = enabled,
+        chains = Option.unless(committedChain)(ref),
+        pause = pause,
+        selectionLedger = selectionLedger
       )
-    yield new Harness(follower, forger, ref, mempool, seen, raws)
+    yield new Harness(follower, forger, ref, mempool, seen, raws, stamped)
 
   def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))
+
+  /** The update of `keys` to KES `period`, at the period's first slot, admitted there. */
+  def toPeriod(keys: HotKeys[IO], period: BigInt)(using
+      Raise[IO, xyz.kd5ujc.scarab.node.Fatal]
+  ): IO[Option[Either[NotAdmitted, HotKeys.KesUpdate]]] =
+    keys.update(period * slotsPerKes, Admitted.at(period * slotsPerKes))
 
   /** The credentials in use; fails while forging is disabled. */
   def currentHot(keys: HotKeys[IO]): IO[PoolCredentials] =
@@ -303,6 +337,24 @@ trait ForgeFixture:
   /** The loop's traces among the events, in order. */
   def tracesIn(h: Harness): IO[Vector[ForgeTrace]] =
     h.seen.map(_.collect { case ForgeEvent.Loop(t) => t })
+
+  /** The slot of each line that ends a slot, in the order published: one per slot the forger
+    * handled, led or not (#1101: a slot not led logs only the line that ends it).
+    */
+  def endedIn(events: Vector[ForgeEvent]): Vector[BigInt] =
+    events.collect {
+      case ForgeEvent.Loop(t: ForgeTrace.NodeNotLeader)         => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.SlotIsImmutable)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.BlockFromFuture)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.NoLedgerView)          => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.ForgeStateUpdateError) => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.NodeCannotForge)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.AdoptedBlock)          => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.DidntAdoptBlock)       => t.slot
+      case ForgeEvent.Loop(t: ForgeTrace.ForgedInvalidBlock)    => t.slot
+      case ForgeEvent.Failed(slot, _)                           => slot
+      case ForgeEvent.Defect(slot, _, _)                        => slot
+    }
 
   /** The names of the loop's traces of `slot`, in order: the constructors of `TraceForgeEvent`. */
   def namesIn(h: Harness, slot: BigInt): IO[Vector[String]] =

@@ -201,8 +201,12 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       Sorted.map(delegated.map(_._2))
     )
 
-  /** The chain's state at the origin: `ledger` in Conway, its epoch nonce [[epochNonce]]. */
-  def genesisOf(env: ConsensusMirrorEnv, ledger: NewEpochState[Conway]): MirrorState =
+  /** The chain's state at the origin: `ledger` in Conway, its epoch nonce `nonce`. */
+  def genesisOf(
+      env: ConsensusMirrorEnv,
+      ledger: NewEpochState[Conway],
+      nonce: Nonce = epochNonce
+  ): MirrorState =
     val praos = ProtocolState(
       ChainDepState.Praos(
         PraosState(
@@ -210,7 +214,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
           Sorted.empty[KeyHash[BlockIssuer], Word64],
           Nonce.Neutral,
           Nonce.Neutral,
-          epochNonce,
+          nonce,
           Nonce.Neutral,
           Nonce.Neutral,
           Nonce.Neutral

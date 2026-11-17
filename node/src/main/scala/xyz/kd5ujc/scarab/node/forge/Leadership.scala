@@ -30,6 +30,15 @@ object Leadership:
       def prove(alpha: Bytes): Either[Draft03Prover.Failure, Draft03Prover.Proved] =
         key.prove(alpha)
 
+    /** The re-check of a slot the schedule leads (#1101, decision 5): `key` 's output evaluated
+      * again, and the schedule's certificate `cert` for the proof, which the schedule built from
+      * the same key and input.
+      */
+    def again(key: Draft03Prover.SigningKey, cert: VrfCert): Evaluator = new Evaluator:
+      def output(alpha: Bytes): Either[Draft03Prover.Failure, Bytes] = key.output(alpha)
+      def prove(alpha: Bytes): Either[Draft03Prover.Failure, Draft03Prover.Proved] =
+        Right(Draft03Prover.Proved(cert.proof, cert.output))
+
   /** The VRF certificate of the header if the pool leads `slot`, else [[ForgeError.NotLeader]]. The
     * check is on the stake alone, as `checkIsLeader` of `Protocol/Praos.hs` (consensus 82ecba329
     * 402-428, unchanged at 808e4005 408-434) makes it: whether the VRF key is the one the pool
@@ -50,6 +59,10 @@ object Leadership:
       activeSlotsCoeff: Leader.Fraction
   ): Either[ForgeError, VrfCert] =
     decide(slot, epochNonce, Evaluator.of(key), stake, totalStake, activeSlotsCoeff)
+
+  /** [[check]] of `slot` with the inputs of its epoch. */
+  def check(slot: BigInt, inputs: EpochInputs): Either[ForgeError, VrfCert] =
+    check(slot, inputs.nonce, inputs.key, inputs.stake, inputs.total, inputs.activeSlotsCoeff)
 
   /** [[check]] with the key's evaluations given: the output, its leader value and the threshold
     * decide the slot, and only a won slot is proved.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.{Signal, SignallingRef}
 import xyz.kd5ujc.scarab.consensus.{
   BlockRef,
   BlockRules,
@@ -311,6 +311,12 @@ final class Follower[F[_]: Async, S] private (
     * lock: an applying session may be waiting for a scheduled block while holding that lock.
     */
   private[node] def fetchSelection: F[ChainSelection.Local] = window.get.map(_.selection)
+
+  /** The committed chain as it changes: what the forger derives the inputs of its leader schedule
+    * from (#1101). It moves only when a block is committed or rolled back, never while one is being
+    * judged.
+    */
+  def committedChain: Signal[F, VolatileChain[S]] = window.map(_.chain)
 
   private def local: F[ChainSelection.Local] =
     for
