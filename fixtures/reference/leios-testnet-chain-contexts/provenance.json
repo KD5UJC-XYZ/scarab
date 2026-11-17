@@ -92,7 +92,7 @@
    "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
   },
   "runnerSha256": {
-   "scripts/oracle/leios-testnet/chain/run.py": "daaf37f26cfb14a1eafc0707f9aacd067fb902457d5c0aa38d793b8adf9a4015",
+   "scripts/oracle/leios-testnet/chain/run.py": "c78f85b81b727281d4481264217fd4eaea5c9c5749fad9d2aff0f8e40344b771",
    "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a"
   },
   "network": "none"
