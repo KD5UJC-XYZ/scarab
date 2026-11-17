@@ -513,8 +513,19 @@ Conway's rules on the classes follow as the rest of stage 2.
   - `Val` gains its superclass `Eq` as a member (`eqv`): `MaryValue`'s `pointwise (==)` is the equality of
     two canonical values, and every `MultiAssetValue` is one, made canonical by `MultiAssetValue.of` as the
     reference's `MultiAsset` is, and kept so by the arithmetic.
-  - Still to port before UTXO is whole: `validateOutsideForecast`, then `babbageUtxoValidation` put
-    together, with Conway's injection of the bootstrap attributes' failure by build.
+- **The forecast** (`era/rules/`): `validateOutsideForecast`, the end of a validity interval with redeemers
+  translated through the era history extended linearly from the current slot (`PosixClock.Extended`).
+  The flat rule has none, so it is compared with the reference's recorded verdicts
+  (`PastHorizonReferenceSuite`: an end past the horizon passes, as the reference's refusal is the Plutus
+  context's) and crafted in each branch. It refuses only where the current slot is past the history, which
+  the reference never gives the ledger: a header is validated only below the tip plus one plus the
+  stability window, and the history runs at least that far, its safe zone being the stability window
+  from the tip plus one, or from the next era's start once that is known (ouroboros-consensus 82ecba32
+  `Shelley/Ledger/SupportsProtocol.hs:100-127`, `Shelley/Ledger/Ledger.hs:171-185`,
+  `HardFork/Combinator/State/Infra.hs:194-262`). Scarab's header gate waits past the forecast too, so
+  the node switch changes no verdict here.
+  - Still to port before UTXO is whole: `babbageUtxoValidation` put together, with Conway's injection of
+    the bootstrap attributes' failure by build.
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): three of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts` and
