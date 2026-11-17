@@ -244,6 +244,38 @@ class DijkstraNativeScriptSuite extends FunSuite:
     assertEquals(PreprodDeepTx.onSmallStack(ours(raw)).map(_.raw), Right(raw))
   }
 
+  test(
+    "a guard-free script's time-lock tree is the one the time-lock reader reads; a guard has none"
+  ) {
+    given xyz.kd5ujc.scarab.ledger.ByteStrings = xyz.kd5ujc.scarab.ledger.ByteStrings.Chunked
+    val key = "8200581c" + "22" * 28
+    // all of: a signature, any of a validity start, 2 of an end and the signature
+    val guardFree =
+      hex("8201" + "83" + key + "820281820401" + "8303" + "02" + "82" + "820505" + key)
+    val flatTree = CborRead
+      .decode(guardFree)
+      .flatMap(
+        xyz.kd5ujc.scarab.ledger.Script
+          .native(_, xyz.kd5ujc.scarab.ledger.NativeScript.Form.Timelock)
+      )
+      .fold(e => fail(e.toString), _.native)
+    assertEquals(ours(guardFree).map(_.timelock), Right(flatTree))
+    assert(flatTree.isDefined)
+    // the same, with a guard nested two levels down
+    val guarded = hex("8201" + "82" + key + "820281" + "8206" + "8200581c" + "33" * 28)
+    assertEquals(ours(guarded).map(_.timelock), Right(None))
+  }
+
+  test("a script as deep as a block has its time-lock tree on a small stack") {
+    val raw = hex(("8201" + "81").repeat(20000) + "8200581c" + "11" * 28)
+    val script = ours(raw).fold(e => fail(e.toString), identity)
+    val tree = PreprodDeepTx.onSmallStack(Right(script.timelock)).fold(identity, identity)
+    assert(tree.isDefined)
+    val guarded = hex(("8201" + "81").repeat(20000) + "8206" + "8200581c" + "11" * 28)
+    val deepGuard = ours(guarded).fold(e => fail(e.toString), identity)
+    assertEquals(PreprodDeepTx.onSmallStack(Right(deepGuard.timelock)), Right(None))
+  }
+
   // ---- the translation from Conway
 
   private val translations = lines("fixtures/reference/dijkstra-translation/cases.jsonl")

@@ -116,6 +116,32 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeStart(_) | DijkstraNativeScript.Form.TimeExpire(_) =>
       None
 
+  /** The script as the flat output keeps a native reference script, the tree of the time-lock
+    * language ([[xyz.kd5ujc.scarab.ledger.NativeScript]]), when it holds no guard: each of
+    * Dijkstra's other forms is one of that language's, field for field. A script with a guard at
+    * any level has none, as the time-lock language has no guard; its bytes, which the output keeps,
+    * hold it (#54). The nesting is unbounded, so the walk keeps its stack on the heap
+    * ([[TreeFold]]).
+    */
+  def timelock: Option[xyz.kd5ujc.scarab.ledger.NativeScript] =
+    import xyz.kd5ujc.scarab.ledger.NativeScript as T
+    import DijkstraNativeScript.Form
+    type Step = TreeFold.Step[DijkstraNativeScript, T, Unit]
+    def branch(ss: Vector[DijkstraNativeScript])(make: Vector[T] => T): Either[Unit, Step] =
+      Right(TreeFold.Step.Branch(ss, ts => Right(make(ts))))
+    TreeFold
+      .foldE[DijkstraNativeScript, T, Unit](this)(s =>
+        s.form match
+          case Form.RequireSignature(h) => Right(TreeFold.Step.Leaf(T.Sig(h)))
+          case Form.RequireAllOf(ss)    => branch(ss)(T.AllOf(_))
+          case Form.RequireAnyOf(ss)    => branch(ss)(T.AnyOf(_))
+          case Form.RequireMOf(m, ss)   => branch(ss)(T.NOfK(BigInt(m), _))
+          case Form.TimeStart(slot)     => Right(TreeFold.Step.Leaf(T.InvalidBefore(slot)))
+          case Form.TimeExpire(slot)    => Right(TreeFold.Step.Leaf(T.InvalidHereafter(slot)))
+          case Form.RequireGuard(_)     => Left(())
+      )
+      .toOption
+
   // the memoized hash compared: the bytes', or the default for no bytes, which no bytes hash to
   override def equals(that: Any): Boolean = that match
     case o: DijkstraNativeScript => memo == o.memo
