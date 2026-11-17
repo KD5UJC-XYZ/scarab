@@ -7,9 +7,14 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraAccounts,
   ConwayEraCertState,
   EraCertState,
-  Obligations
+  EraTxBody,
+  Obligations,
+  PParams,
+  TxBody,
+  TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
   CompactCoin,
   Conway,
   ConwayAccountState,
@@ -79,3 +84,19 @@ object ConwayState:
     /** `obligationCertState = conwayObligationCertState`. */
     override def obligationCertState(certState: ConwayCertState): Obligations =
       EraCertState.conwayObligationCertState[Conway](certState)(using this)
+
+    /** `certsTotalDepositsTxBody = conwayCertsTotalDepositsTxBody`. */
+    override def certsTotalDepositsTxBody(
+        pp: PParams[Conway],
+        certState: ConwayCertState,
+        body: TxBody[TxLevel.Top, Conway]
+    )(using EraTxBody[Conway]): Coin =
+      EraCertState.conwayCertsTotalDepositsTxBody[Conway](pp, certState, body)(using this)
+
+    /** `certsTotalRefundsTxBody = shelleyCertsTotalRefundsTxBody`. */
+    override def certsTotalRefundsTxBody[L <: TxLevel](
+        pp: PParams[Conway],
+        accounts: ConwayAccounts,
+        body: TxBody[L, Conway]
+    )(using b: EraTxBody[Conway], l: b.Level[L]): Coin =
+      EraCertState.shelleyCertsTotalRefundsTxBody[Conway, L](pp, accounts, body)(using this)

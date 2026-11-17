@@ -89,6 +89,31 @@ class EraValueSuite extends munit.FunSuite:
     assertEquals(ma.scale(-2, w).assets, Map(policy -> Map(a -> BigInt(-6))))
   }
 
+  test("eqv is MaryValue's pointwise (==): a zero quantity or an empty policy is absent") {
+    import xyz.kd5ujc.scarab.ledger.Value as Flat
+    val ma = summon[Val[MultiAssetValue]]
+    val (p, q) = (Bytes(Vector.fill(28)(1.toByte)), Bytes(Vector.fill(28)(2.toByte)))
+    val (a, b) = (Bytes(Vector(0x61)), Bytes(Vector(0x62)))
+    val zeros = MultiAssetValue.of(Flat(5, Map(p -> Map(a -> 0), q -> Map.empty)))
+    // `of` is canonical, as `MultiAsset` is
+    assertEquals(zeros.assets, Map.empty)
+    assert(ma.eqv(zeros, ma.inject(Coin(5))))
+    val three = MultiAssetValue.of(Flat(4, Map(p -> Map(a -> 3))))
+    val two = MultiAssetValue.of(Flat(4, Map(p -> Map(a -> 2))))
+    val other = MultiAssetValue.of(Flat(4, Map(p -> Map(b -> 3))))
+    // assets alone tell these apart: a quantity, a name present on one side only, in either order
+    assert(!ma.eqv(three, two))
+    assert(!ma.eqv(three, other) && !ma.eqv(other, three))
+    assert(!ma.eqv(three, ma.inject(Coin(4))) && !ma.eqv(ma.inject(Coin(4)), three))
+    assert(!ma.eqv(three, MultiAssetValue.of(Flat(5, Map(p -> Map(a -> 3))))))
+    // what the arithmetic brings to zero is absent, so the sum is the coin alone
+    assert(ma.eqv(ma.plus(three, ma.scale(-1, three)), ma.zero))
+    assert(ma.eqv(ma.minus(ma.plus(three, two), two), three))
+    val ada = summon[Val[AdaValue]]
+    assert(ada.eqv(AdaValue(7), ada.plus(AdaValue(3), AdaValue(4))))
+    assert(!ada.eqv(AdaValue(7), AdaValue(-7)))
+  }
+
   test("the store's read into Allegra still refuses a negative coin, which no output holds") {
     val out = outputsOf(Era.Allegra).head
     assertEquals(

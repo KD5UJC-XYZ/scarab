@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{PredicateFailure, Tx, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraPParams,
+  EraCertState,
   EraPParams,
   EraTx,
   EraTxBody,
@@ -193,6 +194,13 @@ class ConwayUtxoChecksSuite extends FunSuite:
         )(using body.outputsOf)
       ),
       (
+        "validateValueNotConservedUTxO", {
+          val (consumed, produced) = flatBalance(s)
+          UtxoTests.valueNotConserved(consumed, produced)
+        },
+        ShelleyUtxo.validateValueNotConservedUTxO[Conway](s.pp, s.utxo, s.cert, tb)
+      ),
+      (
         "feesOK",
         UtxoTests.feesOK[Conway](s.flatPp, Utxo.fromMap(s.stored), s.flat, flatMinFee(s)),
         BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo)
@@ -281,6 +289,28 @@ class ConwayUtxoChecksSuite extends FunSuite:
         stored.storedValue(u.getProducedValue(s.pp, isPoolRegistered(s), tb)),
         produced,
         s"${s.label}: produced"
+      )
+    }
+
+  test(
+    "certsTotalDepositsTxBody and certsTotalRefundsTxBody are the flat path's on every Conway case"
+  ):
+    val c = EraCertState.conway
+    seen.foreach { s =>
+      val tb = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
+      val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, s.flat.body)
+      assertEquals(
+        c.certsTotalDepositsTxBody(s.pp, s.cert, tb)(using body).value,
+        deposits,
+        s.label
+      )
+      assertEquals(
+        c.certsTotalRefundsTxBody[TxLevel.Top](s.pp, c.certDStateL.get(s.cert).accounts, tb)(using
+          body,
+          top
+        ).value,
+        refunds,
+        s.label
       )
     }
 
@@ -549,6 +579,15 @@ class ConwayUtxoChecksSuite extends FunSuite:
     )
     assert(refunds > 0, "refunds")
     assert(deposits >= 2 * base.flatPp.poolDeposit, "two new pools' deposits")
+    val c = EraCertState.conway
+    assertEquals(c.certsTotalDepositsTxBody(s.pp, s.cert, body)(using b).value, deposits)
+    assertEquals(
+      c.certsTotalRefundsTxBody[TxLevel.Top](s.pp, c.certDStateL.get(s.cert).accounts, body)(using
+        b,
+        tb
+      ).value,
+      refunds
+    )
     val u = EraUTxO.conway
     val (consumed, produced) = flatBalance(s)
     assertEquals(
@@ -572,6 +611,21 @@ class ConwayUtxoChecksSuite extends FunSuite:
       fields.filterNot((k, _) => isKey(17)(k)) :+ (key(17) -> uint(1))
     )
     compared(wrong, "feesOK")
+
+  test("crafted from a recorded case: a fee one lovelace over the balance, and one under"):
+    val s = seen
+      .find(s =>
+        pairs(s).exists((n, flat, _) => n == "validateValueNotConservedUTxO" && flat.isValid)
+      )
+      .getOrElse(fail("no case that conserves its value"))
+    Vector(BigInt(1), BigInt(-1)).foreach { d =>
+      compared(
+        edited(s, envelope(s))(fields =>
+          fields.filterNot((k, _) => isKey(2)(k)) :+ (key(2) -> uint(s.flat.body.fee + d))
+        ),
+        "validateValueNotConservedUTxO"
+      )
+    }
 
   test("crafted from a recorded case: values over a 1-byte limit, reported last output first"):
     val s = withParams(

@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{Address, Credential, Mismatch, PredicateFailure, TxIn, UtxoFailure}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.Test
-import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, EraTag}
 
 // The predicates of UTXO as the reference writes them, each generic in its era and asking for the
 // reference's classes (cardano-ledger f649f975, the `Rules/Utxo.hs` of each era). Each object is the
@@ -92,6 +92,34 @@ object ShelleyUtxo:
     Test.failureUnless(
       txSize <= maxTxSize,
       failure(UtxoFailure.MaxTxSize(Mismatch(txSize, maxTxSize)))
+    )
+
+  /** `validateValueNotConservedUTxO` (`Shelley/Rules/Utxo.hs:503-519`, cardano-ledger f649f975):
+    * what the body consumes, the deposits refunded found in the state's accounts, equal to what it
+    * produces, the pools registered found in the state's pools. The failure carries the values in
+    * the node's stored form, consumed first.
+    */
+  def validateValueNotConservedUTxO[E <: EraTag](
+      pp: PParams[E],
+      utxo: UTxO[E],
+      certState: CertState[E],
+      txBody: TxBody[TxLevel.Top, E]
+  )(using u: EraUTxO[E], c: EraCertState[E], s: StoredTxOut[E]): Test[PredicateFailure] =
+    val accounts = c.certDStateL.get(certState).accounts
+    val consumedValue =
+      ShelleyUTxO.shelleyConsumed[E, TxLevel.Top](pp, accounts, utxo, txBody)(using
+        u,
+        c,
+        u.txOf.bodyOf.top
+      )
+    val producedValue = ShelleyUTxO.produced(pp, c.certPStateL.get(certState), txBody)
+    Test.failureUnless(
+      u.txOf.bodyOf.outputsOf.valueOps.eqv(consumedValue, producedValue),
+      failure(
+        UtxoFailure.ValueNotConserved(
+          Mismatch(s.storedValue(consumedValue), s.storedValue(producedValue))
+        )
+      )
     )
 
   /** `validateOutputBootAddrAttrsTooBig` (`Shelley/Rules/Utxo.hs:544-558`, cardano-ledger
