@@ -244,11 +244,16 @@ def event_paths(argv=None, environ=None) -> list[str]:
     argv = sys.argv[1:] if argv is None else argv
     environ = os.environ if environ is None else environ
     given = [environ.get('GITHUB_EVENT_PATH')]
+    # argparse takes any prefix of `--event` that no other option of pr_policy.py shares, from `--e`, with its value
+    # after it or after `=`
+    def event_option(arg: str) -> bool:
+        return len(arg) >= 3 and '--event'.startswith(arg)
     for i, arg in enumerate(argv):
-        if arg == '--event' and i + 1 < len(argv):
+        option, equals, value = arg.partition('=')
+        if event_option(option) and equals:
+            given.append(value)
+        elif event_option(arg) and i + 1 < len(argv):
             given.append(argv[i + 1])
-        elif arg.startswith('--event='):
-            given.append(arg[len('--event='):])
     return [p for p in given if p]
 
 

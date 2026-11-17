@@ -357,6 +357,12 @@ class AllowlistTest(unittest.TestCase):
             self.assertEqual(fmt.policy_pull_request([], {'GITHUB_EVENT_PATH': this}), number)
             self.assertEqual(fmt.policy_pull_request(['--event', this], {}), number)
             self.assertEqual(fmt.policy_pull_request([f'--event={this}'], {'GITHUB_EVENT_PATH': this}), number)
+            # argparse's abbreviations of --event, as pr_policy.py accepts them
+            for form in (['--e', other], ['--ev', other], ['--even', other], [f'--eve={other}']):
+                with self.subTest(form=form[0]):
+                    self.assertEqual(fmt.event_paths(form, {}), [other])
+                    self.assertIsNone(fmt.policy_pull_request(form, {'GITHUB_EVENT_PATH': this}))
+            self.assertEqual(fmt.event_paths(['--files', 'f.txt', '--mode', 'transition'], {}), [])
             # events that disagree, or none, grant nothing
             self.assertIsNone(fmt.policy_pull_request(['--event', other], {'GITHUB_EVENT_PATH': this}))
             self.assertIsNone(fmt.policy_pull_request(['--event', this], {'GITHUB_EVENT_PATH': other}))
