@@ -10,6 +10,7 @@ partial: the era is named and the node refuses to enter it. Its maximum major pr
 - block, header and transaction decoding (#806);
 - the Dijkstra genesis and its protocol parameters (#807);
 - ledger rules BBODY, LEDGERS, LEDGER, UTXOW and UTXO (with Conway’s UTXOS), CERTS, CERT, POOL, GOVCERT and GOV, with failure types and reference tags, as entry points only tests reach (#54, T6);
+- UTXOW's check of the failing native scripts in Dijkstra's form, as `evalDijkstraNativeScript` evaluates them with the body's guards: a reference script with a guard, which the stored output keeps without a time-lock tree, is read again from the output's bytes and never passes unevaluated (#1126);
 - the translation of a Conway ledger state into Dijkstra (#816);
 - the upgrade of stored outputs with native reference scripts after a validated crossing block, preserving outputs created in Dijkstra (#815);
 - the other parts of the crossing (#823): the mempool's transaction translation and rematch, the ledger-view forecast across the boundary, and the Praos to Praos2 chain-dependent state.
@@ -25,7 +26,7 @@ the reference-only devnet evidence below does not satisfy that condition.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraRulesSuite` and `DijkstraRulesOracleSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite` and `DijkstraNativeScriptEvalSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
