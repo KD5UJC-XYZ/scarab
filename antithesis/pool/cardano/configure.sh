@@ -87,6 +87,29 @@ topology h2 s1 > topology-h3.json
 # give Scarab
 topology h2 h3 > topology-h1.json
 
+# RELOAD_EXPERIMENT=on (../config-reload): what s1's reload commands switch between. s1's topology at hotValency 1,
+# beside topology-h1.json's 2, so that a reload lowers the governor's target below the peers it has; and 16 KES
+# rotations of pool 1, each a fresh KES key with a certificate at counter 1 and KES period 0. Praos takes a counter
+# equal to the chain's last one or one more (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 646-647), so counter 1
+# is valid on every fork, with or without a block of an earlier rotation on it: no rotation gives s1 a counter the
+# Haskell pools refuse. Counter increments are not exercised.
+if [ "${RELOAD_EXPERIMENT:-off}" = on ]; then
+  jq '.localRoots[0].hotValency = 1' topology-h1.json > topology-s1-hot1.json
+  pool=pools-keys/pool1
+  cat "$pool/opcert.counter" > rotation.counter
+  for i in $(seq 1 16); do
+    mkdir -p "$pool/rot/$i"
+    "$CARDANO_CLI" conway node key-gen-KES --verification-key-file "$pool/rot/$i/kes.vkey" \
+      --signing-key-file "$pool/rot/$i/kes.skey"
+    "$CARDANO_CLI" conway node new-counter --cold-verification-key-file "$pool/cold.vkey" --counter-value 1 \
+      --operational-certificate-issue-counter-file rotation.counter
+    "$CARDANO_CLI" conway node issue-op-cert --kes-verification-key-file "$pool/rot/$i/kes.vkey" \
+      --cold-signing-key-file "$pool/cold.skey" --operational-certificate-issue-counter-file rotation.counter \
+      --kes-period 0 --out-file "$pool/rot/$i/opcert.cert"
+  done
+  rm rotation.counter
+fi
+
 # Scarab reads the genesis directory the devnet gives it: these five files, byte for byte.
 mkdir genesis
 for f in shelley-genesis.json byron-genesis.json alonzo-genesis.json conway-genesis.json configuration.yaml; do

@@ -34,6 +34,12 @@ FORK_SEEN="a fork is observed"
 PAYMENT_S1="s1 accepts a payment"
 PAYMENT_HASKELL="a Haskell pool accepts a payment"
 LOGS_PRESENT="every pool's log is present and not empty"
+# config-reload's positive controls: s1's reload commands (`../scarab/reload/`) ran and the node took what they gave
+# it. They are declared only where the configurator wrote the rotations, so that no other config reports them.
+RELOAD_ROTATIONS=/env/net/pools-keys/pool1/rot
+RELOAD_LOG=/logs/reload.log
+RELOAD_KES="s1 accepts a KES rotation sent by SIGHUP"
+RELOAD_TOPOLOGY="s1 reads a changed topology on SIGHUP"
 
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
 # Copies of the test commands run at once, so each line is appended under a lock, whole (after
@@ -127,6 +133,11 @@ declare_catalog() {
   if [ -d /opt/at/canary ]; then
     must_record false true sometimes Sometimes "$CANARY_SUBMITTED" false
   fi
+  if [ -d "$RELOAD_ROTATIONS" ]; then
+    for m in "$RELOAD_KES" "$RELOAD_TOPOLOGY"; do
+      must_record false true sometimes Sometimes "$m" false
+    done
+  fi
 }
 
 # log_match NAME LOG PATTERN: the first line of LOG past NAME's offset that holds the fixed string PATTERN. The
@@ -189,6 +200,20 @@ check_divergence() {
   if found=$(scarab_refusal); then
     echo "detectors: s1 refused a block: $found"
     unreachable_hit "$SCARAB_REFUSED" "$found"
+  fi
+  [ -d "$RELOAD_ROTATIONS" ] && check_reloads
+  return 0
+}
+
+# config-reload: what s1's reload commands recorded in /logs/reload.log (one JSON line per step).
+check_reloads() {
+  local found
+  # Only a change of generation the node took ("rotated"), never a reload of the generation in use.
+  if found=$(log_match reload-kes "$RELOAD_LOG" '"action":"kes","outcome":"rotated"'); then
+    sometimes "$RELOAD_KES" true "$found"
+  fi
+  if found=$(log_match reload-topology "$RELOAD_LOG" '"action":"topology","outcome":"read"'); then
+    sometimes "$RELOAD_TOPOLOGY" true "$found"
   fi
   return 0
 }

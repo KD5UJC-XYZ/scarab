@@ -19,12 +19,37 @@ keys=/data/keys
 # container keeps the evolved key; the KES key is copied last and renamed into place, so a copy cut short by a kill
 # is redone.
 umask 077
-if [ ! -e "$keys/kes.skey" ]; then
-  mkdir -p "$keys"
-  cat "$pool/vrf.skey" > "$keys/vrf.skey"
-  cat "$pool/opcert.cert" > "$keys/opcert.cert"
-  cat "$pool/kes.skey" > "$keys/kes.skey.copy"
-  mv "$keys/kes.skey.copy" "$keys/kes.skey"
+if [ "${RELOAD_EXPERIMENT:-off}" = on ]; then
+  # The reload commands' mark of this start, written again just before the JVM starts (below): until then none of
+  # them signals or changes anything.
+  rm -f /tmp/node.boot
+  # ../config-reload: /data/keys is a named volume, so that a container made again from its image keeps the
+  # credentials its reloads installed (a counter-0 certificate back after a counter-1 one would be refused). The
+  # layout is `scripts/pool/rotate_kes.py`'s: generations, and a `current` link that a reload command switches by
+  # rename. The topology is a file there too: a reload keeps the roots `--peer` gives, so s1 starts from the file alone.
+  if [ ! -L "$keys/current" ]; then
+    mkdir -p "$keys/gen-0"
+    cat "$pool/vrf.skey" > "$keys/vrf.skey"
+    cat "$pool/opcert.cert" > "$keys/gen-0/opcert.cert"
+    cat "$pool/kes.skey" > "$keys/gen-0/kes.skey"
+    cat /env/net/topology-h1.json > "$keys/topology.json"
+    ln -sfn gen-0 "$keys/current.new"
+    mv -T "$keys/current.new" "$keys/current"
+  fi
+  kes=$keys/current/kes.skey
+  opcert=$keys/current/opcert.cert
+  peers=(--topology "$keys/topology.json")
+else
+  if [ ! -e "$keys/kes.skey" ]; then
+    mkdir -p "$keys"
+    cat "$pool/vrf.skey" > "$keys/vrf.skey"
+    cat "$pool/opcert.cert" > "$keys/opcert.cert"
+    cat "$pool/kes.skey" > "$keys/kes.skey.copy"
+    mv "$keys/kes.skey.copy" "$keys/kes.skey"
+  fi
+  kes=$keys/kes.skey
+  opcert=$keys/opcert.cert
+  peers=(--peer h2:3001 --peer h3:3001)
 fi
 mkdir -p /data/db
 # WAIT_FOR, when the compose file sets it (every config but config-late-start), names the host:port pairs that must
@@ -52,19 +77,23 @@ if [ -n "${ANTITHESIS_OUTPUT_DIR:-}" ] && [ "${SCARAB_ASSERTIONS:-on}" != off ];
   (umask 022 && mkdir -p "$ANTITHESIS_OUTPUT_DIR" && touch "$ANTITHESIS_OUTPUT_DIR/sdk.jsonl")
   assertions=(--assertions-file "$ANTITHESIS_OUTPUT_DIR/sdk.jsonl")
 fi
+# For the reload commands (reload/helper_reload.sh): the JVM keeps this shell's PID, and its lines come after the log's
+# length now.
+if [ "${RELOAD_EXPERIMENT:-off}" = on ]; then
+  printf '%s %s\n' "$$" "$(stat -c %s /logs/s1.log 2> /dev/null || echo 0)" > /tmp/node.boot
+fi
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -Dcats.effect.tracing.mode=none \
   -cp '/opt/scarab/*' xyz.kd5ujc.scarab.node.Main \
   follow \
   --genesis-dir /env/net/genesis \
   --listen 0.0.0.0:3001 \
-  --peer h2:3001 \
-  --peer h3:3001 \
+  "${peers[@]}" \
   --db /data/db \
   --local-socket /ipc/node.socket \
   --metrics-listen 0.0.0.0:12798 \
   --forge \
   --vrf-skey "$keys/vrf.skey" \
-  --kes-skey "$keys/kes.skey" \
-  --opcert "$keys/opcert.cert" \
+  --kes-skey "$kes" \
+  --opcert "$opcert" \
   "${assertions[@]}"

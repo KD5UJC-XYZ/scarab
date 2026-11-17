@@ -32,6 +32,9 @@ cp "$here/scarab/Dockerfile" "$here/scarab/scarab-node.sh" "$context/"
 cp "$jar" "$context/scarab.jar"
 docker build --pull=false --network=none --platform linux/amd64 --build-arg SCARAB_COMMIT="$commit" \
   -t scarab-at-scarab:trial "$context"
+# config-reload's s1: the same image with the reload commands (scarab/Dockerfile.reload).
+docker build --pull=false --network=none --platform linux/amd64 -f "$here/scarab/Dockerfile.reload" \
+  -t scarab-at-scarab:reload "$here/scarab"
 
 build scarab-at-driver:trial driver default
 build scarab-at-canary:trial canary none
