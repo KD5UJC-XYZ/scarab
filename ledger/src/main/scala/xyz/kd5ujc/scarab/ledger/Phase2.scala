@@ -240,6 +240,7 @@ object Phase2:
       case ScriptKind.PlutusV1 => Right(PlutusLanguage.V1)
       case ScriptKind.PlutusV2 => Right(PlutusLanguage.V2)
       case ScriptKind.PlutusV3 => Right(PlutusLanguage.V3)
+      case ScriptKind.PlutusV4 => Right(PlutusLanguage.V4)
       case ScriptKind.Native   => Left(TranslationError.NativeScriptRedeemer)
 
   private def costModel(

@@ -104,10 +104,10 @@ object ConwayPlutusScript:
 
   /** The Conway script of `kind`, if Conway has the language. */
   private[conway] def of(kind: ScriptKind): Option[Bytes => ConwayPlutusScript] = kind match
-    case ScriptKind.PlutusV1 => Some(b => V1(Plutus(b)))
-    case ScriptKind.PlutusV2 => Some(b => V2(Plutus(b)))
-    case ScriptKind.PlutusV3 => Some(b => V3(Plutus(b)))
-    case ScriptKind.Native   => None
+    case ScriptKind.PlutusV1                     => Some(b => V1(Plutus(b)))
+    case ScriptKind.PlutusV2                     => Some(b => V2(Plutus(b)))
+    case ScriptKind.PlutusV3                     => Some(b => V3(Plutus(b)))
+    case ScriptKind.Native | ScriptKind.PlutusV4 => None
 
   /** A Babbage Plutus script carried into Conway (`upgradeScript`, `Conway/Scripts.hs:76-79`,
     * cardano-ledger f649f975).

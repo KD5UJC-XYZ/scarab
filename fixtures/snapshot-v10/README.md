@@ -10,7 +10,10 @@ layout with the reference build whose layout the Haskell state bytes are in reco
 sidecar holds the follow state (the era of the last block applied and the epoch verdicts) where V9's
 holds the bootstrap (ledger-lite) state. V10's sidecar was changed in place, before any deployment,
 by the owner's decision of 2026-11-14 ([#988](https://github.com/KD5UJC-XYZ/scarab/issues/988)), and
-these files were regenerated then.
+these files were regenerated then. It was changed in place again, before any deployment, by the
+owner's decision of 2026-11-16 ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85),
+[#54](https://github.com/KD5UJC-XYZ/scarab/issues/54)): PlutusV4 among the kinds of a stored script,
+which moves the sidecar's schema fingerprint and nothing else, and these files were regenerated again.
 
 Every file here is the output of the registered V9 → V10 migration step (`SnapshotMigration.toCurrent`
 through `Migrate`, i.e. `SnapshotV10.fromV9`) applied to the file of the same name in

@@ -151,7 +151,7 @@ class CodecSuite extends ScalaCheckSuite:
   test("scripts keep the layout and schema of their four derived fields") {
     assertEquals(
       Codec[Script].shape,
-      "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3},hash:Bytes," +
+      "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3|PlutusV4},hash:Bytes," +
         "native:Option[NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|" +
         "AnyOf(Vector[NativeScript])|NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|" +
         "InvalidHereafter(BigInt)}],plutus:Option[Bytes])"
@@ -167,12 +167,43 @@ class CodecSuite extends ScalaCheckSuite:
       Script(ScriptKind.PlutusV2, scriptHash, None) -> spaced(s"02 1c$hash 00 00"),
       Script(ScriptKind.PlutusV3, scriptHash, None, Some(plutusBytes)) ->
         spaced(s"03 1c$hash 00 01 0746010000220011"),
-      Script(ScriptKind.PlutusV3, scriptHash, None) -> spaced(s"03 1c$hash 00 00")
+      Script(ScriptKind.PlutusV3, scriptHash, None) -> spaced(s"03 1c$hash 00 00"),
+      Script(ScriptKind.PlutusV4, scriptHash, None, Some(plutusBytes)) ->
+        spaced(s"04 1c$hash 00 01 0746010000220011"),
+      Script(ScriptKind.PlutusV4, scriptHash, None) -> spaced(s"04 1c$hash 00 00")
     )
     scripts.foreach { (script, expected) =>
       assertEquals(hex(Codec.encode(script)), expected, script)
       assertEquals(Codec.decode[Script](Codec.encode(script)), Right(script))
     }
+  }
+
+  test("the frozen schemas of V5 to V9 name the kinds their files hold, PlutusV4 not among them") {
+    assertEquals(
+      FrozenScriptKind.ScriptKind.values.toVector.map(FrozenScriptKind.live),
+      ScriptKind.values.toVector.filter(_ != ScriptKind.PlutusV4)
+    )
+    FrozenScriptKind.ScriptKind.values.foreach(k =>
+      assertEquals(FrozenScriptKind.live(k).ordinal, k.ordinal, k.toString)
+    )
+    val frozen = NodeCodecs.scriptOf(FrozenScriptKind.codec)
+    assertEquals(
+      frozen.shape,
+      "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3},hash:Bytes," +
+        "native:Option[NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|" +
+        "AnyOf(Vector[NativeScript])|NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|" +
+        "InvalidHereafter(BigInt)}],plutus:Option[Bytes])"
+    )
+    // the kinds a previous file holds keep their bytes in the frozen schema
+    ScriptKind.values.filter(_ != ScriptKind.PlutusV4).foreach { k =>
+      val s = Script(k, scriptHash, None, Some(plutusBytes))
+      assertEquals(hex(Codec.encode(s)(using frozen)), hex(Codec.encode(s)), k.toString)
+      assertEquals(Codec.decode(Codec.encode(s))(using frozen), Right(s), k.toString)
+    }
+    val v4 = Script(ScriptKind.PlutusV4, scriptHash, None, Some(plutusBytes))
+    Codec.decode(Codec.encode(v4))(using frozen) match
+      case Left(xyz.kd5ujc.scarab.codec.BinaryError.InvalidVariant("ScriptKind", 4L, 4)) => ()
+      case other => fail(s"a frozen schema read a PlutusV4 script: $other")
   }
 
   test("an output built with a reference script is stored by the codec, its script as before") {
@@ -294,8 +325,10 @@ class CodecSuite extends ScalaCheckSuite:
   // versions (V8, #726), and the Dijkstra era among the eras and the fields Dijkstra adds to the
   // protocol parameters (V9, #54).
   // V10's sidecar was then changed in place, before any deployment, by the owner's decision of
-  // 2026-11-14 (#988): the follow state in place of the bootstrap state, with no version bump.
-  private val GoldenSidecarFingerprint = "96de6ee331c309c3"
+  // 2026-11-14 (#988): the follow state in place of the bootstrap state, with no version bump; and
+  // again by the owner's decision of 2026-11-16 (#85, #54): PlutusV4 among the kinds of script,
+  // with no version bump.
+  private val GoldenSidecarFingerprint = "00be9d774a9e8980"
   // The sidecar schema of V9 files (`SnapshotSidecarV9`), frozen at V10's change: never regenerated.
   private val GoldenV9SidecarFingerprint = "7650a759442924ec"
   // The sidecar schema of V5 and V7 files (`SnapshotSidecarV7`), frozen at V8: never regenerated.

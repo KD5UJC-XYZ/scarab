@@ -45,7 +45,7 @@ outside both schemas. Regenerating a golden to make a test pass is not a migrati
 Native snapshots are V10: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
 checkpoint binding, with framing and checksum, as V7 has it, with a sidecar schema that keeps the
 Byron update state's installer metadata (#726), names the Dijkstra era (#54) and holds the follow
-state, no longer the bootstrap state (#988), and in front of the binding the reference build whose
+state, no longer the bootstrap state (#988), names PlutusV4 among the kinds of a stored script (#85), and in front of the binding the reference build whose
 layout the Haskell bytes are in (#826); stored values remain CBOR. The binding has its own
 fingerprint golden in `CodecSuite`, next to the sidecar's and the frozen V5/V7, V8 and V9
 sidecars'. MemPack is an import/export format, not a replacement stored value.
@@ -130,7 +130,14 @@ place, before any store of V10 or V9 was deployed, by the owner's decision of 20
 [decisions](decisions.md#genesis-storage-and-keys)), rather than bumped. The step therefore reads the sidecar in
 the frozen V9 schema and writes it in the current one, the bootstrap state's flag and lite ledger
 dropped and its era and epoch verdicts kept as the follow state (`FrozenSidecar.live`). A store
-written by an earlier build in V10's former shape is not supported; none is deployed. `Migrate`
+written by an earlier build in V10's former shape is not supported; none is deployed. V10's sidecar was
+changed in place again, before any deployment, by the owner's decision of 2026-11-16 (#85, #54,
+[decisions](decisions.md#genesis-storage-and-keys)): the stored script kind (`ScriptKind`) gained PlutusV4, the language
+of a Dijkstra reference script. A kind is written as its variant index, so kinds 0 to 3 keep their bytes and the
+stores' values written before read as they did; V10's sidecar fingerprint moved and its fixtures were regenerated.
+The frozen schemas of V5 to V9 take `FrozenScriptKind` instead, as they take `FrozenEra`, so their fingerprints did
+not move and a PlutusV4 kind in a file of theirs is refused. A store written in that former V10 shape is not
+supported either; none is deployed. `Migrate`
 then has no work for V10. Unchanged kinds retain their own current versions.
 A new snapshot version, if the owner approves one ([FMT-1](design-rules.md#fmt-1)), appends global `V11`, the
 magic `SCRBSNPB` (the last character of a snapshot magic is its format number as one base-36 digit). Retire the V5

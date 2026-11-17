@@ -73,10 +73,11 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
   private val conwayV9 = "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954"
   private val nativeV9 = "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc"
   // V10 regenerated when its sidecar was changed in place, before any deployment (the owner's
-  // decision of 2026-11-14, #988): the follow state in place of the bootstrap state
-  private val previewV10 = "68fe4dfa8682e2d40d8cf56820397cce9f4d867e60e28aacef014144326f9058"
-  private val conwayV10 = "da4fd85c96689e113455eb22e41c7833c076cf3c6281904ef9c48817910db569"
-  private val nativeV10 = "2fc38d5bf4ece2d5b7a1d4203e692c3f1493a8564718961d04aabea8d993391a"
+  // decision of 2026-11-14, #988): the follow state in place of the bootstrap state; and again by
+  // the owner's decision of 2026-11-16 (#85, #54): PlutusV4 among the kinds of script
+  private val previewV10 = "afd603610b4240dad367961642169f8259ac739989de0410d22bcd90fc41bc26"
+  private val conwayV10 = "79d048ad4cf303f3bd3df4c84f15bd6eecdc2f08e59597e186d9692911b1190b"
+  private val nativeV10 = "741db431db4ec4bd6eb0fd6bed229a25dabb141be935922ae89ea703d101e44b"
   private def all(
       file: String,
       hashes: (String, String, String, String, String),
