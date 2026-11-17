@@ -930,13 +930,15 @@ left open, or differs from it, §8 lists the point under S2; it is not repeated 
   devnet `pool` and `kes-rotate` runs, and one Antithesis run of the trial's base configuration under node, clock and
   network faults, in which every property that must never fire held and forks past k came at the per-slot forger's
   rate. The Antithesis run, and the devnet `pool` run beside it, were at 04b6b8447, before the fixes of the review of
-  the final diff: the first slot of a KES period forged at its onset, and `startLeadershipCheck` at a period change.
+  the final diff: the first slot of a KES period forged at its onset, `startLeadershipCheck` at a period change, the
+  KES admission rule and the scheduler's ordered switch. The devnet `pool` and `kes-rotate` runs at 604c93439 carry
+  them.
 
 What the measurements say about §6 and §9:
 
 - **The CPU.** As §6 reads it, the count of evaluations does not change, and on the trial's topology a local comparison
   (2026-11-16, the node beside two Haskell pools at 0.1 s slots, two 300 s windows each) found no difference in the
   node's CPU between the scheduled forger and the per-slot loop beyond the spread between runs. The gain is timing.
-- **The timing (Q5, Q11).** On the devnet `pool` runs a led slot's block was built a median 44 to 46 ms before its
-  onset and adopted a median 10 to 12 ms after it. The time from the onset to the adoption is small, so the two-step
+- **The timing (Q5, Q11).** On the devnet `pool` runs a led slot's block was built a median 44 to 47 ms before its
+  onset and adopted a median 8 to 12 ms after it. The time from the onset to the adoption is small, so the two-step
   `Follower` API of Q5 is not needed.
