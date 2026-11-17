@@ -67,23 +67,22 @@ object PeerNetwork:
       .handleError(_ => false.asRight[StorageError])
       .flatMap(_.fold(error => storageFailed(error).as(false), Async[F].pure))
 
-  /** The verdict the governor's event of a completed check says ([[SnapshotCheck.said]]), when the
-    * event's root generation is the one in force: none for a check of a generation or a snapshot
-    * replaced since it started.
+  /** A completed check's verdict, said when its root generation is the one in force, whether or not
+    * the snapshot it checked was replaced since: the reference traces every result of
+    * `jobVerifyPeerSnapshot` and changes no state with it (cardano-diffusion c45735a5
+    * `Cardano/Network/PeerSelection/Governor/Monitor.hs` 689-708), and `ledgerPeerSnapshotChange`
+    * cancels no job. A check of a generation replaced is dropped, as the arming per generation
+    * cancels it.
     */
-  private[node] def publishSnapshotVerification[F[_]: Async, A, R](
+  private[node] def publishSnapshotVerification[F[_]: Async, A](
       event: Event[A],
       activeGeneration: F[BigInt],
-      check: Ref[F, SnapshotCheck[R]],
       publish: Boolean => F[Unit]
   ): F[Unit] = event match
-    case Event.SnapshotVerificationCompleted(generation, _) =>
-      activeGeneration
-        .flatMap(current =>
-          if current == generation then check.modify(_.said(generation))
-          else Async[F].pure(Option.empty[Boolean])
-        )
-        .flatMap(_.traverse_(publish))
+    case Event.SnapshotVerificationCompleted(generation, matches) =>
+      activeGeneration.flatMap(current =>
+        if current == generation then publish(matches) else Async[F].unit
+      )
     case _ => Async[F].unit
 
   /** Whether the governor takes `next` for the Genesis verification, as `ledgerPeerSnapshotChange`
@@ -105,16 +104,15 @@ object PeerNetwork:
     * governor took last (the `ledgerPeerSnapshot` of its state, which `ledgerPeerSnapshotChange`
     * replaces together with its judgement in one decision, ouroboros-network c45735a5
     * `Governor/Monitor.hs` 432-459, cardano-diffusion c45735a5 `Governor/Types.hs` 172-173), how
-    * many it has taken (`revision`), the check claimed last, by root generation and snapshot taken,
-    * and the verdict of a check that completed while it was still current, which the governor's
-    * next event says. A claim reads the snapshot it checks, so no check starts for a snapshot
-    * replaced before it, and no two for one generation and snapshot.
+    * many it has taken (`revision`), and the check claimed last, by root generation and snapshot
+    * taken. A claim reads the snapshot it checks, so no check starts for a snapshot replaced before
+    * it, and no two for one generation and snapshot. A check started is not stopped by a snapshot
+    * taken after it, and its verdict is said ([[publishSnapshotVerification]]).
     */
   private[node] final case class SnapshotCheck[R](
       taken: Option[LedgerPeerSnapshot[R]],
       revision: BigInt,
-      claimed: Option[SnapshotCheck.Key],
-      verdict: Option[(SnapshotCheck.Key, Boolean)]
+      claimed: Option[SnapshotCheck.Key]
   ):
     /** `next` written: taken as the governor takes it ([[snapshotTaken]]), at a new revision; true
       * when taken, so that its check is armed again.
@@ -136,25 +134,6 @@ object PeerNetwork:
         case Some(claim) => (copy(claimed = Some(key)), Some(claim))
         case None        => (this, None)
 
-    /** Whether the check of `key` is still the one of the snapshot taken. */
-    def current(key: SnapshotCheck.Key): Boolean = claimed.contains(key) && key.revision == revision
-
-    /** The check of `key` found `matches`: kept for the governor's event only while current. */
-    def completed(key: SnapshotCheck.Key, matches: Boolean): SnapshotCheck[R] =
-      if current(key) then copy(verdict = Some(key -> matches)) else this
-
-    /** The verdict kept, for the governor's event of `generation`, if it is still current; it is
-      * taken out either way.
-      */
-    def said(generation: BigInt): (SnapshotCheck[R], Option[Boolean]) =
-      (
-        copy(verdict = None),
-        verdict.collect {
-          case (key, matches) if key.generation == generation && current(key) =>
-            matches
-        }
-      )
-
   private[node] object SnapshotCheck:
     /** A check, by the root generation and the revision of the snapshot taken it was claimed in. */
     final case class Key(generation: BigInt, revision: BigInt):
@@ -166,7 +145,7 @@ object PeerNetwork:
     final case class Claim(key: Key, slot: BigInt, hash: xyz.kd5ujc.scarab.codec.Bytes)
 
     def initial[R](snapshot: Option[LedgerPeerSnapshot[R]]): SnapshotCheck[R] =
-      SnapshotCheck(snapshot, BigInt(0), None, None)
+      SnapshotCheck(snapshot, BigInt(0), None)
 
   /** Long-lived supervisor children report unexpected failures to the network owner. Cancellation
     * remains cancellation; the fatal Deferred carries the original defect cause unchanged.
@@ -653,8 +632,8 @@ object PeerNetwork:
       /** Start the snapshot monitor once per published root generation, and once more in it for a
         * snapshot taken at another block point ([[setSnapshot]]); it checks the snapshot taken
         * last, read where its check is claimed ([[SnapshotCheck.claim]]). The result is only
-        * traced; a reload that wins while the wait is suspended, or a snapshot taken since, makes
-        * the completion stale.
+        * traced, a snapshot taken since or not; a reload that wins while the wait is suspended
+        * makes the completion stale.
         */
       def verifySnapshot(j: LedgerStateJudgement): F[Unit] =
         if settings.consensusMode != ConsensusMode.GenesisMode ||
@@ -676,8 +655,7 @@ object PeerNetwork:
                 supervisor
                   .supervise(
                     runSnapshotCheck(
-                      check
-                        .flatTap(matches => snapshotCheck.update(_.completed(claim.key, matches))),
+                      check,
                       captured.snapshotCheckCanceled.get,
                       captured.generation,
                       events
@@ -768,7 +746,6 @@ object PeerNetwork:
               publishSnapshotVerification(
                 event,
                 runtime.get.map(_.generation),
-                snapshotCheck,
                 matches => emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotVerified(matches)))
               )
             case Event.RootsConfigured(_, _, _, Some(generation)) =>

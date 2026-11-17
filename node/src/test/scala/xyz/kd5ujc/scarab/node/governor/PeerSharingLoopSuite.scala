@@ -344,18 +344,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
   }
 
   test("a superseding generation cancels its snapshot wait and only the new check publishes") {
-    val taken = LedgerPeerSnapshot.V23[Int](
-      SnapshotPoint.Block(BigInt(10), xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(32)(1))),
-      1L,
-      Vector.empty
-    )
-    // the checks of generation 1, then of generation 2, as `verifySnapshot` claims them
-    val (claimed1, first) = PeerNetwork.SnapshotCheck.initial(Some(taken)).claim(BigInt(1))
-    val key1 = first.fold(fail("no check in generation 1"))(_.key)
     for
-      check <- Ref.of[IO, PeerNetwork.SnapshotCheck[Int]](claimed1)
-      verdict = (key: PeerNetwork.SnapshotCheck.Key, result: Deferred[IO, Boolean]) =>
-        result.get.flatTap(matches => check.update(_.completed(key, matches)))
       oldResult <- Deferred[IO, Boolean]
       oldCanceled <- Deferred[IO, Unit]
       currentGeneration <- Ref.of[IO, BigInt](1)
@@ -363,7 +352,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       events <- Queue.unbounded[IO, Event[Int]]
       oldCheck <- PeerNetwork
         .runSnapshotCheck(
-          verdict(key1, oldResult),
+          oldResult.get,
           oldCanceled.get,
           BigInt(1),
           events
@@ -378,7 +367,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       newResult <- Deferred[IO, Boolean]
       newCanceled <- Deferred[IO, Unit]
       newCheck <- PeerNetwork
-        .runSnapshotCheck(verdict(key1, newResult), newCanceled.get, BigInt(1), events)
+        .runSnapshotCheck(newResult.get, newCanceled.get, BigInt(1), events)
         .start
       _ <- newResult.complete(true)
       _ <- newCheck.joinWithNever
@@ -394,16 +383,12 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       _ <- PeerNetwork.publishSnapshotVerification(
         staleVerdict,
         currentGeneration.get,
-        check,
         matched => traces.update(_ :+ (BigInt(1) -> matched))
       )
-      key2 <- check
-        .modify(_.claim(BigInt(2)))
-        .map(_.fold(fail("no check in generation 2"))(_.key))
       currentResult <- Deferred[IO, Boolean]
       currentCanceled <- Deferred[IO, Unit]
       currentCheck <- PeerNetwork
-        .runSnapshotCheck(verdict(key2, currentResult), currentCanceled.get, BigInt(2), events)
+        .runSnapshotCheck(currentResult.get, currentCanceled.get, BigInt(2), events)
         .start
       _ <- currentResult.complete(true)
       _ <- currentCheck.joinWithNever
@@ -411,7 +396,6 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       _ <- PeerNetwork.publishSnapshotVerification(
         currentVerdict,
         currentGeneration.get,
-        check,
         matched => traces.update(_ :+ (BigInt(2) -> matched))
       )
       actual <- traces.get

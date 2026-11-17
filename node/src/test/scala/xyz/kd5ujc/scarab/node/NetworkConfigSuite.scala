@@ -733,23 +733,18 @@ class NetworkConfigSuite extends FailsOnUncaught:
     // a check of the snapshot at 100 claimed in generation 0, then the snapshot at 200 taken
     val (claimedA, a) = SnapshotCheck.initial(p100).claim(BigInt(0))
     val (tookB, _) = claimedA.take(p200)
-    // the check of 100 completes after the snapshot was replaced: no verdict kept
-    val afterA = a.fold(fail("no check of 100"))(c => tookB.completed(c.key, false))
-    assertEquals(afterA.verdict, None, "the verdict of a snapshot replaced is not kept")
     // a check claimed now, whatever it read before, is of the snapshot taken: 200
-    val (claimedB, b) = afterA.claim(BigInt(0))
+    val (claimedB, b) = tookB.claim(BigInt(0))
     assertEquals((slotOf(a), slotOf(b)), (Some(BigInt(100)), Some(BigInt(200))), "each its own")
+    assertEquals(
+      (a.map(_.key), b.map(_.key)),
+      (Some(Key(BigInt(0), BigInt(0))), Some(Key(BigInt(0), BigInt(1)))),
+      "one generation, two snapshots"
+    )
     assertEquals(claimedB.claim(BigInt(0))._2, None, "no second check of 200 in generation 0")
     val (nextGeneration, again) = claimedB.claim(BigInt(1))
     assertEquals(slotOf(again), Some(BigInt(200)), "a generation of its own arms it again")
     assertEquals(nextGeneration.claim(BigInt(0))._2, None, "no check for an older generation")
-    // the check of 200 completes: its verdict is said once, for its generation only
-    val kept = b.fold(fail("no check of 200"))(c => claimedB.completed(c.key, true))
-    assertEquals(kept.verdict, Some(Key(BigInt(0), BigInt(1)) -> true), "kept")
-    assertEquals(kept.said(BigInt(1))._2, None, "not for another generation")
-    val (afterSaid, said) = kept.said(BigInt(0))
-    assertEquals(said, Some(true), "said")
-    assertEquals(afterSaid.said(BigInt(0))._2, None, "said once")
   }
 
   private def hashAt(n: Int) = xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(32)(n.toByte))
@@ -840,15 +835,26 @@ class NetworkConfigSuite extends FailsOnUncaught:
   }
 
   test(
-    "in Genesis mode a check of the snapshot replaced says nothing, and the snapshot taken is checked once"
+    "in Genesis mode a check of a snapshot replaced still says its verdict, once, and the snapshot taken is checked once"
   ) {
+    // `jobVerifyPeerSnapshot` traces every result and changes no state (cardano-diffusion c45735a5
+    // `Governor/Monitor.hs` 689-708); `ledgerPeerSnapshotChange` cancels no job (ouroboros-network
+    // c45735a5 `Governor/Monitor.hs` 432-459)
     Settled { settle =>
       for
         said <- Ref.of[IO, Vector[Boolean]](Vector.empty)
         lookups <- Ref.of[IO, Vector[BigInt]](Vector.empty)
-        release <- Deferred[IO, Unit]
-        // a check of the snapshot at 100 is held in its lookup until the test releases it
-        store = immutableAt(lookups, slot => release.get.whenA(slot == BigInt(100)))
+        releaseA <- Deferred[IO, Unit]
+        releaseB <- Deferred[IO, Unit]
+        // each check is held in its lookup until the test releases it: the chain's block at 100
+        // is not the snapshot's (false), the one at 200 is (true)
+        store = immutableAt(
+          lookups,
+          slot =>
+            if slot == BigInt(100) then releaseA.get
+            else if slot == BigInt(200) then releaseB.get
+            else IO.unit
+        )
         seen <- running(
           genesisRoots,
           verdicts(said),
@@ -863,24 +869,23 @@ class NetworkConfigSuite extends FailsOnUncaught:
               _ <- net.reloadRoots(genesisRoots) *> settle
               heldBefore <- lookups.get
               _ <- net.setSnapshot(Some(snapshotAt(200))) *> settle
-              _ <- release.complete(()) *> settle
+              _ <- releaseA.complete(()) *> settle
+              afterA <- said.get
+              _ <- releaseB.complete(()) *> settle
               // written again, the snapshot at 200 is not checked again in this generation
               _ <- net.setSnapshot(Some(snapshotAt(200))) *> settle
               done <- (lookups.get, said.get).tupled
-            yield (heldBefore, done)
+            yield (heldBefore, afterA, done)
           }
         }
       yield
-        val (heldBefore, (looked, verdict)) = seen
+        val (heldBefore, afterA, (looked, verdict)) = seen
         assert(
           heldBefore.lastOption.contains(BigInt(100)),
           s"a check of 100 in flight: $heldBefore"
         )
-        assertEquals(
-          looked.count(_ == BigInt(200)),
-          1,
-          "the snapshot at 200 checked once"
-        )
-        assertEquals(verdict, Vector(true), "only the check of the snapshot taken, at 200, said")
+        assertEquals(afterA, Vector(false), "the check of 100, replaced, says its verdict")
+        assertEquals(looked.count(_ == BigInt(200)), 1, "the snapshot at 200 checked once")
+        assertEquals(verdict, Vector(false, true), "each verdict once: 100's, then 200's")
     }
   }
