@@ -153,8 +153,10 @@ type CertState[E <: EraTag] = E match
   case Conway   => ConwayCertState
   case Dijkstra => ConwayCertState
 
-/** `Accounts era`: the stake accounts lost the pointer map and gained the DRep in Conway. */
-type Accounts[E <: EraTag] = E match
+/** `Accounts era`: the stake accounts lost the pointer map and gained the DRep in Conway. Every
+  * case is an [[AccountsRecord]], so a delegation state of any era is a `DState[Accounts[E]]`.
+  */
+type Accounts[E <: EraTag] <: AccountsRecord = E match
   case Shelley  => ShelleyAccounts
   case Allegra  => ShelleyAccounts
   case Mary     => ShelleyAccounts

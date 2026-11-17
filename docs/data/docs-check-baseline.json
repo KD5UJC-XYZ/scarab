@@ -1370,12 +1370,6 @@
   {
    "kind": "missing-symbol",
    "path": "docs/findings.md",
-   "key": "SoftForks.restrictPoolMetadataHash",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/findings.md",
    "key": "Translate.toConway",
    "count": 2
   },
@@ -1407,12 +1401,6 @@
    "kind": "unregistered-pin",
    "path": "docs/findings.md",
    "key": "plutus@5272e713",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/implementer-notes.md",
-   "key": "SoftForks.restrictPoolMetadataHash",
    "count": 1
   },
   {

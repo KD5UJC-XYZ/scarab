@@ -547,6 +547,25 @@ Conway's rules on the classes follow as the rest of stage 2.
     the body's map arrived in.
   - The functions that read the stored proposals, and the checks `conwayGovTransition` writes inline, wait for the
     governance state's era types (`EraGov`, tracked on #85).
+- **Conway's certificate rules** (`ledger/.../era/rules/Certs.scala`): CERTS, CERT, DELEG, GOVCERT and
+  Shelley's POOL, each the reference's transition under its name, generic in its era over the state classes
+  `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` (Conway's instances over the
+  records the node keeps), and run on the same judgment as the flat rules.
+  - From the same ticked state they judge every transaction of the recorded Conway refusal corpora, at its
+    protocol version and at 9, 10 and 11, as the flat rules do: the failures in order, or the certificate
+    state (`ConwayCertsChecksSuite`); so do the transactions of the recorded Preview Conway blocks, judged
+    against a recorded state at 9, 10 and 11. A refusal carries no state, so crafted sequences the rules accept
+    compare the states of delegations moved, pools re-registered and retired, and committee members.
+  - The corpus records most of their failures; a pool's wrong network, oversized metadata hash, low cost
+    and repeated VRF key, and a resigned committee member, only crafted certificates reach. A test fails if
+    any failure of the rules is reached by neither.
+  - The epoch sums (a DRep's expiry, the dormant shift, the retirement limit) wrap in `Word64` as the
+    reference's `addEpochInterval` and `binOpEpochNo` do (`CertsEpochWrapSuite`). The flat rules sum them
+    as integers, refusing an expiry outside `EpochNo` and comparing a retirement with an unbounded limit, so
+    the two paths differ only past epoch 2^64; that gap is the flat rules' (#85), which stage 3 deletes.
+  - `EraCertState` lands without the deposit and refund totals of a body (`certsTotalDepositsTxBody`,
+    `certsTotalRefundsTxBody`), which follow now that the body's totals are on main (#85). Two more gaps are on #85: the committee and its proposals as the node's records in the environments,
+    and a pool's parameters with the node's field types.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

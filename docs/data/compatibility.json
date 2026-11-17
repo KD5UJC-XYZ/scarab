@@ -865,7 +865,8 @@
           "DevnetRefusedTxSuite",
           "BbodySuite",
           "ValueConservationSuite",
-          "EpochGeometrySuite"
+          "EpochGeometrySuite",
+          "ConwayCertsChecksSuite"
         ],
         "issues": [
           828,

@@ -78,9 +78,7 @@ object ConwayTxCert:
           case None    => ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(c, to))
       )
     case Certificate.RegisterPool(params) =>
-      poolKey(params.operator).map(id =>
-        ConwayTxCertPool(PoolCert.RegPool(StakePoolParams(id, params)))
-      )
+      StakePoolParams.of(params).map(p => ConwayTxCertPool(PoolCert.RegPool(p)))
     case Certificate.RetirePool(pool, epoch) =>
       (poolKey(pool), EpochNo.fromBigInt(epoch).leftMap(EraTxError.Vocab(_)))
         .mapN((p, e) => ConwayTxCertPool(PoolCert.RetirePool(p, e)))

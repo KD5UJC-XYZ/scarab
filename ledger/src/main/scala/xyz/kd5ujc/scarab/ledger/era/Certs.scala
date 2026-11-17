@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Anchor, PoolIdentity, PoolParams}
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.{Anchor, ByteStrings, PoolIdentity, PoolParams}
 import xyz.kd5ujc.scarab.ledger.state.{
   ColdCommittee,
   Coin,
@@ -36,9 +37,16 @@ enum PoolCert:
   * are equal when what those bytes mean is equal ([[PoolParams.identity]]), as the reference's
   * derived `Eq` compares the decoded `StrictSeq StakePoolRelay` and `PoolMetadata`: an empty relay
   * list read as `80` and as `9800` is one list. `sppId`, the pool's key hash, is the operator's 28
-  * bytes as the reference types them (`sppId :: KeyHash StakePool`).
+  * bytes as the reference types them (`sppId :: KeyHash StakePool`). The metadata's hash (`pmHash`
+  * of `sppMetadata`) is read when the parameters are, so POOL reads it as the reference's field;
+  * only [[of]] makes one, so the key hash is always the operator's and the hash always that of the
+  * metadata it keeps.
   */
-final class StakePoolParams private[era] (val sppId: KeyHash[StakePool], val value: PoolParams):
+final class StakePoolParams private (
+    val sppId: KeyHash[StakePool],
+    val value: PoolParams,
+    val metadataHash: Option[Bytes]
+):
   private lazy val identity: PoolIdentity = PoolParams.identity(value)
 
   override def equals(that: Any): Boolean = that match
@@ -50,6 +58,18 @@ final class StakePoolParams private[era] (val sppId: KeyHash[StakePool], val val
 object StakePoolParams:
   given CanEqual[StakePoolParams, StakePoolParams] = CanEqual.derived
 
+  /** The parameters a decoder read, with the pool's key hash and their metadata's hash. A decoder
+    * has already read the metadata with its URL bounded ([[PoolParams.decodeMetadata]]), so its
+    * hash is always read.
+    */
+  private[era] def of(value: PoolParams): Either[EraTxError, StakePoolParams] =
+    (
+      KeyHash.fromBytes[StakePool](value.operator).leftMap(EraTxError.Vocab(_)),
+      value.metadata
+        .traverse(PoolParams.metadataHash(_)(using ByteStrings.Chunked))
+        .leftMap(EraTxError.Decode(_))
+    ).mapN(new StakePoolParams(_, value, _))
+
 /** What a Conway delegation delegates to (`data Delegatee`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:379-383`, cardano-ledger f649f975): a
   * pool, a DRep, or both. A delegation to neither has no value.
@@ -58,6 +78,29 @@ enum Delegatee:
   case DelegStake(pool: KeyHash[StakePool])
   case DelegVote(drep: DRep)
   case DelegStakeVote(pool: KeyHash[StakePool], drep: DRep)
+
+object Delegatee:
+  /** `mkDelegatee` (`Conway/TxCert.hs:439-445`, cardano-ledger f649f975): what a pool and a DRep
+    * delegate to, none if neither is given.
+    */
+  def mkDelegatee(pool: Option[KeyHash[StakePool]], drep: Option[DRep]): Option[Delegatee] =
+    (pool, drep) match
+      case (None, None)       => None
+      case (Some(p), None)    => Some(DelegStake(p))
+      case (None, Some(d))    => Some(DelegVote(d))
+      case (Some(p), Some(d)) => Some(DelegStakeVote(p, d))
+
+  /** `getStakePoolDelegatee` (`Conway/TxCert.hs:447-451`, cardano-ledger f649f975). */
+  def getStakePoolDelegatee(d: Delegatee): Option[KeyHash[StakePool]] = d match
+    case DelegStake(pool)        => Some(pool)
+    case DelegVote(_)            => None
+    case DelegStakeVote(pool, _) => Some(pool)
+
+  /** `getDRepDelegatee` (`Conway/TxCert.hs:453-456`, cardano-ledger f649f975). */
+  def getDRepDelegatee(d: Delegatee): Option[DRep] = d match
+    case DelegStake(_)           => None
+    case DelegVote(drep)         => Some(drep)
+    case DelegStakeVote(_, drep) => Some(drep)
 
 /** The staking certificates from Conway (`data ConwayDelegCert`, `Conway/TxCert.hs:473-486`,
   * cardano-ledger f649f975).
