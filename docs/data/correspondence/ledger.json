@@ -8906,6 +8906,46 @@
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's; Shelley's own failure, which each later era's UTXO injects as its build has it when it runs this",
    "digest": "aa9e5c8a2eab6544"
+  },
+  "def ledger.era.dijkstra.DijkstraNativeScript#eval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "symbol": "evalDijkstraNativeScript",
+     "lines": [
+      594,
+      615
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraNativeScriptEvalSuite"
+   ],
+   "digest": "775daadb09dab1ce"
+  },
+  "def ledger.TxChecks.failedDijkstraNativeScripts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
+     "symbol": "validateFailedBabbageScripts",
+     "lines": [
+      225,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraRulesSuite"
+   ],
+   "digest": "2a2ac0cabbe66b28"
   }
  },
  "glue": [
@@ -9140,6 +9180,14 @@
     "def ledger.era.dijkstra.DijkstraNativeScript#timelock",
     "def ledger.era.dijkstra.DijkstraTxOut.fromStored",
     "def ledger.era.dijkstra.DijkstraTxOut.toStored"
+   ]
+  },
+  {
+   "reason": "which native scripts UTXOW evaluates: the flat scripts' time-lock trees, or Dijkstra's scripts read again in Dijkstra's form from the bytes a witness arrived in and the output the store keeps, with the body's guards; a flat native script with no tree to evaluate is a defect, never a pass (#1126). The reference holds every script in its era's own form and has no counterpart",
+   "definitions": [
+    "class ledger.LedgerFailure.NativeScriptUnread",
+    "def ledger.rules.DijkstraStAnnTx.nativeScripts",
+    "enum ledger.rules.Utxow.NativeScripts"
    ]
   }
  ]

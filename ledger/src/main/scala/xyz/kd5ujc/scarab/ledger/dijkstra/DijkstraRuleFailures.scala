@@ -229,6 +229,13 @@ enum DijkstraHalt:
     */
   case NoDijkstraCase(failure: PredicateFailure)
 
+  /** A native script the transaction can use that Dijkstra's reader does not read again from the
+    * bytes it arrived in or the output the store keeps it in, so that UTXOW has no Dijkstra form to
+    * evaluate it in (#1126). The block decoder and the store admit none, so it is a defect of one
+    * of them, not a verdict.
+    */
+  case UnreadScript(hash: Bytes, cause: xyz.kd5ujc.scarab.ledger.era.EraTxError)
+
 object DijkstraHalt:
   /** The refusal of a part not implemented yet (`DijkstraNotYet.Rules`). */
   def pending(what: DijkstraPending): DijkstraHalt = NotYet(DijkstraNotYet.Rules, what)

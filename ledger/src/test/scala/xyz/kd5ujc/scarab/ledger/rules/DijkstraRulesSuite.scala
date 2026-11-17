@@ -469,3 +469,73 @@ class DijkstraRulesSuite extends FunSuite:
       Left(Vector(DijkstraLedgerFailure.TxRefScriptsSizeTooBig(Mismatch(6442450941L, 204800L))))
     )
   }
+
+  // ---- native scripts in Dijkstra's form (#1126)
+
+  private def bytes(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
+
+  private val guardKey = "55" * 28
+  // `[6, [0, keyhash]]`: a guard by a key credential
+  private val guard = "8206" + "8200581c" + guardKey
+  // the devnet transaction's signer: the payment key of the genesis address
+  private val genesisSigner =
+    "8200581c" + "7be6f4db9b5c16681157f9c2e15e57e341e21ecf94e553896f897a44"
+
+  /** The genesis input of the devnet transaction at a script address instead, of the native script
+    * `native`, which the output holds as its reference script; stored as the store keeps a Dijkstra
+    * output ([[xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.toStored]]), so a script with a
+    * guard is kept without a time-lock tree. With the script's hash.
+    */
+  private def lockedBy(native: String): (Bytes, DijkstraLedger) =
+    val hash = xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(bytes("00" + native))
+    val script = "8200" + native
+    val wrapped = "d818" + f"58${script.length / 2}%02x" + script
+    // `{0: script address, 1: the genesis funds, 3: the script}`
+    val raw = bytes(
+      "a3" + "00" + "581d70" + hash.hex + "01" + "1b0003328b944c4000" + "03" + wrapped
+    )
+    val out = xyz.kd5ujc.scarab.ledger.CborRead
+      .decode(raw, V12.nestedLimits)
+      .fold(e => fail(e.toString), identity)
+    val stored = xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut
+      .decode(out)
+      .map(xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.toStored)
+      .fold(e => fail(e.toString), identity)
+    val input = xyz.kd5ujc.scarab.ledger
+      .TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(genesisAddress), 0)
+    val l = ledger(pp)
+    val utxo = xyz.kd5ujc.scarab.ledger.Utxo(Map(input -> stored))
+    hash -> Counted(
+      l.state.copy[Dijkstra](utxo = l.state.utxo.copy[Dijkstra](utxo = UtxoTables(utxo))),
+      PlutusStats.zero
+    )
+
+  test("UTXOW refuses a needed reference script with a guard the body does not have") {
+    val (hash, from) = lockedBy(guard)
+    assertEquals(
+      from.state.utxo.utxo.utxo.toMap.values.flatMap(_.scriptRef).map(_.native).toVector,
+      Vector(None)
+    )
+    assertEquals(
+      utxow(devnetTx, from).map(_.left.map(_.toChain.toVector)),
+      Right(Left(Vector(DijkstraUtxowFailure.ScriptWitnessNotValidating(Set(hash)))))
+    )
+  }
+
+  test("UTXOW applies a transaction whose needed script holds by a signature beside its guard") {
+    val (_, from) = lockedBy("8202" + "82" + guard + genesisSigner)
+    val after = utxow(devnetTx, from).fold(h => fail(s"$h"), _.fold(f => fail(s"$f"), identity))
+    assertEquals(after.state.utxo.utxo.keys.size, devnetTx.body.outputs.size)
+  }
+
+  test("the flat check takes no native script without a tree as holding") {
+    val (hash, from) = lockedBy(guard)
+    val ann = DijkstraStAnnTx
+      .of(devnetTx, from.state.utxo.utxo.utxo)
+      .fold(p => fail(s"$p"), identity)
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.TxChecks
+        .failedNativeScripts(ann.conway.tx, ann.conway.scripts, Some(Set(hash)), Set.empty),
+      Left(xyz.kd5ujc.scarab.ledger.LedgerFailure.NativeScriptUnread(devnetTx.id, hash))
+    )
+  }
