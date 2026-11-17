@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
+import cats.effect.kernel.Outcome
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
-import fs2.concurrent.SignallingRef
+import fs2.Stream
+import fs2.concurrent.{Signal, SignallingRef}
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 import scala.concurrent.duration.*
@@ -293,6 +295,37 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     }
   }
 
+  /** The seeds of `TestControl` 's scheduler the stream's orderings are tried under. */
+  private val seeds: Vector[(Int, String)] =
+    (1 to 64).toVector.map(n =>
+      n -> java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
+    )
+
+  /** `schedule` 's computation of `signal` on `TestControl` 's clock under `seed`, run until
+    * nothing is left to run, then looked at with `observe`, then cancelled, in guaranteed cleanup.
+    * The result is what `observe` gave, if the computation ran until it was cancelled; a
+    * computation that failed or ended before fails the test.
+    */
+  private def quiescent[A](
+      schedule: LeaderSchedule[IO],
+      signal: Signal[IO, InForce],
+      seed: String
+  )(observe: LeaderSchedule[IO] => IO[A]): IO[A] =
+    for
+      stop <- Deferred[IO, Unit]
+      control <- TestControl.execute(
+        schedule.computed(signal).compile.drain.background.use(ended => IO.race(ended, stop.get)),
+        seed = Some(seed)
+      )
+      observed <- (control.tickAll *> observe(schedule))
+        .guarantee(stop.complete(()).void *> control.tickAll)
+      result <- control.results
+      _ <- result match
+        case Some(Outcome.Succeeded(Right(()))) => IO.unit
+        case other =>
+          IO.raiseError(new AssertionError(s"the computation did not run until cancelled: $other"))
+    yield observed
+
   test("a value replaced before its computation began never undoes the schedule after it") {
     // the signal gives no inputs, then at once an epoch's, which is the value in force: fs2's
     // `switchMap` can start the first value's computation after the second's ends, whichever order
@@ -300,28 +333,16 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     // complete, stays
     val g = geometry(100, 300, 0.seconds)
     val i = inputs(g, 1)
-    val replaced = new fs2.concurrent.Signal[IO, InForce]:
-      def discrete = fs2.Stream(InForce.none, InForce.of(i)) ++ fs2.Stream.never[IO]
-      def continuous = fs2.Stream.repeatEval(get)
+    val replaced = new Signal[IO, InForce]:
+      def discrete = Stream(InForce.none, InForce.of(i)) ++ Stream.never[IO]
+      def continuous = Stream.repeatEval(get)
       def get = IO.pure(InForce.of(i))
-    (1 to 64).toVector
-      .traverse { n =>
-        val seed = java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
-        for
-          control <- TestControl.execute(
-            for
-              schedule <- LeaderSchedule.create[IO](g)
-              _ <- schedule.computed(replaced).compile.drain.start
-            yield schedule,
-            seed = Some(seed)
-          )
-          _ <- control.tickAll
-          result <- control.results
-          kept <- result match
-            case Some(cats.effect.kernel.Outcome.Succeeded(schedule)) =>
-              schedule.schedules.get.map(_.of(i).exists(_.complete))
-            case other => IO.raiseError(new AssertionError(s"the program did not start: $other"))
-        yield n -> kept
-      }
+    seeds
+      .traverse((n, seed) =>
+        LeaderSchedule
+          .create[IO](g)
+          .flatMap(quiescent(_, replaced, seed)(_.schedules.get.map(_.of(i).exists(_.complete))))
+          .tupleLeft(n)
+      )
       .map(kept => assertEquals(kept.filterNot(_._2).map(_._1), Vector.empty, "seeds that lost it"))
   }
