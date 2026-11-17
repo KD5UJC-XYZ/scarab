@@ -328,11 +328,11 @@ the freeze, a fork across the previous boundary that changes the mark snapshot, 
 key, forging switched off or on. An epoch whose slots have all passed is never computed (Amaru's discussion point,
 "schedule while syncing").
 
-**The stream.** One long-lived fiber runs `signal.discrete.switchMap(computeAll)`: a new value cancels the computation
-under way and starts again from the new inputs. For each epoch of the value it walks the slots in order, in chunks of
-a fixed number of slots (proposed: 100). For each chunk it evaluates the output-only check of every slot
-(`Leadership.decide`, the `output` and the threshold) and, for a led slot only, builds its proof; it then adds the
-chunk's led slots and certificates to the schedule and sleeps for
+**The stream.** One long-lived fiber takes the signal's changes in order: a new value stops the computation under way,
+waits for its end, and starts again from the new inputs (`LeaderSchedule.computed`; not fs2's `switchMap`, §8). For
+each epoch of the value it walks the slots in order, in chunks of a fixed number of slots (proposed: 100). For each
+chunk it evaluates the output-only check of every slot (`Leadership.decide`, the `output` and the threshold) and, for
+a led slot only, builds its proof; it then adds the chunk's led slots and certificates to the schedule and sleeps for
 
 `(time left until the epoch's first slot - margin - chunks left × the last chunk's computation time) / (chunks left)`
 
@@ -926,13 +926,16 @@ left open, or differs from it, §8 lists the point under S2; it is not repeated 
   and a value replaced and restored before the stream read the replacement, over 64 seeds of `TestControl`, the
   computation cancelled after each run and its failure the test's. `ForgeInterleavingSuite`: the interleavings §7 lists, each placed
   with `Forger.Point`.
-- **The evidence (S3)** is in the [evidence log](../compatibility/evidence-log-5.md), the entries for #1101: the
+- **The evidence (S3)** is in the evidence log, the entries for #1101 ([part 5](../compatibility/evidence-log-5.md),
+  and [part 6](../compatibility/evidence-log-6.md) for the run after the merge): the
   devnet `pool` and `kes-rotate` runs, and one Antithesis run of the trial's base configuration under node, clock and
   network faults, in which every property that must never fire held and forks past k came at the per-slot forger's
   rate. The Antithesis run, and the devnet `pool` run beside it, were at 04b6b8447, before the fixes of the review of
   the final diff: the first slot of a KES period forged at its onset, `startLeadershipCheck` at a period change, the
   KES admission rule and the scheduler's ordered switch. The devnet `pool` and `kes-rotate` runs at 604c93439 carry
-  them.
+  them, and so does a second Antithesis run, at e3d4692d0 (#1109 merged), with KES periods of 250 slots so that
+  the run crosses them: every property that must never fire held across 60 KES periods, and the Scala node's
+  key reached its end at the same slot as the Haskell pools'.
 
 What the measurements say about §6 and §9:
 

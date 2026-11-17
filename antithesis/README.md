@@ -115,6 +115,17 @@ divergence at 0.5 blocks per second. So `pool` cannot ask whether the forks that
 can. `pool` stays in every round, because it shows a fork at the start as a permanent split. The configurator takes
 k and the epoch length from `SECURITY_PARAM` and `EPOCH_LENGTH`.
 
+## `pool/config-short-kes`: KES periods of 250 slots
+
+An experiment beside `pool`: the genesis' `slotsPerKESPeriod` is 250 (25 s), as `scripts/devnet.py pool` sets it. At
+create-env's 129,600 slots a timeline reaches its first KES period change only 3.6 hours of virtual time after the
+system start, so a run of `pool` reaches the forger's update of the key at a period's first slot, and the rule that
+only an attempt admitted at its slot changes the key (#1101, the leader schedule's §5.3), only in a timeline that
+long. This config reaches them about every 25 s, under node kills, pauses and clock skips; the refusal detectors then
+say whether the Haskell pools take every block s1 forges across a period change. The pools' certificates allow
+create-env's 60 evolutions, so they expire 1,500 s after the system start, every pool's alike. The configurator takes
+the period from `SLOTS_PER_KES_PERIOD`. Nothing in the workload sends SIGHUP, so a reload is not exercised.
+
 ## `pool/config-late-start`: the earlier start order
 
 An experiment beside `pool`: s1's container starts only once both Haskell pools listen, as `pool` started it until
@@ -168,12 +179,15 @@ antithesis/pool/scripts/launch.sh on 15m              # validate, then a run wit
 CONFIG=config-canary antithesis/pool/scripts/launch.sh off 15m   # the canary
 CONFIG=config-k200 antithesis/pool/scripts/launch.sh on 15m  # k = 200
 CONFIG=config-late-start antithesis/pool/scripts/launch.sh on 15m  # experiment: the earlier start order
+CONFIG=config-short-kes SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # 250-slot KES periods
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 
-`launch.sh` takes faults `on` or `off` and a duration, since the tenant predates `--max-compute-hours`. A 15-minute
-run cost 18 to 20 compute hours, about 7 of them setup, so a longer run pays for setup once. Snouty pushes the images
-and the config image to the tenant registry.
+`launch.sh` takes faults `on` or `off` and a duration, which still bounds a run on the tenant's release 66; there
+`MAX_COMPUTE_HOURS` bounds it by its cost instead (`--max-compute-hours`, setup included; snouty takes one or the
+other) and `SETUP_TIMEOUT` fails it at once if setup takes longer (`--setup-timeout`; the server's default is 5m). A
+15-minute run cost 15 to 20 compute hours, about 7 of them setup, so a longer run pays for setup once. Snouty pushes
+the images and the config image to the tenant registry.
 
 It launches with the tenant's own launcher, `amaru-cardano`, as cardano-foundation/moog does
 (`src/User/Agent/PushTest.hs`, spec 107). That launcher applies node faults (kill, stop, pause), network faults and
