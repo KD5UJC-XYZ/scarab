@@ -21,10 +21,14 @@ failure carries a rule name as its identity (`ruleName` is derived from the case
 writes the shapes of the ledger's `EncCBOR` instances (constructor tag first, a `Mismatch` as two
 fields in line, reversed where the ledger swaps them, sets under tag 258, `StrictMaybe` as an empty or
 one-element list), and `LocalSubmission.reasonItem` wraps the failures as the hard-fork combinator's
-`ApplyTxErr`: `[[6, [failure, ...]]]`; a transaction of another era gets the era mismatch
-`[[era, name], [6, "Conway"]]`. The LEDGER-level checks (treasury value, reference-script size,
-withdrawals), CERTS and GOV run before UTXOW, as in the ledger. A submitted transaction is judged
-by the ledger's MEMPOOL rule under the accumulating judgment (`rules/Judge.scala`,
+`ApplyTxErr` of the pool's era: `[[6, [failure, ...]]]` in Conway, the era's own instances before it
+(`PreConwayFailureCbor`; a failure that has no encoding there has no reply, `NoEncoding`); a transaction of another
+era that does not reach the pool's gets the era mismatch `[[era, name], [ledger era, name]]` (#934). In Conway the LEDGER-level checks (treasury value, reference-script size,
+withdrawals), CERTS and GOV run before UTXOW, as in the ledger, and a submitted transaction is judged
+by the ledger's MEMPOOL rule; from Shelley to Babbage the pool applies the era's LEDGER rule (`EarlierLedger`), as
+the reference's mempool does in those eras, where Conway's applies MEMPOOL (the `ApplyTx` instances,
+`Shelley/API/Mempool.hs:325-344` and `Conway.hs:50-59`, cardano-ledger `f649f975`). Either is run under the
+accumulating judgment (`rules/Judge.scala`,
 `docs/design/rule-interpreter-as-built.md`): every rule boundary of the reference is a sub-rule
 that always runs, so the failures of different rules are all reported, in the reference's order.
 Within each rule every check records its failure and the rule goes on to the state the reference
@@ -75,7 +79,8 @@ is answered on every version as the reference's codec does). The server asks a `
 decoder refuses ends the connection with the protocol's decode error (`ProtocolError.UndecodableTxId`);
 `AwaitAcquire` waits until the pool's slot or
 transactions differ (`Mempool.awaitChange`, woken by `add` and by `sync`). `LocalMonitor` is the reference's
-server in numbers: the snapshot's slot is the one after the tip; a transaction counts for its ledger size (the
+server in numbers: the snapshot's slot is the one after the tip; `NextTx` lists each transaction under the era of the
+pool's ledger, the era it is held in (#934); a transaction counts for its ledger size (the
 serialised transaction without the `is_valid` byte, `sizeTxF`) plus 4 bytes, its execution units and the bytes
 of the reference scripts of its inputs and reference inputs (`Entry.refScriptBytes`, measured when it was
 added); the capacity is the one the pool enforces (`MempoolState.capacity`, `Capacity.of`, which also does the

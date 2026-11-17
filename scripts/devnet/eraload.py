@@ -229,6 +229,8 @@ class EraLoad:
         self.plutus_evidence = []
         self.auxiliary_evidence = []
         self.refusal_evidence = []
+        self.monitor = None  # the LocalTxMonitor walk of an era (`eramonitor.walk`), when the scenario has one
+        self.monitor_evidence = []  # its checks
         self.last_verdict = None  # `Verdict` of the last `expect_rejected`
         self.must_reject_matches = []  # `ListMatch` (or None) of each `expect_reject` submission
         self.negative_matches = []  # `ListMatch` (or None) of each `expect_rejected` verdict
@@ -361,11 +363,12 @@ class EraLoad:
             extra_signers=(), native_scripts=(), valid_from=None, ttl=None, spend_extra=(), metadata=None,
             aux_scripts=(), collateral=None, required_signers=None, reference_inputs=None, network_id=None,
             collateral_return=None, total_collateral=None, avoid=(), fee=FEE, expect_reject=None, record=None, refusal=None,
-            **build):
+            build_only=None, **build):
         """Spend from `wallet` (largest ADA-only output plus any `spend_extra` inputs), pay `outputs`
         ((address, coin, assets, kwargs) tuples), send the change back to the wallet, sign, submit and
         wait for the confirmation. Returns the transaction id, or None; nothing is submitted once the run has
-        asked the load to stop (`stop`)."""
+        asked the load to stop (`stop`). With `build_only`, an era name, the transaction is written as that era
+        writes it and returned with its id, `(tx, txid)`, and not submitted."""
         if self.stop.is_set():
             return None
         utxos = [u for u in self.funds(wallet.address) if not u[2] and u[0] not in avoid]
@@ -381,7 +384,8 @@ class EraLoad:
             total += u[1]
         chosen += list(spend_extra)
         slot = self.tip["slot"] if self.tip else 0
-        if ttl is None and era == "shelley":
+        written = build_only or era  # the era whose transaction this is
+        if ttl is None and written == "shelley":
             ttl = slot + 3000
         # change = inputs + withdrawals + refunds + (assets minted) - outputs - fee - deposits
         coin_in = sum(u[1] for u in chosen) + sum((withdrawals or {}).values()) + refund
@@ -400,7 +404,7 @@ class EraLoad:
             for p, names in (out_assets or {}).items():
                 for n, q in names.items():
                     assets.setdefault(p, {})[n] = assets.setdefault(p, {}).get(n, 0) - q
-            tx_outputs.append(eratx.tx_out(era, address, coin, out_assets, **kw))
+            tx_outputs.append(eratx.tx_out(written, address, coin, out_assets, **kw))
         assets = {p: {n: q for n, q in names.items() if q} for p, names in assets.items()}
         assets = {p: names for p, names in assets.items() if names}
         if any(q < 0 for names in assets.values() for q in names.values()):
@@ -410,7 +414,7 @@ class EraLoad:
         if change < 2_000_000:
             self.log({"skipped": label, "reason": f"change {change} too small"})
             return None
-        tx_outputs.append(eratx.tx_out(era, wallet.address, change, assets or None))
+        tx_outputs.append(eratx.tx_out(written, wallet.address, change, assets or None))
         signers = [wallet.pay, *extra_signers]
         wits = list(native_scripts)
         sorted_inputs = sorted((bytes.fromhex(t), i) for t, i in (u[0] for u in chosen))
@@ -420,7 +424,7 @@ class EraLoad:
             build["script_data"] = build["script_data"](build.get("redeemers"), build.get("datums"))
         try:
             tx, txid = eratx.build_tx(
-                era, [u[0] for u in chosen], tx_outputs, fee, signers, ttl=ttl, valid_from=valid_from, certs=certs,
+                written, [u[0] for u in chosen], tx_outputs, fee, signers, ttl=ttl, valid_from=valid_from, certs=certs,
                 withdrawals=withdrawals, mint=mint, native_scripts=wits, collateral=collateral,
                 required_signers=required_signers, reference_inputs=reference_inputs, network_id=network_id,
                 metadata=metadata, aux_scripts=aux_scripts, collateral_return=collateral_return,
@@ -430,6 +434,8 @@ class EraLoad:
             return None
         if self.stop.is_set():
             return None
+        if build_only is not None:
+            return tx, txid
         if refusal is not None:
             # the reference's raw refusal is kept for the failure encodings; nothing is expected of its text
             from .erarefusal import record as record_refusal
@@ -1247,6 +1253,11 @@ class EraLoad:
         self.transfers(era, 2)
         if era != "conway":  # the ledger-state layout the withdrawals read is the pre-Conway one
             self.withdrawals(era)
+        if self.monitor is not None and self.once(f"monitor-{era}"):
+            try:
+                self.monitor(era)
+            except (Exception, SystemExit) as e:  # judged from its evidence: a missing check is incomplete
+                self.log({"monitorFailed": era, "error": repr(e)})
 
     # ------------------------------------------------------------ the worker
     POINTS = [("mid", 230), ("late", 440)]

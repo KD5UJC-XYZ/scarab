@@ -770,7 +770,7 @@
       "issues": [
         29
       ],
-      "notes": "LocalTxMonitor and local ChainSync. Both mini-protocols (9 and 5) are served on `--local-socket` with the reference's CBOR: the mempool snapshot (acquire, await, next transaction, membership, sizes, measures) and whole blocks from the immutable store and the volatile chain. `devnet.py ntc` compares both with the reference node byte for byte (361 comparable snapshots, `cardano-cli conway query tx-mempool`, 76 local ChainSync blocks). Remaining: exercising the execution-unit and reference-script measures with Plutus and reference-script transactions on a network, a db-sync/Ogmios client, Byron blocks and Dijkstra over the local socket."
+      "notes": "LocalTxMonitor and local ChainSync. Both mini-protocols (9 and 5) are served on `--local-socket` with the reference's CBOR: the mempool snapshot (acquire, await, next transaction, membership, sizes, measures) and whole blocks from the immutable store and the volatile chain. `devnet.py ntc` compares both with the reference node byte for byte (361 comparable snapshots, `cardano-cli conway query tx-mempool`, 76 local ChainSync blocks). The mempool holds transactions in every era from Shelley to Conway, in the era of its ledger, and `NextTx` lists them under that era (#934). Remaining: exercising the execution-unit and reference-script measures with Plutus and reference-script transactions on a network, a db-sync/Ogmios client, Byron blocks and Dijkstra over the local socket."
     },
     {
       "id": "F3",

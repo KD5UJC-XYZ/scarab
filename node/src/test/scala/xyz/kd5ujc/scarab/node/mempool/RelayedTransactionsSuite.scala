@@ -113,7 +113,12 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
     // several rows share a body, and so an id: one of each
     val distinct = accepted.distinctBy(_.txid)
     val offered = distinct.zipWithIndex.map((row, i) =>
-      TxSubmissionClient.Held(hex(row.txid.getOrElse("")), row.raw.size, i.toLong + 1)
+      TxSubmissionClient.Held(
+        hex(row.txid.getOrElse("")),
+        row.raw.size,
+        i.toLong + 1,
+        xyz.kd5ujc.scarab.protocol.Era.Conway
+      )
     )
     val bodies = distinct.map(row => hex(row.txid.getOrElse("")) -> row.raw).toMap
     val source = new TxSubmissionClient.Source[IO]:
@@ -121,13 +126,21 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
       def after(ticket: Long, max: Int) = IO.pure(offered.filter(_.ticket > ticket).take(max))
       def awaitAfter(ticket: Long) =
         if offered.exists(_.ticket > ticket) then IO.unit else IO.never
-      def body(id: Bytes) = IO.pure(bodies.get(id))
+      def body(id: Bytes) = IO.pure(
+        bodies
+          .get(id)
+          .map(
+            xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, _)
+          )
+      )
     SignallingRef[IO, Vector[Bytes]](Vector.empty).flatMap { taken =>
       val sink = new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
-        def submit(originals: Vector[Bytes])(using Raise[IO, NetworkError]) =
-          taken.update(_ ++ originals)
+        def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
+            Raise[IO, NetworkError]
+        ) =
+          taken.update(_ ++ originals.map(_.original))
       val delivered = taken.waitUntil(_.size == distinct.size) *> taken.get
       typed {
         Peers.linked(protocols = Set(4)).use { (client, server) =>
@@ -160,18 +173,24 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
       reading: TxSubmission2.TransactionReader
   ): IO[(Either[NetworkError, Unit], Vector[Bytes])] =
     val id = TxSubmission2.bodyId(tx).fold(e => fail(e.message), identity)
-    val one = TxSubmissionClient.Held(id, tx.size, 1L)
+    val one = TxSubmissionClient.Held(id, tx.size, 1L, xyz.kd5ujc.scarab.protocol.Era.Conway)
     val source = new TxSubmissionClient.Source[IO]:
       def reader = RelayedTransactions
       def after(ticket: Long, max: Int) = IO.pure(Vector(one).filter(_.ticket > ticket))
       def awaitAfter(ticket: Long) = if ticket < 1 then IO.unit else IO.never
-      def body(wanted: Bytes) = IO.pure(Option.when(wanted == id)(tx))
+      def body(wanted: Bytes) = IO.pure(
+        Option.when(wanted == id)(
+          xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, tx)
+        )
+      )
     Ref.of[IO, Vector[Bytes]](Vector.empty).flatMap { taken =>
       val sink = new TxSubmissionServer.Sink[IO]:
         def reader = reading
         def known(id: Bytes) = IO.pure(false)
-        def submit(originals: Vector[Bytes])(using Raise[IO, NetworkError]) =
-          taken.update(_ ++ originals)
+        def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
+            Raise[IO, NetworkError]
+        ) =
+          taken.update(_ ++ originals.map(_.original))
       typed {
         Peers.linked(protocols = Set(4)).use { (client, server) =>
           for

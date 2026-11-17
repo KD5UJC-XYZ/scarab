@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Evidence log, part 4 of 5
+# Evidence log, part 4 of 6
 
 Part of the [compatibility matrix](../compatibility.md#evidence-log). Each run is one bullet with its former table columns as sub-bullets; the text of every cell is unchanged.
 
-Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 3](evidence-log-3.md), [part 5](evidence-log-5.md).
+Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 3](evidence-log-3.md), [part 5](evidence-log-5.md), [part 6](evidence-log-6.md).
 
 - **Run:** Final rebased Preview integration checks (#21, 2026-10-19)
   - **Result:** Docker `check`: 5,273 passed/17 optional-data skips across 14 modules, formatting/Werror/default fuzz/Scalafix; 250 Python tests and three CLI help checks pass. Follow-up empty-relay regression plus both native POOL adapter controls: three passed, formatting/Scalafix pass. Independent source audit distinguishes rule extraction from the empty-relay representation change; original signed/body/witness bytes are retained. [Final scenario and published-head CI](https://github.com/KD5UJC-XYZ/scarab/pull/209)

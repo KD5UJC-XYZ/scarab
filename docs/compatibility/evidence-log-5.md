@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Evidence log, part 5 of 5
+# Evidence log, part 5 of 6
 
 Part of the [compatibility matrix](../compatibility.md#evidence-log). Each run is one bullet with its former table columns as sub-bullets; the text of every cell is unchanged.
 
-Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 3](evidence-log-3.md), [part 4](evidence-log-4.md).
+Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 3](evidence-log-3.md), [part 4](evidence-log-4.md), [part 6](evidence-log-6.md).
 
 - **Run:** KES write-back by atomic exchange (#918), level 2: `python3 scripts/devnet.py --name kr918b kes-rotate` and `python3 scripts/devnet.py --name df918b dynamic-forging` (defaults)
   - **Result:** Both passed, and neither logged `kesWrittenByRename` or `kesFileAbsent`: every write-back went through `renameat2(RENAME_EXCHANGE)` (Linux; the key directories are bind mounts of the host's file system). `kes-rotate`: four rotations through the `current` link (counters 1 to 4), 29 driver runs all exiting 0, no `kesReloadRefused` or `kesPersistFailed`, 12 KES evolutions written back, 53 forged and 53 adopted, the Haskell pools' counter 4 equal to the last on the final chain, 10/10 ledger comparisons. `dynamic-forging`: 18 leader slots of the pool scheduled while forging was disabled (slots 1343 to 2226), none forged and no slot started, only `away/` in the key directory, 29 blocks after the files were put back, the start-up SIGHUP answered `NotEffective`; 53 forged, 53 adopted, 53 on the final chain, 0 missed of 53 leader slots outside the window, 13 evolutions written back, 12/12 ledger comparisons.

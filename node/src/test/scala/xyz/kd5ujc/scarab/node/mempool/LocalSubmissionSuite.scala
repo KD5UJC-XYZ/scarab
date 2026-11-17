@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Functor
@@ -210,7 +211,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
         .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
     )
     LocalSubmission
-      .reasonItem(Rejection.Ledger(failure))
+      .reasonItem(Rejection.Ledger(failure), Some(Era.Conway))
       .fold(
         error => assertEquals(error.message, failure.message),
         bytes => fail(s"unavailability encoded rejection bytes ${bytes.hex}")
@@ -320,7 +321,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
         )
       )
     )
-    LocalSubmission.reasonItem(rejection) match
+    LocalSubmission.reasonItem(rejection, Some(Era.Conway)) match
       case Left(error: xyz.kd5ujc.scarab.node.ntc.RefusalPresentationError) =>
         assert(error.failure eq failure)
       case other => fail(s"presentation defect became rejection bytes: $other")
@@ -347,7 +348,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                     magic,
                     item =>
                       first.getAndSet(false).flatMap {
-                        case true => IO.pure(LocalSubmission.response(rejection))
+                        case true =>
+                          IO.pure(LocalSubmission.response(Refused(rejection, Some(Era.Conway))))
                         case false =>
                           LocalSubmission
                             .handler(mempool)(fatal => IO(fail(s"unexpected fatal: $fatal")))(item)

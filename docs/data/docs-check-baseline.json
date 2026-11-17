@@ -338,12 +338,6 @@
   {
    "kind": "missing-path",
    "path": "docs/architecture/relay.md",
-   "key": "ledger/rules/Ledger.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture/relay.md",
    "key": "network/Mux.scala",
    "count": 1
   },

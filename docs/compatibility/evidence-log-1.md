@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Evidence log, part 1 of 5
+# Evidence log, part 1 of 6
 
 Part of the [compatibility matrix](../compatibility.md#evidence-log). Each run is one bullet with its former table columns as sub-bullets; the text of every cell is unchanged.
 
-Other parts: [part 2](evidence-log-2.md), [part 3](evidence-log-3.md), [part 4](evidence-log-4.md), [part 5](evidence-log-5.md).
+Other parts: [part 2](evidence-log-2.md), [part 3](evidence-log-3.md), [part 4](evidence-log-4.md), [part 5](evidence-log-5.md), [part 6](evidence-log-6.md).
 
 External acceptance #294: measured source `8a9ea6b2896c6bfed26c82b7c05e2ef5919dc636`, 2026-10-21 UTC, command and actual image `sha256:4fb49a113489a705c33c4a07a7d9be8d24f26a28ad7e5b5bf61bb12956f71b92` in [retained receipt](../data/external-acceptance-294.json). Docker `check` and 366 script tests pass; all 78 declared acceptance cases pass without skips. Both test subprocesses report 16 GiB maximum heap, four processors and `/work` working directory. Original complete inputs are hash-verified before/after. One native Preview body comparison is required and completed; independent broader equality and ordered failure-list obligations remain unchanged.
 

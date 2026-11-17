@@ -32,7 +32,8 @@
         "evidence-log-2",
         "evidence-log-3",
         "evidence-log-4",
-        "evidence-log-5"
+        "evidence-log-5",
+        "evidence-log-6"
       ]
     },
     {
@@ -1695,13 +1696,16 @@
       "id": "relay-and-mempool",
       "component": "Relay and mempool",
       "status": "implemented",
-      "summary": "Pure mempool state, TxSubmission2 in both roles and typed rejections",
+      "summary": "Pure mempool state in every era from Shelley to Conway, TxSubmission2 in both roles over every Shelley-based era's transactions, and typed rejections",
       "evidence": {
         "suites": [
           "MempoolSuite",
           "MempoolMeasureSuite",
           "MempoolBackpressureSuite",
-          "TxSubmission2Suite"
+          "TxSubmission2Suite",
+          "EraMempoolSuite",
+          "MempoolInterventionSuite",
+          "TxSubmissionLimitsSuite"
         ]
       },
       "page": "docs/compatibility/relay-and-mempool.md"
@@ -1745,7 +1749,8 @@
           "DeepQuerySuite",
           "NtcQueryArgumentsSuite",
           "NtcQueryRecordsSuite",
-          "QueryGoldenSuite"
+          "QueryGoldenSuite",
+          "ReferenceRefusalSuite"
         ],
         "paths": [
           "fixtures/reference/ntc-query-arguments/cases.jsonl",

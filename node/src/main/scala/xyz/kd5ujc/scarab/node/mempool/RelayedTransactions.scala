@@ -6,8 +6,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.{DetachedRecords, Tx}
 import xyz.kd5ujc.scarab.protocol.{Era, ProtocolError, TxSubmission2}
 
-/** Conway's transactions as the node-to-node transaction submission reads them, in the replies it
-  * takes and the ones it sends (#702).
+/** The transactions of each Shelley-based era as the node-to-node transaction submission reads
+  * them, in the replies it takes and the ones it sends (#702, #934).
   *
   * The reference reads a `GenTx` of the reply with the ledger's decoder of the era
   * ([[TxSubmission2.TransactionReader]]), from a stream of tokens: a transaction holding a `RecD`
@@ -29,11 +29,14 @@ object RelayedTransactions extends TxSubmission2.TransactionReader:
     maxStringBytes = TxSubmission2.MaxOriginalBytes
   )
 
-  def body(original: Bytes): Either[ProtocolError, Bytes] =
-    DetachedRecords.read(original, limits, DetachedRecords.Shapes.transaction(Era.Conway))(
+  def body(original: Bytes): Either[ProtocolError, Bytes] = body(original, Era.Conway)
+
+  /** The body of a transaction of `era`, read as [[read]] reads it, as far as its id needs. */
+  override def body(original: Bytes, era: Era): Either[ProtocolError, Bytes] =
+    DetachedRecords.read(original, limits, DetachedRecords.Shapes.transaction(era))(
       ProtocolError.Codec(_)
     ) { root =>
-      Tx.envelopeParts(root, Era.Conway)
+      Tx.envelopeParts(root, era)
         .leftMap(_ => ProtocolError.ExpectedConwayTransactionMembers)
         .flatMap(parts =>
           Either.cond(
@@ -44,17 +47,20 @@ object RelayedTransactions extends TxSubmission2.TransactionReader:
         )
     }
 
-  /** The transaction read whole, as the mempool reads it (`MempoolState.parseParts`: the parts by
-    * `Tx.envelopeParts`, each by the ledger's decoders through `Tx.fromBlock`), so that the codec
-    * and the mempool give one verdict. A refusal is the codec's, as in the reference (#708); a
-    * decoder that throws is not caught here, and the channel that runs the codec ends the
-    * connection with a decoder defect, not as the peer's fault.
+  def read(original: Bytes): Either[ProtocolError, Bytes] = read(original, Era.Conway)
+
+  /** The transaction of `era` read whole, as the mempool reads one of that era
+    * (`MempoolState.parseIn`: the parts by `Tx.envelopeParts`, each by the era's decoders through
+    * `Tx.fromBlock`), so that the codec and the mempool give one verdict. A refusal is the codec's,
+    * as in the reference (#708), whose codec reads a `GenTx` with the decoder of the era it names
+    * (`dispatchDecoder`); a decoder that throws is not caught here, and the channel that runs the
+    * codec ends the connection with a decoder defect, not as the peer's fault.
     */
-  def read(original: Bytes): Either[ProtocolError, Bytes] =
-    DetachedRecords.read(original, limits, DetachedRecords.Shapes.transaction(Era.Conway))(
+  override def read(original: Bytes, era: Era): Either[ProtocolError, Bytes] =
+    DetachedRecords.read(original, limits, DetachedRecords.Shapes.transaction(era))(
       ProtocolError.Codec(_)
     ) { root =>
-      Tx.envelopeParts(root, Era.Conway)
-        .flatMap(parts => Tx.fromBlock(parts, Era.Conway).as(parts.body))
+      Tx.envelopeParts(root, era)
+        .flatMap(parts => Tx.fromBlock(parts, era).as(parts.body))
         .leftMap(ProtocolError.UndecodableTransaction(_))
     }

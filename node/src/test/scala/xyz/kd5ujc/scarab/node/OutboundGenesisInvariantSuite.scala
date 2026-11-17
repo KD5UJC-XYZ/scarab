@@ -52,7 +52,7 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
     val transactions = new TxSubmissionServer.Sink[IO]:
       def reader = RelayedTransactions
       def known(id: xyz.kd5ujc.scarab.codec.Bytes) = IO.pure(false)
-      def submit(originals: Vector[xyz.kd5ujc.scarab.codec.Bytes])(using
+      def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
           Raise[IO, NetworkError]
       ) = IO.unit
     ServerHandlers(NtNHeader.codec, Resource.pure(cursor), blocks, transactions)

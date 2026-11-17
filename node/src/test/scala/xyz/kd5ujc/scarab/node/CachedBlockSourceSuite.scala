@@ -41,7 +41,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
     val transactions = new TxSubmissionServer.Sink[IO]:
       def reader = RelayedTransactions
       def known(id: Bytes) = IO.pure(false)
-      def submit(originals: Vector[Bytes])(using
+      def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
           cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
       ) = IO.unit
     ServerHandlers(NtNHeader.codec, Resource.pure(cursor), blocks, transactions)

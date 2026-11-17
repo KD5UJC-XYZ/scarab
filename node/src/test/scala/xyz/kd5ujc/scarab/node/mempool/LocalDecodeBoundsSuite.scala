@@ -75,7 +75,12 @@ class LocalDecodeBoundsSuite extends CatsEffectSuite:
       .flatMap(pool =>
         LocalSubmission.handler(pool)(fatal => IO(fail(s"unexpected fatal: $fatal")))(wrapped)
       )
-      .map(result => assertEquals(result, LocalSubmission.response(expected)))
+      .map(result =>
+        assertEquals(
+          result,
+          LocalSubmission.response(Refused(expected, Some(xyz.kd5ujc.scarab.protocol.Era.Conway)))
+        )
+      )
   }
 
   test("a query of more than 2,000,000 bytes and 200,000 items is read") {

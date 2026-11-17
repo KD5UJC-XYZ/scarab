@@ -103,8 +103,9 @@ import xyz.kd5ujc.scarab.node.mempool.{
   LocalSubmission,
   Mempool,
   MempoolEnv,
-  MempoolLedger
+  PoolLedger
 }
+import xyz.kd5ujc.scarab.ledger.rules.Hfc
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
@@ -153,7 +154,8 @@ object Main extends IOApp:
   private[node] def synchronizeMempool(
       mempool: Mempool[IO],
       scheduling: Scheduling[IO],
-      epochSlots: BigInt
+      epochSlots: BigInt,
+      transition: Hfc.Transition
   )(
       chain: VolatileChain[MirrorState],
       raws: Vector[xyz.kd5ujc.scarab.codec.Bytes]
@@ -169,11 +171,12 @@ object Main extends IOApp:
       ledger <- scheduling.compute
         .within(
           IO.delay(
-            MempoolLedger
+            PoolLedger
               .at(
                 chain.state,
                 chain.tipRef,
-                environment.copy(geometry = chain.state.geometry(environment.geometry))
+                environment.copy(geometry = chain.state.geometry(environment.geometry)),
+                transition
               )
               .leftMap(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
           )
@@ -1460,19 +1463,21 @@ object Main extends IOApp:
         def ask[E >: MempoolEnv]: IO[E] =
           ref.get.map { chain =>
             val tip = chain.tipRef.fold(BigInt(0))(_.slot)
+            // the clock of a transaction of the pool's era, in a block of the slot after the tip
+            val clock = (era: Era) => txClock.at(chain.state, era, tip + 1)
             MempoolEnv(
               globals,
               chain.state.geometry(genesis.geometry),
               run.plutus.evaluator,
               run.plutus.decoder,
-              clock = Some(txClock.at(chain.state, Era.Conway, tip + 1))
+              clock = Some(clock)
             ): E
           }
       mempoolLedger <- scheduling.compute
         .within(IO.delay {
           val tip = resumed.lastOption.map(_.ref).orElse(anchor)
           val current = resumed.lastOption.fold(state)(_.state)
-          MempoolLedger
+          PoolLedger
             .at(
               current,
               tip,
@@ -1481,7 +1486,8 @@ object Main extends IOApp:
                 current.geometry(genesis.geometry),
                 run.plutus.evaluator,
                 run.plutus.decoder
-              )
+              ),
+              setup.praos.forks.transition(genesis.geometry.k)
             )
             .left
             .map(ChainError.MempoolTick(tip.fold(BigInt(0))(_.slot + 1), _))
@@ -1515,7 +1521,12 @@ object Main extends IOApp:
                 Raise[IO, NodeError]
             ): IO[Unit] =
               given Ask[IO, MempoolEnv] = mempoolEnvironment
-              synchronizeMempool(mempool, scheduling, genesis.geometry.byron.epochSlots)(
+              synchronizeMempool(
+                mempool,
+                scheduling,
+                genesis.geometry.byron.epochSlots,
+                setup.praos.forks.transition(genesis.geometry.k)
+              )(
                 chain,
                 added
               )

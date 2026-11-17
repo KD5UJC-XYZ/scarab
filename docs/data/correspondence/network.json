@@ -341,19 +341,19 @@
     {
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs",
-     "symbol": "hardForkInjectTxs",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs",
+     "symbol": "dispatchDecoder",
      "lines": [
-      182,
-      224
+      156,
+      166
      ]
     }
    ],
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/934",
-   "note": "a GenTx not tagged Conway is a protocol error here (the codec's private body reader); the reference decodes it and the mempool translates a Shelley to Babbage transaction into the current era",
-   "digest": "2f00e9e261a92f0d"
+   "note": "the node runs eraCodec, which carries the GenTx and GenTxId of every Shelley-based era under the era's index, as the reference's dispatchEncoder and dispatchDecoder do; a Byron GenTx or GenTxId is a protocol error here, where the reference decodes it and its mempool refuses it with the era mismatch. codec, Conway's alone, is the view the Message facade keeps",
+   "digest": "aacb19cb02468398"
   },
   "type protocol.PeerSharing.Values.Amount": {
    "upstream": [
@@ -617,6 +617,61 @@
    "structure": "same",
    "note": "StBusy: longWait, 60 seconds",
    "digest": "61552a11253566a9"
+  },
+  "class protocol.TxSubmission2.EraTxId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/AcrossEras.hs",
+     "symbol": "OneEraGenTxId",
+     "lines": [
+      128,
+      128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the era of the NS and, in a Shelley-based era, its 32-byte id; where the reference compares ids, by the hash alone whatever the era (OneEraGenTxId's Eq and Ord, lines 167-181), the node compares the id (TxSubmission2Runtime.eraRules, the sink's known)",
+   "digest": "81ebf727ca1bec4c"
+  },
+  "class protocol.TxSubmission2.EraTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/AcrossEras.hs",
+     "symbol": "OneEraGenTx",
+     "lines": [
+      127,
+      127
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the era of the NS and the transaction's bytes, which the era's GenTx carries CBOR-in-CBOR",
+   "digest": "a4ea297cb917a4b2"
+  },
+  "def protocol.TxSubmission2.eraCodec": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs",
+     "symbol": "dispatchDecoder",
+     "lines": [
+      156,
+      166
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/934",
+   "note": "[era, #6.24(tx)] and [era, id] of every Shelley-based era, each transaction read by the decoders of the era it names; a Byron GenTx or GenTxId, which the reference decodes, is a protocol error here",
+   "digest": "4a92ba985c7840b1"
   }
  },
  "glue": [
@@ -762,6 +817,19 @@
     "def protocol.Handshake.Term#equals",
     "def protocol.Handshake.Term#hashCode",
     "def protocol.Handshake.Term#toString"
+   ]
+  },
+  {
+   "reason": "the Message facade's view of an engine message of eraCodec, in a runtime violation's report: each id and transaction without its era",
+   "definitions": [
+    "def protocol.TxSubmission2.fromEraEngine"
+   ]
+  },
+  {
+   "reason": "the reference's credit and request rules (TxSubmissionPolicy) over era-tagged ids, comparing them by their hash as OneEraGenTxId's Eq and Ord do, a received transaction answering the request when its id is one asked for",
+   "definitions": [
+    "val network.TxSubmission2Runtime.eraRules",
+    "def network.TxSubmission2Runtime.Rules#requested"
    ]
   }
  ]

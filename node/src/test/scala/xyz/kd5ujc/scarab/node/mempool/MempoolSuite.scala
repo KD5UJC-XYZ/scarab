@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
@@ -166,7 +167,7 @@ object TxKit:
 
     /** The ledger after the transaction, which the test knows to be valid. */
     def applied(tx: Tx, slot: BigInt = 1000): MempoolLedger =
-      l.submit(tx, env.txEnv(slot, l, 0), env.rules).fold(f => sys.error(f.message), identity)
+      l.submit(tx, env.txEnv(slot, l), env.rules).fold(f => sys.error(f.message), identity)
 
   /** Alice pays `value - fee` to bob from `txIn(i)`. */
   def pay(i: Int, fee: BigInt = ada, value: BigInt = 100 * ada): (Bytes, Bytes) =
@@ -191,7 +192,9 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     s.add(raw, env, Source.Local).map(_._1)
 
   private def reasonItem(rejection: Rejection): Bytes =
-    LocalSubmission.reasonItem(rejection).fold(error => fail(error.message), identity)
+    LocalSubmission
+      .reasonItem(rejection, Some(Era.Conway))
+      .fold(error => fail(error.message), identity)
 
   test("the next-slot view applies the full epoch transition before transaction validation") {
     import xyz.kd5ujc.scarab.ledger.state.{DeltaCoin, FuturePParams, PulsingRewUpdate, RewardUpdate}
@@ -270,11 +273,15 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       _ <- pool.sync(Right(base), 1000)
       invalidKnown <- sink.known(childId)
       rolledBack <- pool.snapshot
-      _ <- sink.submit(Vector(parent, child))
+      _ <- sink.submit(
+        Vector(parent, child).map(
+          xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, _)
+        )
+      )
       offered <- pool.source.after(first.last.ticket, 10)
     yield
       assert(!adoptedKnown)
-      assertEquals(retained, Some(child))
+      assertEquals(retained.map(_.original), Some(child))
       assert(!invalidKnown)
       assertEquals(rolledBack.entries, Vector.empty)
       assertEquals(offered.map(e => e.id), Vector(parentId, childId))
@@ -324,7 +331,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assertEquals(dropped.map(_._1.raw), Vector(raw))
       assert(!known)
       assertEquals(retried, Right(id))
-      assertEquals(body, Some(raw))
+      assertEquals(body, Some(xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx(Era.Conway, raw)))
   }
 
   test("a refused conflicting transaction remains requestable after a fork frees its input") {
@@ -390,7 +397,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
     // a transaction of another era is the combinator's era mismatch
     assertEquals(
-      reasonItem(Rejection.WrongEra(5)).hex,
+      reasonItem(Rejection.WrongEra(5, Era.Conway)).hex,
       "8282056742616262616765820666436f6e776179"
     )
     assert(ghostId.size == 32)
@@ -454,7 +461,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     val l = ledger(1).withProtocol(11)
     val parsed = MempoolState.parse(raw).fold(r => fail(r.toString), _._2)
     assertEquals(
-      l.reapply(parsed, env.txEnv(0, l, 0), env.rules).map(_ => ()),
+      l.reapply(parsed, env.txEnv(0, l), env.rules).map(_ => ()),
       Left(
         LedgerFailure.Rejected(
           id,
@@ -571,12 +578,11 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
   )
 
-  private def replay(s: MempoolState): Either[LedgerFailure, MempoolLedger] =
+  private def replay(s: MempoolState): Either[LedgerFailure, PoolLedger] =
     val base = s.base.fold(u => sys.error(u.toString), identity)
-    s.entries.zipWithIndex.foldLeft[Either[LedgerFailure, MempoolLedger]](Right(base)) {
-      case (Right(l), (e, i)) =>
-        l.reapply(e.tx, env.txEnv(s.tipSlot, base, i), env.rules)
-      case (left, _) => left
+    s.entries.foldLeft[Either[LedgerFailure, PoolLedger]](Right(base)) {
+      case (Right(l), e) => l.reapply(e.tx, env.txEnv(s.tipSlot, base), env.rules)
+      case (left, _)     => left
     }
 
   property("held transactions always apply in order to the tip state; accounting stays exact") {
@@ -591,7 +597,13 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
           s = s.remove(Set(candidates(i)._2), env)._1
         case Op.Block(n) =>
           val adopted = s.entries.take(n)
-          val base = s.base.fold(u => sys.error(u.toString), identity)
+          val base = s.base.fold(
+            u => sys.error(u.toString),
+            {
+              case conway: MempoolLedger => conway
+              case other                 => sys.error(s"not a Conway ledger: ${other.era}")
+            }
+          )
           val l1 = adopted.foldLeft(base)((l, e) => l.applied(e.tx, s.tipSlot))
           history = base :: history
           s = s.sync(Right(l1), s.tipSlot + 1, env)._1
@@ -631,7 +643,12 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
         _ <- mempool
           .sink(failure => IO(fail(s"unexpected fatal: $failure")))
-          .submit(Vector(t2, Bytes(Vector(1, 2))))
+          .submit(
+            Vector(t2, Bytes(Vector(1, 2))).map(
+              xyz.kd5ujc.scarab.protocol.TxSubmission2
+                .EraTx(xyz.kd5ujc.scarab.protocol.Era.Conway, _)
+            )
+          )
         // as a client we offer what we hold, once per peer cursor
         offered <- mempool.source.after(0L, 10)
         later <- mempool.source.after(offered.head.ticket, 10)
@@ -649,7 +666,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         assert(knownBefore && !knownOther)
         assertEquals(offered.map(_.id), Vector(id1, id2))
         assertEquals(later.map(_.id), Vector(id2))
-        assertEquals(body, Some(t2))
+        assertEquals(body.map(_.original), Some(t2))
         assert(log.exists { case MempoolEvent.Added(`id3`, _, 3, _) => true; case _ => false })
         assert(log.exists {
           case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false

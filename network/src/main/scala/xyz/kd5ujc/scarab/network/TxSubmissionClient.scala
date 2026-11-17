@@ -5,7 +5,8 @@ import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.TxSubmission2
+import xyz.kd5ujc.scarab.protocol.{Era, TxSubmission2}
+import xyz.kd5ujc.scarab.protocol.TxSubmission2.{EraTx, EraTxId}
 import scala.concurrent.duration.*
 
 import NetworkError.RuntimeViolation
@@ -18,7 +19,10 @@ import NetworkError.RuntimeViolation
   * per-peer cursor is the highest ticket already offered.
   */
 object TxSubmissionClient:
-  final case class Held(id: Bytes, bytes: Int, ticket: Long)
+  /** A held transaction as it is offered: its id, its size, its ticket and the era it is held in,
+    * which its id and its body are tagged with ([[TxSubmission2.eraCodec]]).
+    */
+  final case class Held(id: Bytes, bytes: Int, ticket: Long, era: Era)
 
   trait Source[F[_]]:
     /** Up to `max` transactions with a ticket above `ticket`, oldest first. */
@@ -27,8 +31,8 @@ object TxSubmissionClient:
     /** Completes once a transaction with a ticket above `ticket` exists. */
     def awaitAfter(ticket: Long): F[Unit]
 
-    /** The original bytes of a transaction, if it is still held. */
-    def body(id: Bytes): F[Option[Bytes]]
+    /** The transaction, in the era it is held in, if it is still held. */
+    def body(id: Bytes): F[Option[EraTx]]
 
     /** How the transactions it holds are read, which the codec checks each one it sends with. */
     def reader: TxSubmission2.TransactionReader
@@ -45,27 +49,21 @@ object TxSubmissionClient:
       finish: Option[F[Unit]] = None,
       served: Option[Long => F[Unit]] = None
   )(using Raise[F, NetworkError]): F[Unit] =
-    val typedSource = new TxSubmission2Runtime.Source[F, Bytes, Bytes]:
+    val typedSource = new TxSubmission2Runtime.Source[F, EraTxId, EraTx]:
       def after(ticket: Long, max: Int) =
         source
           .after(ticket, max)
-          .map(_.map(h => TxSubmission2Runtime.Held(h.id, h.bytes, h.ticket)))
+          .map(_.map(h => TxSubmission2Runtime.Held(EraTxId(h.era, h.id), h.bytes, h.ticket)))
       def awaitAfter(ticket: Long) = source.awaitAfter(ticket)
-      def body(id: Bytes) = source.body(id)
-    val rules = new TxSubmission2Runtime.Rules[Bytes]:
-      def acknowledge[A](unacked: Vector[A], blocking: Boolean, ack: Int, request: Int) =
-        TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)
-      def bodies(unacked: Vector[TxSubmission2Runtime.Advertised[Bytes]], ids: Vector[Bytes]) =
-        TxSubmissionPolicy.bodies(unacked, ids)
-      def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
+      def body(id: EraTxId) = source.body(id.id)
     TxSubmission2Runtime.client(
       channel,
       typedSource,
-      TxSubmission2.codec(source.reader),
-      rules,
+      TxSubmission2.eraCodec(source.reader),
+      TxSubmission2Runtime.eraRules,
       finish,
-      message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message)),
-      served.map(told => (bodies: Vector[Bytes]) => told(bodies.foldLeft(0L)(_ + _.size)))
+      message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEraEngine(message)),
+      served.map(told => (bodies: Vector[EraTx]) => told(bodies.foldLeft(0L)(_ + _.original.size)))
     )
 
   /** A TxSubmission2 client running in the background that can be asked to end. */

@@ -226,7 +226,7 @@ class PastHorizonReferenceSuite extends FunSuite:
       setup.geometry,
       xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
       xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-      clock = Some(clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip))
+      clock = Some(_ => clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip))
     )
     val ledger =
       MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
@@ -235,7 +235,10 @@ class PastHorizonReferenceSuite extends FunSuite:
       .unwrap(r.item)
       .flatMap(tx => pool.add(tx, env, Source.Local).map(_ => ()))
       .fold(
-        rejection => Some(LocalSubmission.reasonItem(rejection).fold(e => fail(s"$e"), identity)),
+        rejection =>
+          Some(
+            LocalSubmission.reasonItem(rejection, Some(Era.Conway)).fold(e => fail(s"$e"), identity)
+          ),
         _ => None
       )
 
@@ -267,12 +270,13 @@ class PastHorizonReferenceSuite extends FunSuite:
         setup.geometry,
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-        clock = Some(bounded)
+        clock = Some(_ => bounded)
       )
       val ledger = MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
-      val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity)
-      val tx = Tx.fromEnvelope(raw, Era.Conway).fold(e => fail(e.message), identity)
-      val entry = Entry(tx.body.id, raw, tx, 0)
+      val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity).raw
+      val parsed = MempoolState.parseParts(raw).fold(e => fail(e.message), identity)
+      val tx = parsed.tx
+      val entry = Entry(Era.Conway, parsed.parts, tx, 0)
       val limits =
         BlockBuilder.Limits(ledger.params.maxBlockBodySize.toLong, ledger.params.maxBlockExUnits)
       def chosen(clock: PosixClock) =

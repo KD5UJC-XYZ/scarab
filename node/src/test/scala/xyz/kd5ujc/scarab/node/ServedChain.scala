@@ -43,6 +43,6 @@ object ServedChain:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(
-            originals: Vector[Bytes]
+            originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx]
         )(using cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]) = IO.unit
     yield ServerHandlers[IO, NtNHeader](NtNHeader.codec, server.source, server.blocks, sink)

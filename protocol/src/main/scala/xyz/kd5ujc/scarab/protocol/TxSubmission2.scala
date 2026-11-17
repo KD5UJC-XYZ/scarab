@@ -7,7 +7,11 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import ChainSync.Role
 import ProtocolWire.{attempt, bad, get}
 
-/** Conway-only publisher profile. Source pins and local policy: docs/design/network-limits.md. */
+/** TxSubmission2's wire profiles: [[eraCodec]], whose transactions and ids are the hard-fork
+  * combinator's of every Shelley-based era, which the node runs, and [[codec]], the view of
+  * Conway's alone that the `Message` facade keeps. Source pins and local policy:
+  * docs/design/network-limits.md.
+  */
 object TxSubmission2:
   val MiniProtocolId = 4
   val MaxOriginalBytes = 65536
@@ -74,6 +78,111 @@ object TxSubmission2:
       */
     def read(original: Bytes): Either[ProtocolError, Bytes]
 
+    /** [[body]] of a transaction of `era`. A reader of Conway's transactions alone refuses those of
+      * the other eras as [[codec]] does.
+      */
+    def body(original: Bytes, era: Era): Either[ProtocolError, Bytes] =
+      if era == Era.Conway then body(original) else Left(ProtocolError.ExpectedConwayGenTx)
+
+    /** [[read]] of a transaction of `era`, as [[body]] of one. */
+    def read(original: Bytes, era: Era): Either[ProtocolError, Bytes] =
+      if era == Era.Conway then read(original) else Left(ProtocolError.ExpectedConwayGenTx)
+
+  /** A transaction id as the hard-fork combinator carries it, `[era, id]` (`dispatchEncoder` and
+    * `dispatchDecoder` of `GenTxId`,
+    * `HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs:80-109, 156-159`,
+    * ouroboros-consensus 82ecba32): the index of the era and, in each Shelley-based era, the
+    * 32-byte hash of the body (`Shelley/Node/Serialisation.hs:348-351`). Its identity in the
+    * reference is the hash alone, whatever the era (`OneEraGenTxId`'s order,
+    * `HardFork/Combinator/AcrossEras.hs:167-181`).
+    */
+  final case class EraTxId(era: Era, id: Bytes)
+
+  /** A transaction as the hard-fork combinator carries it, `[era, #6.24(original)]`: the era's
+    * `GenTx`, CBOR-in-CBOR (`wrapCBORinCBOR`, `Shelley/Ledger/Mempool.hs:256-266`,
+    * ouroboros-consensus 82ecba32).
+    */
+  final case class EraTx(era: Era, original: Bytes)
+
+  /** The era of a `GenTx` or `GenTxId` index that this profile carries: a Shelley-based era. A
+    * Byron `GenTx` is not read: no reference peer holds one once the chain has left Byron.
+    */
+  private def shelleyBased(index: BigInt): Option[Era] =
+    Era.fromIndex(index).filter(_ != Era.Byron)
+
+  private def eraProfile(reader: TransactionReader) =
+    new TxSubmission2Engine.Profile[EraTxId, EraTx]:
+      def maxBatch: Int = MaxBatch
+      def maxOriginalBytes: Int = MaxOriginalBytes
+      def maxAdvertisedSize: Long = MaxOriginalBytes.toLong + 16L
+      def maxMessageBytes(state: State): Int = TxSubmission2.maxMessageBytes(state)
+      def writeId(value: EraTxId, state: State, writer: ProtocolWire.Writer)(using
+          ProtocolWire.Scope
+      ): Unit =
+        if shelleyBased(value.era.index).isEmpty then
+          bad(ProtocolError.ExpectedShelleyBasedTransactionID)
+        checkId(value.id); writer.head(4, 2); writer.head(0, value.era.index)
+        writer.head(2, 32); writer.raw(value.id)
+      def readId(in: ProtocolWire.Reader)(using ProtocolWire.Scope): EraTxId =
+        if in.arrayLength() != 2 then bad(ProtocolError.ExpectedShelleyBasedTransactionID)
+        val era =
+          shelleyBased(in.uint().value)
+            .getOrElse(bad(ProtocolError.ExpectedShelleyBasedTransactionID))
+        val result = in.bytes(32); checkId(result); EraTxId(era, result)
+      def validateOffer(offer: TxSubmission2Engine.Offer[EraTxId])(using ProtocolWire.Scope): Unit =
+        checkId(offer.transactionId.id)
+        if offer.advertisedSize <= 0 || offer.advertisedSize > 0xffffffffL then
+          bad(ProtocolError.SizeOutsideUint32)
+      def writeBody(value: EraTx, state: State, writer: ProtocolWire.Writer)(using
+          ProtocolWire.Scope
+      ): Unit =
+        if shelleyBased(value.era.index).isEmpty then bad(ProtocolError.ExpectedShelleyBasedGenTx)
+        original(value.original, reader.body(_, value.era))
+        writer.head(4, 2); writer.head(0, value.era.index); writer.head(6, 24)
+        writer.head(2, value.original.size); writer.raw(value.original)
+      def readBody(in: ProtocolWire.Reader)(using ProtocolWire.Scope): EraTx =
+        if in.arrayLength() != 2 then bad(ProtocolError.ExpectedShelleyBasedGenTx)
+        val era =
+          shelleyBased(in.uint().value).getOrElse(bad(ProtocolError.ExpectedShelleyBasedGenTx))
+        if in.tag() != 24 then bad(ProtocolError.ExpectedShelleyBasedGenTx)
+        val value = in.bytes(MaxOriginalBytes); original(value, reader.read(_, era))
+        EraTx(era, value)
+
+  /** The codec of the hard-fork combinator's `GenTx` and `GenTxId` of every Shelley-based era, its
+    * transactions read by `reader` in the era each names: the reference's TxSubmission2 codec over
+    * the `HardForkBlock` 's (`dispatchDecoder`, `SerialiseNodeToNode.hs:80-109`,
+    * ouroboros-consensus 82ecba32). A transaction's id is the hash of its body as its era's
+    * decoders read it, under its era.
+    */
+  private[scarab] def eraCodec(
+      reader: TransactionReader
+  ): TxSubmission2Engine.Codec[EraTxId, EraTx] =
+    TxSubmission2Engine.codec(
+      eraProfile(reader),
+      advertisedSize,
+      t =>
+        advertisedSize(t.original.size)
+          .flatMap(_ => reader.body(t.original, t.era))
+          .map(body => EraTxId(t.era, Blake2b.hash256.hash(body)))
+    )
+
+  /** An engine message of [[eraCodec]] as the facade shows it: each id and transaction without its
+    * era.
+    */
+  private[scarab] def fromEraEngine(
+      message: TxSubmission2Engine.Message[EraTxId, EraTx]
+  ): Message =
+    message match
+      case TxSubmission2Engine.Message.Init => Message.Init
+      case TxSubmission2Engine.Message.RequestIds(blocking, acknowledge, request) =>
+        Message.RequestIds(blocking, acknowledge, request)
+      case TxSubmission2Engine.Message.ReplyIds(offers) =>
+        Message.ReplyIds(offers.map(o => RelayOffer(o.transactionId.id, o.advertisedSize)))
+      case TxSubmission2Engine.Message.RequestTxs(ids) => Message.RequestTxs(ids.map(_.id))
+      case TxSubmission2Engine.Message.ReplyTxs(originals) =>
+        Message.ReplyTxs(originals.map(_.original))
+      case TxSubmission2Engine.Message.Done => Message.Done
+
   private def profile(reader: TransactionReader) = new TxSubmission2Engine.Profile[Bytes, Bytes]:
     def maxBatch: Int = MaxBatch
     def maxOriginalBytes: Int = MaxOriginalBytes
@@ -102,7 +211,9 @@ object TxSubmission2:
         bad(ProtocolError.ExpectedConwayGenTx)
       val value = in.bytes(MaxOriginalBytes); original(value, reader.read); value
 
-  /** The codec of Conway's `GenTx`, its transactions read by `reader`. */
+  /** The codec of Conway's `GenTx` alone, its transactions read by `reader`: the view the `Message`
+    * facade keeps ([[encode]], [[decode]]); the node runs [[eraCodec]].
+    */
   private[scarab] def codec(reader: TransactionReader): TxSubmission2Engine.Codec[Bytes, Bytes] =
     TxSubmission2Engine.codec(profile(reader), advertisedSize, bodyId(_)(using reader))
 
