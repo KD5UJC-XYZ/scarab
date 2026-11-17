@@ -21,9 +21,16 @@ docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 Compile once and write the runtime classpath (the scenarios and the commands below use it):
 
 ```sh
-docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
+scarab_git_metadata="$(git rev-parse --path-format=absolute --git-common-dir)"
+scarab_cache="$(python3 -I -c 'import sys; sys.path.insert(0, "scripts")
+from devnet.util import cache_dir; print(cache_dir())')"
+mkdir -p "$scarab_cache"
+docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
+  -v "$scarab_git_metadata:$scarab_git_metadata:ro" -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
 ```
+
+The Git metadata and dependency cache mounts are [CONTRIBUTING.md](../CONTRIBUTING.md#build-docker-only)'s.
 
 This writes `node/target/runtime-classpath.txt`. Regenerate it with `node/runtimeClasspathFile`
 after any dependency change: a stale file lacked rocksdb.
@@ -79,6 +86,7 @@ Each topic of this guide has a page of its own; the section names below are the 
 
 | Page | Sections |
 |---|---|
+| [A tester's runbook](running/tester-runbook.md) | Before you start; The images; A devnet: Scarab forging beside two Haskell pools; Mainnet from a Mithril snapshot to the tip; A preprod node; `cardano-cli` against the node-to-client socket; A pool on preprod; Cleaning up (each step with its commands and what success looks like) |
 | [Flags of `follow`](running/flags.md) | the table of every `follow` flag |
 | [Databases, snapshots and imports](running/snapshots.md) | `import-haskell-db`: start from a Haskell node's blocks; `import-mithril`: certified bootstrap into a fresh database; `import-ledger-snapshot`: start from a reference ledger snapshot; `export-ledger-snapshot`: write a reference ledger directory; `export-scls` and `import-scls`: canonical ledger-state interchange |
 | [Configuration, topology, peers and networks](running/configuration.md) | Configuration and topology files; Choosing the consensus mode; Peer selection; Preview; Preprod |
