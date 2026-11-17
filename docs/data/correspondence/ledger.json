@@ -9002,11 +9002,11 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
    "evidence": [
     "DijkstraTxCertSuite"
    ],
-   "note": "the pool certificates are the shared PoolCert, whose StakePoolParams has no place for a registration's voting key (sppBlsKey, libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:479 at 9df9f98c); no decoder until it has (#85)",
+   "note": "the pool certificates are the shared PoolCert, whose StakePoolParams has no place for a registration's BLS key (sppBlsKey, libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:479 at 9df9f98c) nor its original relay and metadata bytes; no decoder until it has (#826)",
    "digest": "374a71f70f9469a2"
   },
   "def ledger.era.dijkstra.DijkstraTxCert.translate": {
