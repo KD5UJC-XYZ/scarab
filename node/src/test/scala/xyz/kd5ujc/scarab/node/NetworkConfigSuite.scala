@@ -9,8 +9,22 @@ import java.nio.file.{Files, Path}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, NodeError}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.network.{ConnectionManager, FailsOnUncaught, NodeToNode}
-import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Targets}
+import com.comcast.ip4s.{Host, SocketAddress, ipv4, port}
+import xyz.kd5ujc.scarab.network.{ConnectionManager, FailsOnUncaught, NodeToNode, Settled}
+import xyz.kd5ujc.scarab.ledger.LedgerRelay
+import xyz.kd5ujc.scarab.network.selection.{
+  AccPoolStake,
+  ConsensusMode,
+  FetchMode,
+  Gsm,
+  LedgerPeerSnapshot,
+  LedgerStateJudgement,
+  PoolStake,
+  SnapshotPoint,
+  SnapshotPool,
+  Targets,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.log.{EventKind, Line, Log}
@@ -211,8 +225,9 @@ class NetworkConfigSuite extends FailsOnUncaught:
       root: Path,
       options: Main.Options,
       setup: NodeSetup,
-      roots: PeerNetwork.Roots
+      config: Main.NetworkConfig
   ):
+    def roots: PeerNetwork.Roots = config.roots
     def write(name: String, text: String): IO[Unit] =
       IO.blocking(Files.writeString(root.resolve(name), text)).void
     def remove(name: String): IO[Unit] = IO.blocking(Files.deleteIfExists(root.resolve(name))).void
@@ -228,24 +243,28 @@ class NetworkConfigSuite extends FailsOnUncaught:
       )
       val (completed, setup, _) = Main.configured(requested).fold(e => fail(e.message), identity)
       val roots = completed.roots.getOrElse(fail("no roots"))
-      assert(roots.snapshot.snapshot.isDefined, "the start loaded the snapshot")
-      Started(root, completed, setup, roots)
+      assert(completed.snapshot.snapshot.isDefined, "the start loaded the snapshot")
+      Started(root, completed, setup, Main.NetworkConfig(roots, completed.snapshot.snapshot))
     }
 
-  /** What a reload did: how it ended, the configuration in force after it, what it installed, and
-    * what it logged.
+  private type Snapshot = Option[LedgerPeerSnapshot[LedgerRelay]]
+
+  /** What a reload did: how it ended, the configuration in force after it, the topologies it
+    * installed, the snapshots it wrote, and what it logged.
     */
   private final case class Reloaded(
       outcome: Main.NetworkReload,
-      inForce: PeerNetwork.Roots,
+      inForce: Main.NetworkConfig,
       installed: Vector[PeerNetwork.Roots],
+      written: Vector[Snapshot],
       lines: Vector[(EventKind, Option[String])]
   )
 
   private def reload(node: Started, phase: SnapshotPhase): IO[Reloaded] =
     for
-      network <- Ref.of[IO, PeerNetwork.Roots](node.roots)
+      network <- Ref.of[IO, Main.NetworkConfig](node.config)
       installed <- Ref.of[IO, Vector[PeerNetwork.Roots]](Vector.empty)
+      written <- Ref.of[IO, Vector[Snapshot]](Vector.empty)
       lines <- Ref.of[IO, Vector[Line]](Vector.empty)
       outcome <- Main.reloadNetwork(
         node.options,
@@ -253,12 +272,17 @@ class NetworkConfigSuite extends FailsOnUncaught:
         node.setup,
         phase,
         network,
-        r => installed.update(_ :+ r)
+        r => installed.update(_ :+ r),
+        w => written.update(_ :+ w)
       )(using collecting(lines))
       inForce <- network.get
       done <- installed.get
+      wrote <- written.get
       logged <- lines.get
-    yield Reloaded(outcome, inForce, done, said(logged))
+    yield Reloaded(outcome, inForce, done, wrote, said(logged))
+
+  private def slotOf(s: Snapshot) = s.map(_.slot)
+  private def at(slot: Int) = Some(WithOrigin.At(BigInt(slot)))
 
   private def publicRoots(roots: PeerNetwork.Roots): Set[String] = roots.public.map(_.toString)
 
@@ -266,33 +290,29 @@ class NetworkConfigSuite extends FailsOnUncaught:
   private val snapshotLoaded = EventKind.LedgerPeers -> Some("snapshotLoaded")
   private val snapshotIgnored = EventKind.LedgerPeers -> Some("snapshotIgnored")
 
-  /** The topology `B` (`127.0.0.2`) installed with the snapshot in force, then with the snapshot
-    * read again, the reload gone to its end, and `lines` said: nothing for a dropped snapshot, as
-    * the reference says nothing.
+  /** The topology `B` (`127.0.0.2`) installed once, then the snapshot read written, at `slot` or
+    * `None`, the reload gone to its end, and `lines` said: nothing for a dropped snapshot, as the
+    * reference says nothing.
     */
-  private def droppedWith(
-      node: Started,
+  private def writtenWith(
       reloaded: Reloaded,
+      slot: Option[WithOrigin[BigInt]],
       lines: Vector[(EventKind, Option[String])]
-  )(
-      expected: PartialFunction[SnapshotUse, Boolean]
   ) =
     assertEquals(reloaded.outcome, Main.NetworkReload.Completed, "the reload goes on")
-    assertEquals(publicRoots(reloaded.inForce), Set("127.0.0.2:3001"), "the new topology")
-    assert(expected.applyOrElse(reloaded.inForce.snapshot, _ => false), reloaded.inForce.snapshot)
-    assertEquals(
-      reloaded.installed,
-      Vector(reloaded.inForce.copy(snapshot = node.roots.snapshot), reloaded.inForce),
-      "the topology with the snapshot in force, then the snapshot read"
-    )
+    assertEquals(publicRoots(reloaded.inForce.roots), Set("127.0.0.2:3001"), "the new topology")
+    assertEquals(reloaded.installed, Vector(reloaded.inForce.roots), "the topology installed, once")
+    assertEquals(reloaded.written.map(slotOf), Vector(slot), "the snapshot read, written once")
+    assertEquals(slotOf(reloaded.inForce.snapshot), slot, "the snapshot in force")
     assertEquals(reloaded.lines, lines, "what is said")
 
-  /** The topology `B` installed with the snapshot in force, and the reload stopped there, said. */
+  /** The topology `B` installed, the reload stopped at the snapshot, said, and nothing written. */
   private def keptWith(node: Started, reloaded: Reloaded) =
     assertEquals(reloaded.outcome, Main.NetworkReload.SnapshotRefused, "the reload stops")
-    assertEquals(publicRoots(reloaded.inForce), Set("127.0.0.2:3001"), "the new topology")
-    assertEquals(reloaded.inForce.snapshot, node.roots.snapshot, "the snapshot in force")
-    assertEquals(reloaded.installed, Vector(reloaded.inForce), "the topology installed, once")
+    assertEquals(publicRoots(reloaded.inForce.roots), Set("127.0.0.2:3001"), "the new topology")
+    assertEquals(reloaded.inForce.snapshot, node.config.snapshot, "the snapshot in force")
+    assertEquals(reloaded.installed, Vector(reloaded.inForce.roots), "the topology installed, once")
+    assertEquals(reloaded.written, Vector.empty, "no snapshot written")
     assertEquals(reloaded.lines.map(_._1), Vector(refusalLine), "the refusal said, nothing else")
 
   test(
@@ -315,24 +335,11 @@ class NetworkConfigSuite extends FailsOnUncaught:
         _ <- node.write("peer-snapshot.json", snapshot("200"))
         newer <- reload(node, Runtime)
       yield
-        droppedWith(node, unreadable, Vector.empty) {
-          case SnapshotUse.Dropped(
-                PeerSnapshotRefusal.UnreadableSnapshot(PeerSnapshotError.Unreadable(_, _))
-              ) =>
-            true
-        }
-        droppedWith(node, legacyVersion, Vector.empty) {
-          case SnapshotUse.Dropped(PeerSnapshotRefusal.LegacyVersion) => true
-        }
-        droppedWith(node, atOrigin, Vector.empty) {
-          case SnapshotUse.Dropped(PeerSnapshotRefusal.AtOrigin) => true
-        }
-        droppedWith(node, otherNetwork, Vector.empty) {
-          case SnapshotUse.Dropped(PeerSnapshotRefusal.WrongMagic(2L, 1L)) => true
-        }
-        droppedWith(node, newer, Vector(snapshotLoaded)) { case SnapshotUse.Loaded(s) =>
-          s.slot == xyz.kd5ujc.scarab.network.selection.WithOrigin.At(BigInt(200))
-        }
+        writtenWith(unreadable, None, Vector.empty)
+        writtenWith(legacyVersion, None, Vector.empty)
+        writtenWith(atOrigin, None, Vector.empty)
+        writtenWith(otherNetwork, None, Vector.empty)
+        writtenWith(newer, at(200), Vector(snapshotLoaded))
     }
   }
 
@@ -347,12 +354,9 @@ class NetworkConfigSuite extends FailsOnUncaught:
         _ <- node.write("peer-snapshot.json", legacy)
         legacyVersion <- reload(node, Runtime)
       yield
-        droppedWith(node, unreadable, Vector(snapshotIgnored)) {
-          case SnapshotUse.Ignored(PeerSnapshotError.Unreadable(_, _)) => true
-        }
-        droppedWith(node, legacyVersion, Vector.empty) {
-          case SnapshotUse.Dropped(PeerSnapshotRefusal.LegacyVersion) => true
-        }
+        // a file Praos mode cannot read writes `None` (`Run.hs` 736, 757), and is said ignored
+        writtenWith(unreadable, None, Vector(snapshotIgnored))
+        writtenWith(legacyVersion, None, Vector.empty)
     }
   }
 
@@ -366,7 +370,7 @@ class NetworkConfigSuite extends FailsOnUncaught:
         tooOld <- reload(node, SnapshotPhase.Runtime)
       yield
         keptWith(node, tooOld)
-        assertEquals(tooOld.inForce.ledger.isEnabled, true)
+        assertEquals(tooOld.inForce.roots.ledger.isEnabled, true)
     }
   }
 
@@ -380,8 +384,9 @@ class NetworkConfigSuite extends FailsOnUncaught:
           Main.NetworkReload.TopologyRefused,
           s"$what: the reload stops"
         )
-        assertEquals(reloaded.inForce, node.roots, s"$what: the configuration in force")
+        assertEquals(reloaded.inForce, node.config, s"$what: the configuration in force")
         assertEquals(reloaded.installed, Vector.empty, s"$what: nothing installed")
+        assertEquals(reloaded.written, Vector.empty, s"$what: nothing written")
         assertEquals(reloaded.lines.map(_._1), Vector(refusalLine), s"$what: the refusal said")
       for
         node <- started(root, "GenesisMode")
@@ -426,8 +431,8 @@ class NetworkConfigSuite extends FailsOnUncaught:
     temporary.use { root =>
       def hangup(node: Started) =
         for
-          pending <- Ref.of[IO, Option[PeerNetwork.Roots]](None)
-          network <- Ref.of[IO, PeerNetwork.Roots](node.roots)
+          pending <- Ref.of[IO, Option[Main.NetworkConfig]](None)
+          network <- Ref.of[IO, Main.NetworkConfig](node.config)
           said <- Ref.of[IO, Vector[xyz.kd5ujc.scarab.node.forge.ForgeEvent]](Vector.empty)
           events <- Ref.of[IO, xyz.kd5ujc.scarab.node.forge.ForgeEvents[IO]](e =>
             said.update(_ :+ e)
@@ -440,7 +445,7 @@ class NetworkConfigSuite extends FailsOnUncaught:
           )(using Log.none[IO])
           handed <- pending.get
           forged <- said.get
-        yield (handed.map(publicRoots), forged)
+        yield (handed.map(c => (publicRoots(c.roots), slotOf(c.snapshot))), forged)
       val notEffective = xyz.kd5ujc.scarab.node.forge.ForgeEvent.BlockForgingUpdate(
         xyz.kd5ujc.scarab.node.forge.BlockForgingState.NotEffective
       )
@@ -453,11 +458,15 @@ class NetworkConfigSuite extends FailsOnUncaught:
         _ <- node.write("topology.json", "this is not json")
         refusedTopology <- hangup(node)
       yield
-        assertEquals(good, (Some(Set("127.0.0.2:3001")), Vector(notEffective)), "a good reload")
+        assertEquals(
+          good,
+          (Some(Set("127.0.0.2:3001") -> at(100)), Vector(notEffective)),
+          "a good reload"
+        )
         assertEquals(
           refusedSnapshot,
-          (Some(Set("127.0.0.2:3001")), Vector.empty),
-          "the topology handed on, no NotEffective"
+          (Some(Set("127.0.0.2:3001") -> at(100)), Vector.empty),
+          "the topology handed on with the snapshot in force, no NotEffective"
         )
         assertEquals(refusedTopology, (None, Vector.empty), "nothing handed on, no NotEffective")
     }
@@ -481,10 +490,11 @@ class NetworkConfigSuite extends FailsOnUncaught:
           ),
           "what the reading of the topology says, and the snapshot read again"
         )
+        assertEquals(reloaded.installed, Vector(reloaded.inForce.roots), "the topology, once")
         assertEquals(
-          reloaded.installed,
-          Vector(reloaded.inForce),
-          "the same snapshot read again is not installed again"
+          reloaded.written.map(slotOf),
+          Vector(at(100)),
+          "the same snapshot read again is written again"
         )
     }
   }
@@ -495,9 +505,10 @@ class NetworkConfigSuite extends FailsOnUncaught:
         node <- started(root, "GenesisMode")
         _ <- node.write("topology.json", topology("127.0.0.2", 0))
         _ <- node.write("peer-snapshot.json", snapshot("200"))
-        network <- Ref.of[IO, PeerNetwork.Roots](node.roots)
+        network <- Ref.of[IO, Main.NetworkConfig](node.config)
         installed <- Ref.of[IO, Vector[PeerNetwork.Roots]](Vector.empty)
-        // the first installation rewrites the file: a read made before it would see slot 200
+        written <- Ref.of[IO, Vector[Snapshot]](Vector.empty)
+        // the installation rewrites the file: a read made before it would see slot 200
         _ <- Main.reloadNetwork(
           node.options,
           Nil,
@@ -509,25 +520,25 @@ class NetworkConfigSuite extends FailsOnUncaught:
               .getAndUpdate(_ :+ r)
               .flatMap(before =>
                 node.write("peer-snapshot.json", snapshot("300")).whenA(before.isEmpty)
-              )
+              ),
+          w => written.update(_ :+ w)
         )(using Log.none[IO])
         done <- installed.get
-      yield assertEquals(
-        done.map(r => (publicRoots(r), r.snapshot.snapshot.map(_.slot))),
-        Vector(
-          Set("127.0.0.2:3001") -> node.roots.snapshot.snapshot.map(_.slot),
-          Set("127.0.0.2:3001") ->
-            Some(xyz.kd5ujc.scarab.network.selection.WithOrigin.At(BigInt(300)))
-        ),
-        "the topology with the snapshot in force, then the snapshot read after it"
-      )
+        wrote <- written.get
+      yield
+        assertEquals(done.map(publicRoots), Vector(Set("127.0.0.2:3001")), "the topology, once")
+        assertEquals(wrote.map(slotOf), Vector(at(300)), "the snapshot read after it")
     }
   }
 
-  /** A running network of `roots` whose outputs go to `emit`, as [[Main]] runs it. */
+  /** A running network of `roots` and `snapshot` in `consensus` mode, whose outputs go to `emit`,
+    * as [[Main]] runs it.
+    */
   private def running(
       roots: PeerNetwork.Roots,
-      emit: Output[PeerNetwork.Addr] => IO[Unit]
+      emit: Output[PeerNetwork.Addr] => IO[Unit],
+      snapshot: Snapshot,
+      consensus: ConsensusMode = ConsensusMode.PraosMode
   ): Resource[IO, PeerNetwork.Running[IO, PeerNetwork.Addr]] =
     given Assertions[IO] = Assertions.noop[IO]
     given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](new PeerDns[IO]:
@@ -563,7 +574,13 @@ class NetworkConfigSuite extends FailsOnUncaught:
           def tip = IO.pure(None)
           def geometry = IO.pure(ForgedChain.geometry)
         network <- PeerNetwork.resource[IO](
-          PeerNetwork.Settings(roots, Targets.relay, seed = 279L),
+          PeerNetwork.Settings(
+            roots,
+            Targets.relay,
+            consensusMode = consensus,
+            seed = 279L,
+            snapshot = snapshot
+          ),
           transport,
           manager,
           OutboundPeers.Config(),
@@ -594,8 +611,8 @@ class NetworkConfigSuite extends FailsOnUncaught:
         node <- started(root, "GenesisMode")
         outputs <- Ref.of[IO, Vector[Output[PeerNetwork.Addr]]](Vector.empty)
         lines <- Ref.of[IO, Vector[Line]](Vector.empty)
-        network <- Ref.of[IO, PeerNetwork.Roots](node.roots)
-        _ <- running(node.roots, o => outputs.update(_ :+ o)).use { net =>
+        network <- Ref.of[IO, Main.NetworkConfig](node.config)
+        _ <- running(node.roots, o => outputs.update(_ :+ o), node.config.snapshot).use { net =>
           net.run.background.use { _ =>
             for
               _ <- outputs.set(Vector.empty)
@@ -607,7 +624,8 @@ class NetworkConfigSuite extends FailsOnUncaught:
                   node.setup,
                   SnapshotPhase.Runtime,
                   network,
-                  net.reloadRoots
+                  net.reloadRoots,
+                  net.setSnapshot
                 )(using collecting(lines))
                 .timeout(10.seconds)
             yield ()
@@ -621,6 +639,132 @@ class NetworkConfigSuite extends FailsOnUncaught:
           said(logged).map(_._1),
           Vector(EventKind.Slf4j),
           "only the refusal in the node's log"
+        )
+    }
+  }
+
+  test("a reload whose snapshot changes publishes exactly one root generation") {
+    temporary.use { root =>
+      for
+        node <- started(root, "GenesisMode")
+        network <- Ref.of[IO, Main.NetworkConfig](node.config)
+        generations <- running(node.roots, _ => IO.unit, node.config.snapshot).use { net =>
+          net.run.background.use { _ =>
+            for
+              before <- net.state.get.map(_.rootsGeneration)
+              _ <- node.write("topology.json", topology("127.0.0.2", 0))
+              _ <- node.write("peer-snapshot.json", snapshot("200"))
+              _ <- Main
+                .reloadNetwork(
+                  node.options,
+                  Nil,
+                  node.setup,
+                  SnapshotPhase.Runtime,
+                  network,
+                  net.reloadRoots,
+                  net.setSnapshot
+                )(using Log.none[IO])
+                .timeout(10.seconds)
+              after <- net.state.get.map(_.rootsGeneration)
+            yield after - before
+          }
+        }
+      yield assertEquals(generations, BigInt(1), "one root generation, for the topology")
+    }
+  }
+
+  /** A snapshot of this network at `slot`, with one pool behind `relay`. */
+  private def snapshotAt(
+      slot: Int,
+      relay: String = "snap.example."
+  ): LedgerPeerSnapshot[LedgerRelay] =
+    LedgerPeerSnapshot.V23(
+      SnapshotPoint.Block(
+        BigInt(slot),
+        xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(32)(slot.toByte))
+      ),
+      2L,
+      Vector(
+        SnapshotPool(
+          AccPoolStake(xyz.kd5ujc.scarab.codec.Rational.one),
+          PoolStake(xyz.kd5ujc.scarab.codec.Rational.one),
+          cats.data.NonEmptyVector.one[LedgerRelay](
+            LedgerRelay.Domain(
+              relay,
+              xyz.kd5ujc.scarab.ledger.RelayPort.fromInt(3001).getOrElse(fail("port"))
+            )
+          )
+        )
+      )
+    )
+
+  test(
+    "the governor takes a snapshot at another block point, and neither None nor the same point"
+  ) {
+    val p100 = Some(snapshotAt(100))
+    val p200 = Some(snapshotAt(200))
+    assertEquals(PeerNetwork.snapshotTaken(p200, p100), true, "another point")
+    assertEquals(PeerNetwork.snapshotTaken(p100, None), true, "a first one")
+    assertEquals(PeerNetwork.snapshotTaken(None, p100), false, "None")
+    assertEquals(
+      PeerNetwork.snapshotTaken(Some(snapshotAt(100, "other.example.")), p100),
+      false,
+      "the same point, other pools"
+    )
+    for
+      source <- Ref.of[IO, Snapshot](p100)
+      taken <- Ref.of[IO, Snapshot](p100)
+      none <- PeerNetwork.snapshotWritten(source, taken)(None)
+      afterNone <- (source.get, taken.get).tupled
+      same <- PeerNetwork.snapshotWritten(source, taken)(p100)
+      other <- PeerNetwork.snapshotWritten(source, taken)(p200)
+      afterOther <- (source.get, taken.get).tupled
+    yield
+      assertEquals(none, false, "None is not taken")
+      assertEquals(afterNone, (None, p100), "None written to the worker's source, the taken kept")
+      assertEquals(same, false, "the same point is not taken")
+      assertEquals(other, true, "another point is taken")
+      assertEquals(afterOther, (p200, p200), "written and taken")
+  }
+
+  test(
+    "in Genesis mode a snapshot at another point arms the verification again, in the same root generation"
+  ) {
+    val roots = PeerNetwork.Roots(
+      Nil,
+      Set(SocketAddress[Host](ipv4"127.0.0.1", port"3001")),
+      None,
+      xyz.kd5ujc.scarab.network.selection.UseLedgerPeers.Disabled
+    )
+    Settled { settle =>
+      for
+        verified <- Ref.of[IO, Int](0)
+        emit = (o: Output[PeerNetwork.Addr]) =>
+          o match
+            case Output.LedgerPeers(LedgerPeersTrace.SnapshotVerified(_)) => verified.update(_ + 1)
+            case _                                                        => IO.unit
+        seen <- running(roots, emit, Some(snapshotAt(100)), ConsensusMode.GenesisMode).use { net =>
+          net.run.background.use { _ =>
+            def after(write: IO[Unit]) =
+              write *> settle *> (verified.get, net.state.get.map(_.rootsGeneration)).tupled
+            for
+              start <- after(IO.unit)
+              judgement <- net.judgement.get
+              none <- after(net.setSnapshot(None))
+              same <- after(net.setSnapshot(Some(snapshotAt(100))))
+              other <- after(net.setSnapshot(Some(snapshotAt(200))))
+            yield (judgement, start, none, same, other)
+          }
+        }
+      yield
+        val (judgement, start, none, same, other) = seen
+        assertEquals(judgement, LedgerStateJudgement.TooOld, "the judgement the check waits for")
+        assertEquals(none, start, "None arms nothing")
+        assertEquals(same, start, "the same point arms nothing")
+        assertEquals(
+          other,
+          (start._1 + 1, start._2),
+          "another point: one more check, no generation"
         )
     }
   }

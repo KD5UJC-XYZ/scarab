@@ -901,7 +901,7 @@ class ConfigSuite extends FunSuite:
       val roots = completed.roots.getOrElse(fail("no roots"))
       assertEquals(roots.bootstrapConfigured, false, s"$network: bootstrap peers not in use")
       assert(roots.ledgerPeers, s"$network: ledger peers on")
-      assert(roots.snapshot.snapshot.isDefined, s"$network: the snapshot loaded")
+      assert(completed.snapshot.snapshot.isDefined, s"$network: the snapshot loaded")
     }
   }
 
