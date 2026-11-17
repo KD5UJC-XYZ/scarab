@@ -60,7 +60,10 @@ Genesis mode an unreadable `peerSnapshotFile` stops the node at start, as `updat
 Genesis mode) cover it. The start-up was also compared by running both nodes with no network on the official mainnet
 configuration and topology, with and without the `peer-snapshot.json` it names, and on the reference's
 `testnet-template-topology-empty-p2p.json` (2026-11-16): the same warnings, the same stop without the snapshot.
-A difference left: at a SIGHUP reload the reference applies the new topology and then, on a peer snapshot file it
-cannot read, of a legacy version, at the origin or of another network, traces `NetworkConfigUpdateError` and goes on
-without a snapshot (`Run.hs` 596-614, 715-757, `isStartup` false); Scarab refuses the whole reload and keeps the
-topology in force.
+A difference left ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6933331883)): at a runtime
+SIGHUP reload the reference installs the new topology and then reads the peer snapshot on its own (`Run.hs` 596-614,
+690-757, `isStartup` false). On a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the
+origin or of another network in either mode, it traces `NetworkConfigUpdateError` and goes on with the new topology
+and no snapshot. Scarab refuses the whole reload on any of these and keeps the topology and snapshot in force; an
+unreadable file in Praos mode is ignored by both. The reference's handler installed before consensus has initialised
+reads the snapshot as at start-up (`Run.hs` 413-430, `isStartup` true).
