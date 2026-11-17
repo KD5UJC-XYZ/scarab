@@ -10,8 +10,9 @@ import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 /** The native objects of the RocksDB UTxO store that outlive one call, a pinned view's snapshot and
   * an enumeration's iterator, held while the store is reset, restored or released: none of those
-  * closes the database under them. A reset leaves them reading what they pinned; a restore or the
-  * release ends them with [[StorageError.UtxoStoreClosed]], and releasing them after is safe.
+  * closes the database under them, nor under a call that is running. A reset leaves them reading
+  * what they pinned; a restore or the release ends their later reads with
+  * [[StorageError.UtxoStoreClosed]], and releasing them after is safe.
   */
 class RocksUtxoLeaseSuite extends FailsOnUncaught:
   private val CacheBytes = 8L * 1024 * 1024
@@ -200,6 +201,120 @@ class RocksUtxoLeaseSuite extends FailsOnUncaught:
           yield
             assertEquals(emptied, (Map.empty[TxIn, TxOut], -1L))
             assertEquals(seen, Right(0L -> Right(Map(b -> second))))
+        }
+      }
+    }
+  }
+
+  test("the release of the store waits for a scan that is running, which reads all it pinned") {
+    val many = (1 to 2000).toVector.map(n => input(100 + n) -> output(n % 7, n.toLong))
+    // the scan stops in its first step until the release has been started, and goes on from there
+    val scanning = new java.util.concurrent.CountDownLatch(1)
+    val releasing = new java.util.concurrent.CountDownLatch(1)
+    val seen = new java.util.concurrent.atomic.AtomicInteger(0)
+    val keep: TxOut => Boolean = _ =>
+      if seen.getAndIncrement() == 0 then
+        scanning.countDown()
+        releasing.await()
+      true
+    StorageTestKit.tempDir.use { dir =>
+      val live = dir / "live"
+      val released = StorageError.UtxoStoreClosed(live.toString, UtxoStoreClosure.Released)
+      StorageTestKit.ok {
+        RocksUtxoStore.resource[IO](live, CacheBytes).allocated.flatMap { (store, releaseStore) =>
+          (for
+            _ <- store.write(many.map((in, out) => in -> Some(out)), 1L)
+            pinned <- store.readView.allocated
+            (opened, release) = pinned
+            view <- IO.fromEither(opened.leftMap(e => new AssertionError(e.message)))
+            scan <- view.select(keep).start
+            _ <- IO.interruptible(scanning.await())
+            closer <- (IO(releasing.countDown()) *> releaseStore *> IO(seen.get)).start
+            scanned <- scan.joinWithNever
+            seenWhenReleased <- closer.joinWithNever
+            after <- view.read(Vector(many.head._1))
+            _ <- release
+          yield
+            assertEquals(scanned.map(_.size), Right(many.size), "the scan read every entry")
+            assertEquals(seenWhenReleased, many.size, "the release came after the scan's last step")
+            assertEquals(after, Left(released))
+          ).guarantee(IO(releasing.countDown()) *> IO(scanning.countDown()) *> releaseStore)
+        }
+      }
+    }
+  }
+
+  test(
+    "a view held through a failed restore reads nothing, also once a reset opened a new database"
+  ) {
+    StorageTestKit.tempDir.use { dir =>
+      val live = dir / "live"
+      def closed(why: UtxoStoreClosure) = StorageError.UtxoStoreClosed(live.toString, why)
+      StorageTestKit.ok {
+        RocksUtxoStore.resource[IO](live, CacheBytes).use { store =>
+          for
+            // a directory that is no checkpoint: opening it fails after the live database is closed
+            _ <- IO.blocking(java.nio.file.Files.createDirectories((dir / "empty").toNioPath))
+            _ <- store.write(Vector(a -> Some(first)), 1L)
+            pinned <- store.readView.allocated
+            (opened, release) = pinned
+            view <- IO.fromEither(opened.leftMap(e => new AssertionError(e.message)))
+            failed <- StorageTestKit.attempt(store.restore(dir / "empty"))
+            whileNone <- view.all
+            _ <- store.reset
+            afterReset <- view.all
+            _ <- store.write(Vector(b -> Some(second)), 2L)
+            _ <- release
+            current <- (store.all, store.memory.map(snapshots)).tupled
+          yield
+            assert(failed.isLeft, failed)
+            assertEquals(whileNone, Left(closed(UtxoStoreClosure.NoDatabase)))
+            assertEquals(afterReset, Left(closed(UtxoStoreClosure.Replaced)))
+            assertEquals(current, (Map(b -> second), Some(0L)))
+        }
+      }
+    }
+  }
+
+  test("a store emptied in place under a view is checkpointed and restored as any other") {
+    StorageTestKit.tempDir.use { dir =>
+      StorageTestKit.ok {
+        RocksUtxoStore.resource[IO](dir / "live", CacheBytes).use { store =>
+          for
+            _ <- store.write(Vector(a -> Some(first), b -> Some(second)), 4L)
+            pinned <- store.readView.allocated
+            (opened, release) = pinned
+            _ <- IO.fromEither(opened.leftMap(e => new AssertionError(e.message)))
+            _ <- store.reset
+            _ <- store.write(Vector(c -> Some(third)), 0L)
+            _ <- StorageTestKit.ok(store.checkpoint(dir / "cp"))
+            _ <- release
+            _ <- store.write(Vector(a -> Some(first)), 1L)
+            restored <- store.restore(dir / "cp")
+            current <- (store.all, store.flushed, store.size).tupled
+          yield
+            assert(restored)
+            assertEquals(current, (Map(c -> third), 0L, 1L))
+        }
+      }
+    }
+  }
+
+  test("a store that holds only its stamp is emptied in place under a view to stamp -1") {
+    StorageTestKit.tempDir.use { dir =>
+      StorageTestKit.ok {
+        RocksUtxoStore.resource[IO](dir / "live", CacheBytes).use { store =>
+          store.readView.use { opened =>
+            for
+              _ <- store.write(Vector.empty, 7L)
+              stamped <- store.flushed
+              _ <- store.reset
+              emptied <- (store.flushed, store.size).tupled
+            yield
+              assert(opened.isRight, opened.map(_.stamp))
+              assertEquals(stamped, 7L)
+              assertEquals(emptied, (-1L, 0L))
+          }
         }
       }
     }
