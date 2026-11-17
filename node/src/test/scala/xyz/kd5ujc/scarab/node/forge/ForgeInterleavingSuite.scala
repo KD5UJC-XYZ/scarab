@@ -740,6 +740,67 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       assertEquals(forged(ran, s).map(_.opCertCounter), Some(BigInt(0)), "signed under the first")
   }
 
+  test("a forge waiting for its admission is admitted by the slot driver's take of its slot") {
+    // 5101 is led and claimed at its wake; the wall clock jumps 60 ms ahead, into 5101, before the
+    // claim's attempt reads it, while the clock fiber, on its monotonic timer, has not published
+    // 5101: the attempt is the slot's forge, not admitted, and is held before the key. The clock
+    // fiber publishes 5101 and the slot driver takes it and awaits the claim; the clock then finds
+    // 5102 unknown, and after its backoff reads the wall clock moved back two minutes and publishes
+    // 5041. A reload installs another KES key under a certificate from period 50 (counter 0), taken
+    // at relative period 0; the forge goes on and, not admitted, ends with the key unmoved, waits
+    // for its admission, which the slot driver's take has given, and, made again, moves the key to
+    // 5101's period, as the per-slot decision of 5101 would. A slot later that key's certificate
+    // issued again (counter 1), the clock still in period 50, is refused, and the slot is settled
+    // before the clock comes back to it
+    val s = BigInt(5101)
+    val seed = seedLeading(Vector(s))
+    val other = seed + 200
+    for
+      shift <- Ref.of[IO, Long](0L)
+      settledAt <- Ref.of[IO, Option[BigInt]](None)
+      held <- holds(Forger.Point.Woke(s), Forger.Point.Context(s))
+      ran <- runningIn(
+        seed,
+        s - 2,
+        held,
+        shift = Some(shift),
+        known = slot => slot <= s || slot >= s + 1000
+      ) { r =>
+        for
+          _ <- held(Forger.Point.Woke(s)).reached.get
+          _ <- shift.set(60L)
+          _ <- held(Forger.Point.Woke(s)).free
+          _ <- held(Forger.Point.Context(s)).reached.get
+          _ <- r.h.events.discrete
+            .find(_.exists {
+              case ForgeEvent.Clock(_: ClockTrace.CurrentSlotUnknown) => true
+              case _                                                  => false
+            })
+            .compile
+            .drain
+          _ <- shift.set(-120000L)
+          _ <- r.h.forger.clockSlot.discrete.find(_.exists(_ < s - 1)).compile.drain
+          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, other, counter = 0)))
+          _ <- held(Forger.Point.Context(s)).free
+          back <- r.h.forger.clockSlot.get
+          _ <- r.h.clocked(back.getOrElse(s) + 1)
+          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, other)))
+          _ <- r.h.settled(s)
+          _ <- r.h.forger.clockSlot.get.flatMap(settledAt.set)
+        yield ()
+      }
+      published <- settledAt.get
+    yield
+      assertEquals(
+        ran.events.collect { case r: ForgeEvent.KesReloadRefused => r },
+        Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0))),
+        "the reissue refused"
+      )
+      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.KesReloaded]), 1, "the first reload")
+      assertEquals(forged(ran, s).map(_.opCertCounter), Some(BigInt(0)), "signed under the first")
+      assert(published.exists(_ < s - 1), s"5101 settled once the clock had published $published")
+  }
+
   test("credentials replaced after an early block is signed and checked, before its handover") {
     val s = BigInt(5003)
     val seed = seedLeading(Vector(s))

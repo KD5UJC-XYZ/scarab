@@ -332,12 +332,34 @@ final class Forger[F[_]: Async, S](
 
   private def kesPeriodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
 
-  /** The admission of `slot` now, if the clock fiber has published it or a later slot (§5.5). */
-  private def admittedNow(slot: BigInt): F[Option[Admitted]] = Admitted.now(slot, shared)
+  /** The admission of `slot` now (§5.5), if the slot driver has taken it or a later slot, or the
+    * clock fiber has published it or a later slot.
+    */
+  private def admittedNow(slot: BigInt): F[Option[Admitted]] =
+    (shared.claims.get.map(_.takenFor(slot)), Admitted.now(slot, shared)).mapN(_.orElse(_))
 
-  /** The admission of `slot`, once the clock fiber publishes it, waited for holding nothing. */
+  /** The admission of `slot`, once the clock fiber publishes it or the slot driver takes it,
+    * whichever comes first, waited for holding nothing.
+    */
   private def admission(slot: BigInt): F[Admitted] =
-    Admitted.published(shared).find(_.admits(slot)).compile.lastOrError
+    Admitted
+      .published(shared)
+      .merge(shared.claims.discrete.map(_.takenFor(slot)).unNone)
+      .find(_.admits(slot))
+      .compile
+      .lastOrError
+
+  /** Whether the forge of `slot` has begun at `at` (§5.3): its onset has come, or the slot driver
+    * has taken it, as the reference's forging thread begins a slot when `knownSlotWatcher` hands it
+    * over.
+    */
+  private def begun(slot: BigInt, at: Instant): F[Boolean] =
+    if !at.isBefore(geometry.slotStart(slot)) then F.pure(true)
+    else shared.claims.get.map(_.takenFor(slot).nonEmpty)
+
+  /** Until the slot driver has taken `slot`. */
+  private def takenOf(slot: BigInt): F[Unit] =
+    shared.claims.discrete.find(_.takenFor(slot).nonEmpty).compile.drain
 
   /** Switch to the KES key and operational certificate that are in the key files now, if they are
     * good for this pool at this time and on this chain; otherwise keep the old ones and report a
@@ -573,13 +595,14 @@ final class Forger[F[_]: Async, S](
       .flatMap(handled => driving(Some(handled)))
 
   /** The slots up to `latest`, the slot the clock fiber had published when the driver took it,
-    * which admits every one of them (§5.5).
+    * which admits every one of them (§5.5) and which the claims keep from the take on: a forge of
+    * one of them begins then, and is admitted.
     */
   private def upTo(last: Option[BigInt], latest: Admitted)(using
       Handle[F, NodeError],
       Raise[F, Fatal]
   ): F[BigInt] =
-    shared.claims.modify(_.take(latest.through)).flatMap {
+    shared.claims.modify(_.take(latest)).flatMap {
       case Next.Claimed(slot, claim) =>
         settle(last, slot, Some(claim), latest) *> upTo(Some(slot), latest)
       case Next.Latest(claim) => settle(last, latest.through, claim, latest).as(latest.through)
@@ -916,18 +939,18 @@ final class Forger[F[_]: Async, S](
     F.race(timer, F.race(claimed, scheduled)).void
 
   /** `slot`, claimed by the forging fiber, forged before its onset (§5.3): the attempt is
-    * provisional until the onset, made again when the chain or the credentials change, and at the
-    * onset its block is handed over only if it was built on the block context, the inputs and the
-    * credentials in force then; otherwise the slot is forged again at the onset. An attempt begun
-    * at or after the onset is final.
+    * provisional until the slot's forge begins ([[begun]]: the onset, or the slot driver's take of
+    * the slot, whichever comes first), made again when the chain or the credentials change, and
+    * then its block is handed over only if it was built on the block context, the inputs and the
+    * credentials in force then; otherwise the slot is forged again then. An attempt begun once the
+    * slot's forge has begun is final.
     */
   private def early(slot: BigInt, result: Deferred[F, Final[F]])(using
       Handle[F, NodeError],
       Raise[F, Fatal]
   ): F[Unit] =
-    val onset = geometry.slotStart(slot)
-    (pause(Forger.Point.Woke(slot)) *> now.flatMap { started =>
-      if !started.isBefore(onset) then admittedNow(slot).flatMap(forgeNow(slot, _))
+    (pause(Forger.Point.Woke(slot)) *> now.flatMap(begun(slot, _)).flatMap { started =>
+      if started then admittedNow(slot).flatMap(forgeNow(slot, _))
       else
         for
           seen <- seenNow
@@ -950,8 +973,8 @@ final class Forger[F[_]: Async, S](
       discards: Vector[Held[F]]
   )(using Handle[F, NodeError], Raise[F, Fatal]): F[Final[F]] =
     val onset = geometry.slotStart(slot)
-    now.flatMap { at =>
-      if !at.isBefore(onset) then atOnset(slot, current, discards)
+    now.flatMap(at => begun(slot, at).tupleLeft(at)).flatMap { (at, started) =>
+      if started then whenBegun(slot, current, discards)
       else
         val changed =
           (chains.map(_.tipRef.map(_.hash)), hot.inForce.map(_.generation)).tupled.discrete
@@ -961,10 +984,11 @@ final class Forger[F[_]: Async, S](
             .lastOrError
             .map((tip, generation) => Seen(tip, generation))
         pause(Forger.Point.Waiting(slot)) *> F
-          .race(sleep(Forger.between(at, onset)), changed)
+          .race(F.race(sleep(Forger.between(at, onset)), takenOf(slot)), changed)
           .flatMap {
-            // the monotonic timer is only a wake: the wall clock, read again, says whether the
-            // onset has come (a clock moved back within the rewind allowance has it later)
+            // the monotonic timer and the slot driver's take are only wakes: the wall clock and the
+            // claims, read again, say whether the slot's forge has begun (a clock moved back within
+            // the rewind allowance has the onset later)
             case Left(_) => provisional(slot, current, seen, discards)
             case Right(next) =>
               current match
@@ -982,8 +1006,10 @@ final class Forger[F[_]: Async, S](
           }
     }
 
-  /** At the onset: the early block handed over if it still holds, else the slot forged again. */
-  private def atOnset(slot: BigInt, current: Attempted[F, S], discards: Vector[Held[F]])(using
+  /** Once the slot's forge has begun ([[begun]]): the early block handed over if it still holds,
+    * else the slot forged again.
+    */
+  private def whenBegun(slot: BigInt, current: Attempted[F, S], discards: Vector[Held[F]])(using
       Handle[F, NodeError],
       Raise[F, Fatal]
   ): F[Final[F]] =
@@ -1045,8 +1071,8 @@ final class Forger[F[_]: Async, S](
   /** `slot` forged now, from the node as it is, and its final result: a block handed over, a
     * refusal, or not led; nothing while forging is disabled, as the reference runs no forging
     * thread then. `admitted`: its admission, if it has one (§5.5); one that would change the KES
-    * state without it waits, holding nothing, until the clock fiber publishes the slot, and is made
-    * again, admitted.
+    * state without it waits, holding nothing, until the clock fiber publishes the slot or the slot
+    * driver takes it, and is made again, admitted.
     */
   private def forgeNow(slot: BigInt, admitted: Option[Admitted])(using
       Handle[F, NodeError],
@@ -1901,7 +1927,9 @@ object Forger:
     /** An early attempt ended without a block before the slot's onset, and is pending. */
     case Refused(slot: BigInt)
 
-    /** A pending early attempt has read the clock and is about to wait for the slot's onset. */
+    /** A pending early attempt has read the clock and is about to wait for the slot's forge to
+      * begin: its onset, or the slot driver's take of it.
+      */
     case Waiting(slot: BigInt)
 
     /** The slot driver found a slot led and is about to hand it to the forging fiber. */
@@ -2029,21 +2057,35 @@ object Forger:
     case Claimed(slot: BigInt, claim: Claim[F])
     case Latest(claim: Option[Claim[F]])
 
-  /** One claim per slot, set once, and the slot driver's resolved-through `mark`: the highest slot
-    * whose outcome it has settled, the slots it passed over included. A slot at or below the mark
-    * cannot be claimed, and the forging fiber claims a slot only once the mark is just before it.
+  /** One claim per slot, set once, the slot driver's resolved-through `mark` (the highest slot
+    * whose outcome it has settled, the slots it passed over included), and `taken`, the clock
+    * fiber's publication that the slot driver took last, which admits the slots up to it (§5.5):
+    * their forges have begun. A slot at or below the mark cannot be claimed, and the forging fiber
+    * claims a slot only once the mark is just before it.
     */
-  private[forge] final case class Claims[F[_]](mark: BigInt, owned: SortedMap[BigInt, Claim[F]]):
-    /** The next slot on the way to `latest`, the mark just before it: the slots passed over on the
-      * way are settled with no outcome.
+  private[forge] final case class Claims[F[_]](
+      mark: BigInt,
+      owned: SortedMap[BigInt, Claim[F]],
+      taken: Option[Admitted]
+  ):
+    /** The next slot on the way to `latest`, the publication the slot driver takes, which is kept
+      * as `taken`; the mark just before that slot: the slots passed over on the way are settled
+      * with no outcome.
       */
-    def take(latest: BigInt): (Claims[F], Next[F]) =
-      owned.iteratorFrom(mark + 1).nextOption().filter(_._1 < latest) match
-        case Some((slot, claim)) => (copy(mark = mark.max(slot - 1)), Next.Claimed(slot, claim))
-        case None => (copy(mark = mark.max(latest - 1)), Next.Latest(owned.get(latest)))
+    def take(latest: Admitted): (Claims[F], Next[F]) =
+      val took = copy(taken = Some(latest))
+      owned.iteratorFrom(mark + 1).nextOption().filter(_._1 < latest.through) match
+        case Some((slot, claim)) =>
+          (took.copy(mark = mark.max(slot - 1)), Next.Claimed(slot, claim))
+        case None =>
+          (took.copy(mark = mark.max(latest.through - 1)), Next.Latest(owned.get(latest.through)))
+
+    /** The slot driver's admission of `slot`, if it has taken it or a later slot. */
+    def takenFor(slot: BigInt): Option[Admitted] = taken.filter(_.admits(slot))
 
     /** `slot` settled: the mark at it, the claims up to it gone. */
-    def settled(slot: BigInt): Claims[F] = Claims(mark.max(slot), owned.rangeFrom(slot + 1))
+    def settled(slot: BigInt): Claims[F] =
+      copy(mark = mark.max(slot), owned = owned.rangeFrom(slot + 1))
 
     /** `claim` on `slot` unless one is there, and the one that is. */
     def claim(slot: BigInt, claim: Claim[F]): (Claims[F], Option[Claim[F]]) =
@@ -2122,7 +2164,7 @@ object Forger:
     def create[F[_]: Async]: F[Shared[F]] =
       (
         SignallingRef.of[F, Option[BigInt]](None),
-        SignallingRef.of[F, Claims[F]](Claims(BigInt(-1), SortedMap.empty)),
+        SignallingRef.of[F, Claims[F]](Claims(BigInt(-1), SortedMap.empty, None)),
         Ref.of[F, Map[(Long, BigInt), KesResult]](Map.empty),
         Mutex[F],
         Ref.of[F, Published](Published(None, None, None))
