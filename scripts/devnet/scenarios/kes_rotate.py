@@ -24,6 +24,8 @@ DRIVER = REPO / "scripts" / "pool" / "rotate_kes.py"
 # present on a fresh CI runner, where only the digest-pinned base is pulled.
 CLI_IMAGE = REFERENCE_IMAGE
 FIRST = "gen-000000-00000000"
+# the node's lock for `--kes-skey /keys/current/kes.skey`: beside the link, named after it and the key
+KEY_LOCK = ".current.kes.skey.scarab-lock"
 
 
 def read_from_ref(args, path):
@@ -160,6 +162,12 @@ def check(args, root, events, forged, on_chain, counts, driver, observer):
         if evolved_since and key.stat().st_mtime <= cert.stat().st_mtime:
             failures.append("the KES key file was not rewritten after the certificate was installed (no evolved key "
                             "was written back)")
+    # the node's key lock sits beside `current`, where switching the link and removing the old generation leave it
+    in_generations = sorted(f"{g}/{p.name}" for g in generations for p in (root / "keys" / g).iterdir()
+                            if p.name.endswith(".scarab-lock"))
+    if not (root / "keys" / KEY_LOCK).is_file() or in_generations:
+        failures.append(f"the key lock is not {KEY_LOCK} in the key directory, or a generation holds one: "
+                        f"{in_generations}")
     leftovers = sorted(p.name for p in (root / "keys").iterdir() if p.name.startswith(".staging") or p.name.endswith(".next"))
     if leftovers or list((root / "keys" / "current").glob("*.next")):
         failures.append(f"temporary key files remain: {leftovers}")

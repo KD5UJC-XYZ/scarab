@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{IO, Ref}
 import cats.mtl.Handle
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, StandardCopyOption}
 import java.nio.file.attribute.PosixFilePermissions
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.ledger.{ForgeError, ForgeKeyProblem}
@@ -20,8 +20,10 @@ class KeyGuardSuite extends CatsEffectSuite:
   private val dir = FunFixture[Path](
     _ => Files.createTempDirectory("key-guard"),
     d =>
-      Files.list(d).forEach(Files.delete(_))
-      Files.delete(d)
+      Files
+        .walk(d)
+        .sorted(java.util.Comparator.reverseOrder())
+        .forEach(Files.delete(_))
   )
 
   dir.test("0600 and 0400 pass without a warning") { d =>
@@ -145,4 +147,53 @@ class KeyGuardSuite extends CatsEffectSuite:
       guarded(vrf, kes, lock = true, seen)(guarded(vrf, kes, lock = false, seen)(IO.unit))
         .map(r => assertEquals(r, Right(Right(()))))
     }
+  }
+
+  dir.test("the lock sits beside the key, named after it") { d =>
+    val kes = file(d, "kes.skey", "rw-------")
+    Handle
+      .allow[ForgeError](KeyGuard.held[IO](kes, lock = true).use(IO.pure))
+      .rescue(e => IO.raiseError(new AssertionError(e.message)))
+      .map(held => assertEquals(held, Some(d.resolve(".kes.skey.scarab-lock"))))
+  }
+
+  dir.test(
+    "a rotation that switches the key's link and removes the old generation does not free the lock"
+  ) { d =>
+    // the rotation driver's layout (`scripts/pool/rotate_kes.py`): the key is read through `current`
+    val first = Files.createDirectory(d.resolve("gen-000000-00000000"))
+    file(first, "kes.skey", "rw-------")
+    Files.createSymbolicLink(d.resolve("current"), first.getFileName)
+    val kes = d.resolve("current").resolve("kes.skey")
+    def second: IO[Option[ForgeError]] =
+      Handle
+        .allow[ForgeError](KeyGuard.held[IO](kes, lock = true).use_.as(Option.empty[ForgeError]))
+        .rescue(e => IO.pure(Some(e)))
+    // what the driver does once the node took the new pair: a new link renamed over `current`, then
+    // the old generation overwritten and removed
+    def rotate: IO[Unit] = IO.blocking {
+      val next = Files.createDirectory(d.resolve("gen-000001-00000040"))
+      file(next, "kes.skey", "rw-------")
+      val link = Files.createSymbolicLink(d.resolve("current.tmp"), next.getFileName)
+      Files.move(link, d.resolve("current"), StandardCopyOption.ATOMIC_MOVE)
+      Files
+        .walk(first)
+        .sorted(java.util.Comparator.reverseOrder())
+        .forEach(Files.delete(_))
+    }
+    Handle
+      .allow[ForgeError](
+        KeyGuard.held[IO](kes, lock = true).use(held => rotate *> second.map((held, _)))
+      )
+      .rescue(e => IO.raiseError(new AssertionError(e.message)))
+      .map { (held, other) =>
+        other match
+          case Some(ForgeError.KeyFile(file, ForgeKeyProblem.InstanceLocked(lock))) =>
+            assertEquals(file, kes.toString)
+            assertEquals(Some(Path.of(lock)), held)
+          case found =>
+            fail(s"a second instance after the rotation: expected InstanceLocked, got $found")
+        // beside the link, in the key directory the rotation leaves alone
+        assertEquals(held, Some(d.resolve(".current.kes.skey.scarab-lock")))
+      }
   }

@@ -18,10 +18,16 @@ At start the node checks the VRF key file as `cardano-node` does ([IN-83](../imp
 "other" permission bit (`0o007`, for example 0644) is refused with a typed `ConfigError`-style key-file error, a file with
 a "group" bit (for example 0640) starts with a `keyFileGroupAccess` warning, and 0600 or 0400 passes. Only the VRF
 key is checked, and nothing is checked on a file system without POSIX permissions. Unlike the reference the node also
-locks a hidden file beside the KES key (`--key-lock on`, the default), so a second Scarab instance on the same key
-files stops with an `InstanceLocked` error even with another `--db`; `--key-lock off` skips the lock (for a key
-directory the node cannot write to, which the KES write-back needs anyway). With a rotating `current` link the
-lock file sits in the directory the link points to. See
+locks a hidden file for the KES key (`--key-lock on`, the default), so a second Scarab instance on the same key
+paths stops with an `InstanceLocked` error even with another `--db`; `--key-lock off` skips the lock (for a key
+directory the node cannot write to, which the KES write-back needs anyway). The lock is taken before any credential
+file is read, so the second instance reads none, and does not finish or remove a key replacement the first is
+writing (see "Rotating the KES key"). The lock file is `.kes.skey.scarab-lock` beside a key at `keys/kes.skey`. When
+the key's directory is a symbolic link, as `current` is in the rotation layout below, the file sits beside the link
+instead, in the directory that holds it, and is named after both (`keys/.current.kes.skey.scarab-lock` for
+`keys/current/kes.skey`): switching the link and removing the old generation neither moves it nor removes it. The
+node must be able to create it there. An instance that reaches the same key by another path, for example through
+the generation directory itself, is not stopped by it. See
 [architecture.md](../architecture.md) for the forging design and [compatibility.md](../compatibility.md) for what
 is not covered (no KES agent; preprod since epoch 321, mainnet not run).
 
@@ -219,8 +225,8 @@ and a move in the instant between that check and the rename can still put the ke
 certificate too there, since any absent credential file disables forging
 ([#918](https://github.com/KD5UJC-XYZ/scarab/issues/918)).
 
-The lock beside the KES key (`--key-lock`) stays held while forging is disabled: a SIGHUP can enable forging at
-any time, so the lock keeps stopping a second Scarab instance on the same key files. It is a hidden file of its
+The KES key's lock (`--key-lock`) stays held while forging is disabled: a SIGHUP can enable forging at
+any time, so the lock keeps stopping a second Scarab instance on the same key paths. It is a hidden file of its
 own, made at start-up, and nothing else is written in the key directory while forging is off. A standby on the
 same machine and the same key paths therefore needs its own copy of the files or `--key-lock off`.
 

@@ -81,7 +81,6 @@ import xyz.kd5ujc.scarab.node.forge.{
   ForgeEvents,
   Forger,
   HotKeySource,
-  KeyFiles,
   KeyGuard,
   PoolCredentials
 }
@@ -352,8 +351,8 @@ object Main extends IOApp:
     * @param dumpStateFull
     *   `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
     * @param keyLock
-    *   `--key-lock on|off`: with `--forge`, hold an exclusive lock beside the KES key file (see
-    *   [[forge.KeyGuard]]).
+    *   `--key-lock on|off`: with `--forge`, hold an exclusive lock for the KES key file, taken
+    *   before the credentials are read (see [[forge.KeyGuard]]).
     * @param startAsNonProducingNode
     *   `--start-as-non-producing-node`, or its hidden, deprecated alias `--non-producing-node`
     *   (cardano-node 11.1.3 `Parsers.hs` 414-436): start with forging disabled even though
@@ -864,10 +863,11 @@ object Main extends IOApp:
     def admitted[A](result: Either[ConfigError, A]): IO[A] =
       result.fold(e => Handle[IO, NodeError].raise[NodeError, A](e), IO.pure)
     // the VRF key's permissions, then the credentials: before the sockets, the topology and the
-    // database, as the reference's `runNode` reads them before `handleSimpleNode` (`Run.hs` 193-201)
-    def credentials(files: ForgeFiles): IO[PoolCredentials] =
-      IO.blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
-        .flatMap(_.fold(e => Handle[IO, NodeError].raise[NodeError, PoolCredentials](e), IO.pure))
+    // database, as the reference's `runNode` reads them before `handleSimpleNode` (`Run.hs` 193-201).
+    // The key lock, which the reference does not have, is taken just before them and held until the
+    // node ends, so a second instance reads no key file ([[KeyGuard.credentials]])
+    def credentials(files: ForgeFiles): Resource[IO, PoolCredentials] =
+      KeyGuard.credentials[IO](files.vrfSkey, files.kesSkey, files.opCert, requested.keyLock)
     // the stale socket goes once the configuration is read, before the topology and the database,
     // as the reference's `gatherConfiguredSockets` (`Run.hs` 317-324)
     def removedStale(setup: NodeSetup): IO[Either[SocketConfigError, Unit]] =
@@ -884,26 +884,29 @@ object Main extends IOApp:
         requested.referenceBuild,
         setup.config.settings.experimentalHardForksEnabled
       )
-      pool <- requested.forge.traverse(credentials)
-      listening <- requested.listen.traverse(nodeAddress(_).flatMap(admitted))
-      removal <- removedStale(setup)
-      code <- removal.fold(
-        error =>
-          Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)) *>
-            failedStart(error.message).as(ExitCode.Error),
-        _ =>
-          // what the reading of the topology says is logged before its snapshot is read, which
-          // may stop the start, as the reference's `readTopologyFile` traces before
-          // `updateLedgerPeerSnapshot` (`Run.hs` 349-379)
-          IO.blocking(readTopology(requested, setup))
-            .flatMap(admitted)
-            .flatTap(noticed)
-            .flatMap(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
-            .flatMap(admitted)
-            .flatMap((options, setup, topology) =>
-              started(options, setup, topology, requested.peers, pool, layout, listening)
-            )
-      )
+      code <- requested.forge.traverse(credentials).use { pool =>
+        for
+          listening <- requested.listen.traverse(nodeAddress(_).flatMap(admitted))
+          removal <- removedStale(setup)
+          code <- removal.fold(
+            error =>
+              Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)) *>
+                failedStart(error.message).as(ExitCode.Error),
+            _ =>
+              // what the reading of the topology says is logged before its snapshot is read,
+              // which may stop the start, as the reference's `readTopologyFile` traces before
+              // `updateLedgerPeerSnapshot` (`Run.hs` 349-379)
+              IO.blocking(readTopology(requested, setup))
+                .flatMap(admitted)
+                .flatTap(noticed)
+                .flatMap(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
+                .flatMap(admitted)
+                .flatMap((options, setup, topology) =>
+                  started(options, setup, topology, requested.peers, pool, layout, listening)
+                )
+          )
+        yield code
+      }
     yield code
     for
       _ <- nativeLibrary
@@ -971,8 +974,6 @@ object Main extends IOApp:
           )
       )
     )
-    val keys =
-      options.forge.fold(Resource.unit[IO])(f => KeyGuard.held[IO](f.kesSkey, options.keyLock))
     // from here a SIGHUP is the reference's initial one until the run installs the full handler
     val hangup = Resource
       .eval(
@@ -991,7 +992,7 @@ object Main extends IOApp:
       )
     (
       hangup,
-      ownership *> keys *> compatible *> (
+      ownership *> compatible *> (
         utxoBacking(options),
         VerificationCache.resource[IO](),
         Scheduling.resource[IO](options.cpuThreads),
