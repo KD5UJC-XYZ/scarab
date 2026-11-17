@@ -66,11 +66,6 @@ object MemPack:
       */
     case ScriptBytesMissing
 
-    /** An output of an era this build does not pack yet (Dijkstra's outputs carry its own native
-      * scripts and PlutusV4, cardano-ledger 9df9f98c `Dijkstra/Scripts.hs:365,446-463`).
-      */
-    case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
-
   /** Where an unknown tag was met. */
   enum TagSite:
     case TxOutConstructor, Datum, Script, PlutusLanguage, Credential, CompactValue, CompactCoin
@@ -78,7 +73,7 @@ object MemPack:
   /** Constructs of the grammar that only some eras have. */
   enum Feature:
     case MultiAssetValue, DatumHash, Addr28Constructor, InlineDatum, ReferenceScript, PlutusV2,
-      PlutusV3
+      PlutusV3, PlutusV4
 
   /** Faults of the packed multi-asset representation (`Value.hs:475-578`, cardano-ledger f649f975).
     */
@@ -116,7 +111,6 @@ object MemPack:
       case Failure.ReferenceScriptWrapper => "MemPack: reference script requires tag 24"
       case Failure.UnknownScriptKind(t)   => s"MemPack: unknown reference-script kind $t"
       case Failure.ScriptBytesMissing     => "MemPack: reference script without bytes"
-      case Failure.NotYet(part)           => s"MemPack: ${part.message}"
     }
 
   type Result[A] = Either[Failure, A]

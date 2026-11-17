@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.mempack
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.ledger.{ByteStrings, DecodeField, FieldKeys}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   CborRead,
@@ -16,6 +16,12 @@ import xyz.kd5ujc.scarab.ledger.{
   TxOut,
   Value
 }
+import xyz.kd5ujc.scarab.ledger.dijkstra.{
+  DijkstraLanguage,
+  DijkstraScript as FlatDijkstraScript,
+  V12
+}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraNativeScript
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -44,6 +50,20 @@ final case class RefScript(kind: ScriptKind, bytes: Bytes)
   * witness, so a constructor that the era does not have is refused with a typed [[Failure]], not
   * guessed.
   *
+  * Dijkstra's output is Babbage's (`type TxOut DijkstraEra = BabbageTxOut DijkstraEra`,
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxOut.hs:29`, cardano-ledger 9df9f98c), packed
+  * by the same instance (`MemPack (BabbageTxOut era)`, `eras/babbage/impl/src/Cardano/Ledger/
+  * Babbage/TxOut.hs:164-216`), with Dijkstra's script in tag 5: `AlonzoScript` (`Alonzo/
+  * Scripts.hs:513-532`), whose native script is the bytes it memoizes (`MemPack
+  * (DijkstraNativeScript era)`, `Dijkstra/Scripts.hs:365-368`, `packMemoBytesM`,
+  * `MemoBytes/Internal.hs:131-135`), unpacked by decoding them whole at Dijkstra's version 12
+  * (`unpackMemoBytesM`, `decodeMemoBytes`, `MemoBytes/Internal.hs:137-158`;
+  * `ProtVerLow DijkstraEra = 12`,
+  * `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:140`), and whose
+  * Plutus script is the language's tag, 0 to 3 for PlutusV1 to PlutusV4, and its bytes (`MemPack
+  * (PlutusScript DijkstraEra)`, `Dijkstra/Scripts.hs:446-465`). An earlier era's language tag 3 is
+  * unknown, as `unknownTagM` of Conway's instance has it (`Conway/Scripts.hs:184-200`).
+  *
   * The constructor of an output depends on how it was built (`mkTxOut`): a basic output (no
   * reference script, a datum hash or none) of ada only to a base address is the compact "Addr28"
   * form (tags 2 and 3), the others the general ones (0, 1, 4, 5). An output carried over from an
@@ -58,14 +78,14 @@ object TxOutMemPack:
 
   /** The output packed, in the format of era `E`. */
   def encode[E <: EraTag](out: TxOut)(using ShelleyBasedEra[E]): Result[Bytes] =
-    parts(out).flatMap(encodeParts)
+    partsOf[E](out).flatMap(encodeParts)
 
   /** The output stored in `bytes`, with a canonical CBOR encoding in [[TxOut.raw]]. */
   def decode[E <: EraTag](bytes: Bytes)(using ShelleyBasedEra[E]): Result[TxOut] =
-    decodeParts(bytes).flatMap(toTxOut)
+    decodeParts(bytes).flatMap(toTxOutOf[E])
 
   def encodeParts[E <: EraTag](p: TxOutParts)(using era: ShelleyBasedEra[E]): Result[Bytes] =
-    implemented[E] *> choose(p).map { rep =>
+    choose(p).map { rep =>
       val packer = new Packer(size(rep))
       pack(rep, packer)
       packer.result
@@ -73,28 +93,39 @@ object TxOutMemPack:
 
   def decodeParts[E <: EraTag](bytes: Bytes)(using ShelleyBasedEra[E]): Result[TxOutParts] =
     val in = Unpacker.of(bytes)
-    implemented[E] *> unpackRep(in).flatMap(rep => in.finished.flatMap(_ => fromRep(rep)))
-
-  /** Dijkstra's outputs are refused ([[Failure.NotYet]]). */
-  private def implemented[E <: EraTag](using era: ShelleyBasedEra[E]): Result[Unit] =
-    Either.cond(
-      era != ShelleyBasedEra.SDijkstra,
-      (),
-      Failure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState)
-    )
+    unpackRep(in).flatMap(rep => in.finished.flatMap(_ => fromRep(rep)))
 
   // ---- the output and its parts
 
-  /** The parts of an output. The reference script's bytes are read from the output's encoding; an
-    * output that has a script but no encoding (built, not read) is refused.
+  /** The parts of an output of an era up to Conway. The reference script's bytes are read from the
+    * output's encoding; an output that has a script but no encoding (built, not read) is refused.
     */
-  def parts(out: TxOut): Result[TxOutParts] =
+  def parts(out: TxOut): Result[TxOutParts] = partsWith(out)(alonzoScript)
+
+  /** The parts of an output of era `E`, its reference script read as the era reads one. */
+  def partsOf[E <: EraTag](out: TxOut)(using ShelleyBasedEra[E]): Result[TxOutParts] =
+    partsWith(out)(referenceScript[E])
+
+  private def partsWith(out: TxOut)(script: Node => Result[RefScript]): Result[TxOutParts] =
     out.scriptRef match
       case None => Right(TxOutParts(out.address.raw, out.value, out.datum, None))
       case Some(_) =>
-        scriptOf(out.raw).map(s => TxOutParts(out.address.raw, out.value, out.datum, Some(s)))
+        referenceItem(out.raw)
+          .flatMap(script)
+          .map(s => TxOutParts(out.address.raw, out.value, out.datum, Some(s)))
 
-  private def scriptOf(raw: Bytes): Result[RefScript] =
+  /** The reader of the reference script of an output of era `E`, from the field that holds it. */
+  private def referenceScript[E <: EraTag](using
+      era: ShelleyBasedEra[E]
+  ): Node => Result[RefScript] =
+    era match
+      case ShelleyBasedEra.SDijkstra => dijkstraScript
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        alonzoScript
+
+  /** The item of the reference-script field (key 3) of the output's encoding `raw`. */
+  private def referenceItem(raw: Bytes): Result[Node] =
     if raw.size == 0 then Left(Failure.ScriptBytesMissing)
     else
       for
@@ -103,18 +134,47 @@ object TxOutMemPack:
           .fields(node, DecodeField.Output, FieldKeys.Stored)
           .leftMap(Failure.ScriptRefused(_))
         wrapped <- fields.get(3).toRight(Failure.ReferenceScriptMissing)
-        inner <- wrapped.value match
-          case CborValue.Tag(t, i) if t == 24 =>
-            CborRead.bytes(i, DecodeField.ReferenceScript).leftMap(Failure.ScriptRefused(_))
-          case _ => Left(Failure.ReferenceScriptWrapper)
-        script <- CborRead.decode(inner).leftMap(Failure.ScriptRefused(_))
-        two <- CborRead.arrayN(script, 2, DecodeField.Script).leftMap(Failure.ScriptRefused(_))
-        tag <- CborRead.uint(two(0), DecodeField.ScriptType).leftMap(Failure.ScriptRefused(_))
-        kind <- packedKind(tag).toRight(Failure.UnknownScriptKind(tag))
-        bytes <-
-          if kind == ScriptKind.Native then Right(two(1).original)
-          else CborRead.bytes(two(1), DecodeField.PlutusScript).leftMap(Failure.ScriptRefused(_))
-      yield RefScript(kind, bytes)
+      yield wrapped
+
+  /** A reference script of an era up to Conway: `#6.24(bytes .cbor [kind, payload])`, the kinds
+    * [[packedKind]] knows.
+    */
+  private def alonzoScript(wrapped: Node): Result[RefScript] =
+    for
+      inner <- wrapped.value match
+        case CborValue.Tag(t, i) if t == 24 =>
+          CborRead.bytes(i, DecodeField.ReferenceScript).leftMap(Failure.ScriptRefused(_))
+        case _ => Left(Failure.ReferenceScriptWrapper)
+      script <- CborRead.decode(inner).leftMap(Failure.ScriptRefused(_))
+      two <- CborRead.arrayN(script, 2, DecodeField.Script).leftMap(Failure.ScriptRefused(_))
+      tag <- CborRead.uint(two(0), DecodeField.ScriptType).leftMap(Failure.ScriptRefused(_))
+      kind <- packedKind(tag).toRight(Failure.UnknownScriptKind(tag))
+      bytes <-
+        if kind == ScriptKind.Native then Right(two(1).original)
+        else CborRead.bytes(two(1), DecodeField.PlutusScript).leftMap(Failure.ScriptRefused(_))
+    yield RefScript(kind, bytes)
+
+  /** A Dijkstra reference script, read as the Leios build's block decoder reads it, at version 12
+    * ([[V12.nested]], [[FlatDijkstraScript.script]]): a native script as the bytes it was read
+    * from, which it memoizes and MemPack packs (a native script with a guard, which the stored
+    * output keeps without a tree, is packed so from the output's own bytes), a Plutus script as its
+    * language and its program's bytes.
+    */
+  private def dijkstraScript(wrapped: Node): Result[RefScript] =
+    V12
+      .nested(wrapped, DecodeField.ReferenceScript)
+      .flatMap((_, item) => FlatDijkstraScript.script(item))
+      .leftMap(Failure.ScriptRefused(_))
+      .map {
+        case FlatDijkstraScript.Native(raw)            => RefScript(ScriptKind.Native, raw)
+        case FlatDijkstraScript.Plutus(language, code) => RefScript(kindOf(language), code)
+      }
+
+  private def kindOf(language: DijkstraLanguage): ScriptKind = language match
+    case DijkstraLanguage.PlutusV1 => ScriptKind.PlutusV1
+    case DijkstraLanguage.PlutusV2 => ScriptKind.PlutusV2
+    case DijkstraLanguage.PlutusV3 => ScriptKind.PlutusV3
+    case DijkstraLanguage.PlutusV4 => ScriptKind.PlutusV4
 
   /** `out` with the native reference script `script` encoded as `original` in place of the one it
     * has, and the encoding the reference writes for an output it holds in compact form as its
@@ -142,13 +202,20 @@ object TxOutMemPack:
       valueCbor.size
     )
 
-  /** The node's output for `p`, with the canonical encoding (the legacy array without an inline
-    * datum or a script, else the keyed map) as its original bytes.
+  /** The node's output for `p` of an era up to Conway, with the canonical encoding (the legacy
+    * array without an inline datum or a script, else the keyed map) as its original bytes.
     */
-  def toTxOut(p: TxOutParts): Result[TxOut] =
+  def toTxOut(p: TxOutParts): Result[TxOut] = toTxOutWith(p)(timelockReference)
+
+  /** The node's output for `p` of era `E`, its native reference script read as the era reads one.
+    */
+  def toTxOutOf[E <: EraTag](p: TxOutParts)(using ShelleyBasedEra[E]): Result[TxOut] =
+    toTxOutWith(p)(nativeReference[E])
+
+  private def toTxOutWith(p: TxOutParts)(native: Bytes => Result[Script]): Result[TxOut] =
     for
       address <- Address.decode(p.address, Address.Mode.Stored).left.map(Failure.AddressRefused(_))
-      scriptRef <- p.script.traverse(refScript)
+      scriptRef <- p.script.traverse(s => refScript(s, native))
     yield
       val valueCbor = CanonicalCbor.value(p.value)
       TxOut(
@@ -161,21 +228,41 @@ object TxOutMemPack:
       )
 
   /** An output's reference script, kept as an output keeps it ([[Script.withoutBytes]]), so the
-    * output read again from its encoding is equal to this one.
+    * output read again from its encoding is equal to this one; a native script read by `native`.
     */
-  private def refScript(s: RefScript): Result[Script] = s.kind match
-    case ScriptKind.Native =>
-      CborRead
-        .decode(s.bytes)
-        .leftMap(Failure.ScriptRefused(_))
-        // a reference script, Babbage's: a time lock
-        .flatMap(n =>
-          Script
-            .native(n, NativeScript.Form.Timelock)
-            .map(_.withoutBytes)
-            .leftMap(Failure.ScriptRefused(_))
-        )
-    case plutus => Right(Script.plutus(plutus, s.bytes).withoutBytes)
+  private def refScript(s: RefScript, native: Bytes => Result[Script]): Result[Script] =
+    s.kind match
+      case ScriptKind.Native => native(s.bytes)
+      case plutus            => Right(Script.plutus(plutus, s.bytes).withoutBytes)
+
+  /** The reader of a native reference script's bytes of era `E`. */
+  private def nativeReference[E <: EraTag](using era: ShelleyBasedEra[E]): Bytes => Result[Script] =
+    era match
+      case ShelleyBasedEra.SDijkstra => dijkstraNative
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        timelockReference
+
+  /** A reference script, Babbage's: a time lock. */
+  private def timelockReference(bytes: Bytes): Result[Script] =
+    CborRead
+      .decode(bytes)
+      .flatMap(n => Script.native(n, NativeScript.Form.Timelock))
+      .map(_.withoutBytes)
+      .leftMap(Failure.ScriptRefused(_))
+
+  /** A Dijkstra native script, decoded whole at version 12 as `unpackMemoBytesM` decodes it
+    * ([[DijkstraNativeScript]]), kept as the stored output keeps one: its hash over the bytes, and
+    * the time-lock tree of a script without a guard, none for one with a guard
+    * ([[DijkstraNativeScript.timelock]], the form of
+    * `xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.toStored`).
+    */
+  private def dijkstraNative(bytes: Bytes): Result[Script] =
+    CborRead
+      .decode(bytes)
+      .flatMap(DijkstraNativeScript.read)
+      .leftMap(Failure.ScriptRefused(_))
+      .map(n => Script(ScriptKind.Native, FlatDijkstraScript.Native(bytes).hash, n.timelock))
 
   // ---- the constructors
 
@@ -230,10 +317,10 @@ object TxOutMemPack:
     case ShelleyBasedEra.SDijkstra => Era.Dijkstra
 
   /** The highest constructor tag of the era's `TxOut`. */
-  private def maxTag[E <: EraTag](using ShelleyBasedEra[E]): Int = eraOf[E] match
-    case Era.Alonzo               => 3
-    case Era.Babbage | Era.Conway => 5
-    case _                        => 0
+  private def maxTag[E <: EraTag](using era: ShelleyBasedEra[E]): Int = era match
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary    => 0
+    case ShelleyBasedEra.SAlonzo                                                        => 3
+    case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => 5
 
   /** Shelley and Allegra values are a `CompactForm Coin`; from Mary a `CompactValue`. */
   private def coinOnlyValues[E <: EraTag](using ShelleyBasedEra[E]): Boolean =
@@ -242,12 +329,15 @@ object TxOutMemPack:
       case _                         => false
 
   /** The Plutus languages of the era's `PlutusScript` (`Babbage/Scripts.hs:134` (cardano-ledger
-    * f649f975), `Conway/Scripts.hs:184`).
+    * f649f975), `Conway/Scripts.hs:184`; `Dijkstra/Scripts.hs:446-465`, cardano-ledger 9df9f98c).
     */
-  private def languages[E <: EraTag](using ShelleyBasedEra[E]): Int = eraOf[E] match
-    case Era.Conway  => 3
-    case Era.Babbage => 2
-    case _           => 1
+  private def languages[E <: EraTag](using era: ShelleyBasedEra[E]): Int = era match
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo =>
+      1
+    case ShelleyBasedEra.SBabbage  => 2
+    case ShelleyBasedEra.SConway   => 3
+    case ShelleyBasedEra.SDijkstra => 4
 
   private def requireTag[E <: EraTag](tag: Int, feature: Feature)(using
       ShelleyBasedEra[E]
@@ -319,9 +409,9 @@ object TxOutMemPack:
           requireTag[E](4, Feature.InlineDatum).as(Rep.CompactDatum(p.address, value, d))
     yield rep
 
-  /** The kind of a reference script's tag, of the kinds an output packed here can hold: no era
-    * packed here has PlutusV4 (Dijkstra's outputs are `NotYet`), so its tag is unknown here, as it
-    * was before the stored kind had it.
+  /** The kind of a reference script's tag, of the kinds an output of an era up to Conway can hold:
+    * none has PlutusV4 (Dijkstra's reference scripts are read by [[dijkstraScript]]), so its tag is
+    * unknown here, as it was before the stored kind had it.
     */
   private def packedKind(tag: BigInt): Option[ScriptKind] =
     ScriptKind.values.find(_.tag == tag).flatMap {
@@ -334,12 +424,13 @@ object TxOutMemPack:
   private def checkLanguage[E <: EraTag](s: RefScript)(using
       ShelleyBasedEra[E]
   ): Result[RefScript] =
+    def within(needed: Int, feature: Feature) =
+      Either.cond(languages[E] >= needed, s, Failure.NotInEra(feature, eraOf[E]))
     s.kind match
-      case ScriptKind.PlutusV2 if languages[E] < 2 =>
-        Left(Failure.NotInEra(Feature.PlutusV2, eraOf[E]))
-      case ScriptKind.PlutusV3 if languages[E] < 3 =>
-        Left(Failure.NotInEra(Feature.PlutusV3, eraOf[E]))
-      case _ => Right(s)
+      case ScriptKind.Native | ScriptKind.PlutusV1 => Right(s)
+      case ScriptKind.PlutusV2                     => within(2, Feature.PlutusV2)
+      case ScriptKind.PlutusV3                     => within(3, Feature.PlutusV3)
+      case ScriptKind.PlutusV4                     => within(4, Feature.PlutusV4)
 
   /** Tags 2 and 3 for an ada-only output to a base address, tags 0 and 1 otherwise. */
   private def compactOrAddr28[E <: EraTag](
@@ -551,7 +642,9 @@ object TxOutMemPack:
                 ScriptKind.PlutusV3,
                 Failure.NotInEra(Feature.PlutusV3, eraOf[E])
               )
-            case t => Left(Failure.UnknownTag(TagSite.PlutusLanguage, t))
+            // Dijkstra's PlutusV4; an earlier era has no tag 3 (`unknownTagM`)
+            case 3 if languages[E] >= 4 => Right(ScriptKind.PlutusV4)
+            case t                      => Left(Failure.UnknownTag(TagSite.PlutusLanguage, t))
           kind.flatMap(k => in.sized.map(RefScript(k, _)))
         }
       case t => Left(Failure.UnknownTag(TagSite.Script, t))

@@ -14,7 +14,6 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
 import xyz.kd5ujc.scarab.ledger.EnvelopeError
-import xyz.kd5ujc.scarab.ledger.mempack.{MemPack, TxOutMemPack}
 import xyz.kd5ujc.scarab.ledger.rules.Hfc
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
@@ -128,9 +127,5 @@ class DijkstraNotYetSuite extends FunSuite:
     assertEquals(
       Params.complete(ShelleyBasedEra.SDijkstra, Params.empty, Params.empty),
       Left(DijkstraNotYet.LedgerState)
-    )
-    assertEquals(
-      TxOutMemPack.decode[Dijkstra](Bytes.empty),
-      Left(MemPack.Failure.NotYet(DijkstraNotYet.LedgerState))
     )
   }

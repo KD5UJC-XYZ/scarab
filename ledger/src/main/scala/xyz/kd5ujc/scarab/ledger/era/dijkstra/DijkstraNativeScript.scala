@@ -222,7 +222,7 @@ object DijkstraNativeScript:
   def decode(n: Node): Either[EraTxError, DijkstraNativeScript] =
     read(n).leftMap(EraTxError.Decode(_))
 
-  private[dijkstra] def read(n: Node): Either[LedgerDecodeError, DijkstraNativeScript] =
+  private[ledger] def read(n: Node): Either[LedgerDecodeError, DijkstraNativeScript] =
     readWith(Kept.NoBytes)(n)
 
   /** What a level read from bytes keeps: its bytes, or none. */
