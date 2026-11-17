@@ -2,7 +2,7 @@
 # A differential campaign against the reference
 
 **Status**: Proposal, 2026-11-16. Not implemented. Its author read every claim about the reference at the pins below;
-an independent review checked them once and its corrections are made here, and the re-check that
+two independent reviews checked them and their corrections are made here, and the re-check that
 [CONTRIBUTING](../../CONTRIBUTING.md#levels) asks for before approval is pending. **No persisted format changes**: a
 kept input lives in a directory of its own, off the persisted-format surface (§7.4,
 [FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
