@@ -23,6 +23,9 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
   *   how each Shelley-based era is entered (`HardForkConfig`)
   * @param byron
   *   the Byron parameters of the era history (epoch size, slot length, security parameter)
+  * @param layout
+  *   the state layout of the build the node mirrors: what a state the mirror builds with no
+  *   Shelley-based ledger state to take it from, a Byron one ([[ByronMirror]]), is laid out in
   * @param observed
   *   the epoch in which the node saw each era begin, where the configuration does not say
   *   (`EraHistory.summary`)
@@ -31,6 +34,7 @@ final case class ConsensusMirrorEnv(
     ledger: MirrorEnv,
     forks: HardForkConfig,
     byron: EraHistory.ByronParams,
+    layout: StateLayout,
     observed: Map[Era, BigInt] = Map.empty
 )
 

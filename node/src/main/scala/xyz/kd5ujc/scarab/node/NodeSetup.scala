@@ -106,7 +106,14 @@ final case class NodeSetup(
     * epoch in which each era was seen to begin, where the configuration does not say.
     */
   def mirrorEnv(observed: Map[Era, BigInt] = Map.empty): ConsensusMirrorEnv =
-    NodeSetup.mirrorEnvOf(genesis, globals, praos, byronParams, observed)
+    NodeSetup.mirrorEnvOf(
+      genesis,
+      globals,
+      praos,
+      byronParams,
+      mirrorStart.ext.layout.stateLayout,
+      observed
+    )
 
   /** The mirror's environment as a capability: the configuration, with the eras seen to begin so
     * far read from `observed` at each use.
@@ -151,6 +158,7 @@ object NodeSetup:
       globals: LedgerGlobals,
       praos: PraosConfig,
       byronParams: Option[ByronGenesis],
+      layout: StateLayout,
       observed: Map[Era, BigInt] = Map.empty
   ): ConsensusMirrorEnv =
     val geometry = genesis.geometry
@@ -164,6 +172,7 @@ object NodeSetup:
           geometry.k
         )
       )(b => EraHistory.ByronParams(b.epochSlots, b.slotLengthMillis, b.securityParam)),
+      layout,
       observed
     )
 
@@ -446,7 +455,7 @@ object NodeSetup:
       }
       genDelegs <- GenesisState.genDelegs(files.shelley)
       fromByron = FromByron(genDelegs, params, globals.maxSupply)
-      env = mirrorEnvOf(genesis, globals, praos, Some(byronGenesis))
+      env = mirrorEnvOf(genesis, globals, praos, Some(byronGenesis), layout)
       shelleyHash = Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))
       // what `DebugLedgerConfig` answers with, written once from the configuration as the reference
       // reads it, whose `RequiresNetworkMagic` is `RequiresNoMagic` when absent (cardano-node 11.1.3

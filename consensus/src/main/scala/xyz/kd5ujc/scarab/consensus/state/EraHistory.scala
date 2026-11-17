@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
-import xyz.kd5ujc.scarab.ledger.state.Diff
+import xyz.kd5ujc.scarab.ledger.state.{Diff, Word64}
 import cats.{Eq, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Horizon}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** One era of the history (`EraSummary`, `HardFork/History/Summary.hs:198-205`, ouroboros-consensus
   * 82ecba32): where it starts, where it ends (`None`: unbounded, `EraUnbounded`,
   * `Summary.hs:210-216`) and its parameters (`EraParams`: epoch size, slot length in milliseconds,
-  * safe zone, genesis window).
+  * safe zone, genesis window, and the slots of a Peras round where the era has rounds,
+  * `eraPerasRoundLength`, `EraParams.hs:140-147` at 2416493b; [[EraHistory.perasRoundLength]]).
   */
 final case class EraSummary(
     start: Bound,
@@ -20,7 +21,8 @@ final case class EraSummary(
     epochSize: BigInt,
     slotLengthMillis: BigInt,
     safeZone: BigInt,
-    genesisWindow: BigInt
+    genesisWindow: BigInt,
+    perasRoundLength: Option[BigInt]
 ) derives Eq,
       Show,
       Diff
@@ -54,13 +56,81 @@ object EraHistory:
           (slot - geometry.byron.slots) * BigInt(geometry.slotLengthMillis)
     Bound(millis * PsPerMilli, slot, epoch, Bound.Layout.Node11_1(None))
 
+  /** The slots of a Peras round of `era` in the build of `layout` (`eraPerasRoundLength`), none
+    * where the era has no rounds (`NoPerasEnabled`). The 11.1 line gives no era rounds: Byron's
+    * parameters (`byronEraParams`, `Byron/Ledger/Ledger.hs:323-331`) and the Shelley-based eras'
+    * (`shelleyEraParams`, `Shelley/Ledger/Ledger.hs:168-180`), ouroboros-consensus 82ecba32. The
+    * Leios build (2416493b) gives Byron none (`Byron/Ledger/Ledger.hs:326-334`) and each
+    * Shelley-based era its `getShelleyEraPerasRoundLength` (`Shelley/Ledger/Ledger.hs:188-200`):
+    * none by default (`Shelley/Eras.hs:147-151`), and for Dijkstra `dijkstraPerasRoundLength`
+    * (`:283`), 90 slots (`Peras/Params.hs:240-242`), a constant of the build, not of the genesis.
+    * The Leios layout is that one build's.
+    */
+  def perasRoundLength(layout: StateLayout, era: Era): Option[BigInt] = layout match
+    case StateLayout.Node11_1 => None
+    case StateLayout.Leios =>
+      era match
+        case Era.Dijkstra => Some(DijkstraPerasRoundLength)
+        case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
+            Era.Conway =>
+          None
+
+  private val DijkstraPerasRoundLength = BigInt(90)
+
+  /** The Peras round of `initBound`, the start of the first era: none in the 11.1 line
+    * (`NoPerasEnabled`, ouroboros-consensus 82ecba32 `Summary.hs:92-101`), round zero in the Leios
+    * build (2416493b `Summary.hs:103-110`).
+    */
+  def originLayout(layout: StateLayout): Bound.Layout = layout match
+    case StateLayout.Node11_1 => Bound.Layout.Node11_1(None)
+    case StateLayout.Leios    => Bound.Layout.Leios(PerasRoundNo(Word64.zero))
+
+  /** The Peras round of `mkUpperBound` for an era with no Peras rounds, from the round of its lower
+    * bound: the 11.1 line's is none, `addPerasRounds <$> NoPerasEnabled <*> _` (82ecba32
+    * `Summary.hs:125-131`); the Leios build's keeps the lower bound's next round (2416493b
+    * `Summary.hs:134-147`).
+    */
+  def unroundedLayout(lo: Bound.Layout): Bound.Layout = lo match
+    case Bound.Layout.Node11_1(_)  => Bound.Layout.Node11_1(None)
+    case l @ Bound.Layout.Leios(_) => l
+
+  /** The Peras round of `mkUpperBound` (2416493b `Summary.hs:126-151`, 82ecba32 `:117-141`): the
+    * bound that ends `slots` slots of `era` after a lower bound of layout `lo`. An era with no
+    * rounds is [[unroundedLayout]]; one with rounds adds the whole rounds of its slots to the lower
+    * bound's, `div` of the slots by the round length and `addPerasRounds`, a `Word64` sum (2416493b
+    * `HardFork/History/Util.hs:31-32`).
+    */
+  def upperLayout(lo: Bound.Layout, era: Era, slots: BigInt): Bound.Layout =
+    perasRoundLength(lo.stateLayout, era).fold(unroundedLayout(lo)) { length =>
+      def add(r: PerasRoundNo) =
+        PerasRoundNo(
+          Word64.fromUnsigned((r.word.toBigInt + slots / length).mod(Word64Modulus).toLong)
+        )
+      lo match
+        case Bound.Layout.Node11_1(round) => Bound.Layout.Node11_1(round.map(add))
+        case Bound.Layout.Leios(next)     => Bound.Layout.Leios(add(next))
+    }
+
+  private val Word64Modulus = BigInt(2).pow(64)
+
+  /** `mkUpperBound` of `era` from `lo` to the bound `at` (the time, slot and epoch, as [[boundAt]]
+    * or the summary's arithmetic places it), with the Peras round of [[upperLayout]].
+    */
+  def upperBound(lo: Bound, era: Era, at: Bound): Bound =
+    at.copy(layout = upperLayout(lo.layout, era, at.slot - lo.slot))
+
+  /** The era history from the configuration, every bound in the layout of `layout` 's build: the
+    * first era starts at `initBound` ([[originLayout]]) and each era ends at its `mkUpperBound`
+    * ([[upperBound]]), where the next begins.
+    */
   def summary(
       geometry: EpochGeometry,
       byron: ByronParams,
       forks: HardForkConfig,
       observed: Map[Era, BigInt],
       current: Era,
-      tipSlot: BigInt
+      tipSlot: BigInt,
+      layout: StateLayout
   ): Vector[EraSummary] =
     val shelleyEpochs =
       Era.values.toVector.filter(e => e != Era.Byron && e.ordinal <= current.ordinal)
@@ -79,34 +149,44 @@ object EraHistory:
       }
     def bound(epoch: BigInt): Bound = boundAt(geometry, byron, epoch)
     val safe = geometry.stabilityWindow.toBigInt
-    val byronEra = EraSummary(
-      bound(0),
-      Some(bound(firstShelley)),
-      byron.epochSlots,
-      byron.slotLengthMillis,
-      byron.k * 2,
-      byron.k * 2
+    val byronEra = (
+      Era.Byron,
+      BigInt(0),
+      firstShelley,
+      EraSummary(_, _, byron.epochSlots, byron.slotLengthMillis, byron.k * 2, byron.k * 2, _)
     )
-    val shelleyBased = shelleyEpochs.zip(starts).zipWithIndex.map { case ((_, start), i) =>
-      val startBound = bound(start)
+    val shelleyBased = shelleyEpochs.zip(starts).zipWithIndex.map { case ((era, start), i) =>
       val end =
-        if i + 1 < starts.size then Some(bound(starts(i + 1)))
-        else
+        starts.lift(i + 1).getOrElse {
           // the safe-zone bound of the current era
-          val beyond = tipSlot + 1 + safe - startBound.slot
+          val beyond = tipSlot + 1 + safe - bound(start).slot
           val size = BigInt(geometry.epochLength)
           val epochs = (beyond + size - 1) / size
-          Some(bound(start + epochs.max(0)))
-      EraSummary(
-        startBound,
+          start + epochs.max(0)
+        }
+      (
+        era,
+        start,
         end,
-        BigInt(geometry.epochLength),
-        BigInt(geometry.slotLengthMillis),
-        safe,
-        safe
+        EraSummary(
+          _,
+          _,
+          BigInt(geometry.epochLength),
+          BigInt(geometry.slotLengthMillis),
+          safe,
+          safe,
+          _
+        )
       )
     }
-    byronEra +: shelleyBased
+    (byronEra +: shelleyBased)
+      .foldLeft((originLayout(layout), Vector.empty[EraSummary])) {
+        case ((from, eras), (era, start, end, summary)) =>
+          val lo = bound(start).copy(layout = from)
+          val hi = upperBound(lo, era, bound(end))
+          (hi.layout, eras :+ summary(lo, Some(hi), perasRoundLength(layout, era)))
+      }
+      ._2
 
   private def edge(b: Bound): Horizon.Edge = Horizon.Edge(b.timePs, b.slot, b.epoch)
 

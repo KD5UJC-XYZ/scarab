@@ -70,7 +70,14 @@ object MirrorStep:
 
   /** The start of `era` when the block at `slot` is the first of it (or of an earlier one the state
     * was translated through at once): the configured epoch of the era, else the epoch of the block,
-    * not before `previous`.
+    * not before `previous`, the start of the era that ends there.
+    *
+    * The bound is that era's `mkUpperBound` (`whenExtend` of `extendToSlot`, ouroboros-consensus
+    * 2416493b `HardFork/Combinator/State.hs:266-287`, with the parameters of the era that ends), in
+    * the layout of `previous`. Its Peras round is that of an era with no rounds
+    * ([[EraHistory.unroundedLayout]]): the era that ends is one before `era`, and in neither build
+    * does an era before the last have rounds (only Dijkstra, the last, has,
+    * [[EraHistory.perasRoundLength]]); the eras skipped at once have no slots.
     */
   def startOf(placement: Placement, era: Era, slot: BigInt, previous: Bound): Bound =
     val epoch = placement.forks.triggers.get(era) match
@@ -78,7 +85,9 @@ object MirrorStep:
       // Shelley begins where the Byron span ends (`EraHistory.summary`)
       case _ if era == Era.Shelley => placement.geometry.firstShelleyEpoch
       case _                       => placement.geometry.epochOf(slot)
-    placement.bound(epoch.max(previous.epoch))
+    placement
+      .bound(epoch.max(previous.epoch))
+      .copy(layout = EraHistory.unroundedLayout(previous.layout))
 
   /** The telescope with `next` as the state of `era`. In the era the telescope is in, the state is
     * replaced; in a later one, the current era ends at `start` and the eras between (a state

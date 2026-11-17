@@ -12,13 +12,14 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{
   EraLedgerState,
+  EraSummary,
   MirrorClock,
   MirrorProvenance,
   Placement,
   ProtocolState
 }
 import java.lang.Float.floatToRawIntBits
-import xyz.kd5ujc.scarab.ledger.{Horizon, PlutusStats, PoolRelayError, Utxo}
+import xyz.kd5ujc.scarab.ledger.{PlutusStats, PoolRelayError, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals as RuleGlobals, Rewards}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
@@ -58,8 +59,8 @@ class WalletPeerReferenceSuite extends FunSuite:
       def plutus: PlutusStats = PlutusStats.zero
       def utxo: Utxo = native.nes.es.ls.utxo.utxo.utxo
       // These cases ask no era history; the genesis state's stands in for it.
-      def summary(placement: Placement): Horizon =
-        MirrorClock.summary(native.setup.mirrorStart, placement)
+      def summary(placement: Placement): Vector[EraSummary] =
+        MirrorClock.interpreter(native.setup.mirrorStart, placement)
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
         Right(
           Some(

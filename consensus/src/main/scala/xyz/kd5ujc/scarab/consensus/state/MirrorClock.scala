@@ -61,6 +61,42 @@ object MirrorClock:
       historyAt(state, placement, telescope.era, telescope.current.start.slot)
     history.at(transition)
 
+  /** The era history of `state` at its tip as `GetInterpreter` answers it, every era with its
+    * bounds and parameters (`Summary xs`): the summary of [[summary]] with the bounds of the
+    * state's layout. As `reconstructSummary` builds it (ouroboros-consensus 2416493b
+    * `HardFork/Combinator/State/Infra.hs:194-304`), the past eras' bounds and the current era's
+    * start are the telescope's, as the state holds them; each end the summary computes, the current
+    * era's and, where the transition is known, the next era's, is the `mkUpperBound` of its era
+    * from its start ([[EraHistory.upperBound]]), and the next era starts where the current ends.
+    * Every era has the Peras round length of its build ([[EraHistory.perasRoundLength]]).
+    */
+  def interpreter(state: MirrorState, placement: Placement): Vector[EraSummary] =
+    val telescope = state.ext.ledgerState
+    val layout = telescope.current.start.layout.stateLayout
+    def summaryOf(e: Horizon.Era, era: Era, start: Bound, end: Option[Bound]) =
+      EraSummary(
+        start,
+        end,
+        e.params.epochSize,
+        e.params.slotLengthMillis,
+        e.params.safeZone,
+        e.params.genesisWindow,
+        EraHistory.perasRoundLength(layout, era)
+      )
+    val (entered, ahead) =
+      summary(state, placement).eras.toVector.zip(Era.values).splitAt(telescope.past.size)
+    val past = entered.zip(telescope.past).map { case ((e, era), p) =>
+      summaryOf(e, era, p.start, Some(p.end))
+    }
+    val (_, open) = ahead.foldLeft((telescope.current.start, Vector.empty[EraSummary])) {
+      case ((start, eras), (e, era)) =>
+        val end = e.end.map(edge =>
+          EraHistory.upperBound(start, era, Bound(edge.timePs, edge.slot, edge.epoch, start.layout))
+        )
+        (end.getOrElse(start), eras :+ summaryOf(e, era, start, end))
+    }
+    past ++ open
+
   /** The eras up to `era` and what the state tells of the end of `era` ([[of]]). */
   private def historyAt(
       state: MirrorState,

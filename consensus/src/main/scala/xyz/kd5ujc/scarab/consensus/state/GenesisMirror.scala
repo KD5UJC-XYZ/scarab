@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.ConsensusExtras
 import xyz.kd5ujc.scarab.ledger.PlutusStats
 import xyz.kd5ujc.scarab.ledger.rules.EraNes
-import xyz.kd5ujc.scarab.ledger.state.{NodeExtras, WithOrigin, Word64}
+import xyz.kd5ujc.scarab.ledger.state.{NodeExtras, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.StateLayout
 
 /** The mirror at the origin of a chain whose first era is Shelley-based: the extended ledger state
@@ -17,34 +17,20 @@ import xyz.kd5ujc.scarab.protocol.StateLayout
   *
   * A chain that starts in Byron starts from [[ByronMirror]].
   *
-  * What the consensus layer adds is in the layout of the start state's ledger ([[Start]]).
+  * What the consensus layer adds is in the layout of the start state's ledger ([[originExt]]).
   */
 object GenesisMirror:
 
-  /** The parts of the start state that only the Leios layout has (ouroboros-consensus 2416493b),
-    * each as the chain's origin holds it: no transaction bytes yet
-    * ([[ShelleyLedgerState.Layout.atOrigin]]); round zero as every bound's next Peras round
-    * (`initBound`, `HardFork/History/Summary.hs:103-110`, which an era of no Peras rounds keeps,
-    * `:139-146`); and a Peras state of no epoch context and no certificate
-    * (`initPerasEpochContextResolver` at the origin, `Peras/Context.hs:694-698`, and the Byron
-    * start's `SNothing`, `HardFork/Combinator/Embed/Nary.hs:347-357`, `Ledger/Peras.hs:65-74`).
+  /** The extended state's part that only the Leios layout has, as the chain's origin holds it: a
+    * Peras state of no epoch context and no certificate (`initPerasEpochContextResolver` at the
+    * origin, ouroboros-consensus 2416493b `Peras/Context.hs:686-698`, and the Byron start's
+    * `SNothing`, `HardFork/Combinator/Embed/Nary.hs:347-357`, `Ledger/Peras.hs:56-71`). The bounds
+    * of the origin are the era history's in the layout ([[EraHistory.summary]]), the transaction
+    * bytes none yet ([[ShelleyLedgerState.Layout.atOrigin]]).
     */
-  private enum Start:
-    case Node11_1
-    case Leios
-
-    def bound(b: Bound): Bound = this match
-      case Node11_1 => b
-      case Leios    => b.copy(layout = Bound.Layout.Leios(PerasRoundNo(Word64.zero)))
-
-    def ext: ExtLedgerState.Layout = this match
-      case Node11_1 => ExtLedgerState.Layout.Node11_1
-      case Leios    => ExtLedgerState.Layout.Leios(PerasState(PerasResolver.Disabled, None))
-
-  private object Start:
-    def of(layout: StateLayout): Start = layout match
-      case StateLayout.Node11_1 => Node11_1
-      case StateLayout.Leios    => Leios
+  private[state] def originExt(layout: StateLayout): ExtLedgerState.Layout = layout match
+    case StateLayout.Node11_1 => ExtLedgerState.Layout.Node11_1
+    case StateLayout.Leios => ExtLedgerState.Layout.Leios(PerasState(PerasResolver.Disabled, None))
 
   /** The mirror of the ledger state `start` (the state of the era the chain starts in), with the
     * chain-dependent state `dep` of that era's protocol and the node's bookkeeping `consensus`.
@@ -59,9 +45,17 @@ object GenesisMirror:
       case i: EraNes.InEra[e] =>
         given xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[e] = i.era
         val era = EraNes.eraOf(i.era)
-        val start = Start.of(i.nes.layout.stateLayout)
+        val layout = i.nes.layout.stateLayout
         val summaries =
-          EraHistory.summary(env.ledger.geometry, env.byron, env.forks, env.observed, era, 0)
+          EraHistory.summary(
+            env.ledger.geometry,
+            env.byron,
+            env.forks,
+            env.observed,
+            era,
+            0,
+            layout
+          )
         for
           _ <- Either.cond(
             summon[EraIndexed[ChainDepState]].admits(era, dep),
@@ -73,14 +67,14 @@ object GenesisMirror:
             .traverse((summary, index) =>
               summary.end
                 .toRight(StateMirrorError.OpenPastEra(index))
-                .map(end => Past(start.bound(summary.start), start.bound(end)))
+                .map(end => Past(summary.start, end))
             )
           current <- summaries.lift(era.index).toRight(StateMirrorError.MissingEra(era))
           ledger <- Telescope
             .make(
               past,
               Current(
-                start.bound(current.start),
+                current.start,
                 EraLedgerState.inEra[e](
                   ShelleyLedgerState[e](
                     WithOrigin.Origin,
@@ -93,13 +87,13 @@ object GenesisMirror:
             )
             .leftMap(StateMirrorError.Telescope(_))
           header <- Telescope
-            .make(past, Current(start.bound(current.start), dep))
+            .make(past, Current(current.start, dep))
             .leftMap(StateMirrorError.Telescope(_))
         yield MirrorState(
           ExtLedgerState(
             ledger,
             HeaderState(WithOrigin.Origin, header),
-            start.ext
+            originExt(layout)
           ),
           MirrorExtras.InShelley(NodeExtras(PlutusStats.zero), consensus),
           MirrorProvenance.complete

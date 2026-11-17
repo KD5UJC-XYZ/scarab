@@ -106,7 +106,8 @@ trait ForgeFixture:
       geometry.k * 10,
       BigInt(20000),
       geometry.k
-    )
+    ),
+    xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1
   )
 
   /** The chain's state at the origin, with `ledger` as its Conway state. */
