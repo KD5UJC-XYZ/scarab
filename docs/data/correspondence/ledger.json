@@ -9006,7 +9006,7 @@
    "evidence": [
     "DijkstraTxCertSuite"
    ],
-   "note": "the pool certificates are the shared PoolCert, whose StakePoolParams has no place for a registration's BLS key (sppBlsKey, libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:479 at 9df9f98c) nor its original relay and metadata bytes; no decoder until it has (#826)",
+   "note": "the pool certificates are the shared PoolCert, whose StakePoolParams has no place for a registration's BLS key (sppBlsKey, libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:479 at 9df9f98c); no decoder until it has (#826)",
    "digest": "374a71f70f9469a2"
   },
   "def ledger.era.dijkstra.DijkstraTxCert.translate": {
@@ -9140,11 +9140,13 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413",
    "evidence": [
     "DijkstraPlutusPurposeSuite"
    ],
+   "note": "the minting purpose's policy is the node's bytes, as Conway's purpose holds it, not the reference's PolicyID",
    "digest": "8ea08de46860e0d6"
   },
   "def ledger.era.dijkstra.DijkstraPlutusPurpose#tag": {
