@@ -178,7 +178,9 @@ class EraStartSuite extends FunSuite:
     assertEquals(start, Bound(BigInt("34000000000000"), 34, BigInt(farEpoch), layout))
     start
 
-  test("11.1: a mirror built Shelley-current at the far epoch holds and answers the wrapped start") {
+  test(
+    "11.1: a mirror built Shelley-current at the far epoch holds and answers the wrapped start"
+  ) {
     val (setup, mirror) = farShelleyCurrent(ReferenceBuild.Release11_1)
     val start = farStart(setup, Bound.Layout.Node11_1(None))
     assertEquals(mirror.ext.ledgerState.past.map(_.end), Vector(start))
@@ -193,7 +195,9 @@ class EraStartSuite extends FunSuite:
     )
   }
 
-  test("Leios: a mirror built Shelley-current at the far epoch holds and answers the wrapped start") {
+  test(
+    "Leios: a mirror built Shelley-current at the far epoch holds and answers the wrapped start"
+  ) {
     val (setup, mirror) = farShelleyCurrent(ReferenceBuild.LeiosB004fe0c)
     val start = farStart(setup, Bound.Layout.Leios(PerasRoundNo(Word64.zero)))
     assertEquals(mirror.ext.ledgerState.past.map(_.end), Vector(start))

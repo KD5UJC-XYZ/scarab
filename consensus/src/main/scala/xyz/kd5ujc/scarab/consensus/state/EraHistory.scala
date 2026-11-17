@@ -265,7 +265,8 @@ object EraHistory:
       }
       ._2
 
-  /** An era of [[summary]]: its parameters and the epoch it ends at, from the bound it starts at. */
+  /** An era of [[summary]]: its parameters and the epoch it ends at, from the bound it starts at.
+    */
   private final case class Span(era: Era, params: Horizon.Params, end: Bound => BigInt)
 
   private def edge(b: Bound): Horizon.Edge = Horizon.Edge(b.timePs, b.slot, b.epoch)

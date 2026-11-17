@@ -76,8 +76,8 @@ object MirrorStep:
     * ouroboros-consensus 2416493b `HardFork/Combinator/State.hs:266-287`, with the parameters of
     * the era that ends; [[EraHistory.unroundedUpperBound]]): the slot modulo 2^64, the time exact,
     * in the layout of `previous`. The era that ends is Byron when it started before the first
-    * Shelley epoch, with Byron's epoch size and slot length, and a Shelley-based era otherwise, with
-    * theirs; the eras skipped at once have no slots. Its Peras round is that of an era with no
+    * Shelley epoch, with Byron's epoch size and slot length, and a Shelley-based era otherwise,
+    * with theirs; the eras skipped at once have no slots. Its Peras round is that of an era with no
     * rounds: the era that ends is one before `era`, and in neither build does an era before the
     * last have rounds (only Dijkstra, the last, has, [[EraHistory.perasRoundLength]]).
     */
