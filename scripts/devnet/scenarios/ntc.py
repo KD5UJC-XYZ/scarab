@@ -26,7 +26,8 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
      measures, every transaction, membership, also under another era's tag) and, when both hold the
      same slot and transactions, every raw answer must be equal. `cardano-cli conway query
      tx-mempool info|next-tx|tx-exists` is compared as text on both sockets, AwaitAcquire must wake
-     on both, and each transaction id an era's decoder refuses must end the connection on both.
+     on both, and each transaction id an era's decoder refuses, and each prefix of one it fails on before the
+     id ends, must end the connection on both.
 """
 import enum
 import itertools

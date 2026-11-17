@@ -233,7 +233,7 @@ class HasTxIdsTest(unittest.TestCase):
         self.assertIn("era-8", failures[0])
 
     def test_a_connection_that_ends_before_the_id_is_sent_is_not_a_refusal(self):
-        refusing = iter([MonitorSession(self.refused)] + [MonitorSession(self.refused, acquires=False)] * 9
+        refusing = iter([MonitorSession(self.refused)] + [MonitorSession(self.refused, acquires=False)] * len(ntclocal.REFUSED_IDS)
                         + [MonitorSession(self.refused)])
         report, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused), lambda: next(refusing))
         self.assertEqual(len(failures), len(ntclocal.REFUSED_IDS))
