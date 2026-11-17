@@ -21,8 +21,9 @@
   "toolSha256": {
     "scripts/oracle/plutus/generated-171/Main.hs": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
     "scripts/oracle/plutus/generated-171/Dockerfile": "d97c9965343eabc810da0804fe62c22bc84ebbea578148469852db8966a47a15",
-    "scripts/oracle/leios-testnet/leios_chain_scan.py": "12aa09eac6359c62c5974cea9342f41155acc768790dd96f27aa52498a833982",
-    "scripts/oracle/leios-testnet/chain/run.py": "c73c02b287f4a5f80ce1045fe60940b53215a75fc6bcd2ed3a9990bfbf76f3dd",
+    "scripts/oracle/leios-testnet/leios_chain_scan.py": "ab34e480ea2d781a31e1eeeffc7f0547ebef79af95856e2234c95acd505e0083",
+    "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a",
+    "scripts/oracle/leios-testnet/chain/run.py": "9a0adbbde88a19060aba530c53957b98f78667ad54e9337b71af8021ee7d136b",
     "scripts/oracle/plutus/generated/run.py": "6e0d39e0f1a8efa9da8864231efe8f0804c19d08262ef94ba927452575d4deea",
     "scripts/oracle/plutus/recorded/run.py": "4d665f72033d7125145d1341e958626b6674fbc9634b3ccea472d7461af49c5f"
   },

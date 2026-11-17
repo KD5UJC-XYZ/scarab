@@ -21,5 +21,5 @@
   "/usr/local/bin/scarab-plutus-oracle": "927bddda3072081b55f709289ab21c37e73a9c7a7ed575bc0be936f339cf2b13"
  },
  "oracleBinarySha256": "927bddda3072081b55f709289ab21c37e73a9c7a7ed575bc0be936f339cf2b13",
- "sourceNetwork": "the public Leios testnet's chain, network magic 164 (fixtures/reference/leios-testnet-chain-contexts)"
+ "contexts": "fixtures/reference/leios-testnet-chain-contexts/results.json"
 }

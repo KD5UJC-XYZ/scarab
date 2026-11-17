@@ -90,7 +90,10 @@
    "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c": "unchanged",
    "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
   },
-  "runnerSha256": "c73c02b287f4a5f80ce1045fe60940b53215a75fc6bcd2ed3a9990bfbf76f3dd",
+  "runnerSha256": {
+   "scripts/oracle/leios-testnet/chain/run.py": "9a0adbbde88a19060aba530c53957b98f78667ad54e9337b71af8021ee7d136b",
+   "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a"
+  },
   "network": "none"
  }
 }
