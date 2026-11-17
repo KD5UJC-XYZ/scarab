@@ -7,7 +7,6 @@ import cats.effect.testkit.TestControl
 import cats.mtl.Tell
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress, host, ip, port}
-import munit.CatsEffectSuite
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
 import scala.concurrent.duration.*
@@ -35,6 +34,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
 import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen.given
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 
@@ -42,7 +42,7 @@ import xyz.kd5ujc.scarab.node.read.MirrorEraRead
   * `nesPd` read from a Conway state ([[LedgerPeersSource]]), the worker's cache and its source of
   * the stake maps ([[LedgerPeersWorker]]), and the roots ([[NodeRootProvider]]).
   */
-class LedgerPeersWiringSuite extends CatsEffectSuite:
+class LedgerPeersWiringSuite extends FailsOnUncaught:
   private def key(n: Int): KeyHash[StakePool] =
     KeyHash
       .fromBytes[StakePool](Bytes.fromArray(Array.fill(28)(n.toByte)))
@@ -454,13 +454,18 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
         LedgerPeersWorker
           .create[IO](UseLedgerPeers.Use(AfterSlot.Always), gated, source.get, Rng(5L))
       }
-      answer <- w.request[LedgerKind.Big](3).start
-      _ <- entered.get
-      // the ledger moves past the snapshot, which is written while the slot read before it is held
-      _ <- ledgerSlot.set(BigInt(200))
-      _ <- source.update(_.next(Some(newer)))
-      _ <- release.complete(())
-      picked <- answer.joinWithNever
+      // the request runs in a fiber of this scope: cancelled if the test ends before it does
+      picked <- w.request[LedgerKind.Big](3).background.use { answer =>
+        for
+          _ <- entered.get
+          // the ledger moves past the snapshot, written while the slot read before it is held
+          _ <- ledgerSlot.set(BigInt(200))
+          _ <- source.update(_.next(Some(newer)))
+          _ <- release.complete(())
+          outcome <- answer
+          picked <- outcome.embedNever
+        yield picked
+      }
       told <- traces.get
     yield
       picked match
