@@ -654,7 +654,7 @@ object TxChecks:
       }
 
   /** The native scripts that do not hold, of Dijkstra (`validateFailedBabbageScripts`,
-    * `Babbage/Rules/Utxow.hs:225-244`, which Dijkstra's UTXOW runs, `Dijkstra/Rules/Utxow.hs:259`,
+    * `Babbage/Rules/Utxow.hs:225-244`, which Dijkstra's UTXOW runs, `Dijkstra/Rules/Utxow.hs:260`,
     * cardano-ledger 9df9f98c): the needed ones among the native scripts the transaction can use, in
     * Dijkstra's form, that do not hold by `evalDijkstraNativeScript`
     * ([[era.dijkstra.DijkstraNativeScript.eval]]) for the transaction's key witnesses, validity
