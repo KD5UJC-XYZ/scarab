@@ -432,8 +432,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
    "evidence": [
     "DijkstraPParamsStateSuite"
    ],
@@ -483,8 +484,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
    "evidence": [
     "DijkstraPParamsStateSuite"
    ],
@@ -534,8 +536,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
    "evidence": [
     "DijkstraPParamsStateSuite"
    ],
