@@ -223,11 +223,14 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       gate <- Mutex[IO]
       first <- Bearer.inMemory[IO]()
       second <- Bearer.inMemory[IO]()
+      // the released flags are read before the line is recorded, so they say what was released
+      // before it was logged
       logged = (event: NodeEvent) =>
-        events.update(_ :+ event) *> (event match
+        (event match
           case NodeEvent.Inbound(_, InboundEvent.Closed(_)) =>
             (viewReleased.get, siblingReleased.get).tupled.flatMap(releasedAtClose.complete).void
-          case _ => IO.unit)
+          case _ => IO.unit
+        ) *> events.update(_ :+ event)
       backends = (_: Fatal => IO[Unit]) =>
         Main.LocalBackends(
           _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
