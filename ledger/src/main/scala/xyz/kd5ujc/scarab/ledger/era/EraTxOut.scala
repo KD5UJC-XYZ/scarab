@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Address, Datum}
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Coin, Conway, Dijkstra, EraTag, Mary}
 
 /** The fields every era's output has (`EraTxOut`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:297`). An output of the previous era is
@@ -72,3 +72,24 @@ object StoredTxOut:
     def toStored(out: TxOut[Conway]): xyz.kd5ujc.scarab.ledger.TxOut =
       xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.toStored(out)
     def storedValue(value: Value[Conway]): xyz.kd5ujc.scarab.ledger.Value = value.stored
+
+/** The functions of Babbage's outputs (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`,
+  * cardano-ledger f649f975).
+  */
+object BabbageTxOuts:
+  /** `babbageMinUTxOValue` (`Babbage/TxOut.hs:665-688`, cardano-ledger f649f975): the least
+    * lovelace of an output of `sizedSize` bytes, `(160 + size) * coinsPerUTxOByte`. The reference
+    * reaches it through `EraTxOut` 's `getMinCoinSizedTxOut` (`Core.hs:391-392`), which every era's
+    * instance has; here it is a function, until the eras before Babbage have parameter records
+    * their instances could read (#85).
+    */
+  def babbageMinUTxOValue[E <: EraTag, A](pp: PParams[E], sizedTxOut: Sized[A])(using
+      BabbageEraPParams[E]
+  ): Coin =
+    val cpb = BabbageEraPParams.ppCoinsPerUTxOByteL[E].get(pp).unCoinPerByte.toBigInt
+    Coin((ConstantOverhead + BigInt(sizedTxOut.size)) * cpb)
+
+  /** `constantOverhead`, an approximation of the memory an entry of the UTxO set takes beside its
+    * output (`Babbage/TxOut.hs:674-688`, cardano-ledger f649f975).
+    */
+  private val ConstantOverhead = BigInt(160)

@@ -496,9 +496,17 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`StoredTxOut`) with Conway's instance only, until each era's failure types (§3.4).
   - `EraUTxO` lands without the members UTXOW reads (the scripts needed and provided, the witnesses needed)
     and without `AlonzoEraUTxO`, tracked on #85.
-  - Still to port before UTXO is whole: the value conserved (with the certificate state's class), the output
-    sizes (with `Val`'s `pointwise` and the serialised size of a value), the bootstrap attributes and
-    `validateOutsideForecast`, then `babbageUtxoValidation` put together.
+- **The outputs** (`era/rules/`): `validateOutputTooSmallUTxO` with `babbageMinUTxOValue`,
+  `validateOutputTooBigUTxO` and `validateOutputBootAddrAttrsTooBig`, each compared with the flat predicate on
+  every Conway case of the refusal corpus; the corpus never exceeds the value size, so a crafted limit of one
+  byte compares it, with several outputs reported last first.
+  - `pointwise (>=)` against `inject` of the least lovelace is written out (the coin at least it, every
+    quantity at least zero), which is what `pointWise` against an empty map is, so no tree enters.
+  - `babbageMinUTxOValue` is called as a function: `EraTxOut`'s `getMinCoinSizedTxOut` waits for the
+    parameter records of the eras before Babbage (#85).
+  - Still to port before UTXO is whole: the value conserved (with the certificate state's class) and
+    `validateOutsideForecast`, then `babbageUtxoValidation` put together, with Conway's injection of the
+    bootstrap attributes' failure by build.
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): three of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts` and
