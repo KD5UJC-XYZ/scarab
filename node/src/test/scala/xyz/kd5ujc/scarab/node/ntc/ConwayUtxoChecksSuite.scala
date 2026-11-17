@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{PredicateFailure, Tx, TxIn, TxOut, Utxo}
+import xyz.kd5ujc.scarab.ledger.{Horizon, PredicateFailure, Tx, TxIn, TxOut, Utxo, UtxoFailure}
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraPParams,
   EraCertState,
@@ -626,6 +626,59 @@ class ConwayUtxoChecksSuite extends FunSuite:
         "validateValueNotConservedUTxO"
       )
     }
+
+  /** An era history of 1-second slots and 100-slot epochs at a tip `tip`: it covers the slots up to
+    * the epoch boundary after the tip plus a safe zone of 30 slots (as `HorizonSuite` shows).
+    */
+  private def historyAt(tip: BigInt): Horizon =
+    val params = Horizon.Params(100, 1000, 30, 30)
+    Horizon
+      .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
+      .at(Horizon.Transition.Unknown(Some(tip)))
+
+  private def withUpperBound(s: Seen, bound: Option[BigInt]): Seen =
+    edited(s, envelope(s))(fields =>
+      fields.filterNot((k, _) => isKey(3)(k)) ++ bound.map(b => key(3) -> uint(b)).toVector
+    )
+
+  private def outsideForecast(s: Seen, ei: Horizon, slot: BigInt): Verdict[PredicateFailure] =
+    AlonzoUtxo.validateOutsideForecast[Conway, TxLevel.Top](ei, slot, 0, s.typed)(using
+      EraTx.conway,
+      EraTx.conway.bodyOf.top
+    )
+
+  test("validateOutsideForecast in each of the reference's branches"):
+    val redeemed = seen
+      .find(_.flat.witnesses.redeemers.nonEmpty)
+      .getOrElse(fail("no case with redeemers"))
+    val plain =
+      seen.find(_.flat.witnesses.redeemers.isEmpty).getOrElse(fail("no case without redeemers"))
+    val slot = BigInt(1000)
+    // the history at the slot before covers up to 1100; one 200 slots back ends at 900
+    val (inside, behind) = (historyAt(slot - 1), historyAt(slot - 200))
+    assert(inside.timePs(slot).isDefined && behind.timePs(slot).isEmpty)
+    val far = slot + 5000
+    assert(inside.timePs(far).isEmpty, "the far end is past the horizon")
+    // no end, or no redeemers: nothing is translated, even with the slot past the history
+    assertEquals(outsideForecast(withUpperBound(redeemed, None), behind, slot), Verdict.pass)
+    assertEquals(outsideForecast(withUpperBound(plain, Some(far)), behind, slot), Verdict.pass)
+    // the slot inside the history: an end before it, and one past the horizon, extended linearly
+    assertEquals(
+      outsideForecast(withUpperBound(redeemed, Some(slot - 5)), inside, slot),
+      Verdict.pass
+    )
+    assertEquals(outsideForecast(withUpperBound(redeemed, Some(far)), inside, slot), Verdict.pass)
+    // the slot past the history: an end the history still covers is translated; one before the slot
+    // but past the history is not, nor is one after the slot; the failure names the end, not the slot
+    assertEquals(outsideForecast(withUpperBound(redeemed, Some(850)), behind, slot), Verdict.pass)
+    assertEquals(
+      outsideForecast(withUpperBound(redeemed, Some(950)), behind, slot),
+      Verdict.failureUnless(false, PredicateFailure.utxo(UtxoFailure.OutsideForecast(950)))
+    )
+    assertEquals(
+      outsideForecast(withUpperBound(redeemed, Some(far)), behind, slot),
+      Verdict.failureUnless(false, PredicateFailure.utxo(UtxoFailure.OutsideForecast(far)))
+    )
 
   test("crafted from a recorded case: values over a 1-byte limit, reported last output first"):
     val s = withParams(

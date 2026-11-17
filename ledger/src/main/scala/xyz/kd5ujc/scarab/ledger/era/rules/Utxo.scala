@@ -2,7 +2,16 @@
 package xyz.kd5ujc.scarab.ledger.era.rules
 
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.ledger.{Address, Credential, Mismatch, PredicateFailure, TxIn, UtxoFailure}
+import xyz.kd5ujc.scarab.ledger.{
+  Address,
+  Credential,
+  Horizon,
+  Mismatch,
+  PosixClock,
+  PredicateFailure,
+  TxIn,
+  UtxoFailure
+}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.Test
 import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, EraTag}
@@ -251,6 +260,29 @@ object AlonzoUtxo:
       totalExUnits.fits(maxTxExUnits),
       failure(UtxoFailure.ExUnitsTooBig(Mismatch(totalExUnits, maxTxExUnits)))
     )
+
+  /** `validateOutsideForecast` (`Alonzo/Rules/Utxo.hs:362-385`, cardano-ledger f649f975): the end
+    * of the validity interval of a transaction with redeemers translates to a time, through the
+    * epoch information `ei` (the era history, from the system start `sysSt` in POSIX milliseconds)
+    * extended linearly from the current slot (`unsafeLinearExtendEpochInfo`, cardano-base 060819b5
+    * `cardano-slotting/src/Cardano/Slotting/EpochInfo/Extend.hs:23-77`,
+    * [[xyz.kd5ujc.scarab.ledger.PosixClock.Extended]]). The extension fails only where the current
+    * slot is past `ei`, so an end past the horizon alone passes.
+    */
+  def validateOutsideForecast[E <: EraTag, L <: TxLevel](
+      ei: Horizon,
+      slotNo: BigInt,
+      sysSt: BigInt,
+      tx: Tx[L, E]
+  )(using t: AlonzoEraTx[E], l: t.bodyOf.Level[L]): Test[PredicateFailure] =
+    t.bodyOf.vldt(t.body(tx)).invalidHereafter match
+      case Some(ifj) if t.witsOf.rdmrsTxWits(t.wits(tx)).entries.nonEmpty =>
+        val extended = PosixClock.Extended(slotNo, PosixClock.Forecast(sysSt, ei))
+        Test.failureUnless(
+          extended.posix(ifj).isRight,
+          failure(UtxoFailure.OutsideForecast(ifj))
+        )
+      case _ => Test.pass
 
   /** `validateOutputTooBigUTxO` (`Alonzo/Rules/Utxo.hs:412-431`, cardano-ledger f649f975): the
     * outputs whose value takes more than `ppMaxValSize` bytes serialised, collected by a left fold

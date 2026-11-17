@@ -11,12 +11,16 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.state.{EraHistory, MirrorClock, Past, Placement}
 import xyz.kd5ujc.scarab.consensus.ForkTrigger
 import xyz.kd5ujc.scarab.ledger.{PlutusStats, PosixClock, Tx, TxEnv, TxIn, TxOut, Utxo}
+import xyz.kd5ujc.scarab.ledger.era.{EraTx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
+import xyz.kd5ujc.scarab.ledger.era.rules.AlonzoUtxo
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Judgment,
   ShelleyLedger,
   ShelleyLedgerEnv,
   Sts,
+  Test,
   Tick
 }
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -300,6 +304,42 @@ class PastHorizonReferenceSuite extends FunSuite:
       assertEquals(chosen(bounded), 0)
       assertEquals(chosen(PosixClock.total(setup.geometry)), 1)
     }
+  }
+
+  // the era-typed predicate, on what the reference judged: its refusal is the Plutus context's
+  // (`TimeTranslationPastHorizon`), which the verdict test above matches byte for byte, and never
+  // `OutsideForecast`, since the slot after the tip is inside the history the end is extended from
+  test(
+    "Conway's validateOutsideForecast passes every recorded end past the horizon, as the reference"
+  ) {
+    val past = recorded.filter(_.era == Era.Conway).map { r =>
+      val setup = setupOf(r)
+      val nes = stateOf[Conway](r)(using ShelleyBasedEra.SConway)
+      val (sysSt, ei) = clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip) match
+        case PosixClock.Forecast(start, horizon) => (start, horizon)
+        case other                               => fail(s"${r.label}: $other")
+      val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity).raw
+      val tx = ConwayTx.fromEnvelope(raw).fold(e => fail(s"${r.label}: $e"), identity)
+      val tx0 = EraTx.conway
+      val end = tx0.bodyOf
+        .vldt(tx0.body[TxLevel.Top](tx)(using tx0.bodyOf.top))(using tx0.bodyOf.top)
+        .invalidHereafter
+        .getOrElse(fail(s"${r.label}: no upper bound"))
+      assert(
+        ei.timePs(r.tip + 1).isDefined,
+        s"${r.label}: the slot after the tip is in the history"
+      )
+      assertEquals(
+        AlonzoUtxo.validateOutsideForecast[Conway, TxLevel.Top](ei, r.tip + 1, sysSt, tx)(using
+          tx0,
+          tx0.bodyOf.top
+        ),
+        Test.pass,
+        r.label
+      )
+      ei.timePs(end).isEmpty
+    }
+    assert(past.contains(true), "no recorded Conway end past the horizon")
   }
 
   // the devnet that starts in Conway has every era begin at epoch zero, so a mirror at the start of
