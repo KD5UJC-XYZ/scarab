@@ -26,11 +26,25 @@ object EraHistory:
       e.end match
         case Some(b) => bound(b)
         case None    => w.nul
-      w.array(4).uint(e.epochSize).uint(e.slotLengthMillis)
-      w.array(3).uint(0).uint(e.safeZone).array(1).uint(0)
-      w.uint(e.genesisWindow)
+      params(w, e.epochSize, e.slotLengthMillis, e.safeZone, e.genesisWindow)
     }
     w.break
+
+  /** `Serialise EraParams` (`HardFork/History/EraParams.hs:256-306`, ouroboros-consensus 82ecba32)
+    * without Peras: `[size, slot length in milliseconds (an ` Integer`), safe zone, genesis
+    * window]`, the safe zone a `StandardSafeZone` `[0, safe from tip, [0]]` with the artificial
+    * `NoLowerBound` it still writes (`:279-281`).
+    */
+  private[ntc] def params(
+      w: CborOut,
+      epochSize: BigInt,
+      slotLengthMillis: BigInt,
+      safeZone: BigInt,
+      genesisWindow: BigInt
+  ): CborOut =
+    w.array(4).uint(epochSize).integer(slotLengthMillis)
+    w.array(3).uint(0).uint(safeZone).array(1).uint(0)
+    w.uint(genesisWindow)
 
   /** The eras of a summary in the order [[encode]] writes them. */
   def eras(horizon: Horizon): Vector[EraSummary] =

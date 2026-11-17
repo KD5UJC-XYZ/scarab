@@ -108,7 +108,7 @@ import xyz.kd5ujc.scarab.node.mempool.{
 import xyz.kd5ujc.scarab.ledger.rules.Hfc
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
-import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
+import xyz.kd5ujc.scarab.node.ntc.{EraHistory, LedgerConfig, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.TxClock
 import xyz.kd5ujc.scarab.network.NodeToNode
@@ -1938,6 +1938,7 @@ object Main extends IOApp:
     import chain.{chainGate, follower, mempool, ref, server}
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val byronGenesis = setup.byronParams
+    val ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
     val queryEnv = instruments.eraStarts.get.map(observed =>
       QueryEnv(
         byronGenesis
@@ -1959,7 +1960,8 @@ object Main extends IOApp:
         genesis.raw,
         setup.mirrorEnv(observed).ledger,
         observed,
-        genesis.networkMagic
+        genesis.networkMagic,
+        ledgerConfig
       )
     )
     // the node-to-client server; a failure to set it up, or an accept loop that stops,

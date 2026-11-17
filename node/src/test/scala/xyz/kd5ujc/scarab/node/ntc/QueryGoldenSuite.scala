@@ -43,7 +43,8 @@ class QueryGoldenSuite extends FunSuite:
     setup.globals.maxSupply,
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
-    networkMagic = setup.genesis.networkMagic.toLong
+    networkMagic = setup.genesis.networkMagic.toLong,
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
   )
 
   // The state's tip is the point the reference answered at, as for every state the node acquires.

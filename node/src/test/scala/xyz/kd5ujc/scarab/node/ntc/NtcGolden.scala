@@ -73,7 +73,8 @@ object NtcGolden:
     setup.globals.maxSupply,
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
-    networkMagic = setup.genesis.networkMagic.toLong
+    networkMagic = setup.genesis.networkMagic.toLong,
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
   )
 
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e.message), identity)

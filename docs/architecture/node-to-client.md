@@ -59,7 +59,10 @@ definite array in every era, `Shelley/Ledger/Query.hs:1024` at ouroboros-consens
 distributions, the wallet's queries and the ledger peers: the pool distribution in force as the state holds it (`nesPd`), the
 stake distributions, the reward information and the non-myopic member rewards of the current stake
 (`EraFacts.currentStake`, the snapshot SNAP would take, with the pointer stake before Conway) and the ledger
-peer snapshots, the distributions written at the era's lowest version; a query for another era gets the combinator's mismatch reply. The era history is built
+peer snapshots, the distributions written at the era's lowest version; a query for another era gets the combinator's mismatch reply.
+`DebugLedgerConfig` reads no state: `LedgerConfig` writes the hard-fork combinator's ledger configuration once,
+from what `NodeSetup` read of the configuration and the genesis files, and `QueryEnv` holds it; the decoder
+refuses it below node-to-client version 20, as the reference's `requireVersion` does. The era history is built
 from the configured hard-fork epochs, the transitions this run observed and the safe zone of the
 current era (`EraHistory`); a version-triggered hard fork that happened before this run cannot be
 placed and is assumed to start with the previous era. As on the reference, a result has no byte or item

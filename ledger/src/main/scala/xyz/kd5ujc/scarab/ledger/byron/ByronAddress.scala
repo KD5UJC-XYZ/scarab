@@ -77,7 +77,9 @@ final case class ByronAddress(
     addrType: Int,
     networkMagic: Option[Long],
     unknownAttributesLength: Int,
-    derivationPathLength: Int
+    derivationPathLength: Int,
+    derivationPath: Option[Bytes],
+    unparsedAttributes: Vector[(BigInt, Bytes)]
 ):
   def isRedeem: Boolean = addrType == ByronAddress.Redeem
 
@@ -109,6 +111,21 @@ final case class ByronAddress(
 object ByronAddress:
   val VerKey = 0
   val Redeem = 2
+
+  /** `Ord Address` (`Cardano/Chain/Common/Address.hs:141-151`, cardano-ledger f649f975), derived
+    * over the root, the attributes and the type. The attributes compare their data, then the
+    * attributes left unparsed (`Attributes.hs:60-62, 80-86`); the data compares the derivation
+    * path, none first, a path by its bytes, then the network magic, none (`NetworkMainOrStage`)
+    * first (`AddrAttributes.hs:47-51, 161-164`, `NetworkMagic.hs:42-45`); the unparsed attributes
+    * compare as their ascending list of key and bytes; the type `ATVerKey` before `ATRedeem`
+    * (`AddrSpendingData.hs:85-88`). The order of the keys of a genesis balance map
+    * (`Genesis/NonAvvmBalances.hs:45-47`).
+    */
+  given Ordering[ByronAddress] =
+    import scala.math.Ordering.Implicits.seqOrdering
+    Ordering.by[ByronAddress, (Bytes, Option[Bytes], Option[Long], Seq[(BigInt, Bytes)], Int)](a =>
+      (a.root, a.derivationPath, a.networkMagic, a.unparsedAttributes, a.addrType)
+    )
 
   def rootOf(addrType: Int, key: Bytes, attributes: Bytes): Bytes =
     val spending = ByronCbor.concat(ByronCbor.of(0x82, addrType), ByronCbor.bytes(key))
@@ -198,7 +215,6 @@ object ByronAddress:
             ByronTransport.canonicalBytes(n, DecodeField.DerivationPath) *>
               CborRead.bytes(n, DecodeField.DerivationPath)
           )
-          .map(_.size)
       }
       ty <- ByronTransport.canonicalWord(parts(2), 8, DecodeField.ByronAddressType).map(_.toInt)
       _ <- Either.cond(
@@ -214,7 +230,9 @@ object ByronAddress:
       ty,
       magic,
       unknownLength(fields, Set(1, 2)),
-      derivationPath.getOrElse(0)
+      derivationPath.fold(0)(_.size),
+      derivationPath,
+      fields.filterNot((k, _) => k == 1 || k == 2)
     )
 
   /** The address `raw` decodes to, encoded again as the reference encodes an `Address` (`encCBOR`

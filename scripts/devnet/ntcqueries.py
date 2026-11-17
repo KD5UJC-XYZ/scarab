@@ -180,6 +180,9 @@ def battery(u, era=ERA_CONWAY):
     q.append(("top:GetSystemStart", [1], True))
     q.append(("top:GetChainBlockNo", [2], True))
     q.append(("top:GetChainPoint", [3], True))
+    # the ledger configuration, the same in every era: both nodes answer it at the version the battery asks (it needs
+    # node-to-client version 20, `Ledger/Query.hs` 483-501, ouroboros-consensus 82ecba32)
+    q.append(("top:DebugLedgerConfig", [4], True))
     q.append(("hfc:GetInterpreter", [0, [2, [0]]], True))
     q.append(("hfc:GetCurrentEra", [0, [2, [1]]], True))
     add("GetLedgerTip", [0])

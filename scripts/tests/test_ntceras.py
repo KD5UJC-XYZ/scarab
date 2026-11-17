@@ -58,6 +58,8 @@ ADDED_FORMS = {"GetProposedPParamsUpdates": [4], "GetCBOR/GetLedgerTip": [9, [0]
                "GetCBOR/GetGovState": [9, [24]], "GetStakeDistribution": [5], "GetPoolDistr/all": [21, []],
                "GetPoolDistr/some": [21, [ntcqueries.sset([POOL, b"\x02" * 28])]],
                "GetPoolDistr/empty": [21, [ntcqueries.sset([])]], "GetPoolDistr2/empty": [36, [ntcqueries.sset([])]]}
+# The top-level forms the battery gained since, which both nodes answer in every era (#924): the ledger configuration.
+ADDED_TOP_FORMS = {"top:DebugLedgerConfig": [4]}
 
 
 class BatteryTest(unittest.TestCase):
@@ -70,9 +72,13 @@ class BatteryTest(unittest.TestCase):
             if label in ADDED_FORMS:
                 added[label] = (cbor.enc(block(query)), implemented)
                 continue
+            if label in ADDED_TOP_FORMS:
+                added[label] = (query, implemented)
+                continue
             digest.update(label.encode() + b"\0" + cbor.enc(query) + bytes([implemented]))
         self.assertEqual(digest.hexdigest(), "ba0a0a090db62b2cc2e7e3833f8485dbea0aabae0b882c725b43b95bcb10493f")
-        self.assertEqual(added, {label: (cbor.enc(query), True) for label, query in ADDED_FORMS.items()})
+        self.assertEqual(added, {**{label: (cbor.enc(query), True) for label, query in ADDED_FORMS.items()},
+                                 **{label: (query, True) for label, query in ADDED_TOP_FORMS.items()}})
         self.assertEqual(cbor.enc([q for _, q, _ in ntcqueries.battery(universe())]),
                          cbor.enc([q for _, q, _ in ntcqueries.battery(universe(), ntcqueries.ERA_CONWAY)]))
 
@@ -102,9 +108,9 @@ class BatteryTest(unittest.TestCase):
         answered = {label for label, query, mark in forms
                     if mark and not ntcqueries.conway_only(ntcqueries.inner_of(query), 4)}
         self.assertEqual(answered, {
-            "top:GetSystemStart", "top:GetChainBlockNo", "top:GetChainPoint", "hfc:GetInterpreter",
-            "hfc:GetCurrentEra", "GetUTxOWhole", "GetUTxOByAddress", "GetUTxOByAddress/none", "GetUTxOByTxIn",
-            "GetCBOR/GetUTxOWhole", "DebugChainDepState", "GetCBOR/DebugChainDepState", "DebugEpochState",
+            "top:GetSystemStart", "top:GetChainBlockNo", "top:GetChainPoint", "top:DebugLedgerConfig",
+            "hfc:GetInterpreter", "hfc:GetCurrentEra", "GetUTxOWhole", "GetUTxOByAddress", "GetUTxOByAddress/none",
+            "GetUTxOByTxIn", "GetCBOR/GetUTxOWhole", "DebugChainDepState", "GetCBOR/DebugChainDepState", "DebugEpochState",
             "DebugNewEpochState", "GetCBOR/DebugEpochState", "GetCBOR/DebugNewEpochState", "GetRewardProvenance",
             "GetCBOR/GetRewardProvenance", "GetLedgerTip", "GetEpochNo", "GetProposedPParamsUpdates", "GetGenesisConfig",
             "GetAccountState", "GetMaxMajorProtocolVersion", "GetCBOR/GetLedgerTip", "GetCBOR/GetEpochNo",

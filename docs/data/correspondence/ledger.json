@@ -5160,6 +5160,26 @@
    "note": "`SlotInterval 0` of the empty record",
    "digest": "8c0cb1e6f81ac495"
   },
+  "given ledger.byron.ByronAddress.given_Ordering_ByronAddress": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/Address.hs",
+     "symbol": "Address",
+     "lines": [
+      141,
+      151
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LedgerConfigInputsSuite"
+   ],
+   "digest": "4a90a69f3e16a9c9"
+  },
   "def ledger.era.EraPParams.ppTxFeePerByteL": {
    "upstream": [
     {
