@@ -9455,6 +9455,28 @@
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, its values in the stored form, so its verdict is compared with the flat rule's",
    "digest": "29cb1c8784c11caf"
+  },
+  "def ledger.era.rules.AlonzoUtxo.validateOutsideForecast": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateOutsideForecast",
+     "lines": [
+      366,
+      385
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite",
+    "PastHorizonReferenceSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; the epoch information is the era history (Horizon) with the system start in POSIX milliseconds, extended by PosixClock.Extended (unsafeLinearExtendEpochInfo); it reports the node's flat UtxoFailure",
+   "digest": "658535fd3804f510"
   }
  },
  "glue": [

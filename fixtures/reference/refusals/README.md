@@ -125,7 +125,8 @@ such case: its mempool nests the failure under `AlonzoInBabbageUtxowPredFailure`
 which this suite compares for a pre-Conway era, reports it under UTXOW's `UtxoFailure`. No era has an
 `OutsideForecast` case. The rule extends the epoch information linearly from the current slot before it
 translates the validity interval's end (`Alonzo/Rules/Utxo.hs:377-382`; cardano-base 060819b5,
-`cardano-slotting/src/Cardano/Slotting/EpochInfo/Extend.hs:54-66`), so that translation cannot fail; the
+`cardano-slotting/src/Cardano/Slotting/EpochInfo/Extend.hs:20-22, 54-66`), so that translation fails only where
+the current slot is past the history it extends, which the slot after a mempool's tip never is; the
 `plutus-forecast-horizon` corpora record what the reference does with such a bound instead. Disabling
 Scarab's Alonzo non-ada-collateral and body-network checks, its Babbage non-ada-collateral check (which
 Conway also runs), and its two protocol-11 switches (the deposit and refund failures, the unelected voters)
