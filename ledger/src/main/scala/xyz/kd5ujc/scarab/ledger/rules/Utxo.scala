@@ -304,6 +304,22 @@ object Utxow
     ], StAnnTx, PredicateFailure, LedgerFailure]:
   private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
 
+  /** The native scripts UTXOW evaluates, and how (`validateNativeScript` of the era's `EraTx`). */
+  enum NativeScripts:
+    /** The time-lock trees of the flat scripts the transaction can use (`validateTimelock`,
+      * `validateMultiSig`): Shelley to Conway.
+      */
+    case Flat
+
+    /** Dijkstra's native scripts the transaction can use (`scriptsProvided`), by hash, in
+      * Dijkstra's form, and the guards of its body (`guardsTxBodyL`), which they are evaluated with
+      * (`validateDijkstraNativeScript`, `Dijkstra/Tx.hs:434-437`, cardano-ledger 9df9f98c).
+      */
+    case Dijkstra(
+        scripts: Map[Bytes, xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraNativeScript],
+        guards: Set[xyz.kd5ujc.scarab.ledger.Credential]
+    )
+
   /** The checks of UTXOW of the era `E`, whatever the protocol version, in the reference's order,
     * each a [[Test]] or the defect that leaves no verdict:
     *
@@ -325,12 +341,16 @@ object Utxow
     *   witnesses of; none from Conway, which has no such proposal)
     * @param mir
     *   the MIR quorum of an era before Conway (`validateMIRInsufficientGenesisSigs`)
+    * @param native
+    *   the native scripts the failing-scripts check evaluates: the flat scripts' trees, or
+    *   Dijkstra's scripts with the guards of the transaction
     */
   def checks[E <: EraTag](
       env: UtxoEnv[Any],
       genDelegs: Map[Bytes, GenDelegPair],
       ann: StAnnTx,
-      mir: Test[PredicateFailure]
+      mir: Test[PredicateFailure],
+      native: NativeScripts = NativeScripts.Flat
   )(using era: ShelleyBasedEra[E]): Vector[Either[LedgerDefect, Test[PredicateFailure]]] =
     val tx = ann.tx
     val pp = env.pp
@@ -349,6 +369,12 @@ object Utxow
     // payment key of each. An earlier era has no collateral field, so its set is empty.
     val collateral = TxChecks.Collateral(tx.body.collateral.flatMap(ann.utxo.get), BigInt(0))
     def test(t: Test[PredicateFailure]) = Right(t)
+    // the needed native scripts that do not hold, of every script provided before Babbage
+    def failedNative(only: Option[Set[Bytes]]): Either[LedgerDefect, Test[PredicateFailure]] =
+      native match
+        case NativeScripts.Flat => TxChecks.failedNativeScripts(tx, scripts, only, signers)
+        case NativeScripts.Dijkstra(ds, guards) =>
+          Right(TxChecks.failedDijkstraNativeScripts(tx, ds, guards, only, signers))
     // Under `runTestOnSignal` in every era, and so skipped when a transaction is applied again
     // ([[TxEnv.static]]): the signatures, the auxiliary data, the failing native scripts before
     // Babbage (`Shelley/Rules/Utxow.hs:301-316` (cardano-ledger f649f975),
@@ -373,13 +399,13 @@ object Utxow
           )
         )
       )
-      val native = test(env.ctx.static(TxChecks.failedNativeScripts(tx, scripts, None, signers)))
+      val failing = env.ctx.staticOrDefect(failedNative(None))
       TxChecks.plutusFieldsDefect[E](tx).map(Left(_)).toVector ++ (
         if !era.atLeast(ShelleyBasedEra.SAlonzo) then
-          Vector(native, missingScripts, signatures, witnesses, metadata, test(mir))
+          Vector(failing, missingScripts, signatures, witnesses, metadata, test(mir))
         else
           Vector(
-            native,
+            failing,
             missingScripts,
             test(
               TxChecks.datumChecks[E](tx, ann.spentByInput, ann.referenced, scripts)
@@ -400,7 +426,7 @@ object Utxow
       val neededNonRef = needed -- references
       Vector(
         test(mir),
-        test(TxChecks.failedNativeScripts(tx, scripts, Some(needed), signers)),
+        failedNative(Some(needed)),
         test(
           Test.all(
             Test.failureUnless(

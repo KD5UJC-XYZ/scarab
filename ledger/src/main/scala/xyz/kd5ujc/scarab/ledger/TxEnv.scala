@@ -78,6 +78,8 @@ sealed trait LedgerFailure extends DomainError:
     case LedgerFailure.StateOutOfRange(id, e) =>
       s"tx ${id.hex.take(16)}: a quantity of the ledger state is out of range: $e"
     case LedgerFailure.LayoutNotYet(cause) => cause.message
+    case LedgerFailure.NativeScriptUnread(id, hash) =>
+      s"tx ${id.hex.take(16)}: native script ${hash.hex.take(16)} has no tree to evaluate here"
 
 /** What ends a judgment of the rules without a verdict: the transaction cannot be what its era
   * decodes, a script cannot be evaluated here, a verifier failed, or a value is outside the state's
@@ -141,6 +143,13 @@ object LedgerFailure:
     * refuses such a build before any rule runs (`NodeSetup`), so the rules never meet it.
     */
   final case class LayoutNotYet(cause: ReferenceBuildNotYet) extends LedgerDefect
+
+  /** A native script the transaction can use, among those it needs, whose time-lock tree the flat
+    * output does not hold: a Dijkstra native script with a guard, which the flat output keeps by
+    * its kind and hash only (`DijkstraTxOut.toStored`, #54). The flat rules cannot evaluate it, and
+    * do not take it as holding; Dijkstra's rule evaluates it in Dijkstra's form (#1126).
+    */
+  final case class NativeScriptUnread(txId: Bytes, hash: Bytes) extends LedgerDefect
 
 /** Block-level context of a transaction.
   *

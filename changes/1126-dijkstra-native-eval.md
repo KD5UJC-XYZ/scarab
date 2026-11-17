@@ -1,0 +1,3 @@
+### Fixed (ledger, #1126)
+
+- Dijkstra's UTXOW evaluates the native scripts a transaction needs in Dijkstra's form, as `evalDijkstraNativeScript` does: by the key witnesses, the validity interval and the guards of the body, a witness's script read from its bytes and a reference script from the output the store keeps. A reference script with a guard, which the stored output keeps without a time-lock tree, is no longer passed unevaluated: one that does not hold is refused with `ScriptWitnessNotValidating`, and one that holds by a signature beside its guard is applied. The flat check of the earlier eras takes no native script without a tree as holding; it ends the judgment with a defect instead.

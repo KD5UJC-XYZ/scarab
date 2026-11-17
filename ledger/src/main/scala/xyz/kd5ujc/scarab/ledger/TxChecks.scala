@@ -626,10 +626,49 @@ object TxChecks:
     *   the key hashes of the vkey witnesses only: `validateTimelock` (`Allegra/Tx.hs`) and
     *   `validateMultiSig` (`Shelley/Scripts.hs`) evaluate over `addrTxWitsL` (cardano-ledger
     *   f649f975), so a bootstrap witness's address root is no signer of a script.
+    * @return
+    *   the test, or [[LedgerFailure.NativeScriptUnread]] for a native script among them that has no
+    *   time-lock tree (a Dijkstra script with a guard, which only Dijkstra's rule evaluates,
+    *   [[failedDijkstraNativeScripts]]): it is never taken as holding
     */
   private[ledger] def failedNativeScripts(
       tx: Tx,
       scripts: Map[Bytes, Script],
+      needed: Option[Set[Bytes]],
+      signers: Set[Bytes]
+  ): Either[LedgerDefect, Test[PredicateFailure]] =
+    val body = tx.body
+    scripts.toVector
+      .filter((h, script) => script.kind == ScriptKind.Native && needed.forall(_.contains(h)))
+      .traverse((h, script) =>
+        script.native
+          .toRight(LedgerFailure.NativeScriptUnread(body.id, h))
+          .map(s => Option.when(!s.eval(signers, body.validityStart, body.ttl))(h))
+      )
+      .map { failed =>
+        val failing = failed.flatten.toSet
+        Test.failureUnless(
+          failing.isEmpty,
+          utxow(UtxowFailure.ScriptWitnessNotValidating(failing))
+        )
+      }
+
+  /** The native scripts that do not hold, of Dijkstra (`validateFailedBabbageScripts`,
+    * `Babbage/Rules/Utxow.hs:225-244`, which Dijkstra's UTXOW runs, `Dijkstra/Rules/Utxow.hs:259`,
+    * cardano-ledger 9df9f98c): the needed ones among the native scripts the transaction can use, in
+    * Dijkstra's form, that do not hold by `evalDijkstraNativeScript`
+    * ([[era.dijkstra.DijkstraNativeScript.eval]]) for the transaction's key witnesses, validity
+    * interval and guards (`validateDijkstraNativeScript`, `Dijkstra/Tx.hs:434-437`).
+    *
+    * @param scripts
+    *   the native scripts the transaction can use (`scriptsProvided`), by hash, in Dijkstra's form
+    * @param signers
+    *   the key hashes of the vkey witnesses only (`addrTxWitsL`)
+    */
+  private[ledger] def failedDijkstraNativeScripts(
+      tx: Tx,
+      scripts: Map[Bytes, era.dijkstra.DijkstraNativeScript],
+      guards: Set[Credential],
       needed: Option[Set[Bytes]],
       signers: Set[Bytes]
   ): Test[PredicateFailure] =
@@ -637,7 +676,7 @@ object TxChecks:
     val failing = scripts.collect {
       case (h, script)
           if needed.forall(_.contains(h)) &&
-            script.native.exists(s => !s.eval(signers, body.validityStart, body.ttl)) =>
+            !script.eval(signers, body.validityStart, body.ttl, guards) =>
         h
     }.toSet
     Test.failureUnless(failing.isEmpty, utxow(UtxowFailure.ScriptWitnessNotValidating(failing)))

@@ -25,6 +25,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Value
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.*
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraNativeScript
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -92,6 +93,52 @@ object DijkstraStAnnTx:
       // a needed Plutus script, of an input or a reference script, whatever the witnesses hold
       _ <- Either.cond(ann.plutusPurposes.isEmpty, (), DijkstraPending.Phase2)
     yield DijkstraStAnnTx(tx, ann)
+
+  /** The native scripts the transaction can use, in Dijkstra's form, by hash
+    * (`getDijkstraScriptsProvided`, `Dijkstra/UTxO.hs:167-186`, cardano-ledger 9df9f98c, of a
+    * transaction without sub-transactions, as one with a Conway form is:
+    * `getBabbageScriptsProvided`, the scripts of its witnesses and the reference scripts of its
+    * inputs and reference inputs). A witness's script is read from the bytes it arrived in, and a
+    * reference script from the output the store keeps
+    * ([[xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.fromStored]]), whose bytes hold a
+    * script with a guard that the flat output keeps without a tree (#1126). One read again by
+    * neither halts the judgment ([[DijkstraHalt.UnreadScript]]).
+    */
+  def nativeScripts(
+      ann: DijkstraStAnnTx
+  ): Either[DijkstraHalt, Map[xyz.kd5ujc.scarab.codec.Bytes, DijkstraNativeScript]] =
+    import xyz.kd5ujc.scarab.ledger.era.EraTxError
+    val witnesses = ann.tx.witnesses.scripts
+      .collect { case s @ DijkstraScript.Native(raw) => (s.hash, raw) }
+      .traverse((hash, raw) =>
+        xyz.kd5ujc.scarab.ledger.CborRead
+          .decode(raw)
+          .leftMap(EraTxError.Decode(_))
+          .flatMap(DijkstraNativeScript.decode)
+          .bimap(DijkstraHalt.UnreadScript(hash, _), hash -> _)
+      )
+    val references = (ann.conway.spent ++ ann.conway.referenced)
+      .flatMap(out =>
+        out.scriptRef
+          .filter(_.kind == xyz.kd5ujc.scarab.ledger.ScriptKind.Native)
+          .map(_.hash -> out)
+      )
+      .traverse((hash, out) =>
+        xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut
+          .fromStored(out)
+          .flatMap(o =>
+            xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.instance
+              .referenceScript(o)
+              .flatMap(
+                xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraScript.instance.getNativeScript
+              )
+              .toRight(EraTxError.StoredOutputDiffers)
+          )
+          .bimap(DijkstraHalt.UnreadScript(hash, _), hash -> _)
+      )
+    (references, witnesses).mapN((r, w) =>
+      (r ++ w).toMap[xyz.kd5ujc.scarab.codec.Bytes, DijkstraNativeScript]
+    )
 
 /** The Conway predicate failures of the reused UTXO and UTXOW checks as Dijkstra's, one to one
   * (`conwayToDijkstraUtxoPredFailure`, `Dijkstra/Rules/Utxo.hs:560-587` (cardano-ledger 9df9f98c);
@@ -395,13 +442,15 @@ object DijkstraUtxow
         DijkstraSts.halt[F, Unit](_),
         ann =>
           for
+            natives <- DijkstraStAnnTx.nativeScripts(ann).fold(raise.raise, _.pure[F])
             _ <- DijkstraSts.record[F, DijkstraUtxowFailure](
               Utxow
                 .checks[Dijkstra](
                   UtxoEnv(env.ctx, env.pp, env.original),
                   Map.empty,
                   ann.conway,
-                  Test.pass
+                  Test.pass,
+                  Utxow.NativeScripts.Dijkstra(natives, ann.tx.body.guards.toSet)
                 )
                 .map(
                   _.leftMap(d => DijkstraHalt.Conway(d: LedgerFailure))
