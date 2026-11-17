@@ -57,7 +57,7 @@ the linked source comparisons, fixtures and recorded runs.
 | **Devnet scenarios** | Against Haskell nodes on a local cluster: Byron→Conway follow with per-era ledger comparisons (`e2e`), governance and Plutus load (`soak`), a Haskell relay fed only by Scarab (`relay`), Scarab forging as a stake pool (`pool`), node-to-client answers byte-compared (`ntc`) |
 | **Preprod block production (H1a)** | The Scarab block producer forged a block in each of its first 7 leader slots of preprod epoch 321; 6 are on the canonical chain, checked against Koios ([#115](https://github.com/KD5UJC-XYZ/scarab/issues/115)) |
 | **Plutus conformance** | The pinned `plutus-conformance` suite (plutus 1.70.0.0): 1,009 of 1,009 cases pass from their text programs and 906 of 906 from their Flat programs, with zero exclusions ([scope and corrections](docs/plutus-conformance.md)) |
-| **Fuzzing** | Every decoder entry point under structured fuzzing, nightly |
+| **Fuzzing** | Structured fuzzing, nightly, of the decoders of what peers, node-to-client clients and blocks send and of many stored formats; the paths without a target are listed in [the fuzzing page](docs/running/fuzzing.md) |
 
 Real-data bugs found along the way are pinned by tests and listed in [docs/findings.md](docs/findings.md).
 The full matrix distinguishes implemented features and bounded evidence from **remaining coverage**:
@@ -165,7 +165,7 @@ the dependencies.
 | `storage` | Immutable and volatile stores, ledger snapshots, the UTxO store, format migrations, the Haskell ImmutableDB reader and ledger-state codec |
 | `node` | Peers, follower, relay, mempool, forging, node-to-client, query server, `Main` |
 | `models-gen`, `models` | A CDDL parser and code generator; the models generated from the pinned upstream CDDL (a spike: used by tests, and its runtime by the ledger-state codec in `storage`) |
-| `fuzz` | Structured fuzzing of every decoder |
+| `fuzz` | Structured fuzzing of the decoders ([coverage and gaps](docs/running/fuzzing.md)) |
 | `warts` | The design rules' own WartRemover warts, which the compiler runs on the main sources of every module but `tools` and `warts`, generated code excluded |
 
 Alongside: `fixtures/` (test vectors and captured chain data, each with its provenance), `scripts/`
