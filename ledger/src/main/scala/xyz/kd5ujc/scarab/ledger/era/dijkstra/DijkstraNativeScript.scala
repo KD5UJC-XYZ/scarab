@@ -105,9 +105,9 @@ final class DijkstraNativeScript private (
         DijkstraNativeScript.Form.TimeStart(_) | DijkstraNativeScript.Form.RequireGuard(_) =>
       None
 
-  /** `getRequireGuard` (`getDijkstraRequireGuard`, `Scripts.hs:666-668`, cardano-ledger 9df9f98c).
-    * Dijkstra's script class, `DijkstraEraScript`, which also has the guarding purpose, is not here
-    * yet (#85).
+  /** `getRequireGuard` (`getDijkstraRequireGuard`, `Scripts.hs:666-668`, cardano-ledger 9df9f98c),
+    * which Dijkstra's script class answers with
+    * ([[xyz.kd5ujc.scarab.ledger.era.DijkstraEraScript]]).
     */
   def getRequireGuard: Option[Credential] = form match
     case DijkstraNativeScript.Form.RequireGuard(c) => Some(c)

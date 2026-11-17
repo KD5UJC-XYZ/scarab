@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   Credential,
   DRepRole,
+  Dijkstra,
   EpochNo,
   EraTag,
   HotCommittee,
@@ -215,3 +216,5 @@ trait ConwayEraTxCert[E <: EraTag] extends EraTxCert[E]:
 object EraTxCert:
   given conway: (ConwayEraTxCert[Conway] & ShelleyEraTxCert[Conway]) =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert.instance
+  given dijkstra: ConwayEraTxCert[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxCert.instance
