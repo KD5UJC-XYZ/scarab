@@ -87,11 +87,14 @@ Without a `ConsensusMode` in the configuration the node runs in `PraosMode`, as 
 does; a `--config` that sets it is honoured as written ([ADR 0022](../adr/0022-defaults-follow-the-reference-binary.md)).
 The configuration files published for mainnet, preprod and preview set `GenesisMode`, and their topologies list
 `bootstrapPeers`, ledger peers (`useLedgerAfterSlot`) and a `peerSnapshotFile`, `peer-snapshot.json`, published beside
-them. Used as published, the node drops the bootstrap peers with the reference's warning and syncs from the big ledger
-peers of the snapshot; without the snapshot file it stops at start, as the reference does. In GenesisMode the node
-stays in `PreSyncing`, where its Limit on Eagerness keeps its selection within `k` blocks of its immutable tip, until
-its outbound connections are trusted (`outboundConnectionsState`): with ledger peers or peer sharing on, once `MinBigLedgerPeersForTrustedState` (5) big
-ledger peers are active; with both off, while every established peer is a trustable local root.
+them. Used as published, the node drops the bootstrap peers with the reference's warning and syncs from big ledger
+peers: the snapshot's while its slot is at or after both the ledger's and `useLedgerAfterSlot`, else the ledger's own
+once the ledger is past `useLedgerAfterSlot`, as after a Mithril import newer than the snapshot
+(`LedgerPeerStake.snapshotBeatsLedger`); without the snapshot file it stops at start, as the reference does.
+In GenesisMode the node stays in `PreSyncing`, where its Limit on Eagerness keeps its selection within `k` blocks of
+its immutable tip, until its outbound connections are trusted (`outboundConnectionsState`): with ledger peers or peer
+sharing on, once `MinBigLedgerPeersForTrustedState` (5) big ledger peers are active; with both off, while every
+established peer is a trustable local root.
 `--peer` roots are not trustable, so in GenesisMode a node with only `--peer` roots and ledger peers off stays in
 `PreSyncing`, as the reference does with such a topology (it warns, above). In Praos mode, sync from an empty database
 with the topology's `bootstrapPeers` or a local root with `"trustable": true`. A node that

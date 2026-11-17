@@ -97,9 +97,9 @@ Scarab's `forged` and `adopted` counts rising together with `lost` at 0; each pe
 
 ## 3. Mainnet from a Mithril snapshot to the tip
 
-**The configuration.** Mainnet runs on its official configuration files: besides the six that
-[configuration.md](configuration.md#preprod) fetches for preprod, the configuration names `checkpoints.json`, which
-the node requires, and the topology `peer-snapshot.json`. Fetch them into `$D/mainnet/config`:
+**The configuration.** Mainnet runs on its official configuration files, as published: besides the seven that
+[configuration.md](configuration.md#preprod) fetches for preprod, `peer-snapshot.json` among them, the mainnet
+configuration names `checkpoints.json`, which the node requires. Fetch them into `$D/mainnet/config`:
 
 ```sh
 mkdir -p "$D/mainnet/config"
@@ -108,16 +108,10 @@ docker run --rm --user "$(id -u):$(id -g)" -w /out -v "$D/mainnet/config":/out -
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/mainnet/$f"; done'
 ```
 
-The official configuration selects `GenesisMode` and the official topology lists `bootstrapPeers`. This build
-refuses that pair (a `ConfigError`, "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"),
-so run the node in Praos mode, which syncs through the topology's bootstrap peers
-([configuration.md](configuration.md#choosing-the-consensus-mode)): a copy of the configuration with only
-`ConsensusMode` changed, beside the genesis files it names.
-
-```sh
-python3 -c 'import json, sys; c = json.load(open(sys.argv[1])); c["ConsensusMode"] = "PraosMode"; json.dump(c, open(sys.argv[2], "w"), indent=2)' \
-  "$D/mainnet/config/config.json" "$D/mainnet/config/config-praos.json"
-```
+The official configuration selects `GenesisMode`, and the official topology lists `bootstrapPeers`, ledger peers and
+the peer snapshot. Use them unchanged: in `GenesisMode` the node logs the reference's warning that bootstrap peers
+are not compatible with Genesis syncing mode, goes on without them, and syncs from big ledger peers
+([configuration.md](configuration.md#choosing-the-consensus-mode)).
 
 **The Mithril verifier, the trust inputs and the artifact.**
 [snapshots.md](snapshots.md#import-mithril-certified-bootstrap-into-a-fresh-database) says how the reviewed client
@@ -158,7 +152,7 @@ scarab --rm -v "$D/bin":/mithril:ro -- import-mithril \
   --genesis-verification-key /data/mainnet/mithril/genesis.vkey \
   --ancillary-verification-key /data/mainnet/mithril/ancillary.vkey \
   --mithril-client /mithril/mithril-client --timeout-seconds <seconds> \
-  --config /data/mainnet/config/config-praos.json --db /data/mainnet-db
+  --config /data/mainnet/config/config.json --db /data/mainnet-db
 ```
 
 **Success:** exit status 0 and a last line `{"kind":"importMithril","event":"done","artifact":...,"slot":...,"hash":...,"outputs":...}`
@@ -169,16 +163,18 @@ an `"event":"error"` line with a typed message and exit status 1, and nothing is
 
 ```sh
 mkdir -p "$D/mainnet-ipc"
-scarab -d --name scarab-mainnet -- follow --config /data/mainnet/config/config-praos.json \
+scarab -d --name scarab-mainnet -- follow --config /data/mainnet/config/config.json \
   --topology /data/mainnet/config/topology.json --db /data/mainnet-db --local-socket /data/mainnet-ipc/node.socket
 docker logs -f scarab-mainnet
 ```
 
 **Success**, in the log ([logging.md](logging.md#log-events)):
 
-- `started` with `"networkMagic":764824073`, a `ledgerPeers` line `snapshotLoaded`, then `snapshotRestored` with the
-  import's slot and hash as its `anchor`, and no `snapshotRefused`, `snapshotSkipped` or `"event":"error"` line;
-- `extended` lines, one a block, whose `block` slots catch up with the wall clock, and once the node judges itself
+- the warning about `bootstrapPeers` above; `snapshotRestored` with the import's slot and hash as its `anchor`; then
+  `started` with `"networkMagic":764824073` and a `ledgerPeers` line `snapshotLoaded`; and no `snapshotRefused`,
+  `snapshotSkipped` or `"event":"error"` line;
+- a `gsmTransition` with `"transition":"preSyncingToSyncing"` once the node's outbound connections are trusted,
+  `extended` lines, one a block, whose `block` slots catch up with the wall clock, and once the node judges itself
   caught up a `gsmTransition` with `"transition":"enterCaughtUp"`;
 - `cardano-cli latest query tip --mainnet` (step 5) answers `"syncProgress": "100.00"`, and its `block` and `hash`
   are what an independent explorer shows at that height, a minute later too;
@@ -190,18 +186,17 @@ what is still open.
 ## 4. A preprod node
 
 As step 3, with preprod's inputs: the same loop from `https://book.play.dev.cardano.org/environments/preprod/`
-into `$D/preprod/config`, without `checkpoints.json` (preprod's configuration names none), and its Praos copy
-`config-praos.json`; the `release-preprod` entry of the Mithril `networks.json`, its keys in `$D/preprod/mithril`;
-and `--db /data/preprod-db`. Then:
+into `$D/preprod/config`, without `checkpoints.json` (preprod's configuration names none); the `release-preprod`
+entry of the Mithril `networks.json`, its keys in `$D/preprod/mithril`; and `--db /data/preprod-db`. Then:
 
 ```sh
 mkdir -p "$D/preprod-ipc"
-scarab -d --name scarab-preprod -- follow --config /data/preprod/config/config-praos.json \
+scarab -d --name scarab-preprod -- follow --config /data/preprod/config/config.json \
   --topology /data/preprod/config/topology.json --db /data/preprod-db --local-socket /data/preprod-ipc/node.socket
 ```
 
-**Success:** as in step 3, with `"networkMagic":1` in `started`. A node synced from genesis instead
-([configuration.md](configuration.md#preprod)) does as well, started with the Praos copy of the configuration.
+**Success:** as in step 3, with `"networkMagic":1` in `started`. To sync from genesis instead, follow
+[configuration.md](configuration.md#preprod), on the same files.
 
 ## 5. `cardano-cli` against the node-to-client socket
 
@@ -330,11 +325,14 @@ cli latest node issue-op-cert --kes-verification-key-file kes.vkey --cold-signin
 
 **Forging.** Give the node a directory with only `vrf.skey`, `kes.skey` and `opcert.cert`, never the cold key. The
 node writes the evolved KES key back, so `kes.skey` (mode 0600, as `cardano-cli` writes it) and its directory must be
-writable by the node's user; a VRF key file readable by others is refused ([forging.md](forging.md#forging)). Stop
-step 4's node, then start the pool on its database; a loopback `--listen` would keep the node from dialling other
-hosts ([flags.md](flags.md)):
+writable by the node's user; a VRF key file readable by others is refused ([forging.md](forging.md#forging)). Scarab
+has been shown forging on preprod in Praos mode only, so the pool runs on a copy of the configuration with only
+`ConsensusMode` changed. Stop step 4's node, then start the pool on its database; a loopback `--listen` would keep
+the node from dialling other hosts ([flags.md](flags.md)):
 
 ```sh
+python3 -c 'import json, sys; c = json.load(open(sys.argv[1])); c["ConsensusMode"] = "PraosMode"; json.dump(c, open(sys.argv[2], "w"), indent=2)' \
+  "$D/preprod/config/config.json" "$D/preprod/config/config-praos.json"
 docker stop -t 120 scarab-preprod
 mkdir -p -m 700 "$KEYS/preprod-pool"
 cp "$KEYS/preprod/vrf.skey" "$KEYS/preprod/kes.skey" "$KEYS/preprod/opcert.cert" "$KEYS/preprod-pool/"
