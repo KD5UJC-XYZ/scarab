@@ -119,8 +119,8 @@ with fail count 0 and never more than asked; a row in the compatibility matrix f
 *Delivered scope.* Hooks only. `ConsensusMode` as an input; the sync targets chosen while `TooOld` in `GenesisMode`; the
 Genesis monitors (`monitorLedgerStateJudgement` in Genesis mode, the stale-targets rule at
 `Monitor.hs:114-140`); `minNumberOfBigLedgerPeers` as the output "trusted state" boolean for consensus (an
-`Ask`/`Tell` seam, unused until G3); the `jobVerifyPeerSnapshot`; the `OutboundConnectionsState` output with its Genesis case (G1.1 has the bootstrap and local-root cases); refusing `bootstrapPeers` in Genesis mode as
-`TopologyP2P.hs:104-108`; `GenesisMode` remains accepted with a partial-implementation diagnostic until G3 lands.
+`Ask`/`Tell` seam, unused until G3); the `jobVerifyPeerSnapshot`; the `OutboundConnectionsState` output with its Genesis case (G1.1 has the bootstrap and local-root cases); dropping `bootstrapPeers` in Genesis mode with a warning, as
+`TopologyP2P.hs:104-108` does at cardano-node 11.1.3 (refused until #1134); `GenesisMode` remains accepted with a partial-implementation diagnostic until G3 lands.
 
 *Files.* `network/.../selection/Sensitivity.scala` (extended), `node/.../PeerGovernor.scala`, `NodeConfig.scala`,
 tests: the bootstrap/Genesis properties of section 6 in Genesis form.
