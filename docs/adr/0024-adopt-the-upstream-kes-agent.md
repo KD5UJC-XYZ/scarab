@@ -70,7 +70,7 @@ in-process copy accepted and documented.
 
 The image of a release candidate (`docker/candidate.Dockerfile`) sets neither `-XX:-CreateCoredumpOnCrash` nor
 `-XX:+DisableAttachMechanism`: its entry point is `java --sun-misc-unsafe-memory-access=allow -jar
-/opt/scarab/scarab.jar`. No Scarab image has set them. The [design](../design/kes-agent.md) lists them among what
+/opt/scarab/scarab.jar`. No image recipe in the repository's history has set them. The [design](../design/kes-agent.md) lists them among what
 lands with agent mode, which it records as not implemented. The decision is unchanged; this corrects the amendment
 of 2026-11-07, which said the image sets them.
 
