@@ -6,10 +6,12 @@ from pathlib import Path
 import copy
 import io
 import json
+import os
 import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_storage_format as fmt
@@ -328,6 +330,50 @@ class AllowlistTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(fmt.allowed(path))
         self.assertEqual(fmt.outside_format_change([fmt.MANIFEST, 'AGENTS.md', 'README.md']), ['AGENTS.md', 'README.md'])
+
+    def test_a_one_off_exception_holds_for_its_pull_request_only(self):
+        for number, paths in fmt.ONE_OFF_PATHS.items():
+            with self.subTest(number=number):
+                self.assertFalse(any(fmt.allowed(p) for p in paths))
+                self.assertEqual(fmt.outside_format_change(list(paths), pull_request=number), [])
+                self.assertEqual(fmt.outside_format_change(list(paths), pull_request=number + 1), sorted(paths))
+                self.assertEqual(fmt.outside_format_change(['AGENTS.md', *paths], pull_request=number), ['AGENTS.md'])
+
+    def test_the_pull_request_is_read_from_the_events_and_none_on_a_doubt(self):
+        number, paths = next(iter(fmt.ONE_OFF_PATHS.items()))
+        with tempfile.TemporaryDirectory() as tmp:
+            def event(name, content):
+                path = Path(tmp) / name
+                path.write_text(content, encoding='utf-8')
+                return str(path)
+            this = event('this.json', json.dumps({'pull_request': {'number': number}}))
+            other = event('other.json', json.dumps({'pull_request': {'number': number + 1}}))
+            self.assertEqual(fmt.event_pull_request(this), number)
+            self.assertIsNone(fmt.event_pull_request(event('broken.json', '{')))
+            self.assertIsNone(fmt.event_pull_request(str(Path(tmp) / 'missing.json')))
+            self.assertIsNone(fmt.event_pull_request(event('text.json', json.dumps({'pull_request': {'number': str(number)}}))))
+            self.assertIsNone(fmt.event_pull_request(event('none.json', json.dumps({'action': 'opened'}))))
+            # the environment's event, an --event argument, or both naming one pull request
+            self.assertEqual(fmt.policy_pull_request([], {'GITHUB_EVENT_PATH': this}), number)
+            self.assertEqual(fmt.policy_pull_request(['--event', this], {}), number)
+            self.assertEqual(fmt.policy_pull_request([f'--event={this}'], {'GITHUB_EVENT_PATH': this}), number)
+            # argparse's abbreviations of --event, as pr_policy.py accepts them
+            for form in (['--e', other], ['--ev', other], ['--even', other], [f'--eve={other}']):
+                with self.subTest(form=form[0]):
+                    self.assertEqual(fmt.event_paths(form, {}), [other])
+                    self.assertIsNone(fmt.policy_pull_request(form, {'GITHUB_EVENT_PATH': this}))
+            self.assertEqual(fmt.event_paths(['--files', 'f.txt', '--mode', 'transition'], {}), [])
+            # events that disagree, or none, grant nothing
+            self.assertIsNone(fmt.policy_pull_request(['--event', other], {'GITHUB_EVENT_PATH': this}))
+            self.assertIsNone(fmt.policy_pull_request(['--event', this], {'GITHUB_EVENT_PATH': other}))
+            self.assertIsNone(fmt.policy_pull_request([], {}))
+            with mock.patch.dict(os.environ, {'GITHUB_EVENT_PATH': this}), mock.patch.object(sys, 'argv', ['pr_policy.py']):
+                self.assertEqual(fmt.outside_format_change(list(paths)), [])
+            with mock.patch.dict(os.environ, {'GITHUB_EVENT_PATH': this}), \
+                    mock.patch.object(sys, 'argv', ['pr_policy.py', '--event', other]):
+                self.assertEqual(fmt.outside_format_change(list(paths)), sorted(paths))
+            with mock.patch.dict(os.environ, {'GITHUB_EVENT_PATH': other}), mock.patch.object(sys, 'argv', ['pr_policy.py']):
+                self.assertEqual(fmt.outside_format_change(list(paths)), sorted(paths))
 
     def test_every_file_the_surface_reads_is_inside_the_allowlist(self):
         self.assertEqual([p for p in fmt.surface_paths(ROOT) if not fmt.allowed(p)], [])

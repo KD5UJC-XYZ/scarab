@@ -58,7 +58,9 @@ guard checks only its presence and its form, and cannot see whether the owner ga
 surface must be the baseline this guard pins (`BASELINE_SURFACE_SHA256`), the surface of `main` when the freeze
 began, which records what existed and approves nothing.
 
-`FORMAT_CHANGE_PATHS` is the one list of the paths a storage format change may touch, and `FREEZE_PATHS` the paths
+`FORMAT_CHANGE_PATHS` is the one list of the paths a storage format change may touch, beside the paths of a one-off
+exception the owner approved for one pull request (`ONE_OFF_PATHS`, by its number, read from the policy check's
+event), and `FREEZE_PATHS` the paths
 whose change makes a pull request one: `scripts/pr_policy.py` refuses such a pull request unless it follows FMT-1,
 and touches nothing outside the list, because a storage format change is a pull request of its own. Every path the
 surface reads is in the list. The guard is self-contained, so that no other script's change alters what it sees.
@@ -75,6 +77,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 
@@ -188,6 +191,23 @@ REQUIRED_BY_OTHER_GATES = (
     'docs/data/correspondence/*.json',
 )
 FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
+# Paths one storage format change may touch beyond FORMAT_CHANGE_PATHS, by the number of its pull request: an
+# exception the owner approved for that pull request only, which no other pull request gets. The number is read
+# from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads.
+ONE_OFF_PATHS = {
+    # #1127: PlutusV4 among the kinds of a stored script, V10 changed in place (#85, #54; approved
+    # 2026-11-17T01:35:35Z). `ScriptKind` is declared in `Scripts.scala`, and the other files match on it
+    # exhaustively.
+    1127: (
+        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Scripts.scala',
+        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala',
+        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TxChecks.scala',
+        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTypes.scala',
+        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTypes.scala',
+        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/TxOutMemPack.scala',
+        'storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala',
+    ),
+}
 # A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the
 # guard and its tests, so that weakening the guard is as loud as a format change.
 FREEZE_PATHS = (MANIFEST, GUARD, GUARD_TESTS)
@@ -218,9 +238,52 @@ def allowed(path: str) -> bool:
     return path != NOT_A_FRAGMENT and any(p.fullmatch(path) for p in ALLOWED)
 
 
-def outside_format_change(files) -> list[str]:
-    """The changed paths that a storage format change may not touch."""
-    return sorted(f for f in files if not allowed(f))
+def event_paths(argv=None, environ=None) -> list[str]:
+    """The event files this process was given: `GITHUB_EVENT_PATH`, which GitHub writes for the policy check, and the
+    `--event` argument of `scripts/pr_policy.py`, which overrides it there."""
+    argv = sys.argv[1:] if argv is None else argv
+    environ = os.environ if environ is None else environ
+    given = [environ.get('GITHUB_EVENT_PATH')]
+    # argparse takes any prefix of `--event` that no other option of pr_policy.py shares, from `--e`, with its value
+    # after it or after `=`
+    def event_option(arg: str) -> bool:
+        return len(arg) >= 3 and '--event'.startswith(arg)
+    for i, arg in enumerate(argv):
+        option, equals, value = arg.partition('=')
+        if event_option(option) and equals:
+            given.append(value)
+        elif event_option(arg) and i + 1 < len(argv):
+            given.append(argv[i + 1])
+    return [p for p in given if p]
+
+
+def policy_pull_request(argv=None, environ=None) -> int | None:
+    """The pull request the policy check is for: the one every event this process was given names; none when there
+    is no event, or the events disagree or name none, so an exception is never granted on a doubt."""
+    numbers = {event_pull_request(p) for p in event_paths(argv, environ)}
+    return numbers.pop() if len(numbers) == 1 else None
+
+
+def event_pull_request(path: str | None) -> int | None:
+    """The number of the pull request the event at `path` names; none when it is missing, unreadable or names no
+    pull request."""
+    if not path:
+        return None
+    try:
+        event = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    pull = event.get('pull_request') if isinstance(event, dict) else None
+    number = pull.get('number') if isinstance(pull, dict) else None
+    return number if isinstance(number, int) and not isinstance(number, bool) else None
+
+
+def outside_format_change(files, pull_request: int | None = None) -> list[str]:
+    """The changed paths that a storage format change may not touch: those outside FORMAT_CHANGE_PATHS and outside
+    the one-off exception of its pull request (by default the one the policy check's events name)."""
+    number = pull_request if pull_request is not None else policy_pull_request()
+    once = ONE_OFF_PATHS.get(number, ()) if number is not None else ()
+    return sorted(f for f in files if not allowed(f) and f not in once)
 
 
 def touches_freeze(files) -> bool:
