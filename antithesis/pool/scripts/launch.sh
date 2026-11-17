@@ -10,8 +10,10 @@
 # leave out of each class (`custom.*_exclusion`, moog spec 107); the driver is left out of all of them. On this tenant
 # basic_test applied network faults only, whatever --fault-tolerance said, and faulted the driver too (README, "did
 # not apply"). LAUNCHER=basic_test keeps it for comparison, FAULTS on as high_availability and off as none.
-# The tenant predates --max-compute-hours (release 66), so the duration bounds the run. A 15m run cost 18 to 20
-# compute hours, about 7 of them setup.
+# The duration bounds the run: a 15m run cost 15 to 20 compute hours, about 7 of them setup. From the tenant's release
+# 66, MAX_COMPUTE_HOURS bounds it by its cost instead (--max-compute-hours, setup included; snouty refuses it with
+# --duration, so the duration is then not passed) and SETUP_TIMEOUT fails it at once if setup takes longer
+# (--setup-timeout, such as 15m; the server's default is 5m).
 set -euo pipefail
 
 usage() { echo "usage: [CONFIG=...] [LAUNCHER=amaru-cardano|basic_test] launch.sh on|off DURATION" >&2; exit 2; }
@@ -45,6 +47,17 @@ else
     fault_args+=(--param "custom.${class}_exclusion=driver")
   done
 fi
+budget_args=(--duration "$duration")
+if [ -n "${MAX_COMPUTE_HOURS:-}" ]; then
+  [[ $MAX_COMPUTE_HOURS =~ ^[0-9]{1,4}$ ]] && [ $((10#$MAX_COMPUTE_HOURS)) -ge 1 ] && [ $((10#$MAX_COMPUTE_HOURS)) -le 1000 ] ||
+    { echo "launch: MAX_COMPUTE_HOURS is a whole number from 1 to 1000 (snouty's bound; the tier sets a minimum), not $MAX_COMPUTE_HOURS" >&2; usage; }
+  budget_args=(--max-compute-hours "$MAX_COMPUTE_HOURS")
+fi
+if [ -n "${SETUP_TIMEOUT:-}" ]; then
+  [[ $SETUP_TIMEOUT =~ ^([0-9]{1,2})m$ ]] && [ $((10#${BASH_REMATCH[1]})) -ge 1 ] && [ $((10#${BASH_REMATCH[1]})) -le 30 ] ||
+    { echo "launch: SETUP_TIMEOUT is whole minutes from 1m to 30m, such as 15m, not $SETUP_TIMEOUT" >&2; usage; }
+  budget_args+=(--setup-timeout "$SETUP_TIMEOUT")
+fi
 here=$(cd "$(dirname "$0")/.." && pwd)
 commit=$(docker image inspect scarab-at-scarab:trial --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
 [ -n "$commit" ] || { echo "launch: scarab-at-scarab:trial has no commit label; build it with build.sh" >&2; exit 1; }
@@ -62,6 +75,8 @@ case ${CONFIG:-config} in
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, s1's container started once they listen" ;;
   config-k200) name=scarab-pool-k200
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, k = 200, 40000-slot epochs" ;;
+  config-short-kes) name=scarab-pool-short-kes
+    description="Scarab $commit pool with two cardano-node 11.1.3 pools, KES periods of 250 slots" ;;
   *) name=scarab-pool
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, create-env defaults" ;;
 esac
@@ -72,8 +87,8 @@ SNOUTY_CONTAINER_ENGINE=docker exec snouty launch \
   --config "$here/${CONFIG:-config}" \
   --test-name "$name" \
   --description "$description" \
-  --duration "$duration" \
   "${fault_args[@]}" \
+  "${budget_args[@]}" \
   --param attrs.scarab="$commit" \
   --param attrs.reference=cardano-node-11.1.3 \
   --param attrs.plugin_version=0.1.0

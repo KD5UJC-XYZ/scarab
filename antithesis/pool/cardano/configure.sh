@@ -45,6 +45,13 @@ if [ -n "${SECURITY_PARAM:-}" ]; then
   jq --argjson k "$SECURITY_PARAM" '.protocolConsts.k = $k' byron-genesis.json > byron.tmp
   mv byron.tmp byron-genesis.json
 fi
+# SLOTS_PER_KES_PERIOD, when the compose file sets it, is the genesis' slotsPerKESPeriod, as `scripts/devnet.py pool`
+# sets it (250): create-env's 129,600 slots (3.6 hours at 0.1 s slots) come to a KES period change only that long after the start. The
+# pools' certificates allow create-env's 60 evolutions, so at 250 slots they expire 1,500 s after the system start.
+if [ -n "${SLOTS_PER_KES_PERIOD:-}" ]; then
+  jq --argjson n "$SLOTS_PER_KES_PERIOD" '.slotsPerKESPeriod = $n' shelley-genesis.json > shelley.tmp
+  mv shelley.tmp shelley-genesis.json
+fi
 # PROTOCOL_MAJOR, when the compose file sets it, is the genesis protocol version's major, as
 # `scripts/devnet/dijkstra.py` sets it; without it the chain starts at create-env's.
 if [ -n "${PROTOCOL_MAJOR:-}" ]; then
