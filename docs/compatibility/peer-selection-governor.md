@@ -60,6 +60,9 @@ Genesis mode an unreadable `peerSnapshotFile` stops the node at start, as `updat
 Genesis mode) cover it. The start-up was also compared by running both nodes with no network on the official mainnet
 configuration and topology, with and without the `peer-snapshot.json` it names, and on the reference's
 `testnet-template-topology-empty-p2p.json` (2026-11-16): the same warnings, the same stop without the snapshot.
+At start-up only, a block producer with `PeerSharing` on gets the reference's `NetworkConfigUpdateWarning` of
+`handleSimpleNode` (`Run.hs` 360-366), after the topology's notices and before the snapshot is read (checked by reading,
+and by running cardano-node 11.1.3 as a producer on 2026-11-17); `NetworkConfigSuite` covers it.
 A difference left ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6933331883)): at a runtime
 SIGHUP reload the reference installs the new topology and then reads the peer snapshot on its own (`Run.hs` 596-614,
 690-757, `isStartup` false). On a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the

@@ -12,6 +12,23 @@ enum NodeRole:
 object NodeRole:
   def of(forge: Option[Main.ForgeFiles]): NodeRole = forge.fold(Relay)(_ => BlockProducer)
 
+/** The reference's warning of a node that forges with peer sharing on (`handleSimpleNode`,
+  * cardano-node 11.1.3 `cardano-node/src/Cardano/Node/Run.hs` 360-366): a
+  * `NetworkConfigUpdateWarning` without the prefix of `readTopologyFile`, at start-up only, once
+  * the topology is read and before the peer snapshot is; a reload does not say it again.
+  */
+object PeerSharingWarning:
+  val message: String =
+    "Mainnet block producers may not meet the Praos performance guarantees and host IP " +
+      "address will be leaked since peer sharing is enabled."
+
+  /** Whether the node says it: it forges (`hasProtocolFile`) and `peerSharing` is on, as configured
+    * or by the reference's default, off for a producer (`POM.hs` 899-905).
+    */
+  def due(role: NodeRole, peerSharing: Boolean): Boolean = role match
+    case NodeRole.BlockProducer => peerSharing
+    case NodeRole.Relay         => false
+
 /** What the reference says of a topology as it reads it, at start-up and at every SIGHUP reload
   * (`readTopologyFile`, cardano-node 11.1.3
   * `cardano-node/src/Cardano/Node/Configuration/TopologyP2P.hs` 66-108): advice that changes

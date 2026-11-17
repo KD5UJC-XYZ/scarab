@@ -24,6 +24,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ChainError,
   StorageError
 }
+import cats.data.EitherT
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
 import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.metrics.CpuStarvationWarningMetrics
@@ -749,6 +750,30 @@ object Main extends IOApp:
       .flatMap(_.notices)
       .traverse_(n => Log[IO].emit[NodeEvent](NodeEvent.NetworkConfigUpdate(n)))
 
+  /** The network configuration at start-up, in the order of the reference's `handleSimpleNode`
+    * (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 349-379): the topology and what
+    * its reading says of it, the warning of a producer with peer sharing on (360-366), then the
+    * roots and the peer snapshot, whose refusal stops the start. The options completed, as
+    * [[completed]] makes them.
+    */
+  private[node] def networkAtStart(requested: Options, setup: NodeSetup)(using
+      Log[IO]
+  ): IO[Either[ConfigError, (Options, NodeSetup, Option[Topology])]] =
+    EitherT(IO.blocking(readTopology(requested, setup)))
+      .semiflatTap(noticed)
+      .semiflatTap(_ =>
+        Log[IO]
+          .emit[NodeEvent](NodeEvent.PeerSharingOnProducer)
+          .whenA(
+            PeerSharingWarning.due(
+              NodeRole.of(requested.forge),
+              setup.config.settings.peerSharingEnabled(requested.forge.isDefined)
+            )
+          )
+      )
+      .flatMapF(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
+      .value
+
   /** The topology file as the reference's `readTopologyFile` reads it (cardano-node 11.1.3,
     * `cardano-node/src/Cardano/Node/Configuration/TopologyP2P.hs` 53-108): parsed and checked
     * ([[Topology.read]]), then what the consensus mode and the node's role call for, and in Genesis
@@ -893,13 +918,7 @@ object Main extends IOApp:
               Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)) *>
                 failedStart(error.message).as(ExitCode.Error),
             _ =>
-              // what the reading of the topology says is logged before its snapshot is read,
-              // which may stop the start, as the reference's `readTopologyFile` traces before
-              // `updateLedgerPeerSnapshot` (`Run.hs` 349-379)
-              IO.blocking(readTopology(requested, setup))
-                .flatMap(admitted)
-                .flatTap(noticed)
-                .flatMap(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
+              networkAtStart(requested, setup)
                 .flatMap(admitted)
                 .flatMap((options, setup, topology) =>
                   started(options, setup, topology, requested.peers, pool, layout, listening)

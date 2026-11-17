@@ -108,7 +108,8 @@ enum EventKind(val area: Area, val severity: Severity):
   /** The reference's `Startup.NetworkConfigUpdateInfo` and `Startup.NetworkConfigUpdateWarning`,
     * with their severities and their `message` (cardano-node 11.1.3,
     * `cardano-node/src/Cardano/Node/Tracing/Tracers/Startup.hs` 226-231, 341-344, 374-375): what
-    * the reading of the topology says of it, at start-up and at each reload.
+    * the reading of the topology says of it, at start-up and at each reload, and, at start-up only,
+    * a block producer with peer sharing on (`Run.hs` 360-366).
     */
   case NetworkConfigUpdateInfo extends EventKind(Area.Node, Severity.Info)
   case NetworkConfigUpdateWarning extends EventKind(Area.Node, Severity.Warning)
