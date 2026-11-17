@@ -94,14 +94,18 @@ object EraHistory:
     case Bound.Layout.Node11_1(_)  => Bound.Layout.Node11_1(None)
     case l @ Bound.Layout.Leios(_) => l
 
-  /** The Peras round of `mkUpperBound` (2416493b `Summary.hs:126-151`, 82ecba32 `:117-141`): the
-    * bound that ends `slots` slots of `era` after a lower bound of layout `lo`. An era with no
-    * rounds is [[unroundedLayout]]; one with rounds adds the whole rounds of its slots to the lower
-    * bound's, `div` of the slots by the round length and `addPerasRounds`, a `Word64` sum (2416493b
-    * `HardFork/History/Util.hs:31-32`).
+  /** The Peras round of `mkUpperBound` (2416493b `Summary.hs:126-157`, 82ecba32 `:117-141`): the
+    * bound that ends `epochs` epochs of `epochSize` slots of `era` after a lower bound of layout
+    * `lo`. An era with no rounds is [[unroundedLayout]]; one with rounds adds the whole rounds of
+    * its slots to the lower bound's. The arithmetic is the reference's `Word64` s
+    * (`Summary.hs:148-154`): `inEraEpochs` is `countEpochs`, a subtraction whose assertion release
+    * builds compile out (`HardFork/History/Util.hs:41-42`), `inEraSlots` its product with the epoch
+    * size, both modulo 2^64, `inEraPerasRounds` the `div` of those slots by the round length, and
+    * `addPerasRounds` a `Word64` sum (`Util.hs:31-32`).
     */
-  def upperLayout(lo: Bound.Layout, era: Era, slots: BigInt): Bound.Layout =
+  def upperLayout(lo: Bound.Layout, era: Era, epochs: BigInt, epochSize: BigInt): Bound.Layout =
     perasRoundLength(lo.stateLayout, era).fold(unroundedLayout(lo)) { length =>
+      val slots = (epochs.mod(Word64Modulus) * epochSize).mod(Word64Modulus)
       def add(r: PerasRoundNo) =
         PerasRoundNo(
           Word64.fromUnsigned((r.word.toBigInt + slots / length).mod(Word64Modulus).toLong)
@@ -113,11 +117,12 @@ object EraHistory:
 
   private val Word64Modulus = BigInt(2).pow(64)
 
-  /** `mkUpperBound` of `era` from `lo` to the bound `at` (the time, slot and epoch, as [[boundAt]]
-    * or the summary's arithmetic places it), with the Peras round of [[upperLayout]].
+  /** `mkUpperBound` of `era`, of epochs of `epochSize` slots, from `lo` to the bound `at` (the
+    * time, slot and epoch, as [[boundAt]] or the summary's arithmetic places it), with the Peras
+    * round of [[upperLayout]] for the epochs from `lo` to `at`.
     */
-  def upperBound(lo: Bound, era: Era, at: Bound): Bound =
-    at.copy(layout = upperLayout(lo.layout, era, at.slot - lo.slot))
+  def upperBound(lo: Bound, era: Era, epochSize: BigInt, at: Bound): Bound =
+    at.copy(layout = upperLayout(lo.layout, era, at.epoch - lo.epoch, epochSize))
 
   /** The era history from the configuration, every bound in the layout of `layout` 's build: the
     * first era starts at `initBound` ([[originLayout]]) and each era ends at its `mkUpperBound`
@@ -153,6 +158,7 @@ object EraHistory:
       Era.Byron,
       BigInt(0),
       firstShelley,
+      byron.epochSlots,
       EraSummary(_, _, byron.epochSlots, byron.slotLengthMillis, byron.k * 2, byron.k * 2, _)
     )
     val shelleyBased = shelleyEpochs.zip(starts).zipWithIndex.map { case ((era, start), i) =>
@@ -168,6 +174,7 @@ object EraHistory:
         era,
         start,
         end,
+        BigInt(geometry.epochLength),
         EraSummary(
           _,
           _,
@@ -181,9 +188,9 @@ object EraHistory:
     }
     (byronEra +: shelleyBased)
       .foldLeft((originLayout(layout), Vector.empty[EraSummary])) {
-        case ((from, eras), (era, start, end, summary)) =>
+        case ((from, eras), (era, start, end, epochSize, summary)) =>
           val lo = bound(start).copy(layout = from)
-          val hi = upperBound(lo, era, bound(end))
+          val hi = upperBound(lo, era, epochSize, bound(end))
           (hi.layout, eras :+ summary(lo, Some(hi), perasRoundLength(layout, era)))
       }
       ._2

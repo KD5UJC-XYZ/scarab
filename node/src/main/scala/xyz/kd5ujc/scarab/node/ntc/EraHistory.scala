@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.consensus.state.{Bound, EraSummary}
 import xyz.kd5ujc.scarab.consensus.state as hfc
 
@@ -15,9 +16,9 @@ object EraHistory:
     * ouroboros-consensus 2416493b), each bound as [[bound]] writes it and the parameters as
     * [[params]].
     */
-  def encode(w: CborOut, eras: Vector[EraSummary]): CborOut =
+  def encode(w: CborOut, eras: NonEmptyVector[EraSummary]): CborOut =
     w.indefiniteArray
-    eras.foreach { e =>
+    eras.toVector.foreach { e =>
       w.array(3)
       bound(w, e.start)
       e.end match
@@ -30,9 +31,11 @@ object EraHistory:
   /** `Serialise Bound` of the bound's layout: `[time in picoseconds, slot, epoch]` and the Peras
     * round where there is one, the time an `Integer` (`Serialise RelativeTime` writes
     * `toPicoseconds`), so a tag-2 big number once the chain is older than about 213 days. The 11.1
-    * line writes the round only when it is `PerasEnabled` (ouroboros-consensus 82ecba32
-    * `Summary.hs:526-538`); the Leios build always writes the next round, four items (2416493b
-    * `Summary.hs:573-581`).
+    * line writes the round, a fourth item, only when it is `PerasEnabled` (ouroboros-consensus
+    * 82ecba32 `Summary.hs:526-538`), as both queries write a bound (`GetInterpreter` and
+    * `GetEraStart` are `encode`, `HardFork/Combinator/Ledger/Query.hs:553,562`): a stored round is
+    * written as it is read, although no era of that line has rounds; the Leios build always writes
+    * the next round, four items (2416493b `Summary.hs:573-581`).
     */
   def bound(w: CborOut, b: Bound): CborOut =
     def numbers(n: Int) = w.array(n).integer(b.timePs).uint(b.slot).uint(b.epoch)

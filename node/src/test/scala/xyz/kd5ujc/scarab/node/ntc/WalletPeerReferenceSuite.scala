@@ -59,7 +59,7 @@ class WalletPeerReferenceSuite extends FunSuite:
       def plutus: PlutusStats = PlutusStats.zero
       def utxo: Utxo = native.nes.es.ls.utxo.utxo.utxo
       // These cases ask no era history; the genesis state's stands in for it.
-      def summary(placement: Placement): Vector[EraSummary] =
+      def summary(placement: Placement): NonEmptyVector[EraSummary] =
         MirrorClock.interpreter(native.setup.mirrorStart, placement)
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
         Right(

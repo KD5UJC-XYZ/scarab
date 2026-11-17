@@ -128,7 +128,7 @@ class LeiosBoundsEvidenceSuite extends FunSuite:
     // not configure while it refuses to enter Dijkstra (`HardForkConfig.trigger`, #54).
     val reference = placement.copy(forks = placement.forks.copy(maxMajorProtVer = 12))
     val eras = start.summary(reference)
-    assertEquals(eras.size, Era.values.length)
+    assertEquals(eras.length, Era.values.length)
     val answer = Cbor
       .decode(CborOut.build(EraHistory.encode(_, eras)), HaskellState.limits)
       .fold(e => fail(e.toString), identity)

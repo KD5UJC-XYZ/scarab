@@ -278,14 +278,17 @@ object QueryAnswers:
       val eras = view.read.summary(view.state)(placement)
       Right(CborOut.build(EraHistory.encode(_, eras)))
     case NtcQuery.EraStart(index) =>
-      // the start of an era the state has entered, from the same history as `GetInterpreter`
-      val era = view.era
-      // `Serialise (Maybe Bound)`: `[]` or `[bound]` (`encodeQueryAnytimeResult`,
-      // `HardFork/Combinator/Ledger/Query.hs:571-572`, ouroboros-consensus 2416493b)
+      // the start of an era, from the same history as `GetInterpreter`:
+      // `answerQueryAnytime` (`HardFork/Combinator/Ledger/Query.hs:503-514`, ouroboros-consensus
+      // 2416493b; `:484-495` at 82ecba32): a past era's start, the current era's, and the next
+      // era's where the current era's transition is known (`SituatedNext`, `mkUpperBound` of the
+      // current era to the transition), which is where the summary's next era starts; nothing for
+      // a later era. Written as `Serialise (Maybe Bound)`, `[]` or `[bound]`
+      // (`encodeQueryAnytimeResult`, `:571-572`)
       val placement = Placement(geometry(env, view), env.byron, env.forks)
       val eras = view.read.summary(view.state)(placement)
       Right(CborOut.build { w =>
-        eras.lift(index.index).filter(_ => index.index <= era.index) match
+        eras.toVector.lift(index.index) match
           case Some(e) => EraHistory.bound(w.array(1), e.start)
           case None    => w.array(0)
       })

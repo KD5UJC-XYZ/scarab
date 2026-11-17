@@ -46,20 +46,36 @@ class LeiosBoundsSuite extends FunSuite:
   }
 
   test("mkUpperBound's round: an era with rounds adds the whole rounds of its slots, as a Word64") {
-    // 1000 slots of Dijkstra are 11 rounds of 90 (`div`), added to the lower bound's 5
-    assertEquals(EraHistory.upperLayout(leios(5), Era.Dijkstra, 1000), leios(16))
-    assertEquals(EraHistory.upperLayout(leios(5), Era.Dijkstra, 89), leios(5))
+    // 2 epochs of 500 slots of Dijkstra are 11 rounds of 90 (`div`), added to the lower bound's 5
+    assertEquals(EraHistory.upperLayout(leios(5), Era.Dijkstra, 2, 500), leios(16))
+    assertEquals(EraHistory.upperLayout(leios(5), Era.Dijkstra, 1, 89), leios(5))
     // `addPerasRounds` is a `Word64` sum (`HardFork/History/Util.hs:31-32`, 2416493b)
-    assertEquals(EraHistory.upperLayout(leios(-1L), Era.Dijkstra, 90), leios(0))
+    assertEquals(EraHistory.upperLayout(leios(-1L), Era.Dijkstra, 1, 90), leios(0))
     // an era with no rounds keeps the lower bound's next round
-    assertEquals(EraHistory.upperLayout(leios(5), Era.Conway, 1000), leios(5))
+    assertEquals(EraHistory.upperLayout(leios(5), Era.Conway, 2, 500), leios(5))
     // the 11.1 line: no era has rounds, so the round is `NoPerasEnabled` (82ecba32
     // `Summary.hs:130`)
     assertEquals(
-      EraHistory.upperLayout(Bound.Layout.Node11_1(Some(round(3))), Era.Dijkstra, 900),
+      EraHistory.upperLayout(Bound.Layout.Node11_1(Some(round(3))), Era.Dijkstra, 2, 450),
       none
     )
-    assertEquals(EraHistory.upperLayout(none, Era.Conway, 1000), none)
+    assertEquals(EraHistory.upperLayout(none, Era.Conway, 2, 500), none)
+  }
+
+  test("mkUpperBound's slots are a Word64 product: epochs past 2^64 slots wrap before the div") {
+    // `inEraSlots = inEraEpochs * unEpochSize eraEpochSize` in `Word64` (2416493b
+    // `Summary.hs:148-154`): with epochs of 90 slots, ceil(2^64 / 90) epochs are
+    // ceil(2^64 / 90) * 90 - 2^64 slots modulo 2^64, fewer than 90, so no whole round
+    val modulus = BigInt(2).pow(64)
+    val epochs = (modulus + 89) / 90
+    assert((epochs * 90).mod(modulus) < 90)
+    assertEquals(EraHistory.upperLayout(leios(0), Era.Dijkstra, epochs, 90), leios(0))
+    // one epoch fewer is 2^64 / 90 epochs' worth of slots below 2^64: its rounds are all counted
+    val fewer = epochs - 1
+    assertEquals(
+      EraHistory.upperLayout(leios(0), Era.Dijkstra, fewer, 90),
+      leios(fewer.toLong)
+    )
   }
 
   test("an era a block enters starts in the layout of the era that ends there, its round kept") {
@@ -157,10 +173,12 @@ class LeiosBoundsSuite extends FunSuite:
   test(
     "GetInterpreter's summary of a Byron start: the telescope's start, the computed end laid out"
   ) {
-    val eras = MirrorClock.interpreter(
-      byronStart(StateLayout.Leios),
-      Placement(geometry, byron, forks)
-    )
+    val eras = MirrorClock
+      .interpreter(
+        byronStart(StateLayout.Leios),
+        Placement(geometry, byron, forks)
+      )
+      .toVector
     assertEquals(eras.map(_.start.layout).distinct, Vector(leios(0)))
     assertEquals(eras.flatMap(_.end).map(_.layout).distinct, Vector(leios(0)))
     assertEquals(eras.map(_.perasRoundLength).distinct, Vector(None))

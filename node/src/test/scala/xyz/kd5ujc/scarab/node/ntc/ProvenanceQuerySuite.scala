@@ -75,7 +75,7 @@ class ProvenanceQuerySuite extends CatsEffectSuite:
       val placement = Placement(QueryAnswers.geometry(empty, acquired), empty.byron, empty.forks)
       val history = MirrorClock.interpreter(restored.state, placement)
       // the eras start where the state's telescope says, not where the environment saw them
-      assertEquals(history.map(_.start.epoch), Era.values.toVector.flatMap(starts.get))
+      assertEquals(history.toVector.map(_.start.epoch), Era.values.toVector.flatMap(starts.get))
       val interpreter = NtcQuery.HardFork(HardForkQuery.GetInterpreter)
       val expected = CborOut.build(EraHistory.encode(_, history))
       assertEquals(answer(empty, restored, interpreter), expected)
