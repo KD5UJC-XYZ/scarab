@@ -336,7 +336,11 @@ table ([STR-2](../design-rules.md#str-2)).
   found there counts only once it is confirmed in a clean context (§7.3). Exact contexts are the injector cluster's:
   there the injector serves no such switch outside a chain-selection probe, and after one judges no transaction until
   both snapshots have moved past it. S1 tests the rule on recorded logs, among them a log whose extensions the limiter
-  dropped, a switch a lagging follower would have missed, and a switch whose line arrives within the margin.
+  dropped, a switch a lagging follower would have missed, and a switch whose line arrives within the margin. S1 also
+  measures, on each node, the time from a local ChainSync reply that shows a switch's new tip to that switch's log
+  line, and sets the margin at ten times the largest it observed; the margin is part of the public configuration
+  record. Agreeing probes in trace-checked contexts count toward coverage, and a cell whose minimums were met only
+  from such contexts says so in its results.
 - **Every attempt is recorded**, with its bracket and its reply, including one whose bracket then moved and one whose
   reply never came: an attempt is part of the context whether or not it was judged.
 - **Reset and reconstruction.** After a bracket that moved, a reply that never came (a timeout, a lost connection) or
