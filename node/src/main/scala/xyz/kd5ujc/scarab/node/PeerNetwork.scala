@@ -362,7 +362,12 @@ object PeerNetwork:
     def createWorker(roots: Roots): F[LedgerPeersWorker[F]] =
       given Tell[F, LedgerPeersTrace] = workerTrace
       val workerRng = Rng(settings.seed).split._1
-      LedgerPeersWorker.create[F](roots.ledger, ledgerSource, roots.snapshot.snapshot, workerRng)
+      LedgerPeersWorker.create[F](
+        roots.ledger,
+        ledgerSource,
+        F.pure(roots.snapshot.snapshot),
+        workerRng
+      )
     for
       supervisor <- Supervisor[F](await = false)
       // the monitors of the outbound connections, released before `supervisor` ends the

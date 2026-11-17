@@ -147,13 +147,16 @@ object LedgerPeersSource:
   * One request at a time (the reference's worker is a thread answering one at a time). The random
   * generator is the worker's own, split from the governor's seed. The ledger is read only when the
   * cache has expired and the source of the maps could be the ledger, so a request in between costs
-  * a draw. Capabilities: the clock (`Clock`), the trace (`Tell`). The pure parts are
-  * [[LedgerPeerStake]]'s.
+  * a draw. The peer snapshot is read from `snapshot` when the maps are rebuilt, as the reference
+  * reads `wlpGetLedgerPeerSnapshot` only once its cache has aged out (ouroboros-network c45735a5
+  * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/LedgerPeers.hs` 277-287): a new snapshot
+  * is taken at the next rebuild, and changes nothing in the cache before it. Capabilities: the
+  * clock (`Clock`), the trace (`Tell`). The pure parts are [[LedgerPeerStake]]'s.
   */
 final class LedgerPeersWorker[F[_]: Async] private (
     use: UseLedgerPeers,
     source: LedgerPeersSource[F],
-    snapshot: Option[LedgerPeerSnapshot[LedgerRelay]],
+    snapshot: F[Option[LedgerPeerSnapshot[LedgerRelay]]],
     cache: Ref[F, LedgerPeersCache[LedgerRelay]],
     rng: Ref[F, Rng],
     one: Mutex[F]
@@ -179,7 +182,8 @@ final class LedgerPeersWorker[F[_]: Async] private (
         for
           slot <- source.latestSlot
           pools <- ledgerPools(slot)
-          (next, from) = LedgerPeerStake.rebuild(current, use, now, slot, pools, snapshot)
+          snapshotNow <- snapshot
+          (next, from) = LedgerPeerStake.rebuild(current, use, now, slot, pools, snapshotNow)
           _ <- cache.set(next)
           _ <- trace.tell(
             LedgerPeersTrace.Refreshed(from, next.maps.all.size, next.maps.big.size, slot)
@@ -208,7 +212,7 @@ object LedgerPeersWorker:
   def create[F[_]: Async](
       use: UseLedgerPeers,
       source: LedgerPeersSource[F],
-      snapshot: Option[LedgerPeerSnapshot[LedgerRelay]],
+      snapshot: F[Option[LedgerPeerSnapshot[LedgerRelay]]],
       seed: Rng
   )(using Tell[F, LedgerPeersTrace]): F[LedgerPeersWorker[F]] =
     for

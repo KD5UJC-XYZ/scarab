@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Outcome, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.Tell
 import cats.syntax.all.*
@@ -225,7 +225,12 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
       given Tell[IO, LedgerPeersTrace] = new Tell[IO, LedgerPeersTrace]:
         def functor = cats.Functor[IO]
         def tell(l: LedgerPeersTrace) = traces.update(_ :+ l)
-      w <- LedgerPeersWorker.create[IO](use, new Counting(slot, ledger, reads), snapshot, Rng(5L))
+      w <- LedgerPeersWorker.create[IO](
+        use,
+        new Counting(slot, ledger, reads),
+        IO.pure(snapshot),
+        Rng(5L)
+      )
     yield (w, reads, traces)
 
   private val two = pools(Rational(3, 4) -> relayA, Rational(1, 4) -> relayB)
@@ -325,6 +330,68 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
         },
         traces.toString
       )
+  }
+
+  test("the worker takes a new peer snapshot at its next rebuild, without being made again") {
+    // the reference's thread reads `wlpGetLedgerPeerSnapshot` only once its cache has aged out
+    // (ouroboros-network c45735a5 `PeerSelection/LedgerPeers.hs` 277-287)
+    // a snapshot at another slot: one at the slot the maps were built from is not read again
+    // (`stakeMapWithSlotOverSource`'s cached slot)
+    def snapshot(slot: Int, relay: String) =
+      LedgerPeerSnapshot.V23(
+        SnapshotPoint.Block(BigInt(slot), Bytes.fromArray(Array.fill(32)(1.toByte))),
+        2L,
+        Vector(
+          SnapshotPool(
+            AccPoolStake(Rational(1)),
+            PoolStake(Rational(1)),
+            NonEmptyVector.one[LedgerRelay](LedgerRelay.Domain(relay, port(3001)))
+          )
+        )
+      )
+    def relays(answer: LedgerAnswer[LedgerRelay]): Set[LedgerRelay] = answer match
+      case LedgerAnswer.Picked(picked, _) => picked.toSet
+      case other                          => fail(s"unexpected $other")
+    val use = UseLedgerPeers.Use(AfterSlot.Always)
+    for
+      aged <- Deferred[IO, Unit]
+      control <- TestControl.execute(
+        for
+          source <- Ref.of[IO, Option[LedgerPeerSnapshot[LedgerRelay]]](
+            Some(snapshot(150, "a.example."))
+          )
+          reads <- Ref.of[IO, Int](0)
+          w <- {
+            given Tell[IO, LedgerPeersTrace] = new Tell[IO, LedgerPeersTrace]:
+              def functor = cats.Functor[IO]
+              def tell(l: LedgerPeersTrace) = IO.unit
+            LedgerPeersWorker.create[IO](
+              use,
+              new Counting(WithOrigin.At(BigInt(100)), two, reads),
+              source.get,
+              Rng(5L)
+            )
+          }
+          first <- w.request[LedgerKind.Big](1)
+          _ <- source.set(Some(snapshot(160, "b.example.")))
+          cached <- w.request[LedgerKind.Big](1)
+          _ <- aged.get
+          rebuilt <- w.request[LedgerKind.Big](1)
+        yield (relays(first), relays(cached), relays(rebuilt))
+      )
+      _ <- control.tick
+      _ <- control.advance(2000.seconds)
+      _ <- aged.complete(())
+      _ <- control.tick
+      result <- control.results
+    yield result match
+      case Some(Outcome.Succeeded((first, cached, rebuilt))) =>
+        val a = Set[LedgerRelay](LedgerRelay.Domain("a.example.", port(3001)))
+        val b = Set[LedgerRelay](LedgerRelay.Domain("b.example.", port(3001)))
+        assertEquals(first, a, "the first snapshot")
+        assertEquals(cached, a, "a new snapshot changes nothing before the cache ages out")
+        assertEquals(rebuilt, b, "the new snapshot at the next rebuild")
+      case other => fail(s"the program did not end: $other")
   }
 
   // ------------------------------------------------------------------ the roots
