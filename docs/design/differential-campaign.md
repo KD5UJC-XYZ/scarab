@@ -81,7 +81,7 @@ the tip and the mempool's slot held still and the mempool was empty before and a
 (`refusalcorpus.py` 249-258, 319-357). `ReferenceRefusalSuite` replays every case offline: a Conway case through
 Scarab's own node-to-client path on an empty mempool, an earlier era's through that era's LEDGER rule, comparing the
 refusal byte for byte ([its README](../../fixtures/reference/refusals/README.md) 55-66). This is the campaign's oracle
-for transactions in every era, path R in §4, with the scope §4 gives it before Conway.
+for transactions in every era, path R in §4 (scoped before Conway).
 
 ### 2.3 Tips and ledger state
 
@@ -90,7 +90,7 @@ Scarab's `follower.jsonl` events or query port. Each scenario compares tips its 
 183-191; `pool.settled_tips`, `pool.py` 426-435); no tip-equality assertion was found in `e2e`. The exact comparison
 of ledger state is `e2e`'s same-point `DebugNewEpochState` and `GetUTxOWhole` (`scripts/devnet/compare.py` 377-380,
 463-602; `scripts/devnet/ledgercompare.py` 49-96) and the same-point node-to-client battery
-(`scripts/devnet/ntceras.py`). Missing: one primitive that brackets a probe with both nodes' tips.
+(`scripts/devnet/ntceras.py`). 
 
 ### 2.4 Seeds
 
@@ -105,27 +105,21 @@ and a load's sequence also follows the cluster's timing. The nightly fault seed 
 
 ### 2.5 The fuzz project (K3)
 
-`Targets.all` (`fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala` 2453-2465) registers the decoder targets:
-per era `tx-body-<era>`, `tx-witnesses-<era>`, `tx-whole-<era>` and `block-header-<era>` (1284-1319), `tx-submitted`
-(`MempoolState.parse`, 1125-1129), `local-tx-submission` (842-862), `block` (1011-1022) and the mini-protocol codecs.
-Seeds are the committed blocks and their parts, the early-era transaction seeds and valid CBOR sampled from the pinned
-CDDL (`Corpus.scala` 19-32, 216-273). `Mutate.scala` has byte-level CBOR operators (70-165), one to four per input
-(167-180); nothing is re-signed or re-hashed. A run is deterministic per target, seed and case, and a failure prints
-its reproduction (`Harness.scala` 123-141). The properties are Scarab's own: no exception, time and allocation bounds,
-round trips; nothing is compared with the reference ([fuzzing](../running/fuzzing.md)). It gives the campaign
-decoder seeds, a mutator, deterministic replay and a shrinker; it gives no verdict of the reference.
+`Targets.all` (`fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala` 2453-2465) registers decoder targets per era
+for bodies, witnesses, whole transactions and headers (1284-1319), and `tx-submitted` (1125-1129),
+`local-tx-submission` (842-862) and `block` (1011-1022). Seeds are committed blocks, early-era transactions and CBOR
+sampled from the pinned CDDL (`Corpus.scala` 19-32, 216-273); `Mutate.scala` applies one to four byte-level operators
+(70-180) and re-signs nothing. Runs replay per target, seed and case (`Harness.scala` 123-141). The properties are
+Scarab's own ([fuzzing](../running/fuzzing.md)): the campaign gets seeds, a mutator and replay, and no verdict of the
+reference.
 
 ### 2.6 The Plutus generators (#43 WP8)
 
-`TermGen` generates UPLC programs per language and protocol profile, with `Data` arguments and a budget, as a function
-of a SplitMix64 seed (`uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/oracle/TermGen.scala` 19-41; `SplitRng.scala` 6-9).
-`GeneratedOracleCorpusMain` in `tools` writes requests; `scripts/oracle/plutus/generated/run.py` has the pinned
-evaluator judge them offline in Docker (46-60) and writes verdicts with their provenance (94-134);
-`GeneratedOracleSuite` replays them through `LedgerEval.evaluateSerialised` and requires the same admission, error
-class, budget and logs
+`TermGen` makes UPLC programs per language and protocol, with `Data` arguments and a budget, from a seed
+(`uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/oracle/TermGen.scala` 19-41). `scripts/oracle/plutus/generated/run.py`
+has the pinned evaluator judge them offline (46-60, 94-134), and `GeneratedOracleSuite` replays the verdicts exactly
 ([`fixtures/reference/uplc-generated/README.md`](../../fixtures/reference/uplc-generated/README.md)). It gives the
-campaign scripts, and the generate, judge offline, replay exactly shape. It has no script context and no transaction
-around the script.
+campaign scripts and the generate, judge, replay shape; no script context and no transaction around the script.
 
 ### 2.7 The reference oracles
 
@@ -186,17 +180,17 @@ All of §3 is derived from source, not from a capture. §3.5 lists the claims wi
 
 ### 3.1 A transaction from a local client
 
-The LocalTxSubmission server adds the transaction to the mempool and answers `SubmitSuccess`, or `SubmitFail` with
-the mempool's `ApplyTxErr` (R1). For the Cardano block that error is the hard-fork wrapper: an error from one era, or
+The LocalTxSubmission server adds the transaction to the mempool and answers `SubmitSuccess`, or `SubmitFail` with the
+mempool's `ApplyTxErr` (R1). For the Cardano block that error is the hard-fork wrapper: an error from one era, or
 "wrong era"; in a Shelley-based era it is the ledger's `ApplyTxError`, in Conway a non-empty list of
 `ConwayLedgerPredFailure` (R2). The mempool judges against the ledger state at its tip ticked to the slot after the
 tip, not to the wall clock (R3), with every transaction at index `minBound` (R21). It first measures the transaction
-against the per-transaction limits (its size, and from Alonzo on its units) and refuses at once one that fails; only
-then does it wait until the transaction fits, and then validate it (R4, R21). The mempool follows the chain through a
-background thread, so just after a block it can still judge against the previous tip (R19). In Conway the MEMPOOL
-rule refuses, before LEDGER, a transaction whose inputs are all spent and, below a protocol version its comment
-names as 11, votes by unelected committee members (R6): a mempool verdict can differ from the verdict on the same
-transaction in a block.
+against the per-transaction limits (its size, and from Alonzo on its units, by the measures' names; N15) and refuses
+at once one that fails; only then does it wait until the transaction fits, and then validate it (R4, R21). The mempool
+follows the chain through a background thread, so just after a block it can still judge against the previous tip
+(R19). In Conway the MEMPOOL rule refuses, before LEDGER, a transaction whose inputs are all spent and, below a
+protocol version its comment names as 11, votes by unelected committee members (R6): a mempool verdict can differ from
+the verdict on the same transaction in a block.
 
 Validation is timed. With the node's default limits, a Conway transaction whose validation finishes after more than
 1 s is refused, whoever submitted it, with an error whose text holds the measured duration and the transaction id; a
@@ -238,10 +232,10 @@ candidate changes meanwhile (R15). The node traces
 The body checks of BBODY compare the body's size and hash with the header's, and add the units of the block (Alonzo)
 and the size of its reference scripts (Conway) (R17).
 
-So a block reaches a verdict only on a chain preferable to the node's own, its header must pass header validation and
-the in-future check, and an invalid tip can be forgiven without a disconnect. A block probe therefore needs a peer
-that serves the only chain the node knows, signs headers with a pool's keys in slots that pool leads, forges only in
-slots that have started, and reads the verdict from the tip and the `InvalidBlock` trace, never from a disconnect.
+So a block is judged only on a chain preferable to the node's own, once its header passes validation and the in-future
+check, and an invalid tip can be forgiven without a disconnect. A block probe needs a peer that serves the node's only
+chain, signs headers with a pool's keys in slots it leads that have started, and reads the verdict from the tip and
+the `InvalidBlock` trace, not from a disconnect.
 
 ### 3.5 The claims
 
@@ -261,13 +255,13 @@ slots that have started, and reads the verdict from the tip and the `InvalidBloc
 | R12 | A fetched block goes to `addBlockAsync`; an invalid prefix ends the connection; an invalid block itself does unless pipelining is on and the tentative-header state forgives it. | consensus 82ecba32 `MiniProtocol/BlockFetch/ClientInterface.hs` 176-227; `Storage/ChainDB/API/Types/InvalidBlockPunishment.hs` 49-92 | yes |
 | R13 | Only candidates through the block that are preferable to the current chain are validated; otherwise `StoreButDontChange`. | consensus 82ecba32 `Storage/ChainDB/Impl/ChainSel.hs` 660-684, 699-778 | yes |
 | R14 | A failed candidate block is traced `InvalidBlock`, added to the invalid set and its sender punished; a known-invalid block is ignored and its sender punished. `ExtValidationError` is a ledger or a header error. | consensus 82ecba32 `ChainSel.hs` 414-444, 1311-1347, 1359-1365; `Ledger/Extended.hs` 58-60; `HeaderValidation.hs` 435-439 | yes |
-| R15 | The ChainSync client ends a connection whose candidate holds a known-invalid block, skipping the tip under pipelining. Its comments say the check can miss a block when the candidate changes meanwhile; it is no guarantee of detection. | consensus 82ecba32 `Client.hs` 1642-1663, 2085-2156 | yes |
+| R15 | The ChainSync client ends a connection whose candidate holds a known-invalid block, skipping the tip under pipelining. Its comments say it can miss a block when the candidate changes meanwhile. | consensus 82ecba32 `Client.hs` 1642-1663, 2085-2156 | yes |
 | R16 | cardano-node traces `InvalidBlock` with `kind`, `block` and `error` (`showT`), at Error. | node 11.1.3 `Tracing/Tracers/ChainDB.hs` 1307-1310, 1329-1334 | yes; that the default options hide it is N11 |
 | R17 | BBODY: `WrongBlockBodySizeBBODY`, `InvalidBodyHashBBODY` (Shelley); `TooManyExUnits` (Alonzo); `BodyRefScriptsSizeTooBig` (Conway). | ledger 4c81e909 `eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs` 96-101; f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs` 63, `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs` 103 | yes |
 | R18 | The mempool's refusal trace, `TraceMempoolRejectedTx`, carries the transaction and its error. | consensus 82ecba32 `Mempool/Update.hs` 215-220, 266-275 | yes; what the node's log prints of it is N13 |
 | R19 | The mempool re-syncs with the ledger in a background watcher, apart from chain selection: its state can lag the selected chain. | consensus 82ecba32 `Mempool/Init.hs` 66-77; `Mempool/Update.hs` 558-575 | yes |
 | R20 | Shelley, Allegra, Mary and Alonzo blocks are TPraos blocks; Babbage, Conway and Dijkstra blocks are Praos blocks. | consensus 82ecba32 `-cardano` `Cardano/Block.hs` 250-256 | yes |
-| R21 | A Shelley-based transaction is applied with the ledger's mempool environment: the slot the mempool ticked to and the index `minBound`, on the state left by the transactions before it. Its phase-1 measure is its size from Shelley to Mary, and size and units (`txMeasureAlonzo`) from Alonzo on. | consensus 82ecba32 `shelley` `Shelley/Ledger/Mempool.hs` 301-323, 522-542, 668-676, 752-770; ledger 4c81e909 `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs` 368-377 | yes |
+| R21 | A Shelley-based transaction is applied with the ledger's mempool environment: the slot the mempool ticked to and the index `minBound`, on the state left by the transactions before it. Its phase-1 measure is `txInBlockSize` from Shelley to Mary and `txMeasureAlonzo` (an `AlonzoMeasure`) from Alonzo on. | consensus 82ecba32 `shelley` `Shelley/Ledger/Mempool.hs` 301-323, 522-542, 668-676, 752-770; ledger 4c81e909 `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs` 368-377 | yes, except the measures' bodies: what each measures and refuses is N15 |
 
 ### 3.6 Not checked
 
@@ -291,24 +285,25 @@ it.
 - **N12** (S1). That the node passes its mempool time limits to the mempool (R5).
 - **N13** (S1). What the node's log prints of a refused transaction (R18).
 - **N14** (S4). What, if anything, reads the protocol version a Praos header declares (R10).
+- **N15** (S1). What `txInBlockSize` and `txMeasureAlonzo` measure, and which limits they refuse (R21).
 
 ## 4. The shape of the campaign
 
 **Two judging paths.**
 
 - **Path R** (the reference live, Scarab offline): the refusal corpus's method (§2.2), extended to generated inputs
-  and to accepted ones. The reference judges each probe over LocalTxSubmission at a bracketed tip; the record holds the
-  state, the UTxO, the genesis, the probe and every earlier probe accepted since the state was captured, in order.
-  Scarab replays offline. For Conway this is exact LocalTxSubmission parity: Scarab's own node-to-client path judges
-  the probe on a mempool that holds the earlier accepted probes (§2.2). Before Conway, Scarab has no mempool (§2.1),
-  and the refusal corpus's replay runs the era's LEDGER rule alone, as the first transaction of a block
-  (`replayPreConway`, `node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala` 243-279): a
-  scoped ledger comparison, not LocalTxSubmission parity. An era reaches parity through an era-specific offline
-  admission adapter, an S1 deliverable, that does what the reference's mempool does: the phase-1 measure first, its
-  failure refused before any rule (R4, R21); then the era's rules in the mempool's environment, each transaction at
-  index `minBound` on the state the accepted transactions before it left (R21); and the refusal written as
-  LocalTxSubmission sends it (R2). Until an era's adapter passes that era's refusal corpus, its path-R results are
-  reported as scoped ([CNF-2](../design-rules.md#cnf-2)). Path R does not exercise Scarab's running node.
+  and to accepted ones. The reference judges each probe over LocalTxSubmission in a bracketed context (§6); the record
+  holds the state, the UTxO, the genesis, the probe and every earlier probe accepted since the state was captured, in
+  order. Scarab replays offline. For Conway this is exact LocalTxSubmission parity: Scarab's own node-to-client path
+  judges the probe on a mempool that holds the earlier accepted probes (§2.2). Scarab's mempool serves Conway only
+  (§2.1); before it, the refusal corpus's replay runs the era's LEDGER rule alone, as the first transaction of a block
+  (`replayPreConway`, `node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala` 243-279): a scoped
+  ledger comparison, not LocalTxSubmission parity. An era reaches parity through an era-specific offline admission
+  adapter, an S1 deliverable, that does what the reference's mempool does: the phase-1 measure first, its failure
+  refused before any rule (R4, R21); then the era's rules in the mempool's environment, each transaction at index
+  `minBound` on the state the accepted transactions before it left (R21); and the refusal written as LocalTxSubmission
+  sends it (R2). Until an era's adapter passes that era's refusal corpus, its path-R results are reported as scoped
+  ([CNF-2](../design-rules.md#cnf-2)). Path R does not exercise Scarab's running node.
 - **Path L** (both live): each probe goes to a Scarab node and a reference node, and both verdicts are read live. It
   is the only path for blocks, for decode failures at the connection and for Scarab's node-to-client stack. Before
   Conway it is incomplete while Scarab's mempool serves Conway only
@@ -317,7 +312,8 @@ it.
 **Two clusters.**
 
 - **The shared cluster** is the devnet's (§2.1): Haskell pools forge, Scarab follows. It serves path R, and path L for
-  refusals, bracketed as `ntc` brackets them. Accepted transactions have no independent second verdict there (§2.1).
+  refusals, bracketed as §6 says (`ntc` brackets tips only). Accepted transactions have no independent second verdict
+  there (§2.1).
 - **The injector cluster** has one reference node and one Scarab node, neither forging, connected to no one but the
   campaign's peer, the injector: a `tools` program (§10, Q5) that holds every pool's keys of a `create-env` genesis,
   forges the chain both nodes follow, and serves it over node-to-node ChainSync and BlockFetch. The injector is the
@@ -330,8 +326,8 @@ it.
 - `Accepted`: `MsgAcceptTx`, or the tip is the probe block;
 - `Refused(reason)`: `MsgRejectTx` with its raw `ApplyTxErr`, or `InvalidBlock` with the block's error;
 - `Ended(cause)`: the connection ended: a decode failure, or a header refused (R9, R11);
-- `NoVerdict(why)`: the tip moved during the probe, the block was not judged (R13), the refusal is
-  timing-dependent (R5), or no settled reading came within the wait.
+- `NoVerdict(why)`: the tip moved during the probe, a mempool snapshot did not match the record, the block was not
+  judged (R13), the refusal is timing-dependent (R5), or no settled reading came within the wait.
 
 Two verdicts agree when both are `Accepted`, both `Refused` with equal reasons as §6 compares them, or both `Ended`
 with the same cause. A `NoVerdict` on either side is inconclusive, counted, and never agreement
@@ -369,8 +365,8 @@ probe built to conflict.
 - **Seeds** from the kept corpora: the refusal corpus, `ntccases`, the upstream conformance transactions and the
   Plutus boundary transactions, mutated as above.
 
-A decode-level probe is judged first by the decoding oracle offline, at no node's cost; only one that decodes on both
-sides, or whose connection-level outcome is the question, goes to path L.
+A decode-level probe is judged first by the decoding oracle offline; only one that decodes on both sides, or whose
+connection-level outcome is the question, goes to path L.
 
 ### 5.2 Blocks
 
@@ -470,8 +466,8 @@ table ([STR-2](../design-rules.md#str-2)).
 A run has one seed, drawn from a source the public cannot see (§8); each probe's seed is derived from it and the
 probe's index. Generation is a pure function of the seed and the context, and the run writes, before it submits a
 probe, the record: the genesis files, the block bytes the cluster's chain or the injector served, each probe's bytes
-and seed, each verdict and each bracket. The keys are throwaway devnet keys: they go with the record to the
-private store (§8), so that a disagreement can be shrunk again later, and never into the repository
+and seed, and every attempt with its bracket and its reply. The keys are throwaway devnet keys: they go with the
+record to the private store (§8), so that a disagreement can be shrunk again later, and never into the repository
 ([FMT-3](../design-rules.md#fmt-3)).
 
 ### 7.2 Replay
@@ -491,10 +487,11 @@ at a fixed point or at its budget, and reports the smallest candidate with the n
 candidate is judged as any probe: in path R the reference judges it live at its own bracketed state and Scarab replays
 it offline. A block candidate needs the injector cluster at the probe's predecessor. Shrinking runs inside the run
 that found the disagreement, with its cluster and keys, from a share of the budget reserved for it; a disagreement
-left unshrunk is shrunk later from the record and the keys. The smallest candidate is confirmed once more from a clean
-recorded context before it is reported: in path R from a freshly captured state holding only the recorded earlier
-accepted probes, and for a block in an injector cluster restored from the recorded chain with nodes that have judged
-no earlier candidate.
+left unshrunk is shrunk later from the record and the keys. The smallest candidate is confirmed once more before it is
+reported. For a transaction, Scarab's side is replayed offline from the record, and the reference judges it again live
+in a new bracketed context; a candidate whose context cannot be made again (it rests on earlier accepted probes that
+are now on the chain) is reported unconfirmed until the injector cluster can rebuild it. A block candidate is
+confirmed in an injector cluster restored from the recorded chain, with nodes that have judged no earlier candidate.
 
 ### 7.4 Kept inputs
 
@@ -540,15 +537,17 @@ exactly these fields:
 
 - the period's first and last dates, and the configuration in force: the budget of a run (its wall-time limit, CPUs
   and memory), the reference build and image digest, and the set of Scarab commits the period's runs used;
-- the number of runs, and per cell of era and input family (§9.1) the probes tried, the verdicts reached and the
-  inconclusive ones, summed over the period;
+- the number of runs, and per cell of era and input family (§9.1) its quota for the period and whether the period met
+  the quota and the cell's coverage minimums (`met` or `incomplete`);
 - the number of runs with each result (`agreed`, `reportedPrivately`, `incomplete`);
 - the SHA-256 of each run's seed, in sorted order. A seed is 256 bits from the operating system's random source, so
   its hash commits to it and cannot be searched; a seed is shown only with its advisory.
 
-Every cell runs in every period (§9.2), so a period's totals point at no cell, and nothing in a summary is per
-run: no run's result, date, duration, commit or counts. A summary says that a period had a finding through its
-`reportedPrivately` count and nothing more.
+Each cell has a fixed quota of probes per period (§9.2), and the period's runs go on until it is met, making up what a
+run cut short by a finding left: what a cell tried is configuration, and no count moves with a finding. A cell still
+short at the period's end is `incomplete`, which says only that. Nothing in a summary is per run: no run's result,
+date, duration, commit or counts. A summary says that a period had a finding through its `reportedPrivately` count and
+nothing more.
 
 **The disclosure gate**, part of S1's jump gate and of every later change to the runner: a test run with a forced
 disagreement, a forced failure, a forced timeout and a forced cleanup error leaves nothing outside its run directory
@@ -576,8 +575,8 @@ the campaign leads to is its own change at its own level.
 | Stage | Delivers | Jump gate |
 |---|---|---|
 | S0 | This document; its claims checked independently. | The review's check of §3 at the pins, and the owner's answers to §10. |
-| S1 | Path R for generated transactions in the shared cluster: the bracketed judge with §6's mempool checks and accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, and the offline admission adapters of Shelley to Babbage (§4); the private runner and store, the period summary type and the disclosure gate. Confirms N1, N2, N10, N12 and N13, and answers Q10. | The committed refusal corpus judged again, every case conclusive and in agreement, each era before Conway through its adapter; the coverage minimums for each era, Shelley to Conway; an accepted sequence of at least five probes in one context, then a probe that conflicts with them, replayed offline to the same verdicts; a negative control found, minimised, confirmed from a clean context and reported as `reportedPrivately`: a build with one check deliberately loosened, on a branch never merged, as #927's negative controls were; the summary's field test and the disclosure gate (§8). |
-| S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); the minimiser; path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | The coverage minimums for every cell of era and phase-1 family; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
+| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the summary type and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The refusal corpus judged again, all conclusive and agreeing, eras before Conway through their adapters; in each era, Shelley to Conway: the coverage minimums, a probe failing the phase-1 measure and another rule, and five accepted probes then a conflicting one, replayed offline to the same verdicts; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported `reportedPrivately`; the summary's field test and the disclosure gate (§8). |
+| S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | The coverage minimums for every cell of era and phase-1 family; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
 | S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | The coverage minimums for every cell of Plutus language, protocol version the cluster reaches and script purpose. |
 | S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11 and N14. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; the coverage minimums for every block family; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
 | S5 | Nightly discovery on the private runner under §8, with its budget; the period summaries and their dated evidence rows; the compatibility register component for the campaign. | Seven nightly runs within budget, every cell of S1 to S4 at its coverage minimums, and no disagreement the triage traced to the campaign. Then #922's acceptance. |
@@ -592,15 +591,15 @@ the ceiling are configuration (§10, Q6).
 ### 9.2 Budget and the evidence row
 
 Once S5 is stable, discovery runs nightly on the private runner, one job of at most 90 minutes on 4 CPUs (the limit
-`e2e.yml` and `fuzz.yml` set), at least 60 of them probing. A private schedule, published nowhere, rotates the families
-and eras so that every cell (§9.1) runs in every period; a weekly run is long enough to
-cross an epoch boundary and an era transition. The budget and the period are configuration, published in each summary
-(§8); a change to them is a change to this section.
+`e2e.yml` and `fuzz.yml` set), at least 60 of them probing. A private schedule, published nowhere, rotates the
+families and eras so that every cell (§9.1) meets its fixed quota in every period, with slack for the runs a finding
+cuts short; a weekly run is long enough to cross an epoch boundary and an era transition. The budget and the period
+are configuration, published in each summary (§8); a change to them is a change to this section.
 
-The evidence row follows [How evidence is recorded](../../CONTRIBUTING.md#how-evidence-is-recorded) and the
-[evidence log](../compatibility.md#evidence-log), one row per period, from its summary: the command without a seed,
-the period, the commits, the totals per cell, the count of each result, and the environment (the budget, CPUs,
-memory and image digests, the seeds' hashes). Raw run artifacts are not published.
+The evidence row follows [How evidence is recorded](../../CONTRIBUTING.md#how-evidence-is-recorded) and the [evidence
+log](../compatibility.md#evidence-log), one row per period, from its summary: the command without a seed, the period,
+the commits, each cell's quota and whether it was met, the count of each result, and the environment (the budget,
+CPUs, memory and image digests, the seeds' hashes). Raw run artifacts are not published.
 
 ## 10. Risks and open questions
 
@@ -615,8 +614,8 @@ memory and image digests, the seeds' hashes). Raw run artifacts are not publishe
   it builds, so a builder bug shows as a disagreement about the base chain, which S4's gate requires to be absent.
 - **Coverage.** Random search with no coverage feedback finds what it happens to reach; a night with no disagreement is
   no evidence about other inputs ([CNF-2](../design-rules.md#cnf-2)).
-- **Cost.** A cluster's start-up and an era walk take a large part of a night; the injector cluster, which starts in
-  the era its genesis names, is the cheaper home for most probes.
+- **Cost.** Start-up and an era walk take much of a night; the injector cluster, starting in its genesis's era, is
+  cheaper.
 - **Reconnection.** A refused block ends the injector's connection to the reference node unless it is a forgiven tip
   (R12), and the reconnection delay (N4) bounds the block probes per night.
 
@@ -633,14 +632,16 @@ memory and image digests, the seeds' hashes). Raw run artifacts are not publishe
   summary. Not a self-hosted runner attached to the public repository: GitHub advises against one there, where a
   fork's pull request can run code on it (not checked here). The alternative is the CI of a private repository that
   mirrors `main`.
-- **Q4. What is the period of the published summary?** Recommendation: a calendar month, published on a fixed day of
-  the next one.
+- **Q4.** Withdrawn: discovery no longer runs in public CI (§8), so whether a public run turns red no longer arises;
+  the summary's period is part of Q6.
 - **Q5. Where does the injector live?** Recommendation: a `tools` program ([TOOL-1](../design-rules.md#tool-1)) that
   reuses Scarab's node-to-node servers, `BlockBuilder` and the forger's signing, with a raw-bytes path for blocks Scarab
   cannot decode; not a Python reimplementation of the mini-protocols.
-- **Q6. What are the nightly budget, the coverage minimums and the inconclusive ceiling?** Recommendation: §9.2's
-  budget, one 90-minute job with a weekly longer run, and §9.1's minimums, 20 accepted and 20 refused conclusive
-  probes per cell, with at most 5% inconclusive.
+- **Q6. What are the nightly budget, the period and its quotas, the coverage minimums and the inconclusive ceiling?**
+  Recommendation: §9.2's budget, one 90-minute job with a weekly longer run; a calendar month as the period, its
+  summary published on a fixed day of the next; and §9.1's minimums, 20 accepted and 20 refused conclusive probes per
+  cell (10 forks per chain-selection family), with at most 5% inconclusive. These numbers are this document's
+  proposal.
 - **Q7. How are timing-dependent refusals handled?** The reference refuses a transaction that takes too long to
   validate, with a text that holds the duration (R5); Scarab has no such timeout (#340), and the text cannot be
   compared exactly. Recommendation: the campaign keeps generated work far below the limit, counts such a refusal as
@@ -652,12 +653,11 @@ memory and image digests, the seeds' hashes). Raw run artifacts are not publishe
   Scarab's mempool.
 - **Q9. What does a kept input hold when its context is long?** Recommendation: the reference-format state, UTxO and
   genesis, as the refusal corpus keeps them (§7.4); never a native snapshot.
-- **Q10. Must a running Scarab node judge accepted transactions before the injector exists?** Under this plan path R
-  judges them offline until S4, because a cluster forwards Scarab's accepted transactions to the reference (§2.1), so
-  the issue's "submitted to both nodes" holds for accepted transactions only from S4. Recommendation: let S1 find out
-  whether submitting to the reference first and to Scarab second gives two independent verdicts in the shared cluster
-  (it does if the reference never offers its mempool to the follower, which is not checked); if so, use it from S2;
-  otherwise path R until S4.
+- **Q10. Must a running Scarab node judge accepted transactions before the injector exists?** Path R judges them
+  offline until S4, since a cluster forwards Scarab's accepted transactions to the reference (§2.1); the issue's
+  "submitted to both nodes" holds for them only from S4. Recommendation: S1 finds out whether submitting to the
+  reference first and to Scarab second gives two independent verdicts (it does if the reference never offers its
+  mempool to the follower, not checked); if so, use it from S2.
 
 ## 11. What does not change
 
