@@ -3,18 +3,19 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.dijkstra.V12
 import xyz.kd5ujc.scarab.ledger.era.{
-  AlonzoEraScript,
   AlonzoScriptRep,
+  DijkstraEraScript,
   EraTxError,
   Language,
   Plutus,
-  PlutusLanguage
+  PlutusLanguage,
+  ProposalProcedure
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPlutusScript, ConwayScript}
-import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, ScriptHash}
 
 // Dijkstra's scripts, at cardano-ledger 9df9f98c, the ledger of the Leios testnet's build (the
 // Dijkstra Scarab implements, #54): the opaque type is transparent in this file only.
@@ -105,11 +106,12 @@ object DijkstraScript:
   given CanEqual[DijkstraScript, DijkstraScript] = CanEqual.derived
 
   /** `AlonzoEraScript DijkstraEra` (`Scripts.hs:475-534`, cardano-ledger 9df9f98c), with the
-    * native-script readers of `ShelleyEraScript` and `AllegraEraScript` (`Scripts.hs:536-554`). The
-    * purposes, and `ConwayEraScript` and `DijkstraEraScript` with them, are not here yet (#85); the
-    * guard's reader is on the native script ([[DijkstraNativeScript.getRequireGuard]]).
+    * native-script readers of `ShelleyEraScript` and `AllegraEraScript` (`Scripts.hs:536-554`),
+    * `ConwayEraScript DijkstraEra` (`Scripts.hs:556-565`) and `DijkstraEraScript DijkstraEra`
+    * (`Scripts.hs:574-581`), the guard's reader the native script's
+    * ([[DijkstraNativeScript.getRequireGuard]]).
     */
-  val instance: AlonzoEraScript[Dijkstra] = new AlonzoEraScript[Dijkstra]:
+  val instance: DijkstraEraScript[Dijkstra] = new DijkstraEraScript[Dijkstra]:
     override def scriptPrefixTag(script: DijkstraScript): Byte = script match
       case AlonzoScriptRep.NativeScript(_) => 0
       case AlonzoScriptRep.PlutusScript(p) => p.tag
@@ -145,3 +147,45 @@ object DijkstraScript:
         case AlonzoScriptRep.NativeScript(_) => None
     override def fromPlutusScript(plutus: DijkstraPlutusScript): DijkstraScript =
       AlonzoScriptRep.PlutusScript(plutus)
+
+    // `ConwayEraScript DijkstraEra`, `Scripts.hs:556-565`, cardano-ledger 9df9f98c
+    override def mkVotingPurpose[F[_, _]](
+        voter: F[Unsigned[Unsigned.Width.W32], Voter]
+    ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraVoting(voter)
+    override def toVotingPurpose[F[_, _]](
+        purpose: DijkstraPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], Voter]] = purpose match
+      case DijkstraPlutusPurpose.DijkstraVoting(voter) => Some(voter)
+      case DijkstraPlutusPurpose.DijkstraSpending(_) | DijkstraPlutusPurpose.DijkstraMinting(_) |
+          DijkstraPlutusPurpose.DijkstraCertifying(_) |
+          DijkstraPlutusPurpose.DijkstraWithdrawing(_) |
+          DijkstraPlutusPurpose.DijkstraProposing(_) | DijkstraPlutusPurpose.DijkstraGuarding(_) =>
+        None
+    override def mkProposingPurpose[F[_, _]](
+        proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Dijkstra]]
+    ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraProposing(proposal)
+    override def toProposingPurpose[F[_, _]](
+        purpose: DijkstraPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Dijkstra]]] = purpose match
+      case DijkstraPlutusPurpose.DijkstraProposing(proposal) => Some(proposal)
+      case DijkstraPlutusPurpose.DijkstraSpending(_) | DijkstraPlutusPurpose.DijkstraMinting(_) |
+          DijkstraPlutusPurpose.DijkstraCertifying(_) |
+          DijkstraPlutusPurpose.DijkstraWithdrawing(_) | DijkstraPlutusPurpose.DijkstraVoting(_) |
+          DijkstraPlutusPurpose.DijkstraGuarding(_) =>
+        None
+
+    // `DijkstraEraScript DijkstraEra`, `Scripts.hs:574-581`, cardano-ledger 9df9f98c
+    override def mkGuardingPurpose[F[_, _]](
+        guard: F[Unsigned[Unsigned.Width.W32], ScriptHash]
+    ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraGuarding(guard)
+    override def toGuardingPurpose[F[_, _]](
+        purpose: DijkstraPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], ScriptHash]] = purpose match
+      case DijkstraPlutusPurpose.DijkstraGuarding(guard) => Some(guard)
+      case DijkstraPlutusPurpose.DijkstraSpending(_) | DijkstraPlutusPurpose.DijkstraMinting(_) |
+          DijkstraPlutusPurpose.DijkstraCertifying(_) |
+          DijkstraPlutusPurpose.DijkstraWithdrawing(_) | DijkstraPlutusPurpose.DijkstraVoting(_) |
+          DijkstraPlutusPurpose.DijkstraProposing(_) =>
+        None
+    override def getRequireGuard(native: DijkstraNativeScript): Option[Credential] =
+      native.getRequireGuard

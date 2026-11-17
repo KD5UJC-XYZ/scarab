@@ -3,8 +3,13 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{NativeScript as FlatNativeScript, Unsigned, Voter}
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.{
+  Credential as FlatCredential,
+  NativeScript as FlatNativeScript,
+  Unsigned,
+  Voter
+}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary, ScriptHash}
 
 /** The scripts of era `E` (`EraScript`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:557-597`): the native scripts among them,
@@ -84,6 +89,24 @@ trait ConwayEraScript[E <: EraTag] extends AlonzoEraScript[E]:
       purpose: PlutusPurpose[F, E]
   ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure[E]]]
 
+/** The guarding purpose and the guard script from Dijkstra (`DijkstraEraScript`, cardano-ledger
+  * 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:567-572`), in any form `F`
+  * of a purpose, with a `Word32` index. The reference's builder of the guard script
+  * (`mkRequireGuard`) is not here, as no native-script encoder is ([[ShelleyEraScript]]).
+  */
+trait DijkstraEraScript[E <: EraTag] extends ConwayEraScript[E]:
+  def mkGuardingPurpose[F[_, _]](
+      guard: F[Unsigned[Unsigned.Width.W32], ScriptHash]
+  ): PlutusPurpose[F, E]
+  def toGuardingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], ScriptHash]]
+
+  /** The credential whose guard the script requires (`getRequireGuard`): the node's credential, as
+    * the native script reads it, where the reference's is a `Credential Guard`.
+    */
+  def getRequireGuard(native: NativeScript[E]): Option[FlatCredential]
+
 /** The native-script readers of every era whose native script is a [[Timelock]], written once over
   * the representation as the reference writes them once over `Timelock era`
   * (`getRequireSignatureTimelock` to `getTimeExpireTimelock`,
@@ -136,5 +159,5 @@ object EraScript:
   given babbage: AlonzoEraScript[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageScript.instance
   given conway: ConwayEraScript[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayScript.instance
-  given dijkstra: AlonzoEraScript[Dijkstra] =
+  given dijkstra: DijkstraEraScript[Dijkstra] =
     xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraScript.instance

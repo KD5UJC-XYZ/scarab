@@ -85,7 +85,8 @@ type TxWits[E <: EraTag] = E match
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:172`, cardano-ledger f649f975).
   */
 type PlutusPurpose[F[_, _], E <: EraTag] = E match
-  case Conway => conway.ConwayPlutusPurpose[F]
+  case Conway   => conway.ConwayPlutusPurpose[F]
+  case Dijkstra => dijkstra.DijkstraPlutusPurpose[F]
 
 /** The auxiliary data of era `E` (`type TxAuxData era`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:483`, cardano-ledger f649f975).
