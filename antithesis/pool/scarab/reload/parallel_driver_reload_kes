@@ -1,0 +1,44 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# A KES rotation by SIGHUP, with `scripts/pool/rotate_kes.py`'s layout: the next of the configurator's 16 rotations
+# becomes a generation in /data/keys, and the `current` link moves to it by rename, once the node's current start is
+# ready. The link stays whatever the answer: every generation is a fresh KES key with a certificate at counter 1 for
+# the same window, so the node's next start may take any of them. Only a `kesReloaded` after a change of generation
+# counts as a rotation ("rotated"); after the 16th the command reloads the generation in use ("reloaded").
+. "$(dirname "$0")/helper_reload.sh"
+begin
+current=$(readlink "$KEYS/current") || broken "cannot read the current link"
+n=${current#gen-}
+[[ $n =~ ^[0-9]+$ ]] || broken "the current link names $current"
+next=$((n + 1))
+if [ -f "$ROTATIONS/$next/kes.skey" ]; then
+  umask 077
+  staged=$KEYS/gen-$next.new
+  rm -rf "$staged" && mkdir -p "$staged" &&
+    cat "$ROTATIONS/$next/opcert.cert" > "$staged/opcert.cert" &&
+    cat "$ROTATIONS/$next/kes.skey" > "$staged/kes.skey" || broken "cannot stage gen-$next"
+  rm -rf "$KEYS/gen-$next" && mv -T "$staged" "$KEYS/gen-$next" || broken "cannot place gen-$next"
+  ln -sfn "gen-$next" "$KEYS/current.new" && mv -T "$KEYS/current.new" "$KEYS/current" ||
+    broken "cannot move the current link to gen-$next"
+  kind=rotated
+else
+  say "rotations used up at gen-$n; reloading it"
+  next=$n kind=reloaded
+fi
+details="{\"from\":$n,\"generation\":$next}"
+signal kes "$details" || { say "the node's process ${START%% *} is gone"; exit 0; }
+offset=$OFFSET
+if answer=$(await "$offset" "$ANSWER" 60); then
+  finish
+  case $answer in
+    *'"event":"kesReloaded"'*)
+      # After a dropped unanswered reload in this start, this answer may be that one's: not counted as a rotation.
+      correlated || kind=$kind-uncorrelated
+      say "gen-$next $kind: $answer"; record kes "$kind" "$details" ;;
+    *) say "gen-$next refused: $answer"; record kes refused "$details" ;;
+  esac
+else
+  say "no answer within 60 s; the reload stays pending"
+  record kes no-answer-yet "$details"
+fi
+exit 0

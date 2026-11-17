@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# The Scarab image of ../config-reload: the image build.sh makes from ./Dockerfile, with s1's reload commands
+# (reload/) as a test template inside s1's container, where SIGHUP reaches the node. The template is `main`, as the
+# driver's: Antithesis takes both containers' `main` for one template, each command run where it is defined. Only
+# config-reload uses this image, so no other config gains the commands.
+FROM scarab-at-scarab:trial
+RUN mkdir -p /opt/antithesis/test/v1/main
+COPY --chmod=0755 reload/helper_reload.sh reload/parallel_driver_reload_kes reload/parallel_driver_reload_topology \
+  reload/parallel_driver_reload_unchanged /opt/antithesis/test/v1/main/

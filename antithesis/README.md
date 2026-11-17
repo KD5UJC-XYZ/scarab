@@ -126,6 +126,41 @@ say whether the Haskell pools take every block s1 forges across a period change.
 create-env's 60 evolutions, so they expire 1,500 s after the system start, every pool's alike. The configurator takes
 the period from `SLOTS_PER_KES_PERIOD`. Nothing in the workload sends SIGHUP, so a reload is not exercised.
 
+## `pool/config-reload`: s1 reloaded by SIGHUP under faults
+
+An experiment beside `pool`: `config-short-kes`'s cluster, with s1 reloaded by SIGHUP while the faults run. Three
+commands run inside s1's container, where the signal reaches the node (`pool/scarab/reload/`, in the image
+`scarab-at-scarab:reload`, which only this config uses; Antithesis takes s1's `main` template and the driver's for
+one):
+
+- `parallel_driver_reload_kes` rotates the KES key with `scripts/pool/rotate_kes.py`'s layout: the next of 16
+  rotations the configurator wrote becomes a generation in `/data/keys`, and the `current` link moves to it by rename.
+  The link stays whatever the node answers (below).
+- `parallel_driver_reload_topology` moves s1's local roots between `hotValency` 2 and 1. At 1, a governor holding two
+  hot local roots demotes one, which the node's own "Scarab's governor demotes a peer" records.
+- `parallel_driver_reload_unchanged` sends SIGHUP with nothing changed.
+
+It asks whether a reload under node, clock and network faults keeps every block s1 forges one the Haskell pools take,
+and whether the governor demotes a peer when a reload lowers its target. Each rotation is a fresh KES key with a
+certificate at counter 1 for the same window: Praos takes a counter equal to the chain's last one or one more, so no
+rotation gives s1 a counter the pools refuse, on any fork, and the node's next start may take any generation, which is
+why a refused one is not put back. Counter increments are not exercised.
+
+The commands signal only a ready start: `pool/scarab/scarab-node.sh` removes `/tmp/node.boot` when it starts and
+writes it just before the JVM starts, with the JVM's PID and the log's length; a command goes on only when that PID
+runs the node's Main and the log has `forgeStarted` past that length, so the start has read its credentials and
+installed its SIGHUP handler (a JVM ends on a SIGHUP that comes before the node's handler). Nothing is changed before
+that, and a kill of s1 kills the commands too. One reload is outstanding at a time: a signal whose answer has not come
+is recorded, and the next command settles it before it sends another; one unanswered for five minutes is dropped, and
+since the node's answer does not name the generation it read, that start's later rotations are then recorded as
+uncorrelated, which the KES control does not count.
+
+s1 starts from a topology file (a reload keeps the roots `--peer` gives), and its key directory is a named volume, so
+that a container made again from its image keeps the credentials its reloads installed. The commands record what they
+did in `/logs/reload.log`, and the driver's two positive controls, "s1 accepts a KES rotation sent by SIGHUP" (a
+change of generation the node took) and "s1 reads a changed topology on SIGHUP", fail unless the steps ran.
+`hotValency` 1 changes how s1 follows the pools, so the fork rates are not comparable with `pool`'s.
+
 ## `pool/config-late-start`: the earlier start order
 
 An experiment beside `pool`: s1's container starts only once both Haskell pools listen, as `pool` started it until
@@ -180,6 +215,7 @@ CONFIG=config-canary antithesis/pool/scripts/launch.sh off 15m   # the canary
 CONFIG=config-k200 antithesis/pool/scripts/launch.sh on 15m  # k = 200
 CONFIG=config-late-start antithesis/pool/scripts/launch.sh on 15m  # experiment: the earlier start order
 CONFIG=config-short-kes SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # 250-slot KES periods
+CONFIG=config-reload SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # the same, s1 reloaded by SIGHUP
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 

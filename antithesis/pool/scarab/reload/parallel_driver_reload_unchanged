@@ -1,0 +1,16 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# A SIGHUP with nothing changed: the node reads the same credentials (the KES key it has evolved and written back) and
+# topology again.
+. "$(dirname "$0")/helper_reload.sh"
+begin
+signal unchanged null || { say "the node's process ${START%% *} is gone"; exit 0; }
+offset=$OFFSET
+if answer=$(await "$offset" "$ANSWER" 60); then
+  finish
+  say "answered: $answer"; record unchanged answered null
+else
+  say "no answer within 60 s; the reload stays pending"
+  record unchanged no-answer-yet null
+fi
+exit 0

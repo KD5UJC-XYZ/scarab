@@ -1,0 +1,31 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# A topology reload by SIGHUP that moves s1's local roots between hotValency 2 (topology-h1.json) and 1
+# (topology-s1-hot1.json). At 1, a governor holding two hot local roots demotes one: the node's own "Scarab's governor
+# demotes a peer" says whether it did. The node logs `peerSelectionRoots` `localRootsChanged` when a reload changes its
+# local roots (their valency included); `networkConfigUpdateInfo` comes only for topologies it has something to say of.
+. "$(dirname "$0")/helper_reload.sh"
+begin
+if grep -q '"hotValency": *1' "$KEYS/topology.json" 2> /dev/null; then
+  to=2 source=$TOPOLOGIES/topology-h1.json
+else
+  to=1 source=$TOPOLOGIES/topology-s1-hot1.json
+fi
+umask 077
+cat "$source" > "$KEYS/topology.json.new" && mv -f "$KEYS/topology.json.new" "$KEYS/topology.json" ||
+  broken "cannot place the topology at hotValency $to"
+details="{\"hotValency\":$to}"
+signal topology "$details" || { say "the node's process ${START%% *} is gone"; exit 0; }
+offset=$OFFSET
+if await "$offset" "$ANSWER" 60 > /dev/null; then
+  finish
+  if roots=$(await "$offset" '"event":"peerSelectionRoots".*"action":"localRootsChanged"' 10); then
+    say "hotValency $to read: $roots"; record topology read "$details"
+  else
+    say "answered, but no localRootsChanged"; record topology unchanged-roots "$details"
+  fi
+else
+  say "no answer within 60 s; the reload stays pending"
+  record topology no-answer-yet "$details"
+fi
+exit 0

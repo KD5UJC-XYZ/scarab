@@ -77,6 +77,8 @@ case ${CONFIG:-config} in
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, k = 200, 40000-slot epochs" ;;
   config-short-kes) name=scarab-pool-short-kes
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, KES periods of 250 slots" ;;
+  config-reload) name=scarab-pool-reload
+    description="Scarab $commit pool with two cardano-node 11.1.3 pools, KES periods of 250 slots, reloads by SIGHUP" ;;
   *) name=scarab-pool
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, create-env defaults" ;;
 esac
