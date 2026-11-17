@@ -24,9 +24,18 @@ import subprocess
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-_SPEC = importlib.util.spec_from_file_location("leios_cbor", HERE.parent / "leios_cbor.py")
-CBOR = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(CBOR)
+
+
+def module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
+CBOR = module("leios_cbor", HERE.parent / "leios_cbor.py")
+# The plutus of the testnet's node, 1.71.0.0, whose release commit the generated-program oracle pins.
+PLUTUS = module("generated_run", HERE.parents[1] / "plutus" / "generated" / "run.py").RELEASES["1.71.0.0"]["pin"]
 DIRECTORY = ROOT / "fixtures/reference/leios-testnet-chain-contexts"
 IMAGE = "scarab-leios-testnet-chain:local"
 LABELS = ["--label", "xyz.kd5ujc.scarab.kind=oracle"]
@@ -84,6 +93,16 @@ def pinned():
     if not tags:
         raise ValueError("the cabal project pins no source-repository-package")
     return sorted(tags)
+
+
+def ledger_pin():
+    """The commit of the cabal project's cardano-ledger `source-repository-package`."""
+    stanzas = re.split(r"^source-repository-package\s*$", (HERE.parent / "cabal.project").read_text(), flags=re.MULTILINE)
+    tags = [re.search(r"^\s*tag:\s*([0-9a-f]{40})\s*$", stanza, re.MULTILINE) for stanza in stanzas[1:]
+            if re.search(r"^\s*location:\s*\S*/cardano-ledger(?:\.git)?\s*$", stanza, re.MULTILINE)]
+    if len(tags) != 1 or tags[0] is None:
+        raise ValueError("the cabal project pins no single cardano-ledger revision")
+    return tags[0].group(1)
 
 
 def runners():
@@ -214,9 +233,16 @@ def validate(fixtures):
     harness = {"source": str((HERE / "Main.hs").relative_to(ROOT)), "sha256": sha256(HERE / "Main.hs")}
     if provenance.get("harness") != harness:
         raise ValueError("the provenance's harness is not the repository's chain/Main.hs")
-    ledger = provenance.get("ledgerSourceCommit")
-    if ledger not in pinned() or provenance.get("reference", {}).get("cardanoLedger") != ledger:
-        raise ValueError("the provenance's ledger is not one the cabal project pins")
+    reference = provenance.get("reference", {})
+    revisions = {
+        "ledgerSourceCommit": (provenance.get("ledgerSourceCommit"), ledger_pin(), reference.get("cardanoLedger")),
+        "consensusSourceCommit": (provenance.get("consensusSourceCommit"), reference.get("ouroborosConsensus")),
+        "plutusSourceCommit": (provenance.get("plutusSourceCommit"), PLUTUS),
+    }
+    differing = sorted(key for key, (claimed, *authorities) in revisions.items()
+                       if claimed is None or any(claimed != authority for authority in authorities))
+    if differing or PLUTUS not in str(reference.get("plutus")):
+        raise ValueError(f"the provenance's revisions {differing or ['reference.plutus']} are not the pinned ones")
     chain = json.loads((fixtures / "cases.json").read_text())
     results = json.loads((fixtures / "results.json").read_text())
     if not chain["cases"]:

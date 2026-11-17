@@ -198,6 +198,74 @@ class LeiosChainScanTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, refusal, msg=change.__name__):
                     CHAIN.validate(self.contexts_copy(scratch, change))
 
+    cardano_base = 'c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c'
+
+    def test_the_ledger_revision_is_the_cardano_ledger_stanza_s(self):
+        self.assertEqual(CHAIN.ledger_pin(), '9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c')
+        self.assertIn(self.cardano_base, CHAIN.pinned())
+        self.assertNotEqual(CHAIN.ledger_pin(), self.cardano_base)
+
+    def test_a_fresh_contexts_record_passes_its_own_verification(self):
+        retained = (CONTEXTS / 'results.json').read_bytes()
+        image_id = 'sha256:' + 'a' * 64
+        files = {path: CHAIN.sha256(source) for path, source in CHAIN.REPOSITORY_FILES.items()}
+        files.update({CHAIN.IMAGE_BUILD[2]: 'c' * 64, CHAIN.IMAGE_BINARY: 'b' * 64})
+        binding = {'imageId': image_id, 'imageFilesSha256': files,
+                   'pinnedSources': {commit: 'unchanged' for commit in CHAIN.pinned()}}
+
+        def answer(command, stdout=None, check=False):
+            stdout.write(retained)
+            return subprocess.CompletedProcess(command, 0)
+
+        with tempfile.TemporaryDirectory() as scratch:
+            fresh = Path(scratch) / 'contexts'
+            fresh.mkdir()
+            shutil.copy(CONTEXTS / 'cases.json', fresh)
+            provenance = json.loads((CONTEXTS / 'provenance.json').read_text())
+            for written in ('results', 'harness', 'oracle'):
+                del provenance[written]
+            (fresh / 'provenance.json').write_text(json.dumps(provenance))
+            with patch.object(CHAIN, 'resolve', return_value=image_id), \
+                    patch.object(CHAIN, 'image_binding', return_value=binding), \
+                    patch.object(CHAIN.subprocess, 'run', side_effect=answer):
+                CHAIN.record(fresh, Path(scratch) / 'evidence', 'test', True)
+            CHAIN.validate(fresh)
+            self.assertEqual((fresh / 'results.json').read_bytes(), retained)
+
+    def test_a_fresh_verdict_record_passes_its_own_verification(self):
+        retained = [json.loads(line) for line in (SCRIPTS / 'verdicts.jsonl').read_text().splitlines()]
+        image_id = 'sha256:' + 'a' * 64
+        release = SCAN.RECORDED.GENERATED.RELEASES[SCAN.RELEASE]
+        files = {SCAN.RECORDED.IMAGE_HARNESS: SCAN.RECORDED.GENERATED.sha256(ROOT / release['harness'] / 'Main.hs'),
+                 **{path: 'c' * 64 for path in SCAN.RECORDED.IMAGE_BUILD}}
+        binding = {'imageId': image_id, 'imageFilesSha256': files}
+
+        def answers(image, asked, raw, owner):
+            rows = []
+            for request, verdict in zip(asked, retained):
+                reference = {'admitted': verdict['admitted'], 'stage': verdict['stage'], 'detail': ''}
+                reference.update({key: verdict[key] for key in ('class', 'error', 'logs') if key in verdict})
+                if 'cpu' in verdict:
+                    reference['spent'] = {'cpu': verdict['cpu'], 'memory': verdict['memory']}
+                rows.append({'id': request['id'], 'reference': reference})
+            raw.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+            return rows
+
+        with tempfile.TemporaryDirectory() as scratch:
+            fresh = Path(scratch) / 'scripts'
+            SCAN.requests(types.SimpleNamespace(cases=str(CONTEXTS / 'cases.json'),
+                                                results=str(CONTEXTS / 'results.json'), out=str(fresh)))
+            args = types.SimpleNamespace(out=str(fresh), contexts=str(CONTEXTS), evidence=str(Path(scratch) / 'raw'),
+                                         owner='test', verify_only=False, accept_build=True)
+            with patch.object(SCAN.RECORDED, 'resolve', return_value=image_id), \
+                    patch.object(SCAN.RECORDED, 'image_binding', return_value=binding), \
+                    patch.object(SCAN.RECORDED, 'execute', side_effect=answers):
+                SCAN.verdicts(args)
+            SCAN.verify_verdicts(fresh, CONTEXTS)
+            self.assertEqual((fresh / 'verdicts.jsonl').read_bytes(), (SCRIPTS / 'verdicts.jsonl').read_bytes())
+            provenance = json.loads((fresh / 'provenance.json').read_text())
+            self.assertEqual(provenance['ledgerSourceCommit'], CHAIN.ledger_pin())
+
     def test_a_record_naming_another_file_fails_validation(self):
         def results_as_cases(chain, results, provenance):
             provenance['results']['file'] = 'cases.json'
@@ -226,7 +294,13 @@ class LeiosChainScanTests(unittest.TestCase):
                        lambda o, p: p['harness'].update(source='scripts/oracle/leios-testnet/Main.hs'),
                        lambda o, p: p['harness'].update(sha256='0' * 64),
                        lambda o, p: p.update(ledgerSourceCommit='0' * 40),
-                       lambda o, p: p['reference'].update(cardanoLedger='0' * 40)):
+                       lambda o, p: p['reference'].update(cardanoLedger='0' * 40),
+                       lambda o, p: p.update(consensusSourceCommit='0' * 40),
+                       lambda o, p: p['reference'].update(ouroborosConsensus='0' * 40),
+                       lambda o, p: p.update(plutusSourceCommit='0' * 40),
+                       lambda o, p: p['reference'].update(plutus='plutus-core 1.71.0.0'),
+                       lambda o, p: (p.update(ledgerSourceCommit=self.cardano_base),
+                                     p['reference'].update(cardanoLedger=self.cardano_base))):
             with tempfile.TemporaryDirectory() as scratch:
                 copy = self.contexts_copy(scratch, lambda chain, results, provenance: change(provenance['oracle'],
                                                                                              provenance))

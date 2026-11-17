@@ -34,6 +34,7 @@ checked to be the build of the repository's harness, and `--verify-only` checks 
 fixtures without Docker.
 """
 import argparse
+import datetime
 import functools
 import hashlib
 import importlib.util
@@ -746,6 +747,8 @@ def verdicts(args):
     if args.evidence is None:
         raise SystemExit("--evidence is required to record")
     release = RECORDED.GENERATED.RELEASES[RELEASE]
+    CHAIN.validate(contexts)
+    ledger = read_json(contexts / "provenance.json")["ledgerSourceCommit"]
     models = jsonl(out / "models.jsonl")
     rows = jsonl(out / "requests.jsonl")
     asked = [{k: v for k, v in {**row, "costModel": models[row["model"]]["costModel"]}.items()
@@ -775,10 +778,16 @@ def verdicts(args):
         "rawSha256": RECORDED.GENERATED.sha256(raw),
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    provenance = read_json(out / "provenance.json") if (out / "provenance.json").exists() else {}
-    provenance.update({
+    provenance = {
         "schemaVersion": 1,
+        "scope": "Admission, stage, error class and constructor, budget spent and logs of the Plutus scripts of a "
+                 "stratified sample of transactions recorded on the public Leios testnet's chain, at protocol 12, "
+                 "under deserialiseScript and evaluateScriptRestricting of plutus 1.71.0.0, with the arguments the "
+                 "testnet's build collected for them, the chain's cost models and the redeemers' execution units "
+                 "as budgets",
         "plutusSourceCommit": release["pin"],
+        "ledgerSourceCommit": ledger,
+        "measuredAt": datetime.datetime.now(datetime.timezone.utc).date().isoformat(),
         "requests": len(rows),
         "transactions": manifest["transactions"],
         "network": "none",
@@ -791,9 +800,7 @@ def verdicts(args):
         "requestsSha256": manifest["sha256"]["requests.jsonl"],
         "verdictsSha256": manifest["sha256"]["verdicts.jsonl"],
         "modelsSha256": manifest["sha256"]["models.jsonl"],
-    })
-    for unchecked in ("extractionSha256", "sourceNetwork", "baseImageId"):
-        provenance.pop(unchecked, None)
+    }
     (out / "provenance.json").write_text(json.dumps(provenance, indent=1) + "\n")
     verify_verdicts(out, contexts)
     print(json.dumps({k: manifest[k] for k in ("requests", "transactions", "stages")}))
