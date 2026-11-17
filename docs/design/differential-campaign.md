@@ -2,9 +2,10 @@
 # A differential campaign against the reference
 
 **Status**: Proposal, 2026-11-16. Not implemented. Its author read every claim about the reference at the pins below;
-the independent check of those claims that [CONTRIBUTING](../../CONTRIBUTING.md#levels) asks for before approval is
-pending. **No persisted format changes**: a kept input lives in a directory of its own, off the persisted-format
-surface (§7.4, [FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
+an independent review checked them once and its corrections are made here, and the re-check that
+[CONTRIBUTING](../../CONTRIBUTING.md#levels) asks for before approval is pending. **No persisted format changes**: a
+kept input lives in a directory of its own, off the persisted-format surface (§7.4,
+[FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
 
 Pins. The claims cite the `11.1` reference build, which `--reference-build` selected by default on 2026-11-16 (ADR
 0001's [amendment of
@@ -210,8 +211,8 @@ The transaction is decoded inside the message decoder (R7): a transaction the re
 
 ### 3.2 A transaction from a peer
 
-The TxSubmission2 inbound side (logic V1) adds what it fetched to the mempool, traces and counts the refused ones,
-and sends nothing back (R8). A peer learns no verdict; the campaign reads transaction verdicts from LocalTxSubmission
+The TxSubmission2 inbound side (logic V1) adds what it fetched to the mempool, traces and counts the refused ones, and
+sends back no verdict (R8). A peer learns no verdict; the campaign reads transaction verdicts from LocalTxSubmission
 only.
 
 ### 3.3 A header from a peer
@@ -253,7 +254,7 @@ slots that have started, and reads the verdict from the tip and the `InvalidBloc
 | R5 | Defaults soft 1 s, hard 1.5 s, capacity 5 s. Where the era has the error, a validation that finishes over the soft limit is refused, whoever submitted it, as `ConwayMempoolFailure` with the text `"MempoolTxTooSlow (<duration>) <txid>"`, and one cut off at the hard limit is refused so for a local client; otherwise a cut-off raises `MkExnMempoolTimeout`. Only Conway has the error: Shelley to Babbage and Dijkstra have none. | node 11.1.3 `Configuration/POM.hs` 889-897; consensus 82ecba32 `Mempool/Update.hs` 127-130, 237-296, `shelley` `Shelley/Eras.hs` 169-220 | yes, except that the node passes the limits to the mempool (N12) |
 | R6 | Conway's MEMPOOL rule refuses all-inputs-spent transactions and, unless `hardforkConwayDisallowUnelectedCommitteeFromVoting` holds, votes by unelected committee members, then runs LEDGER. | ledger f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs` 103-139 | yes, except the predicate's definition: protocol version 11 is from the comment at 124-125 |
 | R7 | The LocalTxSubmission codec decodes the transaction inside `MsgSubmitTx`'s decoder. | network c45735a5 `Protocol/LocalTxSubmission/Codec.hs` 148-169 | yes; what follows a failed decode is N2 |
-| R8 | TxSubmission2 inbound V1 traces and counts refused transactions and replies nothing. | network c45735a5 `TxSubmission/Inbound/V1.hs` 313-329 | yes; that V1 is the default is N10 |
+| R8 | TxSubmission2 inbound V1 traces and counts refused transactions and sends back no verdict; the protocol goes on. | network c45735a5 `TxSubmission/Inbound/V1.hs` 313-329 | yes; that V1 is the default is N10 |
 | R9 | The ChainSync client ends the connection with `HeaderError` when `validateHeader` fails; that exception brings down every mini-protocol with the peer. | consensus 82ecba32 `MiniProtocol/ChainSync/Client.hs` 1893-1925, 2262-2266 | yes |
 | R10 | `validateHeader` runs `validateEnvelope`, which runs the Shelley-based envelope check: a protocol version against the node's maximum, the header size, the declared body size. Under Praos the version is the ledger view's (`plvProtocolVersion`) and `maxBHSize` is the ledger view's; under TPraos the version is the header's (`bprotver`). | consensus 82ecba32 `HeaderValidation.hs` 376, 508-514; `shelley` `Shelley/Ledger/Ledger.hs` 788-789, `Shelley/Protocol/Praos.hs` 59-72, `Shelley/Protocol/TPraos.hs` 66-77, `Shelley/Protocol/EnvelopeChecks.hs` 60-91 | yes |
 | R11 | A header more than the clock skew early ends the connection (`InFutureHeaderExceedsClockSkew`); within the skew the client waits for the slot's onset; the default skew is 2 s. | consensus 82ecba32 `MiniProtocol/ChainSync/Client/InFutureCheck.hs` 154-175, 206-207; `Client.hs` 1755-1776; diffusion `Node.hs` 1108 | yes |
@@ -554,10 +555,10 @@ disagreement, a forced failure, a forced timeout and a forced cleanup error leav
 and the private store, and the summary of a period that holds them carries only its fields.
 
 Node logs are the subtle leak: the reference's refusal trace carries the transaction and its error (R18; what its log
-prints of it is N13), and Scarab's logs may carry its own. They stay on the private runner with the rest; the pattern
-of `e2e.yml`, which prints a scenario's output and uploads every node log and run summary as an artifact even when a
-run fails (`.github/workflows/e2e.yml` 85-112), is not copied anywhere the public can read, and neither is
-`faults.yml`'s seed from the public run number.
+prints of it is N13), and Scarab's logs may carry its own. They stay on the private runner. Neither `e2e.yml`'s
+pattern, which prints a scenario's output and uploads every node log and run summary even when a run fails
+(`.github/workflows/e2e.yml` 85-112), nor `faults.yml`'s seed from the public run number is copied where the public
+can read it.
 
 The record and the minimal inputs go to the private store, encrypted at rest; the advisory draft holds what its fix
 needs.
