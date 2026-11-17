@@ -64,7 +64,11 @@ trait UtxoStore[F[_]] extends UtxoReadView[F]:
   /** The stamp of the last batch (`-1` for a store nothing was written to). */
   def flushed(using Raise[F, StorageError]): F[Long]
 
-  /** A stable, resource-scoped view of the current backing generation. */
+  /** A stable, resource-scoped view of the current backing generation. It reads what it pinned
+    * across later batches and a [[reset]]; a [[restore]], or the release of the store, while it is
+    * held ends its later reads with [[StorageError.UtxoStoreClosed]] where the store's storage is
+    * replaced or released.
+    */
   def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]]
 
   /** Every entry folded into `zero`, without collecting them (the state digests of `--dump-state`).
