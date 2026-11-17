@@ -21,7 +21,7 @@ enum DijkstraPlutusPurpose[F[_, _]]:
   case DijkstraGuarding(purpose: F[Unsigned[Unsigned.Width.W32], ScriptHash])
 
   /** The redeemer tag of the purpose: spend 0, mint 1, cert 2, reward 3, vote 4, propose 5 and
-    * guard 6 (`EncCBORGroup (DijkstraPlutusPurpose f era)`, `Scripts.hs:185-202`, cardano-ledger
+    * guard 6 (`EncCBORGroup (DijkstraPlutusPurpose f era)`, `Scripts.hs:184-199`, cardano-ledger
     * 9df9f98c).
     */
   def tag: Int = this match

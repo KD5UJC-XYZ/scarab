@@ -37,7 +37,7 @@ class DijkstraPlutusPurposeSuite extends FunSuite:
   )
 
   test("the redeemer tags are spend 0 to guard 6, as the encoder writes them") {
-    // `EncCBORGroup (DijkstraPlutusPurpose f era)` (`Scripts.hs:185-202`)
+    // `EncCBORGroup (DijkstraPlutusPurpose f era)` (`Scripts.hs:184-199`)
     assertEquals(all.map(_.tag), Vector(0, 1, 2, 3, 4, 5, 6))
   }
 
