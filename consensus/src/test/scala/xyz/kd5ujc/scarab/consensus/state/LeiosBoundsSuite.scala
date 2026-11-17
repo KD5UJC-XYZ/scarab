@@ -49,7 +49,7 @@ class LeiosBoundsSuite extends FunSuite:
     // 1000 slots of Dijkstra are 11 rounds of 90 (`div`), added to the lower bound's 5
     assertEquals(EraHistory.upperLayout(leios(5), Era.Dijkstra, 1000), leios(16))
     assertEquals(EraHistory.upperLayout(leios(5), Era.Dijkstra, 89), leios(5))
-    // `addPerasRounds` is a `Word64` sum (`HardFork/History/Util.hs:31-32`)
+    // `addPerasRounds` is a `Word64` sum (`HardFork/History/Util.hs:31-32`, 2416493b)
     assertEquals(EraHistory.upperLayout(leios(-1L), Era.Dijkstra, 90), leios(0))
     // an era with no rounds keeps the lower bound's next round
     assertEquals(EraHistory.upperLayout(leios(5), Era.Conway, 1000), leios(5))
