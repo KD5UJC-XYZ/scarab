@@ -6,8 +6,10 @@ the independent check of those claims that [CONTRIBUTING](../../CONTRIBUTING.md#
 pending. **No persisted format changes**: a kept input lives in a directory of its own, off the persisted-format
 surface (§7.4, [FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
 
-Pins. The claims cite the `11.1` reference build, the default (ADR 0001, [amendment of
-2026-11-14](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-the-newest-release-re-pinned-in-stages)):
+Pins. The claims cite the `11.1` reference build, which `--reference-build` selected by default on 2026-11-16 (ADR
+0001's [amendment of
+2026-11-14](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-the-newest-release-re-pinned-in-stages) says
+when that moves):
 cardano-node 11.1.3; ouroboros-consensus 82ecba32; ouroboros-network c45735a5 (ouroboros-network 1.2.0.0);
 cardano-ledger f649f975, and for the files of cardano-ledger-shelley 1.19.0.1 cardano-ledger 4c81e909 (the files cited
 here are identical at f649f975). They were read in checkouts of those revisions, 4c81e909 from its git objects.
@@ -16,8 +18,8 @@ Nothing was read at the `11.2` build's pins (ouroboros-consensus 808e4005, ourob
 has every pin. Paths are abbreviated: consensus files from `Ouroboros/Consensus/` in their package
 (`ouroboros-consensus`, its `-cardano` `shelley` sublibrary, `-diffusion`), network files from `Ouroboros/Network/`
 (the `protocols` sublibrary and the main library), ledger files from `Cardano/Ledger/` in their era's package, and
-cardano-node files from `cardano-node/src/Cardano/Node/`. In-tree code is cited by path, symbol and line at base
-`03c46cd89`.
+cardano-node files from `cardano-node/src/Cardano/Node/`. In-tree code is cited by path, symbol and line at
+`fdd5834f2`.
 
 ## 1. What the campaign is for
 
@@ -41,15 +43,16 @@ trial), and the Leios and Dijkstra builds. Decoding alone stays with the decodin
 ### 2.1 The devnet clusters
 
 - **A cluster** is one container, `<name>-ref`, running every Haskell node from `REFERENCE_IMAGE`,
-  `cardano-reference-11.1.3:local` (`scripts/devnet/util.py` 17; `start_reference`, `scripts/devnet/cluster.py`
-  25-36). `up` makes three block-producing pools with `cardano-testnet create-env` (`cluster.py` 142-143); the walk
-  from Byron to Conway is `ERA_PLAN` (`cluster.py` 176-177). `create-env` makes fresh keys and a genesis on every
-  run (the refusal corpus's recorded Shelley genesis files share no genesis delegate and differ in their system
-  start), so no seed reproduces a transaction's bytes: a run's record must hold the bytes and the genesis, as the
-  refusal corpus does (§2.2).
+  `cardano-reference-11.1.3:local` (`scripts/devnet/util.py` 17), or the pools from another release's node when one is
+  given (`start_reference`, `scripts/devnet/cluster.py` 25-36). `up` makes three block-producing pools with
+  `cardano-testnet create-env` (`cluster.py` 142-143); the walk from Byron to Conway is `ERA_PLAN` (`cluster.py`
+  176-177). `create-env` makes fresh keys and a genesis on every run (the refusal corpus's recorded Shelley genesis
+  files share no genesis delegate and differ in their system start), so no seed reproduces a transaction's bytes: a
+  run's record must hold the bytes and the genesis, as the refusal corpus does (§2.2).
 - **At most one Scarab node** runs per cluster, `<name>-scala`, in the reference container's network namespace
   (`scala_container`, `cluster.py` 625-647; `SINGLE_FOLLOWER`, `util.py` 28-62). In `follow`, `soak`, `e2e` and `ntc`
-  it follows reference node 1 (`scripts/devnet/follower.py` 30-33); in `pool` it forges in place of one Haskell pool
+  it follows one reference node, node 1 unless `--node` names another (`scripts/devnet/follower.py` 30-33;
+  `scripts/devnet/cli.py` 221); in `pool` it forges in place of one Haskell pool
   (`scripts/devnet/scenarios/pool.py` 586-608).
 - **Transactions** reach a node through `cardano-cli` in the reference container (`scripts/devnet/load.py` 132-139;
   `EraLoad.submit`, `scripts/devnet/eraload.py` 296-327) or raw over node-to-client LocalTxSubmission
@@ -59,7 +62,8 @@ trial), and the Leios and Dijkstra builds. Decoding alone stays with the decodin
 - **One transaction to both nodes** happens in two places only. `ntc`'s `submissions` sends each of a fixed list of
   refused Conway transactions (`scripts/devnet/ntccases.py` 127-227) raw and through `cardano-cli` to reference node 1
   and to Scarab, retrying until one tip brackets all four submissions on both nodes, and requires equal `ApplyTxErr`
-  bytes and equal printed text (`scripts/devnet/scenarios/ntc.py` 348-380, `judge_refusal` 322-345). The `pool`
+  bytes and equal printed text unless a case declares a tracked divergence, which none of the fixed cases does
+  (`scripts/devnet/scenarios/ntc.py` 348-380, `judge_refusal` 322-345). The `pool`
   scenario's `--plutus-load` compares only the constructor path of the first failure of its refused Plutus
   transactions, with no bracket (`scala_judgement`, `scripts/devnet/scenarios/pool_plutus.py` 131-155). An accepted
   transaction gets no independent second verdict in a cluster: Scarab forwards it to the reference node over
@@ -89,11 +93,14 @@ of ledger state is `e2e`'s same-point `DebugNewEpochState` and `GetUTxOWhole` (`
 
 ### 2.4 Seeds
 
-The only seeded devnet run is the fault schedule: `faultplan.generate` is a pure function of the seed and the
-cluster's parameters, written to `fault-schedule.json` before the run, and replayed by seed or by file
-(`scripts/devnet/faultplan.py` 121-150, 157-162; `scripts/devnet/scenarios/faults.py` 242-250, 323-327). The replay
-repeats the schedule, not the execution ([adversarial schedules](adversarial-schedules.md)). The nightly seed is the
-workflow's run number (`.github/workflows/faults.yml` 51), which is public. `e2e.yml` passes no seed.
+Seeds choose the load (`random.Random(args.seed)`, `scripts/devnet/load.py` 74, 208, with `--seed` at
+`scripts/devnet/cli.py` 242), the era load (`EraLoad.__init__`, `scripts/devnet/eraload.py` 211-214) and the fault
+schedule: `faultplan.generate` is a pure function of the seed and the cluster's parameters, written to
+`fault-schedule.json` before the run, and replayed by seed or by file (`scripts/devnet/faultplan.py` 121-150, 157-162;
+`scripts/devnet/scenarios/faults.py` 242-250, 323-327). A seed makes the choices reproducible, not the live
+execution: the replay repeats the schedule, not the execution ([adversarial schedules](adversarial-schedules.md)),
+and a load's sequence also follows the cluster's timing. The nightly fault seed is the workflow's run number
+(`.github/workflows/faults.yml` 51), which is public. `e2e.yml` passes no seed.
 
 ### 2.5 The fuzz project (K3)
 
@@ -121,12 +128,16 @@ around the script.
 
 ### 2.7 The reference oracles
 
-`scripts/oracle/` holds offline harnesses built from released packages or pinned checkouts, run with no network. The
+`scripts/oracle/` holds offline harnesses built from released packages or pinned checkouts, most run with no network
+(`scripts/oracle/plutus/generated/run.py` 52-53 does not pass `--network none`). The
 decoding oracles (`conway-decoding`, `header-decoding`) take a JSON file of encodings and give each one's verdict and
 complete failure; they run no ledger rule ([the playbook](../playbooks/confirm-with-the-decoding-oracle.md)). The
-others judge one predicate, one API or one rule (`dijkstra-rules`, Dijkstra only); none was found that applies LEDGER
-or BBODY of Shelley to Conway to a given state and transaction. Only a running reference node judges a whole
-transaction, both phases, against a state: the refusal corpus (§2.2), `ntc` and `pool --plutus-load`.
+others judge one predicate, one API or one rule (`dijkstra-rules`, Dijkstra only). The `ledger-govcert` exporters run
+the reference's own Conway LEDGER and LEDGERS on states its generators make
+(`scripts/oracle/ledger-govcert/pv11-generators-bootstrap.patch` 371-374,
+`scripts/oracle/ledger-govcert/multi-ledgers.patch` 75-100). No general oracle was found that applies LEDGER or BBODY of
+Shelley to Conway to a supplied state and transaction; a running reference node does: the refusal corpus (§2.2), `ntc`
+and `pool --plutus-load`.
 
 ### 2.8 The conformance runners
 
@@ -134,33 +145,38 @@ transaction, both phases, against a state: the refusal corpus (§2.2), `ntc` and
 dataset's own expectations, Conway only, and no Haskell verdict
 (`tools/src/main/scala/xyz/kd5ujc/scarab/ledger/LedgerRulesFixture.scala`). The upstream conformance adapters replay
 committed outputs of the reference's own generators ([upstream conformance](upstream-conformance.md)). Both are
-sources of seed transactions with a state; neither judges a new input.
+sources of seed transactions with a state, and these Scala runners judge no new input; the exporters behind the
+adapters (§2.7) generate and judge new Conway cases with the reference's own rules.
 
 ### 2.9 Builders of blocks, and serving them
 
 - `ForgedChain` runs the production `Forger` per slot over an in-memory Conway genesis with test keys
   (`node/src/test/scala/xyz/kd5ujc/scarab/node/forge/ForgedChain.scala` 142-150, 392-405); its blocks do not belong to
   any devnet's genesis. `BlockBuilder` assembles a header body and a Conway block as pure functions
-  (`node/src/main/scala/xyz/kd5ujc/scarab/node/forge/BlockBuilder.scala`, `headerBody` 265, `block` 293-297); no
-  builder writes a block of an earlier era, and the KES signature is made only in `Forger`.
+  (`node/src/main/scala/xyz/kd5ujc/scarab/node/forge/BlockBuilder.scala`, `headerBody` 265, `block` 293-297), and the
+  KES signature is made only in `Forger`. Earlier eras' blocks are written only by tests, not forged for a devnet:
+  encodings of each era's shape that no rule runs on (`DetachedRecordsReferenceSuite.block`,
+  `ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/DetachedRecordsReferenceSuite.scala` 190-206) and signed Byron
+  blocks (`ByronTestKit.signedBlock`, `ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/byron/ByronTestKit.scala`
+  195-230).
 - The devnet's pool keys are known to the harness: `faults.write_keys` copies a pool's VRF and KES keys and its
   certificate from the `create-env` directory (`faults.py` 231-239).
 - `ChainServer` serves only what the node itself validated
   (`node/src/main/scala/xyz/kd5ujc/scarab/node/relay/ChainServer.scala` 20-23). In tests, `ServedChain` feeds raw
   blocks to it and `InMemoryPeers` serves them over in-memory bearers, Scarab to Scarab
   (`node/src/test/scala/xyz/kd5ujc/scarab/node/ServedChain.scala`; `InMemoryPeers.scala`).
-- `scripts/devnet/lagproxy.py` forwards bytes unchanged, with delays (21-35); nothing in `scripts/` serves ChainSync
-  or BlockFetch. The only blocks that reach a Haskell node from a source the harness runs are Scarab's own, honestly
-  forged (`pool`, `relay`).
+- `scripts/devnet/lagproxy.py` forwards bytes unchanged, with delays (21-35); no ChainSync or BlockFetch server was
+  found in `scripts/`. Blocks reach a Haskell node from Scarab only as Scarab validated them: those it forges
+  (`pool`) and, in `relay`, the reference pools' blocks it serves on (`scripts/devnet/scenarios/relay.py` 323-346).
 
 ### 2.10 What is missing
 
 | Missing | Needed for |
 |---|---|
-| Generators that keep a transaction valid over a state both nodes share, and a structure-aware mutator that re-signs and re-hashes | every transaction probe past the witness checks |
+| A seeded, recorded generator over a state both nodes share, with a mutator that re-signs and re-hashes (`load.py` 109-138 and `eraload.py` sign valid transactions from the live UTxO, without that contract) | every transaction probe past the witness checks |
 | A bracketed submission primitive that records both verdicts, for accepted transactions too | path L (§4) |
 | A node-to-node peer the campaign controls, which serves a forged or mutated chain to a Haskell node and to Scarab, and builds blocks of the eras before Conway | every block probe; the era-transition probes |
-| A reader of each node's verdict on a block: the reference's `InvalidBlock` trace is silent by default (`scripts/devnet/reference_tracing.py` 3-16); no Scarab event was found that names a refused block's full hash, and only `scarab_validation_errors_total` counts refused bodies (`MeteredRules`) | block verdicts |
+| A reader of each node's verdict on a block: the reference's `InvalidBlock` trace is silent by default (`scripts/devnet/reference_tracing.py` 3-16); no Scarab event was found that names a refused block's full hash, and only `scarab_validation_errors_total` counts refused bodies (`MeteredRules.scala` 35-40) | block verdicts |
 | A seeded run record, a minimiser against both nodes, a private runner and store, and a published summary that cannot carry an input | §7, §8 |
 
 ## 3. What the reference does
@@ -299,8 +315,8 @@ it.
 
 **Two clusters.**
 
-- **The shared cluster** is today's: Haskell pools forge, Scarab follows. It serves path R, and path L for refusals,
-  bracketed as `ntc` brackets them. Accepted transactions have no independent second verdict there (§2.1).
+- **The shared cluster** is the devnet's (§2.1): Haskell pools forge, Scarab follows. It serves path R, and path L for
+  refusals, bracketed as `ntc` brackets them. Accepted transactions have no independent second verdict there (§2.1).
 - **The injector cluster** has one reference node and one Scarab node, neither forging, connected to no one but the
   campaign's peer, the injector: a `tools` program (§10, Q5) that holds every pool's keys of a `create-env` genesis,
   forges the chain both nodes follow, and serves it over node-to-node ChainSync and BlockFetch. The injector is the
@@ -474,11 +490,10 @@ at a fixed point or at its budget, and reports the smallest candidate with the n
 candidate is judged as any probe: in path R the reference judges it live at its own bracketed state and Scarab replays
 it offline. A block candidate needs the injector cluster at the probe's predecessor. Shrinking runs inside the run
 that found the disagreement, with its cluster and keys, from a share of the budget reserved for it; a disagreement
-left unshrunk is shrunk later from the record and the keys, in an injector cluster restored from the recorded chain or
-a fresh cluster in which it still reproduces. The smallest candidate is confirmed once more from a clean recorded
-context before it is reported: in path R from a freshly captured state holding only the recorded earlier accepted
-probes, and for a block in an injector cluster restored from the recorded chain with nodes that have judged no earlier
-candidate.
+left unshrunk is shrunk later from the record and the keys. The smallest candidate is confirmed once more from a clean
+recorded context before it is reported: in path R from a freshly captured state holding only the recorded earlier
+accepted probes, and for a block in an injector cluster restored from the recorded chain with nodes that have judged
+no earlier candidate.
 
 ### 7.4 Kept inputs
 
@@ -606,9 +621,9 @@ memory and image digests, the seeds' hashes). Raw run artifacts are not publishe
 
 **Open questions for the owner**, each with a recommendation.
 
-- **Q1. Which reference build does the campaign judge against?** Recommendation: the default `--reference-build`,
-  `11.1` (cardano-node 11.1.3), today; a second reference node of the `11.2` build once its stages land and Scarab
-  starts with it, with §3 read again at its pins (N8).
+- **Q1. Which reference build does the campaign judge against?** Recommendation: the build `--reference-build` selects
+  by default (on 2026-11-16, `11.1`, cardano-node 11.1.3); a second reference node of the `11.2` build once its stages
+  land and Scarab starts with it, with §3 read again at its pins (N8).
 - **Q2. Is every disagreement reported privately first, including one that SECURITY.md would let go to a public
   issue?** Recommendation: yes; any exception is the owner's, case by case.
 - **Q3. Where does the private runner live?** Discovery never runs in the public repository's Actions (§8).
