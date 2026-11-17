@@ -6,6 +6,7 @@ from pathlib import Path
 import copy
 import io
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -328,6 +329,42 @@ class AllowlistTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(fmt.allowed(path))
         self.assertEqual(fmt.outside_format_change([fmt.MANIFEST, 'AGENTS.md', 'README.md']), ['AGENTS.md', 'README.md'])
+
+    def test_a_one_off_exception_holds_for_its_pull_request_only(self):
+        for number, paths in fmt.ONE_OFF_PATHS.items():
+            with self.subTest(number=number):
+                self.assertFalse(any(fmt.allowed(p) for p in paths))
+                self.assertEqual(fmt.outside_format_change(list(paths), pull_request=number), [])
+                self.assertEqual(fmt.outside_format_change(list(paths), pull_request=number + 1), sorted(paths))
+                self.assertEqual(fmt.outside_format_change(['AGENTS.md', *paths], pull_request=number), ['AGENTS.md'])
+
+    def test_the_pull_request_is_read_from_the_event_and_none_otherwise(self):
+        number, paths = next(iter(fmt.ONE_OFF_PATHS.items()))
+        with tempfile.TemporaryDirectory() as tmp:
+            event = Path(tmp) / 'event.json'
+            event.write_text(json.dumps({'pull_request': {'number': number}}), encoding='utf-8')
+            self.assertEqual(fmt.event_pull_request(str(event)), number)
+            other = Path(tmp) / 'other.json'
+            other.write_text(json.dumps({'pull_request': {'number': number + 1}}), encoding='utf-8')
+            self.assertEqual(fmt.event_pull_request(str(other)), number + 1)
+            broken = Path(tmp) / 'broken.json'
+            broken.write_text('{', encoding='utf-8')
+            self.assertIsNone(fmt.event_pull_request(str(broken)))
+            self.assertIsNone(fmt.event_pull_request(str(Path(tmp) / 'missing.json')))
+            text = Path(tmp) / 'text.json'
+            text.write_text(json.dumps({'pull_request': {'number': str(number)}}), encoding='utf-8')
+            self.assertIsNone(fmt.event_pull_request(str(text)))
+            saved = os.environ.get('GITHUB_EVENT_PATH')
+            try:
+                os.environ['GITHUB_EVENT_PATH'] = str(event)
+                self.assertEqual(fmt.outside_format_change(list(paths)), [])
+                os.environ['GITHUB_EVENT_PATH'] = str(other)
+                self.assertEqual(fmt.outside_format_change(list(paths)), sorted(paths))
+                del os.environ['GITHUB_EVENT_PATH']
+                self.assertEqual(fmt.outside_format_change(list(paths)), sorted(paths))
+            finally:
+                if saved is not None:
+                    os.environ['GITHUB_EVENT_PATH'] = saved
 
     def test_every_file_the_surface_reads_is_inside_the_allowlist(self):
         self.assertEqual([p for p in fmt.surface_paths(ROOT) if not fmt.allowed(p)], [])
