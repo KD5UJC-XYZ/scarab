@@ -105,10 +105,11 @@ object EraHistory:
     */
   def upperLayout(lo: Bound.Layout, era: Era, epochs: BigInt, epochSize: BigInt): Bound.Layout =
     perasRoundLength(lo.stateLayout, era).fold(unroundedLayout(lo)) { length =>
-      val slots = (epochs.mod(Word64Modulus) * epochSize).mod(Word64Modulus)
       def add(r: PerasRoundNo) =
         PerasRoundNo(
-          Word64.fromUnsigned((r.word.toBigInt + slots / length).mod(Word64Modulus).toLong)
+          Word64.fromUnsigned(
+            (r.word.toBigInt + inEraSlots(epochs, epochSize) / length).mod(Word64Modulus).toLong
+          )
         )
       lo match
         case Bound.Layout.Node11_1(round) => Bound.Layout.Node11_1(round.map(add))
@@ -117,16 +118,74 @@ object EraHistory:
 
   private val Word64Modulus = BigInt(2).pow(64)
 
-  /** `mkUpperBound` of `era`, of epochs of `epochSize` slots, from `lo` to the bound `at` (the
-    * time, slot and epoch, as [[boundAt]] or the summary's arithmetic places it), with the Peras
-    * round of [[upperLayout]] for the epochs from `lo` to `at`.
+  /** `inEraSlots` of `mkUpperBound`: `epochs` (`inEraEpochs`, already a `countEpochs` difference)
+    * times the epoch size, both `Word64`, the product modulo 2^64 (`Summary.hs:148-151`).
     */
-  def upperBound(lo: Bound, era: Era, epochSize: BigInt, at: Bound): Bound =
-    at.copy(layout = upperLayout(lo.layout, era, at.epoch - lo.epoch, epochSize))
+  private def inEraSlots(epochs: BigInt, epochSize: BigInt): BigInt =
+    (epochs.mod(Word64Modulus) * epochSize).mod(Word64Modulus)
+
+  /** `mkUpperBound` (2416493b `Summary.hs:126-157`, 82ecba32 `:117-141`): the bound at the start of
+    * epoch `hiEpoch` of `era`, whose epochs are of `epochSize` slots of `slotLengthMillis`, from its
+    * lower bound `lo`. The slots of the era are `inEraSlots`, `Word64` and modulo 2^64; the slot is
+    * the lower bound's plus them, a `Word64` sum (`addSlots`, `HardFork/History/Util.hs:22-23`); the
+    * time is the lower bound's plus those slots times the slot length, exact (`addRelTime` of a
+    * `NominalDiffTime`, `BlockchainTime/WallClock/Types.hs:43-44`); the Peras round is
+    * [[upperLayout]]'s.
+    */
+  def upperBound(
+      lo: Bound,
+      era: Era,
+      epochSize: BigInt,
+      slotLengthMillis: BigInt,
+      hiEpoch: BigInt
+  ): Bound =
+    // `countEpochs`, a `Word64` subtraction whose assertion release builds compile out
+    val epochs = (hiEpoch - lo.epoch).mod(Word64Modulus)
+    val slots = inEraSlots(epochs, epochSize)
+    Bound(
+      lo.timePs + slots * slotLengthMillis * PsPerMilli,
+      (lo.slot + slots).mod(Word64Modulus),
+      hiEpoch,
+      upperLayout(lo.layout, era, epochs, epochSize)
+    )
+
+  /** `slotToEpochBound` (2416493b `Summary.hs:164-171`, 82ecba32 `:148-155`): the first epoch, of
+    * epochs of `epochSize` slots from `lo`, that starts at or after `hiSlot`. `countSlots` is a
+    * `Word64` subtraction whose assertion release builds compile out (`Util.hs:34-36`), and the
+    * epoch is `addEpochs`, a `Word64` sum (`:28-29`), as is the `epochs + 1` of a slot inside an
+    * epoch.
+    */
+  def epochBound(epochSize: BigInt, lo: Bound, hiSlot: BigInt): BigInt =
+    val slots = (hiSlot - lo.slot).mod(Word64Modulus)
+    val (epochs, inEpoch) = slots /% epochSize
+    val whole = if inEpoch == 0 then epochs else (epochs + 1).mod(Word64Modulus)
+    (lo.epoch + whole).mod(Word64Modulus)
+
+  /** The end of an era of `epochSize` slots of `slotLengthMillis` and the standard safe zone
+    * `safeZone` that starts at `lo`, its safe zone applied from the slot `from` (`applySafeZone`,
+    * `HardFork/Combinator/State/Infra.hs:291-300` at 2416493b): `mkUpperBound` to the
+    * `slotToEpochBound` of `from` plus the safe zone, a `Word64` sum (`addSlots`).
+    */
+  def safeZoneEnd(
+      lo: Bound,
+      era: Era,
+      epochSize: BigInt,
+      slotLengthMillis: BigInt,
+      safeZone: BigInt,
+      from: BigInt
+  ): Bound =
+    upperBound(
+      lo,
+      era,
+      epochSize,
+      slotLengthMillis,
+      epochBound(epochSize, lo, (from + safeZone).mod(Word64Modulus))
+    )
 
   /** The era history from the configuration, every bound in the layout of `layout` 's build: the
-    * first era starts at `initBound` ([[originLayout]]) and each era ends at its `mkUpperBound`
-    * ([[upperBound]]), where the next begins.
+    * first era starts at `initBound` ([[originLayout]]) and each era ends where the next begins,
+    * at the bound [[boundAt]] places, with the Peras round of its `mkUpperBound`
+    * ([[upperLayout]]).
     */
   def summary(
       geometry: EpochGeometry,
@@ -190,7 +249,7 @@ object EraHistory:
       .foldLeft((originLayout(layout), Vector.empty[EraSummary])) {
         case ((from, eras), (era, start, end, epochSize, summary)) =>
           val lo = bound(start).copy(layout = from)
-          val hi = upperBound(lo, era, epochSize, bound(end))
+          val hi = bound(end).copy(layout = upperLayout(from, era, end - start, epochSize))
           (hi.layout, eras :+ summary(lo, Some(hi), perasRoundLength(layout, era)))
       }
       ._2

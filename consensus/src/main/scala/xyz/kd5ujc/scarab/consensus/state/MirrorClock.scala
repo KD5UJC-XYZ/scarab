@@ -69,9 +69,10 @@ object MirrorClock:
     * era's start are the telescope's, as the state holds them. The current era ends at the next
     * era's start where the transition is known, the next era (where the code has one) then ending
     * at its safe zone from its start; otherwise the current era ends at its safe zone from the slot
-    * after the tip. Each end is the `mkUpperBound` of its era from its start
-    * ([[EraHistory.upperBound]], `applySafeZone` at `:291-300`), and every era has the Peras round
-    * length of its build ([[EraHistory.perasRoundLength]]).
+    * after the tip. Each end is the `mkUpperBound` of its era from its start, with the reference's
+    * `Word64` arithmetic ([[EraHistory.upperBound]]; `applySafeZone` at `:291-300`,
+    * [[EraHistory.safeZoneEnd]]), and every era has the Peras round length of its build
+    * ([[EraHistory.perasRoundLength]]).
     */
   def interpreter(state: MirrorState, placement: Placement): NonEmptyVector[EraSummary] =
     val telescope = state.ext.ledgerState
@@ -88,24 +89,29 @@ object MirrorClock:
         params.genesisWindow,
         EraHistory.perasRoundLength(layout, of)
       )
-    def edge(b: Bound) = Horizon.Edge(b.timePs, b.slot, b.epoch)
-    def upper(of: Era, params: Horizon.Params, start: Bound, at: Horizon.Edge) =
-      EraHistory.upperBound(
+    // `applySafeZone` of a standard safe zone from the slot `from`
+    def safeEnd(of: Era, params: Horizon.Params, start: Bound, from: BigInt) =
+      EraHistory.safeZoneEnd(
         start,
         of,
         params.epochSize,
-        Bound(at.timePs, at.slot, at.epoch, start.layout)
+        params.slotLengthMillis,
+        params.safeZone,
+        from
       )
-    // `applySafeZone` of a standard safe zone from `from` (`Horizon.Params.safeEnd`)
-    def safeEnd(of: Era, params: Horizon.Params, start: Bound, from: BigInt) =
-      upper(of, params, start, params.safeEnd(edge(start), from))
     val past = history.past.zip(telescope.past).zip(Era.values).map { case ((e, p), of) =>
       summaryOf(e.params, of, p.start, p.end)
     }
     val start = telescope.current.start
     val (current, next) = transition match
       case Horizon.Transition.Known(epoch) =>
-        val end = upper(era, history.current, start, history.current.boundAt(edge(start), epoch))
+        val end = EraHistory.upperBound(
+          start,
+          era,
+          history.current.epochSize,
+          history.current.slotLengthMillis,
+          epoch
+        )
         (
           summaryOf(history.current, era, start, end),
           history.next.zip(Era.values.lift(era.index + 1)).map { (params, following) =>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import java.nio.file.Path
+import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.consensus.state.{Bound, Current, MirrorState, PerasRoundNo, Telescope}
 import xyz.kd5ujc.scarab.ledger.state.Word64
@@ -37,10 +37,15 @@ class EraStartSuite extends FunSuite:
     ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
   )
 
-  private def answered(setup: NodeSetup, state: MirrorState, era: QueryEra): String =
+  private def answerOf(setup: NodeSetup, state: MirrorState, query: NtcQuery): String =
     QueryAnswers
-      .answer(envOf(setup), QueryView(Point.Origin, None, state), Map.empty, NtcQuery.EraStart(era))
-      .fold(fail(s"GetEraStart $era is not answered"))(_.hex)
+      .answer(envOf(setup), QueryView(Point.Origin, None, state), Map.empty, query)
+      .fold(fail(s"$query is not answered"))(_.hex)
+
+  private def answered(setup: NodeSetup, state: MirrorState, era: QueryEra): String =
+    answerOf(setup, state, NtcQuery.EraStart(era))
+
+  private val interpreter = NtcQuery.HardFork(HardForkQuery.GetInterpreter)
 
   // Shelley's start: 50 Byron slots of 1 s, `[time in picoseconds, slot, epoch]`
   private val shelleyStart = "1b00002d79883d2000" + "1832" + "01"
@@ -77,4 +82,54 @@ class EraStartSuite extends FunSuite:
     assertEquals(answered(setup, state, QueryEra.Byron), "81" + "8400000003")
     // Shelley's start is computed by `mkUpperBound`, whose round is none in this line
     assertEquals(answered(setup, state, QueryEra.Shelley), "81" + "83" + shelleyStart)
+    // `GetInterpreter` writes the same held start (`Query.hs:562` at 82ecba32): Byron's era is
+    // `[start, end, params]`, the start of four items, the end of three
+    assert(
+      answerOf(setup, state, interpreter).startsWith("9f" + "83" + "8400000003" + "83" + shelleyStart),
+      answerOf(setup, state, interpreter)
+    )
+  }
+
+  /** `fixtures/eras` with Shelley at `epoch` (`TestShelleyHardForkAtEpoch`). */
+  private def shelleyAt(build: ReferenceBuild, epoch: String): NodeSetup =
+    NodeSetup
+      .fromFiles(build) { name =>
+        Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name))).map {
+          bytes =>
+            if NodeSetup.ConfigNames.contains(name) then
+              new String(bytes, "UTF-8")
+                .replace("\"TestShelleyHardForkAtEpoch\": 1,", s"\"TestShelleyHardForkAtEpoch\": $epoch,")
+                .getBytes("UTF-8")
+            else bytes
+        }
+      }
+      .fold(e => fail(e.message), identity)
+
+  // 368934881474191033 Byron epochs of 50 slots are 2^64 + 34 slots: `mkUpperBound`'s `Word64`
+  // `inEraSlots` is 34 (`Summary.hs:148-154` at 2416493b, `:132-138` at 82ecba32), its slot the
+  // `Word64` sum `addSlots` and its time 34 slots of 1 s, exact (`addRelTime`)
+  private val farEpoch = "368934881474191033"
+  private val farShelleyStart = "1b00001eec3dec2000" + "1822" + "1b051eb851eb851eb9"
+
+  test("11.1: a Shelley epoch past 2^64 Byron slots: Shelley's start wraps as the reference's") {
+    val setup = shelleyAt(ReferenceBuild.Release11_1, farEpoch)
+    assertEquals(answered(setup, setup.mirrorStart, QueryEra.Shelley), "81" + "83" + farShelleyStart)
+    assert(
+      answerOf(setup, setup.mirrorStart, interpreter)
+        .startsWith("9f" + "83" + "83000000" + "83" + farShelleyStart),
+      answerOf(setup, setup.mirrorStart, interpreter)
+    )
+  }
+
+  test("Leios: a Shelley epoch past 2^64 Byron slots: the same wrapped start, round zero") {
+    val setup = shelleyAt(ReferenceBuild.LeiosB004fe0c, farEpoch)
+    assertEquals(
+      answered(setup, setup.mirrorStart, QueryEra.Shelley),
+      "81" + "84" + farShelleyStart + "00"
+    )
+    assert(
+      answerOf(setup, setup.mirrorStart, interpreter)
+        .startsWith("9f" + "83" + "8400000000" + "84" + farShelleyStart + "00"),
+      answerOf(setup, setup.mirrorStart, interpreter)
+    )
   }

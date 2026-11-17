@@ -244,7 +244,7 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
    "note": "the Peras round of mkUpperBound, its where clause (inEraEpochs by countEpochs, inEraSlots their product with the epoch size, both Word64, inEraPerasRounds the div by the round length) computed modulo 2^64 as the reference computes it; the branch of an era with rounds (Dijkstra) has no captured reference bound to compare with, only hand-derived cases (LeiosBoundsSuite)",
-   "digest": "eb57ced1034a052a"
+   "digest": "4c49a769377d892a"
   },
   "def consensus.state.EraHistory.upperBound": {
    "upstream": [
@@ -257,13 +257,33 @@
       126,
       157
      ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/History/Util.hs",
+     "symbol": "addSlots",
+     "lines": [
+      22,
+      23
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/BlockchainTime/WallClock/Types.hs",
+     "symbol": "addRelTime",
+     "lines": [
+      43,
+      44
+     ]
     }
    ],
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
-   "note": "mkUpperBound with the time, slot and epoch computed by the caller (EraHistory.boundAt, Horizon.Params.boundAt), the era's epoch size given by it, and the round by upperLayout; as upperLayout, the rounds a Dijkstra end adds have no captured reference bound yet",
-   "digest": "16513f70f4c16584"
+   "note": "mkUpperBound whole: the slot the lower bound's plus inEraSlots modulo 2^64 (addSlots), the time the lower bound's plus those slots times the slot length, exact (addRelTime of a NominalDiffTime), the epoch as given and the round by upperLayout; the epoch size and slot length are given by the caller rather than an EraParams. EraStartSuite checks a wrapped bound against bytes derived from the source; as upperLayout, the rounds a Dijkstra end adds have no captured reference bound yet",
+   "digest": "26bac475adbcd463"
   },
   "def consensus.state.GenesisMirror.originExt": {
    "upstream": [
@@ -323,8 +343,67 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
-   "note": "reconstructSummary with the bounds of the state's layout: the past bounds and the current start from the telescope, the current era's end at the known transition or its safe zone, and the next era where the transition is known and the code has one, each laid out by upperBound; non-empty by construction (NonEmptyVector); no GetInterpreter answer of the Leios build has been captured, so its bytes are hand-derived (LeiosBoundsEvidenceSuite), and this node does not enter Dijkstra yet (#54)",
-   "digest": "024e5755977f038d"
+   "note": "reconstructSummary with the bounds of the state's layout: the past bounds and the current start from the telescope, the current era's end at the known transition or its safe zone, and the next era where the transition is known and the code has one, each computed by upperBound and safeZoneEnd with the reference's Word64 arithmetic; non-empty by construction (NonEmptyVector); no GetInterpreter answer of the Leios build has been captured, so its bytes are hand-derived (LeiosBoundsEvidenceSuite), and this node does not enter Dijkstra yet (#54)",
+   "digest": "ab26ee182095d8d8"
+  },
+  "def consensus.state.EraHistory.epochBound": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/History/Summary.hs",
+     "symbol": "slotToEpochBound",
+     "lines": [
+      164,
+      171
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/History/Util.hs",
+     "symbol": "countSlots",
+     "lines": [
+      35,
+      36
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/History/Util.hs",
+     "symbol": "addEpochs",
+     "lines": [
+      28,
+      29
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "slotToEpochBound with the epoch size given rather than an EraParams; countSlots, the epochs + 1 and addEpochs are Word64, computed modulo 2^64",
+   "digest": "edde2a8e77562858"
+  },
+  "def consensus.state.EraHistory.safeZoneEnd": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/State/Infra.hs",
+     "symbol": "applySafeZone",
+     "lines": [
+      291,
+      300
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "QueryGoldenSuite"
+   ],
+   "note": "applySafeZone's StandardSafeZone case, with the era's parameters given one by one; no Cardano era has an UnsafeIndefiniteSafeZone in the summary the node answers with. QueryGoldenSuite compares GetInterpreter answers, whose ends it computes, with the reference node's",
+   "digest": "f20e5bcbf01f0beb"
   }
  },
  "glue": [
