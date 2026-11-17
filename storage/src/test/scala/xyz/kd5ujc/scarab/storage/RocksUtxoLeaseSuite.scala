@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, UtxoStoreClosure}
@@ -221,24 +221,35 @@ class RocksUtxoLeaseSuite extends FailsOnUncaught:
       val live = dir / "live"
       val released = StorageError.UtxoStoreClosed(live.toString, UtxoStoreClosure.Released)
       StorageTestKit.ok {
-        RocksUtxoStore.resource[IO](live, CacheBytes).allocated.flatMap { (store, releaseStore) =>
-          (for
-            _ <- store.write(many.map((in, out) => in -> Some(out)), 1L)
-            pinned <- store.readView.allocated
-            (opened, release) = pinned
-            view <- IO.fromEither(opened.leftMap(e => new AssertionError(e.message)))
-            scan <- view.select(keep).start
-            _ <- IO.interruptible(scanning.await())
-            closer <- (IO(releasing.countDown()) *> releaseStore *> IO(seen.get)).start
-            scanned <- scan.joinWithNever
-            seenWhenReleased <- closer.joinWithNever
-            after <- view.read(Vector(many.head._1))
-            _ <- release
-          yield
-            assertEquals(scanned.map(_.size), Right(many.size), "the scan read every entry")
-            assertEquals(seenWhenReleased, many.size, "the release came after the scan's last step")
-            assertEquals(after, Left(released))
-          ).guarantee(IO(releasing.countDown()) *> IO(scanning.countDown()) *> releaseStore)
+        // finalizers run last first: the scan's step is let go before its worker is cancelled and
+        // joined (one finalizer, registered with the worker), the view is released after the
+        // workers, and the store (again, which does nothing) at the end
+        val run = for
+          (store, releaseStore) <- Resource.make(
+            RocksUtxoStore.resource[IO](live, CacheBytes).allocated
+          )(_._2)
+          _ <- Resource.eval(store.write(many.map((in, out) => in -> Some(out)), 1L))
+          opened <- store.readView
+          view <- Resource.eval(IO.fromEither(opened.leftMap(e => new AssertionError(e.message))))
+          scan <- Resource
+            .make(view.select(keep).start)(fiber => IO(releasing.countDown()) *> fiber.cancel)
+            .map(_.join)
+          first <- Resource.eval(IO.race(scan, IO.interruptible(scanning.await())))
+          _ <- Resource.eval(
+            first.fold(
+              ended => IO.raiseError(new AssertionError(s"the scan ended at once: $ended")),
+              IO.pure
+            )
+          )
+          closer <- (IO(releasing.countDown()) *> releaseStore *> IO(seen.get)).background
+          scanned <- Resource.eval(scan.flatMap(_.embedNever))
+          seenWhenReleased <- Resource.eval(closer.flatMap(_.embedNever))
+          after <- Resource.eval(view.read(Vector(many.head._1)))
+        yield (scanned, seenWhenReleased, after)
+        run.use(IO.pure).map { (scanned, seenWhenReleased, after) =>
+          assertEquals(scanned.map(_.size), Right(many.size), "the scan read every entry")
+          assertEquals(seenWhenReleased, many.size, "the release came after the scan's last step")
+          assertEquals(after, Left(released))
         }
       }
     }
