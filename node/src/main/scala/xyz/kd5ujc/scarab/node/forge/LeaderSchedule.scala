@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.Eq
-import cats.effect.{Async, Clock}
+import cats.effect.{Async, Clock, Deferred}
 import cats.syntax.all.*
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
@@ -50,19 +50,32 @@ final class LeaderSchedule[F[_]: Async] private (
     * cancelled. A value equal to the one before changes nothing; a new one cancels the computation
     * under way. Each element is an epoch's schedule just after a chunk was added to it.
     *
-    * A value no longer in force when its computation would begin is not computed. fs2's `switchMap`
-    * (3.14.0 `Stream.scala` 1988-2014) runs each value's inner stream once it holds a guard; the
-    * inner stream of a replaced value can take the guard after the stream of the value that
-    * replaced it has ended, and its first steps run before its interruption takes effect. Computed
-    * then, the replaced value would start the schedules again from its own inputs and drop the
-    * epochs it does not name, its successor's among them, for good (#1101).
+    * The values are taken in the order the signal's changes give them. A new value stops the
+    * computation under way and waits for its end, its finalizers included, before its own is
+    * opened: at most one is open at a time, and a replaced value's computation never begins after
+    * its successor's. Begun after it, it would start the schedules again from its own inputs and
+    * drop the epochs it does not name, its successor's among them, for good (#1101). A value the
+    * signal held only between two of the stream's readings is never seen (`discrete` gives the
+    * latest value): the value read next is computed, or, equal to the one before, leaves that one's
+    * computation going.
     */
   def computed(signal: Signal[F, InForce]): Stream[F, Added] =
-    signal.discrete.changes.switchMap(value =>
-      Stream
-        .eval(signal.get)
-        .flatMap(current => if current === value then all(value) else Stream.empty)
-    )
+    Stream.eval(F.ref(Option.empty[(Deferred[F, Unit], Deferred[F, Unit])])).flatMap { running =>
+      signal.discrete.changes
+        .evalMap(value =>
+          (F.deferred[Unit], F.deferred[Unit]).flatMapN { (replaced, ended) =>
+            running
+              .getAndSet(Some(replaced -> ended))
+              .flatMap(_.traverse_((stop, end) => stop.complete(()) *> end.get))
+              .as(
+                all(value)
+                  .interruptWhen(replaced.get.attempt)
+                  .onFinalize(ended.complete(()).void)
+              )
+          }
+        )
+        .parJoinUnbounded
+    }
 
   /** [[computed]], its elements discarded. */
   def run(signal: Signal[F, InForce]): F[Unit] = computed(signal).compile.drain
