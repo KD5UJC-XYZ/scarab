@@ -410,7 +410,9 @@ object VerificationDefect:
       case Witness(tx)          => s"witness of tx ${tx.hex.take(16)}"
       case LeiosCommittee(pool) => s"Leios committee key of pool ${pool.hex.take(16)}"
 
-/** Why a UTxO store has no open database ([[StorageError.UtxoStoreClosed]]). */
+/** Why a UTxO store, or a pinned view or an enumeration of it, has no open database
+  * ([[StorageError.UtxoStoreClosed]]).
+  */
 enum UtxoStoreClosure derives CanEqual:
   /** A restore or a reset closed the database and has not opened a new one: it failed after the
     * close. A later restore or reset that succeeds opens one.
@@ -420,9 +422,16 @@ enum UtxoStoreClosure derives CanEqual:
   /** The store was released: it is never opened again. */
   case Released
 
+  /** A pinned view or an enumeration read a database that a restore (or the reset after a failed
+    * one) has since closed and replaced: it reads nothing more. The store itself never holds this
+    * reason.
+    */
+  case Replaced
+
   def message: String = this match
     case NoDatabase => "a restore or reset closed it and failed before opening a new one"
     case Released   => "the store was released"
+    case Replaced   => "the database this view or enumeration read was replaced by a restore"
 
 /** Why a UTxO checkpoint of the RocksDB store cannot be restored by this build. */
 enum CheckpointProblem:
