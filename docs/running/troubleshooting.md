@@ -72,8 +72,10 @@ The multiplexer's ingress limits are the reference's and are not configurable
 An established connection may wait indefinitely between mux SDUs. Once header bytes arrive, that SDU
 must complete within 30 s; trickled bytes do not restart the timer. A write gets 30 s per SDU in its batch,
 or 10 s for handshake SDUs. Expiry is a typed transport failure handled by the normal reconnect policy.
-The existing 10 s handshake receive phase also bounds an entirely silent peer. The outbound queue holds
-at most 64 messages and sending waits for room.
+The existing 10 s handshake receive phase also bounds an entirely silent peer. Sending is bounded in bytes,
+not messages: each mini-protocol and direction has the reference's soft budget of 262,143 bytes
+(`egressSoftBufferLimit`, network-mux 0.11.0.0), a send waits while that many bytes wait to be written, and
+one message may pass the budget.
 
 Message byte limits apply to complete messages too, including when multiple messages arrive in one
 SDU. TxSubmission keeps at most 10 unacknowledged IDs; repeated nonblocking requests cannot grow it
