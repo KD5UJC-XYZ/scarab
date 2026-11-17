@@ -1,7 +1,6 @@
 {
   "plutusCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
   "oracleImage": "sha256:57d4e9fe87acef3ade739020795d75ef00948635d4895b730386afff04a9ec0e",
-  "oracleBaseImage": "sha256:54cb3d080e717085f07baba23067fd27dec7d335075dbad0c249b1938ceb0536",
   "imageFilesSha256": {
     "/source/scarab-oracle/Main.hs": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
     "/source/scarab-oracle/scarab-plutus-oracle.cabal": "71b84c4696082466585b042b031b531ccfb2ae9ab092cf5e991d0e05dc69939e",
@@ -21,9 +20,9 @@
   "toolSha256": {
     "scripts/oracle/plutus/generated-171/Main.hs": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
     "scripts/oracle/plutus/generated-171/Dockerfile": "d97c9965343eabc810da0804fe62c22bc84ebbea578148469852db8966a47a15",
-    "scripts/oracle/leios-testnet/leios_chain_scan.py": "ab34e480ea2d781a31e1eeeffc7f0547ebef79af95856e2234c95acd505e0083",
+    "scripts/oracle/leios-testnet/leios_chain_scan.py": "e52cbb2292f94182b313c0d095ddb8c4a464c1b8a50832dcce4ca1d88dbb70fe",
     "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a",
-    "scripts/oracle/leios-testnet/chain/run.py": "9a0adbbde88a19060aba530c53957b98f78667ad54e9337b71af8021ee7d136b",
+    "scripts/oracle/leios-testnet/chain/run.py": "daaf37f26cfb14a1eafc0707f9aacd067fb902457d5c0aa38d793b8adf9a4015",
     "scripts/oracle/plutus/generated/run.py": "6e0d39e0f1a8efa9da8864231efe8f0804c19d08262ef94ba927452575d4deea",
     "scripts/oracle/plutus/recorded/run.py": "4d665f72033d7125145d1341e958626b6674fbc9634b3ccea472d7461af49c5f"
   },

@@ -58,6 +58,7 @@
  "extraction": {
   "script": "scripts/oracle/leios-testnet/leios_chain_scan.py",
   "sha256": "d96c0a4e1bfea78211c36ab50a84dadddfb4cd23129e71609ba31cfe2f1b2993",
+  "revision": "the script as it extracted these cases on 2026-11-16, not the current one; a later revision read the same database again to the same cases.json (README)",
   "sample": "leios_chain_scan.py sample --size 200: every one of the 62 strata (source, validity flag, Plutus languages given, redeemer purposes, sub-transactions, validity interval), then ordinary transactions by cost per new script"
  },
  "harness": {
@@ -91,7 +92,7 @@
    "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
   },
   "runnerSha256": {
-   "scripts/oracle/leios-testnet/chain/run.py": "9a0adbbde88a19060aba530c53957b98f78667ad54e9337b71af8021ee7d136b",
+   "scripts/oracle/leios-testnet/chain/run.py": "daaf37f26cfb14a1eafc0707f9aacd067fb902457d5c0aa38d793b8adf9a4015",
    "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a"
   },
   "network": "none"

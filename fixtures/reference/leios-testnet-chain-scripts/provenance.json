@@ -8,7 +8,6 @@
  "requests": 273,
  "transactions": 200,
  "imageId": "sha256:57d4e9fe87acef3ade739020795d75ef00948635d4895b730386afff04a9ec0e",
- "baseImageId": "sha256:54cb3d080e717085f07baba23067fd27dec7d335075dbad0c249b1938ceb0536",
  "harnessSha256": "b1ca2cfe18edae406aea90fed65a03ebf9098cc3c9e1eb3ccec6b05ed218e36b",
  "contextsSha256": "949533993581c7074252aad5cf1dd1618efc02c5c8115a882bb56d234c7cd3a6",
  "requestsSha256": "a434f2eb7ec52a2c4b9eba709618263919c790a50dce2c075a7d390128a05c4d",

@@ -43,9 +43,9 @@ purposes of its redeemers, whether it has sub-transactions and a validity interv
 least cost per script new to the sample, its cost being its size times its number of redeemers; then,
 round by round over the strata, the same among the transactions of at most two redeemers and at most
 twice the median size of their stratum, which keeps the fixture small. The rule is deterministic, and
-`cases` collected the outputs the sample spends in a second reading of the chain. On 2026-11-16 the scanner as
-committed with the image check read the same database again and wrote the same scan, sample and
-`cases.json`, byte for byte.
+`cases` collected the outputs the sample spends in a second reading of the chain. On 2026-11-16 a later revision of
+the scanner, the one committed with the first image check, read the same database again and wrote
+the same scan, sample and `cases.json`, byte for byte.
 
 ## Files
 
@@ -59,7 +59,8 @@ outputs its inputs, collateral and reference inputs spend, each encoded as the c
 transaction and of each sub-transaction, the `ToCBOR PlutusWithContext` encoding (the protocol
 version, the script with its language, the arguments, the redeemer's execution units and the cost
 model), in the order the reference collects them. `provenance.json` binds both with the chain's
-tip and the extraction script's hash, and binds the oracle (`oracle`): the immutable ID of the image
+tip and the hash of the extraction script as it was when it extracted them (not the current
+script's), and binds the oracle (`oracle`): the immutable ID of the image
 that answered, without network, and the digests of its harness, package, cabal project and
 executable, measured in the image by [`chain/run.py`](../../../scripts/oracle/leios-testnet/README.md#the-chains-own-transactions-54)
 before it answered, with the ledger and cardano-base checkouts at the commits the project pins and
