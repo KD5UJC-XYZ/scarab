@@ -677,8 +677,10 @@ class EraConwaySuite extends munit.FunSuite:
     val cold = Credential.KeyHashObj[ColdCommittee](
       KeyHash.fromBytes(Bytes.fromHex(k).toOption.get).toOption.get
     )
+    // the bounds: a parameter change setting rho to one, guarded by a script; the highest version
+    // Conway's action reads, 12, and the highest minor version; a member until the last epoch, and
+    // a threshold of one
     val expected: Vector[(String, GovAction[Conway])] = Vector(
-      // a parameter change setting rho to one, guarded by a script
       s"8400${id}a10ad81e820101581c$s" -> GovAction.ParameterChange(
         parent,
         PParamsUpdate[Conway](
@@ -686,7 +688,6 @@ class EraConwaySuite extends munit.FunSuite:
         ),
         Some(ScriptHash.fromBytes(Bytes.fromHex(s).toOption.get).toOption.get)
       ),
-      // the highest version Conway's action reads, 12, and the highest minor version
       s"8301${id}820c1affffffff" -> GovAction.HardForkInitiation(
         parent,
         ProtVer(Version.lit(12), Unsigned.lit[Unsigned.Width.W32](0xffffffffL))
@@ -699,7 +700,6 @@ class EraConwaySuite extends munit.FunSuite:
         None
       ),
       s"8203$id" -> GovAction.NoConfidence(parent),
-      // a member until the last epoch, a threshold of one
       s"8504f681$key" + s"a1${key}1bffffffffffffffff" + "d81e820101" -> GovAction
         .UpdateCommittee(
           None,
@@ -764,9 +764,8 @@ class EraConwaySuite extends munit.FunSuite:
         s"8504f680a1${key27}01d81e820101",
         _ == LedgerDecodeError.ByteLength(DecodeField.CommitteeMember, 28, 27)
       ),
-      // a CBOR unsigned integer is at most 2^64 - 1, and a bignum is not one
       (
-        "a member's term as a bignum, 2^64",
+        "a member's term as a bignum, 2^64 (a CBOR unsigned integer is at most 2^64 - 1)",
         s"8504f680a1${key}c249010000000000000000d81e820101",
         bignum
       ),
