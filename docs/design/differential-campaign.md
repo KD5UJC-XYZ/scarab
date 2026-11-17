@@ -7,7 +7,7 @@ are made here, and the re-check that [CONTRIBUTING](../../CONTRIBUTING.md#levels
 **No persisted format changes**: a kept input lives in a directory of its own, off the persisted-format surface (§7.4,
 [FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
 
-In-tree code is cited by path, symbol and line at `fdd5834f2`. The claims about the reference (R1 to R22) and what
+In-tree code is cited by path, symbol and line at `fdd5834f2`. The claims about the reference (R1 to R25) and what
 is not checked (N1 to N16), with their pins, are in [§3's own page](differential-campaign-reference.md).
 
 ## 1. What the campaign is for
@@ -165,7 +165,7 @@ adapters (§2.7) generate and judge new Conway cases with the reference's own ru
 ## 3. What the reference does
 
 In [its own page](differential-campaign-reference.md): a transaction from a local client (§3.1) and from a peer
-(§3.2), a header (§3.3) and a block from a peer (§3.4), the claims with their pins (§3.5, R1 to R22) and what is not
+(§3.2), a header (§3.3) and a block from a peer (§3.4), the claims with their pins (§3.5, R1 to R25) and what is not
 checked (§3.6, N1 to N16). This document cites them by their IDs.
 
 ## 4. The shape of the campaign
@@ -322,13 +322,21 @@ table ([STR-2](../design-rules.md#str-2)).
   probes, and the check confirms it.
 - **A switch between blocks of the same slot.** A snapshot shows the slot after the mempool's tip but not its hash,
   and the mempool resyncs on the hash as well as the slot (R22): after a switch from one block to another of the same
-  slot, the tips and the snapshot can read alike while the mempool still judges against the block it left. In the
-  shared cluster a local ChainSync follower on each node (as `scripts/devnet/ntclocal.py` speaks it, 85-100) records
-  every roll-back and roll-forward. After a switch whose new tip has the slot of the tip it replaced, that node's
-  context is unsynchronised until its snapshot's slot has moved past the switch, which shows a resync to a later tip; a
-  probe judged in that window, or before both followers have reached the bracket's tip, is `NoVerdict`. In the
-  injector cluster the injector serves no such switch outside a chain-selection probe, and after one judges no
-  transaction until both snapshots have moved past it.
+  slot, the tips and the snapshot can read alike while the mempool still judges against the block it left. A local
+  ChainSync follower cannot show it, since it does not see every change of the selection (R23). Such a switch always
+  rolls back, so each node's own chain-selection log does: the reference traces every switch that rolls back as
+  `SwitchedToAFork`, with its new tip, under default options and with no limiter (R24), and Scarab emits `rolledBack`
+  when it commits one (`Follower.committing`, `node/src/main/scala/xyz/kd5ujc/scarab/node/Follower.scala` 571-597;
+  that no other path changes its selection is an S1 check). A plain extension, which the reference's limiter may drop
+  from the log, cannot be such a switch. In the shared cluster, after any switch in a node's log, that node's context
+  is unsynchronised until its snapshot's slot has moved past the switch's new tip, which shows a resync to a later
+  tip. A probe is judged only once each node's log has been read a fixed margin past the bracket's last read, and a
+  probe inside a window is `NoVerdict`. The margin covers the moment between a switch's commit and its log line, which
+  the source does not bound (R24): the shared cluster's contexts are trace-checked, not proven, so a disagreement
+  found there counts only once it is confirmed in a clean context (§7.3). Exact contexts are the injector cluster's:
+  there the injector serves no such switch outside a chain-selection probe, and after one judges no transaction until
+  both snapshots have moved past it. S1 tests the rule on recorded logs, among them a log whose extensions the limiter
+  dropped, a switch a lagging follower would have missed, and a switch whose line arrives within the margin.
 - **Every attempt is recorded**, with its bracket and its reply, including one whose bracket then moved and one whose
   reply never came: an attempt is part of the context whether or not it was judged.
 - **Reset and reconstruction.** After a bracket that moved, a reply that never came (a timeout, a lost connection) or
@@ -441,20 +449,29 @@ began, and `main`'s public history, from which the commit rule picks the commits
 It says that the period ran under that configuration, and nothing more: no outcome, no coverage, no run count and no
 seed. Whether a run completed, failed or was repeated is an outcome.
 
-**After clearance: the results.** Once every finding of a period is cleared, its results are published: per cell (§9.1)
-the probes tried, the conclusive verdicts of each class, the inconclusive attempts and whether the cell met its
-minimums; the runs and their results; and the seeds. Truthful coverage stays private until then. A seed is 256 bits
-from the operating system's random source, and is released only once every finding derivable from its run is cleared.
-Results are released in period order, on the first fixed release date that is a fixed embargo after the period's end
-and on which that period and every earlier one are cleared.
+**After clearance: the results.** Once every finding of a period is cleared, and the disclosure of each disclosed one
+authorised, its results are published: per cell (§9.1) the probes tried, the conclusive verdicts of each class, the
+inconclusive attempts and whether the cell met its minimums; the runs and their results; and the seeds. Truthful
+coverage stays private until then. A seed is 256 bits from the operating system's random source, and is released only
+once every finding derivable from its run is cleared. Results are released in period order, on the first fixed release
+date that is a fixed embargo after the period's end and on which that period and every earlier one are cleared.
 
-**The disclosure gate**, part of S1's jump gate and of every later change to the runner or to publication, runs the
-whole pipeline on pairs of test periods with the same public configuration and different private outcomes: no finding,
-one finding, several, a failed run, a timed-out run, a cleanup error, a recovery run. Each pair must publish
-byte-identical output at identical times up to the period's results release date: the announcement's bytes and its
-release time, and no results before that date. On the date itself the pair is compared only when both periods are
-cleared, since only then may results appear. It checks every allowed field's value, cardinality and release time, not
-only its name, and that each test run leaves nothing outside its run directory and the private store.
+**The disclosure gate** is part of S1's jump gate and of every later change to the runner, to publication or to the
+public configuration record. Its observable channels are the announcements, the results, the evidence rows, the
+public configuration record and each of its revisions, the commits of kept inputs, and public CI's replay of them;
+on each it checks the values, the cardinality and the timing of what appears, not only its fields' names. It runs the
+whole pipeline on pairs of test histories that share their public history (`main` and the configuration record) and
+their clock, and differ in private outcomes: no finding, one finding, several, a failed run, a timed-out run, a
+cleanup error, a recovery run. Some pairs span a revision of the configuration record, one of them prompted by an
+uncleared finding, and the publication of a kept input of an earlier, cleared finding. It has two parts:
+
+- *Before authorised disclosure*, each pair must give byte-identical output on every channel at identical times,
+  until one of its findings is cleared and its disclosure authorised.
+- *After it*, results rightly differ, so three things are tested apart from byte equality: nothing of a period (its
+  results, a seed, a kept input) appears before its clearance and authorisation; once they hold, its results appear
+  on the first release date due (§8) and on no other; and what appears equals the private record.
+
+Each test run also leaves nothing outside its run directory and the private store.
 
 Node logs are the subtle leak: the reference's refusal trace carries the transaction and its error (R18; what its log
 prints of it is N13), and Scarab's logs may carry its own. They stay on the private runner. Neither `e2e.yml`'s
@@ -478,7 +495,7 @@ the campaign leads to is its own change at its own level.
 | Stage | Delivers | Jump gate |
 |---|---|---|
 | S0 | This document; its claims checked independently. | The review's check of §3 at the pins, and the owner's answers to §10. |
-| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The committed refusal corpus judged again, every case conclusive and in agreement, each era before Conway through its adapter; every S1 cell of the coverage matrix (below), the measure and sequence cells replayed offline to the same verdicts; the same-slot rule (§6) tested on recorded tip sequences, and no probe of the run judged inside its window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
+| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The committed refusal corpus judged again, every case conclusive and in agreement, each era before Conway through its adapter; every S1 cell of the coverage matrix (below), the measure and sequence cells replayed offline to the same verdicts; the same-slot rule's tests (§6), and no probe of the run judged inside a window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
 | S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | Every S2 cell of the coverage matrix; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
 | S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | Every S3 cell of the coverage matrix. |
 | S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11, N14 and N16. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; every S4 cell of the coverage matrix; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
@@ -521,7 +538,10 @@ Once S5 is stable, discovery runs nightly on the private runner, one job of at m
 families and eras so that every cell (§9.1) meets its fixed quota in every period, with slack for the runs a finding
 cuts short; a weekly run is long enough to cross an epoch boundary and an era transition. The budget, the period, the
 quotas and the embargo are configuration, in the public configuration record (§8); a change to them is a change to
-this section.
+this section. The record changes only at a period's start, with that period's announcement. A change prompted by a
+finding not yet cleared (a family set aside, a quota moved) applies only privately until the finding is cleared and
+authorised for disclosure, and shows in the period's results; so the record's revisions are the same whether or not a
+finding prompted one.
 
 The evidence rows follow [How evidence is recorded](../../CONTRIBUTING.md#how-evidence-is-recorded) and the [evidence
 log](../compatibility.md#evidence-log), in §8's two stages. The first, on the announcement's date, is the

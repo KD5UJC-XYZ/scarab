@@ -2,7 +2,7 @@
 # A differential campaign against the reference: what the reference does
 
 **Status**: Proposal, 2026-11-16, the reference claims of the [differential campaign](differential-campaign.md)
-([#922](https://github.com/KD5UJC-XYZ/scarab/issues/922)), which cites them by their IDs (R1 to R22, N1 to N16); its
+([#922](https://github.com/KD5UJC-XYZ/scarab/issues/922)), which cites them by their IDs (R1 to R25, N1 to N16); its
 sections keep the campaign's numbering (§3). All of it is derived from source, not from a capture; §3.5 lists the
 claims with their pins.
 
@@ -30,9 +30,11 @@ tip, not to the wall clock (R3), with every transaction at index `minBound` (R21
 against the per-transaction limits (its size, and from Alonzo on its units, by the measures' names; N15) and refuses
 at once one that fails; only then does it wait until the transaction fits, and then validate it (R4, R21). The mempool
 follows the chain through a background thread, so just after a block it can still judge against the previous tip
-(R19); a LocalTxMonitor snapshot shows its slot but not its tip's hash (R22). In Conway the MEMPOOL rule refuses,
-before LEDGER, a transaction whose inputs are all spent and, below a protocol version its comment names as 11, votes
-by unelected committee members (R6): a mempool verdict can differ from the verdict on the same transaction in a block.
+(R19); a LocalTxMonitor snapshot shows its slot but not its tip's hash (R22), and a local ChainSync follower does not
+see every change of the selection (R23), while the chain-selection trace does see every fork switch (R24). In Conway
+the MEMPOOL rule refuses, before LEDGER, a transaction whose inputs are all spent and, below a protocol version its
+comment names as 11, votes by unelected committee members (R6): a mempool verdict can differ from the verdict on the
+same transaction in a block.
 
 Validation is timed. With the node's default limits, a Conway transaction whose validation finishes after more than
 1 s is refused, whoever submitted it, with an error whose text holds the measured duration and the transaction id; a
@@ -105,6 +107,9 @@ the `InvalidBlock` trace, not from a disconnect.
 | R20 | Shelley, Allegra, Mary and Alonzo blocks are TPraos blocks; Babbage, Conway and Dijkstra blocks are Praos blocks. | consensus 82ecba32 `-cardano` `Cardano/Block.hs` 250-256 | yes |
 | R21 | A Shelley-based transaction is applied with the ledger's mempool environment: the slot the mempool ticked to and the index `minBound`, on the state left by the transactions before it. Its phase-1 measure is `txInBlockSize` from Shelley to Mary and `txMeasureAlonzo` (an `AlonzoMeasure`) from Alonzo on. | consensus 82ecba32 `shelley` `Shelley/Ledger/Mempool.hs` 301-323, 522-542, 668-676, 752-770; ledger 4c81e909 `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs` 368-377 | yes, except the measures' bodies: what each measures and refuses is N15 |
 | R22 | LocalTxMonitor's acquired snapshot gives its slot (`snapshotSlotNo`) and its transactions, not the hash of the tip it rests on; the mempool resyncs unless both the tip's hash and the slot are unchanged. | consensus 82ecba32 `MiniProtocol/LocalTxMonitor/Server.hs` 49-63; `Mempool/Update.hs` 587-596 | yes |
+| R23 | A ChainDB follower (local ChainSync) reads successors from the current chain, and a fork switch moves it only when its position is on the suffix the switch removes: it does not see every change of the selection. | consensus 82ecba32 `Storage/ChainDB/Impl/Follower.hs` 428-439, 540-564 | yes |
+| R24 | Every change of the selection's tip goes through `switchTo`, which writes the chain and then traces `AddedToCurrentChain` when nothing was rolled back and `SwitchedToAFork` otherwise; the only other write removes the oldest header. cardano-node traces both at Notice (or a ledger event's higher severity) with the new tip, under `ChainDB`, which its default options show from Info; it sends `AddedToCurrentChain` without ledger events through a built-in frequency limiter, and `SwitchedToAFork` through none. | consensus 82ecba32 `Storage/ChainDB/Impl/ChainSel.hs` 898-972, `Storage/ChainDB/Impl/Background.hs` 217-226; node 11.1.3 `Tracing/Tracers/ChainDB.hs` 74-89, 640-690, 813-821, `Tracing/Tracers.hs` 118-120, `Tracing/DefaultTraceConfig.hs` 27-28 | yes; what a devnet node's log shows of it is N11 |
+| R25 | The hard-fork combinator refuses a header of the wrong era in its envelope check (`HardForkEnvelopeErrWrongEra`) and a block of the wrong era when applying it (`HardForkLedgerErrorWrongEra`): a block of the old era after a boundary is never adopted. | consensus 82ecba32 `HardFork/Combinator/Ledger.hs` 243-255, 336-347 | yes; which of the two a node reports is N16 |
 
 ## 3.6 Not checked
 
