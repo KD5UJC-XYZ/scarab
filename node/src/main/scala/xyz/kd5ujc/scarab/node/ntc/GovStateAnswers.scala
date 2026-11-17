@@ -12,8 +12,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Vers
   * (`answerPureBlockQuery` and `encodeShelleyResult`, `Shelley/Ledger/Query.hs:415-416, 456-457,
   * 1011, 1032`, ouroboros-consensus 82ecba32), with the era's codecs of the ledger state.
   *
-  * Dijkstra's parameters have no codec in this build ([[Params.codec]]), so a Dijkstra state
-  * answers neither.
+  * The Leios layout has Dijkstra's parameters codec ([[Params.codecIn]]), but these answers still
+  * use the 11.1 layout's ([[Params.codec]]), which refuses Dijkstra, so a Dijkstra state answers
+  * neither yet (https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961866679).
   */
 object GovStateAnswers:
   /** `GetCurrentPParams`: `getPParams`, the current parameters of the era's governance state
