@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Evidence log, part 3 of 5
+# Evidence log, part 3 of 6
 
 Part of the [compatibility matrix](../compatibility.md#evidence-log). Each run is one bullet with its former table columns as sub-bullets; the text of every cell is unchanged.
 
-Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 4](evidence-log-4.md), [part 5](evidence-log-5.md).
+Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 4](evidence-log-4.md), [part 5](evidence-log-5.md), [part 6](evidence-log-6.md).
 
 - **Run:** `devnet.py --name f132-ntc-final ntc` (#132, #154)
   - **Result:** All protocol checks passed: 18 rounds, 986/986 implemented query comparisons with the existing ledger-state gap mask; 88/88 supported versioned replies and 48/48 out-of-contract refusals; 23 supported CLI queries and 20 raw/text transaction refusals equal; valid, flagged and CLI-built submissions included; all 76 local ChainSync blocks equal; 573 comparable monitor snapshots (224 nonempty) equal, both awaiters wake, fresh clients healthy after refusals. Original runner exited 1 solely because normal EOF is now rendered `connection closed: closed by peer`; the exact whitelist adaptation and negative controls pass 158 Python tests, and replaying the retained user-CLI close observations clears that sole failure

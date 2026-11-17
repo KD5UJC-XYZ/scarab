@@ -122,11 +122,12 @@ Unit and property suites, golden and oracle fixtures, devnet scenarios, Preview 
 
 Numbers from recorded runs, each naming the commit, date and command it was obtained with. Runs are listed in the order of the former table.
 
-- [Evidence log, part 1 of 5](compatibility/evidence-log-1.md)
-- [Evidence log, part 2 of 5](compatibility/evidence-log-2.md)
-- [Evidence log, part 3 of 5](compatibility/evidence-log-3.md)
-- [Evidence log, part 4 of 5](compatibility/evidence-log-4.md)
-- [Evidence log, part 5 of 5](compatibility/evidence-log-5.md)
+- [Evidence log, part 1 of 6](compatibility/evidence-log-1.md)
+- [Evidence log, part 2 of 6](compatibility/evidence-log-2.md)
+- [Evidence log, part 3 of 6](compatibility/evidence-log-3.md)
+- [Evidence log, part 4 of 6](compatibility/evidence-log-4.md)
+- [Evidence log, part 5 of 6](compatibility/evidence-log-5.md)
+- [Evidence log, part 6 of 6](compatibility/evidence-log-6.md)
 
 ## Not checked at all
 

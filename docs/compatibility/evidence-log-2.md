@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Evidence log, part 2 of 5
+# Evidence log, part 2 of 6
 
 Part of the [compatibility matrix](../compatibility.md#evidence-log). Each run is one bullet with its former table columns as sub-bullets; the text of every cell is unchanged.
 
-Other parts: [part 1](evidence-log-1.md), [part 3](evidence-log-3.md), [part 4](evidence-log-4.md), [part 5](evidence-log-5.md).
+Other parts: [part 1](evidence-log-1.md), [part 3](evidence-log-3.md), [part 4](evidence-log-4.md), [part 5](evidence-log-5.md), [part 6](evidence-log-6.md).
 
 - **Run:** K2 Handshake/codec private relay gate (#49): `devnet.py --name scarab-49-network-codecs-relay relay --seconds 300 --every 10 --seed 491019 --keep-data`
   - **Result:** PASS: 30 samples, epochs 2–7, all final tips equal at block208/hash4ac9d26bba39; 29/30 samples at tip, maximum lag3. Local submission accepted and adopted; 98 load submissions plus the local transaction yield 99 Scala mempool arrivals and 97 inclusions, zero Scala mempool refusals/drops, node errors or unparsed output. Twelve reconnects and four load-build refusals retained. Inbound duplex headers advance2→176; reference negotiates actual node-to-node version15
