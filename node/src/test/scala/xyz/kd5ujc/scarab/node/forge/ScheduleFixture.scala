@@ -205,6 +205,9 @@ trait ScheduleFixture extends ForgeFixture:
     * clock moves back by its duration, within the rewind allowance, and stays behind. `within`: the
     * changes made on both paths when an attempt reaches a point (the per-slot decision's attempt
     * passes the same points). `known`: the slots the scheduled run's clock can know (its horizon).
+    * `timed`: the changes made on the scheduled run when its test clock has run that long from the
+    * run's start, and on the per-slot run when its attempt reaches the point; the scheduled run
+    * ends only once they are made.
     */
   final case class Scenario(
       seed: Int,
@@ -222,7 +225,8 @@ trait ScheduleFixture extends ForgeFixture:
       margin: Vector[(BigInt, Change)] = Vector.empty,
       behind: Option[(BigInt, FiniteDuration)] = None,
       within: Vector[(Forger.Point, Change)] = Vector.empty,
-      known: BigInt => Boolean = _ => true
+      known: BigInt => Boolean = _ => true,
+      timed: Vector[(FiniteDuration, Forger.Point, Change)] = Vector.empty
   ):
     /** The longest the scheduled run may take on the test clock, past which it fails. */
     def bound: FiniteDuration = ((until - from).toLong + 120).seconds
@@ -255,8 +259,9 @@ trait ScheduleFixture extends ForgeFixture:
   /** The scheduled forger's run of `sc` on the test clock, and what it published, bounded by
     * `sc.bound` on that clock: a settlement that never comes fails the run, and the forger is
     * cancelled whatever happened. The test clock starts at the onset of `sc.from`, and is driven to
-    * each change of a slot's margin, which is made when the clock is there, and to the moment the
-    * wall clock moves back (`sc.behind`), after which the wall clock reads that far behind it.
+    * each change of a slot's margin and each timed change, which is made when the clock is there,
+    * and to the moment the wall clock moves back (`sc.behind`), after which the wall clock reads
+    * that far behind it.
     */
   def scheduledRun(sc: Scenario, p: Pool): IO[Outcome] =
     val start = geometry.slotStart(sc.from)
@@ -266,8 +271,16 @@ trait ScheduleFixture extends ForgeFixture:
       due <- sc.margins.traverse((slot, nth, change) =>
         Deferred[IO, Unit].map(d => (slot, nth, change, d))
       )
+      timed <- sc.timed.traverse((after, _, change) =>
+        Deferred[IO, Unit].map(d => (after, change, d))
+      )
       control <- TestControl.execute(
-        scheduledOn(sc, p, back, due.map((_, _, change, d) => change -> d))
+        scheduledOn(
+          sc,
+          p,
+          back,
+          due.map((_, _, change, d) => change -> d) ++ timed.map((_, change, d) => change -> d)
+        )
       )
       // on the test clock, which the wall clock's moving back does not move: the rewind first at
       // its instant, then each change of a margin
@@ -279,7 +292,7 @@ trait ScheduleFixture extends ForgeFixture:
           1,
           d.complete(()).void
         )
-      )
+      ) ++ timed.map((after, _, d) => (after, 1, d.complete(()).void))
       _ <- events.sortBy((at, order, _) => (at, order)).foldLeftM(Duration.Zero) {
         (reached, event) =>
           val (at, _, act) = event
@@ -295,8 +308,8 @@ trait ScheduleFixture extends ForgeFixture:
         case None => IO.raiseError(new AssertionError("the scheduled run did not end"))
     yield outcome
 
-  /** The program of [[scheduledRun]]: each change of a slot's margin is made once its `due` is
-    * completed.
+  /** The program of [[scheduledRun]]: each change of a slot's margin, and each timed change, is
+    * made once its `due` is completed.
     */
   private def scheduledOn(
       sc: Scenario,
@@ -344,7 +357,7 @@ trait ScheduleFixture extends ForgeFixture:
         timed <- margins.traverse((change, due) => (due.get *> change(here)).start)
         fiber <- h.forger.run.start
         ended <- (sc.before.traverse_((slot, change) => h.settled(slot - 1) *> change(here)) *>
-          IO.race(h.settled(sc.until), fiber.join))
+          IO.race(h.settled(sc.until) *> timed.traverse_(_.join), fiber.join))
           .timeout(sc.bound)
           .guarantee(fiber.cancel *> timed.traverse_(_.cancel))
         _ <- ended.fold(
@@ -356,13 +369,15 @@ trait ScheduleFixture extends ForgeFixture:
         _ <- IO
           .raiseError(new AssertionError(s"points never reached: ${left.keys}"))
           .whenA(left.nonEmpty)
-        // and every change of a slot's margin, before the run's last slot was settled
+        // and every change of a slot's margin and every timed change
         made <- timed.traverse(_.join)
         _ <- made.traverse_ {
           case cats.effect.kernel.Outcome.Succeeded(_) => IO.unit
           case cats.effect.kernel.Outcome.Errored(e)   => IO.raiseError(e)
           case cats.effect.kernel.Outcome.Canceled() =>
-            IO.raiseError(new AssertionError("a change of a slot's margin was never made"))
+            IO.raiseError(
+              new AssertionError("a change of a slot's margin or a timed change was never made")
+            )
         }
         events <- h.seen
         held <- h.mempool.snapshot
@@ -377,7 +392,9 @@ trait ScheduleFixture extends ForgeFixture:
     for
       at <- Ref.of[IO, Instant](geometry.slotStart(sc.from))
       reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
-      hooks <- Ref.of[IO, Map[Forger.Point, Change]](sc.within.toMap)
+      hooks <- Ref.of[IO, Map[Forger.Point, Change]](
+        (sc.within ++ sc.timed.map((_, point, change) => point -> change)).toMap
+      )
       here <- Deferred[IO, Side]
       h <- harness(
         p,

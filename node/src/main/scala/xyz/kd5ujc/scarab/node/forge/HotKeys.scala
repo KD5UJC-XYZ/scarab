@@ -73,13 +73,14 @@ enum ReloadRefusal:
     case Counter(e)          => e.message
 
 /** An attempt's admission (#1101): when it began, or was made again, the forger's clock fiber had
-  * published `through`, so every slot up to it is admitted, as the reference's blockchain time had
-  * handed it to the forging thread. Only an admitted attempt changes the KES state for its slot
-  * (the key evolved, or poisoned and erased, or a period's update made for the forger to record);
-  * it keeps its admission for its duration, as the per-slot loop goes on with a slot it has begun
-  * should the clock go back meanwhile (after a spell in which the slot was unknown, as the
-  * reference's can, `checkValidClockChange`). Made only from the clock fiber's published slot, and
-  * for the per-slot decision of a slot, admitted at the slot it decides.
+  * published `through`, or the slot driver had taken that publication, so every slot up to it is
+  * admitted, as the reference's blockchain time had handed it to the forging thread. Only an
+  * admitted attempt changes the KES state for its slot (the key evolved, or poisoned and erased, or
+  * a period's update made for the forger to record); it keeps its admission for its duration, as
+  * the per-slot loop goes on with a slot it has begun should the clock go back meanwhile (after a
+  * spell in which the slot was unknown, as the reference's can, `checkValidClockChange`). Made only
+  * from the clock fiber's published slot, which the slot driver keeps as it takes it, and for the
+  * per-slot decision of a slot, admitted at the slot it decides.
   */
 final class Admitted private (val through: BigInt):
   /** Whether it admits a change for `slot`. */

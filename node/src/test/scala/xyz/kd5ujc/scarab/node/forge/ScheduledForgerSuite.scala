@@ -589,6 +589,77 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     }
   }
 
+  test("an early claim's attempt made again is admitted by the slot driver's take, as per slot") {
+    // 5101 is led and claimed early, its attempt not admitted and held before the key. The clock
+    // publishes 5101, and the slot driver takes it and awaits the claim. The clock finds 5102
+    // unknown and, after its backoff, reads the wall clock moved back into period 50 and publishes
+    // 5091; a reload installs another KES key under a certificate from period 50 (counter 0), taken
+    // at relative period 0. The attempt goes on and, not admitted, ends with the key unmoved; made
+    // again, admitted by the driver's take of 5101, it moves the key to 5101's period, as the
+    // per-slot decision of 5101 does, and the slot is settled before the clock comes back to 5101.
+    // Three seconds on, the wall clock still in period 50, that key's certificate issued again
+    // (counter 1) is refused, as it is after the per-slot decision of 5101 has moved the key
+    val s = BigInt(5101)
+    val seed = seedLeading(Vector(s))
+    val other = seed + 200
+    val installed: Change = side =>
+      side.way match
+        case Way.Scheduled =>
+          side.h.events.discrete
+            .find(_.exists {
+              case ForgeEvent.Clock(_: ClockTrace.CurrentSlotUnknown) => true
+              case _                                                  => false
+            })
+            .compile
+            .drain *> side.rewind(71.seconds) *>
+            side.h.forger.clockSlot.discrete.find(_.exists(_ < s - 1)).compile.drain *>
+            otherKes(other, 50, counter = 0)(side)
+        case Way.PerSlot => side.rewind(10.seconds) *> otherKes(other, 50, counter = 0)(side)
+    withHandle {
+      Ref
+        .of[IO, Option[Option[BigInt]]](None)
+        .flatMap { published =>
+          val settledAt: Change = side =>
+            side.way match
+              case Way.Scheduled => side.h.forger.clockSlot.get.flatMap(c => published.set(Some(c)))
+              case Way.PerSlot   => IO.unit
+          compared(
+            Scenario(
+              seed,
+              alone,
+              s - 2,
+              s,
+              known = slot => slot <= s || slot >= s + 1000,
+              within = Vector(Forger.Point.Context(s) -> installed),
+              timed = Vector((66.seconds, Forger.Point.Handing(s), otherKes(other, 50))),
+              before = Vector(s + 1 -> settledAt)
+            )
+          ).flatMap(c => published.get.map(c -> _))
+        }
+        .map { (c, published) =>
+          def refused(events: Vector[ForgeEvent]) = events.collect {
+            case r: ForgeEvent.KesReloadRefused => r
+          }
+          assertEquals(refused(c.scheduled), refused(c.perSlot), "the reloads refused")
+          assertEquals(
+            refused(c.perSlot),
+            Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0)))
+          )
+          same(c)
+          def counter(events: Vector[ForgeEvent]) = events.collect {
+            case f: ForgeEvent.Forged if f.slot == s => f.opCertCounter
+          }
+          assertEquals(counter(c.scheduled), counter(c.perSlot), "the certificate signed under")
+          assertEquals(counter(c.perSlot), Vector(BigInt(0)))
+          // the slot driver was not left waiting for the clock to come back to 5101
+          assert(
+            published.flatten.exists(_ < s - 1),
+            s"5101 settled once the clock had published $published"
+          )
+        }
+    }
+  }
+
   // ---- what an operator sees of the slots not led (#1101, Q1 and Q2)
 
   /** The scheduled forger's events from `from` to `until`, and its counters of epoch 5. */
