@@ -67,10 +67,16 @@ A SIGHUP reload installs the new topology, then reads the peer snapshot on its o
 (`Run.hs` 413-430 before consensus has initialised, 596-614 after, 673-757; checked by reading; what the runtime handler
 traces and writes to standard error checked by running cardano-node 11.1.3 on 2026-11-17,
 [#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6933331883); the first handler was not run).
-The new topology is installed, with the snapshot in force, before the file is read, as the reference writes the
-topology's variables (697-702) before it reads the file (725-731); a snapshot read that differs from the one in force
-is then installed in its turn, and `snapshotLoaded` or `snapshotIgnored` is said where the file is read, at start-up
-and at a reload, not for a snapshot kept or dropped.
+The new topology is installed once, a root generation of its own, before the file is read, as the reference writes the
+topology's variables (697-702) before it reads the file (725-731). The snapshot read is then written, `None` included,
+to what the ledger-peers worker reads (757): the worker takes it at its next rebuild of the stake maps, as the
+reference's thread reads `wlpGetLedgerPeerSnapshot` only once its cache has aged out (ouroboros-network c45735a5
+`PeerSelection/LedgerPeers.hs` 277-287); no new root generation. In Genesis mode a snapshot at another block point
+than the one taken last arms the immutable-chain check again, and `None` or the same point does not, as
+`ledgerPeerSnapshotChange` takes a snapshot (`Governor/Monitor.hs` 432-459, cardano-diffusion `Governor/Types.hs`
+172-173). `snapshotLoaded` or `snapshotIgnored` is said where the file is read, at start-up and at a reload, not for a
+snapshot kept or dropped. `NetworkConfigSuite` and `LedgerPeersWiringSuite` show one generation per reload, the
+worker taking a new snapshot without being made again, and the check armed again only for another point.
 At runtime a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the origin or of another
 network, is dropped: the new topology stays with no snapshot, and nothing is said, since the reference's
 `NetworkConfigUpdateError` there is discarded (`Run.hs` 720-722, 734-736). In Praos mode a file it cannot read is
