@@ -5,6 +5,7 @@ import cats.Order
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Interned, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.Nonce
+import xyz.kd5ujc.scarab.ledger.json.BoundedRatio
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Sorted, VocabError, Word64}
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
@@ -140,41 +141,49 @@ object Wire:
       out.integer(a.numerator)
       out.integer(a.denominator)
 
-  /** A bounded ratio (`UnitInterval`, `NonNegativeInterval`): always tag 30, whatever the version
-    * (`Plain.encodeRatioWithTag`, `BaseTypes.hs:384`), both numbers `Word64`, and in `lo..hi` (`hi`
-    * absent: unbounded above). The decoder requires the tag (`decodeRationalWithTag`).
+  /** A bounded ratio (`UnitInterval`, `NonNegativeInterval`, `PositiveInterval`): always tag 30,
+    * whatever the version (`Plain.encodeRatioWithTag`, `BaseTypes.hs:384`), both numbers `Word64`,
+    * and in `lo..hi` (`hi` absent: unbounded above). The decoder requires the tag
+    * (`decodeRationalWithTag`).
     */
-  private def bounded(what: String, hi: Option[Rational]): Codec[Rational] = new Codec[Rational]:
-    private val max = (BigInt(1) << 64) - 1
-    def decode(n: Node): Decoded[Rational] = n.value match
-      case Value.Tag(t, inner) if t == 30 =>
-        ratioItems(inner).flatMap { (num, den) =>
-          val r = Rational(num, den)
-          val fits = r.numerator.signum >= 0 && r.numerator <= max && r.denominator <= max
-          if fits && hi.forall(r <= _) then Right(r)
-          else Left(DecodeError.at(n, Kind.OutOfRange(what, num)))
-        }
-      case Value.Tag(t, _) => Left(DecodeError.at(n, Kind.BadTag(30, t)))
-      case _               => Left(Codec.mismatch("tag 30", n))
-    def encode(a: Rational, out: Writer): Unit =
-      out.tag(30)
-      out.arrayHead(2)
-      out.uint(a.numerator)
-      out.uint(a.denominator)
-    override def check(a: Rational): Option[ConstraintViolation] =
-      Codec.refuse(
-        !(a.numerator.signum >= 0 && a.numerator <= max && a.denominator <= max &&
-          hi.forall(a <= _)),
-        "ratio",
-        what,
-        s"${a.numerator}/${a.denominator}"
-      )
+  private def bounded(what: String, lo: Rational, hi: Option[Rational]): Codec[Rational] =
+    new Codec[Rational]:
+      private val max = (BigInt(1) << 64) - 1
+      def decode(n: Node): Decoded[Rational] = n.value match
+        case Value.Tag(t, inner) if t == 30 =>
+          ratioItems(inner).flatMap { (num, den) =>
+            val r = Rational(num, den)
+            val fits = r.numerator.signum >= 0 && r.numerator <= max && r.denominator <= max
+            if fits && r >= lo && hi.forall(r <= _) then Right(r)
+            else Left(DecodeError.at(n, Kind.OutOfRange(what, num)))
+          }
+        case Value.Tag(t, _) => Left(DecodeError.at(n, Kind.BadTag(30, t)))
+        case _               => Left(Codec.mismatch("tag 30", n))
+      def encode(a: Rational, out: Writer): Unit =
+        out.tag(30)
+        out.arrayHead(2)
+        out.uint(a.numerator)
+        out.uint(a.denominator)
+      override def check(a: Rational): Option[ConstraintViolation] =
+        Codec.refuse(
+          !(a.numerator.signum >= 0 && a.numerator <= max && a.denominator <= max &&
+            a >= lo && hi.forall(a <= _)),
+          "ratio",
+          what,
+          s"${a.numerator}/${a.denominator}"
+        )
 
   /** `UnitInterval`: a ratio in 0..1. */
-  val unitInterval: Codec[Rational] = bounded("a ratio in 0..1", Some(Rational.one))
+  val unitInterval: Codec[Rational] = bounded("a ratio in 0..1", Rational.zero, Some(Rational.one))
 
   /** `NonNegativeInterval`: a ratio of two `Word64`s. */
-  val nonNegativeInterval: Codec[Rational] = bounded("a non-negative ratio", None)
+  val nonNegativeInterval: Codec[Rational] = bounded("a non-negative ratio", Rational.zero, None)
+
+  /** `PositiveInterval` (cardano-ledger 9df9f98c `BaseTypes.hs:489-510`): a ratio of two `Word64` s
+    * of at least `positiveIntervalEpsilon`, `1 % 10^19`.
+    */
+  val positiveInterval: Codec[Rational] =
+    bounded("a positive ratio", BoundedRatio.Positive.lower, None)
 
   // ---- options
 

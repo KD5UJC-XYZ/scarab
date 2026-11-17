@@ -276,6 +276,138 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
    "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads the Praos2 state of a captured Leios devnet state (no announcement), checks each of its nine fields against the values read off the file's raw bytes, and writes it back byte for byte; the bytes of an announcement are derived from the source",
    "digest": "b7d12f6ad3bcdea7"
+  },
+  "def storage.haskell.state.Params.codecIn": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParams era)",
+     "lines": [
+      204,
+      209
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "eraPParams",
+     "lines": [
+      741,
+      796
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "the parameters of every era are one flat ProtocolParams, each field read and written at the range of the reference's field type; the bytes of the Leios build's Dijkstra parameters are read and written again byte for byte. Dijkstra's of the 11.1 line are refused (DijkstraNotYet.LedgerState)",
+   "digest": "16ffb98647e36c5e"
+  },
+  "val storage.haskell.state.Wire.positiveInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "PositiveInterval",
+     "lines": [
+      489,
+      510
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio",
+   "digest": "92c5e818b00e9349"
+  },
+  "def storage.haskell.state.NodeTypeCodecs#enactStateWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "symbol": "EncCBOR (EnactState era)",
+     "lines": [
+      235,
+      245
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "2e607cf0ca4dd48b"
+  },
+  "def storage.haskell.state.NodeTypeCodecs#ratifyStateWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "symbol": "EncCBOR (RatifyState era)",
+     "lines": [
+      670,
+      678
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "795d5479bf002e09"
+  },
+  "def storage.haskell.state.GovStateCodecs#drCompleteWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+     "symbol": "EncCBOR (DRepPulsingState era)",
+     "lines": [
+      468,
+      472
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "b7d4061c467fe0af"
+  },
+  "def storage.haskell.state.GovStateCodecs#conwayGovStateWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "EncCBOR (ConwayGovState era)",
+     "lines": [
+      363,
+      373
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "ee0aff64c8b9a7cb"
   }
  },
  "glue": [
@@ -335,6 +467,12 @@
     "given storage.SnapshotSidecarV7.chainDepState",
     "given storage.SnapshotSidecarV8.chainDepState",
     "given storage.SnapshotSidecarV9.chainDepState"
+   ]
+  },
+  {
+   "reason": "fills the parameters an era does not have from genesis, so that the node's one flat ProtocolParams is complete after an import; the reference holds each era's own record and has no such step (#826)",
+   "definitions": [
+    "def storage.haskell.state.Params.completeIn"
    ]
   }
  ]

@@ -24,7 +24,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   at
 }
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, StateLayout}
 
 import DecodeError.{Arity, Kind}
 import Wire.*
@@ -38,8 +38,10 @@ import Wire.*
   *
   * The lists: Shelley, Allegra and Mary 17 parameters (`Shelley/PParams.hs:506-524`), Alonzo 24
   * (`Alonzo/PParams.hs:344-369`), Babbage 22 (`Babbage/PParams.hs:203-226`), Conway 31
-  * (`Conway/PParams.hs:862-894`). The codec does not depend on the encoding version: every ratio of
-  * a parameter is a bounded one, always tagged.
+  * (`Conway/PParams.hs:862-894`), and Dijkstra's in the Leios build 54 (`dijkstraList`); the
+  * Dijkstra of the 11.1 line has another list, which this build does not read or write. The codec
+  * does not depend on the encoding version: every ratio of a parameter is a bounded one, always
+  * tagged.
   */
 object Params:
   /** One parameter: its name in the ledger (`ppName`), the codec of its value, and where the flat
@@ -396,6 +398,100 @@ object Params:
     minFeeRefScriptCostPerByte
   )
 
+  /** `encodeNullStrictMaybe` (`Encoding/Encoder.hs:340-343`, cardano-ledger 9df9f98c): `null` or
+    * the value, the value inside checked.
+    */
+  private def orNull[A](inner: Codec[A]): Codec[Option[A]] = new Codec[Option[A]]:
+    private val c = nullable(inner)
+    def decode(n: Node): Decoded[Option[A]] = c.decode(n)
+    def encode(a: Option[A], out: Writer): Unit = c.encode(a, out)
+    override def check(a: Option[A]): Option[ConstraintViolation] = a.flatMap(inner.check)
+
+  /** `NonZero Word32` (`BaseTypes/NonZero.hs:76-78, 102-103`, cardano-ledger 9df9f98c): a `Word32`
+    * written as it is, and read refusing zero (`nonZeroM`).
+    */
+  private val nonZeroW32: Codec[BigInt] = Codec.bigRange(1, (BigInt(1) << 32) - 1)
+
+  /** Dijkstra's parameters in the Leios build: `eraPParams` (cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:741-796`), each written as
+    * `encCBOR` of its lens (`Core/PParams.hs:204-209`) at the type of its field
+    * (`Dijkstra/PParams.hs:161-300`): Conway's 31, then the 23 Dijkstra adds. The durations are
+    * `Milliseconds32` (`BaseTypes.hs:706-708`) and the candidate block age a `SlotInterval`, both a
+    * `Word32` written as it is (`Binary/Encoding/EncCBOR.hs:440`); the pledge leverage is
+    * `MaxPledgeLeverage`, `null` or a `NonNegativeInterval` (`Core/PParams.hs:369-379`); the Peras
+    * bootstrap round is a `StrictMaybe Word32`, `[]` or `[round]` (`encodeStrictMaybe`,
+    * `Encoding/Encoder.hs:331-334`; only its update is `null` or the value,
+    * `Dijkstra/PParams.hs:1064-1081`); and the cost per multi-asset policy is a `Coin`, read as a
+    * `Word64` (`Coin.hs:106-112`).
+    */
+  private val dijkstraList: Vector[Param[?]] = conwayList ++ Vector(
+    param("maxRefScriptSizePerBlock", w32)(_.maxRefScriptSizePerBlock)((p, x) =>
+      p.copy(maxRefScriptSizePerBlock = x)
+    ),
+    param("maxRefScriptSizePerTx", w32)(_.maxRefScriptSizePerTx)((p, x) =>
+      p.copy(maxRefScriptSizePerTx = x)
+    ),
+    param("refScriptCostStride", nonZeroW32)(_.refScriptCostStride)((p, x) =>
+      p.copy(refScriptCostStride = x)
+    ),
+    param("refScriptCostMultiplier", positiveInterval)(_.refScriptCostMultiplier)((p, x) =>
+      p.copy(refScriptCostMultiplier = x)
+    ),
+    param("maxPledgeLeverage", orNull(nonNegativeInterval))(_.maxPledgeLeverage)((p, x) =>
+      p.copy(maxPledgeLeverage = x)
+    ),
+    param("minPoolMargin", unitInterval)(_.minPoolMargin)((p, x) => p.copy(minPoolMargin = x)),
+    param("leiosAnnouncementPeriodLength", w32)(_.leiosAnnouncementPeriodLength)((p, x) =>
+      p.copy(leiosAnnouncementPeriodLength = x)
+    ),
+    param("leiosVotePeriodLength", w32)(_.leiosVotePeriodLength)((p, x) =>
+      p.copy(leiosVotePeriodLength = x)
+    ),
+    param("leiosDiffusionPeriodLength", w32)(_.leiosDiffusionPeriodLength)((p, x) =>
+      p.copy(leiosDiffusionPeriodLength = x)
+    ),
+    param("leiosCommitteeSize", w16)(_.leiosCommitteeSize)((p, x) =>
+      p.copy(leiosCommitteeSize = x)
+    ),
+    param("leiosQuorumStakeThreshold", unitInterval)(_.leiosQuorumStakeThreshold)((p, x) =>
+      p.copy(leiosQuorumStakeThreshold = x)
+    ),
+    param("maxEndorserBlockReferencesSize", w32)(_.maxEndorserBlockReferencesSize)((p, x) =>
+      p.copy(maxEndorserBlockReferencesSize = x)
+    ),
+    param("maxEndorserBlockTxsSize", w32)(_.maxEndorserBlockTxsSize)((p, x) =>
+      p.copy(maxEndorserBlockTxsSize = x)
+    ),
+    param("maxEndorserBlockExecutionUnits", exUnits)(_.maxEndorserBlockExUnits)((p, x) =>
+      p.copy(maxEndorserBlockExUnits = x)
+    ),
+    param("maxRefScriptSizePerEndorserBlock", w32)(_.maxRefScriptSizePerEndorserBlock)((p, x) =>
+      p.copy(maxRefScriptSizePerEndorserBlock = x)
+    ),
+    param("perasMinCandidateBlockAge", w32)(_.perasMinCandidateBlockAge)((p, x) =>
+      p.copy(perasMinCandidateBlockAge = x)
+    ),
+    param("perasHealingFactor", positiveInterval)(_.perasHealingFactor)((p, x) =>
+      p.copy(perasHealingFactor = x)
+    ),
+    param("perasCertBoost", w16)(_.perasCertBoost)((p, x) => p.copy(perasCertBoost = x)),
+    param("perasTargetCommitteeSize", w16)(_.perasTargetCommitteeSize)((p, x) =>
+      p.copy(perasTargetCommitteeSize = x)
+    ),
+    param("perasBootstrapRound", strictMaybe(w32))(_.perasBootstrapRound)((p, x) =>
+      p.copy(perasBootstrapRound = x)
+    ),
+    param("perasQuorumThresholdSafetyMargin", unitInterval)(_.perasQuorumThresholdSafetyMargin)(
+      (p, x) => p.copy(perasQuorumThresholdSafetyMargin = x)
+    ),
+    param("refInputsCostPerMultiAssetPolicy", coin)(_.refInputsCostPerMultiAssetPolicy)((p, x) =>
+      p.copy(refInputsCostPerMultiAssetPolicy = x)
+    ),
+    param("refInputsCostPerDatumByte", coin)(_.refInputsCostPerDatumByte)((p, x) =>
+      p.copy(refInputsCostPerDatumByte = x)
+    )
+  )
+
   private val conwayMapFields: Vector[(Int, Param[?])] = Vector(
     0 -> txFeePerByte,
     1 -> txFeeFixed,
@@ -524,37 +620,64 @@ object Params:
   private val alonzo = listCodec(alonzoList)
   private val babbage = listCodec(babbageList)
   private val conway = listCodec(conwayList)
+  private val dijkstraLeios = listCodec(dijkstraList)
 
-  /** The `PParams` codec of an era. */
-  def codec[E <: EraTag](era: ShelleyBasedEra[E]): Codec[ProtocolParams] = era match
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary => shelley
-    case ShelleyBasedEra.SAlonzo                                                     => alonzo
-    case ShelleyBasedEra.SBabbage                                                    => babbage
-    case ShelleyBasedEra.SConway                                                     => conway
-    case ShelleyBasedEra.SDijkstra                                                   => dijkstra
-
-  /** Dijkstra's `PParams` add the Leios and Peras fields (cardano-ledger 9df9f98c
-    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs`), which this build does not read
-    * or write yet: refused both ways.
+  /** The parameters of an era as `layout` writes them: the eras up to Conway write the same list in
+    * both layouts; Dijkstra's is the Leios build's (`dijkstraList`), and the 11.1 line's
+    * (cardano-ledger f649f975 `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:423-459`,
+    * 35 parameters) is not read or written yet.
     */
-  private val dijkstra: Codec[ProtocolParams] = Versions.notYet("PParams")
+  private def fields[E <: EraTag](
+      layout: StateLayout,
+      era: ShelleyBasedEra[E]
+  ): Either[DijkstraNotYet, Vector[Param[?]]] = era match
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary =>
+      Right(shelleyList)
+    case ShelleyBasedEra.SAlonzo  => Right(alonzoList)
+    case ShelleyBasedEra.SBabbage => Right(babbageList)
+    case ShelleyBasedEra.SConway  => Right(conwayList)
+    case ShelleyBasedEra.SDijkstra =>
+      layout match
+        case StateLayout.Node11_1 => Left(DijkstraNotYet.LedgerState)
+        case StateLayout.Leios    => Right(dijkstraList)
 
-  /** Preserve every field encoded by this era, including zero; only fields the era lacks come from
-    * genesis. Comparing values with zero would lose legitimate zero-valued parameters.
+  /** The `PParams` codec of an era in the 11.1 layout ([[codecIn]]). */
+  def codec[E <: EraTag](era: ShelleyBasedEra[E]): Codec[ProtocolParams] =
+    codecIn(StateLayout.Node11_1, era)
+
+  /** The `PParams` codec of an era as `layout` writes it. Dijkstra's of the 11.1 line is refused
+    * both ways ([[Versions.notYet]]).
     */
+  def codecIn[E <: EraTag](layout: StateLayout, era: ShelleyBasedEra[E]): Codec[ProtocolParams] =
+    era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary => shelley
+      case ShelleyBasedEra.SAlonzo                                                     => alonzo
+      case ShelleyBasedEra.SBabbage                                                    => babbage
+      case ShelleyBasedEra.SConway                                                     => conway
+      case ShelleyBasedEra.SDijkstra =>
+        layout match
+          case StateLayout.Node11_1 => Versions.notYet("PParams")
+          case StateLayout.Leios    => dijkstraLeios
+
+  /** [[completeIn]] in the 11.1 layout. */
   def complete[E <: EraTag](
       era: ShelleyBasedEra[E],
       read: ProtocolParams,
       genesis: ProtocolParams
   ): Either[DijkstraNotYet, ProtocolParams] =
-    val fields = era match
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary =>
-        Right(shelleyList)
-      case ShelleyBasedEra.SAlonzo   => Right(alonzoList)
-      case ShelleyBasedEra.SBabbage  => Right(babbageList)
-      case ShelleyBasedEra.SConway   => Right(conwayList)
-      case ShelleyBasedEra.SDijkstra => Left(DijkstraNotYet.LedgerState)
-    fields.map(_.foldLeft(genesis)((full, field) => field.copyValue(read, full)))
+    completeIn(StateLayout.Node11_1, era, read, genesis)
+
+  /** Preserve every field encoded by this era in `layout`, including zero; only fields the era
+    * lacks come from genesis. Comparing values with zero would lose legitimate zero-valued
+    * parameters.
+    */
+  def completeIn[E <: EraTag](
+      layout: StateLayout,
+      era: ShelleyBasedEra[E],
+      read: ProtocolParams,
+      genesis: ProtocolParams
+  ): Either[DijkstraNotYet, ProtocolParams] =
+    fields(layout, era).map(_.foldLeft(genesis)((full, field) => field.copyValue(read, full)))
 
   /** The Conway `PParams` codec: the parameters of the governance state and of its enact state. */
   val conwayCodec: Codec[ProtocolParams] = conway
