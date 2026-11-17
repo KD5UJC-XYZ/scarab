@@ -4,7 +4,8 @@
   `docs/design/leader-schedule.md`). The schedule of the current epoch, and of
   the next once its nonce is known, is computed ahead of the slots and spread over the time left; a led slot is
   checked again against the chain at the slot, its block is built 50 ms before the slot's onset and handed to
-  chain selection at the onset, and built again if the chain, the slot's inputs or the credentials changed
+  chain selection at the onset (or at the slot driver's take of the slot, where the wall clock moved back after the
+  take), and built again if the chain, the slot's inputs or the credentials changed
   meanwhile. In the first slot of a KES period the block is built after the onset, as before. Every slot's
   leadership decision and every won slot's certificate are the per-slot check's; each block is meant to be the one
   the per-slot check would build, which a differential test checks slot by slot in the design's scenarios.

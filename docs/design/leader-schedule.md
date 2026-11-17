@@ -156,8 +156,11 @@ contain blocks from the future; what the chain database does with one added loca
 
 The source therefore does not require a block to be released at its onset: a peer holds a header up to 2 s early and
 refuses it beyond that. Releasing a block at its slot's onset, not before, is this design's choice (§5.3): Scarab
-never publishes a header early on purpose, and the skew allowance stays whole for the disagreement of clocks. It
-cannot stop a peer whose clock runs behind Scarab's from receiving the header before that peer's own onset and holding
+never publishes a header early on purpose, and the skew allowance stays whole for the disagreement of clocks. The one
+exception follows the reference: a slot the slot driver has taken, its forge begun, is handed over at once even if the
+wall clock has since moved back before the slot's start, as the reference's forging thread goes on with a slot its
+watcher handed it (§5.3). Neither
+stops a peer whose clock runs behind Scarab's from receiving the header before that peer's own onset and holding
 it; that is the case the skew allows for, as the source's own example of two nodes half a second apart describes
 (C17).
 
@@ -648,7 +651,7 @@ the change that first relies on them adds their rows to the [decisions register]
 |---|---|---|---|
 | A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `startLeadershipCheck` before it at a KES period change, with `stateInfo` where the period's update succeeded, `stateInfo` otherwise only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
 | When the leader check runs | at the slot, in the forging thread (C1, C4) | ahead of the epoch, spread over the time left; again at a led slot | decisions 4, 5 |
-| When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset, but after it in the first slot of a KES period (§5.3); handed to chain selection at the onset | decision 6 |
+| When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset, but after it in the first slot of a KES period (§5.3); handed to chain selection at the onset, or at the slot driver's take of the slot where the wall clock moved back after the take | decision 6 |
 | When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by the slot driver at the period's first slot, decision 3's timer; also at a led slot as now, only by an attempt admitted at its slot (begun or made again once the clock fiber had published it or the slot driver had taken it), a reload excepted | decision 3 |
 | The schedule | not traced (C10) | three metrics and the `leaderSchedule` line | decision 7 |
 

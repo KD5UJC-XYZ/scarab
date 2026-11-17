@@ -14,7 +14,8 @@ stop beyond 20 s, `startTimeInTheFuture`, `currentSlotUnknown`); a slot driver t
 reference's line of a check before the leader check, else `nodeNotLeader`, after `startLeadershipCheck`, with
 `stateInfo` where the key's update succeeded, at a KES period change) and counted as before; a forging fiber forges a
 led slot 50 ms before its onset, the leader check made again against the chain then, and hands the block to chain
-selection at the onset only if its
+selection at the onset (or at the slot driver's take of the slot, where the wall clock moved back after the take) only
+if its
 block context, inputs and credentials still hold, else forges it again; a led slot of a KES period the clock has not
 reached at the wake, in practice a period's first slot, is forged at its onset, as the reference forges it, once the
 slot driver has updated the key and hands it over; only an attempt admitted at its slot (begun, or made again, once
