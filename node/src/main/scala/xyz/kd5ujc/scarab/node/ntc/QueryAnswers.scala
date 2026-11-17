@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ConsensusMirrorEnv, Placement}
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, Placement}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, StakeDistribution}
 import xyz.kd5ujc.scarab.ledger.state as mirror
@@ -53,9 +53,7 @@ final case class QueryEnv(
     observedEras: Map[Era, BigInt] = Map.empty,
     networkMagic: Long,
     ledgerConfig: Either[Unanswered, Bytes]
-):
-  /** What the mirror of the ledger state (`DebugEpochState`, `DebugNewEpochState`) reads. */
-  def consensusMirror: ConsensusMirrorEnv = ConsensusMirrorEnv(mirror, forks, byron, observedEras)
+)
 
 /** Why a query has no answer: the closed set of the reasons, where the connection then ends (as a
   * decode failure ends it on the reference).
@@ -277,18 +275,22 @@ object QueryAnswers:
       // `mkInterpreter (hardForkSummary cfg st)`: the eras the state has passed and the end its
       // tip tells of its own (`interpretQueryHardFork`, `HardFork/Combinator/Ledger/Query.hs:529`)
       val placement = Placement(geometry(env, view), env.byron, env.forks)
-      val eras = EraHistory.eras(view.read.summary(view.state)(placement))
+      val eras = view.read.summary(view.state)(placement)
       Right(CborOut.build(EraHistory.encode(_, eras)))
     case NtcQuery.EraStart(index) =>
-      // the start of an era the state has entered, from the same history as `GetInterpreter`
-      val era = view.era
+      // the start of an era, from the same history as `GetInterpreter`:
+      // `answerQueryAnytime` (`HardFork/Combinator/Ledger/Query.hs:503-514`, ouroboros-consensus
+      // 2416493b; `:484-495` at 82ecba32): a past era's start, the current era's, and the next
+      // era's where the current era's transition is known (`SituatedNext`, `mkUpperBound` of the
+      // current era to the transition), which is where the summary's next era starts; nothing for
+      // a later era. Written as `Serialise (Maybe Bound)`, `[]` or `[bound]`
+      // (`encodeQueryAnytimeResult`, `:571-572`)
       val placement = Placement(geometry(env, view), env.byron, env.forks)
-      val eras = EraHistory.eras(view.read.summary(view.state)(placement))
+      val eras = view.read.summary(view.state)(placement)
       Right(CborOut.build { w =>
-        eras.lift(index.index).filter(_ => index.index <= era.index) match
-          case Some(e) =>
-            w.array(1).array(3).integer(e.start.timePs).uint(e.start.slot).uint(e.start.epoch)
-          case None => w.array(0)
+        eras.toVector.lift(index.index) match
+          case Some(e) => EraHistory.bound(w.array(1), e.start)
+          case None    => w.array(0)
       })
     case NtcQuery.ByronUpdateInterfaceState =>
       // Byron's update-interface state while the ledger is in Byron (`answerPureBlockQuery`,

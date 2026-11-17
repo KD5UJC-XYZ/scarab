@@ -121,7 +121,8 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       geometry.k * 10,
       BigInt(20000),
       geometry.k
-    )
+    ),
+    xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1
   )
 
   /** The block rules of the forged chain's configuration: no Byron prefix. */

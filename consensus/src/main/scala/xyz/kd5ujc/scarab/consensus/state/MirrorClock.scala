@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.ledger.{Horizon, PosixClock}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.WithOrigin
@@ -60,6 +61,68 @@ object MirrorClock:
     val (history, transition) =
       historyAt(state, placement, telescope.era, telescope.current.start.slot)
     history.at(transition)
+
+  /** The era history of `state` at its tip as `GetInterpreter` answers it, every era with its
+    * bounds and parameters (`Summary xs`, at least one era): the eras of [[summary]] with the
+    * bounds of the state's layout, built as `reconstructSummary` builds them (ouroboros-consensus
+    * 2416493b `HardFork/Combinator/State/Infra.hs:194-304`). The past eras' bounds and the current
+    * era's start are the telescope's, as the state holds them. The current era ends at the next
+    * era's start where the transition is known, the next era (where the code has one) then ending
+    * at its safe zone from its start; otherwise the current era ends at its safe zone from the slot
+    * after the tip. Each end is the `mkUpperBound` of its era from its start, with the reference's
+    * `Word64` arithmetic ([[EraHistory.upperBound]]; `applySafeZone` at `:291-300`,
+    * [[EraHistory.safeZoneEnd]]), and every era has the Peras round length of its build
+    * ([[EraHistory.perasRoundLength]]).
+    */
+  def interpreter(state: MirrorState, placement: Placement): NonEmptyVector[EraSummary] =
+    val telescope = state.ext.ledgerState
+    val era = telescope.era
+    val layout = telescope.current.start.layout.stateLayout
+    val (history, transition) = historyAt(state, placement, era, telescope.current.start.slot)
+    def summaryOf(params: Horizon.Params, of: Era, start: Bound, end: Bound) =
+      EraSummary(
+        start,
+        Some(end),
+        params.epochSize,
+        params.slotLengthMillis,
+        params.safeZone,
+        params.genesisWindow,
+        EraHistory.perasRoundLength(layout, of)
+      )
+    // `applySafeZone` of a standard safe zone from the slot `from`
+    def safeEnd(of: Era, params: Horizon.Params, start: Bound, from: BigInt) =
+      EraHistory.safeZoneEnd(
+        start,
+        of,
+        params.epochSize,
+        params.slotLengthMillis,
+        params.safeZone,
+        from
+      )
+    val past = history.past.zip(telescope.past).zip(Era.values).map { case ((e, p), of) =>
+      summaryOf(e.params, of, p.start, p.end)
+    }
+    val start = telescope.current.start
+    val (current, next) = transition match
+      case Horizon.Transition.Known(epoch) =>
+        val end = EraHistory.upperBound(
+          start,
+          era,
+          history.current.epochSize,
+          history.current.slotLengthMillis,
+          epoch
+        )
+        (
+          summaryOf(history.current, era, start, end),
+          history.next.zip(Era.values.lift(era.index + 1)).map { (params, following) =>
+            summaryOf(params, following, end, safeEnd(following, params, end, end.slot))
+          }
+        )
+      case Horizon.Transition.Unknown(tip) =>
+        // even a safe zone of zero starts at the slot after the tip
+        val after = tip.fold(BigInt(0))(_ + 1)
+        (summaryOf(history.current, era, start, safeEnd(era, history.current, start, after)), None)
+    NonEmptyVector.one(current).prependVector(past).appendVector(next.toVector)
 
   /** The eras up to `era` and what the state tells of the end of `era` ([[of]]). */
   private def historyAt(
