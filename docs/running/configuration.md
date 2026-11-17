@@ -89,7 +89,7 @@ The configuration files published for mainnet, preprod and preview set `GenesisM
 `bootstrapPeers`, ledger peers (`useLedgerAfterSlot`) and a `peerSnapshotFile`, `peer-snapshot.json`, published beside
 them. Used as published, the node drops the bootstrap peers with the reference's warning and syncs from big ledger
 peers: the snapshot's while its slot is at or after both the ledger's and `useLedgerAfterSlot`, else the ledger's own
-once the ledger is past `useLedgerAfterSlot`, as after a Mithril import newer than the snapshot
+once the ledger is at or past `useLedgerAfterSlot`, as after a Mithril import newer than the snapshot
 (`LedgerPeerStake.snapshotBeatsLedger`); without the snapshot file it stops at start, as the reference does.
 In GenesisMode the node stays in `PreSyncing`, where its Limit on Eagerness keeps its selection within `k` blocks of
 its immutable tip, until its outbound connections are trusted (`outboundConnectionsState`): with ledger peers or peer

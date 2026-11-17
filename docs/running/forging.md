@@ -41,8 +41,9 @@ in [compatibility.md](../compatibility.md). The procedure that got there, withou
    proxy or NAT it limits connections rather than peers; that accounting is the operator's decision
    and the protocol option is tracked in [#35](https://github.com/KD5UJC-XYZ/scarab/issues/35).
 4. **Verify the first leader slot.** The `forged` and `adopted` events carry the same slot and header
-   hash, the block appears at that height on an explorer, and a Haskell node's tip contains it. An
-   `adopted` that does not follow a `forged` of the same slot is a lost block, not a success.
+   hash, the block appears at that height on an explorer, and a Haskell node's tip contains it. A
+   `lost` line for the slot, after its `forged` or later when another block replaces it, is a lost
+   block, not a success.
 5. **Leave it running.** Unattended operation needs the rotation below; a restart on the same key
    files continues from the period the file records.
 

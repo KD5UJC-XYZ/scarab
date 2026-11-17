@@ -36,11 +36,17 @@ disk a mainnet follower needs are in [the mainnet follower's measurements](../pe
 ## 1. The images
 
 [Release publication](../release-publication.md) says whether a Scarab image is published. Until one is, build the
-JDK image, compile the node in it and write its runtime class path, as [running.md](../running.md#images) does:
+JDK image, compile the node in it and write its runtime class path, with the Git metadata and dependency cache mounts
+of [CONTRIBUTING.md](../../CONTRIBUTING.md#build-docker-only) (the class path names its jars under `/work/.cache`, so
+every container that runs the node mounts the same cache there):
 
 ```sh
 docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
-docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
+GITDIR="$(git rev-parse --path-format=absolute --git-common-dir)"
+CACHE="$(python3 -I -c 'import sys; sys.path.insert(0, "scripts")
+from devnet.util import cache_dir; print(cache_dir())')"
+docker run --rm -v "$PWD":/work -v "$CACHE":/work/.cache -v "$GITDIR:$GITDIR:ro" -w /work \
+  --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
 test -s node/target/runtime-classpath.txt && echo classpath written
 ```
@@ -57,7 +63,8 @@ docker image inspect --format '{{.Id}}' "$REF"
 script exits 0 after it prints the new image's ID, and `docker image inspect` prints the same ID.
 
 Every node command below runs the node's `Main` in the JDK image through the function `scarab`: the checkout
-(`$REPO`) read-only at `/work`, `$D` at `/data`, and the JVM flags the devnet passes. `HEAP` is the JVM's heap option
+(`$REPO`) read-only at `/work` with the dependency cache at `/work/.cache`, `$D` at `/data`, and the JVM flags the
+devnet passes. `HEAP` is the JVM's heap option
 (`-Xmx...`): preprod's as [configuration.md](configuration.md#preprod) runs it, mainnet's as
 [the mainnet follower's measurements](../performance/mainnet-follower.md#flags-for-the-fastest-follow) record it.
 
@@ -67,7 +74,7 @@ scarab() {   # scarab <docker run options> -- <arguments of the node's Main>
   local opts=()
   while [ "$#" -gt 0 ] && [ "$1" != -- ]; do opts+=("$1"); shift; done
   shift
-  docker run --user "$(id -u):$(id -g)" -v "$REPO":/work:ro -w /work -v "$D":/data "${opts[@]}" \
+  docker run --user "$(id -u):$(id -g)" -v "$REPO":/work:ro -v "$CACHE":/work/.cache:ro -w /work -v "$D":/data "${opts[@]}" \
     --entrypoint java scarab-jdk:local $HEAP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
     -cp "$(cat "$REPO/node/target/runtime-classpath.txt")" xyz.kd5ujc.scarab.node.Main "$@"
 }
@@ -80,18 +87,21 @@ scarab() {   # scarab <docker run options> -- <arguments of the node's Main>
 
 `devnet.py pool` starts a three-pool cluster of the reference node, never starts pool 1's Haskell node, and runs
 Scarab with pool 1's keys in its place, beside the two Haskell pools, under a payment load. Use a cluster name of
-your own and bring it down whatever the outcome:
+your own and bring it down whatever the outcome. `down` removes the cluster's run directory with its containers, so
+copy the run's summary out first:
 
 ```sh
 python3 scripts/devnet.py --name my-scarab pool
+cp "$D/my-scarab/pool-summary.json" "$D/my-scarab-pool-summary.json"
 python3 scripts/devnet.py --name my-scarab down
 ```
 
 **Success:** exit status 0. While it runs, a line every few seconds shows both Haskell pools on the same tip and
-Scarab's `forged` and `adopted` counts rising together with `lost` at 0; each periodic comparison prints
+Scarab's `forged` and `adopted` counts rising (a `lost` block is a slot battle another pool won, which the scenario
+allows, [forging.md](forging.md#forging)); each periodic comparison prints
 `"matched": true` with `"differenceCount": 0`, followed by a `wholeState` line whose `DebugNewEpochState` and
 `GetUTxOWhole` are both `true`. The run ends with its summary, also written to `pool-summary.json` in
-`$D/my-scarab`: `"passed": true`, `"verdict": "passed"` and an empty `failures` list. Exit status 1 is a failure
+`$D/my-scarab` (copied above): `"passed": true`, `"verdict": "passed"` and an empty `failures` list. Exit status 1 is a failure
 (`failures` says what), 2 an inconclusive run on an overloaded host. What the scenario asserts, and its options
 (`--plutus-load`, `--scala-cpus`, ...), are in [devnet.md](devnet.md#devnet-scenarios-scriptsdevnetpy).
 
@@ -156,8 +166,10 @@ scarab --rm -v "$D/bin":/mithril:ro -- import-mithril \
 ```
 
 **Success:** exit status 0 and a last line `{"kind":"importMithril","event":"done","artifact":...,"slot":...,"hash":...,"outputs":...}`
-naming the ledger anchor; the database holds `mithril-bootstrap.json`, the record of what was verified. A failure is
-an `"event":"error"` line with a typed message and exit status 1, and nothing is published at `--db`.
+naming the ledger anchor; the database holds `mithril-bootstrap.json`, the record of what was verified. A failed
+import is an `"event":"error"` line with a typed message and exit status 1, and nothing is published at `--db`; a bad
+argument, or an input it cannot read (a verification key, the configuration), prints a plain message and exits 2
+before the import starts.
 
 **Following to the tip**, with the official topology ([configuration.md](configuration.md#peer-selection)):
 
@@ -217,8 +229,8 @@ cli latest query era-history --mainnet --out-file era-history.json
 cli latest query tx-mempool info --mainnet
 ```
 
-**Success:** each exits 0. `query tip` prints a JSON object with `"era": "Conway"` and `"syncProgress": "100.00"` at
-the tip; `tx-mempool info` prints `capacityInBytes`, `numberOfTxs`, `sizeInBytes` and `slot`. The queries answered,
+**Success:** each exits 0. `query tip` prints a JSON object whose `"era"` is the network's current era, as an
+explorer shows it, and `"syncProgress": "100.00"` at the tip; `tx-mempool info` prints `capacityInBytes`, `numberOfTxs`, `sizeInBytes` and `slot`. The queries answered,
 and those not answered yet, are listed in [node-to-client.md](node-to-client.md#node-to-client); an unanswered one
 ends the connection, and the node logs an `inbound ... closed` line naming it.
 
@@ -351,8 +363,8 @@ scarab -d --name scarab-preprod-pool -p 3001:3001 -v "$KEYS/preprod-pool":/keys 
   `docker exec scarab-preprod-pool curl -s localhost:7071/forging` gives the same counters
   ([node-to-client.md](node-to-client.md#query-server));
 - in a leader slot, `forged` and then `adopted` for the same slot and hash, and that block on an explorer and in a
-  Haskell node's chain at its height. An `adopted` without a `forged` of the same slot is a lost block, not a success
-  ([forging.md](forging.md#forging)).
+  Haskell node's chain at its height. A `lost` line for the slot, after its `forged` or later when another block
+  replaces it, is a lost block, not a success ([forging.md](forging.md#forging)).
 
 Rotating the KES key before `remainingKesPeriods` runs out is in
 [forging.md](forging.md#rotating-the-kes-key-h2a-116).
@@ -365,5 +377,5 @@ docker rm scarab-mainnet scarab-preprod scarab-preprod-pool
 python3 "$REPO/scripts/devnet.py" --name my-scarab down
 ```
 
-Remove `KEYS` when the test ends, unless the pool is to keep running. Run data stays in `$D`; nothing is written
-into the checkout.
+Remove `KEYS` when the test ends, unless the pool is to keep running. The mainnet and preprod data stay in `$D`
+(`down` removes only the devnet's run directory); nothing is written into the checkout.

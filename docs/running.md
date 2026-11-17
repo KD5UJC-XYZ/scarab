@@ -21,9 +21,15 @@ docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 Compile once and write the runtime classpath (the scenarios and the commands below use it):
 
 ```sh
-docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
+scarab_git_metadata="$(git rev-parse --path-format=absolute --git-common-dir)"
+scarab_cache="$(python3 -I -c 'import sys; sys.path.insert(0, "scripts")
+from devnet.util import cache_dir; print(cache_dir())')"
+docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
+  -v "$scarab_git_metadata:$scarab_git_metadata:ro" -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
 ```
+
+The Git metadata and dependency cache mounts are [CONTRIBUTING.md](../CONTRIBUTING.md#build-docker-only)'s.
 
 This writes `node/target/runtime-classpath.txt`. Regenerate it with `node/runtimeClasspathFile`
 after any dependency change: a stale file lacked rocksdb.
