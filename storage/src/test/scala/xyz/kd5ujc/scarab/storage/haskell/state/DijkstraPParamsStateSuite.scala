@@ -193,6 +193,206 @@ class DijkstraPParamsStateSuite extends ScalaCheckSuite:
     )
   }
 
+  /** A tagged ratio of two integers of any sign. */
+  private def signedRatio(w: Writer, num: BigInt, den: BigInt): Unit =
+    w.tag(30); w.arrayHead(2); w.int(num); w.int(den)
+
+  private val unsignedOf = (actual: String) => Kind.TypeMismatch("unsigned integer", actual)
+  private val word32Max = (BigInt(1) << 32) - 1
+  private val word16Max = (BigInt(1) << 16) - 1
+  private val word32Too = (w: Writer) => w.uint(word32Max + 1)
+
+  test("every field Dijkstra adds is read from its own position, as its own value") {
+    val all = items(at(gov, 3))
+    val record = StateGen.item { w =>
+      w.arrayHead(54)
+      all.take(31).foreach(i => w.raw(i.original))
+      w.uint(1001L) // 31 maxRefScriptSizePerBlock
+      w.uint(1002L) // 32 maxRefScriptSizePerTx
+      w.uint(1003L) // 33 refScriptCostStride
+      ratio(w, 1004, 1) // 34 refScriptCostMultiplier
+      ratio(w, 1005, 1) // 35 maxPledgeLeverage
+      ratio(w, 1, 1006) // 36 minPoolMargin
+      w.uint(1007L) // 37 leiosAnnouncementPeriodLength
+      w.uint(1008L) // 38 leiosVotePeriodLength
+      w.uint(1009L) // 39 leiosDiffusionPeriodLength
+      w.uint(1010L) // 40 leiosCommitteeSize
+      ratio(w, 1, 1011) // 41 leiosQuorumStakeThreshold
+      w.uint(1012L) // 42 maxEndorserBlockReferencesSize
+      w.uint(1013L) // 43 maxEndorserBlockTxsSize
+      w.arrayHead(2); w.uint(1014L); w.uint(1015L) // 44 maxEndorserBlockExecutionUnits
+      w.uint(1016L) // 45 maxRefScriptSizePerEndorserBlock
+      w.uint(1017L) // 46 perasMinCandidateBlockAge
+      ratio(w, 1018, 1) // 47 perasHealingFactor
+      w.uint(1019L) // 48 perasCertBoost
+      w.uint(1020L) // 49 perasTargetCommitteeSize
+      w.arrayHead(1); w.uint(1021L) // 50 perasBootstrapRound
+      ratio(w, 1, 1022) // 51 perasQuorumThresholdSafetyMargin
+      w.uint(1023L) // 52 refInputsCostPerMultiAssetPolicy
+      w.uint(1024L) // 53 refInputsCostPerDatumByte
+    }
+    val p = read(codec, tree(record))
+    assertEquals(p.maxRefScriptSizePerBlock, BigInt(1001))
+    assertEquals(p.maxRefScriptSizePerTx, BigInt(1002))
+    assertEquals(p.refScriptCostStride, BigInt(1003))
+    assertEquals(p.refScriptCostMultiplier, Rational(1004))
+    assertEquals(p.maxPledgeLeverage, Some(Rational(1005)))
+    assertEquals(p.minPoolMargin, Rational(1, 1006))
+    assertEquals(p.leiosAnnouncementPeriodLength, BigInt(1007))
+    assertEquals(p.leiosVotePeriodLength, BigInt(1008))
+    assertEquals(p.leiosDiffusionPeriodLength, BigInt(1009))
+    assertEquals(p.leiosCommitteeSize, BigInt(1010))
+    assertEquals(p.leiosQuorumStakeThreshold, Rational(1, 1011))
+    assertEquals(p.maxEndorserBlockReferencesSize, BigInt(1012))
+    assertEquals(p.maxEndorserBlockTxsSize, BigInt(1013))
+    assertEquals(p.maxEndorserBlockExUnits, ExUnits(BigInt(1014), BigInt(1015)))
+    assertEquals(p.maxRefScriptSizePerEndorserBlock, BigInt(1016))
+    assertEquals(p.perasMinCandidateBlockAge, BigInt(1017))
+    assertEquals(p.perasHealingFactor, Rational(1018))
+    assertEquals(p.perasCertBoost, BigInt(1019))
+    assertEquals(p.perasTargetCommitteeSize, BigInt(1020))
+    assertEquals(p.perasBootstrapRound, Some(BigInt(1021)))
+    assertEquals(p.perasQuorumThresholdSafetyMargin, Rational(1, 1022))
+    assertEquals(p.refInputsCostPerMultiAssetPolicy, BigInt(1023))
+    assertEquals(p.refInputsCostPerDatumByte, BigInt(1024))
+    // Conway's fields are the slot's, and the record is written as it was read
+    assertEquals(p.minFeeA, BigInt(44))
+    assertEquals(codec.write(p), Right(record))
+  }
+
+  test("each field Dijkstra adds refuses a value outside its type, under its own name") {
+    val epsilonBelow = (w: Writer) => ratio(w, 1, BigInt(10).pow(19) + 1)
+    val aboveOne = (w: Writer) => ratio(w, 2, 1)
+    val bignum = (w: Writer) =>
+      w.tag(2); w.bytes(Bytes.fromHex("010000000000000000").fold(e => fail(e.toString), identity))
+    val cases: Vector[(Int, String, Writer => Unit, Kind)] = Vector(
+      (31, "maxRefScriptSizePerBlock", word32Too, Kind.OutOfRange(s"0..$word32Max", word32Max + 1)),
+      (32, "maxRefScriptSizePerTx", word32Too, Kind.OutOfRange(s"0..$word32Max", word32Max + 1)),
+      (33, "refScriptCostStride", word32Too, Kind.OutOfRange(s"1..$word32Max", word32Max + 1)),
+      (34, "refScriptCostMultiplier", epsilonBelow, Kind.OutOfRange("a positive ratio", 1)),
+      (35, "maxPledgeLeverage", signedRatio(_, -1, 1), unsignedOf("negative integer")),
+      (36, "minPoolMargin", aboveOne, Kind.OutOfRange("a ratio in 0..1", 2)),
+      (
+        37,
+        "leiosAnnouncementPeriodLength",
+        word32Too,
+        Kind.OutOfRange(s"0..$word32Max", word32Max + 1)
+      ),
+      (38, "leiosVotePeriodLength", word32Too, Kind.OutOfRange(s"0..$word32Max", word32Max + 1)),
+      (
+        39,
+        "leiosDiffusionPeriodLength",
+        word32Too,
+        Kind.OutOfRange(s"0..$word32Max", word32Max + 1)
+      ),
+      (
+        40,
+        "leiosCommitteeSize",
+        _.uint(word16Max + 1),
+        Kind.OutOfRange(s"0..$word16Max", word16Max + 1)
+      ),
+      (41, "leiosQuorumStakeThreshold", aboveOne, Kind.OutOfRange("a ratio in 0..1", 2)),
+      (
+        42,
+        "maxEndorserBlockReferencesSize",
+        word32Too,
+        Kind.OutOfRange(s"0..$word32Max", word32Max + 1)
+      ),
+      (43, "maxEndorserBlockTxsSize", word32Too, Kind.OutOfRange(s"0..$word32Max", word32Max + 1)),
+      (
+        44,
+        "maxEndorserBlockExecutionUnits",
+        w => { w.arrayHead(2); w.uint(BigInt(Long.MaxValue) + 1); w.uint(0L) },
+        Kind.OutOfRange(s"0..${Long.MaxValue}", BigInt(Long.MaxValue) + 1)
+      ),
+      (
+        45,
+        "maxRefScriptSizePerEndorserBlock",
+        word32Too,
+        Kind.OutOfRange(s"0..$word32Max", word32Max + 1)
+      ),
+      (
+        46,
+        "perasMinCandidateBlockAge",
+        word32Too,
+        Kind.OutOfRange(s"0..$word32Max", word32Max + 1)
+      ),
+      (47, "perasHealingFactor", epsilonBelow, Kind.OutOfRange("a positive ratio", 1)),
+      (
+        48,
+        "perasCertBoost",
+        _.uint(word16Max + 1),
+        Kind.OutOfRange(s"0..$word16Max", word16Max + 1)
+      ),
+      (
+        49,
+        "perasTargetCommitteeSize",
+        _.uint(word16Max + 1),
+        Kind.OutOfRange(s"0..$word16Max", word16Max + 1)
+      ),
+      (
+        50,
+        "perasBootstrapRound",
+        w => { w.arrayHead(1); word32Too(w) },
+        Kind.OutOfRange(s"0..$word32Max", word32Max + 1)
+      ),
+      (51, "perasQuorumThresholdSafetyMargin", aboveOne, Kind.OutOfRange("a ratio in 0..1", 2)),
+      (52, "refInputsCostPerMultiAssetPolicy", bignum, unsignedOf("tag 2")),
+      (53, "refInputsCostPerDatumByte", bignum, unsignedOf("tag 2"))
+    )
+    assertEquals(cases.map(_._1), (31 to 53).toVector)
+    cases.foreach { (index, name, put, kind) =>
+      val e = failure(codec, withItem(index)(put))
+      assertEquals(e.kind, kind, name)
+      assertEquals(e.path.headOption, Some(name), name)
+    }
+  }
+
+  test("a bounded ratio with a negative number: refused from version 12, read before it") {
+    val all = items(at(gov, 3))
+    val minusOne = (w: Writer) => signedRatio(w, -1, -1)
+    // every bounded ratio of Dijkstra's parameters, Conway's among them, the first of a record's
+    val ratios: Vector[(Int, String, Writer => Unit)] = Vector(
+      (9, "a0", minusOne),
+      (10, "rho", minusOne),
+      (11, "tau", minusOne),
+      (16, "prices", w => { w.arrayHead(2); minusOne(w); w.raw(items(all(16))(1).original) }),
+      (
+        22,
+        "poolVotingThresholds",
+        w => { w.arrayHead(5); minusOne(w); items(all(22)).drop(1).foreach(i => w.raw(i.original)) }
+      ),
+      (
+        23,
+        "drepVotingThresholds",
+        w => {
+          w.arrayHead(10); minusOne(w); items(all(23)).drop(1).foreach(i => w.raw(i.original))
+        }
+      ),
+      (30, "minFeeRefScriptCostPerByte", minusOne),
+      (34, "refScriptCostMultiplier", minusOne),
+      (35, "maxPledgeLeverage", minusOne),
+      (36, "minPoolMargin", minusOne),
+      (41, "leiosQuorumStakeThreshold", minusOne),
+      (47, "perasHealingFactor", minusOne),
+      (51, "perasQuorumThresholdSafetyMargin", minusOne)
+    )
+    ratios.foreach { (index, name, put) =>
+      val e = failure(codec, withItem(index)(put))
+      assertEquals(e.kind, unsignedOf("negative integer"), name)
+      assertEquals(e.path.headOption, Some(name), name)
+    }
+    // Conway's state is read at version 9, where the numbers are `Integer`s: `[-1, -1]` is 1
+    val conway = StateGen.item { w =>
+      w.arrayHead(31)
+      all
+        .take(31)
+        .zipWithIndex
+        .foreach((i, n) => if n == 10 then minusOne(w) else w.raw(i.original))
+    }
+    assertEquals(read(Params.conwayCodec, tree(conway)).rho, Rational.one)
+  }
+
   test("a set leverage and bootstrap round are written as the reference writes them") {
     val leverage = withItem(35)(ratio(_, 5, 1))
     val round = withItem(50)(w => { w.arrayHead(1); w.uint(7L) })

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolVotingThresholds,
   ProtocolParams
 }
-import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.{
   Arr,
   Codec,
@@ -39,9 +39,10 @@ import Wire.*
   * The lists: Shelley, Allegra and Mary 17 parameters (`Shelley/PParams.hs:506-524`), Alonzo 24
   * (`Alonzo/PParams.hs:344-369`), Babbage 22 (`Babbage/PParams.hs:203-226`), Conway 31
   * (`Conway/PParams.hs:862-894`), and Dijkstra's in the Leios build 54 (`dijkstraList`); the
-  * Dijkstra of the 11.1 line has another list, which this build does not read or write. The codec
-  * does not depend on the encoding version: every ratio of a parameter is a bounded one, always
-  * tagged.
+  * Dijkstra of the 11.1 line has another list, which this build does not read or write. Every ratio
+  * of a parameter is a bounded one, always tagged; an era's codec reads them as the version its
+  * state is written at does ([[Versions.eraLow]]): as before version 12 up to Conway, as from 12 in
+  * Dijkstra.
   */
 object Params:
   /** One parameter: its name in the ledger (`ppName`), the codec of its value, and where the flat
@@ -131,9 +132,25 @@ object Params:
   private val protocolVersion: Codec[(BigInt, BigInt)] =
     Record.of[(BigInt, BigInt)]((Codec.uintBig(13), w32))
 
+  /** The codecs of the bounded ratios the parameters hold: as an era's state reads them before
+    * version 12 (`plain`), or as Dijkstra's reads them, at its version 12 (`atTwelve`,
+    * [[Wire.unitIntervalAt]]).
+    */
+  private final case class Ratios(unit: Codec[Rational], nonNegative: Codec[Rational])
+
+  private val plain = Ratios(unitInterval, nonNegativeInterval)
+
+  /** The version Dijkstra's state is written and read at, its lowest ([[Versions.eraLow]]). */
+  private val dijkstraVersion: ProtVer = Versions.eraLow(ShelleyBasedEra.SDijkstra)
+
+  private val atTwelve =
+    Ratios(unitIntervalAt(using dijkstraVersion), nonNegativeIntervalAt(using dijkstraVersion))
+
   /** `Prices` (`ExUnits.hs:219-229`): `[memory price, steps price]`. */
-  private[state] val prices: Codec[(Rational, Rational)] =
-    Record.of[(Rational, Rational)]((nonNegativeInterval, nonNegativeInterval))
+  private def pricesWith(r: Ratios): Codec[(Rational, Rational)] =
+    Record.of[(Rational, Rational)]((r.nonNegative, r.nonNegative))
+
+  private[state] val prices: Codec[(Rational, Rational)] = pricesWith(plain)
 
   /** `ExUnits` (`ExUnits.hs:192-215`): `[memory, steps]`, each at most `maxBound :: Int64`. */
   val exUnits: Codec[ExUnits] =
@@ -203,27 +220,18 @@ object Params:
         costModels.check(value)
 
   /** `PoolVotingThresholds`: five unit intervals. */
-  private[state] val poolThresholds: Codec[PoolVotingThresholds] =
-    Record.of[PoolVotingThresholds](
-      (unitInterval, unitInterval, unitInterval, unitInterval, unitInterval)
-    )
+  private def poolThresholdsWith(r: Ratios): Codec[PoolVotingThresholds] =
+    Record.of[PoolVotingThresholds]((r.unit, r.unit, r.unit, r.unit, r.unit))
+
+  private[state] val poolThresholds: Codec[PoolVotingThresholds] = poolThresholdsWith(plain)
 
   /** `DRepVotingThresholds`: ten unit intervals. */
-  private[state] val drepThresholds: Codec[DRepVotingThresholds] =
+  private def drepThresholdsWith(r: Ratios): Codec[DRepVotingThresholds] =
     Record.of[DRepVotingThresholds](
-      (
-        unitInterval,
-        unitInterval,
-        unitInterval,
-        unitInterval,
-        unitInterval,
-        unitInterval,
-        unitInterval,
-        unitInterval,
-        unitInterval,
-        unitInterval
-      )
+      (r.unit, r.unit, r.unit, r.unit, r.unit, r.unit, r.unit, r.unit, r.unit, r.unit)
     )
+
+  private[state] val drepThresholds: Codec[DRepVotingThresholds] = drepThresholdsWith(plain)
 
   // ---- the parameters, by name
 
@@ -239,9 +247,12 @@ object Params:
     param("poolDeposit", coin)(_.poolDeposit)((p, x) => p.copy(poolDeposit = x))
   private val eMax = param("eMax", w32)(_.eMax)((p, x) => p.copy(eMax = x))
   private val nOpt = param("nOpt", w16)(_.nOpt)((p, x) => p.copy(nOpt = x))
-  private val a0 = param("a0", nonNegativeInterval)(_.a0)((p, x) => p.copy(a0 = x))
-  private val rho = param("rho", unitInterval)(_.rho)((p, x) => p.copy(rho = x))
-  private val tau = param("tau", unitInterval)(_.tau)((p, x) => p.copy(tau = x))
+  private def a0With(r: Ratios) = param("a0", r.nonNegative)(_.a0)((p, x) => p.copy(a0 = x))
+  private val a0 = a0With(plain)
+  private def rhoWith(r: Ratios) = param("rho", r.unit)(_.rho)((p, x) => p.copy(rho = x))
+  private val rho = rhoWith(plain)
+  private def tauWith(r: Ratios) = param("tau", r.unit)(_.tau)((p, x) => p.copy(tau = x))
+  private val tau = tauWith(plain)
   private val d = param("d", unitInterval)(_.d)((p, x) => p.copy(d = x))
 
   private val extraEntropy: Param[Nonce] =
@@ -263,10 +274,11 @@ object Params:
     param("costModels", costModels, Some(canonicalCostModels))(_.costModels)((p, x) =>
       p.copy(costModels = x)
     )
-  private val pricesParam =
-    param("prices", prices)(p => (p.priceMem, p.priceSteps))((p, x) =>
+  private def pricesParamWith(r: Ratios) =
+    param("prices", pricesWith(r))(p => (p.priceMem, p.priceSteps))((p, x) =>
       p.copy(priceMem = x._1, priceSteps = x._2)
     )
+  private val pricesParam = pricesParamWith(plain)
   private val maxTxExUnits =
     param("maxTxExUnits", exUnits, Some(canonicalExUnits))(_.maxTxExUnits)((p, x) =>
       p.copy(maxTxExUnits = x)
@@ -285,14 +297,16 @@ object Params:
     param("maxCollateralInputs", w16)(_.maxCollateralInputs)((p, x) =>
       p.copy(maxCollateralInputs = x)
     )
-  private val poolVotingThresholds =
-    param("poolVotingThresholds", poolThresholds)(_.poolVotingThresholds)((p, x) =>
+  private def poolVotingThresholdsWith(r: Ratios) =
+    param("poolVotingThresholds", poolThresholdsWith(r))(_.poolVotingThresholds)((p, x) =>
       p.copy(poolVotingThresholds = x)
     )
-  private val drepVotingThresholds =
-    param("drepVotingThresholds", drepThresholds)(_.drepVotingThresholds)((p, x) =>
+  private val poolVotingThresholds = poolVotingThresholdsWith(plain)
+  private def drepVotingThresholdsWith(r: Ratios) =
+    param("drepVotingThresholds", drepThresholdsWith(r))(_.drepVotingThresholds)((p, x) =>
       p.copy(drepVotingThresholds = x)
     )
+  private val drepVotingThresholds = drepVotingThresholdsWith(plain)
   private val committeeMinSize =
     param("committeeMinSize", w16)(_.committeeMinSize)((p, x) => p.copy(committeeMinSize = x))
   private val committeeMaxTermLength =
@@ -307,10 +321,11 @@ object Params:
     param("drepDeposit", coin)(_.drepDeposit)((p, x) => p.copy(drepDeposit = x))
   private val drepActivity =
     param("drepActivity", w32)(_.drepActivity)((p, x) => p.copy(drepActivity = x))
-  private val minFeeRefScriptCostPerByte =
-    param("minFeeRefScriptCostPerByte", nonNegativeInterval)(_.minFeeRefScriptCostPerByte)((p, x) =>
+  private def minFeeRefScriptCostPerByteWith(r: Ratios) =
+    param("minFeeRefScriptCostPerByte", r.nonNegative)(_.minFeeRefScriptCostPerByte)((p, x) =>
       p.copy(minFeeRefScriptCostPerByte = x)
     )
+  private val minFeeRefScriptCostPerByte = minFeeRefScriptCostPerByteWith(plain)
 
   // ---- the eras (`eraPParams`)
 
@@ -361,7 +376,8 @@ object Params:
     maxCollateralInputs
   )
 
-  private val babbageList: Vector[Param[?]] = Vector(
+  /** Babbage's list, its bounded ratios read by `r`. */
+  private def babbageListWith(r: Ratios): Vector[Param[?]] = Vector(
     txFeePerByte,
     txFeeFixed,
     maxBBSize,
@@ -371,14 +387,14 @@ object Params:
     poolDeposit,
     eMax,
     nOpt,
-    a0,
-    rho,
-    tau,
+    a0With(r),
+    rhoWith(r),
+    tauWith(r),
     protocolVersionParam,
     minPoolCost,
     coinsPerUTxOByte,
     costModelsParam,
-    pricesParam,
+    pricesParamWith(r),
     maxTxExUnits,
     maxBlockExUnits,
     maxValSize,
@@ -386,17 +402,21 @@ object Params:
     maxCollateralInputs
   )
 
-  private val conwayList: Vector[Param[?]] = babbageList ++ Vector(
-    poolVotingThresholds,
-    drepVotingThresholds,
+  /** Conway's list, its bounded ratios read by `r`. */
+  private def conwayListWith(r: Ratios): Vector[Param[?]] = babbageListWith(r) ++ Vector(
+    poolVotingThresholdsWith(r),
+    drepVotingThresholdsWith(r),
     committeeMinSize,
     committeeMaxTermLength,
     govActionLifetime,
     govActionDeposit,
     drepDeposit,
     drepActivity,
-    minFeeRefScriptCostPerByte
+    minFeeRefScriptCostPerByteWith(r)
   )
+
+  private val babbageList: Vector[Param[?]] = babbageListWith(plain)
+  private val conwayList: Vector[Param[?]] = conwayListWith(plain)
 
   /** `encodeNullStrictMaybe` (`Encoding/Encoder.hs:340-343`, cardano-ledger 9df9f98c): `null` or
     * the value, the value inside checked.
@@ -422,9 +442,10 @@ object Params:
     * bootstrap round is a `StrictMaybe Word32`, `[]` or `[round]` (`encodeStrictMaybe`,
     * `Encoding/Encoder.hs:331-334`; only its update is `null` or the value,
     * `Dijkstra/PParams.hs:1064-1081`); and the cost per multi-asset policy is a `Coin`, read as a
-    * `Word64` (`Coin.hs:106-112`).
+    * `Word64` (`Coin.hs:106-112`). The state is read at version 12, so every bounded ratio,
+    * Conway's among them, is read as from 12 (`atTwelve`).
     */
-  private val dijkstraList: Vector[Param[?]] = conwayList ++ Vector(
+  private val dijkstraList: Vector[Param[?]] = conwayListWith(atTwelve) ++ Vector(
     param("maxRefScriptSizePerBlock", w32)(_.maxRefScriptSizePerBlock)((p, x) =>
       p.copy(maxRefScriptSizePerBlock = x)
     ),
@@ -434,13 +455,13 @@ object Params:
     param("refScriptCostStride", nonZeroW32)(_.refScriptCostStride)((p, x) =>
       p.copy(refScriptCostStride = x)
     ),
-    param("refScriptCostMultiplier", positiveInterval)(_.refScriptCostMultiplier)((p, x) =>
-      p.copy(refScriptCostMultiplier = x)
-    ),
-    param("maxPledgeLeverage", orNull(nonNegativeInterval))(_.maxPledgeLeverage)((p, x) =>
+    param("refScriptCostMultiplier", positiveIntervalAt(using dijkstraVersion))(
+      _.refScriptCostMultiplier
+    )((p, x) => p.copy(refScriptCostMultiplier = x)),
+    param("maxPledgeLeverage", orNull(atTwelve.nonNegative))(_.maxPledgeLeverage)((p, x) =>
       p.copy(maxPledgeLeverage = x)
     ),
-    param("minPoolMargin", unitInterval)(_.minPoolMargin)((p, x) => p.copy(minPoolMargin = x)),
+    param("minPoolMargin", atTwelve.unit)(_.minPoolMargin)((p, x) => p.copy(minPoolMargin = x)),
     param("leiosAnnouncementPeriodLength", w32)(_.leiosAnnouncementPeriodLength)((p, x) =>
       p.copy(leiosAnnouncementPeriodLength = x)
     ),
@@ -453,7 +474,7 @@ object Params:
     param("leiosCommitteeSize", w16)(_.leiosCommitteeSize)((p, x) =>
       p.copy(leiosCommitteeSize = x)
     ),
-    param("leiosQuorumStakeThreshold", unitInterval)(_.leiosQuorumStakeThreshold)((p, x) =>
+    param("leiosQuorumStakeThreshold", atTwelve.unit)(_.leiosQuorumStakeThreshold)((p, x) =>
       p.copy(leiosQuorumStakeThreshold = x)
     ),
     param("maxEndorserBlockReferencesSize", w32)(_.maxEndorserBlockReferencesSize)((p, x) =>
@@ -471,8 +492,8 @@ object Params:
     param("perasMinCandidateBlockAge", w32)(_.perasMinCandidateBlockAge)((p, x) =>
       p.copy(perasMinCandidateBlockAge = x)
     ),
-    param("perasHealingFactor", positiveInterval)(_.perasHealingFactor)((p, x) =>
-      p.copy(perasHealingFactor = x)
+    param("perasHealingFactor", positiveIntervalAt(using dijkstraVersion))(_.perasHealingFactor)(
+      (p, x) => p.copy(perasHealingFactor = x)
     ),
     param("perasCertBoost", w16)(_.perasCertBoost)((p, x) => p.copy(perasCertBoost = x)),
     param("perasTargetCommitteeSize", w16)(_.perasTargetCommitteeSize)((p, x) =>
@@ -481,7 +502,7 @@ object Params:
     param("perasBootstrapRound", strictMaybe(w32))(_.perasBootstrapRound)((p, x) =>
       p.copy(perasBootstrapRound = x)
     ),
-    param("perasQuorumThresholdSafetyMargin", unitInterval)(_.perasQuorumThresholdSafetyMargin)(
+    param("perasQuorumThresholdSafetyMargin", atTwelve.unit)(_.perasQuorumThresholdSafetyMargin)(
       (p, x) => p.copy(perasQuorumThresholdSafetyMargin = x)
     ),
     param("refInputsCostPerMultiAssetPolicy", coin)(_.refInputsCostPerMultiAssetPolicy)((p, x) =>

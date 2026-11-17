@@ -124,6 +124,23 @@ object Wire:
     case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(Arity.Exactly(2), xs.size)))
     case _             => Left(Codec.mismatch("array", n))
 
+  /** `decodeIntegralRational @Word64` after its tag (`Decoding/DecCBOR.hs:271-280`, cardano-ledger
+    * 9df9f98c): `decodeList` of `Word64`, then exactly two of them, the denominator not zero.
+    */
+  private def word64RatioItems(n: Node): Decoded[(BigInt, BigInt)] = n.value match
+    case Value.Arr(xs) =>
+      xs.foldLeft[Decoded[Vector[BigInt]]](Right(Vector.empty))((acc, x) =>
+        acc.flatMap(vs => word(64).decode(x).map(vs :+ _))
+      ).flatMap {
+        case Vector(num, den) if den.signum != 0 => Right((num, den))
+        case Vector(_, den) =>
+          Left(
+            DecodeError.at(xs(1), Kind.OutOfRange("a non-zero denominator", den)).at("denominator")
+          )
+        case vs => Left(DecodeError.at(n, Kind.BadArity(Arity.Exactly(2), vs.size)))
+      }
+    case _ => Left(Codec.mismatch("array", n))
+
   /** A plain `Ratio Integer` (`encodeRatio`, `Encoder.hs:301-306`): tag 30 from version 9, absent
     * before. The decoder takes the tag when it is there from version 9 (`decodeRational`,
     * `Decoder.hs:474-483`).
@@ -143,15 +160,20 @@ object Wire:
 
   /** A bounded ratio (`UnitInterval`, `NonNegativeInterval`, `PositiveInterval`): always tag 30,
     * whatever the version (`Plain.encodeRatioWithTag`, `BaseTypes.hs:384`), both numbers `Word64`,
-    * and in `lo..hi` (`hi` absent: unbounded above). The decoder requires the tag
-    * (`decodeRationalWithTag`).
+    * and in `lo..hi` (`hi` absent: unbounded above). The decoder requires the tag and reads the two
+    * numbers with `items`; the reduced value is then bounded (`boundRational`).
     */
-  private def bounded(what: String, lo: Rational, hi: Option[Rational]): Codec[Rational] =
+  private def bounded(
+      what: String,
+      lo: Rational,
+      hi: Option[Rational],
+      items: Node => Decoded[(BigInt, BigInt)]
+  ): Codec[Rational] =
     new Codec[Rational]:
       private val max = (BigInt(1) << 64) - 1
       def decode(n: Node): Decoded[Rational] = n.value match
         case Value.Tag(t, inner) if t == 30 =>
-          ratioItems(inner).flatMap { (num, den) =>
+          items(inner).flatMap { (num, den) =>
             val r = Rational(num, den)
             val fits = r.numerator.signum >= 0 && r.numerator <= max && r.denominator <= max
             if fits && r >= lo && hi.forall(r <= _) then Right(r)
@@ -173,17 +195,40 @@ object Wire:
           s"${a.numerator}/${a.denominator}"
         )
 
-  /** `UnitInterval`: a ratio in 0..1. */
-  val unitInterval: Codec[Rational] = bounded("a ratio in 0..1", Rational.zero, Some(Rational.one))
+  /** How `decCBOR` of `BoundedRatio b Word64` reads the two numbers at version `v`
+    * (`BaseTypes.hs:407-428`, cardano-ledger 9df9f98c): from version 12
+    * `decodeIntegralRational @Word64`, each a `Word64`; before it `Plain.decodeRationalWithTag`
+    * (`Binary/Plain.hs:159-167`), each an `Integer`, so that `[-1, -1]` reads as 1 there.
+    */
+  private def boundedItems(v: ProtVer): Node => Decoded[(BigInt, BigInt)] =
+    if v.atLeast(12) then word64RatioItems else ratioItems
 
-  /** `NonNegativeInterval`: a ratio of two `Word64`s. */
-  val nonNegativeInterval: Codec[Rational] = bounded("a non-negative ratio", Rational.zero, None)
+  private val unitWhat = "a ratio in 0..1"
+  private val nonNegativeWhat = "a non-negative ratio"
+
+  /** `UnitInterval`: a ratio in 0..1, read as before version 12 ([[unitIntervalAt]]). */
+  val unitInterval: Codec[Rational] =
+    bounded(unitWhat, Rational.zero, Some(Rational.one), ratioItems)
+
+  /** `NonNegativeInterval`: a ratio of two `Word64` s, read as before version 12
+    * ([[nonNegativeIntervalAt]]).
+    */
+  val nonNegativeInterval: Codec[Rational] =
+    bounded(nonNegativeWhat, Rational.zero, None, ratioItems)
+
+  /** `UnitInterval` read as at version `v` ([[boundedItems]]). */
+  def unitIntervalAt(using v: ProtVer): Codec[Rational] =
+    bounded(unitWhat, Rational.zero, Some(Rational.one), boundedItems(v))
+
+  /** `NonNegativeInterval` read as at version `v` ([[boundedItems]]). */
+  def nonNegativeIntervalAt(using v: ProtVer): Codec[Rational] =
+    bounded(nonNegativeWhat, Rational.zero, None, boundedItems(v))
 
   /** `PositiveInterval` (cardano-ledger 9df9f98c `BaseTypes.hs:489-510`): a ratio of two `Word64` s
-    * of at least `positiveIntervalEpsilon`, `1 % 10^19`.
+    * of at least `positiveIntervalEpsilon`, `1 % 10^19`, read as at version `v` ([[boundedItems]]).
     */
-  val positiveInterval: Codec[Rational] =
-    bounded("a positive ratio", BoundedRatio.Positive.lower, None)
+  def positiveIntervalAt(using v: ProtVer): Codec[Rational] =
+    bounded("a positive ratio", BoundedRatio.Positive.lower, None, boundedItems(v))
 
   // ---- options
 

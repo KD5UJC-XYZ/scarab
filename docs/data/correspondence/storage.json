@@ -300,34 +300,14 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
    "evidence": [
     "DijkstraPParamsStateSuite"
    ],
-   "note": "the parameters of every era are one flat ProtocolParams, each field read and written at the range of the reference's field type; the bytes of the Leios build's Dijkstra parameters are read and written again byte for byte. Dijkstra's of the 11.1 line are refused (DijkstraNotYet.LedgerState)",
-   "digest": "16ffb98647e36c5e"
-  },
-  "val storage.haskell.state.Wire.positiveInterval": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "PositiveInterval",
-     "lines": [
-      489,
-      510
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraPParamsStateSuite"
-   ],
-   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio",
-   "digest": "92c5e818b00e9349"
+   "note": "the 11.1 layout's Dijkstra parameters (35 items, cardano-ledger f649f975 eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:423-459) are refused (DijkstraNotYet.LedgerState), which the reference decodes; 11.x never enters Dijkstra, its major-version cap being 11. The Leios build's 54 are read and written byte for byte, every era's parameters held in one flat ProtocolParams, each field at the range of the reference's field type",
+   "digest": "16ffb98647e36c5e",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54"
   },
   "def storage.haskell.state.NodeTypeCodecs#enactStateWith": {
    "upstream": [
@@ -408,6 +388,159 @@
     "DijkstraPParamsStateSuite"
    ],
    "digest": "ee0aff64c8b9a7cb"
+  },
+  "def storage.haskell.state.Wire.unitIntervalAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "UnitInterval",
+     "lines": [
+      544,
+      561
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "decodeIntegralRational",
+     "lines": [
+      271,
+      280
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      167
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "digest": "a53e9ffe1cd43f75"
+  },
+  "def storage.haskell.state.Wire.nonNegativeIntervalAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "NonNegativeInterval",
+     "lines": [
+      469,
+      486
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "decodeIntegralRational",
+     "lines": [
+      271,
+      280
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      167
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "digest": "4fb752aaf0dc5459"
+  },
+  "def storage.haskell.state.Wire.positiveIntervalAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "PositiveInterval",
+     "lines": [
+      489,
+      510
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "decodeIntegralRational",
+     "lines": [
+      271,
+      280
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      167
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "digest": "6e1f30b0813ed6d4"
   }
  },
  "glue": [
