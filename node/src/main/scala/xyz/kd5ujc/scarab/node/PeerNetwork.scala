@@ -591,8 +591,10 @@ object PeerNetwork:
 
       val judgementCell: Ref[F, LedgerStateJudgement] = judgement
 
-      /** Start one snapshot monitor per published root generation. The result is only traced; a
-        * reload that wins while the wait is suspended makes the old completion stale.
+      /** Start the snapshot monitor once per published root generation, and once more in it for a
+        * snapshot taken at another block point ([[setSnapshot]]); it checks the snapshot taken
+        * last. The result is only traced; a reload that wins while the wait is suspended makes the
+        * old completion stale.
         */
       def verifySnapshot(j: LedgerStateJudgement): F[Unit] =
         if settings.consensusMode != ConsensusMode.GenesisMode ||

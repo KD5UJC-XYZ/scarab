@@ -71,12 +71,16 @@ The new topology is installed once, a root generation of its own, before the fil
 topology's variables (697-702) before it reads the file (725-731). The snapshot read is then written, `None` included,
 to what the ledger-peers worker reads (757): the worker takes it at its next rebuild of the stake maps, as the
 reference's thread reads `wlpGetLedgerPeerSnapshot` only once its cache has aged out (ouroboros-network c45735a5
-`PeerSelection/LedgerPeers.hs` 277-287); no new root generation. In Genesis mode a snapshot at another block point
-than the one taken last arms the immutable-chain check again, and `None` or the same point does not, as
-`ledgerPeerSnapshotChange` takes a snapshot (`Governor/Monitor.hs` 432-459, cardano-diffusion `Governor/Types.hs`
-172-173). `snapshotLoaded` or `snapshotIgnored` is said where the file is read, at start-up and at a reload, not for a
-snapshot kept or dropped. `NetworkConfigSuite` and `LedgerPeersWiringSuite` show one generation per reload, the
-worker taking a new snapshot without being made again, and the check armed again only for another point.
+`PeerSelection/LedgerPeers.hs` 277-287); the write makes no root generation and no new worker. In Genesis mode the
+write arms the immutable-chain check again for a snapshot at another block point than the one taken last, and not for
+`None` or the same point, as `ledgerPeerSnapshotChange` takes a snapshot (`Governor/Monitor.hs` 432-459,
+cardano-diffusion `Governor/Types.hs` 172-173). The topology installed before it arms the check once per root
+generation, as every installation did before, for the snapshot taken last; so a reload that changes the snapshot
+checks the point taken before, then the new one. The reference launches `jobVerifyPeerSnapshot` only when the
+judgement changes (cardano-diffusion `Governor/Monitor.hs` 515-533), not when the roots do. `snapshotLoaded` or
+`snapshotIgnored` is said where the file is read, at start-up and at a reload, not for a snapshot kept or dropped.
+`NetworkConfigSuite` and `LedgerPeersWiringSuite` show one generation per reload, a worker taking a new snapshot at its
+next rebuild, the write arming the check again only for another point, and an installation arming it once.
 At runtime a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the origin or of another
 network, is dropped: the new topology stays with no snapshot, and nothing is said, since the reference's
 `NetworkConfigUpdateError` there is discarded (`Run.hs` 720-722, 734-736). In Praos mode a file it cannot read is

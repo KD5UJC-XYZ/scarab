@@ -70,8 +70,9 @@ SIGHUP reloads the topology, then reads its `peerSnapshotFile` again on its own,
 (`Run.hs` 596-614, 690-757). A malformed replacement leaves the active settings running, and the snapshot is not
 read again; a valid reload preserves original CLI roots and installs the new runtime/governor roots at an
 acknowledged generation boundary, once. The snapshot read is then written to what the ledger-peers worker reads,
-which takes it at its next rebuild of the stake maps; in GenesisMode a snapshot at another block point than the one
-taken last is checked against the immutable chain again (below).
+which takes it at its next rebuild of the stake maps; in GenesisMode the written snapshot, if at another block point
+than the one taken last, is checked against the immutable chain again (below), as every topology installed checks the
+one taken last.
 
 - **`useLedgerAfterSlot`.** A number above 0: take peers from the ledger once the ledger's tip is at or past that slot;
   `0`: always; below 0 or absent: never (`UseLedgerPeers`). The official Preview file has 119231973.

@@ -753,11 +753,14 @@ class NetworkConfigSuite extends FailsOnUncaught:
               none <- after(net.setSnapshot(None))
               same <- after(net.setSnapshot(Some(snapshotAt(100))))
               other <- after(net.setSnapshot(Some(snapshotAt(200))))
-            yield (judgement, start, none, same, other)
+              // a topology installed arms the check once per root generation, as before #924's
+              // reload work (`beforeEventApplied` on `RootsConfigured`): the scope it keeps
+              installed <- after(net.reloadRoots(roots))
+            yield (judgement, start, none, same, other, installed)
           }
         }
       yield
-        val (judgement, start, none, same, other) = seen
+        val (judgement, start, none, same, other, installed) = seen
         assertEquals(judgement, LedgerStateJudgement.TooOld, "the judgement the check waits for")
         assertEquals(none, start, "None arms nothing")
         assertEquals(same, start, "the same point arms nothing")
@@ -765,6 +768,11 @@ class NetworkConfigSuite extends FailsOnUncaught:
           other,
           (start._1 + 1, start._2),
           "another point: one more check, no generation"
+        )
+        assertEquals(
+          installed,
+          (other._1 + 1, other._2 + 1),
+          "a topology installed: a generation, and the check of the snapshot taken"
         )
     }
   }
