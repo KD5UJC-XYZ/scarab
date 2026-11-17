@@ -613,8 +613,10 @@ has therefore not stopped on an incoherent local acquisition since #541, and the
 - The acquisition is still never answered: the client gets no `MsgAcquired`; its pinned view and its other
   mini-protocols are released, an `inbound ... closed` line names the cause, and its connection closes. The client
   is not blamed and the acquisition is not retried.
-- A storage failure under a local client ends that client too, as `InboundEnd.Storage` (`Main.landLocalBackend`),
-  not `Fatal.Storage` as the Consequences said.
+- A storage failure that the local state-query backend returns ends that client too, as `InboundEnd.Storage`
+  (`Main.landLocalBackend`), not as `Fatal.Storage` as the Consequences said. One under a local ChainSync cursor becomes a
+  `Fatal` value (`StorageBoundary`; `Fatal.Storage` for most errors), but it goes to that client's own reporter and
+  ends that client alone (`InboundEnd.Fault`, `Main.localServer`).
 - `ListenerFailures.report`, the node-to-node reporter, keeps its case that makes a `StateAcquireFailure`
   `Fatal.Internal`; no node-to-node connection raises one, since only LocalStateQuery does.
 - Test: `ListenerFailuresSuite` serves an incoherent acquisition through `Main.localServer`, the node's own
