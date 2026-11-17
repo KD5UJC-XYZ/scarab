@@ -92,7 +92,7 @@ class ConwayCertsChecksSuite extends FunSuite:
       )
       c.cases.map { rc =>
         val what = s"${c.path}/${rc.label}"
-        val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item))
+        val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
         val nes = right(s"$what state")(
           codecs.newEpochState[Conway].decodeBytes(c.states(rc.state), HaskellState.limits)
         )

@@ -875,6 +875,7 @@ object CERTS:
     val numDormantEpochs = c.certVStateL.get(certState).numDormantEpochs
     val dRepsL = c.certVStateL.andThen(VState.dreps)
     b.votingProcedures[TxLevel.Top](body)(using b.top)
+      .unVotingProcedures
       .keysIterator
       .toVector
       .foldM(dRepsL.get(certState)) { (dreps, voter) =>

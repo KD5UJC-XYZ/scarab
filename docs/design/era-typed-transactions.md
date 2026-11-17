@@ -563,8 +563,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's `addEpochInterval` and `binOpEpochNo` do (`CertsEpochWrapSuite`). The flat rules sum them
     as integers, refusing an expiry outside `EpochNo` and comparing a retirement with an unbounded limit, so
     the two paths differ only past epoch 2^64; that gap is the flat rules' (#85), which stage 3 deletes.
-  - `EraCertState` lands without the deposit and refund totals of a body, which come with the body's totals.
-    Two more gaps are on #85: the committee and its proposals as the node's records in the environments,
+  - `EraCertState` lands without the deposit and refund totals of a body (`certsTotalDepositsTxBody`,
+    `certsTotalRefundsTxBody`), which follow now that the body's totals are on main (#85). Two more gaps are on #85: the committee and its proposals as the node's records in the environments,
     and a pool's parameters with the node's field types.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.

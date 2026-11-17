@@ -7908,7 +7908,7 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923360005",
-   "note": "certsTotalDepositsTxBody and certsTotalRefundsTxBody come with the body's totals (getTotalDepositsTxBody, getTotalRefundsTxBody); the Default, encoding and JSON superclasses have no counterpart here",
+   "note": "certsTotalDepositsTxBody and certsTotalRefundsTxBody follow, now that the body's totals (getTotalDepositsTxBody, getTotalRefundsTxBody) are on main (#85); the Default, encoding and JSON superclasses have no counterpart here",
    "digest": "af505cdd9ab0b1d8"
   },
   "type ledger.era.AccountState": {
@@ -8514,7 +8514,7 @@
     "CertsEpochWrapSuite"
    ],
    "note": "each voting DRep's credential is read into the state's vocabulary first, refused as a Vocab defect as the flat rule does, which no decoded vote is; the expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
-   "digest": "141460c261b7b6f2"
+   "digest": "e3ca58a8201a9a71"
   },
   "def ledger.era.rules.DELEG#transition": {
    "upstream": [
@@ -8746,6 +8746,72 @@
     "CertsEpochWrapSuite"
    ],
    "digest": "66818e2242149dda"
+  },
+  "val ledger.era.StakePoolParams#sppId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "sppId",
+     "lines": [
+      425,
+      425
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the operator's 28 bytes as the reference's KeyHash StakePool, read by `of` from the parameters it keeps",
+   "digest": "17d8900a3062702e"
+  },
+  "val ledger.era.StakePoolParams#value": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "StakePoolParams",
+     "lines": [
+      424,
+      434
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
+   "note": "the parameters other than the pool's id as the node's flat PoolParams, its relays and metadata the bytes they were read from, where the reference's fields are typed; equal by what those bytes mean, as the derived Eq",
+   "digest": "8062cac5d7dfa5ac"
+  },
+  "val ledger.era.StakePoolParams#metadataHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "pmHash",
+     "lines": [
+      295,
+      295
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "sppMetadata",
+     "lines": [
+      433,
+      433
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
+   "note": "the hash of sppMetadata's PoolMetadata (pmHash), read by `of` when the parameters are, where the reference keeps the decoded PoolMetadata",
+   "digest": "34e10f3d8932247d"
   }
  },
  "glue": [

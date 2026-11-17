@@ -59,8 +59,8 @@ object StakePoolParams:
   given CanEqual[StakePoolParams, StakePoolParams] = CanEqual.derived
 
   /** The parameters a decoder read, with the pool's key hash and their metadata's hash. A decoder
-    * has already read the metadata with its URL bounded ([[PoolParams.decodeMetadata]]), so its hash
-    * is always read.
+    * has already read the metadata with its URL bounded ([[PoolParams.decodeMetadata]]), so its
+    * hash is always read.
     */
   private[era] def of(value: PoolParams): Either[EraTxError, StakePoolParams] =
     (
