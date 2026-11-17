@@ -63,6 +63,17 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
       case other => fail(s"unexpected $other")
   }
 
+  test("a next block our ChainSync server no longer keeps ends the connection, uncharged (#924)") {
+    val notKept = NetworkError.NotKept(Protocols.ChainSync, ChainSync.Point.Origin)
+    Peer.networkFault(notKept) match
+      case Fault.Failed(error @ PeerError.NotKept(seen)) =>
+        assertEquals(seen, notKept)
+        // the governor counts nothing against the peer and keeps its pending reset
+        assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+        assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+      case other => fail(s"unexpected $other")
+  }
+
   // issue 567: of unknown origin on a connection, the connection's: it ends, uncharged
   test("a defect of unknown origin on a connection ends that connection, not the node") {
     Peer.networkFault(NetworkError.Defect(cause)) match
