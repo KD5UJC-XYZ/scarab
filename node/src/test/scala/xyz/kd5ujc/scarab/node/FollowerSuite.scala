@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.consensus.{
   BlockRules,
   Compute,
+  FollowerEvent,
   FollowerEvents,
   SchedulingStats,
   VolatileChain
@@ -49,10 +50,14 @@ class FollowerSuite extends FailsOnUncaught:
 
   private val noEvents: FollowerEvents[IO] = _ => IO.unit
 
-  /** One scripted session per element; `Left` fails the session with a peer error. */
+  /** One scripted session per element; `Left` fails the session with a peer error. Each event's tip
+    * is announced before the event is handed out, as a session observes the tip of the replies it
+    * accepts (`Peer.Observation.Announced`) before their headers go on.
+    */
   private def scriptedPeers(
       sessions: List[List[Either[PeerError, SyncEvent]]],
-      offered: Ref[IO, List[Vector[ChainSync.Point]]]
+      offered: Ref[IO, List[Vector[ChainSync.Point]]],
+      announce: ChainSync.Tip => IO[Unit]
   ): IO[Resource[IO, WorkerTesting.Scripted[IO]]] =
     Queue
       .unbounded[IO, List[Either[PeerError, SyncEvent]]]
@@ -64,9 +69,13 @@ class FollowerSuite extends FailsOnUncaught:
               def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                 offered.update(_ :+ candidates).as(candidates.headOption)
               def next(using Raise[IO, PeerError]) = remaining.modify {
-                case Nil                  => Nil -> IO.never
-                case Left(e) :: _         => Nil -> Raise[IO, PeerError].raise(e)
-                case Right(event) :: rest => rest -> IO.pure(event)
+                case Nil          => Nil -> IO.never
+                case Left(e) :: _ => Nil -> Raise[IO, PeerError].raise(e)
+                case Right(event) :: rest =>
+                  val tip = event match
+                    case SyncEvent.RollForward(_, t)  => t
+                    case SyncEvent.RollBackward(_, t) => t
+                  rest -> announce(tip).as(event)
               }.flatten
               def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(bodies(header.hash))
           }
@@ -84,7 +93,8 @@ class FollowerSuite extends FailsOnUncaught:
       retries: Int = 3,
       compute: Option[Compute[IO]] = None,
       applied: Option[Ref[IO, List[String]]] = None,
-      until: Option[ChainSync.Point] = None
+      until: Option[ChainSync.Point] = None,
+      events: FollowerEvents[IO] = noEvents
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
       ref <- SignallingRef.of[IO, VolatileChain[BigInt]](
@@ -102,7 +112,7 @@ class FollowerSuite extends FailsOnUncaught:
                     rules(state, header, block)
                 }
               ),
-              noEvents,
+              events,
               geometry,
               compute = compute
             )
@@ -111,7 +121,7 @@ class FollowerSuite extends FailsOnUncaught:
               val sessions = Handle
                 .allow[PeerError](
                   peers.parTraverse_ { sessions =>
-                    scriptedPeers(sessions, offered).flatMap(connect =>
+                    scriptedPeers(sessions, offered, follower.announce).flatMap(connect =>
                       SessionDriver
                         .supervise(
                           follower,
@@ -164,6 +174,31 @@ class FollowerSuite extends FailsOnUncaught:
   }
 
   private def forward(h: Header) = Right(SyncEvent.RollForward(h, tip))
+
+  test("an adopted block is logged with the tip the peer announced, not Origin (#924)") {
+    val main = forged.headers.take(6)
+    // a peer three blocks ahead of each header it sends
+    val ahead = main.map(h => ChainSync.Tip(h.point, ChainSync.UInt64.saturating(h.blockNo + 3)))
+    for
+      seen <- Ref.of[IO, List[FollowerEvent]](Nil)
+      result <- runPeers(
+        List(List(main.zip(ahead).map((h, t) => Right(SyncEvent.RollForward(h, t))).toList)),
+        until = Some(main.last.point),
+        events = event => seen.update(_ :+ event)
+      )
+      extended <- seen.get.map(_.collect { case e: FollowerEvent.Extended => e })
+    yield
+      assertEquals(result._1, Right(()))
+      assertEquals(extended.map(_.block.point), main.map(_.point).toList)
+      extended.foreach { e =>
+        // a tip announced with the block's header or after it, never one before it
+        val announcedAt = e.peerTip.map(t => ahead.indexOf(t))
+        assert(
+          announcedAt.exists(_ >= main.indexWhere(_.point == e.block.point)),
+          s"block ${e.block.blockNo}: peerTip ${e.peerTip.map(_.blockNo.value)}"
+        )
+      }
+  }
 
   /** One peer that serves `chain` as a node does: after the intersection it announces a roll back
     * to the intersection point (the protocol's first instruction), then rolls forward over the

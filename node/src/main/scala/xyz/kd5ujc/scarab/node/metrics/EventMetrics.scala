@@ -62,8 +62,10 @@ final class EventMetrics[F[_]: Sync] private (
           Era.values.toList.traverse_(e =>
             metrics.set(currentEra, e, if e == era then 1.0 else 0.0)
           ) *>
-          metrics.set(peerTipSlot, slot(tip.point)) *>
-          metrics.set(peerTipBlock, number(tip.blockNo.value))
+          tip.traverse_(t =>
+            metrics.set(peerTipSlot, slot(t.point)) *>
+              metrics.set(peerTipBlock, number(t.blockNo.value))
+          )
       case FollowerEvent.RolledBack(_, _, depth) =>
         metrics.inc(rollbacks) *> metrics.inc(forks) *> metrics.observe(
           rollbackDepth,

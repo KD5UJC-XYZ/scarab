@@ -190,6 +190,27 @@ class ServerSuite extends FailsOnUncaught:
       )
     }
 
+  test("ChainSync server: a next block that is not kept ends the server with its typed error"):
+    // a node with no chain database cannot serve a block that left its volatile chain (#924)
+    val notKept = new ChainSyncServer.Source[IO, Bytes]:
+      def intersect(points: Vector[Point]) = IO.pure(Left(Tip.Origin))
+      def poll = IO.pure(Some(ChainSyncServer.Update.NotKept(Point.Origin)))
+      def await = IO.pure(ChainSyncServer.Update.NotKept(Point.Origin))
+    typed {
+      linked(protocols = Set(2)).use { (client, server) =>
+        for
+          c <- client.channel(2)
+          s <- server.channel(2, Mux.Role.Responder)
+          served <- typed(ChainSyncServer.run(s, ChainSyncFixtures.rawItem, notKept)).start
+          // MsgRequestNext, `[0]`
+          _ <- c.send(Bytes(Vector(0x81.toByte, 0x00)))
+          ended <- served.joinWithNever
+        yield ended
+      }
+    }.map(ended =>
+      assertEquals(ended, Right(Left(NetworkError.NotKept(Protocols.ChainSync, Point.Origin))))
+    )
+
   test("ChainSync server: pipelined requests are answered in order, then a fork rolls back"):
     val chain = Chain(Vector(1, 2, 3, 4, 5))
     typed {

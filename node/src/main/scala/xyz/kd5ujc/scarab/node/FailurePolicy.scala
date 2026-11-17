@@ -45,6 +45,10 @@ object FailurePolicy:
     case _: PeerError.ConnectionDefect => FailureClass.NotThePeers
     // the same for an invariant of our own Genesis code on the connection (issue 567, H7)
     case _: PeerError.GenesisInvariant => FailureClass.NotThePeers
+    // Our ChainSync server no longer keeps the block the peer asked for next (a node without a
+    // chain database): the connection closes, and the peer, which asked for nothing wrong, is not
+    // charged (#924). The reference always keeps its immutable chain and has no such case.
+    case _: PeerError.NotKept => FailureClass.NotThePeers
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving

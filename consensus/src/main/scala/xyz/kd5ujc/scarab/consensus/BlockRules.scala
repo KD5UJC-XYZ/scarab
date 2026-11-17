@@ -132,7 +132,11 @@ enum NoVerdictRetry:
 /** Observable follower milestones. */
 enum FollowerEvent:
   case Connected(intersection: ChainSync.Point)
-  case Extended(block: BlockRef, epoch: BigInt, peerTip: ChainSync.Tip, era: Era)
+
+  /** `block` was added to our chain. `peerTip` is the tip a peer announced most recently, with the
+    * last ChainSync reply of any session, when one has.
+    */
+  case Extended(block: BlockRef, epoch: BigInt, peerTip: Option[ChainSync.Tip], era: Era)
   case RolledBack(from: ChainSync.Point, to: ChainSync.Point, depth: Int)
   case EpochEntered(epoch: BigInt, first: BlockRef)
   case Immutable(block: BlockRef)

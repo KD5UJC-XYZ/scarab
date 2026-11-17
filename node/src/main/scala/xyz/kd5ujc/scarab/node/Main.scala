@@ -1211,7 +1211,8 @@ object Main extends IOApp:
               case FollowerEvent.EraEntered(_, to, _, epoch) =>
                 eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
               case FollowerEvent.Extended(block, _, peerTip, _) =>
-                watchdog.announced(peerTip.blockNo.value) *> watchdog.extended(block.blockNo)
+                peerTip.traverse_(t => watchdog.announced(t.blockNo.value)) *>
+                  watchdog.extended(block.blockNo)
               case _ => IO.unit
             ) *> followerLog.emit(event)
         Instruments(
@@ -1631,7 +1632,8 @@ object Main extends IOApp:
           logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
         case Peer.Observation.Round(requested, received, millis) =>
           observeRounds(requested, received, millis)
-        case Peer.Observation.Announced(tip) => instruments.watchdog.announced(tip.blockNo.value)
+        case Peer.Observation.Announced(tip) =>
+          instruments.watchdog.announced(tip.blockNo.value) *> chain.follower.announce(tip)
         case Peer.Observation.HeaderReceived | Peer.Observation.HeadersArrived(_, _) |
             Peer.Observation.BlocksArrived(_, _) | Peer.Observation.Intersected(_) =>
           IO.unit)

@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.Temporal
 import cats.mtl.Raise
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
@@ -12,6 +13,9 @@ object ChainSyncServer:
   enum Update[+P]:
     case RollForward(payload: P, tip: Tip)
     case RollBackward(point: Point, tip: Tip)
+
+    /** The block after `after` is not kept: the connection ends with [[NetworkError.NotKept]]. */
+    case NotKept(after: Point)
 
   trait Source[F[_], P]:
     def intersect(points: Vector[Point]): F[Either[Tip, (Point, Tip)]]
@@ -37,20 +41,20 @@ object ChainSyncServer:
       source: Source[F, P],
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
+    def instruction(update: Update[P]): F[ChainSyncRuntime.Update[Point, Tip, P]] = update match
+      case Update.RollForward(payload, tip) =>
+        Temporal[F].pure(ChainSyncRuntime.Update.RollForward(payload, tip))
+      case Update.RollBackward(point, tip) =>
+        Temporal[F].pure(ChainSyncRuntime.Update.RollBackward(point, tip))
+      case Update.NotKept(after) =>
+        NetworkError
+          .NotKept(settings.protocol, after)
+          .raise[F, ChainSyncRuntime.Update[Point, Tip, P]]
+
     val genericSource = new ChainSyncRuntime.Source[F, Point, Tip, P]:
       def intersect(points: Vector[Point]) = source.intersect(points)
-      def poll = source.poll.map(_.map {
-        case Update.RollForward(payload, tip) =>
-          ChainSyncRuntime.Update.RollForward(payload, tip)
-        case Update.RollBackward(point, tip) =>
-          ChainSyncRuntime.Update.RollBackward(point, tip)
-      })
-      def await = source.await.map {
-        case Update.RollForward(payload, tip) =>
-          ChainSyncRuntime.Update.RollForward(payload, tip)
-        case Update.RollBackward(point, tip) =>
-          ChainSyncRuntime.Update.RollBackward(point, tip)
-      }
+      def poll = source.poll.flatMap(_.traverse(instruction))
+      def await = source.await.flatMap(instruction)
 
     ChainSyncRuntime.run(
       channel,

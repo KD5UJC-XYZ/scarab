@@ -412,6 +412,18 @@ def follow_blocks(open_session, point, count, deadline, out):
     return result
 
 
+def first_instruction(open_session):
+    """The reply to a `RequestNext` on a fresh connection that sent no `FindIntersect`, as `cardano-cli`'s
+    `getLocalChainTip` (`query kes-period-info`) sends it: [tag, point] of the instruction, or the error that ended
+    the session. The reference's follower starts at `RollBack GenesisPoint`, so it is a roll-back to Origin."""
+    try:
+        with open_session() as session:
+            reply, _ = session.request_next()
+            return {"first": [reply[0], str(reply[1]) if reply[0] == 3 else None], "error": None}
+    except Exception as e:  # noqa: BLE001 - reported to the scenario
+        return {"first": None, "error": repr(e)}
+
+
 def compare_follow(open_h, open_s, point, count, seconds):
     """Follow both nodes from `point` at once; the blocks sent by both must be equal."""
     deadline = time.monotonic() + seconds

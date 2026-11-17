@@ -114,7 +114,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `fatal` | `Node.Fatal` | Error | `kind` (`storage`, `internal`, `defect` or `unavailable`), `message`, `exitCode` |
 | `finished` | `Node.Finished` | Notice | `tip`, `retained` |
 | `connected` | `Chain.Connected` | Info | `intersection` |
-| `extended` | `Chain.Extended` | Info | `block`, `epoch`, `era`, `peerTip` |
+| `extended` | `Chain.Extended` | Info | `block`, `epoch`, `era`, `peerTip`: the point of the tip a peer announced most recently, with the last ChainSync reply any of the node's sessions received, or null before any peer has announced one |
 | `rolledBack` | `Chain.RolledBack` | Notice | `from`, `to`, `depth` |
 | `epoch` | `Chain.Epoch` | Notice | `epoch`, `first` |
 | `eraTransition` | `Chain.EraTransition` | Notice | `from`, `to`, `epoch`, `slot`, `block` |

@@ -573,7 +573,7 @@ object LogSamples:
   val follower: List[FollowerEvent] = List(
     FollowerEvent.Connected(ChainSync.Point.Origin),
     FollowerEvent.Connected(point),
-    FollowerEvent.Extended(block, BigInt(3), tip, Era.Conway),
+    FollowerEvent.Extended(block, BigInt(3), Some(tip), Era.Conway),
     FollowerEvent.RolledBack(point, ChainSync.Point.Origin, 2),
     FollowerEvent.EpochEntered(BigInt(4), block),
     FollowerEvent.Immutable(block),

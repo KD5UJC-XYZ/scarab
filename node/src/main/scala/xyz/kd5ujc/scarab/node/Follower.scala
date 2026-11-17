@@ -80,6 +80,9 @@ object SelectViews:
   *   worker, and for a block forged by this node.
   * @param window
   *   The window chain selection reads, kept in step with the chain by [[commit]].
+  * @param announced
+  *   The tip a peer announced most recently, with the last ChainSync replies a session accepted
+  *   ([[announce]]): the `peerTip` of the blocks adopted next (#924).
   */
 final class Follower[F[_]: Async, S] private (
     rules: BlockRules[F, S],
@@ -95,7 +98,8 @@ final class Follower[F[_]: Async, S] private (
     window: SignallingRef[F, Follower.Committed[S]],
     genesis: Ref[F, Option[GenesisGovernor[F]]],
     selectionChanged: Ref[F, F[Unit]],
-    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
+    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]],
+    announced: Ref[F, Option[ChainSync.Tip]]
 )(using
     chain: Stateful[F, VolatileChain[S]],
     assertions: Assertions[F]
@@ -112,6 +116,12 @@ final class Follower[F[_]: Async, S] private (
 
   private def publishWindow(current: VolatileChain[S], selected: ChainSelection.Local): F[Unit] =
     window.update(previous => Follower.Committed(current, selected, previous.revision + 1))
+
+  /** A session accepted ChainSync replies whose last announced `tip` (`Peer.Observation.Announced`,
+    * before their headers are checked and their blocks fetched): the blocks adopted from now on are
+    * logged with it.
+    */
+  private[node] def announce(tip: ChainSync.Tip): F[Unit] = announced.set(Some(tip))
 
   /** Installed once by the node before any peer sessions are started. */
   private[node] def installGenesis(governor: GenesisGovernor[F]): F[Unit] =
@@ -192,7 +202,9 @@ final class Follower[F[_]: Async, S] private (
                 if validation.addedPoint.exists(point => take.exists(_.point == point)) then
                   validation
                 else Peer.Validation.none[F]
-              switchTo(bodies, to, depth, take, ChainSync.Tip.Origin, pool.noVerdictBlocks, causal)
+              announced.get.flatMap(
+                switchTo(bodies, to, depth, take, _, pool.noVerdictBlocks, causal)
+              )
             case ChainSelection.Decision.Keep if phase == BlockSelection.Phase.Startup => F.unit
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
@@ -429,7 +441,7 @@ final class Follower[F[_]: Async, S] private (
       to: ChainSync.Point,
       depth: Int,
       take: Vector[Header],
-      peerTip: ChainSync.Tip,
+      peerTip: Option[ChainSync.Tip],
       withheldBlocks: NoVerdictBlocks[F],
       validation: Peer.Validation[F]
   )(using Raise[F, NodeError]): F[Unit] =
@@ -548,7 +560,7 @@ final class Follower[F[_]: Async, S] private (
       to: ChainSync.Point,
       depth: Int,
       steps: NonEmptyVector[Applied],
-      peerTip: ChainSync.Tip
+      peerTip: Option[ChainSync.Tip]
   )(using Raise[F, NodeError]): F[Unit] =
     // An exception here is the commit's, whichever fiber asked for it, and stops the node; a hot
     // session would otherwise take it for an exception of its own connection (SessionEnd.scoped).
@@ -572,7 +584,7 @@ final class Follower[F[_]: Async, S] private (
       to: ChainSync.Point,
       depth: Int,
       steps: NonEmptyVector[Applied],
-      peerTip: ChainSync.Tip
+      peerTip: Option[ChainSync.Tip]
   )(using Raise[F, NodeError]): F[Unit] =
     for
       _ <- persistence.traverse_(_.rolledBack(to)).whenA(depth > 0)
@@ -713,11 +725,8 @@ final class Follower[F[_]: Async, S] private (
                       SelectView.of(header),
                       header.era
                     )
-                    tip = ChainSync.Tip(
-                      header.point,
-                      ChainSync.UInt64.saturating(header.blockNo)
-                    )
-                    _ <- commit(before, at, depth, NonEmptyVector.one(applied), tip)
+                    peerTip <- announced.get
+                    _ <- commit(before, at, depth, NonEmptyVector.one(applied), peerTip)
                   yield Follower.Adoption.Adopted(ref)
             yield adopted
       yield result
@@ -882,8 +891,9 @@ object Follower:
         SignallingRef[F, Committed[S]](Committed(initial, selected)),
         Ref.of[F, Option[GenesisGovernor[F]]](None),
         Ref.of[F, F[Unit]](Async[F].unit),
-        Ref.of[F, Option[InvalidBlocks[F]]](None)
-      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks) =>
+        Ref.of[F, Option[InvalidBlocks[F]]](None),
+        Ref.of[F, Option[ChainSync.Tip]](None)
+      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks, announced) =>
         new Follower[F, S](
           rules,
           events,
@@ -898,7 +908,8 @@ object Follower:
           window,
           genesis,
           selectionChanged,
-          invalidBlocks
+          invalidBlocks,
+          announced
         )
       }
     }

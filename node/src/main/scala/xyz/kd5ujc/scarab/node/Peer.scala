@@ -437,6 +437,9 @@ object Peer:
     case cause: (NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout |
           NetworkError.ProtocolIdleTimeout | NetworkError.BearerClosed) =>
       Fault.Failed(PeerError.Unavailable(PeerError.Unavailability.Network(cause)))
+    // our own ChainSync server could not serve the peer's next block on this connection (#924):
+    // the connection ends, and the peer is not charged (`FailurePolicy`)
+    case cause: NetworkError.NotKept => Fault.Failed(PeerError.NotKept(cause))
     case cause: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
       Fault.Failed(PeerError.Handshake(cause))
     case cause: (NetworkError.IngressLimit | NetworkError.Decode | NetworkError.IllegalTransition |

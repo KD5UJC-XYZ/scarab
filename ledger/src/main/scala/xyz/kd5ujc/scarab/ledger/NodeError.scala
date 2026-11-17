@@ -91,6 +91,13 @@ enum PeerError extends NodeError:
     */
   case Unverifiable(error: VerificationDefect)
 
+  /** Our ChainSync server could not give this peer its next block: the node keeps no chain database
+    * and the block has left its volatile chain ([[NetworkError.NotKept]]). The connection closes
+    * and the peer is not charged: the history is the node's to keep. The reference always keeps its
+    * immutable chain and has no such case (#924).
+    */
+  case NotKept(cause: NetworkError.NotKept)
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -113,6 +120,7 @@ enum PeerError extends NodeError:
     case ServingDefect(protocol, cause) =>
       s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
     case Unverifiable(e) => e.message
+    case NotKept(cause)  => cause.message
 
 object PeerError:
   enum GenesisProblem:
