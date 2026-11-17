@@ -85,7 +85,9 @@ class EraStartSuite extends FunSuite:
     // `GetInterpreter` writes the same held start (`Query.hs:562` at 82ecba32): Byron's era is
     // `[start, end, params]`, the start of four items, the end of three
     assert(
-      answerOf(setup, state, interpreter).startsWith("9f" + "83" + "8400000003" + "83" + shelleyStart),
+      answerOf(setup, state, interpreter).startsWith(
+        "9f" + "83" + "8400000003" + "83" + shelleyStart
+      ),
       answerOf(setup, state, interpreter)
     )
   }
@@ -98,7 +100,10 @@ class EraStartSuite extends FunSuite:
           bytes =>
             if NodeSetup.ConfigNames.contains(name) then
               new String(bytes, "UTF-8")
-                .replace("\"TestShelleyHardForkAtEpoch\": 1,", s"\"TestShelleyHardForkAtEpoch\": $epoch,")
+                .replace(
+                  "\"TestShelleyHardForkAtEpoch\": 1,",
+                  s"\"TestShelleyHardForkAtEpoch\": $epoch,"
+                )
                 .getBytes("UTF-8")
             else bytes
         }
@@ -113,7 +118,10 @@ class EraStartSuite extends FunSuite:
 
   test("11.1: a Shelley epoch past 2^64 Byron slots: Shelley's start wraps as the reference's") {
     val setup = shelleyAt(ReferenceBuild.Release11_1, farEpoch)
-    assertEquals(answered(setup, setup.mirrorStart, QueryEra.Shelley), "81" + "83" + farShelleyStart)
+    assertEquals(
+      answered(setup, setup.mirrorStart, QueryEra.Shelley),
+      "81" + "83" + farShelleyStart
+    )
     assert(
       answerOf(setup, setup.mirrorStart, interpreter)
         .startsWith("9f" + "83" + "83000000" + "83" + farShelleyStart),

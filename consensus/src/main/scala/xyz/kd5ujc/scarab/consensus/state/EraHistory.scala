@@ -119,18 +119,19 @@ object EraHistory:
   private val Word64Modulus = BigInt(2).pow(64)
 
   /** `inEraSlots` of `mkUpperBound`: `epochs` (`inEraEpochs`, already a `countEpochs` difference)
-    * times the epoch size, both `Word64`, the product modulo 2^64 (`Summary.hs:148-151`).
+    * times the epoch size, both `Word64`, the product modulo 2^64 (`Summary.hs:148-151`,
+    * ouroboros-consensus 2416493b).
     */
   private def inEraSlots(epochs: BigInt, epochSize: BigInt): BigInt =
     (epochs.mod(Word64Modulus) * epochSize).mod(Word64Modulus)
 
   /** `mkUpperBound` (2416493b `Summary.hs:126-157`, 82ecba32 `:117-141`): the bound at the start of
-    * epoch `hiEpoch` of `era`, whose epochs are of `epochSize` slots of `slotLengthMillis`, from its
-    * lower bound `lo`. The slots of the era are `inEraSlots`, `Word64` and modulo 2^64; the slot is
-    * the lower bound's plus them, a `Word64` sum (`addSlots`, `HardFork/History/Util.hs:22-23`); the
-    * time is the lower bound's plus those slots times the slot length, exact (`addRelTime` of a
-    * `NominalDiffTime`, `BlockchainTime/WallClock/Types.hs:43-44`); the Peras round is
-    * [[upperLayout]]'s.
+    * epoch `hiEpoch` of `era`, whose epochs are of `epochSize` slots of `slotLengthMillis`, from
+    * its lower bound `lo`. The slots of the era are `inEraSlots`, `Word64` and modulo 2^64; the
+    * slot is the lower bound's plus them, a `Word64` sum (`addSlots`,
+    * `HardFork/History/Util.hs:22-23`); the time is the lower bound's plus those slots times the
+    * slot length, exact (`addRelTime` of a `NominalDiffTime`,
+    * `BlockchainTime/WallClock/Types.hs:43-44`); the Peras round is [[upperLayout]]'s.
     */
   def upperBound(
       lo: Bound,
@@ -183,9 +184,8 @@ object EraHistory:
     )
 
   /** The era history from the configuration, every bound in the layout of `layout` 's build: the
-    * first era starts at `initBound` ([[originLayout]]) and each era ends where the next begins,
-    * at the bound [[boundAt]] places, with the Peras round of its `mkUpperBound`
-    * ([[upperLayout]]).
+    * first era starts at `initBound` ([[originLayout]]) and each era ends where the next begins, at
+    * the bound [[boundAt]] places, with the Peras round of its `mkUpperBound` ([[upperLayout]]).
     */
   def summary(
       geometry: EpochGeometry,
