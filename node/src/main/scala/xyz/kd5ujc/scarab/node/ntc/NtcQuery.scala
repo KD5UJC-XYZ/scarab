@@ -23,7 +23,6 @@ enum LedgerPeerKind:
   case All, Big
 
 /** A ledger (Shelley-based era) query as `Ouroboros.Consensus.Shelley.Ledger.Query` numbers them.
-  * `Unsupported(tag)` is a query this node understands the framing of but does not answer.
   */
 enum LedgerQuery:
   case GetLedgerTip
@@ -67,7 +66,6 @@ enum LedgerQuery:
   case GetStakeDistribution2
   case GetMaxMajorProtocolVersion
   case GetDRepDelegations(dreps: Set[DRep])
-  case Unsupported(tag: Int)
 
 object LedgerQuery:
   /** Peel the only recursive constructor without consuming the worker's call stack. */
