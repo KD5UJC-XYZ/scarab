@@ -671,6 +671,7 @@
         "EraTxWits",
         "EraTxAuxData",
         "EraScript",
+        "Era",
         "NativeScriptRep",
         "BabbageTxOutRep",
         "EraPParams",
@@ -792,10 +793,15 @@
         "ShelleyUtxo",
         "AllegraUtxo",
         "AlonzoUtxo",
-        "BabbageUtxo"
+        "BabbageUtxo",
+        "ShelleyUtxow",
+        "AlonzoUtxow",
+        "BabbageUtxow"
       ],
       "suites": [
-        "ConwayUtxoChecksSuite"
+        "ConwayUtxoChecksSuite",
+        "ConwayUtxowChecksSuite",
+        "EraUtxowSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

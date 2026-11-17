@@ -499,6 +499,33 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Still to port before UTXO is whole: the value conserved (with the certificate state's class), the output
     sizes (with `Val`'s `pointwise` and the serialised size of a value), the bootstrap attributes and
     `validateOutsideForecast`, then `babbageUtxoValidation` put together.
+- **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): three of the predicates
+  Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
+  arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts` and
+  `checkScriptIntegrityHash`, with the script integrity it compares (`ScriptIntegrity`, `mkScriptIntegrity`,
+  `hashScriptIntegrity`, and the language views `getLanguageView` and `encodeLangViews`).
+  - Their verdicts equal the flat checks' on every transaction of the recorded Conway refusal corpora
+    (`ConwayUtxowChecksSuite`), where the scripts and the integrity hash refuse and the signatures never do.
+    On every recorded Conway transaction, which has no UTxO set, the signature check's verdict and the
+    integrity check's equal the flat ones (`EraUtxowSuite`). Crafted cases refuse each: forged key and
+    bootstrap witnesses, an extraneous script, a wrong integrity hash at versions 10 and 11, and datums
+    without redeemers, whose integrity is over the era's empty redeemers. The integrity's bytes equal the
+    flat preimage for every set of languages, and each language's view, with and without its cost model,
+    equals bytes written out by hand. Views of one tag are encoded in their derived order, as the
+    reference's stable sort of `Set.toList` leaves them, whatever order the set was built in.
+  - A witness set without redeemers has the era's empty redeemers, whose bytes the reference encodes at the
+    era's lowest protocol version. That version comes from the reference's `Era` class, here a class of its
+    own with `eraProtVerLow` and `eraProtVerHigh` (`era/Era.scala`), with instances for Allegra, Mary,
+    Babbage, Conway and Dijkstra. Each instance's versions equal the range the flat decoders read the era at.
+  - The signature check lists the keys of failing key witnesses in the witness set's order (`Ord WitVKey`),
+    as the reference does, and as the flat check does. The bootstrap witnesses follow, in the order of
+    `bootAddrTxWits`, which the decoder keeps in the reference's set order (by address root); crafted cases
+    fail them alone and after key witnesses, in that order in both paths.
+  - The scripts needed and provided (`ScriptsNeeded`, `getScriptsProvided`), the needed key witnesses
+    (`getWitsVKeyNeeded`), the failing native scripts, the datums and the redeemers wait for `EraUTxO`'s
+    members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction
+    annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do not have
+    yet (on #85's checklist).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
