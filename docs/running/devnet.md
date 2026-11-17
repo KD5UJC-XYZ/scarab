@@ -73,7 +73,11 @@ it has. `pool`, `kes-rotate` and `dynamic-forging` also take `--plutus-load` (th
 for Scarab using a separate run-local configuration and a topology naming only that
 run's controlled reference pools as trustable local roots. The reference pools keep
 their original configuration. Restart retains the explicit mode on both starts;
-soak passes it to its follower. `PraosMode` explicitly selects Praos; omitting the
+soak passes it to its follower. `relay` turns the Scala node's PeerSharing on unless `--no-peer-sharing` is given,
+and with PeerSharing on and no ledger peers a Genesis node never reaches the trusted state, so it stays in
+`PreSyncing` within `k` blocks of Origin, as the reference does
+([configuration](configuration.md#choosing-the-consensus-mode)): give `relay --consensus-mode GenesisMode` the
+`--no-peer-sharing` flag. `PraosMode` explicitly selects Praos; omitting the
 option retains the harness's existing configuration. See the [Genesis design](../design/genesis.md)
 for the reference contracts and acceptance gates.
 

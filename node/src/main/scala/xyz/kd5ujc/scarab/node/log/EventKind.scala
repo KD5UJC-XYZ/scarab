@@ -97,6 +97,14 @@ enum EventKind(val area: Area, val severity: Severity):
   // the reference's `Startup.SocketConfigError` (cardano-node 11.1.3,
   // `cardano-node/src/Cardano/Node/Tracing/Tracers/Startup.hs` 323-324, 372)
   case SocketConfigError extends EventKind(Area.Node, Severity.Error)
+
+  /** The reference's `Startup.NetworkConfigUpdateInfo` and `Startup.NetworkConfigUpdateWarning`,
+    * with their severities and their `message` (cardano-node 11.1.3,
+    * `cardano-node/src/Cardano/Node/Tracing/Tracers/Startup.hs` 226-231, 341-344, 374-375): what
+    * the reading of the topology says of it, at start-up and at each reload.
+    */
+  case NetworkConfigUpdateInfo extends EventKind(Area.Node, Severity.Info)
+  case NetworkConfigUpdateWarning extends EventKind(Area.Node, Severity.Warning)
   case Fatal extends EventKind(Area.Node, Severity.Error)
   case Finished extends EventKind(Area.Node, Severity.Notice)
 

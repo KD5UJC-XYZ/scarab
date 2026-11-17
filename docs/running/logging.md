@@ -106,6 +106,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
 | `error` | `Node.Error` | Error | `kind`, `message`; the run stops on the error, except for `kind` `Unwritable`: the file of `--assertions-file` could not be opened or written, which is said once, and the node goes on without its assertions |
 | `socketConfigError` | `Node.SocketConfigError` | Error | `error`, the reference's `show` of its `LocalSocketError`: what was at the `--local-socket` path could not be removed (a directory, a directory the node may not write, ...); the node does not start and exits with 1 |
+| `networkConfigUpdateInfo` | `Node.NetworkConfigUpdateInfo` | Info | `message`, the reference's text: what the reading of the topology says of it, at start-up and at each SIGHUP reload, as the reference's `NetworkConfigUpdateInfo`: a block producer whose topology names a `peerSnapshotFile` with ledger peers off; see [configuration](configuration.md#configuration-and-topology-files) |
+| `networkConfigUpdateWarning` | `Node.NetworkConfigUpdateWarning` | Warning | `message`, as above, as the reference's `NetworkConfigUpdateWarning`: a block producer with ledger peers on; in Praos mode a `peerSnapshotFile` with ledger peers off (the file is not read); in Genesis mode a relay without ledger peers, or with them and no `peerSnapshotFile`; and in Genesis mode `bootstrapPeers`, which the node then goes on without |
 | `fatal` | `Node.Fatal` | Error | `kind` (`storage`, `internal`, `defect` or `unavailable`), `message`, `exitCode` |
 | `finished` | `Node.Finished` | Notice | `tip`, `retained` |
 | `connected` | `Chain.Connected` | Info | `intersection` |

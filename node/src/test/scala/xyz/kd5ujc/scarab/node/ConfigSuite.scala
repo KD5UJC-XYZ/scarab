@@ -818,13 +818,91 @@ class ConfigSuite extends FunSuite:
     assert(Topology.parse("[]").isLeft)
     // an empty bootstrap list and no trustable local root: nothing to make progress from
     assert(Topology.parse("""{"localRoots": [], "publicRoots": [], "bootstrapPeers": []}""").isLeft)
-    assert(
+    // a trustable group counts only with an access point (`isValidTrustedPeerConfiguration`,
+    // cardano-diffusion 1.1.1.0 `Cardano/Network/Diffusion/Topology.hs` 29-40)
+    assertEquals(
       Topology
         .parse(
           """{"localRoots": [{"accessPoints": [], "valency": 1, "trustable": true}], "publicRoots": [], "bootstrapPeers": []}"""
         )
+        .left
+        .map(_.problem),
+      Left(ConfigProblem.UntrustedBootstrap),
+      "a trustable group with no access point is no trustable peer"
+    )
+    assert(
+      Topology
+        .parse(
+          """{"localRoots": [{"accessPoints": [{"address": "127.0.0.1", "port": 3001}], "valency": 1, "trustable": true}], "publicRoots": [], "bootstrapPeers": []}"""
+        )
         .isRight
     )
+    assert(
+      Topology
+        .parse(
+          """{"localRoots": [{"accessPoints": [{"address": "relays.example"}], "valency": 1, "trustable": true}], "publicRoots": [], "bootstrapPeers": []}"""
+        )
+        .isRight,
+      "an SRV access point is an access point"
+    )
+  }
+
+  test(
+    "the official topologies in Genesis mode: the bootstrap peers dropped with the reference's warning, the snapshot required"
+  ) {
+    networks.foreach { network =>
+      val beside = Files.createTempDirectory(s"config-suite-genesis-$network")
+      val topology = beside.resolve("topology.json")
+      Files.copy(dir(network).resolve("topology.json"), topology)
+      val options = Main
+        .parse(
+          List(
+            "follow",
+            "--config",
+            dir(network).resolve("config.json").toString,
+            "--topology",
+            topology.toString
+          )
+        )
+        .fold(error => fail(error.message), identity)
+      val setup = Main.nodeSetup(options).fold(e => fail(e.message), identity)
+      assertEquals(setup.config.settings.consensusMode, ConsensusMode.GenesisMode, network)
+      val read = Main.readTopology(options, setup).fold(e => fail(e.message), identity)
+      assertEquals(
+        read.map(_.notices),
+        Some(List(TopologyNotice.BootstrapPeersInGenesisMode)),
+        s"$network: the one warning of a relay with ledger peers and a snapshot"
+      )
+      assertEquals(read.map(_.topology.bootstrapPeers), Some(None), s"$network: no bootstrap peer")
+      // the topology names `peer-snapshot.json`, which the reference's Genesis mode must read at
+      // start (`Run.hs` 733-736): without it the node stops
+      assert(
+        Main.configured(options).left.exists {
+          case ConfigError(
+                ConfigProblem.PeerSnapshot(
+                  PeerSnapshotRefusal.UnreadableSnapshot(PeerSnapshotError.Unreadable(_, _))
+                )
+              ) =>
+            true
+          case _ => false
+        },
+        s"$network: a Genesis start without its snapshot stops"
+      )
+      Files.writeString(
+        beside.resolve("peer-snapshot.json"),
+        s"""{"NodeToClientVersion": 23, "NetworkMagic": ${setup.identity.magic},
+           | "Point": {"blockPointSlot": 300000000, "blockPointHash": "${"ab" * 32}"},
+           | "bigLedgerPools": [{"accumulatedStake": 1, "relativeStake": 1,
+           |   "relays": [{"address": "127.0.0.1", "port": 3001}]}]}""".stripMargin
+      )
+      val (completed, _, loaded) = Main.configured(options).fold(e => fail(e.message), identity)
+      assertEquals(completed.peers, Nil, s"$network: no root peer, only big ledger peers")
+      assertEquals(loaded.flatMap(_.bootstrapPeers), None, s"$network: no bootstrap peer")
+      val roots = completed.roots.getOrElse(fail("no roots"))
+      assertEquals(roots.bootstrapConfigured, false, s"$network: bootstrap peers not in use")
+      assert(roots.ledgerPeers, s"$network: ledger peers on")
+      assert(roots.snapshot.snapshot.isDefined, s"$network: the snapshot loaded")
+    }
   }
 
   test("an unreadable topology retains the path and original file-system cause") {
@@ -982,7 +1060,9 @@ class ConfigSuite extends FunSuite:
       (overridden.localSocket, overridden.db, overridden.mempoolBytes),
       (Some("/mine.socket"), Some(Path.of("/mine")), five)
     )
-    // a topology that names no peer, and no --peer: nothing to follow
+    // a topology that names no peer, and no --peer: the node starts with no root, as the
+    // reference does (`readTopologyFile` has no such check; its own
+    // `testnet-template-topology-empty-p2p.json` is such a topology)
     val empty = Files.createTempFile("topology", ".json")
     Files.writeString(
       empty,
@@ -992,7 +1072,16 @@ class ConfigSuite extends FunSuite:
       .parse(List("follow", "--config", config.toString, "--topology", empty.toString))
       .toOption
       .get
-    assertEquals(Main.configured(nobody).left.map(_.problem), Left(ConfigProblem.NoPeers))
+    val (alone, _, _) = Main.configured(nobody).fold(e => fail(e.message), identity)
+    assertEquals(alone.peers, Nil, "no peer to follow")
+    val aloneRoots = alone.roots.getOrElse(fail("no roots"))
+    assertEquals(
+      (aloneRoots.local.flatMap(_.members), aloneRoots.public, aloneRoots.bootstrap),
+      (Nil, Set.empty, None),
+      "no root of any kind"
+    )
+    // Genesis mode with bootstrap peers: they are dropped, as the reference reverts to
+    // `DontUseBootstrapPeers` with a warning (`TopologyP2P.hs` 103-108)
     val bootstrap = Files.createTempFile("genesis-topology", ".json")
     Files.writeString(
       bootstrap,
@@ -1009,9 +1098,14 @@ class ConfigSuite extends FunSuite:
         )
       )
       .fold(error => fail(error.message), identity)
+    val (genesisOptions, _, genesisTopology) =
+      Main.configured(genesisMode).fold(e => fail(e.message), identity)
+    assertEquals(genesisTopology.map(_.bootstrapPeers), Some(None), "the bootstrap peers dropped")
+    assertEquals(genesisOptions.peers, Nil, "the bootstrap peer is not followed")
     assertEquals(
-      Main.configured(genesisMode).left.map(_.problem),
-      Left(ConfigProblem.BootstrapPeersInGenesisMode)
+      genesisOptions.roots.map(_.bootstrapConfigured),
+      Some(false),
+      "bootstrap peers are not in use"
     )
     // the same settings in a genesis directory's configuration are not applied
     val directoryMode = Main

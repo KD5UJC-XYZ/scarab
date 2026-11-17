@@ -101,13 +101,11 @@ enum ConfigProblem:
   case MissingGenesis
   case MissingGenesisParameters
   case MissingChunkSize
-  case NoPeers
   case TopologyPort(actual: io.circe.Json)
   case TopologyHost(value: String)
   case UnspecifiedDestination(value: String)
   case SrvAccessPoint(value: String)
   case UntrustedBootstrap
-  case BootstrapPeersInGenesisMode
   case MissingValency
   case UnknownFlag(flag: String)
   case DuplicateFlag(flag: String)
@@ -162,9 +160,6 @@ enum ConfigProblem:
     case LogNamespace(value) => s"no namespace $value"
     case ConflictingFields(fields) =>
       s"specify one of ${fields.toVector.sorted.mkString(", ")}, not both"
-    case NoPeers => "no peer to follow: the topology names no local root, bootstrap or public root"
-    case BootstrapPeersInGenesisMode =>
-      "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"
     case GenesisUnverifiable(cause) => s"no verdict on the genesis: ${cause.message}"
     case GenesisCostModel(cause)    => s"genesis cost models: ${cause.message}"
     case ByronGenesisAddress(value, cause) =>

@@ -45,3 +45,25 @@ this is not a whole-ChainSync conformance claim.
 - The hot-demotion log lines carry each candidate's score (`scores`); in `c45735a5` the hot-demotion traces carry none, and the ranking is the same. An approved deviation that follows pull request [#5437](https://github.com/IntersectMBO/ouroboros-network/pull/5437) ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).
 - A topology reconfiguration keeps the last local-root DNS answer of each name the new topology still has (`LocalRootDnsCache.reconfigure`). `c45735a5` starts every domain with no addresses. An approved deviation that follows pull request [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455), in neither `c45735a5` nor `2fb69829` ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).
 - A reload publishes the topology's IP roots and the kept DNS answers at once (`PeerNetwork`); in `c45735a5` a reconfiguration publishes nothing until a domain's lookup answers, so a topology with no DNS names is not applied. A bug of the linked packages, not reproduced: fixed upstream by pull request [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455) ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).
+
+## Reading the topology (#924)
+
+The topology is read as cardano-node 11.1.3's `readTopologyFile` reads it
+(`cardano-node/src/Cardano/Node/Configuration/TopologyP2P.hs` 53-140), at start-up and at each SIGHUP reload, checked
+by reading the pinned source: `TopologyNotice.read` gives its advice (lines 66-100) and, in Genesis mode, drops its
+`bootstrapPeers` (103-108, 139-140) with the reference's `NetworkConfigUpdateWarning` text, logged as
+`networkConfigUpdateWarning` or `networkConfigUpdateInfo`. A topology with no root is not refused, as the reference
+does not refuse one; an empty `bootstrapPeers` needs a trustable local root group that names an access point
+(`isValidTrustedPeerConfiguration`, cardano-diffusion 1.1.1.0 `Cardano/Network/Diffusion/Topology.hs` 19-40). In
+Genesis mode an unreadable `peerSnapshotFile` stops the node at start, as `updateLedgerPeerSnapshot` does at start-up
+(`Run.hs` 715-736). `TopologyNoticeSuite` and `ConfigSuite` (the official mainnet, preprod and preview topologies in
+Genesis mode) cover it. The start-up was also compared by running both nodes with no network on the official mainnet
+configuration and topology, with and without the `peer-snapshot.json` it names, and on the reference's
+`testnet-template-topology-empty-p2p.json` (2026-11-16): the same warnings, the same stop without the snapshot.
+A difference left ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6933331883)): at a runtime
+SIGHUP reload the reference installs the new topology and then reads the peer snapshot on its own (`Run.hs` 596-614,
+690-757, `isStartup` false). On a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the
+origin or of another network in either mode, it traces `NetworkConfigUpdateError` and goes on with the new topology
+and no snapshot. Scarab refuses the whole reload on any of these and keeps the topology and snapshot in force; an
+unreadable file in Praos mode is ignored by both. The reference's handler installed before consensus has initialised
+reads the snapshot as at start-up (`Run.hs` 413-430, `isStartup` true).

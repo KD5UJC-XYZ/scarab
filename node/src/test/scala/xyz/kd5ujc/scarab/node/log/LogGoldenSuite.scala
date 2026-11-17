@@ -19,7 +19,14 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
-import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace, LocalRootsTrace, SyncAdvisory}
+import xyz.kd5ujc.scarab.node.{
+  Fatal,
+  InboundEvent,
+  LedgerPeersTrace,
+  LocalRootsTrace,
+  SyncAdvisory,
+  TopologyNotice
+}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -79,6 +86,8 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- remoteServer.traverse_(t => node(NodeEvent.RemoteServer(t)))
         _ <- node(NodeEvent.SocketConfigError(socketConfigError))
         _ <- node(NodeEvent.DiffusionErrored(diffusionErrored))
+        _ <- node(NodeEvent.NetworkConfigUpdate(TopologyNotice.BootstrapPeersInGenesisMode))
+        _ <- node(NodeEvent.NetworkConfigUpdate(TopologyNotice.SnapshotOffOnProducer))
         _ <- node(NodeEvent.Listening("0.0.0.0:3001"))
         _ <- node(NodeEvent.HeadersChecked(50000L, 12L, 3L))
         _ <- node(NodeEvent.Inbound("/tmp/node.socket", InboundEvent.Accepted))
