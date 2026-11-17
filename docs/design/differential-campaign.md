@@ -160,7 +160,7 @@ adapters (§2.7) generate and judge new Conway cases with the reference's own ru
 | A bracketed submission primitive that records both verdicts, for accepted transactions too | path L (§4) |
 | A node-to-node peer the campaign controls, which serves a forged or mutated chain to a Haskell node and to Scarab, and builds blocks of the eras before Conway | every block probe; the era-transition probes |
 | A reader of each node's verdict on a block: the reference's `InvalidBlock` trace is silent by default (`scripts/devnet/reference_tracing.py` 3-16); no Scarab event was found that names a refused block's full hash, and only `scarab_validation_errors_total` counts refused bodies (`MeteredRules.scala` 35-40) | block verdicts |
-| A seeded run record, a minimiser against both nodes, a private runner and store, and a published summary that cannot carry an input | §7, §8 |
+| A seeded run record, a minimiser against both nodes, a private runner and store, and a publication that cannot carry an outcome before clearance | §7, §8 |
 
 ## 3. What the reference does
 
@@ -376,8 +376,9 @@ confirmed in an injector cluster restored from the recorded chain, with nodes th
 
 ### 7.4 Kept inputs
 
-A disagreement, once fixed and published (§8), is kept as a regression input in a new directory of the campaign's
-own under [`fixtures/reference/`](../../fixtures/reference/), one subdirectory per input:
+A disagreement, once fixed and disclosed (its advisory published), and with the owner's explicit authorization to
+disclose it (§8), is kept as a regression input in a new directory of the campaign's own under
+[`fixtures/reference/`](../../fixtures/reference/), one subdirectory per input:
 
 - the input's bytes, the reference's verdict as recorded, and the context in the reference's own encoding (state and
   UTxO CBOR as the refusal corpus keeps them, the genesis files, and for a block the chain up to its predecessor);
@@ -398,8 +399,8 @@ what the reference refuses or refusing what it accepts, can split a node from th
 campaign finds is reported privately first, as [SECURITY.md](../../SECURITY.md#reporting) says, including one that
 SECURITY.md would let go to a public issue (§10, Q2). Its triage has three outcomes, all private until disclosed:
 
-- **Scarab is wrong**: a Gap; it is fixed through the private advisory's process, and its kept input lands with the
-  fix.
+- **Scarab is wrong**: a Gap; it is fixed through the private advisory's process, and its kept input lands only once
+  the fix is disclosed and its disclosure authorized (§7.4).
 - **The reference is wrong** (a [REF-2](../design-rules.md#ref-2) defect): Scarab still gives the reference's verdict
   (I1); the maintainers report the defect upstream privately, and nothing of it enters the repository before upstream
   discloses it.
@@ -410,29 +411,39 @@ infrastructure the maintainers control, outside the public repository's Actions 
 execution stays there: when it runs and which families and eras it covers, its start, end and durations, its exit
 status, its failures, timeouts and cleanup, its logs, its artifacts, its record and the minimiser's trail. Its entry
 point refuses to start under the public repository's Actions, and it writes only to its run directory and the private
-store. Public CI runs no discovery: it replays kept inputs, each one already fixed or disclosed (§7.4).
+store. Public CI runs no discovery: it replays kept inputs, each one fixed and disclosed, with its disclosure
+authorized (§7.4).
 
-**What is published** is one summary per period, on a fixed calendar date whatever the period's runs found, written
-from one closed summary type by a module that cannot reach the inputs, with a test that its serialised form holds
-exactly these fields:
+**Nothing that depends on outcomes is published while a finding of its period is private**, and that includes the fact
+that a finding exists. A finding is cleared when its advisory is published, when upstream has disclosed it for a defect of the reference, or when it is closed as no defect. Publication has
+two stages.
 
-- the period's first and last dates, and the configuration in force: the budget of a run (its wall-time limit, CPUs
-  and memory), the reference build and image digest, and the set of Scarab commits the period's runs used;
-- the number of runs, and per cell of era and input family (§9.1) its quota for the period and whether the period met
-  the quota and the cell's coverage minimums (`met` or `incomplete`);
-- the number of runs with each result (`agreed`, `reportedPrivately`, `incomplete`);
-- the SHA-256 of each run's seed, in sorted order. A seed is 256 bits from the operating system's random source, so
-  its hash commits to it and cannot be searched; a seed is shown only with its advisory.
+**Before clearance: the announcement.** On a fixed date after each period, whatever its runs found, one announcement is
+published, written from a closed type whose only input is the period's configuration, fixed before the period began:
 
-Each cell has a fixed quota of probes per period (§9.2), and the period's runs go on until it is met, making up what a
-run cut short by a finding left: what a cell tried is configuration, and no count moves with a finding. A cell still
-short at the period's end is `incomplete`, which says only that. Nothing in a summary is per run: no run's result,
-date, duration, commit or counts. A summary says that a period had a finding through its `reportedPrivately` count and
-nothing more.
+- the period's first and last dates, and the budget of a run (its wall-time limit, CPUs and memory);
+- the reference build, and the digest of every image the runs use (the reference node's, Scarab's JDK image's, each
+  oracle's);
+- the configuration identifier: the SHA-256 of the campaign's public configuration record, a file in the repository that
+  holds the budget, the cells and their quotas, the images and the commit rule, and no seed and no schedule;
+- the commits, chosen by the rule fixed beforehand (the head of `main` at a fixed time each night), not by the runs.
 
-**The disclosure gate**, part of S1's jump gate and of every later change to the runner: a test run with a forced
-disagreement, a forced failure, a forced timeout and a forced cleanup error leaves nothing outside its run directory
-and the private store, and the summary of a period that holds them carries only its fields.
+It says that the period ran under that configuration, and nothing more: no outcome, no coverage, no run count and no
+seed. Whether a run completed, failed or was repeated is an outcome.
+
+**After clearance: the results.** Once every finding of a period is cleared, its results are published: per cell (§9.1)
+the probes tried, the conclusive verdicts of each class, the inconclusive attempts and whether the cell met its
+minimums; the runs and their results; and the seeds. Truthful coverage stays private until then. A seed is 256 bits
+from the operating system's random source, and is released only once every finding derivable from its run is cleared.
+Results are released in period order, on the first fixed release date that is a fixed embargo after the period's end
+and on which that period and every earlier one are cleared.
+
+**The disclosure gate**, part of S1's jump gate and of every later change to the runner or to publication, runs the
+whole pipeline on pairs of test periods with the same public configuration and different private outcomes: no finding,
+one finding, several, a failed run, a timed-out run, a cleanup error, a recovery run. Each pair must publish
+byte-identical output at identical times: the announcement's bytes and its release time, and no results before
+clearance. It checks every allowed field's value, cardinality and release time, not only its name, and that each test
+run leaves nothing outside its run directory and the private store.
 
 Node logs are the subtle leak: the reference's refusal trace carries the transaction and its error (R18; what its log
 prints of it is N13), and Scarab's logs may carry its own. They stay on the private runner. Neither `e2e.yml`'s
@@ -443,8 +454,8 @@ can read it.
 The record and the minimal inputs go to the private store, encrypted at rest; the advisory draft holds what its fix
 needs.
 
-**A dated evidence row** for a period (§9.2) is written from its summary only, on the summary's date. A period whose
-finding is still private says "reported privately" and nothing more.
+**Dated evidence rows** follow the two stages (§9.2): on the announcement's date, a row that says the period ran, with
+its configuration; after clearance, a row with its results.
 
 ## 9. Stages, budget and evidence
 
@@ -456,7 +467,7 @@ the campaign leads to is its own change at its own level.
 | Stage | Delivers | Jump gate |
 |---|---|---|
 | S0 | This document; its claims checked independently. | The review's check of §3 at the pins, and the owner's answers to §10. |
-| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the summary type and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The refusal corpus judged again, all conclusive and agreeing, eras before Conway through their adapters; in each era, Shelley to Conway: the coverage minimums, a probe failing the phase-1 measure and another rule, and five accepted probes then a conflicting one, replayed offline to the same verdicts; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported `reportedPrivately`; the summary's field test and the disclosure gate (§8). |
+| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The refusal corpus judged again, all conclusive and agreeing, eras before Conway through their adapters; in each era, Shelley to Conway: the coverage minimums, a probe failing the phase-1 measure and another rule, and five accepted probes then a conflicting one, replayed offline to the same verdicts; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
 | S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | The coverage minimums for every cell of era and phase-1 family; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
 | S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | The coverage minimums for every cell of Plutus language, protocol version the cluster reaches and script purpose. |
 | S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11 and N14. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; the coverage minimums for every block family; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
@@ -474,13 +485,16 @@ the ceiling are configuration (§10, Q6).
 Once S5 is stable, discovery runs nightly on the private runner, one job of at most 90 minutes on 4 CPUs (the limit
 `e2e.yml` and `fuzz.yml` set), at least 60 of them probing. A private schedule, published nowhere, rotates the
 families and eras so that every cell (§9.1) meets its fixed quota in every period, with slack for the runs a finding
-cuts short; a weekly run is long enough to cross an epoch boundary and an era transition. The budget and the period
-are configuration, published in each summary (§8); a change to them is a change to this section.
+cuts short; a weekly run is long enough to cross an epoch boundary and an era transition. The budget, the period, the
+quotas and the embargo are configuration, in the public configuration record (§8); a change to them is a change to
+this section.
 
-The evidence row follows [How evidence is recorded](../../CONTRIBUTING.md#how-evidence-is-recorded) and the [evidence
-log](../compatibility.md#evidence-log), one row per period, from its summary: the command without a seed, the period,
-the commits, each cell's quota and whether it was met, the count of each result, and the environment (the budget,
-CPUs, memory and image digests, the seeds' hashes). Raw run artifacts are not published.
+The evidence rows follow [How evidence is recorded](../../CONTRIBUTING.md#how-evidence-is-recorded) and the [evidence
+log](../compatibility.md#evidence-log), in §8's two stages. The first, on the announcement's date, is the
+announcement: the command (the campaign's entry point with the configuration identifier, and no seed), the period, the
+commits, the budget and the image digests, and that the period ran. The second, after clearance, adds the results: per
+cell the probes, the conclusive verdicts of each class, the inconclusive attempts and whether it met its minimums; the
+runs; the seeds. Raw run artifacts are not published.
 
 ## 10. Risks and open questions
 
@@ -488,9 +502,14 @@ CPUs, memory and image digests, the seeds' hashes). Raw run artifacts are not pu
 
 - **False disagreements** from the harness's own nondeterminism cost triage and could be filed wrongly. S1's
   calibration on the refusal corpus, and the brackets, come before any search.
-- **A leak** through a log, an artifact, a seed or a run's timing would publish a vulnerability before its fix. Private
-  execution, the closed summary type and the disclosure gate address it; a reviewer checks every change to the
-  campaign's runner against §8.
+- **A leak** through a log, an artifact, a seed, a count or a run's timing would publish a vulnerability, or that one
+  exists, before its advisory. Private execution, an announcement that reads only configuration, results held until
+  clearance and the disclosure gate address it; a reviewer checks every change to the runner or to publication against
+  §8.
+- **A clearance that overruns the embargo.** Results wait for clearance, so a release date that passes without a
+  period's results shows that something in it, or before it, is not yet cleared. The design cannot remove that while
+  clearance can take any time; the embargo is set longer than an advisory is expected to take, so that it arises only
+  when one overruns.
 - **Shared bugs.** The injector builds blocks with Scarab's own builder and signing. The reference judges every block
   it builds, so a builder bug shows as a disagreement about the base chain, which S4's gate requires to be absent.
 - **Coverage.** Random search with no coverage feedback finds what it happens to reach; a night with no disagreement is
@@ -510,19 +529,19 @@ CPUs, memory and image digests, the seeds' hashes). Raw run artifacts are not pu
 - **Q3. Where does the private runner live?** Discovery never runs in the public repository's Actions (§8).
   Recommendation: a scheduled job on a machine the maintainers control, which checks out a commit of `main`, writes
   only to its run directory and the private store, and publishes nothing itself; a maintainer publishes each period's
-  summary. Not a self-hosted runner attached to the public repository: GitHub advises against one there, where a
-  fork's pull request can run code on it (not checked here). The alternative is the CI of a private repository that
-  mirrors `main`.
+  announcement and, after clearance, its results. Not a self-hosted runner attached to the public repository: GitHub
+  advises against one there, where a fork's pull request can run code on it (not checked here). The alternative is the
+  CI of a private repository that mirrors `main`.
 - **Q4.** Withdrawn: discovery no longer runs in public CI (§8), so whether a public run turns red no longer arises;
-  the summary's period is part of Q6.
+  the period is part of Q6.
 - **Q5. Where does the injector live?** Recommendation: a `tools` program ([TOOL-1](../design-rules.md#tool-1)) that
   reuses Scarab's node-to-node servers, `BlockBuilder` and the forger's signing, with a raw-bytes path for blocks Scarab
   cannot decode; not a Python reimplementation of the mini-protocols.
 - **Q6. What are the nightly budget, the period and its quotas, the coverage minimums and the inconclusive ceiling?**
   Recommendation: §9.2's budget, one 90-minute job with a weekly longer run; a calendar month as the period, its
-  summary published on a fixed day of the next; and §9.1's minimums, 20 accepted and 20 refused conclusive probes per
-  cell (10 forks per chain-selection family), with at most 5% inconclusive. These numbers are this document's
-  proposal.
+  announcement published on a fixed day of the next, and an embargo of 90 days before its results may be released; and
+  §9.1's minimums, 20 accepted and 20 refused conclusive probes per cell (10 forks per chain-selection family), with
+  at most 5% inconclusive. These numbers are this document's proposal.
 - **Q7. How are timing-dependent refusals handled?** The reference refuses a transaction that takes too long to
   validate, with a text that holds the duration (R5); Scarab has no such timeout (#340), and the text cannot be
   compared exactly. Recommendation: the campaign keeps generated work far below the limit, counts such a refusal as
