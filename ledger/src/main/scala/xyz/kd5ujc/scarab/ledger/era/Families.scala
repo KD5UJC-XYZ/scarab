@@ -39,7 +39,8 @@ type TxBody[L <: TxLevel, E <: EraTag] = E match
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs:58`, cardano-ledger f649f975).
   */
 type TxCert[E <: EraTag] = E match
-  case Conway => conway.ConwayTxCert
+  case Conway   => conway.ConwayTxCert
+  case Dijkstra => dijkstra.DijkstraTxCert
 
 /** The native script of era `E` (`type NativeScript era`, `Core.hs:585`, cardano-ledger f649f975):
   * `Timelock era` from Allegra (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:332`,
