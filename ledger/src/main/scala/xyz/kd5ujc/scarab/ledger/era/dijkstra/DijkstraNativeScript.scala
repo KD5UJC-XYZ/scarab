@@ -142,6 +142,38 @@ final class DijkstraNativeScript private (
       )
       .toOption
 
+  /** `evalDijkstraNativeScript` (`Scripts.hs:594-615`, cardano-ledger 9df9f98c): whether the script
+    * holds for a transaction with the key hashes `signers` of its key witnesses, the validity
+    * interval from `start` to `end` and the guards `guards` of its body
+    * (`validateDijkstraNativeScript`, `Dijkstra/Tx.hs:434-437`). A validity start holds when the
+    * interval starts at or after it (`lteNegInfty`) and a validity end when the interval ends at or
+    * before it (`ltePosInfty`), neither for an unbounded side; `m` of a list holds when at least
+    * `m` of its scripts hold, so a non-positive `m` always does (`isValidMOf`); a guard holds when
+    * it is among the body's guards. The reference stops at the first settled script, which changes
+    * no value. The nesting is unbounded, so the walk keeps its stack on the heap ([[TreeFold]]).
+    */
+  def eval(
+      signers: Set[Bytes],
+      start: Option[BigInt],
+      end: Option[BigInt],
+      guards: Set[Credential]
+  ): Boolean =
+    import DijkstraNativeScript.Form
+    type Step = TreeFold.Step[DijkstraNativeScript, Boolean, Nothing]
+    def leaf(holds: Boolean): Step = TreeFold.Step.Leaf(holds)
+    def branch(ss: Vector[DijkstraNativeScript])(holds: Vector[Boolean] => Boolean): Step =
+      TreeFold.Step.Branch(ss, vs => Right(holds(vs)))
+    TreeFold.fold[DijkstraNativeScript, Boolean](this)(s =>
+      s.form match
+        case Form.RequireSignature(h) => leaf(signers.contains(h))
+        case Form.RequireAllOf(ss)    => branch(ss)(_.forall(identity))
+        case Form.RequireAnyOf(ss)    => branch(ss)(_.exists(identity))
+        case Form.RequireMOf(m, ss)   => branch(ss)(vs => m <= vs.count(identity).toLong)
+        case Form.TimeStart(lock)     => leaf(start.exists(lock <= _))
+        case Form.TimeExpire(lock)    => leaf(end.exists(_ <= lock))
+        case Form.RequireGuard(c)     => leaf(guards.contains(c))
+    )
+
   // the memoized hash compared: the bytes', or the default for no bytes, which no bytes hash to
   override def equals(that: Any): Boolean = that match
     case o: DijkstraNativeScript => memo == o.memo
