@@ -131,7 +131,7 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
    "note": "the eraPerasRoundLength of each era's parameters, the per-era class method and constant merged into one function of the state layout (the Leios layout is one build's) and the era; no captured answer of the reference carries a Dijkstra round length yet, so the 90 slots are checked against the source only (LeiosBoundsSuite, LeiosBoundsEvidenceSuite's hand-derived GetInterpreter bytes)",
    "digest": "a2ef8b62b4872129"
   },
@@ -232,7 +232,7 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
    "note": "the Peras round of mkUpperBound, from the slots of the era rather than its epochs times the epoch size; the branch of an era with rounds (Dijkstra) has no captured reference bound to compare with, only hand-derived cases (LeiosBoundsSuite)",
    "digest": "fe5768237684e708"
   },
@@ -251,7 +251,7 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
    "note": "mkUpperBound with the time, slot and epoch computed by the caller (EraHistory.boundAt, Horizon.Params.boundAt) and the round by upperLayout; as upperLayout, the rounds a Dijkstra end adds have no captured reference bound yet",
    "digest": "fa9d13ce6af39519"
   },
@@ -312,7 +312,7 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
    "note": "reconstructSummary with the bounds of the state's layout: the past bounds and the current start from the telescope, the ends from MirrorClock.summary's arithmetic laid out by upperBound; no GetInterpreter answer of the Leios build has been captured, so its bytes are hand-derived (LeiosBoundsEvidenceSuite), and this node does not enter Dijkstra yet (#54)",
    "digest": "22f2ddd9424b8d2f"
   }
