@@ -79,7 +79,9 @@ is answered on every version as the reference's codec does). The server asks a `
 (slot, transactions in arrival order with their measures, membership, capacity) and serves `NextTx`, `HasTx`,
 `GetSizes` and `GetMeasures` from that frozen value; membership reads the id with its era's decoder
 (`GenTxId.decode`) and compares the hash alone, as the hard-fork combinator's order does, and an id the
-decoder refuses ends the connection with the protocol's decode error (`ProtocolError.UndecodableTxId`);
+decoder refuses ends the connection with the protocol's decode error (`ProtocolError.UndecodableTxId`), and
+so does a prefix of one, once the token the decoder fails on has arrived: the codec asks the `Source`'s
+`TxIdReader` (`GenTxId.prefix`) while a `HasTx` has not all arrived, as the reference reads the id from the stream;
 `AwaitAcquire` waits until the pool's slot or
 transactions differ (`Mempool.awaitChange`, woken by `add` and by `sync`). `LocalMonitor` is the reference's
 server in numbers: the snapshot's slot is the one after the tip; `NextTx` lists each transaction under the era of the

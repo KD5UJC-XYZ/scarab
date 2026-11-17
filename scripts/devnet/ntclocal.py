@@ -10,8 +10,9 @@ Both protocols are spoken directly (mini-protocols 9 and 5), on top of the conne
     a Byron id and chunked under Dijkstra's tag, and of an absent one, the measures again after the
     transactions were handed out). The two snapshots are comparable when they have the same slot and
     the same transactions in the same order; then every answer must be equal. Apart from the walk,
-    each transaction id an era's decoder refuses must end the connection on both nodes, and the
-    unusual ids both decoders take must get equal answers (`has_tx_ids`).
+    each transaction id an era's decoder refuses, and each prefix of one it fails on before the id
+    ends, must end the connection on both nodes, and the unusual ids both decoders take must get
+    equal answers (`has_tx_ids`).
   * local ChainSync: both nodes are followed from one point; the whole blocks they send (the raw
     `#6.24(bytes)` item) must be equal for every block both sent.
 """
@@ -244,6 +245,11 @@ REFUSED_IDS = {
     "byron-28-byte-hash": b"\x82\x00\x82\x00\x58\x1c" + b"\x11" * 28,
     "byron-chunked-hash": b"\x82\x00\x82\x00" + chunked(ABSENT_ID),
     "conway-chunked-id": b"\x82\x06" + chunked(ABSENT_ID),
+    # Prefixes the decoder fails on before the id ends (cborg judges each token once its head has arrived): the
+    # node must end the connection without waiting for the rest.
+    "era-8-prefix": b"\x82\x08",
+    "envelope-of-3-prefix": b"\x83",
+    "byron-constructor-4-prefix": b"\x82\x00\x82\x04",
 }
 # Ids in forms both decoders read, compared byte for byte: cborg reads an integer and a list length at
 # any width of their head, and Dijkstra a chunked string.

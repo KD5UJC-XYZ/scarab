@@ -887,7 +887,7 @@ object Targets:
       monitorStates,
       ChainSync.Role.values.toSeq,
       netCorpus("local-tx-monitor:localTxMonitorMessage"),
-      LocalTxMonitor.decodePrefix,
+      LocalTxMonitor.decodePrefix(_, _, _),
       LocalTxMonitor.encode
     )
   )

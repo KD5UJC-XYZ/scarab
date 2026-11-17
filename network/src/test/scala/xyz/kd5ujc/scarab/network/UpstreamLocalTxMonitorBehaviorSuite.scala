@@ -169,6 +169,7 @@ class UpstreamLocalTxMonitorBehaviorSuite extends FailsOnUncaught:
             IO.raiseError(
               new IllegalStateException("upstream behavior does not request AwaitAcquire")
             )
+          def txIds = LocalTxMonitor.TxIdReader.whole
         typed {
           linked(protocols = Set(9)).use { (client, server) =>
             for

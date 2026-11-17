@@ -184,6 +184,104 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     assertEquals(snap.has(hex(s"82075f5810${h.take(32)}5810${h.drop(32)}ff")), Right(true))
   }
 
+  private val h32 = "11" * 32
+
+  /** Prefixes the reference's decoder fails on, each with a completion and the refusal: the same
+    * one [[GenTxId.decode]] gives the whole id.
+    */
+  private val refusedPrefixes: Vector[(String, String, GenTxId.Refusal)] = Vector(
+    ("8208", s"5820$h32", GenTxId.Refusal.UnknownEra(8)),
+    ("83", s"065820${h32}00", GenTxId.Refusal.EraEnvelope),
+    ("9f", s"065820${h32}ff", GenTxId.Refusal.EraEnvelope),
+    ("5820", h32, GenTxId.Refusal.EraEnvelope),
+    ("82190100", s"5820$h32", GenTxId.Refusal.EraIndex),
+    ("8220", s"5820$h32", GenTxId.Refusal.EraIndex),
+    ("823b0000000000000000", s"5820$h32", GenTxId.Refusal.EraIndex),
+    ("82008204", s"5820$h32", GenTxId.Refusal.UnknownByronTag(4)),
+    ("820083", s"005820${h32}00", GenTxId.Refusal.ByronEnvelope),
+    ("82005820", h32, GenTxId.Refusal.ByronEnvelope),
+    ("820082190100", s"5820$h32", GenTxId.Refusal.ByronTag),
+    ("820082005f", s"5820${h32}ff", GenTxId.Refusal.IndefiniteBytes(Era.Byron)),
+    ("82065f", s"5820${h32}ff", GenTxId.Refusal.IndefiniteBytes(Era.Conway)),
+    ("82015f", s"5820${h32}ff", GenTxId.Refusal.IndefiniteBytes(Era.Shelley)),
+    ("820682", "0102", GenTxId.Refusal.ExpectedBytes(Era.Conway)),
+    ("8206d818", s"5820$h32", GenTxId.Refusal.ExpectedBytes(Era.Conway))
+  )
+
+  /** Prefixes it waits on: the rest may still make an id it reads, or its next token, or the hash's
+    * length, which is judged once the string has arrived whole, has not arrived.
+    */
+  private val shortPrefixes: Vector[String] = Vector(
+    "",
+    "82",
+    "98",
+    "9802",
+    "8206",
+    "8218",
+    "821801",
+    "821901",
+    "823b00",
+    "82075f",
+    "82075f41",
+    "820658",
+    "8206582011",
+    "8206581c11",
+    "82008200",
+    "8200820358",
+    "8200821901"
+  )
+
+  test("a prefix of an id is refused at the token the reference's decoder fails on, not before") {
+    refusedPrefixes.foreach { (prefix, completion, refusal) =>
+      assertEquals(
+        GenTxId.prefix(hex(prefix)),
+        LocalTxMonitor.TxIdPrefix.Refused(refusal),
+        s"prefix $prefix"
+      )
+      assertEquals(GenTxId.decode(hex(prefix + completion)), Left(refusal), s"whole $prefix")
+    }
+    shortPrefixes.foreach(prefix =>
+      assertEquals(GenTxId.prefix(hex(prefix)), LocalTxMonitor.TxIdPrefix.Short, s"prefix $prefix")
+    )
+  }
+
+  /** An id the decoder reads: every era, Byron's four constructors, the heads at any width, a
+    * chunked hash in Dijkstra.
+    */
+  private val readIds: Gen[Bytes] =
+    // an index or constructor below 24, at each width of its head
+    def word(n: Int): Gen[String] =
+      Gen.oneOf(f"$n%02x", f"18$n%02x", f"1900$n%02x", f"1a000000$n%02x", f"1b00000000000000$n%02x")
+    val pair = Gen.oneOf("82", "9802", "990002")
+    for
+      era <- Gen.choose(0, 7)
+      hash <- Gen.listOfN(32, Gen.choose(0, 255)).map(_.map(b => f"$b%02x").mkString)
+      envelope <- pair
+      index <- word(era)
+      id <-
+        if era == 0 then
+          for
+            inner <- pair
+            constructor <- Gen.choose(0, 3).flatMap(word)
+          yield s"$inner${constructor}5820$hash"
+        else if era == 7 then
+          Gen.oneOf(s"5820$hash", s"5f5810${hash.take(32)}5810${hash.drop(32)}ff")
+        else Gen.const(s"5820$hash")
+    yield hex(s"$envelope$index$id")
+
+  property("no prefix of an id the decoder reads is refused") {
+    forAll(readIds) { id =>
+      assert(GenTxId.decode(id).isRight, id.hex)
+      (0 until id.size).foreach(n =>
+        assertEquals(
+          GenTxId.prefix(Bytes(id.value.take(n))),
+          LocalTxMonitor.TxIdPrefix.Short,
+          s"${id.hex} cut at $n"
+        )
+      )
+    }
+  }
+
   test("the decoded id keeps its era and Byron's constructor; the hash is what is compared") {
     val id = Bytes(Vector.fill(32)(0x11.toByte))
     val hash = Hash32.fromBytes(id).toOption.get
@@ -223,31 +321,28 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     )
   }
 
-  /** One node-to-client connection to a LocalTxMonitor server of `snapshot`: the client acquires
-    * it, asks `HasTx` of each of `answered` and reads the replies, then asks it of `refused` and
-    * waits for the server to end. The replies, and how the server ended; a reply to `refused` fails
-    * the test. The server runs in a fiber of the connection's scope, cancelled when it closes.
+  private type Ended = Either[NetworkError, LocalTxSubmissionServer.End]
+
+  private def send(ch: MuxChannel[IO], state: State, m: Message)(using Handle[IO, NetworkError]) =
+    IO.fromEither(
+      LocalTxMonitor.encode(state, Role.Client, m).left.map(e => RuntimeException(e.message))
+    ).flatMap(ch.send)
+
+  private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
+    ch.recv(LocalTxMonitor.MaxMessageBytes)(LocalTxMonitor.decodePrefix(state, Role.Server, _))
+
+  /** One node-to-client connection to the node's LocalTxMonitor server of `snapshot`, whose client
+    * acquires it and then runs `client` with the channel and how the server ended. The server runs
+    * in a fiber of the connection's scope, cancelled when it closes.
     */
-  private def refusedOnTheWire(
-      snapshot: Snapshot,
-      answered: Vector[Bytes],
-      refused: Bytes
-  ): IO[(Vector[Message], Either[NetworkError, LocalTxSubmissionServer.End])] =
+  private def onTheWire[A](snapshot: Snapshot)(
+      client: (MuxChannel[IO], IO[Ended]) => Handle[IO, NetworkError] ?=> IO[A]
+  ): IO[A] =
     val magic = 42L
     val source = new LocalTxMonitorServer.Source[IO]:
       def acquire = IO.pure(snapshot)
       def awaitChange(seen: Snapshot) = IO.never
-    def send(ch: MuxChannel[IO], state: State, m: Message)(using Handle[IO, NetworkError]) =
-      IO.fromEither(
-        LocalTxMonitor.encode(state, Role.Client, m).left.map(e => RuntimeException(e.message))
-      ).flatMap(ch.send)
-    def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
-      ch.recv(LocalTxMonitor.MaxMessageBytes)(LocalTxMonitor.decodePrefix(state, Role.Server, _))
-    // the reply the server should not send, or none once the client sees the connection end
-    def reply(ch: MuxChannel[IO]): IO[Option[Message]] =
-      Handle
-        .allow[NetworkError](receive(ch, State.Busy(Kind.HasTx)).map(Option(_)))
-        .rescue(_ => IO.pure(None))
+      def txIds = GenTxId.reader
     val connection = Resource.eval(Bearer.inMemory[IO]()).flatMap { (clientEnd, serverEnd) =>
       Handle
         .allow[NetworkError](
@@ -258,7 +353,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
               _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
               txMonitor = Some(source)
             )
-            .map(Right(_): Either[NetworkError, LocalTxSubmissionServer.End])
+            .map(Right(_): Ended)
         )
         .rescue(e => IO.pure(Left(e)))
         .background
@@ -278,21 +373,40 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
               ch <- mux.channel(9)
               _ <- send(ch, State.Idle, Message.Acquire)
               _ <- receive(ch, State.Acquiring)
-              replies <- answered.traverse(item =>
-                send(ch, State.Acquired, Message.HasTx(item)) *>
-                  receive(ch, State.Busy(Kind.HasTx))
-              )
-              _ <- send(ch, State.Acquired, Message.HasTx(refused))
-              _ <- ch.flush
-              first <- IO.race(server, reply(ch))
-              ended <- first match
-                case Left(ended)         => IO.pure(ended)
-                case Right(None)         => server
-                case Right(Some(answer)) => IO(fail(s"a refused id was answered: $answer"))
-            yield (replies, ended)
+              result <- client(ch, server)
+            yield result
           }
         }
         .rescue(e => IO.raiseError(RuntimeException(e.message)))
+    }
+
+  /** [[onTheWire]]: the client asks `HasTx` of each of `answered` and reads the replies, then sends
+    * `request`, a `HasTx` message written as raw bytes, and waits for the server to end. The
+    * replies, and how the server ended; a reply to `request` fails the test.
+    */
+  private def refusedOnTheWire(
+      snapshot: Snapshot,
+      answered: Vector[Bytes],
+      request: Bytes
+  ): IO[(Vector[Message], Ended)] =
+    onTheWire(snapshot) { (ch, server) =>
+      // the reply the server should not send, or none once the client sees the connection end
+      val reply: IO[Option[Message]] =
+        Handle
+          .allow[NetworkError](receive(ch, State.Busy(Kind.HasTx)).map(Option(_)))
+          .rescue(_ => IO.pure(None))
+      for
+        replies <- answered.traverse(item =>
+          send(ch, State.Acquired, Message.HasTx(item)) *> receive(ch, State.Busy(Kind.HasTx))
+        )
+        _ <- ch.send(request)
+        _ <- ch.flush
+        first <- IO.race(server, reply)
+        ended <- first match
+          case Left(ended)         => IO.pure(ended)
+          case Right(None)         => server
+          case Right(Some(answer)) => IO(fail(s"a refused id was answered: $answer"))
+      yield (replies, ended)
     }
 
   test(
@@ -314,7 +428,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       refusedOnTheWire(
         snap,
         Vector(tagged(5, id1), byron(0, id1), tagged(6, Bytes(Vector.fill(32)(7.toByte)))),
-        shape
+        hex("8207") ++ shape
       ).map((replies, ended) =>
         assertEquals(
           replies,
@@ -328,6 +442,42 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
         )
       )
     }.void
+  }
+
+  test(
+    "on the wire, a prefix of an id the decoder fails on ends the connection before the rest arrives"
+  ) {
+    val (t1, id1) = pay(1)
+    val snap = LocalMonitor.snapshot(held(t1))
+    // an era past the last, an envelope of three, Byron's fifth constructor: the id has not ended
+    val prefixes = Vector(
+      "82078208" -> GenTxId.Refusal.UnknownEra(8),
+      "820783" -> GenTxId.Refusal.EraEnvelope,
+      "820782008204" -> GenTxId.Refusal.UnknownByronTag(4)
+    )
+    prefixes.traverse { (prefix, refusal) =>
+      refusedOnTheWire(snap, Vector(tagged(6, id1)), hex(prefix)).map((replies, ended) =>
+        assertEquals(replies, Vector(Message.ReplyHasTx(true)), prefix)
+        assertEquals(
+          ended,
+          Left(
+            NetworkError.Decode(Protocols.LocalTxMonitor, ProtocolError.UndecodableTxId(refusal))
+          ),
+          prefix
+        )
+      )
+    }.void
+  }
+
+  test("on the wire, a prefix of an id the decoder reads waits for the rest and is answered") {
+    val (t1, id1) = pay(1)
+    val snap = LocalMonitor.snapshot(held(t1))
+    // the era-6 envelope alone, then the hash's head and half the hash, then the rest
+    val whole = hex("8207") ++ tagged(6, id1)
+    val parts = Vector(whole.slice(0, 4), whole.slice(4, 22), whole.slice(22, whole.size))
+    onTheWire(snap) { (ch, _) =>
+      parts.traverse_(part => ch.send(part) *> ch.flush) *> receive(ch, State.Busy(Kind.HasTx))
+    }.map(reply => assertEquals(reply, Message.ReplyHasTx(true)))
   }
 
   test(

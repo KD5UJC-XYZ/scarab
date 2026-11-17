@@ -6,7 +6,7 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, NtnVersion}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, LocalTxMonitor, NtnVersion}
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 
@@ -269,6 +269,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
     val mempool = new LocalTxMonitorServer.Source[IO]:
       def acquire = IO.never
       def awaitChange(seen: LocalTxMonitorServer.Snapshot) = IO.never
+      def txIds = LocalTxMonitor.TxIdReader.whole
     val chain = new ChainSyncServer.Source[IO, RawNtNBlock]:
       def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
       def poll = IO.pure(None)
