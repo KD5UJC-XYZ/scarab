@@ -711,23 +711,36 @@ object Main extends IOApp:
       topology
     )
 
+  /** How a SIGHUP's reload of the network configuration ended ([[reloadNetwork]]). Where it stops
+    * short, the reference's handler ends on an exception and does nothing after it.
+    */
+  private[node] enum NetworkReload:
+    /** It got to its end. */
+    case Completed
+
+    /** The topology could not be read or used: nothing changed. */
+    case TopologyRefused
+
+    /** The new topology is installed and the snapshot refused: the snapshot in force stays. */
+    case SnapshotRefused
+
   /** A SIGHUP's reload of the network configuration, as the reference's handlers do it
     * (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 419-430 before consensus has
     * initialised, 603-612 after): the topology read again and installed
     * (`updateTopologyConfiguration`, 673-703), then, on its own, the peer snapshot it names
     * (`updateLedgerPeerSnapshot` in `phase`, 705-757). `network` holds the configuration in force,
-    * the reference's variables (367-372), and `install` hands a new one to the network. True when
-    * the reload got to its end; where it stops, the reference's handler ends on an exception and
-    * does nothing after it.
+    * the reference's variables (367-372), and `install` hands a new one to the network.
     *
     *   - A topology that cannot be read or used is logged and changes nothing, and the snapshot is
     *     not read again: the reference's `readTopologyFileOrError` calls `error`, which the `try`
     *     for a `FatalError` there does not catch (684-689; checked by running, 2026-11-17). A
     *     `peerSnapshotFile` the JDK cannot make a path of is refused the same way (#953).
-    *   - The new topology is installed with the snapshot in force, then the snapshot is read again
-    *     ([[PeerSnapshot.use]]): a refusal (any in [[SnapshotPhase.Startup]], one older than
-    *     `useLedgerAfterSlot` in [[SnapshotPhase.Runtime]]) is logged and keeps the snapshot in
-    *     force (721, 755).
+    *   - The new topology is installed with the snapshot in force before the snapshot is read, as
+    *     the reference writes the topology's variables (697-702) before it reads the file. Then the
+    *     snapshot is read again ([[PeerSnapshot.use]]): what was read is said ([[snapshotSaid]]),
+    *     and installed if it differs from the one in force; a refusal (any in
+    *     [[SnapshotPhase.Startup]], one older than `useLedgerAfterSlot` in
+    *     [[SnapshotPhase.Runtime]]) is logged and keeps the snapshot in force (721, 755).
     *
     * Without `--topology` there is nothing to read again. `options.peers` includes the topology
     * loaded at start-up, so the roots are read with the command line's own peers only (`cliPeers`):
@@ -740,27 +753,30 @@ object Main extends IOApp:
       phase: SnapshotPhase,
       network: Ref[IO, PeerNetwork.Roots],
       install: PeerNetwork.Roots => IO[Unit]
-  )(using Log[IO]): IO[Boolean] =
+  )(using Log[IO]): IO[NetworkReload] =
     val reread = options.copy(peers = cliPeers)
-    def refused(what: String, error: ConfigError): IO[Boolean] =
+    def refused(what: String, error: ConfigError, outcome: NetworkReload): IO[NetworkReload] =
       Log[IO]
         .emit[NodeEvent](
           NodeEvent.Library("scarab.topology", Severity.Warning, s"$what: ${error.message}", None)
         )
-        .as(false)
-    def snapshotRead(topology: PeerNetwork.Roots): IO[Boolean] =
-      IO.blocking(ledgerPeerSnapshot(topology, loaded, phase)).flatMap { snapshot =>
-        val next = snapshot.getOrElse(topology)
-        network.set(next) *> install(next) *> snapshot.fold(
-          r =>
-            refused(
-              "peer snapshot reload refused, the snapshot in force is kept",
-              ConfigError(ConfigProblem.PeerSnapshot(r))
-            ),
-          _ => IO.pure(true)
-        )
+        .as(outcome)
+    def installed(roots: PeerNetwork.Roots): IO[Unit] = network.set(roots) *> install(roots)
+    def snapshotRead(topology: PeerNetwork.Roots): IO[NetworkReload] =
+      installed(topology) *> IO.blocking(ledgerPeerSnapshot(topology, loaded, phase)).flatMap {
+        case Left(refusal) =>
+          refused(
+            "peer snapshot reload refused, the snapshot in force is kept",
+            ConfigError(ConfigProblem.PeerSnapshot(refusal)),
+            NetworkReload.SnapshotRefused
+          )
+        case Right(next) =>
+          snapshotSaid(next.snapshot) *>
+            installed(next)
+              .unlessA(next.snapshot == topology.snapshot)
+              .as(NetworkReload.Completed)
       }
-    options.topologyFile.fold(IO.pure(true)) { _ =>
+    options.topologyFile.fold(IO.pure(NetworkReload.Completed)) { _ =>
       (for
         read <- EitherT(IO.blocking(readTopology(reread, loaded)))
         _ <- EitherT.liftF(noticed(read))
@@ -768,8 +784,23 @@ object Main extends IOApp:
         topology <- EitherT.fromEither[IO](
           networkRoots(reread, read.map(_.topology), current.snapshot)
         )
-      yield topology).foldF(refused("topology reload refused", _), snapshotRead)
+      yield topology).foldF(
+        refused("topology reload refused", _, NetworkReload.TopologyRefused),
+        snapshotRead
+      )
     }
+
+  /** What was made of a peer snapshot file just read, said once where it is read, at start-up and
+    * at a reload, as the reference traces `LedgerPeerSnapshotLoaded` where it reads the file
+    * (`Run.hs` 746-753): `snapshotLoaded`, or `snapshotIgnored` for a file Praos mode could not
+    * read. Nothing for no file, or a dropped one, of which the reference says nothing either.
+    */
+  private def snapshotSaid(use: SnapshotUse)(using Log[IO]): IO[Unit] =
+    def said(trace: LedgerPeersTrace) = Log[IO].emit[NodeEvent](NodeEvent.LedgerPeers(trace))
+    use match
+      case SnapshotUse.Loaded(s)      => said(LedgerPeersTrace.SnapshotLoaded(s.slot, s.pools.size))
+      case SnapshotUse.Ignored(error) => said(LedgerPeersTrace.SnapshotIgnored(error))
+      case SnapshotUse.Dropped(_) | SnapshotUse.Unused => IO.unit
 
   /** What the reading of the topology said of it, each as the reference traces it. */
   private def noticed(read: Option[TopologyNotice.Read])(using Log[IO]): IO[Unit] =
@@ -799,6 +830,7 @@ object Main extends IOApp:
           )
       )
       .flatMapF(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
+      .semiflatTap((options, _, _) => options.roots.traverse_(r => snapshotSaid(r.snapshot)))
       .value
 
   /** The topology file as the reference's `readTopologyFile` reads it (cardano-node 11.1.3,
@@ -1142,11 +1174,13 @@ object Main extends IOApp:
       h.network,
       r => h.roots.set(Some(r))
     )
-      .flatMap(completed =>
-        h.events.get
-          .flatMap(_.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective)))
-          .whenA(completed)
-      )
+      .flatMap {
+        case NetworkReload.Completed =>
+          h.events.get.flatMap(
+            _.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective))
+          )
+        case NetworkReload.TopologyRefused | NetworkReload.SnapshotRefused => IO.unit
+      }
 
   /** What the run measures and reports with, made before any store is open. */
   private final case class Instruments(

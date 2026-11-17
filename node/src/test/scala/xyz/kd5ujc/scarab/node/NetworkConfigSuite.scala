@@ -2,19 +2,24 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.Applicative
-import cats.effect.{IO, Ref}
-import cats.mtl.Tell
+import cats.effect.{IO, Ref, Resource}
+import cats.mtl.{Handle, Tell}
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
-import munit.CatsEffectSuite
-import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
+import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, NodeError}
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.network.{ConnectionManager, FailsOnUncaught, NodeToNode}
+import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Targets}
+import xyz.kd5ujc.scarab.node.assertions.Assertions
+import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.log.{EventKind, Line, Log}
 
 /** The network configuration as cardano-node 11.1.3 reads it at start-up
   * (`cardano-node/src/Cardano/Node/Run.hs` 349-379): the topology, what its reading says of it, the
   * warning of a producer with peer sharing on, then the peer snapshot.
   */
-class NetworkConfigSuite extends CatsEffectSuite:
+class NetworkConfigSuite extends FailsOnUncaught:
   private val temporary = fs2.io.file.Files.forAsync[IO].tempDirectory.map(_.toNioPath)
   private val preview = Path.of("fixtures", "preview", "genesis")
   private val forge = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
@@ -46,9 +51,12 @@ class NetworkConfigSuite extends CatsEffectSuite:
     def functor = Applicative[IO]
     def tell(line: Line) = lines.update(_ :+ line)
 
-  /** The kind and `message` of each line. */
+  /** The kind and `message` of each line, or its `action` when it has no message. */
   private def said(lines: Vector[Line]): Vector[(EventKind, Option[String])] =
-    lines.map(l => l.kind -> l.fields.collectFirst { case ("message", j) => j.asString }.flatten)
+    def field(l: Line, name: String) = l.fields.collectFirst { case (`name`, j) =>
+      j.asString
+    }.flatten
+    lines.map(l => l.kind -> field(l, "message").orElse(field(l, "action")))
 
   /** The start-up's network configuration of `requested`, and what it logged. */
   private def atStart(requested: Main.Options) =
@@ -152,6 +160,30 @@ class NetworkConfigSuite extends CatsEffectSuite:
     }
   }
 
+  test("the start says what it made of the peer snapshot where it reads it, after the topology") {
+    temporary.use { root =>
+      val genesis = root.resolve("genesis")
+      val praos = root.resolve("praos")
+      def at(dir: Path, mode: String, snapshotText: Option[String]) =
+        IO.blocking {
+          val config = configured(Files.createDirectory(dir), mode, peerSharing = None)
+          Files.writeString(dir.resolve("topology.json"), topology("127.0.0.1", 0))
+          snapshotText.foreach(t => Files.writeString(dir.resolve("peer-snapshot.json"), t))
+          options(
+            List("--config", config.toString, "--topology", dir.resolve("topology.json").toString)
+          )
+        }.flatMap(atStart)
+      for
+        loaded <- at(genesis, "GenesisMode", Some(snapshot("100")))
+        ignored <- at(praos, "PraosMode", None)
+      yield
+        assert(loaded._1.isRight, loaded._1)
+        assertEquals(loaded._2, Vector(snapshotLoaded), "a Genesis relay: the snapshot loaded")
+        assert(ignored._1.isRight, ignored._1)
+        assertEquals(ignored._2, Vector(snapshotIgnored), "Praos: a file it cannot read ignored")
+    }
+  }
+
   // -------------------------------------------------------------------------- SIGHUP reloads
 
   private val pools =
@@ -200,11 +232,11 @@ class NetworkConfigSuite extends CatsEffectSuite:
       Started(root, completed, setup, roots)
     }
 
-  /** What a reload did: whether it got to its end, the configuration in force after it, what it
-    * installed, and what it logged.
+  /** What a reload did: how it ended, the configuration in force after it, what it installed, and
+    * what it logged.
     */
   private final case class Reloaded(
-      completed: Boolean,
+      outcome: Main.NetworkReload,
       inForce: PeerNetwork.Roots,
       installed: Vector[PeerNetwork.Roots],
       lines: Vector[(EventKind, Option[String])]
@@ -215,7 +247,7 @@ class NetworkConfigSuite extends CatsEffectSuite:
       network <- Ref.of[IO, PeerNetwork.Roots](node.roots)
       installed <- Ref.of[IO, Vector[PeerNetwork.Roots]](Vector.empty)
       lines <- Ref.of[IO, Vector[Line]](Vector.empty)
-      completed <- Main.reloadNetwork(
+      outcome <- Main.reloadNetwork(
         node.options,
         Nil,
         node.setup,
@@ -226,29 +258,42 @@ class NetworkConfigSuite extends CatsEffectSuite:
       inForce <- network.get
       done <- installed.get
       logged <- lines.get
-    yield Reloaded(completed, inForce, done, said(logged))
+    yield Reloaded(outcome, inForce, done, said(logged))
 
   private def publicRoots(roots: PeerNetwork.Roots): Set[String] = roots.public.map(_.toString)
 
   private val refusalLine = EventKind.Slf4j
+  private val snapshotLoaded = EventKind.LedgerPeers -> Some("snapshotLoaded")
+  private val snapshotIgnored = EventKind.LedgerPeers -> Some("snapshotIgnored")
 
-  /** The topology `B` (`127.0.0.2`) installed with `snapshot`, the reload gone to its end, and
-    * nothing said, as the reference says nothing.
+  /** The topology `B` (`127.0.0.2`) installed with the snapshot in force, then with the snapshot
+    * read again, the reload gone to its end, and `lines` said: nothing for a dropped snapshot, as
+    * the reference says nothing.
     */
-  private def droppedWith(reloaded: Reloaded)(expected: PartialFunction[SnapshotUse, Boolean]) =
-    assertEquals(reloaded.completed, true, "the reload goes on")
+  private def droppedWith(
+      node: Started,
+      reloaded: Reloaded,
+      lines: Vector[(EventKind, Option[String])]
+  )(
+      expected: PartialFunction[SnapshotUse, Boolean]
+  ) =
+    assertEquals(reloaded.outcome, Main.NetworkReload.Completed, "the reload goes on")
     assertEquals(publicRoots(reloaded.inForce), Set("127.0.0.2:3001"), "the new topology")
     assert(expected.applyOrElse(reloaded.inForce.snapshot, _ => false), reloaded.inForce.snapshot)
-    assertEquals(reloaded.installed, Vector(reloaded.inForce), "installed once")
-    assertEquals(reloaded.lines, Vector.empty, "nothing said")
+    assertEquals(
+      reloaded.installed,
+      Vector(reloaded.inForce.copy(snapshot = node.roots.snapshot), reloaded.inForce),
+      "the topology with the snapshot in force, then the snapshot read"
+    )
+    assertEquals(reloaded.lines, lines, "what is said")
 
   /** The topology `B` installed with the snapshot in force, and the reload stopped there, said. */
   private def keptWith(node: Started, reloaded: Reloaded) =
-    assertEquals(reloaded.completed, false, "the reload stops")
+    assertEquals(reloaded.outcome, Main.NetworkReload.SnapshotRefused, "the reload stops")
     assertEquals(publicRoots(reloaded.inForce), Set("127.0.0.2:3001"), "the new topology")
     assertEquals(reloaded.inForce.snapshot, node.roots.snapshot, "the snapshot in force")
-    assertEquals(reloaded.installed, Vector(reloaded.inForce), "the topology installed")
-    assertEquals(reloaded.lines.map(_._1), Vector(refusalLine), "the refusal said")
+    assertEquals(reloaded.installed, Vector(reloaded.inForce), "the topology installed, once")
+    assertEquals(reloaded.lines.map(_._1), Vector(refusalLine), "the refusal said, nothing else")
 
   test(
     "a runtime reload installs the new topology and drops a snapshot the start refuses, saying nothing"
@@ -270,25 +315,24 @@ class NetworkConfigSuite extends CatsEffectSuite:
         _ <- node.write("peer-snapshot.json", snapshot("200"))
         newer <- reload(node, Runtime)
       yield
-        droppedWith(unreadable) {
+        droppedWith(node, unreadable, Vector.empty) {
           case SnapshotUse.Dropped(
                 PeerSnapshotRefusal.UnreadableSnapshot(PeerSnapshotError.Unreadable(_, _))
               ) =>
             true
         }
-        droppedWith(legacyVersion) { case SnapshotUse.Dropped(PeerSnapshotRefusal.LegacyVersion) =>
-          true
+        droppedWith(node, legacyVersion, Vector.empty) {
+          case SnapshotUse.Dropped(PeerSnapshotRefusal.LegacyVersion) => true
         }
-        droppedWith(atOrigin) { case SnapshotUse.Dropped(PeerSnapshotRefusal.AtOrigin) => true }
-        droppedWith(otherNetwork) {
+        droppedWith(node, atOrigin, Vector.empty) {
+          case SnapshotUse.Dropped(PeerSnapshotRefusal.AtOrigin) => true
+        }
+        droppedWith(node, otherNetwork, Vector.empty) {
           case SnapshotUse.Dropped(PeerSnapshotRefusal.WrongMagic(2L, 1L)) => true
         }
-        assertEquals(newer.completed, true)
-        assertEquals(
-          newer.inForce.snapshot.snapshot.map(_.slot),
-          Some(xyz.kd5ujc.scarab.network.selection.WithOrigin.At(BigInt(200))),
-          "the snapshot read again"
-        )
+        droppedWith(node, newer, Vector(snapshotLoaded)) { case SnapshotUse.Loaded(s) =>
+          s.slot == xyz.kd5ujc.scarab.network.selection.WithOrigin.At(BigInt(200))
+        }
     }
   }
 
@@ -303,11 +347,11 @@ class NetworkConfigSuite extends CatsEffectSuite:
         _ <- node.write("peer-snapshot.json", legacy)
         legacyVersion <- reload(node, Runtime)
       yield
-        droppedWith(unreadable) { case SnapshotUse.Ignored(PeerSnapshotError.Unreadable(_, _)) =>
-          true
+        droppedWith(node, unreadable, Vector(snapshotIgnored)) {
+          case SnapshotUse.Ignored(PeerSnapshotError.Unreadable(_, _)) => true
         }
-        droppedWith(legacyVersion) { case SnapshotUse.Dropped(PeerSnapshotRefusal.LegacyVersion) =>
-          true
+        droppedWith(node, legacyVersion, Vector.empty) {
+          case SnapshotUse.Dropped(PeerSnapshotRefusal.LegacyVersion) => true
         }
     }
   }
@@ -331,7 +375,11 @@ class NetworkConfigSuite extends CatsEffectSuite:
   ) {
     temporary.use { root =>
       def unchanged(node: Started, reloaded: Reloaded, what: String) =
-        assertEquals(reloaded.completed, false, s"$what: the reload stops")
+        assertEquals(
+          reloaded.outcome,
+          Main.NetworkReload.TopologyRefused,
+          s"$what: the reload stops"
+        )
         assertEquals(reloaded.inForce, node.roots, s"$what: the configuration in force")
         assertEquals(reloaded.installed, Vector.empty, s"$what: nothing installed")
         assertEquals(reloaded.lines.map(_._1), Vector(refusalLine), s"$what: the refusal said")
@@ -421,16 +469,158 @@ class NetworkConfigSuite extends CatsEffectSuite:
         node <- started(root, "PraosMode", forge)
         reloaded <- reload(node, SnapshotPhase.Runtime)
       yield
-        assertEquals(reloaded.completed, true)
+        assertEquals(reloaded.outcome, Main.NetworkReload.Completed)
         assert(!reloaded.lines.contains(peerSharingWarning), reloaded.lines)
         assertEquals(
           reloaded.lines,
           Vector(
             EventKind.NetworkConfigUpdateWarning -> Some(
               TopologyNotice.LedgerPeersOnProducer.message
-            )
+            ),
+            snapshotLoaded
           ),
-          "only what the reading of the topology says"
+          "what the reading of the topology says, and the snapshot read again"
+        )
+        assertEquals(
+          reloaded.installed,
+          Vector(reloaded.inForce),
+          "the same snapshot read again is not installed again"
+        )
+    }
+  }
+
+  test("the topology is installed, with the snapshot in force, before the snapshot is read again") {
+    temporary.use { root =>
+      for
+        node <- started(root, "GenesisMode")
+        _ <- node.write("topology.json", topology("127.0.0.2", 0))
+        _ <- node.write("peer-snapshot.json", snapshot("200"))
+        network <- Ref.of[IO, PeerNetwork.Roots](node.roots)
+        installed <- Ref.of[IO, Vector[PeerNetwork.Roots]](Vector.empty)
+        // the first installation rewrites the file: a read made before it would see slot 200
+        _ <- Main.reloadNetwork(
+          node.options,
+          Nil,
+          node.setup,
+          SnapshotPhase.Runtime,
+          network,
+          r =>
+            installed
+              .getAndUpdate(_ :+ r)
+              .flatMap(before =>
+                node.write("peer-snapshot.json", snapshot("300")).whenA(before.isEmpty)
+              )
+        )(using Log.none[IO])
+        done <- installed.get
+      yield assertEquals(
+        done.map(r => (publicRoots(r), r.snapshot.snapshot.map(_.slot))),
+        Vector(
+          Set("127.0.0.2:3001") -> node.roots.snapshot.snapshot.map(_.slot),
+          Set("127.0.0.2:3001") ->
+            Some(xyz.kd5ujc.scarab.network.selection.WithOrigin.At(BigInt(300)))
+        ),
+        "the topology with the snapshot in force, then the snapshot read after it"
+      )
+    }
+  }
+
+  /** A running network of `roots` whose outputs go to `emit`, as [[Main]] runs it. */
+  private def running(
+      roots: PeerNetwork.Roots,
+      emit: Output[PeerNetwork.Addr] => IO[Unit]
+  ): Resource[IO, PeerNetwork.Running[IO, PeerNetwork.Addr]] =
+    given Assertions[IO] = Assertions.noop[IO]
+    given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](new PeerDns[IO]:
+      def addresses(query: DnsName) = IO.never
+      def services(query: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty))))
+    NodeScope.resource.flatMap { scope =>
+      given Handle[IO, NodeError] = scope
+      for
+        transport <- Resource.eval(InMemoryPeers.create(42L))
+        manager <- Resource.eval(ConnectionManager.create[IO]())
+        pool <- Resource.eval(BlockPool.create[IO])
+        _ <- FetchTesting.decisions(pool)
+        mode <- Resource.eval(Ref.of[IO, FetchMode](FetchMode.BulkSync))
+        hot = OutboundPeers.Hot[IO](
+          magic = 42L,
+          network = NodeToNode.Settings(),
+          peer = Peer.Settings(
+            roots.public.headOption.getOrElse(fail("no public root")),
+            42L,
+            byronEpochSlots = ForgedChain.geometry.byron.epochSlots
+          ),
+          follow = (_, _) => IO.never,
+          heightSnapshot = ChainSyncHeights.origin,
+          headers = None,
+          transactions = None,
+          observe = None,
+          pool = pool,
+          versus = _ => IO.pure(Gsm.Candidate.DoesNotIntersect),
+          lost = _ => IO.unit,
+          fatal = cause => IO(fail(s"unexpected session failure: $cause"))
+        )
+        view = new PeerNetwork.ChainView[IO]:
+          def tip = IO.pure(None)
+          def geometry = IO.pure(ForgedChain.geometry)
+        network <- PeerNetwork.resource[IO](
+          PeerNetwork.Settings(roots, Targets.relay, seed = 279L),
+          transport,
+          manager,
+          OutboundPeers.Config(),
+          hot,
+          view,
+          mode,
+          emit,
+          (_, _) => IO.unit,
+          _ => IO.unit,
+          _ => IO.unit,
+          GsmRunner.Marker.none[IO],
+          LedgerPeersSource.none[IO]
+        )
+      yield network
+    }
+
+  private def snapshotLines(outputs: Vector[Output[PeerNetwork.Addr]]) =
+    outputs.collect {
+      case Output.LedgerPeers(t @ LedgerPeersTrace.SnapshotLoaded(_, _)) => t
+      case Output.LedgerPeers(t @ LedgerPeersTrace.SnapshotIgnored(_))   => t
+    }
+
+  test(
+    "a snapshot a runtime reload refuses as too old is kept without being said loaded, on the node's own path"
+  ) {
+    temporary.use { root =>
+      for
+        node <- started(root, "GenesisMode")
+        outputs <- Ref.of[IO, Vector[Output[PeerNetwork.Addr]]](Vector.empty)
+        lines <- Ref.of[IO, Vector[Line]](Vector.empty)
+        network <- Ref.of[IO, PeerNetwork.Roots](node.roots)
+        _ <- running(node.roots, o => outputs.update(_ :+ o)).use { net =>
+          net.run.background.use { _ =>
+            for
+              _ <- outputs.set(Vector.empty)
+              _ <- node.write("topology.json", topology("127.0.0.2", 1000))
+              _ <- Main
+                .reloadNetwork(
+                  node.options,
+                  Nil,
+                  node.setup,
+                  SnapshotPhase.Runtime,
+                  network,
+                  net.reloadRoots
+                )(using collecting(lines))
+                .timeout(10.seconds)
+            yield ()
+          }
+        }
+        emitted <- outputs.get
+        logged <- lines.get
+      yield
+        assertEquals(snapshotLines(emitted), Vector.empty, "no snapshot said loaded by the network")
+        assertEquals(
+          said(logged).map(_._1),
+          Vector(EventKind.Slf4j),
+          "only the refusal in the node's log"
         )
     }
   }

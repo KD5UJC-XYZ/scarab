@@ -357,21 +357,12 @@ object PeerNetwork:
     val workerTrace = new Tell[F, LedgerPeersTrace]:
       def functor = F
       def tell(l: LedgerPeersTrace): F[Unit] = emit(Output.LedgerPeers(l))
+    // what the snapshot is is said where its file is read (`Main.reloadNetwork`), not here: a
+    // worker is made again for a topology that keeps the snapshot in force
     def createWorker(roots: Roots): F[LedgerPeersWorker[F]] =
       given Tell[F, LedgerPeersTrace] = workerTrace
-      val snapshot = roots.snapshot
       val workerRng = Rng(settings.seed).split._1
-      LedgerPeersWorker
-        .create[F](roots.ledger, ledgerSource, snapshot.snapshot, workerRng)
-        .flatTap(_ =>
-          snapshot match
-            case SnapshotUse.Loaded(s) =>
-              emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotLoaded(s.slot, s.pools.size)))
-            case SnapshotUse.Ignored(error) =>
-              emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotIgnored(error)))
-            // the reference says nothing of a snapshot a runtime reload drops (`Run.hs` 720-722)
-            case SnapshotUse.Dropped(_) | SnapshotUse.Unused => F.unit
-        )
+      LedgerPeersWorker.create[F](roots.ledger, ledgerSource, roots.snapshot.snapshot, workerRng)
     for
       supervisor <- Supervisor[F](await = false)
       // the monitors of the outbound connections, released before `supervisor` ends the
