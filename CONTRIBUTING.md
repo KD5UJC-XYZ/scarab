@@ -19,6 +19,7 @@ docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 scarab_git_metadata="$(git rev-parse --path-format=absolute --git-common-dir)"
 scarab_cache="$(python3 -I -c 'import sys; sys.path.insert(0, "scripts")
 from devnet.util import cache_dir; print(cache_dir())')"
+mkdir -p "$scarab_cache"    # a directory Docker creates for the mount would be root's
 docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
   -v "$scarab_git_metadata:$scarab_git_metadata:ro" \
   -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \

@@ -24,6 +24,7 @@ Compile once and write the runtime classpath (the scenarios and the commands bel
 scarab_git_metadata="$(git rev-parse --path-format=absolute --git-common-dir)"
 scarab_cache="$(python3 -I -c 'import sys; sys.path.insert(0, "scripts")
 from devnet.util import cache_dir; print(cache_dir())')"
+mkdir -p "$scarab_cache"
 docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
   -v "$scarab_git_metadata:$scarab_git_metadata:ro" -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile

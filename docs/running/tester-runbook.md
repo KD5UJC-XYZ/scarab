@@ -14,8 +14,9 @@ the pool days of waiting for its stake snapshot.
 
 ## 0. Before you start
 
-Docker and Python 3 on the host; no JDK or sbt ([CONTRIBUTING.md](../../CONTRIBUTING.md#build-docker-only)). Start
-in the root of a checkout and keep one shell: later steps use the variables and functions of earlier ones.
+Docker, Python 3, Bash, Git, `curl` and `tar` on the host; no JDK or sbt
+([CONTRIBUTING.md](../../CONTRIBUTING.md#build-docker-only)). Start in the root of a checkout and keep one Bash shell:
+later steps use the variables and functions of earlier ones.
 
 ```sh
 bash scripts/preflight --doctor     # reports what is missing; its exit status is always 0, so read the report
@@ -45,6 +46,7 @@ docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 GITDIR="$(git rev-parse --path-format=absolute --git-common-dir)"
 CACHE="$(python3 -I -c 'import sys; sys.path.insert(0, "scripts")
 from devnet.util import cache_dir; print(cache_dir())')"
+mkdir -p "$CACHE"    # yours: a directory Docker creates for the mount would be root's
 docker run --rm -v "$PWD":/work -v "$CACHE":/work/.cache -v "$GITDIR:$GITDIR:ro" -w /work \
   --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
