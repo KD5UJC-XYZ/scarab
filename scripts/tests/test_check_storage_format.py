@@ -7,6 +7,7 @@ import copy
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -91,8 +92,11 @@ class SurfaceTest(TreeTest):
 
     def test_comments_and_white_space_do_not_count(self):
         self.edit(fmt.REGISTRY, 'enum FormatVersion', '// a comment with "SCRBSNPB" and { braces\nenum FormatVersion')
-        self.edit(CODEC, 'private val GoldenSidecarFingerprint = "96de6ee331c309c3"',
-                  'private val GoldenSidecarFingerprint = "96de6ee331c309c3" /* "00" { */   ')
+        # the golden as the tree holds it, so that a deliberate change of the golden leaves this test as it is
+        golden = re.search(r'private val GoldenSidecarFingerprint = "[0-9a-f]+"',
+                           (self.root / CODEC).read_text(encoding='utf-8'))
+        self.assertIsNotNone(golden, f'{CODEC} no longer holds the golden this test edits')
+        self.edit(CODEC, golden.group(0), golden.group(0) + ' /* "00" { */   ')
         self.assertEqual(self.check(), [])
 
     def test_a_new_version_a_changed_identifier_or_a_new_layout_is_a_change(self):
