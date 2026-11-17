@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.Applicative
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Tell}
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
@@ -538,7 +538,8 @@ class NetworkConfigSuite extends FailsOnUncaught:
       roots: PeerNetwork.Roots,
       emit: Output[PeerNetwork.Addr] => IO[Unit],
       snapshot: Snapshot,
-      consensus: ConsensusMode = ConsensusMode.PraosMode
+      consensus: ConsensusMode = ConsensusMode.PraosMode,
+      immutable: Option[xyz.kd5ujc.scarab.storage.ImmutableStore[IO]] = None
   ): Resource[IO, PeerNetwork.Running[IO, PeerNetwork.Addr]] =
     given Assertions[IO] = Assertions.noop[IO]
     given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](new PeerDns[IO]:
@@ -592,7 +593,8 @@ class NetworkConfigSuite extends FailsOnUncaught:
           _ => IO.unit,
           _ => IO.unit,
           GsmRunner.Marker.none[IO],
-          LedgerPeersSource.none[IO]
+          LedgerPeersSource.none[IO],
+          immutable = immutable
         )
       yield network
     }
@@ -711,50 +713,102 @@ class NetworkConfigSuite extends FailsOnUncaught:
       false,
       "the same point, other pools"
     )
-    for
-      source <- Ref.of[IO, Versioned[Snapshot]](Versioned(BigInt(0), p100))
-      taken <- Ref.of[IO, Snapshot](p100)
-      none <- PeerNetwork.snapshotWritten(source, taken)(None)
-      afterNone <- (source.get, taken.get).tupled
-      same <- PeerNetwork.snapshotWritten(source, taken)(p100)
-      other <- PeerNetwork.snapshotWritten(source, taken)(p200)
-      afterOther <- (source.get, taken.get).tupled
-    yield
-      assertEquals(none, false, "None is not taken")
-      assertEquals(
-        afterNone,
-        (Versioned[Snapshot](BigInt(1), None), p100),
-        "None written to the worker's source, the taken kept"
-      )
-      assertEquals(same, false, "the same point is not taken")
-      assertEquals(other, true, "another point is taken")
-      assertEquals(
-        afterOther,
-        (Versioned[Snapshot](BigInt(3), p200), p200),
-        "each write a version, and taken"
-      )
+    import PeerNetwork.SnapshotCheck
+    val (afterNone, noneTaken) = SnapshotCheck.initial(p100).take(None)
+    val (afterSame, sameTaken) = afterNone.take(p100)
+    val (afterOther, otherTaken) = afterSame.take(p200)
+    assertEquals((noneTaken, sameTaken, otherTaken), (false, false, true), "taken: another point")
+    assertEquals(afterSame, SnapshotCheck.initial(p100), "None and the same point change nothing")
+    assertEquals((afterOther.taken, afterOther.revision), (p200, BigInt(1)), "taken, a revision")
   }
+
+  test(
+    "a check reads the snapshot it checks where it is claimed, once per generation and snapshot"
+  ) {
+    import PeerNetwork.SnapshotCheck
+    import SnapshotCheck.Key
+    val p100 = Some(snapshotAt(100))
+    val p200 = Some(snapshotAt(200))
+    def slotOf(c: Option[SnapshotCheck.Claim]) = c.map(_.slot)
+    // a check of the snapshot at 100 claimed in generation 0, then the snapshot at 200 taken
+    val (claimedA, a) = SnapshotCheck.initial(p100).claim(BigInt(0))
+    val (tookB, _) = claimedA.take(p200)
+    // the check of 100 completes after the snapshot was replaced: no verdict kept
+    val afterA = a.fold(fail("no check of 100"))(c => tookB.completed(c.key, false))
+    assertEquals(afterA.verdict, None, "the verdict of a snapshot replaced is not kept")
+    // a check claimed now, whatever it read before, is of the snapshot taken: 200
+    val (claimedB, b) = afterA.claim(BigInt(0))
+    assertEquals((slotOf(a), slotOf(b)), (Some(BigInt(100)), Some(BigInt(200))), "each its own")
+    assertEquals(claimedB.claim(BigInt(0))._2, None, "no second check of 200 in generation 0")
+    val (nextGeneration, again) = claimedB.claim(BigInt(1))
+    assertEquals(slotOf(again), Some(BigInt(200)), "a generation of its own arms it again")
+    assertEquals(nextGeneration.claim(BigInt(0))._2, None, "no check for an older generation")
+    // the check of 200 completes: its verdict is said once, for its generation only
+    val kept = b.fold(fail("no check of 200"))(c => claimedB.completed(c.key, true))
+    assertEquals(kept.verdict, Some(Key(BigInt(0), BigInt(1)) -> true), "kept")
+    assertEquals(kept.said(BigInt(1))._2, None, "not for another generation")
+    val (afterSaid, said) = kept.said(BigInt(0))
+    assertEquals(said, Some(true), "said")
+    assertEquals(afterSaid.said(BigInt(0))._2, None, "said once")
+  }
+
+  private def hashAt(n: Int) = xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(32)(n.toByte))
+
+  /** An immutable chain at slot 1000 whose block at slot 200 is the one [[snapshotAt]] 200 names,
+    * and at any other slot another: a check says `true` for the snapshot at 200 only. Each lookup
+    * is recorded, and waits for `held` first.
+    */
+  private def immutableAt(
+      lookups: Ref[IO, Vector[BigInt]],
+      held: BigInt => IO[Unit]
+  ): xyz.kd5ujc.scarab.storage.ImmutableStore[IO] =
+    import xyz.kd5ujc.scarab.consensus.BlockRef
+    type Fails = cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]
+    new xyz.kd5ujc.scarab.storage.ImmutableStore[IO]:
+      def append(ref: BlockRef, raw: xyz.kd5ujc.scarab.codec.Bytes)(using Fails) = IO.unit
+      def sync(using Fails) = IO.unit
+      def tip(using Fails) = IO.pure(Some(BlockRef(BigInt(1000), hashAt(0), BigInt(1000))))
+      def get(point: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using Fails) = IO.pure(None)
+      def pointsAtSlot(slot: BigInt)(using Fails) = IO.pure(Vector.empty)
+      def pointAtOrAfterSlot(slot: BigInt)(using Fails) =
+        lookups.update(_ :+ slot) *> held(slot) *>
+          IO.pure(
+            Some(BlockRef(slot, if slot == BigInt(200) then hashAt(200) else hashAt(0), slot))
+          )
+      def byBlockNo(n: BigInt)(using Fails) = IO.pure(None)
+      def stream(after: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using Fails) = fs2.Stream.empty
+
+  private val genesisRoots = PeerNetwork.Roots(
+    Nil,
+    Set(SocketAddress[Host](ipv4"127.0.0.1", port"3001")),
+    None,
+    xyz.kd5ujc.scarab.network.selection.UseLedgerPeers.Disabled
+  )
+
+  private def verdicts(into: Ref[IO, Vector[Boolean]]) = (o: Output[PeerNetwork.Addr]) =>
+    o match
+      case Output.LedgerPeers(LedgerPeersTrace.SnapshotVerified(m)) => into.update(_ :+ m)
+      case _                                                        => IO.unit
 
   test(
     "in Genesis mode a snapshot at another point arms the verification again, in the same root generation"
   ) {
-    val roots = PeerNetwork.Roots(
-      Nil,
-      Set(SocketAddress[Host](ipv4"127.0.0.1", port"3001")),
-      None,
-      xyz.kd5ujc.scarab.network.selection.UseLedgerPeers.Disabled
-    )
     Settled { settle =>
       for
-        verified <- Ref.of[IO, Int](0)
-        emit = (o: Output[PeerNetwork.Addr]) =>
-          o match
-            case Output.LedgerPeers(LedgerPeersTrace.SnapshotVerified(_)) => verified.update(_ + 1)
-            case _                                                        => IO.unit
-        seen <- running(roots, emit, Some(snapshotAt(100)), ConsensusMode.GenesisMode).use { net =>
+        said <- Ref.of[IO, Vector[Boolean]](Vector.empty)
+        lookups <- Ref.of[IO, Vector[BigInt]](Vector.empty)
+        store = immutableAt(lookups, _ => IO.unit)
+        seen <- running(
+          genesisRoots,
+          verdicts(said),
+          Some(snapshotAt(100)),
+          ConsensusMode.GenesisMode,
+          Some(store)
+        ).use { net =>
           net.run.background.use { _ =>
             def after(write: IO[Unit]) =
-              write *> settle *> (verified.get, net.state.get.map(_.rootsGeneration)).tupled
+              write *> settle *>
+                (lookups.get, said.get, net.state.get.map(_.rootsGeneration)).tupled
             for
               start <- after(IO.unit)
               judgement <- net.judgement.get
@@ -763,7 +817,7 @@ class NetworkConfigSuite extends FailsOnUncaught:
               other <- after(net.setSnapshot(Some(snapshotAt(200))))
               // a topology installed arms the check once per root generation, as before #924's
               // reload work (`beforeEventApplied` on `RootsConfigured`): the scope it keeps
-              installed <- after(net.reloadRoots(roots))
+              installed <- after(net.reloadRoots(genesisRoots))
             yield (judgement, start, none, same, other, installed)
           }
         }
@@ -774,13 +828,59 @@ class NetworkConfigSuite extends FailsOnUncaught:
         assertEquals(same, start, "the same point arms nothing")
         assertEquals(
           other,
-          (start._1 + 1, start._2),
-          "another point: one more check, no generation"
+          (start._1 :+ BigInt(200), start._2 :+ true, start._3),
+          "another point: the snapshot at 200 checked, and found, in the same generation"
         )
         assertEquals(
           installed,
-          (other._1 + 1, other._2 + 1),
-          "a topology installed: a generation, and the check of the snapshot taken"
+          (other._1 :+ BigInt(200), other._2 :+ true, other._3 + 1),
+          "a topology installed: a generation, and the snapshot taken, at 200, checked again"
         )
+    }
+  }
+
+  test(
+    "in Genesis mode a check of the snapshot replaced says nothing, and the snapshot taken is checked once"
+  ) {
+    Settled { settle =>
+      for
+        said <- Ref.of[IO, Vector[Boolean]](Vector.empty)
+        lookups <- Ref.of[IO, Vector[BigInt]](Vector.empty)
+        release <- Deferred[IO, Unit]
+        // a check of the snapshot at 100 is held in its lookup until the test releases it
+        store = immutableAt(lookups, slot => release.get.whenA(slot == BigInt(100)))
+        seen <- running(
+          genesisRoots,
+          verdicts(said),
+          Some(snapshotAt(100)),
+          ConsensusMode.GenesisMode,
+          Some(store)
+        ).use { net =>
+          net.run.background.use { _ =>
+            for
+              _ <- settle
+              // a generation of its own, so that a check of the snapshot at 100 is in flight
+              _ <- net.reloadRoots(genesisRoots) *> settle
+              heldBefore <- lookups.get
+              _ <- net.setSnapshot(Some(snapshotAt(200))) *> settle
+              _ <- release.complete(()) *> settle
+              // written again, the snapshot at 200 is not checked again in this generation
+              _ <- net.setSnapshot(Some(snapshotAt(200))) *> settle
+              done <- (lookups.get, said.get).tupled
+            yield (heldBefore, done)
+          }
+        }
+      yield
+        val (heldBefore, (looked, verdict)) = seen
+        assert(
+          heldBefore.lastOption.contains(BigInt(100)),
+          s"a check of 100 in flight: $heldBefore"
+        )
+        assertEquals(
+          looked.count(_ == BigInt(200)),
+          1,
+          "the snapshot at 200 checked once"
+        )
+        assertEquals(verdict, Vector(true), "only the check of the snapshot taken, at 200, said")
     }
   }

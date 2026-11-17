@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.Monad
 import cats.effect.{Async, Clock, Deferred, Ref, Resource}
 import cats.effect.std.{Queue, Supervisor}
 import cats.effect.syntax.all.*
@@ -68,15 +67,23 @@ object PeerNetwork:
       .handleError(_ => false.asRight[StorageError])
       .flatMap(_.fold(error => storageFailed(error).as(false), Async[F].pure))
 
-  private[node] def publishSnapshotVerification[F[_]: Async, A](
+  /** The verdict the governor's event of a completed check says ([[SnapshotCheck.said]]), when the
+    * event's root generation is the one in force: none for a check of a generation or a snapshot
+    * replaced since it started.
+    */
+  private[node] def publishSnapshotVerification[F[_]: Async, A, R](
       event: Event[A],
       activeGeneration: F[BigInt],
+      check: Ref[F, SnapshotCheck[R]],
       publish: Boolean => F[Unit]
   ): F[Unit] = event match
-    case Event.SnapshotVerificationCompleted(generation, matches) =>
-      activeGeneration.flatMap(current =>
-        if current == generation then publish(matches) else Async[F].unit
-      )
+    case Event.SnapshotVerificationCompleted(generation, _) =>
+      activeGeneration
+        .flatMap(current =>
+          if current == generation then check.modify(_.said(generation))
+          else Async[F].pure(Option.empty[Boolean])
+        )
+        .flatMap(_.traverse_(publish))
     case _ => Async[F].unit
 
   /** Whether the governor takes `next` for the Genesis verification, as `ledgerPeerSnapshotChange`
@@ -94,20 +101,72 @@ object PeerNetwork:
       false
     case _ => true
 
-  /** A peer snapshot written (`Run.hs` 757): always to `source`, which the ledger-peers worker
-    * reads at its next rebuild; to `taken`, the governor's, only when [[snapshotTaken]]. True when
-    * it was taken, so the Genesis verification is armed again: the reference then sets the
-    * judgement it keeps to `YoungEnough` (cardano-diffusion c45735a5
-    * `Cardano/Network/PeerSelection/Governor/Types.hs` 172-173), and its monitor launches
-    * `jobVerifyPeerSnapshot` once the judgement is `TooOld` (`Governor/Monitor.hs` 515-533).
+  /** The Genesis verification of the peer snapshot, one value changed at once: the snapshot the
+    * governor took last (the `ledgerPeerSnapshot` of its state, which `ledgerPeerSnapshotChange`
+    * replaces together with its judgement in one decision, ouroboros-network c45735a5
+    * `Governor/Monitor.hs` 432-459, cardano-diffusion c45735a5 `Governor/Types.hs` 172-173), how
+    * many it has taken (`revision`), the check claimed last, by root generation and snapshot taken,
+    * and the verdict of a check that completed while it was still current, which the governor's
+    * next event says. A claim reads the snapshot it checks, so no check starts for a snapshot
+    * replaced before it, and no two for one generation and snapshot.
     */
-  private[node] def snapshotWritten[F[_]: Monad, R](
-      source: Ref[F, Versioned[Option[LedgerPeerSnapshot[R]]]],
-      taken: Ref[F, Option[LedgerPeerSnapshot[R]]]
-  )(next: Option[LedgerPeerSnapshot[R]]): F[Boolean] =
-    source.update(_.next(next)) *> taken.modify(last =>
-      if snapshotTaken(next, last) then (next, true) else (last, false)
-    )
+  private[node] final case class SnapshotCheck[R](
+      taken: Option[LedgerPeerSnapshot[R]],
+      revision: BigInt,
+      claimed: Option[SnapshotCheck.Key],
+      verdict: Option[(SnapshotCheck.Key, Boolean)]
+  ):
+    /** `next` written: taken as the governor takes it ([[snapshotTaken]]), at a new revision; true
+      * when taken, so that its check is armed again.
+      */
+    def take(next: Option[LedgerPeerSnapshot[R]]): (SnapshotCheck[R], Boolean) =
+      if snapshotTaken(next, taken) then (copy(taken = next, revision = revision + 1), true)
+      else (this, false)
+
+    /** A check of the snapshot taken, in `generation`: its point, unless a check was claimed for
+      * this generation and snapshot, or a later one, or the snapshot has no block point.
+      */
+    def claim(generation: BigInt): (SnapshotCheck[R], Option[SnapshotCheck.Claim]) =
+      val key = SnapshotCheck.Key(generation, revision)
+      taken
+        .collect { case LedgerPeerSnapshot.V23(SnapshotPoint.Block(slot, hash), _, _) =>
+          SnapshotCheck.Claim(key, slot, hash)
+        }
+        .filter(_ => claimed.forall(_.before(key))) match
+        case Some(claim) => (copy(claimed = Some(key)), Some(claim))
+        case None        => (this, None)
+
+    /** Whether the check of `key` is still the one of the snapshot taken. */
+    def current(key: SnapshotCheck.Key): Boolean = claimed.contains(key) && key.revision == revision
+
+    /** The check of `key` found `matches`: kept for the governor's event only while current. */
+    def completed(key: SnapshotCheck.Key, matches: Boolean): SnapshotCheck[R] =
+      if current(key) then copy(verdict = Some(key -> matches)) else this
+
+    /** The verdict kept, for the governor's event of `generation`, if it is still current; it is
+      * taken out either way.
+      */
+    def said(generation: BigInt): (SnapshotCheck[R], Option[Boolean]) =
+      (
+        copy(verdict = None),
+        verdict.collect {
+          case (key, matches) if key.generation == generation && current(key) =>
+            matches
+        }
+      )
+
+  private[node] object SnapshotCheck:
+    /** A check, by the root generation and the revision of the snapshot taken it was claimed in. */
+    final case class Key(generation: BigInt, revision: BigInt):
+      def before(other: Key): Boolean =
+        generation < other.generation ||
+          (generation == other.generation && revision < other.revision)
+
+    /** A check to run: the block point of the snapshot it was claimed for. */
+    final case class Claim(key: Key, slot: BigInt, hash: xyz.kd5ujc.scarab.codec.Bytes)
+
+    def initial[R](snapshot: Option[LedgerPeerSnapshot[R]]): SnapshotCheck[R] =
+      SnapshotCheck(snapshot, BigInt(0), None, None)
 
   /** Long-lived supervisor children report unexpected failures to the network owner. Cancellation
     * remains cancellation; the fatal Deferred carries the original defect cause unchanged.
@@ -192,7 +251,6 @@ object PeerNetwork:
       worker: LedgerPeersWorker[F],
       association: AssociationMode,
       churn: ChurnLoop.Config,
-      snapshotCheckStarted: Boolean,
       snapshotCheckCanceled: Deferred[F, Unit]
   )
 
@@ -218,7 +276,7 @@ object PeerNetwork:
     *   Write the peer snapshot, `None` included, as the reference's reload writes its
     *   `ledgerPeerSnapshotVar` (cardano-node 11.1.3 `Run.hs` 757): the ledger-peers worker reads it
     *   at its next rebuild, and in Genesis mode a snapshot at another block point than the one last
-    *   taken arms the verification again ([[snapshotWritten]]). No root generation.
+    *   taken arms the verification again ([[SnapshotCheck]]). No root generation.
     * @param run
     *   Never returns normally; raises through `fatal` when the governor stops the node.
     */
@@ -491,14 +549,14 @@ object PeerNetwork:
       )
       judgement <- Resource.eval(Ref.of[F, LedgerStateJudgement](LedgerStateJudgement.TooOld))
       // the reference's `ledgerPeerSnapshotVar`, which the ledger-peers worker reads, and the
-      // snapshot its governor took last, which the Genesis verification checks
+      // Genesis verification of the snapshot its governor took last
       snapshotSource <- Resource.eval(
         Ref.of[F, Versioned[Option[LedgerPeerSnapshot[LedgerRelay]]]](
           Versioned(BigInt(0), settings.snapshot)
         )
       )
-      snapshotTaken <- Resource.eval(
-        Ref.of[F, Option[LedgerPeerSnapshot[LedgerRelay]]](settings.snapshot)
+      snapshotCheck <- Resource.eval(
+        Ref.of[F, SnapshotCheck[LedgerRelay]](SnapshotCheck.initial(settings.snapshot))
       )
       worker <- Resource.eval(createWorker(settings.roots, snapshotSource.get))
       initialSnapshotCheckCanceled <- Resource.eval(Deferred[F, Unit])
@@ -520,7 +578,6 @@ object PeerNetwork:
               timeouts = settings.timeouts,
               seed = settings.seed
             ),
-            snapshotCheckStarted = false,
             snapshotCheckCanceled = initialSnapshotCheckCanceled
           )
         )
@@ -595,49 +652,39 @@ object PeerNetwork:
 
       /** Start the snapshot monitor once per published root generation, and once more in it for a
         * snapshot taken at another block point ([[setSnapshot]]); it checks the snapshot taken
-        * last. The result is only traced; a reload that wins while the wait is suspended makes the
-        * old completion stale.
+        * last, read where its check is claimed ([[SnapshotCheck.claim]]). The result is only
+        * traced; a reload that wins while the wait is suspended, or a snapshot taken since, makes
+        * the completion stale.
         */
       def verifySnapshot(j: LedgerStateJudgement): F[Unit] =
         if settings.consensusMode != ConsensusMode.GenesisMode ||
           j != LedgerStateJudgement.TooOld
         then F.unit
         else
-          (runtime.get, snapshotTaken.get).tupled.flatMap { (captured, taken) =>
-            val point = taken.collect {
-              case LedgerPeerSnapshot.V23(SnapshotPoint.Block(slot, hash), _, _) => slot -> hash
-            }
-            point.traverse_ { (slot, hash) =>
-              runtime
-                .modify { current =>
-                  if current.generation != captured.generation || current.snapshotCheckStarted then
-                    (current, false)
-                  else (current.copy(snapshotCheckStarted = true), true)
+          runtime.get.flatMap { captured =>
+            // the snapshot is read and its check claimed in one step
+            snapshotCheck
+              .modify(_.claim(captured.generation))
+              .flatMap(_.traverse_ { claim =>
+                val check = immutable.fold(F.pure(false)) { store =>
+                  PeerNetwork.snapshotMatches[F](
+                    ImmutablePeerSnapshotVerifier.matches(store, claim.slot, claim.hash),
+                    error =>
+                      emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotVerificationFailed(error)))
+                  )
                 }
-                .flatMap {
-                  case false => F.unit
-                  case true =>
-                    val check = immutable.fold(F.pure(false)) { store =>
-                      PeerNetwork.snapshotMatches[F](
-                        ImmutablePeerSnapshotVerifier.matches(store, slot, hash),
-                        error =>
-                          emit(
-                            Output.LedgerPeers(LedgerPeersTrace.SnapshotVerificationFailed(error))
-                          )
-                      )
-                    }
-                    supervisor
-                      .supervise(
-                        runSnapshotCheck(
-                          check,
-                          captured.snapshotCheckCanceled.get,
-                          captured.generation,
-                          events
-                        )
-                      )
-                      .void
-                }
-            }
+                supervisor
+                  .supervise(
+                    runSnapshotCheck(
+                      check
+                        .flatTap(matches => snapshotCheck.update(_.completed(claim.key, matches))),
+                      captured.snapshotCheckCanceled.get,
+                      captured.generation,
+                      events
+                    )
+                  )
+                  .void
+              })
           }
       // the fetch mode of the node, once a second (the reference reads it from consensus when it needs
       // it); published for BlockFetch and the churn governor, told when it changes
@@ -721,6 +768,7 @@ object PeerNetwork:
               publishSnapshotVerification(
                 event,
                 runtime.get.map(_.generation),
+                snapshotCheck,
                 matches => emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotVerified(matches)))
               )
             case Event.RootsConfigured(_, _, _, Some(generation)) =>
@@ -744,12 +792,10 @@ object PeerNetwork:
       // the Genesis verification armed again for a snapshot taken, in the root generation in
       // force: no new generation, as the reference's governor takes it without one
       val setSnapshot: Option[LedgerPeerSnapshot[LedgerRelay]] => F[Unit] = next =>
-        PeerNetwork
-          .snapshotWritten(snapshotSource, snapshotTaken)(next)
-          .flatMap(taken =>
-            (runtime.update(_.copy(snapshotCheckStarted = false)) *>
-              judgement.get.flatMap(verifySnapshot)).whenA(taken)
-          )
+        snapshotSource.update(_.next(next)) *>
+          snapshotCheck
+            .modify(_.take(next))
+            .flatMap(judgement.get.flatMap(verifySnapshot).whenA(_))
 
       val reloadRoots: Roots => F[Unit] = next =>
         for
@@ -788,7 +834,6 @@ object PeerNetwork:
               base = settings.targets,
               regime = Regime.kind(settings.consensusMode, _, next.bootstrapConfigured)
             ),
-            snapshotCheckStarted = false,
             snapshotCheckCanceled = snapshotCheckCanceled
           )
           _ <- publishRootUpdate(staged, resolvedLocal, resolvedPublic)
@@ -833,7 +878,6 @@ object PeerNetwork:
                               generation = installedGeneration,
                               resolvedLocalRoots = resolved,
                               localDnsCache = cache,
-                              snapshotCheckStarted = false,
                               snapshotCheckCanceled = snapshotCheckCanceled
                             )
                             _ <- publishRootUpdate(staged, resolved, public)

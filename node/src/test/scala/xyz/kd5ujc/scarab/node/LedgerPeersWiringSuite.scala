@@ -573,7 +573,6 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
           worker = w,
           association = AssociationMode.Unrestricted,
           churn = ChurnLoop.Config(Targets.relay, Regime.kind(_, false)),
-          snapshotCheckStarted = false,
           snapshotCheckCanceled = canceled
         )
       )
