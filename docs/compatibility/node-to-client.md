@@ -94,8 +94,9 @@ Genesis-injected pool relays and metadata are now kept: `WalletPeerReferenceSuit
 a native genesis with nonempty metadata, peer replies computed from the genesis-path state itself and a devnet scenario remain [#283](https://github.com/KD5UJC-XYZ/scarab/issues/283);
 acquired-state era observations survive native V5 restore and rollback;
 historical sources without recorded era starts cannot reconstruct earlier version-triggered boundaries;
-acquired Conway UTxO sessions pin a read-only backing snapshot at the selected point and overlay the retained ledger diff for whole, address and input queries;
-`DeepQuerySuite` verifies stable answers across advances beyond `k`, rollback, release/reacquire, and cancellation, while the RocksDB snapshot-count regression verifies release;
+acquired UTxO sessions in every Shelley-based era pin a read-only backing snapshot at the selected point and overlay the retained ledger diff for whole, address and input queries;
+the snapshot outlives a reset of the RocksDB backing store (the block that enters Shelley applied again after a switch to a fork from a Byron block), which empties the store in place while a view is held, as the reference's query keeps the duplicate of its tables' handle (ouroboros-consensus 808e4005 `Storage/LedgerDB/V2.hs:609-619`), while a restore of the store or its release ends the session's later UTxO queries with `UtxoStoreClosed`, which closes that client only;
+`DeepQuerySuite` verifies stable answers across advances beyond `k`, rollback, release/reacquire, and cancellation, while the RocksDB snapshot-count regression verifies release and `RocksUtxoLeaseSuite` holds a view and an enumeration across a reset, a restore and the store's release;
 the ledger lists every failure of a refused transaction and the Scala rules the first, so a transaction that breaks two rules shows fewer failures;
 Plutus rejection diagnostics retain our message for `ValidationTagMismatch`;
 reference-shaped Conway `CollectErrors` now carry exact predicate CBOR (#176), while implementation-specific context setup errors retain the text fallback;
