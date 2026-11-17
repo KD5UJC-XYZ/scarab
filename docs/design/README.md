@@ -35,5 +35,6 @@ decisions they rest on are [ADRs](../adr/README.md).
 | [Forging from a per-epoch leader schedule](leader-schedule.md) | Accepted 2026-11-16 (owner decisions on #1101; reference claims checked); not implemented | [#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101) |
 | [Certified Mithril bootstrap](mithril-bootstrap.md) | Implemented; recorded-Preview acceptance and local integration gates complete | [#27](https://github.com/KD5UJC-XYZ/scarab/issues/27) |
 | [Deterministic adversarial schedules](adversarial-schedules.md) | As built; finite fixed-seed regression schedules, not a security proof; nightly seeded network-fault run of the devnet | [#78](https://github.com/KD5UJC-XYZ/scarab/issues/78), [#224](https://github.com/KD5UJC-XYZ/scarab/issues/224) |
+| [A differential campaign against the reference](differential-campaign.md), with [its reference claims](differential-campaign-reference.md) | Proposal 2026-11-16; revised after two independent reviews, their re-check and the owner's questions pending; not implemented | [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922) |
 
 - [BlockFetch peer coordination (#148)](block-fetch-coordination.md): pinned Praos decisions, pipelined clients and shared reservation lifetimes.
