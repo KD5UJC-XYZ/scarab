@@ -7907,8 +7907,8 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923360005",
-   "note": "certsTotalDepositsTxBody and certsTotalRefundsTxBody follow, now that the body's totals (getTotalDepositsTxBody, getTotalRefundsTxBody) are on main (#85); the Default, encoding and JSON superclasses have no counterpart here",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+   "note": "the members are the reference's; the Default, encoding and JSON superclasses have no counterpart here",
    "digest": "af505cdd9ab0b1d8"
   },
   "type ledger.era.AccountState": {
@@ -7981,9 +7981,9 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923360005",
-   "note": "Conway's two certificate-state instances in one value, given in the root class's companion; certsTotalDepositsTxBody and certsTotalRefundsTxBody are not yet members",
-   "digest": "38ae8c62134141a7"
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+   "note": "Conway's two certificate-state instances in one value, given in the root class's companion; its members are compared with the flat path's (ConwayCertsChecksSuite, ConwayUtxoChecksSuite), not yet with the reference's own results",
+   "digest": "9f34ba24178e879e"
   },
   "class ledger.era.rules.CERT": {
    "upstream": [
@@ -9292,6 +9292,169 @@
    ],
    "note": "the node's credential, as the native script reads it, where the reference's is a Credential Guard",
    "digest": "781ca37aa88255d1"
+  },
+  "def ledger.era.Val#eqv": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "symbol": "Val",
+     "lines": [
+      30,
+      44
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the superclass `Eq t` of `Val` (`Val.hs:42`) as a member; MaryValue's `pointwise (==)` (`Mary/Value.hs:185-186`) is the equality of two canonical values' coins and maps, and every MultiAssetValue is canonical",
+   "digest": "267af820df5f4ce5"
+  },
+  "def ledger.era.EraCertState#certsTotalDepositsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "symbol": "certsTotalDepositsTxBody",
+     "lines": [
+      390,
+      395
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "6ac2c33b4f303b9d"
+  },
+  "def ledger.era.EraCertState#certsTotalRefundsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "symbol": "certsTotalRefundsTxBody",
+     "lines": [
+      397,
+      401
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "2b7f3d0a63c0e3a2"
+  },
+  "def ledger.era.EraCertState.shelleyCertsTotalRefundsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/CertState.hs",
+     "symbol": "shelleyCertsTotalRefundsTxBody",
+     "lines": [
+      91,
+      94
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "c539ccc55b7ffe31"
+  },
+  "def ledger.era.EraCertState.conwayCertsTotalDepositsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "symbol": "conwayCertsTotalDepositsTxBody",
+     "lines": [
+      118,
+      121
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the state's pools read through `certPStateL`, the lens on the record's field the reference matches",
+   "digest": "eef8805461689f97"
+  },
+  "def ledger.era.ShelleyUTxO.shelleyConsumed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "symbol": "shelleyConsumed",
+     "lines": [
+      111,
+      118
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "79d5269255d3d4aa"
+  },
+  "def ledger.era.ShelleyUTxO.produced": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "symbol": "produced",
+     "lines": [
+      122,
+      129
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "08cc2a4fcfe0d30d"
+  },
+  "def ledger.era.rules.ShelleyUtxo.validateValueNotConservedUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "validateValueNotConservedUTxO",
+     "lines": [
+      506,
+      519
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, its values in the stored form, so its verdict is compared with the flat rule's",
+   "digest": "29cb1c8784c11caf"
   }
  },
  "glue": [
