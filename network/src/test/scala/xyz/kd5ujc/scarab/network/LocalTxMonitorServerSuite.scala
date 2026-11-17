@@ -44,6 +44,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
       def acquire = current.get
       def awaitChange(seen: Snapshot): IO[Snapshot] =
         current.discrete.find(_.identity != seen.identity).compile.lastOrError
+      def txIds = LocalTxMonitor.TxIdReader.whole
 
   private def toy(slot: Int, txs: Int*): IO[Toy] =
     SignallingRef[IO, Snapshot](snapshot(slot, txs.toVector)).map(new Toy(_))
@@ -332,6 +333,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     val source = new LocalTxMonitorServer.Source[IO]:
       def acquire = IO.pure(refusing)
       def awaitChange(seen: Snapshot) = IO.never
+      def txIds = LocalTxMonitor.TxIdReader.whole
     // the server runs in a fiber of the connection's scope, cancelled when it closes
     val connection = Resource.eval(Bearer.inMemory[IO]()).flatMap { (clientEnd, serverEnd) =>
       Handle

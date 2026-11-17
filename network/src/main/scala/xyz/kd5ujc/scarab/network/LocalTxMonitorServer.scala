@@ -80,6 +80,11 @@ object LocalTxMonitorServer:
     /** The first snapshot that differs from `seen`, waiting for the pool to change; cancelable. */
     def awaitChange(seen: Snapshot): F[Snapshot]
 
+    /** Where the decoder of a `HasTx` id fails on an id not all of which has arrived: such an id
+      * ends the connection as a refusal of a whole one does ([[LocalTxMonitor.TxIdReader]]).
+      */
+    def txIds: LocalTxMonitor.TxIdReader
+
   /** The reference's names of the measures. */
   val MeasureNames: List[String] =
     List("ex_units_memory", "ex_units_steps", "reference_scripts_bytes", "transaction_bytes")
@@ -114,7 +119,7 @@ object LocalTxMonitorServer:
       LocalTxMonitor.encode(state, Role.Server, message).fold(illegal, channel.send)
     def receive(state: State): F[Message] =
       channel.recv(LocalTxMonitor.MaxMessageBytes)(
-        LocalTxMonitor.decodePrefix(state, Role.Client, _)
+        LocalTxMonitor.decodePrefix(state, Role.Client, _, source.txIds)
       )
 
     /** Acquiring: tell the client the slot and serve the snapshot until it releases. */

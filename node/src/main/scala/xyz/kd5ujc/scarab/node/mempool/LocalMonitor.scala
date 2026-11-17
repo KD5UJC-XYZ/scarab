@@ -73,3 +73,4 @@ object LocalMonitor:
         mempool
           .awaitChange(s => (s.tipSlot + 1, s.entries.map(_.id)) == seen.identity)
           .map(snapshot)
+      def txIds = GenTxId.reader

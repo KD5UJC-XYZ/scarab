@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import scala.collection.immutable.SortedMap
 
 import ChainSync.{DecodeResult, Role, UInt64}
@@ -65,6 +65,28 @@ object LocalTxMonitor:
     * reference's `Map` encodes them).
     */
   final case class Measures(txCount: Long, byName: SortedMap[String, Measure])
+
+  /** How the decoder of a `MsgHasTx` id judges an id only part of which has arrived. The
+    * reference's codec reads the id with the block type's decoder from the stream (`decodeTxId`,
+    * ouroboros-network c45735a5
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:135-137`),
+    * so a prefix that decoder fails on ends the connection before the rest arrives; the node, which
+    * knows the ids' structure, says where. A whole id is read as one item, as before.
+    */
+  trait TxIdReader:
+    /** What the id's decoder makes of `input`, the part of the id that has arrived. */
+    def prefix(input: Bytes): TxIdPrefix
+
+  object TxIdReader:
+    /** Judges no prefix: the id is read whole before anything is said of it. */
+    val whole: TxIdReader = _ => TxIdPrefix.Short
+
+  enum TxIdPrefix:
+    /** The id's decoder waits for more. */
+    case Short
+
+    /** The id's decoder fails on it, whatever follows. */
+    case Refused(cause: DomainError)
 
   enum Message:
     case Acquire
@@ -146,8 +168,40 @@ object LocalTxMonitor:
     w.result
   }
 
-  /** The client's messages in `Idle` and `Acquired`, the server's in the other states. */
-  def decodePrefix(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
+  /** The client's messages in `Idle` and `Acquired`, the server's in the other states. Each message
+    * is read as before; while a `HasTx` id has not all arrived, `txIds` says whether its decoder
+    * has already failed on what has ([[TxIdReader]]).
+    */
+  def decodePrefix(
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      txIds: TxIdReader = TxIdReader.whole
+  ): DecodeResult[Message] =
+    decoded(state, sender, bytes) match
+      case DecodeResult.NeedMore => waiting(state, sender, bytes, txIds)
+      case other                 => other
+
+  /** An incomplete message: a `HasTx` whose id `txIds` refuses ends here, anything else waits. */
+  private def waiting(
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      txIds: TxIdReader
+  ): DecodeResult[Message] =
+    ProtocolWire.prefix {
+      val r = new ProtocolWire.Reader(bytes, wire)
+      val arity = r.arrayLength()
+      val tag = r.uint().value
+      (state, sender, arity, tag.toInt) match
+        case (State.Acquired, Role.Client, 2, 7) if tag == 7 =>
+          txIds.prefix(bytes.drop(r.position)) match
+            case TxIdPrefix.Short          => DecodeResult.NeedMore
+            case TxIdPrefix.Refused(cause) => bad(ProtocolError.UndecodableTxId(cause))
+        case _ => DecodeResult.NeedMore
+    }
+
+  private def decoded(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
     ProtocolWire.prefix {
       if state == State.Done || clientTurn(state) != (sender == Role.Client) then
         bad(ProtocolError.WrongLocalTxMonitorAgency)

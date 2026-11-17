@@ -89,6 +89,74 @@ class LocalTxMonitorSuite extends ScalaCheckSuite:
     }
   }
 
+  /** A reader that refuses an id starting with `82 08` and waits on anything else. */
+  private val cause = ProtocolError.ExpectedUint64
+  private val refusing: TxIdReader = input =>
+    if input.take(2) == hex("8208") then TxIdPrefix.Refused(cause) else TxIdPrefix.Short
+
+  test("a HasTx whose id the reader refuses before it has all arrived ends there") {
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, hex("82078208"), refusing),
+      DecodeResult.Failed(ProtocolError.UndecodableTxId(cause))
+    )
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, hex("820782085820"), refusing),
+      DecodeResult.Failed(ProtocolError.UndecodableTxId(cause))
+    )
+    // the reader is given the id's bytes alone, and a prefix it does not refuse waits
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, hex("82078206"), refusing),
+      DecodeResult.NeedMore
+    )
+    // without a reader that judges prefixes, the id is read whole
+    assertEquals(decodePrefix(State.Acquired, Role.Client, hex("82078208")), DecodeResult.NeedMore)
+  }
+
+  test("only a client's HasTx in Acquired is judged before it has all arrived") {
+    // the same bytes as another message: a NextTx reply carrying an item, in Busy(NextTx)
+    assertEquals(
+      decodePrefix(
+        State.Busy(Kind.NextTx),
+        Role.Server,
+        hex("82068208"),
+        _ => TxIdPrefix.Refused(cause)
+      ),
+      DecodeResult.NeedMore
+    )
+    vectors.foreach { case (state, sender, message, wire) =>
+      val bytes = hex(wire)
+      (0 until bytes.size).foreach(n =>
+        val prefix = Bytes(bytes.value.take(n))
+        val judged = message match
+          case Message.HasTx(_) if n >= 2 =>
+            DecodeResult.Failed(ProtocolError.UndecodableTxId(cause))
+          case _ => DecodeResult.NeedMore
+        assertEquals(
+          decodePrefix(state, sender, prefix, _ => TxIdPrefix.Refused(cause)),
+          judged,
+          s"$message truncated to $n"
+        )
+      )
+    }
+  }
+
+  property("a message that is not waiting decodes as it does without a reader") {
+    // a vector cut anywhere, or a HasTx envelope with random bytes after it, in any vector's state
+    val inputs = for
+      v <- Gen.oneOf(vectors)
+      cut <- Gen.choose(0, v._4.length / 2)
+      tail <- Gen.listOf(Gen.choose(0, 255)).map(b => Bytes(b.map(_.toByte).toVector))
+      bytes <- Gen.oneOf(hex(v._4).take(cut), hex("8207") ++ tail)
+    yield (v._1, v._2, bytes)
+    forAll(inputs) { (state, sender, bytes) =>
+      val whole = decodePrefix(state, sender, bytes)
+      val judged = decodePrefix(state, sender, bytes, _ => TxIdPrefix.Refused(cause))
+      whole match
+        case DecodeResult.NeedMore => ()
+        case other                 => assertEquals(judged, other, bytes.hex)
+    }
+  }
+
   test("agency and states are enforced in both directions") {
     vectors.foreach { case (state, sender, message, wire) =>
       val other = if sender == Role.Client then Role.Server else Role.Client
