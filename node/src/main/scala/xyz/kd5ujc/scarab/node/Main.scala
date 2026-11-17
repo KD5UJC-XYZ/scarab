@@ -53,6 +53,7 @@ import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.protocol.NtNHeader
+import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.network.{
   AcceptedConnectionsLimit,
   Word32,
@@ -60,6 +61,9 @@ import xyz.kd5ujc.scarab.network.{
   ConnectionEvents,
   ConnectionManager,
   NodeToClientServer,
+  ChainSyncServer,
+  LocalStateQueryServer,
+  LocalTxMonitorServer,
   LocalTxSubmissionServer,
   NodeToNodeServer,
   NetworkError,
@@ -149,6 +153,55 @@ object Main extends IOApp:
       result: IO[Either[StorageError, LocalTxSubmissionServer.End]]
   ): IO[InboundEnd] =
     result.map(_.fold(InboundEnd.Storage(_), InboundEnd.Local(_)))
+
+  /** What serves one node-to-client connection: [[NodeToClientServer.acceptBackend]]'s backends. */
+  private[node] final case class LocalBackends(
+      submit: xyz.kd5ujc.scarab.codec.Bytes => IO[LocalTxSubmissionServer.Response],
+      stateQuery: Option[LocalStateQueryServer.Source[IO, StorageError]],
+      chainSync: Option[Resource[IO, ChainSyncServer.Source[IO, RawNtNBlock]]],
+      txMonitor: Option[LocalTxMonitorServer.Source[IO]]
+  )
+
+  /** The node-to-client server at `path`: each client is served by the backends `backends` makes
+    * for it, given how that client's own fault ends it. Whatever ends a client ends that client
+    * alone and is logged ([[ListenerFailures.reportLocal]]); the value completes only if the accept
+    * loop stops, which stops the node as the reference's `DiffusionErrored` does.
+    */
+  private[node] def localServer(
+      sockets: LocalSockets[IO],
+      path: String,
+      magic: Long,
+      logged: NodeEvent => IO[Unit]
+  )(backends: (Fatal => IO[Unit]) => LocalBackends)(using
+      Raise[IO, DiffusionFailure]
+  ): Resource[IO, IO[DiffusionFailure]] =
+    LocalServer
+      .resource[IO, NetworkError](
+        sockets,
+        LocalAddress(path),
+        trace => logged(NodeEvent.LocalServer(trace))
+      )((_, failure) => ListenerFailures.reportLocal(path, failure, logged)) { (bearer, _) =>
+        // what would stop the node on a node-to-node connection ends this client
+        // only (the reference's local rethrow policy): the backends report it here
+        Deferred[IO, Fatal].flatMap { failed =>
+          val serving = backends(fault => failed.complete(fault).void)
+          val served = landLocalBackend(
+            NodeToClientServer.acceptBackend[IO, StorageError](
+              bearer,
+              magic,
+              serving.submit,
+              serving.stateQuery,
+              chainSync = serving.chainSync,
+              txMonitor = serving.txMonitor
+            )
+          )
+          logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>
+            IO.race(failed.get.map(InboundEnd.Fault(_)), served)
+              .map(_.merge)
+              .flatMap(reason => logged(NodeEvent.Inbound(path, InboundEvent.Closed(reason))))
+        }
+      }
+      .evalTap(_ => logged(NodeEvent.Listening(path)))
 
   private[node] def synchronizeMempool(
       mempool: Mempool[IO],
@@ -1972,35 +2025,14 @@ object Main extends IOApp:
     val local = (raise: Raise[IO, DiffusionFailure]) =>
       given Raise[IO, DiffusionFailure] = raise
       options.localSocket.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(path =>
-        LocalServer
-          .resource[IO, NetworkError](
-            LocalSockets.jdk[IO],
-            LocalAddress(path),
-            trace => logged(NodeEvent.LocalServer(trace))
-          )((_, failure) => ListenerFailures.reportLocal(path, failure, logged)) { (bearer, _) =>
-            // what would stop the node on a node-to-node connection ends this client
-            // only (the reference's local rethrow policy): the backends report it here
-            Deferred[IO, Fatal].flatMap { failed =>
-              val ends = (fault: Fatal) => failed.complete(fault).void
-              val served = landLocalBackend(
-                NodeToClientServer.acceptBackend[IO, StorageError](
-                  bearer,
-                  genesis.networkMagic,
-                  LocalSubmission.handler(mempool)(ends),
-                  Some(
-                    StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)
-                  ),
-                  chainSync = Some(server.blockSource(ends)),
-                  txMonitor = Some(LocalMonitor.source(mempool))
-                )
-              )
-              logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>
-                IO.race(failed.get.map(InboundEnd.Fault(_)), served)
-                  .map(_.merge)
-                  .flatMap(reason => logged(NodeEvent.Inbound(path, InboundEvent.Closed(reason))))
-            }
-          }
-          .evalTap(_ => logged(NodeEvent.Listening(path)))
+        localServer(LocalSockets.jdk[IO], path, genesis.networkMagic, logged)(ends =>
+          LocalBackends(
+            LocalSubmission.handler(mempool)(ends),
+            Some(StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)),
+            Some(server.blockSource(ends)),
+            Some(LocalMonitor.source(mempool))
+          )
+        )
       )
     for
       // the credentials were read at start-up, before the sockets ([[follow]]), also for a node
