@@ -205,10 +205,18 @@ def validate(fixtures):
     """A retained fixture: its files are the ones its provenance binds, every case answered and collected at every
     level, and the provenance binds an image of the repository's harness and its executable."""
     provenance = json.loads((fixtures / "provenance.json").read_text())
-    for name in ("cases", "results"):
+    for name, file in (("cases", "cases.json"), ("results", "results.json")):
         record = provenance[name]
-        if sha256(fixtures / record["file"]) != record["sha256"]:
-            raise ValueError(f"changed fixture file: {record['file']}")
+        if record.get("file") != file:
+            raise ValueError(f"the provenance's {name} record names {record.get('file')!r}, not {file}")
+        if sha256(fixtures / file) != record.get("sha256"):
+            raise ValueError(f"changed fixture file: {file}")
+    harness = {"source": str((HERE / "Main.hs").relative_to(ROOT)), "sha256": sha256(HERE / "Main.hs")}
+    if provenance.get("harness") != harness:
+        raise ValueError("the provenance's harness is not the repository's chain/Main.hs")
+    ledger = provenance.get("ledgerSourceCommit")
+    if ledger not in pinned() or provenance.get("reference", {}).get("cardanoLedger") != ledger:
+        raise ValueError("the provenance's ledger is not one the cabal project pins")
     chain = json.loads((fixtures / "cases.json").read_text())
     results = json.loads((fixtures / "results.json").read_text())
     if not chain["cases"]:

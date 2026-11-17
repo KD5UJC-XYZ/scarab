@@ -698,6 +698,22 @@ def verify_verdicts(out, contexts):
             or provenance.get("contextsSha256") != RECORDED.GENERATED.sha256(contexts / "results.json")):
         raise ValueError("the provenance does not name the retained contexts by their digest")
     release = RECORDED.GENERATED.RELEASES[RELEASE]
+    stages = {}
+    for v in verdicts:
+        stages[v["stage"]] = stages.get(v["stage"], 0) + 1
+    if manifest.get("stages") != dict(sorted(stages.items())):
+        raise ValueError(f"the manifest's stages {manifest.get('stages')} are not the verdicts' {stages}")
+    repeated = {"requestsSha256": manifest["sha256"]["requests.jsonl"],
+                "verdictsSha256": manifest["sha256"]["verdicts.jsonl"],
+                "modelsSha256": manifest["sha256"]["models.jsonl"],
+                "harnessSha256": RECORDED.GENERATED.sha256(root / release["harness"] / "Main.hs")}
+    differing = sorted(key for key, digest in repeated.items() if provenance.get(key) != digest)
+    if differing:
+        raise ValueError(f"the provenance's {', '.join(differing)} are not the files'")
+    if manifest.get("plutusCommit") != release["pin"]:
+        raise ValueError("the manifest names another plutus than the release's pin")
+    if provenance.get("ledgerSourceCommit") != read_json(contexts / "provenance.json").get("ledgerSourceCommit"):
+        raise ValueError("the provenance names another ledger than the contexts'")
     image = RECORDED.build_files(provenance.get("imageFilesSha256"), "provenance.json")
     RECORDED.build_files(manifest.get("imageFilesSha256"), "manifest.json")
     if (re.fullmatch(r"sha256:[0-9a-f]{64}", str(provenance.get("imageId"))) is None
@@ -750,7 +766,6 @@ def verdicts(args):
     manifest = {
         "plutusCommit": release["pin"],
         "oracleImage": image_id,
-        "oracleBaseImage": RECORDED.resolve(release["base"]),
         "imageFilesSha256": binding["imageFilesSha256"],
         "requests": len(rows),
         "transactions": len({r["tx"] for r in rows}),
@@ -768,7 +783,6 @@ def verdicts(args):
         "transactions": manifest["transactions"],
         "network": "none",
         "imageId": image_id,
-        "baseImageId": manifest["oracleBaseImage"],
         "imageFilesSha256": binding["imageFilesSha256"],
         "oracleBinarySha256": binding["imageFilesSha256"][RECORDED.IMAGE_BINARY],
         "harnessSha256": manifest["toolSha256"][f'{release["harness"]}/Main.hs'],
@@ -778,7 +792,7 @@ def verdicts(args):
         "verdictsSha256": manifest["sha256"]["verdicts.jsonl"],
         "modelsSha256": manifest["sha256"]["models.jsonl"],
     })
-    for unchecked in ("extractionSha256", "sourceNetwork"):
+    for unchecked in ("extractionSha256", "sourceNetwork", "baseImageId"):
         provenance.pop(unchecked, None)
     (out / "provenance.json").write_text(json.dumps(provenance, indent=1) + "\n")
     verify_verdicts(out, contexts)

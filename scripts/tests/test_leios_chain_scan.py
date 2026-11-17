@@ -198,6 +198,23 @@ class LeiosChainScanTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, refusal, msg=change.__name__):
                     CHAIN.validate(self.contexts_copy(scratch, change))
 
+    def test_a_record_naming_another_file_fails_validation(self):
+        def results_as_cases(chain, results, provenance):
+            provenance['results']['file'] = 'cases.json'
+
+        def cases_as_results(chain, results, provenance):
+            provenance['cases']['file'] = 'results.json'
+
+        for change in (results_as_cases, cases_as_results):
+            with tempfile.TemporaryDirectory() as scratch:
+                copy = self.contexts_copy(scratch, change)
+                provenance = json.loads((copy / 'provenance.json').read_text())
+                for record in ('cases', 'results'):
+                    provenance[record]['sha256'] = CHAIN.sha256(copy / provenance[record]['file'])
+                (copy / 'provenance.json').write_text(json.dumps(provenance))
+                with self.assertRaisesRegex(ValueError, 'record names', msg=change.__name__):
+                    CHAIN.validate(copy)
+
     def test_one_contradicted_contexts_provenance_field_fails_validation(self):
         for change in (lambda o, p: o.update(network='host'),
                        lambda o, p: o.update(oracleBinarySha256='0' * 64),
@@ -205,7 +222,11 @@ class LeiosChainScanTests(unittest.TestCase):
                        lambda o, p: o['pinnedSources'].update({'0' * 40: 'unchanged'}),
                        lambda o, p: o.update(runnerSha256={}),
                        lambda o, p: p['cases'].update(count=199),
-                       lambda o, p: p['results'].update(refused=1)):
+                       lambda o, p: p['results'].update(refused=1),
+                       lambda o, p: p['harness'].update(source='scripts/oracle/leios-testnet/Main.hs'),
+                       lambda o, p: p['harness'].update(sha256='0' * 64),
+                       lambda o, p: p.update(ledgerSourceCommit='0' * 40),
+                       lambda o, p: p['reference'].update(cardanoLedger='0' * 40)):
             with tempfile.TemporaryDirectory() as scratch:
                 copy = self.contexts_copy(scratch, lambda chain, results, provenance: change(provenance['oracle'],
                                                                                              provenance))
@@ -217,6 +238,9 @@ class LeiosChainScanTests(unittest.TestCase):
         self.assertEqual(len(rows), 273)
         self.assertEqual({v['stage'] for v in verdicts}, {'success'})
         provenance = json.loads((SCRIPTS / 'provenance.json').read_text())
+        manifest = json.loads((SCRIPTS / 'manifest.json').read_text())
+        self.assertNotIn('baseImageId', provenance)
+        self.assertNotIn('oracleBaseImage', manifest)
         self.assertEqual(set(SCAN.RECORDED.accepted_build(SCRIPTS)), set(SCAN.RECORDED.IMAGE_BUILD))
         self.assertEqual(provenance['network'], 'none')
 
@@ -260,7 +284,16 @@ class LeiosChainScanTests(unittest.TestCase):
                 (lambda m, p: p.update(contextsSha256='0' * 64), 'retained contexts by their digest'),
                 (lambda m, p: p.update(contexts='fixtures/reference/leios-testnet-contexts/results.json'),
                  'retained contexts by their digest'),
-                (lambda m, p: p.update(oracleBinarySha256='0' * 64), 'does not bind the image')):
+                (lambda m, p: p.update(oracleBinarySha256='0' * 64), 'does not bind the image'),
+                (lambda m, p: p.update(requestsSha256='0' * 64), 'requestsSha256'),
+                (lambda m, p: p.update(verdictsSha256='0' * 64), 'verdictsSha256'),
+                (lambda m, p: p.update(modelsSha256='0' * 64), 'modelsSha256'),
+                (lambda m, p: p.update(harnessSha256='0' * 64), 'harnessSha256'),
+                (lambda m, p: p.update(ledgerSourceCommit='0' * 40), 'another ledger'),
+                (lambda m, p: p.update(plutusSourceCommit='0' * 40), 'does not bind the image'),
+                (lambda m, p: p.update(imageId='sha256:' + '0' * 64), 'does not bind the image'),
+                (lambda m, p: m.update(stages={'failure': 273}), 'stages'),
+                (lambda m, p: m.update(plutusCommit='0' * 40), 'another plutus')):
             with tempfile.TemporaryDirectory() as scratch:
                 copy = self.scripts_copy(scratch, lambda requests, verdicts, m, p: change(m, p))
                 with self.assertRaisesRegex(ValueError, refusal):
