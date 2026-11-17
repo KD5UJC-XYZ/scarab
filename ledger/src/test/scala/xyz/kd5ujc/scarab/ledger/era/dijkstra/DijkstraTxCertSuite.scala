@@ -4,8 +4,15 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 import munit.FunSuite
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{CborRead, LedgerDecodeError}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraCert, DijkstraGenesis, DijkstraPurposes, Params}
+import xyz.kd5ujc.scarab.ledger.{Anchor, CborRead, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.dijkstra.{
+  DijkstraAnchor,
+  DijkstraCert,
+  DijkstraDelegatee,
+  DijkstraGenesis,
+  DijkstraPurposes,
+  Params
+}
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayDelegCert,
   ConwayGovCert,
@@ -22,6 +29,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   DRepRole,
   Dijkstra,
   EpochNo,
+  FlatView,
   HotCommittee,
   KeyHash,
   KeyRole,
@@ -34,7 +42,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs`): each builder makes the certificate
   * the Leios build's block decoder ([[DijkstraCert.decode]]) reads from its bytes, with the
   * witnesses the reference gives it and the script witness the block's rules ask for; the readers
-  * read only their own form; the refunds are the certificates' own; and a Conway certificate is
+  * read only their own form; the refunds are the certificates' own; a pool registration (of
+  * Conway's parameters, without a voting key) pays its deposit once; and a Conway certificate is
   * carried in as `upgradeTxCert` carries it.
   */
 class DijkstraTxCertSuite extends FunSuite:
@@ -80,12 +89,55 @@ class DijkstraTxCertSuite extends FunSuite:
     s"8312${script}f6" -> c.mkUpdateDRepTxCert(cred, None)
   )
 
-  test(
-    "each builder makes a certificate of a form the block decoder reads, with its script witness"
-  ) {
+  // the Leios testnet's parameters, with deposits of their own
+  private def pp: PParams[Dijkstra] =
+    val testnet = io.circe.parser
+      .parse(Files.readString(Path.of("fixtures/leios/testnet/config/dijkstra-genesis.json")))
+      .fold(e => fail(e.message), identity)
+    val stored = DijkstraGenesis
+      .read(testnet)
+      .fold(e => fail(e.message), _.upgrade(Params.base))
+      .copy(keyDeposit = 2000000, poolDeposit = 500000000, drepDeposit = 7)
+    PParams[Dijkstra](DijkstraPParams.fromStored(stored).fold(e => fail(e.toString), identity))
+
+  // The block decoder's reading of a certificate the builders make (no pool registration, and no
+  // anchor, which the built certificates do not hold).
+  private def asBlockCert(cert: DijkstraTxCert): DijkstraCert =
+    import DijkstraTxCert.*
+    import DijkstraDelegCert.*
+    import ConwayGovCert.*
+    def to(d: Delegatee): DijkstraDelegatee = d match
+      case Delegatee.DelegStake(p) => DijkstraDelegatee.Stake(p.bytes)
+      case Delegatee.DelegVote(v)  => DijkstraDelegatee.Vote(FlatView.drepBack(v))
+      case Delegatee.DelegStakeVote(p, v) =>
+        DijkstraDelegatee.StakeVote(p.bytes, FlatView.drepBack(v))
+    def none(a: Option[Anchor]): Option[DijkstraAnchor] = a.map(x => fail(s"an anchor: $x"))
+    def back[R <: KeyRole](cr: Credential[R]) = FlatView.credBack(cr)
+    cert match
+      case DijkstraTxCertDeleg(DijkstraRegCert(cr, d)) => DijkstraCert.Register(back(cr), d.value)
+      case DijkstraTxCertDeleg(DijkstraUnRegCert(cr, r)) =>
+        DijkstraCert.Unregister(back(cr), r.value)
+      case DijkstraTxCertDeleg(DijkstraDelegCert(cr, d)) => DijkstraCert.Delegate(back(cr), to(d))
+      case DijkstraTxCertDeleg(DijkstraRegDelegCert(cr, d, dep)) =>
+        DijkstraCert.RegisterDelegate(back(cr), to(d), dep.value)
+      case DijkstraTxCertPool(PoolCert.RetirePool(p, e)) =>
+        DijkstraCert.RetirePool(p.bytes, e.toBigInt)
+      case DijkstraTxCertPool(PoolCert.RegPool(params)) => fail(s"a pool registration: $params")
+      case DijkstraTxCertGov(ConwayAuthCommitteeHotKey(cold, hot)) =>
+        DijkstraCert.AuthorizeCommitteeHotKey(back(cold), back(hot))
+      case DijkstraTxCertGov(ConwayResignCommitteeColdKey(cold, a)) =>
+        DijkstraCert.ResignCommitteeColdKey(back(cold), none(a))
+      case DijkstraTxCertGov(ConwayRegDRep(cr, d, a)) =>
+        DijkstraCert.RegisterDRep(back(cr), d.value, none(a))
+      case DijkstraTxCertGov(ConwayUnRegDRep(cr, r)) =>
+        DijkstraCert.UnregisterDRep(back(cr), r.value)
+      case DijkstraTxCertGov(ConwayUpdateDRep(cr, a)) => DijkstraCert.UpdateDRep(back(cr), none(a))
+
+  test("each builder makes the certificate the block decoder reads, with its script witness") {
     assertEquals(built.map(_._1.take(4)).distinct.size, built.size)
     built.foreach { (h, cert) =>
       val flat = DijkstraCert.decode(node(h)).fold(e => fail(s"$h: $e"), identity)
+      assertEquals(flat, asBlockCert(cert), h)
       // `getScriptWitnessDijkstraTxCert` (`TxCert.hs:323-340`, cardano-ledger 9df9f98c): a pool is
       // never a script
       val expected = cert match
@@ -160,17 +212,6 @@ class DijkstraTxCertSuite extends FunSuite:
   }
 
   test("the refunds are those the unregistrations name, whatever the state holds") {
-    // the Leios testnet's parameters, with deposits of their own
-    val testnet = io.circe.parser
-      .parse(Files.readString(Path.of("fixtures/leios/testnet/config/dijkstra-genesis.json")))
-      .fold(e => fail(e.message), identity)
-    val stored = DijkstraGenesis
-      .read(testnet)
-      .fold(e => fail(e.message), _.upgrade(Params.base))
-      .copy(keyDeposit = 2000000, poolDeposit = 500000000, drepDeposit = 7)
-    val pp = PParams[Dijkstra](
-      DijkstraPParams.fromStored(stored).fold(e => fail(e.toString), identity)
-    )
     val certs = built.map(_._2) ++ Vector(c.mkUnRegDepositTxCert(keyCred, Coin(11)))
     // `dijkstraTotalRefundsTxCerts` (`TxCert.hs:261-272`, cardano-ledger 9df9f98c): the lookup is
     // not read
@@ -227,4 +268,28 @@ class DijkstraTxCertSuite extends FunSuite:
         assertEquals(DijkstraTxCert.dijkstraToConwayDelegCert(d), back)
       case _ => ()
     }
+  }
+
+  test("a pool registration builds, reads back and pays its deposit once, as Conway's") {
+    // the pool's parameters as Conway's decoder reads them: Dijkstra's registration holds the same
+    // StakePoolParams, whose voting key the era types do not hold yet
+    val regPool =
+      s"8a03$pool${"5820" + "76" * 32}0000d81e820001581de0${"72" * 28}8080f6"
+    val params = ConwayTxCert.decode(node(regPool)) match
+      case Right(ConwayTxCert.ConwayTxCertPool(PoolCert.RegPool(params))) => params
+      case other => fail(s"not a registration: $other")
+    val reg = c.mkRegPoolTxCert(params)
+    assertEquals(c.getRegPoolTxCert(reg), Some(params))
+    assertEquals(c.getRetirePoolTxCert(reg), None)
+    assertEquals(c.getVKeyWitnessTxCert(reg), Some(hex(p)))
+    assertEquals(c.getScriptWitnessTxCert(reg), None)
+    assertEquals(
+      DijkstraTxCert.translate(ConwayTxCert.ConwayTxCertPool(PoolCert.RegPool(params))),
+      Right(reg)
+    )
+    // `shelleyTotalDepositsTxCerts` (`Shelley/TxCert.hs:670-689`, cardano-ledger 9df9f98c): a pool
+    // pays once, and not when it is registered already
+    val certs = Vector(reg, reg, c.mkRegDepositTxCert(cred, Coin(5)))
+    assertEquals(c.getTotalDepositsTxCerts(pp, _ => false, certs), Coin(2000000 + 500000000))
+    assertEquals(c.getTotalDepositsTxCerts(pp, _ == pk, certs), Coin(2000000))
   }
