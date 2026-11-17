@@ -42,6 +42,53 @@ object Settled:
     */
   val StepLimit: Long = 5000000L
 
+  /** The most times the cleanup of a test moves the clock to its next timer; the suites move it at
+    * most once (issue 1110).
+    */
+  val CleanupMoves: Int = 10000
+
+  /** Why a run under [[Settled]] failed: a value a test can match, carried by [[Failed]] (TST-4).
+    */
+  enum Failure:
+    /** A step ran `steps` tasks and some fiber was still runnable: a fiber never waits. */
+    case NeverWaits(steps: Long)
+
+    /** After a body that succeeded, the cleanup still had work after `steps` tasks a step or
+      * `moves` moves of the clock: a fiber outlives the test.
+      */
+    case OutlivesTest(steps: Long, moves: Int)
+
+    /** A fiber ended with an error that nobody observed. */
+    case UncaughtFiber(cause: Throwable)
+
+    /** Every fiber is blocked, the body has not ended and no step waits in `settle` (under
+      * [[timed]], no timer is set either).
+      */
+    case Stuck(timed: Boolean)
+
+    /** The body neither returned nor raised: it was cancelled. */
+    case NoResult(outcome: Outcome[Id, Throwable, ?])
+
+    def message: String = this match
+      case NeverWaits(steps) =>
+        s"the test ran $steps tasks without every fiber blocked: a fiber never waits"
+      case OutlivesTest(steps, moves) =>
+        s"the test's cleanup did not end within $steps tasks a step and $moves moves of the " +
+          "clock: a fiber outlives the test"
+      case UncaughtFiber(cause) => s"the runtime reported an uncaught fiber failure: $cause"
+      case Stuck(timed) =>
+        "the test neither ended nor settled: every fiber is blocked" +
+          (if timed then " and no timer is set" else "")
+      case NoResult(outcome) => s"the test ended without a result: $outcome"
+
+    def thrown: Option[Throwable] = this match
+      case UncaughtFiber(cause)                                        => Some(cause)
+      case NeverWaits(_) | OutlivesTest(_, _) | Stuck(_) | NoResult(_) => None
+
+  /** A run's failure as munit reports it: an `AssertionError` with the [[Failure]] it carries. */
+  final class Failed(val failure: Failure)
+      extends AssertionError(failure.message, failure.thrown.orNull)
+
   def apply[A](body: IO[Unit] => IO[A]): IO[A] = run(None, timed = false, StepLimit)(body)
 
   /** As [[apply]], with a step limit of the test's own: a test whose steps are small fails sooner
@@ -105,11 +152,6 @@ object Settled:
       else loop(ran + 1)
     loop(0)
 
-  /** The most times the cleanup of a test moves the clock to its next timer; the suites move it at
-    * most once (issue 1110).
-    */
-  private val CleanupMoves = 10000
-
   /** As `TestContext.tickAll`, which runs every task and moves the clock to every timer, with at
     * most `steps` tasks between two moves of the clock and [[CleanupMoves]] moves: whether no task
     * was left.
@@ -140,43 +182,27 @@ object Settled:
         .makeCase(IO.unit) { (_, exit) =>
           (stop.complete(()).void *> IO(drain(ctx, steps)) <* IO(runtime.shutdown())).flatMap {
             case false if exit == Resource.ExitCase.Succeeded =>
-              IO.raiseError(
-                new AssertionError(
-                  s"the test's cleanup did not end within $steps tasks a step and $CleanupMoves " +
-                    "moves of the clock: a fiber outlives the test"
-                )
-              )
+              IO.raiseError(Failed(Failure.OutlivesTest(steps, CleanupMoves)))
             case _ => IO.unit
           }
         }
         .use { _ =>
           val uncaught: IO[Unit] = IO(ctx.state.lastReportedFailure).flatMap {
             case Some(cause) =>
-              IO.raiseError(
-                new AssertionError(s"the runtime reported an uncaught fiber failure: $cause", cause)
-              )
+              IO.raiseError(Failed(Failure.UncaughtFiber(cause)))
             case None => IO.unit
           }
           val ended: IO[Option[A]] = IO(results.get).flatMap {
             case Some(Outcome.Succeeded(Left(a))) => IO.pure(Some(a))
             case Some(Outcome.Errored(cause))     => IO.raiseError(cause)
             case None                             => IO.pure(None)
-            case other =>
-              IO.raiseError(new AssertionError(s"the test ended without a result: $other"))
+            case Some(other)                      => IO.raiseError(Failed(Failure.NoResult(other)))
           }
           val ran: IO[Unit] = IO(quiesce(ctx, steps)).flatMap(settled =>
             if settled then IO.unit
-            else
-              IO.raiseError(
-                new AssertionError(
-                  s"the test ran $steps tasks without every fiber blocked: a fiber never waits"
-                )
-              )
+            else IO.raiseError(Failed(Failure.NeverWaits(steps)))
           )
-          val stuck = new AssertionError(
-            "the test neither ended nor settled: every fiber is blocked" +
-              (if timed then " and no timer is set" else "")
-          )
+          val stuck = Failed(Failure.Stuck(timed))
           Monad[IO].tailRecM(()) { _ =>
             ran *> uncaught *> checkpoints.tryTake.flatMap {
               case Some(ack) => ack.complete(()).as(Left(()))

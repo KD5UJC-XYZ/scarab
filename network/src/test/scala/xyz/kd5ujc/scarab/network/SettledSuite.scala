@@ -8,10 +8,10 @@ import scala.concurrent.duration.*
 /** What [[Settled]] promises the suites that synchronize on it (issue 870). */
 class SettledSuite extends FailsOnUncaught:
 
-  private def failure(run: IO[?]): IO[String] =
+  private def failure(run: IO[?]): IO[Settled.Failure] =
     run.attempt.map {
-      case Left(e: AssertionError) => e.getMessage
-      case other                   => fail(s"expected an assertion failure, got $other")
+      case Left(e: Settled.Failed) => e.failure
+      case other                   => fail(s"expected a failure of Settled, got $other")
     }
 
   test("settle returns once a started fiber has done all it can and waits") {
@@ -29,18 +29,20 @@ class SettledSuite extends FailsOnUncaught:
   }
 
   test("a fiber that ends with an error nobody observes fails the test") {
-    failure(Settled(_ => IO.raiseError[Unit](new IllegalStateException("lost")).start.void))
-      .map(message => assert(message.contains("uncaught fiber failure"), message))
+    val lost = new IllegalStateException("lost")
+    failure(Settled(_ => IO.raiseError[Unit](lost).start.void)).map {
+      case Settled.Failure.UncaughtFiber(cause) => assert(cause eq lost, cause.toString)
+      case other                                => fail(s"unexpected $other")
+    }
   }
 
   test("a body that waits for ever fails as stuck instead of hanging") {
-    failure(Settled(_ => IO.never[Unit]))
-      .map(message => assert(message.contains("neither ended nor settled"), message))
+    failure(Settled(_ => IO.never[Unit])).assertEquals(Settled.Failure.Stuck(timed = false))
   }
 
   test("without timed, a timer does not fire: the body is stuck") {
     failure(Settled(_ => IO.never[Int].timeoutTo(1.hour, IO.pure(1))))
-      .map(message => assert(message.contains("neither ended nor settled"), message))
+      .assertEquals(Settled.Failure.Stuck(timed = false))
   }
 
   test("timed moves the clock to the next timer once every fiber is blocked") {
@@ -76,18 +78,18 @@ class SettledSuite extends FailsOnUncaught:
   test("a fiber that outlives the body fails the test once its cleanup reaches the limit") {
     // a ticker on the simulated clock, which only the cleanup moves
     failure(Settled(_ => IO.never[Unit].timeoutTo(1.second, IO.unit).foreverM.start.void))
-      .map(message => assert(message.contains("a fiber outlives the test"), message))
+      .assertEquals(Settled.Failure.OutlivesTest(Settled.StepLimit, Settled.CleanupMoves))
   }
 
   test("a fiber that never waits fails the test within the step limit, and is cancelled") {
     for
       cancelled <- Deferred[IO, Unit]
-      message <- failure(
+      failed <- failure(
         Settled.limited(10000)(_ => IO.unit.foreverM.onCancel(cancelled.complete(()).void))
       )
       stopped <- cancelled.tryGet
     yield
-      assert(message.contains("a fiber never waits"), message)
+      assertEquals(failed, Settled.Failure.NeverWaits(10000))
       assertEquals(stopped, Some(()))
   }
 
@@ -95,5 +97,5 @@ class SettledSuite extends FailsOnUncaught:
     "a fiber that never waits and cannot be cancelled is left once its cleanup reaches the limit"
   ) {
     failure(Settled.limited(10000)(_ => IO.uncancelable(_ => IO.unit.foreverM)))
-      .map(message => assert(message.contains("a fiber never waits"), message))
+      .assertEquals(Settled.Failure.NeverWaits(10000))
   }
