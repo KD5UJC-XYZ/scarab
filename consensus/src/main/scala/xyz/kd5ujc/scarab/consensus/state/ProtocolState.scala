@@ -38,10 +38,12 @@ final case class ProtocolState(dep: ChainDepState, extras: ProtocolExtras):
 
   /** The state through the eight fields of Praos: TPraos's (its tick state is the epoch nonce and
     * the hash nonce of the last block of the previous epoch, `lastEpochBlockNonce`) with the
-    * previous epoch nonce of the extras. PBFT has no nonces.
+    * previous epoch nonce of the extras; Praos2's first eight, which are Praos's (`PolyPraosState`,
+    * PolyPraos.hs:290-313, ouroboros-consensus 2416493b). PBFT has no nonces.
     */
   def view: PraosState = dep match
-    case ChainDepState.Praos(p) => p
+    case ChainDepState.Praos(p)  => p
+    case ChainDepState.Praos2(p) => p.praos
     case ChainDepState.TPraos(t) =>
       PraosState(
         t.lastSlot,
@@ -63,8 +65,8 @@ final case class ProtocolState(dep: ChainDepState, extras: ProtocolExtras):
     * (`translateChainDepState` of `TranslateProto (TPraos c) (Praos c)`, `Praos.hs:763-773` of
     * ouroboros-consensus 82ecba32, which carries every field over and sets the previous epoch nonce
     * to the epoch nonce: "same as current epoch nonce"), the other protocols' as they are (a state
-    * of a Praos era is not taken back to TPraos, nor PBFT's translated: the header rules refuse the
-    * state of another protocol).
+    * of a Praos or Praos2 era is not taken back to TPraos, nor PBFT's translated: the header rules
+    * refuse the state of another protocol).
     */
   def in(era: Era): ProtocolState = dep match
     case ChainDepState.TPraos(_) if !era.usesTPraos && era != Era.Byron =>
@@ -72,7 +74,9 @@ final case class ProtocolState(dep: ChainDepState, extras: ProtocolExtras):
         ChainDepState.Praos(view.copy(previousEpochNonce = view.epochNonce)),
         extras.copy(previousEpochNonce = Nonce.Neutral)
       )
-    case _ => this
+    case ChainDepState.TPraos(_) | ChainDepState.PBft(_) | ChainDepState.Praos(_) |
+        ChainDepState.Praos2(_) =>
+      this
 
 object ProtocolState:
   given Eq[ProtocolState] = Eq.instance((a, b) => a.dep === b.dep && a.extras === b.extras)

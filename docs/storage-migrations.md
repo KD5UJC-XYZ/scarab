@@ -45,7 +45,8 @@ outside both schemas. Regenerating a golden to make a test pass is not a migrati
 Native snapshots are V10: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
 checkpoint binding, with framing and checksum, as V7 has it, with a sidecar schema that keeps the
 Byron update state's installer metadata (#726), names the Dijkstra era (#54) and holds the follow
-state, no longer the bootstrap state (#988), names PlutusV4 among the kinds of a stored script (#85), and in front of the binding the reference build whose
+state, no longer the bootstrap state (#988), names PlutusV4 among the kinds of a stored script (#85) and Praos2
+among the chain-dependent states (#826), and in front of the binding the reference build whose
 layout the Haskell bytes are in (#826); stored values remain CBOR. The binding has its own
 fingerprint golden in `CodecSuite`, next to the sidecar's and the frozen V5/V7, V8 and V9
 sidecars'. MemPack is an import/export format, not a replacement stored value.
@@ -137,7 +138,14 @@ of a Dijkstra reference script. A kind is written as its variant index, so kinds
 stores' values written before read as they did; V10's sidecar fingerprint moved and its fixtures were regenerated.
 The frozen schemas of V5 to V9 take `FrozenScriptKind` instead, as they take `FrozenEra`, so their fingerprints did
 not move and a PlutusV4 kind in a file of theirs is refused. A store written in that former V10 shape is not
-supported either; none is deployed. `Migrate`
+supported either; none is deployed. V10's sidecar was changed in place a third time, before any deployment, by the
+owner's decision of 2026-11-17 (#826, [decisions](decisions.md#genesis-storage-and-keys)): the chain-dependent state
+(`ChainDepState`) gained Praos2, the protocol of Dijkstra in the Leios build, whose state is Praos's with the
+announcement of the last applied header. A state is written as its variant index and its fields, so the states of
+PBFT, TPraos and Praos keep their bytes; V10's sidecar fingerprint moved and its fixtures were regenerated. The
+frozen schemas of V5 to V9 take `FrozenChainDepState` instead, as they take `FrozenScriptKind`, so their
+fingerprints did not move and a Praos2 state in a file of theirs is refused. A store written in that former V10
+shape is not supported either; none is deployed. `Migrate`
 then has no work for V10. Unchanged kinds retain their own current versions.
 A new snapshot version, if the owner approves one ([FMT-1](design-rules.md#fmt-1)), appends global `V11`, the
 magic `SCRBSNPB` (the last character of a snapshot magic is its format number as one base-36 digit). Retire the V5

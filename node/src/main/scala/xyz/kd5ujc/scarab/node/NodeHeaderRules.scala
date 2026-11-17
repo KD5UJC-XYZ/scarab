@@ -297,7 +297,8 @@ final class NodeHeaderRules[S](
                 )
               )
             )
-          case _ => previous.pendingShelley
+          case ChainDepState.PBft(_) | ChainDepState.Praos(_) | ChainDepState.Praos2(_) =>
+            previous.pendingShelley
         wrap(
           ShelleyHeaderForecast[S](cfg, glob)
             .prepareShelley(

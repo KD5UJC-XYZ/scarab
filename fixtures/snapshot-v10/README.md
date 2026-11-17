@@ -14,6 +14,10 @@ these files were regenerated then. It was changed in place again, before any dep
 owner's decision of 2026-11-16 ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85),
 [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54)): PlutusV4 among the kinds of a stored script,
 which moves the sidecar's schema fingerprint and nothing else, and these files were regenerated again.
+It was changed in place a third time, before any deployment, by the owner's decision of 2026-11-17
+([#826](https://github.com/KD5UJC-XYZ/scarab/issues/826)): Praos2, the protocol of Dijkstra in the
+Leios build, among the chain-dependent states, which again moves the sidecar's schema fingerprint and
+nothing else, and these files were regenerated again.
 
 Every file here is the output of the registered V9 → V10 migration step (`SnapshotMigration.toCurrent`
 through `Migrate`, i.e. `SnapshotV10.fromV9`) applied to the file of the same name in

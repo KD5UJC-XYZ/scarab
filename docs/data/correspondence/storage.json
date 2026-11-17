@@ -234,6 +234,48 @@
     "CborDatasetSuite"
    ],
    "digest": "2c6f65524d451b42"
+  },
+  "given storage.haskell.state.ConsensusCodecs#praos2State": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "symbol": "Serialise (PolyPraosState proto)",
+     "lines": [
+      368,
+      419
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "symbol": "encodeAnnouncedBy",
+     "lines": [
+      339,
+      348
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "EbReferencesAnnouncement",
+     "lines": [
+      169,
+      173
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "evidence": [
+    "LeiosLayoutSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+   "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads the Praos2 state of a captured Leios devnet state (no announcement), checks each of its nine fields against the values read off the file's raw bytes, and writes it back byte for byte; the bytes of an announcement are derived from the source",
+   "digest": "b7d12f6ad3bcdea7"
   }
  },
  "glue": [
@@ -277,6 +319,22 @@
     "given storage.SnapshotSidecarV9.txOut",
     "given storage.SnapshotSidecarV9.utxoChange",
     "given storage.SnapshotSidecarV9.utxo"
+   ]
+  },
+  {
+   "reason": "the frozen chain-dependent states in the sidecar schemas of the snapshot versions before V10, and the native codecs of Praos2's state: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#826)",
+   "definitions": [
+    "object storage.FrozenChainDepState",
+    "enum storage.FrozenChainDepState.ChainDepState",
+    "def storage.FrozenChainDepState.live",
+    "val storage.FrozenChainDepState.codec",
+    "given storage.NodeCodecs.ebHash",
+    "given storage.NodeCodecs.ebAnnouncement",
+    "given storage.NodeCodecs.announcedBy",
+    "given storage.NodeCodecs.praos2State",
+    "given storage.SnapshotSidecarV7.chainDepState",
+    "given storage.SnapshotSidecarV8.chainDepState",
+    "given storage.SnapshotSidecarV9.chainDepState"
    ]
   }
  ]

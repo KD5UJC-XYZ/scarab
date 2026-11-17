@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{EbHash, Era, ReferenceBuild}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorState, PraosState}
-import xyz.kd5ujc.scarab.ledger.{Block, LeiosHeader, Nonce}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ChainDepState,
+  MirrorState,
+  PraosState,
+  ProtocolExtras,
+  ProtocolState
+}
+import xyz.kd5ujc.scarab.ledger.{Block, EbAnnouncement, LeiosHeader, Nonce}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{
+  BlockIssuer,
   BlockNo,
   Conway,
   NewEpochState,
   FuturePParams,
+  KeyHash,
   ProtVer,
   ShelleyBasedEra,
   SlotNo,
@@ -128,6 +136,46 @@ class DijkstraCrossingSuite extends munit.FunSuite:
       Nonce.Hash(hex("44" * 32))
     )
     assertEquals(DijkstraCrossing.chainDepState(p), Praos2.State(p, None))
+  }
+
+  test("the node's tick moves a Praos2 state into a new epoch as tickChainDepStatePolyPraos does") {
+    val p = PraosState(
+      WithOrigin.At(SlotNo.fromUnsigned(7)),
+      Sorted.empty,
+      Nonce.Hash(hex("11" * 32)),
+      Nonce.Hash(hex("22" * 32)),
+      Nonce.Hash(hex("33" * 32)),
+      Nonce.Neutral,
+      Nonce.Hash(hex("44" * 32)),
+      Nonce.Hash(hex("55" * 32))
+    )
+    val issuer = KeyHash
+      .fromBytes[BlockIssuer](hex("66" * 28))
+      .fold(e => fail(e.toString), identity)
+    val announced = Praos2.AnnouncedBy(issuer, EbAnnouncement(EbHash.fromBytes(hex("77" * 32)), 9))
+    val state = ProtocolState(
+      ChainDepState.Praos2(Praos2.State(p, Some(announced))),
+      ProtocolExtras(1, Nonce.Neutral)
+    )
+    // the same epoch: nothing changes, the announcement is kept
+    assertEquals(Praos.tick(state, Era.Dijkstra, 1), state)
+    // a new epoch (PolyPraos.hs:573-587, ouroboros-consensus 2416493b): the epoch nonce is the
+    // candidate with the last epoch block nonce, the previous the old epoch nonce, the last epoch
+    // block nonce the lab nonce, and the announcement is cleared
+    val next = Praos.tick(state, Era.Dijkstra, 2)
+    val moved = p.copy(
+      epochNonce = p.candidateNonce.combine(p.lastEpochBlockNonce),
+      previousEpochNonce = p.epochNonce,
+      lastEpochBlockNonce = p.labNonce
+    )
+    assertEquals(
+      next,
+      ProtocolState(
+        ChainDepState.Praos2(Praos2.State(moved, None)),
+        ProtocolExtras(2, Nonce.Neutral)
+      )
+    )
+    assertEquals(next.view, moved)
   }
 
   test("every Dijkstra header the reference adopted passes Praos2 from the translated state") {

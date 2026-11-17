@@ -35,8 +35,9 @@ final case class PraosConfig(
 /** Praos header validation and chain-dependent state evolution. */
 object Praos:
   /** Epoch transition: the new epoch nonce mixes the frozen candidate with the last block's lab
-    * (and, for TPraos, the protocol parameters' extra entropy). The state is first put in the
-    * protocol of `era` ([[ProtocolState.in]]).
+    * (and, for TPraos, the protocol parameters' extra entropy); Praos2's also clears the
+    * announcement and takes no extra entropy ([[Praos2.State.newEpoch]]). The state is first put in
+    * the protocol of `era` ([[ProtocolState.in]]).
     */
   def tick(
       state: ProtocolState,
@@ -77,6 +78,8 @@ object Praos:
             ),
             extras.copy(previousEpochNonce = dep.tickn.epochNonce)
           )
+        case ChainDepState.Praos2(p) =>
+          ProtocolState(ChainDepState.Praos2(Praos2.State.newEpoch(p)), extras)
         case ChainDepState.PBft(_) => s
 
   /** Validate `header` (already ticked to its epoch) and return the updated state. */
@@ -111,7 +114,7 @@ object Praos:
                 updatePraos(p, h, cert, stake, config, window).map { (next, leader) =>
                   ProtocolState(ChainDepState.Praos(next), state.extras) -> leader
                 }
-              case _ =>
+              case ChainDepState.PBft(_) | ChainDepState.TPraos(_) | ChainDepState.Praos2(_) =>
                 Left(PraosError.WrongState(h.era))
           case _: HeaderVrf.TPraos => Left(PraosError.TPraosHeader(h.era))
       case h => Left(PraosError.NotPraos(h.era))

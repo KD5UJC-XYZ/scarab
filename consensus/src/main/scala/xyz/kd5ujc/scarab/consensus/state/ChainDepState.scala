@@ -168,12 +168,15 @@ object PraosState:
   val lastEpochBlockNonce: Lens[PraosState, Nonce] = Focus[PraosState](_.lastEpochBlockNonce)
 
 /** The chain-dependent state of one era of the telescope (`ChainDepState (BlockProtocol blk)`): the
-  * protocol that era runs.
+  * protocol that era runs. Praos2, the protocol of Dijkstra in the Leios build, holds the state of
+  * Praos and the announcement of the last applied header (`type ChainDepState (Praos2 c) =
+  * PolyPraosState (Praos2 c)`, ouroboros-consensus 2416493b `Protocol/Praos2.hs:117`).
   */
 enum ChainDepState derives Eq, Show, Diff:
   case PBft(state: PBftState)
   case TPraos(state: TPraosState)
   case Praos(state: PraosState)
+  case Praos2(state: xyz.kd5ujc.scarab.consensus.Praos2.State)
 
 object ChainDepState:
   /** The first era whose state this is: the era a telescope is placed in while its bounds are
@@ -183,15 +186,17 @@ object ChainDepState:
     case PBft(_)   => Era.Byron
     case TPraos(_) => Era.Shelley
     case Praos(_)  => Era.Babbage
+    case Praos2(_) => Era.Dijkstra
 
   /** The state of a protocol is in the eras that run it: PBFT in Byron, TPraos from Shelley to
-    * Alonzo, Praos in Babbage and Conway (`Era.usesTPraos`). Dijkstra runs Praos2, whose state also
-    * holds the Leios announcement (`type ChainDepState (Praos2 c) = PolyPraosState (Praos2 c)`,
-    * ouroboros-consensus 2416493b `Protocol/Praos2.hs:117,180-191`), which this build does not
-    * model yet (#54): no state here is of Dijkstra.
+    * Alonzo, Praos in Babbage and Conway (`Era.usesTPraos`), and Praos2 in Dijkstra, whose state
+    * also holds the Leios announcement (`type ChainDepState (Praos2 c) = PolyPraosState (Praos2
+    * c)`, ouroboros-consensus 2416493b `Protocol/Praos2.hs:117,180-191`; the Dijkstra block is
+    * `ShelleyBlock (Praos2 c) DijkstraEra`, `Cardano/Block.hs:277`).
     */
   given EraIndexed[ChainDepState] = EraIndexed.instance {
     case (era, PBft(_))   => era == Era.Byron
     case (era, TPraos(_)) => era.usesTPraos
     case (era, Praos(_))  => era.ordinal >= Era.Babbage.ordinal && era != Era.Dijkstra
+    case (era, Praos2(_)) => era == Era.Dijkstra
   }

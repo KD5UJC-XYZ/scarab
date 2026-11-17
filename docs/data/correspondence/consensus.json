@@ -54,7 +54,38 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/935",
    "note": "HeaderProtVerTooHigh is checked with the envelope here; the reference checks it in Conway's BBODY rule",
    "digest": "ebaab53d9a99ed4c"
+  },
+  "def consensus.Praos2.State.newEpoch": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "symbol": "tickChainDepStatePolyPraos",
+     "lines": [
+      573,
+      587
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "Praos2ReferenceSuite"
+   ],
+   "note": "the new-epoch branch of tickChainDepStatePolyPraos: the epoch nonce, the previous epoch nonce and the last epoch block nonce as the reference updates them, and the announcement cleared; the isNewEpoch decision is its callers' (Praos2.tick, and Praos.tick for a Praos2 state)",
+   "digest": "54cbd7b635ee9528"
   }
  },
- "glue": []
+ "glue": [
+  {
+   "reason": "the instances of Praos2's state types that the chain-dependent state derives its equality, rendering and difference from, and the companions that hold them: Scala plumbing with no counterpart (#826)",
+   "definitions": [
+    "object consensus.Praos2.AnnouncedBy",
+    "given consensus.Praos2.AnnouncedBy.given_Eq_AnnouncedBy",
+    "given consensus.Praos2.AnnouncedBy.given_Show_AnnouncedBy",
+    "object consensus.Praos2.State"
+   ]
+  }
+ ]
 }
