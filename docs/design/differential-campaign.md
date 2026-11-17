@@ -266,8 +266,8 @@ built and then changed:
   script size at their limits and one above; a transaction refused only by MEMPOOL (R6), which a block may carry; a
   failing script with the validity flag false and true; a transaction from the wrong era.
 - **Sizes**: the largest body the parameters allow and one byte more.
-- **Era transitions**: the first block of the new era, a block of the old era after the boundary, and a transaction of
-  the old era submitted after it (R2; when the reference answers "wrong era" is N9).
+- **Era transitions**: the first block of the new era, a block of the old era after the boundary (never adopted, R25),
+  and a transaction of the old era submitted after it (R2; when the reference answers "wrong era" is N9).
 - **Forks**, as chain-selection probes (§4): two chains of different length served one after the other, then of
   equal length (N5), within `k`; what is compared is the tip each node selects.
 - **Undecodable blocks**: through a raw-bytes path of the injector, as `FollowerStallSuite`'s garbling wrapper does in
@@ -526,7 +526,8 @@ minimums and the ceiling are configuration (§10, Q6).
 | S3 | language, protocol version, purpose (V1 and V2: spending, minting, certifying, rewarding; V3 also voting and proposing) | scripts from `TermGen` | `Accepted`, `Refused` |
 | S4 | era | header fields (TPraos version, size, declared body size, VRF, leader proof, KES, certificate, previous hash, block number, slot) | `Accepted`, `Ended` |
 | S4 | era | bodies and sizes; transactions in blocks | `Accepted`, `Refused` |
-| S4 | era transition | the new era's first block; the old era's block after the boundary | `Accepted`, and `Refused` or `Ended` as S4 finds (N16) |
+| S4 | era boundary | the new era's first block, valid | `Accepted` (3) |
+| S4 | era boundary | a block of the old era after the boundary, which the reference never adopts (R25) | `Refused` or `Ended`, as N16 finds (3) |
 | S4 | era | a Praos header's declared version | the classes S4 finds (N14), each with its minimum |
 | S4 | era | undecodable blocks | `Ended` (N6) |
 | S4 | era | forks of different and of equal length | `Selected` |
@@ -594,8 +595,9 @@ runs; the seeds. Raw run artifacts are not published.
 - **Q6. What are the nightly budget, the period and its quotas, the coverage matrix's minimums and the inconclusive
   ceiling?** Recommendation: §9.2's budget, one 90-minute job with a weekly longer run; a calendar month as the
   period, its announcement published on a fixed day of the next, and an embargo of 90 days before its results may be
-  released; and §9.1's minimums, 20 agreeing verdicts per class and cell (10 forks for `Selected`), with at most 5% of
-  attempts inconclusive. These numbers are this document's proposal.
+  released; and §9.1's minimums, 20 agreeing verdicts per class and cell (10 forks for `Selected`, and the smaller
+  minimums the matrix gives in brackets), with at most 5% of attempts inconclusive. These numbers are this document's
+  proposal.
 - **Q7. How are timing-dependent refusals handled?** The reference refuses a transaction that takes too long to
   validate, with a text that holds the duration (R5); Scarab has no such timeout (#340), and the text cannot be
   compared exactly. Recommendation: the campaign keeps generated work far below the limit, counts such a refusal as
