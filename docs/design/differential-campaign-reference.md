@@ -2,7 +2,7 @@
 # A differential campaign against the reference: what the reference does
 
 **Status**: Proposal, 2026-11-16, the reference claims of the [differential campaign](differential-campaign.md)
-([#922](https://github.com/KD5UJC-XYZ/scarab/issues/922)), which cites them by their IDs (R1 to R25, N1 to N16); its
+([#922](https://github.com/KD5UJC-XYZ/scarab/issues/922)), which cites them by their IDs (R1 to R25, N1 to N18); its
 sections keep the campaign's numbering (§3). All of it is derived from source, not from a capture; §3.5 lists the
 claims with their pins.
 

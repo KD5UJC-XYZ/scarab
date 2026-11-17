@@ -8,7 +8,7 @@ are made here, and the re-check that [CONTRIBUTING](../../CONTRIBUTING.md#levels
 [FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
 
 In-tree code is cited by path, symbol and line at `fdd5834f2`. The claims about the reference (R1 to R25) and what
-is not checked (N1 to N16), with their pins, are in [§3's own page](differential-campaign-reference.md).
+is not checked (N1 to N18), with their pins, are in [§3's own page](differential-campaign-reference.md).
 
 ## 1. What the campaign is for
 
@@ -166,7 +166,7 @@ adapters (§2.7) generate and judge new Conway cases with the reference's own ru
 
 In [its own page](differential-campaign-reference.md): a transaction from a local client (§3.1) and from a peer
 (§3.2), a header (§3.3) and a block from a peer (§3.4), the claims with their pins (§3.5, R1 to R25) and what is not
-checked (§3.6, N1 to N16). This document cites them by their IDs.
+checked (§3.6, N1 to N18). This document cites them by their IDs.
 
 ## 4. The shape of the campaign
 
@@ -397,7 +397,7 @@ candidate is judged as any probe: in path R the reference judges it live at its 
 it offline. A block candidate needs the injector cluster at the probe's predecessor. Shrinking runs inside the run
 that found the disagreement, with its cluster and keys, from a share of the budget reserved for it; a disagreement
 left unshrunk is shrunk later from the record and the keys. The smallest candidate is confirmed once more before it is
-reported. A confirmation is clean when neither node's selection can change while the candidate is judged. For a
+reported. A transaction's confirmation is clean when neither node's selection can change while it is judged. For a
 transaction, Scarab's side is replayed offline from the record, and the reference judges it on a node restored from
 the recorded chain up to the probe's context, with no peer and no forging, so that its mempool rests on that tip
 (N17), or in the injector cluster; a disagreement that repeats in another trace-checked context of the shared cluster
