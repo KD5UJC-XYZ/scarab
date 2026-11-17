@@ -65,9 +65,9 @@ trait UtxoStore[F[_]] extends UtxoReadView[F]:
   def flushed(using Raise[F, StorageError]): F[Long]
 
   /** A stable, resource-scoped view of the current backing generation. It reads what it pinned
-    * across later batches and a [[reset]]; a [[restore]], or the release of the store, while it is
-    * held ends its later reads with [[StorageError.UtxoStoreClosed]] where the store's storage is
-    * replaced or released.
+    * across later batches and a [[reset]]. Where a [[restore]], or the release of the store, while
+    * it is held replaces or releases the store's storage, each later read that reaches the storage
+    * fails with [[StorageError.UtxoStoreClosed]] (a read of no key reaches none).
     */
   def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]]
 
