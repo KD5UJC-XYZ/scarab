@@ -67,7 +67,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
       val codecs = right(s"${c.path} layout")(stateCodecs(c.build))
       c.cases.map { rc =>
         val what = s"${c.path}/${rc.label}"
-        val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item))
+        val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
         val nes = right(s"$what state")(
           codecs.newEpochState[Conway].decodeBytes(c.states(rc.state), HaskellState.limits)
         )
@@ -401,13 +401,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
       val (flat, typed) = forgedReported(fills, boots)
       val expected = referenceOrder(fills, boots)
       assertEquals(typed, expected, s"forged $fills, bootstrap $boots")
-      // the flat check lists the bootstrap keys in the same order; only its key witnesses' differ (#796)
-      assertEquals(
-        flat.drop(fills.size),
-        expected.drop(fills.size),
-        s"forged $fills, bootstrap $boots"
-      )
-      assertEquals(flat.take(fills.size), fills.map(key), s"forged $fills, bootstrap $boots")
+      assertEquals(flat, expected, s"forged $fills, bootstrap $boots")
     }
 
   test("crafted: forged key witnesses refuse in both paths, the same keys"):
@@ -418,22 +412,19 @@ class ConwayUtxowChecksSuite extends FunSuite:
       assertEquals(flat.toSet, typed.toSet, s"forged $fills")
     }
 
-  /** A difference in what the refusal reports, not in the verdict: the reference lists the keys of
-    * the failing key witnesses in its witness set's order (`Set.toList` over `Ord WitVKey`, the
-    * key's hash first, `Shelley/Rules/Utxow.hs:398-402` and `Keys/WitVKey.hs:58-68`, cardano-ledger
-    * f649f975), as the typed predicate does; the flat check lists them in the order they arrived.
-    * Reported to the lead; the flat path is not changed here.
+  /** Both paths list the keys of the failing key witnesses as the reference does, in its witness
+    * set's order (`Set.toList` over `Ord WitVKey`, the key's hash first,
+    * `Shelley/Rules/Utxow.hs:398-402` and `Keys/WitVKey.hs:58-68`, cardano-ledger f649f975),
+    * whatever order they arrived in.
     */
-  test(
-    "crafted: the typed predicate lists failing keys in the reference's order, the flat as they arrived"
-  ):
+  test("crafted: both paths list failing keys in the reference's order, whatever their arrival"):
     val one = Bytes(Vector.fill(32)(1.toByte))
     val two = Bytes(Vector.fill(32)(2.toByte))
     val byWitness = Vector(one, two).sortBy(k => WitVKey(k, Bytes(Vector.fill(64)(0.toByte))))
     Vector(Vector(1, 2), Vector(2, 1)).foreach { fills =>
       val (flat, typed) = forgedReported(fills)
       assertEquals(typed, byWitness, s"forged $fills")
-      assertEquals(flat, fills.map(f => Bytes(Vector.fill(32)(f.toByte))), s"forged $fills")
+      assertEquals(flat, byWitness, s"forged $fills")
     }
 
   test("crafted: an extraneous script witness"):

@@ -518,11 +518,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     own with `eraProtVerLow` and `eraProtVerHigh` (`era/Era.scala`), with instances for Allegra, Mary,
     Babbage, Conway and Dijkstra. Each instance's versions equal the range the flat decoders read the era at.
   - The signature check lists the keys of failing key witnesses in the witness set's order (`Ord WitVKey`),
-    as the reference does; the flat check lists them as they arrived, so the two differ in the refusal's
-    content when two witnesses fail out of that order: a Gap of the flat path's refusal content, tracked on
-    [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038). The bootstrap
-    witnesses follow, in the order of `bootAddrTxWits`, which the decoder keeps in the reference's set order
-    (by address root); crafted cases fail them alone and after key witnesses, in that order in both paths.
+    as the reference does, and as the flat check does. The bootstrap witnesses follow, in the order of
+    `bootAddrTxWits`, which the decoder keeps in the reference's set order (by address root); crafted cases
+    fail them alone and after key witnesses, in that order in both paths.
   - The scripts needed and provided (`ScriptsNeeded`, `getScriptsProvided`), the needed key witnesses
     (`getWitsVKeyNeeded`), the failing native scripts, the datums and the redeemers wait for `EraUTxO`'s
     members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction

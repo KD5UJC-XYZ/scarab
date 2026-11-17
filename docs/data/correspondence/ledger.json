@@ -6358,7 +6358,7 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check. The flat check lists the failing keys as they arrived, a difference in the refusal's content tracked on #796 (https://github.com/KD5UJC-XYZ/scarab/issues/796#issuecomment-6923378038); it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
+   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check. It reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's",
    "digest": "07bebd19d3681314"
   },
   "def ledger.era.rules.AlonzoUtxow.checkScriptIntegrityHash": {
