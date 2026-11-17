@@ -324,23 +324,30 @@ table ([STR-2](../design-rules.md#str-2)).
   and the mempool resyncs on the hash as well as the slot (R22): after a switch from one block to another of the same
   slot, the tips and the snapshot can read alike while the mempool still judges against the block it left. A local
   ChainSync follower cannot show it, since it does not see every change of the selection (R23). Such a switch always
-  rolls back, so each node's own chain-selection log does: the reference traces every switch that rolls back as
+  rolls back (from Shelley on; a Byron epoch boundary block shares its slot with its successor, and no probe is judged
+  in Byron), so each node's own chain-selection log does: the reference traces every switch that rolls back as
   `SwitchedToAFork`, with its new tip, under default options and with no limiter (R24), and Scarab emits `rolledBack`
   when it commits one (`Follower.committing`, `node/src/main/scala/xyz/kd5ujc/scarab/node/Follower.scala` 571-597;
   that no other path changes its selection is an S1 check). A plain extension, which the reference's limiter may drop
   from the log, cannot be such a switch. In the shared cluster, after any switch in a node's log, that node's context
-  is unsynchronised until its snapshot's slot has moved past the switch's new tip, which shows a resync to a later
-  tip. A probe is judged only once each node's log has been read a fixed margin past the bracket's last read, and a
-  probe inside a window is `NoVerdict`. The margin covers the moment between a switch's commit and its log line, which
-  the source does not bound (R24): the shared cluster's contexts are trace-checked, not proven, so a disagreement
-  found there counts only once it is confirmed in a clean context (§7.3). Exact contexts are the injector cluster's:
-  there the injector serves no such switch outside a chain-selection probe, and after one judges no transaction until
-  both snapshots have moved past it. S1 tests the rule on recorded logs, among them a log whose extensions the limiter
-  dropped, a switch a lagging follower would have missed, and a switch whose line arrives within the margin. S1 also
-  measures, on each node, the time from a local ChainSync reply that shows a switch's new tip to that switch's log
-  line, and sets the margin at ten times the largest it observed; the margin is part of the public configuration
-  record. Agreeing probes in trace-checked contexts count toward coverage, and a cell whose minimums were met only
-  from such contexts says so in its results.
+  is unsynchronised until its snapshot's slot is more than one past both the switch's new tip and the tip it left, as
+  far as the logs and tip reads show: a stale mempool still resting on a left block of slot s already shows s + 1
+  (R3), so only a later slot shows a resync. The reference's line gives the new tip; Scarab's `rolledBack` gives the
+  tip it left, the intersection and the depth, and its new tip is the last `extended` event after it. A left tip whose
+  extension line the limiter dropped is covered only by the margin and by confirmation. A probe is judged only once
+  each node's log has been read a fixed margin past the bracket's last read, and a probe inside a window is
+  `NoVerdict`. The margin covers the moment between a switch's commit and its log line, which the source does not
+  bound (R24): the shared cluster's contexts are trace-checked, not proven, so a disagreement found there counts only
+  once it is confirmed in a clean context (§7.3). Exact contexts are the injector cluster's: there the injector serves
+  no such switch outside a chain-selection probe, and after one judges no transaction until both snapshots have moved
+  past it. S1 tests the rule on recorded logs, among them a log whose extensions the limiter dropped, a switch a
+  lagging follower would have missed, and a switch whose line arrives within the margin. The margin cannot be
+  calibrated in the shared cluster, where nothing observable is known to precede a switch's commit: until S4 it is a
+  fixed value in the public configuration record. S4 calibrates it on switches the injector causes: on each node, the
+  time from the injector sending the block that causes a switch, which precedes its commit, to that switch's log line,
+  the margin being ten times the largest; a switch with no line within a hard limit fails S4's gate. Agreeing probes
+  in trace-checked contexts count toward coverage, and a cell whose minimums were met only from such contexts says so
+  in its results.
 - **Every attempt is recorded**, with its bracket and its reply, including one whose bracket then moved and one whose
   reply never came: an attempt is part of the context whether or not it was judged.
 - **Reset and reconstruction.** After a bracket that moved, a reply that never came (a timeout, a lost connection) or
@@ -390,10 +397,13 @@ candidate is judged as any probe: in path R the reference judges it live at its 
 it offline. A block candidate needs the injector cluster at the probe's predecessor. Shrinking runs inside the run
 that found the disagreement, with its cluster and keys, from a share of the budget reserved for it; a disagreement
 left unshrunk is shrunk later from the record and the keys. The smallest candidate is confirmed once more before it is
-reported. For a transaction, Scarab's side is replayed offline from the record, and the reference judges it again live
-in a new bracketed context; a candidate whose context cannot be made again (it rests on earlier accepted probes that
-are now on the chain) is reported unconfirmed until the injector cluster can rebuild it. A block candidate is
-confirmed in an injector cluster restored from the recorded chain, with nodes that have judged no earlier candidate.
+reported. A confirmation is clean when neither node's selection can change while the candidate is judged. For a
+transaction, Scarab's side is replayed offline from the record, and the reference judges it on a node restored from
+the recorded chain up to the probe's context, with no peer and no forging, so that its mempool rests on that tip
+(N17), or in the injector cluster; a disagreement that repeats in another trace-checked context of the shared cluster
+stays unconfirmed. A candidate whose context cannot be restored is reported unconfirmed until the injector cluster can
+rebuild it. A block candidate is confirmed in an injector cluster restored from the recorded chain, with nodes that
+have judged no earlier candidate.
 
 ### 7.4 Kept inputs
 
@@ -499,7 +509,7 @@ the campaign leads to is its own change at its own level.
 | Stage | Delivers | Jump gate |
 |---|---|---|
 | S0 | This document; its claims checked independently. | The review's check of §3 at the pins, and the owner's answers to §10. |
-| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The committed refusal corpus judged again, every case conclusive and in agreement, each era before Conway through its adapter; every S1 cell of the coverage matrix (below), the measure and sequence cells replayed offline to the same verdicts; the same-slot rule's tests (§6), and no probe of the run judged inside a window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
+| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3) with its peerless restored reference node, the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13, N15, N17 and N18; answers Q10. | The committed refusal corpus judged again, every case conclusive and in agreement, each era before Conway through its adapter; every S1 cell of the coverage matrix (below), the measure and sequence cells replayed offline to the same verdicts; the same-slot rule's tests (§6), and no probe of the run judged inside a window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
 | S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | Every S2 cell of the coverage matrix; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
 | S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | Every S3 cell of the coverage matrix. |
 | S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11, N14 and N16. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; every S4 cell of the coverage matrix; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
@@ -543,10 +553,10 @@ Once S5 is stable, discovery runs nightly on the private runner, one job of at m
 families and eras so that every cell (§9.1) meets its fixed quota in every period, with slack for the runs a finding
 cuts short; a weekly run is long enough to cross an epoch boundary and an era transition. The budget, the period, the
 quotas and the embargo are configuration, in the public configuration record (§8); a change to them is a change to
-this section. The record changes only at a period's start, with that period's announcement. A change prompted by a
-finding not yet cleared (a family set aside, a quota moved) applies only privately until the finding is cleared and
-authorised for disclosure, and shows in the period's results; so the record's revisions are the same whether or not a
-finding prompted one.
+this section. The record changes only at a period's start, before its runs; the period's announcement follows on its
+fixed date after the period (§8). A change prompted by a finding not yet cleared (a family set aside, a quota moved)
+applies only privately until the finding is cleared and authorised for disclosure, and shows in the period's results;
+so the record's revisions are the same whether or not a finding prompted one.
 
 The evidence rows follow [How evidence is recorded](../../CONTRIBUTING.md#how-evidence-is-recorded) and the [evidence
 log](../compatibility.md#evidence-log), in §8's two stages. The first, on the announcement's date, is the
