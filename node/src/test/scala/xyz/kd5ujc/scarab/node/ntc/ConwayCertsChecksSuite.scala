@@ -799,6 +799,9 @@ class ConwayCertsChecksSuite extends FunSuite:
           )
           .toVector
       )
+      // in the third case, with no proposal, the dormant epochs stay counted: a DRep registered
+      // (versioned at 9) and updated, a registered one updated, and the DReps' votes, each with the
+      // count taken off
       Vector(
         accepted(
           proposing.copy(cert = dormant),
@@ -806,8 +809,6 @@ class ConwayCertsChecksSuite extends FunSuite:
           Vector.empty
         ),
         accepted(proposing, "a proposal and votes", Vector.empty),
-        // with no proposal the dormant epochs stay counted: a DRep registered (versioned at 9) and
-        // updated, a registered one updated, and the DReps' votes, each with the count taken off
         accepted(
           quiet.copy(cert = dormant),
           "DReps registered and updated, dormant epochs",
