@@ -102,10 +102,10 @@ object PeerNetwork:
     * `jobVerifyPeerSnapshot` once the judgement is `TooOld` (`Governor/Monitor.hs` 515-533).
     */
   private[node] def snapshotWritten[F[_]: Monad, R](
-      source: Ref[F, Option[LedgerPeerSnapshot[R]]],
+      source: Ref[F, Versioned[Option[LedgerPeerSnapshot[R]]]],
       taken: Ref[F, Option[LedgerPeerSnapshot[R]]]
   )(next: Option[LedgerPeerSnapshot[R]]): F[Boolean] =
-    source.set(next) *> taken.modify(last =>
+    source.update(_.next(next)) *> taken.modify(last =>
       if snapshotTaken(next, last) then (next, true) else (last, false)
     )
 
@@ -404,7 +404,7 @@ object PeerNetwork:
     // the worker reads the peer snapshot from `snapshot` when it rebuilds its maps
     def createWorker(
         roots: Roots,
-        snapshot: F[Option[LedgerPeerSnapshot[LedgerRelay]]]
+        snapshot: F[Versioned[Option[LedgerPeerSnapshot[LedgerRelay]]]]
     ): F[LedgerPeersWorker[F]] =
       given Tell[F, LedgerPeersTrace] = workerTrace
       val workerRng = Rng(settings.seed).split._1
@@ -493,7 +493,9 @@ object PeerNetwork:
       // the reference's `ledgerPeerSnapshotVar`, which the ledger-peers worker reads, and the
       // snapshot its governor took last, which the Genesis verification checks
       snapshotSource <- Resource.eval(
-        Ref.of[F, Option[LedgerPeerSnapshot[LedgerRelay]]](settings.snapshot)
+        Ref.of[F, Versioned[Option[LedgerPeerSnapshot[LedgerRelay]]]](
+          Versioned(BigInt(0), settings.snapshot)
+        )
       )
       snapshotTaken <- Resource.eval(
         Ref.of[F, Option[LedgerPeerSnapshot[LedgerRelay]]](settings.snapshot)

@@ -728,7 +728,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
         LedgerPeersWorker.create[IO](
           UseLedgerPeers.Disabled,
           LedgerPeersSource.none[IO],
-          IO.pure(None),
+          IO.pure(Versioned(BigInt(0), None)),
           Rng(6L)
         )
       }

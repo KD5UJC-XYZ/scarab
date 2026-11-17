@@ -138,6 +138,11 @@ object LedgerPeersSource:
       )
     def pools: F[Read[LedgerPools]] = chain.map(c => of(c.state, c.tipRef))
 
+/** A value and the version it was written at: a new write, even of an equal value, has a new one.
+  */
+final case class Versioned[A](version: BigInt, value: A):
+  def next(written: A): Versioned[A] = Versioned(version + 1, written)
+
 /** The ledger-peers worker (`ledgerPeersThread`, `Ouroboros.Network.PeerSelection.LedgerPeers`
   * 225-357): it keeps the stake maps of the ledger peers and of the big ledger peers, rebuilt when
   * their lifetime has passed ([[LedgerPeerStake.refresh]]: from the peer snapshot when that beats
@@ -150,13 +155,18 @@ object LedgerPeersSource:
   * a draw. The peer snapshot is read from `snapshot` when the maps are rebuilt, as the reference
   * reads `wlpGetLedgerPeerSnapshot` only once its cache has aged out (ouroboros-network c45735a5
   * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/LedgerPeers.hs` 277-287): a new snapshot
-  * is taken at the next rebuild, and changes nothing in the cache before it. Capabilities: the
-  * clock (`Clock`), the trace (`Tell`). The pure parts are [[LedgerPeerStake]]'s.
+  * is taken at the next rebuild, and changes nothing in the cache before it. The reference reads
+  * the slot, the ledger's peers and the snapshot in one transaction (284-287); here the snapshot is
+  * read before and after the ledger, and the ledger read again until no snapshot was written in
+  * between ([[observed]]), so the snapshot used was in force for the whole of the ledger reads.
+  * Without ledger peers the snapshot is not read, as in the reference's `DontUseLedgerPeers` branch
+  * (280-282). Capabilities: the clock (`Clock`), the trace (`Tell`). The pure parts are
+  * [[LedgerPeerStake]]'s.
   */
 final class LedgerPeersWorker[F[_]: Async] private (
     use: UseLedgerPeers,
     source: LedgerPeersSource[F],
-    snapshot: F[Option[LedgerPeerSnapshot[LedgerRelay]]],
+    snapshot: F[Versioned[Option[LedgerPeerSnapshot[LedgerRelay]]]],
     cache: Ref[F, LedgerPeersCache[LedgerRelay]],
     rng: Ref[F, Rng],
     one: Mutex[F]
@@ -180,9 +190,8 @@ final class LedgerPeersWorker[F[_]: Async] private (
       if !LedgerPeerStake.expired(current, use, now) then F.pure(current)
       else
         for
-          slot <- source.latestSlot
-          pools <- ledgerPools(slot)
-          snapshotNow <- snapshot
+          (slot, read, snapshotNow) <- observed
+          pools <- poolsTraced(read)
           (next, from) = LedgerPeerStake.rebuild(current, use, now, slot, pools, snapshotNow)
           _ <- cache.set(next)
           _ <- trace.tell(
@@ -191,28 +200,49 @@ final class LedgerPeersWorker[F[_]: Async] private (
         yield next
     }
 
-  /** The pools of the ledger, read only when the ledger may be the source of the maps. */
-  private def ledgerPools(slot: WithOrigin[BigInt]): F[Vector[LedgerPool[LedgerRelay]]] =
+  /** The slot, the ledger's pools as read and the snapshot, one observation: the snapshot read
+    * before and after the ledger, and the ledger read again while a snapshot was written between
+    * the two. Without ledger peers neither the pools nor the snapshot are read.
+    */
+  private def observed: F[
+    (WithOrigin[BigInt], Option[Read[LedgerPools]], Option[LedgerPeerSnapshot[LedgerRelay]])
+  ] =
     use match
-      case UseLedgerPeers.Disabled => F.pure(Vector.empty)
+      case UseLedgerPeers.Disabled =>
+        source.latestSlot.map(slot => (slot, None, None))
       case UseLedgerPeers.Use(after) =>
-        LedgerPeerStake.supply[LedgerRelay](after, slot, Vector.empty) match
-          case LedgerSupply.BeforeSlot() => F.pure(Vector.empty)
-          case LedgerSupply.Pools(_) =>
-            source.pools.flatMap {
-              case Left(error) => trace.tell(LedgerPeersTrace.Unreadable(error)).as(Vector.empty)
-              case Right(read) =>
-                read.skipped.traverse_(s =>
-                  trace.tell(LedgerPeersTrace.PoolSkipped(s.pool, s.error))
-                ) *>
-                  F.pure(read.pools)
-            }
+        F.tailRecM(()) { _ =>
+          for
+            before <- snapshot
+            slot <- source.latestSlot
+            read <- ledgerPools(after, slot)
+            now <- snapshot
+          yield Either.cond(now.version == before.version, (slot, read, before.value), ())
+        }
+
+  /** The pools of the ledger, read only when the ledger may be the source of the maps. */
+  private def ledgerPools(
+      after: AfterSlot,
+      slot: WithOrigin[BigInt]
+  ): F[Option[Read[LedgerPools]]] =
+    LedgerPeerStake.supply[LedgerRelay](after, slot, Vector.empty) match
+      case LedgerSupply.BeforeSlot() => F.pure(None)
+      case LedgerSupply.Pools(_)     => source.pools.map(Some(_))
+
+  /** The pools of a read, with what it could not read traced once. */
+  private def poolsTraced(read: Option[Read[LedgerPools]]): F[Vector[LedgerPool[LedgerRelay]]] =
+    read match
+      case None              => F.pure(Vector.empty)
+      case Some(Left(error)) => trace.tell(LedgerPeersTrace.Unreadable(error)).as(Vector.empty)
+      case Some(Right(pools)) =>
+        pools.skipped.traverse_(s => trace.tell(LedgerPeersTrace.PoolSkipped(s.pool, s.error))) *>
+          F.pure(pools.pools)
 
 object LedgerPeersWorker:
   def create[F[_]: Async](
       use: UseLedgerPeers,
       source: LedgerPeersSource[F],
-      snapshot: F[Option[LedgerPeerSnapshot[LedgerRelay]]],
+      snapshot: F[Versioned[Option[LedgerPeerSnapshot[LedgerRelay]]]],
       seed: Rng
   )(using Tell[F, LedgerPeersTrace]): F[LedgerPeersWorker[F]] =
     for

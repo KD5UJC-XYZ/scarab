@@ -712,7 +712,7 @@ class NetworkConfigSuite extends FailsOnUncaught:
       "the same point, other pools"
     )
     for
-      source <- Ref.of[IO, Snapshot](p100)
+      source <- Ref.of[IO, Versioned[Snapshot]](Versioned(BigInt(0), p100))
       taken <- Ref.of[IO, Snapshot](p100)
       none <- PeerNetwork.snapshotWritten(source, taken)(None)
       afterNone <- (source.get, taken.get).tupled
@@ -721,10 +721,18 @@ class NetworkConfigSuite extends FailsOnUncaught:
       afterOther <- (source.get, taken.get).tupled
     yield
       assertEquals(none, false, "None is not taken")
-      assertEquals(afterNone, (None, p100), "None written to the worker's source, the taken kept")
+      assertEquals(
+        afterNone,
+        (Versioned[Snapshot](BigInt(1), None), p100),
+        "None written to the worker's source, the taken kept"
+      )
       assertEquals(same, false, "the same point is not taken")
       assertEquals(other, true, "another point is taken")
-      assertEquals(afterOther, (p200, p200), "written and taken")
+      assertEquals(
+        afterOther,
+        (Versioned[Snapshot](BigInt(3), p200), p200),
+        "each write a version, and taken"
+      )
   }
 
   test(
