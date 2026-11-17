@@ -28,7 +28,7 @@ enum ForgeKeyProblem:
     */
   case OtherPermissions(mode: Int)
 
-  /** Another running node holds the single-instance lock beside the KES key file. */
+  /** Another running node holds the single-instance lock of the KES key file. */
   case InstanceLocked(lock: String)
 
   def message: String = this match

@@ -66,21 +66,35 @@ object KeyFilePermissions:
       }
 
 /** The credentials guard of a forging node: the VRF key's permission check at start-up and, unless
-  * switched off, an exclusive lock beside the KES key file for the node's lifetime. The reference
-  * has no such lock (see the improvement recorded in `docs/implementer-notes.md`): the lock only
-  * stops a second Scarab instance that uses these key files, whatever its `--db`. It is held on a
-  * stable hidden file beside the KES key as named on the command line, never unlinked, and the
-  * operating system drops it when the process ends.
+  * switched off, an exclusive lock for the KES key file for the node's lifetime. The reference has
+  * no such lock (see the improvement recorded in `docs/implementer-notes.md`): the lock only stops a
+  * second Scarab instance that uses these key files, whatever its `--db`. It is held on a stable
+  * hidden file ([[lockFile]]), never unlinked, and the operating system drops it when the process
+  * ends.
   */
 object KeyGuard:
+  /** The lock's file for the KES key `kes`, as named on the command line. When the directory the
+    * key is in is a symbolic link, as the rotation layout's `current` is
+    * (`scripts/pool/rotate_kes.py`), the file sits beside that link, in the directory that holds
+    * it, and is named after both (`.current.kes.skey.scarab-lock`); otherwise it sits beside the
+    * key (`.kes.skey.scarab-lock`). A rotation re-points the link at a new generation and then
+    * removes the old one: the lock is in neither, so it is not removed, and an instance started
+    * after the switch finds the same lock.
+    */
   def lockFile(kes: Path): Path =
     val absolute = kes.toAbsolutePath.normalize()
-    absolute.resolveSibling(s".${absolute.getFileName}.scarab-lock")
+    val directory = Option(absolute.getParent)
+    val anchor = directory
+      .filter(Files.isSymbolicLink)
+      .flatMap(link => Option(link.getParent))
+      .orElse(directory)
+      .getOrElse(absolute)
+    anchor.resolve(anchor.relativize(absolute).iterator.asScala.mkString(".", ".", ".scarab-lock"))
 
   /** @param vrf
     *   the VRF key file, whose permissions are checked
     * @param kes
-    *   the KES key file the lock sits beside
+    *   the KES key file the lock is for
     * @param lock
     *   take the lock (`--key-lock on`, the default)
     * @param events
@@ -89,7 +103,7 @@ object KeyGuard:
   def resource[F[_]: Sync](vrf: Path, kes: Path, lock: Boolean, events: ForgeEvents[F])(using
       Raise[F, ForgeError]
   ): Resource[F, Unit] =
-    Resource.eval(permissions(vrf, events)) *> held(kes, lock)
+    Resource.eval(permissions(vrf, events)) *> held(kes, lock).void
 
   /** The VRF key's permission check alone, as the reference runs it before it reads the genesis and
     * the credentials (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 193-194).
@@ -112,12 +126,16 @@ object KeyGuard:
         case KeyFileAccess.OwnerOnly | KeyFileAccess.NotChecked => F.unit
       }
 
-  /** The lock beside the KES key alone (`lock` off: nothing). */
-  def held[F[_]: Sync](kes: Path, lock: Boolean)(using Raise[F, ForgeError]): Resource[F, Unit] =
+  /** The lock for the KES key alone: the lock's file it holds ([[lockFile]], found once), or none
+    * with `lock` off.
+    */
+  def held[F[_]: Sync](kes: Path, lock: Boolean)(using
+      Raise[F, ForgeError]
+  ): Resource[F, Option[Path]] =
     val F = Sync[F]
-    val path = lockFile(kes)
     val acquire = F
       .blocking {
+        val path = lockFile(kes)
         Either
           .catchNonFatal(
             FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
@@ -127,7 +145,7 @@ object KeyGuard:
             // JVM (an overlapping lock) is another instance's, as one held elsewhere is
             Either.catchNonFatal(Option(channel.tryLock())) match
               case Right(Some(lease)) =>
-                Right(Right((channel, lease)): Either[ForgeError, (FileChannel, FileLock)])
+                Right(Right((path, channel, lease)): Either[ForgeError, Lease])
               case Right(None) | Left(_: OverlappingFileLockException) =>
                 Either
                   .catchNonFatal(channel.close())
@@ -139,19 +157,16 @@ object KeyGuard:
                   )
               case Left(e) => Either.catchNonFatal(channel.close()).flatMap(_ => Left(e))
           }
+          .leftMap(e => ForgeError.KeyFile(path.toString, ForgeKeyProblem.Io(e)))
+          .flatten
       }
-      .flatMap {
-        case Right(Right(held)) => F.pure(held)
-        case Right(Left(error)) => error.raise[F, (FileChannel, FileLock)]
-        case Left(e) =>
-          ForgeError
-            .KeyFile(path.toString, ForgeKeyProblem.Io(e))
-            .raise[F, (FileChannel, FileLock)]
-      }
-    if !lock then Resource.unit[F]
+      .flatMap(_.fold(_.raise[F, Lease], F.pure))
+    if !lock then Resource.pure[F, Option[Path]](None)
     else
       Resource
-        .make(acquire)((channel, lease) =>
+        .make(acquire)((_, channel, lease) =>
           F.blocking(lease.release()).guarantee(F.blocking(channel.close()))
         )
-        .void
+        .map((path, _, _) => Some(path))
+
+  private type Lease = (Path, FileChannel, FileLock)

@@ -1417,10 +1417,6 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 50, seed = 78)
     withDir { f =>
       f.installPool(p)
-      val locked = ForgeError.KeyFile(
-        f.kes.toString,
-        ForgeKeyProblem.InstanceLocked(KeyGuard.lockFile(f.kes).toString)
-      )
       def second: IO[Option[ForgeError]] =
         Handle
           .allow[ForgeError](
@@ -1430,7 +1426,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       withHandle {
         Handle
           .allow[ForgeError](
-            KeyGuard.held[IO](f.kes, lock = true).use { _ =>
+            KeyGuard.held[IO](f.kes, lock = true).use { held =>
               for
                 src <- source(f)
                 h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
@@ -1439,15 +1435,20 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
                 _ <- (5100 until 5300).toList.traverse_(s => h.forger.step(s))
                 other <- second
                 names <- IO.blocking(listing(f.dir))
-              yield (other, names)
+              yield (held, other, names)
             }
           )
           .rescue(e => IO.raiseError(new AssertionError(e.message)))
-      }.map { (other, names) =>
-        assertEquals(other, Some(locked))
+      }.map { (held, other, names) =>
+        assertEquals(
+          other,
+          held.map(lock =>
+            ForgeError.KeyFile(f.kes.toString, ForgeKeyProblem.InstanceLocked(lock.toString))
+          )
+        )
         assertEquals(
           names,
-          Set("vrf.skey", "node.cert", "moved-away", KeyGuard.lockFile(f.kes).getFileName.toString)
+          Set("vrf.skey", "node.cert", "moved-away") ++ held.map(_.getFileName.toString)
         )
       }
     }
