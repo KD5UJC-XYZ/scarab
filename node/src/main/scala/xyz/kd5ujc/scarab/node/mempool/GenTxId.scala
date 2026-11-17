@@ -140,7 +140,9 @@ object GenTxId:
     *     `decCBOR`, `Decoding/DecCBOR.hs:492-497`, cardano-ledger f649f975), which [[decode]] does.
     *
     * A token is its initial byte and the bytes of its argument; cborg judges one only once it has
-    * them all, so a token of the wrong kind whose argument has not arrived waits.
+    * them all, so a token of the wrong kind whose argument has not arrived waits (cborg's source is
+    * not read here; cardano-node 11.1.3 waits on the `HasTx` prefixes `82 07 82 3b 00` and
+    * `82 07 82 19 01`, and ends the connection once the rest of that head has arrived).
     */
   def prefix(input: Bytes): LocalTxMonitor.TxIdPrefix =
     listOfTwo(input, 0, Refusal.EraEnvelope)
