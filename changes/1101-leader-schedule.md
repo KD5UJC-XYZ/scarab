@@ -6,7 +6,8 @@
   checked again against the chain at the slot, its block is built 50 ms before the slot's onset and handed to
   chain selection at the onset, and built again if the chain, the slot's inputs or the credentials changed
   meanwhile. In the first slot of a KES period the block is built after the onset, as before. Every slot's
-  leadership decision, every won slot's certificate and every block are the per-slot check's.
+  leadership decision and every won slot's certificate are the per-slot check's; each block is meant to be the one
+  the per-slot check would build, which a differential test checks slot by slot in the design's scenarios.
 - A slot the pool does not lead logs only the line that ends it: the reference's line where a check before the
   leader check refuses it (`slotIsImmutable`, `blockFromFuture`, `noLedgerView`, `forgeStateUpdateError`,
   `forgeFailed`), else `nodeNotLeader`. `startLeadershipCheck` and `stateInfo` at Info appear only on led slots
@@ -17,7 +18,8 @@
   ahead of its slot shows a `forged` time before the slot's onset. `adopted`'s `latencyMs`,
   `scarab_forge_adoption_seconds` and `forgeLatencyMs` stay measured from the slot's onset.
 - The KES key evolves at the first slot of each period, also while the node cannot forecast its slots, and only
-  by an attempt admitted at its slot (begun or made again once the clock had published it), or by a reload.
+  by an attempt admitted at its slot (begun or made again once the clock had published it or the slot driver had
+  taken it), or by a reload.
 
 ### Added (forging from a leader schedule, #1101)
 
