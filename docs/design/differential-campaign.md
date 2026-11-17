@@ -1,14 +1,14 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # A differential campaign against the reference
 
-**Status**: Proposal, 2026-11-16. Not implemented. Its author read every claim about the reference at the pins below;
-two independent reviews checked them and their corrections are made here, and the re-check that
-[CONTRIBUTING](../../CONTRIBUTING.md#levels) asks for before approval is pending. **No persisted format changes**: a
-kept input lives in a directory of its own, off the persisted-format surface (§7.4,
+**Status**: Proposal, 2026-11-16. Not implemented. Its author read every claim about the reference at the pins its
+[companion page](differential-campaign-reference.md) lists; two independent reviews checked them and their corrections
+are made here, and the re-check that [CONTRIBUTING](../../CONTRIBUTING.md#levels) asks for before approval is pending.
+**No persisted format changes**: a kept input lives in a directory of its own, off the persisted-format surface (§7.4,
 [FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
 
 In-tree code is cited by path, symbol and line at `fdd5834f2`. The claims about the reference (R1 to R22) and what
-is not checked (N1 to N15), with their pins, are in [§3's own page](differential-campaign-reference.md).
+is not checked (N1 to N16), with their pins, are in [§3's own page](differential-campaign-reference.md).
 
 ## 1. What the campaign is for
 
@@ -166,7 +166,7 @@ adapters (§2.7) generate and judge new Conway cases with the reference's own ru
 
 In [its own page](differential-campaign-reference.md): a transaction from a local client (§3.1) and from a peer
 (§3.2), a header (§3.3) and a block from a peer (§3.4), the claims with their pins (§3.5, R1 to R22) and what is not
-checked (§3.6, N1 to N15). This document cites them by their IDs.
+checked (§3.6, N1 to N16). This document cites them by their IDs.
 
 ## 4. The shape of the campaign
 
@@ -427,8 +427,9 @@ authorized (§7.4).
 that a finding exists. A finding is cleared when its advisory is published, when upstream has disclosed it for a
 defect of the reference, or when it is closed as no defect. Publication has two stages.
 
-**Before clearance: the announcement.** On a fixed date after each period, whatever its runs found, one announcement is
-published, written from a closed type whose only input is the period's configuration, fixed before the period began:
+**Before clearance: the announcement.** On a fixed date after each period, whatever its runs found, one announcement
+is published, written from a closed type whose only inputs are the period's configuration, fixed before the period
+began, and `main`'s public history, from which the commit rule picks the commits:
 
 - the period's first and last dates, and the budget of a run (its wall-time limit, CPUs and memory);
 - the reference build, and the digest of every image the runs use (the reference node's, Scarab's JDK image's, each
@@ -450,9 +451,10 @@ and on which that period and every earlier one are cleared.
 **The disclosure gate**, part of S1's jump gate and of every later change to the runner or to publication, runs the
 whole pipeline on pairs of test periods with the same public configuration and different private outcomes: no finding,
 one finding, several, a failed run, a timed-out run, a cleanup error, a recovery run. Each pair must publish
-byte-identical output at identical times: the announcement's bytes and its release time, and no results before
-clearance. It checks every allowed field's value, cardinality and release time, not only its name, and that each test
-run leaves nothing outside its run directory and the private store.
+byte-identical output at identical times up to the period's results release date: the announcement's bytes and its
+release time, and no results before that date. On the date itself the pair is compared only when both periods are
+cleared, since only then may results appear. It checks every allowed field's value, cardinality and release time, not
+only its name, and that each test run leaves nothing outside its run directory and the private store.
 
 Node logs are the subtle leak: the reference's refusal trace carries the transaction and its error (R18; what its log
 prints of it is N13), and Scarab's logs may carry its own. They stay on the private runner. Neither `e2e.yml`'s
@@ -479,33 +481,37 @@ the campaign leads to is its own change at its own level.
 | S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The committed refusal corpus judged again, every case conclusive and in agreement, each era before Conway through its adapter; every S1 cell of the coverage matrix (below), the measure and sequence cells replayed offline to the same verdicts; the same-slot rule (§6) tested on recorded tip sequences, and no probe of the run judged inside its window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
 | S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | Every S2 cell of the coverage matrix; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
 | S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | Every S3 cell of the coverage matrix. |
-| S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11 and N14. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; every S4 cell of the coverage matrix; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
+| S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11, N14 and N16. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; every S4 cell of the coverage matrix; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
 | S5 | Nightly discovery on the private runner under §8, with its budget; the announcements, the results after clearance and their dated evidence rows; the compatibility register component for the campaign. | Seven nightly runs within budget, every cell of the coverage matrix met, and no disagreement the triage traced to the campaign. Then #922's acceptance. |
+
+A gate's evidence is an outcome: it is published under §8's clearance rule, never before.
 
 **Coverage matrix.** A cell is what a gate counts: the stage's key (an era, or for S3 a language, a protocol version
 and a purpose) and one family. Its classes are the verdicts its family is built to reach: `Accepted`, `Refused`,
 `Ended` (§4) and, for a chain-selection family, `Selected`. A probe counts for a class when both nodes give that class
 and agree (§4). Each class a cell has needs a nonzero minimum: 20 agreeing verdicts of `Accepted`, `Refused` or
-`Ended`, and 10 forks with equal selected tips for `Selected`. The inconclusive ceiling is 5% of the cell's attempts,
-retries included: every attempt counts once, a probe retried after a moved bracket once per attempt, and an attempt is
-inconclusive when it ends `NoVerdict`. A cell short of any class's minimum, or over the ceiling, is `incomplete`
-([CNF-2](../design-rules.md#cnf-2)), and a gate does not pass while a cell it names is incomplete. The minimums and the
-ceiling are configuration (§10, Q6).
+`Ended`, and 10 forks with equal selected tips for `Selected`, unless the table gives another in brackets. S2's
+families group §5.1's phase-1 changes, boundary values and malformed encodings. The inconclusive ceiling is 5% of the
+cell's attempts, retries included: every attempt counts once, a probe retried after a moved bracket once per attempt,
+and an attempt is inconclusive when it ends `NoVerdict`. A cell short of any class's minimum, or over the ceiling, is
+`incomplete` ([CNF-2](../design-rules.md#cnf-2)), and a gate does not pass while a cell it names is incomplete. The
+minimums and the ceiling are configuration (§10, Q6).
 
 | Stage | Key | Families | Classes |
 |---|---|---|---|
 | S1 | era, Shelley to Conway | valid load (`eraload.py`) | `Accepted` |
 | S1 | era | refusals (`refusalcases.py`, `refusalcoverage.py`) | `Refused` |
-| S1 | era | a probe failing the phase-1 measure and another rule | `Refused` |
-| S1 | era | an accepted sequence, then a probe that conflicts with it | `Accepted`, `Refused` |
-| S2 | era | payments and values; certificates; withdrawals; validity intervals; fees and sizes; collateral (Alonzo on); governance and the first target (Conway) | `Accepted`, `Refused` |
+| S1 | era | a probe failing the phase-1 measure and another rule | `Refused` (5) |
+| S1 | era | a sequence of five accepted probes, then a probe that conflicts with them | `Accepted`, `Refused` (3 sequences) |
+| S2 | era | payments and values; certificates; withdrawals; validity intervals; fees and sizes; collateral (Alonzo on); governance (Conway) | `Accepted`, `Refused` |
+| S2 | Conway | the first target (§5.3) | `Accepted`, and `Refused` or `Ended` as S2 finds (N2, N7) |
 | S2 | era | malformed encodings | `Accepted`, `Refused`, `Ended` |
 | S3 | language, protocol version, purpose (V1 and V2: spending, minting, certifying, rewarding; V3 also voting and proposing) | scripts from `TermGen` | `Accepted`, `Refused` |
 | S4 | era | header fields (TPraos version, size, declared body size, VRF, leader proof, KES, certificate, previous hash, block number, slot) | `Accepted`, `Ended` |
 | S4 | era | bodies and sizes; transactions in blocks | `Accepted`, `Refused` |
-| S4 | era transition | the new era's first block; the old era's block after the boundary | `Accepted`, and `Refused` or `Ended` as S4 finds (N9) |
+| S4 | era transition | the new era's first block; the old era's block after the boundary | `Accepted`, and `Refused` or `Ended` as S4 finds (N16) |
 | S4 | era | a Praos header's declared version | the classes S4 finds (N14), each with its minimum |
-| S4 | era | undecodable blocks | `Ended` |
+| S4 | era | undecodable blocks | `Ended` (N6) |
 | S4 | era | forks of different and of equal length | `Selected` |
 
 ### 9.2 Budget and the evidence row
@@ -534,10 +540,9 @@ runs; the seeds. Raw run artifacts are not published.
   exists, before its advisory. Private execution, an announcement that reads only configuration, results held until
   clearance and the disclosure gate address it; a reviewer checks every change to the runner or to publication against
   §8.
-- **A clearance that overruns the embargo.** Results wait for clearance, so a release date that passes without a
-  period's results shows that something in it, or before it, is not yet cleared. The design cannot remove that while
-  clearance can take any time; the embargo is set longer than an advisory is expected to take, so that it arises only
-  when one overruns.
+- **A clearance that overruns the embargo.** Results wait for clearance (§8), so a finding still private on its
+  period's release date would hold that period's results, and every later period's, past the date. The embargo is
+  set longer than an advisory is expected to take, so that triage clears a period before its date.
 - **Shared bugs.** The injector builds blocks with Scarab's own builder and signing. The reference judges every block
   it builds, so a builder bug shows as a disagreement about the base chain, which S4's gate requires to be absent.
 - **Coverage.** Random search with no coverage feedback finds what it happens to reach; a night with no disagreement is

@@ -2,7 +2,7 @@
 # A differential campaign against the reference: what the reference does
 
 **Status**: Proposal, 2026-11-16, the reference claims of the [differential campaign](differential-campaign.md)
-([#922](https://github.com/KD5UJC-XYZ/scarab/issues/922)), which cites them by their IDs (R1 to R22, N1 to N15); its
+([#922](https://github.com/KD5UJC-XYZ/scarab/issues/922)), which cites them by their IDs (R1 to R22, N1 to N16); its
 sections keep the campaign's numbering (§3). All of it is derived from source, not from a capture; §3.5 lists the
 claims with their pins.
 
@@ -130,3 +130,4 @@ Each is confirmed, by reading the pinned source or by a run, in the campaign's s
 - **N13** (S1). What the node's log prints of a refused transaction (R18).
 - **N14** (S4). What, if anything, reads the protocol version a Praos header declares (R10).
 - **N15** (S1). What `txInBlockSize` and `txMeasureAlonzo` measure, and which limits they refuse (R21).
+- **N16** (S4). What the reference answers for a block of the old era served after an era boundary.
