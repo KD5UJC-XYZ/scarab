@@ -207,6 +207,25 @@ ONE_OFF_PATHS = {
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/TxOutMemPack.scala',
         'storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala',
     ),
+    # #1173: Praos2 among the chain-dependent states, V10 changed in place (#826; approved 2026-11-17T21:13:31Z,
+    # these paths 2026-11-17T21:53:53Z). `ChainDepState` is declared in `ChainDepState.scala`; seven files match on it
+    # exhaustively, `Praos2.scala` gives its state the equality and rendering the enum derives, and the rest are the
+    # case's generator, its evidence and tests, and a sentence of `docs/leios.md` the change makes false.
+    1173: (
+        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos.scala',
+        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala',
+        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/TPraos.scala',
+        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ChainDepState.scala',
+        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ProtocolState.scala',
+        'consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/state/StateGen.scala',
+        'docs/leios.md',
+        'node/src/main/scala/xyz/kd5ujc/scarab/node/NodeHeaderRules.scala',
+        'node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/QueryAnswers.scala',
+        'node/src/test/scala/xyz/kd5ujc/scarab/consensus/DijkstraCrossingSuite.scala',
+        'storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala',
+        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosLayoutSuite.scala',
+        'tools/src/main/scala/xyz/kd5ujc/scarab/node/HaskellScalaCompareMain.scala',
+    ),
 }
 # A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the
 # guard and its tests, so that weakening the guard is as loud as a format change.
