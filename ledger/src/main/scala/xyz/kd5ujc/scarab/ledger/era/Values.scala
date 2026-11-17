@@ -14,6 +14,9 @@ import xyz.kd5ujc.scarab.ledger.state.Coin
   * (`Data/CanonicalMaps.hs:98-111`, cardano-ledger f649f975); both are tracked on #85.
   */
 trait Val[V]:
+  /** `==`, of the superclass `Eq t` (`Val.hs:42`, cardano-ledger f649f975). */
+  def eqv(a: V, b: V): Boolean
+
   def zero: V
   def plus(a: V, b: V): V
 
@@ -54,6 +57,7 @@ object AdaValue:
 
   // `instance Val Coin`, `Val.hs:109-120`, cardano-ledger f649f975
   given Val[AdaValue] with
+    def eqv(a: AdaValue, b: AdaValue): Boolean = a == b
     def zero: AdaValue = BigInt(0)
     def plus(a: AdaValue, b: AdaValue): AdaValue = a + b
     def minus(a: AdaValue, b: AdaValue): AdaValue = a - b
@@ -70,7 +74,12 @@ object AdaValue:
 opaque type MultiAssetValue = xyz.kd5ujc.scarab.ledger.Value
 
 object MultiAssetValue:
-  def of(v: xyz.kd5ujc.scarab.ledger.Value): MultiAssetValue = v
+  /** `v` with its assets canonical, as the reference's `MultiAsset` always is (`canonicalMap`,
+    * `Data/CanonicalMaps.hs`, cardano-ledger f649f975): no zero quantity and no empty policy. `v`
+    * is added to the empty value, and the flat sum drops what is zero.
+    */
+  def of(v: xyz.kd5ujc.scarab.ledger.Value): MultiAssetValue =
+    xyz.kd5ujc.scarab.ledger.Value.zero + v
 
   def ofAda(lovelace: BigInt): MultiAssetValue =
     xyz.kd5ujc.scarab.ledger.Value(lovelace, Map.empty)
@@ -86,6 +95,14 @@ object MultiAssetValue:
   // cardano-ledger f649f975: the assets a canonical map, which holds no zero quantity and no empty
   // policy (`canonicalMap`, `Data/CanonicalMaps.hs`)
   given Val[MultiAssetValue] with
+    /** `instance Eq MaryValue` (`Mary/Value.hs:185-186`, cardano-ledger f649f975):
+      * `pointwise (==)`, which on two canonical values is the equality of their coins and maps,
+      * since a key on one side only has a nonzero quantity or a non-empty policy there
+      * (`pointWise`, `Data/CanonicalMaps.hs:98-111`). Every value here is canonical:
+      * [[MultiAssetValue.of]] makes it so, and the arithmetic keeps it (`Value.merge` drops what
+      * reaches zero).
+      */
+    def eqv(a: MultiAssetValue, b: MultiAssetValue): Boolean = a == b
     def zero: MultiAssetValue = xyz.kd5ujc.scarab.ledger.Value(0, Map.empty)
     def plus(a: MultiAssetValue, b: MultiAssetValue): MultiAssetValue = a + b
     def minus(a: MultiAssetValue, b: MultiAssetValue): MultiAssetValue = a - b

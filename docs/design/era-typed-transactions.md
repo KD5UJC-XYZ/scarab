@@ -504,9 +504,17 @@ Conway's rules on the classes follow as the rest of stage 2.
     quantity at least zero), which is what `pointWise` against an empty map is, so no tree enters.
   - `babbageMinUTxOValue` is called as a function: `EraTxOut`'s `getMinCoinSizedTxOut` waits for the
     parameter records of the eras before Babbage (#85).
-  - Still to port before UTXO is whole: the value conserved (with the certificate state's class) and
-    `validateOutsideForecast`, then `babbageUtxoValidation` put together, with Conway's injection of the
-    bootstrap attributes' failure by build.
+- **The value conserved** (`era/rules/`): `validateValueNotConservedUTxO`, with `shelleyConsumed` and
+  `produced` over `EraUTxO`, compared with the flat predicate on every Conway case of the refusal corpus and
+  on a fee one lovelace over and under the balance. `EraCertState` gains the deposits and refunds of a
+  body's certificates (`certsTotalDepositsTxBody`, `certsTotalRefundsTxBody`, with Conway's
+  `conwayCertsTotalDepositsTxBody` and `shelleyCertsTotalRefundsTxBody`), equal to the flat path's on every
+  case and on crafted certificates.
+  - `Val` gains its superclass `Eq` as a member (`eqv`): `MaryValue`'s `pointwise (==)` is the equality of
+    two canonical values, and every `MultiAssetValue` is one, made canonical by `MultiAssetValue.of` as the
+    reference's `MultiAsset` is, and kept so by the arithmetic.
+  - Still to port before UTXO is whole: `validateOutsideForecast`, then `babbageUtxoValidation` put
+    together, with Conway's injection of the bootstrap attributes' failure by build.
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): three of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts` and
@@ -571,9 +579,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's `addEpochInterval` and `binOpEpochNo` do (`CertsEpochWrapSuite`). The flat rules sum them
     as integers, refusing an expiry outside `EpochNo` and comparing a retirement with an unbounded limit, so
     the two paths differ only past epoch 2^64; that gap is the flat rules' (#85), which stage 3 deletes.
-  - `EraCertState` lands without the deposit and refund totals of a body (`certsTotalDepositsTxBody`,
-    `certsTotalRefundsTxBody`), which follow now that the body's totals are on main (#85). Two more gaps are on #85: the committee and its proposals as the node's records in the environments,
-    and a pool's parameters with the node's field types.
+  - `EraCertState` landed without the deposit and refund totals of a body, which the value conserved
+    adds (above). Two more gaps are on #85: the committee and its proposals as the node's records in the
+    environments, and a pool's parameters with the node's field types.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

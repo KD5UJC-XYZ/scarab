@@ -49,9 +49,7 @@ object Obligations:
 /** The certificate state of era `E`, which DELEG and POOL keep (`class EraCertState`,
   * `State/CertState.hs:358-401`, cardano-ledger f649f975). Its superclass `EraAccounts era` is a
   * member ([[accountsOf]]), so an era has one instance of each class. The record is the state's
-  * family ([[xyz.kd5ujc.scarab.ledger.state.CertState]]). The deposits and refunds of a body's
-  * certificates (`certsTotalDepositsTxBody`, `certsTotalRefundsTxBody`) come with the body's own
-  * totals (`getTotalDepositsTxBody`, `getTotalRefundsTxBody`).
+  * family ([[xyz.kd5ujc.scarab.ledger.state.CertState]]).
   */
 trait EraCertState[E <: EraTag]:
   /** The accounts' class (the superclass `EraAccounts era`). */
@@ -62,6 +60,24 @@ trait EraCertState[E <: EraTag]:
 
   /** `obligationCertState`: the deposits the state holds, whatever the parameters now ask. */
   def obligationCertState(certState: CertState[E]): Obligations
+
+  /** `certsTotalDepositsTxBody`: the deposits the certificates of a top-level body pay, its
+    * contribution to the deposit pot.
+    */
+  def certsTotalDepositsTxBody(
+      pp: PParams[E],
+      certState: CertState[E],
+      body: TxBody[TxLevel.Top, E]
+  )(using EraTxBody[E]): Coin
+
+  /** `certsTotalRefundsTxBody`: the refunds the certificates of a body collect, given the accounts
+    * that hold their deposits.
+    */
+  def certsTotalRefundsTxBody[L <: TxLevel](
+      pp: PParams[E],
+      accounts: Accounts[E],
+      body: TxBody[L, E]
+  )(using b: EraTxBody[E], l: b.Level[L]): Coin
 
 /** The certificate state from Conway, with the voting state (`class ConwayEraCertState`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs:83-84`, cardano-ledger f649f975),
@@ -103,6 +119,31 @@ object EraCertState:
     shelleyObligationCertState[E](certState).copy(oblDRep =
       CompactCoin.sum(c.certVStateL.get(certState).dreps.valuesIterator.map(_.deposit)).toCoin
     )
+
+  /** `shelleyCertsTotalRefundsTxBody` (`eras/shelley/impl/src/Cardano/Ledger/Shelley/State/
+    * CertState.hs:91-94`, cardano-ledger f649f975): the body's refunds, each credential's deposit
+    * looked up in `accounts`.
+    */
+  def shelleyCertsTotalRefundsTxBody[E <: EraTag, L <: TxLevel](
+      pp: PParams[E],
+      accounts: Accounts[E],
+      body: TxBody[L, E]
+  )(using c: EraCertState[E], b: EraTxBody[E], l: b.Level[L]): Coin =
+    b.getTotalRefundsTxBody(
+      pp,
+      EraAccounts.lookupAccountDeposit[E](_, accounts)(using c.accountsOf),
+      body
+    )
+
+  /** `conwayCertsTotalDepositsTxBody` (`Conway/State/CertState.hs:118-121`, cardano-ledger
+    * f649f975): the body's deposits, a pool registered when the state's pools have it.
+    */
+  def conwayCertsTotalDepositsTxBody[E <: EraTag](
+      pp: PParams[E],
+      certState: CertState[E],
+      body: TxBody[TxLevel.Top, E]
+  )(using c: ConwayEraCertState[E], b: EraTxBody[E]): Coin =
+    b.getTotalDepositsTxBody(pp, c.certPStateL.get(certState).stakePools.contains, body)
 
   /** `unDelegReDelegStakePool` (`State/CertState.hs:281-300`, cardano-ledger f649f975): the account
     * of `credential`, as `accountState` was, leaves the pool it delegated to and joins `newPool` 's

@@ -3,11 +3,13 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.ledger.TxIn
 import xyz.kd5ujc.scarab.ledger.state.{
+  Accounts,
   Coin,
   Conway,
   Credential,
   EraTag,
   KeyHash,
+  PState,
   StakePool,
   Staking
 }
@@ -67,6 +69,30 @@ object UTxOs:
   * cardano-ledger f649f975).
   */
 object ShelleyUTxO:
+  /** `shelleyConsumed` (`Shelley/UTxO.hs:109-118`, cardano-ledger f649f975): what the body
+    * consumes, each refunded credential's deposit looked up in `accounts`.
+    */
+  def shelleyConsumed[E <: EraTag, L <: TxLevel](
+      pp: PParams[E],
+      accounts: Accounts[E],
+      utxo: UTxO[E],
+      body: TxBody[L, E]
+  )(using u: EraUTxO[E], c: EraCertState[E], l: u.txOf.bodyOf.Level[L]): Value[E] =
+    u.getConsumedValue(
+      pp,
+      EraAccounts.lookupAccountDeposit[E](_, accounts)(using c.accountsOf),
+      utxo,
+      body
+    )
+
+  /** `produced` (`Shelley/UTxO.hs:120-129`, cardano-ledger f649f975): what the body produces, a
+    * pool registered when `pState` has it.
+    */
+  def produced[E <: EraTag](pp: PParams[E], pState: PState, body: TxBody[TxLevel.Top, E])(using
+      u: EraUTxO[E]
+  ): Value[E] =
+    u.getProducedValue(pp, pState.stakePools.contains, body)
+
   /** `shelleyProducedValue` (`Shelley/UTxO.hs:131-143`, cardano-ledger f649f975): the outputs, the
     * fee and the deposits.
     */
