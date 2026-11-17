@@ -9539,10 +9539,8 @@
    "definitions": [
     "def ledger.era.dijkstra.DijkstraDelegCert#credential",
     "def ledger.era.dijkstra.DijkstraPlutusPurpose.ix",
-    "given ledger.era.dijkstra.DijkstraDelegCert.given_CanEqual_DijkstraDelegCert_DijkstraDelegCert",
     "given ledger.era.dijkstra.DijkstraTxCert.given_CanEqual_DijkstraTxCert_DijkstraTxCert",
     "given ledger.era.dijkstra.DijkstraTxCertUpgradeError.given_CanEqual_DijkstraTxCertUpgradeError_DijkstraTxCertUpgradeError",
-    "object ledger.era.dijkstra.DijkstraDelegCert",
     "object ledger.era.dijkstra.DijkstraPlutusPurpose",
     "object ledger.era.dijkstra.DijkstraTxCert",
     "object ledger.era.dijkstra.DijkstraTxCertUpgradeError"

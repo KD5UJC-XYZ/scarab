@@ -43,9 +43,6 @@ enum DijkstraDelegCert:
 
   def credential: Credential[Staking]
 
-object DijkstraDelegCert:
-  given CanEqual[DijkstraDelegCert, DijkstraDelegCert] = CanEqual.derived
-
 /** Why a Conway certificate has no Dijkstra one (`data DijkstraTxCertUpgradeError`,
   * `TxCert.hs:191-194`, cardano-ledger 9df9f98c): a registration or an unregistration without a
   * deposit.
