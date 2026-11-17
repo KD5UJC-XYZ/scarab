@@ -542,7 +542,8 @@ runs; the seeds. Raw run artifacts are not published.
   §8.
 - **A clearance that overruns the embargo.** Results wait for clearance (§8), so a finding still private on its
   period's release date would hold that period's results, and every later period's, past the date. The embargo is
-  set longer than an advisory is expected to take, so that triage clears a period before its date.
+  set longer than an advisory is expected to take, so that triage clears a period before its date; what to do when it
+  is not is Q11.
 - **Shared bugs.** The injector builds blocks with Scarab's own builder and signing. The reference judges every block
   it builds, so a builder bug shows as a disagreement about the base chain, which S4's gate requires to be absent.
 - **Coverage.** Random search with no coverage feedback finds what it happens to reach; a night with no disagreement is
@@ -591,6 +592,13 @@ runs; the seeds. Raw run artifacts are not published.
   "submitted to both nodes" holds for them only from S4. Recommendation: S1 finds out whether submitting to the
   reference first and to Scarab second gives two independent verdicts (it does if the reference never offers its
   mempool to the follower, not checked); if so, use it from S2.
+- **Q11. What happens when a clearance overruns the embargo?** A period's results wait until its findings are
+  cleared (§8). If its release date passes first, the missing release shows that some finding is still pending: its
+  existence, though not its family or input. No outcome-independent schedule removes this while clearance can take
+  arbitrarily long. Recommendation: accept that residual, with the embargo (Q6) set well beyond the usual time to an
+  advisory, and hold every later period's results with it, so the gap shows only that something is pending. The
+  stricter alternative publishes no per-period results at all, only cumulative ones at the owner's discretion with no
+  schedule, at the cost of the issue's dated result rows.
 
 ## 11. What does not change
 
