@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import cats.{Eq, Show}
+import cats.derived.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.consensus.state.PraosState
@@ -20,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.OCertRules.refusedAs
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   BlockNo,
+  Diff,
   EpochNo,
   KeyHash,
   ProtVer,
@@ -88,7 +91,38 @@ object Praos2:
     * ouroboros-consensus 2416493b).
     */
   final case class AnnouncedBy(issuer: KeyHash[BlockIssuer], announcement: EbAnnouncement)
+
+  object AnnouncedBy:
+    given Eq[AnnouncedBy] = Eq.fromUniversalEquals
+    given Show[AnnouncedBy] = Show.fromToString
+
+  /** `PolyPraosState (Praos2 c)` (PolyPraos.hs:290-313, ouroboros-consensus 2416493b), the
+    * chain-dependent state of Praos2 (`Praos2.hs:117`): the eight fields of Praos and the
+    * announcement of the last applied header.
+    */
   final case class State(praos: PraosState, announcement: Option[AnnouncedBy])
+      derives Eq,
+        Show,
+        Diff
+
+  object State:
+    /** The new-epoch branch of `tickChainDepStatePolyPraos` (PolyPraos.hs:551-587,
+      * ouroboros-consensus 2416493b): the epoch nonce is the candidate combined with the last epoch
+      * block nonce, the previous epoch nonce the old epoch nonce, the last epoch block nonce the
+      * lab nonce, and the announcement is cleared, since an endorser block may not be certified
+      * across an epoch boundary.
+      */
+    def newEpoch(s: State): State =
+      val p = s.praos
+      State(
+        p.copy(
+          epochNonce = p.candidateNonce.combine(p.lastEpochBlockNonce),
+          previousEpochNonce = p.epochNonce,
+          lastEpochBlockNonce = p.labNonce
+        ),
+        None
+      )
+
   final case class Tip(hash: Bytes, blockNo: BlockNo, slot: SlotNo)
   final case class ChainState(tip: Option[Tip], protocol: State)
   final case class Ticked private[consensus] (chain: ChainState, ledger: LedgerView)
@@ -142,15 +176,7 @@ object Praos2:
       elapsed = Word64.fromUnsigned((slot.toBigInt - first.toBigInt).toLong).toBigInt
       next = EpochNo.fromUnsigned((oldEpoch.toBigInt + elapsed / size.toBigInt).toLong)
       protocol =
-        if next.toBigInt > oldEpoch.toBigInt then
-          State(
-            p.copy(
-              epochNonce = p.candidateNonce.combine(p.lastEpochBlockNonce),
-              previousEpochNonce = p.epochNonce,
-              lastEpochBlockNonce = p.labNonce
-            ),
-            None
-          )
+        if next.toBigInt > oldEpoch.toBigInt then State.newEpoch(state.protocol)
         else state.protocol
     yield Ticked(state.copy(protocol = protocol), ledger)
 
