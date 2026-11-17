@@ -37,7 +37,7 @@ class DijkstraPlutusPurposeSuite extends FunSuite:
   )
 
   test("the redeemer tags are spend 0 to guard 6, as the encoder writes them") {
-    // `EncCBORGroup (DijkstraPlutusPurpose f era)` (`Scripts.hs:184-199`)
+    // `EncCBORGroup (DijkstraPlutusPurpose f era)` (`Scripts.hs:184-199`, cardano-ledger 9df9f98c)
     assertEquals(all.map(_.tag), Vector(0, 1, 2, 3, 4, 5, 6))
   }
 
@@ -74,7 +74,7 @@ class DijkstraPlutusPurposeSuite extends FunSuite:
   }
 
   test("redeemer keys order by constructor, then index, as the derived Ord") {
-    // `Ord (DijkstraPlutusPurpose AsIx era)` (`Scripts.hs:260`)
+    // `Ord (DijkstraPlutusPurpose AsIx era)` (`Scripts.hs:260`, cardano-ledger 9df9f98c)
     val keys = Vector(
       DijkstraGuarding[AsIx](AsIx(w32(0))),
       DijkstraSpending[AsIx](AsIx(w32(5))),
@@ -88,7 +88,7 @@ class DijkstraPlutusPurposeSuite extends FunSuite:
   }
 
   test("a Conway redeemer key is carried into Dijkstra with its purpose and index") {
-    // `upgradePlutusPurposeAsIx` (`Scripts.hs:528-534`)
+    // `upgradePlutusPurposeAsIx` (`Scripts.hs:528-534`, cardano-ledger 9df9f98c)
     val conway = Vector[ConwayPlutusPurpose[AsIx]](
       ConwayPlutusPurpose.ConwaySpending(AsIx(w32(1))),
       ConwayPlutusPurpose.ConwayMinting(AsIx(w32(2))),
@@ -110,7 +110,8 @@ class DijkstraPlutusPurposeSuite extends FunSuite:
         .map(_.toString)
         .flatMap(DijkstraNativeScript.decode(_).left.map(_.toString))
         .fold(fail(_), identity)
-    // `[6, credential]`, `DijkstraRequireGuard` (`Scripts.hs:270-277, 666-668`)
+    // `[6, credential]`, `DijkstraRequireGuard` (`Scripts.hs:270-277, 666-668`, cardano-ledger
+    // 9df9f98c)
     val guarded = native("8206" + "8201581c" + "22" * 28)
     assertEquals(scripts.getRequireGuard(guarded), Some(FlatCredential.Script(hex("22" * 28))))
     assertEquals(scripts.getRequireSignature(guarded), None)

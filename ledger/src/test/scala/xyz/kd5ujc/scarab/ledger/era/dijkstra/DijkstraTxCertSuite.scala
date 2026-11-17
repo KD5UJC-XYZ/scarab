@@ -86,7 +86,8 @@ class DijkstraTxCertSuite extends FunSuite:
     assertEquals(built.map(_._1.take(4)).distinct.size, built.size)
     built.foreach { (h, cert) =>
       val flat = DijkstraCert.decode(node(h)).fold(e => fail(s"$h: $e"), identity)
-      // `getScriptWitnessDijkstraTxCert` (`TxCert.hs:323-340`): a pool is never a script
+      // `getScriptWitnessDijkstraTxCert` (`TxCert.hs:323-340`, cardano-ledger 9df9f98c): a pool is
+      // never a script
       val expected = cert match
         case DijkstraTxCert.DijkstraTxCertPool(_) => None
         case DijkstraTxCert.DijkstraTxCertDeleg(_) | DijkstraTxCert.DijkstraTxCertGov(_) =>
@@ -97,7 +98,8 @@ class DijkstraTxCertSuite extends FunSuite:
   }
 
   test("Dijkstra has no certificate without a deposit: the block decoder refuses tags 0 and 1") {
-    // `DecCBOR (DijkstraTxCert era)` (`TxCert.hs:239-250`) fails both before their fields
+    // `DecCBOR (DijkstraTxCert era)` (`TxCert.hs:239-250`, cardano-ledger 9df9f98c) fails both
+    // before their fields
     Vector(0 -> s"8200$script", 1 -> s"8201$script").foreach { (tag, h) =>
       DijkstraCert.decode(node(h)) match
         case Left(LedgerDecodeError.UnknownTag(_, t)) => assertEquals(t, BigInt(tag), h)
@@ -106,7 +108,8 @@ class DijkstraTxCertSuite extends FunSuite:
   }
 
   test("every staking certificate is witnessed by its credential, a registration too") {
-    // `getVKeyWitnessDijkstraTxCert` (`TxCert.hs:342-351`): unlike Conway's tag 0, a registration
+    // `getVKeyWitnessDijkstraTxCert` (`TxCert.hs:342-351`, cardano-ledger 9df9f98c): unlike
+    // Conway's tag 0, a registration
     // always pays a deposit and is always witnessed
     val forms = Vector(
       c.mkRegDepositTxCert(keyCred, Coin(5)),
@@ -150,7 +153,8 @@ class DijkstraTxCertSuite extends FunSuite:
     assertEquals(certs.flatMap(c.getDelegTxCert).size, 3)
     assertEquals(certs.flatMap(c.getRegDepositDelegTxCert).size, 3)
     assertEquals(certs.flatMap(c.getRegPoolTxCert), Vector.empty)
-    // `lookupRegStakeTxCert` and `lookupUnRegStakeTxCert` (`TxCert.hs:311-317`)
+    // `lookupRegStakeTxCert` and `lookupUnRegStakeTxCert` (`TxCert.hs:311-317`, cardano-ledger
+    // 9df9f98c)
     assertEquals(certs.flatMap(c.lookupRegStakeTxCert).size, 4)
     assertEquals(certs.flatMap(c.lookupUnRegStakeTxCert), Vector(cred[Staking]))
   }
@@ -168,7 +172,8 @@ class DijkstraTxCertSuite extends FunSuite:
       DijkstraPParams.fromStored(stored).fold(e => fail(e.toString), identity)
     )
     val certs = built.map(_._2) ++ Vector(c.mkUnRegDepositTxCert(keyCred, Coin(11)))
-    // `dijkstraTotalRefundsTxCerts` (`TxCert.hs:261-272`): the lookup is not read
+    // `dijkstraTotalRefundsTxCerts` (`TxCert.hs:261-272`, cardano-ledger 9df9f98c): the lookup is
+    // not read
     assertEquals(c.getTotalRefundsTxCerts(pp, _ => Some(Coin(1000)), certs), Coin(5 + 5 + 11))
     assertEquals(c.getTotalRefundsTxCerts(pp, _ => None, certs), Coin(21))
     // `conwayTotalDepositsTxCerts`: four registrations at the key deposit and one DRep's
@@ -215,7 +220,8 @@ class DijkstraTxCertSuite extends FunSuite:
       ),
       Left(DijkstraTxCertUpgradeError.UnRegTxCertExpunged)
     )
-    // and `dijkstraToConwayDelegCert` (`TxCert.hs:396-401`) takes a staking certificate back
+    // and `dijkstraToConwayDelegCert` (`TxCert.hs:396-401`, cardano-ledger 9df9f98c) takes a
+    // staking certificate back
     conway.zip(dijkstra).foreach {
       case (ConwayTxCert.ConwayTxCertDeleg(back), DijkstraTxCert.DijkstraTxCertDeleg(d)) =>
         assertEquals(DijkstraTxCert.dijkstraToConwayDelegCert(d), back)
