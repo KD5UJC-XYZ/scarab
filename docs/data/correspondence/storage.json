@@ -274,7 +274,7 @@
     "LeiosLayoutSuite"
    ],
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
-   "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads and writes the Praos2 state of a captured Leios devnet state (no announcement) byte for byte; the bytes of an announcement are derived from the source",
+   "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads the Praos2 state of a captured Leios devnet state (no announcement), checks each of its nine fields against the values read off the file's raw bytes, and writes it back byte for byte; the bytes of an announcement are derived from the source",
    "digest": "b7d12f6ad3bcdea7"
   }
  },
