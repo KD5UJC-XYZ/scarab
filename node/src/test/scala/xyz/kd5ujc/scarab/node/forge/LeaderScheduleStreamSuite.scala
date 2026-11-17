@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import cats.effect.{Deferred, IO}
+import cats.effect.{Deferred, IO, Ref}
 import cats.effect.kernel.Outcome
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
@@ -343,6 +343,37 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
           .create[IO](g)
           .flatMap(quiescent(_, replaced, seed)(_.schedules.get.map(_.of(i).exists(_.complete))))
           .tupleLeft(n)
+      )
+      .map(kept => assertEquals(kept.filterNot(_._2).map(_._1), Vector.empty, "seeds that lost it"))
+  }
+
+  test("a value replaced and restored before the stream saw the replacement is computed") {
+    // the stream reads A, an epoch's inputs; before A's computation starts the signal becomes B,
+    // none, and before the stream reads it again, A once more, so that the stream reads A again and
+    // never B: A is in force throughout what the stream saw, and its schedule is computed. The
+    // signal goes back to A once A's computation has started or the signal has been read since it
+    // became B, whichever comes first
+    val g = geometry(100, 300, 0.seconds)
+    val i = inputs(g, 1)
+    val a = InForce.of(i)
+    seeds
+      .traverse((n, seed) =>
+        for
+          schedule <- LeaderSchedule.create[IO](g)
+          current <- Ref.of[IO, InForce](a)
+          read <- Deferred[IO, Unit]
+          computing = schedule.schedules.discrete.find(_.of(i).nonEmpty).compile.drain
+          flickering = new Signal[IO, InForce]:
+            def get = current.get.flatTap(_ => read.complete(()).void)
+            def continuous = Stream.repeatEval(get)
+            def discrete =
+              Stream.eval(current.getAndSet(InForce.none)) ++
+                Stream.exec(IO.race(read.get, computing) *> current.set(a)) ++
+                Stream.eval(current.get) ++ Stream.never[IO]
+          kept <- quiescent(schedule, flickering, seed)(
+            _.schedules.get.map(_.of(i).exists(_.complete))
+          )
+        yield n -> kept
       )
       .map(kept => assertEquals(kept.filterNot(_._2).map(_._1), Vector.empty, "seeds that lost it"))
   }
