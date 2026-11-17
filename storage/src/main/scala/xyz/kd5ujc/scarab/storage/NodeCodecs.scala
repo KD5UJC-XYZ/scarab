@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.BinaryError
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{EbHash, Era}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.ByronState
 import xyz.kd5ujc.scarab.consensus.*
@@ -133,6 +133,13 @@ object NodeCodecs:
   given tpraosLedgerState: Codec[TPraosLedgerState] = Codec.auto
   given tpraosState: Codec[TPraosState] = Codec.auto
   given praosState: Codec[PraosState] = Codec.auto
+  given ebHash: Codec[EbHash] =
+    Codec.make[EbHash]("EbHash")((o, h) => summon[Codec[Bytes]].write(o, h.bytes))(i =>
+      summon[Codec[Bytes]].read(i).map(EbHash.fromBytes)
+    )
+  given ebAnnouncement: Codec[EbAnnouncement] = Codec.auto
+  given announcedBy: Codec[Praos2.AnnouncedBy] = Codec.auto
+  given praos2State: Codec[Praos2.State] = Codec.auto
   given chainDepState: Codec[ChainDepState] = Codec.auto
   given protocolExtras: Codec[ProtocolExtras] = Codec.auto
 

@@ -88,7 +88,7 @@ object TPraos:
                 run(t, h, nonceCert, leaderCert, view, config).map((next, leader) =>
                   Validated(ProtocolState(ChainDepState.TPraos(next), state.extras), leader)
                 )
-              case _ =>
+              case ChainDepState.PBft(_) | ChainDepState.Praos(_) | ChainDepState.Praos2(_) =>
                 Left(
                   TPraosError.WrongState(h.era)
                 )

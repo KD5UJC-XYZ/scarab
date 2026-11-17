@@ -4,8 +4,8 @@ package xyz.kd5ujc.scarab.consensus.state
 import cats.Show
 import cats.syntax.all.*
 import org.scalacheck.{Arbitrary, Cogen, Gen}
-import xyz.kd5ujc.scarab.consensus.ByronState
-import xyz.kd5ujc.scarab.ledger.Nonce
+import xyz.kd5ujc.scarab.consensus.{ByronState, Praos2}
+import xyz.kd5ujc.scarab.ledger.{EbAnnouncement, Nonce}
 import xyz.kd5ujc.scarab.ledger.state.{
   Allegra,
   Alonzo,
@@ -30,7 +30,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.{*, given}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{EbHash, Era}
 
 /** Generators of the consensus tree of the mirror: small values, the interesting part being which
   * era each is in. Every era's state is generated for the era, so a telescope is built through its
@@ -125,10 +125,27 @@ object StateGen:
       lastEpochBlock <- nonce
     yield PraosState(slot, counters, evolving, candidate, epoch, previous, lab, lastEpochBlock)
 
+  /** The announcement of a Praos2 state: an issuer, a 32-byte endorser block hash and a `Word32`
+    * size.
+    */
+  val announcedBy: Gen[Praos2.AnnouncedBy] =
+    for
+      issuer <- arb[KeyHash[BlockIssuer]]
+      hash <- arb[Hash32]
+      size <- Gen.oneOf(Gen.const(0L), Gen.const(0xffffffffL), Gen.choose(0L, 0xffffffffL))
+    yield Praos2.AnnouncedBy(issuer, EbAnnouncement(EbHash.fromBytes(Hash32.bytes(hash)), size))
+
+  val praos2State: Gen[Praos2.State] =
+    for
+      praos <- praosState
+      announcement <- Gen.option(announcedBy)
+    yield Praos2.State(praos, announcement)
+
   /** The chain-dependent state of the protocol `era` runs. */
   def chainDepState(era: Era): Gen[ChainDepState] =
     if era == Era.Byron then pbftState.map(ChainDepState.PBft(_))
     else if era.usesTPraos then tpraosState.map(ChainDepState.TPraos(_))
+    else if era == Era.Dijkstra then praos2State.map(ChainDepState.Praos2(_))
     else praosState.map(ChainDepState.Praos(_))
 
   given Arbitrary[Bound] = Arbitrary(

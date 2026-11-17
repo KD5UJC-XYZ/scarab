@@ -29,6 +29,7 @@ import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, EraViews, InEra, Read}
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellStateCodecs,
+  LeiosStateCodecs,
   Params,
   Record,
   UtxoCodecs,
@@ -688,12 +689,15 @@ object QueryAnswers:
       case _ => Left(Unanswered.Unsupported)
 
   /** The chain-dependent state of the protocol the chain runs, as the reference serialises its
-    * `ChainDepState` (`DebugChainDepState`): TPraos's from Shelley to Alonzo, Praos's from Babbage.
+    * `ChainDepState` (`DebugChainDepState`): TPraos's from Shelley to Alonzo, Praos's from Babbage,
+    * and Praos2's, in Dijkstra of the Leios build, as that build writes it (`PolyPraosState` at
+    * version 1, PolyPraos.hs:368-419, ouroboros-consensus 2416493b).
     */
   private def chainDepState[S](view: QueryView[S]): Either[Unanswered, Bytes] =
     view.read.protocol(view.state).dep match
       case ChainDepState.TPraos(t) => HaskellStateCodecs.tpraosState.answer(t)
       case ChainDepState.Praos(p)  => HaskellStateCodecs.praosState.answer(p)
+      case ChainDepState.Praos2(p) => LeiosStateCodecs.praos2State.answer(p)
       case ChainDepState.PBft(_)   => Left(Unanswered.Unsupported)
 
   /** The default vote of a pool: DefaultNo (0), DefaultAbstain (1) or DefaultNoConfidence (2), by

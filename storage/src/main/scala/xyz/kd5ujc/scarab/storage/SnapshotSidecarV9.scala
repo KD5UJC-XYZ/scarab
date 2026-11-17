@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.consensus.state.ChainDepState
 import xyz.kd5ujc.scarab.ledger.{Script, TxOut, Utxo}
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
@@ -8,15 +9,17 @@ import xyz.kd5ujc.scarab.ledger.StorageError
 
 /** The sidecar schema of the V9 body, frozen: the current one ([[SnapshotSidecar]], V10) with the
   * bootstrap (ledger-lite) state where V10 has the follow state, read into the frozen types of
-  * [[FrozenSidecar]], and with the kinds of a stored script before PlutusV4 ([[FrozenScriptKind]]).
-  * V10's sidecar was changed in place, before any deployment, by the owner's decisions of
-  * 2026-11-14 (#988) and 2026-11-16 (#85, #54); nothing else differs. The schema fingerprint golden
-  * of `CodecSuite` keeps it the one V9 files were written with.
+  * [[FrozenSidecar]], with the kinds of a stored script before PlutusV4 ([[FrozenScriptKind]]) and
+  * the chain-dependent states before Praos2 ([[FrozenChainDepState]]). V10's sidecar was changed in
+  * place, before any deployment, by the owner's decisions of 2026-11-14 (#988), 2026-11-16 (#85,
+  * #54) and 2026-11-17 (#826); nothing else differs. The schema fingerprint golden of `CodecSuite`
+  * keeps it the one V9 files were written with.
   */
 private[storage] object SnapshotSidecarV9:
   import NodeCodecs.given
 
   given script: Codec[Script] = NodeCodecs.scriptOf(FrozenScriptKind.codec)
+  given chainDepState: Codec[ChainDepState] = FrozenChainDepState.codec
   given txOut: Codec[TxOut] = Codec.auto
   given utxoChange: Codec[Utxo.Change] = Codec.auto
   given utxo: Codec[Utxo] = Codec.auto

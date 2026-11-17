@@ -158,7 +158,8 @@ object Gens extends LowPriorityGens:
     Gen.oneOf(
       StateGen.pbftState.map(ChainDepState.PBft(_)),
       StateGen.tpraosState.map(ChainDepState.TPraos(_)),
-      StateGen.praosState.map(ChainDepState.Praos(_))
+      StateGen.praosState.map(ChainDepState.Praos(_)),
+      StateGen.praos2State.map(ChainDepState.Praos2(_))
     )
   )
   given protocolExtras: Gens[ProtocolExtras] = auto

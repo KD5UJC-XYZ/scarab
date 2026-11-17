@@ -7,6 +7,7 @@ import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.consensus.Praos2
 import xyz.kd5ujc.scarab.consensus.state.{StateGen as _, *}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
@@ -74,6 +75,11 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
   laws("SnapShots", LeiosGen.snapShots, LeiosStateCodecs.snapShots)
   laws("Bound", LeiosGen.leiosBound, bound)
   laws("PerasState", LeiosGen.perasState, LeiosStateCodecs.perasState)
+  laws(
+    "PolyPraosState (Praos2)",
+    xyz.kd5ujc.scarab.consensus.state.StateGen.praos2State,
+    LeiosStateCodecs.praos2State
+  )
 
   private def era[E <: EraTag](name: String)(using ShelleyBasedEra[E]): Unit =
     laws(
@@ -351,6 +357,78 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     assertEquals(
       HaskellLedgerFile.decode(four, StateLayout.Leios).map(_ => ()).leftMap(_.kind),
       Left(Kind.BadArity(Arity.Range(2, Some(3)), 4))
+    )
+  }
+
+  /** Slot 203's chain-dependent state: the header state's chain-dependent telescope holds seven
+    * past eras, then Dijkstra's current state (`[bound, state]`), at /1.1.1.7.1 of the file.
+    */
+  private def dijkstraChainDep: Node =
+    items(items(items(items(items(tree(dijkstra))(1))(1))(1))(7))(1)
+
+  test("slot 203's chain-dependent state, Praos2's, is read and written byte for byte") {
+    val current = dijkstraChainDep
+    // `[1, [nine fields]]` (PolyPraos.hs:368-419, ouroboros-consensus 2416493b)
+    assertEquals(items(current).size, 2)
+    assertEquals(items(items(current)(1)).size, 9)
+    val state = readOk(LeiosStateCodecs.praos2State, current.original)
+    assertEquals(state.announcement, None)
+    assertEquals(LeiosStateCodecs.praos2State.write(state), Right(current.original))
+    // Dijkstra's state is Praos2's in the Leios layout
+    val dep = LeiosStateCodecs.chainDepStateOf(Era.Dijkstra)
+    assertEquals(readOk(dep, current.original), ChainDepState.Praos2(state))
+    assertEquals(dep.write(ChainDepState.Praos2(state)), Right(current.original))
+    // 11.1 has no Praos2: its Dijkstra state is Praos's, at version 0, and a Praos2 state is not
+    // written
+    assertEquals(
+      read(HaskellStateCodecs.chainDepStateOf(Era.Dijkstra), current.original).leftMap(_.path),
+      Left(List("version"))
+    )
+    assert(HaskellStateCodecs.praos2State.write(state).isLeft)
+    assert(
+      HaskellStateCodecs.chainDepStateOf(Era.Dijkstra).write(ChainDepState.Praos2(state)).isLeft
+    )
+  }
+
+  test("an announcement in a Praos2 state is [issuer, hash, size], and its size a Word32") {
+    val issuer = Bytes.wrap(Array.fill[Byte](28)(7))
+    val hash = Bytes.wrap(Array.fill[Byte](32)(9))
+    val announced = Praos2.AnnouncedBy(
+      KeyHash.fromBytes[BlockIssuer](issuer).fold(e => fail(e.toString), identity),
+      xyz.kd5ujc.scarab.ledger
+        .EbAnnouncement(xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(hash), 0xffffffffL)
+    )
+    val base = readOk(LeiosStateCodecs.praos2State, dijkstraChainDep.original)
+    val withAnnouncement = base.copy(announcement = Some(announced))
+    val written =
+      LeiosStateCodecs.praos2State.write(withAnnouncement).fold(e => fail(e.render), identity)
+    // the ninth field: `[[issuer, hash, size]]` (encodeStrictMaybe encodeAnnouncedBy)
+    val ninth = items(items(tree(written))(1))(8)
+    assertEquals(
+      ninth.original,
+      hex(s"81 83 581c${issuer.hex} 5820${hash.hex} 1affffffff")
+    )
+    assertEquals(readOk(LeiosStateCodecs.praos2State, written), withAnnouncement)
+    // a size past a Word32, or a hash of another size, is not written
+    val tooBig = withAnnouncement.copy(announcement =
+      Some(announced.copy(announcement = announced.announcement.copy(size = 0x100000000L)))
+    )
+    assertEquals(
+      LeiosStateCodecs.praos2State.check(tooBig).map(_.path),
+      Some(List("announcement", "size"))
+    )
+    val shortHash = withAnnouncement.copy(announcement =
+      Some(
+        announced.copy(announcement =
+          announced.announcement.copy(hash =
+            xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](31)(9)))
+          )
+        )
+      )
+    )
+    assertEquals(
+      LeiosStateCodecs.praos2State.check(shortHash).map(_.path),
+      Some(List("announcement", "hash"))
     )
   }
 

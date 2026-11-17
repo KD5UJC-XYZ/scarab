@@ -10,7 +10,8 @@ import xyz.kd5ujc.scarab.consensus.state.{
   ChainDepState,
   ConsensusMirrorEnv,
   EraLedgerState,
-  MirrorState
+  MirrorState,
+  PraosState
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.StorageError
@@ -150,13 +151,16 @@ object HaskellScalaCompareMain:
     )
     line("chain account", h.chainAccount == s.chainAccount)
     line("dState accounts delegations", hDelegations(h) == sDelegations(s))
+    def nonces(hpraos: PraosState): Unit =
+      val sp2 = state.protocol.view
+      line("praos epoch nonce", hpraos.epochNonce == sp2.epochNonce)
+      line("praos previous epoch nonce", hpraos.previousEpochNonce == sp2.previousEpochNonce)
+      line("praos last epoch block nonce", hpraos.lastEpochBlockNonce == sp2.lastEpochBlockNonce)
     hs.header.chainDep.state match
-      case ChainDepState.Praos(hpraos) =>
-        val sp2 = state.protocol.view
-        line("praos epoch nonce", hpraos.epochNonce == sp2.epochNonce)
-        line("praos previous epoch nonce", hpraos.previousEpochNonce == sp2.previousEpochNonce)
-        line("praos last epoch block nonce", hpraos.lastEpochBlockNonce == sp2.lastEpochBlockNonce)
-      case other => println(s"  chain-dependent state is not Praos: $other")
+      case ChainDepState.Praos(hpraos)  => nonces(hpraos)
+      case ChainDepState.Praos2(hpraos) => nonces(hpraos.praos)
+      case other @ (ChainDepState.PBft(_) | ChainDepState.TPraos(_)) =>
+        println(s"  chain-dependent state is not Praos: $other")
 
   private def hDelegations(es: EpochState[Conway]) =
     es.ls.cert.dState.accounts.states.view.mapValues(a => (a.pool, a.drep)).toMap

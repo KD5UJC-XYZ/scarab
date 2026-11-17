@@ -206,6 +206,33 @@ class CodecSuite extends ScalaCheckSuite:
       case other => fail(s"a frozen schema read a PlutusV4 script: $other")
   }
 
+  test("the frozen schemas of V5 to V9 name the chain-dependent states their files hold") {
+    val frozen = FrozenChainDepState.codec
+    assert(frozen.shape.startsWith("ChainDepState{PBft("), frozen.shape)
+    assert(!frozen.shape.contains("Praos2"), frozen.shape)
+    // the live shape is the frozen one with Praos2 appended
+    assertEquals(
+      NodeCodecs.chainDepState.shape,
+      frozen.shape.dropRight(1) + "|Praos2(state:" + NodeCodecs.praos2State.shape + ")}"
+    )
+  }
+
+  property("the frozen schemas of V5 to V9 keep the bytes of their states and refuse Praos2") {
+    val frozen = FrozenChainDepState.codec
+    forAll(summon[Gens[ChainDepState]].gen) { state =>
+      val bytes = Codec.encode(state)
+      assertEquals(hex(Codec.encode(state)(using frozen)), hex(bytes))
+      state match
+        case ChainDepState.Praos2(_) =>
+          Codec.decode(bytes)(using frozen) match
+            case Left(xyz.kd5ujc.scarab.codec.BinaryError.InvalidVariant("ChainDepState", 3L, 3)) =>
+              ()
+            case other => fail(s"a frozen schema read a Praos2 state: $other")
+        case ChainDepState.PBft(_) | ChainDepState.TPraos(_) | ChainDepState.Praos(_) =>
+          assertEquals(Codec.decode(bytes)(using frozen), Right(state))
+    }
+  }
+
   test("an output built with a reference script is stored by the codec, its script as before") {
     val address = Address
       .decode(Bytes(0x61.toByte +: keyHash.value), Address.Mode.Stored)
@@ -327,8 +354,9 @@ class CodecSuite extends ScalaCheckSuite:
   // V10's sidecar was then changed in place, before any deployment, by the owner's decision of
   // 2026-11-14 (#988): the follow state in place of the bootstrap state, with no version bump; and
   // again by the owner's decision of 2026-11-16 (#85, #54): PlutusV4 among the kinds of script,
-  // with no version bump.
-  private val GoldenSidecarFingerprint = "00be9d774a9e8980"
+  // with no version bump; and again by the owner's decision of 2026-11-17 (#826): Praos2 among the
+  // chain-dependent states, with no version bump.
+  private val GoldenSidecarFingerprint = "5564943c2b843296"
   // The sidecar schema of V9 files (`SnapshotSidecarV9`), frozen at V10's change: never regenerated.
   private val GoldenV9SidecarFingerprint = "7650a759442924ec"
   // The sidecar schema of V5 and V7 files (`SnapshotSidecarV7`), frozen at V8: never regenerated.

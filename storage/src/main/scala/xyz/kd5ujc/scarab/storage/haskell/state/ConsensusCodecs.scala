@@ -4,17 +4,22 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 import cats.Order
 import cats.syntax.eq.*
 import cats.syntax.show.*
+import scala.collection.immutable.SortedMap
+import xyz.kd5ujc.scarab.consensus.Praos2
 import xyz.kd5ujc.scarab.consensus.state.*
+import xyz.kd5ujc.scarab.ledger.EbAnnouncement
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{
+  Arr,
   Codec,
   ConstraintViolation,
   DecodeError,
   Decoded,
   Node,
-  Writer
+  Writer,
+  at
 }
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, EbHash, Era, StateLayout}
 
 import Envelope.*
 import Wire.*
@@ -224,46 +229,160 @@ trait ConsensusCodecs extends EpochStateCodecs:
       )
     )
 
+  /** The last slot of a Praos state, written by `toCBOR` (`[0]` or `[1, slot]`). */
+  private val praosLastSlot: Codec[WithOrigin[SlotNo]] =
+    arrayIn(stateLayout, withOriginTagged(slotNo))
+
+  /** The operational certificate counters of a Praos state, in the plain (definite-length) form. */
+  private val praosCounters: Codec[SortedMap[KeyHash[BlockIssuer], Word64]] =
+    plainMapOf(keyHash[BlockIssuer], word64)
+
+  /** The eight fields of a Praos state, as a record. */
+  private val praosFields: Codec[PraosState] =
+    Record.of[PraosState](
+      (praosLastSlot, praosCounters, nonce, nonce, nonce, nonce, nonce, nonce)
+    )
+
   /** `PraosState` (`Protocol/Praos.hs:281-308`, ouroboros-consensus 82ecba32): `[0, [last slot,
     * counters, six nonces]]`, the counters in the plain (definite-length) form.
     */
   given praosState: Codec[PraosState] =
-    versionedIn(stateLayout)(
-      0,
-      arrayIn(
-        stateLayout,
-        Record.of[PraosState](
-          (
-            arrayIn(stateLayout, withOriginTagged(slotNo)),
-            plainMapOf(keyHash[BlockIssuer], word64),
-            nonce,
-            nonce,
-            nonce,
-            nonce,
-            nonce,
-            nonce
-          )
-        )
-      )
-    )
+    versionedIn(stateLayout)(0, arrayIn(stateLayout, praosFields))
 
+  /** The endorser block hash of an announcement: a `SafeHash` of 32 bytes (`extractHash`,
+    * `unsafeMakeSafeHash`, PolyPraos.hs:341-348, ouroboros-consensus 2416493b).
+    */
+  private val ebHash: Codec[EbHash] = hash(32).imap(EbHash.fromBytes)(_.bytes)
+
+  /** The size of an announced endorser block, a `Word32` (`ebReferencesAnnouncementSize`,
+    * cardano-ledger 9df9f98c `Block.hs:169-173`).
+    */
+  private val ebSize: Codec[Long] = Codec.uintLong(0xffffffffL)
+
+  /** `AnnouncedBy` (`encodeAnnouncedBy`, `decodeAnnouncedBy`, PolyPraos.hs:333-348,
+    * ouroboros-consensus 2416493b): `[issuer, endorser block hash, size]`, the announcement's two
+    * fields inline.
+    */
+  private val announcedBy: Codec[Praos2.AnnouncedBy] = arrayIn(
+    stateLayout,
+    new Codec[Praos2.AnnouncedBy]:
+      def decode(n: Node): Decoded[Praos2.AnnouncedBy] =
+        Arr.exact(n, 3).flatMap { xs =>
+          for
+            issuer <- keyHash[BlockIssuer].decode(xs(0)).at("issuer")
+            hash <- ebHash.decode(xs(1)).at("hash")
+            size <- ebSize.decode(xs(2)).at("size")
+          yield Praos2.AnnouncedBy(issuer, EbAnnouncement(hash, size))
+        }
+      def encode(a: Praos2.AnnouncedBy, out: Writer): Unit =
+        out.arrayHead(3)
+        keyHash[BlockIssuer].encode(a.issuer, out)
+        ebHash.encode(a.announcement.hash, out)
+        ebSize.encode(a.announcement.size, out)
+      override def check(a: Praos2.AnnouncedBy): Option[ConstraintViolation] =
+        ebHash
+          .check(a.announcement.hash)
+          .map(_.at("hash"))
+          .orElse(ebSize.check(a.announcement.size).map(_.at("size")))
+  )
+
+  /** The announcement of a Praos2 state: `encodeStrictMaybe encodeAnnouncedBy`, `[]` or `[x]`
+    * (PolyPraos.hs:392,418, ouroboros-consensus 2416493b; `Util/CBOR.hs:358-362`).
+    */
+  private val praos2Announcement: Codec[Option[Praos2.AnnouncedBy]] =
+    arrayIn(stateLayout, strictMaybe(announcedBy))
+
+  /** `PolyPraosState (Praos2 c)` (`Serialise`, PolyPraos.hs:368-419, ouroboros-consensus 2416493b),
+    * the chain-dependent state of Praos2 (`Praos2.hs:117`): `[1, [last slot, counters, six nonces,
+    * announcement]]`, the eight fields of Praos's and the announcement, at version 1. Only the
+    * Leios build has it; this codec does not write it in another layout.
+    */
+  given praos2State: Codec[Praos2.State] =
+    val fields = new Codec[Praos2.State]:
+      def decode(n: Node): Decoded[Praos2.State] =
+        Arr.exact(n, 9).flatMap { xs =>
+          for
+            lastSlot <- praosLastSlot.decode(xs(0)).at("lastSlot")
+            counters <- praosCounters.decode(xs(1)).at("ocertCounters")
+            evolving <- nonce.decode(xs(2)).at("evolvingNonce")
+            candidate <- nonce.decode(xs(3)).at("candidateNonce")
+            epoch <- nonce.decode(xs(4)).at("epochNonce")
+            previous <- nonce.decode(xs(5)).at("previousEpochNonce")
+            lab <- nonce.decode(xs(6)).at("labNonce")
+            lastEpochBlock <- nonce.decode(xs(7)).at("lastEpochBlockNonce")
+            announcement <- praos2Announcement.decode(xs(8)).at("announcement")
+          yield Praos2.State(
+            PraosState(
+              lastSlot,
+              counters,
+              evolving,
+              candidate,
+              epoch,
+              previous,
+              lab,
+              lastEpochBlock
+            ),
+            announcement
+          )
+        }
+      def encode(a: Praos2.State, out: Writer): Unit =
+        val p = a.praos
+        out.arrayHead(9)
+        praosLastSlot.encode(p.lastSlot, out)
+        praosCounters.encode(p.ocertCounters, out)
+        nonce.encode(p.evolvingNonce, out)
+        nonce.encode(p.candidateNonce, out)
+        nonce.encode(p.epochNonce, out)
+        nonce.encode(p.previousEpochNonce, out)
+        nonce.encode(p.labNonce, out)
+        nonce.encode(p.lastEpochBlockNonce, out)
+        praos2Announcement.encode(a.announcement, out)
+      override def check(a: Praos2.State): Option[ConstraintViolation] =
+        praosFields
+          .check(a.praos)
+          .orElse(praos2Announcement.check(a.announcement).map(_.at("announcement")))
+    val versioned = versionedIn(stateLayout)(1, arrayIn(stateLayout, fields))
+    new Codec[Praos2.State]:
+      def decode(n: Node): Decoded[Praos2.State] = versioned.decode(n)
+      def encode(a: Praos2.State, out: Writer): Unit = versioned.encode(a, out)
+      override def check(a: Praos2.State): Option[ConstraintViolation] = stateLayout match
+        case StateLayout.Leios => versioned.check(a)
+        case StateLayout.Node11_1 =>
+          Some(
+            ConstraintViolation(
+              "PolyPraosState",
+              s"a state of the ${StateLayout.Leios.toString} layout",
+              stateLayout.toString
+            )
+          )
+
+  /** The protocol of Dijkstra is the build's: Praos in 11.1 (`ShelleyBlock (Praos c) DijkstraEra`,
+    * ouroboros-consensus 82ecba32 `Cardano/Block.hs:256`), Praos2 in the Leios build (`ShelleyBlock
+    * (Praos2 c) DijkstraEra`, 2416493b `Cardano/Block.hs:277`).
+    */
   private def readChainDep(era: Era)(n: Node): Decoded[ChainDepState] =
     if era == Era.Byron then pbftState.decode(n).map(ChainDepState.PBft(_))
     else if era.usesTPraos then tpraosState.decode(n).map(ChainDepState.TPraos(_))
+    else if era == Era.Dijkstra then
+      stateLayout match
+        case StateLayout.Leios    => praos2State.decode(n).map(ChainDepState.Praos2(_))
+        case StateLayout.Node11_1 => praosState.decode(n).map(ChainDepState.Praos(_))
     else praosState.decode(n).map(ChainDepState.Praos(_))
 
   private def writeChainDep(a: ChainDepState, out: Writer): Unit = a match
     case ChainDepState.PBft(s)   => pbftState.encode(s, out)
     case ChainDepState.TPraos(s) => tpraosState.encode(s, out)
     case ChainDepState.Praos(s)  => praosState.encode(s, out)
+    case ChainDepState.Praos2(s) => praos2State.encode(s, out)
 
   private def checkChainDep(a: ChainDepState): Option[ConstraintViolation] = a match
     case ChainDepState.PBft(s)   => pbftState.check(s)
     case ChainDepState.TPraos(s) => tpraosState.check(s)
     case ChainDepState.Praos(s)  => praosState.check(s)
+    case ChainDepState.Praos2(s) => praos2State.check(s)
 
   /** The chain-dependent state of the era at index `era`: read as the protocol of that era (PBFT,
-    * TPraos or Praos), written as the protocol the value is.
+    * TPraos, Praos or Praos2), written as the protocol the value is.
     */
   val chainDepStateOf: Era => Codec[ChainDepState] =
     eraCodec(readChainDep, writeChainDep, checkChainDep)
