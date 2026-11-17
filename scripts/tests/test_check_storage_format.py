@@ -11,6 +11,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_storage_format as fmt
@@ -338,33 +339,35 @@ class AllowlistTest(unittest.TestCase):
                 self.assertEqual(fmt.outside_format_change(list(paths), pull_request=number + 1), sorted(paths))
                 self.assertEqual(fmt.outside_format_change(['AGENTS.md', *paths], pull_request=number), ['AGENTS.md'])
 
-    def test_the_pull_request_is_read_from_the_event_and_none_otherwise(self):
+    def test_the_pull_request_is_read_from_the_events_and_none_on_a_doubt(self):
         number, paths = next(iter(fmt.ONE_OFF_PATHS.items()))
         with tempfile.TemporaryDirectory() as tmp:
-            event = Path(tmp) / 'event.json'
-            event.write_text(json.dumps({'pull_request': {'number': number}}), encoding='utf-8')
-            self.assertEqual(fmt.event_pull_request(str(event)), number)
-            other = Path(tmp) / 'other.json'
-            other.write_text(json.dumps({'pull_request': {'number': number + 1}}), encoding='utf-8')
-            self.assertEqual(fmt.event_pull_request(str(other)), number + 1)
-            broken = Path(tmp) / 'broken.json'
-            broken.write_text('{', encoding='utf-8')
-            self.assertIsNone(fmt.event_pull_request(str(broken)))
+            def event(name, content):
+                path = Path(tmp) / name
+                path.write_text(content, encoding='utf-8')
+                return str(path)
+            this = event('this.json', json.dumps({'pull_request': {'number': number}}))
+            other = event('other.json', json.dumps({'pull_request': {'number': number + 1}}))
+            self.assertEqual(fmt.event_pull_request(this), number)
+            self.assertIsNone(fmt.event_pull_request(event('broken.json', '{')))
             self.assertIsNone(fmt.event_pull_request(str(Path(tmp) / 'missing.json')))
-            text = Path(tmp) / 'text.json'
-            text.write_text(json.dumps({'pull_request': {'number': str(number)}}), encoding='utf-8')
-            self.assertIsNone(fmt.event_pull_request(str(text)))
-            saved = os.environ.get('GITHUB_EVENT_PATH')
-            try:
-                os.environ['GITHUB_EVENT_PATH'] = str(event)
+            self.assertIsNone(fmt.event_pull_request(event('text.json', json.dumps({'pull_request': {'number': str(number)}}))))
+            self.assertIsNone(fmt.event_pull_request(event('none.json', json.dumps({'action': 'opened'}))))
+            # the environment's event, an --event argument, or both naming one pull request
+            self.assertEqual(fmt.policy_pull_request([], {'GITHUB_EVENT_PATH': this}), number)
+            self.assertEqual(fmt.policy_pull_request(['--event', this], {}), number)
+            self.assertEqual(fmt.policy_pull_request([f'--event={this}'], {'GITHUB_EVENT_PATH': this}), number)
+            # events that disagree, or none, grant nothing
+            self.assertIsNone(fmt.policy_pull_request(['--event', other], {'GITHUB_EVENT_PATH': this}))
+            self.assertIsNone(fmt.policy_pull_request(['--event', this], {'GITHUB_EVENT_PATH': other}))
+            self.assertIsNone(fmt.policy_pull_request([], {}))
+            with mock.patch.dict(os.environ, {'GITHUB_EVENT_PATH': this}), mock.patch.object(sys, 'argv', ['pr_policy.py']):
                 self.assertEqual(fmt.outside_format_change(list(paths)), [])
-                os.environ['GITHUB_EVENT_PATH'] = str(other)
+            with mock.patch.dict(os.environ, {'GITHUB_EVENT_PATH': this}), \
+                    mock.patch.object(sys, 'argv', ['pr_policy.py', '--event', other]):
                 self.assertEqual(fmt.outside_format_change(list(paths)), sorted(paths))
-                del os.environ['GITHUB_EVENT_PATH']
+            with mock.patch.dict(os.environ, {'GITHUB_EVENT_PATH': other}), mock.patch.object(sys, 'argv', ['pr_policy.py']):
                 self.assertEqual(fmt.outside_format_change(list(paths)), sorted(paths))
-            finally:
-                if saved is not None:
-                    os.environ['GITHUB_EVENT_PATH'] = saved
 
     def test_every_file_the_surface_reads_is_inside_the_allowlist(self):
         self.assertEqual([p for p in fmt.surface_paths(ROOT) if not fmt.allowed(p)], [])

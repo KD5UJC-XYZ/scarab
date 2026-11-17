@@ -238,10 +238,30 @@ def allowed(path: str) -> bool:
     return path != NOT_A_FRAGMENT and any(p.fullmatch(path) for p in ALLOWED)
 
 
-def event_pull_request(path: str | None = None) -> int | None:
-    """The number of the pull request the policy check's event names, if there is one (`GITHUB_EVENT_PATH` by
-    default); none when the event is missing, unreadable or names no pull request."""
-    path = path if path is not None else os.environ.get('GITHUB_EVENT_PATH')
+def event_paths(argv=None, environ=None) -> list[str]:
+    """The event files this process was given: `GITHUB_EVENT_PATH`, which GitHub writes for the policy check, and the
+    `--event` argument of `scripts/pr_policy.py`, which overrides it there."""
+    argv = sys.argv[1:] if argv is None else argv
+    environ = os.environ if environ is None else environ
+    given = [environ.get('GITHUB_EVENT_PATH')]
+    for i, arg in enumerate(argv):
+        if arg == '--event' and i + 1 < len(argv):
+            given.append(argv[i + 1])
+        elif arg.startswith('--event='):
+            given.append(arg[len('--event='):])
+    return [p for p in given if p]
+
+
+def policy_pull_request(argv=None, environ=None) -> int | None:
+    """The pull request the policy check is for: the one every event this process was given names; none when there
+    is no event, or the events disagree or name none, so an exception is never granted on a doubt."""
+    numbers = {event_pull_request(p) for p in event_paths(argv, environ)}
+    return numbers.pop() if len(numbers) == 1 else None
+
+
+def event_pull_request(path: str | None) -> int | None:
+    """The number of the pull request the event at `path` names; none when it is missing, unreadable or names no
+    pull request."""
     if not path:
         return None
     try:
@@ -255,8 +275,8 @@ def event_pull_request(path: str | None = None) -> int | None:
 
 def outside_format_change(files, pull_request: int | None = None) -> list[str]:
     """The changed paths that a storage format change may not touch: those outside FORMAT_CHANGE_PATHS and outside
-    the one-off exception of its pull request (by default the one the policy check's event names)."""
-    number = pull_request if pull_request is not None else event_pull_request()
+    the one-off exception of its pull request (by default the one the policy check's events name)."""
+    number = pull_request if pull_request is not None else policy_pull_request()
     once = ONE_OFF_PATHS.get(number, ()) if number is not None else ()
     return sorted(f for f in files if not allowed(f) and f not in once)
 
