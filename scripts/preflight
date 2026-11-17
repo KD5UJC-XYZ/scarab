@@ -8,7 +8,8 @@
 # Every step runs; the exit status is non-zero if any failed, and the failed steps are listed at the end.
 # Without a reachable Docker no step runs: one INCOMPLETE line and exit status 3, never a step result (#560).
 # `--doctor` reports the JDK pin against the JDK image, Docker and the cache on the terminal, writes nothing
-# and exits 0. SCARAB_PREFLIGHT_DOCKER replaces the `docker` command.
+# and exits 0. `--help` prints this description and exits 0; any other argument is refused with exit status 2
+# before any step runs. SCARAB_PREFLIGHT_DOCKER replaces the `docker` command.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -18,6 +19,13 @@ actionlint=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d352068
 docker=${SCARAB_PREFLIGHT_DOCKER:-docker}
 incomplete=3
 failed=()
+
+usage() { sed -n '4,/^set -uo pipefail$/p' "$root/scripts/preflight" | sed '$d' | sed 's/^# \{0,1\}//'; }
+case "$#:${1:-}" in
+  0: | 1:--check | 1:--doctor) ;;
+  1:-h | 1:--help) usage; exit ;;
+  *) printf 'preflight: unknown arguments: %s\n' "$*" >&2; usage >&2; exit 2 ;;
+esac
 
 if [ "${1:-}" = "--doctor" ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/preflight_doctor.py --docker "$docker"
