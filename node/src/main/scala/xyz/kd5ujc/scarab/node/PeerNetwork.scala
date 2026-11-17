@@ -100,6 +100,10 @@ object PeerNetwork:
     *   `useLedgerAfterSlot`: whether and after which slot the node takes ledger peers.
     * @param snapshot
     *   The peer snapshot file of the topology, as the node starts with it.
+    * @param snapshotFile
+    *   The peer snapshot file the topology names, which a reload reads again: the reference's
+    *   `ledgerPeerSnapshotPathVar` (cardano-node 11.1.3 `Run.hs` 371). The network does not read
+    *   it.
     */
   final case class Roots(
       local: List[RootGroupSpec[Addr]],
@@ -107,6 +111,7 @@ object PeerNetwork:
       bootstrap: Option[Vector[Addr]],
       ledger: UseLedgerPeers,
       snapshot: SnapshotUse = SnapshotUse.Unused,
+      snapshotFile: Option[java.nio.file.Path] = None,
       advertise: Map[Addr, Boolean] = Map.empty,
       publicSrv: Vector[(DnsName, Boolean)] = Vector.empty,
       bootstrapSrv: Vector[DnsName] = Vector.empty,
@@ -364,7 +369,8 @@ object PeerNetwork:
               emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotLoaded(s.slot, s.pools.size)))
             case SnapshotUse.Ignored(error) =>
               emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotIgnored(error)))
-            case SnapshotUse.Unused => F.unit
+            // the reference says nothing of a snapshot a runtime reload drops (`Run.hs` 720-722)
+            case SnapshotUse.Dropped(_) | SnapshotUse.Unused => F.unit
         )
     for
       supervisor <- Supervisor[F](await = false)

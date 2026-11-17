@@ -66,8 +66,10 @@ ledger peers off, which is then not read; in GenesisMode, a relay without ledger
 with `null`, from big ledger peers (cardano-node 11.1.3 `TopologyP2P.hs` 66-108).
 `useLedgerAfterSlot` and `peerSnapshotFile` are acted on (ledger peers and big ledger peers, below); `advertise`,
 `trustable` and the valencies feed peer selection and peer sharing; `behindFirewall` is retained in topology metadata.
-SIGHUP reloads the topology. A malformed replacement leaves the active settings running; a valid reload preserves
-original CLI roots and installs the new runtime/governor roots at an acknowledged generation boundary.
+SIGHUP reloads the topology, then reads its `peerSnapshotFile` again on its own, as cardano-node 11.1.3 does
+(`Run.hs` 596-614, 690-757). A malformed replacement leaves the active settings running, and the snapshot is not
+read again; a valid reload preserves original CLI roots and installs the new runtime/governor roots at an
+acknowledged generation boundary.
 
 - **`useLedgerAfterSlot`.** A number above 0: take peers from the ledger once the ledger's tip is at or past that slot;
   `0`: always; below 0 or absent: never (`UseLedgerPeers`). The official Preview file has 119231973.
@@ -75,7 +77,11 @@ original CLI roots and installs the new runtime/governor roots at an acknowledge
   when topology is reloaded while ledger peers are on (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`): in PraosMode
   a file that cannot be read is ignored with a `ledgerPeers` event `snapshotIgnored`; in GenesisMode it stops the node at
   start with a `ConfigError`, as the reference stops; a legacy (version 1, 2) file, a snapshot at the origin, of another network
-  (`NetworkMagic`) or older than `useLedgerAfterSlot` stops the node with a `ConfigError`. The snapshot is used for the
+  (`NetworkMagic`) or older than `useLedgerAfterSlot` stops the node with a `ConfigError`. At a SIGHUP once the node
+  runs, the new topology is installed first; then a file that cannot be read in GenesisMode, or a legacy file, one at
+  the origin or of another network, is dropped and the node goes on without a snapshot, saying nothing, as the
+  reference does, while one older than `useLedgerAfterSlot` keeps the snapshot in force, with a warning. A SIGHUP
+  during start-up keeps the snapshot in force on any of them, as the reference's first handler does. The snapshot is used for the
   stake maps only while it is not older than the ledger's tip: the official Preview file is at slot 123.6 M, so a node whose
   ledger is further ahead takes its peers from the ledger (event `ledgerPeers`, `source`). In GenesisMode, when the
   judgement enters `TooOld`, the monitor waits cancelably for the exact immutable slot and checks both slot and hash;

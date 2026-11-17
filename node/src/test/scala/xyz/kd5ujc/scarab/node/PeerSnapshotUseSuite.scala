@@ -85,6 +85,55 @@ class PeerSnapshotUseSuite extends FunSuite:
     )
   }
 
+  test(
+    "at a runtime reload the snapshot the start refuses is dropped, but for one older than useLedgerAfterSlot"
+  ) {
+    // `oops` with `isStartup` false (`Run.hs` 720-722), and the throw of 755 in either phase
+    import ConsensusMode.{GenesisMode, PraosMode}
+    val runtime = SnapshotPhase.Runtime
+    val missing = Path.of("/nonexistent/peer-snapshot.json")
+    val legacy = file(s"""{"version": 2, "slotNo": 100, "bigLedgerPools": $pools}""")
+    assert(PeerSnapshot.use(Some(missing), 2L, Always, GenesisMode, runtime).exists {
+      case SnapshotUse.Dropped(
+            PeerSnapshotRefusal.UnreadableSnapshot(PeerSnapshotError.Unreadable(_, _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(PeerSnapshot.use(Some(missing), 2L, Always, PraosMode, runtime).exists {
+      case SnapshotUse.Ignored(PeerSnapshotError.Unreadable(_, _)) => true
+      case _                                                       => false
+    })
+    List(PraosMode, GenesisMode).foreach { mode =>
+      assertEquals(
+        PeerSnapshot.use(Some(legacy), 2L, Always, mode, runtime),
+        Right(SnapshotUse.Dropped(PeerSnapshotRefusal.LegacyVersion)),
+        mode.toString
+      )
+      assertEquals(
+        PeerSnapshot.use(Some(v23("origin")), 2L, Always, mode, runtime),
+        Right(SnapshotUse.Dropped(PeerSnapshotRefusal.AtOrigin)),
+        mode.toString
+      )
+      assertEquals(
+        PeerSnapshot.use(Some(v23("100", magic = 764824073L)), 2L, Always, mode, runtime),
+        Right(SnapshotUse.Dropped(PeerSnapshotRefusal.WrongMagic(2L, 764824073L))),
+        mode.toString
+      )
+      assertEquals(
+        PeerSnapshot.use(Some(v23("100")), 2L, after(101), mode, runtime),
+        Left(PeerSnapshotRefusal.TooOld(BigInt(101), BigInt(100))),
+        mode.toString
+      )
+      assert(
+        PeerSnapshot
+          .use(Some(v23("100")), 2L, after(100), mode, runtime)
+          .exists(_.snapshot.isDefined),
+        mode.toString
+      )
+    }
+  }
+
   test("the Leios testnet file is accepted by its topology and refused on another network") {
     val leios = Path.of("fixtures/leios/testnet/config/peer-snapshot.json")
     assert(PeerSnapshot.use(Some(leios), 164L, after(1000)).exists(_.snapshot.isDefined))
