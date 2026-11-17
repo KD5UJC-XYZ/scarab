@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import cats.effect.{IO, Ref}
+import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
@@ -1483,10 +1483,14 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         .allow[ForgeError](
           start.use { first =>
             first.kes.evolveTo(1)
-            IO.blocking(KesFiles.persistWith(f.kes, first.kes, pausing))
-              .start
-              .flatMap { writeBack =>
-                val during = for
+            // the write-back is released and finished before the lock is let go and the directory
+            // removed, however the test ends
+            Resource
+              .make(IO.blocking(KesFiles.persistWith(f.kes, first.kes, pausing)).start)(writeBack =>
+                IO.blocking(resume.countDown()) *> writeBack.join.void
+              )
+              .use { writeBack =>
+                for
                   reached <- IO.race(IO.interruptible(staged.await()), writeBack.join)
                   stage <- bytes(f.next)
                   key <- bytes(f.kes)
@@ -1496,7 +1500,6 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
                   _ <- IO.blocking(resume.countDown())
                   written <- writeBack.joinWithNever
                 yield (reached.isLeft, stage, key, other, stageAfter, keyAfter, written)
-                during.guarantee(IO.blocking(resume.countDown()))
               }
           }
         )
