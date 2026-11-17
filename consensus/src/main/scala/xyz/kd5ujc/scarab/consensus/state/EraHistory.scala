@@ -140,14 +140,24 @@ object EraHistory:
       slotLengthMillis: BigInt,
       hiEpoch: BigInt
   ): Bound =
+    unroundedUpperBound(lo, epochSize, slotLengthMillis, hiEpoch).copy(layout =
+      upperLayout(lo.layout, era, (hiEpoch - lo.epoch).mod(Word64Modulus), epochSize)
+    )
+
+  /** [[upperBound]] of an era with no Peras rounds: its Peras round is [[unroundedLayout]]'s. */
+  def unroundedUpperBound(
+      lo: Bound,
+      epochSize: BigInt,
+      slotLengthMillis: BigInt,
+      hiEpoch: BigInt
+  ): Bound =
     // `countEpochs`, a `Word64` subtraction whose assertion release builds compile out
-    val epochs = (hiEpoch - lo.epoch).mod(Word64Modulus)
-    val slots = inEraSlots(epochs, epochSize)
+    val slots = inEraSlots((hiEpoch - lo.epoch).mod(Word64Modulus), epochSize)
     Bound(
       lo.timePs + slots * slotLengthMillis * PsPerMilli,
       (lo.slot + slots).mod(Word64Modulus),
       hiEpoch,
-      upperLayout(lo.layout, era, epochs, epochSize)
+      unroundedLayout(lo.layout)
     )
 
   /** `slotToEpochBound` (2416493b `Summary.hs:164-171`, 82ecba32 `:148-155`): the first epoch, of
@@ -185,7 +195,10 @@ object EraHistory:
 
   /** The era history from the configuration, every bound in the layout of `layout` 's build: the
     * first era starts at `initBound` ([[originLayout]]) and each era ends where the next begins, at
-    * the bound [[boundAt]] places, with the Peras round of its `mkUpperBound` ([[upperLayout]]).
+    * its `mkUpperBound` from its start ([[upperBound]]: the slot modulo 2^64, the time exact, the
+    * Peras round), as the reference's telescope places each era when it extends into the next
+    * (`whenExtend` of `extendToSlot`, `HardFork/Combinator/State.hs:266-287`, ouroboros-consensus
+    * 2416493b).
     */
   def summary(
       geometry: EpochGeometry,
@@ -211,48 +224,49 @@ object EraHistory:
               case _                            => observed.getOrElse(era, previous)
         acc :+ epoch.max(previous)
       }
-    def bound(epoch: BigInt): Bound = boundAt(geometry, byron, epoch)
     val safe = geometry.stabilityWindow.toBigInt
-    val byronEra = (
+    val size = BigInt(geometry.epochLength)
+    val slotLength = BigInt(geometry.slotLengthMillis)
+    // each era with its parameters and the epoch it ends at, from its start
+    val byronEra = Span(
       Era.Byron,
-      BigInt(0),
-      firstShelley,
-      byron.epochSlots,
-      EraSummary(_, _, byron.epochSlots, byron.slotLengthMillis, byron.k * 2, byron.k * 2, _)
+      Horizon.Params(byron.epochSlots, byron.slotLengthMillis, byron.k * 2, byron.k * 2),
+      _ => firstShelley
     )
-    val shelleyBased = shelleyEpochs.zip(starts).zipWithIndex.map { case ((era, start), i) =>
-      val end =
-        starts.lift(i + 1).getOrElse {
-          // the safe-zone bound of the current era
-          val beyond = tipSlot + 1 + safe - bound(start).slot
-          val size = BigInt(geometry.epochLength)
-          val epochs = (beyond + size - 1) / size
-          start + epochs.max(0)
-        }
-      (
+    val shelleyBased = shelleyEpochs.zipWithIndex.map { (era, i) =>
+      Span(
         era,
-        start,
-        end,
-        BigInt(geometry.epochLength),
-        EraSummary(
-          _,
-          _,
-          BigInt(geometry.epochLength),
-          BigInt(geometry.slotLengthMillis),
-          safe,
-          safe,
-          _
-        )
+        Horizon.Params(size, slotLength, safe, safe),
+        start =>
+          starts.lift(i + 1).getOrElse {
+            // the safe-zone bound of the current era
+            val beyond = tipSlot + 1 + safe - start.slot
+            val epochs = (beyond + size - 1) / size
+            start.epoch + epochs.max(0)
+          }
       )
     }
     (byronEra +: shelleyBased)
-      .foldLeft((originLayout(layout), Vector.empty[EraSummary])) {
-        case ((from, eras), (era, start, end, epochSize, summary)) =>
-          val lo = bound(start).copy(layout = from)
-          val hi = bound(end).copy(layout = upperLayout(from, era, end - start, epochSize))
-          (hi.layout, eras :+ summary(lo, Some(hi), perasRoundLength(layout, era)))
+      .foldLeft((Bound(0, 0, 0, originLayout(layout)), Vector.empty[EraSummary])) {
+        case ((lo, eras), Span(era, params, end)) =>
+          val hi = upperBound(lo, era, params.epochSize, params.slotLengthMillis, end(lo))
+          (
+            hi,
+            eras :+ EraSummary(
+              lo,
+              Some(hi),
+              params.epochSize,
+              params.slotLengthMillis,
+              params.safeZone,
+              params.genesisWindow,
+              perasRoundLength(layout, era)
+            )
+          )
       }
       ._2
+
+  /** An era of [[summary]]: its parameters and the epoch it ends at, from the bound it starts at. */
+  private final case class Span(era: Era, params: Horizon.Params, end: Bound => BigInt)
 
   private def edge(b: Bound): Horizon.Edge = Horizon.Edge(b.timePs, b.slot, b.epoch)
 

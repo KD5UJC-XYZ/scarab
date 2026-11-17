@@ -3,12 +3,21 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.consensus.state.{Bound, Current, MirrorState, PerasRoundNo, Telescope}
+import xyz.kd5ujc.scarab.consensus.state.{
+  Bound,
+  Current,
+  GenesisMirror,
+  MirrorState,
+  MirrorStep,
+  PerasRoundNo,
+  Placement,
+  Telescope
+}
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 
 /** `GetEraStart` (`QueryAnytime`) as the whole answer, `Serialise (Maybe Bound)`, over a chain in
   * Byron whose Shelley starts at epoch 1 (`fixtures/eras`, `TestShelleyHardForkAtEpoch: 1`), under
@@ -139,5 +148,62 @@ class EraStartSuite extends FunSuite:
       answerOf(setup, setup.mirrorStart, interpreter)
         .startsWith("9f" + "83" + "8400000000" + "84" + farShelleyStart + "00"),
       answerOf(setup, setup.mirrorStart, interpreter)
+    )
+  }
+
+  /** A chain of `fixtures/eras` whose Shelley starts at the far epoch, built Shelley-current by the
+    * genesis start ([[GenesisMirror]], over [[EraHistory.summary]]): the Shelley state and its
+    * chain-dependent state are those of the same network with Shelley at epoch 0.
+    */
+  private def farShelleyCurrent(build: ReferenceBuild): (NodeSetup, MirrorState) =
+    val far = shelleyAt(build, farEpoch)
+    val near = shelleyAt(build, "0").mirrorStart
+    val mirror = GenesisMirror
+      .of(
+        far.mirrorEnv(),
+        MirrorStep.nesOf(near).getOrElse(fail("a Shelley-based start")),
+        near.ext.headerState.chainDep.state,
+        near.consensus
+      )
+      .fold(e => fail(e.toString), identity)
+    (far, mirror)
+
+  /** The far Shelley start in `layout`, as the block step places it from Byron's start
+    * ([[MirrorStep.startOf]]): the slot modulo 2^64, the time exact.
+    */
+  private def farStart(setup: NodeSetup, layout: Bound.Layout): Bound =
+    val placement = Placement(setup.geometry, setup.byronHistory, setup.praos.forks)
+    val byronStart = Bound(0, 0, 0, layout)
+    val start = MirrorStep.startOf(placement, Era.Shelley, 0, byronStart)
+    assertEquals(start, Bound(BigInt("34000000000000"), 34, BigInt(farEpoch), layout))
+    start
+
+  test("11.1: a mirror built Shelley-current at the far epoch holds and answers the wrapped start") {
+    val (setup, mirror) = farShelleyCurrent(ReferenceBuild.Release11_1)
+    val start = farStart(setup, Bound.Layout.Node11_1(None))
+    assertEquals(mirror.ext.ledgerState.past.map(_.end), Vector(start))
+    assertEquals(mirror.ext.ledgerState.current.start, start)
+    assertEquals(mirror.ext.headerState.chainDep.current.start, start)
+    assertEquals(answered(setup, mirror, QueryEra.Byron), "81" + "83000000")
+    assertEquals(answered(setup, mirror, QueryEra.Shelley), "81" + "83" + farShelleyStart)
+    assert(
+      answerOf(setup, mirror, interpreter)
+        .startsWith("9f" + "83" + "83000000" + "83" + farShelleyStart),
+      answerOf(setup, mirror, interpreter)
+    )
+  }
+
+  test("Leios: a mirror built Shelley-current at the far epoch holds and answers the wrapped start") {
+    val (setup, mirror) = farShelleyCurrent(ReferenceBuild.LeiosB004fe0c)
+    val start = farStart(setup, Bound.Layout.Leios(PerasRoundNo(Word64.zero)))
+    assertEquals(mirror.ext.ledgerState.past.map(_.end), Vector(start))
+    assertEquals(mirror.ext.ledgerState.current.start, start)
+    assertEquals(mirror.ext.headerState.chainDep.current.start, start)
+    assertEquals(answered(setup, mirror, QueryEra.Byron), "81" + "8400000000")
+    assertEquals(answered(setup, mirror, QueryEra.Shelley), "81" + "84" + farShelleyStart + "00")
+    assert(
+      answerOf(setup, mirror, interpreter)
+        .startsWith("9f" + "83" + "8400000000" + "84" + farShelleyStart + "00"),
+      answerOf(setup, mirror, interpreter)
     )
   }

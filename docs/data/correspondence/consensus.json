@@ -283,7 +283,7 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
    "note": "mkUpperBound whole: the slot the lower bound's plus inEraSlots modulo 2^64 (addSlots), the time the lower bound's plus those slots times the slot length, exact (addRelTime of a NominalDiffTime), the epoch as given and the round by upperLayout; the epoch size and slot length are given by the caller rather than an EraParams. EraStartSuite checks a wrapped bound against bytes derived from the source; as upperLayout, the rounds a Dijkstra end adds have no captured reference bound yet",
-   "digest": "26bac475adbcd463"
+   "digest": "6ca13205cb964c0c"
   },
   "def consensus.state.GenesisMirror.originExt": {
    "upstream": [
@@ -404,6 +404,48 @@
    ],
    "note": "applySafeZone's StandardSafeZone case, with the era's parameters given one by one; no Cardano era has an UnsafeIndefiniteSafeZone in the summary the node answers with. QueryGoldenSuite compares GetInterpreter answers, whose ends it computes, with the reference node's",
    "digest": "f20e5bcbf01f0beb"
+  },
+  "def consensus.state.EraHistory.unroundedUpperBound": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/History/Summary.hs",
+     "symbol": "mkUpperBound",
+     "lines": [
+      126,
+      157
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/History/Summary.hs",
+     "symbol": "mkUpperBound",
+     "lines": [
+      117,
+      141
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/State.hs",
+     "symbol": "whenExtend",
+     "lines": [
+      266,
+      287
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosBoundsEvidenceSuite",
+    "QueryGoldenSuite"
+   ],
+   "note": "mkUpperBound of an era with no Peras rounds, the epoch size and slot length given rather than an EraParams: the slot modulo 2^64, the time exact, the round kept (Leios) or none (11.1). MirrorStep.startOf places an era entered after the start with it, as whenExtend does; LeiosBoundsEvidenceSuite compares that bound with the first Dijkstra state the Leios build wrote, QueryGoldenSuite the GetInterpreter ends with the reference node's",
+   "digest": "5d9020a052fe63f2"
   }
  },
  "glue": [

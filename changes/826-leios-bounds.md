@@ -17,7 +17,8 @@
   is known, as the reference does (`SituatedNext`, `mkUpperBound` of the current era to the
   transition), instead of nothing, in every build: for example Shelley's start while a chain whose
   Shelley begins at a configured epoch is still in Byron.
-- The bounds the node-to-client era history computes (`mkUpperBound`) take their slot as the
+- The era bounds Scarab computes (`mkUpperBound`), those the node-to-client era history answers
+  with and those the mirror holds when it starts a chain or enters an era, take their slot as the
   reference does, the era's slots and their sum with the lower bound's slot modulo 2^64, and their
   time from those slots, in every build: a configured epoch past 2^64 slots no longer makes
   `GetInterpreter` or `GetEraStart` fail to write its answer.

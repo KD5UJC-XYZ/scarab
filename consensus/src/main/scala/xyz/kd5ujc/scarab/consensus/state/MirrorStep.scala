@@ -72,12 +72,14 @@ object MirrorStep:
     * was translated through at once): the configured epoch of the era, else the epoch of the block,
     * not before `previous`, the start of the era that ends there.
     *
-    * The bound is that era's `mkUpperBound` (`whenExtend` of `extendToSlot`, ouroboros-consensus
-    * 2416493b `HardFork/Combinator/State.hs:266-287`, with the parameters of the era that ends), in
-    * the layout of `previous`. Its Peras round is that of an era with no rounds
-    * ([[EraHistory.unroundedLayout]]): the era that ends is one before `era`, and in neither build
-    * does an era before the last have rounds (only Dijkstra, the last, has,
-    * [[EraHistory.perasRoundLength]]); the eras skipped at once have no slots.
+    * The bound is that era's `mkUpperBound` from `previous` (`whenExtend` of `extendToSlot`,
+    * ouroboros-consensus 2416493b `HardFork/Combinator/State.hs:266-287`, with the parameters of
+    * the era that ends; [[EraHistory.unroundedUpperBound]]): the slot modulo 2^64, the time exact,
+    * in the layout of `previous`. The era that ends is Byron when it started before the first
+    * Shelley epoch, with Byron's epoch size and slot length, and a Shelley-based era otherwise, with
+    * theirs; the eras skipped at once have no slots. Its Peras round is that of an era with no
+    * rounds: the era that ends is one before `era`, and in neither build does an era before the
+    * last have rounds (only Dijkstra, the last, has, [[EraHistory.perasRoundLength]]).
     */
   def startOf(placement: Placement, era: Era, slot: BigInt, previous: Bound): Bound =
     val epoch = placement.forks.triggers.get(era) match
@@ -85,9 +87,11 @@ object MirrorStep:
       // Shelley begins where the Byron span ends (`EraHistory.summary`)
       case _ if era == Era.Shelley => placement.geometry.firstShelleyEpoch
       case _                       => placement.geometry.epochOf(slot)
-    placement
-      .bound(epoch.max(previous.epoch))
-      .copy(layout = EraHistory.unroundedLayout(previous.layout))
+    val (epochSize, slotLengthMillis) =
+      if previous.epoch < placement.geometry.firstShelleyEpoch then
+        (placement.byron.epochSlots, placement.byron.slotLengthMillis)
+      else (BigInt(placement.geometry.epochLength), BigInt(placement.geometry.slotLengthMillis))
+    EraHistory.unroundedUpperBound(previous, epochSize, slotLengthMillis, epoch.max(previous.epoch))
 
   /** The telescope with `next` as the state of `era`. In the era the telescope is in, the state is
     * replaced; in a later one, the current era ends at `start` and the eras between (a state
