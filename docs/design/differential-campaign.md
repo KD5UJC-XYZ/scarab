@@ -476,18 +476,37 @@ the campaign leads to is its own change at its own level.
 | Stage | Delivers | Jump gate |
 |---|---|---|
 | S0 | This document; its claims checked independently. | The review's check of §3 at the pins, and the owner's answers to §10. |
-| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The refusal corpus judged again, all conclusive and agreeing, eras before Conway through their adapters; in each era, Shelley to Conway: the coverage minimums, a probe failing the phase-1 measure and another rule, and five accepted probes then a conflicting one, replayed offline to the same verdicts; the same-slot rule (§6) tested on recorded tip sequences, and no probe of the run judged inside its window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
-| S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | The coverage minimums for every cell of era and phase-1 family; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
-| S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | The coverage minimums for every cell of Plutus language, protocol version the cluster reaches and script purpose. |
-| S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11 and N14. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; the coverage minimums for every block family; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
-| S5 | Nightly discovery on the private runner under §8, with its budget; the period summaries and their dated evidence rows; the compatibility register component for the campaign. | Seven nightly runs within budget, every cell of S1 to S4 at its coverage minimums, and no disagreement the triage traced to the campaign. Then #922's acceptance. |
+| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The committed refusal corpus judged again, every case conclusive and in agreement, each era before Conway through its adapter; every S1 cell of the coverage matrix (below), the measure and sequence cells replayed offline to the same verdicts; the same-slot rule (§6) tested on recorded tip sequences, and no probe of the run judged inside its window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
+| S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | Every S2 cell of the coverage matrix; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
+| S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | Every S3 cell of the coverage matrix. |
+| S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11 and N14. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; every S4 cell of the coverage matrix; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
+| S5 | Nightly discovery on the private runner under §8, with its budget; the announcements, the results after clearance and their dated evidence rows; the compatibility register component for the campaign. | Seven nightly runs within budget, every cell of the coverage matrix met, and no disagreement the triage traced to the campaign. Then #922's acceptance. |
 
-**Coverage minimums.** A cell is an era and an input family (§5) a stage covers. Per cell, a gate requires at least
-20 conclusive accepted and 20 conclusive refused probes in agreement, where the family has both (for a
-chain-selection family, 10 forks with equal selected tips), and at most 5% of the cell's probes inconclusive. The
-ceiling is fixed here, not taken from a measurement. A cell below its minimums is reported `incomplete`
-([CNF-2](../design-rules.md#cnf-2)), and a gate does not pass while a cell it names is incomplete. The minimums and
-the ceiling are configuration (§10, Q6).
+**Coverage matrix.** A cell is what a gate counts: the stage's key (an era, or for S3 a language, a protocol version
+and a purpose) and one family. Its classes are the verdicts its family is built to reach: `Accepted`, `Refused`,
+`Ended` (§4) and, for a chain-selection family, `Selected`. A probe counts for a class when both nodes give that class
+and agree (§4). Each class a cell has needs a nonzero minimum: 20 agreeing verdicts of `Accepted`, `Refused` or
+`Ended`, and 10 forks with equal selected tips for `Selected`. The inconclusive ceiling is 5% of the cell's attempts,
+retries included: every attempt counts once, a probe retried after a moved bracket once per attempt, and an attempt is
+inconclusive when it ends `NoVerdict`. A cell short of any class's minimum, or over the ceiling, is `incomplete`
+([CNF-2](../design-rules.md#cnf-2)), and a gate does not pass while a cell it names is incomplete. The minimums and the
+ceiling are configuration (§10, Q6).
+
+| Stage | Key | Families | Classes |
+|---|---|---|---|
+| S1 | era, Shelley to Conway | valid load (`eraload.py`) | `Accepted` |
+| S1 | era | refusals (`refusalcases.py`, `refusalcoverage.py`) | `Refused` |
+| S1 | era | a probe failing the phase-1 measure and another rule | `Refused` |
+| S1 | era | an accepted sequence, then a probe that conflicts with it | `Accepted`, `Refused` |
+| S2 | era | payments and values; certificates; withdrawals; validity intervals; fees and sizes; collateral (Alonzo on); governance and the first target (Conway) | `Accepted`, `Refused` |
+| S2 | era | malformed encodings | `Accepted`, `Refused`, `Ended` |
+| S3 | language, protocol version, purpose (V1 and V2: spending, minting, certifying, rewarding; V3 also voting and proposing) | scripts from `TermGen` | `Accepted`, `Refused` |
+| S4 | era | header fields (TPraos version, size, declared body size, VRF, leader proof, KES, certificate, previous hash, block number, slot) | `Accepted`, `Ended` |
+| S4 | era | bodies and sizes; transactions in blocks | `Accepted`, `Refused` |
+| S4 | era transition | the new era's first block; the old era's block after the boundary | `Accepted`, and `Refused` or `Ended` as S4 finds (N9) |
+| S4 | era | a Praos header's declared version | the classes S4 finds (N14), each with its minimum |
+| S4 | era | undecodable blocks | `Ended` |
+| S4 | era | forks of different and of equal length | `Selected` |
 
 ### 9.2 Budget and the evidence row
 
@@ -546,11 +565,11 @@ runs; the seeds. Raw run artifacts are not published.
 - **Q5. Where does the injector live?** Recommendation: a `tools` program ([TOOL-1](../design-rules.md#tool-1)) that
   reuses Scarab's node-to-node servers, `BlockBuilder` and the forger's signing, with a raw-bytes path for blocks Scarab
   cannot decode; not a Python reimplementation of the mini-protocols.
-- **Q6. What are the nightly budget, the period and its quotas, the coverage minimums and the inconclusive ceiling?**
-  Recommendation: §9.2's budget, one 90-minute job with a weekly longer run; a calendar month as the period, its
-  announcement published on a fixed day of the next, and an embargo of 90 days before its results may be released; and
-  §9.1's minimums, 20 accepted and 20 refused conclusive probes per cell (10 forks per chain-selection family), with
-  at most 5% inconclusive. These numbers are this document's proposal.
+- **Q6. What are the nightly budget, the period and its quotas, the coverage matrix's minimums and the inconclusive
+  ceiling?** Recommendation: §9.2's budget, one 90-minute job with a weekly longer run; a calendar month as the
+  period, its announcement published on a fixed day of the next, and an embargo of 90 days before its results may be
+  released; and §9.1's minimums, 20 agreeing verdicts per class and cell (10 forks for `Selected`), with at most 5% of
+  attempts inconclusive. These numbers are this document's proposal.
 - **Q7. How are timing-dependent refusals handled?** The reference refuses a transaction that takes too long to
   validate, with a text that holds the duration (R5); Scarab has no such timeout (#340), and the text cannot be
   compared exactly. Recommendation: the campaign keeps generated work far below the limit, counts such a refusal as
