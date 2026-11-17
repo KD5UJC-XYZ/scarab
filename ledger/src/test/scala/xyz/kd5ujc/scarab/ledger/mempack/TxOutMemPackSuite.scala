@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Alonzo,
   Babbage,
   Conway,
+  Dijkstra,
   EraTag,
   Mary,
   Shelley,
@@ -477,22 +478,24 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
         .map(_.toMap)
     }
 
-  private val genNativeScript: Gen[Bytes] = for
+  /** A native script; with `guards`, Dijkstra's, which may hold a guard. */
+  private def genNativeScript(guards: Boolean): Gen[Bytes] = for
     h1 <- genBytes(28)
     h2 <- genBytes(28)
-    shape <- Gen.choose(0, 2)
+    shape <- Gen.choose(0, if guards then 3 else 2)
   yield
     val sig1 = hex("8200581c") ++ h1
     val sig2 = hex("8200581c") ++ h2
     shape match
       case 0 => sig1
       case 1 => hex("820182") ++ sig1 ++ sig2
-      case _ => hex("82041a000f4240") // [4, slot]: invalid before
+      case 2 => hex("82041a000f4240") // [4, slot]: invalid before
+      case _ => hex("820182") ++ sig1 ++ hex("82068200581c") ++ h2 // and [6, key credential]
 
-  private def genScript(languages: Int): Gen[RefScript] =
+  private def genScript(languages: Int, guards: Boolean): Gen[RefScript] =
     val plutus = (1 to languages).map(l => ScriptKind.values.find(_.tag == l).get)
     Gen.oneOf(
-      genNativeScript.map(RefScript(ScriptKind.Native, _)),
+      genNativeScript(guards).map(RefScript(ScriptKind.Native, _)),
       for
         k <- Gen.oneOf(plutus)
         b <- Gen.choose(1, 300).flatMap(genBytes)
@@ -511,14 +514,16 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
       assets: Boolean,
       hashes: Boolean,
       inline: Boolean,
-      languages: Int
+      languages: Int,
+      guards: Boolean = false
   ): Gen[TxOutParts] =
     for
       address <- genAddress
       coin <- genCoin
       as <- if assets then genAssets else Gen.const(Map.empty[Bytes, Map[Bytes, BigInt]])
       datum <- genDatum(hashes, inline)
-      script <- if languages == 0 then Gen.const(None) else Gen.option(genScript(languages))
+      script <-
+        if languages == 0 then Gen.const(None) else Gen.option(genScript(languages, guards))
     yield TxOutParts(address, Value(coin, as), datum, script)
 
   private def era[E <: EraTag](
@@ -527,9 +532,11 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
       assets: Boolean,
       hashes: Boolean,
       inline: Boolean,
-      languages: Int
+      languages: Int,
+      guards: Boolean = false,
+      readBack: TxOut => Boolean = out => TxOut.fromBytes(out.raw) == Right(out)
   )(using ShelleyBasedEra[E]): Unit =
-    val gen = genParts(assets, hashes, inline, languages)
+    val gen = genParts(assets, hashes, inline, languages, guards)
 
     property(s"$name: parts pack and unpack to themselves") {
       forAll(gen) { p =>
@@ -539,14 +546,14 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
 
     property(s"$name: the output's canonical CBOR reads back, and its parts are the parts") {
       forAll(gen) { p =>
-        val out = right(TxOutMemPack.toTxOut(p))
-        TxOut.fromBytes(out.raw) == Right(out) && TxOutMemPack.parts(out) == Right(p)
+        val out = right(TxOutMemPack.toTxOutOf[E](p))
+        readBack(out) && TxOutMemPack.partsOf[E](out) == Right(p)
       }
     }
 
     property(s"$name: an output packs and unpacks to itself, and packing is stable") {
       forAll(gen) { p =>
-        val out = right(TxOutMemPack.toTxOut(p))
+        val out = right(TxOutMemPack.toTxOutOf[E](p))
         val bytes = right(TxOutMemPack.encode[E](out))
         TxOutMemPack.decode[E](bytes) == Right(out) && TxOutMemPack.encode[E](out) == Right(bytes)
       }
@@ -604,6 +611,18 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
   era[Alonzo]("Alonzo", addr28 = true, assets = true, hashes = true, inline = false, languages = 0)
   era[Babbage]("Babbage", addr28 = true, assets = true, hashes = true, inline = true, languages = 2)
   era[Conway]("Conway", addr28 = true, assets = true, hashes = true, inline = true, languages = 3)
+  // Dijkstra's languages and native scripts with guards; its canonical output read back by the
+  // era's own output, which refuses a stored output it does not give back
+  era[Dijkstra](
+    "Dijkstra",
+    addr28 = true,
+    assets = true,
+    hashes = true,
+    inline = true,
+    languages = 4,
+    guards = true,
+    readBack = out => xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.fromStored(out).isRight
+  )
 
   property("the decoder returns a typed failure or a value for any bytes, and never throws") {
     forAll(Gen.choose(0, 120).flatMap(genBytes)) { b =>

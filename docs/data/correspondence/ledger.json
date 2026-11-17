@@ -9710,6 +9710,13 @@
     "object ledger.era.dijkstra.DijkstraTxCert",
     "object ledger.era.dijkstra.DijkstraTxCertUpgradeError"
    ]
+  },
+  {
+   "reason": "the MemPack output's conversions in an era: the flat output the store keeps to the parts MemPack packs, its reference script read from the output's bytes as the era reads one, and back, a native script kept as the stored output keeps it; the reference packs and unpacks the era's own output (`MemPack (BabbageTxOut era)`) and has no counterpart (#826)",
+   "definitions": [
+    "def ledger.mempack.TxOutMemPack.partsOf",
+    "def ledger.mempack.TxOutMemPack.toTxOutOf"
+   ]
   }
  ]
 }
