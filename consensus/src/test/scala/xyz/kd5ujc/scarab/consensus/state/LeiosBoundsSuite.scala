@@ -53,7 +53,8 @@ class LeiosBoundsSuite extends FunSuite:
     assertEquals(EraHistory.upperLayout(leios(-1L), Era.Dijkstra, 90), leios(0))
     // an era with no rounds keeps the lower bound's next round
     assertEquals(EraHistory.upperLayout(leios(5), Era.Conway, 1000), leios(5))
-    // the 11.1 line: no era has rounds, so the round is `NoPerasEnabled` (82ecba32 `Summary.hs:130`)
+    // the 11.1 line: no era has rounds, so the round is `NoPerasEnabled` (82ecba32
+    // `Summary.hs:130`)
     assertEquals(
       EraHistory.upperLayout(Bound.Layout.Node11_1(Some(round(3))), Era.Dijkstra, 900),
       none

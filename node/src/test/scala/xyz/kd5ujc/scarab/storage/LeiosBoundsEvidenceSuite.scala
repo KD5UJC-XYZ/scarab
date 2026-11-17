@@ -6,7 +6,9 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.consensus.state.{
   Bound,
+  ByronMirror,
   ExtLedgerState,
+  MirrorProvenance,
   MirrorState,
   MirrorStep,
   Past,
@@ -15,6 +17,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   PerasState,
   Placement
 }
+import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.ntc.{CborOut, EraHistory}
@@ -92,7 +95,7 @@ class LeiosBoundsEvidenceSuite extends FunSuite:
   }
 
   test(
-    "Dijkstra's start, placed by the block step from Conway's, is the captured first Dijkstra state's"
+    "Dijkstra's start, placed by the block step from Conway's, is the first Dijkstra state's"
   ) {
     val conway =
       HaskellLedgerFile
@@ -169,4 +172,50 @@ class LeiosBoundsEvidenceSuite extends FunSuite:
       summaries.map(s => items(s).map(items(_).size)),
       Vector.fill(summaries.size)(Vector(3, 3, 4))
     )
+  }
+
+  test("leaving Byron in the Leios layout: the hand-over places Conway's start in the layout") {
+    // a chain of this network started in Byron (the Byron start of the build's layout), handed over
+    // by the devnet's block of slot 195: `startOf` from Byron's start, the layout carried
+    val byron = ByronMirror
+      .of(setup.mirrorEnv(), None, start.protocol.dep, start.consensus, MirrorProvenance.complete)
+      .fold(e => fail(e.toString), identity)
+    assertEquals(byron.ext.layout, start.ext.layout)
+    val block = Block.decode(
+      Bytes.wrap(JFiles.readAllBytes(fixture.resolve("conway-195/block"))),
+      setup.geometry.byron.epochSlots
+    ) match
+      case Right(b: Block.Shelley) => b
+      case other                   => fail(s"not a Shelley-based block: $other")
+    val after = MirrorStep
+      .handover(
+        byron,
+        placement,
+        block,
+        MirrorStep.nesOf(start).getOrElse(fail("expected a Shelley-based state")),
+        start.protocol,
+        start.consensus
+      )
+      .fold(e => fail(e.toString), identity)
+    assertEquals(after.ext.layout, start.ext.layout)
+    assertEquals(after.ext.ledgerState.past, start.ext.ledgerState.past)
+    assertEquals(after.ext.ledgerState.current.start, Bound(0, 0, 0, round0))
+    assertEquals(after.ext.headerState.chainDep.past, start.ext.headerState.chainDep.past)
+    assertEquals(after.ext.headerState.chainDep.current.start, Bound(0, 0, 0, round0))
+  }
+
+  test(
+    "GetEraStart's bound: four items in the Leios layout, three in 11.1's unless it has a round"
+  ) {
+    // `Serialise Bound` (2416493b `Summary.hs:573-581`; 82ecba32 `Summary.hs:526-538`)
+    def written(layout: Bound.Layout) =
+      CborOut.build(EraHistory.bound(_, Bound(BigInt("20000000000000"), 200, 1, layout)))
+    val three = PerasRoundNo(Word64.fromUnsigned(3L))
+    assertEquals(written(Bound.Layout.Leios(three)), hex("84 1b000012309ce54000 18c8 01 03"))
+    assertEquals(written(round0), hex("84 1b000012309ce54000 18c8 01 00"))
+    assertEquals(
+      written(Bound.Layout.Node11_1(Some(three))),
+      hex("84 1b000012309ce54000 18c8 01 03")
+    )
+    assertEquals(written(Bound.Layout.Node11_1(None)), hex("83 1b000012309ce54000 18c8 01"))
   }

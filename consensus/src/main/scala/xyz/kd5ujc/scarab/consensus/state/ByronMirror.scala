@@ -18,9 +18,11 @@ import xyz.kd5ujc.scarab.protocol.Era
   * state is the one the reference starts a Byron chain from, no epoch context and no certificate
   * (`initPerasState`, ouroboros-consensus 2416493b `Ledger/Peras.hs:56-71`, kept by
   * `injectInitialExtLedgerState`, `HardFork/Combinator/Embed/Nary.hs:347-357`). Ticking through
-  * Byron keeps it ([[GenesisMirror.originExt]]): an epoch of an era with no Peras rounds embeds no
-  * epoch context (`embedBoundedEpochContext`, `Peras/Context.hs:793-829`), and no Byron block
-  * carries a certificate.
+  * Byron keeps it ([[GenesisMirror.originExt]]): an epoch of an era with no Peras rounds has no
+  * round information (`epochToPerasRoundInfo` needs `ensurePerasEnabled`,
+  * `HardFork/History/Qry.hs:276-277,726-755`), so the tick embeds no epoch context
+  * (`embedBoundedEpochContext`, `Peras/Context.hs:793-829`), and no Byron block carries a
+  * certificate.
   */
 object ByronMirror:
 
