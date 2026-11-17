@@ -20,7 +20,9 @@ a "group" bit (for example 0640) starts with a `keyFileGroupAccess` warning, and
 key is checked, and nothing is checked on a file system without POSIX permissions. Unlike the reference the node also
 locks a hidden file for the KES key (`--key-lock on`, the default), so a second Scarab instance on the same key
 paths stops with an `InstanceLocked` error even with another `--db`; `--key-lock off` skips the lock (for a key
-directory the node cannot write to, which the KES write-back needs anyway). The lock file is `.kes.skey.scarab-lock` beside a key at `keys/kes.skey`. When
+directory the node cannot write to, which the KES write-back needs anyway). The lock is taken before any credential
+file is read, so the second instance reads none, and does not finish or remove a key replacement the first is
+writing (see "Rotating the KES key"). The lock file is `.kes.skey.scarab-lock` beside a key at `keys/kes.skey`. When
 the key's directory is a symbolic link, as `current` is in the rotation layout below, the file sits beside the link
 instead, in the directory that holds it, and is named after both (`keys/.current.kes.skey.scarab-lock` for
 `keys/current/kes.skey`): switching the link and removing the old generation neither moves it nor removes it. The

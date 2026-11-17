@@ -2,13 +2,14 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{IO, Ref}
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters.*
 import scala.concurrent.duration.*
@@ -28,12 +29,13 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.TestLedger.Key
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 /** KES key persistence, erasure and rotation (H2a, #116): the evolved key is written back and its
   * predecessor overwritten; a crash at any step leaves a usable key; SIGHUP's reload switches only
   * to credentials the chain would accept.
   */
-class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
+class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFixture:
   // ---- fixtures
 
   private def be8(n: Long) = Array.tabulate[Byte](8)(i => (n >> (8 * (7 - i))).toByte)
@@ -1451,6 +1453,66 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           Set("vrf.skey", "node.cert", "moved-away") ++ held.map(_.getFileName.toString)
         )
       }
+    }
+  }
+
+  test(
+    "a second start while the first instance stages its evolved key is refused before it reads a file"
+  ) {
+    val p = pool(kesStart = 0, seed = 80)
+    withDir { f =>
+      f.installPool(p)
+      // the first instance's write-back stops once its stage is written, before it is forced, until
+      // the second start is over
+      val staged = new CountDownLatch(1)
+      val resume = new CountDownLatch(1)
+      val pausing = new Swapping:
+        override def checkpoint(at: KesFileBoundary): Unit =
+          if at == KesFileBoundary.StagedWriteCompleted then
+            staged.countDown()
+            resume.await()
+      def start(using Raise[IO, ForgeError]) =
+        KeyGuard.credentials[IO](f.vrf, f.kes, f.cert, lock = true)
+      def second: IO[Option[ForgeError]] =
+        Handle
+          .allow[ForgeError](start.use_.as(Option.empty[ForgeError]))
+          .rescue(e => IO.pure(Some(e)))
+      def bytes(file: Path): IO[Option[Bytes]] =
+        IO.blocking(Option.when(Files.exists(file))(Bytes.fromArray(Files.readAllBytes(file))))
+      Handle
+        .allow[ForgeError](
+          start.use { first =>
+            first.kes.evolveTo(1)
+            IO.blocking(KesFiles.persistWith(f.kes, first.kes, pausing))
+              .start
+              .flatMap { writeBack =>
+                val during = for
+                  reached <- IO.race(IO.interruptible(staged.await()), writeBack.join)
+                  stage <- bytes(f.next)
+                  key <- bytes(f.kes)
+                  other <- second
+                  stageAfter <- bytes(f.next)
+                  keyAfter <- bytes(f.kes)
+                  _ <- IO.blocking(resume.countDown())
+                  written <- writeBack.joinWithNever
+                yield (reached.isLeft, stage, key, other, stageAfter, keyAfter, written)
+                during.guarantee(IO.blocking(resume.countDown()))
+              }
+          }
+        )
+        .rescue(e => IO.raiseError(new AssertionError(e.message)))
+        .map { case (reached, stage, key, other, stageAfter, keyAfter, written) =>
+          assert(reached, "the first instance's write-back ended before it staged its key")
+          assert(stage.isDefined, "the stage is on disk while the second instance starts")
+          other match
+            case Some(ForgeError.KeyFile(file, ForgeKeyProblem.InstanceLocked(_))) =>
+              assertEquals(file, f.kes.toString)
+            case found => fail(s"expected the second start refused by the lock, got $found")
+          assertEquals(stageAfter, stage, "the second start left the stage as it was")
+          assertEquals(keyAfter, key, "the second start left the key file as it was")
+          assertEquals(written, Persisted.Written(WriteProtocol.Exchanged))
+          assertEquals(f.onDisk.period, 1)
+        }
     }
   }
 

@@ -66,11 +66,11 @@ object KeyFilePermissions:
       }
 
 /** The credentials guard of a forging node: the VRF key's permission check at start-up and, unless
-  * switched off, an exclusive lock for the KES key file for the node's lifetime. The reference has
-  * no such lock (see the improvement recorded in `docs/implementer-notes.md`): the lock only stops a
-  * second Scarab instance that uses these key files, whatever its `--db`. It is held on a stable
-  * hidden file ([[lockFile]]), never unlinked, and the operating system drops it when the process
-  * ends.
+  * switched off, an exclusive lock for the KES key file, taken before any credential file is read
+  * and held for the node's lifetime. The reference has no such lock (see the improvement recorded
+  * in `docs/implementer-notes.md`): the lock only stops a second Scarab instance that uses these
+  * key files, whatever its `--db`. It is held on a stable hidden file ([[lockFile]]), never
+  * unlinked, and the operating system drops it when the process ends.
   */
 object KeyGuard:
   /** The lock's file for the KES key `kes`, as named on the command line. When the directory the
@@ -125,6 +125,21 @@ object KeyGuard:
           events.emit(ForgeEvent.KeyFileGroupAccess(vrf.toString, mode))
         case KeyFileAccess.OwnerOnly | KeyFileAccess.NotChecked => F.unit
       }
+
+  /** The pool's credentials as a start reads them ([[KeyFiles.load]], which first puts right a key
+    * file a crash left half-replaced), under the lock (`lock` on). The lock comes first: a second
+    * instance on the same key files is refused before it reads any of them, so it never takes for a
+    * crash's leftover the replacement the running instance is writing, and never finishes or erases
+    * it.
+    */
+  def credentials[F[_]: Sync](vrf: Path, kes: Path, opCert: Path, lock: Boolean)(using
+      Raise[F, ForgeError]
+  ): Resource[F, PoolCredentials] =
+    val F = Sync[F]
+    held(kes, lock) *> Resource.eval(
+      F.blocking(KeyFiles.load(vrf, kes, opCert))
+        .flatMap(_.fold(_.raise[F, PoolCredentials], F.pure))
+    )
 
   /** The lock for the KES key alone: the lock's file it holds ([[lockFile]], found once), or none
     * with `lock` off.
