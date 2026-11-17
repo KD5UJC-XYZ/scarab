@@ -47,127 +47,18 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+def module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
 # ---------------------------------------------------------------- CBOR (navigation with offsets)
 
-
-def head(b, i):
-    ib = b[i]
-    major, ai = ib >> 5, ib & 31
-    i += 1
-    if ai < 24:
-        return major, ai, i
-    width = {24: 1, 25: 2, 26: 4, 27: 8}.get(ai)
-    if width is None:
-        if ai == 31:
-            return major, None, i
-        raise ValueError(f"reserved additional information {ai} at {i - 1}")
-    return major, int.from_bytes(b[i:i + width], "big"), i + width
-
-
-def skip(b, i):
-    """The end of the item at `i`, without recursion: `open` holds, for each container being read,
-    the count of its items still to read (None for an indefinite one, which ends at its break)."""
-    open = [1]
-
-    def finished():
-        while open and open[-1] is not None:
-            open[-1] -= 1
-            if open[-1] > 0:
-                return
-            open.pop()
-
-    while open:
-        if open[-1] is None and b[i] == 0xFF:
-            i += 1
-            open.pop()
-            finished()
-            continue
-        major, n, i = head(b, i)
-        if major == 6:
-            continue  # the tagged item stands in for its tag
-        if major in (2, 3):
-            if n is None:
-                while b[i] != 0xFF:
-                    _, m, i = head(b, i)
-                    i += m
-                i += 1
-            else:
-                i += n
-            finished()
-        elif major in (4, 5):
-            count = None if n is None else n * (major - 3)
-            if count == 0:
-                finished()
-            else:
-                open.append(count)
-        else:
-            finished()
-    return i
-
-
-def untag(b, i, tags=(258,)):
-    major, n, j = head(b, i)
-    while major == 6 and n in tags:
-        i = j
-        major, n, j = head(b, i)
-    return i
-
-
-def items(b, i):
-    """Spans of the elements of the array at `i` (a set's tag 258 is stepped over)."""
-    i = untag(b, i)
-    major, n, i = head(b, i)
-    if major != 4:
-        raise ValueError(f"not an array at {i}")
-    out = []
-    while (n is None and b[i] != 0xFF) or (n is not None and len(out) < n):
-        j = skip(b, i)
-        out.append((i, j))
-        i = j
-    return out
-
-
-def entries(b, i):
-    """Spans of the keys and values of the map at `i`."""
-    i = untag(b, i, (259,))
-    major, n, i = head(b, i)
-    if major != 5:
-        raise ValueError(f"not a map at {i}")
-    out = []
-    while (n is None and b[i] != 0xFF) or (n is not None and len(out) < n):
-        k = skip(b, i)
-        v = skip(b, k)
-        out.append(((i, k), (k, v)))
-        i = v
-    return out
-
-
-def value(b, i):
-    """A small item as a Python value: integers, byte and text strings, arrays, maps (as pair
-    lists), tags (as pairs), simple values."""
-    major, n, j = head(b, i)
-    if major == 0:
-        return n
-    if major == 1:
-        return -1 - n
-    if major in (2, 3):
-        if n is None:
-            parts, k = [], j
-            while b[k] != 0xFF:
-                _, m, k = head(b, k)
-                parts.append(bytes(b[k:k + m]))
-                k += m
-            raw = b"".join(parts)
-        else:
-            raw = bytes(b[j:j + n])
-        return raw if major == 2 else raw.decode()
-    if major == 4:
-        return [value(b, s) for s, _ in items(b, i)]
-    if major == 5:
-        return [(value(b, ks), value(b, vs)) for (ks, _), (vs, _) in entries(b, i)]
-    if major == 6:
-        return ("tag", n, value(b, j))
-    return {20: False, 21: True, 22: None}.get(n, ("simple", n))
+CBOR = module("leios_cbor", os.path.join(HERE, "leios_cbor.py"))
+head, skip, untag, items, entries, value, field = (CBOR.head, CBOR.skip, CBOR.untag, CBOR.items, CBOR.entries,
+                                                   CBOR.value, CBOR.field)
 
 
 def jsonl(path):
@@ -182,14 +73,6 @@ def read_json(path):
 
 def blake2b(raw, size=32):
     return hashlib.blake2b(raw, digest_size=size).digest()
-
-
-def field(b, span, key):
-    """The span of a key's value in the map at `span`, or None."""
-    for (ks, _), v in entries(b, span[0]):
-        if value(b, ks) == key:
-            return v
-    return None
 
 
 # ---------------------------------------------------------------- blocks and transactions
@@ -709,13 +592,6 @@ def purpose_of(language, arguments):
     return SCRIPT_INFO[constructor(context, info)[0]]
 
 
-def module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    loaded = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(loaded)
-    return loaded
-
-
 # The chain context harness's runner (its record and the collections every level of an answer must hold), and the
 # recorded-request runner, whose check of the generated-program oracle's image the verdicts reuse.
 CHAIN = module("leios_chain_run", os.path.join(HERE, "chain", "run.py"))
@@ -730,12 +606,14 @@ def derive(chain, results):
     the top level and in each sub-transaction, becomes a request of the generated-program oracle with its own script,
     arguments, cost model and the redeemer's execution units as its budget. A case the reference did not collect at
     every level, with an explicit list of contexts, is refused (`levels`)."""
+    if not chain["cases"]:
+        raise ValueError("no case")
     if [c["name"] for c in chain["cases"]] != [r["name"] for r in results]:
         raise ValueError("the results are not those of the cases")
     models, rows = [], []
     for case, result in zip(chain["cases"], results):
         try:
-            collections = CHAIN.levels(result["result"])
+            collections = CHAIN.levels(result["result"], CBOR.subtransactions(bytes.fromhex(case["bytes"])))
         except ValueError as refused:
             raise ValueError(f"{case['name']}: {refused}") from None
         for n, contexts in enumerate(collections):
@@ -781,7 +659,8 @@ def verdict_sources():
     root = pathlib.Path(HERE).parents[2]
     harness = root / release["harness"]
     return [harness / "Main.hs", harness / "Dockerfile", pathlib.Path(HERE) / "leios_chain_scan.py",
-            pathlib.Path(HERE) / "chain" / "run.py", root / "scripts/oracle/plutus/generated/run.py",
+            pathlib.Path(HERE) / "leios_cbor.py", pathlib.Path(HERE) / "chain" / "run.py",
+            root / "scripts/oracle/plutus/generated/run.py",
             root / "scripts/oracle/plutus/recorded/run.py"]
 
 
@@ -802,10 +681,23 @@ def verify_verdicts(out, contexts):
     if (out / "models.jsonl").read_text() != dumped(models) or (out / "requests.jsonl").read_text() != dumped(rows):
         raise ValueError("the requests are not those the retained contexts give")
     verdicts = jsonl(out / "verdicts.jsonl")
-    if [r["id"] for r in rows] != [v["id"] for v in verdicts] or len(rows) != manifest["requests"]:
+    if [r["id"] for r in rows] != [v["id"] for v in verdicts]:
         raise ValueError("a missing, extra or reordered verdict")
-    release = RECORDED.GENERATED.RELEASES[RELEASE]
     provenance = read_json(out / "provenance.json")
+    transactions = len({r["tx"] for r in rows})
+    if transactions != len(chain["cases"]):
+        raise ValueError(f"requests of {transactions} transactions for {len(chain['cases'])} cases")
+    for where, record in (("manifest", manifest), ("provenance", provenance)):
+        counted = (record.get("requests"), record.get("transactions"))
+        if counted != (len(rows), transactions):
+            raise ValueError(f"the {where} counts {counted} requests and transactions, the files "
+                             f"{(len(rows), transactions)}")
+    if provenance.get("network") != "none":
+        raise ValueError("the provenance does not say the oracle ran without network")
+    if (provenance.get("contexts") != str((contexts / "results.json").resolve().relative_to(root))
+            or provenance.get("contextsSha256") != RECORDED.GENERATED.sha256(contexts / "results.json")):
+        raise ValueError("the provenance does not name the retained contexts by their digest")
+    release = RECORDED.GENERATED.RELEASES[RELEASE]
     image = RECORDED.build_files(provenance.get("imageFilesSha256"), "provenance.json")
     RECORDED.build_files(manifest.get("imageFilesSha256"), "manifest.json")
     if (re.fullmatch(r"sha256:[0-9a-f]{64}", str(provenance.get("imageId"))) is None
@@ -875,19 +767,19 @@ def verdicts(args):
         "requests": len(rows),
         "transactions": manifest["transactions"],
         "network": "none",
-        "sourceNetwork": "the public Leios testnet's chain, network magic 164 "
-                         "(fixtures/reference/leios-testnet-chain-contexts)",
         "imageId": image_id,
         "baseImageId": manifest["oracleBaseImage"],
         "imageFilesSha256": binding["imageFilesSha256"],
         "oracleBinarySha256": binding["imageFilesSha256"][RECORDED.IMAGE_BINARY],
         "harnessSha256": manifest["toolSha256"][f'{release["harness"]}/Main.hs'],
+        "contexts": str((contexts / "results.json").resolve().relative_to(root)),
         "contextsSha256": RECORDED.GENERATED.sha256(contexts / "results.json"),
         "requestsSha256": manifest["sha256"]["requests.jsonl"],
         "verdictsSha256": manifest["sha256"]["verdicts.jsonl"],
         "modelsSha256": manifest["sha256"]["models.jsonl"],
     })
-    provenance.pop("extractionSha256", None)
+    for unchecked in ("extractionSha256", "sourceNetwork"):
+        provenance.pop(unchecked, None)
     (out / "provenance.json").write_text(json.dumps(provenance, indent=1) + "\n")
     verify_verdicts(out, contexts)
     print(json.dumps({k: manifest[k] for k in ("requests", "transactions", "stages")}))

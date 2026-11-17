@@ -16,6 +16,7 @@ retained fixture without Docker.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -23,6 +24,9 @@ import subprocess
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
+_SPEC = importlib.util.spec_from_file_location("leios_cbor", HERE.parent / "leios_cbor.py")
+CBOR = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(CBOR)
 DIRECTORY = ROOT / "fixtures/reference/leios-testnet-chain-contexts"
 IMAGE = "scarab-leios-testnet-chain:local"
 LABELS = ["--label", "xyz.kd5ujc.scarab.kind=oracle"]
@@ -80,6 +84,11 @@ def pinned():
     if not tags:
         raise ValueError("the cabal project pins no source-repository-package")
     return sorted(tags)
+
+
+def runners():
+    """The digests of the runner and of the CBOR reader it checks the answers with, by repository path."""
+    return {str(path.relative_to(ROOT)): sha256(path) for path in (HERE / "run.py", HERE.parent / "leios_cbor.py")}
 
 
 def build_files(files, where):
@@ -173,14 +182,17 @@ def accepted_build(fixtures):
     return {path: files[path] for path in IMAGE_BUILD}
 
 
-def levels(result):
-    """Every collection of an accepted case, the top level's and each sub-transaction's, each collected with an
-    explicit list of contexts; anything else is refused."""
+def levels(result, subtransactions):
+    """Every collection of an accepted case, the top level's and one for each of the `subtransactions` of the
+    case's transaction body, each collected with an explicit list of contexts; anything else, a missing collection
+    included, is refused."""
     if result.get("accepted") is not True or result.get("failure") is not None:
         raise ValueError(f"not collected: {result}")
     subtxs = result.get("subtxs")
     if not isinstance(subtxs, list):
         raise ValueError("no list of sub-transaction collections")
+    if len(subtxs) != subtransactions:
+        raise ValueError(f"{len(subtxs)} sub-transaction collections for {subtransactions} sub-transactions")
     out = []
     for level in [result.get("top")] + subtxs:
         if not isinstance(level, dict) or level.get("collected") is not True or not isinstance(level.get("contexts"), list):
@@ -199,12 +211,22 @@ def validate(fixtures):
             raise ValueError(f"changed fixture file: {record['file']}")
     chain = json.loads((fixtures / "cases.json").read_text())
     results = json.loads((fixtures / "results.json").read_text())
+    if not chain["cases"]:
+        raise ValueError("no case")
     if [c["name"] for c in chain["cases"]] != [r["name"] for r in results]:
         raise ValueError("the results are not those of the cases")
-    for r in results:
+    for case, r in zip(chain["cases"], results):
         if r.get("kind") != "context":
             raise ValueError(f"{r['name']}: not a context answer")
-        levels(r["result"])
+        try:
+            levels(r["result"], CBOR.subtransactions(bytes.fromhex(case["bytes"])))
+        except ValueError as refused:
+            raise ValueError(f"{case['name']}: {refused}") from None
+    counts = (provenance["cases"].get("count"), provenance["results"].get("accepted"),
+              provenance["results"].get("refused"))
+    if counts != (len(chain["cases"]), len(results), 0):
+        raise ValueError(f"the provenance counts {counts} cases, answers and refusals; the files hold "
+                         f"{len(chain['cases'])} cases, each answered")
     oracle = provenance.get("oracle")
     if not isinstance(oracle, dict):
         raise ValueError("the provenance binds no oracle image")
@@ -213,7 +235,8 @@ def validate(fixtures):
             or oracle.get("oracleBinarySha256") != files[IMAGE_BINARY]
             or any(files[path] != sha256(source) for path, source in REPOSITORY_FILES.items())
             or oracle.get("pinnedSources") != {commit: "unchanged" for commit in pinned()}
-            or oracle.get("runnerSha256") != sha256(HERE / "run.py")):
+            or oracle.get("network") != "none"
+            or oracle.get("runnerSha256") != runners()):
         raise ValueError("the provenance does not bind the image, its executable, the pinned sources and the "
                          "current harness and runner")
     return chain, results
@@ -241,7 +264,7 @@ def record(fixtures, evidence, owner, accept_build):
         "imageFilesSha256": binding["imageFilesSha256"],
         "oracleBinarySha256": binding["imageFilesSha256"][IMAGE_BINARY],
         "pinnedSources": binding["pinnedSources"],
-        "runnerSha256": sha256(HERE / "run.py"),
+        "runnerSha256": runners(),
         "network": "none",
     }
     (fixtures / "provenance.json").write_text(json.dumps(provenance, indent=1) + "\n")

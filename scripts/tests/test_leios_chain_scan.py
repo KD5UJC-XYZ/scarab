@@ -131,22 +131,85 @@ class LeiosChainScanTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'not collected'):
             SCAN.derive(chain, changed)
 
+    def test_a_deleted_collection_or_case_is_refused(self):
+        chain = json.loads((CONTEXTS / 'cases.json').read_text())
+        results = json.loads((CONTEXTS / 'results.json').read_text())
+        with_subs = next(n for n, r in enumerate(results) if r['result']['subtxs'])
+        self.assertEqual(SCAN.CBOR.subtransactions(bytes.fromhex(chain['cases'][with_subs]['bytes'])),
+                         len(results[with_subs]['result']['subtxs']))
+        changed = json.loads(json.dumps(results))
+        changed[with_subs]['result']['subtxs'] = []
+        with self.assertRaisesRegex(ValueError, 'sub-transaction collections for'):
+            SCAN.derive(chain, changed)
+        with self.assertRaisesRegex(ValueError, 'no case'):
+            SCAN.derive({**chain, 'cases': []}, [])
+        with self.assertRaisesRegex(ValueError, 'not those of the cases'):
+            SCAN.derive(chain, results[:-1])
+
+    def contexts_copy(self, scratch, change):
+        """A copy of the contexts fixture, `change`d (it takes the cases, the results and the provenance), with the
+        provenance's digests made those of the changed files, as recording makes them."""
+        copy = Path(scratch) / 'contexts'
+        shutil.copytree(CONTEXTS, copy)
+        chain = json.loads((copy / 'cases.json').read_text())
+        results = json.loads((copy / 'results.json').read_text())
+        provenance = json.loads((copy / 'provenance.json').read_text())
+        change(chain, results, provenance)
+        (copy / 'cases.json').write_text(json.dumps(chain))
+        (copy / 'results.json').write_text(json.dumps(results))
+        provenance['cases']['sha256'] = CHAIN.sha256(copy / 'cases.json')
+        provenance['results']['sha256'] = CHAIN.sha256(copy / 'results.json')
+        (copy / 'provenance.json').write_text(json.dumps(provenance))
+        return copy
+
     def test_the_retained_contexts_are_bound_to_their_files_image_and_harness(self):
         chain, results = CHAIN.validate(CONTEXTS)
         self.assertEqual(len(chain['cases']), 200)
         provenance = json.loads((CONTEXTS / 'provenance.json').read_text())
         self.assertEqual(provenance['oracle']['pinnedSources'], {c: 'unchanged' for c in CHAIN.pinned()})
+        self.assertEqual(provenance['oracle']['network'], 'none')
         self.assertEqual(set(CHAIN.accepted_build(CONTEXTS)), set(CHAIN.IMAGE_BUILD))
+        with tempfile.TemporaryDirectory() as scratch:
+            CHAIN.validate(self.contexts_copy(scratch, lambda chain, results, provenance: None))
 
-    def test_changed_contexts_or_binding_fail_validation(self):
-        for name, change in (('results.json', lambda d: d[:-2] + d[-1:]),
-                             ('provenance.json', lambda d: d.replace('"network": "none"', '"network": "host"')
-                              .replace('"oracleBinarySha256": "', '"oracleBinarySha256": "0'))):
+    def test_a_changed_contexts_file_fails_validation(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            copy = Path(scratch) / 'contexts'
+            shutil.copytree(CONTEXTS, copy)
+            (copy / 'results.json').write_text((copy / 'results.json').read_text().replace('"top"', '"top" ', 1))
+            with self.assertRaisesRegex(ValueError, 'changed fixture file: results.json'):
+                CHAIN.validate(copy)
+
+    def test_deleted_contexts_fail_validation_even_with_their_digests_recorded(self):
+        def no_subtxs(chain, results, provenance):
+            next(r for r in results if r['result']['subtxs'])['result']['subtxs'] = []
+
+        def no_cases(chain, results, provenance):
+            chain['cases'] = []
+            results.clear()
+
+        def last_case(chain, results, provenance):
+            del chain['cases'][-1]
+            del results[-1]
+
+        for change, refusal in ((no_subtxs, 'sub-transaction collections for'), (no_cases, 'no case'),
+                                (last_case, 'the provenance counts')):
             with tempfile.TemporaryDirectory() as scratch:
-                copy = Path(scratch) / 'fixture'
-                shutil.copytree(CONTEXTS, copy)
-                (copy / name).write_text(change((copy / name).read_text()))
-                with self.assertRaises((ValueError, json.JSONDecodeError)):
+                with self.assertRaisesRegex(ValueError, refusal, msg=change.__name__):
+                    CHAIN.validate(self.contexts_copy(scratch, change))
+
+    def test_one_contradicted_contexts_provenance_field_fails_validation(self):
+        for change in (lambda o, p: o.update(network='host'),
+                       lambda o, p: o.update(oracleBinarySha256='0' * 64),
+                       lambda o, p: o.update(imageId='scarab-leios-testnet-chain:local'),
+                       lambda o, p: o['pinnedSources'].update({'0' * 40: 'unchanged'}),
+                       lambda o, p: o.update(runnerSha256={}),
+                       lambda o, p: p['cases'].update(count=199),
+                       lambda o, p: p['results'].update(refused=1)):
+            with tempfile.TemporaryDirectory() as scratch:
+                copy = self.contexts_copy(scratch, lambda chain, results, provenance: change(provenance['oracle'],
+                                                                                             provenance))
+                with self.assertRaises(ValueError):
                     CHAIN.validate(copy)
 
     def test_the_retained_verdicts_are_those_of_the_retained_contexts_and_bound(self):
@@ -157,18 +220,63 @@ class LeiosChainScanTests(unittest.TestCase):
         self.assertEqual(set(SCAN.RECORDED.accepted_build(SCRIPTS)), set(SCAN.RECORDED.IMAGE_BUILD))
         self.assertEqual(provenance['network'], 'none')
 
+    def scripts_copy(self, scratch, change):
+        """A copy of the verdict fixture, `change`d (it takes the requests and verdicts as lists of lines, the
+        manifest and the provenance), with the manifest's digests made those of the changed files."""
+        copy = Path(scratch) / 'scripts'
+        shutil.copytree(SCRIPTS, copy)
+        requests = (copy / 'requests.jsonl').read_text().splitlines(True)
+        verdicts = (copy / 'verdicts.jsonl').read_text().splitlines(True)
+        manifest = json.loads((copy / 'manifest.json').read_text())
+        provenance = json.loads((copy / 'provenance.json').read_text())
+        change(requests, verdicts, manifest, provenance)
+        (copy / 'requests.jsonl').write_text(''.join(requests))
+        (copy / 'verdicts.jsonl').write_text(''.join(verdicts))
+        for name in ('requests.jsonl', 'verdicts.jsonl'):
+            manifest['sha256'][name] = SCAN.RECORDED.GENERATED.sha256(copy / name)
+        (copy / 'manifest.json').write_text(json.dumps(manifest))
+        (copy / 'provenance.json').write_text(json.dumps(provenance))
+        return copy
+
     def test_requests_other_than_the_contexts_give_fail_validation(self):
-        with tempfile.TemporaryDirectory() as scratch:
-            copy = Path(scratch) / 'scripts'
-            shutil.copytree(SCRIPTS, copy)
-            rows = (copy / 'requests.jsonl').read_text().splitlines(True)
-            rows[0], rows[1] = rows[1], rows[0]
-            (copy / 'requests.jsonl').write_text(''.join(rows))
-            manifest = json.loads((copy / 'manifest.json').read_text())
-            manifest['sha256']['requests.jsonl'] = SCAN.RECORDED.GENERATED.sha256(copy / 'requests.jsonl')
-            (copy / 'manifest.json').write_text(json.dumps(manifest))
-            with self.assertRaisesRegex(ValueError, 'not those the retained contexts give'):
-                SCAN.verify_verdicts(copy, CONTEXTS)
+        def swapped(requests, verdicts, manifest, provenance):
+            requests[0], requests[1] = requests[1], requests[0]
+
+        def deleted(requests, verdicts, manifest, provenance):
+            del requests[-1]
+            del verdicts[-1]
+            manifest['requests'] = provenance['requests'] = len(requests)
+
+        for change in (swapped, deleted):
+            with tempfile.TemporaryDirectory() as scratch:
+                with self.assertRaisesRegex(ValueError, 'not those the retained contexts give', msg=change.__name__):
+                    SCAN.verify_verdicts(self.scripts_copy(scratch, change), CONTEXTS)
+
+    def test_one_contradicted_verdict_record_fails_validation(self):
+        for change, refusal in (
+                (lambda m, p: m.update(transactions=199), 'manifest counts'),
+                (lambda m, p: p.update(requests=272), 'provenance counts'),
+                (lambda m, p: p.update(network='host'), 'without network'),
+                (lambda m, p: p.update(contextsSha256='0' * 64), 'retained contexts by their digest'),
+                (lambda m, p: p.update(contexts='fixtures/reference/leios-testnet-contexts/results.json'),
+                 'retained contexts by their digest'),
+                (lambda m, p: p.update(oracleBinarySha256='0' * 64), 'does not bind the image')):
+            with tempfile.TemporaryDirectory() as scratch:
+                copy = self.scripts_copy(scratch, lambda requests, verdicts, m, p: change(m, p))
+                with self.assertRaisesRegex(ValueError, refusal):
+                    SCAN.verify_verdicts(copy, CONTEXTS)
+
+    def test_a_failed_or_unfinished_measurement_is_refused(self):
+        ok = 'file:/x ' + '0' * 64 + '\nbuild current\n'
+        for status, stdout in ((1, ok + 'measured all\n'), (0, ok), (0, ok + 'measured all\nmeasured all\n'),
+                               (0, ok + 'measured some\n')):
+            ran = subprocess.CompletedProcess([], status, stdout=stdout, stderr='fatal: stub')
+            with patch.object(CHAIN.subprocess, 'run', return_value=ran):
+                with self.assertRaisesRegex(ValueError, f'could not be measured \\(exit {status}\\)'):
+                    CHAIN.measure('sha256:' + 'a' * 64, 'test')
+        ran = subprocess.CompletedProcess([], 0, stdout=ok + 'measured all\n', stderr='')
+        with patch.object(CHAIN.subprocess, 'run', return_value=ran):
+            self.assertEqual(CHAIN.measure('sha256:' + 'a' * 64, 'test')['build'], ['current'])
 
     def chain_binding(self, accepted=None, **changes):
         """The chain image binding of measurements that hold, with `changes` applied (None removes a key)."""
