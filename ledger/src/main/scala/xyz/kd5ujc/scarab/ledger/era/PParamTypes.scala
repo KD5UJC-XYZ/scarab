@@ -24,6 +24,12 @@ enum PParamsError:
   /** Execution units of which a component is negative. */
   case NegativeExUnits(field: DecodeField, units: xyz.kd5ujc.scarab.plutus.ExUnits)
 
+  /** A key of an update that is not a key of the era's parameters. */
+  case UnknownKey(key: Int)
+
+  /** A value of an update whose form is not that of its key's field. */
+  case ValueNotOfKey(key: Int)
+
 /** `UnitInterval` (`BoundedRatio UnitInterval Word64`, `libs/cardano-ledger-core/src/Cardano/
   * Ledger/BaseTypes.hs:543-545`, cardano-ledger f649f975): `[0, 1]`, numerator and denominator
   * within `Word64`.

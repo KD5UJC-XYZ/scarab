@@ -3675,6 +3675,26 @@
    ],
    "digest": "aedc7fa2fceb71ab"
   },
+  "def ledger.era.dijkstra.DijkstraPParams.downgrade": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "downgradeDijkstraPParams",
+     "lines": [
+      667,
+      701
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "digest": "eca5282a763f94f7"
+  },
   "def ledger.era.dijkstra.DijkstraPParams.modifiedGroups": {
    "upstream": [
     {
@@ -6452,6 +6472,14 @@
     "object ledger.era.MaryUTxO",
     "object ledger.era.ShelleyUTxO",
     "object ledger.era.UTxOs"
+   ]
+  },
+  {
+   "reason": "the conversions between Dijkstra's record and the parameters the node keeps (the flat `ProtocolParams`) and the decoded `DijkstraParamUpdate`; the reference keeps the record itself and has no counterpart (#85)",
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraPParams.fromStored",
+    "def ledger.era.dijkstra.DijkstraPParams.fromUpdate",
+    "def ledger.era.dijkstra.DijkstraPParams.toStored"
    ]
   }
  ]

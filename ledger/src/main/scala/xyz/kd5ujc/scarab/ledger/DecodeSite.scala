@@ -243,6 +243,32 @@ enum DecodeField(val label: String) extends DecodeSite:
   case Rho extends DecodeField("rho")
   case Tau extends DecodeField("tau")
 
+  // The parameters Dijkstra adds (`DijkstraPParams`, cardano-ledger 9df9f98c
+  // `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:228-299`), by the record's names
+  case MaxRefScriptSizePerBlock extends DecodeField("maxRefScriptSizePerBlock")
+  case MaxRefScriptSizePerTx extends DecodeField("maxRefScriptSizePerTx")
+  case RefScriptCostStride extends DecodeField("refScriptCostStride")
+  case RefScriptCostMultiplier extends DecodeField("refScriptCostMultiplier")
+  case MaxPledgeLeverage extends DecodeField("maxPledgeLeverage")
+  case MinPoolMargin extends DecodeField("minPoolMargin")
+  case LeiosAnnouncementPeriodLength extends DecodeField("leiosAnnouncementPeriodLength")
+  case LeiosVotePeriodLength extends DecodeField("leiosVotePeriodLength")
+  case LeiosDiffusionPeriodLength extends DecodeField("leiosDiffusionPeriodLength")
+  case LeiosCommitteeSize extends DecodeField("leiosCommitteeSize")
+  case LeiosQuorumStakeThreshold extends DecodeField("leiosQuorumStakeThreshold")
+  case MaxEndorserBlockReferencesSize extends DecodeField("maxEndorserBlockReferencesSize")
+  case MaxEndorserBlockTxsSize extends DecodeField("maxEndorserBlockTxsSize")
+  case MaxEndorserBlockExUnits extends DecodeField("maxEndorserBlockExUnits")
+  case MaxRefScriptSizePerEndorserBlock extends DecodeField("maxRefScriptSizePerEndorserBlock")
+  case PerasMinCandidateBlockAge extends DecodeField("perasMinCandidateBlockAge")
+  case PerasHealingFactor extends DecodeField("perasHealingFactor")
+  case PerasCertBoost extends DecodeField("perasCertBoost")
+  case PerasTargetCommitteeSize extends DecodeField("perasTargetCommitteeSize")
+  case PerasBootstrapRound extends DecodeField("perasBootstrapRound")
+  case PerasQuorumThresholdSafetyMargin extends DecodeField("perasQuorumThresholdSafetyMargin")
+  case RefInputsCostPerMultiAssetPolicy extends DecodeField("refInputsCostPerMultiAssetPolicy")
+  case RefInputsCostPerDatumByte extends DecodeField("refInputsCostPerDatumByte")
+
   // Scripts
   case InvalidBefore extends DecodeField("invalid before")
   case InvalidHereafter extends DecodeField("invalid hereafter")

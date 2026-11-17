@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
+import cats.syntax.all.*
 import scala.collection.immutable.SortedSet
-import xyz.kd5ujc.scarab.ledger.Unsigned
-import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
+import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.ledger.{DecodeField, ProtocolParams, Unsigned}
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32, W64}
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraParamUpdate, DijkstraParamValue}
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, EpochInterval, NonZero}
+import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayPParams,
+  DRepVotingThresholds,
+  PoolVotingThresholds
+}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, EpochInterval, HasZero, NonZero}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams.{Eco, Gov, Net, NoPool, Sec, Tech}
 
 /** Dijkstra's protocol parameters as higher-kinded data (`data DijkstraPParams f era`,
@@ -329,3 +336,376 @@ object DijkstraPParams:
       ppGroup(ppu.refInputsCostPerMultiAssetPolicy),
       ppGroup(ppu.refInputsCostPerDatumByte)
     ).foldLeft(SortedSet.empty[PPGroups])(_ ++ _)
+
+  /** `downgradeDijkstraPParams` (`Dijkstra/PParams.hs:667-701`, cardano-ledger 9df9f98c): Conway's
+    * fields of the record, in any form `F`, as Conway's record.
+    */
+  def downgrade[F[_]](pp: DijkstraPParams[F]): ConwayPParams[F] =
+    ConwayPParams[F](
+      txFeePerByte = pp.txFeePerByte,
+      txFeeFixed = pp.txFeeFixed,
+      maxBBSize = pp.maxBBSize,
+      maxTxSize = pp.maxTxSize,
+      maxBHSize = pp.maxBHSize,
+      keyDeposit = pp.keyDeposit,
+      poolDeposit = pp.poolDeposit,
+      eMax = pp.eMax,
+      nOpt = pp.nOpt,
+      a0 = pp.a0,
+      rho = pp.rho,
+      tau = pp.tau,
+      protocolVersion = pp.protocolVersion,
+      minPoolCost = pp.minPoolCost,
+      coinsPerUTxOByte = pp.coinsPerUTxOByte,
+      costModels = pp.costModels,
+      prices = pp.prices,
+      maxTxExUnits = pp.maxTxExUnits,
+      maxBlockExUnits = pp.maxBlockExUnits,
+      maxValSize = pp.maxValSize,
+      collateralPercentage = pp.collateralPercentage,
+      maxCollateralInputs = pp.maxCollateralInputs,
+      poolVotingThresholds = pp.poolVotingThresholds,
+      drepVotingThresholds = pp.drepVotingThresholds,
+      committeeMinSize = pp.committeeMinSize,
+      committeeMaxTermLength = pp.committeeMaxTermLength,
+      govActionLifetime = pp.govActionLifetime,
+      govActionDeposit = pp.govActionDeposit,
+      drepDeposit = pp.drepDeposit,
+      drepActivity = pp.drepActivity,
+      minFeeRefScriptCostPerByte = pp.minFeeRefScriptCostPerByte
+    )
+
+  // ---- the parameters the node keeps
+
+  private type Read[A] = Either[PParamsError, A]
+
+  private given HasZero[Unsigned[W32]] = HasZero.instance(_.value.signum == 0)
+
+  private def unsigned[W <: Unsigned.Width: Unsigned.Bound](
+      field: DecodeField,
+      n: BigInt
+  ): Read[Unsigned[W]] =
+    Unsigned.from[W](n).toRight(PParamsError.OutOfRange(field, n))
+
+  private def compact(field: DecodeField, n: BigInt): Read[CompactCoin] =
+    unsigned[W64](field, n).map(w => CompactCoin.fromUnsigned(w.value.toLong))
+
+  private def epochs(field: DecodeField, n: BigInt): Read[EpochInterval] =
+    unsigned[W32](field, n).map(EpochInterval.fromWord32)
+
+  /** `NonZero Word32`: a `Word32` other than zero. */
+  private def stride(field: DecodeField, n: BigInt): Read[NonZero[Unsigned[W32]]] =
+    unsigned[W32](field, n).flatMap(w =>
+      NonZero.from(w).left.map(_ => PParamsError.OutOfRange(field, n))
+    )
+
+  private def unit(field: DecodeField, r: Rational): Read[UnitInterval] =
+    UnitInterval.boundRational(r).toRight(PParamsError.RatioOutOfBounds(field, r))
+
+  private def nonNegative(field: DecodeField, r: Rational): Read[NonNegativeInterval] =
+    NonNegativeInterval.boundRational(r).toRight(PParamsError.RatioOutOfBounds(field, r))
+
+  private def positive(field: DecodeField, r: Rational): Read[PositiveInterval] =
+    PositiveInterval.boundRational(r).toRight(PParamsError.RatioOutOfBounds(field, r))
+
+  private def units(field: DecodeField, u: xyz.kd5ujc.scarab.plutus.ExUnits): Read[OrdExUnits] =
+    ExUnits.from(u).map(OrdExUnits(_)).toRight(PParamsError.NegativeExUnits(field, u))
+
+  private def millis(field: DecodeField, n: BigInt): Read[Milliseconds32] =
+    unsigned[W32](field, n).map(Milliseconds32(_))
+
+  private def leverage(field: DecodeField, r: Option[Rational]): Read[MaxPledgeLeverage] =
+    r.traverse(nonNegative(field, _)).map(MaxPledgeLeverage(_))
+
+  /** Dijkstra's fields of the parameters the node keeps, each at the reference's type: Conway's as
+    * [[ConwayPParams.fromStored]] reads them, then the fields Dijkstra adds. A field outside its
+    * type's range is refused, among them the zero that the node's record holds for a field Dijkstra
+    * adds before Dijkstra: the reference-script cost stride (`NonZero Word32`), and the multiplier
+    * and Peras healing factor (`PositiveInterval`).
+    */
+  def fromStored(p: ProtocolParams): Either[PParamsError, DijkstraPParams[Identity]] =
+    import DecodeField as F
+    for
+      c <- ConwayPParams.fromStored(p)
+      maxRefScriptSizePerBlock <- unsigned[W32](
+        F.MaxRefScriptSizePerBlock,
+        p.maxRefScriptSizePerBlock
+      )
+      maxRefScriptSizePerTx <- unsigned[W32](F.MaxRefScriptSizePerTx, p.maxRefScriptSizePerTx)
+      refScriptCostStride <- stride(F.RefScriptCostStride, p.refScriptCostStride)
+      refScriptCostMultiplier <- positive(F.RefScriptCostMultiplier, p.refScriptCostMultiplier)
+      maxPledgeLeverage <- leverage(F.MaxPledgeLeverage, p.maxPledgeLeverage)
+      minPoolMargin <- unit(F.MinPoolMargin, p.minPoolMargin)
+      leiosAnnouncementPeriodLength <- millis(
+        F.LeiosAnnouncementPeriodLength,
+        p.leiosAnnouncementPeriodLength
+      )
+      leiosVotePeriodLength <- millis(F.LeiosVotePeriodLength, p.leiosVotePeriodLength)
+      leiosDiffusionPeriodLength <- millis(
+        F.LeiosDiffusionPeriodLength,
+        p.leiosDiffusionPeriodLength
+      )
+      leiosCommitteeSize <- unsigned[W16](F.LeiosCommitteeSize, p.leiosCommitteeSize)
+      leiosQuorumStakeThreshold <- unit(F.LeiosQuorumStakeThreshold, p.leiosQuorumStakeThreshold)
+      maxEndorserBlockReferencesSize <- unsigned[W32](
+        F.MaxEndorserBlockReferencesSize,
+        p.maxEndorserBlockReferencesSize
+      )
+      maxEndorserBlockTxsSize <- unsigned[W32](F.MaxEndorserBlockTxsSize, p.maxEndorserBlockTxsSize)
+      maxEndorserBlockExUnits <- units(F.MaxEndorserBlockExUnits, p.maxEndorserBlockExUnits)
+      maxRefScriptSizePerEndorserBlock <- unsigned[W32](
+        F.MaxRefScriptSizePerEndorserBlock,
+        p.maxRefScriptSizePerEndorserBlock
+      )
+      perasMinCandidateBlockAge <- unsigned[W32](
+        F.PerasMinCandidateBlockAge,
+        p.perasMinCandidateBlockAge
+      )
+      perasHealingFactor <- positive(F.PerasHealingFactor, p.perasHealingFactor)
+      perasCertBoost <- unsigned[W16](F.PerasCertBoost, p.perasCertBoost)
+      perasTargetCommitteeSize <- unsigned[W16](
+        F.PerasTargetCommitteeSize,
+        p.perasTargetCommitteeSize
+      )
+      perasBootstrapRound <- p.perasBootstrapRound.traverse(unsigned[W32](F.PerasBootstrapRound, _))
+      perasQuorumThresholdSafetyMargin <- unit(
+        F.PerasQuorumThresholdSafetyMargin,
+        p.perasQuorumThresholdSafetyMargin
+      )
+      refInputsCostPerDatumByte <- compact(F.RefInputsCostPerDatumByte, p.refInputsCostPerDatumByte)
+    yield DijkstraPParams[Identity](
+      txFeePerByte = c.txFeePerByte,
+      txFeeFixed = c.txFeeFixed,
+      maxBBSize = c.maxBBSize,
+      maxTxSize = c.maxTxSize,
+      maxBHSize = c.maxBHSize,
+      keyDeposit = c.keyDeposit,
+      poolDeposit = c.poolDeposit,
+      eMax = c.eMax,
+      nOpt = c.nOpt,
+      a0 = c.a0,
+      rho = c.rho,
+      tau = c.tau,
+      protocolVersion = c.protocolVersion,
+      minPoolCost = c.minPoolCost,
+      coinsPerUTxOByte = c.coinsPerUTxOByte,
+      costModels = c.costModels,
+      prices = c.prices,
+      maxTxExUnits = c.maxTxExUnits,
+      maxBlockExUnits = c.maxBlockExUnits,
+      maxValSize = c.maxValSize,
+      collateralPercentage = c.collateralPercentage,
+      maxCollateralInputs = c.maxCollateralInputs,
+      poolVotingThresholds = c.poolVotingThresholds,
+      drepVotingThresholds = c.drepVotingThresholds,
+      committeeMinSize = c.committeeMinSize,
+      committeeMaxTermLength = c.committeeMaxTermLength,
+      govActionLifetime = c.govActionLifetime,
+      govActionDeposit = c.govActionDeposit,
+      drepDeposit = c.drepDeposit,
+      drepActivity = c.drepActivity,
+      minFeeRefScriptCostPerByte = c.minFeeRefScriptCostPerByte,
+      maxRefScriptSizePerBlock = THKD(maxRefScriptSizePerBlock),
+      maxRefScriptSizePerTx = THKD(maxRefScriptSizePerTx),
+      refScriptCostStride = THKD(refScriptCostStride),
+      refScriptCostMultiplier = THKD(refScriptCostMultiplier),
+      maxPledgeLeverage = THKD(maxPledgeLeverage),
+      minPoolMargin = THKD(minPoolMargin),
+      leiosAnnouncementPeriodLength = THKD(leiosAnnouncementPeriodLength),
+      leiosVotePeriodLength = THKD(leiosVotePeriodLength),
+      leiosDiffusionPeriodLength = THKD(leiosDiffusionPeriodLength),
+      leiosCommitteeSize = THKD(leiosCommitteeSize),
+      leiosQuorumStakeThreshold = THKD(leiosQuorumStakeThreshold),
+      maxEndorserBlockReferencesSize = THKD(maxEndorserBlockReferencesSize),
+      maxEndorserBlockTxsSize = THKD(maxEndorserBlockTxsSize),
+      maxEndorserBlockExUnits = THKD(maxEndorserBlockExUnits),
+      maxRefScriptSizePerEndorserBlock = THKD(maxRefScriptSizePerEndorserBlock),
+      perasMinCandidateBlockAge = THKD(SlotInterval(perasMinCandidateBlockAge)),
+      perasHealingFactor = THKD(perasHealingFactor),
+      perasCertBoost = THKD(perasCertBoost),
+      perasTargetCommitteeSize = THKD(perasTargetCommitteeSize),
+      perasBootstrapRound = THKD(perasBootstrapRound),
+      perasQuorumThresholdSafetyMargin = THKD(perasQuorumThresholdSafetyMargin),
+      refInputsCostPerMultiAssetPolicy = THKD(Coin(p.refInputsCostPerMultiAssetPolicy)),
+      refInputsCostPerDatumByte = THKD(CoinPerByte(refInputsCostPerDatumByte))
+    )
+
+  /** The parameters `base` with Dijkstra's fields those of `pp`: Conway's as
+    * [[ConwayPParams.toStored]] writes the record's [[downgrade]], then the fields Dijkstra adds.
+    * The inverse of [[fromStored]] over the node's record, whose other eras' fields `base` keeps.
+    */
+  def toStored(pp: DijkstraPParams[Identity], base: ProtocolParams): ProtocolParams =
+    ConwayPParams
+      .toStored(downgrade(pp), base)
+      .copy(
+        maxRefScriptSizePerBlock = pp.maxRefScriptSizePerBlock.unTHKD.value,
+        maxRefScriptSizePerTx = pp.maxRefScriptSizePerTx.unTHKD.value,
+        refScriptCostStride = pp.refScriptCostStride.unTHKD.value.value,
+        refScriptCostMultiplier = pp.refScriptCostMultiplier.unTHKD.rational,
+        maxPledgeLeverage = pp.maxPledgeLeverage.unTHKD.unMaxPledgeLeverage.map(_.rational),
+        minPoolMargin = pp.minPoolMargin.unTHKD.rational,
+        leiosAnnouncementPeriodLength =
+          pp.leiosAnnouncementPeriodLength.unTHKD.unMilliseconds32.value,
+        leiosVotePeriodLength = pp.leiosVotePeriodLength.unTHKD.unMilliseconds32.value,
+        leiosDiffusionPeriodLength = pp.leiosDiffusionPeriodLength.unTHKD.unMilliseconds32.value,
+        leiosCommitteeSize = pp.leiosCommitteeSize.unTHKD.value,
+        leiosQuorumStakeThreshold = pp.leiosQuorumStakeThreshold.unTHKD.rational,
+        maxEndorserBlockReferencesSize = pp.maxEndorserBlockReferencesSize.unTHKD.value,
+        maxEndorserBlockTxsSize = pp.maxEndorserBlockTxsSize.unTHKD.value,
+        maxEndorserBlockExUnits = pp.maxEndorserBlockExUnits.unTHKD.unOrdExUnits.units,
+        maxRefScriptSizePerEndorserBlock = pp.maxRefScriptSizePerEndorserBlock.unTHKD.value,
+        perasMinCandidateBlockAge = pp.perasMinCandidateBlockAge.unTHKD.unSlotInterval.value,
+        perasHealingFactor = pp.perasHealingFactor.unTHKD.rational,
+        perasCertBoost = pp.perasCertBoost.unTHKD.value,
+        perasTargetCommitteeSize = pp.perasTargetCommitteeSize.unTHKD.value,
+        perasBootstrapRound = pp.perasBootstrapRound.unTHKD.map(_.value),
+        perasQuorumThresholdSafetyMargin = pp.perasQuorumThresholdSafetyMargin.unTHKD.rational,
+        refInputsCostPerMultiAssetPolicy = pp.refInputsCostPerMultiAssetPolicy.unTHKD.value,
+        refInputsCostPerDatumByte = pp.refInputsCostPerDatumByte.unTHKD.unCoinPerByte.toBigInt
+      )
+
+  // ---- an update
+
+  /** The update keys of Dijkstra's parameters (`eraPParams`, `Dijkstra/PParams.hs:741-796`,
+    * cardano-ledger 9df9f98c, and the `ppUpdate` of each): Conway's 0 to 11 and 16 to 33, then 34
+    * to 56 for the fields Dijkstra adds. The protocol version has none.
+    */
+  private val updateKeys: Set[Int] = ((0 to 11) ++ (16 to 56)).toSet
+
+  /** The update a decoded Dijkstra update sets, as the record (`DijkstraPParams StrictMaybe`). Its
+    * fields were read at their types by [[DijkstraParamUpdate.decode]]; a key that is not one of
+    * the parameters', a value not of its key's form, a ratio outside its interval, a word outside
+    * its width, a zero stride or negative units are refused, which the decoder already refused.
+    */
+  def fromUpdate(u: DijkstraParamUpdate): Either[PParamsError, DijkstraPParams[StrictMaybe]] =
+    u.fields.toVector.sortBy(_._1).foldLeftM(emptyUpdate)((acc, kv) => set(acc, kv._1, kv._2))
+
+  private def set(
+      acc: DijkstraPParams[StrictMaybe],
+      key: Int,
+      v: DijkstraParamValue
+  ): Either[PParamsError, DijkstraPParams[StrictMaybe]] =
+    import DecodeField as F
+    import DijkstraParamValue.{CostModels as Models, ExUnits as Units, *}
+    def w16(f: DecodeField, n: BigInt) = unsigned[W16](f, n).map(Some(_))
+    def w32(f: DecodeField, n: BigInt) = unsigned[W32](f, n).map(Some(_))
+    (key, v) match
+      case (0, Number(n)) =>
+        compact(F.MinFeeA, n).map(c => acc.copy(txFeePerByte = THKD(Some(CoinPerByte(c)))))
+      case (1, Number(n)) => compact(F.MinFeeB, n).map(c => acc.copy(txFeeFixed = THKD(Some(c))))
+      case (2, Number(n)) => w32(F.MaxBlockBodySize, n).map(w => acc.copy(maxBBSize = THKD(w)))
+      case (3, Number(n)) => w32(F.MaxTxSize, n).map(w => acc.copy(maxTxSize = THKD(w)))
+      case (4, Number(n)) => w16(F.MaxBlockHeaderSize, n).map(w => acc.copy(maxBHSize = THKD(w)))
+      case (5, Number(n)) => compact(F.KeyDeposit, n).map(c => acc.copy(keyDeposit = THKD(Some(c))))
+      case (6, Number(n)) =>
+        compact(F.PoolDeposit, n).map(c => acc.copy(poolDeposit = THKD(Some(c))))
+      case (7, Number(n)) => epochs(F.EMax, n).map(e => acc.copy(eMax = THKD(Some(e))))
+      case (8, Number(n)) => w16(F.NOpt, n).map(w => acc.copy(nOpt = THKD(w)))
+      case (9, Ratio(r))  => nonNegative(F.A0, r).map(x => acc.copy(a0 = THKD(Some(x))))
+      case (10, Ratio(r)) => unit(F.Rho, r).map(x => acc.copy(rho = THKD(Some(x))))
+      case (11, Ratio(r)) => unit(F.Tau, r).map(x => acc.copy(tau = THKD(Some(x))))
+      case (16, Number(n)) =>
+        compact(F.MinPoolCost, n).map(c => acc.copy(minPoolCost = THKD(Some(c))))
+      case (17, Number(n)) =>
+        compact(F.CoinsPerUTxO, n).map(c => acc.copy(coinsPerUTxOByte = THKD(Some(CoinPerByte(c)))))
+      case (18, Models(m)) =>
+        CostModels
+          .from(m.view.mapValues(_.map(BigInt(_))).toMap)
+          .map(c => acc.copy(costModels = THKD(Some(c))))
+      case (19, Pair(mem, steps)) =>
+        (nonNegative(F.PriceMem, mem), nonNegative(F.PriceSteps, steps))
+          .mapN((m, s) => acc.copy(prices = THKD(Some(Prices(m, s)))))
+      case (20, Units(m, s)) =>
+        units(F.MaxTxExUnits, xyz.kd5ujc.scarab.plutus.ExUnits(m, s))
+          .map(x => acc.copy(maxTxExUnits = THKD(Some(x))))
+      case (21, Units(m, s)) =>
+        units(F.MaxBlockExUnits, xyz.kd5ujc.scarab.plutus.ExUnits(m, s))
+          .map(x => acc.copy(maxBlockExUnits = THKD(Some(x))))
+      case (22, Number(n)) => w32(F.MaxValueSize, n).map(w => acc.copy(maxValSize = THKD(w)))
+      case (23, Number(n)) =>
+        w16(F.CollateralPercentage, n).map(w => acc.copy(collateralPercentage = THKD(w)))
+      case (24, Number(n)) =>
+        w16(F.MaxCollateralInputs, n).map(w => acc.copy(maxCollateralInputs = THKD(w)))
+      case (25, Thresholds(Vector(a, b, c, d, e))) =>
+        PoolVotingThresholds
+          .fromStored(xyz.kd5ujc.scarab.ledger.PoolVotingThresholds(a, b, c, d, e))
+          .map(t => acc.copy(poolVotingThresholds = THKD(Some(t))))
+      case (26, Thresholds(Vector(a, b, c, d, e, f, g, h, i, j))) =>
+        DRepVotingThresholds
+          .fromStored(xyz.kd5ujc.scarab.ledger.DRepVotingThresholds(a, b, c, d, e, f, g, h, i, j))
+          .map(t => acc.copy(drepVotingThresholds = THKD(Some(t))))
+      case (27, Number(n)) =>
+        w16(F.CommitteeMinSize, n).map(w => acc.copy(committeeMinSize = THKD(w)))
+      case (28, Number(n)) =>
+        epochs(F.CommitteeMaxTermLength, n).map(e =>
+          acc.copy(committeeMaxTermLength = THKD(Some(e)))
+        )
+      case (29, Number(n)) =>
+        epochs(F.GovActionLifetime, n).map(e => acc.copy(govActionLifetime = THKD(Some(e))))
+      case (30, Number(n)) =>
+        compact(F.GovActionDeposit, n).map(c => acc.copy(govActionDeposit = THKD(Some(c))))
+      case (31, Number(n)) =>
+        compact(F.DrepDeposit, n).map(c => acc.copy(drepDeposit = THKD(Some(c))))
+      case (32, Number(n)) =>
+        epochs(F.DrepActivity, n).map(e => acc.copy(drepActivity = THKD(Some(e))))
+      case (33, Ratio(r)) =>
+        nonNegative(F.MinFeeRefScriptCostPerByte, r)
+          .map(x => acc.copy(minFeeRefScriptCostPerByte = THKD(Some(x))))
+      case (34, Number(n)) =>
+        w32(F.MaxRefScriptSizePerBlock, n).map(w => acc.copy(maxRefScriptSizePerBlock = THKD(w)))
+      case (35, Number(n)) =>
+        w32(F.MaxRefScriptSizePerTx, n).map(w => acc.copy(maxRefScriptSizePerTx = THKD(w)))
+      case (36, Number(n)) =>
+        stride(F.RefScriptCostStride, n).map(s => acc.copy(refScriptCostStride = THKD(Some(s))))
+      case (37, Ratio(r)) =>
+        positive(F.RefScriptCostMultiplier, r)
+          .map(x => acc.copy(refScriptCostMultiplier = THKD(Some(x))))
+      case (38, OptionalRatio(r)) =>
+        leverage(F.MaxPledgeLeverage, r).map(l => acc.copy(maxPledgeLeverage = THKD(Some(l))))
+      case (39, Ratio(r)) =>
+        unit(F.MinPoolMargin, r).map(x => acc.copy(minPoolMargin = THKD(Some(x))))
+      case (40, Number(n)) =>
+        millis(F.LeiosAnnouncementPeriodLength, n)
+          .map(m => acc.copy(leiosAnnouncementPeriodLength = THKD(Some(m))))
+      case (41, Number(n)) =>
+        millis(F.LeiosVotePeriodLength, n).map(m => acc.copy(leiosVotePeriodLength = THKD(Some(m))))
+      case (42, Number(n)) =>
+        millis(F.LeiosDiffusionPeriodLength, n)
+          .map(m => acc.copy(leiosDiffusionPeriodLength = THKD(Some(m))))
+      case (43, Number(n)) =>
+        w16(F.LeiosCommitteeSize, n).map(w => acc.copy(leiosCommitteeSize = THKD(w)))
+      case (44, Ratio(r)) =>
+        unit(F.LeiosQuorumStakeThreshold, r)
+          .map(x => acc.copy(leiosQuorumStakeThreshold = THKD(Some(x))))
+      case (45, Number(n)) =>
+        w32(F.MaxEndorserBlockReferencesSize, n)
+          .map(w => acc.copy(maxEndorserBlockReferencesSize = THKD(w)))
+      case (46, Number(n)) =>
+        w32(F.MaxEndorserBlockTxsSize, n).map(w => acc.copy(maxEndorserBlockTxsSize = THKD(w)))
+      case (47, Units(m, s)) =>
+        units(F.MaxEndorserBlockExUnits, xyz.kd5ujc.scarab.plutus.ExUnits(m, s))
+          .map(x => acc.copy(maxEndorserBlockExUnits = THKD(Some(x))))
+      case (48, Number(n)) =>
+        w32(F.MaxRefScriptSizePerEndorserBlock, n)
+          .map(w => acc.copy(maxRefScriptSizePerEndorserBlock = THKD(w)))
+      case (49, Number(n)) =>
+        unsigned[W32](F.PerasMinCandidateBlockAge, n)
+          .map(w => acc.copy(perasMinCandidateBlockAge = THKD(Some(SlotInterval(w)))))
+      case (50, Ratio(r)) =>
+        positive(F.PerasHealingFactor, r).map(x => acc.copy(perasHealingFactor = THKD(Some(x))))
+      case (51, Number(n)) => w16(F.PerasCertBoost, n).map(w => acc.copy(perasCertBoost = THKD(w)))
+      case (52, Number(n)) =>
+        w16(F.PerasTargetCommitteeSize, n).map(w => acc.copy(perasTargetCommitteeSize = THKD(w)))
+      case (53, OptionalNumber(r)) =>
+        r.traverse(n => unsigned[W32](F.PerasBootstrapRound, BigInt(n)))
+          .map(o => acc.copy(perasBootstrapRound = THKD(Some(o))))
+      case (54, Ratio(r)) =>
+        unit(F.PerasQuorumThresholdSafetyMargin, r)
+          .map(x => acc.copy(perasQuorumThresholdSafetyMargin = THKD(Some(x))))
+      case (55, Number(n)) =>
+        Right(acc.copy(refInputsCostPerMultiAssetPolicy = THKD(Some(Coin(n)))))
+      case (56, Number(n)) =>
+        compact(F.RefInputsCostPerDatumByte, n)
+          .map(c => acc.copy(refInputsCostPerDatumByte = THKD(Some(CoinPerByte(c)))))
+      case (k, _) if updateKeys.contains(k) => Left(PParamsError.ValueNotOfKey(k))
+      case (k, _)                           => Left(PParamsError.UnknownKey(k))
