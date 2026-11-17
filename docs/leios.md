@@ -882,7 +882,9 @@ of Scarab.
 `consensus.Praos2` consumes a typed header-only ledger view, epoch forecast and chain-dependent
 state. Its `tick`, `validate`, `validateProtocol` and trusted-header `reupdate` correspond to the
 public testnet build's functions below. This pure API does not activate Dijkstra, apply a block,
-persist a new state format or connect the node to the testnet.
+persist its state or connect the node to the testnet; the stored forms of that state, the V10
+sidecar's `ChainDepState.Praos2` and the Leios layout's `PolyPraosState` codec, are the storage's
+(#826).
 
 | Order / transition | Reference at consensus `2416493b` | Implementation |
 |---|---|---|

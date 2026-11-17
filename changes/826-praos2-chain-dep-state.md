@@ -1,0 +1,3 @@
+### Changed (storage, #826)
+
+- The chain-dependent state gains Praos2, the protocol of Dijkstra in the Leios build, whose state is Praos's with the announcement of the last applied header (ouroboros-consensus 2416493b `PolyPraosState`), and the Leios build's `state` layout reads and writes it as that build does (version 1, nine fields). Snapshot format V10 is changed in place, before any deployment, by the owner's decision of 2026-11-17: its sidecar's schema fingerprint moves and its fixtures are regenerated, while the states of PBFT, TPraos and Praos keep their bytes and the frozen schemas of V5 to V9 keep their fingerprints. The Dijkstra ledger state is still refused, so an 11.x node's stored values and behaviour do not change.
