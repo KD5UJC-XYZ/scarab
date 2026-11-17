@@ -1,25 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ByteStrings,
   CborRead,
   Certificate,
+  ConwayParamUpdate,
+  DecodeField,
+  GovAction as FlatGovAction,
+  GovActionId,
   LedgerDecodeError,
   Metadatum,
   NativeScript as FlatNativeScript,
   PreprodDeepTx,
+  Proposal,
   Purpose,
+  RewardAccount,
   Script as FlatScript,
   ScriptKind,
   Unsigned,
   TxBody as FlatTxBody,
   Witnesses
 }
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayPParams,
   ConwayPlutusPurpose,
+  ConwayProcedures,
   ConwayTxOut,
   ConwayTx,
   ConwayTxAuxData,
@@ -28,7 +38,9 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayTxWits
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  ColdCommittee,
   Coin,
+  Conway,
   Credential,
   DRepRole,
   EpochNo,
@@ -158,10 +170,22 @@ class EraConwaySuite extends munit.FunSuite:
       )
       assertEquals(body.currentTreasuryValue[TxLevel.Top](c).map(_.value), flat.currentTreasury)
       assertEquals(
-        body.votingProcedures[TxLevel.Top](c).toVector.map((v, m) => v -> m.toVector),
+        body
+          .votingProcedures[TxLevel.Top](c)
+          .unVotingProcedures
+          .toVector
+          .map((v, m) => v -> m.toVector),
         flat.votes.map((v, m) => v -> m.sortBy(_._1)).sortBy(_._1)
       )
-      assertEquals(body.proposalProcedures[TxLevel.Top](c).toVector.map(_.value), flat.proposals)
+      // each proposal at the reference's types, with the flat proposal it was read as
+      val proposals = body.proposalProcedures[TxLevel.Top](c).toVector
+      assertEquals(proposals.map(_.read), flat.proposals)
+      assertEquals(
+        proposals.map(pp => (pp.pProcDeposit.value, pp.pProcReturnAddr, pp.pProcAnchor)),
+        flat.proposals.map(fp => (fp.deposit, fp.returnAccount, fp.anchor))
+      )
+      assertEquals(proposals.size, flat.proposals.size)
+      proposals.zip(flat.proposals).foreach((pp, fp) => agrees(pp.pProcGovAction, fp.action))
       assertEquals(body.treasuryDonation[TxLevel.Top](c).value, flat.donation)
       // a certificate's script witness is the one the flat rules ask for
       val typed = body.certs[TxLevel.Top](c).toVector
@@ -553,23 +577,240 @@ class EraConwaySuite extends munit.FunSuite:
     assertNotEquals(ConwayTxOut.fromStored(stored("1a000f4241")), a)
   }
 
+  /** The typed action agrees with the flat one the decoder read: a parameter change field by field
+    * ([[sameUpdate]]), any other action as the flat action it reads back as.
+    */
+  private def agrees(typed: GovAction[Conway], flat: FlatGovAction): Unit = (typed, flat) match
+    case (
+          GovAction.ParameterChange(parent, update, guardrails),
+          FlatGovAction.ParameterChange(flatParent, flatUpdate, flatGuardrails)
+        ) =>
+      assertEquals(parent.map(_.unGovPurposeId), flatParent)
+      assertEquals(guardrails.map(_.bytes), flatGuardrails)
+      sameUpdate(update, flatUpdate)
+    case (other, _) => assertEquals(actionOf(other), flat)
+
+  private val conwayPParams = summon[ConwayEraPParams[Conway]]
+
+  /** The typed update sets as many fields as the flat one, and applied to the same parameters gives
+    * the parameters the flat update gives: each through the existing flat code (`applyTo`) and the
+    * record's own application, neither of them the conversion the update was read by.
+    */
+  private def sameUpdate(typed: PParamsUpdate[Conway], flat: ConwayParamUpdate): Unit =
+    val set = typed.hkd.productIterator.count {
+      case Some(_) => true
+      case _       => false
+    }
+    assertEquals(set, flat.params.size)
+    val base = xyz.kd5ujc.scarab.ledger.TestLedger.params(10)
+    val typedBase = PParams[Conway](ConwayPParams.fromStored(base).toOption.get)
+    assertEquals(
+      ConwayPParams.toStored(conwayPParams.applyPPUpdates(typedBase, typed).hkd, base),
+      flat.applyTo(base)
+    )
+
+  /** The flat action an action other than a parameter change reads back as. */
+  private def actionOf(a: GovAction[Conway]): FlatGovAction = a match
+    case GovAction.ParameterChange(_, _, _) => fail("a parameter change is compared by its fields")
+    case GovAction.HardForkInitiation(parent, v) =>
+      FlatGovAction.HardFork(parent.map(_.unGovPurposeId), v.pvMajor.value, v.pvMinor.value)
+    case GovAction.TreasuryWithdrawals(withdrawals, guardrails) =>
+      FlatGovAction.TreasuryWithdrawals(
+        withdrawals.toVector.map((a, c) => a -> c.value),
+        guardrails.map(_.bytes)
+      )
+    case GovAction.NoConfidence(parent) => FlatGovAction.NoConfidence(parent.map(_.unGovPurposeId))
+    case GovAction.UpdateCommittee(parent, removed, added, threshold) =>
+      FlatGovAction.UpdateCommittee(
+        parent.map(_.unGovPurposeId),
+        removed.map(Convert.back(_)),
+        added.map((c, e) => Convert.back(c) -> e.toBigInt),
+        threshold.rational
+      )
+    case GovAction.NewConstitution(parent, constitution) =>
+      FlatGovAction.NewConstitution(
+        parent.map(_.unGovPurposeId),
+        constitution.script,
+        constitution.anchor
+      )
+    case GovAction.InfoAction() => FlatGovAction.Info
+
+  test("the recorded Conway bodies carry votes and proposals of every action") {
+    val read = bodies.map(raw => ConwayTxBody.decode(raw).toOption.get)
+    val proposals = read.flatMap(body.proposalProcedures[TxLevel.Top](_).toVector)
+    val votes = read.map(body.votingProcedures[TxLevel.Top](_).unVotingProcedures.size).sum
+    assert(proposals.nonEmpty, "no recorded Conway body has a proposal")
+    assert(votes > 0, "no recorded Conway body has a vote")
+    // each of the seven actions is among them, so every action's fields are compared above
+    val kinds = proposals.map(_.pProcGovAction.ordinal).toSet
+    assertEquals(kinds, (0 to 6).toSet)
+  }
+
+  // `[deposit, return account, action, anchor]`, the account a Shelley reward account
+  private val (r1, r2) = (s"581de0${"a1" * 28}", s"581de0${"a2" * 28}")
+  private val anchor = "826161" + "5820" + "cc" * 32
+  private val conwayVersion = xyz.kd5ujc.scarab.ledger.DecoderVersion.of(Era.Conway)
+
+  /** The proposal of `action` as the flat decoder reads it, and as Conway's type reads that. */
+  private def proposal(
+      action: String,
+      deposit: String = "00"
+  ): (Either[LedgerDecodeError, Proposal], Either[EraTxError, ProposalProcedure[Conway]]) =
+    val flat = Proposal.decode(node(s"84$deposit$r1$action$anchor"), conwayVersion)
+    (flat, flat.leftMap(EraTxError.Decode(_)).flatMap(ConwayProcedures.proposal))
+
   test("proposals are equal when they mean the same, whatever the order of their withdrawals") {
-    // `[deposit, return account, [2, withdrawals, null], anchor]`: treasury withdrawals are a
-    // `Map AccountAddress Coin` (`Procedures.hs:826-834`, cardano-ledger f649f975), so one proposal
-    val (r1, r2) = (s"581de0${"a1" * 28}", s"581de0${"a2" * 28}")
-    def proposal(withdrawals: String) =
-      xyz.kd5ujc.scarab.ledger.Proposal
-        .decode(
-          node(s"8400$r1${"8302" + withdrawals + "f6"}${"826161" + "5820" + "cc" * 32}"),
-          xyz.kd5ujc.scarab.ledger.DecoderVersion.of(Era.Conway)
+    // treasury withdrawals are a `Map AccountAddress Coin` (`Procedures.hs:826-834`, cardano-ledger
+    // f649f975), so one proposal
+    def withdrawing(ws: String) = proposal("8302" + ws + "f6")
+    val (sorted, reversed) = (withdrawing(s"a2${r1}01${r2}02"), withdrawing(s"a2${r2}02${r1}01"))
+    assertNotEquals(sorted._1, reversed._1, "the flat proposals keep the entries in the order read")
+    assertEquals(sorted._2, reversed._2)
+    assertEquals(sorted._2.map(_.hashCode), reversed._2.map(_.hashCode))
+    assertNotEquals(withdrawing(s"a2${r1}01${r2}03")._2, sorted._2)
+  }
+
+  test("each action reads at the reference's types, at the bounds of each") {
+    val id = "825820" + "dd" * 32 + "03"
+    def parent[P <: GovActionPurpose]: Option[GovPurposeId[P]] =
+      Some(GovPurposeId[P](GovActionId(Bytes.fromHex("dd" * 32).toOption.get, 3)))
+    val cold = Credential.KeyHashObj[ColdCommittee](
+      KeyHash.fromBytes(Bytes.fromHex(k).toOption.get).toOption.get
+    )
+    // the bounds: a parameter change setting rho to one, guarded by a script; the highest version
+    // Conway's action reads, 12, and the highest minor version; a member until the last epoch, and
+    // a threshold of one
+    val expected: Vector[(String, GovAction[Conway])] = Vector(
+      s"8400${id}a10ad81e820101581c$s" -> GovAction.ParameterChange(
+        parent,
+        PParamsUpdate[Conway](
+          ConwayPParams.emptyUpdate.copy(rho = THKD(UnitInterval.boundRational(Rational.one)))
+        ),
+        Some(ScriptHash.fromBytes(Bytes.fromHex(s).toOption.get).toOption.get)
+      ),
+      s"8301${id}820c1affffffff" -> GovAction.HardForkInitiation(
+        parent,
+        ProtVer(Version.lit(12), Unsigned.lit[Unsigned.Width.W32](0xffffffffL))
+      ),
+      s"8302a1${r2}1bfffffffffffffffff6" -> GovAction.TreasuryWithdrawals(
+        Map(
+          RewardAccount.decode(Bytes.fromHex(r2.drop(4)).toOption.get).toOption.get ->
+            Coin(BigInt("18446744073709551615"))
+        ),
+        None
+      ),
+      s"8203$id" -> GovAction.NoConfidence(parent),
+      s"8504f681$key" + s"a1${key}1bffffffffffffffff" + "d81e820101" -> GovAction
+        .UpdateCommittee(
+          None,
+          Set(cold),
+          Map(cold -> EpochNo.fromUnsigned(-1L)),
+          UnitInterval.boundRational(Rational.one).get
+        ),
+      s"8305f682${anchor}f6" -> GovAction.NewConstitution(
+        None,
+        xyz.kd5ujc.scarab.ledger.Constitution(
+          xyz.kd5ujc.scarab.ledger.Anchor("a", Bytes.fromHex("cc" * 32).toOption.get),
+          None
         )
-        .toOption
-        .get
-    val (sorted, reversed) = (proposal(s"a2${r1}01${r2}02"), proposal(s"a2${r2}02${r1}01"))
-    assertNotEquals(sorted, reversed, "the flat proposals keep the entries in the order read")
-    assertEquals(ProposalProcedure(sorted), ProposalProcedure(reversed))
-    assertEquals(ProposalProcedure(sorted).hashCode, ProposalProcedure(reversed).hashCode)
-    assertNotEquals(ProposalProcedure(proposal(s"a2${r1}01${r2}03")), ProposalProcedure(sorted))
+      ),
+      "8106" -> GovAction.InfoAction()
+    )
+    expected.foreach { (action, rep) =>
+      val (flat, typed) = proposal(action)
+      assert(flat.isRight, s"$action: $flat")
+      assertEquals(typed.map(_.pProcGovAction), Right(rep), action)
+    }
+  }
+
+  test("what the typed proposal would refuse, the flat decoder refuses first, with its error") {
+    // each bound the typed action checks, passed: the flat decoder refuses the proposal at that
+    // field, and the typed path reports that refusal
+    val h27 = s"581b${"51" * 27}"
+    val key27 = s"8200581b${"4b" * 27}"
+    val rho = "a10ad81e820101"
+    val word32 = BigInt(1) << 32
+    def bignum(e: LedgerDecodeError): Boolean = e match
+      case LedgerDecodeError.Expected(
+            DecodeField.MemberTerm,
+            LedgerDecodeError.Shape.Unsigned,
+            _
+          ) =>
+        true
+      case _ => false
+    Vector[(String, String, LedgerDecodeError => Boolean)](
+      (
+        "a ratio above one in the update",
+        "8400f6a10ad81e820302f6",
+        _ == LedgerDecodeError.RationalOutOfBounds(DecodeField.Rho, 3, 2)
+      ),
+      (
+        "a guardrails hash of 27 bytes on a change",
+        s"8400f6$rho$h27",
+        _ == LedgerDecodeError.ByteLength(DecodeField.PolicyHash, 28, 27)
+      ),
+      (
+        "major version 13",
+        "8301f6820d00",
+        _ == LedgerDecodeError.NumberOutOfRange(DecodeField.Major, 13, 0, 12)
+      ),
+      (
+        "minor version 2^32",
+        "8301f6820c1b0000000100000000",
+        _ == LedgerDecodeError.NumberOutOfRange(DecodeField.Minor, word32, 0, word32 - 1)
+      ),
+      (
+        "a committee member's hash of 27 bytes",
+        s"8504f680a1${key27}01d81e820101",
+        _ == LedgerDecodeError.ByteLength(DecodeField.CommitteeMember, 28, 27)
+      ),
+      (
+        "a member's term as a bignum, 2^64 (a CBOR unsigned integer is at most 2^64 - 1)",
+        s"8504f680a1${key}c249010000000000000000d81e820101",
+        bignum
+      ),
+      (
+        "a threshold above one",
+        "8504f680a0d81e820302",
+        _ == LedgerDecodeError.RationalOutOfBounds(DecodeField.Quorum, 3, 2)
+      ),
+      (
+        "a guardrails hash of 27 bytes on withdrawals",
+        s"8302a0$h27",
+        _ == LedgerDecodeError.ByteLength(DecodeField.PolicyHash, 28, 27)
+      )
+    ).foreach { (what, action, expected) =>
+      val (flat, typed) = proposal(action)
+      flat match
+        case Left(e) =>
+          assert(expected(e), s"$what: $e")
+          assertEquals(typed, Left(EraTxError.Decode(e)), what)
+        case Right(p) => fail(s"$what: the flat decoder accepts it: $p")
+    }
+  }
+
+  test("parents are ordered as their action ids, as the derived Ord compares them") {
+    def id(b: Int, ix: Int) = GovPurposeId[GovActionPurpose.HardFork](
+      GovActionId(Bytes(Vector.fill(32)(b.toByte)), ix)
+    )
+    val ids = Vector(id(2, 0), id(1, 5), id(1, 2))
+    assertEquals(ids.sorted.map(_.unGovPurposeId), ids.map(_.unGovPurposeId).sorted)
+    assertEquals(ids.sorted, Vector(id(1, 2), id(1, 5), id(2, 0)))
+  }
+
+  test("a parent is of its action's purpose") {
+    assertEquals(
+      compileErrors(
+        "val p: GovPurposeId[GovActionPurpose.HardFork] = GovPurposeId[GovActionPurpose.Committee](null)"
+      ).contains("Found"),
+      true
+    )
+    assertEquals(
+      compileErrors(
+        "val p: GovPurposeId[GovActionPurpose.HardFork] = GovPurposeId[GovActionPurpose.HardFork](null)"
+      ),
+      ""
+    )
   }
 
   test("a stored output whose kept script is not what its bytes read as is refused") {

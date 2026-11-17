@@ -78,11 +78,11 @@ trait ConwayEraScript[E <: EraTag] extends AlonzoEraScript[E]:
       purpose: PlutusPurpose[F, E]
   ): Option[F[Unsigned[Unsigned.Width.W32], Voter]]
   def mkProposingPurpose[F[_, _]](
-      proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure]
+      proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure[E]]
   ): PlutusPurpose[F, E]
   def toProposingPurpose[F[_, _]](
       purpose: PlutusPurpose[F, E]
-  ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure]]
+  ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure[E]]]
 
 /** The native-script readers of every era whose native script is a [[Timelock]], written once over
   * the representation as the reference writes them once over `Timelock era`

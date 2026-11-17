@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{RewardAccount, TxIn, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.era.{AsIx, ProposalProcedure}
+import xyz.kd5ujc.scarab.ledger.state.Conway
 
 /** A Conway Plutus purpose in the form `F` (`data ConwayPlutusPurpose f era`, cardano-ledger
   * f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:202-208`): what a script is run
@@ -16,7 +17,7 @@ enum ConwayPlutusPurpose[F[_, _]]:
   case ConwayCertifying(purpose: F[Unsigned[Unsigned.Width.W32], ConwayTxCert])
   case ConwayWithdrawing(purpose: F[Unsigned[Unsigned.Width.W32], RewardAccount])
   case ConwayVoting(purpose: F[Unsigned[Unsigned.Width.W32], Voter])
-  case ConwayProposing(purpose: F[Unsigned[Unsigned.Width.W32], ProposalProcedure])
+  case ConwayProposing(purpose: F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Conway]])
 
   /** The redeemer tag of the purpose: spend 0, mint 1, cert 2, reward 3, vote 4 and propose 5
     * (`EncCBORGroup (ConwayPlutusPurpose AsIx era)`, `Conway/Scripts.hs:264-278`, cardano-ledger

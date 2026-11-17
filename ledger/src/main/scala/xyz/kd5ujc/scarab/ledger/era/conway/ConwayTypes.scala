@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.conway
 
-import scala.collection.immutable.{SortedMap, SortedSet}
+import scala.collection.immutable.SortedSet
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{
@@ -9,14 +9,12 @@ import xyz.kd5ujc.scarab.ledger.{
   ByteStrings,
   Datum,
   DecodeField,
-  GovActionId,
   LedgerDecodeError,
   RewardAccount,
   ScriptKind,
   TxIn,
   Unsigned,
-  Voter,
-  VotingProcedure
+  Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoScriptRep,
@@ -42,7 +40,8 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxBody,
   TxLevel,
   Val,
-  ValidityInterval
+  ValidityInterval,
+  VotingProcedures
 }
 import xyz.kd5ujc.scarab.ledger.era.babbage.{
   BabbagePlutusScript,
@@ -188,11 +187,11 @@ object ConwayScript:
           ConwayPlutusPurpose.ConwayProposing(_) =>
         None
     override def mkProposingPurpose[F[_, _]](
-        proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure]
+        proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Conway]]
     ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayProposing(proposal)
     override def toProposingPurpose[F[_, _]](
         purpose: ConwayPlutusPurpose[F]
-    ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure]] = purpose match
+    ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Conway]]] = purpose match
       case ConwayPlutusPurpose.ConwayProposing(proposal) => Some(proposal)
       case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
           ConwayPlutusPurpose.ConwayCertifying(_) | ConwayPlutusPurpose.ConwayWithdrawing(_) |
@@ -306,8 +305,8 @@ final class ConwayTxBody private (
     val scriptIntegrityHash: Option[Bytes],
     val auxDataHash: Option[Bytes],
     val networkId: Option[Network],
-    val votingProcedures: SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]],
-    val proposalProcedures: OSet[ProposalProcedure],
+    val votingProcedures: VotingProcedures[Conway],
+    val proposalProcedures: OSet[ProposalProcedure[Conway]],
     val currentTreasuryValue: Option[Coin],
     val treasuryDonation: Coin
 ):
@@ -364,6 +363,7 @@ object ConwayTxBody:
       outputs <- b.outputs.traverse(sized)
       collateralReturn <- b.collateralReturn.traverse(sized)
       certs <- b.certificates.traverse(ConwayTxCert.fromFlat)
+      proposals <- b.proposals.traverse(ConwayProcedures.proposal)
       network <- b.networkId.traverse(v =>
         Network
           .of(v)
@@ -392,8 +392,8 @@ object ConwayTxBody:
       b.scriptDataHash,
       b.auxDataHash,
       network,
-      SortedMap.from(b.votes.map((voter, votes) => voter -> SortedMap.from(votes))),
-      OSet.decoded(b.proposals.map(ProposalProcedure(_))),
+      ConwayProcedures.votes(b.votes),
+      OSet.decoded(proposals),
       b.currentTreasury.map(Coin(_)),
       Coin(b.donation)
     )
@@ -501,12 +501,12 @@ object ConwayTxBody:
           case TopOnly.Top => body.currentTreasuryValue
       override def votingProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
-      ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]] =
+      ): VotingProcedures[Conway] =
         l match
           case TopOnly.Top => body.votingProcedures
       override def proposalProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
-      ): OSet[ProposalProcedure] =
+      ): OSet[ProposalProcedure[Conway]] =
         l match
           case TopOnly.Top => body.proposalProcedures
       override def treasuryDonation[L <: TxLevel](body: TxBody[L, Conway])(using
