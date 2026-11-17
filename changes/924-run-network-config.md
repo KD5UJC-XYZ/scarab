@@ -17,7 +17,8 @@
   as the reference's handler stops before it.
 - At a reload the new topology is installed, once, before the snapshot file is read, as on the reference. The
   snapshot read is then written to what the ledger-peers worker reads, which takes it at its next rebuild of the
-  stake maps, with no new root generation; in `GenesisMode` a snapshot at another block point is checked against the
-  immutable chain again. The `ledgerPeers` lines `snapshotLoaded` and `snapshotIgnored` are logged where the file is
+  stake maps, read together with the ledger's slot and peers, with no new root generation; in `GenesisMode` a
+  snapshot at another block point is checked against the immutable chain again, and a check of a snapshot replaced
+  meanwhile is not reported. The `ledgerPeers` lines `snapshotLoaded` and `snapshotIgnored` are logged where the file is
   read, at start-up and at a reload, and no longer each time a topology is installed, so a snapshot kept or dropped by
   a reload is not said to be loaded.
