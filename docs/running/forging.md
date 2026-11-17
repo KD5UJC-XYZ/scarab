@@ -240,7 +240,9 @@ forging is replaced ([#919](https://github.com/KD5UJC-XYZ/scarab/issues/919)).
 genesis, the credentials and the topology are first read. From the moment the node opens its stores it has
 the reference's initial handler (`Run.hs` 412-435): it reads the topology again, and the network starts from
 what it read, and it logs `blockForgingUpdate` `NotEffective` (and sets `forging_enabled_int` to 0 once the
-metrics exist), since credentials are not read until the forger runs. Once the node runs, every node has the
+metrics exist), since credentials are not read until the forger runs; not when the topology or its peer snapshot is
+refused, which ends the reference's handler before that
+([peer selection](../compatibility/peer-selection-governor.md#reading-the-topology-924)). Once the node runs, every node has the
 full handler, with `--forge` or not and with `--topology` or not
 ([#919](https://github.com/KD5UJC-XYZ/scarab/issues/919)).
 

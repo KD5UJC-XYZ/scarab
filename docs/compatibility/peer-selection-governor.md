@@ -67,13 +67,20 @@ A SIGHUP reload installs the new topology, then reads the peer snapshot on its o
 (`Run.hs` 413-430 before consensus has initialised, 596-614 after, 673-757; checked by reading; what the runtime handler
 traces and writes to standard error checked by running cardano-node 11.1.3 on 2026-11-17,
 [#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6933331883); the first handler was not run).
+The new topology is installed, with the snapshot in force, before the file is read, as the reference writes the
+topology's variables (697-702) before it reads the file (725-731); a snapshot read that differs from the one in force
+is then installed in its turn, and `snapshotLoaded` or `snapshotIgnored` is said where the file is read, at start-up
+and at a reload, not for a snapshot kept or dropped.
 At runtime a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the origin or of another
 network, is dropped: the new topology stays with no snapshot, and nothing is said, since the reference's
 `NetworkConfigUpdateError` there is discarded (`Run.hs` 720-722, 734-736). In Praos mode a file it cannot read is
-ignored by both, at start-up as at a reload; Scarab says so (`snapshotIgnored`), the reference does not (736). A
-snapshot older than `useLedgerAfterSlot` keeps the snapshot in force under the new topology. Before consensus has
-initialised every one of these keeps the snapshot in force, and the handler stops before `BlockForgingUpdate
-NotEffective` (by reading). A topology that cannot be read
-changes nothing, and the snapshot is not read again: the reference's `error` there escapes the `try` meant to catch it
-(`Run.hs` 684-689). `NetworkConfigSuite` and `PeerSnapshotUseSuite` cover each case. The reference writes a refusal
-it throws to standard error; Scarab logs it as a warning.
+ignored by both, at start-up and at either handler's reload, written as no snapshot (757); Scarab says so
+(`snapshotIgnored`), the reference does not (736). A snapshot older than `useLedgerAfterSlot` keeps the snapshot in
+force under the new topology. Before consensus has initialised, a file it cannot read in Genesis mode, one of a legacy
+version, at the origin, of another network or older than `useLedgerAfterSlot` keeps the snapshot in force, and the
+handler stops before `BlockForgingUpdate NotEffective` (by reading); after an unreadable file in Praos mode
+`NotEffective` follows. A topology that cannot be read changes nothing, and the snapshot is not read again: the
+reference's `error` there escapes the `try` meant to catch it (`Run.hs` 684-689). `NetworkConfigSuite` and
+`PeerSnapshotUseSuite` cover each case. The reference writes a refusal it throws to standard error; Scarab logs it as
+a warning; this difference, and the reference's `NetworkConfigUpdate`, `NetworkConfig` and `LedgerPeerSnapshot` traces
+Scarab does not give, are a gap ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6958258243)).
