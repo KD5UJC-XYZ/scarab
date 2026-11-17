@@ -126,6 +126,25 @@ class TopologyNoticeSuite extends FunSuite:
         "To turn off this message enable the use of ledger peers or remove peerSnapshotFile " +
         "from the topology file."
     )
+    assertEquals(
+      SnapshotWithoutLedgerPeers(BlockProducer).message,
+      prefix + "Peer snapshot file specified but topology disables ledger peers - ignoring file. " +
+        "To turn off this message remove peerSnapshotFile from the topology file."
+    )
+    assertEquals(
+      LedgerPeersOnProducer.message,
+      prefix + "Use of ledger peers is not recommended for BP operation"
+    )
+    assertEquals(
+      SnapshotOffOnProducer.message,
+      prefix + "Ledger peers and peer snapshot, although specified in the topology file, are " +
+        "disabled in line with recommended BP operation"
+    )
+    assertEquals(
+      GenesisRelayWithoutSnapshot.message,
+      prefix + "It is recommended to specify an up-to-date ledger peer snapshot file for relay " +
+        "operations in Genesis mode when the use of ledger peers is enabled."
+    )
     assertEquals(SnapshotOffOnProducer.level, Level.Info)
     List(
       LedgerPeersOnProducer,
