@@ -7,7 +7,7 @@ an independent review checked them once and its corrections are made here, and t
 kept input lives in a directory of its own, off the persisted-format surface (§7.4,
 [FMT-1](../design-rules.md#fmt-1)). Tracking: [#922](https://github.com/KD5UJC-XYZ/scarab/issues/922).
 
-In-tree code is cited by path, symbol and line at `fdd5834f2`. The claims about the reference (R1 to R21) and what
+In-tree code is cited by path, symbol and line at `fdd5834f2`. The claims about the reference (R1 to R22) and what
 is not checked (N1 to N15), with their pins, are in [§3's own page](differential-campaign-reference.md).
 
 ## 1. What the campaign is for
@@ -165,7 +165,7 @@ adapters (§2.7) generate and judge new Conway cases with the reference's own ru
 ## 3. What the reference does
 
 In [its own page](differential-campaign-reference.md): a transaction from a local client (§3.1) and from a peer
-(§3.2), a header (§3.3) and a block from a peer (§3.4), the claims with their pins (§3.5, R1 to R21) and what is not
+(§3.2), a header (§3.3) and a block from a peer (§3.4), the claims with their pins (§3.5, R1 to R22) and what is not
 checked (§3.6, N1 to N15). This document cites them by their IDs.
 
 ## 4. The shape of the campaign
@@ -320,6 +320,15 @@ table ([STR-2](../design-rules.md#str-2)).
   after the submission, or the probe is `NoVerdict`; `judged` checks the slot and the count this way on the reference
   (`scripts/devnet/refusalcorpus.py` 213-218). In the injector cluster nothing moves the tip or the mempools between
   probes, and the check confirms it.
+- **A switch between blocks of the same slot.** A snapshot shows the slot after the mempool's tip but not its hash,
+  and the mempool resyncs on the hash as well as the slot (R22): after a switch from one block to another of the same
+  slot, the tips and the snapshot can read alike while the mempool still judges against the block it left. In the
+  shared cluster a local ChainSync follower on each node (as `scripts/devnet/ntclocal.py` speaks it, 85-100) records
+  every roll-back and roll-forward. After a switch whose new tip has the slot of the tip it replaced, that node's
+  context is unsynchronised until its snapshot's slot has moved past the switch, which shows a resync to a later tip; a
+  probe judged in that window, or before both followers have reached the bracket's tip, is `NoVerdict`. In the
+  injector cluster the injector serves no such switch outside a chain-selection probe, and after one judges no
+  transaction until both snapshots have moved past it.
 - **Every attempt is recorded**, with its bracket and its reply, including one whose bracket then moved and one whose
   reply never came: an attempt is part of the context whether or not it was judged.
 - **Reset and reconstruction.** After a bracket that moved, a reply that never came (a timeout, a lost connection) or
@@ -415,8 +424,8 @@ store. Public CI runs no discovery: it replays kept inputs, each one fixed and d
 authorized (§7.4).
 
 **Nothing that depends on outcomes is published while a finding of its period is private**, and that includes the fact
-that a finding exists. A finding is cleared when its advisory is published, when upstream has disclosed it for a defect of the reference, or when it is closed as no defect. Publication has
-two stages.
+that a finding exists. A finding is cleared when its advisory is published, when upstream has disclosed it for a
+defect of the reference, or when it is closed as no defect. Publication has two stages.
 
 **Before clearance: the announcement.** On a fixed date after each period, whatever its runs found, one announcement is
 published, written from a closed type whose only input is the period's configuration, fixed before the period began:
@@ -467,7 +476,7 @@ the campaign leads to is its own change at its own level.
 | Stage | Delivers | Jump gate |
 |---|---|---|
 | S0 | This document; its claims checked independently. | The review's check of §3 at the pins, and the owner's answers to §10. |
-| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The refusal corpus judged again, all conclusive and agreeing, eras before Conway through their adapters; in each era, Shelley to Conway: the coverage minimums, a probe failing the phase-1 measure and another rule, and five accepted probes then a conflicting one, replayed offline to the same verdicts; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
+| S1 | Path R in the shared cluster, on probes from the existing builders (`eraload.py` valid load; `refusalcases.py`, `refusalcoverage.py` refusals): §6's bracketed judge with accepted probes, the record of every attempt, Conway's offline replay through Scarab's node-to-client path, the offline admission adapters of Shelley to Babbage (§4), the minimiser (§7.3), the private runner and store, the announcement and results types and the disclosure gate. Confirms N1, N2, N10, N12, N13 and N15; answers Q10. | The refusal corpus judged again, all conclusive and agreeing, eras before Conway through their adapters; in each era, Shelley to Conway: the coverage minimums, a probe failing the phase-1 measure and another rule, and five accepted probes then a conflicting one, replayed offline to the same verdicts; the same-slot rule (§6) tested on recorded tip sequences, and no probe of the run judged inside its window; a negative control (one check loosened on a never-merged branch, as in #927) found, minimised, confirmed and reported privately, with nothing published; the disclosure gate (§8). |
 | S2 | Phase-1 generation and mutation per era with re-signing; the decoding oracle as the offline first judge; the first target (§5.3); path L for Conway refusals in the shared cluster; kept inputs and their suite. Confirms N3 and N7. | The coverage minimums for every cell of era and phase-1 family; every disagreement triaged privately (§8); the first target's cases judged on both paths. |
 | S3 | Phase 2: WP8 scripts in every purpose, datums and redeemers, units at the limits, every cost model. | The coverage minimums for every cell of Plutus language, protocol version the cluster reaches and script purpose. |
 | S4 | The injector and the injector cluster, with a block builder for the eras before Conway: the base chain, header, body, size, protocol-version, era-transition and fork probes, transactions in blocks, the block verdict readers on both sides, the tip and ledger-state comparisons. Confirms N4 to N6, N9, N11 and N14. | A base chain over two epochs and one era transition adopted alike, tips and same-point state equal; the coverage minimums for every block family; S1's negative control repeated for a block rule, minimised and confirmed in a fresh injector cluster. |
