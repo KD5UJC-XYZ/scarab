@@ -276,6 +276,274 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
    "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads the Praos2 state of a captured Leios devnet state (no announcement), checks each of its nine fields against the values read off the file's raw bytes, and writes it back byte for byte; the bytes of an announcement are derived from the source",
    "digest": "b7d12f6ad3bcdea7"
+  },
+  "def storage.haskell.state.Params.codecIn": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParams era)",
+     "lines": [
+      204,
+      209
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "symbol": "eraPParams",
+     "lines": [
+      741,
+      796
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "the 11.1 layout's Dijkstra parameters (35 items, cardano-ledger f649f975 eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:423-459) are refused (DijkstraNotYet.LedgerState), which the reference decodes; 11.x never enters Dijkstra, its major-version cap being 11. The Leios build's 54 are read and written byte for byte, every era's parameters held in one flat ProtocolParams, each field at the range of the reference's field type",
+   "digest": "16ffb98647e36c5e",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54"
+  },
+  "def storage.haskell.state.NodeTypeCodecs#enactStateWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "symbol": "EncCBOR (EnactState era)",
+     "lines": [
+      235,
+      245
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "2e607cf0ca4dd48b"
+  },
+  "def storage.haskell.state.NodeTypeCodecs#ratifyStateWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "symbol": "EncCBOR (RatifyState era)",
+     "lines": [
+      670,
+      678
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "795d5479bf002e09"
+  },
+  "def storage.haskell.state.GovStateCodecs#drCompleteWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+     "symbol": "EncCBOR (DRepPulsingState era)",
+     "lines": [
+      468,
+      472
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "b7d4061c467fe0af"
+  },
+  "def storage.haskell.state.GovStateCodecs#conwayGovStateWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "EncCBOR (ConwayGovState era)",
+     "lines": [
+      363,
+      373
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "digest": "ee0aff64c8b9a7cb"
+  },
+  "def storage.haskell.state.Wire.unitIntervalAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "UnitInterval",
+     "lines": [
+      544,
+      561
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "decodeIntegralRational",
+     "lines": [
+      271,
+      280
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      167
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "digest": "a53e9ffe1cd43f75"
+  },
+  "def storage.haskell.state.Wire.nonNegativeIntervalAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "NonNegativeInterval",
+     "lines": [
+      469,
+      486
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "decodeIntegralRational",
+     "lines": [
+      271,
+      280
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      167
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "digest": "4fb752aaf0dc5459"
+  },
+  "def storage.haskell.state.Wire.positiveIntervalAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "PositiveInterval",
+     "lines": [
+      489,
+      510
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "decodeIntegralRational",
+     "lines": [
+      271,
+      280
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      167
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "digest": "6e1f30b0813ed6d4"
   }
  },
  "glue": [
@@ -335,6 +603,12 @@
     "given storage.SnapshotSidecarV7.chainDepState",
     "given storage.SnapshotSidecarV8.chainDepState",
     "given storage.SnapshotSidecarV9.chainDepState"
+   ]
+  },
+  {
+   "reason": "fills the parameters an era does not have from genesis, so that the node's one flat ProtocolParams is complete after an import; the reference holds each era's own record and has no such step (#826)",
+   "definitions": [
+    "def storage.haskell.state.Params.completeIn"
    ]
   }
  ]

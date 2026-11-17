@@ -264,14 +264,12 @@ object LedgerSnapshotImport:
             given ShelleyBasedEra[e] = i.era
             val state = i.state.nes.es.ls.utxo
             val stamp = anchor.blockNo.toLong
+            // the parameters the era has in the layout the state was read in
+            def complete(read: ProtocolParams) =
+              Params.completeIn(config.layout.layout, i.era, read, config.genesisParams)
             val completed = for
-              params <- Params.complete(
-                i.era,
-                EraLedger.curPParams(state.gov),
-                config.genesisParams
-              )
-              previous <- Params
-                .complete(i.era, EraLedger.prevPParams(state.gov), config.genesisParams)
+              params <- complete(EraLedger.curPParams(state.gov))
+              previous <- complete(EraLedger.prevPParams(state.gov))
             yield (params, previous)
             val observed = (ext.ledgerState.past.map(_.start) :+ ext.ledgerState.current.start)
               .zip(Era.values)

@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PrevIds,
   Proposal,
   Proposals,
+  ProtocolParams,
   PulsingSnapshot,
   RatifyState,
   RewardAccount,
@@ -410,26 +411,37 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     override def check(p: Proposals): Option[ConstraintViolation] =
       stored.check((p.roots, p.actions))
 
-  /** `EnactState` (`Internal.hs:229-239`), at the Conway parameters. */
-  given enactState(using ProtVer): Codec[EnactState] =
+  /** `EnactState` at the Conway parameters ([[enactStateWith]]). */
+  given enactState(using ProtVer): Codec[EnactState] = enactStateWith(Params.conwayCodec)
+
+  /** `EnactState` (`Conway/Governance/Internal.hs:235-245`, cardano-ledger 9df9f98c): `[committee,
+    * constitution, current parameters, previous parameters, treasury, withdrawals, previous
+    * actions]`, the parameters those of the era (`params`): Dijkstra's state holds Conway's record
+    * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Governance.hs:29`) over its own parameters.
+    */
+  def enactStateWith(params: Codec[ProtocolParams])(using ProtVer): Codec[EnactState] =
     Record.of[EnactState](
       (
         strictMaybe(committee),
         constitution,
-        Params.conwayCodec,
-        Params.conwayCodec,
+        params,
+        params,
         amount,
         sortedMap(nodeCredential, amount),
         prevIds
       )
     )
 
-  /** `RatifyState` (`Internal.hs:664-672`): the enact state, the actions to enact, the expired ones
-    * and whether a delaying action was enacted.
+  /** `RatifyState` at the Conway parameters ([[ratifyStateWith]]). */
+  given ratifyState(using ProtVer): Codec[RatifyState] = ratifyStateWith(Params.conwayCodec)
+
+  /** `RatifyState` (`Conway/Governance/Internal.hs:670-678`, cardano-ledger 9df9f98c): the enact
+    * state, its parameters those of the era (`params`), the actions to enact, the expired ones and
+    * whether a delaying action was enacted.
     */
-  given ratifyState(using ProtVer): Codec[RatifyState] =
+  def ratifyStateWith(params: Codec[ProtocolParams])(using ProtVer): Codec[RatifyState] =
     Record.of[RatifyState](
-      (enactState, seqOf(govActionState), sortedSet(govActionId), Codec.bool)
+      (enactStateWith(params), seqOf(govActionState), sortedSet(govActionId), Codec.bool)
     )
 
   /** The DRep state of the node's ledger (`DRep.hs:165-198`): the expiry, the anchor (a

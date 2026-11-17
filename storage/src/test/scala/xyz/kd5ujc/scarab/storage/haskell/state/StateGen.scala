@@ -373,7 +373,8 @@ object StateGen:
             minUTxOValue = none.minUTxOValue,
             coinsPerUTxOWord = none.coinsPerUTxOWord
           )
-        // Dijkstra's are refused by the codec; generated as Conway's to show that
+        // Dijkstra's are refused by the 11.1 codec; generated as Conway's to show that (the Leios
+        // build's are generated in DijkstraPParamsStateSuite)
         case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
           noDecentralisation(p).copy(
             minUTxOValue = none.minUTxOValue,

@@ -54,23 +54,32 @@ trait GovStateCodecs extends CertStateCodecs:
     * ratification. A pulser that is still running is encoded as the completed one, so this is all
     * that is ever written.
     */
-  given drComplete(using ProtVer): Codec[DRComplete] =
-    Record.of[DRComplete]((pulsingSnapshot, ratifyState))
+  given drComplete(using ProtVer): Codec[DRComplete] = drCompleteWith(Params.conwayCodec)
+
+  /** `DRComplete`, its ratification's parameters those of the era (`params`). */
+  def drCompleteWith(params: Codec[ProtocolParams])(using ProtVer): Codec[DRComplete] =
+    Record.of[DRComplete]((pulsingSnapshot, ratifyStateWith(params)))
+
+  /** `ConwayGovState` at the Conway parameters ([[conwayGovStateWith]]). */
+  given conwayGovState(using ProtVer): Codec[ConwayGovState] =
+    conwayGovStateWith(Params.conwayCodec)
 
   /** `ConwayGovState` (`Conway/Governance.hs:359-369`, cardano-ledger f649f975): `[proposals,
     * committee, constitution, current parameters, previous parameters, future parameters, DRep
-    * pulser]`.
+    * pulser]`, every parameters those of the era (`params`), as in Dijkstra's state, which holds
+    * Conway's record (cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Governance.hs:29`).
     */
-  given conwayGovState(using ProtVer): Codec[ConwayGovState] =
+  def conwayGovStateWith(params: Codec[ProtocolParams])(using ProtVer): Codec[ConwayGovState] =
     Record.of[ConwayGovState](
       (
         proposals,
         strictMaybe(committee),
         constitution,
-        Params.conwayCodec,
-        Params.conwayCodec,
-        futurePParams(Params.conwayCodec),
-        drComplete
+        params,
+        params,
+        futurePParams(params),
+        drCompleteWith(params)
       )
     )
 
