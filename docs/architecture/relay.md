@@ -42,7 +42,8 @@ outbound governor promotes the peer and reuses the connection (see "Connections"
 **Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
 clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
 a `Source` that holds one client's cursor. `BlockFetchServer` streams an inclusive range from a
-`Blocks` source and answers NoBlocks for anything that is not a contiguous stretch of our chain; the
+`Blocks` source and answers NoBlocks for anything that is not a contiguous stretch of our chain, in
+order by slot (a Byron boundary block first in its slot); the
 length of a range is not bounded, as the reference's server streams any range it holds. `KeepAliveServer` echoes cookies. `TxSubmissionClient` and
 `TxSubmissionServer` are the two roles of TxSubmission2: the client offers a `Source` of
 transactions (each once per connection, by ticket number) and hands out bodies on request; the
@@ -59,8 +60,10 @@ the read pointer of every connected client. A rollback rewrites exactly the poin
 that had read past the new tip (they get a RollBackward to it and then follow the new branch). A
 FindIntersect checks each offered point against the chain as it is and moves the client's pointer in
 the same update, as the reference's follower does (`checkIfPointOnChain`); a point older than the
-volatile chain is looked up in the store, which never drops a block, before the pointer moves to it. A
-client behind the volatile chain is served from the `ImmutableStore`. `ChainServer` is a
+volatile chain is looked up in the store's index, which never drops a block, before the pointer moves to
+it; the block is not read. A client behind the volatile chain is served from the `ImmutableStore`, one read
+of each block, whose header is decoded without decoding the contents of its body. A BlockFetch range finds its ends in the
+volatile chain or the store's index and reads each stored block of the range once, none after it. `ChainServer` is a
 `ChainPersistence`, composed after the storage persistence so a block is stored before it leaves the
 volatile chain. Without `--db` only the volatile chain can be served.
 
