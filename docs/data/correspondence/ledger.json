@@ -13106,9 +13106,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the superclass `PlutusLanguage l` as a member, `EraPlutusContext era` not yet a class here (#85); the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
+   "note": "the superclass `PlutusLanguage l` as a member, and the language's selection among the era's memoised information (`lookupTxInfoResult`) as one; the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
    "digest": "b6c0c376f337199b"
   },
   "def ledger.era.EraPlutusTxInfo#plutusLanguage": {
@@ -13334,14 +13335,13 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6971062751",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the Plutus V3 case alone; V1, V2 and V4 come with their instances",
-   "digest": "ee0e3dd2af1023df"
+   "digest": "ce025b195edd62c2"
   },
   "type ledger.era.PlutusScriptPurpose": {
    "upstream": [
@@ -13356,14 +13356,13 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6971062751",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the Plutus V3 case alone; V1, V2 and V4 come with their instances",
-   "digest": "290fc7c156f56f3a"
+   "digest": "8e47763a4cf2e2f0"
   },
   "type ledger.era.PlutusTxInfo": {
    "upstream": [
@@ -13378,14 +13377,13 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6971062751",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the Plutus V3 case alone; V1, V2 and V4 come with their instances",
-   "digest": "da5618a67e0dc2aa"
+   "digest": "965a8b5f5c68a6e5"
   },
   "type ledger.era.PlutusTxInInfo": {
    "upstream": [
@@ -13400,14 +13398,14 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6971062751",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the Plutus V3 case alone; V1, V2 and V4 come with their instances",
-   "digest": "9f64dbb2be294074"
+   "note": "every case but Alonzo's for Plutus V1 (`Maybe PV1.TxInInfo`): Alonzo is not among the era types yet, and no later era has the case",
+   "digest": "88c8390715db2769"
   },
   "type ledger.era.PlutusArgs": {
    "upstream": [
@@ -13422,14 +13420,13 @@
      ]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6971062751",
+   "class": "Mirror",
+   "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the Plutus V3 case alone; V1, V2 and V4 come with their instances",
-   "digest": "8fedd16032c98a3b"
+   "digest": "2c6bd358de4b05ba"
   },
   "class ledger.era.PlutusV3Args": {
    "upstream": [
@@ -14554,7 +14551,7 @@
     "ConwayPlutusContextRefusalsSuite"
    ],
    "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
-   "digest": "058c9ec163b569dd"
+   "digest": "75ce3d109772a83f"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxInInfoV3": {
    "upstream": [
@@ -17284,6 +17281,1377 @@
    ],
    "note": "the pair's",
    "digest": "ffc27f2984d2d149"
+  },
+  "trait ledger.era.EraPlutusContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "EraPlutusContext",
+     "lines": [
+      187,
+      220
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6971062751",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "`mkSupportedLanguage`, `mkTxInfoResult` and `lookupTxInfoResult`; `mkSupportedPlutusRunnable` waits for the era types' runnable scripts, and the superclass `AlonzoEraScript era` and the error's Eq, Show, NFData, CBOR and JSON constraints are not members; the context error and the memoised information are the families `ContextError` and `TxInfoResult`",
+   "digest": "f372f9e86c17bc50"
+  },
+  "def ledger.era.EraPlutusContext#mkSupportedLanguage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "mkSupportedLanguage",
+     "lines": [
+      204,
+      204
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "58dfd5325c9218f2"
+  },
+  "def ledger.era.EraPlutusContext#mkTxInfoResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "mkTxInfoResult",
+     "lines": [
+      209,
+      209
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "cfc08d2f83bc3947"
+  },
+  "def ledger.era.EraPlutusContext#lookupTxInfoResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "lookupTxInfoResult",
+     "lines": [
+      216,
+      220
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "each language's instance selects its own result (`EraPlutusTxInfo#lookupTxInfoResult`), so the reference's impossible lookup of an unsupported language (`lookupTxInfoResultImpossible`) has no counterpart",
+   "digest": "aa93a73d3822740f"
+  },
+  "def ledger.era.EraPlutusTxInfo#lookupTxInfoResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "lookupTxInfoResult",
+     "lines": [
+      216,
+      220
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "lookupTxInfoResult",
+     "lines": [
+      175,
+      178
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the language's own selection among the era's memoised information, which the reference writes in the era's `EraPlutusContext` instance by the language's singleton; the unsupported languages' `lookupTxInfoResultImpossible` has no counterpart",
+   "digest": "a8fef918aef9341c"
+  },
+  "type ledger.era.TxInfoResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "TxInfoResult",
+     "lines": [
+      202,
+      202
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "TxInfoResult ConwayEra",
+     "lines": [
+      152,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "Conway's case alone, as the other families",
+   "digest": "98a1ded517dcca97"
+  },
+  "class ledger.era.SupportedLanguage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedLanguage",
+     "lines": [
+      313,
+      314
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the language's translation (`EraPlutusTxInfo l era`) as a member, its type the abstract `L`",
+   "digest": "93f71815c7008910"
+  },
+  "type ledger.era.SupportedLanguage#L": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedLanguage",
+     "lines": [
+      314,
+      314
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the language the constructor hides",
+   "digest": "80d2442cf18e1964"
+  },
+  "def ledger.era.SupportedLanguage#plutusTxInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "EraPlutusTxInfo l era",
+     "lines": [
+      314,
+      314
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the constructor's constraint, as a member",
+   "digest": "bea8029fa990189a"
+  },
+  "def ledger.era.SupportedLanguage#language": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "plutusLanguage",
+     "lines": [
+      357,
+      362
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "326231f7c7075d17"
+  },
+  "def ledger.era.SupportedLanguage#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "Eq (SupportedLanguage era)",
+     "lines": [
+      319,
+      321
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "5254b6ed3b658b01"
+  },
+  "def ledger.era.SupportedLanguage.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedLanguage",
+     "lines": [
+      314,
+      314
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "a7e0ebdc86b76783"
+  },
+  "given ledger.era.SupportedLanguage.ordering": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "Ord (SupportedLanguage era)",
+     "lines": [
+      323,
+      325
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "4ae55e60d3fdf0a5"
+  },
+  "given ledger.era.EraPlutusContext.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusContext ConwayEra",
+     "lines": [
+      149,
+      178
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance, given in the class's companion",
+   "digest": "96107b8db392ed88"
+  },
+  "given ledger.era.EraPlutusTxInfo.conwayPlutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra",
+     "lines": [
+      399,
+      437
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance, given in the class's companion",
+   "digest": "56308587f7036615"
+  },
+  "given ledger.era.EraPlutusTxInfo.conwayPlutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra",
+     "lines": [
+      439,
+      480
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance, given in the class's companion",
+   "digest": "45b7e7175cb866e5"
+  },
+  "type ledger.era.PlutusScriptContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "PlutusScriptContext",
+     "lines": [
+      364,
+      367
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "30b6c1a0ecda2bbd"
+  },
+  "enum ledger.era.LegacyPlutusArgs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "LegacyPlutusArgs",
+     "lines": [
+      369,
+      383
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "ff992fe8d08a2537"
+  },
+  "def ledger.era.LegacyPlutusArgs.legacyPlutusArgsToData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "legacyPlutusArgsToData",
+     "lines": [
+      445,
+      448
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "3fb3d2768b50c1b3"
+  },
+  "class ledger.era.PlutusV1Args": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "PlutusV1Args",
+     "lines": [
+      518,
+      518
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "883f03f438d6efeb"
+  },
+  "class ledger.era.PlutusV2Args": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "PlutusV2Args",
+     "lines": [
+      538,
+      538
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "ef9d4e19b3cbe61a"
+  },
+  "class ledger.era.PlutusV4Args": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "PlutusV4Args",
+     "lines": [
+      579,
+      579
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "1a2e75a25845b1e9"
+  },
+  "def ledger.era.AlonzoTxInfo.transTxOut": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transTxOut",
+     "lines": [
+      277,
+      286
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "30a25d67a94e0736"
+  },
+  "def ledger.era.AlonzoTxInfo.transTxBodyId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transTxBodyId",
+     "lines": [
+      288,
+      289
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "20abc091b429eaca"
+  },
+  "def ledger.era.AlonzoTxInfo.transWithdrawals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transWithdrawals",
+     "lines": [
+      301,
+      305
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the accounts folded in their order into a map by staking credential, a later account of a credential replacing an earlier one's amount",
+   "digest": "577057577208df8a"
+  },
+  "def ledger.era.AlonzoTxInfo.transTxBodyWithdrawals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transTxBodyWithdrawals",
+     "lines": [
+      308,
+      309
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "b1a78b25f84e4b1a"
+  },
+  "def ledger.era.AlonzoTxInfo.transMintValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transMintValue",
+     "lines": [
+      344,
+      345
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "0ec5139ce0820163"
+  },
+  "def ledger.era.AlonzoTxInfo.transTxCertCommon": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transTxCertCommon",
+     "lines": [
+      364,
+      379
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "8c9efc810497733e"
+  },
+  "def ledger.era.AlonzoTxInfo.toLegacyPlutusArgs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "toLegacyPlutusArgs",
+     "lines": [
+      180,
+      194
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, after the purpose, whose failure is the reference's; a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
+   "digest": "e960068d75cc8fdf"
+  },
+  "def ledger.era.AlonzoTxInfo.toPlutusV1Args": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "toPlutusV1Args",
+     "lines": [
+      167,
+      178
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "6f5d5c9fef3171be"
+  },
+  "def ledger.era.BabbageTxInfo.transTxInInfoV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "transTxInInfoV2",
+     "lines": [
+      174,
+      186
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "bc896f22a92ad081"
+  },
+  "def ledger.era.BabbageTxInfo.toPlutusV2Args": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "toPlutusV2Args",
+     "lines": [
+      403,
+      414
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "5dd5929b8ca15b41"
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxOutV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transTxOutV1",
+     "lines": [
+      306,
+      320
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "236092fbc2e57abc"
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxInInfoV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transTxInInfoV1",
+     "lines": [
+      323,
+      335
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "adbfbe648a63149d"
+  },
+  "def ledger.era.conway.ConwayTxInfo.guardConwayFeaturesForPlutusV1V2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "guardConwayFeaturesForPlutusV1V2",
+     "lines": [
+      352,
+      381
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "of the transaction's body",
+   "digest": "259c837071aa1ac2"
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxCertV1V2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transTxCertV1V2",
+     "lines": [
+      383,
+      397
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "2ea7b04cf0dac62e"
+  },
+  "def ledger.era.conway.ConwayTxInfo.transPlutusPurposeV1V2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transPlutusPurposeV1V2",
+     "lines": [
+      724,
+      739
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "Alonzo's `transPlutusPurpose` (`Alonzo/Plutus/TxInfo.hs:381-392`) written out, as Alonzo's purposes are not among the era types yet; a certificate through `transTxCertV1V2`, both languages' `toPlutusTxCert`",
+   "digest": "b05f495d0ea68726"
+  },
+  "val ledger.era.conway.ConwayTxInfo.plutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra",
+     "lines": [
+      399,
+      437
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the datums read from the bytes they arrived as, a failure the node's own `Undecodable` after every failure the reference has",
+   "digest": "8064fb33b6c5510e"
+  },
+  "val ledger.era.conway.ConwayTxInfo.plutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra",
+     "lines": [
+      439,
+      480
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the redeemers and datums read from the bytes they arrived as, a failure the node's own `Undecodable` after every failure the reference has",
+   "digest": "a6a8efcc9a30282d"
+  },
+  "val ledger.era.conway.ConwayTxInfo.context": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusContext ConwayEra",
+     "lines": [
+      149,
+      178
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "`mkSupportedPlutusRunnable` is not here yet (`EraPlutusContext`)",
+   "digest": "a4b194b92389bd92"
+  },
+  "class ledger.era.conway.ConwayTxInfoResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "ConwayTxInfoResult",
+     "lines": [
+      152,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "each field computed when first read, as the reference keeps them lazy",
+   "digest": "2eea7819460ebea0"
+  },
+  "val ledger.era.conway.ConwayTxInfoResult#tirPlutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV1",
+     "lines": [
+      175,
+      175
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "digest": "157075a0dad5ff48"
+  },
+  "val ledger.era.conway.ConwayTxInfoResult#tirPlutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV2",
+     "lines": [
+      176,
+      176
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "digest": "7ee212c63c8378c6"
+  },
+  "val ledger.era.conway.ConwayTxInfoResult#tirPlutusV3": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV3",
+     "lines": [
+      177,
+      177
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "digest": "7cceb29532360aa7"
+  },
+  "class ledger.era.PV1.TxOut": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "symbol": "TxOut",
+     "lines": [
+      111,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "34a83c740e1c672a"
+  },
+  "given ledger.era.PV1.txOut": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      170,
+      170
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "68fd283e309c0eb6"
+  },
+  "enum ledger.era.PV1.DCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/DCert.hs",
+     "symbol": "DCert",
+     "lines": [
+      53,
+      73
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "f8d1111234d2d4f1"
+  },
+  "given ledger.era.PV1.dCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/DCert.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      83,
+      93
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "d552253d26ce47a2"
+  },
+  "enum ledger.era.PV1.ScriptPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "ScriptPurpose",
+     "lines": [
+      88,
+      94
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "4d27f9bc55b23826"
+  },
+  "given ledger.era.PV1.scriptPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      306,
+      313
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "ec0f2cb096525332"
+  },
+  "class ledger.era.PV1.TxInInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "TxInInfo",
+     "lines": [
+      74,
+      77
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "1094ad2cc60c7d14"
+  },
+  "given ledger.era.PV1.txInInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      304,
+      304
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "f85cc33cfa79304b"
+  },
+  "class ledger.era.PV1.TxInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "TxInfo",
+     "lines": [
+      100,
+      121
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "307483ce3cc69035"
+  },
+  "given ledger.era.PV1.txInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      305,
+      305
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "7c974fd03bb61e0b"
+  },
+  "class ledger.era.PV1.ScriptContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "ScriptContext",
+     "lines": [
+      154,
+      159
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "4c3d3c5168844fdc"
+  },
+  "given ledger.era.PV1.scriptContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      314,
+      314
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "b39d39b79af1d4ac"
+  },
+  "class ledger.era.PV2.TxInInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "symbol": "TxInInfo",
+     "lines": [
+      66,
+      69
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "d8a1aa7ed65ffb7d"
+  },
+  "given ledger.era.PV2.txInInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      279,
+      279
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "f85cc33cfa79304b"
+  },
+  "class ledger.era.PV2.TxInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "symbol": "TxInfo",
+     "lines": [
+      80,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "0bda2f1cdc2307f3"
+  },
+  "given ledger.era.PV2.txInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      280,
+      280
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "59c995c456a0618d"
+  },
+  "class ledger.era.PV2.ScriptContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "symbol": "ScriptContext",
+     "lines": [
+      155,
+      160
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "1598e4c08d6deb65"
+  },
+  "given ledger.era.PV2.scriptContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "symbol": "makeIsDataSchemaIndexed",
+     "lines": [
+      281,
+      281
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "digest": "b39d39b79af1d4ac"
+  },
+  "given ledger.era.PV1.stakingCredentialOrdering": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Credential.hs",
+     "symbol": "StakingCredential",
+     "lines": [
+      43,
+      54
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the derived `Ord`, which the V1 and V2 withdrawals are ordered by",
+   "digest": "843d1965aeade970"
   }
  },
  "glue": [
@@ -17353,7 +18721,10 @@
     "object ledger.era.dijkstra.DijkstraEraPParams",
     "object ledger.era.dijkstra.DijkstraPParams",
     "object ledger.era.dijkstra.Milliseconds32",
-    "object ledger.era.dijkstra.SlotInterval"
+    "object ledger.era.dijkstra.SlotInterval",
+    "object ledger.era.EraPlutusContext",
+    "object ledger.era.LegacyPlutusArgs",
+    "object ledger.era.SupportedLanguage"
    ]
   },
   {
@@ -17481,7 +18852,9 @@
     "def ledger.era.ProposalProcedure#hashCode",
     "def ledger.era.ProposalProcedure#toString",
     "def ledger.era.VotingProcedures#hashCode",
-    "def ledger.era.VotingProcedures#toString"
+    "def ledger.era.VotingProcedures#toString",
+    "def ledger.era.SupportedLanguage#hashCode",
+    "def ledger.era.SupportedLanguage#toString"
    ]
   },
   {
