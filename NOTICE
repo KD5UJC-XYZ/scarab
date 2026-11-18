@@ -103,7 +103,9 @@ Leios testnet image of input-output-hk/ouroboros-leios (Apache-2.0); its Alonzo,
 genesis files are derived from that testnet's (provenance in fixtures/dijkstra-devnet/README.md).
 fixtures/reference/dijkstra-state-translation holds what the unchanged cardano-ledger (Apache-2.0) of the
 Leios testnet build computes from the throwaway local-cluster snapshot in fixtures/leios/state (provenance
-in fixtures/reference/dijkstra-state-translation/README.md). The files in fixtures/licenses and the licence files of the
+in fixtures/reference/dijkstra-state-translation/README.md), and fixtures/reference/leios-ntc-queries what it answers
+to two node-to-client queries on the state files there (provenance in fixtures/reference/leios-ntc-queries/README.md).
+The files in fixtures/licenses and the licence files of the
 individual fixture directories cover the upstream-derived test vectors.
 
 The reference Cardano node binaries used by scripts/prepare_reference_image.py are

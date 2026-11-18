@@ -54,7 +54,11 @@ of the certificate state, the distributions, the wallet's queries, the ledger pe
 of Conway's governance (the constitution, the DRep and committee queries, the proposals, the ratify state, the
 future parameters and the pools' default votes) in Dijkstra (roadmap F1); under the Leios build
 (`--reference-build leios-b004fe0c`) a Dijkstra state answers the current protocol parameters, the governance
-state, the ratify state and the future parameters. A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+state, the ratify state and the future parameters. Under that build a client that negotiates version
+23 is answered as the Leios build answers it: the pools' state (`GetStakePoolState`) and the Leios voting
+committees (`GetLeiosCommittee`) are answered, and the three queries it removed (tags 4, 5 and 21) and
+`GetLedgerPeerSnapshot` without its peer kind end the connection; at versions 16 to 22 nothing changes.
+A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
 Fresh native genesis retains injected pool records with an empty VRF registry, matching the

@@ -47,10 +47,10 @@ private[ntc] final case class LeiosCommitteeResult(
   * build's layout; a part of another layout is refused by the codecs' checks.
   */
 object LeiosQueryAnswers:
-  /** `queryStakePoolState` (`Api/State/Query.hs:630-660`): the registered pools, or those of
-    * `pools` among them; each with its parameters, voting key and deposit from its state, the
-    * number of its delegators, the delegators themselves only when asked for, its retirement and
-    * its future parameters.
+  /** `queryStakePoolState` (`Api/State/Query.hs:630-660`, cardano-ledger 9df9f98c): the registered
+    * pools, or those of `pools` among them; each with its parameters, voting key and deposit from
+    * its state, the number of its delegators, the delegators themselves only when asked for, its
+    * retirement and its future parameters.
     */
   def stakePoolState[E <: EraTag](
       l: EraRead[E],
@@ -68,9 +68,9 @@ object LeiosQueryAnswers:
         .flatMap(rs => stakePoolStates.write(Sorted.map(rs)).leftMap(_ => Unanswered.Unwritable))
     }
 
-  /** `queryLeiosCommittee` (`Api/State/Query.hs:1023-1030`): the committee of the set snapshot,
-    * which votes this epoch, and the one the mark snapshot selects for the next
-    * ([[LeiosCommitteeSelection.ofMark]]; `mkMarkSnapShot`, `State/SnapShots.hs:444-467`).
+  /** `queryLeiosCommittee` (`Api/State/Query.hs:1019-1026`, cardano-ledger 9df9f98c): the committee
+    * of the set snapshot, which votes this epoch, and the one the mark snapshot selects for the
+    * next ([[LeiosCommitteeSelection.ofMark]]; `mkMarkSnapShot`, `State/SnapShots.hs:444-467`).
     */
   def leiosCommittee[E <: EraTag](l: EraRead[E]): Either[Unanswered, Bytes] =
     given ProtVer = Versions.eraLow(l.era)
@@ -88,8 +88,8 @@ object LeiosQueryAnswers:
         case SnapShots.Layout.Node11_1 => Left(Unanswered.Unsupported)
     }
 
-  /** `toQueryResultStakePoolState` (`Api/State/Query.hs:642-660`): the voting key of the Leios
-    * layout's state; a pool's state of the 11.1 layout has none to report.
+  /** `toQueryResultStakePoolState` (`Api/State/Query.hs:642-660`, cardano-ledger 9df9f98c): the
+    * voting key of the Leios layout's state; a pool's state of the 11.1 layout has none to report.
     */
   private def result(
       s: StakePoolState,
@@ -123,8 +123,8 @@ object LeiosQueryAnswers:
         )
 
   /** The map of the pools' results (`Map (KeyHash StakePool) (QueryResultStakePoolState era)`),
-    * each result as its `EncCBOR` writes it (`Api/State/Query.hs:570-587`): fourteen items, the
-    * optional ones with `encodeNullStrictMaybe`, `null` for none.
+    * each result as its `EncCBOR` writes it (`Api/State/Query.hs:570-587`, cardano-ledger
+    * 9df9f98c): fourteen items, the optional ones with `encodeNullStrictMaybe`, `null` for none.
     */
   private def stakePoolStates(using
       ProtVer
@@ -153,8 +153,9 @@ object LeiosQueryAnswers:
       )
     )
 
-  /** `EncCBOR QueryResultLeiosCommittee` (`Api/State/Query.hs:1008-1012`): the two committees, the
-    * next one as a `StrictMaybe` with its own `encCBOR`, a list of none or one.
+  /** `EncCBOR QueryResultLeiosCommittee` (`Api/State/Query.hs:1008-1012`, cardano-ledger 9df9f98c):
+    * the two committees, the next one as a `StrictMaybe` with its own `encCBOR`, a list of none or
+    * one.
     */
   private def committees(using ProtVer): Codec[LeiosCommitteeResult] =
     import LeiosStateCodecs.given

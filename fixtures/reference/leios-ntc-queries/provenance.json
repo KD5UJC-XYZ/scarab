@@ -1,0 +1,53 @@
+{
+  "cases": 3,
+  "casesSha256": "cd50a592c036de3d232aeab99584d23a4b2f8f05169e52d643a333ea7f7bc186",
+  "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+  "image": "scarab-leios-ntc-queries-oracle:local",
+  "imageId": "sha256:2418a12caef546c821af64f79274faa2f46c75b5ac680eed8fd303a6b720bf53",
+  "inputs": {
+    "fixtures/leios/state/conway-195/state": "736c7ab5d10f12c977bd58761e013e794a01a422f9062373d84fc41e5b19371c",
+    "fixtures/leios/state/dijkstra-203/state": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+    "fixtures/leios/state/genesis/shelley-genesis.json": "b6418c18967dcc1f168437238ba9f467c0a875937b5d11e5104d338753721a6c",
+    "fixtures/leios/state/testnet-2168639/state": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+    "fixtures/leios/testnet/config/shelley-genesis.json": "0c7365b3e74a52a09d1ad169438b714919dd36710c9feed8e49be65e73990ab7"
+  },
+  "ledger": {
+    "packages": [
+      "cardano-ledger-api 1.16.0.0",
+      "cardano-ledger-core 1.23.0.0"
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
+  },
+  "measuredAt": "2026-11-18",
+  "oracle": {
+    "imageFilesSha256": {
+      "/oracle/leios-testnet/cabal.project": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
+      "/oracle/leios-testnet/cabal.project.local": "0630f8a543617b078cf0022c6d58d1469b7baa099ea1dba05336d46ec72ed92b",
+      "/oracle/leios-testnet/leios-ntc-queries/Main.hs": "309249f0d88bf7a52bfdbd366dc1f943827b377188545eb3f0f52ec169b290e0",
+      "/oracle/leios-testnet/leios-ntc-queries/scarab-leios-ntc-queries.cabal": "61ca0f1b4db8814d121efac3ba4ad5ccb7feef48af5a4c217359d619c98750b2",
+      "/usr/local/bin/scarab-leios-ntc-queries": "09c38e929f47e2d55ba63728ed86aa077a9319b34850fa0cb404c5ff7947bbda"
+    },
+    "network": "none",
+    "oracleBinarySha256": "09c38e929f47e2d55ba63728ed86aa077a9319b34850fa0cb404c5ff7947bbda",
+    "pinnedSources": {
+      "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c": "unchanged",
+      "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
+    }
+  },
+  "packageSha256": "61ca0f1b4db8814d121efac3ba4ad5ccb7feef48af5a4c217359d619c98750b2",
+  "program": "scripts/oracle/leios-ntc-queries/Main.hs",
+  "programSha256": "309249f0d88bf7a52bfdbd366dc1f943827b377188545eb3f0f52ec169b290e0",
+  "schemaVersion": 1,
+  "scope": "The unchanged queryStakePoolState and queryLeiosCommittee of the Leios testnet build, which ouroboros-consensus answers GetStakePoolState (tag 40) and GetLeiosCommittee (tag 41) with, on the NewEpochState of three Leios-build state files (a devnet's last Conway state and first Dijkstra state, and the public Leios testnet at epoch 100), and GetStakePoolState for the smallest pool on each state derived with the ledger's own lenses so that pool retires at the next epoch and has future parameters (stakePoolStateToStakePoolParams, network Testnet); each answer written with encCBOR at the era's lowest version as consensus's toEraCBOR writes it. The era-level result only: not the hard-fork or node-to-client envelope, nor the query's dispatch, which consensus does",
+  "sourceSha256": {
+    "Api/State/Query.hs": "41f79c623baa1eb72f7df965b5641b14a0c87ec235303cfea44a466a066df794",
+    "Binary/Encoding/EncCBOR.hs": "4d788d5940b186a6e5052a1f65a7e84ec4487b38c5e355bcbac5dc41281ef8dd",
+    "Binary/Encoding/Encoder.hs": "3c6f222efddd43995afa425a18a748d35ca8f629799d5d2a362629db4bd50b47",
+    "Shelley/LedgerState/Types.hs": "3c0f5153c41cf428c4d1843529d6cea605f6a447c83711acb2858fb529abe7c6",
+    "State/CertState.hs": "d277d9ced2007b55a237a85133599a635ad571acf7fe7acd5e0082fa40023e86",
+    "State/LeiosCommittee.hs": "2bbdb60617b43aa92a9b7bfaaf2a951767690d581f38f2f8cd9b018e653e11bb",
+    "State/SnapShots.hs": "ae7d5e0db3afe5f97183008047d2f7ecf2974c7d1249752284a600b55557d414",
+    "State/StakePool.hs": "459d7de8a2c1bb070476cb0bebb0cd758efeea61ea7e450306af3654f1592e70"
+  }
+}
