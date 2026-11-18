@@ -22,7 +22,7 @@ object Bitwise:
   /** The low `size` bytes of `n >= 0`, big-endian. */
   private def bytesOf(n: BigInt, size: Int): Bytes =
     val magnitude = n.toByteArray.dropWhile(_ == 0)
-    Bytes.wrap(Array.fill(size - magnitude.length)(0.toByte) ++ magnitude.takeRight(size))
+    Bytes.wrap(new Array[Byte](size - magnitude.length) ++ magnitude.takeRight(size))
 
   /** GHC's `integerLog2`: the floor of the base-2 logarithm, 0 for a non-positive integer. */
   private def integerLog2(n: BigInt): BigInt = if n.signum <= 0 then 0 else n.bitLength - 1
@@ -57,17 +57,26 @@ object Bitwise:
 
   /** `andByteString`, `orByteString`, `xorByteString` (`Bitwise.hs:406-490`, plutus 1.70.0.0): the
     * bytes are combined from index 0; with `pad` the result is as long as the longer argument,
-    * whose remaining bytes are kept, otherwise as long as the shorter.
+    * whose remaining bytes are kept, otherwise as long as the shorter. Inline, so that each
+    * builtin's loop calls its own operation directly rather than through one shared call site.
     */
-  def combine(pad: Boolean, x: Bytes, y: Bytes)(op: (Int, Int) => Int): Bytes =
+  inline def combine(pad: Boolean, x: Bytes, y: Bytes)(inline op: (Int, Int) => Int): Bytes =
     val (shorter, longer) = if x.size < y.size then (x, y) else (y, x)
     val s = shorter.toArray
-    val l = longer.toArray
-    val size = if pad then l.length else s.length
-    Bytes.wrap(Array.tabulate(size)(i => if i < s.length then op(s(i), l(i)).toByte else l(i)))
+    // the longer argument's bytes, the first combined with the shorter's in this copy before it is
+    // wrapped: a loop over the bytes themselves, as the reference's (FUN-2 (a): the generic
+    // Array.tabulate stored each byte through a boxed path, performance section 58)
+    val out = longer.take(if pad then longer.size else s.length).toArray
+    s.indices.foreach(i => out(i) = op(s(i), out(i)).toByte)
+    Bytes.wrap(out)
 
-  /** `complementByteString` (`Bitwise.hs:493-509`, plutus 1.70.0.0). */
-  def complement(bytes: Bytes): Bytes = Bytes.wrap(bytes.toArray.map(b => (~b).toByte))
+  /** `complementByteString` (`Bitwise.hs:493-509`, plutus 1.70.0.0), in a copy before it is wrapped
+    * (FUN-2 (a), as [[combine]]).
+    */
+  def complement(bytes: Bytes): Bytes =
+    val out = bytes.toArray
+    out.indices.foreach(i => out(i) = (~out(i)).toByte)
+    Bytes.wrap(out)
 
   /** `readBit` (`Bitwise.hs:512-529`, plutus 1.70.0.0). */
   def readBit(bytes: Bytes, index: BigInt): Either[BitwiseFailure, Boolean] =
@@ -77,9 +86,10 @@ object Bitwise:
       val i = index.toInt
       Right(bytes.lift(bytes.size - 1 - i / 8).exists(b => ((b >> (i % 8)) & 1) == 1))
 
-  /** `writeBits` (`Bitwise.hs:532-571`, plutus 1.70.0.0): every index set to `bit`, in order; the
+  /** `writeBits` (`Bitwise.hs:532-571`, plutus 1.70.0.0 and 1.71.0.0): the input itself for no
+    * index (`null ixs = pure bs`), otherwise every index set to `bit` in a copy, in order; the
     * first index out of bounds fails. Variants D and E first refuse an input of more than
-    * [[MaximumInputLength]] bytes (`Default/Builtins.hs:2199-2214`).
+    * [[MaximumInputLength]] bytes (`Default/Builtins.hs:2199-2214`; 2217-2236 at 1.71.0.0).
     */
   def writeBits(
       bytes: Bytes,
@@ -90,27 +100,30 @@ object Bitwise:
     val bitLength = BigInt(bytes.size) * 8
     if limited && bytes.size > MaximumInputLength then
       Left(BitwiseFailure.WriteBitsInputTooLong(bytes.size))
+    else if indices.isEmpty then Right(bytes)
     else
       indices.find(i => i.signum < 0 || i >= bitLength) match
         case Some(i) => Left(BitwiseFailure.WriteBitsOutOfBounds(i))
         case None    =>
-          // the bits of each byte that the indices name
-          val masks = indices.foldLeft(Map.empty[Int, Int]) { (acc, index) =>
+          // each bit written in this copy before it is wrapped, as the reference writes its copy
+          // (FUN-2 (a): a boxed map of masks and the generic Array.tabulate, performance section 58)
+          val out = bytes.toArray
+          indices.foreach { index =>
             val i = index.toInt
-            val at = bytes.size - 1 - i / 8
-            acc.updated(at, acc.getOrElse(at, 0) | (1 << (i % 8)))
+            val at = out.length - 1 - i / 8
+            val mask = 1 << (i % 8)
+            out(at) = (if bit then out(at) | mask else out(at) & ~mask).toByte
           }
-          val original = bytes.toArray
-          Right(Bytes.wrap(Array.tabulate(original.length) { at =>
-            val b = original(at) & 0xff
-            masks.get(at).fold(b)(m => if bit then b | m else b & ~m).toByte
-          }))
+          Right(Bytes.wrap(out))
 
   /** `replicateByte` (`Bitwise.hs:576-590`, plutus 1.70.0.0). */
   def replicateByte(length: BigInt, byte: Int): Either[BitwiseFailure, Bytes] =
     if length.signum < 0 then Left(BitwiseFailure.ReplicateNegativeLength(length))
     else if length > MaximumOutputLength then Left(BitwiseFailure.ReplicateLengthTooLong(length))
-    else Right(Bytes.wrap(Array.fill(length.toInt)(byte.toByte)))
+    else
+      val out = new Array[Byte](length.toInt)
+      java.util.Arrays.fill(out, byte.toByte)
+      Right(Bytes.wrap(out))
 
   /** `shiftByteString` (`Bitwise.hs:596-612`, 689-760, plutus 1.70.0.0): towards higher bit indices
     * for a positive `move`, zeros shifted in; all zeros once the move reaches the length in bits.
@@ -118,7 +131,7 @@ object Bitwise:
   def shift(bytes: Bytes, move: BigInt): Bytes =
     val bitLength = BigInt(bytes.size) * 8
     if bytes.isEmpty || move.signum == 0 then bytes
-    else if move.abs >= bitLength then Bytes.wrap(Array.fill(bytes.size)(0.toByte))
+    else if move.abs >= bitLength then Bytes.wrap(new Array[Byte](bytes.size))
     else
       val n = unsigned(bytes)
       val shifted = if move.signum > 0 then n << move.toInt else n >> (-move).toInt

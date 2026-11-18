@@ -6796,9 +6796,7 @@
    "def uplc.bls.Bls12_381.scalarOutOfBounds": null,
    "def uplc.bls.BlsFailure#message": null,
    "def uplc.bls.BlstError#show": null,
-   "def uplc.bls.G1Element.compressed": null,
    "def uplc.bls.G1Element.fromCompressed": null,
-   "def uplc.bls.G2Element.compressed": null,
    "def uplc.bls.G2Element.fromCompressed": null,
    "def uplc.bls.MlResult.fromRaw": null,
    "def uplc.bls.MlResult.ofTarget": null,
@@ -7453,30 +7451,6 @@
    "type uplc.Value.Quantity": null,
    "type uplc.Word64": null,
    "type uplc.bls.Bls12_381.Result": null,
-   "type uplc.bls.G1Element": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
-     "symbol": "DefaultUniBLS12_381_G1_Element",
-     "lines": [
-      147,
-      147
-     ]
-    }
-   ],
-   "type uplc.bls.G2Element": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
-     "symbol": "DefaultUniBLS12_381_G2_Element",
-     "lines": [
-      148,
-      148
-     ]
-    }
-   ],
    "type uplc.bls.MlResult": [
     {
      "repository": "IntersectMBO/plutus",
@@ -7543,8 +7517,6 @@
    "val uplc.Text.Replacement": null,
    "val uplc.Text.empty": null,
    "val uplc.Value#maxInnerSize": null,
-   "val uplc.Value#negativeAmounts": null,
-   "val uplc.Value#totalSize": null,
    "val uplc.Value.Key.MaxLength": null,
    "val uplc.Value.Quantity.MaxValue": null,
    "val uplc.Value.Quantity.MinValue": null,

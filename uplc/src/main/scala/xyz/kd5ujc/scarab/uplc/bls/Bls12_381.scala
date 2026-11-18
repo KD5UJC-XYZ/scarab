@@ -78,10 +78,11 @@ enum BlsDefect:
   * calls blst through cardano-crypto-class (`PlutusCore/Crypto/BLS12_381/G1.hs`, `G2.hs`,
   * `Pairing.hs`).
   *
-  * jblst's points are mutable native handles whose `add`, `neg`, `mult` and `mul` change the
-  * receiver. Every operation here makes its own handles from the bytes of its arguments (or
-  * duplicates a [[MlResult]]'s) and lets none escape, so the functions are pure. An exception from
-  * either library is a [[BlsDefect]].
+  * jblst's points are mutable handles whose `add`, `neg`, `mult` and `mul` change the receiver. An
+  * element keeps its point, as the reference keeps blst's ([[G1Element]]), so an operation takes
+  * its arguments' points as they are and gives its result's without compressing either; it changes
+  * only a copy (`dup`) it makes, or a [[MlResult]]'s duplicate, and lets none escape, so the
+  * functions are pure. An exception from either library is a [[BlsDefect]].
   */
 object Bls12_381:
   type Result[A] = Either[BlsFailure | BlsDefect, A]
@@ -147,8 +148,9 @@ object Bls12_381:
     val Zero: G1Element =
       G1Element.fromCompressed(Bytes.wrap(0xc0.toByte +: Array.fill(47)(0.toByte)))
 
-    private def point(e: G1Element): P1 = new P1(e.compressed.toArray)
-    private def element(p: P1): G1Element = G1Element.fromCompressed(Bytes.wrap(p.compress()))
+    /** A copy of the element's point, for an operation to change. */
+    private def point(e: G1Element): P1 = e.point.dup()
+    private def element(p: P1): G1Element = G1Element.ofPoint(p)
 
     /** `uncompress` (`G1.hs:140-150`, plutus 1.70.0.0): the length, the flags, `x < p` (bad
       * encoding); `x^3 + 4` a square (not on the curve); `x = 0`, the points `(0, 2)` and `(0, -2)`
@@ -167,7 +169,7 @@ object Bls12_381:
             guarded {
               val affine = new P1_Affine(bytes.toArray)
               Option.when(affine.in_group())(
-                G1Element.fromCompressed(Bytes.wrap(affine.compress()))
+                G1Element.of(Bytes.wrap(affine.compress()), affine.to_jacobian())
               )
             }.flatMap(
               _.toRight[BlsFailure | BlsDefect](
@@ -177,9 +179,15 @@ object Bls12_381:
       }
 
     def add(a: G1Element, b: G1Element): Either[BlsDefect, G1Element] =
-      guarded(element(point(a).add(point(b))))
+      guarded(element(point(a).add(b.point)))
 
     def neg(a: G1Element): Either[BlsDefect, G1Element] = guarded(element(point(a).neg()))
+
+    /** `Bls12_381_G1_equal`: blst's `blst_p1_is_equal` on the points, as the reference's `Eq`
+      * (`Internal.hs:897-901` at cardano-base `12168e4b`); the same as equality of the encodings.
+      */
+    def equal(a: G1Element, b: G1Element): Either[BlsDefect, Boolean] =
+      guarded(a.point.is_equal(b.point))
 
     /** `scalarMul` (`G1.hs:120-122`, plutus 1.70.0.0), or `scalarMulE` (124-127) when `bounded`. */
     def scalarMul(k: BigInt, a: G1Element, bounded: Boolean): Result[G1Element] =
@@ -229,9 +237,12 @@ object Bls12_381:
           val q = processor.clearCofactor(processor.add(map.process(u(0)(0)), map.process(u(1)(0))))
           new P1_Affine(BLS12_381Serialization.compressG1(q))
         }.flatMap(affine =>
-          guarded(Option.when(affine.in_group())(Bytes.wrap(affine.compress())))
-            .flatMap(_.toRight(BlsDefect.NotInGroup(Group.G1)))
-        ).map(G1Element.fromCompressed)
+          guarded(
+            Option.when(affine.in_group())(
+              G1Element.of(Bytes.wrap(affine.compress()), affine.to_jacobian())
+            )
+          ).flatMap(_.toRight(BlsDefect.NotInGroup(Group.G1)))
+        )
 
   object G2:
     val CompressedSize: Int = 96
@@ -240,8 +251,9 @@ object Bls12_381:
     val Zero: G2Element =
       G2Element.fromCompressed(Bytes.wrap(0xc0.toByte +: Array.fill(95)(0.toByte)))
 
-    private def point(e: G2Element): P2 = new P2(e.compressed.toArray)
-    private def element(p: P2): G2Element = G2Element.fromCompressed(Bytes.wrap(p.compress()))
+    /** A copy of the element's point, for an operation to change. */
+    private def point(e: G2Element): P2 = e.point.dup()
+    private def element(p: P2): G2Element = G2Element.ofPoint(p)
 
     /** `x^3 + 4(1 + i)` is a square in `Fp2 = Fp[i]/(i^2 + 1)` exactly when its norm `a0^2 + a1^2`
       * is a square in `Fp`.
@@ -269,7 +281,7 @@ object Bls12_381:
             guarded {
               val affine = new P2_Affine(bytes.toArray)
               Option.when(affine.in_group())(
-                G2Element.fromCompressed(Bytes.wrap(affine.compress()))
+                G2Element.of(Bytes.wrap(affine.compress()), affine.to_jacobian())
               )
             }.flatMap(
               _.toRight[BlsFailure | BlsDefect](
@@ -279,9 +291,13 @@ object Bls12_381:
       }
 
     def add(a: G2Element, b: G2Element): Either[BlsDefect, G2Element] =
-      guarded(element(point(a).add(point(b))))
+      guarded(element(point(a).add(b.point)))
 
     def neg(a: G2Element): Either[BlsDefect, G2Element] = guarded(element(point(a).neg()))
+
+    /** `Bls12_381_G2_equal`, as [[G1.equal]]. */
+    def equal(a: G2Element, b: G2Element): Either[BlsDefect, Boolean] =
+      guarded(a.point.is_equal(b.point))
 
     /** `scalarMul` (`G2.hs:103-105`, plutus 1.70.0.0), or `scalarMulE` (107-110) when `bounded`. */
     def scalarMul(k: BigInt, a: G2Element, bounded: Boolean): Result[G2Element] =
@@ -307,18 +323,24 @@ object Bls12_381:
         )
 
     /** `hashToGroup` (`G2.hs:135-139`, plutus 1.70.0.0): blst's `hash_to_g2` (suite
-      * `BLS12381G2_XMD:SHA-256_SSWU_RO_`) through Bouncy Castle, as [[G1.hashToGroup]].
+      * `BLS12381G2_XMD:SHA-256_SSWU_RO_`) through Bouncy Castle's hashing to the field and mapping
+      * to the curve, as [[G1.hashToGroup]], and [[G2Cofactor]]'s clearing of the cofactor.
       */
     def hashToGroup(message: Bytes, dst: Bytes): Result[G2Element] =
       if dst.size > MaxDstLength then Left(BlsFailure.DstTooBig(Group.G2, dst.size))
       else
         guarded {
-          val q = new BLS12_381G2HashToCurve(dst.toArray).hashToCurve(message.toArray)
+          val suite = new BLS12_381G2HashToCurve(dst.toArray)
+          val u = suite.hashToField(message.toArray)
+          val q = G2Cofactor.hashed(suite.mapToCurveAndIso3(u(0)), suite.mapToCurveAndIso3(u(1)))
           new P2_Affine(BLS12_381Serialization.compressG2(q))
         }.flatMap(affine =>
-          guarded(Option.when(affine.in_group())(Bytes.wrap(affine.compress())))
-            .flatMap(_.toRight(BlsDefect.NotInGroup(Group.G2)))
-        ).map(G2Element.fromCompressed)
+          guarded(
+            Option.when(affine.in_group())(
+              G2Element.of(Bytes.wrap(affine.compress()), affine.to_jacobian())
+            )
+          ).flatMap(_.toRight(BlsDefect.NotInGroup(Group.G2)))
+        )
 
   object Pairing:
     private def target(m: MlResult): Either[BlsDefect, PT] =
@@ -328,7 +350,7 @@ object Bls12_381:
     def millerLoop(a: G1Element, b: G2Element): Either[BlsDefect, MlResult] =
       guarded(
         MlResult.ofTarget(
-          new PT(new P1_Affine(a.compressed.toArray), new P2_Affine(b.compressed.toArray))
+          new PT(a.point.to_affine(), b.point.to_affine())
         )
       )
 

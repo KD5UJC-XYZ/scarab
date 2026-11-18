@@ -32,9 +32,22 @@ object TreeFold:
     case Deliver(result: A)
     case Advance(frame: Frame[T, A, E])
 
-  /** The keys and values of a map in turn: `k0, v0, k1, v1, ...`. */
-  def flatten[A](ps: Vector[(A, A)]): Vector[A] =
-    ps.iterator.flatMap((k, v) => Iterator(k, v)).toVector
+  /** The keys and values of a map in turn: `k0, v0, k1, v1, ...`, a view of `ps` that copies
+    * nothing, so a node's children cost nothing until they are read.
+    */
+  def flatten[A](ps: IndexedSeq[(A, A)]): IndexedSeq[A] = Alternating(ps)
+
+  /** [[flatten]]'s view. A map of `n` entries took at least `2n` bytes of input or `n` cells of a
+    * script's memory budget, so `2n` is an `Int`. `i >> 1` keeps a negative index negative, so an
+    * index out of bounds is refused by `ps` as by any sequence.
+    */
+  private final class Alternating[A](ps: IndexedSeq[(A, A)])
+      extends scala.collection.immutable.AbstractSeq[A],
+        IndexedSeq[A]:
+    def length: Int = 2 * ps.length
+    def apply(i: Int): A =
+      val (k, v) = ps(i >> 1)
+      if (i & 1) == 0 then k else v
 
   /** The pairs `(ds(0), ds(1))`, `(ds(2), ds(3))`, ... of a flattened map. */
   def pairs[A](ds: Vector[A]): Vector[(A, A)] =

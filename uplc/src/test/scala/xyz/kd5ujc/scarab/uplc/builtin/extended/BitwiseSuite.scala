@@ -211,3 +211,87 @@ final class BitwiseSuite extends ScalaCheckSuite:
     assertEquals(integerOf(e(FindFirstSetBit, bytes("0002"))), BigInt(1))
     assertEquals(integerOf(e(FindFirstSetBit, bytes("8000"))), BigInt(15))
   }
+
+  test("writeBits: no index gives the input itself, in every variant (`null ixs = pure bs`, 534)") {
+    val input = Bytes.wrap(Array.fill(4096)(0x5a.toByte))
+    Vector(true, false).foreach { limited =>
+      val written = Bitwise.writeBits(input, Vector.empty, bit = true, limited = limited)
+      assert(written.exists(_ eq input), s"limited $limited: ${written.map(_.size)}")
+    }
+    // the input length is checked first in variants D and E, whatever the indices
+    assertEquals(
+      Bitwise
+        .writeBits(Bytes.wrap(new Array[Byte](4097)), Vector.empty, bit = true, limited = true),
+      Left(BitwiseFailure.WriteBitsInputTooLong(4097))
+    )
+  }
+
+  private val someBytes: Gen[Bytes] =
+    Gen
+      .frequency(4 -> Gen.choose(0, 12), 1 -> Gen.choose(13, 300))
+      .flatMap(n => Gen.listOfN(n, Gen.choose(-128, 127).map(_.toByte)))
+      .map(xs => Bytes.wrap(xs.toArray))
+
+  property("and, or, xor and complement agree with the boxed versions they replaced") {
+    Prop.forAll(someBytes, someBytes, Gen.oneOf(true, false)) { (x, y, pad) =>
+      val ops = Vector[(Int, Int) => Int](_ & _, _ | _, _ ^ _)
+      ops.foreach(op =>
+        assertEquals(Bitwise.combine(pad, x, y)(op), BitwiseSuite.previousCombine(pad, x, y)(op))
+      )
+      assertEquals(Bitwise.complement(x), BitwiseSuite.previousComplement(x))
+    }
+  }
+
+  property("writeBits agrees with the version it replaced, failures included") {
+    val indices =
+      Gen.listOf(Gen.oneOf(Gen.choose(-3, 2500), Gen.choose(0, 16))).map(_.map(BigInt(_)))
+    Prop.forAll(someBytes, indices, Gen.oneOf(true, false)) { (b, is, bit) =>
+      assertEquals(
+        Bitwise.writeBits(b, is.toVector, bit, limited = false),
+        BitwiseSuite.previousWriteBits(b, is.toVector, bit)
+      )
+    }
+  }
+
+  property("replicateByte and a shift past the length agree with the versions they replaced") {
+    Prop.forAllNoShrink(Gen.choose(0, 8192), Gen.choose(0, 255), someBytes) { (n, byte, b) =>
+      assertEquals(
+        Bitwise.replicateByte(n, byte).map(_.toArray.toVector),
+        Right(Vector.fill(n)(byte.toByte))
+      )
+      assertEquals(Bitwise.shift(b, BigInt(b.size) * 8), Bytes.wrap(Array.fill(b.size)(0.toByte)))
+    }
+  }
+
+object BitwiseSuite:
+  /** The versions of `combine`, `complement` and `writeBits` before their arrays were filled in
+    * place, kept as the model the new ones are compared with.
+    */
+  def previousCombine(pad: Boolean, x: Bytes, y: Bytes)(op: (Int, Int) => Int): Bytes =
+    val (shorter, longer) = if x.size < y.size then (x, y) else (y, x)
+    val s = shorter.toArray
+    val l = longer.toArray
+    val size = if pad then l.length else s.length
+    Bytes.wrap(Array.tabulate(size)(i => if i < s.length then op(s(i), l(i)).toByte else l(i)))
+
+  def previousComplement(bytes: Bytes): Bytes = Bytes.wrap(bytes.toArray.map(b => (~b).toByte))
+
+  def previousWriteBits(
+      bytes: Bytes,
+      indices: Vector[BigInt],
+      bit: Boolean
+  ): Either[BitwiseFailure, Bytes] =
+    val bitLength = BigInt(bytes.size) * 8
+    indices.find(i => i.signum < 0 || i >= bitLength) match
+      case Some(i) => Left(BitwiseFailure.WriteBitsOutOfBounds(i))
+      case None =>
+        val masks = indices.foldLeft(Map.empty[Int, Int]) { (acc, index) =>
+          val i = index.toInt
+          val at = bytes.size - 1 - i / 8
+          acc.updated(at, acc.getOrElse(at, 0) | (1 << (i % 8)))
+        }
+        val original = bytes.toArray
+        Right(Bytes.wrap(Array.tabulate(original.length) { at =>
+          val b = original(at) & 0xff
+          masks.get(at).fold(b)(m => if bit then b | m else b & ~m).toByte
+        }))

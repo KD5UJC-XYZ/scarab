@@ -215,3 +215,148 @@ final class SignaturesSuite extends ScalaCheckSuite:
       assert(!boolOf(schnorr(xOnly.hex, Bytes.wrap(message :+ 1.toByte).hex, signature.hex)))
     }
   }
+
+  property("ECDSA and Schnorr answer as the generic curve's arithmetic they replaced") {
+    val byte = Gen.choose(0, 255).map(_.toByte)
+    def bytesOf(n: Int) = Gen.listOfN(n, byte).map(xs => Bytes.wrap(xs.toArray))
+    val scalar = Gen.oneOf(
+      Gen.choose(BigInt(0), n - 1),
+      Gen.oneOf(BigInt(0), BigInt(1), n / 2, n / 2 + 1, n - 1, n, (BigInt(1) << 256) - 1)
+    )
+    val signed = for
+      key <- Gen.choose(BigInt(1), n - 1)
+      m <- bytesOf(32)
+      flip <- Gen.choose(0, 3)
+    yield
+      val signer = ECDSASigner(HMacDSAKCalculator(SHA256Digest()))
+      signer.init(true, ECPrivateKeyParameters(key.bigInteger, domain))
+      val Array(r0, s0) = signer.generateSignature(m.toArray): @unchecked
+      val s = if BigInt(s0) > n / 2 then n - BigInt(s0) else BigInt(s0)
+      val q = Bytes.wrap(curve.getG.multiply(key.bigInteger).normalize().getEncoded(true))
+      val sig = Bytes.fromHex(be32(BigInt(r0)) + be32(if flip == 0 then n - s else s)).toOption.get
+      (q, if flip == 1 then Bytes.wrap(m.toArray.map(b => (b ^ 1).toByte)) else m, sig)
+    val arbitrary = for
+      prefix <- Gen.oneOf(2, 3, 4)
+      x <- bytesOf(32)
+      m <- Gen.oneOf(bytesOf(32), bytesOf(31))
+      r <- scalar
+      s <- scalar
+    yield (
+      Bytes.wrap(Array(prefix.toByte)) ++ x,
+      m,
+      Bytes.fromHex(be32(r) + be32(s)).toOption.get
+    )
+    Prop.forAll(Gen.oneOf(signed, arbitrary)) { (key, message, signature) =>
+      assertEquals(
+        Signatures.verifyEcdsa(key, message, signature),
+        SignaturesSuite.previousEcdsa(key, message, signature),
+        s"ECDSA ${key.hex} ${message.hex} ${signature.hex}"
+      )
+      assertEquals(
+        Signatures.verifySchnorr(key.drop(1), message, signature),
+        SignaturesSuite.previousSchnorr(key.drop(1), message, signature),
+        s"Schnorr ${key.drop(1).hex} ${message.hex} ${signature.hex}"
+      )
+    }
+  }
+
+  property("Schnorr answers as the generic curve's arithmetic on Bouncy Castle's signatures") {
+    val gen = for
+      key <- Gen.choose(BigInt(1), n - 1)
+      m <- Gen.listOf(Gen.choose(0, 255))
+      flip <- Gen.oneOf(true, false)
+    yield (key, m, flip)
+    Prop.forAll(gen) { (key, m, flip) =>
+      val signer = BIP340Signer()
+      val message = m.map(_.toByte).toArray
+      signer.init(true, ECPrivateKeyParameters(key.bigInteger, BIP340Signer.getDomain))
+      signer.update(message, 0, message.length)
+      val signature = Bytes.wrap(signer.generateSignature())
+      val xOnly =
+        Bytes.wrap(curve.getG.multiply(key.bigInteger).normalize().getAffineXCoord.getEncoded)
+      val signed = Bytes.wrap(if flip then message :+ 1.toByte else message)
+      assertEquals(
+        Signatures.verifySchnorr(xOnly, signed, signature),
+        SignaturesSuite.previousSchnorr(xOnly, signed, signature)
+      )
+    }
+  }
+
+object SignaturesSuite:
+  import java.math.BigInteger
+  import org.bouncycastle.math.ec.{ECAlgorithms, ECPoint}
+
+  /** The verification before, over the generic curve of the named-curve table. */
+  private val parameters = SECNamedCurves.getByName("secp256k1")
+  private val curve = parameters.getCurve
+  private val generator = parameters.getG
+  private val Order = parameters.getN
+  private val FieldModulus = curve.getField.getCharacteristic
+
+  private def lift(x: BigInteger, odd: Boolean): Option[ECPoint] =
+    Option.when(x.compareTo(FieldModulus) < 0)(x).flatMap { x =>
+      val rhs = x.pow(3).add(BigInteger.valueOf(7)).mod(FieldModulus)
+      val root = rhs.modPow(FieldModulus.add(BigInteger.ONE).shiftRight(2), FieldModulus)
+      Option.when(root.multiply(root).mod(FieldModulus) == rhs) {
+        val y =
+          if root.testBit(0) == odd then root else FieldModulus.subtract(root).mod(FieldModulus)
+        curve.createPoint(x, y)
+      }
+    }
+
+  def previousEcdsa(publicKey: Bytes, message: Bytes, signature: Bytes): Verified =
+    val prefix = publicKey.headOption.map(_ & 0xff)
+    val key =
+      if publicKey.size != 33 || !prefix.exists(p => p == 2 || p == 3) then None
+      else lift(new BigInteger(1, publicKey.drop(1).toArray), prefix.contains(3))
+    key match
+      case None =>
+        Left(SignatureInputFailure.InvalidVerificationKey(SignatureScheme.EcdsaSecp256k1))
+      case Some(q) =>
+        val r = new BigInteger(1, signature.take(32).toArray)
+        val s = new BigInteger(1, signature.drop(32).toArray)
+        if signature.size != 64 || r.compareTo(Order) >= 0 || s.compareTo(Order) >= 0 then
+          Left(SignatureInputFailure.InvalidSignature(SignatureScheme.EcdsaSecp256k1))
+        else if message.size != 32 then Left(SignatureInputFailure.InvalidMessageHash)
+        else if r.signum == 0 || s.signum == 0 || s.compareTo(Order.shiftRight(1)) > 0 then
+          Right(false)
+        else
+          val w = s.modInverse(Order)
+          val m = new BigInteger(1, message.toArray).mod(Order)
+          val point = ECAlgorithms
+            .sumOfTwoMultiplies(generator, m.multiply(w).mod(Order), q, r.multiply(w).mod(Order))
+            .normalize()
+          Right(!point.isInfinity && point.getAffineXCoord.toBigInteger.mod(Order) == r)
+
+  private def challenge(r: Bytes, key: Bytes, message: Bytes): BigInteger =
+    def sha(parts: Array[Byte]*): Array[Byte] =
+      val d = new SHA256Digest()
+      val out = new Array[Byte](32)
+      parts.foreach(b => d.update(b, 0, b.length))
+      d.doFinal(out, 0)
+      out
+    val tag = sha("BIP0340/challenge".getBytes(StandardCharsets.US_ASCII))
+    new BigInteger(1, sha(tag, tag, r.toArray, key.toArray, message.toArray))
+
+  def previousSchnorr(publicKey: Bytes, message: Bytes, signature: Bytes): Verified =
+    val key = Option
+      .when(publicKey.size == 32)(publicKey)
+      .flatMap(k => lift(new BigInteger(1, k.toArray), odd = false))
+    key match
+      case None =>
+        Left(SignatureInputFailure.InvalidVerificationKey(SignatureScheme.SchnorrSecp256k1))
+      case Some(p) =>
+        if signature.size != 64 then
+          Left(SignatureInputFailure.InvalidSignature(SignatureScheme.SchnorrSecp256k1))
+        else
+          val rBytes = signature.take(32)
+          val r = new BigInteger(1, rBytes.toArray)
+          val s = new BigInteger(1, signature.drop(32).toArray)
+          if r.compareTo(FieldModulus) >= 0 || s.compareTo(Order) >= 0 then Right(false)
+          else
+            val e = challenge(rBytes, publicKey, message).mod(Order)
+            val point = ECAlgorithms.sumOfTwoMultiplies(generator, s, p.negate(), e).normalize()
+            Right(
+              !point.isInfinity && !point.getAffineYCoord.toBigInteger.testBit(0) &&
+                point.getAffineXCoord.toBigInteger == r
+            )

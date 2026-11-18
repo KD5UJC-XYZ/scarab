@@ -10,7 +10,10 @@ import scala.annotation.tailrec
   * once per level and overflow the stack at a few thousand levels.
   */
 trait Tree[A <: AnyRef]:
-  /** The children, in order; a map's keys and values alternate. */
+  /** The children, in order; a map's keys and values alternate. [[equal]] and [[hash]] read them by
+    * index, and [[equal]] only once the labels agree, so a view that copies nothing (as
+    * [[TreeFold.flatten]] is) keeps a comparison that stops early from paying for the whole node.
+    */
   def children(a: A): IndexedSeq[A]
 
   /** Whether `x` and `y` agree on everything but their children (the number of children is compared
@@ -33,25 +36,47 @@ object Tree:
   /** Longest run of a byte string or text a label shows. */
   val NameLimit = 32
 
+  /** Whether `x` and `y` are equal: their labels and child counts first, and then their children in
+    * pre-order, so that a walk stops at the first difference without reading any more children, as
+    * Haskell's derived `(==)` stops at the first constructor that differs.
+    */
   def equal[A <: AnyRef](x: A, y: A)(using t: Tree[A]): Boolean =
-    // the pairs still to compare, in pre-order: a pair's children come before its later siblings
-    @tailrec def go(pending: List[(A, A)]): Boolean = pending match
-      case Nil                      => true
-      case (a, b) :: rest if a eq b => go(rest)
-      case (a, b) :: rest =>
-        val (as, bs) = (t.children(a), t.children(b))
-        if as.sizeIs != bs.size || !t.sameLabel(a, b) then false
-        else go(as.iterator.zip(bs.iterator).toList ::: rest)
-    go(List((x, y)))
+    // a level still open: the children of two nodes that agree so far, from the pair at `at`
+    final case class Level(as: IndexedSeq[A], bs: IndexedSeq[A], at: Int)
+    // the pairs of `as` and `bs` from `at` on, then the levels in `above`, innermost first
+    @tailrec def go(as: IndexedSeq[A], bs: IndexedSeq[A], at: Int, above: List[Level]): Boolean =
+      if at >= as.size then
+        above match
+          case Nil                         => true
+          case Level(cs, ds, next) :: rest => go(cs, ds, next, rest)
+      else
+        val a = as(at)
+        val b = bs(at)
+        if a eq b then go(as, bs, at + 1, above)
+        else if !t.sameLabel(a, b) then false
+        else
+          val cs = t.children(a)
+          val ds = t.children(b)
+          if cs.sizeIs != ds.size then false
+          else if cs.isEmpty then go(as, bs, at + 1, above)
+          else go(cs, ds, 0, Level(as, bs, at + 1) :: above)
+    go(Vector(x), Vector(y), 0, Nil)
 
   /** The hash of the labels and child counts in pre-order. */
   def hash[A <: AnyRef](x: A)(using t: Tree[A]): Int =
-    @tailrec def go(pending: List[A], h: Int): Int = pending match
-      case Nil => h
-      case a :: rest =>
+    // the nodes of `level` from `at` on, then the levels still open in `above`, innermost first
+    @tailrec def go(level: IndexedSeq[A], at: Int, above: List[(IndexedSeq[A], Int)], h: Int): Int =
+      if at >= level.size then
+        above match
+          case Nil                  => h
+          case (open, next) :: rest => go(open, next, rest, h)
+      else
+        val a = level(at)
         val kids = t.children(a)
-        go(kids.toList ::: rest, 31 * (31 * h + t.labelHash(a)) + kids.size)
-    go(List(x), 17)
+        val hashed = 31 * (31 * h + t.labelHash(a)) + kids.size
+        if kids.isEmpty then go(level, at + 1, above, hashed)
+        else go(kids, 0, (level, at + 1) :: above, hashed)
+    go(Vector(x), 0, Nil, 17)
 
   /** `name[child, child, ...]` for the first `limit` characters, then `...`. */
   def render[A <: AnyRef](x: A, limit: Int = DefaultRenderLimit)(using t: Tree[A]): String =

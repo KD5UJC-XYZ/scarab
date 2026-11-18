@@ -445,3 +445,92 @@ equivalence suite keeps the old walker as its reference so a later change to eit
 imperative 10"` (the first argument names the variant each workload starts with, the second the rounds). For the
 figures above, export `ledger/Test/fullClasspath`, copy the class directories it names, and run the main class with
 `java` in a fresh container with the flags above, once per order.
+
+## 58. Builtins whose time grew past their cost
+
+`BuiltinTimeMain` (`tools`) runs, through the production evaluation path, a loop that calls one builtin until a
+transaction's budget (10^10 CPU, 14 x 10^6 memory) is spent. Every loop spends the same budget before and after the
+change; what changed is how long the evaluator takes for it. The table gives the median of five runs after two
+warm-up runs, on a shared 24-core x86-64 host (load average 4 to 9 from other work) in the JDK build container
+(`--cpus 5`), the build at `3cad1f045` and then this change's, back to back. A loop of `sha2_256` is the baseline; a
+builtin's loop that takes a few times as long is the evaluator's ordinary cost per step.
+
+<!-- register:table perf-64.t1 -->
+| Loop to a transaction's budget | before, ms | after, ms |
+|---|---:|---:|
+| `sha2_256`, 32 bytes (the baseline) | 11.3 | 10.8 |
+| `addInteger` | 49.3 | 25.0 |
+| `equalsData`, 8,000-entry map against `I 9` | 923.0 | 38.5 |
+| `equalsData`, `I 9` against an 8,000-entry map | 904.7 | 6.6 |
+| `equalsData`, 8,000-entry map against `Map []` | 969.5 | 5.8 |
+| `equalsData`, 1,000-entry map against `I 9` | 111.2 | 4.5 |
+| `equalsData`, 8,000-item list against `I 9` | 5.1 | 6.6 |
+| `writeBits`, 4,096 bytes, no index | 52.5 | 8.5 |
+| `writeBits`, 4,096 bytes, one index | 241.6 | 12.3 |
+| `andByteString`, 8,192 bytes | 76.6 | 18.4 |
+| `orByteString`, 8,192 bytes | 77.4 | 16.7 |
+| `xorByteString`, 8,192 bytes | 97.9 | 16.2 |
+| `complementByteString`, 8,192 bytes | 72.8 | 13.5 |
+| `complementByteString`, 65,536 bytes | 114.9 | 20.1 |
+| `replicateByte`, 8,192 bytes | 52.1 | 18.5 |
+| `decodeUtf8`, 65,536 bytes | 59.4 | 29.6 |
+| `insertCoin`, value of 1 x 3,000 | 117.0 | 8.2 |
+| `insertCoin`, value of 1,400 x 1 | 1,680.2 | 8.0 |
+| `bls12_381_G1_add` | 195.2 | 7.8 |
+| `bls12_381_G1_neg` | 180.9 | 4.5 |
+| `bls12_381_G2_add` | 197.6 | 7.3 |
+| `bls12_381_G2_neg` | 339.5 | 4.2 |
+| `bls12_381_G1_hashToGroup` | 105.7 | 93.9 |
+| `bls12_381_G2_hashToGroup` | 1,209.9 | 333.2 |
+| `verifyEcdsaSecp256k1Signature` | 118.1 | 17.1 |
+| `verifySchnorrSecp256k1Signature` | 102.1 | 13.3 |
+<!-- /register -->
+
+What each fix changes, and why it needs the form it has:
+
+- `equalsData` is `PlutusData`'s equality, `Tree.equal`. It compared two nodes' labels only after it had listed
+  both nodes' children, for a map a new vector of all its keys and values; it now compares the labels and the child
+  counts first and reads the children by index, through a view of a map's entries (`TreeFold.flatten`).
+- `insertCoin` packed the whole value again and counted its sizes afresh; the value now keeps them, and `insertCoin`
+  and `deleteCoin` change them as the reference does.
+- The bitwise builtins built their results with the generic `Array.tabulate`, `map` and `fill`, which store each
+  byte through a boxed, type-tested path; they now fill a new byte array in place before it is wrapped, the one
+  imperative step these functions keep. `combine` is inline: through one shared call site, the loop of
+  `xorByteString`, run after those of `andByteString` and `orByteString` in the same JVM, took three times as long
+  (the whole set of loops at each build, ten minutes apart on the same host):
+
+<!-- register:table perf-64.t3 -->
+| 8,192 bytes, ms per loop | `andByteString` | `xorByteString` |
+|---|---:|---:|
+| `combine` a plain method (this change before its inline step, `b8df8252c`) | 19.2 | 59.2 |
+| `combine` inline (this change) | 18.4 | 16.2 |
+<!-- /register -->
+
+- `decodeUtf8` read through a read-only buffer, which hides its array from the JDK's decoder.
+- A BLS12-381 element was its compressed encoding, so `add` and `neg` decompressed their operands and compressed
+  their results; an element now keeps jblst's point, as the reference keeps blst's.
+- ECDSA and Schnorr verification computed over the generic curve of the named-curve table, in `BigInteger`;
+  Bouncy Castle's own secp256k1 is fixed-width.
+
+`bls12_381_G2_hashToGroup` is still far from its cost (167.6 million CPU a call). One call, in a loop of the same
+call in one JVM:
+
+<!-- register:table perf-64.t2 -->
+| `bls12_381_G2_hashToGroup`, one call | µs |
+|---|---:|
+| Bouncy Castle's whole hash to the curve (before) | 20,005 |
+| its hash to the field | 3.9 |
+| its two maps to the curve | 4,319 |
+| its multiplication by `h_eff` | 15,309 |
+| this change: its hash to the field and maps, then `G2Cofactor` | 6,409 |
+| blst's `hash_to` through jblst, the tag as a Java string (not used) | 127 |
+<!-- /register -->
+
+Three quarters of Bouncy Castle's hash was its multiplication by the 636-bit effective cofactor in affine
+coordinates; `G2Cofactor` clears the cofactor by the endomorphism of RFC 9380 appendix G.3 in Jacobian coordinates.
+The rest is Bouncy Castle's two maps to the curve, in `BigInteger` arithmetic. blst's `hash_to` through jblst
+takes the tag as a Java string, which cannot carry every byte string a script may pass, so it is not used.
+
+**To repeat.** `BuiltinTimeMain` uses only what the build at `3cad1f045` has: copy its source into a checkout of
+that commit for the "before" column. In the JDK container, at each build: `bash scripts/sbtw "tools/runMain
+xyz.kd5ujc.scarab.uplc.BuiltinTimeMain 5"` (the rounds, then any shape names to run only those).

@@ -9,9 +9,10 @@ import xyz.kd5ujc.scarab.uplc.Value.{Key, Quantity}
 /** The `Value` builtins of plutus 1.70.0.0 (`507cab8c`), `PlutusCore/Value.hs` (cited by line),
   * over [[Value]], with the policy filters of 1.71.0.0 (`261766ad`). 1.71.0.0 caches one more
   * figure with a value (the negative amounts of each currency, `Value.hs:184-208` there), which
-  * changes no result. The reference keeps three cached figures with a value and updates them as it
-  * goes; [[Value]] computes them from the entries, so every result here is built through
-  * [[Value.pack]] or [[Value.buildWith]].
+  * changes no result. The reference keeps cached figures with a value and updates them as it goes;
+  * [[Value]] does so in `insertCoin` and `deleteCoin` ([[Value.updated]], [[Value.removed]]), and
+  * counts them for every other result, which is built through [[Value.pack]] or
+  * [[Value.buildWith]].
   */
 object Values:
   /** `valueDataMaxSize` (`Value.hs:540-541`, plutus 1.70.0.0). */
@@ -36,16 +37,13 @@ object Values:
         c <- Key(currency).toRight(ValueFailure.InvalidCurrency(currency))
         t <- Key(token).toRight(ValueFailure.InvalidToken(token))
         q <- Quantity(amount).toRight(ValueFailure.QuantityOutOfBounds(amount))
-      yield
-        val inner: Inner = value.entries.getOrElse(c, SortedMap.empty[Key, Quantity])
-        Value.pack(value.entries.updated(c, inner.updated(t, q)))
+      yield value.updated(c, t, q)
 
   /** `deleteCoin` (`Value.hs:387-411`, plutus 1.70.0.0): a key too long for a value is in none. */
   private def deleteCoin(currency: Bytes, token: Bytes, value: Value): Value =
     (Key(currency), Key(token)) match
-      case (Some(c), Some(t)) if value.entries.get(c).exists(_.contains(t)) =>
-        Value.pack(value.entries.updatedWith(c)(_.map(_.removed(t))))
-      case _ => value
+      case (Some(c), Some(t)) => value.removed(c, t)
+      case _                  => value
 
   /** `lookupCoin` (`Value.hs:413-418`, plutus 1.70.0.0): 0 for an entry the value does not have. */
   def lookupCoin(currency: Bytes, token: Bytes, value: Value): BigInt =

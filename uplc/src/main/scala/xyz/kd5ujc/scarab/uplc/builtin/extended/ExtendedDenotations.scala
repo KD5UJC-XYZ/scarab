@@ -151,7 +151,7 @@ object ExtendedDenotations:
         blsOf(Bls12_381_G1_scalarMul)(Bls12_381.G1.scalarMul(k, a, bounded = ensurable))(g1)
       ),
       Bls12_381_G1_equal -> two[G1Element, G1Element]((a, b) =>
-        pure(bool(a.compressed == b.compressed))
+        blsOf(Bls12_381_G1_equal)(Bls12_381.G1.equal(a, b))(bool)
       ),
       Bls12_381_G1_compress -> one[G1Element](a => pure(bytes(a.compressed))),
       Bls12_381_G1_uncompress -> one[Bytes](b =>
@@ -175,7 +175,7 @@ object ExtendedDenotations:
         blsOf(Bls12_381_G2_scalarMul)(Bls12_381.G2.scalarMul(k, a, bounded = ensurable))(g2)
       ),
       Bls12_381_G2_equal -> two[G2Element, G2Element]((a, b) =>
-        pure(bool(a.compressed == b.compressed))
+        blsOf(Bls12_381_G2_equal)(Bls12_381.G2.equal(a, b))(bool)
       ),
       Bls12_381_G2_compress -> one[G2Element](a => pure(bytes(a.compressed))),
       Bls12_381_G2_uncompress -> one[Bytes](b =>

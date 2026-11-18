@@ -11,17 +11,57 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * zero; keys are at most [[Value.Key.MaxLength]] bytes and quantities are signed 128-bit, by their
   * types. Only the constructors below make one.
   *
-  * The three cached figures of the reference's representation are kept with the value
-  * (`Value.hs:184-201`): [[totalSize]] (the number of `(currency, token)` entries), the size of the
-  * largest inner map [[maxInnerSize]], and [[negativeAmounts]].
+  * The cached figures of the reference's representation are kept with the value
+  * (`Value.hs:184-201`; 184-208 at plutus 1.71.0.0 `261766ad`): [[totalSize]] (the number of
+  * `(currency, token)` entries), how many inner maps have each size, from which [[maxInnerSize]] is
+  * read, and [[negativeAmounts]]. A value made from its entries counts them once; [[updated]] and
+  * [[removed]] change them as the reference's `insertCoin` and `deleteCoin` do, without recounting.
+  * Equality is of the entries alone, which determine the figures.
   */
 final case class Value private (
     entries: SortedMap[Value.Key, SortedMap[Value.Key, Value.Quantity]]
-):
-  val totalSize: Int = entries.valuesIterator.map(_.size).sum
-  val maxInnerSize: Int = entries.valuesIterator.map(_.size).maxOption.getOrElse(0)
-  val negativeAmounts: Int =
-    entries.valuesIterator.map(_.valuesIterator.count(_.amount.signum < 0)).sum
+)(val totalSize: Int, sizes: SortedMap[Int, Int], val negativeAmounts: Int):
+  /** The size of the largest inner map (`maxInnerSize`, `Value.hs:314-316` at plutus 1.71.0.0). */
+  val maxInnerSize: Int = sizes.lastOption.fold(0)(_._1)
+
+  /** The entry `(currency, token)` set to `quantity`, or removed for a zero quantity: the update of
+    * `insertCoin` (`Value.hs:382-421` at plutus 1.71.0.0), in time logarithmic in the size of the
+    * value.
+    */
+  def updated(currency: Value.Key, token: Value.Key, quantity: Value.Quantity): Value =
+    if quantity.amount.signum == 0 then removed(currency, token)
+    else
+      val inner = entries.getOrElse(currency, SortedMap.empty[Value.Key, Value.Quantity])
+      val outer = entries.updated(currency, inner.updated(token, quantity))
+      inner.get(token) match
+        case Some(old) =>
+          new Value(outer)(
+            totalSize,
+            sizes,
+            negativeAmounts - Value.negative(old) + Value.negative(quantity)
+          )
+        case None =>
+          new Value(outer)(
+            totalSize + 1,
+            Value.resized(sizes, inner.size, inner.size + 1),
+            negativeAmounts + Value.negative(quantity)
+          )
+
+  /** The value without the entry `(currency, token)`, itself when it has none: `deleteCoin`
+    * (`Value.hs:424-450` at plutus 1.71.0.0), in time logarithmic in the size of the value.
+    */
+  def removed(currency: Value.Key, token: Value.Key): Value =
+    entries.get(currency).flatMap(inner => inner.get(token).map((inner, _))) match
+      case None => this
+      case Some((inner, old)) =>
+        val rest = inner.removed(token)
+        val outer =
+          if rest.isEmpty then entries.removed(currency) else entries.updated(currency, rest)
+        new Value(outer)(
+          totalSize - 1,
+          Value.resized(sizes, inner.size, inner.size - 1),
+          negativeAmounts - Value.negative(old)
+        )
 
   /** The entries in ascending order (`toList`, `Value.hs:295-297`, plutus 1.70.0.0). */
   def toList: Vector[(Value.Key, Vector[(Value.Key, Value.Quantity)])] =
@@ -72,7 +112,29 @@ object Value:
     case EmptyInnerMap(currency: Key)
     case ZeroQuantity(currency: Key, token: Key)
 
-  val empty: Value = new Value(SortedMap.empty)
+  val empty: Value = new Value(SortedMap.empty)(0, SortedMap.empty, 0)
+
+  /** The value of entries that hold the invariants, its figures counted once (`pack'` and
+    * `sizeCaches`, `Value.hs:257-272` at plutus 1.71.0.0).
+    */
+  private def counted(entries: SortedMap[Key, SortedMap[Key, Quantity]]): Value =
+    val sizes = entries.valuesIterator.foldLeft(SortedMap.empty[Int, Int])((acc, inner) =>
+      resized(acc, 0, inner.size)
+    )
+    new Value(entries)(
+      entries.valuesIterator.map(_.size).sum,
+      sizes,
+      entries.valuesIterator.map(_.valuesIterator.count(_.signum < 0)).sum
+    )
+
+  private def negative(q: Quantity): Int = if q.signum < 0 then 1 else 0
+
+  /** `updateSizes` (`Value.hs:635-646` at plutus 1.71.0.0): one inner map more of size `now` and
+    * one fewer of size `old`, a size of 0 standing for no inner map.
+    */
+  private def resized(sizes: SortedMap[Int, Int], old: Int, now: Int): SortedMap[Int, Int] =
+    val grown = if now == 0 then sizes else sizes.updatedWith(now)(n => Some(n.fold(1)(_ + 1)))
+    if old == 0 then grown else grown.updatedWith(old)(_.filter(_ > 1).map(_ - 1))
 
   /** `buildValueWith` (`Value.hs:637-694`, plutus 1.70.0.0): the value of `outer`, whose entries
     * `currency` and `token` convert, in order, refused unless currency symbols and token names are
@@ -111,7 +173,7 @@ object Value:
         acc: Vector[(Key, SortedMap[Key, Quantity])]
     ): Either[E, Value] =
       entries match
-        case Nil => Right(new Value(SortedMap.from(acc)))
+        case Nil => Right(counted(SortedMap.from(acc)))
         case a :: rest =>
           currency(a) match
             case Left(e) => Left(e)
@@ -163,7 +225,7 @@ object Value:
     * a value use it.
     */
   def pack(nested: SortedMap[Key, SortedMap[Key, Quantity]]): Value =
-    new Value(
+    counted(
       nested.view
         .mapValues(_.filter((_, q) => q.signum != 0))
         .filter((_, inner) => inner.nonEmpty)

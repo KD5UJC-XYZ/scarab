@@ -71,15 +71,15 @@ object Text:
 
   /** The text that `bytes` encode as UTF-8, refused unless they are well-formed UTF-8 (the decoding
     * of `decodeUtf8'` in the reference). Not a replacement decoder: one bad sequence refuses all.
+    * The decoder reads the bytes' own array, which it never writes: a read-only buffer would hide
+    * the array from the JDK's decoder and send every byte through its slow path.
     */
   def fromUtf8(bytes: Bytes): Either[Invalid, Text] =
     val decoder = StandardCharsets.UTF_8
       .newDecoder()
       .onMalformedInput(CodingErrorAction.REPORT)
       .onUnmappableCharacter(CodingErrorAction.REPORT)
-    val in = bytes.withRange((array, offset, size) =>
-      ByteBuffer.wrap(array, offset, size).asReadOnlyBuffer()
-    )
+    val in = bytes.withRange((array, offset, size) => ByteBuffer.wrap(array, offset, size))
     val out = CharBuffer.allocate(bytes.size)
     val decoded = decoder.decode(in, out, true)
     if decoded.isError || decoder.flush(out).isError then Left(Invalid.InvalidUtf8)

@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.uplc.builtin.extended
 import cats.syntax.either.*
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
-import org.bouncycastle.asn1.sec.SECNamedCurves
 import org.bouncycastle.crypto.Digest
 import org.bouncycastle.crypto.digests.{
   Blake2bDigest,
@@ -13,6 +12,7 @@ import org.bouncycastle.crypto.digests.{
   SHA256Digest,
   SHA3Digest
 }
+import org.bouncycastle.crypto.ec.CustomNamedCurves
 import org.bouncycastle.math.ec.{ECAlgorithms, ECCurve, ECPoint}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.witness.{
@@ -70,7 +70,11 @@ object Signatures:
         Left(LibraryDefect.Thrown(cause))
       case Left(other: WitnessInputError) => Left(LibraryDefect.UnexpectedInput(other))
 
-  private val parameters = SECNamedCurves.getByName("secp256k1")
+  /** Bouncy Castle's own secp256k1 (`SecP256K1Curve`): fixed-width field arithmetic and the curve's
+    * endomorphism, where the generic curve of the named-curve table computes with `BigInteger`. The
+    * group and so every point and verdict are the same.
+    */
+  private val parameters = CustomNamedCurves.getByName("secp256k1")
   private val curve: ECCurve = parameters.getCurve
   private val generator: ECPoint = parameters.getG
 
@@ -78,20 +82,15 @@ object Signatures:
   val Order: BigInteger = parameters.getN
   val FieldModulus: BigInteger = curve.getField.getCharacteristic
 
-  private val Seven: BigInteger = BigInteger.valueOf(7)
-
   /** The point with coordinate `x` and a `y` of parity `odd`, if `x < p` and `x^3 + 7` is a square
-    * (`secp256k1_ge_set_xo_var`). As `p = 3 mod 4`, `(x^3 + 7)^((p + 1) / 4)` is its square root
-    * when it has one.
+    * (`secp256k1_ge_set_xo_var`). The field's square root answers nothing for a non-square.
     */
   private def lift(x: BigInteger, odd: Boolean): Option[ECPoint] =
-    Option.when(x.compareTo(FieldModulus) < 0)(x).flatMap { x =>
-      val rhs = x.pow(3).add(Seven).mod(FieldModulus)
-      val root = rhs.modPow(FieldModulus.add(BigInteger.ONE).shiftRight(2), FieldModulus)
-      Option.when(root.multiply(root).mod(FieldModulus) == rhs) {
-        val y =
-          if root.testBit(0) == odd then root else FieldModulus.subtract(root).mod(FieldModulus)
-        curve.createPoint(x, y)
+    Option.when(x.compareTo(FieldModulus) < 0)(curve.fromBigInteger(x)).flatMap { fx =>
+      val rhs = fx.square().multiply(fx).add(curve.getB)
+      Option(rhs.sqrt()).map { root =>
+        val y = if root.testBitZero() == odd then root else root.negate()
+        curve.createPoint(fx.toBigInteger, y.toBigInteger)
       }
     }
 
