@@ -39,8 +39,8 @@ this is the order of work.
 7. Fill in the body's "Independent review" section: the link to that comment, the verdict, and the disposition of
    each finding in a line.
 8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, through the
-   script at the same level with `--base <the commit before the fixes>` (the floor still comes from the whole pull
-   request), and post it and link it beside the first. After a rebase that changes the diff, the review covers the
+   script at the same level with `--base <the head the last review covered>` (the floor still comes from the whole
+   pull request), and post it and link it beside the first. After a rebase that changes the diff, the review covers the
    new head; after one that does not, or a wording fix, add `Since the review: <head commit> <what changed>` to the
    section instead.
 

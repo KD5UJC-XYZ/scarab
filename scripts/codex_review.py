@@ -14,7 +14,8 @@ command line, so the user's own Codex configuration cannot change the model, the
 
 The floor comes from the pull request's whole diff (`--pr-base`); `--base` sets the review's scope, which a second
 review narrows to the fix commits. The scope is resolved before the run, added to the brief as a `git diff` range,
-and recorded in the stamp as `scope=full` (from the pull request's base) or `scope=fixes`. The run is accepted only when the worktree is clean before it, Codex exits
+and recorded in the stamp as `from=<the commit it starts at>` (the merge base) with `scope=full` when that is where
+the pull request's diff starts, or `scope=fixes`; `pr_policy.py` chains a fixes review to the review it follows. The run is accepted only when the worktree is clean before it, Codex exits
 successfully with a completed turn and a final message and reports no reroute to another model, the session file
 Codex wrote records the model and effort in every turn, the read-only sandbox and the network, and the worktree's HEAD and status are unchanged after it. The output
 file, outside the worktree, starts with a stamp line that `pr_policy.py` reads from the posted comment
@@ -46,7 +47,7 @@ DECISIVE = ("docs/adr/", "docs/design/")
 DECISIVE_FLOOR = "high"
 PROFILE = "scarab_review"
 STAMP = re.compile(r"<!-- codex-review ([a-z]+=[^\s>]+(?: [a-z]+=[^\s>]+){0,15}) -->")
-REQUIRED = ("model", "effort", "level", "head")
+REQUIRED = ("model", "effort", "level", "head", "from", "scope")
 LINK = re.compile(r"\[([^\]\n]{1,300})\]\((/[^)\s]{1,500})\)")
 LINE = re.compile(r"(?:#L|:)(\d+)(?:-L?\d+)?$")
 ATTRIBUTION = "Independent review by Codex "
@@ -230,6 +231,11 @@ def git(workdir, *args):
     return subprocess.run(["git", "-C", str(workdir), *args], check=True, capture_output=True, text=True).stdout
 
 
+def resolve(workdir, revision):
+    """The commit `revision` names in the worktree, refused before the run when it names none."""
+    return git(workdir, "rev-parse", "--verify", "--end-of-options", f"{revision}^{{commit}}").strip()
+
+
 def changed_files(workdir, base):
     """The paths the diff touches, both sides of a rename, as Git stores them (no quoting)."""
     out = git(workdir, "diff", "-z", "--no-renames", "--name-only", f"{base}...HEAD")
@@ -244,8 +250,8 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True,
                         help="where to write the review, outside the worktree, to post as a comment")
     parser.add_argument("--effort", help="an effort at or above the change's floor (default: the floor)")
-    parser.add_argument("--base", default="origin/main",
-                        help="the base the review's scope starts from (a scoped second review: the commit before the fixes)")
+    parser.add_argument("--base", help="where the review's scope starts: the commit before the fixes for a second "
+                                       "review (default: the pull request's base)")
     parser.add_argument("--pr-base", default="origin/main",
                         help="the pull request's base, whose diff sets the effort floor (default: origin/main)")
     parser.add_argument("--cd", type=Path, default=Path.cwd(), help="the worktree to review (default: here)")
@@ -262,9 +268,11 @@ def main(argv=None):
         if git(workdir, "status", "--porcelain"):
             raise ReviewError("the worktree has uncommitted changes; the review covers committed work only")
         head = git(workdir, "rev-parse", "HEAD").strip()
-        scope = git(workdir, "rev-parse", "--verify", "--end-of-options", f"{args.base}^{{commit}}").strip()
+        base = args.base or args.pr_base
+        start = git(workdir, "merge-base", "--end-of-options", resolve(workdir, base), head).strip()
+        whole = git(workdir, "merge-base", "--end-of-options", resolve(workdir, args.pr_base), head).strip()
         brief = (args.brief.read_text(encoding="utf-8").rstrip("\n")
-                 + f"\n\nThe review's scope is `git diff {scope}...{head}`.\n")
+                 + f"\n\nThe review's scope is `git diff {start}...{head}`.\n")
         with tempfile.TemporaryDirectory() as scratch:
             last = Path(scratch, "last-message.md")
             run = subprocess.run(command(effort, workdir, last, args.codex), input=brief, capture_output=True,
@@ -279,12 +287,11 @@ def main(argv=None):
             raise ReviewError("the worktree changed during the review; a review makes no edits")
         turns, cli = session_settings(session_file(thread, os.environ.get("CODEX_HOME") or Path.home() / ".codex"))
         check_session(turns, effort)
-        full = scope == git(workdir, "rev-parse", "--verify", "--end-of-options", f"{args.pr_base}^{{commit}}").strip()
-        fields = {"model": MODEL, "effort": effort, "level": args.level, "head": head, "base": args.base,
-                  "prbase": args.pr_base, "scope": "full" if full else "fixes",
+        fields = {"model": MODEL, "effort": effort, "level": args.level, "head": head, "from": start,
+                  "scope": "full" if start == whole else "fixes",
                   "cli": cli, "sandbox": "read-only", "network": "on"}
         header = (f"{ATTRIBUTION}`{MODEL}` at effort `{effort}` (floor `{need}` for level "
-                  f"{args.level}), read-only with network, of `{head[:12]}` against `{args.base}`.")
+                  f"{args.level}), read-only with network, of `{start[:12]}...{head[:12]}`.")
         args.out.write_text(f"{stamp(fields)}\n{header}\n\n{scrub(message, workdir)}\n", encoding="utf-8")
     except (ReviewError, OSError, subprocess.CalledProcessError) as error:
         print(f"codex_review: no review: {error}", file=sys.stderr)

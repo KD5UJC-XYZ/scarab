@@ -74,7 +74,8 @@ class FloorAndStampTests(unittest.TestCase):
             review.floor(5)
 
     def test_a_stamp_reads_back_from_the_first_line_and_is_judged_against_the_floor(self):
-        line = review.stamp({"model": review.MODEL, "effort": "high", "level": 2, "head": "a" * 40})
+        line = review.stamp({"model": review.MODEL, "effort": "high", "level": 2, "head": "a" * 40, "from": "b" * 40,
+                             "scope": "full"})
         fields = review.stamp_of(line + "\nreview")
         self.assertEqual((fields["model"], fields["effort"], fields["level"]), (review.MODEL, "high", "2"))
         self.assertIsNone(review.stamp_problem(fields, 2))
@@ -97,7 +98,8 @@ class FloorAndStampTests(unittest.TestCase):
                 review.records(bad)
 
     def test_a_stamp_needs_review_text_beyond_its_attribution_and_must_start_the_comment(self):
-        line = review.stamp({"model": review.MODEL, "effort": "high", "level": 1, "head": "a" * 40})
+        line = review.stamp({"model": review.MODEL, "effort": "high", "level": 1, "head": "a" * 40, "from": "b" * 40,
+                             "scope": "full"})
         with self.assertRaisesRegex(review.ReviewError, "no review"):
             review.stamp_of(line + "\n" + review.ATTRIBUTION + "`x` at effort `high`.\n\n")
         self.assertIsNone(review.stamp_of("    " + line + "\nreview"))
@@ -163,7 +165,7 @@ class RunTests(unittest.TestCase):
                               check=True).stdout.strip()
         self.assertIn(f"P2 Foo.scala (`Foo.scala:3`): The review's scope is `git diff {base}...{fields['head']}`.",
                       text)
-        self.assertEqual(fields["scope"], "full")
+        self.assertEqual((fields["scope"], fields["from"]), ("full", base))
         self.assertNotIn(str(self.work), text)
 
     def test_a_higher_effort_is_allowed_and_a_lower_one_refused(self):
@@ -221,7 +223,16 @@ class RunTests(unittest.TestCase):
                                           "--base", "fixes", "--pr-base", "base", "--cd", str(self.work),
                                           "--codex", str(self.fake)]), 0)
         fields = review.stamp_of(self.out.read_text())
-        self.assertEqual((fields["effort"], fields["base"], fields["scope"]), ("high", "fixes", "fixes"))
+        fixes = subprocess.run(["git", "-C", str(self.work), "rev-parse", "fixes"], capture_output=True, text=True,
+                               check=True).stdout.strip()
+        self.assertEqual((fields["effort"], fields["from"], fields["scope"]), ("high", fixes, "fixes"))
+
+    def test_the_scope_defaults_to_the_pull_request_base(self):
+        with mock.patch.dict(os.environ, {"CODEX_HOME": str(self.home)}), mock.patch("sys.stderr"), \
+                mock.patch("sys.stdout"):
+            self.assertEqual(review.main(["--level", "1", "--brief", str(self.brief), "--out", str(self.out),
+                                          "--pr-base", "base", "--cd", str(self.work), "--codex", str(self.fake)]), 0)
+        self.assertEqual(review.stamp_of(self.out.read_text())["scope"], "full")
 
     def test_an_unknown_scope_is_refused_before_codex_runs(self):
         self.assertEqual(self.run_review("--base", "no-such-commit"), 1)
