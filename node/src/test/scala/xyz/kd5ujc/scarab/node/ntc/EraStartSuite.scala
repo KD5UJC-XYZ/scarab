@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
 /** `GetEraStart` (`QueryAnytime`) as the whole answer, `Serialise (Maybe Bound)`, over a chain in
   * Byron whose Shelley starts at epoch 1 (`fixtures/eras`, `TestShelleyHardForkAtEpoch: 1`), under
@@ -43,7 +43,8 @@ class EraStartSuite extends FunSuite:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     networkMagic = setup.genesis.networkMagic.toLong,
-    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+    layout = StateLayout.Node11_1
   )
 
   private def answerOf(setup: NodeSetup, state: MirrorState, query: NtcQuery): String =

@@ -53,7 +53,8 @@ class EraHistoryNetworksSuite extends FunSuite:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     networkMagic = setup.genesis.networkMagic.toLong,
-    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+    layout = StateLayout.Node11_1
   )
 
   /** The state of a chain in Conway whose Byron era ended at epoch 4, at slot 100,000,000: the

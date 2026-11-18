@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{Deferred, IO, Ref}
@@ -161,7 +162,8 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
       setup.genesis.raw,
       setup.mirrorEnv().ledger,
       networkMagic = setup.genesis.networkMagic.toLong,
-      ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+      ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+      layout = StateLayout.Node11_1
     )
     val era = QueryView(Point.Origin, None, setup.mirrorStart).era.index
     val query =

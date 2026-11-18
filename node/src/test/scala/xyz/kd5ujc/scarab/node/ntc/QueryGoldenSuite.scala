@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import io.circe.parser
 import java.nio.file.{Files, Path}
@@ -44,7 +45,8 @@ class QueryGoldenSuite extends FunSuite:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     networkMagic = setup.genesis.networkMagic.toLong,
-    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+    layout = StateLayout.Node11_1
   )
 
   // The state's tip is the point the reference answered at, as for every state the node acquires.

@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.{EraRead, EraViews, InEra}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
-import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion}
+import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion, StateLayout}
 import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellLedgerFile,
@@ -69,7 +69,8 @@ class MirrorAnswersSuite extends FunSuite:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     networkMagic = setup.genesis.networkMagic.toLong,
-    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+    layout = StateLayout.Node11_1
   )
 
   private val raws: Vector[Bytes] =

@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import scala.annotation.unused
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
+import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion, StateLayout}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
@@ -41,6 +41,8 @@ import xyz.kd5ujc.scarab.codec.Rational
 /** What the answers to a query depend on besides the acquired state: the chain's static
   * configuration and the era transitions this node has seen. `ledgerConfig` is the answer to
   * `DebugLedgerConfig` ([[LedgerConfig]]), written once from the configuration, or why it has none.
+  * `layout` is the state layout of the reference build the node mirrors ([[StateLayout.of]]): a
+  * Dijkstra state's answers are written with its codecs, and the 11.1 line's has none of them.
   */
 final case class QueryEnv(
     systemStart: Instant,
@@ -52,7 +54,8 @@ final case class QueryEnv(
     mirror: MirrorEnv,
     observedEras: Map[Era, BigInt] = Map.empty,
     networkMagic: Long,
-    ledgerConfig: Either[Unanswered, Bytes]
+    ledgerConfig: Either[Unanswered, Bytes],
+    layout: StateLayout
 )
 
 /** Why a query has no answer: the closed set of the reasons, where the connection then ends (as a
@@ -216,8 +219,7 @@ object QueryAnswers:
 
   def utxoNeeds[S](view: QueryView[S], q: NtcQuery): UtxoNeeds = q match
     case NtcQuery.IfCurrent(index, inner)
-        if index == QueryEra.of(view.era) &&
-          (view.era == Era.Conway || inEveryEra(inner)) =>
+        if index == QueryEra.of(view.era) && answeredIn(view.era, inner) =>
       ledgerNeeds(inner)
     case _ => UtxoNeeds.Nothing
 
@@ -309,8 +311,28 @@ object QueryAnswers:
     case NtcQuery.IfCurrent(index, inner) =>
       val era = view.era
       if index != QueryEra.of(era) then Right(CborOut.build(mismatch(_, index, era)))
-      else if era != Era.Conway && !inEveryEra(inner) then Left(Unanswered.Unsupported)
+      else if !answeredIn(era, inner) then Left(Unanswered.Unsupported)
       else ledgerAnswer(env, view, utxo, inner, version).map(r => CborOut.build(_.array(1).raw(r)))
+
+  /** Whether a query of the era the chain is in is answered there: each in Conway; in Dijkstra
+    * those of every era ([[inEveryEra]]) and the two that read its parameters or its ratify state
+    * besides its governance state ([[ofDijkstraGovernance]]); in the other eras those of every era.
+    */
+  private def answeredIn(era: Era, q: LedgerQuery): Boolean = era match
+    case Era.Conway   => true
+    case Era.Dijkstra => inEveryEra(q) || ofDijkstraGovernance(q)
+    case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage =>
+      inEveryEra(q)
+
+  /** The queries of Conway's governance that read the parameters or the ratify state of a Dijkstra
+    * state, which the reference answers there as in Conway (`GetRatifyState`, `GetFuturePParams`:
+    * `answerPureBlockQuery` and `encodeShelleyResult`, `Shelley/Ledger/Query.hs:431-434, 961-962`,
+    * ouroboros-consensus 2416493b). The other queries of Conway's governance are not answered in
+    * Dijkstra yet.
+    */
+  private def ofDijkstraGovernance(q: LedgerQuery): Boolean = LedgerQuery.cborLayers(q)._2 match
+    case LedgerQuery.GetRatifyState | LedgerQuery.GetFuturePParams => true
+    case _                                                         => false
 
   /** The queries answered in every Shelley-based era (the others are Conway's): the ledger state as
     * the Haskell node writes it, the chain-dependent state, the UTxO, the reward provenance, the
@@ -387,6 +409,26 @@ object QueryAnswers:
   private val coin = Wire.word(64)
   private val poolId = Wire.hash(28)
   private val protocolParams = Params.conwayCodec
+
+  /** The version Dijkstra's answers are written at, its lowest (`toEraCBOR @DijkstraEra`, 12). */
+  private val dijkstraVersion: ProtVer = Versions.eraLow(ShelleyBasedEra.SDijkstra)
+
+  /** Dijkstra's governance state in the Leios build's layout, with the codec of its parameters in
+    * that layout ([[Params.codecIn]]); none in another era, nor in the 11.1 line's layout, whose
+    * Dijkstra state is not read or written yet.
+    */
+  private def dijkstraGovernance[E <: EraTag](
+      l: EraRead[E],
+      layout: StateLayout
+  ): Option[(Read[ConwayGovState], Codec[ProtocolParams])] =
+    l.era match
+      case ShelleyBasedEra.SDijkstra =>
+        layout match
+          case StateLayout.Node11_1 => None
+          case StateLayout.Leios    => Some((l.gov, Params.codecIn(layout, l.era)))
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        None
 
   /** The bytes of an answer, or why there are none: its value is outside what the Haskell type
     * holds.
@@ -511,6 +553,19 @@ object QueryAnswers:
         case Some(facts) => f(facts)
         case None        => Left(Unanswered.Unsupported)
       }
+    // A query of Conway's governance state, in Conway, or in Dijkstra of the Leios build with its
+    // parameters' codec, written at Dijkstra's lowest version (`LC.toEraCBOR @era`, Query.hs:961-962,
+    // ouroboros-consensus 2416493b)
+    def governed(
+        inConway: ConwayFacts => Either[Unanswered, Bytes],
+        inDijkstra: (Read[ConwayGovState], Codec[ProtocolParams]) => Either[Unanswered, Bytes]
+    ): Either[Unanswered, Bytes] =
+      shelleyBased { facts =>
+        facts.conway
+          .map(inConway)
+          .orElse(dijkstraGovernance(facts.l, env.layout).map(inDijkstra.tupled))
+          .getOrElse(Left(Unanswered.Unsupported))
+      }
     // The view of an era from Shelley to Conway and the era's lowest version, which its `toEraCBOR`
     // writes at; a Dijkstra state answers none of the queries that ask it, as before.
     def throughConway[A](f: (EraFacts[?], ProtVer) => Either[Unanswered, A]) =
@@ -532,7 +587,8 @@ object QueryAnswers:
       // The current parameters of the era's governance state, in the era's encoding, the legacy
       // one below NTC 21 before Conway (Query.hs:415-416, 1011, 1098-1111, ouroboros-consensus
       // 82ecba32; `GovStateAnswers`).
-      case GetCurrentPParams => shelleyBased(f => GovStateAnswers.currentPParams(f.l, version))
+      case GetCurrentPParams =>
+        shelleyBased(f => GovStateAnswers.currentPParams(f.l, env.layout, version))
       // `ProposedPPUpdates Map.empty` whatever the state, the proposals of the eras before Conway
       // too (Query.hs:417-418, 1012, ouroboros-consensus 82ecba32).
       case GetProposedPParamsUpdates => Right(CborOut.build(_.map(0)))
@@ -586,7 +642,7 @@ object QueryAnswers:
       case GetConstitution => conway(f => constitution.answerRead(f.gov.map(_.constitution)))
       // The era's governance state, at every version (Query.hs:456-457, 1032, ouroboros-consensus
       // 82ecba32; `GovStateAnswers`).
-      case GetGovState => shelleyBased(f => GovStateAnswers.govState(f.l))
+      case GetGovState => shelleyBased(f => GovStateAnswers.govState(f.l, env.layout))
       case GetDRepState(credentials) =>
         conway { f =>
           Wire
@@ -640,11 +696,20 @@ object QueryAnswers:
               if ids.isEmpty then all else all.filter(a => ids(a.id))
             })
         }
+      // `queryRatifyState` and `queryFuturePParams` (`Api/State/Query.hs:425-430, 451-452`,
+      // cardano-ledger 9df9f98c), Conway's and Dijkstra's of the Leios build
       case GetRatifyState =>
-        conway(f => ratifyState.answerRead(f.gov.map(_.drepPulsing.ratify)))
+        governed(
+          f => ratifyState.answerRead(f.gov.map(_.drepPulsing.ratify)),
+          (gov, params) =>
+            LeiosStateCodecs
+              .ratifyStateWith(params)(using dijkstraVersion)
+              .answerRead(gov.map(_.drepPulsing.ratify))
+        )
       case GetFuturePParams =>
-        conway(f =>
-          Wire.strictMaybe(protocolParams).answerRead(f.gov.map(_.futurePParams.nextParams))
+        governed(
+          f => Wire.strictMaybe(protocolParams).answerRead(f.gov.map(_.futurePParams.nextParams)),
+          (gov, params) => Wire.strictMaybe(params).answerRead(gov.map(_.futurePParams.nextParams))
         )
       case QueryStakePoolDefaultVote(pool) =>
         conway(f =>

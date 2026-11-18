@@ -57,7 +57,11 @@ the ratchet's expected set at its value before the change during the run) matche
 its command, commit and images are in the [evidence log](evidence-log-5.md).
 The current protocol parameters and the governance state are answered in every era from Shelley to Babbage too, each with its `GetCBOR` form (#924), as the reference answers them in every Shelley-based era (`getPParams` and `queryGovState`, `Query.hs:415-416, 456-457`): the parameters in the era's encoding from version 21 and below it in the legacy encoding the reference writes before Conway, the protocol version as two fields (`currentPParamsEnDecoding`, `Query.hs:1098-1111`;
 `Query/LegacyPParams.hs`, ouroboros-consensus `82ecba32`), and the era's `ShelleyGovState` at every version;
-a Dijkstra state answers neither, as this build has no codec for its parameters.
+under the 11.1 build a Dijkstra state answers neither, as that build's Dijkstra state is not read or written yet.
+Under the Leios build (`--reference-build leios-b004fe0c`) a Dijkstra state answers both, and the ratify state and the future parameters of its governance (`GetRatifyState`, `GetFuturePParams`), each with its `GetCBOR` form, in that build's layout (Dijkstra's 54 parameters, at version 12), alike at every version: that build writes the first two with `toCBOR` and the other two with `LC.toEraCBOR @era` and has no legacy parameters encoding (`Query.hs:935, 953, 961-962`, ouroboros-consensus `2416493b`);
+the other queries of Conway's governance are not answered in Dijkstra yet.
+`DijkstraGovernanceAnswersSuite` asks the four of the two Dijkstra states the Leios build wrote (`fixtures/leios/state`) at every version, against the parts of the state that the build wrote with the same encoders at the same version;
+no run compares them with a Leios node's answers yet, as `follow` refuses that build (#826).
 `MirrorAnswersSuite` asks both of every state of the eras capture and of the ledger snapshots cardano-node 11.1.3 wrote in each era (`fixtures/haskell-state`), whose governance state and parameters it answers with the reference's own bytes, at versions 16, 20, 21 and 23.
 The `e2e` run of 2026-11-16 on `ece59518b` (cardano-node 11.1.3) matched every row of both and their `GetCBOR` forms, the parameters at V20 and V23: 54/54 in the 9 rounds before Conway (Shelley 3, Allegra 1, Mary 1, Alonzo 2, Babbage 2) and 42/42 in the 7 Conway rounds;
 its command, commit and images are in the [evidence log](evidence-log-5.md).

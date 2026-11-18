@@ -7,7 +7,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.protocol.{NtcVersion, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{NtcVersion, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
 /** `DebugLedgerConfig` against cardano-node 11.1.3's own answers, recorded from a node started on
@@ -98,7 +98,8 @@ class LedgerConfigSuite extends FunSuite:
         setup.genesis.raw,
         setup.mirrorEnv().ledger,
         networkMagic = setup.genesis.networkMagic.toLong,
-        ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+        ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+        layout = StateLayout.Node11_1
       )
       val view = QueryView(Point.Origin, None, setup.mirrorStart)
       val query = hex("8104")
