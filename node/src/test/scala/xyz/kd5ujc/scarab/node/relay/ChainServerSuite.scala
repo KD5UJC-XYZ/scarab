@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.ChainSyncServer.Update
 import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
-import xyz.kd5ujc.scarab.storage.{FileImmutableStore, StorageTestKit}
+import xyz.kd5ujc.scarab.storage.{CountedReads, FileImmutableStore, ImmutableStore, StorageTestKit}
 import munit.ScalaCheckSuite
 import cats.mtl.Handle
 import xyz.kd5ujc.scarab.ledger.NodeError
@@ -433,6 +433,150 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             assertEquals(promoting, Some(List(5, 6, 7, 8, 9)))
             assertEquals(written, Some(List(8, 9, 10, 11)))
             assertEquals(fromBoundary, Some(List(9, 10, 11, 12)))
+        }
+      }
+    }
+  }
+
+  /** Blocks 1 to `n`, with a boundary block before each block of `boundaries`: in that block's
+    * slot, with the number of the block before it, as a Byron epoch boundary block.
+    */
+  private def withBoundaries(n: Int, boundaries: Set[Int]): Vector[(BlockRef, Bytes)] =
+    (1 to n).toVector.flatMap { i =>
+      val main = (ref(i), raw(i))
+      if !boundaries.contains(i) then Vector(main)
+      else
+        val boundary = BlockRef(ref(i).slot, hash(i + 500000), BigInt(i - 1), boundary = true)
+        Vector((boundary, raw(i - 1, 9)), main)
+    }
+
+  /** The server's chain extended by `chain`, each block storing the one `k` before it. */
+  private def grow(
+      store: ImmutableStore[IO],
+      server: ChainServer[IO],
+      chain: Vector[(BlockRef, Bytes)]
+  )(using Handle[IO, NodeError]): IO[Unit] =
+    val persistence = server.persistence[Unit]
+    chain.indices.toList.traverse_ { i =>
+      val immutable = if i >= k then Vector(chain(i - k)) else Vector.empty
+      immutable.traverse_((r, b) => store.append(r, b)) *>
+        persistence.extended(
+          chain(i)._1,
+          chain(i)._2,
+          immutable.map(_._1),
+          Anchor[Unit](immutable.headOption.map(_._1), ())
+        )
+    }
+
+  private def headers(
+      source: xyz.kd5ujc.scarab.network.ChainSyncServer.Source[IO, NtNHeader]
+  ): IO[Vector[Bytes]] =
+    def loop(acc: Vector[Bytes]): IO[Vector[Bytes]] =
+      source.poll.flatMap {
+        case Some(Update.RollForward(h, _))  => loop(acc :+ h.raw)
+        case Some(Update.RollBackward(_, _)) => loop(acc)
+        case Some(Update.NotKept(after))     => IO(fail(s"not kept after $after"))
+        case None                            => IO.pure(acc)
+      }
+    loop(Vector.empty)
+
+  test("stored chunks, boundary blocks and the volatile chain are served in chain order") {
+    // ten blocks per chunk: block 20's boundary block starts chunk 2, block 25's is inside it
+    val chain = withBoundaries(40, Set(20, 25))
+    val raws = chain.map(_._2)
+    def at(point: Point) = chain.indexWhere(_._1.point == point)
+    val boundary20 = chain(at(ref(20).point) - 1)._1
+    tempDir.use { dir =>
+      ok {
+        FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
+          for
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            _ <- grow(store, server, chain)
+            starts = Vector(
+              Point.Origin,
+              ref(9).point,
+              boundary20.point,
+              ref(19).point,
+              chain(chain.size - k - 1)._1.point
+            )
+            followed <- starts.traverse(p =>
+              server.source.use(source => source.intersect(Vector(p)) *> headers(source))
+            )
+            whole <- server.blockSource.use { source =>
+              def loop(acc: Vector[Bytes]): IO[Vector[Bytes]] =
+                source.poll.flatMap {
+                  case Some(Update.RollForward(b, _))  => loop(acc :+ b.bytes)
+                  case Some(Update.RollBackward(_, _)) => loop(acc)
+                  case Some(Update.NotKept(after))     => IO(fail(s"not kept after $after"))
+                  case None                            => IO.pure(acc)
+                }
+              source.intersect(Vector(Point.Origin)) *> loop(Vector.empty)
+            }
+            ranges = Vector(
+              ref(8).point -> ref(23).point,
+              boundary20.point -> ref(39).point,
+              ref(1).point -> ref(40).point
+            )
+            fetched <- ranges.traverse((from, to) =>
+              server.blocks.range(from, to).flatMap(_.traverse(_.compile.toVector))
+            )
+          yield
+            starts.zip(followed).foreach { (start, got) =>
+              val from = start match
+                case Point.Origin => 0
+                case p            => at(p) + 1
+              assertEquals(got, raws.drop(from), s"after $start")
+            }
+            assertEquals(whole, raws)
+            ranges.zip(fetched).foreach { case ((from, to), got) =>
+              assertEquals(got, Some(raws.slice(at(from), at(to) + 1)), s"$from to $to")
+            }
+        }
+      }
+    }
+  }
+
+  test("a client behind the volatile chain is sent each header from one read of its block") {
+    tempDir.use { dir =>
+      // blocks 10 to 19 are chunk 1's, two bytes each
+      def blockAt(n: Int) = CountedReads.Read(dir / "00001.chunk", 2L * (n - 10), 2L * (n - 9))
+      ok {
+        CountedReads.open(dir, 30L, 1000).use { (store, log) =>
+          for
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            _ <- grow(store, server, (1 to 40).toVector.map(i => (ref(i), raw(i))))
+            sent <- server.source.use { source =>
+              for
+                _ <- source.intersect(Vector(ref(12).point))
+                _ <- log.set(Vector.empty)
+                updates <- (1 to 6).toList.traverse(_ => source.poll)
+              yield updates.collect { case Some(Update.RollForward(h, _)) => h.raw }
+            }
+            following <- log.getAndSet(Vector.empty)
+            range <- server.blocks.range(ref(12).point, ref(16).point)
+            checking <- log.getAndSet(Vector.empty)
+            // with each block sent, the reads made so far
+            fetched <- range.traverse(
+              _.evalMap(b => log.get.map(reads => (b, reads.size))).compile.toVector
+            )
+            fetching <- log.get
+          yield
+            assertEquals(sent, (13 to 17).toList.map(raw(_)))
+            assertEquals(following, (13 to 17).toVector.map(blockAt))
+            // the two ends of the range are read to order them before it streams
+            assertEquals(checking, Vector(blockAt(12), blockAt(16)))
+            assertEquals(fetched.map(_.map(_._1)), Some((12 to 16).toVector.map(raw(_))))
+            // The stored part streams from a producer that keeps the store's scope, and reads at
+            // most two blocks ahead of what is sent (`StorageBoundary.stream`, a queue of one):
+            // each block once, in order, and perhaps the two after the range.
+            fetched.toVector.flatten.map(_._2).zipWithIndex.foreach { (reads, sent) =>
+              assert(reads >= sent + 1 && reads <= sent + 3, s"$reads reads with block $sent sent")
+            }
+            assertEquals(fetching.take(5), (12 to 16).toVector.map(blockAt))
+            assert(
+              Vector(17, 18).map(blockAt).startsWith(fetching.drop(5)),
+              s"${fetching.drop(5)} read after the range"
+            )
         }
       }
     }

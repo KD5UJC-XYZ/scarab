@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 import scala.util.Using
 import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.data.NonEmptyVector
-import cats.effect.{Async, Ref, Resource, Sync}
+import cats.effect.{Async, Clock, Fiber, Ref, Resource, Sync, Temporal}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -20,6 +20,8 @@ import java.nio.file.Files as JFiles
 import java.nio.file.StandardOpenOption
 import java.util.zip.CRC32
 import scala.annotation.tailrec
+import scala.collection.immutable.SortedMap
+import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -81,6 +83,25 @@ object ImmutableStore:
       truncatedBytes: Long,
       migrated: List[Migrated] = Nil
   )
+
+/** The reads [[FileImmutableStore]] makes of its files: the whole of a file, and a range of one.
+  * The store reads through [[ImmutableReads.files]]; a suite swaps in an interpreter that counts
+  * what is read.
+  */
+private[storage] trait ImmutableReads[F[_]]:
+  def all(path: Path): F[Array[Byte]]
+
+  /** The bytes of `path` from `from` up to `until`, exclusive. */
+  def range(path: Path, from: Long, until: Long): F[Array[Byte]]
+
+private[storage] object ImmutableReads:
+  def files[F[_]: Async]: ImmutableReads[F] =
+    val files = Files.forAsync[F]
+    new ImmutableReads[F]:
+      def all(path: Path): F[Array[Byte]] = files.readAll(path).compile.to(Chunk).map(_.toArray)
+
+      def range(path: Path, from: Long, until: Long): F[Array[Byte]] =
+        files.readRange(path, 1 << 16, from, until).compile.to(Chunk).map(_.toArray)
 
 /** Chunked files: blocks of slots `[c * chunkSlots, (c + 1) * chunkSlots)` live in `<c>.chunk`
   * (concatenated raw blocks) with an index `<c>.index`, an 8-byte magic followed by 68-byte
@@ -350,15 +371,144 @@ object FileImmutableStore:
       .guard[F, Either[StorageError, Option[Bytes]]](dir.toString)(scan)
       .flatMap(_.fold(_.raise[F, Option[Bytes]], Sync[F].pure))
 
-  /** The chunk appended to: its handles, its data size and its number of entries. */
+  /** The chunk appended to: its handles, its data size and the entries of its index so far, which
+    * the reference also holds in memory for the chunk it appends to (`CurrentChunkInfo`,
+    * `Index/Cache.hs` 118-127 and `appendEntry` 928-957, ouroboros-consensus 82ecba32).
+    */
   private final case class Current[F[_]](
       chunk: Int,
       data: FileHandle[F],
       index: FileHandle[F],
       release: F[Unit],
       dataSize: Long,
-      count: Int
+      appended: Vector[Entry]
   )
+
+  /** The most index entries of sealed chunks held in memory. The reference holds the indexes of 250
+    * past chunks (`ImmutableDB/Impl.hs` 180-193, ouroboros-consensus 82ecba32). A chunk of 21,600
+    * slots holds about 1,080 blocks at mainnet's active slot coefficient of 1/20, so 270,000
+    * entries hold as many of those; a Byron chunk, where every slot may hold a block, has up to
+    * 21,601 entries, twenty times as many, which is why the bound counts entries and not chunks. A
+    * Deviation, recorded in the decisions register (2026-11-18).
+    */
+  private val IndexCacheEntries = 270_000
+
+  /** How long a sealed chunk's index stays held while it is not used, and how long the store waits
+    * between two looks for those unused for longer: the reference's `expireUnusedAfter`, five
+    * minutes, which its background thread also waits between two looks (`ImmutableDB/Impl.hs`
+    * 189-193, `Index/Cache.hs` `expireUnusedChunks` 450-461, ouroboros-consensus 82ecba32).
+    */
+  private val IndexCacheExpiry: FiniteDuration = 5.minutes
+
+  /** The indexes of sealed chunks held in memory, each with its last use, and the number of entries
+    * they hold. A use is the time of the monotonic clock and the number of the use, which orders
+    * the uses made at one time as they were made; `byUse` orders the chunks by it. The reference's
+    * cache of past chunks orders them by the time of their last use (`LastUsed`, `pastChunksInfo`,
+    * `Index/Cache.hs` 163-211, ouroboros-consensus 82ecba32), drops the least recently used first
+    * when it is full (`evictIfNecessary` 289-316) and drops every one unused for
+    * [[IndexCacheExpiry]] (`garbageCollect` 463-505). It bounds the number of chunks; this cache
+    * bounds the number of entries ([[IndexCacheEntries]]).
+    */
+  private[storage] final case class IndexCache(
+      held: Map[Int, (Vector[Entry], (FiniteDuration, Long))],
+      byUse: SortedMap[(FiniteDuration, Long), Int],
+      total: Long,
+      uses: Long
+  ):
+    /** The index of `chunk` if it is held, now used at `now` (`lookupPastChunkInfo`,
+      * `Index/Cache.hs` 318-335).
+      */
+    def lookup(chunk: Int, now: FiniteDuration): (IndexCache, Option[Vector[Entry]]) =
+      held.get(chunk) match
+        case None => (this, None)
+        case Some((index, used)) =>
+          val use = (now, uses)
+          val touched = copy(
+            held = held.updated(chunk, (index, use)),
+            byUse = byUse - used + (use -> chunk),
+            uses = uses + 1
+          )
+          (touched, Some(index))
+
+    /** `index` held as the index of `chunk`, used at `now`, and then the least recently used chunks
+      * dropped until the entries held are within `bound`, as the reference adds a past chunk and
+      * then drops the least recently used if it holds too many (`addPastChunkInfo` and
+      * `evictIfNecessary`, `Index/Cache.hs` 251-316, composed at 661-665 and 807-811). The chunk
+      * added is dropped too if its use is older than every other's, which a use read before another
+      * that was added first makes possible. An index of more than `bound` entries is not held, and
+      * nothing is dropped for it.
+      */
+    def added(chunk: Int, index: Vector[Entry], bound: Long, now: FiniteDuration): IndexCache =
+      @tailrec def within(cache: IndexCache): IndexCache =
+        if cache.total <= bound then cache
+        else
+          cache.byUse.headOption match
+            case None              => cache
+            case Some((_, oldest)) => within(cache.without(oldest))
+      val fresh = without(chunk)
+      if index.size.toLong > bound then fresh
+      else
+        val use = (now, fresh.uses)
+        within(
+          fresh.copy(
+            held = fresh.held.updated(chunk, (index, use)),
+            byUse = fresh.byUse + (use -> chunk),
+            total = fresh.total + index.size,
+            uses = fresh.uses + 1
+          )
+        )
+
+    /** The cache without the chunks last used `after` or longer before `now`, as the reference's
+      * `garbageCollect` drops every past chunk last used at or before `now` less the expiry
+      * (`PSQ.atMostView`, `Index/Cache.hs` 478-494). The age is taken as `now` less a use, two
+      * readings of one monotonic clock, so that no reading near the clock's least value overflows.
+      */
+    def expired(now: FiniteDuration, after: FiniteDuration): IndexCache =
+      byUse.iterator
+        .takeWhile((use, _) => now - use._1 >= after)
+        .foldLeft(this)((cache, used) => cache.without(used._2))
+
+    private def without(chunk: Int): IndexCache =
+      held.get(chunk).fold(this) { (index, used) =>
+        copy(held = held - chunk, byUse = byUse - used, total = total - index.size)
+      }
+
+  private[storage] object IndexCache:
+    val empty: IndexCache = IndexCache(Map.empty, SortedMap.empty, 0L, 0L)
+
+  /** Looks at once, and then every [[IndexCacheExpiry]], for the sealed chunks' indexes not used
+    * for that long, and drops them, as the reference's background thread does
+    * (`expireUnusedChunks`, `Index/Cache.hs` 446-461, ouroboros-consensus 82ecba32). The chunk
+    * appended to is held apart from the cache, as the reference holds its current chunk apart from
+    * its past chunks (`currentChunkInfo` 175-181), and is never dropped. It uses no error
+    * capability: a reading of the clock, an update of the cache and a wait, until the store that
+    * started it is released and cancels it ([[alongside]]).
+    */
+  private def expireUnused[F[_]: Temporal](cache: Ref[F, IndexCache]): F[Nothing] =
+    (Clock[F].monotonic.flatMap(now => cache.update(_.expired(now, IndexCacheExpiry))) *>
+      Temporal[F].sleep(IndexCacheExpiry)).foreverM
+
+  /** `work` in a fiber for the life of the resource, ending with a value (FIB-2): the fiber runs it
+    * in a scope of its own (`attempt`), so a failure ends it with the failure as its value, which
+    * the runtime does not report as unobserved. The resource gives the effect that lands it: it
+    * waits for the fiber's end and raises its failure again in the fiber that lands it. On release
+    * the fiber is cancelled and landed, so the failure reaches the fiber that releases the
+    * resource. The reference links its cache's expiry thread to the thread that made its registry
+    * (`forkLinkedThread`, `Index/Cache.hs` 428-432, ouroboros-consensus 82ecba32), and
+    * resource-registry's `linkTo` throws such a thread's exception to that thread at once; a fiber
+    * cannot be interrupted so, and here the failure reaches the owner when it lands the work or
+    * releases it. The expiry loop ([[expireUnused]]) has no failure of its own.
+    */
+  private[storage] def alongside[F[_]: Temporal](work: F[Nothing]): Resource[F, F[Unit]] =
+    def landed(fiber: Fiber[F, Throwable, Either[Throwable, Nothing]]): F[Unit] =
+      fiber.join.flatMap(
+        _.fold(
+          Temporal[F].unit,
+          Temporal[F].raiseError,
+          _.flatMap(_.fold(Temporal[F].raiseError, nothing => nothing))
+        )
+      )
+    Resource.make(work.attempt.start)(fiber => fiber.cancel *> landed(fiber)).map(landed)
 
   /** Slots per chunk file. A storage granularity, independent of any era's epoch length (it is the
     * length of a Byron epoch on mainnet and preprod by origin); changing it makes an existing
@@ -369,6 +519,17 @@ object FileImmutableStore:
   def open[F[_]: Async](dir: Path, chunkSlots: Long = DefaultChunkSlots)(using
       Raise[F, StorageError]
   ): Resource[F, (ImmutableStore[F], ImmutableStore.OpenReport)] =
+    open(dir, chunkSlots, IndexCacheEntries, ImmutableReads.files[F])
+
+  /** [[open]], holding at most `cacheEntries` index entries of sealed chunks and reading the
+    * store's files through `reads`.
+    */
+  private[storage] def open[F[_]: Async](
+      dir: Path,
+      chunkSlots: Long,
+      cacheEntries: Int,
+      reads: ImmutableReads[F]
+  )(using Raise[F, StorageError]): Resource[F, (ImmutableStore[F], ImmutableStore.OpenReport)] =
     val F = Async[F]
     val files = Files.forAsync[F]
 
@@ -380,7 +541,7 @@ object FileImmutableStore:
     def indexPath(c: Int) = dir / s"${FileNumber.padded(c, 5)}.index"
 
     def readAll(path: Path)(using cats.mtl.Raise[F, StorageError]): F[Array[Byte]] =
-      guard(path.toString)(files.readAll(path).compile.to(Chunk).map(_.toArray))
+      guard(path.toString)(reads.all(path))
 
     def syncDir(using cats.mtl.Raise[F, StorageError]): F[Unit] = guard(dir.toString)(F.blocking {
       Using.resource(FileChannel.open(dir.toNioPath, StandardOpenOption.READ))(_.force(true))
@@ -394,7 +555,10 @@ object FileImmutableStore:
 
     val readWrite = Flags(Flag.Create, Flag.Read, Flag.Write)
 
-    def openChunk(c: Int)(using cats.mtl.Raise[F, StorageError]): F[Current[F]] =
+    /** Open chunk `c` for appending after `appended`, the entries its index holds. */
+    def openChunk(c: Int, appended: Vector[Entry])(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[Current[F]] =
       guard(indexPath(c).toString) {
         for
           dataH <- files.open(dataPath(c), readWrite).allocated
@@ -402,8 +566,7 @@ object FileImmutableStore:
           dataSize <- dataH._1.size
           indexSize <- indexH._1.size
           _ <- writeFully(indexH._1, IndexMagic, 0).whenA(indexSize < HeaderSize)
-          count = ((indexSize - HeaderSize).max(0) / EntrySize).toInt
-        yield new Current[F](c, dataH._1, indexH._1, dataH._2 *> indexH._2, dataSize, count)
+        yield new Current[F](c, dataH._1, indexH._1, dataH._2 *> indexH._2, dataSize, appended)
       }
 
     /** Validate the newest chunk; truncate it to its good prefix. */
@@ -504,7 +667,10 @@ object FileImmutableStore:
             readAll(indexPath(c)).map(i => ((i.length - HeaderSize).max(0) / EntrySize).toLong)
           )
           .map(_.sum)
-        current <- chunks.lastOption.traverse(openChunk)
+        // the newest chunk's index as recovery left it
+        current <- chunks.lastOption.traverse(c =>
+          readAll(indexPath(c)).flatMap(index => openChunk(c, entries(index)))
+        )
         tip = lastEntry.map(_.ref)
       yield (
         chunks,
@@ -526,7 +692,8 @@ object FileImmutableStore:
             mutex: Mutex[F],
             current: Ref[F, Option[Current[F]]],
             tipRef: Ref[F, Option[BlockRef]],
-            chunksRef: Ref[F, Vector[Int]]
+            chunksRef: Ref[F, Vector[Int]],
+            cache: Ref[F, IndexCache]
         ) extends ImmutableStore[F]:
           private def forceCurrent(cur: Current[F])(using Raise[F, StorageError]): F[Unit] =
             guard(dir.toString)(cur.data.force(false) *> cur.index.force(false))
@@ -564,9 +731,18 @@ object FileImmutableStore:
                   case Some(c) if c.chunk == wanted => F.pure(c)
                   case _ =>
                     for
+                      // the time of the move, which the reference reads before it opens the new
+                      // chunk's index (`Index/Cache.hs` `openPrimaryIndex` 798-811)
+                      movedAt <- Clock[F].monotonic
                       _ <- cur.traverse_(c => forceCurrent(c) *> c.release)
-                      created <- openChunk(wanted)
+                      created <- openChunk(wanted, Vector.empty)
                       _ <- syncDir
+                      // The chunk left is sealed, and its index is held as the most recently used,
+                      // before a reader can see the new chunk: the reference's cache keeps it so
+                      // (`Index/Cache.hs` `openChunk` 337-367, ouroboros-consensus 82ecba32).
+                      _ <- cur.traverse_(c =>
+                        cache.update(_.added(c.chunk, c.appended, cacheEntries, movedAt))
+                      )
                       _ <- current.set(Some(created))
                       _ <- chunksRef
                         .update(cs => if cs.lastOption.contains(wanted) then cs else cs :+ wanted)
@@ -580,29 +756,50 @@ object FileImmutableStore:
                   writeFully(
                     target.index,
                     encode(entry),
-                    HeaderSize.toLong + target.count.toLong * EntrySize
+                    HeaderSize.toLong + target.appended.size.toLong * EntrySize
                   )
                 )
+                // after its bytes are written: a reader that finds the entry can read them
                 _ <- current.set(
                   Some(
-                    target.copy(dataSize = target.dataSize + bytes.length, count = target.count + 1)
+                    target.copy(
+                      dataSize = target.dataSize + bytes.length,
+                      appended = target.appended :+ entry
+                    )
                   )
                 )
                 _ <- tipRef.set(Some(ref))
               yield ()
             }
 
+          /** A chunk's index entries: the chunk appended to holds them in memory, and a sealed
+            * chunk's, which never change, are held once read while they are among the most recently
+            * used ([[IndexCache]]), as the reference's cache answers (`Index/Cache.hs`
+            * `getChunkInfo` 614-670, ouroboros-consensus 82ecba32). A miss reads the file without
+            * holding the cache and adds it after, so two misses at once may both read it, as there.
+            * A hit is used at the time read before it, and a miss at the time read after the file,
+            * as there (626 and 660).
+            */
           private def indexOf(c: Int)(using cats.mtl.Raise[F, StorageError]): F[Vector[Entry]] =
-            readAll(indexPath(c)).map(entries)
+            def fromFile = readAll(indexPath(c)).map(entries)
+            current.get.flatMap {
+              case Some(appending) if appending.chunk == c => F.pure(appending.appended)
+              case Some(appending) if appending.chunk > c =>
+                Clock[F].monotonic.flatMap(now => cache.modify(_.lookup(c, now))).flatMap {
+                  case Some(index) => F.pure(index)
+                  case None =>
+                    fromFile.flatTap(index =>
+                      Clock[F].monotonic
+                        .flatMap(read => cache.update(_.added(c, index, cacheEntries, read)))
+                    )
+                }
+              // not a chunk of this store yet
+              case _ => fromFile
+            }
 
           private def read(c: Int, e: Entry)(using cats.mtl.Raise[F, StorageError]): F[Bytes] =
-            guard(dataPath(c).toString)(
-              files
-                .readRange(dataPath(c), 1 << 16, e.offset, e.end)
-                .compile
-                .to(Chunk)
-                .map(_.toArray)
-            ).flatMap { bytes =>
+            val path = dataPath(c)
+            guard(path.toString)(reads.range(path, e.offset, e.end)).flatMap { bytes =>
               if bytes.length == e.length && crcOf(bytes, 0, bytes.length) == e.crc then
                 F.pure(Bytes.fromArray(bytes))
               else
@@ -720,49 +917,21 @@ object FileImmutableStore:
                   .eval(fail[Unit](StorageError.Missing(s"point ${after} in the immutable store")))
                   .drain
               case Some((fromChunk, fromIndex)) =>
+                // As the reference's iterator: each block is read, and its checksum checked, when
+                // it is pulled, at the offset its index entry gives (`ImmutableDB/Impl/Iterator.hs`
+                // 443-469 and 682-691, ouroboros-consensus 82ecba32). A chunk's index is taken
+                // when the stream reaches it, after the chunks were listed: a chunk listed before
+                // another was sealed by then, and its index is whole.
                 Stream.eval(chunksRef.get).flatMap { cs =>
                   Stream.emits(cs).filter(c => c >= fromChunk).flatMap { c =>
-                    Stream.eval(readChunk(c)).flatMap { stored =>
-                      Stream.emits(if c == fromChunk then stored.drop(fromIndex) else stored)
-                    }
+                    Stream
+                      .eval(indexOf(c))
+                      .flatMap(es =>
+                        Stream.emits(if c == fromChunk then es.drop(fromIndex) else es)
+                      )
+                      .evalMap(e => read(c, e).map(ImmutableStore.Stored(e.ref, _)))
                   }
                 }
-            }
-
-          private def readChunk(c: Int)(using
-              cats.mtl.Raise[F, StorageError]
-          ): F[Vector[ImmutableStore.Stored]] =
-            indexOf(c).flatMap { es =>
-              es.lastOption match
-                case None => F.pure(Vector.empty)
-                case Some(newest) =>
-                  guard(dataPath(c).toString)(
-                    files
-                      .readRange(dataPath(c), 1 << 16, 0L, newest.end)
-                      .compile
-                      .to(Chunk)
-                      .map(_.toArray)
-                  ).flatMap { data =>
-                    es.traverse { e =>
-                      if e.end <= data.length && crcOf(data, e.offset.toInt, e.length) == e.crc then
-                        F.pure(
-                          ImmutableStore.Stored(
-                            e.ref,
-                            Bytes.fromArray(
-                              java.util.Arrays.copyOfRange(data, e.offset.toInt, e.end.toInt)
-                            )
-                          )
-                        )
-                      else
-                        fail[ImmutableStore.Stored](
-                          StorageError
-                            .Corrupt(
-                              dataPath(c).toString,
-                              ImmutableReadError.BlockChecksum(e.offset)
-                            )
-                        )
-                    }
-                  }
             }
 
           def close: F[Unit] =
@@ -770,14 +939,19 @@ object FileImmutableStore:
               current.get.flatMap(_.traverse_(c => forceCurrent(c).guarantee(c.release)))
             )
 
-        val acquire: F[Impl] =
+        def acquire(cache: Ref[F, IndexCache]): F[Impl] =
           for
             mutex <- Mutex[F]
             current <- Ref.of[F, Option[Current[F]]](initialCurrent)
             tipRef <- Ref.of[F, Option[BlockRef]](initialTip)
             chunksRef <- Ref.of[F, Vector[Int]](initialChunks)
-          yield new Impl(mutex, current, tipRef, chunksRef)
-        Resource.make(acquire)(_.close).map(s => (s: ImmutableStore[F], report))
+          yield new Impl(mutex, current, tipRef, chunksRef, cache)
+        for
+          cache <- Resource.eval(Ref.of[F, IndexCache](IndexCache.empty))
+          store <- Resource.make(acquire(cache))(_.close)
+          // released first: the expiry ends before the store closes
+          _ <- alongside(expireUnused(cache))
+        yield (store: ImmutableStore[F], report)
     }
 
 /** A persisted immutable record that cannot be trusted. */
