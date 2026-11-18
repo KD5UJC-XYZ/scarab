@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# The Scarab image of ../config-split-catalog, the control of ../config-thin-catalog: scarab-at-scarab:thin with the
+# libraries' JAR linked into the catalog as well, so Antithesis instruments every class as in ../config while s1 runs
+# the same two JARs as the thin arm. The pair then differs only in which classes are instrumented, not in packaging.
+FROM scarab-at-scarab:thin
+LABEL xyz.kd5ujc.scarab.catalog=all-classes-split
+RUN ln -s /opt/scarab/scarab-libs.jar /opt/antithesis/catalog/scarab-libs.jar
