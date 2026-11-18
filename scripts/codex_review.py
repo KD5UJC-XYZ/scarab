@@ -12,9 +12,10 @@ The review runs with the network on and the file system read-only: a permission 
 sandbox. Live web search is requested; whether Codex grants it is not checked. Every setting is passed on the
 command line, so the user's own Codex configuration cannot change the model, the effort or the sandbox.
 
-The run is accepted only when the worktree is clean before it, Codex exits successfully with a completed turn and a
-final message, the session file Codex wrote records the model and effort in every turn with no reroute to another
-model, the read-only sandbox and the network, and the worktree's HEAD and status are unchanged after it. The output
+The floor comes from the pull request's whole diff (`--pr-base`); `--base` sets the review's scope, which a second
+review narrows to the fix commits. The run is accepted only when the worktree is clean before it, Codex exits
+successfully with a completed turn and a final message and reports no reroute to another model, the session file
+Codex wrote records the model and effort in every turn, the read-only sandbox and the network, and the worktree's HEAD and status are unchanged after it. The output
 file, outside the worktree, starts with a stamp line that `pr_policy.py` reads from the posted comment
 (`<!-- codex-review model=... effort=... level=... head=... -->`), then a line for the reader and the review. Links
 to files in the worktree become `path:line`, other absolute links plain text, and a review that still names a home
@@ -40,13 +41,14 @@ import tempfile
 MODEL = "gpt-6.2-astra"
 EFFORTS = ("low", "medium", "high", "xhigh", "max", "ultra")
 LEVEL_FLOOR = {0: "medium", 1: "high", 2: "high", 3: "xhigh", 4: "xhigh"}
-DECISIVE = re.compile(r"docs/(?:adr|design)/.*")
+DECISIVE = ("docs/adr/", "docs/design/")
 DECISIVE_FLOOR = "high"
 PROFILE = "scarab_review"
 STAMP = re.compile(r"<!-- codex-review ([a-z]+=[^\s>]+(?: [a-z]+=[^\s>]+){0,15}) -->")
 REQUIRED = ("model", "effort", "level", "head")
 LINK = re.compile(r"\[([^\]\n]{1,300})\]\((/[^)\s]{1,500})\)")
 LINE = re.compile(r"(?:#L|:)(\d+)(?:-L?\d+)?$")
+ATTRIBUTION = "Independent review by Codex "
 HOME_PATH = re.compile(r"(?:/home|/Users)/[A-Za-z0-9_][A-Za-z0-9._-]*/")
 
 
@@ -65,7 +67,7 @@ def floor(level, files=()):
     if level not in LEVEL_FLOOR:
         raise ReviewError(f"unknown level {level!r}")
     base = LEVEL_FLOOR[level]
-    if any(DECISIVE.fullmatch(f) for f in files) and rank(DECISIVE_FLOOR) > rank(base):
+    if any(f.startswith(DECISIVE) for f in files) and rank(DECISIVE_FLOOR) > rank(base):
         return DECISIVE_FLOOR
     return base
 
@@ -76,9 +78,9 @@ def stamp(fields):
 
 def stamp_of(text):
     """The fields of the stamp on the first line of `text`, or None when the first line is not a stamp. A stamp
-    with a repeated or missing field, or with no review after it, is refused."""
-    first, _, rest = (text or "").lstrip("\n").partition("\n")
-    match = STAMP.fullmatch(first.strip())
+    with a repeated or missing field, or with no review after it and its attribution line, is refused."""
+    first, _, rest = (text or "").partition("\n")
+    match = STAMP.fullmatch(first.rstrip("\r "))
     if not match:
         return None
     pairs = [pair.split("=", 1) for pair in match.group(1).split(" ")]
@@ -88,7 +90,8 @@ def stamp_of(text):
     missing = [k for k in REQUIRED if k not in fields]
     if missing:
         raise ReviewError(f"the stamp lacks {', '.join(missing)}")
-    if not rest.strip():
+    body = [line for line in rest.split("\n") if line.strip() and not line.startswith(ATTRIBUTION)]
+    if not body:
         raise ReviewError("the stamp has no review after it")
     return fields
 
@@ -114,26 +117,33 @@ def command(effort, workdir, last_message, codex="codex"):
             "-c", 'web_search="live"', "--json", "-o", str(last_message), "-C", str(workdir), "-"]
 
 
-def records(text):
-    """The JSON objects of a JSON-lines text, split on newlines only: a JSON string may hold other line breaks."""
+def records(text, strict=True):
+    """The JSON objects of a JSON-lines text, split on newlines only: a JSON string may hold other line breaks. A
+    line that is not JSON is refused, or skipped when not `strict` (Codex's standard output)."""
     out = []
-    for line in text.split("\n"):
+    for number, line in enumerate(text.split("\n"), 1):
         if line.strip():
             try:
                 out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError as error:
+                if strict:
+                    raise ReviewError(f"line {number} is not JSON: {error}") from error
     return out
 
 
 def thread_of(events):
-    """The thread id of a run from its JSON events. The run must end with a completed turn and no failed one; an
-    error event alone is not a failure, since Codex reports retried errors too."""
+    """The thread id of a run from its JSON events. The run must end with a completed turn and no failed one, and
+    must not have been rerouted to another model (Codex reports a reroute only here, as an error item); an error
+    event alone is not a failure, since Codex reports retried errors too."""
     thread, completed = None, False
-    for event in records(events):
+    for event in records(events, strict=False):
         kind = event.get("type")
+        item = event.get("item") or {}
         if kind == "thread.started":
             thread = event.get("thread_id")
+        elif kind == "item.completed" and item.get("type") == "error" \
+                and str(item.get("message", "")).startswith("model rerouted"):
+            raise ReviewError(f"Codex rerouted the run to another model: {item.get('message')}")
         elif kind == "turn.failed":
             raise ReviewError(f"the turn failed: {json.dumps(event)[:400]}")
         elif kind == "turn.completed":
@@ -153,10 +163,14 @@ def session_file(thread, home):
 
 
 def session_settings(path):
-    """Each turn's model, effort, sandbox and network, and the CLI version, from a session file; a reroute to
-    another model is refused."""
+    """Each turn's model, effort, sandbox and network, and the CLI version, from a session file; a recorded reroute
+    to another model is refused too."""
     meta, turns = None, []
-    for entry in records(Path(path).read_text(encoding="utf-8")):
+    try:
+        entries = records(Path(path).read_text(encoding="utf-8"))
+    except ReviewError as error:
+        raise ReviewError(f"the session file {Path(path).name}: {error}") from error
+    for entry in entries:
         payload = entry.get("payload") or {}
         if entry.get("type") == "session_meta" and meta is None:
             meta = payload
@@ -222,15 +236,18 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True,
                         help="where to write the review, outside the worktree, to post as a comment")
     parser.add_argument("--effort", help="an effort at or above the change's floor (default: the floor)")
-    parser.add_argument("--base", default="origin/main", help="the base the diff is taken against")
+    parser.add_argument("--base", default="origin/main",
+                        help="the base the review's scope starts from (a scoped second review: the commit before the fixes)")
+    parser.add_argument("--pr-base", default="origin/main",
+                        help="the pull request's base, whose diff sets the effort floor (default: origin/main)")
     parser.add_argument("--cd", type=Path, default=Path.cwd(), help="the worktree to review (default: here)")
     parser.add_argument("--codex", default=os.environ.get("CODEX", "codex"), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
-        workdir = args.cd.resolve()
+        workdir = Path(git(args.cd.resolve(), "rev-parse", "--show-toplevel").strip())
         if args.out.resolve().is_relative_to(workdir):
             raise ReviewError("write the review outside the worktree under review")
-        need = floor(args.level, changed_files(workdir, args.base))
+        need = floor(args.level, changed_files(workdir, args.pr_base))
         effort = args.effort or need
         if rank(effort) < rank(need):
             raise ReviewError(f"effort {effort} is below {need}, the floor for this change")
@@ -253,8 +270,9 @@ def main(argv=None):
         turns, cli = session_settings(session_file(thread, os.environ.get("CODEX_HOME") or Path.home() / ".codex"))
         check_session(turns, effort)
         fields = {"model": MODEL, "effort": effort, "level": args.level, "head": head, "base": args.base,
+                  "prbase": args.pr_base,
                   "cli": cli, "sandbox": "read-only", "network": "on"}
-        header = (f"Independent review by Codex `{MODEL}` at effort `{effort}` (floor `{need}` for level "
+        header = (f"{ATTRIBUTION}`{MODEL}` at effort `{effort}` (floor `{need}` for level "
                   f"{args.level}), read-only with network, of `{head[:12]}` against `{args.base}`.")
         args.out.write_text(f"{stamp(fields)}\n{header}\n\n{scrub(message, workdir)}\n", encoding="utf-8")
     except (ReviewError, OSError, subprocess.CalledProcessError) as error:

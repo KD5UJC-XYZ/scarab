@@ -31,6 +31,13 @@ FAKE = textwrap.dedent('''\
     print(json.dumps({"type": "thread.started", "thread_id": thread}))
     if os.environ.get("FAKE_RETRY"):
         print(json.dumps({"type": "error", "message": "stream disconnected; retrying"}))
+    if os.environ.get("FAKE_REROUTE"):
+        print(json.dumps({"type": "item.completed", "item": {"id": "item_1", "type": "error", "message":
+                          "model rerouted: " + model + " -> other (HighRiskCyberActivity)"}}))
+    if os.environ.get("FAKE_COMMIT"):
+        import subprocess
+        subprocess.run(["git", "-C", str(work), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                        "commit", "-q", "--allow-empty", "-m", "moved"], check=True)
     if os.environ.get("FAKE_FAIL"):
         print(json.dumps({"type": "turn.failed", "error": {"message": "boom"}}))
         sys.exit(0)
@@ -43,9 +50,8 @@ FAKE = textwrap.dedent('''\
         f.write(json.dumps({"type": "turn_context", "payload": {
             "model": model, "effort": os.environ.get("FAKE_EFFORT", effort),
             "sandbox_policy": {"type": "read-only", "network_access": network}}}) + "\\n")
-        if os.environ.get("FAKE_REROUTE"):
-            f.write(json.dumps({"type": "event_msg", "payload": {"type": "model_reroute", "from_model": model,
-                                                                  "to_model": "other"}}) + "\\n")
+        if os.environ.get("FAKE_TRUNCATED"):
+            f.write('{"type": "turn_context", "payload": {"model": "oth' + "\\n")
         if os.environ.get("FAKE_SECOND_TURN"):
             f.write(json.dumps({"type": "turn_context", "payload": {
                 "model": os.environ["FAKE_SECOND_TURN"], "effort": effort,
@@ -82,8 +88,18 @@ class FloorAndStampTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaisesRegex(review.ReviewError, message):
                 review.stamp_of(text)
 
-    def test_json_lines_split_on_newlines_only(self):
-        self.assertEqual(review.records('{"a": "x\u0085y"}\nnot json\n{"b": 1}\n'), [{"a": "x\u0085y"}, {"b": 1}])
+    def test_json_lines_split_on_newlines_only_and_refuse_a_bad_line_unless_lenient(self):
+        text = '{"a": "x\u0085y"}\nnot json\n{"b": 1}\n'
+        self.assertEqual(review.records(text, strict=False), [{"a": "x\u0085y"}, {"b": 1}])
+        with self.assertRaisesRegex(review.ReviewError, "line 2"):
+            review.records(text)
+
+    def test_a_stamp_needs_review_text_beyond_its_attribution_and_must_start_the_comment(self):
+        line = review.stamp({"model": review.MODEL, "effort": "high", "level": 1, "head": "a" * 40})
+        with self.assertRaisesRegex(review.ReviewError, "no review"):
+            review.stamp_of(line + "\n" + review.ATTRIBUTION + "`x` at effort `high`.\n\n")
+        self.assertIsNone(review.stamp_of("    " + line + "\nreview"))
+        self.assertIsNone(review.stamp_of("\n" + line + "\nreview"))
 
     def test_links_into_the_worktree_become_path_and_line_other_absolute_links_their_label(self):
         work = "/srv/w/scarab"
@@ -130,7 +146,7 @@ class RunTests(unittest.TestCase):
         environment = {"CODEX_HOME": str(self.home), **env}
         with mock.patch.dict(os.environ, environment), mock.patch("sys.stderr"), mock.patch("sys.stdout"):
             return review.main(["--level", "1", "--brief", str(self.brief), "--out", str(self.out),
-                                "--base", "base", "--cd", str(self.work), "--codex", str(self.fake), *extra])
+                                "--base", "base", "--pr-base", "base", "--cd", str(self.work), "--codex", str(self.fake), *extra])
 
     def test_a_good_run_writes_the_stamp_the_header_and_the_scrubbed_review(self):
         self.assertEqual(self.run_review(), 0)
@@ -154,7 +170,8 @@ class RunTests(unittest.TestCase):
     def test_a_run_is_refused_when_the_session_or_the_worktree_is_not_as_required(self):
         for env in [{"FAKE_MODEL": "gpt-daybreak-blue-latest"}, {"FAKE_EFFORT": "low"}, {"FAKE_NO_NETWORK": "1"},
                     {"FAKE_FAIL": "1"}, {"FAKE_NO_COMPLETION": "1"}, {"FAKE_REROUTE": "1"},
-                    {"FAKE_SECOND_TURN": "other-model"}, {"FAKE_EDIT": "1"}, {"FAKE_MESSAGE": ""},
+                    {"FAKE_SECOND_TURN": "other-model"}, {"FAKE_TRUNCATED": "1"}, {"FAKE_EDIT": "1"},
+                    {"FAKE_COMMIT": "1"}, {"FAKE_MESSAGE": ""},
                     {"FAKE_MESSAGE": "see " + HOME + "x"}]:
             with self.subTest(env=env):
                 if self.home.exists():
@@ -170,7 +187,32 @@ class RunTests(unittest.TestCase):
         (self.work / "untracked.txt").unlink()
         self.out = self.work / "review.md"
         self.assertEqual(self.run_review(), 1)
+        sub = self.work / "sub"
+        sub.mkdir()
+        self.out = sub / ".." / "review.md"
+        with mock.patch.dict(os.environ, {"CODEX_HOME": str(self.home)}), mock.patch("sys.stderr"):
+            self.assertEqual(review.main(["--level", "1", "--brief", str(self.brief), "--out", str(self.out),
+                                          "--base", "base", "--pr-base", "base", "--cd", str(sub),
+                                          "--codex", str(self.fake)]), 1)
         self.assertFalse(self.home.exists())
+
+    def test_the_floor_comes_from_the_pull_request_base_not_the_scope_of_a_second_review(self):
+        git = ["git", "-C", str(self.work), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+        (self.work / "docs" / "adr").mkdir(parents=True)
+        (self.work / "docs" / "adr" / "0001-x.md").write_text("adr\n")
+        subprocess.run(git + ["add", "."], check=True)
+        subprocess.run(git + ["commit", "-qm", "adr"], check=True)
+        subprocess.run(git + ["branch", "fixes"], check=True)
+        (self.work / "guide.md").write_text("guide\n")
+        subprocess.run(git + ["add", "."], check=True)
+        subprocess.run(git + ["commit", "-qm", "guide"], check=True)
+        with mock.patch.dict(os.environ, {"CODEX_HOME": str(self.home)}), mock.patch("sys.stderr"), \
+                mock.patch("sys.stdout"):
+            self.assertEqual(review.main(["--level", "0", "--brief", str(self.brief), "--out", str(self.out),
+                                          "--base", "fixes", "--pr-base", "base", "--cd", str(self.work),
+                                          "--codex", str(self.fake)]), 0)
+        fields = review.stamp_of(self.out.read_text())
+        self.assertEqual((fields["effort"], fields["base"]), ("high", "fixes"))
 
     def test_the_floor_reads_both_sides_of_a_rename_and_unquoted_paths(self):
         git = ["git", "-C", str(self.work), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]

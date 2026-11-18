@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_storage_format as fmt
@@ -212,16 +213,19 @@ class PrBodyTests(unittest.TestCase):
         self.assertEqual(policy.evaluate(pr, "example/scarab", 42, "dev-only-main")["head"], "dev")
 
 
-def comment(id_, body, login="author", user_type="User"):
-    return {"id": id_, "body": body, "user": {"login": login, "type": user_type}}
+AUTHOR, MAINTAINER = 1, 2
 
 
-def human_review(id_, login="maintainer", state="APPROVED", user_type="User"):
-    return {"id": id_, "state": state, "user": {"login": login, "type": user_type}}
+def comment(id_, body, user=AUTHOR, user_type="User"):
+    return {"id": id_, "body": body, "user": {"id": user, "type": user_type}}
 
 
-def stamped(effort, model=policy.codex_review.MODEL, text="No findings; checked the diff."):
-    return policy.codex_review.stamp({"model": model, "effort": effort, "level": 1, "head": "a" * 40}) + "\n" + text
+def human_review(id_, user=MAINTAINER, state="APPROVED", user_type="User", commit="a" * 40):
+    return {"id": id_, "state": state, "commit_id": commit, "user": {"id": user, "type": user_type}}
+
+
+def stamped(effort, model=policy.codex_review.MODEL, text="No findings; checked the diff.", head="a" * 40):
+    return policy.codex_review.stamp({"model": model, "effort": effort, "level": 1, "head": head}) + "\n" + text
 
 
 URL = "https://github.com/example/scarab/pull/8"
@@ -231,7 +235,7 @@ class ReviewEvidenceTests(unittest.TestCase):
     def check(self, level, comments=(), reviews=(), links=("#issuecomment-11",), files=None, body=None):
         files = files if files is not None else (["docs/running.md"] if level == 0 else ["scripts/x.py"])
         pr = pull_request(head="feature")
-        pr["user"] = {"login": "author", "type": "User"}
+        pr["user"] = {"login": "author", "id": AUTHOR, "type": "User"}
         review = body or "## Independent review\n\nClean: " + ", ".join(URL + link for link in links) + "\n"
         pr["body"] = body_of(level, "None", "None", review)
         return policy.check_body(pr, list(files), (list(comments), list(reviews)))
@@ -284,13 +288,14 @@ class ReviewEvidenceTests(unittest.TestCase):
 
     def test_a_person_reviews_through_a_submitted_github_review_not_a_comment(self):
         self.assertEqual(self.check(1, reviews=[human_review(21)], links=("#pullrequestreview-21",)), 1)
-        for review in [human_review(21, login="author"), human_review(21, user_type="Bot"),
-                       human_review(21, state="PENDING"), {"id": 21, "state": "APPROVED"}]:
+        for review in [human_review(21, user=AUTHOR), human_review(21, user_type="Bot"),
+                       human_review(21, state="PENDING"), {"id": 21, "state": "APPROVED"},
+                       human_review(21, user="2")]:
             with self.subTest(review=review), self.assertRaisesRegex(policy.PolicyError, "no linked item is a review"):
                 self.check(1, reviews=[review], links=("#pullrequestreview-21",))
-        for author in ["author", "maintainer"]:
+        for author in [AUTHOR, MAINTAINER]:
             with self.subTest(author=author), self.assertRaisesRegex(policy.PolicyError, "no linked item is a review"):
-                self.check(1, [comment(11, "Please add a test.", login=author)])
+                self.check(1, [comment(11, "Please add a test.", user=author)])
 
     def test_an_unstamped_comment_may_be_linked_beside_a_review_and_every_stamp_meets_the_floor(self):
         self.assertEqual(self.check(1, [comment(11, stamped("high")), comment(12, "Dispositions below.")],
@@ -299,11 +304,47 @@ class ReviewEvidenceTests(unittest.TestCase):
             self.check(1, [comment(11, stamped("high")), comment(12, stamped("medium"))],
                        links=("#issuecomment-11", "#issuecomment-12"))
 
+    def test_a_review_must_cover_the_head_unless_the_section_says_why_the_later_commits_need_none(self):
+        old = "b" * 40
+        with self.assertRaisesRegex(policy.PolicyError, "covers the head"):
+            self.check(1, [comment(11, stamped("high", head=old))])
+        with self.assertRaisesRegex(policy.PolicyError, "covers the head"):
+            self.check(1, reviews=[human_review(21, commit=old)], links=("#pullrequestreview-21",))
+        self.assertEqual(self.check(1, [comment(11, stamped("high", head=old)), comment(12, stamped("high"))],
+                                    links=("#issuecomment-11", "#issuecomment-12")), 1)
+        since = f"## Independent review\n\nClean: {URL}#issuecomment-11\n\n- Since the review: a rebase, diff unchanged\n"
+        self.assertEqual(self.check(1, [comment(11, stamped("high", head=old))], body=since), 1)
+        empty = since.replace(": a rebase, diff unchanged", ":")
+        with self.assertRaisesRegex(policy.PolicyError, "covers the head"):
+            self.check(1, [comment(11, stamped("high", head=old))], body=empty)
+
+    def test_only_a_rendered_link_with_the_exact_fragment_counts(self):
+        unused = f"## Independent review\n\nClean: https://example.org/x\n\n[r]: {URL}#issuecomment-11\n"
+        suffixed = f"## Independent review\n\nClean: [review]({URL}#issuecomment-11.old)\n"
+        for body in [unused, suffixed]:
+            with self.subTest(body=body), self.assertRaisesRegex(policy.PolicyError, "links no comment"):
+                self.check(1, [comment(11, stamped("high"))], body=body)
+        for body in [f"## Independent review\n\nClean: [review]({URL}#issuecomment-11).\n",
+                     f"## Independent review\n\nClean: <{URL}#issuecomment-11>\n",
+                     f"## Independent review\n\nClean: [the review][r].\n\n[r]: {URL}#issuecomment-11\n"]:
+            with self.subTest(body=body):
+                self.assertEqual(self.check(1, [comment(11, stamped("high"))], body=body), 1)
+
     def test_a_draft_needs_no_evidence(self):
         pr = pull_request(head="feature")
-        pr["user"], pr["draft"] = {"login": "author", "type": "User"}, True
+        pr["user"], pr["draft"] = {"login": "author", "id": AUTHOR, "type": "User"}, True
         pr["body"] = body_of(1, "None", "None", None)
         self.assertEqual(policy.check_body(pr, ["scripts/x.py"], ([], [])), 1)
+
+    def test_the_command_line_needs_the_files_the_comments_and_the_reviews(self):
+        for missing in ["--files", "--comments", "--reviews"]:
+            argv = ["pr_policy.py", "--event", "e.json", "--repository", "example/scarab", "--repository-id", "42",
+                    "--files", "f", "--comments", "c", "--reviews", "r"]
+            i = argv.index(missing)
+            del argv[i:i + 2]
+            with self.subTest(missing=missing), mock.patch.object(sys, "argv", argv), mock.patch("sys.stderr"), \
+                    self.assertRaises(SystemExit):
+                policy.main()
 
     def test_a_dev_branch_from_a_fork_is_not_a_promotion(self):
         pr = pull_request(head="dev", source_id=900)

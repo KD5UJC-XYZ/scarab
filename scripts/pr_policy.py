@@ -12,7 +12,8 @@ approval link) and "Gaps" (`None`, or bullets that each start with an issue link
 per line with `id`, `body` and `user`) and reviews (`--reviews`, with `id`, `state` and `user`), the section must link
 a review on this pull request: a comment whose first line is the stamp of `codex_review.py`, naming the pinned model
 and an effort at or above the floor for the stated level and the changed files, or a GitHub review submitted by a
-person other than the author (CONTRIBUTING.md, "Independent review").
+person other than the author (compared by account id); one of them covers the head, unless a line
+`Since the review: ...` says why the later commits need no review (CONTRIBUTING.md, "Independent review").
 The stated level has floors from the changed files (`--files`, the pull request's file list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
@@ -192,20 +193,37 @@ def check_review(pr, level=None, files=(), evidence=None):
 
 
 HUMAN_VERDICTS = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
+SINCE_REVIEW = re.compile(r"^\s*(?:[-*]\s+)?\**since the review\**\s*:\**\s*\S", re.IGNORECASE | re.MULTILINE)
+TRAILING = re.compile(r"[)>\]]*[.,;:]?")
+
+
+def destinations(text):
+    """The URLs the text links as GitHub renders it: bare URLs, autolinks and inline links, and the targets of
+    reference links it uses; an unused reference definition links nothing."""
+    defined = {label.strip().lower(): target for label, target in REFERENCE_DEFINITION.findall(text)}
+    rest = REFERENCE_DEFINITION.sub("", text)
+    found = LINK.findall(rest)
+    found += [defined[key] for key in ((ref or label).strip().lower() for label, ref in REFERENCE.findall(rest))
+              if key in defined]
+    return found
 
 
 def linked_reviews(pr, text, level, files, comments, reviews):
     """The reviews the section links on this pull request: a comment whose first line is the stamp of
     `codex_review.py` with the pinned model at or above the floor, or a GitHub review submitted by a person other than
-    the author. At least one is required; every linked stamp must meet the floor, and an unstamped comment (a
-    disposition, a reply) may be linked beside them."""
+    the author. At least one is required, and one must cover the head unless the section says, in a line
+    `Since the review: ...`, why the later commits need none (a rebase that leaves the diff as reviewed, a wording
+    fix). Every linked stamp must meet the floor; an unstamped comment (a disposition, a reply) may be linked beside
+    them."""
     number = pr.get("number")
     repository = ((pr.get("base") or {}).get("repo") or {}).get("full_name", "")
     link = re.compile(r"https://github\.com/" + re.escape(repository) + r"/pull/" + str(number)
-                      + r"(?:/files|/commits)?#(issuecomment|pullrequestreview)-(\d+)(?![\w-])", re.IGNORECASE)
-    found = {kind.lower(): set() for kind in ("issuecomment", "pullrequestreview")}
-    for kind, ident in link.findall(text):
-        found[kind.lower()].add(ident)
+                      + r"(?:/files|/commits)?#(issuecomment|pullrequestreview)-(\d+)", re.IGNORECASE)
+    found = {"issuecomment": set(), "pullrequestreview": set()}
+    for url in destinations(text):
+        match = link.match(url)
+        if match and TRAILING.fullmatch(url[match.end():]):
+            found[match.group(1).lower()].add(match.group(2))
     comment_by_id = {str(c.get("id")): c for c in comments}
     review_by_id = {str(r.get("id")): r for r in reviews}
     linked_comments = [comment_by_id[i] for i in sorted(found["issuecomment"]) if i in comment_by_id]
@@ -214,8 +232,8 @@ def linked_reviews(pr, text, level, files, comments, reviews):
     require(linked_comments or linked_reviews_,
             f'the "Independent review" section links no comment or review on this pull request (#{number}); link the '
             "posted review (CONTRIBUTING.md, \"Independent review\")")
-    author = (pr.get("user") or {}).get("login")
-    accepted = []
+    author = (pr.get("user") or {}).get("id")
+    accepted, reviewed = [], set()
     for comment in linked_comments:
         try:
             fields = codex_review.stamp_of(comment.get("body"))
@@ -226,14 +244,21 @@ def linked_reviews(pr, text, level, files, comments, reviews):
             require(problem is None, f"the linked comment {comment.get('id')}: {problem}; run the review again "
                     "with scripts/codex_review.py (CONTRIBUTING.md, \"Independent review\")")
             accepted.append(comment)
+            reviewed.add(fields["head"])
     for review in linked_reviews_:
         user = review.get("user") or {}
-        if (user.get("login") and user.get("login") != author and user.get("type") == "User"
-                and review.get("state") in HUMAN_VERDICTS):
+        if (type(user.get("id")) is int and type(author) is int and user["id"] != author
+                and user.get("type") == "User" and review.get("state") in HUMAN_VERDICTS):
             accepted.append(review)
+            reviewed.add(review.get("commit_id"))
     require(accepted, "no linked item is a review: link a comment that starts with the stamp of "
             f"scripts/codex_review.py at effort {need} or above, or a GitHub review submitted by a person other than "
             "the author (CONTRIBUTING.md, \"Independent review\")")
+    head = (pr.get("head") or {}).get("sha")
+    require(head in reviewed or SINCE_REVIEW.search(text),
+            f"no linked review covers the head {str(head)[:12]}: review the commits since the last review "
+            "(a second review scoped to them), or say in a line \"Since the review: ...\" why they need none "
+            "(CONTRIBUTING.md, \"Independent review\")")
     return accepted
 
 
@@ -404,7 +429,8 @@ def main():
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"), required=False)
     parser.add_argument("--repository-id", type=int, default=os.environ.get("GITHUB_REPOSITORY_ID"))
     parser.add_argument("--mode", default=os.environ.get("SCARAB_PROMOTION_POLICY") or "transition")
-    parser.add_argument("--files", type=Path, help="the pull request's changed paths, one per line")
+    parser.add_argument("--files", type=Path, required=True,
+                        help="the pull request's changed paths, one per line")
     parser.add_argument("--comments", type=Path, required=True,
                         help="the pull request's comments, one JSON object per line with id, body and user")
     parser.add_argument("--reviews", type=Path, required=True,
@@ -416,8 +442,11 @@ def main():
             "event repository identity differs from the trusted runner")
     pr = event.get("pull_request", {})
     result = evaluate(pr, args.repository, args.repository_id, args.mode)
-    files = [f for f in args.files.read_text(encoding="utf-8").split("\n") if f] if args.files else []
-    evidence = tuple(codex_review.records(path.read_text(encoding="utf-8")) for path in (args.comments, args.reviews))
+    files = [f for f in args.files.read_text(encoding="utf-8").split("\n") if f]
+    try:
+        evidence = tuple(codex_review.records(path.read_text(encoding="utf-8")) for path in (args.comments, args.reviews))
+    except codex_review.ReviewError as error:
+        raise PolicyError(f"the review evidence: {error}") from error
     storage = check_storage_format(pr, files, datetime.now(timezone.utc))
     print(json.dumps(dict(result, level=check_body(pr, files, evidence), storageFormatChange=storage),
                      sort_keys=True))
