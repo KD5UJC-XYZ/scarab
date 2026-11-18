@@ -1205,7 +1205,8 @@ object Main extends IOApp:
       scheduling: Scheduling[IO],
       credentials: Option[PoolCredentials],
       listening: Option[Listening],
-      hangup: StartupHangup
+      hangup: StartupHangup,
+      layout: ReferenceLayout
   ):
     def genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis = setup.genesis
 
@@ -1353,7 +1354,8 @@ object Main extends IOApp:
         scheduling,
         credentials,
         listening,
-        hangup
+        hangup,
+        layout
       )
     instrumented(run, background).flatTap(i => hangup.events.set(forgeEvents(i.measured))).flatMap {
       instruments =>
@@ -2168,7 +2170,8 @@ object Main extends IOApp:
         setup.mirrorEnv(observed).ledger,
         observed,
         genesis.networkMagic,
-        ledgerConfig
+        ledgerConfig,
+        run.layout.layout
       )
     )
     // the node-to-client server; a failure to set it up, or an accept loop that stops,

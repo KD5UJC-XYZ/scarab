@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, StorageError, TxIn}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Point, Role}
-import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery}
+import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, StateLayout}
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer.Refusal
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer
 import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, RocksUtxoStore, UtxoStore}
@@ -46,7 +46,8 @@ class DeepQuerySuite extends FailsOnUncaught:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     networkMagic = setup.genesis.networkMagic.toLong,
-    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+    layout = StateLayout.Node11_1
   )
   private val view = QueryView(Point.Origin, None, setup.mirrorStart)
 

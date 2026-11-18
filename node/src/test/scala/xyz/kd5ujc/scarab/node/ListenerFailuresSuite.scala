@@ -30,7 +30,13 @@ import xyz.kd5ujc.scarab.network.{
   SystemCallError
 }
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError, TxIn, TxOut}
-import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery, NtcVersion, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{
+  Handshake,
+  LocalStateQuery,
+  NtcVersion,
+  ReferenceBuild,
+  StateLayout
+}
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, Tip}
 import xyz.kd5ujc.scarab.node.log.NodeEvent
@@ -67,7 +73,8 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     networkMagic = setup.genesis.networkMagic.toLong,
-    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+    layout = StateLayout.Node11_1
   )
 
   /** Sockets whose clients are the test's in-memory connections, accepted in turn. */

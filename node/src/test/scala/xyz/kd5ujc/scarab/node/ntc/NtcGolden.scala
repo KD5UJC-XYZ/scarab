@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
@@ -74,7 +75,8 @@ object NtcGolden:
     setup.genesis.raw,
     setup.mirrorEnv().ledger,
     networkMagic = setup.genesis.networkMagic.toLong,
-    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+    ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+    layout = StateLayout.Node11_1
   )
 
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e.message), identity)

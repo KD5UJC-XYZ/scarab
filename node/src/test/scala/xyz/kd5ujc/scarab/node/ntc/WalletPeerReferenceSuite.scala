@@ -34,7 +34,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.node.{NodeSetup, SkippedPool}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead, Read}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
+import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion, StateLayout}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
 
@@ -109,7 +109,8 @@ class WalletPeerReferenceSuite extends FunSuite:
       setup.genesis.raw,
       setup.mirrorEnv().ledger,
       networkMagic = setup.genesis.networkMagic.toLong,
-      ledgerConfig = LedgerConfig.answer(setup.ledgerConfig)
+      ledgerConfig = LedgerConfig.answer(setup.ledgerConfig),
+      layout = StateLayout.Node11_1
     )
     val queries =
       json(dir.resolve("queries.json")).as[Vector[Json]].fold(e => fail(e.message), identity)

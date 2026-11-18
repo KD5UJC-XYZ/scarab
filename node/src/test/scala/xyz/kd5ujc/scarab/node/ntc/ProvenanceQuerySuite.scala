@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
@@ -36,7 +37,8 @@ class ProvenanceQuerySuite extends CatsEffectSuite:
     setup.mirrorEnv().ledger,
     observed,
     setup.genesis.networkMagic.toLong,
-    LedgerConfig.answer(setup.ledgerConfig)
+    LedgerConfig.answer(setup.ledgerConfig),
+    StateLayout.Node11_1
   )
 
   private def view(snapshot: StateSnapshot[MirrorState]): QueryView[MirrorState] =
