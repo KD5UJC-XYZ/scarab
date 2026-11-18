@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Address, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
+  CertState,
   Coin,
   Conway,
   Credential,
@@ -19,9 +20,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * (`class EraTx era => EraUTxO era`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs:242-285`). The superclass `EraTx era`
   * is a member ([[txOf]]), as the other classes' superclasses of other families are.
-  *
-  * The keys that must sign a transaction (`getWitsVKeyNeeded`) are UTXOW's last member, and come
-  * with `validateNeededWitnesses` (#85).
   */
 trait EraUTxO[E <: EraTag]:
   /** The transactions' class (the superclass `EraTx era`). */
@@ -58,6 +56,11 @@ trait EraUTxO[E <: EraTag]:
 
   /** `getScriptsHashesNeeded`: the hashes of the scripts needed. */
   def getScriptsHashesNeeded(scriptsNeeded: ScriptsNeeded[E]): Set[Bytes]
+
+  /** `getWitsVKeyNeeded`: the hashes of the keys that must sign the body. */
+  def getWitsVKeyNeeded[L <: TxLevel](certState: CertState[E], utxo: UTxO[E], body: TxBody[L, E])(
+      using txOf.bodyOf.Level[L]
+  ): Set[Bytes]
 
   /** `getMinFeeTxUtxo`: the minimum fee, its witnesses excluded, the reference scripts the UTxO set
     * gives it counted.
@@ -179,6 +182,44 @@ object UTxOs:
   * cardano-ledger f649f975).
   */
 object ShelleyUTxO:
+  /** `getShelleyWitsVKeyNeededNoGov` (`Shelley/UTxO.hs:203-251`, cardano-ledger f649f975): the keys
+    * of the certificates that a key must witness, of the outputs the spendable inputs spend (a
+    * key's payment address, or a bootstrap address's root, `bootstrapKeyHash`), of the owners of
+    * each pool the body registers, and of the accounts it withdraws from that a key holds; the
+    * governance keys aside.
+    */
+  def getShelleyWitsVKeyNeededNoGov[E <: EraTag, L <: TxLevel](utxo: UTxO[E], body: TxBody[L, E])(
+      using
+      b: EraTxBody[E],
+      l: b.Level[L]
+  ): Set[Bytes] =
+    val o = b.outputsOf
+    val certs = b.certs[L](body)
+    val inputAuthors = b
+      .spendableInputs[L](body)
+      .flatMap(in =>
+        utxo.unUTxO
+          .get(in)
+          .flatMap(out =>
+            o.address(out).kind match
+              case Address.Kind.Shelley(_, xyz.kd5ujc.scarab.ledger.Credential.Key(pay), _, _) =>
+                Some(pay)
+              case Address.Kind.Byron(root)         => Some(root)
+              case Address.Kind.Shelley(_, _, _, _) => None
+          )
+      )
+    val wdrlAuthors = b
+      .withdrawals[L](body)
+      .keySet
+      .flatMap(account =>
+        account.credential match
+          case xyz.kd5ujc.scarab.ledger.Credential.Key(h)    => Some(h)
+          case xyz.kd5ujc.scarab.ledger.Credential.Script(_) => None
+      )
+    val owners = certs.flatMap(b.certsOf.getRegPoolTxCert(_).toVector.flatMap(_.value.owners)).toSet
+    val certAuthors = certs.flatMap(b.certsOf.getVKeyWitnessTxCert).toSet
+    certAuthors ++ inputAuthors ++ owners ++ wdrlAuthors
+
   /** `shelleyConsumed` (`Shelley/UTxO.hs:109-118`, cardano-ledger f649f975): what the body
     * consumes, each refunded credential's deposit looked up in `accounts`.
     */

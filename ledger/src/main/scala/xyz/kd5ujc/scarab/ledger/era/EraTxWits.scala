@@ -38,5 +38,12 @@ trait AlonzoEraTxWits[E <: EraTag] extends EraTxWits[E]:
 
 /** The instances of each era, the one place that lists the eras having each witness class. */
 object EraTxWits:
+  /** `keyHashWitnessesTxWits` (`Core.hs:538-545`, cardano-ledger f649f975): the hashes of the keys
+    * the witnesses provide, a key witness's key and a bootstrap witness's address root
+    * (`bootstrapWitKeyHash`).
+    */
+  def keyHashWitnessesTxWits[E <: EraTag](wits: TxWits[E])(using w: EraTxWits[E]): Set[Bytes] =
+    w.addrTxWits(wits).map(_.keyHash) ++ w.bootAddrTxWits(wits).map(_.addressRoot)
+
   given conway: AlonzoEraTxWits[Conway] =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxWits.instance

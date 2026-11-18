@@ -57,6 +57,20 @@ object ShelleyUtxow:
           )
       )
 
+  /** `validateNeededWitnesses` (`Shelley/Rules/Utxow.hs:409-423`, cardano-ledger f649f975): the
+    * hashes of the keys that must sign (`getWitsVKeyNeeded`) and that no witness provides.
+    */
+  def validateNeededWitnesses[E <: EraTag, L <: TxLevel](
+      witsKeyHashes: Set[Bytes],
+      certState: xyz.kd5ujc.scarab.ledger.state.CertState[E],
+      utxo: UTxO[E],
+      txBody: TxBody[L, E]
+  )(using u: EraUTxO[E], l: u.txOf.bodyOf.Level[L]): Test[PredicateFailure] =
+    val needed = u.getWitsVKeyNeeded[L](certState, utxo, txBody)
+    Test.failureOnNonEmpty(needed -- witsKeyHashes)(_.isEmpty)(missing =>
+      utxow(UtxowFailure.MissingVKeyWitnesses(missing))
+    )
+
 /** Alonzo's predicates of UTXOW (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs`,
   * cardano-ledger f649f975).
   */

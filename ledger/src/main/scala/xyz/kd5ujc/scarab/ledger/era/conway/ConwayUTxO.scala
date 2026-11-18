@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   MaryUTxO,
   MultiAssetValue,
   PParams,
+  ShelleyUTxO,
   ScriptsProvided,
   Tx,
   TxBody,
@@ -26,7 +27,15 @@ import xyz.kd5ujc.scarab.ledger.era.{
   UTxO,
   Val
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, Credential, KeyHash, StakePool, Staking}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Conway,
+  ConwayCertState,
+  Credential,
+  KeyHash,
+  StakePool,
+  Staking
+}
 
 /** Conway's unspent outputs read from the outputs the node keeps. */
 object ConwayUTxO:
@@ -137,6 +146,33 @@ object ConwayUTxO:
       votingScriptsNeeded ++
       proposingScriptsNeeded
 
+  /** `getConwayWitsVKeyNeeded` (`Conway/UTxO.hs:172-180`, cardano-ledger f649f975): Shelley's keys
+    * without the governance ones, the required signers, and the voters' keys.
+    */
+  def getConwayWitsVKeyNeeded[L <: TxLevel](utxo: UTxO[Conway], body: TxBody[L, Conway])(using
+      l: EraTxBody.conway.Level[L]
+  ): Set[Bytes] =
+    val b = EraTxBody.conway
+    ShelleyUTxO.getShelleyWitsVKeyNeededNoGov[Conway, L](utxo, body) ++
+      b.reqSignerHashes[L](body) ++ voterWitnesses[L](body)
+
+  /** `voterWitnesses` (`Conway/UTxO.hs:182-194`, cardano-ledger f649f975): the key of each voter a
+    * key witnesses: a committee member's or a DRep's key credential, and a pool's id.
+    */
+  def voterWitnesses[L <: TxLevel](body: TxBody[L, Conway])(using
+      l: EraTxBody.conway.Level[L]
+  ): Set[Bytes] =
+    EraTxBody.conway
+      .votingProcedures[L](body)
+      .unVotingProcedures
+      .keySet
+      .flatMap {
+        case Voter.CommitteeHot(xyz.kd5ujc.scarab.ledger.Credential.Key(h)) => Some(h)
+        case Voter.DRepVoter(xyz.kd5ujc.scarab.ledger.Credential.Key(h))    => Some(h)
+        case Voter.Pool(poolId)                                             => Some(poolId)
+        case Voter.CommitteeHot(_) | Voter.DRepVoter(_)                     => None
+      }
+
   val instance: EraUTxO[Conway] = new EraUTxO[Conway]:
     override val txOf: EraTx.conway.type = EraTx.conway
     // `getConsumedValue = getConsumedMaryValue`, `Conway/UTxO.hs:122`, cardano-ledger f649f975
@@ -172,6 +208,14 @@ object ConwayUTxO:
     // cardano-ledger f649f975
     override def getScriptsHashesNeeded(scriptsNeeded: AlonzoScriptsNeeded[Conway]): Set[Bytes] =
       AlonzoUTxO.getAlonzoScriptsHashesNeeded(scriptsNeeded)
+
+    // `getWitsVKeyNeeded _ = getConwayWitsVKeyNeeded`, `Conway/UTxO.hs:132`, cardano-ledger
+    // f649f975: Conway's keys need no certificate state
+    override def getWitsVKeyNeeded[L <: TxLevel](
+        certState: ConwayCertState,
+        utxo: UTxO[Conway],
+        body: TxBody[L, Conway]
+    )(using l: txOf.bodyOf.Level[L]): Set[Bytes] = getConwayWitsVKeyNeeded[L](utxo, body)(using l)
 
     // `getMinFeeTxUtxo = getConwayMinFeeTxUtxo`, `Conway/UTxO.hs:134`, cardano-ledger f649f975
     override def getMinFeeTxUtxo[L <: TxLevel](

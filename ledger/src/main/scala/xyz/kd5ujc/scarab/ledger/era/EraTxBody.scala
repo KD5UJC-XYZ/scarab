@@ -54,6 +54,12 @@ trait EraTxBody[E <: EraTag]:
     */
   def allInputs(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn]
 
+  /** `spendableInputsTxBodyF` (`Core.hs:255-258`, cardano-ledger f649f975): the inputs whose
+    * outputs the transaction may spend, which ones depending on its validity: from Alonzo the
+    * collateral inputs too.
+    */
+  def spendableInputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[TxIn]
+
   /** `getTotalDepositsTxBody` (`Core.hs:267-277`, cardano-ledger f649f975): the deposits a
     * top-level body pays, its contribution to what the transaction produces.
     */
@@ -158,6 +164,12 @@ trait BabbageEraTxBody[E <: EraTag] extends AlonzoEraTxBody[E]:
     */
   protected final def allInputsBabbage(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn] =
     inputs(body)(using top) ++ collateralInputs(body) ++ referenceInputs(body)(using top)
+
+  /** `babbageSpendableInputsTxBodyF` (`Babbage/TxBody.hs:223-229`, cardano-ledger f649f975): the
+    * spent and the collateral inputs, which an era's instance gives at the top level from Babbage.
+    */
+  protected final def spendableInputsBabbage(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn] =
+    inputs(body)(using top) ++ collateralInputs(body)
 
   protected final def allSizedOutputsBabbage(
       body: TxBody[TxLevel.Top, E]

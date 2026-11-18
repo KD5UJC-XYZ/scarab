@@ -51,7 +51,10 @@ class ConwayUtxowChecksSuite extends FunSuite:
       flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
       pp: PParams[Conway],
       slot: BigInt,
-      network: Int
+      network: Int,
+      cert: xyz.kd5ujc.scarab.ledger.state.ConwayCertState,
+      families: Vector[Family],
+      reason: Bytes
   ):
     lazy val ann: StAnnTx = StAnnTx(flat, FlatUtxo.fromMap(stored))
 
@@ -83,7 +86,12 @@ class ConwayUtxowChecksSuite extends FunSuite:
           flatPp,
           PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp))),
           rc.tipSlot + 1,
-          setup.globals.network
+          setup.globals.network,
+          xyz.kd5ujc.scarab.ledger.state.ConwayNewEpochState.ls
+            .andThen(xyz.kd5ujc.scarab.ledger.state.ConwayLedgerState.cert)
+            .get(nes),
+          rc.families,
+          rc.reason
         )
       }
     }
@@ -190,6 +198,25 @@ class ConwayUtxowChecksSuite extends FunSuite:
         )
       ),
       (
+        "validateNeededWitnesses",
+        Right(
+          flatFailures(s) {
+            case UtxowFailure.MissingVKeyWitnesses(_) => true
+            case _                                    => false
+          }
+        ),
+        Right(
+          failuresOf(
+            ShelleyUtxow.validateNeededWitnesses[Conway, TxLevel.Top](
+              EraTxWits.keyHashWitnessesTxWits[Conway](wits)(using tx.witsOf),
+              s.cert,
+              s.utxo,
+              tx.body[TxLevel.Top](s.typed)(using top)
+            )(using EraUTxO.conway, EraUTxO.conway.txOf.bodyOf.top)
+          )
+        )
+      ),
+      (
         "checkScriptIntegrityHash",
         Right(
           failuresOf(
@@ -240,6 +267,34 @@ class ConwayUtxowChecksSuite extends FunSuite:
   // what a wrong order or index would change: the corpus has a guardrails script; the recorded
   // blocks a script's withdrawal and a script voter (`EraUtxowSuite`); the crafted case below a
   // script input after another, policies out of order and a script certificate after another
+  test(
+    "validateNeededWitnesses' refusal is the reference's, byte for byte, where it is UTXOW's only"
+  ):
+    // a case the reference refused with a single UTXOW failure that the needed witnesses give:
+    // the era-typed failure, encoded as the node sends it, is the reference's refusal
+    val compared = seen.filter(_.families == Vector(Family.UTXOW)).flatMap { s =>
+      val wits = tx.wits[TxLevel.Top](s.typed)(using top)
+      val failures = failuresOf(
+        ShelleyUtxow.validateNeededWitnesses[Conway, TxLevel.Top](
+          EraTxWits.keyHashWitnessesTxWits[Conway](wits)(using tx.witsOf),
+          s.cert,
+          s.utxo,
+          tx.body[TxLevel.Top](s.typed)(using top)
+        )(using EraUTxO.conway, EraUTxO.conway.txOf.bodyOf.top)
+      )
+      Option.when(failures.nonEmpty) {
+        assertEquals(
+          xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+            .applyTxError(failures)
+            .fold(e => fail(s"${s.label}: $e"), _.hex),
+          s.reason.hex,
+          s.label
+        )
+        s.label
+      }
+    }
+    assert(compared.nonEmpty, "no case the needed witnesses alone refuse")
+
   test("the corpus has a proposal's guardrails script among the scripts needed"):
     assert(seen.exists(s => typedNeeded(s).exists(_._1 == 5)))
 
