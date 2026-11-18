@@ -5,6 +5,8 @@ import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
+  Address,
+  Datum,
   LedgerDefect,
   PredicateFailure,
   ScriptKind,
@@ -17,7 +19,13 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxowFailure,
   Verdicts
 }
-import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
+import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayPParams,
+  ConwayPlutusPurpose,
+  ConwayTx,
+  ConwayTxCert,
+  ConwayUTxO
+}
 import xyz.kd5ujc.scarab.ledger.era.rules.{AlonzoUtxow, BabbageUtxow, ShelleyUtxow}
 import xyz.kd5ujc.scarab.ledger.rules.{StAnnTx, Test as Verdict, UtxoEnv, Utxow}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, ShelleyBasedEra}
@@ -140,6 +148,41 @@ class ConwayUtxowChecksSuite extends FunSuite:
       tx.body[TxLevel.Top](s.typed)(using top)
     )(using EraUTxO.conway.txOf.bodyOf.top)
 
+  /** The scripts the transaction provides, by `EraUTxO`'s `getScriptsProvided`. */
+  private def scriptsProvided(s: Seen): ScriptsProvided[Conway] =
+    EraUTxO.conway
+      .getScriptsProvided[TxLevel.Top](s.utxo, s.typed)(using EraUTxO.conway.txOf.bodyOf.top)
+
+  /** `missingRequiredDatums`' failures on the era types. */
+  private def typedDatums(s: Seen): Vector[PredicateFailure] =
+    failuresOf(
+      AlonzoUtxow.missingRequiredDatums[Conway, TxLevel.Top](scriptsProvided(s), s.utxo, s.typed)(
+        using
+        tx,
+        top,
+        EraUTxO.conway,
+        EraUTxO.conway.txOf.bodyOf.top
+      )
+    )
+
+  /** `hasExactSetOfRedeemers` ' failures on the era types, each missing purpose in the node's flat
+    * form ([[ConwayPlutusPurpose.toStored]]).
+    */
+  private def typedRedeemers(s: Seen): Vector[PredicateFailure] =
+    failuresOf(
+      AlonzoUtxow.hasExactSetOfRedeemers[Conway, TxLevel.Top](
+        s.typed,
+        scriptsProvided(s),
+        scriptsNeeded(s)
+      )(p => ConwayPlutusPurpose.toStored(p, s.utxo).getOrElse(fail(s"${s.label}: no flat $p")))(
+        using
+        tx,
+        top,
+        summon,
+        summon
+      )
+    )
+
   /** `getReferenceScripts` (`Babbage/UTxO.hs:148-155`, cardano-ledger f649f975) of the inputs and
     * the reference inputs, by hash: what `babbageUtxowTransition` reads (`Babbage/Rules/Utxow.hs`).
     */
@@ -215,6 +258,29 @@ class ConwayUtxowChecksSuite extends FunSuite:
             )(using EraUTxO.conway, EraUTxO.conway.txOf.bodyOf.top)
           )
         )
+      ),
+      (
+        "missingRequiredDatums",
+        Right(
+          flatFailures(s) {
+            case UtxowFailure.UnspendableUTxONoDatumHash(_) |
+                UtxowFailure.MissingRequiredDatums(_, _) |
+                UtxowFailure.NotAllowedSupplementalDatums(_, _) =>
+              true
+            case _ => false
+          }
+        ),
+        Right(typedDatums(s))
+      ),
+      (
+        "hasExactSetOfRedeemers",
+        Right(
+          flatFailures(s) {
+            case UtxowFailure.ExtraRedeemers(_) | UtxowFailure.MissingRedeemers(_) => true
+            case _                                                                 => false
+          }
+        ),
+        Right(typedRedeemers(s))
       ),
       (
         "checkScriptIntegrityHash",
@@ -294,6 +360,36 @@ class ConwayUtxowChecksSuite extends FunSuite:
       }
     }
     assert(compared.nonEmpty, "no case the needed witnesses alone refuse")
+
+  test(
+    "missingRequiredDatums' refusal is the reference's, byte for byte, where it is UTXOW's only"
+  ):
+    // a case the reference refused with a single UTXOW failure that the datums give (an unallowed
+    // supplemental datum): the era-typed failure, encoded as the node sends it, is the reference's
+    // refusal
+    val compared = seen.filter(_.families == Vector(Family.UTXOW)).flatMap { s =>
+      val failures = typedDatums(s)
+      Option.when(failures.nonEmpty) {
+        assertEquals(
+          xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+            .applyTxError(failures)
+            .fold(e => fail(s"${s.label}: $e"), _.hex),
+          s.reason.hex,
+          s.label
+        )
+        s.label
+      }
+    }
+    assert(compared.nonEmpty, "no case the datums alone refuse")
+
+  test("a certificate's flat form is the one the flat decoder read, on every case"):
+    val certs = seen.flatMap { s =>
+      val typed = EraTxBody.conway
+        .certs[TxLevel.Top](tx.body[TxLevel.Top](s.typed)(using top))(using EraTxBody.conway.top)
+      assertEquals(typed.map(ConwayTxCert.toStored), s.flat.body.certificates, s.label)
+      typed
+    }
+    assert(certs.nonEmpty, "no certificate in the corpus")
 
   test("the corpus has a proposal's guardrails script among the scripts needed"):
     assert(seen.exists(s => typedNeeded(s).exists(_._1 == 5)))
@@ -636,3 +732,104 @@ class ConwayUtxowChecksSuite extends FunSuite:
       },
       failures
     )
+
+  /** The first input of `s` whose spent output a script's payment credential locks. */
+  private def scriptLocked(s: Seen): (TxIn, FlatTxOut) =
+    s.flat.body.inputs.toVector
+      .flatMap(in => s.stored.get(in).map(in -> _))
+      .find((_, out) =>
+        out.address.kind match
+          case Address.Kind.Shelley(_, xyz.kd5ujc.scarab.ledger.Credential.Script(_), _, _) =>
+            true
+          case _ => false
+      )
+      .getOrElse(fail(s"${s.label}: no script-locked input"))
+
+  /** `s` with the output `in` spends locked by `script` and holding no datum. */
+  private def noDatum(s: Seen, in: TxIn, script: Bytes): Seen =
+    val out = s.stored.getOrElse(in, fail(s"${s.label}: no output at $in"))
+    val raw = Bytes(out.address.raw.value.patch(1, script.value, 28))
+    val stored = s.stored.updated(
+      in,
+      out.copy(address = right("address")(Address.decode(raw)), datum = Datum.NoDatum)
+    )
+    s.copy(stored = stored, utxo = right("crafted UTxO")(ConwayUTxO.fromStored(stored)))
+
+  private def unspendable(failures: Vector[PredicateFailure]): Vector[Set[TxIn]] =
+    failures.collect { case PredicateFailure.Utxow(UtxowFailure.UnspendableUTxONoDatumHash(ins)) =>
+      ins
+    }
+
+  test(
+    "crafted: a spent Plutus V1 output without a datum is unspendable, a Plutus V3 one is not (CIP-69)"
+  ):
+    val s0 = seen
+      .find(_.label.endsWith("/utxow-spend-without-datum-or-redeemer"))
+      .getOrElse(fail("no case that spends a script's output without its datum"))
+    val (in, out) = scriptLocked(s0)
+    val v3 = out.address.kind match
+      case Address.Kind.Shelley(_, xyz.kd5ujc.scarab.ledger.Credential.Script(h), _, _) => h
+      case other => fail(s"not a script's address: $other")
+    // the Plutus V3 script, without a datum: no failure of the datums
+    assertEquals(unspendable(compared(noDatum(s0, in, v3), "missingRequiredDatums")), Vector.empty)
+    // the same script's bytes as a Plutus V1 script (key 3 of the witnesses, not 7)
+    val asV1 = edited(s0, 1)(fields =>
+      fields.map((k, v) => if isKey(7)(k) then leaf(Value.UInt(3)) -> v else k -> v)
+    )
+    val v1 = scriptsProvided(asV1).unScriptsProvided
+      .collectFirst {
+        case (h, script) if tx.witsOf.scriptsOf.scriptPrefixTag(script) == 1 => h
+      }
+      .getOrElse(fail("no Plutus V1 script provided"))
+    assertEquals(
+      unspendable(compared(noDatum(asV1, in, v1), "missingRequiredDatums")),
+      Vector(Set(in))
+    )
+
+  /** `[k, v]` pairs as a CBOR map node. */
+  private def map(entries: (Node, Node)*): Node = leaf(Value.Map(entries.toVector))
+  private def arr(items: Node*): Node = leaf(Value.Arr(items.toVector))
+  private def uint(n: Int): Node = leaf(Value.UInt(n))
+  private def bytes(b: Bytes): Node = leaf(Value.ByteString(b))
+
+  test("crafted: redeemers no purpose needs, written out of their order"):
+    val s = seen.head
+    // a redeemer `[data, [mem, steps]]` at mint 7, then at spend 9
+    val redeemer = arr(uint(0), arr(uint(0), uint(0)))
+    val c = edited(s, 1)(fields =>
+      fields.filterNot((k, _) => isKey(5)(k)) :+
+        (uint(5) -> map(arr(uint(1), uint(7)) -> redeemer, arr(uint(0), uint(9)) -> redeemer))
+    )
+    val failures = compared(c, "hasExactSetOfRedeemers")
+    assertEquals(
+      failures.collect { case PredicateFailure.Utxow(UtxowFailure.ExtraRedeemers(ps)) => ps },
+      Vector(Vector((0, BigInt(9)), (1, BigInt(7))))
+    )
+
+  test("crafted: a Plutus script minting, certifying, withdrawing and voting with no redeemer"):
+    val s0 = seen
+      .find(s => s.label.endsWith("/utxo-mint-units-too-big"))
+      .getOrElse(fail("no case that mints with a Plutus script"))
+    val policy = typedNeeded(s0).find(_._1 == 1).getOrElse(fail("no minting script"))._3
+    val script = arr(uint(1), bytes(policy))
+    val account = Bytes(Vector((0xf0 | s0.network).toByte) ++ policy.value)
+    // the script's unregistration (tag 8), a withdrawal of nothing from its account, and its vote
+    // as a DRep (voter tag 3) on an action, without the redeemers (key 5 of the witnesses)
+    val added = Vector(
+      uint(4) -> arr(arr(uint(8), script, uint(2))),
+      uint(5) -> map(bytes(account) -> uint(0)),
+      uint(19) -> map(
+        arr(uint(3), bytes(policy)) -> map(
+          arr(bytes(Bytes(Vector.fill(32)(9.toByte))), uint(0)) -> arr(uint(1), leaf(Value.Null))
+        )
+      )
+    )
+    val body = edited(s0, 0)(fields =>
+      fields.filterNot((k, _) => isKey(4)(k) || isKey(5)(k) || isKey(19)(k)) ++ added
+    )
+    val c = edited(body, 1)(fields => fields.filterNot((k, _) => isKey(5)(k)))
+    val failures = compared(c, "hasExactSetOfRedeemers")
+    val missing = failures.collect {
+      case PredicateFailure.Utxow(UtxowFailure.MissingRedeemers(ps)) => ps
+    }.flatten
+    assertEquals(missing.map((p, h) => (p.tag, h)), Vector(3, 2, 1, 4).map(_ -> policy))

@@ -5891,6 +5891,16 @@
       119,
       137
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "AlonzoEraUTxO ConwayEra",
+     "lines": [
+      136,
+      147
+     ]
     }
    ],
    "class": "Mirror",
@@ -5899,8 +5909,8 @@
     "ConwayUtxoChecksSuite",
     "ConwayUtxowChecksSuite"
    ],
-   "note": "every member of the reference's instance; ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, or only the missing witness, failed",
-   "digest": "2025105b2c05d42f"
+   "note": "every member of the reference's EraUTxO instance, and of its AlonzoEraUTxO instance the one member the class has (getSupplementalDataHashes = getBabbageSupplementalDataHashes); ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, only the missing witness or only the datums failed",
+   "digest": "c3734722300b0f44"
   },
   "def ledger.era.UTxOs.txInsFilter": {
    "upstream": [
@@ -10278,6 +10288,270 @@
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's, and its refusal with the reference's bytes where it is UTXOW's only",
    "digest": "1b68d14d34c1a0bb"
+  },
+  "def ledger.era.AlonzoEraScript#withPlutusScript": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "withPlutusScript",
+     "lines": [
+      195,
+      198
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the rank-2 function is a polymorphic function given the language's class (PlutusLanguage l) as an argument",
+   "digest": "f155bf252d05705a"
+  },
+  "def ledger.era.AlonzoScripts.plutusScriptLanguage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "plutusScriptLanguage",
+     "lines": [
+      267,
+      268
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "8d948dc7eda4f606"
+  },
+  "def ledger.era.AlonzoScripts.lookupPlutusScript": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "lookupPlutusScript",
+     "lines": [
+      745,
+      750
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "8da0de4cf05b774b"
+  },
+  "def ledger.era.AsIxItem.toAsIx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toAsIx",
+     "lines": [
+      329,
+      330
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "6617fb41619179ee"
+  },
+  "def ledger.era.EraScript.isNativeScript": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "isNativeScript",
+     "lines": [
+      599,
+      600
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "fe570a46b956c810"
+  },
+  "def ledger.era.conway.ConwayPlutusPurpose.hoistPlutusPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs",
+     "symbol": "hoistPlutusPurpose",
+     "lines": [
+      111,
+      117
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "Conway's instance of the AlonzoEraScript member, a function on Conway's purpose until the class has the purposes (#85)",
+   "digest": "0b79b04b0c98c138"
+  },
+  "trait ledger.era.AlonzoEraUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "AlonzoEraUTxO",
+     "lines": [
+      129,
+      162
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023765",
+   "note": "getSupplementalDataHashes only; getSpendingDatum (the Plutus Data and toSpendingPurpose) and the annotated transaction's scriptsProvidedStAnnTx, scriptsNeededStAnnTx, plutusScriptsWithContextStAnnTx and plutusLanguagesUsedStAnnTx are not members yet",
+   "digest": "593ff590a3197b45"
+  },
+  "def ledger.era.AlonzoEraUTxO#getSupplementalDataHashes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "getSupplementalDataHashes",
+     "lines": [
+      134,
+      137
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "84a6b7bbf8c26d15"
+  },
+  "def ledger.era.AlonzoUTxO.getInputDataHashesTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "getInputDataHashesTxBody",
+     "lines": [
+      250,
+      279
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "a fold over the spent outputs the UTxO set holds, as Map.foldlWithKey' over Map.restrictKeys (txInsFilter); getScriptHash (State/UTxO.hs:222-224) is a private helper",
+   "digest": "7a04281aac950d73"
+  },
+  "def ledger.era.BabbageUTxO.getBabbageSupplementalDataHashes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "symbol": "getBabbageSupplementalDataHashes",
+     "lines": [
+      74,
+      83
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "f481f6954b571399"
+  },
+  "def ledger.era.rules.AlonzoUtxow.missingRequiredDatums": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "symbol": "missingRequiredDatums",
+     "lines": [
+      210,
+      234
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's, and its refusal with the reference's bytes where it is UTXOW's only",
+   "digest": "d00bcd4713ffa6eb"
+  },
+  "def ledger.era.rules.AlonzoUtxow.hasExactSetOfRedeemers": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "symbol": "hasExactSetOfRedeemers",
+     "lines": [
+      239,
+      262
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the reference's predicate over the reference's classes, with the evidence that the era's purposes are Conway's (hoistPlutusPurpose is not an AlonzoEraScript member yet, #85); it reports the node's flat UtxowFailure, whose missing purposes are the flat Purpose with index and item that the caller's conversion gives, so each missing entry keeps its AsIxItem purpose where the reference keeps toAsItem's",
+   "digest": "49c24a7a28a083ce"
+  },
+  "def ledger.era.rules.AlonzoUtxow.extSymmetricDifference": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "symbol": "extSymmetricDifference",
+     "lines": [
+      378,
+      383
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "32dad0e9fc1af987"
   }
  },
  "glue": [
@@ -10406,10 +10680,12 @@
    ]
   },
   {
-   "reason": "objects that stand for the reference's modules of functions (`State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`), which Scala needs to hold top-level functions under a name",
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`), which Scala needs to hold top-level functions under a name",
    "definitions": [
+    "object ledger.era.AlonzoScripts",
     "object ledger.era.AlonzoTx",
     "object ledger.era.AlonzoUTxO",
+    "object ledger.era.AsIxItem",
     "object ledger.era.BabbageTxOuts",
     "object ledger.era.BabbageUTxO",
     "object ledger.era.MaryUTxO",
@@ -10426,8 +10702,10 @@
    ]
   },
   {
-   "reason": "the era-typed UTXOW predicates' adapter to the node's flat failure type (UtxowFailure under PredicateFailure), until each era's failures are named (§3.4 of docs/design/era-typed-transactions.md), and the objects that stand for the reference's Rules/Utxow modules",
+   "reason": "the era-typed UTXOW predicates' adapters to the node's flat failure type (UtxowFailure under PredicateFailure, and the flat purposes and certificates a missing redeemer names), until each era's failures are named (§3.4 of docs/design/era-typed-transactions.md), and the objects that stand for the reference's Rules/Utxow modules",
    "definitions": [
+    "def ledger.era.conway.ConwayPlutusPurpose.toStored",
+    "def ledger.era.conway.ConwayTxCert.toStored",
     "def ledger.era.rules.utxow",
     "object ledger.era.rules.AlonzoUtxow",
     "object ledger.era.rules.BabbageUtxow",

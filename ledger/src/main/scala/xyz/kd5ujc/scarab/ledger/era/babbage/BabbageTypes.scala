@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   MultiAssetValue,
   NativeScriptRep,
   Plutus,
+  PlutusLanguage,
   Timelock,
   TimelockScripts,
   Val
@@ -113,6 +114,12 @@ object BabbageScript:
       case AlonzoScriptRep.NativeScript(_) => None
     override def fromPlutusScript(plutus: BabbagePlutusScript): BabbageScript =
       AlonzoScriptRep.PlutusScript(plutus)
+    // `withPlutusScript`, `Babbage/Scripts.hs:71-72`, cardano-ledger f649f975
+    override def withPlutusScript[A](plutus: BabbagePlutusScript)(
+        f: [L <: Language] => (Plutus[L], PlutusLanguage[L]) => A
+    ): A = plutus match
+      case BabbagePlutusScript.V1(p) => f(p, PlutusLanguage.v1)
+      case BabbagePlutusScript.V2(p) => f(p, PlutusLanguage.v2)
 
 /** A Babbage output: `BabbageTxOut BabbageEra`
   * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:133-158`, cardano-ledger f649f975), its

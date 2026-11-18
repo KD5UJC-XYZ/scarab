@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{TxIn, Voter}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
+  AlonzoEraUTxO,
   AlonzoScriptsNeeded,
   AlonzoUTxO,
   BabbageEraTxOut,
@@ -14,7 +15,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxBody,
   EraTxError,
   EraTxOut,
-  EraUTxO,
   GovAction,
   MaryUTxO,
   MultiAssetValue,
@@ -173,7 +173,7 @@ object ConwayUTxO:
         case Voter.CommitteeHot(_) | Voter.DRepVoter(_)                     => None
       }
 
-  val instance: EraUTxO[Conway] = new EraUTxO[Conway]:
+  val instance: AlonzoEraUTxO[Conway] = new AlonzoEraUTxO[Conway]:
     override val txOf: EraTx.conway.type = EraTx.conway
     // `getConsumedValue = getConsumedMaryValue`, `Conway/UTxO.hs:122`, cardano-ledger f649f975
     override def getConsumedValue[L <: TxLevel](
@@ -223,3 +223,11 @@ object ConwayUTxO:
         tx: Tx[L, Conway],
         utxo: UTxO[Conway]
     )(using l: txOf.bodyOf.Level[L]): Coin = getConwayMinFeeTxUtxo[L](pp, tx, utxo)(using l)
+
+    // `getSupplementalDataHashes = getBabbageSupplementalDataHashes`, `Conway/UTxO.hs:137`,
+    // cardano-ledger f649f975
+    override def getSupplementalDataHashes[L <: TxLevel](
+        utxo: UTxO[Conway],
+        txBody: TxBody[L, Conway]
+    )(using l: txOf.bodyOf.Level[L]): Set[Bytes] =
+      BabbageUTxO.getBabbageSupplementalDataHashes[Conway, L](utxo, txBody)(using txOf.bodyOf, l)

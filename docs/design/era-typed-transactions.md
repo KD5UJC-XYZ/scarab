@@ -494,8 +494,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     exactly. They differ only past the supply, which no set of collateral outputs reaches.
   - A failure that carries an output or a value carries the node's stored form of it, through a glue class
     (`StoredTxOut`) with Conway's instance only, until each era's failure types (§3.4).
-  - `EraUTxO` lands without `AlonzoEraUTxO`, tracked on #85; the scripts needed and provided and the
-    witnesses needed came with UTXOW (below).
+  - The scripts needed and provided and the witnesses needed came with UTXOW, and `AlonzoEraUTxO` with
+    its datums (below).
 - **The outputs** (`era/rules/`): `validateOutputTooSmallUTxO` with `babbageMinUTxOValue`,
   `validateOutputTooBigUTxO` and `validateOutputBootAddrAttrsTooBig`, each compared with the flat predicate on
   every Conway case of the refusal corpus; the corpus never exceeds the value size, so a crafted limit of one
@@ -539,15 +539,16 @@ Conway's rules on the classes follow as the rest of stage 2.
     chosen by build until the builds are types (`BuildRules`, #1063).
   - Still to port before UTXO is whole: UTXOS and the state's update (`updateUTxOState`,
     `updateTreasuryDonation`), which take the annotated transaction (`StAnnTx`, #85).
-- **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): four of the predicates
+- **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): six of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
-  arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts`, `validateNeededWitnesses`
-  and `checkScriptIntegrityHash`, with the script integrity it compares (`ScriptIntegrity`, `mkScriptIntegrity`,
-  `hashScriptIntegrity`, and the language views `getLanguageView` and `encodeLangViews`).
+  arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts`, `missingRequiredDatums`,
+  `hasExactSetOfRedeemers`, `validateNeededWitnesses` and `checkScriptIntegrityHash`, with the script
+  integrity it compares (`ScriptIntegrity`, `mkScriptIntegrity`, `hashScriptIntegrity`, and the language views
+  `getLanguageView` and `encodeLangViews`).
   - Their verdicts equal the flat checks' on every transaction of the recorded Conway refusal corpora
-    (`ConwayUtxowChecksSuite`), where the scripts and the integrity hash refuse and the signatures never do.
-    On every recorded Conway transaction, which has no UTxO set, the signature check's verdict and the
-    integrity check's equal the flat ones (`EraUtxowSuite`). Crafted cases refuse each: forged key and
+    (`ConwayUtxowChecksSuite`), where the scripts, the datums, the redeemers and the integrity hash refuse and the
+    signatures never do. On every recorded Conway transaction, which has no UTxO set, the signature check's
+    verdict and the integrity check's equal the flat ones (`EraUtxowSuite`). Crafted cases refuse each: forged key and
     bootstrap witnesses, an extraneous script, a wrong integrity hash at versions 10 and 11, and datums
     without redeemers, whose integrity is over the era's empty redeemers. The integrity's bytes equal the
     flat preimage for every set of languages, and each language's view, with and without its cost model,
@@ -575,9 +576,23 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`keyHashWitnessesTxWits`). It gives the flat check's verdict on every case of the refusal corpus, and
     where the reference refused a transaction for its missing witness alone, its failure encodes to the
     reference's refusal byte for byte.
-  - The failing native scripts, the datums and the redeemers wait for `AlonzoEraUTxO`'s members (#85); the
-    auxiliary data and the well-formed scripts take the transaction annotated with its decoded Plutus
-    scripts (`StAnnTx`, with its cache), which the era types do not have yet (on #85's checklist).
+  - The datums are `AlonzoEraUTxO`'s, with its one member yet, `getSupplementalDataHashes` (Conway's is
+    `getBabbageSupplementalDataHashes`: the outputs, the collateral return and the outputs of the reference
+    inputs), which `missingRequiredDatums` reads with the datums the spent Plutus outputs name
+    (`getInputDataHashesTxBody`, a script's language read through `withPlutusScript`, now a member of
+    `AlonzoEraScript`). `hasExactSetOfRedeemers` compares the redeemers with the Plutus scripts needed
+    (`extSymmetricDifference`), its purposes Conway's by evidence, as above. The node's flat failure names a
+    missing redeemer's purpose with its index and item and, for a spending one, the output spent, so the caller
+    gives each purpose's flat form (`ConwayPlutusPurpose.toStored`, glue). Both give the flat checks' verdicts
+    on every case of the refusal corpus, where each refuses, and where the reference refused a transaction for an
+    unallowed supplemental datum alone, its failure encodes to the reference's refusal byte for byte. The corpus
+    spends only Plutus V3 outputs, so crafted cases spend one without a datum as Plutus V3 (no failure, CIP-69)
+    and as Plutus V1 (unspendable), add redeemers no purpose needs out of their order, and need a Plutus script
+    to mint, certify, withdraw and vote with no redeemer.
+  - The members of `AlonzoEraUTxO` that read the Plutus data (`getSpendingDatum`) or the annotated transaction
+    wait (#85), and so do the failing native scripts. The auxiliary data and the well-formed scripts take the
+    transaction annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do
+    not have yet (on #85's checklist).
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in
