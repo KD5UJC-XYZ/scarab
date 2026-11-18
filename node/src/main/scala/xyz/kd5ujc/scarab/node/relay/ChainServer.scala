@@ -49,8 +49,8 @@ final class ChainServer[F[_]: Async] private (
           Raise[F, ChainError]
       ) =
         for
-          header <- headerOf(raw).fold(_.raise[F, ChainServer.Info], F.pure)
-          _ <- state.update(_.extend(Served(ref, header.ntn, raw), immutable.size, anchor.block))
+          header <- headerOf(raw).fold(_.raise[F, NtNHeader], F.pure)
+          _ <- state.update(_.extend(Served(ref, header, raw), immutable.size, anchor.block))
           _ <- version.update(_ + 1)
         yield ()
 
@@ -66,9 +66,12 @@ final class ChainServer[F[_]: Async] private (
     * `Storage/ChainDB/Impl/Follower.hs` 457-525). Origin, the anchor and a volatile point are
     * checked against the chain as it is and taken in one update, so a fork switch that drops the
     * point cannot come between the check and the move (465-472). A point older than the volatile
-    * chain is looked up in the store outside the update, as the reference reads its ImmutableDB
-    * outside the transaction (510-522); the store never drops a block, so the follower moved after
-    * the lookup stands on our chain however the volatile chain changed meanwhile.
+    * chain is looked up in the store's index outside the update, the block not read, as the
+    * reference opens an ImmutableDB iterator at the point outside the transaction (510-522), which
+    * finds it in the chunk's indexes and reads no block (`streamAfterPoint`, `ImmutableDB/API.hs`
+    * 542-576; `checkLowerBound` and `getSlotInfo`, `ImmutableDB/Impl/Iterator.hs` 226-243 and
+    * 281-352); the store never drops a block, so the follower moved after the lookup stands on our
+    * chain however the volatile chain changed meanwhile.
     */
   private def checkIfPointOnChain(id: Long, point: Point)(using
       Raise[F, StorageError]
@@ -77,7 +80,7 @@ final class ChainServer[F[_]: Async] private (
       case ChainServer.Standing.Taken  => F.pure(true)
       case ChainServer.Standing.Absent => F.pure(false)
       case ChainServer.Standing.Older(older, stored) =>
-        stored.get(older).flatMap {
+        stored.refOf(older).flatMap {
           case Some(_) => state.update(_.move(id, Cursor.RollbackTo(older))).as(true)
           case None    => F.pure(false)
         }
@@ -85,7 +88,7 @@ final class ChainServer[F[_]: Async] private (
 
   /** One cursor per connected node-to-node ChainSync client: headers. */
   def source: Resource[F, ChainSyncServer.Source[F, NtNHeader]] =
-    cursor(s => Some(s.header), raw => headerOf(raw).toOption.map(_.ntn), fatal)
+    cursor(s => Some(s.header), raw => headerOf(raw).toOption, fatal)
 
   /** One cursor per connected node-to-client ChainSync client: whole blocks, as stored. */
   def blockSource: Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] = blockSource(fatal)
@@ -173,59 +176,69 @@ final class ChainServer[F[_]: Async] private (
             yield ofStored(stored.raw).map(ChainSyncServer.Update.RollForward(_, chain.tip))
         }
 
-  /** Blocks for BlockFetch: the range must lie on our chain (immutable then volatile); its length
-    * is not bounded, as in the reference's `blockFetchServer'` (ouroboros-consensus 82ecba32,
-    * `MiniProtocol/BlockFetch/Server.hs`).
+  /** Blocks for BlockFetch: the range must lie on our chain (immutable then volatile) and be in
+    * order ([[ChainServer.ordered]]); its length is not bounded, as in the reference's
+    * `blockFetchServer'` (ouroboros-consensus 82ecba32, `MiniProtocol/BlockFetch/Server.hs`
+    * 87-146). Its ends are found in the volatile chain or in the store's index, no block read, as
+    * the reference's iterator checks its bounds in the ImmutableDB's indexes (`checkUpperBound` and
+    * `checkLowerBound`, `ImmutableDB/Impl/Iterator.hs` 141-148 and 203-243).
     */
   def blocks: BlockFetchServer.Blocks[F] = (from, to) =>
     StorageBoundary.run(fatal) {
       state.get.flatMap { chain =>
-        def volatile(point: Point): Option[Int] =
-          chain.blocks.indexWhere(_.ref.point == point) match
-            case -1 => None
-            case i  => Some(i)
-        def number(point: Point): F[Option[BigInt]] = volatile(point) match
-          case Some(i) => F.pure(Some(chain.blocks(i).ref.blockNo))
-          case None =>
-            store.fold(F.pure(Option.empty[BigInt]))(
-              _.get(point).map(_.flatMap(raw => headerOf(raw).toOption.map(_.blockNo)))
-            )
         def emit(served: Vector[Served]) = Stream.emits(served.map(_.raw).toList).covary[F]
-        (number(from), number(to)).mapN {
-          case (Some(a), Some(b)) if a <= b =>
-            (volatile(from), volatile(to), store) match
-              case (Some(i), Some(j), _) => Some(emit(chain.blocks.slice(i, j + 1)))
-              case (Some(_), None, _)    => None
-              case (None, _, None)       => None
-              case (None, inVolatile, Some(s)) =>
-                val first = Stream.eval(StorageBoundary.run(fatal)(s.get(from))).unNone
-                if from == to then Some(first)
-                else
-                  val stored = StorageBoundary.stream(fatal)(s.stream(from))
-                  inVolatile match
-                    case Some(j) =>
-                      // The store is read while the range streams, and blocks of the captured
-                      // volatile chain may reach it before or during the read: its part ends at
-                      // the captured boundary, so the range is exactly `from` to `to`, as the
-                      // reference's one iterator over the inclusive bounds
-                      // (`MiniProtocol/BlockFetch/Server.hs` `receiveReq`).
-                      val immutable = chain.anchor match
-                        case Some(boundary) if boundary.point != from =>
-                          stored.takeThrough(_.ref.point != boundary.point)
-                        case _ => Stream.empty
-                      Some(first ++ immutable.map(_.raw) ++ emit(chain.blocks.take(j + 1)))
-                    case None => Some(first ++ stored.takeThrough(_.ref.point != to).map(_.raw))
+        (end(chain, from), end(chain, to)).mapN {
+          case (Some(first), Some(last)) if ChainServer.ordered(first.ref, last.ref) =>
+            (first, last) match
+              case (ChainServer.End.Volatile(i, _), ChainServer.End.Volatile(j, _)) =>
+                Some(emit(chain.blocks.slice(i, j + 1)))
+              case (ChainServer.End.Stored(a, s), ChainServer.End.Stored(b, _)) =>
+                Some(stored(s, a, b))
+              case (ChainServer.End.Stored(a, s), ChainServer.End.Volatile(j, _)) =>
+                // The store is read while the range streams, and blocks of the captured volatile
+                // chain may reach it before or during the read: its part ends at the captured
+                // boundary, so the range is exactly `from` to `to`, as the reference's one
+                // iterator over the inclusive bounds (`MiniProtocol/BlockFetch/Server.hs`
+                // `receiveReq`). A stored block that is not volatile is at or before it.
+                chain.anchor
+                  .filter(ChainServer.ordered(a, _))
+                  .map(boundary => stored(s, a, boundary) ++ emit(chain.blocks.take(j + 1)))
+              // a stored block never follows a volatile one
+              case (ChainServer.End.Volatile(_, _), ChainServer.End.Stored(_, _)) => None
           case _ => None
         }
       }
-
     }
+
+  /** Where `point` stands on `chain`: in the volatile chain, or in the store, found in its index.
+    */
+  private def end(chain: ServedChain, point: Point)(using
+      Raise[F, StorageError]
+  ): F[Option[ChainServer.End[ImmutableStore[F]]]] =
+    chain.blocks.indexWhere(_.ref.point == point) match
+      case -1 =>
+        (point, store) match
+          case (block: Point.Block, Some(s)) =>
+            s.refOf(block).map(_.map(ChainServer.End.Stored(_, s)))
+          case _ => F.pure(None)
+      case i => F.pure(Some(ChainServer.End.Volatile(i, chain.blocks(i).ref)))
+
+  /** The stored blocks from `first` to `last`, each read when it is pulled. `last` is stored and in
+    * order after `first`, so the stream reaches it, and ends there: no block after it is read, as
+    * the reference's iterator takes the index entries up to its upper bound's hash and no further
+    * (`iteratorStateForChunk`, `ImmutableDB/Impl/Iterator.hs` 578-585).
+    */
+  private def stored(s: ImmutableStore[F], first: BlockRef, last: BlockRef): Stream[F, Bytes] =
+    val head = Stream.eval(StorageBoundary.run(fatal)(s.get(first.point))).unNone
+    if first.point == last.point then head
+    else
+      head ++ StorageBoundary
+        .stream(fatal)(s.stream(first.point).takeThrough(_.ref.point != last.point))
+        .map(_.raw)
 
 object ChainServer:
   /** Header of a stored block, as ChainSync carries it. */
-  type HeaderOf = Bytes => Either[ChainError, Info]
-
-  final case class Info(ntn: NtNHeader, blockNo: BigInt)
+  type HeaderOf = Bytes => Either[ChainError, NtNHeader]
 
   /** Where a point offered for an intersection stands on the served chain as it is now. */
   private enum Standing[+S]:
@@ -237,6 +250,26 @@ object ChainServer:
 
     /** Older than the volatile chain: on the chain if `store` holds it. */
     case Older(point: Point.Block, store: S)
+
+  /** Where an end of a BlockFetch range stands on the served chain: at `index` of its volatile
+    * blocks, or in the store `store` holds.
+    */
+  private enum End[+S]:
+    def ref: BlockRef
+
+    case Volatile(index: Int, ref: BlockRef)
+    case Stored(ref: BlockRef, store: S)
+
+  /** Whether a range from `from` to `to`, two blocks of the chain, is in order: by slot, as the
+    * reference orders a range's bounds (`validBounds`, `Storage/Common.hs` 126-137, which its
+    * ChainDB's iterator checks, `ChainDB/Impl/Iterator.hs` 254-257), and within one slot the
+    * boundary block before the main block, as its ImmutableDB orders a boundary block and the block
+    * of its slot (by their chunk slots, `ImmutableDB/Impl/Iterator.hs` 151-159). A block is in
+    * order with itself. A Byron boundary block repeats the number of the block before it, so the
+    * block numbers cannot order a range.
+    */
+  private[relay] def ordered(from: BlockRef, to: BlockRef): Boolean =
+    from.slot < to.slot || (from.slot == to.slot && (from.boundary || !to.boundary))
 
   /** The chain with follower `id` moved to roll back to `point` if `point` is volatile, the anchor,
     * or Origin while the whole chain is volatile or a store serves it from the start (the
@@ -253,21 +286,15 @@ object ChainServer:
       case (block: Point.Block, Some(s)) => (chain, Standing.Older(block, s))
       case _                             => (chain, Standing.Absent)
 
-  /** Decode the header of a full block. For Byron the size hint is the block's byte size. */
+  /** The header of a whole block, its body's contents not decoded ([[Block.decodeHeader]]). For
+    * Byron the size hint is the block's byte size.
+    */
   def headerOfBlock(byronEpochSlots: BigInt): HeaderOf =
     raw =>
-      Block.decode(raw, byronEpochSlots).map { block =>
-        block.header match
-          case h: Header.Byron =>
-            Info(
-              NtNHeader(
-                Era.Byron,
-                h.raw,
-                Some(NtNHeader.ByronInfo(h.boundary, h.blockSizeHint.value))
-              ),
-              h.blockNo
-            )
-          case h => Info(NtNHeader(h.era, h.raw, None), h.blockNo)
+      Block.decodeHeader(raw, byronEpochSlots).map {
+        case h: Header.Byron =>
+          NtNHeader(Era.Byron, h.raw, Some(NtNHeader.ByronInfo(h.boundary, h.blockSizeHint.value)))
+        case h => NtNHeader(h.era, h.raw, None)
       }
 
   def open[F[_]: Async](

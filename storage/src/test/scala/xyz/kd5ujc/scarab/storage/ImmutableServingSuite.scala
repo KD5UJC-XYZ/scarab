@@ -377,7 +377,9 @@ class ImmutableServingSuite extends FailsOnUncaught:
           ._1
       }
 
-  test("every stored point streams the chain after it, across chunks and boundary blocks") {
+  test(
+    "every stored point streams the chain after it, across chunks and boundary blocks, and is found in the index"
+  ) {
     val cases = for
       chunkSlots <- Gen.oneOf(4L, 10L, 30L)
       bound <- Gen.oneOf(0, 7, 40, 100_000)
@@ -389,14 +391,30 @@ class ImmutableServingSuite extends FailsOnUncaught:
       val clue = s"seed $seed, chunkSlots $chunkSlots, bound $bound"
       tempDir.use { dir =>
         ok {
-          CountedReads.open(dir, chunkSlots, bound).use { (store, _) =>
+          CountedReads.open(dir, chunkSlots, bound).use { (store, log) =>
+            def at(slot: BigInt, hash: Bytes) =
+              new ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
             for
               _ <- chain.traverse_((ref, raw) => store.append(ref, raw))
+              _ <- log.set(Vector.empty)
+              found <- chain.traverse((ref, _) => store.refOf(at(ref.slot, ref.hash)))
+              // another block at each stored slot, and one past the newest
+              others <- chain.traverse((ref, _) => store.refOf(at(ref.slot, hash(-1))))
+              past <- store.refOf(at(chain.lastOption.fold(BigInt(0))(_._1.slot) + 1, hash(0)))
+              finding <- log.get
               points = ChainSync.Point.Origin +: chain.map(_._1.point)
               streamed <- points.traverse(p => store.stream(p).compile.toVector)
               firsts <- points.traverse(p => store.stream(p).take(1).compile.toVector)
               gets <- chain.traverse((ref, _) => store.get(ref.point))
             yield
+              assertEquals(found, chain.map(b => Some(b._1)), s"$clue: found")
+              assertEquals(others.flatten, Vector.empty[BlockRef], s"$clue: others")
+              assertEquals(past, None, s"$clue: past the newest")
+              assertEquals(
+                finding.filterNot(r => r.path.extName == ".index"),
+                Vector.empty[Read],
+                s"$clue: read finding the points"
+              )
               streamed.zipWithIndex.foreach { (blocks, i) =>
                 assertEquals(blocks.map(b => (b.ref, b.raw)), chain.drop(i), s"$clue, after $i")
               }

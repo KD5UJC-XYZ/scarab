@@ -75,6 +75,21 @@ class DecodeBoundsSuite extends FunSuite:
   /** 200,000 nested single-item lists around a zero. */
   private val nested: Bytes = Bytes(Vector.fill(200000)(0x81.toByte)) ++ head(0, 0)
 
+  test("a block nested 200,000 deep in its header or its body has its header read alone typed") {
+    // `[7, [header, bodies, witnesses, auxiliary data, invalid]]`, a Conway block
+    def block(header: Bytes, bodies: Bytes) =
+      hex("8207") ++ head(4, 5) ++ header ++ bodies ++ head(4, 0) ++ head(5, 0) ++ head(4, 0)
+    val deepHeader = head(4, 2) ++ nested ++ bstr(filled(0x88, 448))
+    val inHeader = onSmallStack(Block.decodeHeader(block(deepHeader, head(4, 0)), BigInt(21600)))
+    assert(inHeader.isLeft, s"read: $inHeader")
+    val inBody = block(header, nested)
+    assertEquals(
+      onSmallStack(Block.decodeHeader(inBody, BigInt(21600))),
+      Header.fromRaw(Era.Conway, header)
+    )
+    assert(onSmallStack(Block.decode(inBody, BigInt(21600))).isLeft)
+  }
+
   test("a body whose update proposal is nested 200,000 deep is refused typed") {
     // a Babbage body {0: [], 1: [], 2: 0, 6: [[[...]]]}
     val body = head(5, 4) ++ head(0, 0) ++ head(4, 0) ++ head(0, 1) ++ head(4, 0) ++ head(0, 2) ++

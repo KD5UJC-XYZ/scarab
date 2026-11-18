@@ -11174,6 +11174,13 @@
    "definitions": [
     "object ledger.era.CompactValue"
    ]
+  },
+  {
+   "reason": "the header of a whole block read without decoding its body's contents, for the node's ChainSync server, through the envelope and header code Block.decode and LeiosBlock.read use: the reference's ChainSync server reads a stored block's header bytes alone, at the offset and size its storage indexes keep (getBinaryBlockInfo, ouroboros-consensus Cardano/Node.hs getHfcBinaryBlockInfo; readHeader, ImmutableDB/Impl/Iterator.hs), which Scarab's immutable index does not keep",
+   "definitions": [
+    "def ledger.Block.decodeHeader",
+    "def ledger.LeiosBlock.header"
+   ]
   }
  ]
 }

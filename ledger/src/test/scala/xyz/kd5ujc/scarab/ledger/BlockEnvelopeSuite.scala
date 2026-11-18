@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import java.nio.file.{Files, Path}
-import munit.FunSuite
-import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import java.nio.file.Path
+import munit.ScalaCheckSuite
+import org.scalacheck.Gen
+import org.scalacheck.Prop.*
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 
 /** The lists of a BlockFetch block the reference reads with `enforceSize`: the hard-fork envelope
   * `[tag, block]` (`enforceSize "CardanoBlock" 2`, ouroboros-consensus 82ecba329
@@ -16,45 +17,18 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
   * is unchanged. The block inside the envelope of the later eras is a `decodeRecordNamed` record
   * (`libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:106`), which takes either form.
   *
+  * The header read alone ([[Block.decodeHeader]]) goes through the same envelope and header code,
+  * so it gives the header [[Block.decode]] gives, and refuses what decode refuses before the body.
+  *
   * The blocks are the first of every envelope tag of the era-walking capture (`fixtures/eras`, tags
   * 0 to 7), the first Dijkstra block of the Dijkstra devnet (`fixtures/dijkstra-devnet`, tag 8) and
   * the Conway blocks of `fixtures/preview/conway-governance.hex`.
   */
-class BlockEnvelopeSuite extends FunSuite:
-  /** `10k` of the era-walking capture's Byron genesis (k = 5). */
-  private val ByronEpochSlots = BigInt(50)
-
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
-
-  private def lines(path: Path): Vector[String] =
-    Files.readAllLines(path).asScala.toVector.map(_.trim).filter(_.nonEmpty)
-
-  /** The first block of every envelope tag, by tag. */
-  private lazy val firstOfTag: Vector[(Int, Bytes)] =
-    val eras = lines(Path.of("fixtures", "eras", "blocks.hex")).map(hex)
-    val dijkstra = lines(Path.of("fixtures", "dijkstra-devnet", "blocks.tsv"))
-      .drop(1)
-      .map(_.split('\t'))
-      .collectFirst { case row if row(0) == "8" => hex(row(4)) }
-      .getOrElse(fail("no Dijkstra block in fixtures/dijkstra-devnet/blocks.tsv"))
-    val byTag = (eras :+ dijkstra).groupBy(raw =>
-      items(raw)._1.value match
-        case Value.UInt(tag) => tag.toInt
-        case other           => fail(s"not a tag: $other")
-    )
-    (0 to 8).toVector.map(tag => tag -> byTag.getOrElse(tag, fail(s"no block of tag $tag")).head)
+class BlockEnvelopeSuite extends ScalaCheckSuite:
+  import EraBlocks.*
 
   private lazy val preview: Vector[Bytes] =
     lines(Path.of("fixtures", "preview", "conway-governance.hex")).map(hex)
-
-  /** The tag and the block of a definite envelope. */
-  private def items(raw: Bytes): (Node, Node) =
-    Cbor.decode(raw, Cbor.Limits.Unbounded).map(_.value) match
-      case Right(Value.Arr(Vector(tag, block))) => (tag, block)
-      case other                                => fail(s"not an envelope: $other")
-
-  private def indefinite(parts: Vector[Bytes]): Bytes =
-    Bytes(0x9f.toByte +: parts.flatMap(_.value) :+ 0xff.toByte)
 
   /** `raw` with its envelope written as an indefinite list of the same two items. */
   private def indefiniteEnvelope(raw: Bytes): Bytes =
@@ -151,5 +125,62 @@ class BlockEnvelopeSuite extends FunSuite:
         BlockTransport.check(block.header, raw).map(_.header.point),
         Right(block.header.point)
       )
+    }
+  }
+
+  private def header(raw: Bytes): Either[ChainError, Header] =
+    Block.decodeHeader(raw, ByronEpochSlots)
+
+  test("the header read alone is the decoded block's header, for every tag") {
+    (firstOfTag ++ preview.map(7 -> _)).foreach { case (tag, raw) =>
+      assertEquals(header(raw), Right(decoded(raw).header), s"tag $tag")
+    }
+  }
+
+  test(
+    "the header read alone refuses an indefinite envelope, and a Byron block's, as decode does"
+  ) {
+    firstOfTag.foreach { case (tag, raw) =>
+      assertEquals(header(indefiniteEnvelope(raw)), refused.map(_.header), s"tag $tag: envelope")
+    }
+    firstOfTag.filter(_._1 <= 1).foreach { case (tag, raw) =>
+      assertEquals(header(indefiniteBlock(raw)), refused.map(_.header), s"tag $tag: Byron block")
+    }
+  }
+
+  /** A block of every tag, written again in one of the ways the tests above write it, and then with
+    * one byte changed or not; most changes are in the first bytes, where the envelope and the
+    * header are.
+    */
+  private val rewritten: Gen[(Int, Bytes)] =
+    for
+      (tag, raw) <- Gen.oneOf(firstOfTag ++ preview.map(7 -> _))
+      written <- Gen.oneOf(
+        raw,
+        indefiniteEnvelope(raw),
+        indefiniteBlock(raw),
+        withoutBody(raw)
+      )
+      changed <- Gen.frequency(
+        1 -> Gen.const(written),
+        4 -> (for
+          at <- Gen.frequency(
+            3 -> Gen.choose(0, (written.size - 1).min(1200)),
+            1 -> Gen.choose(0, written.size - 1)
+          )
+          byte <- Gen.choose(0, 255)
+        yield Bytes(written.value.updated(at, byte.toByte)))
+      )
+    yield (tag, changed)
+
+  property("the header read alone is decode's header, or decode's own refusal of it") {
+    forAll(rewritten) { (tag, raw) =>
+      val alone = header(raw)
+      Block.decode(raw, ByronEpochSlots) match
+        case Right(block) => assertEquals(alone, Right(block.header), s"tag $tag: decoded")
+        // decode refused the block: the header read alone is refused the same way, or the
+        // refusal was of the body's contents, which it does not decode
+        case Left(error) =>
+          alone.left.foreach(refusal => assertEquals(refusal, error, s"tag $tag: refused"))
     }
   }

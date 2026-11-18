@@ -34,7 +34,8 @@ class IntersectForkSuite extends FailsOnUncaught:
   /** A point that is neither volatile nor stored, so an intersection asks the store for it. */
   private val unstored: Point = ref(77).point
 
-  /** `underlying`, except that reading `unstored` signals `entered` and then waits for `gate`. */
+  /** `underlying`, except that looking `unstored` up signals `entered` and then waits for `gate`.
+    */
   private def gated(
       underlying: ImmutableStore[IO],
       entered: Deferred[IO, Unit],
@@ -44,9 +45,10 @@ class IntersectForkSuite extends FailsOnUncaught:
       underlying.append(ref, raw)
     def sync(using Raise[IO, StorageError]): IO[Unit] = underlying.sync
     def tip(using Raise[IO, StorageError]): IO[Option[BlockRef]] = underlying.tip
-    def get(point: Point)(using Raise[IO, StorageError]): IO[Option[Bytes]] =
-      if point == unstored then entered.complete(()) *> gate.get *> underlying.get(point)
-      else underlying.get(point)
+    def get(point: Point)(using Raise[IO, StorageError]): IO[Option[Bytes]] = underlying.get(point)
+    def refOf(point: Point.Block)(using Raise[IO, StorageError]): IO[Option[BlockRef]] =
+      if point == unstored then entered.complete(()) *> gate.get *> underlying.refOf(point)
+      else underlying.refOf(point)
     def pointsAtSlot(slot: BigInt)(using Raise[IO, StorageError]): IO[Vector[BlockRef]] =
       underlying.pointsAtSlot(slot)
     def pointAtOrAfterSlot(slot: BigInt)(using Raise[IO, StorageError]): IO[Option[BlockRef]] =
@@ -167,6 +169,8 @@ class IntersectForkSuite extends FailsOnUncaught:
       def tip(using Raise[IO, StorageError]) = IO.pure(Some(ref(1)))
       def get(point: Point)(using Raise[IO, StorageError]) =
         IO.pure(Option.when(point == ref(1).point)(raw(1)))
+      def refOf(point: Point.Block)(using Raise[IO, StorageError]) =
+        IO.pure(Option.when(point == ref(1).point)(ref(1)))
       def pointsAtSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(Vector.empty)
       def pointAtOrAfterSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)
       def byBlockNo(n: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)
