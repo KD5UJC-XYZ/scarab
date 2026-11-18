@@ -1585,11 +1585,13 @@ object Targets:
         () =>
           val seeds = Vector(fixture("fixtures/leios/state", "conway-195")) ++
             Vector("shelley-1000", "conway-4593").map(fixture("fixtures/haskell-state", _))
+          val dijkstra = fixture("fixtures/leios/state", "dijkstra-203")
           req(
-            HaskellLedgerFile.decode(Bytes.fromArray(seeds.head), StateLayout.Leios).isRight,
-            "the Leios state seed does not decode"
+            Vector(seeds.head, dijkstra)
+              .forall(s => HaskellLedgerFile.decode(Bytes.fromArray(s), StateLayout.Leios).isRight),
+            "a Leios state seed does not decode"
           )
-          seeds ++ Vector(fixture("fixtures/leios/state", "dijkstra-203")) ++ Corpus.tricky
+          seeds ++ Vector(dijkstra) ++ Corpus.tricky
         ,
         probe("leios-state") { bytes =>
           HaskellLedgerFile.decode(bytes, StateLayout.Leios).foreach { file =>

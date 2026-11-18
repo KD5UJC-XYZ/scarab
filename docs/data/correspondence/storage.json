@@ -274,7 +274,7 @@
     "LeiosLayoutSuite"
    ],
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
-   "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads the Praos2 state of a captured Leios devnet state (no announcement), checks each of its nine fields against the values read off the file's raw bytes, and writes it back byte for byte; the bytes of an announcement are derived from the source",
+   "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads the Praos2 state of a captured Leios devnet state (no announcement), checks each of its nine fields against the values read off the file's raw bytes, and writes it back byte for byte; it reads and writes the public testnet's state at slot 2,168,639 whole, whose Praos2 state holds an announcement",
    "digest": "b7d12f6ad3bcdea7"
   },
   "def storage.haskell.state.Params.codecIn": {
@@ -667,6 +667,95 @@
    "structure": "same",
    "note": "the past chunks' part of emptyCached; the chunk appended to is held apart, in Current",
    "digest": "2527fff7977f7286"
+  },
+  "def storage.haskell.state.Envelope.telescope": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/Common.hs",
+     "symbol": "encodeTelescope",
+     "lines": [
+      375,
+      395
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/Common.hs",
+     "symbol": "decodeTelescope",
+     "lines": [
+      397,
+      410
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "evidence": [
+    "LeiosLayoutSuite",
+    "LedgerFileSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+   "note": "one Past per finished era and then the Current, 1 + era index items, the era of the current state its length, as the reference's; the telescope is built with Telescope.make, so the eras abut. In the Leios build's layout every era is read and written, Dijkstra among them (LeiosLayoutSuite: the captured Dijkstra states byte for byte); in the 11.1 layout a telescope in Dijkstra is refused both ways (DijkstraNotYet.LedgerState), which the reference decodes; 11.x never enters Dijkstra, its major-version cap being 11",
+   "digest": "ba2086ef0a5452f3"
+  },
+  "given storage.haskell.state.LedgerFileCodecs#annTip": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseDisk.hs",
+     "symbol": "distribAnnTip",
+     "lines": [
+      98,
+      116
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HeaderValidation.hs",
+     "symbol": "defaultEncodeAnnTip",
+     "lines": [
+      734,
+      756
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "evidence": [
+    "LeiosLayoutSuite",
+    "LedgerFileSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+   "note": "[era index, the era's tip], a Shelley-based tip [slot, hash, block number] and Byron's with the boundary flag after them, as the reference's NS of the eras' AnnTip codecs; the model holds one AnnTip with a TipInfo per era kind where the reference's is per era. In the Leios build's layout a Dijkstra tip (era 7) is read and written (LeiosLayoutSuite, the captured Dijkstra states); in the 11.1 layout it is refused both ways (DijkstraNotYet.LedgerState), which the reference decodes",
+   "digest": "7fa4d5a2b52cf460"
+  },
+  "val storage.haskell.state.ConsensusCodecs#ledgerFileEra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Ledger.hs",
+     "symbol": "encodeShelleyLedgerState",
+     "lines": [
+      885,
+      922
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "evidence": [
+    "LeiosLayoutSuite",
+    "LedgerFileSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+   "note": "the ledger state of the era at a telescope's index: a Shelley-based era's [2, [tip, NewEpochState, transition, fourth field]] read into the mirror, Byron's ChainValidationState kept as the original item (not modelled, so written as read). Dijkstra's is read and written in the Leios build's layout, at version 12 (LeiosLayoutSuite, the captured Dijkstra states byte for byte), and refused both ways in the 11.1 layout (DijkstraNotYet.LedgerState), which the reference decodes",
+   "digest": "964876440d66e35c"
   }
  },
  "glue": [

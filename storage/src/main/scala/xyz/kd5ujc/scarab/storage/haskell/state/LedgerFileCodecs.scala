@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.consensus.state.*
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.models.runtime.{
   Arr,
   Codec,
@@ -61,12 +62,18 @@ trait LedgerFileCodecs extends ConsensusCodecs:
   given annTip: Codec[AnnTip] = new Codec[AnnTip]:
     def decode(n: Node): Decoded[AnnTip] =
       arrayNode(stateLayout, n).flatMap(Arr.exact(_, 2)).flatMap { xs =>
-        eraIndex.decode(xs(0)).at("era").flatMap { era =>
-          // the tip of a Dijkstra chain: its state is not read by this build
-          if era == Era.Dijkstra then
-            Left(DecodeError.at(xs(0), Kind.Domain(DijkstraNotYet.LedgerState)))
-          else if era == Era.Byron then byronTip(xs(1)).at("tip")
-          else shelleyTipIn(era, xs(0))(xs(1)).at("tip")
+        eraIndex.decode(xs(0)).at("era").flatMap {
+          case Era.Byron => byronTip(xs(1)).at("tip")
+          case era @ (Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
+              Era.Conway) =>
+            shelleyTipIn(era, xs(0))(xs(1)).at("tip")
+          // the tip of a Dijkstra chain: read in the Leios build's layout, whose Dijkstra state
+          // is read; the 11.1 line's is not
+          case Era.Dijkstra =>
+            stateLayout match
+              case StateLayout.Leios => shelleyTipIn(Era.Dijkstra, xs(0))(xs(1)).at("tip")
+              case StateLayout.Node11_1 =>
+                Left(DecodeError.at(xs(0), Kind.Domain(DijkstraNotYet.LedgerState)))
         }
       }
     def encode(a: AnnTip, out: Writer): Unit =
@@ -85,6 +92,19 @@ trait LedgerFileCodecs extends ConsensusCodecs:
           slotNo.encode(a.slot, out)
           hash32.encode(hash, out)
           blockNo.encode(a.blockNo, out)
+    override def check(a: AnnTip): Option[ConstraintViolation] = a.info match
+      case TipInfo.ShelleyBasedTip(ShelleyBasedEra.SDijkstra, _) =>
+        stateLayout match
+          case StateLayout.Leios => None
+          case StateLayout.Node11_1 =>
+            Some(
+              ConstraintViolation(
+                "AnnTip",
+                s"a tip of an era the $stateLayout layout writes",
+                "Dijkstra"
+              )
+            )
+      case TipInfo.ShelleyBasedTip(_, _) | TipInfo.ByronTip(_, _) => None
 
   /** `HeaderState` (`HeaderValidation.hs:715-727`, ouroboros-consensus 82ecba32): `[tip,
     * chain-dependent state telescope]`.
@@ -104,7 +124,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
       tip.encode(a.tip, out)
       chainDep.encode(a.chainDep, out)
     override def check(a: HeaderState): Option[ConstraintViolation] =
-      chainDep.check(a.chainDep).map(_.at("chainDep"))
+      tip.check(a.tip).map(_.at("tip")).orElse(chainDep.check(a.chainDep).map(_.at("chainDep")))
 
   // ---- the Peras state of the Leios layout (ouroboros-consensus 2416493b)
 
@@ -114,8 +134,10 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     * voting committee indexed by era (`decodeNS`, `HardFork/Combinator/AcrossEras.hs`,
     * `[era, committee]`): the eras before Dijkstra have none (`VoidPerasVotingCommitteeScheme`,
     * whose decoder fails, `Peras/Void.hs:168-170`, ouroboros-consensus 2416493b), so the reference
-    * refuses one of them as this does; Dijkstra's is the Dijkstra part of the state, not read by
-    * this build.
+    * refuses one of them as this does; Dijkstra's (`V1.PerasVotingCommitteeScheme`, the WFALS
+    * committee, `Shelley/Node/Peras.hs:226-234`, `Peras/Voting/V1.hs:39`) is not read yet
+    * ([[DijkstraNotYet.PerasEpochContext]]): Peras is off in the build, and no state it wrote holds
+    * one.
     */
   private val noEpochContext: Codec[Unit] = new Codec[Unit]:
     def decode(n: Node): Decoded[Unit] =
@@ -127,7 +149,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
             committee <- Arr.exact(epochContext(0), 2).at("epochContext").at("pecCommittee")
             era <- Codec.uintInt(255).decode(committee(0)).at("pecCommittee")
             refusal = Era.values.lift(era) match
-              case Some(Era.Dijkstra) => Kind.Domain(DijkstraNotYet.LedgerState)
+              case Some(Era.Dijkstra) => Kind.Domain(DijkstraNotYet.PerasEpochContext)
               case Some(e)            => Kind.Unsupported(s"a Peras voting committee of $e (Void)")
               case None               => Kind.OutOfRange("an era index", BigInt(era))
             r <- Left(DecodeError.at(committee(0), refusal)): Decoded[Unit]

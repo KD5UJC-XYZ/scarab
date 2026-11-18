@@ -9,13 +9,14 @@ import cats.{Eq, Show}
   */
 enum StateLayout derives CanEqual:
   /** The cardano-node 11.1 line (cardano-ledger f649f975, ouroboros-consensus 82ecba32): an
-    * `ExtLedgerState` of two parts (`Ledger/Extended.hs:233-248`).
+    * `ExtLedgerState` of two parts (`Ledger/Extended.hs:233-248`). Its Dijkstra state is not read
+    * or written ([[DijkstraNotYet.LedgerState]]).
     */
   case Node11_1
 
   /** The Leios build (cardano-ledger 9df9f98c, ouroboros-consensus 2416493b): an `ExtLedgerState`
     * of three parts, the third the Peras state (`Ledger/Extended.hs:420-442`), and era states that
-    * differ from 11.1's in every Shelley-based era.
+    * differ from 11.1's in every Shelley-based era. Its Dijkstra state is read and written.
     */
   case Leios
 

@@ -252,9 +252,10 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 or the import is refused with a typed `error`; the bytes go into the snapshot unchanged, with the
 build recorded beside them. Nothing is converted between builds. The command first prints a
 `referenceBuild` line with the build and its pins. Under `leios-b004fe0c` the state is read in the
-Leios build's layout (every Shelley-based era up to Conway; a Dijkstra state is refused, #54), and
-`11.1` refuses that layout's three-part extended state; a database imported so is not followed yet
-(#826).
+Leios build's layout (every Shelley-based era, Dijkstra among them), and `11.1` refuses that
+layout's three-part extended state; a database imported so is not followed yet (#826). A Dijkstra
+snapshot needs its point's block in the database, which `import-haskell-db` does not store yet: it
+refuses a Dijkstra block (#54).
 
 First import the immutable blocks with `import-haskell-db` (above). The destination must contain the
 configured network identity and the exact snapshot point in its current-format immutable chunks,

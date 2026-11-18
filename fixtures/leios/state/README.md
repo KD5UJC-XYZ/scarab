@@ -66,14 +66,20 @@ Checked by `LeiosLayoutSuite` (storage):
   committee size and key age zero and the set's committee empty, as they are before Dijkstra. It is
   read and written again byte for byte, and the 11.1 layout refuses it at the extended state's
   length.
-- Slot 203's ledger telescope and header state are in Dijkstra: the file is refused at its
-  telescope (`DijkstraNotYet.LedgerState`, #54). Its Peras state is the same constant, and the
-  bounds of its seven past eras, in both telescopes, are read and written byte for byte. Its
-  `NewEpochState` alone is read and written byte for byte at version 12 (`DijkstraEpochStateSuite`),
-  its mark snapshot `[snapshot, 1, 900, 40178]` and its set `[snapshot, []]` among it.
+- Slot 203's ledger telescope and header state are in Dijkstra: the whole file is read and written
+  again byte for byte, its tip `[7, [203, hash, 39]]`, its Praos2 chain-dependent state with no
+  announcement, and its Peras state the same constant; the 11.1 layout refuses it at the extended
+  state's length, and its two-part form at the telescope and the tip
+  (`DijkstraNotYet.LedgerState`). The bounds of its seven past eras, in both telescopes, are four
+  items each. Its `NewEpochState` is read and written byte for byte at version 12
+  (`DijkstraEpochStateSuite`), its mark snapshot `[snapshot, 1, 900, 40178]` and its set
+  `[snapshot, []]` among it.
 
 `LeiosLayoutImportSuite` (node) imports `conway-195` under `--reference-build leios-b004fe0c`, exports
-it with `state`, `tables` and `meta` byte for byte, and checks that `11.1` refuses the import. The
+it with `state`, `tables` and `meta` byte for byte, and checks that `11.1` refuses the import. It
+does the same with `dijkstra-203`, whose block was not kept: its header's tip is moved to the first
+Dijkstra block of [`../../dijkstra-devnet`](../../dijkstra-devnet/README.md) and its `meta`'s
+checksum recomputed, so that the import finds the snapshot's point in the database. The
 `leios-state` fuzz target takes both states as seeds.
 
 ## The testnet state
@@ -88,7 +94,8 @@ future pool parameters. Its `tables` (the UTxO, 809 MB) and `meta` are not publi
 covers `tables` too, so it is of no use without them.
 
 `DijkstraEpochStateSuite` (storage) reads its `NewEpochState` at version 12 and writes it again byte
-for byte, every pool's voting key among it.
+for byte, every pool's voting key among it, and `LeiosLayoutSuite` the whole file, whose Praos2
+state holds 152 issuers' counters and an announcement.
 
 ## Provenance and licence
 

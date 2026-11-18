@@ -211,9 +211,22 @@ object Envelope:
       Kind.Domain(e)
     )
 
+  /** Whether a telescope in `era` is one this codec reads in `layout`: every era but Dijkstra in
+    * both; Dijkstra in the Leios build's layout, whose states are read and written, and not in the
+    * 11.1 line's ([[DijkstraNotYet.LedgerState]]).
+    */
+  private def inLayout(layout: StateLayout, era: Era): Either[DijkstraNotYet, Unit] = era match
+    case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway =>
+      Right(())
+    case Era.Dijkstra =>
+      layout match
+        case StateLayout.Leios    => Right(())
+        case StateLayout.Node11_1 => Left(DijkstraNotYet.LedgerState)
+
   /** `HardForkState` (`Serialisation/Common.hs:371-390`, ouroboros-consensus 82ecba32): an array of
     * one `Past` per finished era and then the `Current`, `1 + era index` items; the era of the
-    * current state, and with it the codec of its state, is the length. The telescope is built with
+    * current state, and with it the codec of its state, is the length. A telescope in Dijkstra is
+    * read and written in the Leios build's layout only ([[inLayout]]). The telescope is built with
     * [[Telescope.make]], so a decoded one is consistent (the eras abut, the state is one of the era
     * it is in).
     */
@@ -226,12 +239,7 @@ object Envelope:
         arrayNode(layout, n).flatMap(Arr.nonEmpty(_, Era.values.length)).flatMap { xs =>
           val era = Era.values(xs.length - 1)
           for
-            // a telescope in Dijkstra holds states this build does not read yet
-            _ <- Either.cond(
-              era != Era.Dijkstra,
-              (),
-              DecodeError.at(n, Kind.Domain(DijkstraNotYet.LedgerState))
-            )
+            _ <- inLayout(layout, era).left.map(e => DecodeError.at(n, Kind.Domain(e)))
             pasts <- Elements.decodeAll(xs.init, pastIn).at("past")
             cur <- current(layout, stateOf(era)).decode(xs.last).at("current")
             t <- Telescope.make(pasts, cur).left.map(refused(n, _))
@@ -242,11 +250,17 @@ object Envelope:
         a.past.foreach(pastIn.encode(_, out))
         current(layout, stateOf(a.era)).encode(a.current, out)
       override def check(a: Telescope[A]): Option[ConstraintViolation] =
-        a.past.iterator
-          .flatMap(pastIn.check)
-          .nextOption()
-          .map(_.at("past"))
-          .orElse(current(layout, stateOf(a.era)).check(a.current))
+        inLayout(layout, a.era).left.toOption
+          .map(_ =>
+            ConstraintViolation("Telescope", s"an era the $layout layout writes", a.era.toString)
+          )
+          .orElse(
+            a.past.iterator
+              .flatMap(pastIn.check)
+              .nextOption()
+              .map(_.at("past"))
+              .orElse(current(layout, stateOf(a.era)).check(a.current))
+          )
 
   /** The codec of the state of an era in a telescope: read by what the era says it is (`reader`
     * gets the era), written by what the value is.
