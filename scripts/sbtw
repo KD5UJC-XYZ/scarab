@@ -39,6 +39,8 @@ export XDG_RUNTIME_DIR="$runtime" SBT_GLOBAL_SERVER_DIR="$runtime/server"
 export COURSIER_CACHE="$cache/coursier"
 processors="${SCARAB_BUILD_PROCESSORS:-4}"
 repositories=project/repositories
+# -Xmx is the build's heap: `check` compiles every module's tests in this JVM, and every suite but the forked
+# groups runs here too. 2 GiB ran out compiling the node tests (#1210).
 # -Xss is the compiler's thread stack: an incremental recompile of node's Main.scala overflows the
 # 1 MiB default in PostTyper. Forked test JVMs take their own javaOptions, and the stack-safety
 # suites pin explicit small-stack threads, so this does not reach them.
@@ -47,4 +49,4 @@ repositories=project/repositories
 # Allowing both keeps `check` and the build's own log free of the warning, and stops a later JDK from blocking
 # the call. A forked test group takes its options from build.sbt instead.
 jvm_options=(--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow)
-exec java "${jvm_options[@]}" -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx2g -Xss8m -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"
+exec java "${jvm_options[@]}" -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx4g -Xss8m -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"
