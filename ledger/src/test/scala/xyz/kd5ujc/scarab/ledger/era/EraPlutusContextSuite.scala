@@ -20,7 +20,9 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayContextError,
+  ConwayPParams,
   ConwayPlutusPurpose,
+  ConwayPlutusScript,
   ConwayTx,
   ConwayTxInfo,
   ConwayTxOut
@@ -185,7 +187,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
             case AlonzoContextError.TranslationLogicMissingInput(in) =>
               TranslationError.UnresolvedInput(in)
             case AlonzoContextError.TimeTranslationPastHorizon(cause) => cause
-            case AlonzoContextError.Undecodable(site) => TranslationError.Undecodable(site)
+            case AlonzoContextError.Undecodable(site, _) => TranslationError.Undecodable(site)
         case BabbageContextError.ByronTxOutInContext(source) =>
           TranslationError.ByronTxOutInContext(source)
         case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>
@@ -474,7 +476,10 @@ class EraPlutusContextSuite extends munit.FunSuite:
       Left(
         ConwayContextError.BabbageContextError(
           BabbageContextError.AlonzoContextError(
-            AlonzoContextError.Undecodable(xyz.kd5ujc.scarab.ledger.DataSite.InlineDatum)
+            AlonzoContextError.Undecodable(
+              xyz.kd5ujc.scarab.ledger.DataSite.InlineDatum,
+              PlutusData.decode(Bytes(Vector(0xff.toByte))).fold(identity, d => fail(s"data: $d"))
+            )
           )
         )
       )
@@ -1113,4 +1118,361 @@ class EraPlutusContextSuite extends munit.FunSuite:
       ctx.lookupTxInfoResult[Language.PlutusV1](result).unPlutusTxInfoResult.flatMap(_(purpose)),
       EraPlutusTxInfo.conwayPlutusV1.toPlutusTxInfo(lti).unPlutusTxInfoResult.flatMap(_(purpose))
     )
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The scripts of a transaction with their contexts (`Alonzo/Plutus/Evaluate.hs`)
+
+  private def flatParams(c: Case): xyz.kd5ujc.scarab.ledger.ProtocolParams =
+    TestLedger.params(c.major).copy(costModels = c.costModels)
+
+  private def eraParams(c: Case): PParams[Conway] =
+    PParams[Conway](
+      ConwayPParams.fromStored(flatParams(c)).fold(e => fail(s"${c.name}: $e"), identity)
+    )
+
+  private def flatScripts(c: Case): Map[Bytes, xyz.kd5ujc.scarab.ledger.Script] =
+    (c.spent.values ++ c.references.values)
+      .flatMap(_.referenceScript)
+      .map(s => s.hash -> s)
+      .toMap ++ c.flat.witnesses.scriptsByHash
+
+  private def eraCollect(
+      c: Case,
+      pp: PParams[Conway]
+  ): Either[cats.data.NonEmptyList[CollectError[Conway]], List[PlutusWithContext]] =
+    val (tx, utxo, _) = typed(c)
+    AlonzoPlutusEvaluate.collectPlutusScriptsWithContext[Conway](c.posix, pp, tx, utxo)
+
+  /** Each needed purpose's item form with its tag and index, as the flat purpose names it. */
+  private def neededIndex(c: Case): Map[ConwayPlutusPurpose[AsItem], (Int, BigInt)] =
+    val (tx, utxo, _) = typed(c)
+    u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](tx))(using u.txOf.bodyOf.top)
+      .unAlonzoScriptsNeeded
+      .map { (purpose, _) =>
+        val item = EraScript.conway.hoistPlutusPurpose[AsIxItem, AsItem](
+          [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+        )(purpose)
+        val ix = EraScript.conway
+          .hoistPlutusPurpose[
+            AsIxItem,
+            AsIx
+          ]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a))(
+            purpose
+          )
+        item -> (ix.tag, ix.ix.value)
+      }
+      .toMap
+
+  /** The outcomes of both collections in one form: a failure by its kind, a redeemer's purpose by
+    * its tag and index and a translation's failure as [[normTyped]] and [[normFlat]] give them.
+    */
+  private enum Collected:
+    case NoRedeemer(tag: Int, ix: BigInt)
+    case NoCostModel(language: PlutusLanguage)
+    case BadTranslation(failure: Any)
+
+  private def eraCollected(c: Case)(e: CollectError[Conway]): Collected = e match
+    case CollectError.NoRedeemer(purpose) =>
+      val (tag, ix) = neededIndex(c).getOrElse(purpose, fail(s"${c.name}: $purpose is not needed"))
+      Collected.NoRedeemer(tag, ix)
+    case CollectError.NoCostModel(language)   => Collected.NoCostModel(language)
+    case CollectError.BadTranslation(failure) => Collected.BadTranslation(normTyped(failure))
+    case CollectError.NoWitness(hash)         => fail(s"${c.name}: NoWitness ${hash.hex}")
+
+  private def flatCollected(c: Case)(e: xyz.kd5ujc.scarab.ledger.CollectError): Collected = e match
+    case xyz.kd5ujc.scarab.ledger.CollectError.NoRedeemer(purpose) =>
+      Collected.NoRedeemer(purpose.tag, BigInt(purpose.index))
+    case xyz.kd5ujc.scarab.ledger.CollectError.NoCostModel(language) =>
+      Collected.NoCostModel(language)
+    case xyz.kd5ujc.scarab.ledger.CollectError.BadTranslation(failure) =>
+      Collected.BadTranslation(normFlat(failure))
+    case xyz.kd5ujc.scarab.ledger.CollectError.NoWitness(hash) =>
+      fail(s"${c.name}: NoWitness ${hash.hex}")
+
+  /** Both collections of `c` with the parameters `flat` (the era's read from them): the era's
+    * scripts with their contexts as the requests the evaluator takes, equal to the flat path's in
+    * order, or the same failures in the same order.
+    */
+  private def sameCollection(
+      c: Case,
+      flat: xyz.kd5ujc.scarab.ledger.ProtocolParams
+  ): Either[List[Collected], List[xyz.kd5ujc.scarab.plutus.EvalRequest]] =
+    val pp =
+      PParams[Conway](ConwayPParams.fromStored(flat).fold(e => fail(s"${c.name}: $e"), identity))
+    val era = eraCollect(c, pp).fold(
+      es => Left(es.toList.map(eraCollected(c))),
+      pwcs => Right(pwcs.map(PlutusWithContext.evalRequest))
+    )
+    val reference = Phase2
+      .collect[Conway](c.flat, flat, flatScripts(c), c.spent, c.references, c.posix)(using
+        ShelleyBasedEra.SConway
+      )
+      .fold(es => Left(es.toVector.toList.map(flatCollected(c))), rs => Right(rs.toList.map(_._2)))
+    assertEquals(era, reference, c.name)
+    era
+
+  test("every Conway case's scripts with their contexts are the flat path's requests or failures") {
+    val outcomes = (cases ++ recordedBlocks).map(c => sameCollection(c, flatParams(c)))
+    assert(outcomes.exists(_.exists(_.nonEmpty)), "no script was collected")
+    val failures = outcomes.collect { case Left(es) => es }.flatten
+    // the failures the corpus reaches, each by its kind: a redeemer missing, a cost model missing
+    // (the recorded blocks have none) and a translation's failure
+    assertEquals(
+      failures.map(_.productPrefix).toSet,
+      Set("NoRedeemer", "NoCostModel", "BadTranslation"),
+      failures
+    )
+  }
+
+  /** A case whose scripts are collected, with its Plutus V3 request. */
+  private lazy val collectedV3: Case =
+    cases
+      .find(c =>
+        eraCollect(c, eraParams(c)).exists(
+          _.exists(_.plutusLanguage.language == PlutusLanguage.V3)
+        )
+      )
+      .getOrElse(fail("no case collects a Plutus V3 script"))
+
+  test("a language whose tag the cost models lack: NoCostModel; an unknown tag is no language's") {
+    val c = collectedV3
+    val v3Model = c.costModels.getOrElse(PlutusLanguage.V3.id, fail("no V3 model"))
+    // the V3 model under an unknown tag only
+    val models = c.costModels - PlutusLanguage.V3.id + (7 -> v3Model)
+    val eraModels = CostModels.from(models).fold(e => fail(e.toString), identity)
+    // no language's model is the one under the unknown tag
+    assertEquals(CostModel.lookupCostModel[Language.PlutusV3](eraModels), None)
+    assertEquals(
+      Vector(
+        CostModel.lookupCostModel[Language.PlutusV1](eraModels).map(_.cmLanguage),
+        CostModel.lookupCostModel[Language.PlutusV2](eraModels).map(_.cmLanguage),
+        CostModel.lookupCostModel[Language.PlutusV4](eraModels).map(_.cmLanguage)
+      ).flatten.toSet,
+      models.keySet.flatMap(tag => PlutusLanguage.values.find(_.id == tag))
+    )
+    // a known language's model is its parameters, each the Int64 the parameters hold
+    assertEquals(
+      CostModel
+        .lookupCostModel[Language.PlutusV3](
+          CostModels.from(c.costModels).fold(e => fail(e.toString), identity)
+        )
+        .map(_.cmValues),
+      Some(v3Model.map(_.toLong))
+    )
+    val outcome = sameCollection(c, flatParams(c).copy(costModels = models))
+    assert(
+      outcome.left.exists(_.contains(Collected.NoCostModel(PlutusLanguage.V3))),
+      outcome
+    )
+    eraCollect(c, eraParams(c.copy(costModels = models))) match
+      case Left(es) =>
+        assert(es.toList.contains(CollectError.NoCostModel[Conway](PlutusLanguage.V3)), es)
+      case Right(pwcs) => fail(s"collected without a V3 model: $pwcs")
+  }
+
+  test(
+    "a Plutus script's runnable: its hash is the script's, and it is equal by language and hash"
+  ) {
+    val scripts = (cases ++ recordedBlocks).flatMap { c =>
+      val (tx, _, _) = typed(c)
+      t.witsOf.scriptTxWits(t.wits[TxLevel.Top](tx)).values
+    }
+    val plutus = scripts.flatMap(s => EraScript.conway.toPlutusScript(s).map(s -> _))
+    assert(plutus.nonEmpty)
+    val v = Version.lit(10)
+    plutus.foreach { (script, p) =>
+      val runnable = ctx.mkSupportedPlutusRunnable(v, p)
+      assertEquals(
+        runnable.plutusRunnable.plutusRunnableScriptHash,
+        EraScript.conway.hashScript(script)
+      )
+      assertEquals(runnable.language, AlonzoScripts.plutusScriptLanguage[Conway](p))
+      assertEquals(ctx.mkSupportedPlutusRunnable(Version.lit(9), p), runnable)
+    }
+    val (script, p) = plutus.head
+    val other = p match
+      case ConwayPlutusScript.V1(b) => ConwayPlutusScript.V2(Plutus(b.binary))
+      case ConwayPlutusScript.V2(b) => ConwayPlutusScript.V3(Plutus(b.binary))
+      case ConwayPlutusScript.V3(b) => ConwayPlutusScript.V1(Plutus(b.binary))
+    // the same binary in another language is another script
+    assertNotEquals(ctx.mkSupportedPlutusRunnable(v, other), ctx.mkSupportedPlutusRunnable(v, p))
+    assertNotEquals(
+      ctx.mkSupportedPlutusRunnable(v, other).plutusRunnable.plutusRunnableScriptHash,
+      EraScript.conway.hashScript(script)
+    )
+  }
+
+  test("the scripts needed and provided: a provided Plutus script, the cache's runnable kept") {
+    val c = collectedV3
+    val (tx, utxo, lti) = typed(c)
+    val provided = u.getScriptsProvided[TxLevel.Top](utxo, tx)(using u.txOf.bodyOf.top)
+    val needed =
+      u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](tx))(using u.txOf.bodyOf.top)
+    val (cache, used) = AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose[Conway](
+      lti.ltiProtVer,
+      provided,
+      needed,
+      Map.empty
+    )
+    // every needed purpose whose script is a provided Plutus script, in the order needed
+    assertEquals(
+      used.map((purpose, r) => purpose -> r.plutusRunnable.plutusRunnableScriptHash),
+      needed.unAlonzoScriptsNeeded.toList.filter((_, hash) =>
+        provided.unScriptsProvided.get(hash).exists(EraScript.conway.toPlutusScript(_).isDefined)
+      )
+    )
+    assertEquals(
+      cache.keySet,
+      provided.unScriptsProvided
+        .filter((_, s) => EraScript.conway.toPlutusScript(s).isDefined)
+        .keySet
+    )
+    // a needed script's cached runnable is the one used, and kept
+    val (_, usedRunnable) = used.headOption.getOrElse(fail(s"${c.name}: no script used"))
+    val hash = usedRunnable.plutusRunnable.plutusRunnableScriptHash
+    val cached = SupportedPlutusRunnable(
+      EraPlutusTxInfo.conwayPlutusV1,
+      PlutusRunnable[Language.PlutusV1](Plutus(Bytes.empty), hash)
+    )
+    val (again, usedAgain) = AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose[Conway](
+      lti.ltiProtVer,
+      provided,
+      needed,
+      Map(hash -> cached)
+    )
+    assert(again(hash) eq cached)
+    val usesOfHash = usedAgain.filter((_, r) => r.plutusRunnable.plutusRunnableScriptHash == hash)
+    assert(usesOfHash.nonEmpty, usedAgain)
+    assert(usesOfHash.forall((_, r) => r eq cached), usesOfHash)
+    assertEquals(usedAgain.size, used.size)
+    // a script the cache holds and the transaction does not provide does not meet its need
+    val (cacheOnly, usedCacheOnly) =
+      AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose[Conway](
+        lti.ltiProtVer,
+        ScriptsProvided[Conway](provided.unScriptsProvided - hash),
+        needed,
+        Map(hash -> cached)
+      )
+    assert(usedCacheOnly.forall((_, r) => r.plutusRunnable.plutusRunnableScriptHash != hash))
+    assertEquals(
+      usedCacheOnly,
+      used.filter((_, r) => r.plutusRunnable.plutusRunnableScriptHash != hash)
+    )
+    // kept in the returned cache all the same
+    assert(cacheOnly(hash) eq cached)
+  }
+
+  test(
+    "a language's class has its own instances alone, and a cost model is made only by its lookup"
+  ) {
+    // a Plutus V1 language that names Plutus V3, which would make V1's model of V3's parameters
+    val forged = compileErrors(
+      "new xyz.kd5ujc.scarab.ledger.era.PlutusLanguage[Language.PlutusV1] { def language = xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3; def plutusArgsToData(args: PlutusV1Args) = Vector.empty }"
+    )
+    assert(forged.contains("sealed"), forged)
+    val built = compileErrors("new CostModel[Language.PlutusV1](Vector.empty[Long])")
+    assert(built.contains("cannot be accessed"), built)
+    assertEquals(
+      compileErrors("CostModel.lookupCostModel[Language.PlutusV1](CostModels.empty)"),
+      ""
+    )
+  }
+
+  test("a runnable is equal by its binary and its hash, a script with its context by every field") {
+    val binary = Plutus[Language.PlutusV1](Bytes(Vector(1.toByte)))
+    val hash = PlutusRunnable.hashPlutusScript(binary)
+    val runnable = PlutusRunnable.decodePlutusRunnable(Version.lit(10), binary)
+    assertEquals(runnable, PlutusRunnable[Language.PlutusV1](binary, hash))
+    assertEquals(runnable, PlutusRunnable.decodePlutusRunnable(Version.lit(9), binary))
+    assertNotEquals(runnable, runnable.withScriptHash(Bytes(Vector.fill(28)(0.toByte))))
+    assertNotEquals(
+      runnable,
+      PlutusRunnable[Language.PlutusV1](Plutus(Bytes(Vector(2.toByte))), hash)
+    )
+    val c = collectedV3
+    val pwc: PlutusWithContext = eraCollect(c, eraParams(c))
+      .fold(es => fail(s"${c.name}: $es"), _.headOption.getOrElse(fail(s"${c.name}: none")))
+    given xyz.kd5ujc.scarab.ledger.era.PlutusLanguage[pwc.L] = pwc.plutusLanguage
+    val same = PlutusWithContext[pwc.L](
+      pwc.pwcProtocolVersion,
+      pwc.pwcScript,
+      pwc.pwcArgs,
+      pwc.pwcExUnits,
+      pwc.pwcCostModel
+    )
+    assertEquals(same, pwc)
+    val otherVersion =
+      Version
+        .mkVersion(if pwc.pwcProtocolVersion.value == 9 then 10 else 9)
+        .getOrElse(fail("version"))
+    val otherModel = CostModel
+      .lookupCostModel[pwc.L](
+        CostModels
+          .from(Map(pwc.pwcCostModel.cmLanguage.id -> Vector(BigInt(1))))
+          .fold(e => fail(e.toString), identity)
+      )
+      .getOrElse(fail("no model"))
+    val differing = Vector(
+      PlutusWithContext[pwc.L](
+        otherVersion,
+        pwc.pwcScript,
+        pwc.pwcArgs,
+        pwc.pwcExUnits,
+        pwc.pwcCostModel
+      ),
+      PlutusWithContext[pwc.L](
+        pwc.pwcProtocolVersion,
+        pwc.pwcScript.withScriptHash(Bytes(Vector.fill(28)(0.toByte))),
+        pwc.pwcArgs,
+        pwc.pwcExUnits,
+        pwc.pwcCostModel
+      ),
+      PlutusWithContext[pwc.L](
+        pwc.pwcProtocolVersion,
+        pwc.pwcScript,
+        pwc.pwcArgs,
+        pwc.pwcExUnits + xyz.kd5ujc.scarab.plutus.ExUnits(1, 1),
+        pwc.pwcCostModel
+      ),
+      PlutusWithContext[pwc.L](
+        pwc.pwcProtocolVersion,
+        pwc.pwcScript,
+        pwc.pwcArgs,
+        pwc.pwcExUnits,
+        otherModel
+      )
+    )
+    differing.foreach(d => assertNotEquals(d, pwc))
+    // a pair of one language that differs in its arguments alone: Plutus V3 contexts of the same
+    // transaction information whose redeemers differ
+    val (_, _, lti) = typed(c)
+    val txInfo = typedTxInfo(lti).fold(e => fail(s"${c.name}: $e"), identity)
+    def args(redeemer: BigInt): PlutusV3Args =
+      PlutusV3Args(
+        PV3.ScriptContext(
+          txInfo,
+          PV1.Redeemer(PlutusData.I(redeemer)),
+          PV3.ScriptInfo.MintingScript(PV1.CurrencySymbol(Bytes.empty))
+        )
+      )
+    val v3Runnable =
+      PlutusRunnable.decodePlutusRunnable(
+        Version.lit(10),
+        Plutus[Language.PlutusV3](Bytes(Vector(1.toByte)))
+      )
+    val v3Model = CostModel
+      .lookupCostModel[Language.PlutusV3](
+        CostModels.from(c.costModels).fold(e => fail(e.toString), identity)
+      )
+      .getOrElse(fail("no V3 model"))
+    def withArgs(redeemer: BigInt) = PlutusWithContext[Language.PlutusV3](
+      Version.lit(10),
+      v3Runnable,
+      args(redeemer),
+      xyz.kd5ujc.scarab.plutus.ExUnits(1, 1),
+      v3Model
+    )
+    assertEquals(withArgs(1), withArgs(1))
+    assertNotEquals(withArgs(1), withArgs(2))
   }

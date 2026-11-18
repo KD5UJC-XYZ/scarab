@@ -875,7 +875,7 @@ class EraConwaySuite extends munit.FunSuite:
     assertEquals(EraTxOut.conway.data(out), Left(refusal))
     val undecodable: ContextError[Conway] = conway.ConwayContextError.BabbageContextError(
       BabbageContextError.AlonzoContextError(
-        AlonzoContextError.Undecodable(xyz.kd5ujc.scarab.ledger.DataSite.InlineDatum)
+        AlonzoContextError.Undecodable(xyz.kd5ujc.scarab.ledger.DataSite.InlineDatum, refusal)
       )
     )
     val source = xyz.kd5ujc.scarab.ledger.TxOutSource.TxOutFromOutput(0)

@@ -188,6 +188,11 @@ object ConwayScript:
       case ConwayPlutusScript.V2(p) => f(p, PlutusLanguage.v2)
       case ConwayPlutusScript.V3(p) => f(p, PlutusLanguage.v3)
 
+    // `hoistPlutusPurpose`, `Conway/Scripts.hs:111-117`, cardano-ledger f649f975
+    override def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
+        purpose: ConwayPlutusPurpose[G]
+    ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.hoistPlutusPurpose[G, F](f)(purpose)
+
     // `ConwayEraScript ConwayEra`, `Conway/Scripts.hs:145-154`, cardano-ledger f649f975
     override def mkVotingPurpose[F[_, _]](
         voter: F[Unsigned[Unsigned.Width.W32], Voter]

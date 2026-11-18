@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import scala.collection.immutable.TreeMap
 import xyz.kd5ujc.scarab.ledger.{Address, DataSite, RewardAccount, TranslationError, TxIn}
 import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag}
+import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** Why Alonzo's translation of a transaction to a script context fails (`data AlonzoContextError
   * era`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs:213-216`, cardano-ledger
@@ -18,10 +19,10 @@ enum AlonzoContextError[E <: EraTag]:
   case TranslationLogicMissingInput(txIn: TxIn)
   case TimeTranslationPastHorizon(cause: TranslationError)
 
-  /** An output's inline datum, at `site`, that does not decode: never of an output an era's decoder
-    * read, which reads it as data.
+  /** An output's inline datum, at `site`, that does not decode, with the decoder's failure: never
+    * of an output an era's decoder read, which reads it as data.
     */
-  case Undecodable(site: DataSite)
+  case Undecodable(site: DataSite, cause: PlutusData.DecodeError)
 
 /** Alonzo's translations (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs`,
   * cardano-ledger f649f975) that the later eras' contexts use.

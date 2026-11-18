@@ -94,7 +94,8 @@ trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
   ): Either[PlutusData.DecodeError, Option[Data]]
 
 /** `ScriptsProvided` (`State/UTxO.hs:229-232`, cardano-ledger f649f975): the scripts a transaction
-  * provides, by hash.
+  * provides, by hash. Each key is its script's hash (`getScriptsProvided` makes it so); the map's
+  * readers trust it, as the reference's do, and the constructor does not check it.
   */
 final case class ScriptsProvided[E <: EraTag](unScriptsProvided: Map[Bytes, Script[E]])
 

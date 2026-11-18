@@ -163,6 +163,12 @@ object CostModels:
   extension (c: CostModels)
     def models: Map[Int, Vector[BigInt]] = c
 
+    /** The model under `tag`, each parameter as the `Int64` it is: every model was made through
+      * [[from]], which holds only parameters within the range of an `Int64`, or is the union of two
+      * that were.
+      */
+    def int64Model(tag: Int): Option[Vector[Long]] = c.get(tag).map(_.map(_.toLong))
+
     /** `updateCostModels` (`CostModels.hs:404-415`, cardano-ledger f649f975): the languages of
       * `update` replace those of `c`. Since a tag is valid or unknown in both, the union of each
       * part is the union of the map.

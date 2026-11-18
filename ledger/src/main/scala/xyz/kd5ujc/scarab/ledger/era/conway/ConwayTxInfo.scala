@@ -65,7 +65,10 @@ import xyz.kd5ujc.scarab.ledger.era.{
   VotingProcedures,
   ConwayDelegCert,
   ConwayGovCert,
-  PlutusPurpose
+  PlutusPurpose,
+  PlutusRunnable,
+  SupportedPlutusRunnable,
+  Version
 }
 import xyz.kd5ujc.scarab.ledger.era.rules.ConwayEra
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -554,7 +557,7 @@ object ConwayTxInfo:
       v: Value[E] =:= MultiAssetValue
   ): Either[ContextError[E], PV1.TxOut] =
     o.data(txOut) match
-      case Left(_) => Left(BabbageTxInfo.undecodable[E](DataSite.InlineDatum))
+      case Left(e) => Left(BabbageTxInfo.undecodable[E](DataSite.InlineDatum, e))
       case Right(Some(_)) =>
         Left(inj.inject(BabbageContextError.InlineDatumsNotSupported(txOutSource)))
       case Right(None) =>
@@ -838,6 +841,18 @@ object ConwayTxInfo:
       case xyz.kd5ujc.scarab.plutus.PlutusLanguage.V2 => Some(SupportedLanguage(plutusV2))
       case xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3 => Some(SupportedLanguage(plutusV3))
       case xyz.kd5ujc.scarab.plutus.PlutusLanguage.V4 => None
+
+    // `Conway/TxInfo.hs:164-167`, cardano-ledger f649f975
+    override def mkSupportedPlutusRunnable(
+        v: Version,
+        plutusScript: ConwayPlutusScript
+    ): SupportedPlutusRunnable[Conway] = plutusScript match
+      case ConwayPlutusScript.V1(p) =>
+        SupportedPlutusRunnable(plutusV1, PlutusRunnable.decodePlutusRunnable(v, p))
+      case ConwayPlutusScript.V2(p) =>
+        SupportedPlutusRunnable(plutusV2, PlutusRunnable.decodePlutusRunnable(v, p))
+      case ConwayPlutusScript.V3(p) =>
+        SupportedPlutusRunnable(plutusV3, PlutusRunnable.decodePlutusRunnable(v, p))
 
     override def mkTxInfoResult(lti: LedgerTxInfo[Conway]): ConwayTxInfoResult =
       ConwayTxInfoResult(
