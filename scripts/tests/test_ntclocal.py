@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from devnet import cbor, ntclocal, ntcquery  # noqa: E402
+from devnet import cbor, cborspan, ntclocal, ntcquery  # noqa: E402
 
 
 class Session:
@@ -268,10 +268,10 @@ class HasTxIdsTest(unittest.TestCase):
 
 class SubmissionSession:
     """A LocalTxSubmission session that ends the connection on the items `closes` names once it has read them, and
-    otherwise answers. `opens=False` ends it before anything is sent."""
+    otherwise answers `reply` (`MsgAcceptTx` by default). `opens=False` ends it before anything is sent."""
 
-    def __init__(self, closes, opens=True):
-        self.closes, self.opens, self.sent, self.last_raw = closes, opens, [], b""
+    def __init__(self, closes, opens=True, reply=b"\x81\x01"):
+        self.closes, self.opens, self.sent, self.last_raw, self.reply = closes, opens, [], b"", reply
 
     def __enter__(self):
         if not self.opens:
@@ -287,7 +287,7 @@ class SubmissionSession:
     def _recv(self, protocol):
         if self.sent[-1][1][2:] in self.closes:
             raise EOFError("node closed the connection")
-        self.last_raw = b"\x81\x01"
+        self.last_raw = self.reply
         return [1]
 
 
@@ -326,6 +326,110 @@ class SubmissionPrefixesTest(unittest.TestCase):
         for label, item in ntclocal.REFUSED_WHOLE_SUBMISSIONS.items():
             with self.subTest(label=label):
                 self.assertEqual(ntcquery.decode(item)[1], len(item))
+
+
+class ByronSubmissionsTest(unittest.TestCase):
+    refused, answered = ntclocal.byron_submissions()
+    recorded = ntclocal.byron_recorded()
+
+    def test_each_is_one_whole_byron_gentx_of_its_kind(self):
+        for label, item in {**self.refused, **self.answered}.items():
+            kind = next(k for k in ntclocal.BYRON_KINDS if label.startswith(f"byron-{k}"))
+            with self.subTest(label=label):
+                self.assertEqual(ntcquery.decode(item)[1], len(item))
+                self.assertEqual(item[:4], b"\x82\x00\x82" + bytes([ntclocal.BYRON_KINDS[kind]]))
+
+    def test_the_recorded_payloads_have_the_items_of_their_kind(self):
+        # TxAux [tx, witnesses], Certificate [epoch, issuer, delegate, signature], Proposal of seven items and
+        # Vote [voter, proposal id, decision, signature]; each key and signature 64 bytes, the proposal id 32
+        sizes = {"transaction": 2, "certificate": 4, "proposal": 7, "vote": 4}
+        for kind, payload in self.recorded.items():
+            with self.subTest(kind=kind):
+                self.assertEqual(len(cborspan.children(payload, 0)), sizes[kind])
+                self.assertEqual(self.answered[f"byron-{kind}"], b"\x82\x00\x82" + bytes([ntclocal.BYRON_KINDS[kind]])
+                                 + payload)
+        vote = [self.recorded["vote"][s:e] for s, e in cborspan.children(self.recorded["vote"], 0)]
+        self.assertEqual([v[:2] for v in vote], [b"\x58\x40", b"\x58\x20", b"\xf5", b"\x58\x40"])
+
+    def test_each_refused_form_differs_from_the_recorded_one_as_its_label_says(self):
+        vote, cert = self.recorded["vote"], self.recorded["certificate"]
+        voter = vote[1:67]
+        self.assertEqual(voter[:2], b"\x58\x40")
+        self.assertEqual(self.refused["byron-vote-wide-voter-key-whole"],
+                         b"\x82\x00\x82\x03\x84\x59\x00\x40" + voter[2:] + vote[67:])
+        # the decision follows the list's head, the voter's key (2 + 64 bytes) and the proposal id (2 + 32)
+        self.assertEqual(vote[101:102], b"\xf5")
+        self.assertEqual(self.refused["byron-vote-not-bool-whole"],
+                         b"\x82\x00\x82\x03" + vote[:101] + b"\x01" + vote[102:])
+        self.assertEqual(self.refused["byron-certificate-negative-epoch-whole"],
+                         b"\x82\x00\x82\x01\x84\x20" + cert[2:])
+        self.assertEqual(cert[:2], b"\x84\x00", "the recorded certificate is of epoch 0")
+        self.assertEqual(self.refused["byron-proposal-alt-256-whole"],
+                         b"\x82\x00\x82\x02\x87\x83\x01\x00\x19\x01\x00" + self.recorded["proposal"][5:])
+        self.assertEqual(self.recorded["proposal"][:5], b"\x87\x83\x01\x00\x00", "protocol version 1.0.0")
+        self.assertEqual(self.refused["byron-transaction-of-3-whole"],
+                         b"\x82\x00\x82\x00\x83" + self.recorded["transaction"][1:] + b"\x00")
+        self.assertEqual(self.answered["byron-vote-wide-signature"],
+                         b"\x82\x00\x82\x03" + vote[:-66] + b"\x59\x00\x40" + vote[-64:])
+
+    def test_the_refused_forms_are_sent_whole_and_must_end_the_connection_on_both_nodes(self):
+        closes = set(self.refused.values())
+        sessions = []
+
+        def scala():
+            sessions.append(SubmissionSession(closes | set(ntclocal.REFUSED_SUBMISSIONS.values())
+                                              | set(ntclocal.REFUSED_WHOLE_SUBMISSIONS.values())))
+            return sessions[-1]
+
+        report, failures = ntclocal.submission_prefixes(scala, scala, self.refused)
+        self.assertEqual(failures, [])
+        self.assertTrue(set(self.refused) <= set(report))
+        self.assertTrue(all((6, b"\x82\x00" + item) in [m for s in sessions for m in s.sent]
+                            for item in self.refused.values()))
+        answered = closes - {self.refused["byron-vote-wide-voter-key-whole"]}
+        _, failures = ntclocal.submission_prefixes(scala, lambda: SubmissionSession(
+            answered | set(ntclocal.REFUSED_SUBMISSIONS.values()) | set(ntclocal.REFUSED_WHOLE_SUBMISSIONS.values())),
+            self.refused)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("byron-vote-wide-voter-key-whole", failures[0])
+
+
+class SubmissionAnswersTest(unittest.TestCase):
+    items = {"one": b"\x82\x00\x82\x00\x00", "two": b"\x82\x00\x82\x03\x00"}
+    mismatch = b"\x82\x02\x81\x00"
+
+    def test_each_item_answered_alike_with_msg_reject_tx_passes(self):
+        sessions = []
+
+        def opener():
+            sessions.append(SubmissionSession(set(), reply=self.mismatch))
+            return sessions[-1]
+
+        report, failures = ntclocal.submission_answers(opener, opener, self.items)
+        self.assertEqual(failures, [])
+        self.assertEqual(set(report), set(self.items))
+        self.assertTrue(all(row["equal"] for row in report.values()))
+        # one connection per item and node
+        self.assertEqual(sorted(s.sent for s in sessions),
+                         sorted([[(6, b"\x82\x00" + i)] for i in self.items.values()] * 2))
+
+    def test_a_close_fails(self):
+        closes = {self.items["two"]}
+        _, failures = ntclocal.submission_answers(lambda: SubmissionSession(set(), reply=self.mismatch),
+                                                  lambda: SubmissionSession(closes, reply=self.mismatch), self.items)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("two", failures[0])
+
+    def test_different_replies_fail(self):
+        _, failures = ntclocal.submission_answers(lambda: SubmissionSession(set(), reply=self.mismatch),
+                                                  lambda: SubmissionSession(set(), reply=b"\x82\x02\x81\x01"),
+                                                  self.items)
+        self.assertEqual(len(failures), 2)
+
+    def test_an_answer_that_is_not_msg_reject_tx_fails(self):
+        _, failures = ntclocal.submission_answers(lambda: SubmissionSession(set()), lambda: SubmissionSession(set()),
+                                                  self.items)
+        self.assertEqual(len(failures), 2)
 
 
 class HeldFoundTest(unittest.TestCase):

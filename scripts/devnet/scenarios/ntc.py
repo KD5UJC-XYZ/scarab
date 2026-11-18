@@ -12,7 +12,10 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
   3. Submission: a valid transaction through the Scala socket (it must reach a block), one with the
      validity flag false (it must take its collateral on both nodes), and each
      refused transaction of `ntccases` to both nodes, comparing the raw rejection and the text
-     `cardano-cli transaction submit` prints.
+     `cardano-cli transaction submit` prints. Each transaction and prefix the reference's codec refuses
+     (`ntclocal.REFUSED_SUBMISSIONS`, `REFUSED_WHOLE_SUBMISSIONS` and Byron's refused forms) must end a
+     connection of its own on both nodes, and each Byron payload its decoder reads
+     (`ntclocal.byron_submissions`) must get the same `MsgRejectTx` from both.
   4. Local ChainSync, byte for byte: while the load runs, both sockets are followed from Origin (the
      Scala node serves its immutable store and then its volatile chain), then from the tip, and
      again from a recent block (a backlog); the whole blocks (`#6.24(bytes)` items) must be equal.
@@ -40,7 +43,8 @@ import time
 from cleanup import container_labels
 from .. import cborspan, ledgercompare, ntccli, ntcquery, ntcsafety
 from ..ntclocal import (Session, backlog_follow, compare_follow, first_instruction, live_follow, monitor_rounds,
-                        await_wakes, tx_id, has_tx_ids, submission_prefixes)
+                        await_wakes, tx_id, has_tx_ids, submission_prefixes, submission_answers,
+                        byron_submissions)
 from ..eraload import names_constructor
 from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -696,10 +700,18 @@ def ntc(args):
         safety, safety_failures = ntcsafety.run(lambda: open_h(args), lambda: open_s(root))
         failures.extend(safety_failures)
         print(json.dumps({"querySafety": safety}), flush=True)
-        # transactions and prefixes the reference's codec refuses, each on a connection of its own (#924)
-        prefixes, prefix_failures = submission_prefixes(lambda: bounded(open_h(args)), lambda: bounded(open_s(root)))
+        # transactions and prefixes the reference's codec refuses, each on a connection of its own (#924), and
+        # Byron's payloads sent whole: forms their kind's decoder refuses end the connection, and the ones it reads
+        # get the era mismatch from both nodes
+        byron_refused, byron_answered = byron_submissions()
+        prefixes, prefix_failures = submission_prefixes(lambda: bounded(open_h(args)), lambda: bounded(open_s(root)),
+                                                        byron_refused)
         failures.extend(prefix_failures)
         print(json.dumps({"submissionPrefixes": prefixes}), flush=True)
+        answers, answer_failures = submission_answers(lambda: bounded(open_h(args)), lambda: bounded(open_s(root)),
+                                                      byron_answered)
+        failures.extend(answer_failures)
+        print(json.dumps({"submissionAnswers": answers}), flush=True)
         monitor = {}
         try:
             monitor_comparison(args, root, monitor)
@@ -726,6 +738,8 @@ def ntc(args):
             "chainSync": chain_sync,
             "txMonitor": monitor,
             "querySafety": safety,
+            "submissionPrefixes": prefixes,
+            "submissionAnswers": answers,
         }
         mismatched = [k for k, v in stats.items() if v["matched"] != v["total"]]
         if mismatched:
