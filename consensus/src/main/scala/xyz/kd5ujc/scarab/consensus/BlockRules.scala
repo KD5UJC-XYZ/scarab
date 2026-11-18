@@ -91,6 +91,10 @@ enum BlockNoVerdict:
               case Unavailability.Thrown(_) |
                   Unavailability.BuiltinDefect(_, LibraryDefect.Thrown(_)) =>
                 Passing
+              // an evaluation stopped because its thread was interrupted: the rules of a block
+              // evaluate with an evaluator that never stops (`PlutusBackend.evaluator`), so only
+              // an interruption from outside, the environment
+              case Unavailability.Interrupted => Passing
               // a library that answered what it cannot (an input it refuses, a hashed point
               // outside the group, a Miller-loop result without the library's value): the same
               // input and build answer the same

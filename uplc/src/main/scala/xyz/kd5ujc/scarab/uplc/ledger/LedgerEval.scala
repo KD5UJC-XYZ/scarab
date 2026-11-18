@@ -24,7 +24,8 @@ import xyz.kd5ujc.scarab.uplc.cek.{
   CekFailure,
   CekMachine,
   CekReport,
-  CekResult
+  CekResult,
+  Stop
 }
 import xyz.kd5ujc.scarab.uplc.cost.{CostModelApplyWarn, ExBudget}
 import xyz.kd5ujc.scarab.uplc.flat.SerialisedScript
@@ -95,6 +96,9 @@ object LedgerEval:
     * @param language
     *   the script's ledger language; a V4 script is evaluated as V3
     *   ([[PlutusLanguage.evaluatedAs]])
+    * @param stop
+    *   when the machine stops with no verdict, the reason `stop` gives ([[Stop]]); never, as the
+    *   reference, unless a caller asks
     */
   def evaluateScriptRestricting(
       language: PlutusLanguage,
@@ -103,10 +107,11 @@ object LedgerEval:
       context: LedgerContext,
       budget: ExBudget,
       script: Program,
-      args: Vector[PlutusData]
+      args: Vector[PlutusData],
+      stop: Stop[Unavailability] = Stop.never
   ): ScriptResult =
     guarded(
-      run(language, protocol, verbose, context, BudgetMode.Restricting(budget), script, args)
+      run(language, protocol, verbose, context, BudgetMode.Restricting(budget), script, args, stop)
     )(ScriptResult.Unavailable(_))
 
   /** `evaluateScriptCounting` (`Eval.hs:284-304`, plutus 1.71.0.0): the script applied to `args`
@@ -181,14 +186,17 @@ object LedgerEval:
       context: LedgerContext,
       mode: BudgetMode,
       script: Program,
-      args: Vector[PlutusData]
+      args: Vector[PlutusData],
+      stop: Stop[Unavailability] = Stop.never
   ): ScriptResult =
     val result = for
       term <- mkTermToEvaluate(language, protocol, script, args).leftMap(
         ScriptResult.Failure(_, ExBudget.zero, Vector.empty)
       )
       machine <- context.at(protocol, script.version).leftMap(ScriptResult.Unavailable(_))
-    yield processLogsAndErrors(language, verbose, CekMachine.run(machine, mode, term))
+    yield CekMachine.runUntil(machine, mode, term, stop) match
+      case report: CekReport      => processLogsAndErrors(language, verbose, report)
+      case reason: Unavailability => ScriptResult.Unavailable(reason)
     result.merge
 
   /** `processLogsAndErrors` (`Eval.hs:306-324`, plutus 1.71.0.0): the logs are kept whatever the

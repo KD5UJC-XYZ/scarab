@@ -32,14 +32,16 @@ class PlutusBackendProbeSuite extends FunSuite:
     val evaluated = AtomicInteger(0)
     val decoded = AtomicInteger(0)
     private val why = BackendFailure.StackExhausted
+    private val evaluator: ScriptEvaluator[cats.Id] = _ =>
+      evaluated.incrementAndGet()
+      EvalResult.Failure(EvalFailure.Unsupported(why), ExUnits.zero, Vector.empty)
     val backend: PlutusBackend = PlutusBackend(
-      _ =>
-        evaluated.incrementAndGet()
-        EvalResult.Failure(EvalFailure.Unsupported(why), ExUnits.zero, Vector.empty)
-      ,
+      evaluator,
       (_, _, _) =>
         decoded.incrementAndGet()
         if admits then Right(()) else Left(ScriptDecodeFailure.Unavailable(why))
+      ,
+      evaluator
     )
 
   private def hex(j: io.circe.Json, field: String): Bytes =
@@ -75,7 +77,7 @@ class PlutusBackendProbeSuite extends FunSuite:
       .empty(Right(ledger), plutus.slot - 1, None)
       .add(
         raw,
-        TxKit.env.copy(evaluator = backend.evaluator, decoder = backend.decoder),
+        TxKit.env.copy(evaluator = backend.interruptible, decoder = backend.decoder),
         Source.Local
       )
 
