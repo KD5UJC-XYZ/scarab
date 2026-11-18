@@ -102,9 +102,13 @@ One state of one devnet, in which nothing is pending: no proposals, no future pa
 re-registrations, and pools without voting keys. The translation's code paths for those are not exercised
 by this case. What it does change here: the parameters (31 fields in Conway, upgraded to Dijkstra's with
 the genesis's values), the VRF key hash counts (empty in the Conway state, one for each of the three
-pools after the translation), and the forms each era's encoder writes. The result is the ledger's, not the consensus layer's whole extended state at the crossing;
-a comparison with Scarab's `Translate.conwayToDijkstra` compares the `NewEpochState` and, separately, the
-outputs.
+pools after the translation), and the forms each era's encoder writes. The result is the ledger's, not the consensus layer's whole extended state at the crossing.
+
+`DijkstraStateTranslationSuite` (storage) compares it with Scarab's: the Conway `NewEpochState` read from
+`conway-195/state` (the same span and digest), translated by `Translate.conwayToDijkstra` with this genesis
+and written at version 12, is `reference.dijkstraNewEpochState` byte for byte, and each Conway output's
+`MemPack`, upgraded by `Translate.upgradeTxOut`, is `dijkstraTxOutMemPack` byte for byte. The consensus
+parts above are not compared.
 
 ## Provenance and licence
 

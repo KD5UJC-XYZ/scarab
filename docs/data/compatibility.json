@@ -1914,6 +1914,7 @@
           "DijkstraTxTranslationSuite",
           "DijkstraCrossingSuite",
           "DijkstraStoredOutputsSuite",
+          "DijkstraStateTranslationSuite",
           "DijkstraRulesSuite",
           "DijkstraRulesOracleSuite",
           "DijkstraNativeScriptEvalSuite"
@@ -1921,6 +1922,8 @@
         "paths": [
           "fixtures/reference/dijkstra-genesis",
           "fixtures/reference/dijkstra-translation",
+          "fixtures/reference/dijkstra-state-translation",
+          "scripts/oracle/dijkstra-state-translation",
           "fixtures/reference/dijkstra-crossing",
           "fixtures/dijkstra-devnet",
           "fixtures/reference/dijkstra-rules",
