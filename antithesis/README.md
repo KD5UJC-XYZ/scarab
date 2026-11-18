@@ -169,7 +169,8 @@ hooks as well as Scarab's own classes, and the Haskell pools carry none. This co
 two by `scarab/split_jar.py`, entries unchanged: `scarab.jar`, the one the catalog's link names, holds everything under
 `xyz/`, and `scarab-libs.jar` the rest, outside the catalog and on the same classpath. Run beside `pool`, Antithesis's
 "Virtual time per wall time" says what instrumenting the libraries costs; coverage then guides exploration by Scarab's
-code alone.
+code alone. `pool` also differs from it in packaging (one assembly against two JARs), so its like-for-like control is
+`pool/config-split-catalog`: the same two JARs, both linked into the catalog (`scarab/Dockerfile.split`).
 
 ## `pool/config-late-start`: the earlier start order
 
@@ -227,6 +228,7 @@ CONFIG=config-late-start antithesis/pool/scripts/launch.sh on 15m  # experiment:
 CONFIG=config-short-kes SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # 250-slot KES periods
 CONFIG=config-reload SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # the same, s1 reloaded by SIGHUP
 CONFIG=config-thin-catalog SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # only Scarab's classes instrumented
+CONFIG=config-split-catalog SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # its control, every class
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 

@@ -81,6 +81,8 @@ case ${CONFIG:-config} in
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, KES periods of 250 slots, reloads by SIGHUP" ;;
   config-thin-catalog) name=scarab-pool-thin-catalog
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, only Scarab's own classes instrumented" ;;
+  config-split-catalog) name=scarab-pool-split-catalog
+    description="Scarab $commit pool with two cardano-node 11.1.3 pools, every class instrumented from the thin arm's two JARs" ;;
   *) name=scarab-pool
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, create-env defaults" ;;
 esac

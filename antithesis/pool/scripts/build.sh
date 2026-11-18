@@ -40,6 +40,9 @@ mkdir "$context/thin"
 python3 -I "$here/scarab/split_jar.py" "$jar" "$context/thin/scarab.jar" "$context/thin/scarab-libs.jar"
 cp "$here/scarab/Dockerfile.thin" "$context/thin/Dockerfile"
 docker build --pull=false --network=none --platform linux/amd64 -t scarab-at-scarab:thin "$context/thin"
+# Its control, config-split-catalog's s1: the same two JARs, both in the catalog (scarab/Dockerfile.split).
+docker build --pull=false --network=none --platform linux/amd64 -f "$here/scarab/Dockerfile.split" \
+  -t scarab-at-scarab:split "$here/scarab"
 
 build scarab-at-driver:trial driver default
 build scarab-at-canary:trial canary none
