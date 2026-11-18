@@ -63,7 +63,7 @@
      "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
      "symbol": "tickChainDepStatePolyPraos",
      "lines": [
-      573,
+      558,
       587
      ]
     }
