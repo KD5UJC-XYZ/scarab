@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{DataSite, TxIn, TxOutSource}
 import xyz.kd5ujc.scarab.ledger.state.EraTag
-import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusData}
 
 /** Why Babbage's translation of a transaction to a script context fails (`data BabbageContextError
   * era`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs:253-260`, cardano-ledger
@@ -30,10 +30,10 @@ object BabbageTxInfo:
   )(using inj: Inject[BabbageContextError[E], ContextError[E]]): ContextError[E] =
     inj.inject(BabbageContextError.AlonzoContextError(e))
 
-  /** The node's undecodable data at `site`, as the era's error. */
-  def undecodable[E <: EraTag](site: DataSite)(using
+  /** The node's undecodable data at `site`, with the decoder's failure, as the era's error. */
+  def undecodable[E <: EraTag](site: DataSite, cause: PlutusData.DecodeError)(using
       Inject[BabbageContextError[E], ContextError[E]]
-  ): ContextError[E] = alonzo[E](AlonzoContextError.Undecodable(site))
+  ): ContextError[E] = alonzo[E](AlonzoContextError.Undecodable(site, cause))
 
   /** `transReferenceScript` (`Babbage/TxInfo.hs:100-106`, cardano-ledger f649f975): the hash of the
     * reference script.
@@ -63,7 +63,7 @@ object BabbageTxInfo:
         BinaryData
           .binaryDataToData(binaryData)
           .bimap(
-            _ => undecodable[E](DataSite.InlineDatum),
+            undecodable[E](DataSite.InlineDatum, _),
             d => PV2.OutputDatum.OutputDatum(PV1.Datum(d.getPlutusData))
           )
     transAddr(o.address(txOut)) match

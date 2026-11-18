@@ -117,6 +117,14 @@ trait ConwayEraScript[E <: EraTag] extends AlonzoEraScript[E]:
       purpose: PlutusPurpose[F, E]
   ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure[E]]]
 
+  /** `hoistPlutusPurpose` (`Alonzo/Scripts.hs:200-203`, cardano-ledger f649f975): the purpose with
+    * its item's form changed by `f`. The reference's `AlonzoEraScript` member, here from Conway, as
+    * Babbage's purposes are not among the era types yet (#85).
+    */
+  def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
+      purpose: PlutusPurpose[G, E]
+  ): PlutusPurpose[F, E]
+
 /** The guarding purpose and the guard script from Dijkstra (`DijkstraEraScript`, cardano-ledger
   * 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:567-572`), in any form `F`
   * of a purpose, with a `Word32` index. The reference's builder of the guard script

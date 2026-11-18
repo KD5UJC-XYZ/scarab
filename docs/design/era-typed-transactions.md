@@ -673,10 +673,40 @@ Conway's rules on the classes follow as the rest of stage 2.
     V2 requests the reference collected there (14 recorded, 78 of the matrix, 49 of the script results) has
     the typed arguments byte for byte. `ConwayPlutusContextRefusalsSuite` compares the V1 and V2 `TxInfo`s on
     the 84 refusal-corpus cases too.
-  - Not yet (#85): `mkSupportedPlutusRunnable`, which needs the era types' runnable scripts; and the
-    collection of the scripts with their contexts (`mkPlutusWithContext`,
-    `scriptsWithContextFromLedgerTxInfo`) and the annotated transaction (`StAnnTx`) built on them. The node
-    still builds contexts with the flat translation.
+- **The scripts of a transaction with their contexts** (`era/PlutusEvaluate.scala`; `Plutus/Evaluate.hs`,
+  `Alonzo/Plutus/Evaluate.hs`, `Alonzo/Plutus/TxInfo.hs:100-127` and `Alonzo/UTxO.hs:431-465`, cardano-ledger
+  f649f975): `PlutusRunnable`, `SupportedPlutusRunnable` (equal by language and script hash),
+  `EraPlutusContext#mkSupportedPlutusRunnable` with Conway's instance, `CostModel`, `PlutusWithContext`, the
+  era's `CollectError`, and Alonzo's `resolveNeededPlutusScriptsWithPurpose`, `mkPlutusWithContext`,
+  `scriptsWithContextFromLedgerTxInfo` (with its `merge`, the successes and the failures each in reverse order)
+  and `collectPlutusScriptsWithContext`. `hoistPlutusPurpose` is a member of `ConwayEraScript`, as Babbage's
+  purposes are not among the era types.
+  - A runnable script is its binary and its hash, the hash computed from the binary when first asked for, as
+    the reference's lazy field, or installed by the resolver from the key of the provided script: the reference also holds it decoded for the protocol version,
+    but decoding is the `plutus` module's capability (`ScriptDecoder`), whose `Unavailable` is a defect rather
+    than a verdict, so its result is not held in ledger data. A `PlutusWithContext` becomes the evaluator's
+    request (`EvalRequest`) with the arguments as each language applies them.
+  - A cost model's language is its type's index and its parameters `Int64`s, so a script's model is of the
+    script's language; it is made only by the lookup among the parameters' models, by the language's tag: a
+    known language's model is always valid after decoding
+    (`mkCostModelsLenient`, `CostModels.hs:426-440`, and `CostModelDecode`), so the tag is the reference's
+    `costModelsValid` lookup; the split of the valid and the unknown models is #85's item on the order of the
+    parameters.
+  - The spending datum is read before the arguments are made; its failure, which only an inline datum taken
+    unread can reach, is the node's own `Undecodable` with the decoder's failure, where the reference raises
+    `error`, as an output's inline datum's is in the contexts.
+  - `EraPlutusContextSuite`: the scripts collected with their contexts, as the evaluator's requests, equal the
+    flat path's (`Phase2.collect`) in order on the same 432 rows and 62 recorded block transactions, or both
+    fail with the same failures in the same order, compared after normalisation (a missing redeemer by its
+    purpose's tag and index, a translation's failure as the flat one), reaching a missing redeemer, a missing cost model and a
+    translation's failure. A language whose tag the models lack gives `NoCostModel`, and an unknown tag is no
+    language's model. Each runnable made from a script has that script's hash; the resolver gives a provided script's runnable
+    the key it is provided under, which is trusted to be its hash, as the reference trusts it. A needed script's cached runnable is the one used,
+    and a script the cache holds that the transaction does not provide meets no need.
+  - The collection is of a top-level transaction, without the reference's empty memo of sub-transactions'
+    contexts, which only Dijkstra fills (#85's item on Dijkstra's script contexts).
+  - Not yet (#85): the annotated transaction (`StAnnTx`), with `validateMetadata` and
+    `validateScriptsWellFormed`, built on these. The node still builds contexts with the flat translation.
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in

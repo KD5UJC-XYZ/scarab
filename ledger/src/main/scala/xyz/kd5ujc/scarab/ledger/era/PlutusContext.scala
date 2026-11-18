@@ -247,16 +247,23 @@ object SupportedLanguage:
     Integer.compare(a.language.id, b.language.id)
 
 /** The script contexts of era `E` 's languages (`class EraPlutusContext era`, `Context.hs:187-220`,
-  * cardano-ledger f649f975): the languages it supports and their memoised information. The
-  * translation of a Plutus script into a runnable one (`mkSupportedPlutusRunnable`) waits for the
-  * era types' runnable scripts (#85); the context error is the family [[ContextError]] and the
-  * memoised information the family [[TxInfoResult]].
+  * cardano-ledger f649f975): the languages it supports, their runnable scripts and their memoised
+  * information. The context error is the family [[ContextError]] and the memoised information the
+  * family [[TxInfoResult]].
   */
 trait EraPlutusContext[E <: EraTag]:
   /** `mkSupportedLanguage`: the language as one the era supports, none if it does not. */
   def mkSupportedLanguage(
       lang: xyz.kd5ujc.scarab.plutus.PlutusLanguage
   ): Option[SupportedLanguage[E]]
+
+  /** `mkSupportedPlutusRunnable`: the era's Plutus script as a runnable one of its language, for
+    * the major protocol version `v` ([[PlutusRunnable.decodePlutusRunnable]]).
+    */
+  def mkSupportedPlutusRunnable(
+      v: Version,
+      plutusScript: PlutusScript[E]
+  ): SupportedPlutusRunnable[E]
 
   /** `mkTxInfoResult`: the information of every language the era supports, each computed when first
     * looked up.

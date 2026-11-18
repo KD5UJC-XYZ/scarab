@@ -10409,7 +10409,7 @@
    "evidence": [
     "ConwayUtxowChecksSuite"
    ],
-   "note": "Conway's instance of the AlonzoEraScript member, a function on Conway's purpose until the class has the purposes (#85)",
+   "note": "Conway's instance of the class member, which `ConwayEraScript` has from Conway (#85's item on AlonzoEraScript's purposes)",
    "digest": "0b79b04b0c98c138"
   },
   "trait ledger.era.AlonzoEraUTxO": {
@@ -14173,7 +14173,7 @@
     "ContextMatrixSuite"
    ],
    "note": "`TimeTranslationPastHorizon` carries the clock's typed failure, the reference's a Text; `Undecodable` is the node's own, for an output's inline datum, which the reference's `binaryDataToData` takes as data (an `error` otherwise), and which only an inline datum taken unread (`BabbageTxOutRep.fromStored`) reaches; the evidence is transitive: EraPlutusContextSuite and ConwayPlutusContextRefusalsSuite show each typed failure is the flat one, and ContextMatrixSuite shows the flat failures encode to the reference's bytes",
-   "digest": "ab1d069f01665620"
+   "digest": "1f3454144e1e481f"
   },
   "def ledger.era.AlonzoTxInfo.transLookupTxOut": {
    "upstream": [
@@ -14396,7 +14396,7 @@
     "EraConwaySuite"
    ],
    "note": "the inline datum through `binaryDataToData`, whose failure, which only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach, is the node's own `Undecodable` where the reference raises `error`; it is read only for an address that is not Byron, where the reference forces its lazy `datum`, so a Byron address is refused first, as in the flat path",
-   "digest": "62eb79d3869b8546"
+   "digest": "3abd995d16208179"
   },
   "def ledger.era.BabbageTxInfo.transRedeemer": {
    "upstream": [
@@ -17385,7 +17385,7 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "`mkSupportedLanguage`, `mkTxInfoResult` and `lookupTxInfoResult`; `mkSupportedPlutusRunnable` waits for the era types' runnable scripts, and the superclass `AlonzoEraScript era` and the error's Eq, Show, NFData, CBOR and JSON constraints are not members; the context error and the memoised information are the families `ContextError` and `TxInfoResult`",
+   "note": "`mkSupportedLanguage`, `mkSupportedPlutusRunnable`, `mkTxInfoResult` and `lookupTxInfoResult`; the superclass `AlonzoEraScript era` and the error's Eq, Show, NFData, CBOR and JSON constraints are not members; the context error and the memoised information are the families `ContextError` and `TxInfoResult`",
    "digest": "f372f9e86c17bc50"
   },
   "def ledger.era.EraPlutusContext#mkSupportedLanguage": {
@@ -18085,7 +18085,7 @@
     "ConwayPlutusContextRefusalsSuite",
     "EraConwaySuite"
    ],
-   "digest": "d0da23e48a722f1a",
+   "digest": "836966eea907511c",
    "note": "whether there is an inline datum asked through `dataTxOutF`, which reads it as data, as the reference's strict `SJust` forces `binaryDataToData`: an inline datum taken unread (`BabbageTxOutRep.fromStored`) that does not read as data is the node's own `Undecodable` where the reference raises `error`"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxInInfoV1": {
@@ -18230,13 +18230,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "`mkSupportedPlutusRunnable` is not here yet (`EraPlutusContext`)",
-   "digest": "a4b194b92389bd92"
+   "digest": "0c0e9ff9bc8b77be"
   },
   "class ledger.era.conway.ConwayTxInfoResult": {
    "upstream": [
@@ -18889,9 +18888,874 @@
    ],
    "note": "over the output's datum where the reference's matches the compact output's cases, which give the same; `binaryDataToData`'s failure returned where the reference raises `error`",
    "digest": "40b37721c56dbec0"
+  },
+  "class ledger.era.PlutusRunnable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "PlutusRunnable",
+     "lines": [
+      135,
+      141
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the binary and the hash, the hash lazy as the reference's is; the reference also holds the script decoded for the protocol version (`plutusRunnableResult`); decoding is the `plutus` module's capability (`ScriptDecoder`), whose `Unavailable` is a defect, not a verdict, so its result is not held in ledger data; the scripts collected are the flat path's on the Conway corpus (EraPlutusContextSuite)",
+   "digest": "2ab78f40268a1a15"
+  },
+  "def ledger.era.PlutusRunnable.hashPlutusScript": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "hashPlutusScript",
+     "lines": [
+      200,
+      204
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "06c28406b14fa763"
+  },
+  "def ledger.era.PlutusRunnable.decodePlutusRunnable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "decodePlutusRunnable",
+     "lines": [
+      470,
+      475
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "each instance's (`:521-583`) as one function: the script with its hash, the version unused, as the reference also holds the script decoded for the protocol version (`plutusRunnableResult`); decoding is the `plutus` module's capability (`ScriptDecoder`), whose `Unavailable` is a defect, not a verdict, so its result is not held in ledger data; the scripts collected are the flat path's on the Conway corpus (EraPlutusContextSuite)",
+   "digest": "72ee4993bb1ed3e0"
+  },
+  "class ledger.era.SupportedPlutusRunnable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedPlutusRunnable",
+     "lines": [
+      295,
+      298
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the language's translation (`EraPlutusTxInfo l era`) and the runnable as members, the language the abstract `L`",
+   "digest": "f406f5b4a9862752"
+  },
+  "type ledger.era.SupportedPlutusRunnable#L": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedPlutusRunnable",
+     "lines": [
+      295,
+      298
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the language the constructor hides",
+   "digest": "80d2442cf18e1964"
+  },
+  "def ledger.era.SupportedPlutusRunnable#plutusTxInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedPlutusRunnable",
+     "lines": [
+      295,
+      298
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the constructor's constraint, as a member",
+   "digest": "bea8029fa990189a"
+  },
+  "def ledger.era.SupportedPlutusRunnable#plutusRunnable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedPlutusRunnable",
+     "lines": [
+      295,
+      298
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the constructor's field",
+   "digest": "71e87043dc4c4744"
+  },
+  "def ledger.era.SupportedPlutusRunnable#language": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedPlutusRunnable",
+     "lines": [
+      305,
+      308
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "`plutusLanguage` of the runnable, which the equality compares",
+   "digest": "62771ebb9b44054d"
+  },
+  "def ledger.era.SupportedPlutusRunnable#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedPlutusRunnable",
+     "lines": [
+      305,
+      308
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "4f1f7de699252979"
+  },
+  "def ledger.era.SupportedPlutusRunnable.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "SupportedPlutusRunnable",
+     "lines": [
+      295,
+      298
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "87de873f335be931"
+  },
+  "def ledger.era.SupportedPlutusRunnable#withScriptHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "plutusRunnableScriptHash",
+     "lines": [
+      462,
+      462
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the record update `plutusRunnable {plutusRunnableScriptHash = sh}`, the package's own, which the resolver alone uses with the key of the provided script",
+   "digest": "c94f39ad36f8e90c"
+  },
+  "def ledger.era.EraPlutusContext#mkSupportedPlutusRunnable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "mkSupportedPlutusRunnable",
+     "lines": [
+      206,
+      206
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "18b27af3f959b418"
+  },
+  "class ledger.era.CostModel": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "symbol": "CostModel",
+     "lines": [
+      105,
+      122
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the language as the type's index, so a model is its script's language's, and the parameters as `Int64`s; made only by the lookup among the parameters' models (`lookupCostModel`); the evaluation context the parameters make (`cmEvalCtx`, through `mkCostModel`) is the evaluator's to make from the request, and the equality is the reference's, which ignores it",
+   "digest": "eddad63a7fd309f0"
+  },
+  "class ledger.era.PlutusWithContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "PlutusWithContext",
+     "lines": [
+      97,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the language's class (`PlutusLanguage l`) as a member, the language the abstract `L`",
+   "digest": "ceeae78cad6a3f29"
+  },
+  "type ledger.era.PlutusWithContext#L": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "PlutusWithContext",
+     "lines": [
+      97,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the language the constructor hides",
+   "digest": "80d2442cf18e1964"
+  },
+  "def ledger.era.PlutusWithContext#plutusLanguage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "PlutusWithContext",
+     "lines": [
+      97,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the constructor's constraint, as a member",
+   "digest": "f4cf1ccb65889d36"
+  },
+  "def ledger.era.PlutusWithContext#pwcProtocolVersion": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "pwcProtocolVersion",
+     "lines": [
+      100,
+      100
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "bf35603585d439da"
+  },
+  "def ledger.era.PlutusWithContext#pwcScript": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "pwcScript",
+     "lines": [
+      102,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "9fde4f0386306ee3"
+  },
+  "def ledger.era.PlutusWithContext#pwcArgs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "pwcArgs",
+     "lines": [
+      107,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "aa89f449482120c5"
+  },
+  "def ledger.era.PlutusWithContext#pwcExUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "pwcExUnits",
+     "lines": [
+      110,
+      110
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "49d5307db9075ade"
+  },
+  "def ledger.era.PlutusWithContext#pwcCostModel": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "pwcCostModel",
+     "lines": [
+      112,
+      112
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "350bc81e529cebb1"
+  },
+  "def ledger.era.PlutusWithContext.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "PlutusWithContext",
+     "lines": [
+      97,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "951a12092137abd3"
+  },
+  "def ledger.era.PlutusWithContext#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "PlutusWithContext",
+     "lines": [
+      128,
+      140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the reference's equality but the decoded script's (`plutusRunnableResult`), which the runnable does not hold",
+   "digest": "f92bfb2b2883d35c"
+  },
+  "def ledger.era.PlutusWithContext.evalRequest": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs",
+     "symbol": "evaluatePlutusWithContext",
+     "lines": [
+      382,
+      392
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "what `evaluatePlutusWithContext` hands Plutus, as the request the `plutus` module's evaluator takes, a capability: the version, the binary, the arguments as the language applies them, the cost model's parameters and the budget; equal to the flat path's request for every script of the Conway corpus",
+   "digest": "b47a209776eb5ae9"
+  },
+  "enum ledger.era.CollectError": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "CollectError",
+     "lines": [
+      357,
+      361
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "`NoWitness` is given nowhere, as in the reference",
+   "digest": "41babaf3ed1a0f3f"
+  },
+  "def ledger.era.PlutusLanguage#plutusArgsToData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "evaluatePlutusRunnable",
+     "lines": [
+      524,
+      596
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the data each instance's `evaluatePlutusRunnable` applies its script to (`legacyPlutusArgsToData`, or the V3 context alone), the evaluation itself the `plutus` module's capability",
+   "digest": "a2b6a7d8893918cd"
+  },
+  "def ledger.era.ConwayEraScript#hoistPlutusPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "hoistPlutusPurpose",
+     "lines": [
+      200,
+      203
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes)",
+   "digest": "6ed9feb6cbac2fce"
+  },
+  "def ledger.era.AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "resolveNeededPlutusScriptsWithPurpose",
+     "lines": [
+      431,
+      465
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "77625d578e6a236d",
+   "note": "every provided Plutus script made a runnable, its hash computed only when asked for and installed where known (`withScriptHash`), as the reference's lazy field and record update"
+  },
+  "def ledger.era.AlonzoPlutusEvaluate.mkPlutusWithContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "mkPlutusWithContext",
+     "lines": [
+      100,
+      127
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the cost model's type is the script's language; the spending datum is read before the arguments are made, and its failure, which only an inline datum taken unread can reach, is the node's own `Undecodable` with the decoder's failure, where the reference raises `error` when the arguments force it",
+   "digest": "1f1d60a538aee8bb"
+  },
+  "def ledger.era.AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
+     "symbol": "scriptsWithContextFromLedgerTxInfo",
+     "lines": [
+      118,
+      129
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "d1e963df5f8ca4a9"
+  },
+  "def ledger.era.AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfoWithResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
+     "symbol": "scriptsWithContextFromLedgerTxInfoWithResult",
+     "lines": [
+      131,
+      185
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "with its `merge`, the successes and the failures each in reverse order",
+   "digest": "3d059c06d929b45c"
+  },
+  "def ledger.era.AlonzoPlutusEvaluate.collectPlutusScriptsWithContext": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
+     "symbol": "collectPlutusScriptsWithContext",
+     "lines": [
+      83,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); of a top-level transaction only, without the reference's empty memo of sub-transactions' contexts (`ltiMemoizedSubTransactions = mempty`), which only Dijkstra fills (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123)",
+   "digest": "4745cf08700b40d4"
+  },
+  "def ledger.era.CostModel#cmLanguage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "symbol": "cmLanguage",
+     "lines": [
+      106,
+      106
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the type's language, as a value",
+   "digest": "b91017f2e42086c7"
+  },
+  "def ledger.era.CostModel#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "symbol": "CostModel",
+     "lines": [
+      121,
+      122
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "66fb704cb275fe17"
+  },
+  "def ledger.era.CostModel.lookupCostModel": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "symbol": "costModelsValid",
+     "lines": [
+      391,
+      392
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "`Map.lookup lang (costModelsValid costModels)` at the language `L` of the script: the era's `CostModels` holds the valid and the unknown models in one map by tag, so the valid model of a known language is the one under its tag: a known language's model is always valid after decoding, as `mkCostModelsLenient` (`CostModels.hs:426-440`) refuses one `mkCostModel` refuses and, from version 9, `mkCostModel` refuses no list of `Int64` (`CostModelDecode`); the split of the two maps is #85's item on the reference's order of the parameters",
+   "digest": "17786cc96cde3c62"
+  },
+  "def ledger.era.PlutusRunnable#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "PlutusRunnable",
+     "lines": [
+      135,
+      142
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the derived equality but of the decoded script, which the runnable does not hold",
+   "digest": "ba4bb1b6f6e362c4"
+  },
+  "val ledger.era.PlutusRunnable#plutusRunnableBinary": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "plutusRunnableBinary",
+     "lines": [
+      136,
+      136
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "6b2944558de36fb5"
+  },
+  "val ledger.era.PlutusRunnable#plutusRunnableScriptHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "plutusRunnableScriptHash",
+     "lines": [
+      137,
+      138
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "lazy, as the reference's field",
+   "digest": "fa14e6fa68f74a32"
+  },
+  "def ledger.era.PlutusRunnable#withScriptHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "plutusRunnableScriptHash",
+     "lines": [
+      462,
+      462
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the record update `plutusRunnable {plutusRunnableScriptHash = sh}`, the package's own, which the resolver alone uses with the key of the provided script",
+   "digest": "811260f217aeeca9"
+  },
+  "def ledger.era.PlutusRunnable.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "symbol": "PlutusRunnable",
+     "lines": [
+      135,
+      141
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the constructor with a known hash, the package's own",
+   "digest": "1bc4fac5862611bd"
+  },
+  "def ledger.era.CostModels.int64Model": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "symbol": "cmValues",
+     "lines": [
+      107,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the model under a tag, its parameters as the `Int64`s the reference's `cmValues :: [Int64]` holds, which `CostModels.from` proves of every model",
+   "digest": "f4aa951a1a17a320"
   }
  },
  "glue": [
+  {
+   "reason": "the companions of the runnable scripts, the scripts with their contexts, the cost model and the collection's failure, holding their equality and constructors, and the namespace of Alonzo's collection of a transaction's scripts",
+   "definitions": [
+    "given ledger.era.CollectError.given_CanEqual_CollectError_E_CollectError_E",
+    "given ledger.era.CostModel.given_CanEqual_CostModel_L_CostModel_L",
+    "given ledger.era.PlutusRunnable.given_CanEqual_PlutusRunnable_L_PlutusRunnable_L",
+    "given ledger.era.PlutusWithContext.given_CanEqual_PlutusWithContext_PlutusWithContext",
+    "given ledger.era.SupportedPlutusRunnable.given_CanEqual_SupportedPlutusRunnable_E_SupportedPlutusRunnable_E",
+    "object ledger.era.AlonzoPlutusEvaluate",
+    "object ledger.era.CollectError",
+    "object ledger.era.CostModel",
+    "object ledger.era.PlutusRunnable",
+    "object ledger.era.PlutusWithContext",
+    "object ledger.era.SupportedPlutusRunnable"
+   ]
+  },
   {
    "reason": "the state layout of each reference build Scarab can follow, and the defect of a build whose layout is not implemented yet, which the node's setup refuses before any rule runs (#1002, stage 0); the reference is one build and has no counterpart",
    "definitions": [
@@ -19093,7 +19957,15 @@
     "def ledger.era.SupportedLanguage#hashCode",
     "def ledger.era.SupportedLanguage#toString",
     "def ledger.era.Data#hashCode",
-    "def ledger.era.Data#toString"
+    "def ledger.era.Data#toString",
+    "def ledger.era.SupportedPlutusRunnable#hashCode",
+    "def ledger.era.SupportedPlutusRunnable#toString",
+    "def ledger.era.PlutusWithContext#hashCode",
+    "def ledger.era.PlutusWithContext#toString",
+    "def ledger.era.CostModel#hashCode",
+    "def ledger.era.CostModel#toString",
+    "def ledger.era.PlutusRunnable#hashCode",
+    "def ledger.era.PlutusRunnable#toString"
    ]
   },
   {

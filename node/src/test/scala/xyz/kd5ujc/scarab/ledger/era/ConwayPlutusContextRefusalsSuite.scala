@@ -77,7 +77,7 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
             case AlonzoContextError.TranslationLogicMissingInput(in) =>
               TranslationError.UnresolvedInput(in)
             case AlonzoContextError.TimeTranslationPastHorizon(cause) => cause
-            case AlonzoContextError.Undecodable(site) => TranslationError.Undecodable(site)
+            case AlonzoContextError.Undecodable(site, _) => TranslationError.Undecodable(site)
         case BabbageContextError.ByronTxOutInContext(source) =>
           TranslationError.ByronTxOutInContext(source)
         case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>

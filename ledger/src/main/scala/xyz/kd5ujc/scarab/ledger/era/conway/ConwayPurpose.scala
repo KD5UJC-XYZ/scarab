@@ -41,8 +41,8 @@ object ConwayPlutusPurpose:
     if tags != 0 then tags else a.ix.value.compare(b.ix.value)
 
   /** `hoistPlutusPurpose` of Conway's instance (`Conway/Scripts.hs:111-117`, cardano-ledger
-    * f649f975): the purpose in the form `F`, its item's form changed by `f`. The reference's class
-    * member, here Conway's own until `AlonzoEraScript` has the purposes (#85).
+    * f649f975): the purpose in the form `F`, its item's form changed by `f`; Conway's instance of
+    * the class member ([[xyz.kd5ujc.scarab.ledger.era.ConwayEraScript.hoistPlutusPurpose]]).
     */
   def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
       purpose: ConwayPlutusPurpose[G]

@@ -156,6 +156,21 @@ object DijkstraScript:
       case DijkstraPlutusScript.V3(p) => f(p, PlutusLanguage.v3)
       case DijkstraPlutusScript.V4(p) => f(p, PlutusLanguage.v4)
 
+    // `hoistPlutusPurpose`, `Scripts.hs:499-506`, cardano-ledger 9df9f98c
+    override def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
+        purpose: DijkstraPlutusPurpose[G]
+    ): DijkstraPlutusPurpose[F] = purpose match
+      case DijkstraPlutusPurpose.DijkstraSpending(x) => DijkstraPlutusPurpose.DijkstraSpending(f(x))
+      case DijkstraPlutusPurpose.DijkstraMinting(x)  => DijkstraPlutusPurpose.DijkstraMinting(f(x))
+      case DijkstraPlutusPurpose.DijkstraCertifying(x) =>
+        DijkstraPlutusPurpose.DijkstraCertifying(f(x))
+      case DijkstraPlutusPurpose.DijkstraWithdrawing(x) =>
+        DijkstraPlutusPurpose.DijkstraWithdrawing(f(x))
+      case DijkstraPlutusPurpose.DijkstraVoting(x) => DijkstraPlutusPurpose.DijkstraVoting(f(x))
+      case DijkstraPlutusPurpose.DijkstraProposing(x) =>
+        DijkstraPlutusPurpose.DijkstraProposing(f(x))
+      case DijkstraPlutusPurpose.DijkstraGuarding(x) => DijkstraPlutusPurpose.DijkstraGuarding(f(x))
+
     // `ConwayEraScript DijkstraEra`, `Scripts.hs:556-565`, cardano-ledger 9df9f98c
     override def mkVotingPurpose[F[_, _]](
         voter: F[Unsigned[Unsigned.Width.W32], Voter]
