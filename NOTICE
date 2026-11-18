@@ -100,7 +100,10 @@ from a node of the testnet's own build that followed it. fixtures/eras, fixtures
 node 11.1.3 tooling) and fixtures/kes-gen are produced from a throwaway local cluster
 and carry no third-party data. fixtures/dijkstra-devnet is produced from a throwaway local cluster of the
 Leios testnet image of input-output-hk/ouroboros-leios (Apache-2.0); its Alonzo, Conway and Dijkstra
-genesis files are derived from that testnet's (provenance in fixtures/dijkstra-devnet/README.md). The files in fixtures/licenses and the licence files of the
+genesis files are derived from that testnet's (provenance in fixtures/dijkstra-devnet/README.md).
+fixtures/reference/dijkstra-state-translation holds what the unchanged cardano-ledger (Apache-2.0) of the
+Leios testnet build computes from the throwaway local-cluster snapshot in fixtures/leios/state (provenance
+in fixtures/reference/dijkstra-state-translation/README.md). The files in fixtures/licenses and the licence files of the
 individual fixture directories cover the upstream-derived test vectors.
 
 The reference Cardano node binaries used by scripts/prepare_reference_image.py are
