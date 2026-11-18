@@ -842,6 +842,23 @@
     "enum protocol.LocalTxMonitor.TxIdPrefix",
     "def network.LocalTxMonitorServer.Source#txIds"
    ]
+  },
+  {
+   "reason": "the hook by which the node's decoder of a GenTx judges a LocalTxSubmission transaction, whole or the part that has arrived: the reference hands the codec the decoder itself (decodeTx, LocalTxSubmission/Codec.hs:148-154 at ouroboros-network c45735a5) and reads the transaction from the stream; Scarab reads the transaction as one item and asks the node's judge of it, which is outside the areas",
+   "definitions": [
+    "trait protocol.LocalTxSubmission.TxReader",
+    "def protocol.LocalTxSubmission.TxReader#prefix",
+    "object protocol.LocalTxSubmission.TxReader",
+    "val protocol.LocalTxSubmission.TxReader.whole",
+    "enum protocol.LocalTxSubmission.TxPrefix"
+   ]
+  },
+  {
+   "reason": "the query reader's judgement of a LocalStateQuery query that has not all arrived: the reference hands the codec the decoder of queries itself (decodeQuery, LocalStateQuery/Codec.hs:169-170 at ouroboros-network c45735a5) and reads the query from the stream; Scarab reads a whole query as one item, and the judgement is in the node, outside the areas",
+   "definitions": [
+    "def protocol.LocalStateQuery.QueryReader#prefix",
+    "enum protocol.LocalStateQuery.QueryPrefix"
+   ]
   }
  ]
 }

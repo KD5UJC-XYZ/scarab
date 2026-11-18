@@ -223,7 +223,7 @@ section and the catalogue differ.
 | `cardano_node_metrics_txsInMempool_int` | gauge |  | Transactions in the mempool. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
 | `cardano_node_metrics_mempoolBytes_int` | gauge |  | Size of the transactions in the mempool, in bytes. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
 | `cardano_node_metrics_txsProcessedNum_counter` | counter |  | Transactions added to the mempool since the start. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
-| `scarab_mempool_rejected_total` | counter | `reason` | Transactions the mempool refused, by reason. | none (a trace message only) |
+| `scarab_mempool_rejected_total` | counter | `reason` | Transactions the mempool refused, by reason. A local client's transaction that its decoder refuses, or that a decoder throws on, never reaches the mempool and is not counted here: its connection ends, as the reference's codec ends it, and the log's `inbound` line with `state` `closed` gives the decoder's reason ([logging](logging.md)). | none (a trace message only) |
 | `scarab_mempool_dropped_total` | counter |  | Held transactions dropped because the new tip no longer admits them. | none (a trace message only) |
 | `scarab_mempool_adopted_total` | counter |  | Held transactions that appeared in a block of our chain. | none |
 | `scarab_mempool_removed_total` | counter |  | Transactions removed from the mempool on request although they still apply (a forged block that our own chain refused). | none |

@@ -103,6 +103,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
               serverEnd,
               magic,
               _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              LocalTxSubmission.TxReader.whole,
               None,
               chainSync = chain,
               txMonitor = monitor
@@ -295,6 +296,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
                 serverEnd,
                 magic,
                 _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+                LocalTxSubmission.TxReader.whole,
                 txMonitor = Some(t.source)
               )
               .map(_.message)
@@ -343,6 +345,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
               serverEnd,
               magic,
               _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              LocalTxSubmission.TxReader.whole,
               txMonitor = Some(source)
             )
             .map(Right(_): Either[NetworkError, LocalTxSubmissionServer.End])

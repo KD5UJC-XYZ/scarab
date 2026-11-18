@@ -168,11 +168,19 @@ enum ProtocolError extends DomainError:
   case PeerSharing(cause: xyz.kd5ujc.scarab.protocol.PeerSharing.Error)
   case Leios(cause: LeiosWireError)
 
-  /** A transaction of a TxSubmission2 reply that the era's ledger decoders refuse, with their typed
-    * reason (the ledger's errors are not visible to the protocols, so it is kept as the
-    * `DomainError` it is).
+  /** A transaction that its decoders refuse, with their typed reason (the ledger's and the node's
+    * errors are not visible to the protocols, so it is kept as the `DomainError` it is): one of a
+    * TxSubmission2 reply, or the part of a LocalTxSubmission `MsgSubmitTx` transaction that has
+    * arrived ([[LocalTxSubmission.TxReader]]).
     */
   case UndecodableTransaction(cause: DomainError)
+
+  /** The part of a LocalStateQuery `MsgQuery` query that has arrived, which the node's decoder of
+    * queries fails on whatever follows, with its typed reason
+    * ([[LocalStateQuery.QueryReader.prefix]]): the reference reads the query in the codec, so such
+    * a prefix ends the connection at once.
+    */
+  case UndecodableQueryPrefix(cause: DomainError)
 
   /** The transaction id of a LocalTxMonitor `MsgHasTx` that its era's decoder refuses, with the
     * node's typed reason (kept as the `DomainError` it is, as for [[UndecodableTransaction]]). The
@@ -362,6 +370,7 @@ enum ProtocolError extends DomainError:
     case PeerSharing(cause)            => cause.message
     case Leios(cause)                  => cause.toString
     case UndecodableTransaction(cause) => s"undecodable transaction: $cause"
+    case UndecodableQueryPrefix(cause) => s"undecodable query: $cause"
     case UndecodableTxId(cause)        => s"undecodable transaction id: $cause"
 
 object ProtocolError:

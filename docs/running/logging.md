@@ -155,7 +155,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `gsmTransition` | `Net.GsmTransition` | Notice | `transition`, `state`, `peers`, `tipTooOld` |
 | `fetchModeChanged` | `Net.FetchModeChanged` | Info | `mode` |
 | `mempoolAdded` | `Mempool.MempoolAdded` | Info | `tx`, `size`, `count`, `bytes` |
-| `mempoolRejected` | `Mempool.MempoolRejected` | Info | `tx`, `reason` |
+| `mempoolRejected` | `Mempool.MempoolRejected` | Info | `tx`, `reason` (not for a local client's transaction its decoder refuses: that one never reaches the mempool, and its connection's `inbound` `closed` line gives the reason) |
 | `mempoolWaiting` | `Mempool.MempoolWaiting` | Info | `tx`, `reason` |
 | `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason`, `cause`: `Revalidation` (the pool, validated again at a new tip or after a removal, no longer admits it) or `Withdrawal` (the forger had no verdict on it while it built a block) |
 | `mempoolAdopted` | `Mempool.MempoolAdopted` | Info | `tx` |

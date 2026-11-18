@@ -7,7 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import cats.effect.Resource
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.NtcVersion
+import xyz.kd5ujc.scarab.protocol.{LocalTxSubmission, NtcVersion}
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 
@@ -24,17 +24,19 @@ object NodeToClientServer:
       bearer: Bearer[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
+      txs: LocalTxSubmission.TxReader,
       stateQuery: Option[LocalStateQueryServer.Source[F, Nothing]] = None,
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =
-    acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, chainSync, txMonitor)
+    acceptBackend[F, Nothing](bearer, magic, submit, txs, stateQuery, chainSync, txMonitor)
       .map(_.fold(identity, identity))
 
   def acceptBackend[F[_]: Async, E](
       bearer: Bearer[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
+      txs: LocalTxSubmission.TxReader,
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
@@ -49,7 +51,7 @@ object NodeToClientServer:
           txMonitor = txMonitor.isDefined
         )
       )
-      .use(mux => acceptOn(mux, magic, submit, stateQuery, chainSync, txMonitor))
+      .use(mux => acceptOn(mux, magic, submit, txs, stateQuery, chainSync, txMonitor))
 
   /** Opens a connection's multiplexer over its bearer. */
   trait MuxFactory[F[_]]:
@@ -92,6 +94,7 @@ object NodeToClientServer:
       mux: Mux[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
+      txs: LocalTxSubmission.TxReader,
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
@@ -134,7 +137,7 @@ object NodeToClientServer:
         .traverse(source => mux.channel(Protocols.LocalTxMonitor).map(_ -> source))
       served = Fibers.failFast[F, NetworkError](
         List(
-          child(LocalTxSubmissionServer.run(submission, submit).flatMap {
+          child(LocalTxSubmissionServer.run(submission, submit, txs).flatMap {
             case None        => Async[F].unit
             case Some(error) => unavailable.complete(error).void *> Async[F].never[Unit]
           }),

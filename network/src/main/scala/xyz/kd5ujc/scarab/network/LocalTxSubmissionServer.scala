@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.LocalTxSubmission
+import xyz.kd5ujc.scarab.protocol.{LocalTxSubmission, ProtocolError}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 
 import NetworkError.RuntimeViolation
@@ -35,6 +35,13 @@ object LocalTxSubmissionServer:
     case Rejected(reason: Bytes)
     case ServiceUnavailable(error: Unavailable)
 
+    /** The decoder of a transaction refuses it, with its typed reason: no answer, and the
+      * connection ends with the protocol's decode error, as the reference's codec, which decodes
+      * the transaction, ends it, and as a prefix it refuses ends it
+      * ([[LocalTxSubmission.TxReader]]).
+      */
+    case Undecodable(cause: DomainError)
+
     /** The node's decoder threw on the submitted transaction: no answer, and the connection ends
       * with [[NetworkError.DecoderDefect]], as an exception of the codec ends it in the reference
       * (issue 465).
@@ -57,9 +64,13 @@ object LocalTxSubmissionServer:
       case ConnectionClosed(error)   => error.message
       case ServiceUnavailable(error) => s"service unavailable: ${error.message}"
 
+  /** Serve submissions until the client is done. `txs` judges a transaction that has not all
+    * arrived, as the node's decoder of transactions reads one ([[LocalTxSubmission.TxReader]]).
+    */
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
-      submit: Bytes => F[Response]
+      submit: Bytes => F[Response],
+      txs: LocalTxSubmission.TxReader
   )(using Raise[F, NetworkError]): F[Option[Unavailable]] =
     val id = Protocols.LocalTxSubmission
     def illegal[A](detail: NetworkError.Violation): F[A] =
@@ -69,7 +80,7 @@ object LocalTxSubmissionServer:
     val step: F[Either[Unit, Option[Unavailable]]] =
       channel
         .recvIncremental(LocalTxSubmission.MaxMessageBytes)(
-          LocalTxSubmission.incremental(LocalTxSubmission.State.Idle, Role.Client)
+          LocalTxSubmission.incremental(LocalTxSubmission.State.Idle, Role.Client, txs)
         )
         .flatMap {
           case LocalTxSubmission.Message.SubmitTx(tx) =>
@@ -80,19 +91,24 @@ object LocalTxSubmissionServer:
                 send(LocalTxSubmission.State.Busy, LocalTxSubmission.Message.RejectTx(reason))
                   .as(Left(()))
               case Response.ServiceUnavailable(error) => Temporal[F].pure(Right(Some(error)))
-              case Response.InputDefect(cause)        => NetworkError.DecoderDefect(id, cause).raise
-              case Response.ServingDefect(cause)      => NetworkError.ServingDefect(id, cause).raise
+              case Response.Undecodable(cause) =>
+                NetworkError.Decode(id, ProtocolError.UndecodableTransaction(cause)).raise
+              case Response.InputDefect(cause)   => NetworkError.DecoderDefect(id, cause).raise
+              case Response.ServingDefect(cause) => NetworkError.ServingDefect(id, cause).raise
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
           case other => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))
         }
     Temporal[F].tailRecM(())(_ => step)
 
-  /** One inbound node-to-client connection: handshake (versions 16 to 23), then submission. */
+  /** One inbound node-to-client connection: handshake (versions 16 to 23), then submission, each
+    * transaction not all of which has arrived judged by `txs`.
+    */
   def accept[F[_]: cats.effect.Async](
       bearer: Bearer[F],
       magic: Long,
-      submit: Bytes => F[Response]
+      submit: Bytes => F[Response],
+      txs: LocalTxSubmission.TxReader
   )(using Raise[F, NetworkError]): F[End] =
     Mux
       .resource(
@@ -120,7 +136,7 @@ object LocalTxSubmissionServer:
             .race(
               Fibers.scoped[F, NetworkError, Option[Unavailable]](
                 NetworkError.fromThrowable("local-tx-submission", _)
-              )(run(channel, submit)),
+              )(run(channel, submit, txs)),
               mux.closed
             )
           reason <- ended.fold(

@@ -18,7 +18,13 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody}
-import xyz.kd5ujc.scarab.node.mempool.{GenTxId, LocalSubmission, MempoolState, RelayedTransactions}
+import xyz.kd5ujc.scarab.node.mempool.{
+  GenTx,
+  GenTxId,
+  LocalSubmission,
+  MempoolState,
+  RelayedTransactions
+}
 import xyz.kd5ujc.scarab.node.AnnouncedHeaders
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
@@ -857,7 +863,7 @@ object Targets:
               .map(_.toArray)
           ) ++
           netCorpus("local-tx-submission:localTxSubmissionMessage")(),
-      LocalTxSubmission.decodePrefix,
+      LocalTxSubmission.decodePrefix(_, _, _, GenTx.reader),
       LocalTxSubmission.encode
     ),
     Target(
@@ -865,21 +871,35 @@ object Targets:
       netCorpus("local-tx-submission:localTxSubmissionMessage"),
       probe("local-tx-submission-incremental") { b =>
         for state <- LocalTxSubmission.State.values; role <- ChainSync.Role.values do
-          val decoder = LocalTxSubmission.incremental(state, role)
+          val decoder = LocalTxSubmission.incremental(state, role, GenTx.reader)
           val chunk = 1 + b.headOption.fold(0)(v => (v & 0xff) % 23)
+          // the verdict and the length of input it was given at
           @tailrec def feed(
               end: Int,
               cursor: decoder.Cursor
-          ): DecodeResult[LocalTxSubmission.Message] =
+          ): (DecodeResult[LocalTxSubmission.Message], Int) =
             val (next, result) = decoder.resume(cursor, b.take(end))
-            if end == b.size || result != DecodeResult.NeedMore then result
+            if end == b.size || result != DecodeResult.NeedMore then (result, end)
             else feed(math.min(b.size, end + chunk), next)
-          val result = feed(0, decoder.initial)
+          val (result, end) = feed(0, decoder.initial)
           seen("local-tx-submission-incremental", result.isInstanceOf[DecodeResult.Decoded[?]])
           req(
-            result == LocalTxSubmission.decodePrefix(state, role, b),
+            result == LocalTxSubmission.decodePrefix(state, role, b.take(end), GenTx.reader),
             "fragmented submission differs"
           )
+          // the reader only ends a transaction it refuses before the rest arrives; any other
+          // verdict is the one without it, and the one of the whole input
+          result match
+            case DecodeResult.Failed(ProtocolError.UndecodableTransaction(_)) => ()
+            case other =>
+              req(
+                other == LocalTxSubmission.decodePrefix(state, role, b.take(end)),
+                "the transaction reader changed another verdict"
+              )
+              req(
+                other == LocalTxSubmission.decodePrefix(state, role, b),
+                "fragmented submission differs from the whole input"
+              )
       }
     ),
     roundTrip(

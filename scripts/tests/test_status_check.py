@@ -207,6 +207,13 @@ class VocabularyCase(unittest.TestCase):
         cited = status.decisions_cited((ROOT / "docs/decisions.md").read_text(encoding="utf-8"))
         self.assertLessEqual({474, 567, 693}, cited)
 
+    def test_a_row_dated_before_its_record_is_a_row(self):
+        row = ("| before 2026-11-18 | [#924](https://github.com/KD5UJC-XYZ/scarab/issues/924) | ~~A decision.~~ "
+               "Superseded by the next row. | | none recorded | a record |")
+        self.assertIn(924, status.decisions_cited(row))
+        self.assertEqual(status.decisions_citing(924, row),
+                         ["before 2026-11-18 (superseded): A decision.~~ Superseded by the next row."])
+
     def test_process_names_the_owner_decision_label(self):
         self.assertIn("`owner-decision`", (ROOT / "docs/process.md").read_text(encoding="utf-8"))
 

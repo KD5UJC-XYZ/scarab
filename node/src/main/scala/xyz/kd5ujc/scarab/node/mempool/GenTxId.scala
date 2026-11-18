@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{ByteStrings, DecoderVersion}
 import xyz.kd5ujc.scarab.ledger.state.{Hash32, ShelleyBasedEra, VocabError}
+import xyz.kd5ujc.scarab.node.PrefixTokens
 import xyz.kd5ujc.scarab.protocol.{Era, LocalTxMonitor}
 
 /** `TxId (GenTx ByronBlock)`: the id of one of the four things Byron's mempool holds, each the
@@ -139,19 +140,19 @@ object GenTxId:
     *     ([[ByteStrings]]); its length is judged once it has arrived whole (`packByteString` after
     *     `decCBOR`, `Decoding/DecCBOR.hs:492-497`, cardano-ledger f649f975), which [[decode]] does.
     *
-    * A token is its initial byte and the bytes of its argument; cborg judges one only once it has
-    * them all, so a token of the wrong kind whose argument has not arrived waits (cborg's source is
-    * not read here; cardano-node 11.1.3 waits on the `HasTx` prefixes `82 07 82 3b 00` and
-    * `82 07 82 19 01`, and ends the connection once the rest of that head has arrived).
+    * A token of the wrong kind whose head has not all arrived waits, as cborg's does
+    * ([[PrefixTokens]]).
     */
   def prefix(input: Bytes): LocalTxMonitor.TxIdPrefix =
-    listOfTwo(input, 0, Refusal.EraEnvelope)
-      .flatMap(word8(input, _, Refusal.EraIndex))
-      .flatMap(index =>
+    val tokens = PrefixTokens(input, LocalTxMonitor.TxIdPrefix.Short)
+    tokens
+      .listOf(2, 0, refused(Refusal.EraEnvelope))
+      .flatMap(tokens.word8(_, refused(Refusal.EraIndex)))
+      .flatMap((index, next) =>
         Era
-          .fromIndex(BigInt(index.value))
-          .toRight(refused(Refusal.UnknownEra(index.value)))
-          .flatMap(idPrefix(input, index.next, _))
+          .fromIndex(BigInt(index))
+          .toRight(refused(Refusal.UnknownEra(index)))
+          .flatMap(idPrefix(tokens, next, _))
       )
       .merge
 
@@ -159,87 +160,42 @@ object GenTxId:
   val reader: LocalTxMonitor.TxIdReader = prefix(_)
 
   private type Step[A] = Either[LocalTxMonitor.TxIdPrefix, A]
-
-  /** A token read whole: its major type, its additional information, its argument (that information
-    * below 24) and where the next token starts.
-    */
-  private final case class Token(major: Int, info: Int, argument: Long, next: Int)
-
-  /** A `Word8` read, and where the next token starts. */
-  private final case class Word8(value: Int, next: Int)
+  private type Tokens = PrefixTokens[LocalTxMonitor.TxIdPrefix]
 
   private def refused(refusal: Refusal): LocalTxMonitor.TxIdPrefix =
     LocalTxMonitor.TxIdPrefix.Refused(refusal)
 
-  /** The token at `at`, or `Short` until it has arrived whole. */
-  private def token(input: Bytes, at: Int): Step[Token] =
-    input
-      .lift(at)
-      .flatMap { byte =>
-        val initial = byte & 0xff
-        val info = initial & 31
-        val width = info match
-          case 24 => 1
-          case 25 => 2
-          case 26 => 4
-          case 27 => 8
-          case _  => 0
-        input
-          .bigEndian(at + 1, width)
-          .map(argument =>
-            Token(initial >> 5, info, if width == 0 then info.toLong else argument, at + 1 + width)
-          )
-      }
-      .toRight(LocalTxMonitor.TxIdPrefix.Short)
-
-  /** `enforceSize _ 2`: the head of a definite list of two. */
-  private def listOfTwo(input: Bytes, at: Int, refusal: Refusal): Step[Int] =
-    token(input, at).flatMap(t =>
-      Either.cond(t.major == 4 && t.info < 28 && t.argument == 2, t.next, refused(refusal))
-    )
-
-  /** cborg's `decodeWord8`: an unsigned integer up to 255, at any width of its head. */
-  private def word8(input: Bytes, at: Int, refusal: Refusal): Step[Word8] =
-    token(input, at).flatMap(t =>
-      Either.cond(
-        t.major == 0 && t.info < 28 && t.argument >= 0 && t.argument <= 0xff,
-        Word8(t.argument.toInt, t.next),
-        refused(refusal)
-      )
-    )
-
-  private def idPrefix(input: Bytes, at: Int, era: Era): Step[LocalTxMonitor.TxIdPrefix] =
+  private def idPrefix(tokens: Tokens, at: Int, era: Era): Step[LocalTxMonitor.TxIdPrefix] =
     era match
       case Era.Byron =>
-        listOfTwo(input, at, Refusal.ByronEnvelope)
-          .flatMap(word8(input, _, Refusal.ByronTag))
-          .flatMap(constructor =>
-            Either.cond(
-              constructor.value <= 3,
-              constructor.next,
-              refused(Refusal.UnknownByronTag(constructor.value))
-            )
+        tokens
+          .listOf(2, at, refused(Refusal.ByronEnvelope))
+          .flatMap(tokens.word8(_, refused(Refusal.ByronTag)))
+          .flatMap((constructor, next) =>
+            Either.cond(constructor <= 3, next, refused(Refusal.UnknownByronTag(constructor)))
           )
-          .flatMap(hashPrefix(input, _, era, ByteStrings.Definite))
+          .flatMap(hashPrefix(tokens, _, era, ByteStrings.Definite))
       case Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway |
           Era.Dijkstra =>
-        hashPrefix(input, at, era, ByteStrings.of(DecoderVersion.of(era)))
+        hashPrefix(tokens, at, era, ByteStrings.of(DecoderVersion.of(era)))
 
   /** The head of the hash's byte string; what follows it is judged once it has arrived whole. */
   private def hashPrefix(
-      input: Bytes,
+      tokens: Tokens,
       at: Int,
       era: Era,
       strings: ByteStrings
   ): Step[LocalTxMonitor.TxIdPrefix] =
-    token(input, at).flatMap(t =>
-      if t.major != 2 then Left(refused(Refusal.ExpectedBytes(era)))
-      else if t.info != 31 then Right(LocalTxMonitor.TxIdPrefix.Short)
-      else
-        strings match
-          case ByteStrings.Chunked  => Right(LocalTxMonitor.TxIdPrefix.Short)
-          case ByteStrings.Definite => Left(refused(Refusal.IndefiniteBytes(era)))
-    )
+    tokens
+      .head(at)
+      .flatMap(t =>
+        if t.major != 2 then Left(refused(Refusal.ExpectedBytes(era)))
+        else if t.info != 31 then Right(LocalTxMonitor.TxIdPrefix.Short)
+        else
+          strings match
+            case ByteStrings.Chunked  => Right(LocalTxMonitor.TxIdPrefix.Short)
+            case ByteStrings.Definite => Left(refused(Refusal.IndefiniteBytes(era)))
+      )
 
   private def ofEra(era: Era, id: Node): R[GenTxId] = era match
     case Era.Byron    => byron(id).map(Byron(_))

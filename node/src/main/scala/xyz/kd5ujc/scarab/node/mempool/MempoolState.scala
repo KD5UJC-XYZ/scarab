@@ -275,8 +275,15 @@ final case class MempoolState(
       env: MempoolEnv,
       source: Source
   ): Either[Rejection, (MempoolState, Entry)] =
+    MempoolState.read(submission).flatMap(add(_, env, source))
+
+  /** [[add]] of a submission already read in its era ([[MempoolState.read]]). */
+  def add(
+      read: MempoolState.Read,
+      env: MempoolEnv,
+      source: Source
+  ): Either[Rejection, (MempoolState, Entry)] =
     for
-      read <- MempoolState.read(submission)
       ledger <- current.leftMap(Rejection.NoLedger(_))
       baseLedger <- base.leftMap(Rejection.NoLedger(_))
       in <- MempoolState.inject(read, env.injection, ledger.era)

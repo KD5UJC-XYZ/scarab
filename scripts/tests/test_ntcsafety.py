@@ -35,3 +35,8 @@ class QuerySafetyTest(unittest.TestCase):
         for raw in (cbor.enc(cbor.Tag(23, b"x")), cbor.enc(cbor.Tag(24, b"x")) + b"\x00"):
             with self.assertRaisesRegex(RuntimeError, "malformed GetCBOR"):
                 ntcsafety.unwrap(raw, 1)
+
+    def test_each_invalid_prefix_is_not_a_whole_query(self):
+        for label, raw in ntcsafety.INVALID_PREFIXES.items():
+            with self.subTest(label=label), self.assertRaises(ntcquery.Incomplete):
+                ntcquery.decode(raw)

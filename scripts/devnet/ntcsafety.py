@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""LocalStateQuery nesting and exact hard-fork constructors (REF-05 / REF-08).
+"""LocalStateQuery nesting and exact hard-fork constructors (REF-05 / REF-08), and query prefixes the decoder fails on.
 
 The singleton constructors follow ouroboros-consensus 82ecba3:
 HardFork/Combinator/Ledger/Query.hs:536-551 and Serialisation/SerialiseNodeToClient.hs:410-417.
@@ -76,6 +76,19 @@ VALID_RAW = {
     "byron-update-interface-state": b"\x82\x00\x82\x00\x82\x00\x00",
     "dijkstra-epoch": b"\x82\x00\x82\x00\x82\x07\x81\x01",
     "era-start-of-dijkstra": b"\x82\x00\x83\x01\x81\x00\x07",
+}
+
+# Leading bytes of a query that the reference's decoder of queries fails on before the query ends (#924): it reads
+# the query from the stream, each envelope's size and tag together (`Ouroboros/Consensus/Ledger/Query.hs:482-491`,
+# `HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:456-479`, `Common.hs:420-425`,
+# `Shelley/Ledger/Query.hs:921-998`, ouroboros-consensus 82ecba32), and ends the connection at once. Each is sent
+# without the rest and must close the connection on both nodes.
+INVALID_PREFIXES = {
+    "query-tag-15": b"\x82\x0f",
+    "block-query-3-0": b"\x82\x00\x83\x00",
+    "query-in-era-8": b"\x82\x00\x82\x00\x82\x08",
+    "ledger-query-2-40": b"\x82\x00\x82\x00\x82\x06\x82\x18\x28",
+    "conway-only-query-of-babbage": b"\x82\x00\x82\x00\x82\x05\x82\x18\x1a",
 }
 
 
@@ -170,6 +183,11 @@ def run(open_reference, open_scala):
         report["invalid"][label] = row
         if not all(result["closed"] for result in row.values()):
             failures.append(f"query safety: invalid {label} not refused by both nodes: {row}")
+    for label, raw in INVALID_PREFIXES.items():
+        row = {"reference": _closed(open_reference, raw), "scala": _closed(open_scala, raw)}
+        report.setdefault("invalidPrefixes", {})[label] = row
+        if not all(result["closed"] for result in row.values()):
+            failures.append(f"query safety: prefix {label} not refused by both nodes: {row}")
     # The decoder's refusal of a leaf under the whole deep wrapper: the walk down the wrappers and
     # the diagnostic of the refusal must not depend on the depth.
     report["deepUnknownTag"] = _closed(open_scala, encoded_query(era, UNKNOWN_TAG, DEPTH))

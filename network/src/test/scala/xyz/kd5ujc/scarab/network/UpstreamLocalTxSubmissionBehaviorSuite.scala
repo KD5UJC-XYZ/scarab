@@ -167,7 +167,8 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
                       tx =>
                         IO.fromOption(byWire.get(tx))(
                           new IllegalStateException(s"unexported transaction at seed $seed")
-                        )
+                        ),
+                      LocalTxSubmission.TxReader.whole
                     )
                   ).start
                 )(_.cancel)

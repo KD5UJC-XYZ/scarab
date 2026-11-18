@@ -113,6 +113,14 @@ trait Mempool[F[_]]:
       Raise[F, StorageError]
   ): F[Either[Refused, Bytes]]
 
+  /** [[submit]] of a submission its caller has already read in its era ([[MempoolState.read]]), so
+    * that a transaction its era's decoder refuses is answered before it takes its place in line, as
+    * the reference's codec refuses it before the mempool sees it.
+    */
+  def submitRead(read: MempoolState.Read, source: Source)(using
+      Raise[F, StorageError]
+  ): F[Either[Refused, Bytes]]
+
   /** The submissions in line behind the ones being served (see [[add]]). */
   def lines: F[Mempool.Lines]
 
@@ -267,13 +275,22 @@ object Mempool:
 
       def add(raw: Bytes, source: Source)(using Raise[F, StorageError]) =
         // a transaction of the pool's own era, whichever it is when its turn comes
-        added(s => Submission(s.era.fold(Era.Conway.index)(_.index), raw), source)
-          .map(_.leftMap(_.rejection))
+        added(
+          s => MempoolState.read(Submission(s.era.fold(Era.Conway.index)(_.index), raw)),
+          source
+        ).map(_.leftMap(_.rejection))
 
       def submit(submission: Submission, source: Source)(using Raise[F, StorageError]) =
-        added(_ => submission, source)
+        added(_ => MempoolState.read(submission), source)
 
-      private def added(submission: MempoolState => Submission, source: Source)(using
+      def submitRead(read: MempoolState.Read, source: Source)(using Raise[F, StorageError]) =
+        added(_ => Right(read), source)
+
+      /** `submission` read in its era, at each attempt, from the pool's state then. */
+      private def added(
+          submission: MempoolState => Either[Rejection, MempoolState.Read],
+          source: Source
+      )(using
           Raise[F, StorageError]
       ): F[Either[Refused, Bytes]] =
         inLine(source) {
@@ -294,15 +311,18 @@ object Mempool:
         * that was measured and the wait cannot miss a change. The step starts from the first
         * measure again each time: a new tip may have changed the parameters and the capacity.
         */
-      private def attempt(of: MempoolState => Submission, source: Source)(using
+      private def attempt(
+          of: MempoolState => Either[Rejection, MempoolState.Read],
+          source: Source
+      )(using
           Raise[F, StorageError]
       ): F[Attempt] = lock.lock.surround {
         for
           held <- state.get
-          submission = of(held)
           // the submission as read in the era it names: its id and inputs, whatever its era
-          read = MempoolState.read(submission).toOption.collect {
-            case MempoolState.Read.Decoded(_, transaction) => transaction
+          submission = of(held)
+          read = submission.toOption.collect { case MempoolState.Read.Decoded(_, transaction) =>
+            transaction
           }
           current <- read match
             case Some(transaction) =>
@@ -315,7 +335,7 @@ object Mempool:
               )
             case None => F.pure(held)
           activeEnv <- readEnv
-          result <- F.blocking(current.add(submission, activeEnv, source))
+          result <- F.blocking(submission.flatMap(current.add(_, activeEnv, source)))
           era = current.era
           out <- result match
             case Right((next, entry)) =>
@@ -467,7 +487,10 @@ object Mempool:
             originals.traverse_ { original =>
               StorageBoundary
                 .run(fatal)(
-                  added(_ => Submission(original.era.index, original.original), Source.Remote)
+                  added(
+                    _ => MempoolState.read(Submission(original.era.index, original.original)),
+                    Source.Remote
+                  )
                 )
                 .flatMap(
                   _.left.toOption

@@ -32,7 +32,13 @@ accumulating judgment (`rules/Judge.scala`,
 `docs/design/rule-interpreter-as-built.md`): every rule boundary of the reference is a sub-rule
 that always runs, so the failures of different rules are all reported, in the reference's order.
 Within each rule every check records its failure and the rule goes on to the state the reference
-makes, so a later certificate or sub-rule sees it (#412).
+makes, so a later certificate or sub-rule sees it (#412). A submitted transaction is read as the reference's decoder of a
+`GenTx` reads it, a definite `[era, tx]` and, in a Shelley-based era, tag 24 around a definite byte
+string (`LocalSubmission.unwrap`); the LocalTxSubmission codec asks `GenTx.prefix`, of the whole
+transaction and while it has not all arrived, whether that decoder has failed on its envelopes, as far
+as tag 24 and the head of its byte string, and ends the connection if it has. A transaction its era's
+decoder refuses in the mempool ends it too, with no reply (`Response.Undecodable`), as the reference's
+codec ends it (#924).
 
 **LocalStateQuery** (`protocol/LocalStateQuery.scala`, `network/LocalStateQueryServer.scala`,
 `node/ntc/`). The protocol codec is pure (states Idle, Acquiring, Acquired, Querying, Done; acquire at
@@ -42,7 +48,9 @@ holds it, whatever the chain does meanwhile (`StateQuerySource` reads the retain
 volatile chain: the tip, the anchor, or a block among the last `k`; an older point is `PointTooOld`,
 one not on the chain `PointNotOnChain`). `NtcQuery` decodes the envelope (`Query`: system start, chain
 block number, chain point; the hard-fork combinator's `QueryIfCurrent`, `QueryAnytime`,
-`QueryHardFork`; the Shelley block queries 0 to 39 with sets under tag 258), `QueryAnswers` computes the
+`QueryHardFork`; the Shelley block queries 0 to 39 with sets under tag 258; while a query has not all
+arrived, `NtcQueryPrefix` says whether the reference's decoder of queries has already failed on its
+envelopes, as far as the ledger query's size and tag, and the codec then ends the connection, #924), `QueryAnswers` computes the
 answer from the state of the chain as a pure function (the state is read through the `ChainRead` type class, in the vocabulary of the ledger-state mirror: `node/read/`, step 2 of the mirror, J2.7) and the Haskell state codecs (`storage/haskell/state`: `Wire`, the node-type codecs, `UtxoCodecs`) write the ledger's CBOR (the
 31-element Conway protocol parameters, outputs in the canonical array or keyed form, the governance
 state with its DRep pulser, stake and pool distributions, ...; containers of more than 23 elements are

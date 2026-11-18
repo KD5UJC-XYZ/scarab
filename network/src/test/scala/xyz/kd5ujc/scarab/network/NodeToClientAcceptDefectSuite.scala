@@ -123,6 +123,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
                 bearer,
                 magic,
                 _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+                LocalTxSubmission.TxReader.whole,
                 stateQuery,
                 openMux = new NodeToClientServer.MuxFactory[IO]:
                   def open(bearer: Bearer[IO], served: Set[Int])(using

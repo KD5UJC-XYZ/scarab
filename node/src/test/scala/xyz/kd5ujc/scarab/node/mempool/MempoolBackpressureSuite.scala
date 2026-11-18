@@ -350,6 +350,38 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       assertEquals(response, xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Response.Accepted)
   }
 
-  /** The hard-fork-combinator wrapping of a Conway transaction as `cardano-cli` sends it. */
+  test(
+    "a transaction its decoder refuses is answered at once while another waits for room (#924)"
+  ) {
+    // `82 06 d8 18 41 00`: a Conway transaction under tag 24 that its era's decoder refuses. The
+    // reference's codec refuses it before the mempool sees it, so it does not take a place in the
+    // line that a submission waiting for room holds
+    val s = sizes
+    val malformed = Bytes(Vector(0x82, 0x06, 0xd8, 0x18, 0x41, 0x00).map(_.toByte))
+    for
+      p <- probe(s.capacity)
+      _ <- p.mempool.add(s.held, Source.Local)
+      handler = LocalSubmission.handler[IO](p.mempool)(fatal =>
+        IO(fail(s"unexpected fatal: $fatal"))
+      )
+      // the waiting submission is cancelled however this ends
+      answered <- handler(wrapped(s.wide)).background.use(_ =>
+        p.waiting(idOf(s.wide)) *> handler(malformed).timeout(failsafe).product(p.mempool.lines)
+      )
+      (refused, lines) = answered
+    yield
+      refused match
+        case xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Response.Undecodable(_) => ()
+        case other => fail(s"expected the decoder's refusal at once, received $other")
+      assertEquals(
+        lines,
+        Mempool.Lines(remote = 0, common = 0),
+        "only the waiting one holds the line"
+      )
+  }
+
+  /** The hard-fork-combinator wrapping of a Conway transaction as `cardano-cli` sends it,
+    * `[6, 24(h'tx')]`.
+    */
   private def wrapped(raw: Bytes): Bytes =
-    Bytes(Vector(0x82.toByte, 0x06.toByte) ++ raw.value)
+    Bytes(Vector(0x82, 0x06, 0xd8, 0x18).map(_.toByte) ++ TxKit.bstr(raw))
