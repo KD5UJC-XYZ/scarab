@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.collection.immutable.SortedSet
+
 /** The UTxO set as a pure value, split the way UTxO-HD splits it.
   *
   * The set itself lives in a backing store (`xyz.kd5ujc.scarab.storage.UtxoStore`); the ledger
@@ -52,9 +54,11 @@ final case class Utxo(
   def size: Int = count.toInt
   def isEmpty: Boolean = count == 0
 
-  /** The entries of `keys` that neither the diff nor the read set decide: the ones to fetch. */
-  def missing(keys: Iterable[TxIn]): Set[TxIn] =
-    keys.iterator.filter(k => !diff.contains(k) && !resident.contains(k)).toSet
+  /** The entries of `keys` that neither the diff nor the read set decide: the ones to fetch, in a
+    * sorted set, whose cost is the sort whatever the hash codes of keys a client or a peer chose.
+    */
+  def missing(keys: Iterable[TxIn]): SortedSet[TxIn] =
+    SortedSet.from(keys.iterator.filter(k => !diff.contains(k) && !resident.contains(k)))
 
   /** Remove the entries (absent ones are ignored). */
   def --(ins: IterableOnce[TxIn]): Utxo = ins.iterator.foldLeft(this)(_.remove(_))

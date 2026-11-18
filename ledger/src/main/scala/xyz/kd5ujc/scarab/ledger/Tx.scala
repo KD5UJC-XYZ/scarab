@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.collection.immutable.{SortedSet, TreeMap}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Unique}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.state.Coin
@@ -23,6 +24,21 @@ enum DRep:
     case AlwaysNoConfidence               => "drep-alwaysNoConfidence"
 
 object DRep:
+  /** The derived `Ord DRep` (`libs/cardano-ledger-core/src/Cardano/Ledger/DRep.hs:67-72`,
+    * cardano-ledger 29a7d656): a key hash, a script hash, abstain, no confidence, in the order of
+    * the constructors, then the hash, whose `Ord` is that of [[Bytes]].
+    */
+  given Ordering[DRep] = (a, b) =>
+    def rank(d: DRep): Int = d match
+      case Registered(Credential.Key(_))    => 0
+      case Registered(Credential.Script(_)) => 1
+      case AlwaysAbstain                    => 2
+      case AlwaysNoConfidence               => 3
+    (a, b) match
+      case (Registered(x), Registered(y)) if rank(a) == rank(b) =>
+        summon[Ordering[Credential]].compare(x, y)
+      case _ => Integer.compare(rank(a), rank(b))
+
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, DRep] =
     CborRead.array(n, DecodeField.Drep).flatMap {
       case Vector(t, h) =>
@@ -157,6 +173,11 @@ object Certificate:
     case RegisterPool(params) => Left(PoolParams.identity(params))
     case other                => Right(other)
 
+  /** The order the ordered set of a body's certificates finds its repeats with ([[IdentityOrder]]).
+    */
+  private[ledger] given identityOrder: Ordering[Either[PoolIdentity, Certificate]] =
+    IdentityOrder.either(using IdentityOrder.poolIdentity, IdentityOrder.certificate)
+
   /** A certificate of a body of `era`, read by the era's `decodeRecordSum`: `ShelleyTxCert` from
     * Shelley to Babbage, `ConwayTxCert` in Conway, which fails the certificates it retired
     * ([[retired]]). A tag the era's decoder does not read is no certificate of its arity
@@ -288,7 +309,7 @@ object Certificate:
                   CborRead.integer(v, DecodeField.MIRAmount)
                 ).tupled
               })
-              .map(kvs => Right(kvs.toMap))
+              .map(kvs => Right(TreeMap.from(kvs)))
           case _ => CborRead.uint(xs(1), DecodeField.MIRTransfer).map(Left(_))
       yield MoveRewards(pot, transfer)
     }
@@ -320,7 +341,7 @@ object Certificate:
       cost,
       margin,
       account,
-      owners.toSet,
+      SortedSet.from(owners),
       if xs(7).original == Bytes(Vector(0x80.toByte)) then Bytes.empty else xs(7).original,
       metadata
     )
@@ -420,7 +441,7 @@ object TxBody:
         yield key -> update
       }
       epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
-    yield Update(proposals.toMap, epoch)
+    yield Update(TreeMap.from(proposals), epoch)
 
   /** A body of a block of `era`, read at the era's decoder version ([[DecoderVersion]]). Conway's
     * `bodyFields` (cardano-ledger `eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs` at
@@ -513,7 +534,7 @@ object TxBody:
                 else Right(ws)
               )
           )
-      ).map(_.map(_.toMap))
+      ).map(_.map(ws => TreeMap.from(ws)))
       upd <- f.get(6).traverse(update(_, era, version))
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, DecodeField.AuxiliaryDataHash))
       mint <-
@@ -626,7 +647,7 @@ object BootstrapWitness:
     * `Shelley/Rules/Utxow.hs:391-407`).
     */
   def set(read: Vector[BootstrapWitness]): Vector[BootstrapWitness] =
-    read.reverse.distinctBy(_.addressRoot).sortBy(_.addressRoot)
+    Unique.firstsBy(read.reverse)(_.addressRoot).sortBy(_.addressRoot)
 
   /** Alonzo's `addrWitsSetDecoder` refuses repeated roots from version 12
     * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:613-641`, f649f975).
@@ -754,12 +775,14 @@ object Witnesses:
       val read =
         if alonzo then CborRead.list(n, what, version) else CborRead.array(n, what)
       read.flatMap(CborRead.nonEmpty(_, what, strict))
-    def witnessSet[A, K](n: Node, what: DecodeSite)(
+    // Below 12 the set keeps the first of the elements alike; `identity` tells them apart as the
+    // elements do (a vkey witness is its two fields, a script and a datum are their bytes' hash)
+    def witnessSet[A, K: Ordering](n: Node, what: DecodeSite)(
         elem: Node => Either[LedgerDecodeError, A]
     )(identity: A => K): Either[LedgerDecodeError, Vector[A]] =
       list(n, what).flatMap(_.traverse(elem)).flatMap { xs =>
         if alonzo && version.atLeast(12) then CborRead.unique(xs.map(identity), what).as(xs)
-        else Right(xs.distinct)
+        else Right(Unique.firstsBy(xs)(identity))
       }
     // Shelley, Allegra and Mary read keys 0 to 2 (`Shelley/TxWits.hs`); the Alonzo witness set of
     // every later era reads 0 to 7, and a Plutus script of a language newer than the era's is
@@ -793,7 +816,7 @@ object Witnesses:
           witnessSet(_, DecodeField.NativeScripts)(
             Script.native(_, NativeScript.Form.of(era))
           )(_.hash)
-            .map(_.distinctBy(_.hash))
+            .map(Unique.firstsBy(_)(_.hash))
         )
       // Keep every witness for `BootstrapWitness.set`: dropping a repeated copy first would change
       // which witness of a root is the last
@@ -840,7 +863,7 @@ object Witnesses:
           witnessSet(_, DecodeField.Datums)(n => Data.read(n, DecodeField.Datums).as(n.original))(
             Blake2b.hash256.hash
           )
-            .map(_.distinct)
+            .map(Unique.firsts)
         )
       redeemers <- f.get(5).traverse(redeemerList(_, era, version))
     yield Witnesses(

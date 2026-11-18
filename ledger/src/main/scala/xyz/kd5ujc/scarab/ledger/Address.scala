@@ -5,7 +5,8 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import cats.syntax.order.*
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import scala.collection.immutable.{HashMap, TreeMap}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Unique}
 import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.Era
@@ -435,6 +436,29 @@ object Value:
   val zero: Value = Value(0, Map.empty)
   def coin(c: BigInt): Value = Value(c, Map.empty)
 
+  /** The sum of `values`, the value a fold of `+` gives, accumulated in sorted maps as the
+    * reference sums its `Data.Map` s (`<>` of `MultiAsset`, `canonicalMapUnion`,
+    * `eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:175-177` and
+    * `libs/cardano-data/src/Data/CanonicalMaps.hs:41-66`, cardano-ledger 29a7d656): what it costs
+    * is the comparisons of the keys, whatever their hash codes, where a hash map's cost is the
+    * square of the names that share one. The rules sum the outputs a transaction spends so, and
+    * compare the sum; it is not an output's value, which keeps the maps it was read into.
+    */
+  def sum(values: IterableOnce[Value]): Value =
+    val (coin, assets) =
+      values.iterator.foldLeft((BigInt(0), TreeMap.empty[Bytes, TreeMap[Bytes, BigInt]])) {
+        case ((c, acc), v) =>
+          c + v.coin -> v.assets.foldLeft(acc) { case (held, (policy, names)) =>
+            val merged = names.foldLeft(held.getOrElse(policy, TreeMap.empty[Bytes, BigInt])) {
+              case (in, (name, quantity)) =>
+                val total = in.getOrElse(name, BigInt(0)) + quantity
+                if total.signum == 0 then in - name else in.updated(name, total)
+            }
+            if merged.isEmpty then held - policy else held.updated(policy, merged)
+          }
+      }
+    Value(coin, assets)
+
   /** `a + sign * b` per (policy, name), with the zero quantities and the policies left empty
     * dropped (so a map with zero quantities in it comes out without them, as it always did).
     *
@@ -514,6 +538,13 @@ object Value:
     */
   private val CompactLimit = 65535
 
+  /** `isMultiAssetSmallEnough` (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:744-746`,
+    * cardano-ledger 29a7d656), counted in 64 bits as the reference's `Int` is: in 32 bits the sum
+    * wraps past 48,806,445 names and a value that large would pass.
+    */
+  private[ledger] def compactable(assets: Int, policies: Int): Boolean =
+    44L * assets + 28L * policies <= CompactLimit
+
   private def int64(what: DecodeSite, q: BigInt) =
     Either.cond(
       q >= Int64Min && q <= Int64Max,
@@ -579,45 +610,134 @@ object Value:
             }
           yield policy -> quantities
         })
-      assets <- decoding match
-        case Decoding.Pruning =>
-          Right(normal(policies.map((p, qs) => p -> qs.toMap).toMap))
+      read <- decoding match
+        case Decoding.Pruning   => Right(lastWins(policies).map((p, qs) => p -> lastWins(qs)))
         case Decoding.Rejecting => rejecting(policies, what)
         case Decoding.NonEmpty =>
           rejecting(policies, what).flatMap(as =>
             Either.cond(as.nonEmpty, as, LedgerDecodeError.Empty(what))
           )
         case Decoding.CoinOnly => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
-      count = assets.valuesIterator.map(_.size).sum
+      kept = read.map((p, qs) => p -> qs.filter(_._2.signum != 0)).filter(_._2.nonEmpty)
+      count = kept.iterator.map(_._2.size).sum
+      // the bound is checked on what the value keeps before its maps are built, so a value too big
+      // to compact costs its sort and no more, whatever the hash codes of its keys
       _ <- Either.cond(
-        44 * count + 28 * assets.size <= CompactLimit,
+        compactable(count, kept.size),
         (),
-        LedgerDecodeError.MultiAssetTooBig(what, count, assets.size)
+        LedgerDecodeError.MultiAssetTooBig(what, count, kept.size)
       )
-    yield assets
+    yield built(read)
+
+  /** Of each key the first position and the last value, as `toMap` keeps them: below version 9 a
+    * repeated policy or asset name is the last entry (`decodeWithPrunning`, over `Map.fromList`).
+    * Found by a stable sort of the keys, so it costs a sort whatever their hash codes.
+    */
+  private def lastWins[V](kvs: Vector[(Bytes, V)]): Vector[(Bytes, V)] =
+    if !Unique.repeats(kvs.map(_._1)) then kvs
+    else
+      kvs.zipWithIndex
+        .sortBy(_._1._1)
+        .foldLeft(List.empty[(Bytes, Int, V)]) {
+          case ((key, first, _) :: rest, ((k, v), _)) if key == k => (key, first, v) :: rest
+          case (runs, ((k, v), at))                               => (k, at, v) :: runs
+        }
+        .sortBy(_._2)
+        .map((k, _, v) => k -> v)
+        .toVector
+
+  /** The maps of a value whose policies and names are each given once, at their first position and
+    * with their last value, as a store holds and writes them.
+    *
+    * A stored value's maps are written in the order a map iterates them (`Codec[Map]` in
+    * `storage`), so they are built here exactly as `normal(read.map(_ -> _.toMap).toMap)` builds
+    * them, which is what this decoder did, with that expression's class and order of each map, but
+    * without a hash map of the entries that are dropped: those cost the square of their number when
+    * their keys share a hash code, and nothing bounds them.
+    *   - When nothing is dropped, the expression's own maps: every entry is kept, and the bound on
+    *     the compact form bounds them.
+    *   - Otherwise `normal` rebuilds the value: each policy's map filtered, in the order the map of
+    *     every policy iterates them, the empty ones dropped. A policy of at most four names is
+    *     filtered as before (four entries at most); a larger one was a `HashMap`, whose filter is
+    *     the `HashMap` of the names kept, built from those alone (bounded by the compact form).
+    *   - The order of the map of every policy is that of a `HashMap` of them when there are more
+    *     than four ([[inHashOrder]]), which a map of at most two keys per hash code gives.
+    *
+    * That this is the expression's result relies on the layout of Scala's `HashMap`: it depends on
+    * the keys' hash codes alone, and on which hash codes several keys share, and its filter keeps
+    * that layout. The stored bytes rely on that layout already. `PruningMapsSuite` compares this
+    * with the expression, map by map and byte by byte, and is what notices a change of it.
+    */
+  private def built(
+      read: Vector[(Bytes, Vector[(Bytes, BigInt)])]
+  ): Map[Bytes, Map[Bytes, BigInt]] =
+    if read.forall((_, qs) => qs.nonEmpty && qs.forall(_._2.signum != 0)) then
+      read.iterator.map((p, qs) => p -> qs.toMap).toMap
+    else
+      val order = if read.sizeIs <= 4 then read else inHashOrder(read)
+      order.iterator
+        .map((p, qs) => p -> filtered(qs))
+        .filter(_._2.nonEmpty)
+        .toMap
+
+  /** A policy's names without those of quantity zero, as `qs.toMap.filter` gives them. */
+  private def filtered(qs: Vector[(Bytes, BigInt)]): Map[Bytes, BigInt] =
+    if qs.sizeIs <= 4 then qs.toMap.filter(_._2.signum != 0)
+    else HashMap.from(qs.iterator.filter(_._2.signum != 0))
+
+  /** A key of the map that gives the order of the policies: a hash code, the first or the second
+    * key of it.
+    */
+  private final case class Slot(hash: Int, second: Boolean):
+    override def hashCode: Int = hash
+
+  /** `keyed` (keys given once each) in the order a `HashMap` of their keys iterates them. Its
+    * layout depends on the hash codes alone and on which are shared, a shared one being a node of
+    * its keys in the order they were added, so a `HashMap` of one slot per hash code, and two for a
+    * shared one, iterates the hash codes in that order, and the keys of a shared one follow in the
+    * order of `keyed`. The keys are grouped by a stable sort of their hash codes.
+    */
+  private def inHashOrder[A](keyed: Vector[(Bytes, A)]): Vector[(Bytes, A)] =
+    val groups = TreeMap.from(
+      keyed
+        .sortBy(_._1.hashCode)
+        .foldLeft(List.empty[(Int, Vector[(Bytes, A)])]) {
+          case ((h, group) :: rest, entry) if h == entry._1.hashCode => (h, group :+ entry) :: rest
+          case (done, entry) => (entry._1.hashCode, Vector(entry)) :: done
+        }
+    )
+    val slots = groups.iterator.flatMap((h, group) =>
+      Iterator(Slot(h, second = false)) ++ Option.when(group.sizeIs > 1)(Slot(h, second = true))
+    )
+    HashMap
+      .from(slots.map(_ -> ()))
+      .keysIterator
+      .collect { case Slot(h, false) => h }
+      .flatMap(h => groups.get(h).iterator.flatten)
+      .toVector
 
   private def rejecting(
       policies: Vector[(Bytes, Vector[(Bytes, BigInt)])],
       what: DecodeSite
-  ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
+  ): Either[LedgerDecodeError, Vector[(Bytes, Vector[(Bytes, BigInt)])]] =
     for
       _ <- Either.cond(
-        policies.map(_._1).distinct.sizeIs == policies.size,
+        !Unique.repeats(policies.map(_._1)),
         (),
         LedgerDecodeError.DuplicateKey(what / Qualifier.Policy)
       )
-      checked <- policies.traverse { case (policy, qs) =>
+      _ <- policies.traverse_ { case (_, qs) =>
         for
           _ <- Either.cond(qs.nonEmpty, (), LedgerDecodeError.Empty(what / Qualifier.Assets))
           _ <- Either.cond(
-            qs.map(_._1).distinct.sizeIs == qs.size,
+            !Unique.repeats(qs.map(_._1)),
             (),
             LedgerDecodeError.DuplicateKey(what / Qualifier.AssetName)
           )
           _ <- Either.cond(qs.forall(_._2.signum != 0), (), LedgerDecodeError.ZeroQuantity(what))
-        yield policy -> qs.toMap
+        yield ()
       }
-    yield checked.toMap
+    yield policies
 
 /** The datum of an output. */
 enum Datum:

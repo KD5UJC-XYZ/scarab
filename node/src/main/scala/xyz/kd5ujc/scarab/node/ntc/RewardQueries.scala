@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational, Unique}
 import xyz.kd5ujc.scarab.ledger.{Credential, ProtocolParams}
 import xyz.kd5ujc.scarab.ledger.rules.{MuslMath, Rewards}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, Likelihood, NonMyopic, SnapShot, StakePoolSnapShot}
@@ -182,12 +182,14 @@ private[ntc] object RewardQueries:
       .toMap
     import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
     val credentialOrder = summon[cats.Order[Credential]].toOrdering
-    val keys = requested.distinct.sortWith {
-      case (Left(a), Left(b))   => a < b
-      case (Left(_), Right(_))  => true
-      case (Right(_), Left(_))  => false
-      case (Right(a), Right(b)) => credentialOrder.lt(a, b)
-    }
+    // every amount before every credential, as `Ord (Either Coin (Credential Staking))` orders them
+    given keyOrder: Ordering[Either[BigInt, Credential]] = (a, b) =>
+      (a, b) match
+        case (Left(x), Left(y))   => x.compare(y)
+        case (Left(_), Right(_))  => -1
+        case (Right(_), Left(_))  => 1
+        case (Right(x), Right(y)) => credentialOrder.compare(x, y)
+    val keys = Unique.firsts(requested).sorted
     keys
       .traverse { key =>
         val amount = key.fold(identity, current.getOrElse(_, BigInt(0)))

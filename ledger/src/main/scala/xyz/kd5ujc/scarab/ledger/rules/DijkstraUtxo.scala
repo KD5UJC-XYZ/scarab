@@ -320,10 +320,14 @@ object DijkstraUtxo
     // `dijkstraConsumed` and `dijkstraProducedValue` (`Dijkstra/UTxO.hs:71-146`,
     // cardano-ledger 9df9f98c): the minted assets consumed, the burned produced
     // (`getConsumedMaryValue`, `burnedMultiAssets`)
-    val consumed = body.inputs.distinct.flatMap(original.get).foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(withdrawn + refunds) + Value.minted(body.mint)
-    val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(body.fee + deposits + body.donation) + Value.burned(body.mint)
+    val consumed = Value.sum(
+      body.inputs.distinct.iterator.flatMap(original.get).map(_.value) ++
+        Iterator(Value.coin(withdrawn + refunds), Value.minted(body.mint))
+    )
+    val produced = Value.sum(
+      body.outputs.iterator.map(_.value) ++
+        Iterator(Value.coin(body.fee + deposits + body.donation), Value.burned(body.mint))
+    )
     val static = ctx.validation == TxEnv.Validation.All
     Vector(
       conway(UtxoTests.validityInterval(body, ctx.slot)),

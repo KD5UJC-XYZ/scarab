@@ -389,3 +389,11 @@ class MultiAssetDecodeSuite extends FunSuite:
     }
     assert(TxBody.decode(bytes(multi), Era.Mary).isRight)
   }
+
+  test("the compact bound is counted in 64 bits, so a count past 48,806,445 names does not wrap") {
+    assert(Value.compactable(1488, 1))
+    assert(!Value.compactable(1489, 1))
+    // in 32-bit arithmetic 44 * 48,806,446 + 28 wraps to a negative number and passes
+    assert(!Value.compactable(48806446, 1))
+    assert(!Value.compactable(Int.MaxValue, Int.MaxValue))
+  }

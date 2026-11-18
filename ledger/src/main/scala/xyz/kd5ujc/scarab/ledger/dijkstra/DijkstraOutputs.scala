@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{Address, CborRead, DecodeField, DecodeSite, LedgerDecodeError}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
+import DijkstraOrder.given
 import V12.Result
 
 /** A transaction input: the id of the transaction and the index of its output. */
@@ -50,7 +51,7 @@ object MultiAsset:
       )
       count = policies.map(_._2.size).sum
       _ <- Either.cond(
-        44 * count + 28 * policies.size <= 65535,
+        xyz.kd5ujc.scarab.ledger.Value.compactable(count, policies.size),
         (),
         LedgerDecodeError.MultiAssetTooBig(what, count, policies.size)
       )

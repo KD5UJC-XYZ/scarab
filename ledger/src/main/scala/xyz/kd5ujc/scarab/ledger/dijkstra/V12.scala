@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.dijkstra
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Unique, Value}
 import xyz.kd5ujc.scarab.ledger.{ByteStrings, CborRead, DecodeSite, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape
 
@@ -138,7 +138,7 @@ private[ledger] object V12:
     * inserts each into its structure and fails when the structure is smaller than the count read
     * (`decodeListLikeEnforceNoDuplicates`, `Decoder.hs:1034-1056`).
     */
-  def set[A, K](n: Node, what: DecodeSite)(elem: Node => Result[A])(
+  def set[A, K: Ordering](n: Node, what: DecodeSite)(elem: Node => Result[A])(
       key: A => K
   ): Result[Vector[A]] =
     setItems(n, what).flatMap(_.traverse(elem)).flatMap(unique(_, what)(key))
@@ -146,7 +146,7 @@ private[ledger] object V12:
   /** As [[set]], and not empty (`decodeNonEmptySetLikeEnforceNoDuplicates`,
     * `Decoder.hs:1080-1098`).
     */
-  def nonEmptySet[A, K](n: Node, what: DecodeSite)(elem: Node => Result[A])(
+  def nonEmptySet[A, K: Ordering](n: Node, what: DecodeSite)(elem: Node => Result[A])(
       key: A => K
   ): Result[Vector[A]] =
     set(n, what)(elem)(key).flatMap(nonEmpty(_, what))
@@ -154,9 +154,9 @@ private[ledger] object V12:
   def nonEmpty[A](xs: Vector[A], what: DecodeSite): Result[Vector[A]] =
     CborRead.nonEmpty(xs, what, required = true)
 
-  def unique[A, K](xs: Vector[A], what: DecodeSite)(key: A => K): Result[Vector[A]] =
+  def unique[A, K: Ordering](xs: Vector[A], what: DecodeSite)(key: A => K): Result[Vector[A]] =
     Either.cond(
-      xs.map(key).distinct.sizeIs == xs.size,
+      !Unique.repeats(xs.map(key)),
       xs,
       LedgerDecodeError.DuplicateElement(what)
     )
@@ -167,14 +167,14 @@ private[ledger] object V12:
   /** `decodeMap` from version 9 (`decodeMapLikeEnforceNoDuplicates`, `Decoder.hs:801-832`): each
     * key and value read in turn, and a key that occurs twice, by the decoded key, refused.
     */
-  def map[K, V](n: Node, what: DecodeSite)(k: Node => Result[K])(
+  def map[K: Ordering, V](n: Node, what: DecodeSite)(k: Node => Result[K])(
       v: (K, Node) => Result[V]
   ): Result[Vector[(K, V)]] =
     entries(n, what)
       .flatMap(_.traverse((kn, vn) => k(kn).flatMap(key => v(key, vn).tupleLeft(key))))
       .flatMap(unique(_, what / DecodeSite.Qualifier.Key)(_._1))
 
-  def nonEmptyMap[K, V](n: Node, what: DecodeSite)(k: Node => Result[K])(
+  def nonEmptyMap[K: Ordering, V](n: Node, what: DecodeSite)(k: Node => Result[K])(
       v: (K, Node) => Result[V]
   ): Result[Vector[(K, V)]] =
     map(n, what)(k)(v).flatMap(nonEmpty(_, what))

@@ -414,10 +414,14 @@ object UtxoChecks:
       else BigInt(0)
     val minFee = pp.minFeeA * tx.size + pp.minFeeB + scriptFee
     val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
-    val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(withdrawn + refunds) + Value.minted(body.mint)
-    val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(body.fee + deposits) + Value.burned(body.mint)
+    val consumed = Value.sum(
+      ann.spent.iterator.map(_.value) ++
+        Iterator(Value.coin(withdrawn + refunds), Value.minted(body.mint))
+    )
+    val produced = Value.sum(
+      body.outputs.iterator.map(_.value) ++
+        Iterator(Value.coin(body.fee + deposits), Value.burned(body.mint))
+    )
     val defect = Option.unless(!body.hasGovernance && body.donation == 0)(
       LedgerFailure.Undecodable(ann.id, TxDefect.GovernanceFieldsBeforeConway)
     )

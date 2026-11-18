@@ -41,6 +41,57 @@
    "evidence": ["CostModelDecodeSuite", "CborDatasetSuite"],
    "digest": "55e5978f6e713e65"
   },
+  "def ledger.Value.compactable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "symbol": "isMultiAssetSmallEnough",
+     "lines": [744, 746]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["MultiAssetDecodeSuite"],
+   "digest": "1e63c1feeaee4045"
+  },
+  "def ledger.Value.sum": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "symbol": "Semigroup MultiAsset",
+     "lines": [175, 177]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "libs/cardano-data/src/Data/CanonicalMaps.hs",
+     "symbol": "canonicalMapUnion",
+     "lines": [41, 66]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["ValueSumSuite", "ConwayUtxoChecksSuite"],
+   "digest": "441774dbc8bcea32"
+  },
+  "given ledger.DRep.given_Ordering_DRep": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/DRep.hs",
+     "symbol": "data DRep",
+     "lines": [67, 72]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "71c115bb2be3bfea"
+  },
   "def ledger.CborRead.enforceSize": {
    "upstream": [
     {
@@ -19754,6 +19805,51 @@
     "object ledger.era.PlutusRunnable",
     "object ledger.era.PlutusWithContext",
     "object ledger.era.SupportedPlutusRunnable"
+   ]
+  },
+  {
+   "reason": "the orders the Dijkstra decoders sort a set's elements, a map's keys or an ordered set's elements with to find repeats, so that the check costs a sort whatever their hash codes; the reference finds them through `Data.Set`, `Data.Map` and `OSet` with each type's derived `Ord` (`decodeListLikeEnforceNoDuplicates`, `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs:1033-1053`, cardano-ledger 29a7d656), and only its equality decides, so these orders, which agree with Scarab's equality of each type and order nothing else, have no counterpart",
+   "definitions": [
+    "object ledger.dijkstra.DijkstraOrder",
+    "given ledger.dijkstra.DijkstraOrder.action",
+    "given ledger.dijkstra.DijkstraOrder.actionId",
+    "given ledger.dijkstra.DijkstraOrder.anchor",
+    "given ledger.dijkstra.DijkstraOrder.blsKey",
+    "given ledger.dijkstra.DijkstraOrder.certificate",
+    "given ledger.dijkstra.DijkstraOrder.delegatee",
+    "given ledger.dijkstra.DijkstraOrder.paramUpdate",
+    "given ledger.dijkstra.DijkstraOrder.paramValue",
+    "given ledger.dijkstra.DijkstraOrder.poolMetadata",
+    "given ledger.dijkstra.DijkstraOrder.poolParams",
+    "given ledger.dijkstra.DijkstraOrder.proposal",
+    "given ledger.dijkstra.DijkstraOrder.relay",
+    "given ledger.dijkstra.DijkstraOrder.txIn",
+    "given ledger.dijkstra.DijkstraOrder.voter"
+   ]
+  },
+  {
+   "reason": "the orders an ordered set of certificates or proposals sorts its elements' identities with to find repeats, so that the check costs a sort whatever their hash codes; the reference finds them with the derived `Ord` (`decodeOSet`, `libs/cardano-data/src/Data/OSet/Strict.hs:109-116`, cardano-ledger 29a7d656) and only its equality decides, so these orders, which agree with Scarab's equality of each type and order nothing else, have no counterpart",
+   "definitions": [
+    "given ledger.Certificate.identityOrder",
+    "object ledger.IdentityOrder",
+    "given ledger.IdentityOrder.actionIdentity",
+    "given ledger.IdentityOrder.anchor",
+    "given ledger.IdentityOrder.certificate",
+    "given ledger.IdentityOrder.conwayParam",
+    "given ledger.IdentityOrder.conwayParamUpdate",
+    "given ledger.IdentityOrder.either",
+    "given ledger.IdentityOrder.exUnits",
+    "given ledger.IdentityOrder.govAction",
+    "given ledger.IdentityOrder.map",
+    "given ledger.IdentityOrder.poolIdentity",
+    "given ledger.IdentityOrder.poolParams",
+    "given ledger.IdentityOrder.proposalIdentity",
+    "given ledger.IdentityOrder.rational",
+    "given ledger.IdentityOrder.semantic",
+    "given ledger.IdentityOrder.set",
+    "given ledger.IdentityOrder.updateEntry",
+    "object ledger.ProposalIdentity",
+    "given ledger.ProposalIdentity.given_Ordering_ProposalIdentity"
    ]
   },
   {

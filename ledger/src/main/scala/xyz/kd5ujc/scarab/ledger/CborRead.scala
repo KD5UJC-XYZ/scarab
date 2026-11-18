@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Unique, Value}
 
 /** Total readers over decoded CBOR. Every failure names what was being read. */
 /** How the unsigned keys of a record map are read. */
@@ -222,12 +222,12 @@ private[ledger] object CborRead:
     * decodeCollection`, Decoder.hs). Only the decoded elements are collapsed: the caller keeps the
     * original bytes that are hashed or signed.
     */
-  def set[A](n: Node, what: DecodeSite, version: DecoderVersion)(
+  def set[A: Ordering](n: Node, what: DecodeSite, version: DecoderVersion)(
       elem: Node => Result[A]
   ): Result[Vector[A]] =
     list(n, what, version).flatMap(
       _.traverse(elem).flatMap(as =>
-        if version.atLeast(9) then unique(as, what) else Right(as.distinct)
+        if version.atLeast(9) then unique(as, what) else Right(Unique.firsts(as))
       )
     )
 
@@ -237,7 +237,7 @@ private[ledger] object CborRead:
     * derived `Ord`, so `identity` maps an element to the value that `Ord` compares, which for a
     * field Scarab keeps as its original encoding is the meaning of the encoding ([[Semantic]]).
     */
-  def oset[A, K](n: Node, what: DecodeSite, version: DecoderVersion)(
+  def oset[A, K: Ordering](n: Node, what: DecodeSite, version: DecoderVersion)(
       elem: Node => Result[A]
   )(identity: A => K): Result[Vector[A]] =
     if version.atLeast(9) then
@@ -250,21 +250,23 @@ private[ledger] object CborRead:
     * (`Set.fromList <$> decodeList`), judged on the decoded elements. From version 9 the list must
     * not be empty (`decodeNonEmptyList`, TxWits.hs `addrWitsSetDecoder`).
     */
-  def tolerantSet[A](n: Node, what: DecodeSite, version: DecoderVersion)(
+  def tolerantSet[A: Ordering](n: Node, what: DecodeSite, version: DecoderVersion)(
       elem: Node => Result[A]
   ): Result[Vector[A]] =
     list(n, what, version)
       .flatMap(xs => nonEmpty(xs, what, version.atLeast(9)))
       .flatMap(_.traverse(elem))
-      .map(_.distinct)
+      .map(Unique.firsts)
 
   /** `xs` unless it is empty where the reference refuses an empty collection. */
   def nonEmpty[A](xs: Vector[A], what: DecodeSite, required: Boolean): Result[Vector[A]] =
     Either.cond(!required || xs.nonEmpty, xs, LedgerDecodeError.Empty(what))
 
-  /** `xs` unless an element occurs twice (a `Map` or `Set` whose size is below the count read). */
-  def unique[A](xs: Vector[A], what: DecodeSite): Result[Vector[A]] =
-    Either.cond(xs.distinct.sizeIs == xs.size, xs, LedgerDecodeError.DuplicateElement(what))
+  /** `xs` unless an element occurs twice (a `Map` or `Set` whose size is below the count read),
+    * found by sorting, as the reference's `Set.fromList` finds it ([[Unique]]).
+    */
+  def unique[A: Ordering](xs: Vector[A], what: DecodeSite): Result[Vector[A]] =
+    Either.cond(!Unique.repeats(xs), xs, LedgerDecodeError.DuplicateElement(what))
 
   /** Map with unsigned-integer keys, rejecting duplicate keys, the keys read as `keys` says. */
   def fields(
@@ -285,7 +287,7 @@ private[ledger] object CborRead:
         .flatMap(pairs =>
           Either
             .cond(
-              pairs.map(_._1).distinct.sizeIs == pairs.size,
+              !Unique.repeats(pairs.map(_._1)),
               pairs.toMap,
               LedgerDecodeError.DuplicateKey(what)
             )

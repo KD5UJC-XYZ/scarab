@@ -4,7 +4,9 @@ package xyz.kd5ujc.scarab.ledger.dijkstra
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Rational}
 import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, RewardAccount, Vote}
+import scala.collection.immutable.{SortedSet, TreeMap}
 
+import DijkstraOrder.given
 import V12.{Result, given}
 
 /** A governance action's id: the transaction that proposed it and its index there. */
@@ -175,7 +177,7 @@ object DijkstraProposal:
                 Account.decode(_, DecodeField.WithdrawalAccount)
               )((_, c) => V12.word64(c, DecodeField.WithdrawalAmount)),
               policy(xs(2))
-            ).mapN((w, p) => TreasuryWithdrawals(w.toMap, p))
+            ).mapN((w, p) => TreasuryWithdrawals(TreeMap.from(w), p))
         )
       case t if t == 3 => (2, xs => previous(xs(1)).map(NoConfidence(_)))
       case t if t == 4 =>
@@ -191,7 +193,7 @@ object DijkstraProposal:
                 Credential.decode(_, DecodeField.CommitteeMember)
               )((_, e) => V12.word64(e, DecodeField.MemberTerm)),
               V12.ratio(xs(4), DecodeField.Quorum, V12.Interval.Unit)
-            ).mapN((p, r, a, q) => UpdateCommittee(p, r.toSet, a.toMap, q))
+            ).mapN((p, r, a, q) => UpdateCommittee(p, SortedSet.from(r), TreeMap.from(a), q))
         )
       case t if t == 5 =>
         (

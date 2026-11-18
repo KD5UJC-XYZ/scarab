@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import cats.syntax.all.*
+import scala.collection.immutable.TreeMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Credential, PoolParams, ProtocolParams, RewardAccount}
 import xyz.kd5ujc.scarab.ledger.state as mirror
@@ -252,7 +253,7 @@ object CertStateAnswers:
       .map(p => p -> snaps.indices.map(stakeOf(_, p)))
       .filter((_, st) => before11 || st.exists(_ > 0))
       .map((p, st) => p -> (st(0), st(1), st(2)))
-    (rows.toMap, totalActive(snaps(0)), totalActive(snaps(1)), totalActive(snaps(2)))
+    (TreeMap.from(rows), totalActive(snaps(0)), totalActive(snaps(1)), totalActive(snaps(2)))
 
   /** The active stake of a snapshot, summed; 1 for none (a `NonZero Coin`). */
   private def totalActive(s: mirror.SnapShot): BigInt =

@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, CborOrder, Node, Unique, Value}
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -313,7 +313,7 @@ object Block:
     */
   private def auxiliaryKeys(keys: Vector[Node], version: DecoderVersion): Either[ChainError, Unit] =
     Either.cond(
-      !version.atLeast(9) || keys.map(_.value).distinct.sizeIs == keys.size,
+      !version.atLeast(9) || !Unique.repeats(keys.map(_.value))(using CborOrder.values),
       (),
       fail(LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData))
     )

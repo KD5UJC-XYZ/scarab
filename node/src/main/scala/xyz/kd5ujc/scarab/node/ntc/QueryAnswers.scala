@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
+import scala.collection.immutable.SortedSet
 import scala.annotation.unused
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
@@ -801,7 +802,9 @@ object QueryAnswers:
       accounts: Map[Credential, mirror.ConwayAccountState],
       dreps: Set[DRep]
   ): Map[DRep, Set[Credential]] =
-    val registered = dreps.collect { case DRep.Registered(cred) => cred }
+    // sorted, as the client's set is: a hash set of the credentials asked for would cost the square
+    // of those that share one hash code
+    val registered = SortedSet.from(dreps.iterator.collect { case DRep.Registered(cred) => cred })
     if dreps.nonEmpty && registered.sizeIs == dreps.size then
       c.vState.dreps.iterator.collect {
         case (cred, d) if registered(EraRead.credential(cred)) =>

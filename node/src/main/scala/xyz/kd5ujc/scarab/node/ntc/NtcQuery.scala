@@ -5,7 +5,8 @@ import xyz.kd5ujc.scarab.codec.DomainError
 import cats.Monad
 import cats.syntax.all.*
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import scala.collection.immutable.SortedSet
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Unique, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   ByteStrings,
@@ -443,16 +444,19 @@ object NtcQuery:
     * 258 and without two elements alike (`decodeSetEnforceNoDuplicates`); below it, untagged, two
     * elements alike being one (`Set.fromList` over `decodeCollection`).
     */
-  private def set[A](n: Node, what: String)(each: Node => R[A])(using read: Reading): R[Set[A]] =
+  private def set[A: Ordering](n: Node, what: String)(each: Node => R[A])(using
+      read: Reading
+  ): R[SortedSet[A]] =
     val conway = read.version.atLeast(9)
     val items = n.value match
       case Value.Tag(t, inner) if t == 258 =>
         if conway then arr(inner, what) else Left(Error.UnexpectedSetTag(what))
       case _ => arr(n, what)
+    // a sorted set, as the reference's `Set`: its cost is the sort, whatever the elements' hashes
     items
       .flatMap(_.traverse(each))
       .flatMap(xs =>
-        Either.cond(!conway || xs.distinct.sizeIs == xs.size, xs.toSet, Error.Duplicate(what))
+        Either.cond(!conway || !Unique.repeats(xs), SortedSet.from(xs), Error.Duplicate(what))
       )
 
   /** A set an argument reads with `fromCBOR` of cardano-binary (`decodeSetSkel`,
@@ -557,10 +561,10 @@ object NtcQuery:
     */
   private def maybeSet[A: Ordering](n: Node, what: String)(
       each: ByteStrings ?=> Node => R[A]
-  ): R[Option[Set[A]]] =
+  ): R[Option[SortedSet[A]]] =
     definite(n, what).flatMap {
       case Vector()  => Right(None)
-      case Vector(s) => plainSet(s, what)(each).map(xs => Some(xs.toSet))
+      case Vector(s) => plainSet(s, what)(each).map(xs => Some(SortedSet.from(xs)))
       case xs        => Left(Error.Arity(what, 1, xs.size))
     }
 
@@ -799,25 +803,26 @@ object NtcQuery:
       case 14 => none(GetRewardProvenance)
       case 15 => arg1(set(_, "inputs")(txIn)).map(GetUTxOByTxIn(_))
       case 16 => none(GetStakePools)
-      case 17 => arg1(plainSet(_, "pools")(keyHash)).map(xs => GetStakePoolParams(xs.toSet))
+      case 17 =>
+        arg1(plainSet(_, "pools")(keyHash)).map(xs => GetStakePoolParams(SortedSet.from(xs)))
       case 18 => none(GetRewardInfoPools)
       case 19 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolState(_))
       case 20 => arg1(maybeSet(_, "pools")(keyHash)).map(GetStakeSnapshots(_))
       case 21 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr(_))
       case 22 =>
         arg1(plainSet(_, "credentials")(credential))
-          .map(xs => GetStakeDelegDeposits(xs.toSet))
+          .map(xs => GetStakeDelegDeposits(SortedSet.from(xs)))
       case 23 => none(GetConstitution)
       case 24 => none(GetGovState)
       case 25 =>
-        arg1(plainSet(_, "credentials")(credential)).map(xs => GetDRepState(xs.toSet))
+        arg1(plainSet(_, "credentials")(credential)).map(xs => GetDRepState(SortedSet.from(xs)))
       case 26 => arg1(set(_, "dreps")(drep)).map(GetDRepStakeDistr(_))
       case 27 =>
         if xs.sizeIs != 4 then Left(Error.Arity("committee members state", 4, xs.size))
         else
           (
-            plainSet(xs(1), "cold credentials")(credential).map(_.toSet),
-            plainSet(xs(2), "hot credentials")(credential).map(_.toSet),
+            plainSet(xs(1), "cold credentials")(credential).map(xs => SortedSet.from(xs)),
+            plainSet(xs(2), "hot credentials")(credential).map(xs => SortedSet.from(xs)),
             // `MemberStatus` is `decodeEnumBounded` of its three constructors
             set(xs(3), "statuses")(
               uint(_, "member status").filterOrElse(_ <= 2, Error.MemberStatusRange)

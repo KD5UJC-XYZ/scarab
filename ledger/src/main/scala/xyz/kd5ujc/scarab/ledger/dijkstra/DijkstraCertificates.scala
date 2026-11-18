@@ -12,7 +12,9 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerDecodeError,
   RewardAccount
 }
+import scala.collection.immutable.SortedSet
 
+import DijkstraOrder.given
 import V12.{Result, given}
 
 /** An anchor: a URL of at most 128 bytes and the hash of what it points to. */
@@ -150,7 +152,7 @@ object DijkstraPoolParams:
         cost,
         margin,
         account,
-        owners.toSet,
+        SortedSet.from(owners),
         relays,
         metadata
       )

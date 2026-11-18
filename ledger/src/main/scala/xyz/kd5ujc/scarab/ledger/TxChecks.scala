@@ -242,7 +242,7 @@ object TxChecks:
     if !era.atLeast(ShelleyBasedEra.SAlonzo) || tx.witnesses.redeemers.isEmpty then Collateral.none
     else
       val outs = collateralInputs(tx.body).flatMap(utxo.get)
-      val total = outs.foldLeft(Value.zero)(_ + _.value)
+      val total = Value.sum(outs.iterator.map(_.value))
       Collateral(outs, tx.body.collateralReturn.fold(total)(r => total - r.value).coin)
 
   /** Collateral outputs and the ada they pay as fees when the transaction fails phase 2. */

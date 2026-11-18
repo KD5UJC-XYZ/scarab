@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.dijkstra
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, TreeFold, Unique, Value}
 import xyz.kd5ujc.scarab.ledger.{CborRead, DecodeField, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape
 
@@ -29,7 +29,7 @@ final case class DijkstraWitnesses(
     redeemers: Vector[DijkstraRedeemer]
 ):
   /** The keys of the reference's script map: one hash per script, each once. */
-  def scriptHashes: Vector[Bytes] = scripts.map(_.hash).distinct
+  def scriptHashes: Vector[Bytes] = Unique.firsts(scripts.map(_.hash))
 
   /** The keys of the reference's datum map (`hashData` of each datum's original bytes). */
   def datumHashes: Vector[Bytes] = datums.map(DijkstraDatum.hash)

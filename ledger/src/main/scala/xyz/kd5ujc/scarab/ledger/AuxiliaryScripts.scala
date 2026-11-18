@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Unique, Value}
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.Era
@@ -36,7 +36,7 @@ private[ledger] object AuxiliaryScripts:
         }
         .flatMap(labels =>
           Either.cond(
-            protocol < 9 || labels.distinct.sizeIs == labels.size,
+            protocol < 9 || !Unique.repeats(labels),
             (),
             LedgerDecodeError.DuplicateKey(DecodeField.MetadataLabels)
           )
@@ -155,7 +155,7 @@ private[ledger] object AuxiliaryScripts:
               CborRead.uint(key, DecodeField.AuxiliaryField).map(_ -> value)
             }
             .flatMap { keyed =>
-              if keyed.map(_._1).distinct.sizeIs != keyed.size then
+              if Unique.repeats(keyed.map(_._1)) then
                 Left(LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData))
               else
                 keyed

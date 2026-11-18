@@ -240,7 +240,7 @@ object UtxoTests:
   private def noCollateralInputs(collateral: Vector[(TxIn, TxOut)]): Test[PredicateFailure] =
     unless(collateral.nonEmpty, UtxoFailure.NoCollateralInputs)
 
-  private def sum(outs: Iterable[TxOut]): Value = outs.foldLeft(Value.zero)(_ + _.value)
+  private def sum(outs: Iterable[TxOut]): Value = Value.sum(outs.iterator.map(_.value))
 
   /** `validateCollateral` (`Alonzo/Rules/Utxo.hs:304-324`): `feesOK` part 2 in Alonzo. */
   private def alonzoCollateral(pp: ProtocolParams, utxo: Utxo, body: TxBody) =

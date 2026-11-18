@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
 import cats.Order
+import scala.collection.immutable.{SortedSet, TreeMap}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 
@@ -149,6 +150,10 @@ private[ledger] final case class ProposalIdentity(
     anchor: Anchor
 )
 
+private[ledger] object ProposalIdentity:
+  /** The order the ordered set of a body's proposals finds its repeats with ([[IdentityOrder]]). */
+  given Ordering[ProposalIdentity] = IdentityOrder.proposalIdentity
+
 /** A governance action by meaning (`Governance/Procedures.hs:815-848` (cardano-ledger f649f975),
   * `deriving Ord`): a parameter update by the typed value of each field (`PParamsUpdate`), and
   * treasury withdrawals as the `Map AccountAddress Coin` they are, whatever the order of the
@@ -172,7 +177,7 @@ object Proposal:
         case GovAction.ParameterChange(previous, update, policy) =>
           ActionIdentity.Update(previous, update.byKey, policy)
         case GovAction.TreasuryWithdrawals(ws, policy) =>
-          ActionIdentity.Withdrawals(ws.toMap, policy)
+          ActionIdentity.Withdrawals(TreeMap.from(ws), policy)
         case other => ActionIdentity.Other(other)
       ,
       p.anchor
@@ -208,7 +213,7 @@ object Proposal:
     yield Proposal(deposit, account, action, anchor)
 
   /** A map whose repeated key fails from decoder version 9 (`decodeMap`, Decoder.hs). */
-  private def keysUnique[K, V](
+  private def keysUnique[K: Ordering, V](
       kvs: Vector[(K, V)],
       what: DecodeSite,
       version: DecoderVersion
@@ -267,7 +272,9 @@ object Proposal:
                 })
                 .flatMap(ms => keysUnique(ms, DecodeField.AddedMembers, version)),
               CborRead.rational(xs(4), DecodeField.Quorum, CborRead.Bound.Unit, version)
-            ).mapN((p, r, a, q) => GovAction.UpdateCommittee(p, r.toSet, a.toMap, q))
+            ).mapN((p, r, a, q) =>
+              GovAction.UpdateCommittee(p, SortedSet.from(r), TreeMap.from(a), q)
+            )
           case (Some(5), 3) =>
             (
               GovActionId.optional(xs(1), version),
