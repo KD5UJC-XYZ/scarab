@@ -888,13 +888,17 @@ object Targets:
             "fragmented submission differs"
           )
           // the reader only ends a transaction it refuses before the rest arrives; any other
-          // verdict is the one without it
+          // verdict is the one without it, and the one of the whole input
           result match
             case DecodeResult.Failed(ProtocolError.UndecodableTransaction(_)) => ()
             case other =>
               req(
                 other == LocalTxSubmission.decodePrefix(state, role, b.take(end)),
                 "the transaction reader changed another verdict"
+              )
+              req(
+                other == LocalTxSubmission.decodePrefix(state, role, b),
+                "fragmented submission differs from the whole input"
               )
       }
     ),
