@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{TranslationError, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.plutus.PlutusData
 
 // The translation of a transaction to the script context of a Plutus language
 // (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs`, cardano-ledger f649f975).
@@ -41,25 +42,81 @@ type ContextError[E <: EraTag] = E match
   * cardano-ledger f649f975).
   */
 type PlutusTxCert[L <: Language] = L match
+  case Language.PlutusV1 => PV1.DCert
+  case Language.PlutusV2 => PV1.DCert
   case Language.PlutusV3 => PV3.TxCert
+  case Language.PlutusV4 => PV3.TxCert
 
 /** The script purpose of a language's context (`type family PlutusScriptPurpose`,
   * `Context.hs:238-242`, cardano-ledger f649f975).
   */
 type PlutusScriptPurpose[L <: Language] = L match
+  case Language.PlutusV1 => PV1.ScriptPurpose
+  case Language.PlutusV2 => PV1.ScriptPurpose
   case Language.PlutusV3 => PV3.ScriptPurpose
+  case Language.PlutusV4 => PV3.ScriptPurpose
 
 /** The transaction information of a language's context (`type family PlutusTxInfo`,
   * `Context.hs:244-248`, cardano-ledger f649f975).
   */
 type PlutusTxInfo[L <: Language] = L match
+  case Language.PlutusV1 => PV1.TxInfo
+  case Language.PlutusV2 => PV2.TxInfo
   case Language.PlutusV3 => PV3.TxInfo
+  case Language.PlutusV4 => PV3.TxInfo
 
 /** An input of a language's context (`type family PlutusTxInInfo era l`, `Context.hs:250-257`,
-  * cardano-ledger f649f975): no era from Babbage has Alonzo's special case.
+  * cardano-ledger f649f975), without Alonzo's own case for Plutus V1 (`Maybe PV1.TxInInfo`): Alonzo
+  * is not among the era types yet, and no later era has the case.
   */
 type PlutusTxInInfo[E <: EraTag, L <: Language] = L match
+  case Language.PlutusV1 => PV1.TxInInfo
+  case Language.PlutusV2 => PV2.TxInInfo
   case Language.PlutusV3 => PV3.TxInInfo
+  case Language.PlutusV4 => PV3.TxInInfo
+
+/** The script context of a language (`type family PlutusScriptContext`,
+  * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs:364-367`, cardano-ledger
+  * f649f975).
+  */
+type PlutusScriptContext[L <: Language] = L match
+  case Language.PlutusV1 => PV1.ScriptContext
+  case Language.PlutusV2 => PV2.ScriptContext
+  case Language.PlutusV3 => PV3.ScriptContext
+
+/** The arguments of a Plutus V1 or V2 script (`data LegacyPlutusArgs l`,
+  * `Plutus/Language.hs:369-383`, cardano-ledger f649f975): the redeemer and the context, the datum
+  * first for a spending script.
+  */
+enum LegacyPlutusArgs[L <: Language]:
+  case LegacyPlutusArgs2(redeemer: PlutusData, scriptContext: PlutusScriptContext[L])
+  case LegacyPlutusArgs3(
+      datum: PlutusData,
+      redeemer: PlutusData,
+      scriptContext: PlutusScriptContext[L]
+  )
+
+object LegacyPlutusArgs:
+  /** `legacyPlutusArgsToData` (`Plutus/Language.hs:445-448`, cardano-ledger f649f975): the
+    * arguments in the order the script takes them.
+    */
+  def legacyPlutusArgsToData[L <: Language](args: LegacyPlutusArgs[L])(using
+      c: ToData[PlutusScriptContext[L]]
+  ): Vector[PlutusData] = args match
+    case LegacyPlutusArgs2(redeemer, scriptContext) =>
+      Vector(redeemer, c.toBuiltinData(scriptContext))
+    case LegacyPlutusArgs3(datum, redeemer, scriptContext) =>
+      Vector(datum, redeemer, c.toBuiltinData(scriptContext))
+
+/** `PlutusArgs 'PlutusV1` (`newtype PlutusArgs 'PlutusV1 = PlutusV1Args`, `Plutus/Language.hs:518`,
+  * cardano-ledger f649f975).
+  */
+final case class PlutusV1Args(unPlutusV1Args: LegacyPlutusArgs[Language.PlutusV1])
+
+/** `PlutusArgs 'PlutusV2` (`newtype PlutusArgs 'PlutusV2 = PlutusV2Args`, `Plutus/Language.hs:538`,
+  * cardano-ledger f649f975).
+  */
+final case class PlutusV2Args(unPlutusV2Args: LegacyPlutusArgs[Language.PlutusV2])
 
 /** `PlutusArgs 'PlutusV3` (`newtype PlutusArgs 'PlutusV3 = PlutusV3Args`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs:558`, cardano-ledger f649f975):
@@ -67,11 +124,19 @@ type PlutusTxInInfo[E <: EraTag, L <: Language] = L match
   */
 final case class PlutusV3Args(unPlutusV3Args: PV3.ScriptContext)
 
+/** `PlutusArgs 'PlutusV4` (`newtype PlutusArgs 'PlutusV4 = PlutusV4Args`, `Plutus/Language.hs:579`,
+  * cardano-ledger f649f975): the V3 script context.
+  */
+final case class PlutusV4Args(unPlutusV4Args: PV3.ScriptContext)
+
 /** The arguments of a language's script (`data PlutusArgs l`, `Plutus/Language.hs:463`,
   * cardano-ledger f649f975).
   */
 type PlutusArgs[L <: Language] = L match
+  case Language.PlutusV1 => PlutusV1Args
+  case Language.PlutusV2 => PlutusV2Args
   case Language.PlutusV3 => PlutusV3Args
+  case Language.PlutusV4 => PlutusV4Args
 
 /** What the ledger hands the translation of a transaction to a script context (`data LedgerTxInfo
   * era`, `Context.hs:92-103`, cardano-ledger f649f975): the protocol version, the slot to POSIX
@@ -127,12 +192,89 @@ trait EraPlutusTxInfo[L <: Language, E <: EraTag]:
 
   def toPlutusTxInInfo(utxo: UTxO[E], txIn: TxIn): Either[ContextError[E], PlutusTxInInfo[E, L]]
 
-/** The instances of each era and language, the one place that lists them: Conway's for Plutus V3
-  * (`Conway/TxInfo.hs:482-534`, cardano-ledger f649f975).
+  /** The language's own information among the era's memoised ones: what `lookupTxInfoResult` of the
+    * era's `EraPlutusContext` instance selects for the language (`Context.hs:216-220`,
+    * cardano-ledger f649f975). Each language's instance selects its own, so a language the era does
+    * not support, the reference's `lookupTxInfoResultImpossible` (`Context.hs:224-227`), has no
+    * instance to ask.
+    */
+  def lookupTxInfoResult(result: TxInfoResult[E]): PlutusTxInfoResult[L, E]
+
+/** The instances of each era and language, the one place that lists them: Conway's for Plutus V1 to
+  * V3 (`Conway/TxInfo.hs:399-534`, cardano-ledger f649f975).
   */
 object EraPlutusTxInfo:
+  given conwayPlutusV1: EraPlutusTxInfo[Language.PlutusV1, Conway] =
+    conway.ConwayTxInfo.plutusV1
+  given conwayPlutusV2: EraPlutusTxInfo[Language.PlutusV2, Conway] =
+    conway.ConwayTxInfo.plutusV2
   given conwayPlutusV3: conway.ConwayEraPlutusTxInfo[Language.PlutusV3, Conway] =
     conway.ConwayTxInfo.plutusV3
+
+/** The memoised transaction information of every language era `E` supports (`data TxInfoResult
+  * era`, `Context.hs:202`, cardano-ledger f649f975): Conway's of Plutus V1 to V3
+  * (`Conway/TxInfo.hs:152-156`).
+  */
+type TxInfoResult[E <: EraTag] = E match
+  case Conway => conway.ConwayTxInfoResult
+
+/** A language era `E` supports, with its translation (`data SupportedLanguage era`,
+  * `Context.hs:313-325`, cardano-ledger f649f975): equal and ordered as its language is.
+  */
+sealed abstract class SupportedLanguage[E <: EraTag]:
+  type L <: Language
+  def plutusTxInfo: EraPlutusTxInfo[L, E]
+
+  /** The language, as a value (`plutusLanguage` of its `SLanguage`). */
+  final def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+    plutusTxInfo.plutusLanguage.language
+
+  override def equals(that: Any): Boolean = that match
+    case o: SupportedLanguage[?] => language == o.language
+    case _                       => false
+  override def hashCode(): Int = language.hashCode
+  override def toString: String = s"SupportedLanguage($language)"
+
+object SupportedLanguage:
+  /** `SupportedLanguage`, of a language whose translation `t` is. */
+  def apply[E <: EraTag, L0 <: Language](t: EraPlutusTxInfo[L0, E]): SupportedLanguage[E] =
+    new SupportedLanguage[E]:
+      type L = L0
+      def plutusTxInfo: EraPlutusTxInfo[L0, E] = t
+
+  /** The derived `Ord (SupportedLanguage era)` (`Context.hs:323-325`, cardano-ledger f649f975): by
+    * the language.
+    */
+  given ordering[E <: EraTag]: Ordering[SupportedLanguage[E]] = (a, b) =>
+    Integer.compare(a.language.id, b.language.id)
+
+/** The script contexts of era `E` 's languages (`class EraPlutusContext era`, `Context.hs:187-220`,
+  * cardano-ledger f649f975): the languages it supports and their memoised information. The
+  * translation of a Plutus script into a runnable one (`mkSupportedPlutusRunnable`) waits for the
+  * era types' runnable scripts (#85); the context error is the family [[ContextError]] and the
+  * memoised information the family [[TxInfoResult]].
+  */
+trait EraPlutusContext[E <: EraTag]:
+  /** `mkSupportedLanguage`: the language as one the era supports, none if it does not. */
+  def mkSupportedLanguage(
+      lang: xyz.kd5ujc.scarab.plutus.PlutusLanguage
+  ): Option[SupportedLanguage[E]]
+
+  /** `mkTxInfoResult`: the information of every language the era supports, each computed when first
+    * looked up.
+    */
+  def mkTxInfoResult(lti: LedgerTxInfo[E]): TxInfoResult[E]
+
+  /** `lookupTxInfoResult`: the information of language `L`, which the era supports. */
+  final def lookupTxInfoResult[L <: Language](result: TxInfoResult[E])(using
+      t: EraPlutusTxInfo[L, E]
+  ): PlutusTxInfoResult[L, E] = t.lookupTxInfoResult(result)
+
+/** The instances of each era, the one place that lists them: Conway's (`Conway/TxInfo.hs:149-178`,
+  * cardano-ledger f649f975).
+  */
+object EraPlutusContext:
+  given conway: EraPlutusContext[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxInfo.context
 
 /** The functions of `Context.hs` (cardano-ledger f649f975). */
 object PlutusContext:

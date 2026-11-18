@@ -43,6 +43,8 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
   * the same failure, whatever the languages its scripts use; and the context of each Plutus V3
   * request the reference collected, built from the redeemer's pointer (`redeemerPointerInverse`),
   * the spending datum (`getSpendingDatum`) and `toPlutusArgs`, serialises to the reference's bytes.
+  * The same holds of Plutus V1 and V2: their `TxInfo` s, through the era's memoised result
+  * (`EraPlutusContext`), and their arguments, argument for argument.
   */
 class EraPlutusContextSuite extends munit.FunSuite:
   private val RecordedBlockCount = 62
@@ -778,4 +780,243 @@ class EraPlutusContextSuite extends munit.FunSuite:
       )
     }
     assert(t.bodyOf.redeemerPointerInverse[TxLevel.Top](body, ptr(0, 0)).isDefined)
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Plutus V1 and V2, and the era's memoised information
+
+  private val ctx = EraPlutusContext.conway
+
+  /** A failure in a form both paths give it in: the flat path keeps the votes in the body's order
+    * and names a purpose with its index, the reference a map of the votes and a purpose by its
+    * item.
+    */
+  private def normFlat(e: TranslationError): Any = e match
+    case TranslationError.VotingProceduresFieldNotSupported(votes) =>
+      ("votes", votes.map((voter, vs) => voter -> vs.toMap).toMap)
+    case TranslationError.PlutusPurposeNotSupported(
+          xyz.kd5ujc.scarab.ledger.Purpose.Voting(_, voter)
+        ) =>
+      ("purpose", voter)
+    case TranslationError.PlutusPurposeNotSupported(
+          xyz.kd5ujc.scarab.ledger.Purpose.Proposing(_, proposal)
+        ) =>
+      ("purpose", proposal)
+    case other => other
+
+  private def normTyped(e: ConwayContextError[Conway]): Any = e match
+    case ConwayContextError.VotingProceduresFieldNotSupported(votes) =>
+      ("votes", votes.unVotingProcedures.map((voter, vs) => voter -> vs.toMap).toMap)
+    case ConwayContextError.ProposalProceduresFieldNotSupported(proposals) =>
+      TranslationError.ProposalProceduresFieldNotSupported(proposals.toVector.map(_.read))
+    case ConwayContextError.TreasuryDonationFieldNotSupported(coin) =>
+      TranslationError.TreasuryDonationFieldNotSupported(coin.value)
+    case ConwayContextError.CurrentTreasuryFieldNotSupported(coin) =>
+      TranslationError.CurrentTreasuryFieldNotSupported(coin.value)
+    case ConwayContextError.CertificateNotSupported(cert) =>
+      TranslationError.CertificateNotSupported(conway.ConwayTxCert.toStored(cert))
+    case ConwayContextError.PlutusPurposeNotSupported(purpose) =>
+      purpose match
+        case ConwayPlutusPurpose.ConwayVoting(AsItem(voter))       => ("purpose", voter)
+        case ConwayPlutusPurpose.ConwayProposing(AsItem(proposal)) => ("purpose", proposal.read)
+        case other => fail(s"refused purpose $other")
+    case other => asFlat(other)
+
+  /** The typed information of `language` through the era's memoised result, as data. */
+  private def typedLegacyTxInfo(
+      lti: LedgerTxInfo[Conway],
+      language: PlutusLanguage
+  ): Either[ConwayContextError[Conway], PlutusData] =
+    val result = ctx.mkTxInfoResult(lti)
+    val purpose = ConwayPlutusPurpose.ConwaySpending[AsPurpose](AsPurpose())
+    language match
+      case PlutusLanguage.V1 =>
+        ctx
+          .lookupTxInfoResult[Language.PlutusV1](result)
+          .unPlutusTxInfoResult
+          .flatMap(_(purpose))
+          .map(ToData[PV1.TxInfo].toBuiltinData)
+      case PlutusLanguage.V2 =>
+        ctx
+          .lookupTxInfoResult[Language.PlutusV2](result)
+          .unPlutusTxInfoResult
+          .flatMap(_(purpose))
+          .map(ToData[PV2.TxInfo].toBuiltinData)
+      case other => fail(s"not a legacy language: $other")
+
+  /** The typed V1 or V2 `TxInfo` of `c` at `major` against the flat one. */
+  private def sameLegacyTxInfo(
+      c: Case,
+      major: Int,
+      language: PlutusLanguage
+  ): Either[TranslationError, PlutusData] =
+    val (_, _, lti) = typed(c, major)
+    val flat = ScriptContexts.txInfo(language, c.flat, flatEnv(c, major))
+    assertEquals(
+      typedLegacyTxInfo(lti, language).left.map(normTyped),
+      flat.left.map(normFlat),
+      s"${c.name} at version $major, $language"
+    )
+    flat
+
+  test(
+    "the typed V1 and V2 TxInfos are the flat ones on every Conway row, at its version and 9 to 11"
+  ) {
+    val outcomes = (cases ++ recordedBlocks).flatMap(c =>
+      for
+        major <- (Vector(c.major) ++ Vector(9, 10, 11)).distinct
+        language <- Vector(PlutusLanguage.V1, PlutusLanguage.V2)
+      yield sameLegacyTxInfo(c, major, language)
+    )
+    assert(outcomes.exists(_.isRight))
+    // the refusals the corpus and the recorded blocks reach, each by its case
+    val kinds = outcomes.collect { case Left(e) => legacyRefusal(e) }.toSet
+    assertEquals(kinds, LegacyRefusal.values.toSet, kinds)
+  }
+
+  /** Every refusal a V1 or V2 context has in Conway but `PlutusPurposeNotSupported`, which the
+    * guard on votes and proposals reaches first for a voting or proposing purpose, as in the
+    * reference.
+    */
+  private enum LegacyRefusal:
+    case Votes, Proposals, Donation, CurrentTreasury, Certificate, InlineDatum, Byron, Pointer
+
+  private def legacyRefusal(e: TranslationError): LegacyRefusal = e match
+    case TranslationError.VotingProceduresFieldNotSupported(_)   => LegacyRefusal.Votes
+    case TranslationError.ProposalProceduresFieldNotSupported(_) => LegacyRefusal.Proposals
+    case TranslationError.TreasuryDonationFieldNotSupported(_)   => LegacyRefusal.Donation
+    case TranslationError.CurrentTreasuryFieldNotSupported(_)    => LegacyRefusal.CurrentTreasury
+    case TranslationError.CertificateNotSupported(_)             => LegacyRefusal.Certificate
+    case TranslationError.InlineDatumsNotSupported(_)            => LegacyRefusal.InlineDatum
+    case TranslationError.ByronTxOutInContext(_)                 => LegacyRefusal.Byron
+    case TranslationError.RedeemerPointerPointsToNothing(_, _)   => LegacyRefusal.Pointer
+    case other => fail(s"no V1 or V2 context in Conway is refused with $other")
+
+  /** The typed arguments of the V1 or V2 script of the redeemer at `pointer`, each serialised. */
+  private def typedLegacyArgs(
+      c: Case,
+      pointer: ConwayPlutusPurpose[AsIx],
+      language: PlutusLanguage
+  ): Vector[Bytes] =
+    val (tx, utxo, lti) = typed(c)
+    val body = t.body[TxLevel.Top](tx)
+    val purpose = t.bodyOf
+      .redeemerPointerInverse[TxLevel.Top](body, pointer)
+      .getOrElse(fail(s"${c.name}: $pointer names nothing"))
+    val redeemer = t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries(pointer)._1
+    val datum = u.getSpendingDatum[TxLevel.Top](
+      utxo,
+      tx,
+      ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
+        [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+      )(purpose)
+    )(using u.txOf.bodyOf.top)
+    val asPurpose = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsPurpose](
+      [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsPurpose(a)
+    )(purpose)
+    val result = ctx.mkTxInfoResult(lti)
+    val args: Either[ConwayContextError[Conway], Vector[PlutusData]] = language match
+      case PlutusLanguage.V1 =>
+        val t1 = EraPlutusTxInfo.conwayPlutusV1
+        for
+          info <- PlutusContext
+            .mkPlutusTxInfoFromResult[Language.PlutusV1, Conway](
+              asPurpose,
+              ctx.lookupTxInfoResult[Language.PlutusV1](result)
+            )
+          a <- t1.toPlutusArgs(lti.ltiProtVer, info, purpose, datum, redeemer)
+        yield LegacyPlutusArgs.legacyPlutusArgsToData(a.unPlutusV1Args)
+      case PlutusLanguage.V2 =>
+        val t2 = EraPlutusTxInfo.conwayPlutusV2
+        for
+          info <- PlutusContext
+            .mkPlutusTxInfoFromResult[Language.PlutusV2, Conway](
+              asPurpose,
+              ctx.lookupTxInfoResult[Language.PlutusV2](result)
+            )
+          a <- t2.toPlutusArgs(lti.ltiProtVer, info, purpose, datum, redeemer)
+        yield LegacyPlutusArgs.legacyPlutusArgsToData(a.unPlutusV2Args)
+      case other => fail(s"not a legacy language: $other")
+    args.fold(e => fail(s"${c.name}: $e"), _.map(DataSerialisation.serialise))
+
+  /** The language and the arguments' bytes of a reference request (`PlutusWithContext`). */
+  private def referenceArgs(script: Json): (BigInt, Vector[Bytes]) =
+    val encoding = hex(
+      script.hcursor.downField("contextCbor").focus.flatMap(_.asString).getOrElse(fail("digested"))
+    )
+    cbor(encoding).value match
+      case CborValue.Arr(Vector(_, s, arguments, _, _)) =>
+        val language = s.value match
+          case CborValue.Arr(Vector(l, _)) =>
+            l.value match
+              case CborValue.UInt(n) => n
+              case other             => fail(s"not a language: $other")
+          case other => fail(s"not a script: $other")
+        val args = arguments.value match
+          case CborValue.Arr(items) => items.map(_.original)
+          case _                    => Vector(arguments.original)
+        (language, args)
+      case other => fail(s"not a PlutusWithContext: $other")
+
+  test("each Plutus V1 and V2 argument the reference collected is the typed one, byte for byte") {
+    val matched = cases.flatMap { c =>
+      if !field[Boolean](c.oracle, "collected") || c.name.startsWith("errors/") then Vector.empty
+      else
+        val requests = Phase2
+          .collect(
+            c.flat,
+            TestLedger.params(c.major).copy(costModels = c.costModels),
+            (c.spent.values ++ c.references.values)
+              .flatMap(_.referenceScript)
+              .map(s => s.hash -> s)
+              .toMap ++ c.flat.witnesses.scriptsByHash,
+            c.spent,
+            c.references,
+            c.posix
+          )(using ShelleyBasedEra.SConway)
+          .fold(e => fail(s"${c.name}: $e"), identity)
+        val references = field[Vector[Json]](c.oracle, "scripts")
+        assertEquals(requests.size, references.size, c.name)
+        requests.zip(references).flatMap { case ((redeemer, request), reference) =>
+          val (language, expected) = referenceArgs(reference)
+          Option.when(language < BigInt(PlutusLanguage.V3.id)) {
+            assertEquals(BigInt(request.language.id), language, c.name)
+            val ours = typedLegacyArgs(c, ptr(redeemer.tag, redeemer.index), request.language)
+            val at = s"${c.name}: ${redeemer.tag}.${redeemer.index}"
+            assertEquals(ours, request.args.map(DataSerialisation.serialise), s"$at: flat")
+            assertEquals(ours, expected, s"$at: reference")
+            c.name
+          }
+        }
+    }
+    // the V1 and V2 requests of the Conway rows, 14 recorded, 78 of the matrix and 49 of the
+    // script results: a filter that loses one fails here
+    assertEquals(matched.size, 14 + 78 + 49, matched.distinct)
+  }
+
+  test("Conway supports Plutus V1 to V3, each looked up as its own translation gives it") {
+    assertEquals(
+      PlutusLanguage.values.toVector.map(l => ctx.mkSupportedLanguage(l).map(_.language)),
+      Vector(Some(PlutusLanguage.V1), Some(PlutusLanguage.V2), Some(PlutusLanguage.V3), None)
+    )
+    val supported = PlutusLanguage.values.toVector.flatMap(ctx.mkSupportedLanguage).reverse
+    assertEquals(
+      supported.sorted.map(_.language),
+      Vector(PlutusLanguage.V1, PlutusLanguage.V2, PlutusLanguage.V3)
+    )
+    assertEquals(
+      ctx.mkSupportedLanguage(PlutusLanguage.V2),
+      ctx.mkSupportedLanguage(PlutusLanguage.V2)
+    )
+    val (_, _, lti) = typed(base)
+    val result = ctx.mkTxInfoResult(lti)
+    val purpose = ConwayPlutusPurpose.ConwaySpending[AsPurpose](AsPurpose())
+    assertEquals(
+      ctx.lookupTxInfoResult[Language.PlutusV3](result).unPlutusTxInfoResult.flatMap(_(purpose)),
+      v3.toPlutusTxInfo(lti).unPlutusTxInfoResult.flatMap(_(purpose))
+    )
+    assertEquals(
+      ctx.lookupTxInfoResult[Language.PlutusV1](result).unPlutusTxInfoResult.flatMap(_(purpose)),
+      EraPlutusTxInfo.conwayPlutusV1.toPlutusTxInfo(lti).unPlutusTxInfoResult.flatMap(_(purpose))
+    )
   }

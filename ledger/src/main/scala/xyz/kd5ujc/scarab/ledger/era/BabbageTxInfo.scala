@@ -127,3 +127,39 @@ object BabbageTxInfo:
       )
       redeemers <- entries.traverse((_, entry) => transRedeemer(entry._1).leftMap(undecodable[E]))
     yield AssocMap(purposes.zip(redeemers))
+
+  /** `transTxInInfoV2` (`Babbage/TxInfo.hs:174-186`, cardano-ledger f649f975): an input with the
+    * output the UTxO set holds for it, in the V2 form.
+    */
+  def transTxInInfoV2[E <: EraTag](utxo: UTxO[E], txIn: TxIn)(using
+      o: BabbageEraTxOut[E],
+      inj: Inject[BabbageContextError[E], ContextError[E]],
+      v: Value[E] =:= MultiAssetValue
+  ): Either[ContextError[E], PV2.TxInInfo] =
+    for
+      txOut <- AlonzoTxInfo
+        .transLookupTxOut[E, AlonzoContextError[E]](utxo, txIn)
+        .leftMap(e => alonzo[E](e))
+      plutusTxOut <- transTxOutV2(TxOutSource.TxOutFromInput(txIn), txOut)
+    yield PV2.TxInInfo(transTxIn(txIn), plutusTxOut)
+
+  /** `toPlutusV2Args` (`Babbage/TxInfo.hs:403-414`, cardano-ledger f649f975). */
+  def toPlutusV2Args[E <: EraTag](
+      pv: ProtVer,
+      txInfo: PV2.TxInfo,
+      scriptPurpose: PlutusPurpose[AsIxItem, E],
+      maybeSpendingData: Option[Bytes],
+      redeemerData: Bytes
+  )(using
+      t: EraPlutusTxInfo[Language.PlutusV2, E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PlutusV2Args] =
+    AlonzoTxInfo
+      .toLegacyPlutusArgs[Language.PlutusV2, E](
+        pv,
+        PV2.ScriptContext(txInfo, _),
+        scriptPurpose,
+        maybeSpendingData,
+        redeemerData
+      )
+      .map(PlutusV2Args(_))

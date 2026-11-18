@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{DataSite, TranslationError, TxIn}
+import scala.collection.immutable.TreeMap
+import xyz.kd5ujc.scarab.ledger.{Address, DataSite, RewardAccount, TranslationError, TxIn}
 import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag}
 
 /** Why Alonzo's translation of a transaction to a script context fails (`data AlonzoContextError
@@ -89,3 +90,128 @@ object AlonzoTxInfo:
     */
   def transValue(v: MultiAssetValue): PV1.Value =
     transCoinToValue(Coin(v.lovelace)) <> transMultiAsset(v.assets)
+
+  /** `transTxOut` (`Alonzo/Plutus/TxInfo.hs:276-286`, cardano-ledger f649f975): the output in the
+    * V1 form, none at a Byron address.
+    */
+  def transTxOut[E <: EraTag](txOut: TxOut[E])(using
+      o: AlonzoEraTxOut[E],
+      v: Value[E] =:= MultiAssetValue
+  ): Option[PV1.TxOut] =
+    val address = o.address(txOut)
+    for
+      _ <- address.kind match
+        case Address.Kind.Byron(_)            => None
+        case Address.Kind.Shelley(_, _, _, _) => Some(())
+      addr <- transAddr(address)
+    yield PV1.TxOut(addr, transValue(v(o.value(txOut))), o.dataHash(txOut).map(transDataHash))
+
+  /** `transTxBodyId` of V1 and V2 (`Alonzo/Plutus/TxInfo.hs:288-289`, cardano-ledger f649f975): the
+    * hash of the body.
+    */
+  def transTxBodyId[E <: EraTag, T <: TxLevel](txBody: TxBody[T, E])(using
+      b: EraTxBody[E],
+      l: b.Level[T]
+  ): PV1.TxId =
+    PV1.TxId(transSafeHash(b.id[T](txBody)))
+
+  /** `transWithdrawals` (`Alonzo/Plutus/TxInfo.hs:301-305`, cardano-ledger f649f975): by the
+    * staking credential of each account, folded in the accounts' order, so a later account of the
+    * same credential replaces an earlier one's amount.
+    */
+  def transWithdrawals(
+      withdrawals: Map[RewardAccount, Coin]
+  ): TreeMap[PV1.StakingCredential, BigInt] =
+    withdrawals.toVector
+      .sortBy(_._1)
+      .foldLeft(TreeMap.empty[PV1.StakingCredential, BigInt]) { case (ans, (accountAddress, n)) =>
+        ans.updated(PV1.StakingCredential.StakingHash(transAccountAddress(accountAddress)), n.value)
+      }
+
+  /** `transTxBodyWithdrawals` of V1 and V2 (`Alonzo/Plutus/TxInfo.hs:308-309`, cardano-ledger
+    * f649f975): the withdrawals by staking credential, in the credentials' order.
+    */
+  def transTxBodyWithdrawals[E <: EraTag, T <: TxLevel](txBody: TxBody[T, E])(using
+      b: EraTxBody[E],
+      l: b.Level[T]
+  ): Vector[(PV1.StakingCredential, BigInt)] =
+    transWithdrawals(b.withdrawals[T](txBody)).toVector
+
+  /** `transMintValue` of V1 and V2 (`Alonzo/Plutus/TxInfo.hs:344-345`, cardano-ledger f649f975): a
+    * zero lovelace entry, then the assets.
+    */
+  def transMintValue(m: Map[Bytes, Map[Bytes, BigInt]]): PV1.Value =
+    transCoinToValue(Coin(0)) <> transMultiAsset(m)
+
+  /** `transTxCertCommon` (`Alonzo/Plutus/TxInfo.hs:364-379`, cardano-ledger f649f975): a
+    * certificate in the V1 form, none for one Conway deprecated or added.
+    */
+  def transTxCertCommon[E <: EraTag](txCert: TxCert[E])(using
+      c: ShelleyEraTxCert[E]
+  ): Option[PV1.DCert] =
+    c.getRegTxCert(txCert)
+      .map(stakeCred =>
+        PV1.DCert.DCertDelegRegKey(PV1.StakingCredential.StakingHash(transCred(stakeCred)))
+      )
+      .orElse(
+        c.getUnRegTxCert(txCert)
+          .map(stakeCred =>
+            PV1.DCert.DCertDelegDeRegKey(PV1.StakingCredential.StakingHash(transCred(stakeCred)))
+          )
+      )
+      .orElse(c.getDelegStakeTxCert(txCert).map { (stakeCred, keyHash) =>
+        PV1.DCert.DCertDelegDelegate(
+          PV1.StakingCredential.StakingHash(transCred(stakeCred)),
+          transKeyHash(keyHash)
+        )
+      })
+      .orElse(c.getRegPoolTxCert(txCert).map { params =>
+        PV1.DCert
+          .DCertPoolRegister(transKeyHash(params.sppId), PV1.PubKeyHash(params.value.vrfKeyHash))
+      })
+      .orElse(c.getRetirePoolTxCert(txCert).map { (poolId, retireEpochNo) =>
+        PV1.DCert.DCertPoolRetire(transKeyHash(poolId), transEpochNo(retireEpochNo))
+      })
+
+  /** `toLegacyPlutusArgs` (`Alonzo/Plutus/TxInfo.hs:180-194`, cardano-ledger f649f975): the purpose
+    * in the language's form in its context, the redeemer, and the datum of a spending script before
+    * them. The redeemer and the datum are read from the bytes they arrived as, after the purpose,
+    * whose failure is the reference's.
+    */
+  def toLegacyPlutusArgs[L <: Language, E <: EraTag](
+      pv: ProtVer,
+      mkScriptContext: PlutusScriptPurpose[L] => PlutusScriptContext[L],
+      scriptPurpose: PlutusPurpose[AsIxItem, E],
+      maybeSpendingData: Option[Bytes],
+      redeemerData: Bytes
+  )(using
+      t: EraPlutusTxInfo[L, E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], LegacyPlutusArgs[L]] =
+    def undecodable(site: DataSite) = inj.inject(AlonzoContextError.Undecodable(site))
+    for
+      scriptContext <- t.toPlutusScriptPurpose(pv, scriptPurpose).map(mkScriptContext)
+      redeemer <- decodeData(redeemerData, DataSite.Redeemer).leftMap(undecodable)
+      spendingData <- maybeSpendingData.traverse(decodeData(_, DataSite.Datum)).leftMap(undecodable)
+    yield spendingData match
+      case None        => LegacyPlutusArgs.LegacyPlutusArgs2(redeemer, scriptContext)
+      case Some(datum) => LegacyPlutusArgs.LegacyPlutusArgs3(datum, redeemer, scriptContext)
+
+  /** `toPlutusV1Args` (`Alonzo/Plutus/TxInfo.hs:167-178`, cardano-ledger f649f975). */
+  def toPlutusV1Args[E <: EraTag](
+      pv: ProtVer,
+      txInfo: PV1.TxInfo,
+      scriptPurpose: PlutusPurpose[AsIxItem, E],
+      maybeSpendingData: Option[Bytes],
+      redeemerData: Bytes
+  )(using
+      t: EraPlutusTxInfo[Language.PlutusV1, E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PlutusV1Args] =
+    toLegacyPlutusArgs[Language.PlutusV1, E](
+      pv,
+      PV1.ScriptContext(txInfo, _),
+      scriptPurpose,
+      maybeSpendingData,
+      redeemerData
+    ).map(PlutusV1Args(_))
