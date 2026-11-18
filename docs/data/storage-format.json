@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Storage format (FMT-1) approval: may the native V10 snapshot read and write a Dijkstra pool's future parameters WITH a BLS voting key? Today Scarab refuses such a state (Dijkstra state, Leios layout, a pending keyed pool re-registration), so it can't be snapshotted, imported from or exported to the Haskell node, or answered over node-to-client. The change mirrors the reference's encoding exactly (cardano-ledger 9df9f98c `State/StakePool.hs`: from version 12, a ten-item array with the key third, the key as [96-byte G2 key, 48-byte G1 proof]), checked against the testnet's recorded bytes. Bytes for every state without keyed future parameters stay identical; no deployed store is affected (deployed stores are V8; no V10 store is deployed) and no migration is needed. It would be its own PR, separate from the POOLREAP change.",
-  "asked_at": "2026-11-20T00:29:56Z",
-  "decision": "Approved as recommended: the native V10 snapshot, changed in place, reads and writes a Dijkstra pool's future parameters with a BLS voting key as the reference encodes them, in a pull request of its own separate from the POOLREAP change; nothing else of the format. The one-off guard exception for the paths outside the general list was approved separately (asked 2026-11-20T04:04:50Z, answered 04:09:53Z), with the node-to-client answer moved to a follow-up pull request and the exception landing first in #1241.",
-  "decided_at": "2026-11-20T01:07:58Z",
-  "surface_sha256": "fcb64692fb4eb5d8e267a326227db90a11b50d1d3d3ec23686127f45e833e452"
+  "question": "Storage format change for #830: a new endorser-block store, a separate RocksDB instance at leios/ with column families meta (magic SCRBLEIO v1, unstable), points, bodies, txs and complete; the reference LeiosDB's operations; other versions refused, no migration; sqlite-jdbc for the LeiosDB import.",
+  "asked_at": "2026-11-18T19:54:33Z",
+  "decision": "Approved as proposed, with a reader and a writer of the reference node's Leios database, one database to maintain (RocksDB), and no regression of the ledger-state import and export.",
+  "decided_at": "2026-11-18T20:00:13Z",
+  "surface_sha256": "96da880bdec6de10bd4e818ff69487c694eded428d27e7dee04cea7464b4c5df"
  },
  "surface": {
   "registry": {
@@ -155,6 +155,9 @@
     "SCRBSNP8",
     "SCRBSNP9",
     "SCRBSNPA"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksLeiosStore.scala": [
+    "SCRBLEIO"
    ],
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": [
     "CSLSNAP1"

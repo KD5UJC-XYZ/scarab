@@ -982,7 +982,7 @@
     {
       "module": "storage",
       "path": "storage",
-      "responsibility": "Immutable, volatile, UTxO and ledger snapshot stores, derived codecs, format migration",
+      "responsibility": "Immutable, volatile, UTxO and ledger snapshot stores, the Leios endorser-block store, derived codecs, format migration",
       "entryPoints": [
         "ChainStorage",
         "ImmutableStore",
@@ -991,7 +991,9 @@
         "UtxoStore",
         "RocksUtxoStore",
         "SnapshotV10",
-        "Migrate"
+        "Migrate",
+        "LeiosStore",
+        "RocksLeiosStore"
       ],
       "suites": [
         "ChainStorageSuite",
@@ -1000,7 +1002,8 @@
         "UtxoStoreSuite",
         "LedgerSnapshotsSuite",
         "FormatMigrationSuite",
-        "SnapshotV10Suite"
+        "SnapshotV10Suite",
+        "LeiosStoreSuite"
       ],
       "docs": [
         "docs/adr/0006-versioned-formats-migrate-on-open.md",
