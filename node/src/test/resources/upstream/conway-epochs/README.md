@@ -39,6 +39,7 @@ limits enacted actions; NEWEPOCH's state specification is `trueSpec` and does no
 state invariants. Larger explicitly sized probes fail in the upstream proposal constructor before
 producing a judgment. The separate [lawful NEWEPOCH corpus](../conway-lawful-newepoch/README.md)
 adds twelve native/formal full-state matches without modifying these original failed inputs.
-Broader generated-state campaigns are optional K2 roadmap follow-ups.
+Broader generated-state campaigns remain under K2 / [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49), where
+the upstream cases not yet run whole are required work.
 
 Upstream sources are Apache-2.0; notices are retained under `fixtures/witness/licenses/`.

@@ -100,9 +100,12 @@ its old prose mentions a different positive tolerance. The native repeated IO te
 is disabled upstream with issue #2612's CPU-interference explanation. Scarab's
 existing deterministic deadline tests are local controls, not new upstream adapter
 passes. No exact real-clock or scheduler-trace equivalence is claimed. More
-generated seeds or unexported properties alone do not establish a release-blocking
-behavior gap; the [risk-based audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
-records the bounded closeout recommendation and reference dispositions.
+generated seeds or unexported properties do not by themselves show a behavior
+difference, and an upstream case not yet run is not a pass either
+([CNF-2](../../../docs/design-rules.md#cnf-2)): such cases are required work under #49. The
+2026-10-20 [risk-based audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
+records the bounded closeout recommendation, since superseded by
+[CNF-1](../../../docs/design-rules.md#cnf-1), and the reference dispositions.
 
 The practical local follow-up adds `MuxSeededTrafficSuite` (eight seed/SDU profiles, 320 complete
 messages and 256 observed paired SDU-write groups across duplex channels; the former message
