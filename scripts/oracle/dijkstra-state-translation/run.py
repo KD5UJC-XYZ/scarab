@@ -143,6 +143,30 @@ def new_epoch_state(buf):
     return elements(buf, versioned[1][0], 4)[1]
 
 
+def table_entries(buf):
+    """The (key, value) byte strings of a `tables` file: an array of one map of byte strings
+    (`valuesMKEncoder`, ouroboros-consensus 2416493b `Ledger/Tables.hs:276-282`), in key order."""
+    major, arg, pos = head(buf, 0)
+    if (major, arg) != (4, 1):
+        raise SystemExit(f"{TABLES}: an array of one map expected")
+    major, count, pos = head(buf, pos)
+    if major != 5:
+        raise SystemExit(f"{TABLES}: a map expected")
+    entries = []
+    while (buf[pos] != 0xFF) if count is None else (len(entries) < count):
+        pair = []
+        for _ in range(2):
+            major, size, start = head(buf, pos)
+            if major != 2 or size is None:
+                raise SystemExit(f"{TABLES}: a definite byte string expected at {pos}")
+            pos = start + size
+            pair.append(buf[start:pos].hex())
+        entries.append(tuple(pair))
+    if skip(buf, 0) != len(buf):
+        raise SystemExit(f"{TABLES}: trailing bytes")
+    return sorted(entries)
+
+
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -203,6 +227,9 @@ def run_image(name, nes):
         raise SystemExit("the Conway NewEpochState does not encode back to the snapshot's bytes")
     if not result["dijkstraRoundTrip"]:
         raise SystemExit("the Dijkstra NewEpochState does not decode and encode back to the same bytes")
+    read = [(o["txIn"], o["conwayTxOut"]) for o in result["outputs"]]
+    if read != table_entries((ROOT / TABLES).read_bytes()):
+        raise SystemExit(f"the outputs the oracle read are not the entries of {TABLES}, byte for byte")
     return result
 
 

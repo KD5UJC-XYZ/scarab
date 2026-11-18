@@ -22,7 +22,7 @@ before Dijkstra starts at slot 200, with the devnet's `genesis/dijkstra-genesis.
 | `reference.conwayRoundTrip` | the decoded Conway state encodes back to the snapshot's bytes |
 | `reference.dijkstraNewEpochState` | the translated state's CBOR (15,335 bytes), hex |
 | `reference.dijkstraRoundTrip` | Dijkstra's decoder reads it back to the same bytes |
-| `reference.outputs` | the 7 outputs of the snapshot's UTxO table, in key order: the key (`txIn`, the consensus layer's 34-byte `BigEndianTxIn`), the Conway output's `MemPack` bytes, and the upgraded Dijkstra output as CBOR at version 12 and as `MemPack` |
+| `reference.outputs` | the 7 outputs of the snapshot's UTxO table, in key order: the key (`txIn`, the consensus layer's 34-byte `BigEndianTxIn`), the Conway output's `MemPack` bytes (`run.py` checks both are the table's own bytes), and the upgraded Dijkstra output as CBOR at version 12 and as `MemPack` |
 
 The state's own UTxO is empty, as in every UTxO-HD snapshot (`state` holds no outputs; `tables` holds
 them), so the translated state's UTxO is empty too and the outputs are recorded beside it. Translating a
@@ -73,12 +73,19 @@ the base image lacks; see the [Leios testnet harness](../../../scripts/oracle/le
   before that the protocol index is retyped from Praos to Praos2 (`transLeiosLS`,
   `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs:742-755`),
   and no new table differences are produced (`noNewTickingDiffs`, `:734`);
-- the UTxO table: the crossing does not rewrite it. Its outputs stay Conway outputs and are upgraded with
-  `upgradeTxOut` when they are read into Dijkstra (`ejectHardForkTxOut`,
+- the UTxO table: the translation of the state leaves it aside (`forgetLedgerTables`, `State.hs:307`).
+  The in-memory backend upgrades every output when the first block of the new era is applied: pushing that
+  block's differences runs `upgradeTables` on the values
+  (`ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/V2/InMemory.hs:145-152`),
+  which, when the two states are in different eras, ejects each output into the new era and injects it
+  again (`extendTables`, `HardFork/Combinator/Ledger.hs:1250-1287`); the ejection is `upgradeTxOut`
+  (`ejectHardForkTxOut`,
   `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Ledger.hs:150-162`,
-  through `translateTxOutWith`, `CanHardFork.hs:757-765`), while a snapshot taken in Dijkstra writes the
-  same `MemPack` bytes (`Cardano/Ledger.hs:188-212`) and reads them as Dijkstra outputs (`:214-257`). This
-  oracle records the upgrade of each output, not the table's life;
+  through `translateTxOutWith`, `CanHardFork.hs:757-765`). An output not yet upgraded is upgraded the same
+  way when it is read into Dijkstra (`Ledger/Tables.hs:250-256` says the upgrade is for speed, not
+  correctness). A snapshot writes each output's `MemPack` (`Cardano/Ledger.hs:188-212`) and reads it back
+  as an output of the tip's era (`:214-257`). This oracle records the upgrade of each output, not when the
+  table holds it;
 - the telescope: Conway's state becomes a past era with its bound, Dijkstra's the current one
   (`State.hs:296-304`);
 - the chain-dependent state, Praos to Praos2 (`translateChainDepStateAcrossShelley`, `ShelleyHFC.hs:304-318`;
