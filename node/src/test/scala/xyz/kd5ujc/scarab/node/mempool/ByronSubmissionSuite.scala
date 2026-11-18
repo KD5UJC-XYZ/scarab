@@ -7,8 +7,6 @@ import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, TransactionDeco
 import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
-import xyz.kd5ujc.scarab.protocol.Era
 
 import ByronPayloads.*
 
@@ -30,13 +28,6 @@ class ByronSubmissionSuite extends FunSuite:
   test("a recorded payload of each kind is read, and gets the era mismatch") {
     valid.foreach { (name, payload) =>
       assertEquals(read(genTx(payload)), Right(MempoolState.Read.Foreign(0)), name)
-      assertEquals(
-        LocalSubmission.response(Refused(Rejection.WrongEra(0, Era.Conway), Some(Era.Conway))),
-        LocalTxSubmissionServer.Response.Rejected(
-          PredicateFailureCbor.eraMismatch(0, "Byron", Era.Conway)
-        ),
-        name
-      )
     }
   }
 

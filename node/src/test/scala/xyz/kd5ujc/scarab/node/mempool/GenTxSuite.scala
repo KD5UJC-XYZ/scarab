@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.network.{
   NodeToClientServer
 }
 import xyz.kd5ujc.scarab.node.assertions.Assertions
+import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 import xyz.kd5ujc.scarab.protocol.{Era, Handshake, LocalTxSubmission, ProtocolError, Protocols}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Role}
 
@@ -470,17 +471,21 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
 
   test("on the wire, a whole transaction the decoder reads gets its refusal, as before") {
     // a Conway transaction of no inputs, which the rules refuse, and a recorded Byron payload of
-    // each kind, which the pool's ledger, of a later era, does not take: the era mismatch
+    // each kind, which the pool's ledger, of a later era, does not take: the era mismatch, `[[0,
+    // "Byron"], [6, "Conway"]]`, the reason the reference node gave each in the `ntc` scenario
     val empty = hex("84a3008001800200a0f5f6")
-    (("82008206d818" + Bytes(bstr(empty)).hex) +:
-      ByronPayloads.valid.map((_, payload) => "82008200" + payload.hex))
-      .traverse(message =>
-        outcome(Vector(hex(message))).map {
-          case Right(LocalTxSubmission.Message.RejectTx(_)) => ()
-          case other => fail(s"$message: expected a refusal, got $other")
-        }
+    val mismatch = hex("828200654279726f6e820666436f6e776179")
+    assertEquals(PredicateFailureCbor.eraMismatch(0, "Byron", Era.Conway), mismatch)
+    outcome(Vector(hex("82008206d818" + Bytes(bstr(empty)).hex)))
+      .map {
+        case Right(LocalTxSubmission.Message.RejectTx(_)) => ()
+        case other => fail(s"a Conway transaction of no inputs: expected a refusal, got $other")
+      } *>
+      ByronPayloads.valid.traverse_((name, payload) =>
+        outcome(Vector(hex("82008200" + payload.hex))).map(result =>
+          assertEquals(result, Right(LocalTxSubmission.Message.RejectTx(mismatch)), name)
+        )
       )
-      .void
   }
 
   test("the judge reads the transaction's first tokens only: the codec agrees at every cut") {

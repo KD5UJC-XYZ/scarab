@@ -122,9 +122,9 @@ object ByronTransport:
       _ <- word(value(1), 16, DecodeField.InputIndex)
     yield ()
 
-  // `TxInWitness.hs:118-128`: a verification key and its signature (0), or a redeem key, 32 bytes
-  // of plain `decodeBytes` (`Crypto/Orphans.hs:89-92`), and its signature (2); cardano-ledger
-  // f649f975
+  // `UTxO/TxWitness.hs:118-128`: a verification key and its signature (0), or a redeem key, 32
+  // bytes of plain `decodeBytes` (`Crypto/Orphans.hs:89-92`), and its signature (2);
+  // cardano-ledger f649f975
   private def witness(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 2, DecodeField.Witness)
