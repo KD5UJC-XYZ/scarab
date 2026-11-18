@@ -52,7 +52,8 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     GenTx.prefix(prefix) == LocalTxSubmission.TxPrefix.Short
 
   // (prefix, a completion of it, the refusal): every completion of a refused prefix is refused
-  // whole too, so whether a transaction is admitted does not depend on how its bytes arrive
+  // whole too, so whether a transaction is admitted does not depend on how its bytes arrive; a tag
+  // other than 24 is refused around a byte string and around the transaction itself
   private val refused = Vector(
     ("8208", wrappedTx, GenTx.Refusal.UnknownEra(8)),
     ("82190100", wrappedTx, GenTx.Refusal.EraIndex),
@@ -68,7 +69,6 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     ("82008220", "5820" + "11" * 32, GenTx.Refusal.ByronTag),
     ("8206d819", Bytes(bstr(tx)).hex, GenTx.Refusal.NotCborInCbor(Era.Conway)),
     ("8201d81e", Bytes(bstr(tx)).hex, GenTx.Refusal.NotCborInCbor(Era.Shelley)),
-    // a tag other than 24 around the transaction itself, at each width of its head
     ("8206d819", tx.hex, GenTx.Refusal.NotCborInCbor(Era.Conway)),
     ("8206c1", tx.hex, GenTx.Refusal.NotCborInCbor(Era.Conway)),
     ("8206d81884", tx.drop(1).hex, GenTx.Refusal.ExpectedBytes(Era.Conway)),
