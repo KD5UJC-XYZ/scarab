@@ -40,7 +40,8 @@ enum PeerSnapshotError extends DomainError:
 
 /** Why the node does not start with the peer snapshot it was given (`updateLedgerPeerSnapshot`,
   * `cardano-node/src/Cardano/Node/Run.hs` 705-760, at startup: the reference stops with each of
-  * these).
+  * these). At a runtime reload only [[TooOld]] is refused; the others drop the snapshot
+  * ([[SnapshotUse.Dropped]]).
   */
 enum PeerSnapshotRefusal extends DomainError:
   /** A version 1 or 2 file: "Unsupported legacy peer snapshot version." */
@@ -81,9 +82,25 @@ enum SnapshotUse:
 
   case Loaded(file: LedgerPeerSnapshot[LedgerRelay])
 
+  /** At a runtime reload, a file the reference refuses at start-up (unreadable in Genesis mode, of
+    * a legacy version, at the origin, of another network): it goes on without a snapshot and says
+    * nothing, its `NetworkConfigUpdateError` there being discarded (`Run.hs` 720-722, 734-736;
+    * checked by running, 2026-11-17).
+    */
+  case Dropped(refusal: PeerSnapshotRefusal)
+
   def snapshot: Option[LedgerPeerSnapshot[LedgerRelay]] = this match
     case Loaded(file) => Some(file)
     case _            => None
+
+/** When the reference reads the peer snapshot, its `isStartup` (`updateLedgerPeerSnapshot`,
+  * `cardano-node/src/Cardano/Node/Run.hs` 713-722): at start-up and from the SIGHUP handler
+  * installed before consensus has initialised (372-379, 423-430) a refusal stops what reads it;
+  * from the handler installed once it has (605-612) the snapshot is dropped instead, but for one
+  * older than `useLedgerAfterSlot`, which stops it in either.
+  */
+enum SnapshotPhase:
+  case Startup, Runtime
 
 /** The big ledger peer snapshot file named by `peerSnapshotFile` in the topology: the JSON
   * `FromJSON (LedgerPeerSnapshot BigLedgerPeers)` reads
@@ -113,30 +130,35 @@ object PeerSnapshot:
       .leftMap(e => PeerSnapshotError.Unreadable(path.toString, e))
       .flatMap(decode)
 
-  /** The snapshot the node starts with, as `updateLedgerPeerSnapshot` decides it (Praos mode): none
-    * unless ledger peers are on and a file is named; a file that cannot be read is ignored; one
-    * that reads but is of a legacy version, at the origin, of another network, or older than
-    * `useLedgerAfterSlot` stops the node.
+  /** The snapshot the node uses, as `updateLedgerPeerSnapshot` decides it in `phase`: none unless
+    * ledger peers are on and a file is named; in Praos mode a file that cannot be read is ignored;
+    * one that cannot be read in Genesis mode, or reads but is of a legacy version, at the origin or
+    * of another network, stops the node at start-up and is dropped at a runtime reload (`oops`,
+    * 720-722); one older than `useLedgerAfterSlot` stops it in either (755).
     */
   def use(
       file: Option[Path],
       networkMagic: Long,
       ledger: UseLedgerPeers,
-      consensusMode: ConsensusMode = ConsensusMode.PraosMode
+      consensusMode: ConsensusMode = ConsensusMode.PraosMode,
+      phase: SnapshotPhase = SnapshotPhase.Startup
   ): Either[PeerSnapshotRefusal, SnapshotUse] =
+    def oops(refusal: PeerSnapshotRefusal): Either[PeerSnapshotRefusal, SnapshotUse] = phase match
+      case SnapshotPhase.Startup => Left(refusal)
+      case SnapshotPhase.Runtime => Right(SnapshotUse.Dropped(refusal))
     (file, ledger) match
       case (Some(path), UseLedgerPeers.Use(after)) =>
         read(path) match
           case Left(error) if consensusMode == ConsensusMode.GenesisMode =>
-            Left(PeerSnapshotRefusal.UnreadableSnapshot(error))
+            oops(PeerSnapshotRefusal.UnreadableSnapshot(error))
           case Left(error)                        => Right(SnapshotUse.Ignored(error))
-          case Right(LedgerPeerSnapshot.V2(_, _)) => Left(PeerSnapshotRefusal.LegacyVersion)
+          case Right(LedgerPeerSnapshot.V2(_, _)) => oops(PeerSnapshotRefusal.LegacyVersion)
           case Right(s @ LedgerPeerSnapshot.V23(point, magic, _)) =>
             point match
-              case SnapshotPoint.Origin => Left(PeerSnapshotRefusal.AtOrigin)
+              case SnapshotPoint.Origin => oops(PeerSnapshotRefusal.AtOrigin)
               case SnapshotPoint.Block(slot, _) =>
                 if magic != networkMagic then
-                  Left(PeerSnapshotRefusal.WrongMagic(networkMagic, magic))
+                  oops(PeerSnapshotRefusal.WrongMagic(networkMagic, magic))
                 else
                   after match
                     case AfterSlot.After(n) if slot < n =>

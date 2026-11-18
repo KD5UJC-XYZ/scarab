@@ -18,12 +18,14 @@ import xyz.kd5ujc.scarab.ledger.{
   ClockProblem,
   ConfigError,
   ConfigProblem,
+  LedgerRelay,
   NativeLibraryError,
   NativeLibraryProblem,
   NodeError,
   ChainError,
   StorageError
 }
+import cats.data.EitherT
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
 import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.metrics.CpuStarvationWarningMetrics
@@ -115,7 +117,14 @@ import xyz.kd5ujc.scarab.node.ntc.{EraHistory, LedgerConfig, QueryEnv, StateQuer
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.TxClock
 import xyz.kd5ujc.scarab.network.NodeToNode
-import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode, PeerMetrics, Targets, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.selection.{
+  Churn,
+  FetchMode,
+  LedgerPeerSnapshot,
+  PeerMetrics,
+  Targets,
+  UseLedgerPeers
+}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -421,6 +430,9 @@ object Main extends IOApp:
     * @param roots
     *   The roots of the peer governor: `--peer` as one local root group and the topology's groups,
     *   public roots and bootstrap peers; filled in by [[configured]].
+    * @param snapshot
+    *   The peer snapshot the start read from the file the topology names; filled in by
+    *   [[configured]].
     * @param churnInterval
     *   `--churn-interval <Ns|Nm>`, for tests: the churn governor's rounds follow each other this
     *   often and no step waits longer than it (the reference's are 3300 s and 900 s with fuzz and
@@ -460,6 +472,7 @@ object Main extends IOApp:
       maxInbound: Option[Word32] = None,
       log: LogSettings = LogSettings.default,
       roots: Option[PeerNetwork.Roots] = None,
+      snapshot: SnapshotUse = SnapshotUse.Unused,
       churnInterval: Option[FiniteDuration] = None,
       adoptLegacyNetworkIdentity: Boolean = false,
       plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default,
@@ -744,7 +757,7 @@ object Main extends IOApp:
       topology: Option[Topology]
   ): Either[ConfigError, (Options, NodeSetup, Option[Topology])] =
     for
-      roots <- topologyRoots(options, setup, topology)
+      (roots, snapshot) <- topologyRoots(options, setup, topology)
       settings = setup.config.settings
       fromFile = options.configFile.isDefined
       peers = (options.peers ++ topology.toList.flatMap(_.peers)).distinct
@@ -752,6 +765,7 @@ object Main extends IOApp:
       options.copy(
         peers = peers,
         roots = Some(roots),
+        snapshot = snapshot,
         db =
           options.db.orElse(Option.when(fromFile)(settings.databasePath).flatten.map(Path.of(_))),
         localSocket = socketPath(options, setup),
@@ -763,44 +777,134 @@ object Main extends IOApp:
       topology
     )
 
-  /** The roots of the topology read again at a SIGHUP (`updateTopologyConfiguration`, cardano-node
-    * 11.1.3 `Run.hs` 673-703): none without `--topology`, or when the file is refused, which is
-    * logged and leaves the roots in force. What the reading says of the topology is logged at every
-    * reload, as the reference's `readTopologyFile` traces it with the startup tracer.
-    * `options.peers` includes the topology loaded at start-up, so the roots are read with the
-    * command line's own peers only (`cliPeers`): a peer removed from the topology does not become
-    * permanent.
+  /** The network configuration in force, the reference's variables (cardano-node 11.1.3 `Run.hs`
+    * 367-372): the topology's roots with the snapshot file they name, and the peer snapshot written
+    * last.
     */
-  private def rereadRoots(options: Options, cliPeers: List[SocketAddress[Host]], loaded: NodeSetup)(
-      using Log[IO]
-  ): IO[Option[PeerNetwork.Roots]] =
+  private[node] final case class NetworkConfig(
+      roots: PeerNetwork.Roots,
+      snapshot: Option[LedgerPeerSnapshot[LedgerRelay]]
+  )
+
+  /** How a SIGHUP's reload of the network configuration ended ([[reloadNetwork]]). Where it stops
+    * short, the reference's handler ends on an exception and does nothing after it.
+    */
+  private[node] enum NetworkReload:
+    /** It got to its end. */
+    case Completed
+
+    /** The topology could not be read or used: nothing changed. */
+    case TopologyRefused
+
+    /** The new topology is installed and the snapshot refused: the snapshot in force stays. */
+    case SnapshotRefused
+
+  /** A SIGHUP's reload of the network configuration, as the reference's handlers do it
+    * (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 419-430 before consensus has
+    * initialised, 603-612 after): the topology read again and installed
+    * (`updateTopologyConfiguration`, 673-703), then, on its own, the peer snapshot it names
+    * (`updateLedgerPeerSnapshot` in `phase`, 705-757). `network` holds the configuration in force,
+    * the reference's variables (367-372); `install` hands the network a new topology, and `write` a
+    * new snapshot.
+    *
+    *   - A topology that cannot be read or used is logged and changes nothing, and the snapshot is
+    *     not read again: the reference's `readTopologyFileOrError` calls `error`, which the `try`
+    *     for a `FatalError` there does not catch (684-689; checked by running, 2026-11-17). A
+    *     `peerSnapshotFile` the JDK cannot make a path of is refused the same way (#953).
+    *   - The new topology is installed, once, before the snapshot is read, as the reference writes
+    *     the topology's variables (697-702) before it reads the file. Then the snapshot is read
+    *     again ([[PeerSnapshot.use]]): what was read is said ([[snapshotSaid]]), and the snapshot
+    *     it gives is written, `None` included, whether it changed or not (757); a refusal (any in
+    *     [[SnapshotPhase.Startup]], one older than `useLedgerAfterSlot` in
+    *     [[SnapshotPhase.Runtime]]) is logged and writes nothing, so the snapshot in force stays
+    *     (721, 755).
+    *
+    * Without `--topology` there is nothing to read again. `options.peers` includes the topology
+    * loaded at start-up, so the roots are read with the command line's own peers only (`cliPeers`):
+    * a peer removed from the topology does not become permanent.
+    */
+  private[node] def reloadNetwork(
+      options: Options,
+      cliPeers: List[SocketAddress[Host]],
+      loaded: NodeSetup,
+      phase: SnapshotPhase,
+      network: Ref[IO, NetworkConfig],
+      install: PeerNetwork.Roots => IO[Unit],
+      write: Option[LedgerPeerSnapshot[LedgerRelay]] => IO[Unit]
+  )(using Log[IO]): IO[NetworkReload] =
     val reread = options.copy(peers = cliPeers)
-    def refused(error: ConfigError): IO[Option[PeerNetwork.Roots]] =
+    def refused(what: String, error: ConfigError, outcome: NetworkReload): IO[NetworkReload] =
       Log[IO]
         .emit[NodeEvent](
-          NodeEvent.Library(
-            "scarab.topology",
-            Severity.Warning,
-            s"topology reload refused: ${error.message}",
-            None
-          )
+          NodeEvent.Library("scarab.topology", Severity.Warning, s"$what: ${error.message}", None)
         )
-        .as(None)
-    options.topologyFile.flatTraverse { _ =>
-      IO.blocking(readTopology(reread, loaded)).flatMap {
-        case Left(error) => refused(error)
-        case Right(read) =>
-          noticed(read) *>
-            IO.blocking(topologyRoots(reread, loaded, read.map(_.topology)))
-              .flatMap(_.fold(refused, roots => IO.pure(Some(roots))))
-      }
+        .as(outcome)
+    def snapshotRead(topology: PeerNetwork.Roots): IO[NetworkReload] =
+      network.update(_.copy(roots = topology)) *> install(topology) *>
+        IO.blocking(ledgerPeerSnapshot(topology, loaded, phase)).flatMap {
+          case Left(refusal) =>
+            refused(
+              "peer snapshot reload refused, the snapshot in force is kept",
+              ConfigError(ConfigProblem.PeerSnapshot(refusal)),
+              NetworkReload.SnapshotRefused
+            )
+          case Right(use) =>
+            snapshotSaid(use) *> network.update(_.copy(snapshot = use.snapshot)) *>
+              write(use.snapshot).as(NetworkReload.Completed)
+        }
+    options.topologyFile.fold(IO.pure(NetworkReload.Completed)) { _ =>
+      (for
+        read <- EitherT(IO.blocking(readTopology(reread, loaded)))
+        _ <- EitherT.liftF(noticed(read))
+        topology <- EitherT.fromEither[IO](networkRoots(reread, read.map(_.topology)))
+      yield topology).foldF(
+        refused("topology reload refused", _, NetworkReload.TopologyRefused),
+        snapshotRead
+      )
     }
+
+  /** What was made of a peer snapshot file just read, said once where it is read, at start-up and
+    * at a reload, as the reference traces `LedgerPeerSnapshotLoaded` where it reads the file
+    * (`Run.hs` 746-753): `snapshotLoaded`, or `snapshotIgnored` for a file Praos mode could not
+    * read. Nothing for no file, or a dropped one, of which the reference says nothing either.
+    */
+  private def snapshotSaid(use: SnapshotUse)(using Log[IO]): IO[Unit] =
+    def said(trace: LedgerPeersTrace) = Log[IO].emit[NodeEvent](NodeEvent.LedgerPeers(trace))
+    use match
+      case SnapshotUse.Loaded(s)      => said(LedgerPeersTrace.SnapshotLoaded(s.slot, s.pools.size))
+      case SnapshotUse.Ignored(error) => said(LedgerPeersTrace.SnapshotIgnored(error))
+      case SnapshotUse.Dropped(_) | SnapshotUse.Unused => IO.unit
 
   /** What the reading of the topology said of it, each as the reference traces it. */
   private def noticed(read: Option[TopologyNotice.Read])(using Log[IO]): IO[Unit] =
     read.toList
       .flatMap(_.notices)
       .traverse_(n => Log[IO].emit[NodeEvent](NodeEvent.NetworkConfigUpdate(n)))
+
+  /** The network configuration at start-up, in the order of the reference's `handleSimpleNode`
+    * (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 349-379): the topology and what
+    * its reading says of it, the warning of a producer with peer sharing on (360-366), then the
+    * roots and the peer snapshot, whose refusal stops the start. The options completed, as
+    * [[completed]] makes them.
+    */
+  private[node] def networkAtStart(requested: Options, setup: NodeSetup)(using
+      Log[IO]
+  ): IO[Either[ConfigError, (Options, NodeSetup, Option[Topology])]] =
+    EitherT(IO.blocking(readTopology(requested, setup)))
+      .semiflatTap(noticed)
+      .semiflatTap(_ =>
+        Log[IO]
+          .emit[NodeEvent](NodeEvent.PeerSharingOnProducer)
+          .whenA(
+            PeerSharingWarning.due(
+              NodeRole.of(requested.forge),
+              setup.config.settings.peerSharingEnabled(requested.forge.isDefined)
+            )
+          )
+      )
+      .flatMapF(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
+      .semiflatTap((options, _, _) => snapshotSaid(options.snapshot))
+      .value
 
   /** The topology file as the reference's `readTopologyFile` reads it (cardano-node 11.1.3,
     * `cardano-node/src/Cardano/Node/Configuration/TopologyP2P.hs` 53-108): parsed and checked
@@ -819,8 +923,8 @@ object Main extends IOApp:
         )
     )
 
-  /** The topology read from the file the options point to and its roots, the snapshot included,
-    * before any running network state changes.
+  /** The topology read from the file the options point to and its roots, the snapshot read, before
+    * any running network state changes.
     */
   private[node] def topologyRoots(
       options: Options,
@@ -829,37 +933,60 @@ object Main extends IOApp:
     for
       read <- readTopology(options, setup)
       topology = read.map(_.topology)
-      roots <- topologyRoots(options, setup, topology)
+      (roots, _) <- topologyRoots(options, setup, topology)
     yield (topology, roots)
 
-  /** The roots of the `topology` read ([[readTopology]]), with the peers of the command line and
-    * its optional snapshot. A topology that names no peer at all is not refused, as the reference
-    * does not refuse one (its own `testnet-template-topology-empty-p2p.json` is such a file).
+  /** The roots of the `topology` read ([[readTopology]]), with the peers of the command line, and
+    * the peer snapshot of the file it names, as at start-up: [[networkRoots]], then the snapshot
+    * ([[ledgerPeerSnapshot]]), whose refusal stops the start.
     */
   private[node] def topologyRoots(
       options: Options,
       setup: NodeSetup,
       topology: Option[Topology]
+  ): Either[ConfigError, (PeerNetwork.Roots, SnapshotUse)] =
+    networkRoots(options, topology).flatMap(roots =>
+      ledgerPeerSnapshot(roots, setup, SnapshotPhase.Startup)
+        .bimap(r => ConfigError(ConfigProblem.PeerSnapshot(r)), roots -> _)
+    )
+
+  /** The roots of the `topology` read ([[readTopology]]), with the peers of the command line, and
+    * the peer snapshot file it names: what the reference's `updateTopologyConfiguration` writes
+    * (`Run.hs` 694-702); the snapshot is not among them. A topology that names no peer at all is
+    * not refused, as the reference does not refuse one (its own
+    * `testnet-template-topology-empty-p2p.json` is such a file).
+    */
+  private[node] def networkRoots(
+      options: Options,
+      topology: Option[Topology]
   ): Either[ConfigError, PeerNetwork.Roots] =
-    for
-      // `peerSnapshotFile` is relative to the topology file, as the reference reads it. A name the
-      // JDK cannot make a path of (NUL, or a character its file-name encoding cannot encode) is a
-      // typed refusal, not an exception, so a SIGHUP reload refuses it as any other topology (#953)
-      snapshotFile <- (for
-        file <- options.topologyFile
-        name <- topology.flatMap(_.peerSnapshotFile)
-      yield Either
-        .catchOnly[InvalidPathException](file.resolveSibling(name))
-        .leftMap(e => ConfigError(ConfigProblem.InvalidPath(name, e)))).sequence
-      snapshot <- PeerSnapshot
-        .use(
-          snapshotFile,
-          setup.genesis.networkMagic,
-          topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot),
-          setup.config.settings.consensusMode
-        )
-        .leftMap(r => ConfigError(ConfigProblem.PeerSnapshot(r)))
-    yield PeerNetwork.roots(options.peers, topology, snapshot)
+    // `peerSnapshotFile` is relative to the topology file, as the reference reads it. A name the
+    // JDK cannot make a path of (NUL, or a character its file-name encoding cannot encode) is a
+    // typed refusal, not an exception, so a SIGHUP reload refuses it as any other topology (#953)
+    (for
+      file <- options.topologyFile
+      name <- topology.flatMap(_.peerSnapshotFile)
+    yield Either
+      .catchOnly[InvalidPathException](file.resolveSibling(name))
+      .leftMap(e => ConfigError(ConfigProblem.InvalidPath(name, e)))).sequence
+      .map(file => PeerNetwork.roots(options.peers, topology).copy(snapshotFile = file))
+
+  /** The peer snapshot of the file `roots` name, as the reference's `updateLedgerPeerSnapshot`
+    * reads it in `phase` (`Run.hs` 705-757; [[PeerSnapshot.use]]), or why it is refused: the
+    * snapshot in force then stays.
+    */
+  private[node] def ledgerPeerSnapshot(
+      roots: PeerNetwork.Roots,
+      setup: NodeSetup,
+      phase: SnapshotPhase
+  ): Either[PeerSnapshotRefusal, SnapshotUse] =
+    PeerSnapshot.use(
+      roots.snapshotFile,
+      setup.genesis.networkMagic,
+      roots.ledger,
+      setup.config.settings.consensusMode,
+      phase
+    )
 
   /** The native library the JVM is going to load, checked before anything evaluates a script: the
     * BLS12-381 library of Leios certificates and of the own evaluator's BLS12-381 builtins (ADR
@@ -946,13 +1073,7 @@ object Main extends IOApp:
               Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)) *>
                 failedStart(error.message).as(ExitCode.Error),
             _ =>
-              // what the reading of the topology says is logged before its snapshot is read,
-              // which may stop the start, as the reference's `readTopologyFile` traces before
-              // `updateLedgerPeerSnapshot` (`Run.hs` 349-379)
-              IO.blocking(readTopology(requested, setup))
-                .flatMap(admitted)
-                .flatTap(noticed)
-                .flatMap(read => IO.blocking(completed(requested, setup, read.map(_.topology))))
+              networkAtStart(requested, setup)
                 .flatMap(admitted)
                 .flatMap((options, setup, topology) =>
                   started(options, setup, topology, requested.peers, pool, layout, listening)
@@ -1031,18 +1152,19 @@ object Main extends IOApp:
     val hangup = Resource
       .eval(
         (
-          Ref.of[IO, Option[PeerNetwork.Roots]](None),
+          Ref.of[IO, Option[NetworkConfig]](None),
+          Ref.of[IO, NetworkConfig](
+            NetworkConfig(
+              options.roots.getOrElse(
+                PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
+              ),
+              options.snapshot.snapshot
+            )
+          ),
           Ref.of[IO, ForgeEvents[IO]](Log.sink[ForgeEvents, ForgeEvent, IO])
         ).mapN(StartupHangup.apply)
       )
-      .flatTap(h =>
-        Signals.hangup[IO](
-          rereadRoots(options, cliPeers, setup).flatMap(_.traverse_(r => h.roots.set(Some(r)))) *>
-            h.events.get.flatMap(
-              _.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective))
-            )
-        )
-      )
+      .flatTap(h => Signals.hangup[IO](startupHangup(options, cliPeers, setup, h)))
     (
       hangup,
       ownership *> compatible *> (
@@ -1094,15 +1216,46 @@ object Main extends IOApp:
 
   /** What a SIGHUP does before the node runs its forger and its network: the reference's initial
     * handler (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 412-435), installed
-    * before the chain database is opened and replayed. It reads the topology again, and the network
-    * starts from what it read (`roots`); it does not reload the forging credentials, which only the
-    * full handler does once consensus has started, and says so (`BlockForgingUpdate NotEffective`,
-    * to `events`: the log, and the metrics once they exist). Without it a SIGHUP would end the JVM.
+    * before the chain database is opened and replayed. It reads the network configuration again as
+    * at start-up ([[reloadNetwork]], [[SnapshotPhase.Startup]]) into `network`, the configuration
+    * in force, which both handlers share, and the network starts from what it read (`pending`,
+    * until the network takes it); it does not reload the forging credentials, which only the full
+    * handler does once consensus has started, and says so (`BlockForgingUpdate NotEffective`, to
+    * `events`: the log, and the metrics once they exist). Without it a SIGHUP would end the JVM.
     */
-  private final case class StartupHangup(
-      roots: Ref[IO, Option[PeerNetwork.Roots]],
+  private[node] final case class StartupHangup(
+      pending: Ref[IO, Option[NetworkConfig]],
+      network: Ref[IO, NetworkConfig],
       events: Ref[IO, ForgeEvents[IO]]
   )
+
+  /** The initial handler's work (`Run.hs` 419-432): the network configuration read again, then
+    * `BlockForgingUpdate NotEffective`, which a reload that stops short does not reach, as an
+    * exception ends the reference's handler before it.
+    */
+  private[node] def startupHangup(
+      options: Options,
+      cliPeers: List[SocketAddress[Host]],
+      setup: NodeSetup,
+      h: StartupHangup
+  )(using Log[IO]): IO[Unit] =
+    val handedOn = h.network.get.flatMap(c => h.pending.set(Some(c)))
+    reloadNetwork(
+      options,
+      cliPeers,
+      setup,
+      SnapshotPhase.Startup,
+      h.network,
+      _ => handedOn,
+      _ => handedOn
+    )
+      .flatMap {
+        case NetworkReload.Completed =>
+          h.events.get.flatMap(
+            _.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective))
+          )
+        case NetworkReload.TopologyRefused | NetworkReload.SnapshotRefused => IO.unit
+      }
 
   /** What the run measures and reports with, made before any store is open. */
   private final case class Instruments(
@@ -1893,18 +2046,15 @@ object Main extends IOApp:
           case Output.LocalRoots(trace)  => logged(NodeEvent.LocalRoots(trace))
           case Output.Counted(c)         => logged(NodeEvent.PeerCounters(c))
           case Output.Connections(c)     => logged(NodeEvent.OutboundConnections(c)))
-      // the network starts from the topology a SIGHUP during start-up read, as the reference's
-      // diffusion reads the roots its initial handler wrote (`Run.hs` 412-435)
+      // the network starts from the configuration in force, which a SIGHUP during start-up may
+      // have read again, as the reference's diffusion reads the variables its initial handler
+      // wrote (`Run.hs` 412-435)
       val network = Resource
-        .eval(run.hangup.roots.getAndSet(None))
-        .flatMap(reread =>
+        .eval(run.hangup.pending.set(None) *> run.hangup.network.get)
+        .flatMap(inForce =>
           PeerNetwork.resource[IO](
             PeerNetwork.Settings(
-              reread
-                .orElse(options.roots)
-                .getOrElse(
-                  PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
-                ),
+              inForce.roots,
               targets,
               consensusMode = setup.config.settings.consensusMode,
               syncTargets = syncTargets,
@@ -1913,7 +2063,8 @@ object Main extends IOApp:
               peerSharing = peerSharing,
               intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
               timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
-              seed = seed
+              seed = seed,
+              snapshot = inForce.snapshot
             ),
             PeerNetwork.tcp[IO](10.seconds, run.listening.fold(NodeAddresses.none)(_.own)),
             manager,
@@ -2134,7 +2285,15 @@ object Main extends IOApp:
         )
         .surround(network.use { net =>
           val reloadTopology: IO[Unit] =
-            rereadRoots(options, cliPeers, loaded).flatMap(_.traverse_(net.reloadRoots))
+            reloadNetwork(
+              options,
+              cliPeers,
+              loaded,
+              SnapshotPhase.Runtime,
+              run.hangup.network,
+              net.reloadRoots,
+              net.setSnapshot
+            ).void
           // a node without credentials finds none again (`updateBlockForging` with no credential
           // files reads an empty list, `Run.hs` 641-648)
           val reload =
@@ -2144,10 +2303,12 @@ object Main extends IOApp:
             )(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
               reloadTopology
           // the full handler (`installSigHUPHandler`, `Run.hs` 596), on every node as in the
-          // reference; roots a start-up SIGHUP read after the network took its own are applied
+          // reference; what a start-up SIGHUP read after the network took its own is applied
           val signals =
             Signals.hangup[IO](reload) *> Resource.eval(
-              run.hangup.roots.getAndSet(None).flatMap(_.traverse_(net.reloadRoots))
+              run.hangup.pending
+                .getAndSet(None)
+                .flatMap(_.traverse_(c => net.reloadRoots(c.roots) *> net.setSnapshot(c.snapshot)))
             )
           // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
           val sync: IO[Unit] =

@@ -60,10 +60,46 @@ Genesis mode an unreadable `peerSnapshotFile` stops the node at start, as `updat
 Genesis mode) cover it. The start-up was also compared by running both nodes with no network on the official mainnet
 configuration and topology, with and without the `peer-snapshot.json` it names, and on the reference's
 `testnet-template-topology-empty-p2p.json` (2026-11-16): the same warnings, the same stop without the snapshot.
-A difference left ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6933331883)): at a runtime
-SIGHUP reload the reference installs the new topology and then reads the peer snapshot on its own (`Run.hs` 596-614,
-690-757, `isStartup` false). On a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the
-origin or of another network in either mode, it traces `NetworkConfigUpdateError` and goes on with the new topology
-and no snapshot. Scarab refuses the whole reload on any of these and keeps the topology and snapshot in force; an
-unreadable file in Praos mode is ignored by both. The reference's handler installed before consensus has initialised
-reads the snapshot as at start-up (`Run.hs` 413-430, `isStartup` true).
+At start-up only, a block producer with `PeerSharing` on gets the reference's `NetworkConfigUpdateWarning` of
+`handleSimpleNode` (`Run.hs` 360-366), after the topology's notices and before the snapshot is read (checked by reading,
+and by running cardano-node 11.1.3 as a producer on 2026-11-17); `NetworkConfigSuite` covers it.
+A SIGHUP reload installs the new topology, then reads the peer snapshot on its own, as the reference's handlers do
+(`Run.hs` 413-430 before consensus has initialised, 596-614 after, 673-757; checked by reading; what the runtime handler
+traces and writes to standard error checked by running cardano-node 11.1.3 on 2026-11-17,
+[#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6933331883); the first handler was not run).
+The new topology is installed once, a root generation of its own, before the file is read, as the reference writes the
+topology's variables (697-702) before it reads the file (725-731). The snapshot read is then written, `None` included,
+to what the ledger-peers worker reads (757): the worker takes it at its next rebuild of the stake maps, as the
+reference's thread reads `wlpGetLedgerPeerSnapshot` only once its cache has aged out (ouroboros-network c45735a5
+`PeerSelection/LedgerPeers.hs` 277-287), together with the ledger's slot and peers: the snapshot is read before and
+after the ledger and the ledger read again if one was written between, where the reference reads the three in one
+transaction (284-287); without ledger peers no snapshot is read (280-282), though the slot still is, for the worker's
+trace. The write makes no root generation and no new worker. In Genesis mode the write arms the immutable-chain check
+again for a snapshot at another block point than the one taken last, and not for `None` or the same point, as
+`ledgerPeerSnapshotChange` takes a snapshot (`Governor/Monitor.hs` 432-459, cardano-diffusion `Governor/Types.hs`
+172-173). The snapshot taken and the check claimed for it are one state: a check reads the snapshot it checks where it
+is claimed, never twice for one root generation and snapshot. A check is not stopped by a snapshot taken after it, and
+its verdict is still said, as the reference traces every result of `jobVerifyPeerSnapshot` and changes no state with
+it (cardano-diffusion `Governor/Monitor.hs` 689-708); a check of a root generation replaced is cancelled. The topology
+installed before it arms the check once per root generation, as every installation did before, for the snapshot taken
+last; so a reload that changes the snapshot checks the point taken before, then the new one. The reference launches
+`jobVerifyPeerSnapshot` only when the judgement changes (cardano-diffusion `Governor/Monitor.hs` 515-533), not when
+the roots do. `snapshotLoaded` or `snapshotIgnored` is said where the file is read, at start-up and at a reload, not
+for a snapshot kept or dropped.
+`NetworkConfigSuite` and `LedgerPeersWiringSuite` show one generation per reload, a worker taking a new snapshot at its
+next rebuild and a snapshot written during its ledger reads with the ledger read again, the write arming the check
+again only for another point, an installation arming it once, and a check of a snapshot replaced still saying its
+verdict, once.
+At runtime a snapshot file it cannot read in Genesis mode, or one of a legacy version, at the origin or of another
+network, is dropped: the new topology stays with no snapshot, and nothing is said, since the reference's
+`NetworkConfigUpdateError` there is discarded (`Run.hs` 720-722, 734-736). In Praos mode a file it cannot read is
+ignored by both, at start-up and at either handler's reload, written as no snapshot (757); Scarab says so
+(`snapshotIgnored`), the reference does not (736). A snapshot older than `useLedgerAfterSlot` keeps the snapshot in
+force under the new topology. Before consensus has initialised, a file it cannot read in Genesis mode, one of a legacy
+version, at the origin, of another network or older than `useLedgerAfterSlot` keeps the snapshot in force, and the
+handler stops before `BlockForgingUpdate NotEffective` (by reading); after an unreadable file in Praos mode
+`NotEffective` follows. A topology that cannot be read changes nothing, and the snapshot is not read again: the
+reference's `error` there escapes the `try` meant to catch it (`Run.hs` 684-689). `NetworkConfigSuite` and
+`PeerSnapshotUseSuite` cover each case. The reference writes a refusal it throws to standard error; Scarab logs it as
+a warning; this difference, and the reference's `NetworkConfigUpdate`, `NetworkConfig` and `LedgerPeerSnapshot` traces
+Scarab does not give, are a gap ([#924](https://github.com/KD5UJC-XYZ/scarab/issues/924#issuecomment-6958258243)).

@@ -728,7 +728,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
         LedgerPeersWorker.create[IO](
           UseLedgerPeers.Disabled,
           LedgerPeersSource.none[IO],
-          None,
+          IO.pure(Versioned(BigInt(0), None)),
           Rng(6L)
         )
       }
@@ -742,14 +742,12 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
         worker,
         AssociationMode.LocalRootsOnly,
         ChurnLoop.Config(base = Targets.relay, regime = Regime.kind(_, false)),
-        snapshotCheckStarted = true,
         snapshotCheckCanceled = canceled
       )
       staged = initial.copy(
         generation = BigInt(1),
         resolvedLocalRoots = resolved,
         localDnsCache = refreshed,
-        snapshotCheckStarted = false,
         snapshotCheckCanceled = nextCanceled
       )
       current <- Ref.of[IO, PeerNetwork.Runtime[IO]](initial)

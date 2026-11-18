@@ -33,6 +33,7 @@
 {"event":"diffusionErrored","at":"2026-10-16T12:00:00Z","error":"Network.Socket.bind: does not exist (No such file or directory)"}
 {"event":"networkConfigUpdateWarning","at":"2026-10-16T12:00:00Z","message":"Cardano.Node.Configuration.Topology.readTopologyFile: Bootstrap peers (field 'bootstrapPeers') are not compatible with Genesis syncing mode, reverting to 'DontUseBootstrapPeers'. Big ledger peers will be leveraged for decentralized syncing - it is recommended to provide an up-to-date big ledger peer snapshot file (field 'peerSnapshotFile' in topology configuration) to facilitate this process."}
 {"event":"networkConfigUpdateInfo","at":"2026-10-16T12:00:00Z","message":"Cardano.Node.Configuration.Topology.readTopologyFile: Ledger peers and peer snapshot, although specified in the topology file, are disabled in line with recommended BP operation"}
+{"event":"networkConfigUpdateWarning","at":"2026-10-16T12:00:00Z","message":"Mainnet block producers may not meet the Praos performance guarantees and host IP address will be leaked since peer sharing is enabled."}
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
 {"event":"headersChecked","at":"2026-10-16T12:00:00Z","validated":50000,"unchecked":12,"waited":3}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"/tmp/node.socket","state":"accepted","reason":null}

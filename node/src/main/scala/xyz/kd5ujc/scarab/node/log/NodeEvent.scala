@@ -175,6 +175,11 @@ enum NodeEvent:
   /** What the reading of the topology says of it ([[xyz.kd5ujc.scarab.node.TopologyNotice]]). */
   case NetworkConfigUpdate(notice: TopologyNotice)
 
+  /** A block producer with peer sharing on, said at start-up
+    * ([[xyz.kd5ujc.scarab.node.PeerSharingWarning]]).
+    */
+  case PeerSharingOnProducer
+
   /** A decision of the peer governor or what became of one (G1). */
   case PeerSelection(trace: Trace[SocketAddress[Host]])
   case PeerEstablishmentFailed(
@@ -403,6 +408,10 @@ object NodeEvent:
         case TopologyNotice.Level.Info    => EventKind.NetworkConfigUpdateInfo
         case TopologyNotice.Level.Warning => EventKind.NetworkConfigUpdateWarning
       ).line("message" -> notice.message.asJson)
+    case PeerSharingOnProducer =>
+      EventKind.NetworkConfigUpdateWarning.line(
+        "message" -> xyz.kd5ujc.scarab.node.PeerSharingWarning.message.asJson
+      )
     case ReferenceBuildChosen(build) =>
       EventKind.ReferenceBuild.line(xyz.kd5ujc.scarab.node.ReferenceBuildFlag.fields(build)*)
     case UnstableReferenceBuild(build) =>

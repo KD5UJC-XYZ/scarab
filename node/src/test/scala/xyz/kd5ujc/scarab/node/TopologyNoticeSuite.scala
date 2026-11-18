@@ -155,3 +155,17 @@ class TopologyNoticeSuite extends FunSuite:
       BootstrapPeersInGenesisMode
     ).foreach(n => assertEquals(n.level, Level.Warning, n.toString))
   }
+
+  test("a producer with peer sharing on is warned, in the reference's words, and nobody else") {
+    // `handleSimpleNode`, cardano-node 11.1.3 `cardano-node/src/Cardano/Node/Run.hs` 360-366: no
+    // `readTopologyFile` prefix
+    assertEquals(
+      PeerSharingWarning.message,
+      "Mainnet block producers may not meet the Praos performance guarantees and host IP " +
+        "address will be leaked since peer sharing is enabled."
+    )
+    assertEquals(PeerSharingWarning.due(BlockProducer, peerSharing = true), true)
+    assertEquals(PeerSharingWarning.due(BlockProducer, peerSharing = false), false)
+    assertEquals(PeerSharingWarning.due(Relay, peerSharing = true), false)
+    assertEquals(PeerSharingWarning.due(Relay, peerSharing = false), false)
+  }

@@ -88,6 +88,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.DiffusionErrored(diffusionErrored))
         _ <- node(NodeEvent.NetworkConfigUpdate(TopologyNotice.BootstrapPeersInGenesisMode))
         _ <- node(NodeEvent.NetworkConfigUpdate(TopologyNotice.SnapshotOffOnProducer))
+        _ <- node(NodeEvent.PeerSharingOnProducer)
         _ <- node(NodeEvent.Listening("0.0.0.0:3001"))
         _ <- node(NodeEvent.HeadersChecked(50000L, 12L, 3L))
         _ <- node(NodeEvent.Inbound("/tmp/node.socket", InboundEvent.Accepted))

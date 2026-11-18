@@ -25,7 +25,7 @@ What the configuration does:
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
 | `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ConsensusMode`, `DiffusionMode` | read, validated and logged (`started`). `GenesisMode` integrates GSM, LoE/GDD, LoP, ChainSync jumping, historicity and devoted BlockFetch across outbound and inbound duplex clients; full canonical header validation applies even with header-first disabled. It drops the topology's bootstrap peers with the reference's warning (below) and checks peer snapshots against the immutable point. Praos remains the default. Experimental hard forks (the Dijkstra era) and `Test<Era>HardForkAtVersion` remain unsupported |
 | `LowLevelGenesisOptions` | the reference's `EnableCSJ`, `EnableLoEAndGDD`, `EnableLoP`, `BlockFetchGracePeriod`, `BucketCapacity`, `BucketRate`, `CSJJumpSize` and `GDDRateLimit`; [defaults and resource policy](../design/genesis.md#mechanisms-and-resource-policy) follow the pinned production configuration |
-| `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins. Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
+| `PeerSharing` | used by both handshakes and the governor; absent means on for a relay and off with `--forge`, an explicit Boolean wins; set on with `--forge`, the node logs the reference's start-up warning (`networkConfigUpdateWarning`, [logging](logging.md)). Both peers must enable it. Eligible connected peers are asked below the known target; only advertised, previously connected peers with no failures are shared (G1.4) |
 | `StartAsNonProducingNode` | a Boolean, default false: start with forging disabled although `--forge` and its files are given, as `--start-as-non-producing-node`, which wins over it (see [dynamic block forging](forging.md#dynamic-block-forging)) |
 | `ExperimentalProtocolsEnabled` (also `TestEnableDevelopmentNetworkProtocols`, which must agree) | the highest node-to-node version the node offers and accepts (G4): absent or `false`, **15**, the latest release of cardano-node 11.1.3 (14 and 15 are offered, as the reference does, `Cardano/Node.hs` 456 and `limitToLatestReleasedVersion`); `true`, **16**, which adds the Peras flag to the version data (always sent as false: the node has no Peras mini-protocols). A relay or pool of the reference needs the same key to agree on 16. The public Leios testnet sets it; its relay accepts 14 to 16. Node-to-client versions 16 to 23 are always accepted. The devnet `relay` scenario takes `--max-ntn-version 16` to turn the key on for the Scala node and the Haskell relay |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` is the default of two blocks) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins. The reference parses `SocketPath` and never uses it, so taking it is an [approved deviation](../decisions.md#networking-and-local-clients) |
@@ -66,8 +66,13 @@ ledger peers off, which is then not read; in GenesisMode, a relay without ledger
 with `null`, from big ledger peers (cardano-node 11.1.3 `TopologyP2P.hs` 66-108).
 `useLedgerAfterSlot` and `peerSnapshotFile` are acted on (ledger peers and big ledger peers, below); `advertise`,
 `trustable` and the valencies feed peer selection and peer sharing; `behindFirewall` is retained in topology metadata.
-SIGHUP reloads the topology. A malformed replacement leaves the active settings running; a valid reload preserves
-original CLI roots and installs the new runtime/governor roots at an acknowledged generation boundary.
+SIGHUP reloads the topology, then reads its `peerSnapshotFile` again on its own, as cardano-node 11.1.3 does
+(`Run.hs` 596-614, 690-757). A malformed replacement leaves the active settings running, and the snapshot is not
+read again; a valid reload preserves original CLI roots and installs the new runtime/governor roots at an
+acknowledged generation boundary, once. The snapshot read is then written to what the ledger-peers worker reads,
+which takes it at its next rebuild of the stake maps; in GenesisMode the written snapshot, if at another block point
+than the one taken last, is checked against the immutable chain again (below), as every topology installed checks the
+one taken last.
 
 - **`useLedgerAfterSlot`.** A number above 0: take peers from the ledger once the ledger's tip is at or past that slot;
   `0`: always; below 0 or absent: never (`UseLedgerPeers`). The official Preview file has 119231973.
@@ -75,7 +80,11 @@ original CLI roots and installs the new runtime/governor roots at an acknowledge
   when topology is reloaded while ledger peers are on (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`): in PraosMode
   a file that cannot be read is ignored with a `ledgerPeers` event `snapshotIgnored`; in GenesisMode it stops the node at
   start with a `ConfigError`, as the reference stops; a legacy (version 1, 2) file, a snapshot at the origin, of another network
-  (`NetworkMagic`) or older than `useLedgerAfterSlot` stops the node with a `ConfigError`. The snapshot is used for the
+  (`NetworkMagic`) or older than `useLedgerAfterSlot` stops the node with a `ConfigError`. At a SIGHUP once the node
+  runs, the new topology is installed first; then a file that cannot be read in GenesisMode, or a legacy file, one at
+  the origin or of another network, is dropped and the node goes on without a snapshot, saying nothing, as the
+  reference does, while one older than `useLedgerAfterSlot` keeps the snapshot in force, with a warning. A SIGHUP
+  during start-up keeps the snapshot in force on any of them, as the reference's first handler does. The snapshot is used for the
   stake maps only while it is not older than the ledger's tip: the official Preview file is at slot 123.6 M, so a node whose
   ledger is further ahead takes its peers from the ledger (event `ledgerPeers`, `source`). In GenesisMode, when the
   judgement enters `TooOld`, the monitor waits cancelably for the exact immutable slot and checks both slot and hash;
