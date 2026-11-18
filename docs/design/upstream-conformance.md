@@ -1,6 +1,6 @@
 # Upstream conformance adapters
 
-Status: current implementation and bounded evidence; the agreed risk-based v0.2 scope of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49), including the source-refresh closeout in [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273), is complete. This is not whole-suite or every-interpreter equivalence.
+Status: as built for the bounded adapters below, whose evidence is retained. [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) was closed on 2026-10-20 under a bounded, risk-based scope, including the source-refresh closeout in [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273); [CNF-1](../design-rules.md#cnf-1) supersedes that closeout, and the upstream cases these adapters do not run whole are required work under #49. This is not whole-suite or every-interpreter equivalence.
 
 The Haskell implementations and their formal adapters are independent observations.
 A native acceptance, a formal acceptance, equality of their translated outputs, and a
@@ -99,9 +99,9 @@ hooks do not increase that count. The nine original accepted cache regressions a
 original refusals are counted separately, giving **56 distinct native rule inputs overall
 (37 accepts and 19 refusals)** across 58 observations. All 17 original generated states now
 execute directly; the coherent supplement does not substitute for their judgments. Accepted
-complete states and typed refusal membership compare through production transitions, retaining original signed
-bytes. Only unavailable MemPack output-original bytes and Scala change-history
-bookkeeping are excluded, as in the earlier adapter.
+complete states and complete typed refusal lists (the native failure bytes, in order) compare through
+production transitions, retaining original signed bytes. Only unavailable MemPack output-original
+bytes and Scala change-history bookkeeping are excluded, as in the earlier adapter.
 
 One unchanged original generated UTXOW input is accepted natively but refused by
 the old formal overlap guard. Its pre/post context, environment, state, signal
@@ -165,8 +165,8 @@ decode expectations. No Plutus production discrepancy is observed.
 |---|---|
 | Generated BlockFetch pipeline policies, ChainSync collect/request choices and TxSubmission2 scheduling choices | Bounded observations and some local wire regressions exist; not every original generated policy is replayed. This is separate from requiring identical thread schedules |
 | Mock integer point hashes, generic transaction values and integer peers | Strict Cardano codecs reject incompatible mock domains. Generic production-engine adapters cover some original values separately; no fabricated Cardano replacements count as matches |
-| Mux `Uneven` replies over the 2.5 MB production ceiling | Four original native passes are retained as size exclusions; eighteen applicable original passes are replayed unchanged |
-| Zero-length generated SDUs | Six original encoder-policy differences remain explicit in the SDU corpus |
+| Mux `Uneven` replies over the 2.5 MB production ceiling | All 22 original native passes are replayed unchanged under an explicit 3 MB mock profile. The four above the default 2.5 MB bound keep their historical size classification in the corpus but are not excluded; the public default bound is unchanged |
+| Zero-length generated SDUs | All 40 original rows encode to the native bytes, including six empty SDUs. As in the native property, the decoder rejects those six; production egress refuses an empty message before writing |
 | Peras ObjectDiffusion | No adapter or advertised production support; not interchangeable with Leios or TxSubmission2 |
 | Generated NEWEPOCH states and proposal-constructor failures | Invalid/failed originals remain unchanged; [#269](https://github.com/KD5UJC-XYZ/scarab/issues/269) adds twelve separately constructed PV10 no-action samples from the upstream parameter specification |
 | Other eras, broader seeds and Haskell-specific interpreters | The fixtures establish their named bounded domains, not an exhaustive generator or backend campaign |
@@ -176,10 +176,12 @@ The EPOCH generator classification is tracked separately by
 conversion repair by [#270](https://github.com/KD5UJC-XYZ/scarab/issues/270), and
 implemented reward-likelihood generation by [#268](https://github.com/KD5UJC-XYZ/scarab/issues/268).
 The formal crash is not a crash of the running native Haskell node. The thirteen
-remaining Plutus exceptions are six constants without a Flat representation, five
-counting-versus-restricting budget observations, and two protocol-gated generic
-`case` expectations; their [classification](../plutus-conformance.md#3-historical-classification-of-the-original-22-cases)
-is distinct from the nine reachable cases already addressed.
+Plutus harness exceptions that remained at this stage (six constants without a Flat
+representation, five counting-versus-restricting budget observations and two
+protocol-gated generic `case` expectations) have since been removed: the corpus now
+passes whole ([below](#network-plutus-and-remaining-scope)). Their
+[historical classification](../plutus-conformance.md#3-historical-classification-of-the-original-22-cases)
+stays distinct from the nine reachable cases already addressed.
 
 ## Ledger boundary
 
@@ -251,11 +253,12 @@ executes the real native LEDGERS rule over original signed transactions. Two acc
 batches contain actual output dependencies; reversed order and a repeated spend are
 rejected. Accepted comparisons cover complete native state and every inline MemPack
 UTxO field, excluding only unavailable output-original bytes and Scala change-history
-bookkeeping. Haskell accumulates failures while Scarab fails fast; Scarab's single complete
-structured failure payload must be a member of the native failure list.
-This does not check the full accumulated list, its order or multiplicity.
-The [reference-refusal corpus](../../fixtures/reference/refusals/README.md) (#401) compares
-complete refusals instead: the released node's whole LocalTxSubmission `ApplyTxErr`, every failure in
+bookkeeping. Rejected batches are judged with the accumulating policy: the production Conway
+predicate-failure encoder writes every typed cause, and the complete list must equal the unchanged
+native bytes, including order and multiplicity. Production block application keeps its separate
+first-failure policy.
+The [reference-refusal corpus](../../fixtures/reference/refusals/README.md) (#401) also compares
+complete refusals: the released node's whole LocalTxSubmission `ApplyTxErr`, every failure in
 its order, byte for byte against Scarab's.
 
 The [reward timing corpus](../../storage/src/test/resources/rewards-timing-1.19.0.1/README.md)
@@ -264,10 +267,12 @@ from the node-11.1.3 reference dependency set, a separate source pin from the ne
 formal corpus. Fifty-five deterministic schedules retain 341 slot observations and
 174 complete/credited-state observations. Tests check completed monetary accounting,
 required availability, sparse slots and forced epoch-boundary delivery. Eight genuine
-pending prefixes are checkpointed/restored through current native V5 storage before
-completion. This is storage continuation, not a reference-process restart. Different
-within-window pulse partitions are allowed. #268 removes the former newly generated
-likelihood mask: complete encoded API/timing results now compare those vectors too.
+pending prefixes are checkpointed and restored through the node's current snapshot format
+([registry](../../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala)) before
+completion; a retained V5 snapshot supplies only the envelope and is converted forward first.
+This is storage continuation, not a reference-process restart. Different within-window pulse
+partitions are allowed. #268 removes the former newly generated likelihood mask: complete encoded
+API/timing results now compare those vectors too.
 The [likelihood corpus](../../storage/src/test/resources/reward-likelihood-1.19.0.1/README.md)
 adds eight full-state cases and 72,700 exact Float samples from 727 real Preview pools.
 This does not reconstruct historical missing observations; per-state gap provenance
@@ -345,13 +350,15 @@ measurements and the implemented writer contract under
 
 The subsequent [original starvation-generator replay](../../network/src/test/resources/upstream/mux-starvation/README.md)
 adds 32 consecutive native samples: 22 actual property passes, ten implication discards and no native
-failures. Scarab replays the 18 size-applicable passing conversations with the original first-100-SDU
-ordering assertion. Four native passes exceed its unchanged message limit and remain explicit
-exclusions. Native wiring uses response1 for both protocols; twelve unequal original pairs are
-separately labelled local controls. A controlled overlap barrier and extra nonvacuity assertion ensure
+failures. Scarab replays all 22 passing conversations with the original first-100-SDU ordering assertion,
+under an explicit mock profile with 3 MB message and ingress bounds. The four whose responses exceed
+the default 2.5 MB bound keep that historical classification in the corpus but are replayed; the
+public default bound is unchanged. Native wiring uses response1 for both protocols; twelve unequal
+original pairs are separately labelled local controls. A controlled overlap barrier and extra nonvacuity assertion ensure
 Scarab actually services both admitted lanes. Neither trace identity nor identical runtime scheduling
 is required. Original bytes, native verdicts, observed headers and executable/source provenance are
-retained; broader generator and transport campaigns are optional K2 follow-ups in the [roadmap](../roadmap.md).
+retained; broader generator and transport campaigns remain under K2 / #49 in the [roadmap](../roadmap.md), where
+the upstream cases not yet run whole are required work.
 
 Local wire regressions complement the exported observations. `ChainSyncBatchSuite`
 requires all three requests to arrive before any response, then collects forward,
@@ -379,9 +386,12 @@ The [Plutus evidence](../plutus-conformance.md) now passes all 1,009 original ev
 cases with exact results and budgets under the upstream term/counting profile. The former
 thirteen harness exceptions are removed; separate ledger tests retain Flat admission, protocol
 gates and restricting-budget behavior. Earlier 996/1009 measurements remain historical evidence.
-The [risk-based closeout audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
-distinguishes the remaining reference limitations from optional broader seeded and
-rejection campaigns. The retained EPOCH failure is now classified by
+The 2026-10-20 [risk-based closeout audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
+distinguished the remaining reference limitations from broader seeded and rejection
+campaigns, which it treated as optional. [CNF-1](../design-rules.md#cnf-1) supersedes that
+bounded closeout: the upstream cases not yet run whole are required work under #49, and
+a case not yet run is incomplete, not a pass ([CNF-2](../design-rules.md#cnf-2)).
+The retained EPOCH failure is now classified by
 [#267](https://github.com/KD5UJC-XYZ/scarab/issues/267): its generated completed
 pulser has parameter values inconsistent with the current parameters despite no
 enacted actions. Native Haskell keeps current parameters; the formal rule trusts
@@ -414,9 +424,11 @@ now executes the same formal computation successfully on the unchanged singleton
 and two dependent batches; accepted translated states compare equal. Two deliberate
 bad batches reject on both sides, with differing failure text retained explicitly.
 These repaired-executable observations do not relabel the original crash as a pass.
-The bounded operational fairness and timeout-cleanup checks above satisfy the
-agreed scope. Reproducing exact Haskell schedules or timer internals is not the
-acceptance criterion; broader seeds, action families and backend campaigns remain
-optional K2 roadmap follow-ups. Historical missing-state provenance is #129.
-No persisted native format is changed; maintained native
-snapshots remain V5. Raw upstream trace CBOR is not a native snapshot version.
+The bounded operational fairness and timeout-cleanup checks above met the 2026-10-20
+bounded closeout, which CNF-1 supersedes. Reproducing exact Haskell schedules or timer
+internals is not the acceptance criterion; broader seeds, action families and backend
+campaigns remain under #49, where the upstream cases not yet run whole are required work.
+Historical missing-state provenance is #129.
+These adapters change no persisted native format; the snapshot format versions are those of the
+[registry](../../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala). Raw upstream
+trace CBOR is not a native snapshot version.

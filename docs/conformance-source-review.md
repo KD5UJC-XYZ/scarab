@@ -4,6 +4,12 @@ Status: historical source review of the fixed freshness observation at
 2026-10-20 19:22:52 UTC. This classifies source changes; it adds no generator runs,
 vector passes or observed Scarab discrepancies.
 
+Note (2026-11-17): the "completed agreed v0.2 campaign" and the broader campaigns that
+"remain optional" in the [follow-up order](#follow-up-order) are superseded by
+[CNF-1](design-rules.md#cnf-1) and [CNF-2](design-rules.md#cnf-2). The upstream cases not yet
+run whole are required work under [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49).
+The historical text below is unchanged.
+
 The subsequent [implementation and replay](design/upstream-conformance.md#source-refresh-implementation)
 fix source watches and DNS publication and exercise applicable ledger, pool-query
 and Plutus changes. The corrected watches add 50 events with a separate

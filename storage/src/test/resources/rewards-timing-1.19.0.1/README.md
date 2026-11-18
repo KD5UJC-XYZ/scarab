@@ -44,9 +44,11 @@ and parameters. This does not reconstruct missing histories in older snapshots;
 conservative live provenance remains tracked by #129.
 
 `RewardSnapshotSuite` checkpoints genuine Haskell Conway prefixes through the
-current native V5 format, restores their exact encoded pending state, and compares
-completion to the independent Haskell result. The existing V5 fixture supplies
-only the snapshot envelope; the captured reward inputs come from this oracle.
+node's current snapshot format (its registry is
+`ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala`), restores their exact
+encoded pending state, and compares completion to the independent Haskell result.
+The retained V5 fixture supplies only the snapshot envelope, converted forward to the
+current format first; the captured reward inputs come from this oracle.
 This is storage continuation, not a reference-node process restart or a chain replay.
 The new timing suite checks epoch-boundary forced delivery from each pending local
 prefix against the independently credited native accounts and pots. Existing native

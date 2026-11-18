@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Network: fair Mux egress (#258)
 
-Part of the [compatibility matrix](../compatibility.md); the register entry is `network-fair-mux-egress` in [compatibility.json](../data/compatibility.json). The three sections below are the cells of the former matrix row, unchanged.
+Part of the [compatibility matrix](../compatibility.md); the register entry is `network-fair-mux-egress` in [compatibility.json](../data/compatibility.json). The three sections below are the cells of the matrix row for this component.
 
 ## Status as recorded
 
@@ -13,4 +13,4 @@ Production-path paced bulk/control checks: successful KeepAlive at about 1.876/1
 
 ## Explicitly unchecked or unconfirmed
 
-Twelve additional unequal-pair checks are local controls; original native wiring uses response1 twice. Local controlled service times are not host throughput; bounded generator replay does not establish exact thread-schedule parity. Admission waits and live fence prefixes remain explicit; broader network campaigns remain optional K2 roadmap follow-ups
+Twelve additional unequal-pair checks are local controls; original native wiring uses response1 twice. Local controlled service times are not host throughput; bounded generator replay does not establish exact thread-schedule parity. Admission waits and live fence prefixes remain explicit; broader network campaigns remain under K2 / #49, where the upstream cases not yet run whole are required work
