@@ -25,6 +25,7 @@ object Dependencies {
     // Consensys jblst: blst v0.3.17 with its portable native libraries (ADR 0025)
     val jblst = "0.3.18"
     val rocksdb = "10.2.1"
+    val sqliteJdbc = "3.54.1.0"
 
     val munit = "1.0.2"
     val munitScalaCheck = "1.0.0"
@@ -61,6 +62,9 @@ object Dependencies {
     val jblst = ("tech.pegasys" % "jblst" % V.jblst).exclude("com.google.guava", "guava")
     // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
     val rocksdb = "org.rocksdb" % "rocksdbjni" % V.rocksdb
+    // SQLite, only to read and write a Leios reference node's `leios.vol.db` and `leios.imm.db` in the
+    // offline import and export of its Leios database (native library bundled in the jar).
+    val sqliteJdbc = "org.xerial" % "sqlite-jdbc" % V.sqliteJdbc
     // Declared by http4s-core but referenced by no class on the node's runtime classpath (#214);
     // http4s logs through log4cats, which stays (docs/licenses.md).
     val unusedLog4s = ExclusionRule("org.log4s", "log4s_3")

@@ -47,7 +47,8 @@ SLF4J (`node/log/LibraryLogs.scala`).
 ## Result
 
 - No dependency is GPL-only, LGPL, AGPL, proprietary or without a declared licence. Every artifact is
-  Apache-2.0, MIT, BSD-3-Clause, Bouncy Castle (MIT-style) or the RocksDB dual licence. All of
+  Apache-2.0, MIT, BSD-3-Clause, Bouncy Castle (MIT-style) or the RocksDB dual licence; the SQLite natives
+  that sqlite-jdbc bundles are public domain. All of
   these are compatible with distributing this project under Apache-2.0.
 - RocksDB (`rocksdbjni`) is `Apache-2.0 OR GPL-2.0-only`. The project uses it under Apache-2.0. The GPL
   option is not elected and no GPL-2.0-only obligations arise.
@@ -66,6 +67,7 @@ SLF4J (`node/log/LibraryLogs.scala`).
 | Jar | Native content | Upstream licence | Note |
 |---|---|---|---|
 | `org.rocksdb:rocksdbjni:10.2.1` | `librocksdbjni` for Linux (x86, x86_64, aarch64, ppc64le, s390x, riscv64; glibc and musl), macOS (x86_64, arm64), Windows x64 | Apache-2.0 OR GPL-2.0-only (RocksDB) | The jar has no licence file. RocksDB statically links compression libraries (zlib, snappy, lz4, zstd, bzip2; BSD- or zlib-style licences) whose texts are not in the jar; the assembly adds them (see [Licence texts in binaries](#licence-texts-in-binaries)). Only the Linux x86_64 library is exercised by this project's Docker build. |
+| `org.xerial:sqlite-jdbc:3.54.1.0` | `libsqlitejdbc` (SQLite 3.54.1 with the JNI glue) for Linux (x86, x86_64, arm, armv6, armv7, aarch64, ppc64, riscv64; glibc, and musl for x86, x86_64 and aarch64), FreeBSD (x86, x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86, x86_64, armv7, aarch64) | Apache-2.0 (sqlite-jdbc), with the BSD-style notice of the Zentus code it derives from; SQLite is public domain | The jar carries both licence texts (`META-INF/maven/org.xerial/sqlite-jdbc/LICENSE` and its Zentus notice), kept as `licenses/sqlite-jdbc-3.54.1.0/LICENSE` and `licenses/sqlite-jdbc-3.54.1.0/LICENSE.zentus`, which the assembly packages. Used only by the offline import and export of a Leios reference database (`storage/src/main/scala/xyz/kd5ujc/scarab/storage/leios/LeiosReferenceDb.scala`), never by the running node. Only the Linux x86_64 library is exercised by this project's Docker build. |
 | `tech.pegasys:jblst:0.3.18` | `libblst` (supranational/blst v0.3.17) for Linux amd64/aarch64, macOS x86_64/arm64, Windows amd64; the Linux amd64 one is a portable build | Apache-2.0 (supranational/blst) and MIT (the jblst repository's `LICENSE`) | No licence file in the jar, and its POM declares Apache-2.0 while the repository's `LICENSE` is MIT; both texts ship (`licenses/jblst-0.3.18/LICENSE`, `crypto/licenses/LICENSE-blst`). Used by the Leios BLS keys (`MinSig`) and the BLS12-381 builtins of Plutus; hashes pinned in [ADR 0025](adr/0025-jblst.md). |
 
 Earlier `NOTICE` text said these natives are bundled "for linux x86_64"; the jars hold several platforms
@@ -92,6 +94,7 @@ were not regenerated here.
 | dev.optics:monocle-macro_3 | 3.3.0 | MIT | direct |  |
 | org.slf4j:slf4j-api | 2.0.17 | MIT | direct | Declared at 2.0.17 in `Dependencies.scala`; POM parent states MIT. |
 | org.rocksdb:rocksdbjni | 10.2.1 | Apache-2.0 OR GPL-2.0-only | direct | Dual licence; Apache-2.0 elected. The jar bundles native libraries (see below). |
+| org.xerial:sqlite-jdbc | 3.54.1.0 | Apache-2.0 | direct | The import and export of a Leios reference database only. Its POM's one runtime dependency, SLF4J's API, is optional. The jar bundles native libraries (see above). POM read from Maven Central (2026-11-18). |
 | io.circe:circe-parser_3 | 0.14.16 | Apache-2.0 | direct |  |
 | org.http4s:http4s-ember-server_3 | 0.23.37 | Apache-2.0 | direct |  |
 | org.http4s:http4s-dsl_3 | 0.23.37 | Apache-2.0 | direct |  |
@@ -201,8 +204,8 @@ What each licence asks of a binary, as its text says:
 | Licence | Clause | Components |
 |---|---|---|
 | MIT (and the Bouncy Castle licence, an MIT licence) | "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software." | cats, fs2, monocle, cats-parse, vault, idna4s, jawn, slf4j-api, bcprov, curve25519-elisabeth |
-| BSD-2-Clause, BSD-3-Clause | "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution." | dnsjava, scodec, scodec-bits, the third-party sections of the COPYING files of cats, cats-mtl and cats-collections, the argonaut and ephox notices of circe, curve25519-dalek (in elisabeth's LICENSE), LevelDB (`LICENSE.leveldb` of RocksDB), snappy, lz4, zstd |
-| Apache-2.0 | §4(a) "give any other recipients of the Work or Derivative Works a copy of this License"; §4(d) "include a readable copy of the attribution notices contained within such NOTICE file" | Scala 3 and its standard library, cats-effect, circe, http4s, http4s-crypto, log4cats, kittens, ip4s, case-insensitive, literally, jawn-fs2, shapeless-3, hpack, RocksDB (Apache-2.0 elected), jblst (with its MIT text as well), blst; each NOTICE file upstream has is packaged |
+| BSD-2-Clause, BSD-3-Clause | "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution." | dnsjava, scodec, scodec-bits, the third-party sections of the COPYING files of cats, cats-mtl and cats-collections, the argonaut and ephox notices of circe, curve25519-dalek (in elisabeth's LICENSE), LevelDB (`LICENSE.leveldb` of RocksDB), snappy, lz4, zstd, the Zentus notice of sqlite-jdbc (`licenses/sqlite-jdbc-3.54.1.0/LICENSE.zentus`) |
+| Apache-2.0 | §4(a) "give any other recipients of the Work or Derivative Works a copy of this License"; §4(d) "include a readable copy of the attribution notices contained within such NOTICE file" | Scala 3 and its standard library, cats-effect, circe, http4s, http4s-crypto, log4cats, kittens, ip4s, case-insensitive, literally, jawn-fs2, shapeless-3, hpack, RocksDB (Apache-2.0 elected), jblst (with its MIT text as well), blst, sqlite-jdbc; each NOTICE file upstream has is packaged |
 | zlib, bzip2 | conditions on source distributions and misrepresentation only; the texts are included anyway | zlib, bzip2 |
 | CC0, public domain | none | eddsa-java, ref10 (both inside curve25519-elisabeth) |
 

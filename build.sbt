@@ -324,7 +324,8 @@ lazy val storage = scarab("storage")
       Libraries.fs2Core,
       Libraries.fs2Io,
       Libraries.scodecCore,
-      Libraries.rocksdb
+      Libraries.rocksdb,
+      Libraries.sqliteJdbc
     ),
     Test / testGrouping := {
       // MemoryBoundSuite checks retained decode heap in a separate 256 MiB JVM (#94).
@@ -421,6 +422,9 @@ lazy val node = scarab("node")
         MergeStrategy.discard
       case path if path.startsWith("META-INF/scarab/") => MergeStrategy.deduplicate
       case "META-INF/DEPENDENCIES"                     => MergeStrategy.rename
+      // Maven's metadata of a jar, licence files among it (sqlite-jdbc's): the licence texts the
+      // assembly carries are under META-INF/scarab/licenses (licenses/index.json)
+      case path if path.startsWith("META-INF/maven/") => MergeStrategy.discard
       case path =>
         val fallback = (ThisBuild / assemblyMergeStrategy).value
         fallback(path)

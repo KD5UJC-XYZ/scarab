@@ -23,12 +23,14 @@ class AssemblyInventoryTest(unittest.TestCase):
         self.library = self.root / 'library.jar'
         self.source = {'x/Library.class': b'class-bytes', 'META-INF/services/test.Service': b'Library\n',
                        'META-INF/maven/g/a/pom.xml': b'<project/>', 'LICENSE': b'library license',
+                       'META-INF/maven/g/a/LICENSE': b'maven license',
                        'META-INF/versions/11/x/Library.class': b'versioned',
                        'native/Linux/a.so': b'other-native', inventory.PORTABLE: b'portable',
                        'module-info.class': b'module'}
         self.write_zip(self.library, self.source)
         self.artifact = self.root / 'application.jar'
-        self.result = {k: v for k, v in self.source.items() if k not in {'LICENSE', 'module-info.class', 'META-INF/maven/g/a/pom.xml'}}
+        self.result = {k: v for k, v in self.source.items() if k not in {'LICENSE', 'module-info.class', 'META-INF/maven/g/a/pom.xml',
+                                                                     'META-INF/maven/g/a/LICENSE'}}
         self.result.update({'LICENSE_library-1': b'library license', inventory.PORTABLE: b'portable',
                             'META-INF/MANIFEST.MF': b'Main-Class: Node\n'})
         self.result['META-INF/services/test.Service'] = b'Library'
@@ -48,6 +50,8 @@ class AssemblyInventoryTest(unittest.TestCase):
         policies = {row['input']: row['policy'] for row in result['entries']}
         self.assertEqual(policies['module-info.class'], 'discard-module-descriptor')
         self.assertEqual(policies['LICENSE'], 'rename-legal-or-readme')
+        # a licence file among Maven's metadata goes with it (build.sbt discards META-INF/maven/)
+        self.assertEqual(policies['META-INF/maven/g/a/LICENSE'], 'discard-dependency-metadata')
         # jblst's library is a dependency resource like any other: preserved byte for byte (ADR 0025)
         self.assertEqual(policies[inventory.PORTABLE], 'deduplicate')
         self.assertEqual(len(result['components']), 1)
