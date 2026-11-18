@@ -124,6 +124,9 @@
 {"event":"mempoolDropped","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"tx abababababababab is already in the mempool","cause":"Revalidation"}
 {"event":"mempoolDropped","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"tx abababababababab is already in the mempool","cause":"Withdrawal"}
 {"event":"mempoolWaiting","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}
+{"event":"mempoolWaiting","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"validation time of the held transactions over the capacity","usedSeconds":5.25,"capacitySeconds":5}
+{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"MempoolTxTooSlow (1.234567891s) HardForkGenTxId {getHardForkGenTxId = S (S (S (S (S (S (Z (WrapGenTxId {unwrapGenTxId = txid: TxId {unTxId = SafeHash \"abababababababababababababababababababababababababababababababab\"}})))))))}"}
+{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"ExnMempoolTimeout 1.5s abababababababababababababababababababababababababababababababab"}
 {"event":"mempoolAdopted","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab"}
 {"event":"mempoolRemoved","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab"}
 {"event":"mempoolSynced","at":"2026-10-16T12:00:00Z","count":3,"bytes":900,"dropped":1}

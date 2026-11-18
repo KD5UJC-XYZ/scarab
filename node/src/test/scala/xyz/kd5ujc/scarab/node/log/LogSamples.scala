@@ -410,6 +410,19 @@ object LogSamples:
       xyz.kd5ujc.scarab.node.mempool.DropCause.Withdrawal
     ),
     MempoolEvent.Waiting(Some(hash), TxMeasure(300, 0, 0, 0), TxMeasure(100, 0, 0, 0)),
+    MempoolEvent.WaitingForTime(
+      hash,
+      xyz.kd5ujc.scarab.network.DiffTime.picoseconds(BigInt("5250000000000")),
+      xyz.kd5ujc.scarab.network.DiffTime.picoseconds(BigInt("5000000000000"))
+    ),
+    MempoolEvent.Rejected(
+      Some(hash),
+      Rejection.TooSlow(hash, xyz.kd5ujc.scarab.protocol.Era.Conway, 1234567891.nanos)
+    ),
+    MempoolEvent.Rejected(
+      Some(hash),
+      Rejection.TimedOut(xyz.kd5ujc.scarab.node.mempool.MempoolTimeout(hash, 1500.millis))
+    ),
     MempoolEvent.Adopted(hash),
     MempoolEvent.Removed(hash),
     MempoolEvent.Synced(3, 900L, 1),

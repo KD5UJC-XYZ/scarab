@@ -54,6 +54,12 @@ object LocalTxSubmissionServer:
       */
     case ServingDefect(cause: Throwable)
 
+    /** The node ended the submission for `cause` with no answer: the connection ends with
+      * [[NetworkError.BearerClosed]], as an exception the reference's mempool throws ends the
+      * mini-protocol's thread (the hard time limit, `ExnMempoolTimeout`).
+      */
+    case Aborted(cause: DomainError)
+
   enum End:
     case ClientFinished
     case ConnectionClosed(error: NetworkError)
@@ -95,6 +101,8 @@ object LocalTxSubmissionServer:
                 NetworkError.Decode(id, ProtocolError.UndecodableTransaction(cause)).raise
               case Response.InputDefect(cause)   => NetworkError.DecoderDefect(id, cause).raise
               case Response.ServingDefect(cause) => NetworkError.ServingDefect(id, cause).raise
+              case Response.Aborted(cause) =>
+                NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(cause)).raise
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
           case other => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))

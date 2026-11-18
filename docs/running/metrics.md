@@ -126,7 +126,7 @@ Meanings and units worth knowing before building a dashboard:
 `Unnegotiated`, `OutboundUni`, `OutboundDup`, `OutboundIdle`, `InboundIdle`, `Inbound`, `Duplex`, `Terminating`
 or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `c45735a5`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused`, `Closed` or `Pruned`, and for
 `scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
-`AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect` or `RulesDefect`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
+`AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect`, `RulesDefect`, `TooSlow` or `TimedOut`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
 `BlockFromFuture`, `NoLedgerView` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
 `50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young
 Generation`, `G1 Old Generation`, `G1 Concurrent GC`); `version`, `scala_version` and `git_commit` of
@@ -172,8 +172,7 @@ transaction-submission server, `tipBlock`, `basicInfo`, `cardano_build_info` and
 `scarab_blockfetch_seconds`). These need an event Scarab does not have: the seventeen `txSubmission_*_int`
 gauges, among them the wait counters `txIdBlockingWaitMs`, `txPipelineWaitMs` and `txSubmissionWaitMs`, which
 the reference exports only with `TxSubmissionLogicVersion: TxSubmissionLogicV2` (with the default V1 logic it
-never emits them); Scarab implements the V1 logic. Also `txsMempoolTimeoutSoft_counter` and
-`txsMempoolTimeoutHard_counter` (Scarab's mempool has no validation timeout), the `rpc_request_*_counter`
+never emits them); Scarab implements the V1 logic. Also the `rpc_request_*_counter`
 counters (no gRPC server) and the Peras object-diffusion series. Not applicable: the GHC runtime's `RTS_*`,
 `rts_gc_*`, `Mem_*` and `Stat_*`, and `Forge_adoption_thread_died_counter`, whose trace cannot happen here (the
 forged block is adopted in the forging fiber itself). The network packages of the next release add the
@@ -224,6 +223,8 @@ section and the catalogue differ.
 | `cardano_node_metrics_mempoolBytes_int` | gauge |  | Size of the transactions in the mempool, in bytes. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
 | `cardano_node_metrics_txsProcessedNum_counter` | counter |  | Transactions added to the mempool since the start. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
 | `scarab_mempool_rejected_total` | counter | `reason` | Transactions the mempool refused, by reason. A local client's transaction that its decoder refuses, or that a decoder throws on, never reaches the mempool and is not counted here: its connection ends, as the reference's codec ends it, and the log's `inbound` line with `state` `closed` gives the decoder's reason ([logging](logging.md)). | none (a trace message only) |
+| `cardano_node_metrics_txsMempoolTimeoutSoft_counter` | counter |  | Transactions that soft timed out in mempool: refused as too slow (`MempoolTxTooSlow`, `scarab_mempool_rejected_total{reason="TooSlow"}`), a local client's Conway transaction cut off by the hard limit included. | same name and meaning: the rejections traced with `MempoolRejectedByTimeoutSoft` (cardano-node 11.1.3 `Tracers/Consensus.hs` 1055-1067, 1141-1148); in the 11.1.3 binary, not scraped (no traffic in the run) |
+| `cardano_node_metrics_txsMempoolTimeoutHard_counter` | counter |  | Transactions that hard timed out in mempool: the validations the hard limit cut off where the submitter's connection ends (`reason="TimedOut"`). | same name and meaning: the mini-protocols that ended with `ExnMempoolTimeout`, counted from the multiplexer's trace (ouroboros-network `c45735a5` `framework/tracing/Network/Mux/Tracing.hs` 345-360, 451-460); in the 11.1.3 binary, not scraped |
 | `scarab_mempool_dropped_total` | counter |  | Held transactions dropped because the new tip no longer admits them. | none (a trace message only) |
 | `scarab_mempool_adopted_total` | counter |  | Held transactions that appeared in a block of our chain. | none |
 | `scarab_mempool_removed_total` | counter |  | Transactions removed from the mempool on request although they still apply (a forged block that our own chain refused). | none |

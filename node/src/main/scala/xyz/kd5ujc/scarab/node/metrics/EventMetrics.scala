@@ -31,7 +31,7 @@ import xyz.kd5ujc.scarab.node.forge.{
   ForgeTrace,
   KesInfo
 }
-import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
+import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 
@@ -134,12 +134,20 @@ final class EventMetrics[F[_]: Sync] private (
     def emit(event: MempoolEvent): F[Unit] = event match
       case MempoolEvent.Added(_, _, _, _) => metrics.inc(txsProcessed)
       case MempoolEvent.Rejected(_, reason) =>
-        metrics.inc(mempoolRejected, RejectionLabel.of(reason))
-      case MempoolEvent.Waiting(_, _, _) => Sync[F].unit
-      case MempoolEvent.Dropped(_, _, _) => metrics.inc(mempoolDropped)
-      case MempoolEvent.Adopted(_)       => metrics.inc(mempoolAdopted)
-      case MempoolEvent.Removed(_)       => metrics.inc(mempoolRemoved)
-      case MempoolEvent.Synced(_, _, _)  => Sync[F].unit
+        metrics.inc(mempoolRejected, RejectionLabel.of(reason)) *> (reason match
+          // `txsMempoolTimeoutSoft` counts the rejections traced as `MempoolRejectedByTimeoutSoft`
+          // (cardano-node 11.1.3 `Tracers/Consensus.hs` 1055-1067, 1141-1148), and
+          // `txsMempoolTimeoutHard` the connections an `ExnMempoolTimeout` ended (ouroboros-network
+          // c45735a5 `framework/tracing/Network/Mux/Tracing.hs` 345-360, 451-460)
+          case Rejection.TooSlow(_, _, _) => metrics.inc(txsMempoolTimeoutSoft)
+          case Rejection.TimedOut(_)      => metrics.inc(txsMempoolTimeoutHard)
+          case _                          => Sync[F].unit)
+      case MempoolEvent.Waiting(_, _, _)        => Sync[F].unit
+      case MempoolEvent.WaitingForTime(_, _, _) => Sync[F].unit
+      case MempoolEvent.Dropped(_, _, _)        => metrics.inc(mempoolDropped)
+      case MempoolEvent.Adopted(_)              => metrics.inc(mempoolAdopted)
+      case MempoolEvent.Removed(_)              => metrics.inc(mempoolRemoved)
+      case MempoolEvent.Synced(_, _, _)         => Sync[F].unit
 
   /** The phase of the start, as the one-hot gauge [[nodePhase]]: the storage events move it from
     * restoring to replaying, the node itself says when it is following.

@@ -95,19 +95,22 @@ enum FetchModeLabel derives LabelValue:
 
 /** Why the mempool refused a transaction ([[xyz.kd5ujc.scarab.node.mempool.Rejection]]). */
 enum RejectionLabel derives LabelValue:
-  case Malformed, AlreadyHeld, Ledger, Full, WrongEra, NoLedger, InputDefect, RulesDefect
+  case Malformed, AlreadyHeld, Ledger, Full, WrongEra, NoLedger, InputDefect, RulesDefect, TooSlow,
+    TimedOut
 
 object RejectionLabel:
   def of(reason: Rejection): RejectionLabel = reason match
-    case Rejection.Malformed(_)   => Malformed
-    case Rejection.AlreadyHeld(_) => AlreadyHeld
-    case Rejection.Ledger(_)      => Ledger
-    case Rejection.Limits(_, _)   => Ledger
-    case Rejection.Full(_, _)     => Full
-    case Rejection.WrongEra(_, _) => WrongEra
-    case Rejection.NoLedger(_)    => NoLedger
-    case Rejection.InputDefect(_) => InputDefect
-    case Rejection.RulesDefect(_) => RulesDefect
+    case Rejection.Malformed(_)     => Malformed
+    case Rejection.AlreadyHeld(_)   => AlreadyHeld
+    case Rejection.Ledger(_)        => Ledger
+    case Rejection.Limits(_, _)     => Ledger
+    case Rejection.Full(_, _)       => Full
+    case Rejection.WrongEra(_, _)   => WrongEra
+    case Rejection.NoLedger(_)      => NoLedger
+    case Rejection.InputDefect(_)   => InputDefect
+    case Rejection.RulesDefect(_)   => RulesDefect
+    case Rejection.TooSlow(_, _, _) => TooSlow
+    case Rejection.TimedOut(_)      => TimedOut
 
 /** Why the forger gave a slot up before the leader check: the reference's `TraceSlotIsImmutable`,
   * `TraceBlockFromFuture` and `TraceNoLedgerView`. `Other` remains as a zero-valued series for
@@ -217,6 +220,14 @@ object Catalogue:
     MetricName("scarab_mempool_rejected_total"),
     "Transactions the mempool refused, by reason.",
     Labels.one[RejectionLabel](LabelName("reason"))
+  )
+  val txsMempoolTimeoutSoft = CounterDef(
+    MetricName("cardano_node_metrics_txsMempoolTimeoutSoft_counter"),
+    "Transactions that soft timed out in mempool"
+  )
+  val txsMempoolTimeoutHard = CounterDef(
+    MetricName("cardano_node_metrics_txsMempoolTimeoutHard_counter"),
+    "Transactions that hard timed out in mempool"
   )
   val mempoolDropped = CounterDef(
     MetricName("scarab_mempool_dropped_total"),
@@ -1179,6 +1190,8 @@ object Catalogue:
     mempoolBytes,
     txsProcessed,
     mempoolRejected,
+    txsMempoolTimeoutSoft,
+    txsMempoolTimeoutHard,
     mempoolDropped,
     mempoolAdopted,
     mempoolRemoved,
