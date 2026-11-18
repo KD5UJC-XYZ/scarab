@@ -61,13 +61,14 @@ object GenTx:
     *     c45735a5); the transaction in it is read only once it has all arrived (`fromSerialised`,
     *     `Block.hs:477-486`), as [[LocalSubmission.unwrap]] reads a whole one.
     *
-    * Only these envelopes are read: a deeper token the reference fails on is judged once the
-    * message has all arrived, whole. Byron's payload, for instance, is read no further than its
-    * constructor, so a transaction of three items after constructor 0 (`82 00 82 00 82 00 83`),
-    * which the reference refuses at once (`enforceSize "TxAux" 2`,
+    * Only these envelopes are read here: a prefix the reference fails on at a deeper token waits
+    * until the message has all arrived. A Shelley-based era's transaction is then read whole in its
+    * era ([[MempoolState.read]]); Byron's and Dijkstra's are not read past their envelopes, so a
+    * Byron transaction of three items after constructor 0 (`82 00 82 00 82 00 83`), which the
+    * reference refuses at once (`enforceSize "TxAux" 2`,
     * `eras/byron/ledger/impl/src/Cardano/Chain/UTxO/TxAux.hs:108-114`, cardano-ledger f649f975),
-    * waits. Every message a prefix refused here starts is refused whole too
-    * ([[LocalSubmission.unwrap]], [[MempoolState.read]]).
+    * waits and then gets the era mismatch (a gap). Every message a prefix refused here starts is
+    * refused whole too ([[LocalSubmission.unwrap]], [[MempoolState.read]]).
     */
   def prefix(input: Bytes): LocalTxSubmission.TxPrefix =
     val tokens = PrefixTokens(input, LocalTxSubmission.TxPrefix.Short)
