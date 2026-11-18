@@ -796,6 +796,16 @@ but no longer in the `state` file, `nesPd` being gone); `RatifyEnv` (`VotingStak
 DRep pulser is written completed, `Conway/Governance/DRepPulser.hs:468-472`); `PParams` and
 `PParamsUpdate`; `PraosState` (version 0 and eight fields for Praos, `Protocol/PolyPraos.hs:362-420`).
 
+**Dijkstra (#826 step d).** A `state` file in Dijkstra is read and written in this layout too: the
+telescope's eighth era, the era's `NewEpochState` at version 12 (`Shelley/LedgerState/Types.hs:393-422`,
+with its `PParams` of 54 items), the header state's tip `[7, [slot, hash, block number]]`, and the
+chain-dependent state of Praos2 (`[1, [nine fields]]`, `Protocol/PolyPraos.hs:368-419`). The
+consensus envelopes around them are the same as before Dijkstra and not versioned by the ledger
+(`Shelley/Ledger/Ledger.hs:885-922`). Gated by layout: the 11.1 layout refuses a Dijkstra telescope,
+tip or era state both ways (`DijkstraNotYet.LedgerState`). Not read yet: a pool's BLS key in its
+`StakePoolParams` (`DijkstraNotYet.PoolParamsBlsKey`), a proposal's update of a parameter Dijkstra
+adds (`DijkstraNotYet.ParameterUpdate`) and a Peras epoch context (`DijkstraNotYet.PerasEpochContext`).
+
 **The model.** Each record that differs holds one part that the layout decides, a closed enum with a
 case per layout extending `LayoutPart`: `Bound.Layout`, `ShelleyLedgerState.Layout`,
 `ExtLedgerState.Layout` (the `PerasState`), `NewEpochState.Layout` (the stored distribution of 11.1),
@@ -813,8 +823,9 @@ fields to a persisted snapshot. The mark snapshot's committee is not stored, as 
 the following epoch when the mark rotates into the set position (`State/SnapShots.hs:453-467,
 544-550`, `State/LeiosCommittee.hs:65-93`). `Snap` performs that rotation before Dijkstra; Dijkstra's
 SNAP is not implemented (#826). A `PerasResolver` with an epoch context is not modelled: the eras before
-Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's is
-`DijkstraNotYet.LedgerState`.
+Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's (the
+WFALS committee, ouroboros-consensus 2416493b `Shelley/Node/Peras.hs:136-148`) is
+`DijkstraNotYet.PerasEpochContext`: Peras is off in the build, and no state it wrote holds one.
 
 **The codecs.** The codec traits take the layout (`stateLayout`); `HaskellStateCodecs` is 11.1's
 and `LeiosStateCodecs` the Leios build's. Each record that differs branches on it, and each codec's
@@ -829,10 +840,13 @@ values of the 11.1 layout; running them on a Leios state is step c's to change.
 
 **Evidence.** The last Conway state of a Leios devnet (`fixtures/leios/state/conway-195`) is read
 and written byte for byte, imported and exported with `state`, `tables` and `meta` unchanged, and
-refused by the 11.1 layout; the first Dijkstra state is refused at its telescope with its Peras
-state and past bounds read (`LeiosLayoutSuite`, `LeiosLayoutImportSuite`, the `leios-*` fuzz
-targets). Only Conway is checked on reference bytes; the other eras on the diff of the sources and
-on property laws.
+refused by the 11.1 layout. Two Dijkstra states, the devnet's first (`dijkstra-203`) and the public
+testnet's at epoch 100 (`testnet-2168639`), are read and written byte for byte as whole files, and
+`dijkstra-203` is imported and exported with its header's tip moved to a Dijkstra block the
+fixtures hold, its own block not having been kept (`LeiosLayoutSuite`, `LeiosLayoutImportSuite`,
+the `leios-*` fuzz targets). In the 11.1 layout a Dijkstra telescope, tip or era state stays
+refused (`DijkstraNotYet.LedgerState`). Conway and Dijkstra are checked on reference bytes; the
+other eras on the diff of the sources and on property laws.
 
 ## 15. The 11.2 build, named (re-pin stage 0)
 

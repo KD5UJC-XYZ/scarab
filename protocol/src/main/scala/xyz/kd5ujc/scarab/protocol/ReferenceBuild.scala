@@ -69,7 +69,9 @@ enum ReferenceBuild(
   /** The build of the public Leios testnet (release rc-2026w44, #711): cardano-node
     * b004fe0c50913dcdaa827a98e68a43d0ccce152a (branch leios-prototype), with cardano-ledger
     * 9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c (its binary package included) and ouroboros-consensus
-    * 2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b. Unstable.
+    * 2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b. Unstable. Its `state` layout is read and written in
+    * every Shelley-based era, Dijkstra among them ([[StateLayout.Leios]]); its rules are not run
+    * ([[ReferenceBuildNotYet.Rules]]).
     */
   case LeiosB004fe0c
       extends ReferenceBuild(
@@ -135,8 +137,9 @@ final case class UnknownReferenceBuild(text: String) extends DomainError:
     s"unknown reference build '$text' (known: ${ReferenceBuild.values.map(_.name).mkString(", ")})"
 
 /** A reference build that this build names but does not implement yet, and so refuses at startup
-  * (#826), as [[DijkstraNotYet]] refuses the parts of Dijkstra. Each part is removed by the step of
-  * #826 that implements it.
+  * (#826), as [[DijkstraNotYet]] refuses the parts of Dijkstra not read yet (the 11.1 line's
+  * Dijkstra state among them; the Leios build's is read). Each part is removed by the step of #826
+  * that implements it.
   */
 enum ReferenceBuildNotYet extends DomainError:
   /** The layout of the `state` file that `build` writes, which this build does not read or write
