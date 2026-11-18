@@ -74,6 +74,25 @@ def record(load, era, tx, label):
 
 REDEEMER_INDEX = "redeemer-index.jsonl"
 
+# The redeemer-index cases of each era, in the order `redeemer_index` sends them; a recording is complete only
+# with every one of them, once (`refused_fixture.redeemer_index_fixture` refuses anything else).
+PRE_CONWAY_CASES = ("missing-redeemers-every-purpose", "repeated-certificate-redeemers-0-1",
+                    "repeated-certificate-no-redeemer", "distinct-certificates-redeemer-0",
+                    "repeated-certificate-redeemer-0")
+CONWAY_CASES = ("missing-redeemers-every-purpose", "distinct-certificates-redeemer-0",
+                "distinct-certificates-redeemers-0-1")
+REDEEMER_INDEX_ERAS = ("alonzo", "babbage", "conway")
+
+
+def redeemer_index_cases(era):
+    """The labels of `era`'s redeemer-index cases, in the order they are sent."""
+    return [f"{era}-{case}" for case in (CONWAY_CASES if era == "conway" else PRE_CONWAY_CASES)]
+
+
+def redeemer_index_labels():
+    """Every label a complete redeemer-index recording holds."""
+    return [label for era in REDEEMER_INDEX_ERAS for label in redeemer_index_cases(era)]
+
 
 def keep_verdict(load, era, tx, txid, label, spent, models):
     """Submit `tx` over LocalTxSubmission and keep the reference's verdict in `redeemer-index.jsonl`: accepted, or
@@ -153,16 +172,26 @@ def redeemer_index(load, era, rw, cred, h, pools, script_addr, datum_hash, spend
             return None
 
     token = {h: {b"A": 1}}
-    attempt(f"{era}-missing-redeemers-every-purpose", [first], [], datums=True, spend_extra=[spend],
-            withdrawals={eratx.reward_address(h, script=True): 0}, mint=token)
+    kept = {}
+    kept[f"{era}-missing-redeemers-every-purpose"] = attempt(
+        f"{era}-missing-redeemers-every-purpose", [first], [], datums=True, spend_extra=[spend],
+        withdrawals={eratx.reward_address(h, script=True): 0}, mint=token)
     if pre_conway:
-        attempt(f"{era}-repeated-certificate-redeemers-0-1", [first, first], [redeemer(2, 0), redeemer(2, 1)])
-        attempt(f"{era}-repeated-certificate-no-redeemer", [first, first], [])
-        attempt(f"{era}-distinct-certificates-redeemer-0", [first, other], [redeemer(2, 0)])
-        attempt(f"{era}-repeated-certificate-redeemer-0", [first, first], [redeemer(2, 0)])
+        for label, certs, redeemers in [
+                (f"{era}-repeated-certificate-redeemers-0-1", [first, first], [redeemer(2, 0), redeemer(2, 1)]),
+                (f"{era}-repeated-certificate-no-redeemer", [first, first], []),
+                (f"{era}-distinct-certificates-redeemer-0", [first, other], [redeemer(2, 0)]),
+                (f"{era}-repeated-certificate-redeemer-0", [first, first], [redeemer(2, 0)])]:
+            kept[label] = attempt(label, certs, redeemers)
     else:
-        attempt(f"{era}-distinct-certificates-redeemer-0", [first, other], [redeemer(2, 0)])
-        attempt(f"{era}-distinct-certificates-redeemers-0-1", [first, other], [redeemer(2, 0), redeemer(2, 1)])
+        for label, certs, redeemers in [
+                (f"{era}-distinct-certificates-redeemer-0", [first, other], [redeemer(2, 0)]),
+                (f"{era}-distinct-certificates-redeemers-0-1", [first, other], [redeemer(2, 0), redeemer(2, 1)])]:
+            kept[label] = attempt(label, certs, redeemers)
+    missing = [label for label in redeemer_index_cases(era) if kept.get(label) is None]
+    if missing:
+        load.log({"redeemerIndexIncomplete": era, "missing": missing})
+    return missing
 
 
 def exercise(load, era):

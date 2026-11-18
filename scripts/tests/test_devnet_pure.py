@@ -1525,17 +1525,70 @@ class RedeemerIndexTest(unittest.TestCase):
             "conway-missing-redeemers-every-purpose", "conway-distinct-certificates-redeemer-0",
             "conway-distinct-certificates-redeemers-0-1"])
 
-    def test_the_fixture_is_the_run_directory_line_for_line(self):
-        rows = [{"label": "babbage-x", "verdict": "accepted", "tx": "00"}, {"label": "conway-y", "verdict": "refused"}]
+    def test_each_era_sends_its_declared_cases_and_misses_none(self):
+        from devnet import erarefusal
+        for era in erarefusal.REDEEMER_INDEX_ERAS:
+            with self.subTest(era=era):
+                _, load = self.run_era(era)
+                self.assertEqual([e["label"] for _, e in load.kept], erarefusal.redeemer_index_cases(era))
+                self.assertFalse([l for l in load.logs if "redeemerIndexIncomplete" in l])
+
+    def test_a_case_whose_submission_fails_is_reported_missing(self):
+        from devnet import erarefusal
+
+        def fail(session, tx, era_index):
+            raise ConnectionError("closed")
+        with patch.object(self.Session, "submit", fail):
+            _, load = self.run_era("alonzo")
+        self.assertEqual(load.kept, [])
+        self.assertIn({"redeemerIndexIncomplete": "alonzo", "missing": erarefusal.redeemer_index_cases("alonzo")},
+                      load.logs)
+
+    def assemble(self, rows, existing=None):
+        """`refused-fixture --redeemer-index` over a run directory holding `rows`, into a destination that holds
+        `existing` (or does not exist): the exit it raised, if any, and the destination's contents after it."""
         with tempfile.TemporaryDirectory() as d:
             run, out = pathlib.Path(d) / "run", pathlib.Path(d) / "out.jsonl"
             run.mkdir()
             (run / "redeemer-index.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+            if existing is not None:
+                out.write_text(existing)
+            exited = None
             with patch.object(refused_fixture, "data_root", lambda name: run), \
                     contextlib.redirect_stdout(io.StringIO()):
-                refused_fixture.refused_fixture(types.SimpleNamespace(
-                    name="t", out=str(out), raw_plutus=False, redeemer_index=True))
-            self.assertEqual([json.loads(l) for l in out.read_text().splitlines()], rows)
+                try:
+                    refused_fixture.refused_fixture(types.SimpleNamespace(
+                        name="t", out=str(out), raw_plutus=False, redeemer_index=True))
+                except SystemExit as e:
+                    exited = e
+            return exited, (out.read_text() if out.exists() else None)
+
+    def complete(self):
+        from devnet import erarefusal
+        return [{"label": label, "verdict": "refused", "tx": "00"} for label in erarefusal.redeemer_index_labels()]
+
+    def test_the_fixture_is_the_run_directory_line_for_line(self):
+        rows = self.complete()
+        self.assertEqual(len(rows), 13)
+        exited, written = self.assemble(rows)
+        self.assertIsNone(exited)
+        self.assertEqual([json.loads(l) for l in written.splitlines()], rows)
+
+    def test_an_incomplete_recording_writes_no_fixture(self):
+        rows = self.complete()
+        cases = {
+            "no Alonzo case": [r for r in rows if not r["label"].startswith("alonzo-")],
+            "one case missing": [r for r in rows if r["label"] != "babbage-repeated-certificate-no-redeemer"],
+            "a case recorded twice": rows + [rows[4]],
+            "an unexpected case": rows + [{"label": "conway-repeated-certificate-redeemer-0", "verdict": "refused"}],
+        }
+        for name, recorded in cases.items():
+            for existing in (None, "the fixture as it was\n"):
+                with self.subTest(name, destination="new" if existing is None else "existing"):
+                    exited, after = self.assemble(recorded, existing)
+                    self.assertIsNotNone(exited, "an incomplete recording must refuse")
+                    self.assertIn("incomplete", str(exited.code))
+                    self.assertEqual(after, existing, "nothing is written, and an existing fixture is left as it was")
 
 
 def cbor_items(raw):

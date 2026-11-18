@@ -129,23 +129,34 @@ class RedeemerIndexReferenceSuite extends FunSuite:
     case Era.Conway  => judge[Conway](r)
     case other       => fail(s"${r.label}: era $other")
 
-  test("the recording has the cases of Babbage and Conway, and the reference's verdicts on them") {
-    val recorded = records.map(r => r.label -> r.accepted).toMap
-    val expected = Map(
-      "babbage-missing-redeemers-every-purpose" -> false,
-      "babbage-repeated-certificate-redeemer-0" -> true,
-      "babbage-repeated-certificate-redeemers-0-1" -> false,
-      "conway-missing-redeemers-every-purpose" -> false,
-      "conway-distinct-certificates-redeemer-0" -> false,
-      "conway-distinct-certificates-redeemers-0-1" -> true
+  /** Every case of a complete recording (`erarefusal.redeemer_index_labels`), with the reference's
+    * verdict on it (true: accepted). A recording missing one is incomplete, not a pass (CNF-2).
+    */
+  private val expected = Map(
+    "alonzo-missing-redeemers-every-purpose" -> false,
+    "alonzo-repeated-certificate-redeemers-0-1" -> false,
+    "alonzo-repeated-certificate-no-redeemer" -> false,
+    "alonzo-distinct-certificates-redeemer-0" -> false,
+    "alonzo-repeated-certificate-redeemer-0" -> true,
+    "babbage-missing-redeemers-every-purpose" -> false,
+    "babbage-repeated-certificate-redeemers-0-1" -> false,
+    "babbage-repeated-certificate-no-redeemer" -> false,
+    "babbage-distinct-certificates-redeemer-0" -> false,
+    "babbage-repeated-certificate-redeemer-0" -> true,
+    "conway-missing-redeemers-every-purpose" -> false,
+    "conway-distinct-certificates-redeemer-0" -> false,
+    "conway-distinct-certificates-redeemers-0-1" -> true
+  )
+
+  test("the recording holds every case once, with the reference's verdict on each") {
+    val labels = records.map(_.label)
+    assertEquals(labels.diff(labels.distinct), Vector.empty, "cases recorded more than once")
+    assertEquals(labels.toSet, expected.keySet, "the cases recorded")
+    assertEquals(
+      records.map(r => r.label -> r.accepted).toMap,
+      expected,
+      "verdicts (true: accepted)"
     )
-    expected.foreach { (label, accepted) =>
-      assertEquals(
-        recorded.get(label),
-        Some(accepted),
-        s"$label: the reference's verdict (true: accepted)"
-      )
-    }
   }
 
   records.foreach { r =>
