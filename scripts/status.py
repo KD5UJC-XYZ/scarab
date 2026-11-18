@@ -84,8 +84,9 @@ MILESTONES = ("reference-parity", "mainnet-evidence", "leios-dijkstra")
 WITHOUT_MILESTONE = frozenset({"idea", "parked"})
 CHECK_COMMAND = ["gh", "api", "--paginate", "repos/{owner}/{repo}/issues?state=all&per_page=100"]
 OWNER_DECISION = "owner-decision"
-# A row of docs/decisions.md: the date the decision was taken, the issues it came from, then the decision.
-DECISION_ROW = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|")
+# A row of docs/decisions.md: the date the decision was taken (or "before" the date it was recorded, when no
+# record says when), the issues it came from, then the decision.
+DECISION_ROW = re.compile(r"^\|\s*((?:before )?\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|")
 
 
 class GhFailure(Exception):
