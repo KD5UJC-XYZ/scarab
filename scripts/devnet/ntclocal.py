@@ -313,16 +313,19 @@ def has_tx_ids(open_h, open_s):
 
 
 # Leading bytes of a LocalTxSubmission transaction that the reference's decoder of `GenTx` fails on before it
-# ends (#924): `decodeNS`'s list of two and era index, Byron's `MempoolPayload` constructor and a Shelley-based era's
-# tag 24 (ouroboros-consensus 82ecba32 `HardFork/Combinator/Serialisation/Common.hs:420-425`; cardano-ledger
+# ends (#924): `decodeNS`'s definite list of two and era index, Byron's `MempoolPayload` constructor and a Shelley-based
+# era's tag 24 and the head of its definite byte string (ouroboros-consensus 82ecba32 `HardFork/Combinator/Serialisation/Common.hs:420-425`; cardano-ledger
 # f649f975 `eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs:85-93`; ouroboros-network c45735a5
 # `ouroboros-network/api/lib/Ouroboros/Network/Block.hs:501-504`). The reference reads the transaction from the
 # stream and ends the connection at once; so must the Scala node, without the rest of the message.
 REFUSED_SUBMISSIONS = {
     "era-8-prefix": b"\x82\x08",
     "envelope-of-3-prefix": b"\x83",
+    "indefinite-envelope-prefix": b"\x9f",
     "byron-constructor-4-prefix": b"\x82\x00\x82\x04",
     "conway-tag-25-prefix": b"\x82\x06\xd8\x19",
+    "conway-not-under-tag-24-prefix": b"\x82\x06\x84",
+    "conway-chunked-under-tag-24-prefix": b"\x82\x06\xd8\x18\x5f",
 }
 
 
