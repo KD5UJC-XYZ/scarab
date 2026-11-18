@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import xyz.kd5ujc.scarab.ledger.{CapacityDimension, TransactionDecodeProblem, MempoolProblem}
+import xyz.kd5ujc.scarab.ledger.byron.ByronTransport
 import cats.data.NonEmptyList
 import cats.syntax.all.*
 import cats.Id
@@ -443,21 +444,36 @@ object MempoolState:
 
   /** A submission as read before the ledger is consulted: a transaction of a Shelley-based era up
     * to Conway, decoded in that era, or the index of an era whose transactions the pool does not
-    * read (Byron, Dijkstra, or no era of the combinator's list), which is refused with the era
-    * mismatch.
+    * take, which is refused with the era mismatch: Byron, whose payload its decoder has read whole,
+    * Dijkstra, whose transaction is not read, or no era of the combinator's list.
     */
   enum Read:
     case Decoded(era: Era, transaction: EraTx)
     case Foreign(index: Int)
 
-  /** The submission read in the era it names ([[Read]]). */
+  /** The submission read in the era it names ([[Read]]): a transaction of an era from Shelley to
+    * Conway by that era's decoders ([[parseIn]]), and Byron's `MempoolPayload` whole by the decoder
+    * of its kind, as the reference's `decodeByronGenTx` reads it
+    * (`ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Mempool.hs:338-339`,
+    * ouroboros-consensus 82ecba32; [[ByronTransport.mempoolPayload]]), a payload it refuses being
+    * malformed. A Dijkstra transaction is not read.
+    */
   def read(submission: Submission): Either[Rejection, Read] =
     Era.fromIndex(BigInt(submission.era)) match
       case Some(
             era @ (Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway)
           ) =>
         parseIn(submission.raw, era).map(p => Read.Decoded(era, EraTx(p.parts, p.tx)))
-      case Some(Era.Byron | Era.Dijkstra) | None => Right(Read.Foreign(submission.era))
+      case Some(Era.Byron) =>
+        decoding(
+          ByronTransport
+            .mempoolPayload(submission.raw)
+            .bimap(
+              e => Rejection.Malformed(TransactionDecodeProblem.ByronPayload(e)),
+              _ => Read.Foreign(submission.era)
+            )
+        )
+      case Some(Era.Dijkstra) | None => Right(Read.Foreign(submission.era))
 
   /** The transaction read, in the ledger's era `to`, or the era mismatch. */
   private[mempool] def inject(

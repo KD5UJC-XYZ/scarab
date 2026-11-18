@@ -47,15 +47,57 @@ object ByronTransport:
   private def main(node: Node): Result[Unit] =
     for
       fields <- tuple(node, 4, DecodeField.Body)
-      _ <- list(fields(0), DecodeField.TransactionPayload)(transaction)
+      _ <- list(fields(0), DecodeField.TransactionPayload)(transaction(_, Keys.AnyWidth))
       _ <- ssc(fields(1))
-      _ <- list(fields(2), DecodeField.DelegationPayload)(delegation)
-      _ <- update(fields(3))
+      _ <- list(fields(2), DecodeField.DelegationPayload)(delegation(_, Keys.AnyWidth))
+      _ <- update(fields(3), Keys.AnyWidth)
     yield ()
+
+  /** A submitted `MempoolPayload` (`decodeByronGenTx`, `fromByronCBOR`,
+    * `ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Mempool.hs:338-339`,
+    * ouroboros-consensus 82ecba32) as the reference reads it, whole (`DecCBOR (AMempoolPayload
+    * ByteSpan)`, `eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs:85-93`, cardano-ledger
+    * f649f975): a definite list of two (`enforceSize "MempoolPayload" 2`), a `Word8` constructor
+    * and the payload of that kind, read by its own decoder at the Byron decoder version: 0 a
+    * transaction (`ATxAux`, `UTxO/TxAux.hs:108-115`), 1 a delegation certificate (`ACertificate`,
+    * `Delegation/Certificate.hs:209-218`), 2 an update proposal (`AProposal`,
+    * `Update/Proposal.hs:157-173`) and 3 an update vote (`AVote`, `Update/Vote.hs:199-209`), each
+    * verification key read with `decodeBytesCanonical`, its length in its shortest form
+    * (`decCBORXPub`, `eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs:96-97`), and
+    * no byte after the payload.
+    */
+  def mempoolPayload(raw: Bytes): Result[Unit] =
+    for
+      node <- CborRead.decode(raw, ByronCbor.BodyLimits)
+      fields <- tuple(node, 2, DecodeField.ByronMempoolPayload)
+      constructor <- word(fields(0), 8, DecodeField.ByronMempoolPayloadTag)
+      _ <- constructor.toInt match
+        case 0 => transaction(fields(1), Keys.Canonical)
+        case 1 => delegation(fields(1), Keys.Canonical)
+        case 2 => proposal(fields(1), Keys.Canonical)
+        case 3 => vote(fields(1), Keys.Canonical)
+        case _ => Left(LedgerDecodeError.UnknownTag(DecodeField.ByronMempoolPayload, constructor))
+    yield ()
+
+  /** How a `VerificationKey` is read: 64 bytes of a definite byte string. */
+  private enum Keys:
+    /** With `decodeBytesCanonical`, its length in its shortest form (`decCBORXPub`,
+      * `eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs:96-97`, cardano-ledger
+      * f649f975), as a submitted payload is read ([[mempoolPayload]]).
+      */
+    case Canonical
+
+    /** Its length at any width, as [[check]] reads a block's body. */
+    case AnyWidth
+
+  private def verificationKey(node: Node, context: DecodeSite, keys: Keys): Result[Unit] =
+    keys match
+      case Keys.Canonical => canonicalBytes(node, context) *> fixedBytes(node, 64, context)
+      case Keys.AnyWidth  => fixedBytes(node, 64, context)
 
   // Ordinary Byron values use their actual DecCBOR instances, not the permissive SSC droppers:
   // UTxO/Tx.hs:110–113,171–177,214–217; TxAux.hs:108–115; TxWitness.hs:118–128.
-  private def transaction(node: Node): Result[Unit] =
+  private def transaction(node: Node, keys: Keys): Result[Unit] =
     for
       aux <- tuple(node, 2, DecodeField.TxAux)
       tx <- tuple(aux(0), 3, DecodeField.Transaction)
@@ -66,7 +108,7 @@ object ByronTransport:
         aux(1),
         DecodeField.WitnessVector
       )
-      _ <- witnesses.traverse_(witness)
+      _ <- witnesses.traverse_(witness(_, keys))
     yield ()
 
   private def input(node: Node): Result[Unit] =
@@ -80,17 +122,19 @@ object ByronTransport:
       _ <- word(value(1), 16, DecodeField.InputIndex)
     yield ()
 
-  private def witness(node: Node): Result[Unit] =
+  // `TxInWitness.hs:118-128`: a verification key and its signature (0), or a redeem key, 32 bytes
+  // of plain `decodeBytes` (`Crypto/Orphans.hs:89-92`), and its signature (2)
+  private def witness(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 2, DecodeField.Witness)
       tag <- word(fields(0), 8, DecodeField.WitnessTag)
-      keySize <- tag match
-        case n if n == 0 => Right(64)
-        case n if n == 2 => Right(32)
+      key <- tag match
+        case n if n == 0 => Right(verificationKey(_, DecodeField.WitnessKey, keys))
+        case n if n == 2 => Right(fixedBytes(_, 32, DecodeField.WitnessKey))
         case n           => Left(LedgerDecodeError.UnknownTag(DecodeField.Witness, n))
       inner <- nested(fields(1), DecodeField.Witness)
       value <- tuple(inner, 2, DecodeField.WitnessValue)
-      _ <- fixedBytes(value(0), keySize, DecodeField.WitnessKey)
+      _ <- key(value(0))
       _ <- fixedBytes(value(1), 64, DecodeField.WitnessSignature)
     yield ()
 
@@ -105,22 +149,27 @@ object ByronTransport:
   /** The address is read as the reference reads it, in full ([[ByronAddress.decode]]). */
   private def address(node: Node): Result[Unit] = ByronAddress.decode(node.original).void
 
-  private def delegation(node: Node): Result[Unit] =
+  // `Delegation/Certificate.hs:209-218`: the epoch, the issuer's and the delegate's verification
+  // keys, and a `Signature`, 64 bytes of plain `decodeBytes` (`Signing/Signature.hs:129-130`)
+  private def delegation(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 4, DecodeField.DelegationCertificate)
       _ <- word(fields(0), 64, DecodeField.DelegationEpoch)
-      _ <- fields.drop(1).traverse_(fixedBytes(_, 64, DecodeField.DelegationKeySignature))
+      _ <- fields
+        .slice(1, 3)
+        .traverse_(verificationKey(_, DecodeField.DelegationKeySignature, keys))
+      _ <- fixedBytes(fields(3), 64, DecodeField.DelegationKeySignature)
     yield ()
 
   // Update/Payload.hs:93–98, Proposal.hs:157–172 and Vote.hs:198–209.
-  private def update(node: Node): Result[Unit] =
+  private def update(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 2, DecodeField.UpdatePayload)
-      _ <- maybe(fields(0), DecodeField.UpdateProposal)(proposal)
-      _ <- list(fields(1), DecodeField.UpdateVotes)(vote)
+      _ <- maybe(fields(0), DecodeField.UpdateProposal)(proposal(_, keys))
+      _ <- list(fields(1), DecodeField.UpdateVotes)(vote(_, keys))
     yield ()
 
-  private def proposal(node: Node): Result[Unit] =
+  private def proposal(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 7, DecodeField.UpdateProposal)
       version <- tuple(fields(0), 3, DecodeField.ProtocolVersion)
@@ -142,7 +191,7 @@ object ByronTransport:
       )
       _ <- installerMetadata(fields(3))
       _ <- emptyAttributes(fields(4), DecodeField.ProposalAttributes)
-      _ <- fixedBytes(fields(5), 64, DecodeField.ProposalIssuer) *> fixedBytes(
+      _ <- verificationKey(fields(5), DecodeField.ProposalIssuer, keys) *> fixedBytes(
         fields(6),
         64,
         DecodeField.ProposalSignature
@@ -263,10 +312,10 @@ object ByronTransport:
       _ <- fields.drop(1).traverse_(bytes)
     yield ()
 
-  private def vote(node: Node): Result[Unit] =
+  private def vote(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 4, DecodeField.UpdateVote)
-      _ <- fixedBytes(fields(0), 64, DecodeField.Voter) *> fixedBytes(
+      _ <- verificationKey(fields(0), DecodeField.Voter, keys) *> fixedBytes(
         fields(1),
         32,
         DecodeField.ProposalID

@@ -8,7 +8,7 @@ import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem
+import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, TransactionDecodeProblem}
 import xyz.kd5ujc.scarab.network.{
   Bearer,
   HandshakeClient,
@@ -213,8 +213,23 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
       problem("8200" + "820400"),
       TransactionDecodeProblem.ByronConstructor(Value.UInt(4))
     )
-    // Byron's payload as far as its constructor, which the pool does not read further
+    // Byron's payload as far as its constructor; the decoder of its kind reads the rest, and refuses
+    // a transaction that is `0`
     assertEquals(LocalSubmission.unwrap(hex("8200820000")), Right(Submission(0, hex("820000"))))
+    assertEquals(
+      MempoolState.read(Submission(0, hex("820000"))),
+      Left(
+        Rejection.Malformed(
+          TransactionDecodeProblem.ByronPayload(
+            LedgerDecodeError.Expected(
+              DecodeField.TxAux,
+              LedgerDecodeError.Shape.Array,
+              Value.UInt(0)
+            )
+          )
+        )
+      )
+    )
     val refused = TransactionDecodeProblem.UnknownEra(8)
     assertEquals(
       LocalSubmission.response(Refused(Rejection.Malformed(refused), None)),
@@ -413,11 +428,23 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
   test("on the wire, a whole message the decoder refuses ends the connection as its parts do") {
     // an era past the last and the last index a `Word8` holds, Byron's fifth constructor and a
     // Conway transaction not under tag 24, refused before the transaction is read; a transaction of
-    // Conway and of Babbage that the era's decoder refuses, after; a tag 25 the framing would fail
-    // after, at a break, and a reserved head where the tag is due, which the reference's decoder
-    // fails on first; each sent whole and cut after its fourth byte, both ending alike
+    // Conway and of Babbage that the era's decoder refuses, after, and Byron's transaction of three
+    // items and a vote whose voter's key is not in its shortest form; a tag 25 the framing would
+    // fail after, at a break, and a reserved head where the tag is due, which the reference's
+    // decoder fails on first; each sent whole and cut after its fourth byte, both ending alike
     val babbage = hex("00")
     val conway = hex("84a0a0f5f6")
+    val byronOfThree = ByronPayloads.payload(
+      0,
+      hex("83") ++ ByronPayloads.items(ByronPayloads.keyTx).map(_.original).reduce(_ ++ _) ++
+        hex("00")
+    )
+    val vote = ByronPayloads.vote
+    val byronWideVoter =
+      ByronPayloads.payload(
+        3,
+        ByronPayloads.replacing(vote, 0, ByronPayloads.wide(ByronPayloads.items(vote)(0)))
+      )
     Vector(
       ("82008208" + wrappedTx) -> undecodable(GenTx.Refusal.UnknownEra(8)),
       ("820082" + "18ff" + wrappedTx) -> undecodable(GenTx.Refusal.UnknownEra(255)),
@@ -427,6 +454,8 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
         undecodable(malformed(Era.Conway, conway)),
       ("82008205d818" + Bytes(bstr(babbage)).hex) ->
         undecodable(malformed(Era.Babbage, babbage)),
+      ("82008200" + byronOfThree.hex) -> undecodable(malformed(Era.Byron, byronOfThree)),
+      ("82008200" + byronWideVoter.hex) -> undecodable(malformed(Era.Byron, byronWideVoter)),
       "82008206d819ff" -> undecodable(GenTx.Refusal.NotCborInCbor(Era.Conway)),
       "82008206dc" -> undecodable(GenTx.Refusal.NotCborInCbor(Era.Conway))
     ).traverse { (message, ending) =>
@@ -440,18 +469,18 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
   }
 
   test("on the wire, a whole transaction the decoder reads gets its refusal, as before") {
-    // a Conway transaction of no inputs, which the rules refuse, and Byron's payload, which the
-    // pool does not read: the era mismatch
+    // a Conway transaction of no inputs, which the rules refuse, and a recorded Byron payload of
+    // each kind, which the pool's ledger, of a later era, does not take: the era mismatch
     val empty = hex("84a3008001800200a0f5f6")
-    Vector(
-      "82008206d818" + Bytes(bstr(empty)).hex,
-      "8200820082" + "00" + "00"
-    ).traverse(message =>
-      outcome(Vector(hex(message))).map {
-        case Right(LocalTxSubmission.Message.RejectTx(_)) => ()
-        case other => fail(s"$message: expected a refusal, got $other")
-      }
-    ).void
+    (("82008206d818" + Bytes(bstr(empty)).hex) +:
+      ByronPayloads.valid.map((_, payload) => "82008200" + payload.hex))
+      .traverse(message =>
+        outcome(Vector(hex(message))).map {
+          case Right(LocalTxSubmission.Message.RejectTx(_)) => ()
+          case other => fail(s"$message: expected a refusal, got $other")
+        }
+      )
+      .void
   }
 
   test("the judge reads the transaction's first tokens only: the codec agrees at every cut") {
