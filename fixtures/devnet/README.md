@@ -49,7 +49,12 @@ script-locked output the datum hash the run's setup gave it), and
 `protocol` (era, slot, block hash and protocol version, read from the reference with the verdict) are the provenance.
 The test builds a chain from `spent`, the credential and the pools the certificates name, at the recorded protocol
 version and cost model, and requires the node's verdict to be the recorded one and a refusal to encode as exactly
-`reason`.
+`reason`. A recording is complete only with every case once; `refused-fixture --redeemer-index` writes nothing
+otherwise, and the suite requires the same set.
+
+Licence: the transactions were built for a throwaway local devnet, signed with keys generated for that run and
+discarded with it, and the verdicts are what the unmodified reference node answered. They are public data with no
+secrets, under Apache-2.0, as `NOTICE` records.
 
 Regenerate (every line changes: keys, inputs and slots differ from run to run):
 
