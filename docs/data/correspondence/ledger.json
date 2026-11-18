@@ -9477,6 +9477,218 @@
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; the epoch information is the era history (Horizon) with the system start in POSIX milliseconds, extended by PosixClock.Extended (unsafeLinearExtendEpochInfo); it reports the node's flat UtxoFailure",
    "digest": "658535fd3804f510"
+  },
+  "class ledger.era.rules.UtxoEnv": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
+     "symbol": "UtxoEnv",
+     "lines": [
+      107,
+      111
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "bc432f3f599df015"
+  },
+  "def ledger.era.rules.BabbageUtxo.babbageUtxoValidation": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "symbol": "babbageUtxoValidation",
+     "lines": [
+      325,
+      412
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the reference's predicates in its order, every failure accumulated, as a pure Test rather than a rule in the judgment monad; what it reads from Globals and the STS policy, and the era's injection of Shelley's failures, come in UtxoContext; its signal is the transaction, since the era types have no StAnnTx yet (#85). Its refusal is the reference's refusal byte for byte where only UTXO failed (ConwayUtxoChecksSuite), under each case's build",
+   "digest": "1321e9a6a9d6648f"
+  },
+  "val ledger.era.rules.ConwayUtxo.injectShelleyFailure11_1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs",
+     "symbol": "InjectRuleFailure \"UTXO\" Shelley.ShelleyUtxoPredFailure ConwayEra",
+     "lines": [
+      158,
+      161
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs",
+     "symbol": "shelleyToAllegraUtxoPredFailure",
+     "lines": [
+      374,
+      387
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs",
+     "symbol": "allegraToConwayUtxoPredFailure",
+     "lines": [
+      409,
+      426
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the composition of Shelley's, Allegra's and Conway's failure types as one rewrite of the node's single failure type, which changes only the failure Conway renames; the reference's refusal byte for byte where only UTXO failed (ConwayUtxoChecksSuite) on the 11.1 bootstrap attributes case",
+   "digest": "769348b625501de5"
+  },
+  "val ledger.era.rules.ConwayUtxo.injectShelleyFailure11_2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs",
+     "symbol": "InjectRuleFailure \"UTXO\" Shelley.ShelleyUtxoPredFailure ConwayEra",
+     "lines": [
+      163,
+      166
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs",
+     "symbol": "InjectRuleFailure \"UTXO\" Shelley.ShelleyUtxoPredFailure ConwayEra",
+     "lines": [
+      163,
+      166
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs",
+     "symbol": "shelleyToAllegraUtxoPredFailure",
+     "lines": [
+      381,
+      394
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs",
+     "symbol": "shelleyToAllegraUtxoPredFailure",
+     "lines": [
+      381,
+      394
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs",
+     "symbol": "allegraToConwayUtxoPredFailure",
+     "lines": [
+      424,
+      441
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs",
+     "symbol": "allegraToConwayUtxoPredFailure",
+     "lines": [
+      424,
+      441
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the injection at the 11.2 and Leios pins, where Allegra's and Conway's converters keep the bootstrap attributes' failure, so every failure of Shelley's predicates is Conway's own: the identity on the node's single failure type; the reference's refusal byte for byte where only UTXO failed (ConwayUtxoChecksSuite) on the Leios build's bootstrap attributes case",
+   "digest": "a33f767460008995"
+  },
+  "class ledger.era.rules.InjectShelleyUtxoFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "InjectRuleFailure",
+     "lines": [
+      120,
+      126
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the class InjectRuleFailure \"UTXO\" ShelleyUtxoPredFailure era as a value per era and reference build, since the injection differs by build and the node's failures are one type; only the rules package makes one. the reference's refusal byte for byte where only UTXO failed (ConwayUtxoChecksSuite)",
+   "digest": "c798b32b02601e93"
+  },
+  "val ledger.era.rules.InjectShelleyUtxoFailure#injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "injectFailure",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "digest": "237da2f05b14e9e4"
+  },
+  "def ledger.era.rules.UtxoContext#onSignal": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Rules/ValidationMode.hs",
+     "symbol": "runTestOnSignal",
+     "lines": [
+      88,
+      89
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "runTestOnSignal both labels the test static and injects its failures (validateTransLabeled injectFailure); here the label is onSignal, the injection UtxoContext#shelley, and the accumulation the Test.all around them. Its refusal is the reference's byte for byte where only UTXO failed (ConwayUtxoChecksSuite)",
+   "digest": "74fd2e5304b84dc4"
   }
  },
  "glue": [
@@ -9738,6 +9950,17 @@
    "definitions": [
     "def ledger.mempack.TxOutMemPack.partsOf",
     "def ledger.mempack.TxOutMemPack.toTxOutOf"
+   ]
+  },
+  {
+   "reason": "the context the era-typed UTXO reads besides its environment: what the reference asks of Globals (the network, the system start, the era history at the tip, which the node's Globals does not hold), the STS policy runTestOnSignal reads, and the era's injection of Shelley's failures; the choice of Conway's injection by reference build until the builds are types (BuildRules, docs/design/reference-builds-as-types.md, #1063); and the module object of Conway's UTXO functions; and the private constructor of an era's injection, which only this package calls",
+   "definitions": [
+    "class ledger.era.rules.UtxoContext",
+    "def ledger.era.rules.ConwayUtxo.injectShelleyFailure",
+    "def ledger.era.rules.InjectShelleyUtxoFailure.apply",
+    "def ledger.era.rules.UtxoContext#shelley",
+    "object ledger.era.rules.ConwayUtxo",
+    "object ledger.era.rules.InjectShelleyUtxoFailure"
    ]
   }
  ]

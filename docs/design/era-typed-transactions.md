@@ -524,8 +524,21 @@ Conway's rules on the classes follow as the rest of stage 2.
   `Shelley/Ledger/SupportsProtocol.hs:100-127`, `Shelley/Ledger/Ledger.hs:171-185`,
   `HardFork/Combinator/State/Infra.hs:194-262`). Scarab's header gate waits past the forecast too, so
   the node switch changes no verdict here.
-  - Still to port before UTXO is whole: `babbageUtxoValidation` put together, with Conway's injection of
-    the bootstrap attributes' failure by build.
+- **UTXO's checks put together** (`era/rules/`): `babbageUtxoValidation`, the predicates in the reference's
+  order with every failure accumulated, the six it runs with `runTestOnSignal` skipped when the policy does
+  not validate the signal, and the failures of Shelley's predicates injected as the era does
+  (`ConwayUtxo.injectShelleyFailure11_1` at f649f975, `injectShelleyFailure11_2` at the 11.2 and Leios
+  pins). It equals the flat UTXO's verdict on every Conway case of the refusal corpus, under every build
+  and both policies; the corpus has cases with several failures and cases whose failure differs by build.
+  Where only UTXO failed and the mempool's measure let the transaction through (15 cases, both builds'
+  bootstrap attributes among them), its failures encode to the reference's refusal byte for byte. The flat
+  UTXO has no forecast check, so a crafted case pins its place after the validity interval.
+  - What it reads besides its environment (the network, the system start, the era history at the tip, the
+    policy, the injection) comes in `UtxoContext[E]`: the node's `Globals` has no era history. The
+    injection is a value per era and build that only the rules package makes (`InjectShelleyUtxoFailure`),
+    chosen by build until the builds are types (`BuildRules`, #1063).
+  - Still to port before UTXO is whole: UTXOS and the state's update (`updateUTxOState`,
+    `updateTreasuryDonation`), which take the annotated transaction (`StAnnTx`, #85).
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): three of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts` and

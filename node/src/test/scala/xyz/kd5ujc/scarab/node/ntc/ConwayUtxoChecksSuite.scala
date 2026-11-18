@@ -4,7 +4,16 @@ package xyz.kd5ujc.scarab.node.ntc
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{Horizon, PredicateFailure, Tx, TxIn, TxOut, Utxo, UtxoFailure}
+import xyz.kd5ujc.scarab.ledger.{
+  Horizon,
+  PredicateFailure,
+  Tx,
+  TxEnv,
+  TxIn,
+  TxOut,
+  Utxo,
+  UtxoFailure
+}
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraPParams,
   EraCertState,
@@ -19,9 +28,17 @@ import xyz.kd5ujc.scarab.ledger.era.{
   UTxO
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
-import xyz.kd5ujc.scarab.ledger.era.rules.{AllegraUtxo, AlonzoUtxo, BabbageUtxo, ShelleyUtxo}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  AllegraUtxo,
+  AlonzoUtxo,
+  BabbageUtxo,
+  ConwayUtxo,
+  ShelleyUtxo,
+  UtxoContext,
+  UtxoEnv
+}
 import xyz.kd5ujc.scarab.ledger.{RefScripts, testByteStrings}
-import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Deposits, Test as Verdict, UtxoTests}
+import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Deposits, StAnnTx, Test as Verdict, UtxoTests}
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
@@ -36,7 +53,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
 /** Conway's UTXO predicates on the era types against the flat ones, on every transaction of the
@@ -64,7 +81,10 @@ class ConwayUtxoChecksSuite extends FunSuite:
       utxo: UTxO[Conway],
       flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
       pp: PParams[Conway],
-      cert: ConwayCertState
+      cert: ConwayCertState,
+      build: ReferenceBuild,
+      families: Vector[Family],
+      reason: Bytes
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -98,7 +118,10 @@ class ConwayUtxoChecksSuite extends FunSuite:
           right(s"$what typed UTxO")(ConwayUTxO.fromStored(stored)),
           flatPp,
           PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp))),
-          ConwayNewEpochState.ls.andThen(ConwayLedgerState.cert).get(nes)
+          ConwayNewEpochState.ls.andThen(ConwayLedgerState.cert).get(nes),
+          c.build,
+          rc.families,
+          rc.reason
         )
       }
     }
@@ -679,6 +702,117 @@ class ConwayUtxoChecksSuite extends FunSuite:
       outsideForecast(withUpperBound(redeemed, Some(far)), behind, slot),
       Verdict.failureUnless(false, PredicateFailure.utxo(UtxoFailure.OutsideForecast(far)))
     )
+
+  /** UTXO's predicates on both paths: the flat `UtxoTests.babbage` with the case's balance and
+    * minimum fee, and the era-typed `babbageUtxoValidation` with the history `ei`, under `build`
+    * and `validation`.
+    */
+  private def assembled(
+      s: Seen,
+      build: ReferenceBuild,
+      validation: TxEnv.Validation,
+      ei: Horizon
+  ): (Verdict[PredicateFailure], Verdict[PredicateFailure]) =
+    val (consumed, produced) = flatBalance(s)
+    val env = TxEnv(
+      slot = s.slot,
+      epoch = 0,
+      network = s.network,
+      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      validation = validation,
+      referenceBuild = build
+    )
+    val flat = UtxoTests.babbage[Conway](
+      s.flatPp,
+      env,
+      StAnnTx(s.flat, Utxo.fromMap(s.stored)),
+      flatMinFee(s),
+      consumed,
+      produced
+    )
+    val typed = BabbageUtxo.babbageUtxoValidation[Conway](
+      UtxoEnv(s.slot, s.pp, s.cert),
+      s.utxo,
+      s.typed,
+      UtxoContext(s.netId, 0, ei, validation, ConwayUtxo.injectShelleyFailure(build))
+    )
+    (flat, typed)
+
+  test(
+    "babbageUtxoValidation gives the flat UTXO's verdict on every Conway case, build and policy"
+  ):
+    seen.foreach { s =>
+      for
+        build <- ReferenceBuild.values
+        validation <- TxEnv.Validation.values
+      do
+        val (flat, typed) = assembled(s, build, validation, historyAt(s.slot))
+        assertEquals(typed, flat, s"${s.label} under ${build.name}, $validation")
+    }
+
+  test("babbageUtxoValidation's refusal is the reference's, byte for byte, where only UTXO failed"):
+    // where every failure the reference recorded is UTXO's, its refusal is UTXO's alone: the
+    // era-typed failures, under the case's own build, encoded as the node sends them. A transaction
+    // the mempool's measure refuses never reaches the ledger (`txMeasureAlonzo`,
+    // `Shelley/Ledger/Mempool.hs:590-612`, ouroboros-consensus 82ecba32; `Capacity.phase1`), so its
+    // refusal is the measure's, not UTXO's
+    val utxoOnly = seen.filter(s =>
+      s.families.nonEmpty && s.families.forall(_ == Family.UTXO) &&
+        xyz.kd5ujc.scarab.node.mempool.Capacity.phase1(s.flat, s.flatPp).isRight
+    )
+    assert(utxoOnly.nonEmpty, "no case that only UTXO refuses")
+    utxoOnly.foreach { s =>
+      val (_, typed) = assembled(s, s.build, TxEnv.Validation.All, historyAt(s.slot))
+      val failures = typed.fold(_.iterator.toVector, _ => fail(s"${s.label}: no failure"))
+      assertEquals(
+        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
+        s.reason.hex,
+        s.label
+      )
+    }
+    assert(
+      utxoOnly.map(_.build).toSet.size >= 2,
+      "the cases that only UTXO refuses come from a single build"
+    )
+
+  test("the comparison of babbageUtxoValidation sees several failures and both injections"):
+    def failures(s: Seen, build: ReferenceBuild) =
+      assembled(s, build, TxEnv.Validation.All, historyAt(s.slot))._1
+        .fold(_.iterator.toList, _ => Nil)
+    assert(seen.exists(s => failures(s, s.build).size >= 2), "no case with several failures")
+    assert(
+      seen.exists(s =>
+        failures(s, ReferenceBuild.Release11_1) != failures(s, ReferenceBuild.Release11_2)
+      ),
+      "no case whose failures differ by build"
+    )
+
+  test("babbageUtxoValidation puts the forecast after the validity interval and before the rest"):
+    val s0 = seen
+      .find(_.flat.witnesses.redeemers.nonEmpty)
+      .getOrElse(fail("no case with redeemers"))
+    // an end just before the slot, which the history 200 slots back does not cover either, and a
+    // fee one lovelace over the balance: the interval, the forecast and the value all fail
+    val s = edited(s0, envelope(s0))(fields =>
+      fields.filterNot((k, _) => isKey(3)(k) || isKey(2)(k)) :+ (key(3) -> uint(s0.slot - 1)) :+
+        (key(2) -> uint(s0.flat.body.fee + 1))
+    )
+    val behind = historyAt(s.slot - 200)
+    assert(behind.timePs(s.slot - 1).isEmpty)
+    val (flat, typed) =
+      assembled(s, ReferenceBuild.Release11_1, TxEnv.Validation.All, behind)
+    val flatFailures = flat.fold(_.iterator.toList, _ => Nil)
+    flatFailures match
+      case (interval @ PredicateFailure.Utxow(
+            xyz.kd5ujc.scarab.ledger.UtxowFailure.Utxo(_: UtxoFailure.OutsideValidityInterval)
+          )) :: rest =>
+        assert(rest.nonEmpty, "nothing fails after the interval")
+        assertEquals(
+          typed.fold(_.iterator.toList, _ => Nil),
+          interval :: PredicateFailure.utxo(UtxoFailure.OutsideForecast(s.slot - 1)) :: rest
+        )
+      case other => fail(s"the interval does not fail first: $other")
 
   test("crafted from a recorded case: values over a 1-byte limit, reported last output first"):
     val s = withParams(

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{
   Address,
@@ -9,12 +10,15 @@ import xyz.kd5ujc.scarab.ledger.{
   Mismatch,
   PosixClock,
   PredicateFailure,
+  TxEnv,
   TxIn,
-  UtxoFailure
+  UtxoFailure,
+  UtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.Test
-import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, Conway, EraTag}
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 // The predicates of UTXO as the reference writes them, each generic in its era and asking for the
 // reference's classes (cardano-ledger f649f975, the `Rules/Utxo.hs` of each era). Each object is the
@@ -28,6 +32,55 @@ private def failure(f: UtxoFailure): PredicateFailure = PredicateFailure.utxo(f)
   * `BaseTypes.hs:878-881`, cardano-ledger f649f975), as the failures carry it.
   */
 private def wire(n: Network): Int = n.ordinal
+
+/** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107-111`, cardano-ledger f649f975): the slot, the protocol
+  * parameters and the certificate state UTXO judges a transaction against.
+  */
+final case class UtxoEnv[E <: EraTag](slot: BigInt, pp: PParams[E], certState: CertState[E])
+
+object InjectShelleyUtxoFailure:
+  private[rules] def apply[E <: EraTag](
+      inject: PredicateFailure => PredicateFailure
+  ): InjectShelleyUtxoFailure[E] = new InjectShelleyUtxoFailure[E](inject)
+
+/** `InjectRuleFailure "UTXO" ShelleyUtxoPredFailure era` (`Core/Era.hs:120-126`, cardano-ledger
+  * f649f975): era `E` 's injection of the failures of Shelley's UTXO predicates into its own. The
+  * node's failures are one type for every era, so the injection rewrites only the failures the era
+  * renames. Only this package makes one, for each era and reference build the reference has
+  * ([[ConwayUtxo]]), so a rule cannot be given another era's or an arbitrary rewrite.
+  */
+final class InjectShelleyUtxoFailure[E <: EraTag] private[rules] (
+    private[rules] val injectFailure: PredicateFailure => PredicateFailure
+)
+
+/** What the reference's UTXO reads besides its environment, gathered for the era-typed rule of era
+  * `E`:
+  *   - `netId`, `systemStart` and `epochInfo`, which it asks of `Globals` (`liftSTS $ asks`); the
+  *     node's [[xyz.kd5ujc.scarab.ledger.rules.Globals]] has the geometry but not the era history
+  *     at the tip, so `epochInfo` comes with the transaction, as the flat rule's clock does;
+  *   - `validation`, the policy under which `runTestOnSignal` skips its tests;
+  *   - `injectShelley`, the era's injection of the failures of Shelley's predicates, which differs
+  *     by reference build ([[ConwayUtxo.injectShelleyFailure]]).
+  */
+final case class UtxoContext[E <: EraTag](
+    netId: Network,
+    systemStart: BigInt,
+    epochInfo: Horizon,
+    validation: TxEnv.Validation,
+    injectShelley: InjectShelleyUtxoFailure[E]
+):
+  /** `runTestOnSignal` (`Rules/ValidationMode.hs:88-89`, cardano-ledger f649f975): `test` when the
+    * policy validates the signal, a pass otherwise.
+    */
+  def onSignal(test: => Test[PredicateFailure]): Test[PredicateFailure] = validation match
+    case TxEnv.Validation.All       => test
+    case TxEnv.Validation.NonStatic => Test.pass
+
+  /** The injection `runTest` and `runTestOnSignal` apply to a test of Shelley's predicates
+    * (`validateTrans injectFailure`, `Rules/ValidationMode.hs:85-89`, cardano-ledger f649f975).
+    */
+  private[rules] def shelley(test: Test[PredicateFailure]): Test[PredicateFailure] =
+    test.leftMap(_.map(injectShelley.injectFailure))
 
 /** Shelley's predicates of UTXO (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs`,
   * cardano-ledger f649f975).
@@ -441,6 +494,86 @@ object BabbageUtxo:
     b.sizedCollateralReturn(txBody)
       .fold(colbal)(r => colbal - o.valueOps.coin(o.value(r.value)).value)
 
+  /** `babbageUtxoValidation` (`Babbage/Rules/Utxo.hs:325-412`, cardano-ledger f649f975): UTXO's
+    * predicates in the reference's order, every failure accumulated. The tests the reference runs
+    * with `runTestOnSignal` run only when the policy validates the signal, and the failures of
+    * Shelley's predicates are the era's injection of them. The reference's signal is the annotated
+    * transaction (`StAnnTx`), which the era types do not have yet (#85); its transaction is the
+    * signal here.
+    */
+  def babbageUtxoValidation[E <: EraTag](
+      env: UtxoEnv[E],
+      utxo: UTxO[E],
+      tx: Tx[TxLevel.Top, E],
+      context: UtxoContext[E]
+  )(using
+      e: EraUTxO[E],
+      t: AlonzoEraTx[E],
+      b: BabbageEraTxBody[E],
+      c: EraCertState[E],
+      w: AlonzoEraTxWits[E],
+      pa: AlonzoEraPParams[E],
+      pb: BabbageEraPParams[E],
+      s: StoredTxOut[E],
+      v: Value[E] =:= MultiAssetValue
+  ): Test[PredicateFailure] =
+    val top = b.top
+    val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+    val allSizedOutputs = b.allSizedOutputs[TxLevel.Top](txBody)(using top)
+    val allOutputs = allSizedOutputs.map(_.value)
+    given EraTxOut[E] = b.outputsOf
+    Test.all(
+      disjointRefInputs(
+        env.pp,
+        b.inputs[TxLevel.Top](txBody)(using top),
+        b.referenceInputs[TxLevel.Top](txBody)(using top)
+      ),
+      AllegraUtxo.validateOutsideValidityIntervalUTxO[E, TxLevel.Top](env.slot, txBody)(using
+        b,
+        top
+      ),
+      AlonzoUtxo.validateOutsideForecast[E, TxLevel.Top](
+        context.epochInfo,
+        env.slot,
+        context.systemStart,
+        tx
+      )(using t, t.bodyOf.top),
+      context.onSignal(
+        context.shelley(
+          ShelleyUtxo.validateInputSetEmptyUTxO[E, TxLevel.Top](txBody)(using b, top)
+        )
+      ),
+      feesOK(env.pp, tx, utxo),
+      context.shelley(ShelleyUtxo.validateBadInputsUTxO(utxo, b.allInputs(txBody))),
+      context.shelley(
+        ShelleyUtxo.validateValueNotConservedUTxO(env.pp, utxo, env.certState, txBody)
+      ),
+      validateOutputTooSmallUTxO(env.pp, allSizedOutputs),
+      AlonzoUtxo.validateOutputTooBigUTxO(env.pp, allOutputs),
+      context.onSignal(context.shelley(ShelleyUtxo.validateOutputBootAddrAttrsTooBig(allOutputs))),
+      context.onSignal(
+        context.shelley(ShelleyUtxo.validateWrongNetwork(context.netId, allOutputs))
+      ),
+      context.onSignal(
+        context.shelley(
+          ShelleyUtxo.validateWrongNetworkWithdrawal[E, TxLevel.Top](context.netId, txBody)(using
+            b,
+            top
+          )
+        )
+      ),
+      context.onSignal(
+        AlonzoUtxo.validateWrongNetworkInTxBody[E, TxLevel.Top](context.netId, txBody)(using b, top)
+      ),
+      context.onSignal(
+        context.shelley(
+          ShelleyUtxo.validateMaxTxSizeUTxO[E, TxLevel.Top](env.pp, tx)(using t, t.bodyOf.top)
+        )
+      ),
+      AlonzoUtxo.validateExUnitsTooBigUTxO[E, TxLevel.Top](env.pp, tx)(using t, t.bodyOf.top),
+      AlonzoUtxo.validateTooManyCollateralInputs(env.pp, txBody)
+    )
+
   /** `validateOutputTooSmallUTxO` (`Babbage/Rules/Utxo.hs:302-323`, cardano-ledger f649f975): the
     * outputs whose value is not pointwise at least `inject` of their least lovelace
     * (`getMinCoinSizedTxOut`, Babbage's [[BabbageTxOuts.babbageMinUTxOValue]]), with that least
@@ -467,3 +600,37 @@ object BabbageUtxo:
         UtxoFailure.BabbageOutputTooSmall(small.map((out, min) => (s.toStored(out), min.value)))
       )
     )
+
+/** Conway's functions of UTXO (`eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs`). */
+object ConwayUtxo:
+  /** `injectFailure` of `InjectRuleFailure "UTXO" ShelleyUtxoPredFailure ConwayEra`
+    * (`Conway/Rules/Utxo.hs:158-161`, cardano-ledger f649f975): `allegraToConwayUtxoPredFailure .
+    * shelleyToAllegraUtxoPredFailure`. Shelley's bootstrap attributes' failure becomes Allegra's
+    * `OutputTooBigUTxO` (`Allegra/Rules/Utxo.hs:374-387`), which Conway gives each output with the
+    * sizes 0 and 0 (`Conway/Rules/Utxo.hs:409-426`); every other failure of Shelley's predicates is
+    * Conway's own.
+    */
+  val injectShelleyFailure11_1: InjectShelleyUtxoFailure[Conway] =
+    InjectShelleyUtxoFailure[Conway] {
+      case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.OutputBootAddrAttrsTooBig(outs))) =>
+        failure(UtxoFailure.OutputTooBig(outs.map((0, 0, _))))
+      case other => other
+    }
+
+  /** The same injection at cardano-ledger 29a7d656 (the 11.2 build) and 9df9f98c (the Leios build):
+    * Shelley's bootstrap attributes' failure stays itself through Allegra's and Conway's
+    * (`Conway/Rules/Utxo.hs:163-166`, through `shelleyToAllegraUtxoPredFailure`,
+    * `Allegra/Rules/Utxo.hs:381-394`, and `allegraToConwayUtxoPredFailure`,
+    * `Conway/Rules/Utxo.hs:424-441`, at both), so every failure of Shelley's predicates is Conway's
+    * own.
+    */
+  val injectShelleyFailure11_2: InjectShelleyUtxoFailure[Conway] =
+    InjectShelleyUtxoFailure[Conway](identity)
+
+  /** The injection of the build `build`, until the builds are types (`BuildRules`,
+    * docs/design/reference-builds-as-types.md, #1063).
+    */
+  def injectShelleyFailure(build: ReferenceBuild): InjectShelleyUtxoFailure[Conway] =
+    build match
+      case ReferenceBuild.Release11_1                                => injectShelleyFailure11_1
+      case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => injectShelleyFailure11_2
