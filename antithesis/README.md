@@ -102,10 +102,12 @@ network faults, in a third or more of the timelines, and as often with a cardano
 Scarab is a JAR assembled from a commit (`node/assembly` in `scarab-jdk:local`). It runs on the Java 25 runtime of
 `docker/candidate.Dockerfile`, and the image's label records the commit. The JAR is linked into
 `/opt/antithesis/catalog/`, and the node starts from the classpath `/opt/scarab/*`, so Antithesis instruments it for
-coverage and thread pausing. `scarab/scarab-node.sh` turns cats-effect's fiber tracing off
-(`-Dcats.effect.tracing.mode=none`), in this harness only: its default cost s1 about 18% of its CPU in a local probe,
-which slows the platform's simulation of the whole cluster. The price is that s1's error stack traces have no fiber
-frames and a stall dump no fiber snapshot. A node run elsewhere keeps the default (#1024).
+coverage and thread pausing. The whole JAR is linked, libraries included: instrumenting only Scarab's own classes made
+no measurable difference to the platform's simulation speed or its exploration per compute hour (#1184, four runs).
+`scarab/scarab-node.sh` turns cats-effect's fiber tracing off (`-Dcats.effect.tracing.mode=none`), in this harness only:
+its default cost s1 about 18% of its CPU in a local probe, which slows the platform's simulation of the whole cluster.
+The price is that s1's error stack traces have no fiber frames and a stall dump no fiber snapshot. A node run elsewhere
+keeps the default (#1024).
 
 ## `pool/config-k200`: the same cluster at k = 200
 
@@ -160,18 +162,6 @@ that a container made again from its image keeps the credentials its reloads ins
 did in `/logs/reload.log`, and the driver's two positive controls, "s1 accepts a KES rotation sent by SIGHUP" (a
 change of generation the node took) and "s1 reads a changed topology on SIGHUP", fail unless the steps ran.
 `hotValency` 1 changes how s1 follows the pools, so the fork rates are not comparable with `pool`'s.
-
-## `pool/config-thin-catalog`: only Scarab's own classes instrumented
-
-An experiment beside `pool`: Antithesis instruments everything under `/opt/antithesis/catalog/`, and `pool` links the
-whole assembly there, so the libraries (cats-effect, fs2, http4s, Bouncy Castle, the Scala library) carry coverage
-hooks as well as Scarab's own classes, and the Haskell pools carry none. This config's s1 runs the same JAR split in
-two by `scarab/split_jar.py`, entries unchanged: `scarab.jar`, the one the catalog's link names, holds everything under
-`xyz/`, and `scarab-libs.jar` the rest, outside the catalog and on the same classpath; coverage then guides
-exploration by Scarab's code alone. Its control is `pool/config-split-catalog`: the same two JARs, both linked into
-the catalog (`scarab/Dockerfile.split`). Run side by side, the two differ only in which classes are instrumented, so
-Antithesis's "Virtual time per wall time" says what instrumenting the libraries costs. Against `pool`, the packaging
-differs too (one assembly against two JARs).
 
 ## `pool/config-late-start`: the earlier start order
 
@@ -228,8 +218,6 @@ CONFIG=config-k200 antithesis/pool/scripts/launch.sh on 15m  # k = 200
 CONFIG=config-late-start antithesis/pool/scripts/launch.sh on 15m  # experiment: the earlier start order
 CONFIG=config-short-kes SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # 250-slot KES periods
 CONFIG=config-reload SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # the same, s1 reloaded by SIGHUP
-CONFIG=config-thin-catalog SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # only Scarab's classes instrumented
-CONFIG=config-split-catalog SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # its control, every class
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 
