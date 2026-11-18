@@ -47,9 +47,12 @@ def main(assembly: str, own: str, libs: str) -> None:
         manifest = source.read(MANIFEST)
         with zipfile.ZipFile(own, "w") as own_jar, zipfile.ZipFile(libs, "w") as libs_jar:
             # writestr records its offsets in the ZipInfo it is given, so each write takes a copy of the source's.
+            # The directory entry keeps the assembly's date (or the manifest's), so one assembly gives the same JARs.
             manifest_info = source.getinfo(MANIFEST)
-            own_jar.writestr("META-INF/", b"")
-            libs_jar.writestr("META-INF/", b"")
+            meta_info = (source.getinfo("META-INF/") if "META-INF/" in names
+                         else zipfile.ZipInfo("META-INF/", manifest_info.date_time))
+            own_jar.writestr(copy.copy(meta_info), b"")
+            libs_jar.writestr(copy.copy(meta_info), b"")
             own_jar.writestr(copy.copy(manifest_info), manifest)
             libs_jar.writestr(copy.copy(manifest_info), without_main_class(manifest))
             counts = {"own": 0, "libs": 0}
