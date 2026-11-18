@@ -27,6 +27,7 @@ import datetime
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -372,28 +373,75 @@ def recorded():
     return [json.loads(line) for line in CASES_FILE.read_text().splitlines() if line]
 
 
-def offline(case):
-    provenance = json.loads(PROVENANCE.read_text())
-    rows = recorded()
+PROVENANCE_FIELDS = {"cases", "casesSha256", "consensusSourceCommit", "image", "imageId", "inputs", "ledger",
+                     "measuredAt", "oracle", "packageSha256", "program", "programSha256", "schemaVersion", "scope",
+                     "sourceSha256"}
+ORACLE_FIELDS = {"imageFilesSha256", "network", "oracleBinarySha256", "pinnedSources"}
+LEDGER_RECORD = {"repository": "IntersectMBO/cardano-ledger", "revision": LEDGER,
+                 "packages": ["cardano-ledger-dijkstra 0.5.0.0", "cardano-ledger-conway 1.25.0.0"]}
+DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def validate(provenance, rows, cases_sha256, case):
+    """What is wrong with a retained fixture: its provenance (`provenance.json`, parsed), its rows (`cases.jsonl`,
+    parsed) and the digest of its case file, against the case `inputs` makes from the input files and against
+    the repository. Each field of the provenance is checked: its schema exactly, the pins, the ledger sources,
+    and the oracle build it accepted (no network, the image's ID, every build file the repository determines,
+    the executable's digest and the pinned checkouts)."""
     problems = []
-    if [{k: v for k, v in r.items() if k != "reference"} for r in rows] != [case]:
-        problems.append("the inputs differ from the recorded case")
-    if provenance["programSha256"] != file_sha256(PROGRAM):
-        problems.append(f"{PROGRAM} differs from the recorded program")
-    if provenance.get("packageSha256") != file_sha256(f"scripts/oracle/dijkstra-state-translation/{PACKAGE}.cabal"):
-        problems.append(f"{PACKAGE}.cabal differs from the recorded package")
-    oracle = provenance.get("oracle")
-    if not (isinstance(oracle, dict) and isinstance(oracle.get("imageFilesSha256"), dict)
-            and set(oracle["imageFilesSha256"]) == {IMAGE_HARNESS, *IMAGE_BUILD}
-            and oracle["imageFilesSha256"][IMAGE_HARNESS] == file_sha256(PROGRAM)
-            and oracle.get("oracleBinarySha256") == oracle["imageFilesSha256"][IMAGE_BINARY]):
-        problems.append("the provenance binds no oracle build of the repository's Main.hs")
-    if provenance["casesSha256"] != file_sha256(CASES_FILE.relative_to(ROOT)):
-        problems.append(f"{CASES_FILE.name} differs from its provenance")
-    if provenance["inputs"] != {STATE: case["stateSha256"], TABLES: case["tablesSha256"],
-                                GENESIS: case["dijkstraGenesisSha256"]}:
-        problems.append("the input files differ from the provenance")
+
+    def check(holds, why):
+        if not holds:
+            problems.append(why)
+
+    check(isinstance(provenance, dict) and set(provenance) == PROVENANCE_FIELDS,
+          f"the provenance's fields are not exactly {sorted(PROVENANCE_FIELDS)}")
+    if problems:
+        return problems
+    check(provenance["schemaVersion"] == 1, "schemaVersion is not 1")
+    check(isinstance(provenance["scope"], str) and provenance["scope"].strip() != "", "no scope")
+    check(isinstance(provenance["measuredAt"], str) and DATE.fullmatch(provenance["measuredAt"]) is not None,
+          "measuredAt is not a date")
+    check(provenance["image"] == IMAGE, f"the image is not {IMAGE}")
+    check(isinstance(provenance["imageId"], str) and CHAIN.IMAGE_ID.fullmatch(provenance["imageId"]) is not None,
+          "imageId is not an immutable image ID")
+    check(LEDGER == CHAIN.ledger_pin(), f"the cabal project does not pin cardano-ledger {LEDGER}")
+    check(provenance["ledger"] == LEDGER_RECORD, f"the ledger is not cardano-ledger {LEDGER}")
+    check(provenance["consensusSourceCommit"] == CONSENSUS, f"the consensus revision is not {CONSENSUS}")
+    check(provenance["sourceSha256"] == PINNED, "the ledger sources are not the pinned ones")
+    check(provenance["program"] == PROGRAM and provenance["programSha256"] == file_sha256(PROGRAM),
+          f"{PROGRAM} differs from the recorded program")
+    check(provenance["packageSha256"] == sha256(REPOSITORY_FILES[IMAGE_BUILD[0]]),
+          f"{PACKAGE}.cabal differs from the recorded package")
+    check(provenance["inputs"] == {STATE: case["stateSha256"], TABLES: case["tablesSha256"],
+                                   GENESIS: case["dijkstraGenesisSha256"]}, "the input files differ from the provenance")
+    check(provenance["cases"] == len(rows) == 1, "the fixture does not hold its one case")
+    check(provenance["casesSha256"] == cases_sha256, f"{CASES_FILE.name} differs from its provenance")
+    check([{k: v for k, v in r.items() if k != "reference"} for r in rows] == [case],
+          "the inputs differ from the recorded case")
+    oracle = provenance["oracle"]
+    check(isinstance(oracle, dict) and set(oracle) == ORACLE_FIELDS,
+          f"the oracle build's fields are not exactly {sorted(ORACLE_FIELDS)}")
+    if problems:
+        return problems
+    check(oracle["network"] == "none", "the oracle ran with a network")
+    files = oracle["imageFilesSha256"]
+    check(isinstance(files, dict) and set(files) == {IMAGE_HARNESS, *IMAGE_BUILD}
+          and all(isinstance(v, str) and CHAIN.DIGEST.fullmatch(v) for v in files.values()),
+          f"the image's files are not exactly {sorted((IMAGE_HARNESS, *IMAGE_BUILD))}, each with a SHA-256")
+    if problems:
+        return problems
+    for path, content in REPOSITORY_FILES.items():
+        check(files[path] == sha256(content), f"the accepted build's {path} is not the repository's")
+    check(oracle["oracleBinarySha256"] == files[IMAGE_BINARY], "the executable's digest is not the accepted build's")
+    check(oracle["pinnedSources"] == {commit: "unchanged" for commit in CHAIN.pinned()},
+          "the accepted build's checkouts are not the cabal project's pins, unchanged")
     return problems
+
+
+def offline(case):
+    """What is wrong with the retained fixture against its inputs and the repository."""
+    return validate(json.loads(PROVENANCE.read_text()), recorded(), file_sha256(CASES_FILE.relative_to(ROOT)), case)
 
 
 def main():
