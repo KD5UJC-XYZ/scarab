@@ -5911,7 +5911,7 @@
     "EraPlutusContextSuite"
    ],
    "note": "every member of the reference's EraUTxO instance, and of its AlonzoEraUTxO instance the two members the class has (getSupplementalDataHashes = getBabbageSupplementalDataHashes, getSpendingDatum = getBabbageSpendingDatum); ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, only the missing witness or only the datums failed",
-   "digest": "4219946820e71a43"
+   "digest": "a0e06b1844f9b34f"
   },
   "def ledger.era.UTxOs.txInsFilter": {
    "upstream": [
@@ -10428,7 +10428,7 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023765",
-   "note": "getSupplementalDataHashes and getSpendingDatum (the datum as the bytes it arrived as); the annotated transaction's scriptsProvidedStAnnTx, scriptsNeededStAnnTx, plutusScriptsWithContextStAnnTx and plutusLanguagesUsedStAnnTx are not members yet",
+   "note": "getSupplementalDataHashes and getSpendingDatum (its failure returned where the reference raises `error`); the annotated transaction's scriptsProvidedStAnnTx, scriptsNeededStAnnTx, plutusScriptsWithContextStAnnTx and plutusLanguagesUsedStAnnTx are not members yet",
    "digest": "593ff590a3197b45"
   },
   "def ledger.era.AlonzoEraUTxO#getSupplementalDataHashes": {
@@ -10470,7 +10470,7 @@
     "ConwayUtxowChecksSuite"
    ],
    "note": "a fold over the spent outputs the UTxO set holds, as Map.foldlWithKey' over Map.restrictKeys (txInsFilter); getScriptHash (State/UTxO.hs:222-224) is a private helper",
-   "digest": "7a04281aac950d73"
+   "digest": "eebfa96ea7b61cc0"
   },
   "def ledger.era.BabbageUTxO.getBabbageSupplementalDataHashes": {
    "upstream": [
@@ -13760,10 +13760,11 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
    ],
-   "note": "the datum as the bytes it arrived as, where the reference's is `Data era`",
-   "digest": "5e02820a2abde077"
+   "note": "the datum read as data, its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
+   "digest": "9fe3c07551a3f586"
   },
   "def ledger.era.BabbageUTxO.getBabbageSpendingDatum": {
    "upstream": [
@@ -13781,10 +13782,11 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
    ],
-   "note": "the spending purpose read through the evidence that the era's purpose is Conway's, as `toSpendingPurpose` is not a member of the script class yet (#85); the datum is the bytes it arrived as, where the reference's is `Data era`, as an inline datum is not held decoded yet (#85)",
-   "digest": "add8c0ea6d63ea0b"
+   "note": "the spending purpose read through the evidence that the era's purpose is Conway's, as `toSpendingPurpose` is not a member of the script class yet (#85); the output's inline datum is read as data first, as the reference's `<|>` forces its strict `SJust`, and its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
+   "digest": "6e467ff68c431f5f"
   },
   "def ledger.era.PlutusTxInfos.transKeyHash": {
    "upstream": [
@@ -14170,7 +14172,7 @@
     "ConwayPlutusContextRefusalsSuite",
     "ContextMatrixSuite"
    ],
-   "note": "`TimeTranslationPastHorizon` carries the clock's typed failure, the reference's a Text; `Undecodable` is the node's own, for an output's inline datum, which the reference's `binaryDataToData` takes as data (an `error` otherwise), and which no output an era's decoder read reaches; the evidence is transitive: EraPlutusContextSuite and ConwayPlutusContextRefusalsSuite show each typed failure is the flat one, and ContextMatrixSuite shows the flat failures encode to the reference's bytes",
+   "note": "`TimeTranslationPastHorizon` carries the clock's typed failure, the reference's a Text; `Undecodable` is the node's own, for an output's inline datum, which the reference's `binaryDataToData` takes as data (an `error` otherwise), and which only an inline datum taken unread (`BabbageTxOutRep.fromStored`) reaches; the evidence is transitive: EraPlutusContextSuite and ConwayPlutusContextRefusalsSuite show each typed failure is the flat one, and ContextMatrixSuite shows the flat failures encode to the reference's bytes",
    "digest": "ab1d069f01665620"
   },
   "def ledger.era.AlonzoTxInfo.transLookupTxOut": {
@@ -14390,10 +14392,11 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
    ],
-   "note": "an inline datum is read from the bytes it arrived as, where the reference's `binaryDataToData` takes its `BinaryData` as data (an `error` otherwise), a failure the node's own `Undecodable`, which no output an era's decoder read reaches; an inline datum is read only for an address that is not Byron, where the reference forces its lazy `datum`, so a Byron address is refused first, as in the flat path",
-   "digest": "e3c654765f464eda"
+   "note": "the inline datum through `binaryDataToData`, whose failure, which only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach, is the node's own `Undecodable` where the reference raises `error`; it is read only for an address that is not Byron, where the reference forces its lazy `datum`, so a Byron address is refused first, as in the flat path",
+   "digest": "62eb79d3869b8546"
   },
   "def ledger.era.BabbageTxInfo.transRedeemer": {
    "upstream": [
@@ -18076,12 +18079,14 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "ConwayPlutusContextRefusalsSuite",
+    "EraConwaySuite"
    ],
-   "digest": "236092fbc2e57abc"
+   "digest": "d0da23e48a722f1a",
+   "note": "whether there is an inline datum asked through `dataTxOutF`, which reads it as data, as the reference's strict `SJust` forces `binaryDataToData`: an inline datum taken unread (`BabbageTxOutRep.fromStored`) that does not read as data is the node's own `Undecodable` where the reference raises `error`"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxInInfoV1": {
    "upstream": [
@@ -18729,6 +18734,161 @@
    ],
    "note": "the derived `Ord`, which the V1 and V2 withdrawals are ordered by",
    "digest": "843d1965aeade970"
+  },
+  "type ledger.era.BinaryData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "BinaryData",
+     "lines": [
+      211,
+      212
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "the bytes of an inline datum, its constructor hidden (an opaque type); not indexed by the era, as the era's `Datum` that holds it is not",
+   "digest": "3644778bfda9d808"
+  },
+  "def ledger.era.BinaryData.makeBinaryData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "makeBinaryData",
+     "lines": [
+      227,
+      233
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "the bytes read as one item of data (`decodeBinaryData`, lines 235-240, as `Data.decode` reads it), the failure typed where the reference's is a String",
+   "digest": "ca2f25e5ab4c0be9"
+  },
+  "def ledger.era.BinaryData.binaryDataToData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "binaryDataToData",
+     "lines": [
+      244,
+      249
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`, through `BinaryData.stored`) can reach it",
+   "digest": "8f00bc6dafa91349"
+  },
+  "def ledger.era.BinaryData.bytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "SafeToHash",
+     "lines": [
+      211,
+      212
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "`originalBytes` of the newtype's `SafeToHash`",
+   "digest": "4917a179980546a1"
+  },
+  "enum ledger.era.Datum": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "Datum",
+     "lines": [
+      272,
+      275
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "not indexed by the era, as the era types' outputs that hold it name their era by their own type",
+   "digest": "8b1535d68c3e3665"
+  },
+  "def ledger.era.BabbageTxOuts.dataHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "symbol": "getDataHashBabbageTxOut",
+     "lines": [
+      723,
+      731
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite",
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "over the output's datum, where the reference's takes the output and reads its datum (`getDatumBabbageTxOut`, lines 743-753); the hash of a datum named by its hash, none for an inline datum, as the reference's",
+   "digest": "b84b5ee0ca1e75a2"
+  },
+  "def ledger.era.BabbageTxOuts.data": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "symbol": "getDataBabbageTxOut",
+     "lines": [
+      706,
+      716
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "over the output's datum where the reference's matches the compact output's cases, which give the same; `binaryDataToData`'s failure returned where the reference raises `error`",
+   "digest": "40b37721c56dbec0"
   }
  },
  "glue": [
@@ -18953,7 +19113,11 @@
     "object ledger.era.rules.GOVCERT",
     "object ledger.era.rules.POOL",
     "given ledger.era.Data.given_CanEqual_Data_Data",
-    "object ledger.era.Data"
+    "object ledger.era.Data",
+    "object ledger.era.BinaryData",
+    "object ledger.era.Datum",
+    "given ledger.era.BinaryData.given_CanEqual_BinaryData_BinaryData",
+    "given ledger.era.Datum.given_CanEqual_Era_Era"
    ]
   },
   {
@@ -19063,10 +19227,21 @@
    ]
   },
   {
-   "reason": "the reading of the data of a transaction from the bytes it arrived as, which the reference holds decoded (`Data era`, `BinaryData era`), and its failure as an era's context error: the node's own, which no transaction an era's decoder read reaches (#85)",
+   "reason": "the failure of an inline datum taken unread (`BabbageTxOutRep.fromStored`) that does not read as data, as an era's context error: the node's own, where the reference's `binaryDataToData` raises `error` (#85)",
    "definitions": [
-    "def ledger.era.BabbageTxInfo.undecodable",
-    "def ledger.era.PlutusTxInfos.decodeData"
+    "def ledger.era.BabbageTxInfo.undecodable"
+   ]
+  },
+  {
+   "reason": "the reading of an output as an era's from the output the node's decoder read from a block or a transaction (its inline datum read as data, as the reference's `DecCBOR` of `BinaryData` reads it) and from the output the store keeps (taken unread, as its `MemPack`, through the unchecked constructors that ask for the evidence `StoreRead`, which `BabbageTxOutRep.fromStored` alone makes; its callers, each era's `fromStored`, are trusted to pass an output read from the store, as the reference trusts its `MemPack`, until a store that reads the era's outputs itself makes that a type, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6989194084), and the conversions between the era's datum and the stored output's; the reference decodes its output at its era's type and has no counterpart (#85)",
+   "definitions": [
+    "def ledger.era.BabbageTxOutRep.fromDecoded",
+    "def ledger.era.conway.ConwayTxOut.fromDecoded",
+    "def ledger.era.Datum.decoded",
+    "def ledger.era.Datum.stored",
+    "def ledger.era.BinaryData.stored",
+    "class ledger.era.BabbageTxOutRep.StoreRead",
+    "def ledger.era.Datum.toStored"
    ]
   }
  ]

@@ -623,15 +623,21 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Each failure is the era's context error (`ContextError`, Conway's `ConwayContextError` carrying Babbage's
     and Alonzo's, injected as the reference's `Inject` instances do). Two differ in representation: a time
     past the horizon carries the clock's typed failure where the reference's carries a Text, and an output's
-    inline datum, which the reference's `binaryDataToData` takes as data, is read from the bytes it arrived
-    as, its failure the node's own `Undecodable` (as in Dijkstra's flat context), which no output an era's
-    decoder read reaches. A redeemer and a witness datum are the witness set's decoded `Data`, so their
-    translation cannot fail. The epoch information and the system start are the flat translation's one
+    inline datum, the era's `BinaryData` read through `binaryDataToData`, fails as the node's own
+    `Undecodable` (as in Dijkstra's flat context) where the reference raises `error`. An output's datum is
+    the reference's `Datum era`: an inline datum is read as data where the output is read from a block or a
+    transaction (the reference's `DecCBOR`) and taken unread where it is read from the store (its
+    `MemPack`), so only an inline datum taken unread can reach that failure. Only
+    `BabbageTxOutRep.fromStored` takes one so, which the type of its evidence (`StoreRead`) enforces;
+    its callers are trusted to pass an output read from the store, as the reference trusts its
+    `MemPack`, until a store that reads the era's outputs itself makes that a type (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6989194084). A redeemer and a witness
+    datum are the witness set's decoded `Data`, so their translation cannot fail. The epoch information and the system start are the flat translation's one
     clock.
   - Two members the context needs: `redeemerPointerInverse` on `AlonzoEraTxBody` (Conway's
     `conwayRedeemerPointerInverse`, through `Indexable`'s `fromIndex`) and `getSpendingDatum` on
     `AlonzoEraUTxO` (`getBabbageSpendingDatum`), its spending purpose read through the evidence that the era's
-    purpose is Conway's; its datum is the bytes it arrived as, as an inline datum is not held decoded yet.
+    purpose is Conway's; its datum is `Data`, an inline datum read as data where it is asked for, as the
+    reference's strict `SJust` forces it, and its failure returned where the reference raises `error`.
   - `EraPlutusContextSuite`: on every Conway row of the reference's recorded contexts, context matrix,
     context errors and script results (432 transactions), the typed V3 `TxInfo` equals the flat one, or both
     refuse alike, at the row's version and at 9, 10 and 11, whatever the languages its scripts use. Each of
