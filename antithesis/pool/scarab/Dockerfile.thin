@@ -1,8 +1,0 @@
-# SPDX-License-Identifier: Apache-2.0
-# The Scarab image of ../config-thin-catalog: build.sh's scarab-at-scarab:trial with its JAR split in two by
-# split_jar.py, entries unchanged. /opt/scarab/scarab.jar, the JAR the catalog's link names, holds only Scarab's own
-# classes (xyz/), so Antithesis instruments only those; the libraries are in /opt/scarab/scarab-libs.jar, outside the
-# catalog and on the same classpath (/opt/scarab/*).
-FROM scarab-at-scarab:trial
-LABEL xyz.kd5ujc.scarab.catalog=scarab-classes-only
-COPY scarab.jar scarab-libs.jar /opt/scarab/
