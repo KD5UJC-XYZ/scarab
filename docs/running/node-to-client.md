@@ -52,7 +52,9 @@ below version 20) ends the connection, as on the reference. Not answered yet (th
 line `inbound ... closed` names the query): the current protocol parameters, the governance state, the six
 of the certificate state, the distributions, the wallet's queries, the ledger peer snapshots and the queries
 of Conway's governance (the constitution, the DRep and committee queries, the proposals, the ratify state, the
-future parameters and the pools' default votes) in Dijkstra (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+future parameters and the pools' default votes) in Dijkstra (roadmap F1); under the Leios build
+(`--reference-build leios-b004fe0c`) a Dijkstra state answers the current protocol parameters, the governance
+state, the ratify state and the future parameters. A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
 Fresh native genesis retains injected pool records with an empty VRF registry, matching the
