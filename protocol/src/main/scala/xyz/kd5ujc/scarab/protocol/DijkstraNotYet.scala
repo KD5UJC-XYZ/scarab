@@ -9,7 +9,10 @@ import xyz.kd5ujc.scarab.codec.DomainError
   * that implements it.
   */
 enum DijkstraNotYet extends DomainError:
-  /** A Dijkstra ledger state in the Haskell `state` file layout. Persisted formats. */
+  /** A Dijkstra ledger state in the Haskell `state` file layout of the cardano-node 11.1 line,
+    * whose Dijkstra parameters (35, cardano-ledger f649f975) and state this build does not read or
+    * write; the Leios build's layout reads and writes Dijkstra's state. Persisted formats.
+    */
   case LedgerState
 
   /** A chain started from its genesis in Dijkstra: the era's `injectIntoTestState` also seats the
@@ -40,11 +43,22 @@ enum DijkstraNotYet extends DomainError:
     */
   case ParameterUpdate
 
+  /** A Peras epoch context in the Peras state of the Leios build's layout that holds Dijkstra's
+    * voting committee (`BoundedPerasEpochContext`, ouroboros-consensus 2416493b
+    * `Peras/Context.hs:170-203`; the committee of `V1.PerasVotingCommitteeScheme`,
+    * `Shelley/Node/Peras.hs:136-148`, `Committee/WFALS.hs`): Peras is off in the build, whose
+    * states hold no epoch context. Persisted formats.
+    */
+  case PerasEpochContext
+
   def message: String = this match
-    case LedgerState => "a Dijkstra ledger state is not read or written by this build"
-    case Genesis     => "a chain cannot start in Dijkstra from its genesis in this build"
-    case Rules       => "the ledger rules of Dijkstra are not implemented"
+    case LedgerState =>
+      "a Dijkstra ledger state of the 11.1 layout is not read or written by this build"
+    case Genesis => "a chain cannot start in Dijkstra from its genesis in this build"
+    case Rules   => "the ledger rules of Dijkstra are not implemented"
     case PoolParamsBlsKey =>
       "a pool's BLS key in a Dijkstra state's pool parameters is not read by this build"
     case ParameterUpdate =>
       "a Dijkstra parameter update in a governance proposal of the state is not read by this build"
+    case PerasEpochContext =>
+      "a Peras epoch context with Dijkstra's voting committee is not read by this build"

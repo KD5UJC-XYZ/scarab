@@ -177,8 +177,8 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
         .isInstanceOf[Kind.LiteralMismatch]
     )
     // an epoch context `[start, end, [committee, params]]`, the committee `[era, committee]`:
-    // Conway's committee is `Void`, refused as the reference refuses it; Dijkstra's is the
-    // Dijkstra part of the state, not read by this build (#54)
+    // Conway's committee is `Void`, refused as the reference refuses it; Dijkstra's, the WFALS
+    // committee, is not read yet: Peras is off in the build and its states hold none
     def withCommittee(era: Int) =
       hex(s"82 83 01 81 83 00 01 82 82 0$era f6 f6 80 80")
     assertEquals(
@@ -187,8 +187,13 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     )
     assertEquals(
       failure(LeiosStateCodecs.perasState, withCommittee(7)).kind,
-      Kind.Domain(DijkstraNotYet.LedgerState)
+      Kind.Domain(DijkstraNotYet.PerasEpochContext)
     )
+    // in either slot of the resolver, the current and the previous epoch's context
+    val previous = hex("82 83 01 80 81 83 00 01 82 82 07 f6 f6 80")
+    val e = failure(LeiosStateCodecs.perasState, previous)
+    assertEquals(e.kind, Kind.Domain(DijkstraNotYet.PerasEpochContext))
+    assertEquals(e.path.take(2), List("resolver", "previous"))
   }
 
   test("a voting key is a valid point, and definite below version 12 (decodeFixedSized)") {
@@ -475,10 +480,36 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     )
   }
 
-  test("slot 203, the first Dijkstra state: refused at its telescope, its other parts read") {
-    val e = HaskellLedgerFile.decode(dijkstra, StateLayout.Leios).fold(identity, f => fail(s"$f"))
-    assertEquals(e.kind, Kind.Domain(DijkstraNotYet.LedgerState))
-    assertEquals(e.path, List("ledgerState"))
+  /** A whole state file in Dijkstra, read in the Leios layout and written again byte for byte. */
+  private def dijkstraFile(bytes: Bytes): HaskellLedgerFile =
+    val file =
+      HaskellLedgerFile.decode(bytes, StateLayout.Leios).fold(e => fail(e.render), identity)
+    assertEquals(file.era, Era.Dijkstra)
+    assertEquals(file.layout, ExtLedgerState.Layout.Leios(PerasState.default))
+    file.ext match
+      case Some(ext) =>
+        assertEquals(ext.ledgerState.era, Era.Dijkstra)
+        assertEquals(ext.headerState.chainDep.era, Era.Dijkstra)
+        assert(ext.headerState.chainDep.current.state match
+          case ChainDepState.Praos2(_) => true
+          case _                       => false)
+        ext.headerState.tip match
+          case WithOrigin.At(AnnTip(_, _, TipInfo.ShelleyBasedTip(ShelleyBasedEra.SDijkstra, _))) =>
+            ()
+          case other => fail(s"not a Dijkstra tip: $other")
+      case None => fail("not a Shelley-based state")
+    assertEquals(HaskellLedgerFile.encode(file, StateLayout.Leios), Right(bytes))
+    file
+
+  test(
+    "slot 203, the first Dijkstra state, is read in the Leios layout and written byte for byte"
+  ) {
+    val file = dijkstraFile(dijkstra)
+    file.ext.map(_.headerState.tip) match
+      case Some(WithOrigin.At(tip)) =>
+        assertEquals(tip.slot, SlotNo.fromUnsigned(203))
+        assertEquals(tip.blockNo, BlockNo.fromUnsigned(39))
+      case other => fail(s"no tip: $other")
     val parts = items(items(tree(dijkstra))(1))
     assertEquals(parts.size, 3)
     // the Peras state: this build's constant
@@ -503,4 +534,57 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
         Bound.Layout.Leios(PerasRoundNo(Word64.zero))
       )
     )
+  }
+
+  test(
+    "the public testnet's state at slot 2,168,639 is read in the Leios layout and written byte for byte"
+  ) {
+    val file = dijkstraFile(fixture("testnet-2168639"))
+    file.ext.map(_.headerState.tip) match
+      case Some(WithOrigin.At(tip)) => assertEquals(tip.slot, SlotNo.fromUnsigned(2168639))
+      case other                    => fail(s"no tip: $other")
+  }
+
+  test("a Dijkstra state file is refused by the 11.1 layout, at its telescope and its tip") {
+    // three parts: refused at the extended state's length, before its telescope
+    assertEquals(
+      HaskellLedgerFile.decode(dijkstra).leftMap(_.kind).map(_ => ()),
+      Left(Kind.BadArity(Arity.Exactly(2), 3))
+    )
+    // the ledger and header states alone, as the 11.1 layout frames them: its Dijkstra telescope
+    // is refused
+    val parts = items(items(tree(dijkstra))(1))
+    val two = bytesOf { w =>
+      w.arrayHead(2); w.uint(1L); w.arrayHead(2); w.raw(parts(0).original); w.raw(parts(1).original)
+    }
+    val e = HaskellLedgerFile.decode(two).fold(identity, f => fail(s"decoded $f"))
+    assertEquals(e.kind, Kind.Domain(DijkstraNotYet.LedgerState))
+    assertEquals(e.path, List("ledgerState"))
+    // the header state's tip `[7, [slot, hash, block]]`, and its chain-dependent telescope
+    val tip = items(items(parts(1))(0))(0).original
+    assertEquals(
+      read(HaskellStateCodecs.annTip, tip).leftMap(_.kind).map(_ => ()),
+      Left(Kind.Domain(DijkstraNotYet.LedgerState))
+    )
+    assertEquals(
+      read(
+        Envelope.telescope(StateLayout.Node11_1, HaskellStateCodecs.chainDepStateOf),
+        items(parts(1))(1).original
+      )
+        .leftMap(_.kind)
+        .map(_ => ()),
+      Left(Kind.Domain(DijkstraNotYet.LedgerState))
+    )
+    // and the Leios layout's state, read, is not written in the 11.1 layout: no conversion
+    val file = dijkstraFile(dijkstra)
+    assert(
+      HaskellLedgerFile
+        .encode(file.copy(layout = ExtLedgerState.Layout.Node11_1), StateLayout.Node11_1)
+        .isLeft
+    )
+    val header = file.header
+    assert(HaskellStateCodecs.headerState.write(header).isLeft)
+    header.tip match
+      case WithOrigin.At(tip) => assert(HaskellStateCodecs.annTip.check(tip).isDefined)
+      case WithOrigin.Origin  => fail("no tip")
   }

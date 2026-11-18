@@ -114,25 +114,36 @@ trait ConsensusCodecs extends EpochStateCodecs:
     case Era.Alonzo  => readIn(ShelleyBasedEra.SAlonzo, n)
     case Era.Babbage => readIn(ShelleyBasedEra.SBabbage, n)
     case Era.Conway  => readIn(ShelleyBasedEra.SConway, n)
-    // the state of Dijkstra is not Conway's in this layout (its parameters, its EPOCH's committee)
+    // Dijkstra's state is the Leios build's in its layout; the 11.1 line's is not read
     case Era.Dijkstra =>
-      Left(DecodeError.at(n, DecodeError.Kind.Domain(DijkstraNotYet.LedgerState)))
+      stateLayout match
+        case StateLayout.Leios => readIn(ShelleyBasedEra.SDijkstra, n)
+        case StateLayout.Node11_1 =>
+          Left(DecodeError.at(n, DecodeError.Kind.Domain(DijkstraNotYet.LedgerState)))
 
   private def writeFileEra(a: LedgerFileEra, out: Writer): Unit = a match
     case LedgerFileEra.ByronItem(item) => originalItem.encode(item, out)
-    case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, _)) =>
-      () // refused by `checkFileEra`; a decoded telescope never holds it
     case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(era, state)) =>
       writeIn(era, state, out)
     case LedgerFileEra.Mirrored(EraLedgerState.ByronCurrent(_)) =>
       () // refused by `checkFileEra`; a decoded telescope never holds it
 
+  /** A Dijkstra state is written in the Leios build's layout only: the 11.1 line's Dijkstra state
+    * codec refuses every value ([[Versions.notYet]]), named here as the era.
+    */
   private def checkFileEra(a: LedgerFileEra): Option[ConstraintViolation] = a match
     case LedgerFileEra.ByronItem(_) => None
-    case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, _)) =>
-      Some(
-        ConstraintViolation("LedgerFileEra", "the state of an era this build writes", "Dijkstra")
-      )
+    case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, state)) =>
+      stateLayout match
+        case StateLayout.Leios => checkIn(ShelleyBasedEra.SDijkstra, state)
+        case StateLayout.Node11_1 =>
+          Some(
+            ConstraintViolation(
+              "LedgerFileEra",
+              s"the state of an era the $stateLayout layout writes",
+              "Dijkstra"
+            )
+          )
     case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(era, state)) => checkIn(era, state)
     case LedgerFileEra.Mirrored(EraLedgerState.ByronCurrent(_)) =>
       Some(
@@ -360,14 +371,15 @@ trait ConsensusCodecs extends EpochStateCodecs:
     * ouroboros-consensus 82ecba32 `Cardano/Block.hs:256`), Praos2 in the Leios build (`ShelleyBlock
     * (Praos2 c) DijkstraEra`, 2416493b `Cardano/Block.hs:277`).
     */
-  private def readChainDep(era: Era)(n: Node): Decoded[ChainDepState] =
-    if era == Era.Byron then pbftState.decode(n).map(ChainDepState.PBft(_))
-    else if era.usesTPraos then tpraosState.decode(n).map(ChainDepState.TPraos(_))
-    else if era == Era.Dijkstra then
+  private def readChainDep(era: Era)(n: Node): Decoded[ChainDepState] = era match
+    case Era.Byron => pbftState.decode(n).map(ChainDepState.PBft(_))
+    case Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo =>
+      tpraosState.decode(n).map(ChainDepState.TPraos(_))
+    case Era.Babbage | Era.Conway => praosState.decode(n).map(ChainDepState.Praos(_))
+    case Era.Dijkstra =>
       stateLayout match
         case StateLayout.Leios    => praos2State.decode(n).map(ChainDepState.Praos2(_))
         case StateLayout.Node11_1 => praosState.decode(n).map(ChainDepState.Praos(_))
-    else praosState.decode(n).map(ChainDepState.Praos(_))
 
   private def writeChainDep(a: ChainDepState, out: Writer): Unit = a match
     case ChainDepState.PBft(s)   => pbftState.encode(s, out)

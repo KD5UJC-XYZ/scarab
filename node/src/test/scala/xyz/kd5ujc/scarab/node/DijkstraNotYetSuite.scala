@@ -18,11 +18,17 @@ import xyz.kd5ujc.scarab.ledger.rules.Hfc
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, HfcHeader, NtNHeader, StateLayout}
-import xyz.kd5ujc.scarab.storage.haskell.state.{Envelope, HaskellStateCodecs, Params}
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  Envelope,
+  HaskellStateCodecs,
+  LeiosStateCodecs,
+  Params
+}
 
 /** The Dijkstra era is named (index 7, block tag 8) and its blocks, headers and transactions
-  * decode, but it is not implemented (#54): the rules and the ledger state refuse it with a typed
-  * [[DijkstraNotYet]], and the raw-bytes Leios paths keep working.
+  * decode, but it is not implemented (#54): the rules and the 11.1 line's ledger state refuse it
+  * with a typed [[DijkstraNotYet]], and the raw-bytes Leios paths keep working. The Leios build's
+  * Dijkstra state is read and written (`LeiosLayoutSuite`, storage).
   */
 class DijkstraNotYetSuite extends FunSuite:
   private val raw = Bytes.fromArray(Array(0x82.toByte, 0x01, 0x02))
@@ -105,7 +111,7 @@ class DijkstraNotYetSuite extends FunSuite:
     )
   }
 
-  test("a Dijkstra ledger state is refused in the Haskell state layout") {
+  test("a Dijkstra ledger state is refused in the 11.1 line's Haskell state layout") {
     def domain(result: Either[DecodeError, ?]): Option[DecodeError.Kind] =
       result.left.toOption.map(_.kind)
     val refused = Some(DecodeError.Kind.Domain(DijkstraNotYet.LedgerState))
@@ -128,4 +134,29 @@ class DijkstraNotYetSuite extends FunSuite:
       Params.complete(ShelleyBasedEra.SDijkstra, Params.empty, Params.empty),
       Left(DijkstraNotYet.LedgerState)
     )
+  }
+
+  test(
+    "the same items pass the era's gate in the Leios build's layout, whose Dijkstra state is read"
+  ) {
+    def domain(result: Either[DecodeError, ?]): Option[DecodeError.Kind] =
+      result.left.toOption.map(_.kind).filter {
+        case DecodeError.Kind.Domain(_: DijkstraNotYet) => true
+        case _                                          => false
+      }
+    // refused by what they hold, not by their era: `null` is no bound, no tip, no parameters
+    val eight = cbor(Value.Arr(Vector.fill(8)(node(Value.Null))))
+    assertEquals(
+      domain(
+        Envelope.telescope(StateLayout.Leios, LeiosStateCodecs.ledgerFileEra).decodeBytes(eight)
+      ),
+      None
+    )
+    val tip = cbor(Value.Arr(Vector(node(Value.UInt(7)), node(Value.Arr(Vector.empty)))))
+    assertEquals(domain(LeiosStateCodecs.annTip.decodeBytes(tip)), None)
+    assertEquals(
+      domain(Params.codecIn(StateLayout.Leios, ShelleyBasedEra.SDijkstra).decodeBytes(eight)),
+      None
+    )
+    assertEquals(domain(LeiosStateCodecs.newEpochState[Dijkstra].decodeBytes(eight)), None)
   }

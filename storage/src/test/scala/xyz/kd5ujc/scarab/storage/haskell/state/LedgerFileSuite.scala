@@ -262,7 +262,8 @@ class LedgerFileSuite extends ScalaCheckSuite:
     assert(failure(chainDepTelescope, bytesOf(_.arrayHead(0))).kind.isInstanceOf[Kind.BadArity])
     val nine = telescopeOf(w => (0 until 9).foreach(_ => w.nul()), 9)
     assert(failure(chainDepTelescope, nine).kind.isInstanceOf[Kind.BadArity])
-    // eight is a telescope in Dijkstra, whose states this build does not read yet (#54)
+    // eight is a telescope in Dijkstra, whose states the 11.1 layout does not read (the Leios
+    // layout's are read, `LeiosLayoutSuite`)
     val eight = telescopeOf(w => (0 until 8).foreach(_ => w.nul()), 8)
     assertEquals(
       failure(chainDepTelescope, eight).kind,
