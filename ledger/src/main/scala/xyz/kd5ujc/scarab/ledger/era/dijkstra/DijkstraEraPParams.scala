@@ -44,6 +44,223 @@ trait DijkstraEraPParams[E <: EraTag] extends ConwayEraPParams[E]:
 object DijkstraEraPParams:
   given dijkstra: DijkstraEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
+  // The descriptions of the parameters Dijkstra adds (`Dijkstra/PParams.hs:798-1123`, cardano-ledger
+  // 9df9f98c).
+
+  /** `ppMaxRefScriptSizePerBlock` (`Dijkstra/PParams.hs:798-810`, cardano-ledger 9df9f98c). */
+  def ppMaxRefScriptSizePerBlock: PParam[Dijkstra] =
+    PParam.field(
+      "maxRefScriptSizePerBlock",
+      34,
+      dijkstra.hkdMaxRefScriptSizePerBlockL[Identity],
+      dijkstra.hkdMaxRefScriptSizePerBlockL[StrictMaybe]
+    )
+
+  /** `ppMaxRefScriptSizePerTx` (`Dijkstra/PParams.hs:812-824`, cardano-ledger 9df9f98c). */
+  def ppMaxRefScriptSizePerTx: PParam[Dijkstra] =
+    PParam.field(
+      "maxRefScriptSizePerTx",
+      35,
+      dijkstra.hkdMaxRefScriptSizePerTxL[Identity],
+      dijkstra.hkdMaxRefScriptSizePerTxL[StrictMaybe]
+    )
+
+  /** `ppRefScriptCostStride` (`Dijkstra/PParams.hs:826-838`, cardano-ledger 9df9f98c). */
+  def ppRefScriptCostStride: PParam[Dijkstra] =
+    PParam.field(
+      "refScriptCostStride",
+      36,
+      dijkstra.hkdRefScriptCostStrideL[Identity],
+      dijkstra.hkdRefScriptCostStrideL[StrictMaybe]
+    )
+
+  /** `ppRefScriptCostMultiplier` (`Dijkstra/PParams.hs:840-852`, cardano-ledger 9df9f98c). */
+  def ppRefScriptCostMultiplier: PParam[Dijkstra] =
+    PParam.field(
+      "refScriptCostMultiplier",
+      37,
+      dijkstra.hkdRefScriptCostMultiplierL[Identity],
+      dijkstra.hkdRefScriptCostMultiplierL[StrictMaybe]
+    )
+
+  /** `ppMaxPledgeLeverage` (`Dijkstra/PParams.hs:854-866`, cardano-ledger 9df9f98c). */
+  def ppMaxPledgeLeverage: PParam[Dijkstra] =
+    PParam.field(
+      "maxPledgeLeverage",
+      38,
+      dijkstra.hkdMaxPledgeLeverageL[Identity],
+      dijkstra.hkdMaxPledgeLeverageL[StrictMaybe]
+    )
+
+  /** `ppMinPoolMargin` (`Dijkstra/PParams.hs:868-880`, cardano-ledger 9df9f98c). */
+  def ppMinPoolMargin: PParam[Dijkstra] =
+    PParam.field(
+      "minPoolMargin",
+      39,
+      dijkstra.hkdMinPoolMarginL[Identity],
+      dijkstra.hkdMinPoolMarginL[StrictMaybe]
+    )
+
+  /** `ppLeiosAnnouncementPeriodLength` (`Dijkstra/PParams.hs:882-894`, cardano-ledger 9df9f98c). */
+  def ppLeiosAnnouncementPeriodLength: PParam[Dijkstra] =
+    PParam.field(
+      "leiosAnnouncementPeriodLength",
+      40,
+      dijkstra.hkdLeiosAnnouncementPeriodLengthL[Identity],
+      dijkstra.hkdLeiosAnnouncementPeriodLengthL[StrictMaybe]
+    )
+
+  /** `ppLeiosVotePeriodLength` (`Dijkstra/PParams.hs:896-908`, cardano-ledger 9df9f98c). */
+  def ppLeiosVotePeriodLength: PParam[Dijkstra] =
+    PParam.field(
+      "leiosVotePeriodLength",
+      41,
+      dijkstra.hkdLeiosVotePeriodLengthL[Identity],
+      dijkstra.hkdLeiosVotePeriodLengthL[StrictMaybe]
+    )
+
+  /** `ppLeiosDiffusionPeriodLength` (`Dijkstra/PParams.hs:910-922`, cardano-ledger 9df9f98c). */
+  def ppLeiosDiffusionPeriodLength: PParam[Dijkstra] =
+    PParam.field(
+      "leiosDiffusionPeriodLength",
+      42,
+      dijkstra.hkdLeiosDiffusionPeriodLengthL[Identity],
+      dijkstra.hkdLeiosDiffusionPeriodLengthL[StrictMaybe]
+    )
+
+  /** `ppLeiosCommitteeSize` (`Dijkstra/PParams.hs:924-936`, cardano-ledger 9df9f98c). */
+  def ppLeiosCommitteeSize: PParam[Dijkstra] =
+    PParam.field(
+      "leiosCommitteeSize",
+      43,
+      dijkstra.hkdLeiosCommitteeSizeL[Identity],
+      dijkstra.hkdLeiosCommitteeSizeL[StrictMaybe]
+    )
+
+  /** `ppLeiosQuorumStakeThreshold` (`Dijkstra/PParams.hs:938-950`, cardano-ledger 9df9f98c). */
+  def ppLeiosQuorumStakeThreshold: PParam[Dijkstra] =
+    PParam.field(
+      "leiosQuorumStakeThreshold",
+      44,
+      dijkstra.hkdLeiosQuorumStakeThresholdL[Identity],
+      dijkstra.hkdLeiosQuorumStakeThresholdL[StrictMaybe]
+    )
+
+  /** `ppMaxEndorserBlockReferencesSize` (`Dijkstra/PParams.hs:952-964`, cardano-ledger 9df9f98c).
+    */
+  def ppMaxEndorserBlockReferencesSize: PParam[Dijkstra] =
+    PParam.field(
+      "maxEndorserBlockReferencesSize",
+      45,
+      dijkstra.hkdMaxEndorserBlockReferencesSizeL[Identity],
+      dijkstra.hkdMaxEndorserBlockReferencesSizeL[StrictMaybe]
+    )
+
+  /** `ppMaxEndorserBlockTxsSize` (`Dijkstra/PParams.hs:966-978`, cardano-ledger 9df9f98c). */
+  def ppMaxEndorserBlockTxsSize: PParam[Dijkstra] =
+    PParam.field(
+      "maxEndorserBlockTxsSize",
+      46,
+      dijkstra.hkdMaxEndorserBlockTxsSizeL[Identity],
+      dijkstra.hkdMaxEndorserBlockTxsSizeL[StrictMaybe]
+    )
+
+  /** `ppMaxEndorserBlockExUnits` (`Dijkstra/PParams.hs:980-992`, cardano-ledger 9df9f98c). */
+  def ppMaxEndorserBlockExUnits: PParam[Dijkstra] =
+    PParam.field(
+      "maxEndorserBlockExecutionUnits",
+      47,
+      dijkstra.hkdMaxEndorserBlockExUnitsL[Identity],
+      dijkstra.hkdMaxEndorserBlockExUnitsL[StrictMaybe]
+    )
+
+  /** `ppMaxRefScriptSizePerEndorserBlock` (`Dijkstra/PParams.hs:994-1006`, cardano-ledger
+    * 9df9f98c).
+    */
+  def ppMaxRefScriptSizePerEndorserBlock: PParam[Dijkstra] =
+    PParam.field(
+      "maxRefScriptSizePerEndorserBlock",
+      48,
+      dijkstra.hkdMaxRefScriptSizePerEndorserBlockL[Identity],
+      dijkstra.hkdMaxRefScriptSizePerEndorserBlockL[StrictMaybe]
+    )
+
+  /** `ppPerasMinCandidateBlockAge` (`Dijkstra/PParams.hs:1008-1020`, cardano-ledger 9df9f98c). */
+  def ppPerasMinCandidateBlockAge: PParam[Dijkstra] =
+    PParam.field(
+      "perasMinCandidateBlockAge",
+      49,
+      dijkstra.hkdPerasMinCandidateBlockAgeL[Identity],
+      dijkstra.hkdPerasMinCandidateBlockAgeL[StrictMaybe]
+    )
+
+  /** `ppPerasHealingFactor` (`Dijkstra/PParams.hs:1022-1034`, cardano-ledger 9df9f98c). */
+  def ppPerasHealingFactor: PParam[Dijkstra] =
+    PParam.field(
+      "perasHealingFactor",
+      50,
+      dijkstra.hkdPerasHealingFactorL[Identity],
+      dijkstra.hkdPerasHealingFactorL[StrictMaybe]
+    )
+
+  /** `ppPerasCertBoost` (`Dijkstra/PParams.hs:1036-1048`, cardano-ledger 9df9f98c). */
+  def ppPerasCertBoost: PParam[Dijkstra] =
+    PParam.field(
+      "perasCertBoost",
+      51,
+      dijkstra.hkdPerasCertBoostL[Identity],
+      dijkstra.hkdPerasCertBoostL[StrictMaybe]
+    )
+
+  /** `ppPerasTargetCommitteeSize` (`Dijkstra/PParams.hs:1050-1062`, cardano-ledger 9df9f98c). */
+  def ppPerasTargetCommitteeSize: PParam[Dijkstra] =
+    PParam.field(
+      "perasTargetCommitteeSize",
+      52,
+      dijkstra.hkdPerasTargetCommitteeSizeL[Identity],
+      dijkstra.hkdPerasTargetCommitteeSizeL[StrictMaybe]
+    )
+
+  /** `ppPerasBootstrapRound` (`Dijkstra/PParams.hs:1064-1081`, cardano-ledger 9df9f98c). */
+  def ppPerasBootstrapRound: PParam[Dijkstra] =
+    PParam.field(
+      "perasBootstrapRound",
+      53,
+      dijkstra.hkdPerasBootstrapRoundL[Identity],
+      dijkstra.hkdPerasBootstrapRoundL[StrictMaybe]
+    )
+
+  /** `ppPerasQuorumThresholdSafetyMargin` (`Dijkstra/PParams.hs:1083-1095`, cardano-ledger
+    * 9df9f98c).
+    */
+  def ppPerasQuorumThresholdSafetyMargin: PParam[Dijkstra] =
+    PParam.field(
+      "perasQuorumThresholdSafetyMargin",
+      54,
+      dijkstra.hkdPerasQuorumThresholdSafetyMarginL[Identity],
+      dijkstra.hkdPerasQuorumThresholdSafetyMarginL[StrictMaybe]
+    )
+
+  /** `ppRefInputsCostPerMultiAssetPolicy` (`Dijkstra/PParams.hs:1097-1109`, cardano-ledger
+    * 9df9f98c).
+    */
+  def ppRefInputsCostPerMultiAssetPolicy: PParam[Dijkstra] =
+    PParam.field(
+      "refInputsCostPerMultiAssetPolicy",
+      55,
+      dijkstra.hkdRefInputsCostPerMultiAssetPolicyL[Identity],
+      dijkstra.hkdRefInputsCostPerMultiAssetPolicyL[StrictMaybe]
+    )
+
+  /** `ppRefInputsCostPerDatumByte` (`Dijkstra/PParams.hs:1111-1123`, cardano-ledger 9df9f98c). */
+  def ppRefInputsCostPerDatumByte: PParam[Dijkstra] =
+    PParam.field(
+      "refInputsCostPerDatumByte",
+      56,
+      dijkstra.hkdRefInputsCostPerDatumByteL[Identity],
+      dijkstra.hkdRefInputsCostPerDatumByteL[StrictMaybe]
+    )
+
 /** Dijkstra's instances (`instance EraPParams DijkstraEra` to `instance DijkstraEraPParams
   * DijkstraEra`, `Dijkstra/PParams.hs:703-1197, 1343-1366`, cardano-ledger 9df9f98c).
   */
@@ -101,6 +318,70 @@ private[era] object DijkstraEraPParamsInstance extends DijkstraEraPParams[Dijkst
     field(hkdMaxPledgeLeverageL[Identity])
   val ppMinPoolMarginG: Getter[PParams[Dijkstra], UnitInterval] =
     field(hkdMinPoolMarginL[Identity])
+
+  /** `eraPParams` (`Dijkstra/PParams.hs:741-796`, cardano-ledger 9df9f98c): Conway's, then the
+    * parameters Dijkstra adds.
+    */
+  lazy val eraPParams: Vector[PParam[Dijkstra]] =
+    import EraPParams.*, AlonzoEraPParams.*, BabbageEraPParams.*, ConwayEraPParams.*
+    import DijkstraEraPParams.*
+    given DijkstraEraPParams[Dijkstra] = this
+    Vector(
+      ppTxFeePerByte,
+      ppTxFeeFixed,
+      ppMaxBBSize,
+      ppMaxTxSize,
+      ppMaxBHSize,
+      ppKeyDeposit,
+      ppPoolDeposit,
+      ppEMax,
+      ppNOpt,
+      ppA0,
+      ppRho,
+      ppTau,
+      ppGovProtocolVersion,
+      ppMinPoolCost,
+      ppCoinsPerUTxOByte,
+      ppCostModels,
+      ppPrices,
+      ppMaxTxExUnits,
+      ppMaxBlockExUnits,
+      ppMaxValSize,
+      ppCollateralPercentage,
+      ppMaxCollateralInputs,
+      ppPoolVotingThresholds,
+      ppDRepVotingThresholds,
+      ppCommitteeMinSize,
+      ppCommitteeMaxTermLength,
+      ppGovActionLifetime,
+      ppGovActionDeposit,
+      ppDRepDeposit,
+      ppDRepActivity,
+      ppMinFeeRefScriptCostPerByte,
+      ppMaxRefScriptSizePerBlock,
+      ppMaxRefScriptSizePerTx,
+      ppRefScriptCostStride,
+      ppRefScriptCostMultiplier,
+      ppMaxPledgeLeverage,
+      ppMinPoolMargin,
+      ppLeiosAnnouncementPeriodLength,
+      ppLeiosVotePeriodLength,
+      ppLeiosDiffusionPeriodLength,
+      ppLeiosCommitteeSize,
+      ppLeiosQuorumStakeThreshold,
+      ppMaxEndorserBlockReferencesSize,
+      ppMaxEndorserBlockTxsSize,
+      ppMaxEndorserBlockExUnits,
+      ppMaxRefScriptSizePerEndorserBlock,
+      ppPerasMinCandidateBlockAge,
+      ppPerasHealingFactor,
+      ppPerasCertBoost,
+      ppPerasTargetCommitteeSize,
+      ppPerasBootstrapRound,
+      ppPerasQuorumThresholdSafetyMargin,
+      ppRefInputsCostPerMultiAssetPolicy,
+      ppRefInputsCostPerDatumByte
+    )
 
   def hkdCostModelsL[F[_]: HKDFunctor]: Lens[R[F], F[CostModels]] =
     GenLens[R[F]](_.costModels).andThen(THKD.value)

@@ -462,9 +462,18 @@ Conway's rules on the classes follow as the rest of stage 2.
     range, with instances at exactly those eras (decided 2026-11-15, #85). None of those eras has its record
     yet, so `EraPParams` lands without its five ranged members, and `AlonzoEraPParams` without
     `hkdCoinsPerUTxOWordL`.
-  - Not yet: the upgrade and downgrade of the parameters, which need Babbage's record; `eraPParams`, the
-    parameters' descriptions; the update as Plutus data; and the reference's order of the parameters
-    and of an update. Each is on #85's checklist.
+  - The parameters' descriptions (`eraPParams`, `PParam`) are the reference's, Conway's and Dijkstra's, each
+    with its name, its lens, its update's tag and lens, and how its value shows as Plutus data. An update
+    shows as Plutus data through them (`ToPlutusData (PParamsUpdate era)`), in the order of the tags. It is
+    the flat path's V3 changed parameters on generated updates, on every parameter change of the recorded
+    blocks and of the Conway refusal corpora, and on every update of the Dijkstra parameter corpus. The
+    reference's recorded contexts carry it: the PlutusV3 contexts of the two recorded Preview transactions
+    that propose a parameter change, and the PlutusV4 contexts of the Leios build's governance case.
+  - Not yet: the upgrade and downgrade of the parameters (`UpgradePParams`, `upgradePParamsHKD`,
+    `downgradePParamsHKD`, `emptyUpgradePParamsUpdate`), which need Babbage's record and its class
+    instances, and the reference's comparison of parameter records and updates (`Ord (PParamsHKD …)`, not the
+    descriptions' order above), each on #85's checklist;
+    `fromPlutusData`, and the CBOR and JSON instances and the era decoder a description also packs (#85).
 - **Conway's rules, first predicates** (`ledger/.../era/rules/`): eight of the predicates Babbage's UTXO runs,
   as Conway's runs it (`babbageUtxoValidation`, `Babbage/Rules/Utxo.hs:325-411`), each the reference's function
   generic in its era over its classes: `disjointRefInputs`, `validateOutsideValidityIntervalUTxO`,

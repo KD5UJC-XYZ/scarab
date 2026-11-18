@@ -594,9 +594,14 @@ class EraConwaySuite extends munit.FunSuite:
 
   /** The typed update sets as many fields as the flat one, and applied to the same parameters gives
     * the parameters the flat update gives: each through the existing flat code (`applyTo`) and the
-    * record's own application, neither of them the conversion the update was read by.
+    * record's own application, neither of them the conversion the update was read by. As Plutus
+    * data it is what the flat path puts in a V3 script context.
     */
   private def sameUpdate(typed: PParamsUpdate[Conway], flat: ConwayParamUpdate): Unit =
+    assertEquals(
+      ToPlutusData[PParamsUpdate[Conway]].toPlutusData(typed),
+      xyz.kd5ujc.scarab.ledger.ScriptContexts.changedParameters(flat)
+    )
     val set = typed.hkd.productIterator.count {
       case Some(_) => true
       case _       => false

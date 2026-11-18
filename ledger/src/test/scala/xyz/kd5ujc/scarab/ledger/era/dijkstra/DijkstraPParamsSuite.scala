@@ -25,6 +25,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32, W64}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraGenesis,
+  DijkstraScriptContexts,
   DijkstraParamUpdate,
   DijkstraParamValue,
   DijkstraParams,
@@ -318,7 +319,23 @@ class DijkstraPParamsSuite extends DisciplineSuite:
             instance.modifiedPPGroups(ppu).toList.map(groupName),
             c.get[List[List[String]]]("groups").fold(e => fail(e.message), identity)
           )
+          assertEquals(
+            ToPlutusData[PParamsUpdate[Dijkstra]].toPlutusData(ppu),
+            DijkstraScriptContexts.changedParameters(u),
+            "as Plutus data"
+          )
   }
+
+  test("the descriptions are the Leios build's: Conway's, then Dijkstra's, every update tag once"):
+    val updates = instance.eraPParams.flatMap(_.ppUpdate.map(_.ppuTag.value.toInt))
+    assertEquals(instance.eraPParams.size, 54)
+    assertEquals(updates, (0 to 11).toVector ++ (16 to 56).toVector)
+    assertEquals(instance.eraPParams.count(_.ppUpdate.isEmpty), 1)
+    assertEquals(instance.eraPParams.map(_.ppName).distinct.size, 54)
+    assertEquals(
+      instance.eraPParams.drop(31).map(_.ppName).take(2),
+      Vector("maxRefScriptSizePerBlock", "maxRefScriptSizePerTx")
+    )
 
   test("the empty parameters are the reference's (`emptyDijkstraPParams`)"):
     val e = instance.emptyPParams
