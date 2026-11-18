@@ -176,10 +176,12 @@ object TxChecks:
   /** `utxoEntrySizeWithoutVal`: 6 + 14 (output) + 7 (input) words. */
   private val UtxoEntrySizeWithoutVal = BigInt(27)
 
-  /** `size` of a multi-asset `MaryValue` in 8-byte words: `repOverhead` (4 + 1 ada word + 1 for the
-    * asset count) plus the packed representation, which stores 12 bytes per (policy, name) triple,
-    * one 28-byte policy id per distinct policy and the bytes of every distinct asset name. An
-    * ada-only value counts 2 words (the Alonzo entry size; Mary bypasses it).
+  /** `size` of a multi-asset `MaryValue` in 8-byte words (`Mary/Value.hs:225-244`, 264-282 and
+    * `representationSize` at 714-728, cardano-ledger f649f975): `repOverhead` (4 + 1 ada word + 1
+    * for the asset count) plus the packed representation, which stores 12 bytes per (policy, name)
+    * triple, one 28-byte policy id per distinct policy and the bytes of every distinct asset name.
+    * An ada-only value counts 2 words (the Alonzo entry size; Mary bypasses it). `Val` 's `size` of
+    * a [[xyz.kd5ujc.scarab.ledger.era.MultiAssetValue]] is this.
     */
   private[ledger] def valueWords(value: Value): BigInt =
     if value.assets.isEmpty then BigInt(2)
