@@ -32,11 +32,13 @@ accumulating judgment (`rules/Judge.scala`,
 `docs/design/rule-interpreter-as-built.md`): every rule boundary of the reference is a sub-rule
 that always runs, so the failures of different rules are all reported, in the reference's order.
 Within each rule every check records its failure and the rule goes on to the state the reference
-makes, so a later certificate or sub-rule sees it (#412). A submitted transaction is read whole as the
-reference's decoder of a `GenTx` reads it, a definite `[era, tx]` and, in a Shelley-based era, tag 24
-around a definite byte string (`LocalSubmission.unwrap`); while it has not all arrived, the
-LocalTxSubmission codec asks `GenTx.prefix` whether that decoder has already failed on its envelopes, as
-far as tag 24 and the head of its byte string, and ends the connection if it has (#924).
+makes, so a later certificate or sub-rule sees it (#412). A submitted transaction is read as the reference's decoder of a
+`GenTx` reads it, a definite `[era, tx]` and, in a Shelley-based era, tag 24 around a definite byte
+string (`LocalSubmission.unwrap`); the LocalTxSubmission codec asks `GenTx.prefix`, of the whole
+transaction and while it has not all arrived, whether that decoder has failed on its envelopes, as far
+as tag 24 and the head of its byte string, and ends the connection if it has. A transaction its era's
+decoder refuses in the mempool ends it too, with no reply (`Response.Undecodable`), as the reference's
+codec ends it (#924).
 
 **LocalStateQuery** (`protocol/LocalStateQuery.scala`, `network/LocalStateQueryServer.scala`,
 `node/ntc/`). The protocol codec is pure (states Idle, Acquiring, Acquired, Querying, Done; acquire at

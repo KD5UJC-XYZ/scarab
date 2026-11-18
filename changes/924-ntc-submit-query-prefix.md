@@ -8,9 +8,13 @@
   the head of its byte string (Byron's payload as far as its constructor); a deeper token is judged once the
   message has all arrived.
 - LocalTxSubmission reads a whole transaction as the reference's decoder does: a definite `[era, tx]` and, in
-  a Shelley-based era, tag 24 around a definite byte string, each head at any width. An indefinite envelope, a
-  transaction not wrapped in tag 24 and a chunked string under it, which the node used to admit, are refused
-  as malformed.
+  a Shelley-based era, tag 24 around a definite byte string, each head at any width. A whole transaction the
+  reference's codec refuses ends the connection with no `MsgRejectTx`, as it does, and with the same error
+  whether it arrived whole or in parts: an indefinite envelope, an era index past the last, a transaction not
+  wrapped in tag 24 or a chunked string under it (which the node used to admit), and a transaction of an era
+  from Shelley to Conway that its era's decoder refuses (which used to get the era mismatch or a free-text
+  rejection). A transaction the reference decodes and refuses keeps its `MsgRejectTx`. Byron's and Dijkstra's
+  transactions are not read past their envelopes, and keep the era mismatch.
 - LocalStateQuery ends the connection as soon as the part of a query that has arrived is one the reference's
   decoder of queries fails on in its envelopes, instead of waiting for the rest: a top-level, block or ledger
   query's size and tag it has no case for (`82 03 82 0f`), an era index past the last
