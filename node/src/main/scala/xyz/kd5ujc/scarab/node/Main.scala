@@ -2184,7 +2184,9 @@ object Main extends IOApp:
         localServer(LocalSockets.jdk[IO], path, genesis.networkMagic, logged)(ends =>
           LocalBackends(
             LocalSubmission.handler(mempool)(ends),
-            Some(StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)),
+            Some(
+              StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate, run.layout.layout)
+            ),
             Some(server.blockSource(ends)),
             Some(LocalMonitor.source(mempool))
           )

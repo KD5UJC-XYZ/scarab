@@ -1,0 +1,9 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/leios-ntc-queries/
+scripts/oracle/leios-ntc-queries/*
+!scripts/oracle/leios-ntc-queries/Main.hs
+!scripts/oracle/leios-ntc-queries/scarab-leios-ntc-queries.cabal

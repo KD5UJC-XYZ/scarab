@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   ConwayGovState,
   EraTag,
   FuturePParams,
+  LeiosCommitteeError,
   MirrorEnv,
   MirrorError,
   ProtVer,
@@ -82,6 +83,9 @@ enum Unanswered extends DomainError:
   /** The genesis configuration (`GetGenesisConfig`) could not be written from the Shelley genesis.
     */
   case UnwritableGenesisConfig(cause: GenesisConfig.Error)
+
+  /** The mark snapshot's Leios committee (`GetLeiosCommittee`) could not be selected. */
+  case UnselectableCommittee(cause: LeiosCommitteeError)
 
 /** The acquired state: the point it was taken at, the block number there and the state of the chain
   * (the mirror: [[ChainRead]] reads it).
@@ -363,7 +367,10 @@ object QueryAnswers:
         LedgerQuery.GetPoolDistr2(_) | LedgerQuery.GetStakeDistribution2 |
         LedgerQuery.GetLedgerPeerSnapshotLegacy | LedgerQuery.GetLedgerPeerSnapshot(_) =>
       true
-    case _ => false
+    // the Leios build's two, answered in every Shelley-based era there, neither under
+    // `requireCG` (`Shelley/Ledger/Query.hs:467-470, 917-921`, ouroboros-consensus 2416493b)
+    case LedgerQuery.GetStakePoolState(_, _) | LedgerQuery.GetLeiosCommittee => true
+    case _                                                                   => false
 
   private def mismatch(w: CborOut, queried: QueryEra, ledger: Era): CborOut =
     w.array(2)
@@ -747,6 +754,9 @@ object QueryAnswers:
       // ouroboros-consensus 82ecba32).
       case GetMaxMajorProtocolVersion =>
         coin.answer(BigInt(env.forks.maxMajorProtVer))
+      case GetStakePoolState(pools, delegators) =>
+        shelleyBased(f => LeiosQueryAnswers.stakePoolState(f.l, pools, delegators))
+      case GetLeiosCommittee => shelleyBased(f => LeiosQueryAnswers.leiosCommittee(f.l))
       case GetDRepDelegations(dreps) =>
         conway { f =>
           Wire

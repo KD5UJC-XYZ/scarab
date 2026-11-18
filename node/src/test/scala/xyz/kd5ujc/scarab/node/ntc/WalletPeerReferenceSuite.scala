@@ -156,7 +156,9 @@ class WalletPeerReferenceSuite extends FunSuite:
           .getOrElse(fail(s"unknown NTC version $versionNumber"))
         val request = hex(c.get[String]("requestHex").fold(e => fail(e.message), identity))
         val expected = hex(c.get[String]("replyHex").fold(e => fail(e.message), identity))
-        val query = NtcQuery.decode(request, version).fold(e => fail(e.toString), identity)
+        val query = NtcQuery
+          .decode(request, fixture.env.layout, version)
+          .fold(e => fail(e.toString), identity)
         val answer = QueryAnswers
           .answerOrWhy(fixture.env, fixture.view, Map.empty, query, version)
           .fold(e => fail(e.toString), identity)
@@ -186,7 +188,9 @@ class WalletPeerReferenceSuite extends FunSuite:
         val request = hex(c.get[String]("requestHex").fold(e => fail(e.message), identity))
         val expected = hex(c.get[String]("replyHex").fold(e => fail(e.message), identity))
         sameEncoding(label, recorded).foreach { version =>
-          val query = NtcQuery.decode(request, version).fold(e => fail(s"$version: $e"), identity)
+          val query = NtcQuery
+            .decode(request, fixture.env.layout, version)
+            .fold(e => fail(s"$version: $e"), identity)
           val answer = QueryAnswers
             .answerOrWhy(fixture.env, fixture.view, Map.empty, query, version)
             .fold(e => fail(s"$version: $e"), identity)

@@ -6,7 +6,7 @@ import cats.effect.syntax.all.*
 import cats.effect.std.Mutex
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.NtcVersion
+import xyz.kd5ujc.scarab.protocol.{NtcVersion, StateLayout}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Target}
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer
@@ -30,13 +30,14 @@ object StateQuerySource:
       env: F[QueryEnv],
       store: UtxoStore[F],
       chainGate: Mutex[F],
+      layout: StateLayout,
       version: NtcVersion = NtcVersion.LatestReleased
   ): LocalStateQueryServer.Source[F, StorageError] =
     new LocalStateQueryServer.Source[F, StorageError]:
       override def forVersion(agreed: NtcVersion): LocalStateQueryServer.Source[F, StorageError] =
-        StateQuerySource(chain, env, store, chainGate, agreed)
+        StateQuerySource(chain, env, store, chainGate, layout, agreed)
 
-      def queries = NtcQuery.reader
+      def queries = NtcQuery.readerFor(QueryTable.of(layout, version))
 
       def acquire(
           target: Target
@@ -148,7 +149,7 @@ object StateQuerySource:
       ): LocalStateQueryServer.Session[F, StorageError] =
         new LocalStateQueryServer.Session[F, StorageError]:
           def answer(raw: Bytes): F[Either[StorageError, Either[Refusal, Bytes]]] =
-            NtcQuery.decode(raw, version) match
+            NtcQuery.decode(raw, layout, version) match
               case Left(error) =>
                 Sync[F].pure(Right(Left(Refusal.Undecodable(error, raw.hex.take(80)))))
               case Right(query) =>
@@ -176,6 +177,8 @@ object StateQuerySource:
                           case Right(Left(Unanswered.UnwritableLedgerConfig(error))) =>
                             Right(Left(Refusal.Unwritable(shown, error)))
                           case Right(Left(Unanswered.UnwritableGenesisConfig(error))) =>
+                            Right(Left(Refusal.Unwritable(shown, error)))
+                          case Right(Left(Unanswered.UnselectableCommittee(error))) =>
                             Right(Left(Refusal.Unwritable(shown, error)))
                           case Right(Left(Unanswered.Unwritable)) =>
                             Right(Left(Refusal.OutOfRange(shown)))

@@ -31,6 +31,9 @@ import NtcQueryPrefix.{Level, Refusal}
 class NtcQueryPrefixSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaCheckSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
 
+  // the 11.1 build's table, but where a test names the Leios build's
+  private given QueryTable = QueryTable.Node11_1
+
   private def short(prefix: Bytes): Boolean = NtcQueryPrefix.prefix(prefix) == QueryPrefix.Short
 
   /** `[0, [0, [era, q]]]`, up to `q`. */
