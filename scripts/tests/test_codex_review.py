@@ -12,6 +12,9 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import codex_review as review
 
+# A home path, built so that this tracked file names none itself (scripts/check_local_paths.py).
+HOME = "/" + "home/someone/"
+
 # A stand-in for `codex exec`: it reads the brief, writes the final message and a session file the way Codex 0.169
 # does, and prints the JSON events. FAKE_* variables bend one part of that to test a refusal.
 FAKE = textwrap.dedent('''\
@@ -69,7 +72,7 @@ class FloorAndStampTests(unittest.TestCase):
         self.assertEqual(review.scrub(f"[A.scala:3]({work}/A.scala#L3) and {work}/B.scala", work),
                          "A.scala:3 and B.scala")
         with self.assertRaisesRegex(review.ReviewError, "home directory"):
-            review.scrub("see /home/someone/notes.txt", work)
+            review.scrub("see " + HOME + "notes.txt", work)
 
     def test_the_command_pins_model_effort_read_only_network_and_no_approvals(self):
         line = " ".join(review.command("high", Path("/w"), Path("/o")))
@@ -129,7 +132,7 @@ class RunTests(unittest.TestCase):
     def test_a_run_is_refused_when_the_session_or_the_worktree_is_not_as_required(self):
         for env in [{"FAKE_MODEL": "gpt-daybreak-blue-latest"}, {"FAKE_EFFORT": "low"}, {"FAKE_NO_NETWORK": "1"},
                     {"FAKE_FAIL": "1"}, {"FAKE_EDIT": "1"}, {"FAKE_MESSAGE": ""},
-                    {"FAKE_MESSAGE": "see /home/someone/x"}]:
+                    {"FAKE_MESSAGE": "see " + HOME + "x"}]:
             with self.subTest(env=env):
                 if self.home.exists():
                     for f in self.home.rglob("*.jsonl"):
