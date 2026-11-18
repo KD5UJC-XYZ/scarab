@@ -1135,7 +1135,7 @@ class MirrorAnswersSuite extends FunSuite:
           )
         )
         gate <- Mutex[IO]
-        answer <- StateQuerySource(chain, IO.pure(queryEnv), store, gate)
+        answer <- StateQuerySource(chain, IO.pure(queryEnv), store, gate, queryEnv.layout)
           .acquire(LocalStateQuery.Target.VolatileTip)
           .use {
             case Right(session) => session.answer(whole(era))

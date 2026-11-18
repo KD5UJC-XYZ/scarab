@@ -16,13 +16,20 @@ import xyz.kd5ujc.scarab.ledger.{
   TxIn
 }
 import xyz.kd5ujc.scarab.ledger.DetachedRecords
-import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion}
+import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion, StateLayout}
 
 /** The two native `LedgerPeersKind` cases of a peer snapshot query. */
 enum LedgerPeerKind:
   case All, Big
 
+/** Whether `GetStakePoolState` reports each pool's delegators, its `Bool` argument
+  * (`queryStakePoolState`, `Api/State/Query.hs:630-660`, cardano-ledger 9df9f98c).
+  */
+enum PoolDelegators:
+  case Included, Omitted
+
 /** A ledger (Shelley-based era) query as `Ouroboros.Consensus.Shelley.Ledger.Query` numbers them.
+  * `GetStakePoolState` and `GetLeiosCommittee` are the Leios build's only ([[QueryTable.Leios]]).
   */
 enum LedgerQuery:
   case GetLedgerTip
@@ -66,6 +73,8 @@ enum LedgerQuery:
   case GetStakeDistribution2
   case GetMaxMajorProtocolVersion
   case GetDRepDelegations(dreps: Set[DRep])
+  case GetStakePoolState(pools: Option[Set[Bytes]], delegators: PoolDelegators)
+  case GetLeiosCommittee
 
 object LedgerQuery:
   /** Peel the only recursive constructor without consuming the worker's call stack. */
@@ -223,6 +232,14 @@ object NtcQuery:
     /** A top-level query that the negotiated version's query version does not read. */
     case RequiresQueryVersion(query: NtcQuery, required: QueryVersion)
 
+    /** A `Bool` read with `fromCBOR`: neither `true` nor `false`. */
+    case ExpectedBool(field: String)
+
+    /** `GetLedgerPeerSnapshot` without its peer kind, `[34]`, which the Leios build no longer reads
+      * (`Shelley/Ledger/Query.hs:903-905`, ouroboros-consensus 2416493b).
+      */
+    case PeerKindRequired
+
     def message: String = this match
       case MalformedCbor(detail)          => s"invalid query CBOR: $detail"
       case ExpectedArray(field)           => s"$field: expected array"
@@ -255,6 +272,9 @@ object NtcQuery:
       case Word8Range(field)              => s"$field: expected an unsigned integer of 8 bits"
       case RequiresQueryVersion(query, required) =>
         s"Query: ${describe(query)} requires at least $required"
+      case ExpectedBool(field) => s"$field: expected a boolean"
+      case PeerKindRequired =>
+        "GetLedgerPeerSnapshot takes a peer kind: send [34, 0] for all peers or [34, 1] for big peers"
 
   private type R[A] = Either[Error, A]
 
@@ -305,7 +325,11 @@ object NtcQuery:
     case QueryEra.Conway   => Some(Reading.of(Era.Conway))
     case QueryEra.Dijkstra => Some(Reading.dijkstra)
 
-  def decode(raw: Bytes): R[NtcQuery] =
+  /** A query as the 11.1 build's decoder reads it, whatever the version ([[QueryTable.Node11_1]]).
+    */
+  def decode(raw: Bytes): R[NtcQuery] = read(raw)(using QueryTable.Node11_1)
+
+  private def read(raw: Bytes)(using QueryTable): R[NtcQuery] =
     DetachedRecords.read(raw, limits, shape)(Error.MalformedCbor(_))(top)
 
   /** Where a query of `MsgQuery` ends, as the reference's decoder of queries reads it from the
@@ -314,7 +338,10 @@ object NtcQuery:
     * refuses is refused, as the reference's stream decoder fails on it whatever follows. A query
     * without an empty indefinite list `9f ff` is one item of a tree, as before (#700).
     */
-  val reader: LocalStateQuery.QueryReader = new LocalStateQuery.QueryReader:
+  val reader: LocalStateQuery.QueryReader = readerFor(QueryTable.Node11_1)
+
+  /** [[reader]] of a session that reads `table`'s queries. */
+  def readerFor(table: QueryTable): LocalStateQuery.QueryReader = new LocalStateQuery.QueryReader:
     def span(input: Bytes): LocalStateQuery.QuerySpan =
       if !DetachedRecords.mayHold(input) then LocalStateQuery.QuerySpan.Item
       else
@@ -328,7 +355,8 @@ object NtcQuery:
     /** A query not all of which has arrived, as the reference's decoder of queries reads it from
       * the stream ([[NtcQueryPrefix]]).
       */
-    def prefix(input: Bytes): LocalStateQuery.QueryPrefix = NtcQueryPrefix.prefix(input)
+    def prefix(input: Bytes): LocalStateQuery.QueryPrefix =
+      NtcQueryPrefix.prefix(input)(using table)
 
   /** The query as the reference's decoders read it, as far as it holds a `RecD` record
     * ([[DetachedRecords]]): the set of `GovActionId` of `GetProposals` (`(2, 31)`,
@@ -371,8 +399,8 @@ object NtcQuery:
     * versions this node speaks, only `DebugLedgerConfig` below 20. The version is taken here, the
     * one entry of a session, so that a reading that depends on it goes here too (#1002).
     */
-  def decode(raw: Bytes, version: NtcVersion): R[NtcQuery] =
-    decode(raw).flatMap(query =>
+  def decode(raw: Bytes, layout: StateLayout, version: NtcVersion): R[NtcQuery] =
+    read(raw)(using QueryTable.of(layout, version)).flatMap(query =>
       Either.cond(
         requires(query).ordinal <= QueryVersion.of(version).ordinal,
         query,
@@ -536,7 +564,7 @@ object NtcQuery:
       case xs        => Left(Error.Arity(what, 1, xs.size))
     }
 
-  private def top(root: Node): R[NtcQuery] =
+  private def top(root: Node)(using QueryTable): R[NtcQuery] =
     definite(root, "query").flatMap { xs =>
       xs.headOption.toRight(Error.Empty("query")).flatMap(uint(_, "query tag")).flatMap {
         case 0 if xs.sizeIs == 2 => hardFork(xs(1))
@@ -548,7 +576,7 @@ object NtcQuery:
       }
     }
 
-  private def hardFork(n: Node): R[NtcQuery] =
+  private def hardFork(n: Node)(using QueryTable): R[NtcQuery] =
     definite(n, "block query").flatMap { xs =>
       xs.headOption
         .toRight(Error.Empty("block query"))
@@ -613,7 +641,7 @@ object NtcQuery:
   /** The Shelley block query, reading its byte strings under `policy`. Package-scoped: the caller
     * has already decoded the era, so this is not a query entry point of its own.
     */
-  private[ntc] def shelley(n: Node, read: Reading): R[LedgerQuery] =
+  private[ntc] def shelley(n: Node, read: Reading)(using QueryTable): R[LedgerQuery] =
     given Reading = read
     given ByteStrings = read.strings
     given Address.Mode = read.addresses
@@ -634,14 +662,26 @@ object NtcQuery:
     */
   private[ntc] val governanceQueries: Set[Int] = Set(23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39)
 
-  /** The sizes and tags `decodeShelleyQuery` has a case for (`Shelley/Ledger/Query.hs:944-998`,
-    * ouroboros-consensus 82ecba32), as [[shelleyLeaf]] reads them; `(2, 9)` is `GetCBOR`.
+  /** The sizes and tags `decodeShelleyQuery` has a case for, as [[shelleyLeaf]] reads them; `(2,
+    * 9)` is `GetCBOR`. ouroboros-consensus 82ecba32 (`Shelley/Ledger/Query.hs:944-998`) for the
+    * 11.1 table; 2416493b (`:866-922`) for the Leios build's, without `(1, 4)`, `(1, 5)`, `(2, 21)`
+    * and `(1, 34)` and with `(3, 40)` and `(1, 41)`.
     */
-  private[ntc] def ledgerQueryTakes(size: Long, tag: Int): Boolean = size match
-    case 1 => withoutArguments(tag)
-    case 2 => withOneArgument(tag)
-    case 4 => tag == 27
-    case _ => false
+  private[ntc] def ledgerQueryTakes(size: Long, tag: Int)(using table: QueryTable): Boolean =
+    table match
+      case QueryTable.Node11_1 =>
+        size match
+          case 1 => withoutArguments(tag)
+          case 2 => withOneArgument(tag)
+          case 4 => tag == 27
+          case _ => false
+      case QueryTable.Leios =>
+        size match
+          case 1 => withoutArguments(tag) && !removedInLeios(tag) && tag != 34 || tag == 41
+          case 2 => withOneArgument(tag) && !removedInLeios(tag)
+          case 3 => tag == 40
+          case 4 => tag == 27
+          case _ => false
 
   private val withoutArguments: Set[Int] =
     Set(0, 1, 3, 4, 5, 7, 8, 11, 12, 13, 14, 16, 18, 23, 24, 29, 32, 33, 34, 37, 38)
@@ -649,103 +689,157 @@ object NtcQuery:
   private val withOneArgument: Set[Int] =
     Set(2, 6, 9, 10, 15, 17, 19, 20, 21, 22, 25, 26, 28, 30, 31, 34, 35, 36, 39)
 
+  /** `GetProposedPParamsUpdates`, `GetStakeDistribution` and `GetPoolDistr`, whose tags the Leios
+    * build rejects (`CHANGELOG.md:141-144`, ouroboros-consensus 2416493b).
+    */
+  private val removedInLeios: Set[Int] = Set(4, 5, 21)
+
   private def shelleyLeaf(n: Node)(using
       read: Reading
   )(using
       ByteStrings,
-      Address.Mode
+      Address.Mode,
+      QueryTable
   ): R[LedgerQuery] =
     definite(n, "ledger query").flatMap { xs =>
       xs.headOption
         .toRight(Error.Empty("ledger query"))
         .flatMap(uint(_, "ledger query tag"))
         .flatMap { tag =>
-          import LedgerQuery.*
-          def arg1[A](f: Node => R[A]): R[A] =
-            if xs.sizeIs == 2 then f(xs(1)) else Left(Error.Arity(s"ledger query $tag", 2, xs.size))
-          def none(q: LedgerQuery): R[LedgerQuery] =
-            if xs.sizeIs == 1 then Right(q) else Left(Error.Arity(s"ledger query $tag", 1, xs.size))
           if governanceQueries(tag) && !read.governance then Left(Error.ConwayOnly(tag))
           else
-            tag match
-              case 0 => none(GetLedgerTip)
-              case 1 => none(GetEpochNo)
-              case 2 =>
-                arg1(
-                  plainSet(_, "non-myopic credentials")(c =>
-                    definite(c, "non-myopic credential").flatMap {
-                      case Vector(k, v) =>
-                        uint(k, "non-myopic tag").flatMap {
-                          case 0 =>
-                            v.value match
-                              case Value.UInt(coin) => Right(Left(coin))
-                              case _                => Left(Error.ExpectedCoin)
-                          case 1 => credential(v).map(Right(_))
-                          case _ => Left(Error.InvalidNonMyopicCredential)
-                        }
-                      case _ => Left(Error.InvalidNonMyopicCredential)
-                    }
-                  )
-                ).map(GetNonMyopicMemberRewards(_))
-              case 3 => none(GetCurrentPParams)
-              case 4 => none(GetProposedPParamsUpdates)
-              case 5 => none(GetStakeDistribution)
-              case 6 => arg1(set(_, "addresses")(address)).map(GetUTxOByAddress(_))
-              case 7 => none(GetUTxOWhole)
-              case 8 => none(DebugEpochState)
-              case 9 => Left(Error.Arity("ledger query 9", 2, xs.size))
-              case 10 =>
-                arg1(set(_, "credentials")(credential))
-                  .map(GetFilteredDelegationsAndRewardAccounts(_))
-              case 11 => none(GetGenesisConfig)
-              case 12 => none(DebugNewEpochState)
-              case 13 => none(DebugChainDepState)
-              case 14 => none(GetRewardProvenance)
-              case 15 => arg1(set(_, "inputs")(txIn)).map(GetUTxOByTxIn(_))
-              case 16 => none(GetStakePools)
-              case 17 => arg1(plainSet(_, "pools")(keyHash)).map(xs => GetStakePoolParams(xs.toSet))
-              case 18 => none(GetRewardInfoPools)
-              case 19 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolState(_))
-              case 20 => arg1(maybeSet(_, "pools")(keyHash)).map(GetStakeSnapshots(_))
-              case 21 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr(_))
-              case 22 =>
-                arg1(plainSet(_, "credentials")(credential))
-                  .map(xs => GetStakeDelegDeposits(xs.toSet))
-              case 23 => none(GetConstitution)
-              case 24 => none(GetGovState)
-              case 25 =>
-                arg1(plainSet(_, "credentials")(credential)).map(xs => GetDRepState(xs.toSet))
-              case 26 => arg1(set(_, "dreps")(drep)).map(GetDRepStakeDistr(_))
-              case 27 =>
-                if xs.sizeIs != 4 then Left(Error.Arity("committee members state", 4, xs.size))
-                else
-                  (
-                    plainSet(xs(1), "cold credentials")(credential).map(_.toSet),
-                    plainSet(xs(2), "hot credentials")(credential).map(_.toSet),
-                    // `MemberStatus` is `decodeEnumBounded` of its three constructors
-                    set(xs(3), "statuses")(
-                      uint(_, "member status").filterOrElse(_ <= 2, Error.MemberStatusRange)
-                    )
-                  ).mapN(GetCommitteeMembersState(_, _, _))
-              case 28 => arg1(set(_, "credentials")(credential)).map(GetFilteredVoteDelegatees(_))
-              case 29 => none(GetAccountState)
-              case 30 => arg1(set(_, "pools")(keyHash)).map(GetSPOStakeDistr(_))
-              case 31 => arg1(set(_, "ids")(govActionId)).map(GetProposals(_))
-              case 32 => none(GetRatifyState)
-              case 33 => none(GetFuturePParams)
-              case 34 =>
-                if xs.sizeIs == 1 then Right(GetLedgerPeerSnapshotLegacy)
-                else
-                  arg1(uint(_, "peer kind")).flatMap {
-                    case n if n == 0 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.All))
-                    case n if n == 1 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.Big))
-                    case kind        => Left(Error.UnknownTag("ledger peer kind", kind))
-                  }
-              case 35    => arg1(keyHash).map(QueryStakePoolDefaultVote(_))
-              case 36    => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr2(_))
-              case 37    => none(GetStakeDistribution2)
-              case 38    => none(GetMaxMajorProtocolVersion)
-              case 39    => arg1(set(_, "dreps")(drep)).map(GetDRepDelegations(_))
-              case other => Left(Error.UnknownTag("ledger query", other))
+            summon[QueryTable] match
+              case QueryTable.Node11_1 => ledger11_1(tag, xs)
+              case QueryTable.Leios    => leios(tag, xs)
         }
     }
+
+  /** The leaves the Leios build's `decodeShelleyQuery` reads differently from 11.1's
+    * (`Shelley/Ledger/Query.hs:866-922`, ouroboros-consensus 2416493b): `GetStakePoolState`, its
+    * pools as a `Maybe (Set (KeyHash StakePool))` and whether to report delegators as a `Bool`,
+    * both with `fromCBOR` (`:917-920`), and `GetLeiosCommittee` (`:921`) read; tags 4, 5 and 21,
+    * and `GetLedgerPeerSnapshot` without its peer kind, refused (`:903-905, 922`). The others it
+    * reads as 11.1's decoder does.
+    */
+  private def leios(tag: Int, xs: Vector[Node])(using
+      Reading,
+      ByteStrings,
+      Address.Mode
+  ): R[LedgerQuery] =
+    import LedgerQuery.*
+    tag match
+      case 4 | 5 | 21           => Left(Error.UnknownTag("ledger query", tag))
+      case 34 if xs.sizeIs == 1 => Left(Error.PeerKindRequired)
+      case 40 =>
+        if xs.sizeIs != 3 then Left(Error.Arity("ledger query 40", 3, xs.size))
+        else
+          (maybeSet(xs(1), "pools")(keyHash), bool(xs(2), "delegators")).mapN((pools, report) =>
+            GetStakePoolState(
+              pools,
+              if report then PoolDelegators.Included else PoolDelegators.Omitted
+            )
+          )
+      case 41 =>
+        if xs.sizeIs == 1 then Right(GetLeiosCommittee)
+        else Left(Error.Arity("ledger query 41", 1, xs.size))
+      case _ => ledger11_1(tag, xs)
+
+  /** A `Bool` as cardano-binary's `fromCBOR` reads it, `decodeBool`: `true` or `false` only. */
+  private def bool(n: Node, what: String): R[Boolean] = n.value match
+    case Value.Bool(b) => Right(b)
+    case _             => Left(Error.ExpectedBool(what))
+
+  /** The leaves of the 11.1 build's `decodeShelleyQuery` (`Shelley/Ledger/Query.hs:944-998`,
+    * ouroboros-consensus 82ecba32).
+    */
+  private def ledger11_1(tag: Int, xs: Vector[Node])(using
+      read: Reading
+  )(using
+      ByteStrings,
+      Address.Mode
+  ): R[LedgerQuery] =
+    import LedgerQuery.*
+    def arg1[A](f: Node => R[A]): R[A] =
+      if xs.sizeIs == 2 then f(xs(1)) else Left(Error.Arity(s"ledger query $tag", 2, xs.size))
+    def none(q: LedgerQuery): R[LedgerQuery] =
+      if xs.sizeIs == 1 then Right(q) else Left(Error.Arity(s"ledger query $tag", 1, xs.size))
+    tag match
+      case 0 => none(GetLedgerTip)
+      case 1 => none(GetEpochNo)
+      case 2 =>
+        arg1(
+          plainSet(_, "non-myopic credentials")(c =>
+            definite(c, "non-myopic credential").flatMap {
+              case Vector(k, v) =>
+                uint(k, "non-myopic tag").flatMap {
+                  case 0 =>
+                    v.value match
+                      case Value.UInt(coin) => Right(Left(coin))
+                      case _                => Left(Error.ExpectedCoin)
+                  case 1 => credential(v).map(Right(_))
+                  case _ => Left(Error.InvalidNonMyopicCredential)
+                }
+              case _ => Left(Error.InvalidNonMyopicCredential)
+            }
+          )
+        ).map(GetNonMyopicMemberRewards(_))
+      case 3 => none(GetCurrentPParams)
+      case 4 => none(GetProposedPParamsUpdates)
+      case 5 => none(GetStakeDistribution)
+      case 6 => arg1(set(_, "addresses")(address)).map(GetUTxOByAddress(_))
+      case 7 => none(GetUTxOWhole)
+      case 8 => none(DebugEpochState)
+      case 9 => Left(Error.Arity("ledger query 9", 2, xs.size))
+      case 10 =>
+        arg1(set(_, "credentials")(credential))
+          .map(GetFilteredDelegationsAndRewardAccounts(_))
+      case 11 => none(GetGenesisConfig)
+      case 12 => none(DebugNewEpochState)
+      case 13 => none(DebugChainDepState)
+      case 14 => none(GetRewardProvenance)
+      case 15 => arg1(set(_, "inputs")(txIn)).map(GetUTxOByTxIn(_))
+      case 16 => none(GetStakePools)
+      case 17 => arg1(plainSet(_, "pools")(keyHash)).map(xs => GetStakePoolParams(xs.toSet))
+      case 18 => none(GetRewardInfoPools)
+      case 19 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolState(_))
+      case 20 => arg1(maybeSet(_, "pools")(keyHash)).map(GetStakeSnapshots(_))
+      case 21 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr(_))
+      case 22 =>
+        arg1(plainSet(_, "credentials")(credential))
+          .map(xs => GetStakeDelegDeposits(xs.toSet))
+      case 23 => none(GetConstitution)
+      case 24 => none(GetGovState)
+      case 25 =>
+        arg1(plainSet(_, "credentials")(credential)).map(xs => GetDRepState(xs.toSet))
+      case 26 => arg1(set(_, "dreps")(drep)).map(GetDRepStakeDistr(_))
+      case 27 =>
+        if xs.sizeIs != 4 then Left(Error.Arity("committee members state", 4, xs.size))
+        else
+          (
+            plainSet(xs(1), "cold credentials")(credential).map(_.toSet),
+            plainSet(xs(2), "hot credentials")(credential).map(_.toSet),
+            // `MemberStatus` is `decodeEnumBounded` of its three constructors
+            set(xs(3), "statuses")(
+              uint(_, "member status").filterOrElse(_ <= 2, Error.MemberStatusRange)
+            )
+          ).mapN(GetCommitteeMembersState(_, _, _))
+      case 28 => arg1(set(_, "credentials")(credential)).map(GetFilteredVoteDelegatees(_))
+      case 29 => none(GetAccountState)
+      case 30 => arg1(set(_, "pools")(keyHash)).map(GetSPOStakeDistr(_))
+      case 31 => arg1(set(_, "ids")(govActionId)).map(GetProposals(_))
+      case 32 => none(GetRatifyState)
+      case 33 => none(GetFuturePParams)
+      case 34 =>
+        if xs.sizeIs == 1 then Right(GetLedgerPeerSnapshotLegacy)
+        else
+          arg1(uint(_, "peer kind")).flatMap {
+            case n if n == 0 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.All))
+            case n if n == 1 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.Big))
+            case kind        => Left(Error.UnknownTag("ledger peer kind", kind))
+          }
+      case 35    => arg1(keyHash).map(QueryStakePoolDefaultVote(_))
+      case 36    => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr2(_))
+      case 37    => none(GetStakeDistribution2)
+      case 38    => none(GetMaxMajorProtocolVersion)
+      case 39    => arg1(set(_, "dreps")(drep)).map(GetDRepDelegations(_))
+      case other => Left(Error.UnknownTag("ledger query", other))

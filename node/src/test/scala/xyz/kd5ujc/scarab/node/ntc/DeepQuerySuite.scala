@@ -133,7 +133,13 @@ class DeepQuerySuite extends FailsOnUncaught:
             )
           )(_ => EitherT.liftF(IO(releases.incrementAndGet()).void))
       gate <- cats.effect.std.Mutex[StorageF]
-      source = StateQuerySource(chain, EitherT.rightT[IO, StorageError](env), store, gate)
+      source = StateQuerySource(
+        chain,
+        EitherT.rightT[IO, StorageError](env),
+        store,
+        gate,
+        env.layout
+      )
       acquired <- source
         .acquire(LocalStateQuery.Target.VolatileTip)
         .use(result => EitherT.rightT[IO, StorageError](result))
@@ -258,7 +264,7 @@ class DeepQuerySuite extends FailsOnUncaught:
         )
         store <- MemoryUtxoStore[IO]
         gate <- cats.effect.std.Mutex[IO]
-        source = StateQuerySource(chain, IO.pure(env), store, gate)
+        source = StateQuerySource(chain, IO.pure(env), store, gate, env.layout)
         results <- source.acquire(LocalStateQuery.Target.VolatileTip).use {
           _.fold(
             {
@@ -336,7 +342,7 @@ class DeepQuerySuite extends FailsOnUncaught:
         )
         _ <- store.write(Vector(first -> Some(original)), 1L)
         gate <- cats.effect.std.Mutex[IO]
-        source = StateQuerySource(chain, IO.pure(env), store, gate)
+        source = StateQuerySource(chain, IO.pure(env), store, gate, env.layout)
         answers <- source.acquire(LocalStateQuery.Target.VolatileTip).use {
           case Right(session) =>
             for
@@ -403,7 +409,7 @@ class DeepQuerySuite extends FailsOnUncaught:
           )
           store <- MemoryUtxoStore[IO]
           gate <- cats.effect.std.Mutex[IO]
-          source = StateQuerySource(chain, IO.pure(env), store, gate)
+          source = StateQuerySource(chain, IO.pure(env), store, gate, env.layout)
           advanced <- Deferred[IO, Unit]
           publish <- Deferred[IO, Unit]
           acquired <- Deferred[IO, Either[
@@ -465,7 +471,7 @@ class DeepQuerySuite extends FailsOnUncaught:
               G0: MonadCancel[G, ?]
           ): Mutex[G] =
             backing.mapK(f)(using G0)
-        source = StateQuerySource(chain, IO.pure(env), store, gate)
+        source = StateQuerySource(chain, IO.pure(env), store, gate, env.layout)
         cancellation <- gate.lock.use { _ =>
           source
             .acquire(LocalStateQuery.Target.VolatileTip)

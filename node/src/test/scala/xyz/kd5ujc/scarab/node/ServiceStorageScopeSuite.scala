@@ -181,7 +181,13 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
       )
       result <- {
         val source =
-          StateQuerySource(chain, IO.pure(env), broken(store, enabled, Some(released)), gate)
+          StateQuerySource(
+            chain,
+            IO.pure(env),
+            broken(store, enabled, Some(released)),
+            gate,
+            env.layout
+          )
         source.acquire(Target.VolatileTip).use {
           _.fold(e => IO(fail(s"acquisition refused: $e")), _.answer(query))
         }

@@ -244,7 +244,13 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           Some(
             afterSibling(
               siblingStarted.get,
-              StateQuerySource(chain, IO.pure(queryEnv), viewObserved(store, viewReleased), gate)
+              StateQuerySource(
+                chain,
+                IO.pure(queryEnv),
+                viewObserved(store, viewReleased),
+                gate,
+                queryEnv.layout
+              )
             )
           ),
           Some(

@@ -1193,10 +1193,19 @@ object Targets:
         "ntc-query-versioned",
         () => Corpus.ntcQueries ++ Corpus.tricky,
         in =>
-          // Eight decoder calls retain the normal linear allocation allowance per call.
-          Probe.run("ntc-query-versioned", in, perByte = 1000L * NtcVersion.All.size) {
+          // One decoder call per build and version, each with the normal linear allocation
+          // allowance.
+          Probe.run(
+            "ntc-query-versioned",
+            in,
+            perByte = 1000L * NtcVersion.All.size * StateLayout.values.length
+          ) {
             val b = raw(in)
-            val accepted = NtcVersion.All.map(v => NtcQuery.decode(b, v).isRight)
+            val accepted =
+              for
+                layout <- StateLayout.values.toVector
+                v <- NtcVersion.All
+              yield NtcQuery.decode(b, layout, v).isRight
             seen("ntc-query-versioned", accepted.exists(identity))
           }
       ),

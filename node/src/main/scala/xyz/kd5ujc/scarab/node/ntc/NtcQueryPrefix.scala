@@ -14,7 +14,8 @@ import xyz.kd5ujc.scarab.protocol.LocalStateQuery
   * arrived whole ([[PrefixTokens]]); a query's arguments are judged once it has all arrived, by
   * [[NtcQuery.decode]]. Every envelope is read with a definite length there too, so a prefix
   * refused here is a prefix of queries that decode refuses whole. ouroboros-consensus 82ecba32
-  * unless another pin is named.
+  * unless another pin is named; the Leios build's sizes and tags are 2416493b's
+  * ([[QueryTable.Leios]], [[NtcQuery.ledgerQueryTakes]]).
   */
 object NtcQueryPrefix:
   /** The decoders a query passes through, outermost first, at ouroboros-consensus 82ecba32: the
@@ -59,7 +60,7 @@ object NtcQueryPrefix:
   /** What the reference's decoder of queries makes of `input`, the part of a query that has
     * arrived.
     */
-  def prefix(input: Bytes): LocalStateQuery.QueryPrefix =
+  def prefix(input: Bytes)(using QueryTable): LocalStateQuery.QueryPrefix =
     val tokens = PrefixTokens(input, LocalStateQuery.QueryPrefix.Short)
     sized(tokens, 0, Level.Query).flatMap {
       case (2, 0, next) => block(tokens, next)
@@ -111,7 +112,7 @@ object NtcQueryPrefix:
         QueryEra.fromIndex(index).toRight(refused(Refusal.UnknownEra(level, index))).map((_, next))
       )
 
-  private def block(tokens: Tokens, at: Int): Step[Verdict] =
+  private def block(tokens: Tokens, at: Int)(using QueryTable): Step[Verdict] =
     sized(tokens, at, Level.BlockQuery).flatMap {
       case (2, 0, next) => inEra(tokens, next)
       case (3, 1, next) =>
@@ -126,7 +127,7 @@ object NtcQueryPrefix:
       case (size, tag, _) => Left(refused(Refusal.Constructor(Level.BlockQuery, size, tag)))
     }
 
-  private def inEra(tokens: Tokens, at: Int): Step[Verdict] =
+  private def inEra(tokens: Tokens, at: Int)(using QueryTable): Step[Verdict] =
     ofSize(tokens, 2, at, Level.EraQuery)
       .flatMap(era(tokens, _, Level.EraQuery))
       .flatMap {
@@ -142,7 +143,9 @@ object NtcQueryPrefix:
       }
 
   /** `decodeShelleyQuery`'s size and tag, through any number of `GetCBOR` (`(2, 9)`). */
-  @tailrec private def ledger(tokens: Tokens, at: Int, governance: Boolean): Step[Verdict] =
+  @tailrec private def ledger(tokens: Tokens, at: Int, governance: Boolean)(using
+      QueryTable
+  ): Step[Verdict] =
     sized(tokens, at, Level.Ledger) match
       case Right((2, 9, next)) => ledger(tokens, next, governance)
       case Right((size, tag, next)) =>

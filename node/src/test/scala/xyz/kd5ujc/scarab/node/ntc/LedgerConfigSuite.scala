@@ -105,7 +105,7 @@ class LedgerConfigSuite extends FunSuite:
       val query = hex("8104")
       NtcVersion.All.foreach { version =>
         val answer = NtcQuery
-          .decode(query, version)
+          .decode(query, env.layout, version)
           .map(q => QueryAnswers.answerOrWhy(env, view, Map.empty, q, version))
         if version.number < 20 then
           assertEquals(
