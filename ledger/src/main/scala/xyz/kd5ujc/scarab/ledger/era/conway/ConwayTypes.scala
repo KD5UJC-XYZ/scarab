@@ -7,7 +7,6 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   ByteStrings,
-  Datum,
   DecodeField,
   LedgerDecodeError,
   RewardAccount,
@@ -22,9 +21,12 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AsIxItem,
   BabbageEraTxOut,
   BabbageTxOutRep,
+  BabbageTxOuts,
   ConwayEraScript,
   ConwayEraTxBody,
   ConwayEraTxCert,
+  Data,
+  Datum,
   EraField,
   EraTxError,
   Indexable,
@@ -54,6 +56,7 @@ import xyz.kd5ujc.scarab.ledger.era.babbage.{
   BabbageTxOut
 }
 import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, KeyHash, StakePool}
+import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.Era
 
 // Conway's types: the opaque types are transparent in this file only, so only this file makes a
@@ -216,15 +219,29 @@ opaque type ConwayTxOut = BabbageTxOutRep[ConwayScript]
 
 object ConwayTxOut:
   /** The stored output read as a Conway output (`ejectHardForkTxOut`, ouroboros-consensus 82ecba329
-    * `Cardano/Ledger.hs:137-162`): its reference script read as a Conway script.
+    * `Cardano/Ledger.hs:137-162`): its inline datum taken unread, as the reference's `MemPack` of
+    * `BinaryData` takes it, and its reference script read as a Conway script.
     */
   private[ledger] def fromStored(
       out: xyz.kd5ujc.scarab.ledger.TxOut
   ): Either[EraTxError, ConwayTxOut] =
-    BabbageTxOutRep
-      .fromStored(out)(n => ConwayScript.read(n))
+    inverse(out)(BabbageTxOutRep.fromStored(out)(n => ConwayScript.read(n)))
+
+  /** An output Conway's decoder read from a block or a transaction as a Conway output: its inline
+    * datum read as data, as the reference's `DecCBOR` of `BinaryData` reads it (`makeBinaryData`),
+    * and its reference script read as a Conway script.
+    */
+  private[conway] def fromDecoded(
+      out: xyz.kd5ujc.scarab.ledger.TxOut
+  ): Either[EraTxError, ConwayTxOut] =
+    inverse(out)(BabbageTxOutRep.fromDecoded(out)(n => ConwayScript.read(n)))
+
+  // the output written back is the one read, so `toStored` is its inverse
+  private def inverse(out: xyz.kd5ujc.scarab.ledger.TxOut)(
+      read: Either[LedgerDecodeError, ConwayTxOut]
+  ): Either[EraTxError, ConwayTxOut] =
+    read
       .leftMap(EraTxError.Decode(_))
-      // the output written back is the one read, so `toStored` is its inverse
       .flatMap(o => Either.cond(toStored(o) == out, o, EraTxError.StoredOutputDiffers))
 
   /** The output in the form the store keeps, the inverse of [[fromStored]] (which refuses a stored
@@ -238,7 +255,7 @@ object ConwayTxOut:
       out.raw,
       out.address,
       out.value.stored,
-      out.datum,
+      Datum.toStored(out.datum),
       out.scriptRef.map(storedScript),
       out.valueSize
     )
@@ -277,13 +294,10 @@ object ConwayTxOut:
     override def address(out: ConwayTxOut): Address = out.address
     override def value(out: ConwayTxOut): MultiAssetValue = out.value
     override def raw(out: ConwayTxOut): Bytes = out.raw
-    override def dataHash(out: ConwayTxOut): Option[Bytes] = out.datum match
-      case Datum.Hash(h)                   => Some(h)
-      case Datum.NoDatum | Datum.Inline(_) => None
+    override def dataHash(out: ConwayTxOut): Option[Bytes] = BabbageTxOuts.dataHash(out.datum)
     override def datum(out: ConwayTxOut): Datum = out.datum
-    override def data(out: ConwayTxOut): Option[Bytes] = out.datum match
-      case Datum.Inline(d)               => Some(d)
-      case Datum.NoDatum | Datum.Hash(_) => None
+    override def data(out: ConwayTxOut): Either[PlutusData.DecodeError, Option[Data]] =
+      BabbageTxOuts.data(out.datum)
     override def referenceScript(out: ConwayTxOut): Option[ConwayScript] = out.scriptRef
 
 /** A Conway transaction body: `TxBody TopTx ConwayEra` (`data ConwayTxBodyRaw`,
@@ -368,7 +382,7 @@ object ConwayTxBody:
     // an output's size is the length of the encoding it was read from (`Sized`, as the flat
     // output's `ledgerSize`)
     def sized(out: xyz.kd5ujc.scarab.ledger.TxOut) =
-      ConwayTxOut.fromStored(out).map(Sized(_, out.ledgerSize.toLong))
+      ConwayTxOut.fromDecoded(out).map(Sized(_, out.ledgerSize.toLong))
     for
       _ <- Either.cond(b.update.isEmpty, (), EraTxError.NotInEra(EraField.Update))
       outputs <- b.outputs.traverse(sized)

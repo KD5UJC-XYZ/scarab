@@ -2,14 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{
-  Address,
-  Credential as FlatCredential,
-  DataSite,
-  Ptr,
-  RewardAccount,
-  TxIn
-}
+import xyz.kd5ujc.scarab.ledger.{Address, Credential as FlatCredential, Ptr, RewardAccount, TxIn}
 import xyz.kd5ujc.scarab.ledger.state.{Coin, Credential, EpochNo, KeyHash, KeyRole, ScriptHash}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
@@ -96,9 +89,3 @@ object PlutusTxInfos:
 
   /** `transDatum` (`Plutus/TxInfo.hs:212-213`, cardano-ledger f649f975). */
   def transDatum(data: PlutusData): PV1.Datum = PV1.Datum(data)
-
-  /** An output's inline datum read from the bytes it arrived as, where the reference's
-    * `binaryDataToData` takes its `BinaryData era` as data: the node's own, failing at `site`.
-    */
-  def decodeData(raw: Bytes, site: DataSite): Either[DataSite, PlutusData] =
-    PlutusData.decode(raw).left.map(_ => site)

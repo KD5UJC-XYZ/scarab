@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoUTxO,
   BabbageEraTxOut,
   BabbageUTxO,
+  Data,
   EraTx,
   EraTxBody,
   EraTxError,
@@ -28,6 +29,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   UTxO,
   Val
 }
+import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
@@ -238,7 +240,7 @@ object ConwayUTxO:
         utxo: UTxO[Conway],
         tx: Tx[L, Conway],
         sp: ConwayPlutusPurpose[AsItem]
-    )(using l: txOf.bodyOf.Level[L]): Option[Bytes] =
+    )(using l: txOf.bodyOf.Level[L]): Either[PlutusData.DecodeError, Option[Data]] =
       BabbageUTxO.getBabbageSpendingDatum[Conway, L](utxo, tx, sp)(using
         txOf,
         l,

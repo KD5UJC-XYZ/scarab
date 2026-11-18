@@ -227,10 +227,9 @@ class EraPlutusContextSuite extends munit.FunSuite:
       case 5     => ConwayPlutusPurpose.ConwayProposing(AsIx(ix))
       case other => fail(s"not a Conway tag: $other")
 
-  // The spending datum `getSpendingDatum` gives as its bytes, as the reference's `Data era`: an
-  // inline datum is not held decoded yet (#85).
-  private def spendingDatum(bytes: Bytes): Data =
-    Data.decode(bytes).fold(e => fail(s"a spending datum that is not data: $e"), identity)
+  // The spending datum `getSpendingDatum` gives: every inline datum of these cases reads as data.
+  private def spendingDatum(e: PlutusData.DecodeError): Option[Data] =
+    fail(s"a spending datum that is not data: $e")
 
   /** The typed V3 script context of the redeemer at `pointer`, serialised. */
   private def typedContext(c: Case, pointer: ConwayPlutusPurpose[AsIx]): Bytes =
@@ -251,7 +250,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
           purpose
         )
       )(using u.txOf.bodyOf.top)
-      .map(spendingDatum)
+      .fold(spendingDatum, identity)
     val args = for
       info <- PlutusContext.mkPlutusTxInfoFromResult[Language.PlutusV3, Conway](
         ConwayPlutusPurpose.hoistPlutusPurpose[
@@ -444,6 +443,103 @@ class EraPlutusContextSuite extends munit.FunSuite:
         case Left(TranslationError.ByronTxOutInContext(_)) => true
         case _                                             => false
     )
+  }
+
+  test(
+    "a Byron output whose stored inline datum does not read as data: V1 asks for the datum first, V2 for the address"
+  ) {
+    // the reference's V1 asks `isSJust (txOut ^. dataTxOutL)` first, whose strict `SJust` forces
+    // `binaryDataToData` (`Conway/TxInfo.hs:314-318`); V2 forces its datum only for an address that
+    // is not Byron (`Babbage/TxInfo.hs:142-156`), both cardano-ledger f649f975
+    val in = base.flat.body.inputs.sorted.head
+    val byron = xyz.kd5ujc.scarab.ledger.Address
+      .decode(
+        xyz.kd5ujc.scarab.ledger.byron.ByronAddress.make(
+          xyz.kd5ujc.scarab.ledger.byron.ByronAddress.VerKey,
+          Bytes(Vector.fill(64)(2.toByte)),
+          None
+        )
+      )
+      .fold(e => fail(e.toString), identity)
+    val bad = base
+      .spent(in)
+      .copy(
+        address = byron,
+        datum = xyz.kd5ujc.scarab.ledger.Datum.Inline(Bytes(Vector(0xff.toByte)))
+      )
+    val out = ConwayTxOut.fromStored(bad).fold(e => fail(e.toString), identity)
+    val source = xyz.kd5ujc.scarab.ledger.TxOutSource.TxOutFromInput(in)
+    assertEquals(
+      ConwayTxInfo.transTxOutV1[Conway](source, out)(using EraTxOut.conway),
+      Left(
+        ConwayContextError.BabbageContextError(
+          BabbageContextError.AlonzoContextError(
+            AlonzoContextError.Undecodable(xyz.kd5ujc.scarab.ledger.DataSite.InlineDatum)
+          )
+        )
+      )
+    )
+    assertEquals(
+      BabbageTxInfo.transTxOutV2[Conway](source, out)(using EraTxOut.conway),
+      Left(
+        ConwayContextError.BabbageContextError(BabbageContextError.ByronTxOutInContext(source))
+      )
+    )
+  }
+
+  test(
+    "a spending datum: the output's inline datum is read first, its failure winning over a datum the witnesses resolve"
+  ) {
+    // `strictMaybeToMaybe (txOut ^. dataTxOutL) <|> txOutDataFromWits` (`Babbage/UTxO.hs:96-102`,
+    // cardano-ledger f649f975): the strict `SJust` of the inline datum is forced before the
+    // witnesses are asked. An output has an inline datum or a datum hash, never both, so the order is
+    // bound through an output class whose `data` fails while its `dataHash` names a datum the
+    // witnesses hold: the generic function, given the same output, transaction and UTxO set
+    val found = cases.iterator.flatMap { c =>
+      val (tx, utxo, _) = typed(c)
+      val datums = t.witsOf.datsTxWits(t.wits[TxLevel.Top](tx)).datums
+      c.spent.collectFirst {
+        case (
+              in,
+              xyz.kd5ujc.scarab.ledger.TxOut(_, _, _, xyz.kd5ujc.scarab.ledger.Datum.Hash(h), _, _)
+            ) if datums.contains(h) =>
+          (tx, utxo, in, datums(h))
+      }
+    }
+    val (tx, utxo, in, witnessDatum) =
+      found.nextOption().getOrElse(fail("no case spends an output whose datum the witnesses hold"))
+    val purpose = ConwayPlutusPurpose.ConwaySpending[AsItem](AsItem(in))
+    val refusal = PlutusData
+      .decode(Bytes(Vector(0xff.toByte)))
+      .swap
+      .getOrElse(fail("0xff read as data"))
+    val conwayOut = EraTxOut.conway
+    // Conway's outputs, but an inline datum that fails to read wherever `data` is asked
+    val failingData: BabbageEraTxOut[Conway] = new BabbageEraTxOut[Conway]:
+      def scripts = conwayOut.scripts
+      def valueOps = conwayOut.valueOps
+      def address(out: TxOut[Conway]) = conwayOut.address(out)
+      def value(out: TxOut[Conway]) = conwayOut.value(out)
+      def raw(out: TxOut[Conway]) = conwayOut.raw(out)
+      def dataHash(out: TxOut[Conway]) = conwayOut.dataHash(out)
+      def datum(out: TxOut[Conway]) = conwayOut.datum(out)
+      def data(out: TxOut[Conway]) = Left(refusal)
+      def referenceScript(out: TxOut[Conway]) = conwayOut.referenceScript(out)
+    def spendingDatum(o: BabbageEraTxOut[Conway]) =
+      BabbageUTxO.getBabbageSpendingDatum[Conway, TxLevel.Top](utxo, tx, purpose)(using
+        t,
+        t.bodyOf.top,
+        o,
+        summon
+      )
+    // the witnesses resolve the output's datum hash: Conway's instance and the era's member give it
+    assertEquals(spendingDatum(conwayOut), Right(Some(witnessDatum)))
+    assertEquals(
+      u.getSpendingDatum[TxLevel.Top](utxo, tx, purpose)(using u.txOf.bodyOf.top),
+      Right(Some(witnessDatum))
+    )
+    // with the same fallback at hand, the inline datum's failure comes first
+    assertEquals(spendingDatum(failingData), Left(refusal))
   }
 
   test(
@@ -908,7 +1004,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
           [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
         )(purpose)
       )(using u.txOf.bodyOf.top)
-      .map(spendingDatum)
+      .fold(spendingDatum, identity)
     val asPurpose = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsPurpose](
       [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsPurpose(a)
     )(purpose)

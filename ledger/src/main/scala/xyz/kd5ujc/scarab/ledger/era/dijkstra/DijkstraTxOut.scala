@@ -3,26 +3,24 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
-import xyz.kd5ujc.scarab.ledger.{
-  Address,
-  CborRead,
-  DecodeField,
-  Datum,
-  LedgerDecodeError,
-  ScriptKind
-}
+import xyz.kd5ujc.scarab.ledger.{Address, CborRead, DecodeField, LedgerDecodeError, ScriptKind}
 import xyz.kd5ujc.scarab.ledger.dijkstra.V12
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoScriptRep,
   AlonzoEraScript,
   BabbageEraTxOut,
   BabbageTxOutRep,
+  BabbageTxOuts,
+  BinaryData,
+  Data,
+  Datum,
   EraTxError,
   MultiAssetValue,
   Val
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** A Dijkstra output: `BabbageTxOut DijkstraEra`, the representation Babbage's and Conway's have
   * with Dijkstra's script (`instance EraTxOut DijkstraEra`, `type TxOut DijkstraEra = BabbageTxOut
@@ -49,12 +47,13 @@ object DijkstraTxOut:
       script <- scriptItem.traverse(s =>
         V12.nested(s, DecodeField.ReferenceScript).flatMap((_, item) => DijkstraScript.read(item))
       )
+      d <- datum(flat.datum)
     yield BabbageTxOutRep(
       flat.raw,
       flat.address,
       MultiAssetValue.of(xyz.kd5ujc.scarab.ledger.Value(flat.value.coin, flat.value.assets)),
       value.original.size,
-      datum(flat.datum),
+      d,
       script
     )
 
@@ -83,10 +82,19 @@ object DijkstraTxOut:
               .map((_, None))
           )
 
-  private def datum(d: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum): Datum = d match
-    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum.NoDatum   => Datum.NoDatum
-    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum.Hash(h)   => Datum.Hash(h)
-    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum.Inline(r) => Datum.Inline(r)
+  /** The block decoder's datum as the era's, an inline datum read as data (`DecCBOR (BinaryData
+    * era)`, `makeBinaryData`, `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs:218-237`,
+    * cardano-ledger 9df9f98c), refused as the block decoder refuses it.
+    */
+  private def datum(
+      d: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum
+  ): Either[LedgerDecodeError, Datum] = d match
+    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum.NoDatum => Right(Datum.NoDatum)
+    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum.Hash(h) => Right(Datum.DatumHash(h))
+    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraDatum.Inline(r) =>
+      BinaryData
+        .makeBinaryData(r)
+        .bimap(LedgerDecodeError.PlutusData(DecodeField.InlineDatum, _), Datum.Datum(_))
 
   /** A Conway output carried into Dijkstra (`upgradeTxOut = upgradeBabbageTxOut`, `TxOut.hs:33`,
     * cardano-ledger 9df9f98c; applied to the UTxO by `Dijkstra/Translation.hs:225-227` and to the
@@ -124,7 +132,8 @@ object DijkstraTxOut:
       .traverse(DijkstraScript.translate)
       .map(script => BabbageTxOutRep(raw, r.address, r.value, r.valueSize, r.datum, script))
 
-  /** The stored output read as a Dijkstra output: its reference script read again from the output's
+  /** The stored output read as a Dijkstra output: its inline datum taken unread, as the reference's
+    * `MemPack` of `BinaryData` takes it, and its reference script read again from the output's
     * bytes as a Dijkstra script ([[DijkstraScript.read]]), as Conway's and Babbage's are read
     * (`BabbageTxOutRep.fromStored`), so a native script with a guard, which the flat output keeps
     * without a tree, is read whole.
@@ -152,7 +161,7 @@ object DijkstraTxOut:
       out.raw,
       out.address,
       out.value.stored,
-      out.datum,
+      Datum.toStored(out.datum),
       out.scriptRef.map(storedScript),
       out.valueSize
     )
@@ -187,11 +196,8 @@ object DijkstraTxOut:
     override def address(out: DijkstraTxOut): Address = out.address
     override def value(out: DijkstraTxOut): MultiAssetValue = out.value
     override def raw(out: DijkstraTxOut): Bytes = out.raw
-    override def dataHash(out: DijkstraTxOut): Option[Bytes] = out.datum match
-      case Datum.Hash(h)                   => Some(h)
-      case Datum.NoDatum | Datum.Inline(_) => None
+    override def dataHash(out: DijkstraTxOut): Option[Bytes] = BabbageTxOuts.dataHash(out.datum)
     override def datum(out: DijkstraTxOut): Datum = out.datum
-    override def data(out: DijkstraTxOut): Option[Bytes] = out.datum match
-      case Datum.Inline(d)               => Some(d)
-      case Datum.NoDatum | Datum.Hash(_) => None
+    override def data(out: DijkstraTxOut): Either[PlutusData.DecodeError, Option[Data]] =
+      BabbageTxOuts.data(out.datum)
     override def referenceScript(out: DijkstraTxOut): Option[DijkstraScript] = out.scriptRef

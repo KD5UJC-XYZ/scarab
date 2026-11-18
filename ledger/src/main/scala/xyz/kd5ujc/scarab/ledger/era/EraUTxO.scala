@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, Datum, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{Address, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
   CertState,
@@ -83,12 +85,13 @@ trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
       txOf.bodyOf.Level[L]
   ): Set[Bytes]
 
-  /** `getSpendingDatum`: the datum a spending purpose's input needs, as the bytes it arrived as;
-    * none for another purpose.
+  /** `getSpendingDatum`: the datum a spending purpose's input needs; none for another purpose. An
+    * inline datum is read as data here ([[BabbageEraTxOut.data]]), and the failure of one taken
+    * unread ([[BabbageTxOutRep.fromStored]]) returned, where the reference raises `error`.
     */
   def getSpendingDatum[L <: TxLevel](utxo: UTxO[E], tx: Tx[L, E], sp: PlutusPurpose[AsItem, E])(
       using txOf.bodyOf.Level[L]
-  ): Option[Bytes]
+  ): Either[PlutusData.DecodeError, Option[Data]]
 
 /** `ScriptsProvided` (`State/UTxO.hs:229-232`, cardano-ledger f649f975): the scripts a transaction
   * provides, by hash.
@@ -216,7 +219,7 @@ object AlonzoUTxO:
               if spendingPlutusScriptLanguage(addr)
                 .exists(_.id < xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3.id) =>
             (hashSet, inputSet + txIn)
-          case Datum.Hash(dataHash) if isSpendingPlutusScript(addr) =>
+          case Datum.DatumHash(dataHash) if isSpendingPlutusScript(addr) =>
             (hashSet + dataHash, inputSet)
           case _ => ans
     }
@@ -418,9 +421,10 @@ object BabbageUTxO:
   /** `getBabbageSpendingDatum` (`Babbage/UTxO.hs:88-101`, cardano-ledger f649f975): of a spending
     * purpose whose input the UTxO set holds, the output's inline datum, or else the witnesses'
     * datum of its datum hash. Read through the evidence that the era's purpose is Conway's, as
-    * `toSpendingPurpose` is not a member of the script class yet (#85). The datum is the bytes it
-    * arrived as, where the reference's is `Data era`: an inline datum is not held decoded yet
-    * (#85), so a witness datum is given as its bytes too.
+    * `toSpendingPurpose` is not a member of the script class yet (#85). The output's inline datum
+    * is read as data first, as the reference's `<|>` forces its strict `SJust`; its failure, which
+    * only an inline datum taken unread ([[BabbageTxOutRep.fromStored]]) can reach, is returned
+    * where the reference raises `error`.
     */
   def getBabbageSpendingDatum[E <: EraTag, L <: TxLevel](
       utxo: UTxO[E],
@@ -431,7 +435,7 @@ object BabbageUTxO:
       l: t.bodyOf.Level[L],
       o: BabbageEraTxOut[E],
       ev: PlutusPurpose[AsItem, E] =:= conway.ConwayPlutusPurpose[AsItem]
-  ): Option[Bytes] =
+  ): Either[PlutusData.DecodeError, Option[Data]] =
     val toSpendingPurpose = ev(sp) match
       case conway.ConwayPlutusPurpose.ConwaySpending(asItem) => Some(asItem)
       case conway.ConwayPlutusPurpose.ConwayMinting(_) |
@@ -440,15 +444,16 @@ object BabbageUTxO:
           conway.ConwayPlutusPurpose.ConwayVoting(_) |
           conway.ConwayPlutusPurpose.ConwayProposing(_) =>
         None
-    for
-      AsItem(txIn) <- toSpendingPurpose
-      txOut <- utxo.unUTxO.get(txIn)
-      txOutDataFromWits = o
-        .dataHash(txOut)
-        .flatMap(t.witsOf.datsTxWits(t.wits[L](tx)).datums.get)
-        .map(_.originalBytes)
-      datum <- o.data(txOut).orElse(txOutDataFromWits)
-    yield datum
+    val spent =
+      for
+        AsItem(txIn) <- toSpendingPurpose
+        txOut <- utxo.unUTxO.get(txIn)
+      yield txOut
+    spent.flatTraverse { txOut =>
+      val txOutDataFromWits =
+        o.dataHash(txOut).flatMap(t.witsOf.datsTxWits(t.wits[L](tx)).datums.get)
+      o.data(txOut).map(_.orElse(txOutDataFromWits))
+    }
 
   /** `getBabbageScriptsProvided` (`Babbage/UTxO.hs:136-146`, cardano-ledger f649f975): the
     * reference scripts of the spent and reference inputs, and the witnesses' scripts, a reference

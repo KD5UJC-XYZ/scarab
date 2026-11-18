@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, Datum}
+import xyz.kd5ujc.scarab.ledger.Address
+import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Coin, Conway, Dijkstra, EraTag, Mary}
 
 /** The fields every era's output has (`EraTxOut`, cardano-ledger f649f975
@@ -42,8 +43,12 @@ trait BabbageEraTxOut[E <: EraTag] extends AlonzoEraTxOut[E]:
   /** The era's scripts (the superclass `AlonzoEraScript era`). */
   def scripts: AlonzoEraScript[E]
 
-  /** `dataTxOutL`: the inline datum's bytes. */
-  def data(out: TxOut[E]): Option[Bytes]
+  /** `dataTxOutF`: the inline datum's data (`getDataBabbageTxOut`, `Babbage/TxOut.hs:706-716`,
+    * cardano-ledger f649f975, through `binaryDataToData`), read when it is asked for, as the
+    * reference's strict `SJust` forces it; its failure, which only an inline datum taken unread
+    * ([[BabbageTxOutRep.fromStored]]) can reach, is returned ([[BinaryData.binaryDataToData]]).
+    */
+  def data(out: TxOut[E]): Either[PlutusData.DecodeError, Option[Data]]
 
   /** `referenceScriptTxOutL`. */
   def referenceScript(out: TxOut[E]): Option[Script[E]]
@@ -77,6 +82,20 @@ object StoredTxOut:
   * cardano-ledger f649f975).
   */
 object BabbageTxOuts:
+  /** `getDataHashBabbageTxOut` (`Babbage/TxOut.hs:723-731`, cardano-ledger f649f975): the hash of a
+    * datum the output names by its hash, not that of an inline datum.
+    */
+  def dataHash(datum: Datum): Option[Bytes] = datum match
+    case Datum.DatumHash(dh)            => Some(dh)
+    case Datum.NoDatum | Datum.Datum(_) => None
+
+  /** `getDataBabbageTxOut` (`Babbage/TxOut.hs:706-716`, cardano-ledger f649f975): the inline
+    * datum's data, through `binaryDataToData` ([[BinaryData.binaryDataToData]]).
+    */
+  def data(datum: Datum): Either[PlutusData.DecodeError, Option[Data]] = datum match
+    case Datum.Datum(binaryData)            => BinaryData.binaryDataToData(binaryData).map(Some(_))
+    case Datum.NoDatum | Datum.DatumHash(_) => Right(None)
+
   /** `babbageMinUTxOValue` (`Babbage/TxOut.hs:665-688`, cardano-ledger f649f975): the least
     * lovelace of an output of `sizedSize` bytes, `(160 + size) * coinsPerUTxOByte`. The reference
     * reaches it through `EraTxOut` 's `getMinCoinSizedTxOut` (`Core.hs:391-392`), which every era's

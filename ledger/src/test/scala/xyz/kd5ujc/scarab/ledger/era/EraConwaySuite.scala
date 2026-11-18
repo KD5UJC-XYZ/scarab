@@ -832,6 +832,104 @@ class EraConwaySuite extends munit.FunSuite:
     assert(ConwayTxOut.fromStored(out).isRight)
   }
 
+  test(
+    "an inline datum is read as data from a block or a transaction, and taken unread from the store"
+  ) {
+    // `[1, 24(h'f6')]`: the bytes of `null`, which are not data (#721)
+    val notData = Bytes(Vector(0xf6.toByte))
+    val refusal = xyz.kd5ujc.scarab.plutus.PlutusData
+      .decode(notData)
+      .swap
+      .getOrElse(fail("null read as data"))
+    val raw = Bytes.fromHex(s"a300581d61${"ab" * 28}011a000f4240028201d81841f6").toOption.get
+    // a block's or a transaction's decoder refuses it (`DecCBOR (BinaryData era)`, `makeBinaryData`)
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.TxOut.decode(
+        node(raw.hex),
+        xyz.kd5ujc.scarab.ledger.Address.Mode.Rigorous,
+        xyz.kd5ujc.scarab.ledger.TxOut.Forms.PairDatumHashOrMap,
+        ScriptKind.newestKnown
+      )(using ByteStrings.Definite),
+      Left(LedgerDecodeError.PlutusData(DecodeField.InlineDatum, refusal))
+    )
+    // the store's output keeps it unread (the reference's `MemPack` of `BinaryData`)
+    val stored = xyz.kd5ujc.scarab.ledger.TxOut
+      .fromBytes(raw)(using ByteStrings.Chunked)
+      .fold(e => fail(e.toString), identity)
+    assertEquals(
+      Datum.decoded(stored.datum),
+      Left(LedgerDecodeError.PlutusData(DecodeField.InlineDatum, refusal))
+    )
+    val out = ConwayTxOut.fromStored(stored).fold(e => fail(e.toString), identity)
+    assertEquals(
+      EraTxOut.conway
+        .datum(out)
+        .match
+          case Datum.Datum(binaryData)            => Some(binaryData.bytes)
+          case Datum.NoDatum | Datum.DatumHash(_) => None
+      ,
+      Some(notData)
+    )
+    assertEquals(ConwayTxOut.toStored(out), stored)
+    // read as data where it is asked for, its failure returned where the reference raises `error`
+    assertEquals(EraTxOut.conway.data(out), Left(refusal))
+    val undecodable: ContextError[Conway] = conway.ConwayContextError.BabbageContextError(
+      BabbageContextError.AlonzoContextError(
+        AlonzoContextError.Undecodable(xyz.kd5ujc.scarab.ledger.DataSite.InlineDatum)
+      )
+    )
+    val source = xyz.kd5ujc.scarab.ledger.TxOutSource.TxOutFromOutput(0)
+    assertEquals(
+      conway.ConwayTxInfo.transTxOutV1[Conway](source, out)(using EraTxOut.conway),
+      Left(undecodable)
+    )
+    assertEquals(
+      BabbageTxInfo.transTxOutV2[Conway](source, out)(using EraTxOut.conway),
+      Left(undecodable)
+    )
+  }
+
+  test("an inline datum that reads as data is the same datum from a block and from the store") {
+    // `[1, 24(h'00')]`: the integer 0
+    val raw = Bytes.fromHex(s"a300581d61${"ab" * 28}011a000f4240028201d8184100").toOption.get
+    val decoded = xyz.kd5ujc.scarab.ledger.TxOut
+      .decode(
+        node(raw.hex),
+        xyz.kd5ujc.scarab.ledger.Address.Mode.Rigorous,
+        xyz.kd5ujc.scarab.ledger.TxOut.Forms.PairDatumHashOrMap,
+        ScriptKind.newestKnown
+      )(using ByteStrings.Definite)
+      .fold(e => fail(e.toString), identity)
+    val datum = Datum.decoded(decoded.datum).fold(e => fail(e.toString), identity)
+    assertEquals(Datum.toStored(datum), decoded.datum)
+    val out = ConwayTxOut.fromStored(decoded).fold(e => fail(e.toString), identity)
+    assertEquals(EraTxOut.conway.datum(out), datum)
+    assertEquals(
+      EraTxOut.conway.data(out).map(_.map(_.getPlutusData)),
+      Right(Some(xyz.kd5ujc.scarab.plutus.PlutusData.I(0)))
+    )
+  }
+
+  test("only BabbageTxOutRep.fromStored takes an inline datum's bytes unread") {
+    // the unchecked constructors ask for the evidence `StoreRead`, which only `fromStored` makes
+    assert(
+      compileErrors("BinaryData.stored(Bytes(Vector(0xf6.toByte)))").contains("StoreRead"),
+      "BinaryData.stored without the evidence"
+    )
+    assert(
+      compileErrors("Datum.stored(xyz.kd5ujc.scarab.ledger.Datum.NoDatum)").contains("StoreRead"),
+      "Datum.stored without the evidence"
+    )
+    assert(
+      compileErrors("BabbageTxOutRep.StoreRead()").nonEmpty,
+      "the evidence made outside BabbageTxOutRep"
+    )
+    assertEquals(
+      compileErrors("BinaryData.makeBinaryData(Bytes(Vector(0xf6.toByte)))"),
+      ""
+    )
+  }
+
   test("a submitted Conway transaction reads as its parts do from a block, in every form") {
     transactions.foreach { t =>
       val submitted = xyz.kd5ujc.scarab.ledger.Tx.envelope(t)
