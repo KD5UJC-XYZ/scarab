@@ -60,11 +60,10 @@ trait AllegraEraScript[E <: EraTag] extends ShelleyEraScript[E]:
   def getTimeExpire(native: NativeScript[E]): Option[BigInt]
 
 /** The Plutus scripts from Alonzo (`AlonzoEraScript`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-188`, cardano-ledger f649f975). The
-  * reference's builders and readers of the spending, minting, certifying and withdrawing purposes
-  * (`mkSpendingPurpose` to `toWithdrawingPurpose`, `Scripts.hs:200-225`) are not here yet:
-  * Babbage's instance needs Babbage's purposes and certificates, which come with Babbage (tracked
-  * on #85).
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-198`, cardano-ledger f649f975). The
+  * reference's `hoistPlutusPurpose` and builders and readers of the spending, minting, certifying
+  * and withdrawing purposes (`Scripts.hs:200-225`) are not here yet: Babbage's instance needs
+  * Babbage's purposes and certificates, which come with Babbage (tracked on #85).
   */
 trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
   /** The newest language of the era (`eraMaxLanguage`), one of the reference's `Language`. */
@@ -72,6 +71,35 @@ trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
 
   def toPlutusScript(script: Script[E]): Option[PlutusScript[E]]
   def fromPlutusScript(plutus: PlutusScript[E]): Script[E]
+
+  /** `withPlutusScript`: `f` applied to the script of whichever language the era's Plutus script
+    * is, with that language's class.
+    */
+  def withPlutusScript[A](plutus: PlutusScript[E])(
+      f: [L <: Language] => (Plutus[L], PlutusLanguage[L]) => A
+  ): A
+
+/** Alonzo's functions of scripts (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs`,
+  * cardano-ledger f649f975).
+  */
+object AlonzoScripts:
+  /** `plutusScriptLanguage` (`Alonzo/Scripts.hs:267-268`, cardano-ledger f649f975): the language of
+    * a Plutus script, as a value.
+    */
+  def plutusScriptLanguage[E <: EraTag](plutus: PlutusScript[E])(using
+      s: AlonzoEraScript[E]
+  ): xyz.kd5ujc.scarab.plutus.PlutusLanguage =
+    s.withPlutusScript(
+      plutus
+    )([L <: Language] => (_: Plutus[L], l: PlutusLanguage[L]) => l.language)
+
+  /** `lookupPlutusScript` (`Alonzo/Scripts.hs:745-750`, cardano-ledger f649f975): the Plutus script
+    * of a hash among `scripts`, none for a native script.
+    */
+  def lookupPlutusScript[E <: EraTag](scriptHash: Bytes, scripts: Map[Bytes, Script[E]])(using
+      s: AlonzoEraScript[E]
+  ): Option[PlutusScript[E]] =
+    scripts.get(scriptHash).flatMap(s.toPlutusScript)
 
 /** The voting and proposing purposes from Conway (`ConwayEraScript`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:63-70`, cardano-ledger f649f975), in any
@@ -153,6 +181,12 @@ abstract class TimelockScripts[E <: EraTag] extends AllegraEraScript[E]:
 
 /** The instances of each era, the one place that lists the eras having each script class. */
 object EraScript:
+  /** `isNativeScript` (`libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:599-600`,
+    * cardano-ledger f649f975).
+    */
+  def isNativeScript[E <: EraTag](script: Script[E])(using s: EraScript[E]): Boolean =
+    s.getNativeScript(script).isDefined
+
   given allegra: AllegraEraScript[Allegra] =
     xyz.kd5ujc.scarab.ledger.era.allegra.AllegraTimelock.instance
   given mary: AllegraEraScript[Mary] = xyz.kd5ujc.scarab.ledger.era.mary.MaryTimelock.instance

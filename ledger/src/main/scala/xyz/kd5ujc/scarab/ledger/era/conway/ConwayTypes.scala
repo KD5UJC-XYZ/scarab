@@ -31,6 +31,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Network,
   OSet,
   Plutus,
+  PlutusLanguage,
   PParams,
   ProposalProcedure,
   Sized,
@@ -173,6 +174,13 @@ object ConwayScript:
       case AlonzoScriptRep.NativeScript(_) => None
     override def fromPlutusScript(plutus: ConwayPlutusScript): ConwayScript =
       AlonzoScriptRep.PlutusScript(plutus)
+    // `withPlutusScript`, `Conway/Scripts.hs:107-109`, cardano-ledger f649f975
+    override def withPlutusScript[A](plutus: ConwayPlutusScript)(
+        f: [L <: Language] => (Plutus[L], PlutusLanguage[L]) => A
+    ): A = plutus match
+      case ConwayPlutusScript.V1(p) => f(p, PlutusLanguage.v1)
+      case ConwayPlutusScript.V2(p) => f(p, PlutusLanguage.v2)
+      case ConwayPlutusScript.V3(p) => f(p, PlutusLanguage.v3)
 
     // `ConwayEraScript ConwayEra`, `Conway/Scripts.hs:145-154`, cardano-ledger f649f975
     override def mkVotingPurpose[F[_, _]](

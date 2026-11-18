@@ -10,3 +10,7 @@ package xyz.kd5ujc.scarab.ledger.era
 final case class AsIx[I, A](ix: I)
 final case class AsItem[I, A](item: A)
 final case class AsIxItem[I, A](ix: I, item: A)
+
+object AsIxItem:
+  /** `toAsIx` (`Alonzo/Scripts.hs:329-330`, cardano-ledger f649f975): the index alone. */
+  def toAsIx[I, A](asIxItem: AsIxItem[I, A]): AsIx[I, A] = AsIx(asIxItem.ix)

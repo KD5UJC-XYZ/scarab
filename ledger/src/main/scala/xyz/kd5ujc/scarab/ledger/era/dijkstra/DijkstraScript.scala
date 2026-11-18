@@ -147,6 +147,14 @@ object DijkstraScript:
         case AlonzoScriptRep.NativeScript(_) => None
     override def fromPlutusScript(plutus: DijkstraPlutusScript): DijkstraScript =
       AlonzoScriptRep.PlutusScript(plutus)
+    // `withPlutusScript`, `Scripts.hs:494-497`, cardano-ledger 9df9f98c
+    override def withPlutusScript[A](plutus: DijkstraPlutusScript)(
+        f: [L <: Language] => (Plutus[L], PlutusLanguage[L]) => A
+    ): A = plutus match
+      case DijkstraPlutusScript.V1(p) => f(p, PlutusLanguage.v1)
+      case DijkstraPlutusScript.V2(p) => f(p, PlutusLanguage.v2)
+      case DijkstraPlutusScript.V3(p) => f(p, PlutusLanguage.v3)
+      case DijkstraPlutusScript.V4(p) => f(p, PlutusLanguage.v4)
 
     // `ConwayEraScript DijkstraEra`, `Scripts.hs:556-565`, cardano-ledger 9df9f98c
     override def mkVotingPurpose[F[_, _]](

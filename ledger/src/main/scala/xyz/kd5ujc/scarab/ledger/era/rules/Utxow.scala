@@ -8,10 +8,12 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   Mismatch,
   PredicateFailure,
+  Purpose,
   UtxowFailure,
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.rules.Test
 import xyz.kd5ujc.scarab.ledger.state.EraTag
 
@@ -75,6 +77,107 @@ object ShelleyUtxow:
   * cardano-ledger f649f975).
   */
 object AlonzoUtxow:
+  /** `missingRequiredDatums` (`Alonzo/Rules/Utxow.hs:210-234`, cardano-ledger f649f975): the spent
+    * Plutus outputs that need a datum and have none (`UnspendableUTxONoDatumHash`), the datums the
+    * spent outputs name that the witnesses lack (`MissingRequiredDatums`, with the witnesses'
+    * hashes), and the witnesses' other datums that are not supplemental
+    * (`NotAllowedSupplementalDatums`, with the supplemental ones), in that order.
+    */
+  def missingRequiredDatums[E <: EraTag, L <: TxLevel](
+      scriptsProvided: ScriptsProvided[E],
+      utxo: UTxO[E],
+      tx: Tx[L, E]
+  )(using
+      t: AlonzoEraTx[E],
+      l: t.bodyOf.Level[L],
+      u: AlonzoEraUTxO[E],
+      lu: u.txOf.bodyOf.Level[L]
+  ): Test[PredicateFailure] =
+    val txBody = t.body[L](tx)
+    val (inputHashes, txInsNoDataHash) = AlonzoUTxO.getInputDataHashesTxBody[E, L](
+      utxo,
+      txBody,
+      scriptsProvided
+    )(using t.bodyOf, l, t.bodyOf.outputsOf, t.witsOf.scriptsOf)
+    val txHashes: Set[Bytes] = t.witsOf.datsTxWits(t.wits[L](tx)).datums.keySet
+    val unmatchedDatumHashes = inputHashes -- txHashes
+    val allowedSupplementalDataHashes = u.getSupplementalDataHashes[L](utxo, txBody)
+    val supplimentalDatumHashes = txHashes -- inputHashes
+    val (okSupplimentalDHs, notOkSupplimentalDHs) =
+      supplimentalDatumHashes.partition(allowedSupplementalDataHashes.contains)
+    Test.all(
+      Test.failureOnNonEmpty(txInsNoDataHash)(_.isEmpty)(ins =>
+        utxow(UtxowFailure.UnspendableUTxONoDatumHash(ins))
+      ),
+      Test.failureOnNonEmpty(unmatchedDatumHashes)(_.isEmpty)(unmatched =>
+        utxow(UtxowFailure.MissingRequiredDatums(unmatched, txHashes))
+      ),
+      Test.failureOnNonEmpty(notOkSupplimentalDHs)(_.isEmpty)(notOk =>
+        utxow(UtxowFailure.NotAllowedSupplementalDatums(notOk, okSupplimentalDHs))
+      )
+    )
+
+  /** `hasExactSetOfRedeemers` (`Alonzo/Rules/Utxow.hs:239-262`, cardano-ledger f649f975): the
+    * redeemers are exactly those of the purposes needed whose script provided is a Plutus script.
+    * The redeemers no such purpose names, in their map's order (`ExtraRedeemers`, as tag and
+    * index), then the purposes needed that no redeemer names, in the order of the scripts needed
+    * with their scripts' hashes (`MissingRedeemers`).
+    *
+    * The node's failure names each missing purpose as its flat [[Purpose]], with its index and
+    * item, which `stored` gives: the reference keeps its item alone (`toAsItem`). A purpose is
+    * Conway's (the evidence), as the purpose builders and `hoistPlutusPurpose` are not members of
+    * `AlonzoEraScript` yet (#85).
+    */
+  def hasExactSetOfRedeemers[E <: EraTag, L <: TxLevel](
+      tx: Tx[L, E],
+      scriptsProvided: ScriptsProvided[E],
+      scriptsNeeded: AlonzoScriptsNeeded[E]
+  )(stored: PlutusPurpose[AsIxItem, E] => Purpose)(using
+      t: AlonzoEraTx[E],
+      l: t.bodyOf.Level[L],
+      ev: PlutusPurpose[AsIxItem, E] =:= ConwayPlutusPurpose[AsIxItem],
+      evIx: PlutusPurpose[AsIx, E] =:= ConwayPlutusPurpose[AsIx]
+  ): Test[PredicateFailure] =
+    given EraScript[E] = t.witsOf.scriptsOf
+    val toAsIx = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsIx](
+      [ix, it] => (asIxItem: AsIxItem[ix, it]) => AsIxItem.toAsIx(asIxItem)
+    )
+    val redeemersNeeded = scriptsNeeded.unAlonzoScriptsNeeded.flatMap { (sp, sh) =>
+      scriptsProvided.unScriptsProvided
+        .get(sh)
+        .filterNot(EraScript.isNativeScript[E](_))
+        .map(_ => (toAsIx(ev(sp)), (sp, sh)))
+    }
+    val (extraRdmrs, missingRdmrs) =
+      extSymmetricDifference(
+        t.witsOf.rdmrsTxWits(t.wits[L](tx)).entries.keys.toVector.map(evIx(_)),
+        identity[ConwayPlutusPurpose[AsIx]],
+        redeemersNeeded,
+        _._1
+      )
+    Test.all(
+      Test.failureOnNonEmpty(extraRdmrs)(_.isEmpty)(extra =>
+        utxow(UtxowFailure.ExtraRedeemers(extra.map(p => (p.tag, p.ix.value))))
+      ),
+      Test.failureOnNonEmpty(missingRdmrs.map(_._2))(_.isEmpty)(missing =>
+        utxow(UtxowFailure.MissingRedeemers(missing.map((sp, sh) => (stored(sp), sh))))
+      )
+    )
+
+  /** `extSymmetricDifference` (`Alonzo/Rules/Utxow.hs:378-383`, cardano-ledger f649f975): the
+    * elements of each list whose key the other list lacks, each list's order and duplicates kept.
+    */
+  def extSymmetricDifference[A, B, K](
+      as: Vector[A],
+      fa: A => K,
+      bs: Vector[B],
+      fb: B => K
+  ): (Vector[A], Vector[B]) =
+    val intersection = as.map(fa).toSet.intersect(bs.map(fb).toSet)
+    val extraA = as.filterNot(x => intersection.contains(fa(x)))
+    val extraB = bs.filterNot(x => intersection.contains(fb(x)))
+    (extraA, extraB)
+
   /** `checkScriptIntegrityHash` (`Alonzo/Rules/Utxow.hs:266-286`, cardano-ledger f649f975): the
     * body's script integrity hash is the hash of `scriptIntegrity` (none for none). A mismatch is
     * `PPViewHashesDontMatch` below protocol version 11, and from 11 `ScriptIntegrityHashMismatch`

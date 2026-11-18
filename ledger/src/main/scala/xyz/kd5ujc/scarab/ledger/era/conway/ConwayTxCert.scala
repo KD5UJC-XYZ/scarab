@@ -106,6 +106,40 @@ object ConwayTxCert:
       Left(EraTxError.NotInEra(EraField.GenesisDelegation))
     case Certificate.MoveRewards(_, _) => Left(EraTxError.NotInEra(EraField.InstantaneousRewards))
 
+  /** The node's flat certificate of a Conway one, which the flat failures carry
+    * ([[xyz.kd5ujc.scarab.ledger.Purpose.Certifying]]): glue until each era's failures are its own
+    * types, not a function of the reference. It is [[fromFlat]]'s inverse.
+    */
+  private[ledger] def toStored(cert: ConwayTxCert): Certificate =
+    def delegatee(to: Delegatee) = to match
+      case Delegatee.DelegStake(pool)           => (Some(pool.bytes), None)
+      case Delegatee.DelegVote(drep)            => (None, Some(Convert.drepBack(drep)))
+      case Delegatee.DelegStakeVote(pool, drep) => (Some(pool.bytes), Some(Convert.drepBack(drep)))
+    cert match
+      case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(c, deposit)) =>
+        Certificate.Register(Convert.back(c), deposit.map(_.value))
+      case ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(c, refund)) =>
+        Certificate.Unregister(Convert.back(c), refund.map(_.value))
+      case ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(c, to)) =>
+        val (pool, drep) = delegatee(to)
+        Certificate.Delegate(Convert.back(c), pool, drep, None)
+      case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(c, to, deposit)) =>
+        val (pool, drep) = delegatee(to)
+        Certificate.Delegate(Convert.back(c), pool, drep, Some(deposit.value))
+      case ConwayTxCertPool(PoolCert.RegPool(params)) => Certificate.RegisterPool(params.value)
+      case ConwayTxCertPool(PoolCert.RetirePool(pool, epoch)) =>
+        Certificate.RetirePool(pool.bytes, epoch.toBigInt)
+      case ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(c, deposit, anchor)) =>
+        Certificate.RegisterDRep(Convert.back(c), deposit.value, anchor)
+      case ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(c, refund)) =>
+        Certificate.UnregisterDRep(Convert.back(c), refund.value)
+      case ConwayTxCertGov(ConwayGovCert.ConwayUpdateDRep(c, anchor)) =>
+        Certificate.UpdateDRep(Convert.back(c), anchor)
+      case ConwayTxCertGov(ConwayGovCert.ConwayAuthCommitteeHotKey(cold, hot)) =>
+        Certificate.CommitteeAuthorize(Convert.back(cold), Convert.back(hot))
+      case ConwayTxCertGov(ConwayGovCert.ConwayResignCommitteeColdKey(cold, anchor)) =>
+        Certificate.CommitteeResign(Convert.back(cold), anchor)
+
   // A credential of role `R`: the decoder read its hash as 28 bytes, so it is one.
   private def credential[R <: KeyRole](c: FlatCredential): Either[EraTxError, Credential[R]] =
     Convert.credential[R](c).leftMap(EraTxError.Vocab(_))

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.conway
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{RewardAccount, TxIn, Unsigned, Voter}
-import xyz.kd5ujc.scarab.ledger.era.{AsIx, ProposalProcedure}
+import xyz.kd5ujc.scarab.ledger.{Purpose, RewardAccount, TxIn, Unsigned, Voter}
+import xyz.kd5ujc.scarab.ledger.era.{AsIx, AsIxItem, ProposalProcedure, UTxO}
 import xyz.kd5ujc.scarab.ledger.state.Conway
 
 /** A Conway Plutus purpose in the form `F` (`data ConwayPlutusPurpose f era`, cardano-ledger
@@ -38,6 +39,45 @@ object ConwayPlutusPurpose:
   given ordering: Ordering[ConwayPlutusPurpose[AsIx]] = (a, b) =>
     val tags = Integer.compare(a.tag, b.tag)
     if tags != 0 then tags else a.ix.value.compare(b.ix.value)
+
+  /** `hoistPlutusPurpose` of Conway's instance (`Conway/Scripts.hs:111-117`, cardano-ledger
+    * f649f975): the purpose in the form `F`, its item's form changed by `f`. The reference's class
+    * member, here Conway's own until `AlonzoEraScript` has the purposes (#85).
+    */
+  def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
+      purpose: ConwayPlutusPurpose[G]
+  ): ConwayPlutusPurpose[F] = purpose match
+    case ConwaySpending(x)    => ConwaySpending(f(x))
+    case ConwayMinting(x)     => ConwayMinting(f(x))
+    case ConwayCertifying(x)  => ConwayCertifying(f(x))
+    case ConwayWithdrawing(x) => ConwayWithdrawing(f(x))
+    case ConwayVoting(x)      => ConwayVoting(f(x))
+    case ConwayProposing(x)   => ConwayProposing(f(x))
+
+  /** The node's flat purpose of a Conway purpose with its index and item, which the flat
+    * `MissingRedeemers` carries ([[xyz.kd5ujc.scarab.ledger.UtxowFailure.MissingRedeemers]]): glue
+    * until each era's failures are its own types, not a function of the reference. A spending
+    * purpose carries the output `utxo` holds at its input, so none comes of an input `utxo` lacks;
+    * none comes either of an index past `Int`, which the flat purpose holds.
+    */
+  private[ledger] def toStored(
+      purpose: ConwayPlutusPurpose[AsIxItem],
+      utxo: UTxO[Conway]
+  ): Option[Purpose] =
+    def index(ix: Unsigned[Unsigned.Width.W32]): Option[Int] =
+      Option.when(ix.value.isValidInt)(ix.value.toInt)
+    purpose match
+      case ConwaySpending(AsIxItem(ix, in)) =>
+        (index(ix), utxo.unUTxO.get(in)).mapN((i, out) =>
+          Purpose.Spending(i, in, ConwayTxOut.toStored(out))
+        )
+      case ConwayMinting(AsIxItem(ix, policy)) => index(ix).map(Purpose.Minting(_, policy))
+      case ConwayCertifying(AsIxItem(ix, cert)) =>
+        index(ix).map(Purpose.Certifying(_, ConwayTxCert.toStored(cert)))
+      case ConwayWithdrawing(AsIxItem(ix, account)) => index(ix).map(Purpose.Rewarding(_, account))
+      case ConwayVoting(AsIxItem(ix, voter))        => index(ix).map(Purpose.Voting(_, voter))
+      case ConwayProposing(AsIxItem(ix, proposal)) =>
+        index(ix).map(Purpose.Proposing(_, proposal.read))
 
   extension (p: ConwayPlutusPurpose[AsIx])
     /** The index of the item the purpose names. */

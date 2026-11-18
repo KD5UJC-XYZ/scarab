@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{Address, Datum, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
   CertState,
@@ -68,6 +68,21 @@ trait EraUTxO[E <: EraTag]:
   def getMinFeeTxUtxo[L <: TxLevel](pp: PParams[E], tx: Tx[L, E], utxo: UTxO[E])(using
       txOf.bodyOf.Level[L]
   ): Coin
+
+/** The datums of a transaction of era `E` from Alonzo (`class EraUTxO era => AlonzoEraUTxO era`,
+  * cardano-ledger f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:129-162`), with
+  * `getSupplementalDataHashes` only: `getSpendingDatum`, which reads the Plutus data and the
+  * spending purpose (`toSpendingPurpose`), and the four members of the annotated transaction
+  * (`scriptsProvidedStAnnTx`, `scriptsNeededStAnnTx`, `plutusScriptsWithContextStAnnTx`,
+  * `plutusLanguagesUsedStAnnTx`) are not members yet (#85).
+  */
+trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
+  /** `getSupplementalDataHashes`: the hashes of the datums a witness set may carry that no spent
+    * input requires.
+    */
+  def getSupplementalDataHashes[L <: TxLevel](utxo: UTxO[E], txBody: TxBody[L, E])(using
+      txOf.bodyOf.Level[L]
+  ): Set[Bytes]
 
 /** `ScriptsProvided` (`State/UTxO.hs:229-232`, cardano-ledger f649f975): the scripts a transaction
   * provides, by hash.
@@ -159,6 +174,53 @@ object AlonzoUTxO:
         (ev.flip(conway.ConwayPlutusPurpose.ConwayMinting(asIxItem)), asIxItem.item)
       }
     )
+
+  /** `getInputDataHashesTxBody` (`Alonzo/UTxO.hs:250-279`, cardano-ledger f649f975): of the spent
+    * outputs the UTxO set holds at a Plutus script's payment address (`getScriptHash`, the script
+    * among `scriptsProvided`), the hashes of their datums, and the inputs of those with no datum
+    * whose language is before Plutus V3 (CIP-69). An inline datum, and a datum at a native script's
+    * address, count for neither.
+    */
+  def getInputDataHashesTxBody[E <: EraTag, L <: TxLevel](
+      utxo: UTxO[E],
+      txBody: TxBody[L, E],
+      scriptsProvided: ScriptsProvided[E]
+  )(using
+      b: EraTxBody[E],
+      l: b.Level[L],
+      o: AlonzoEraTxOut[E],
+      s: AlonzoEraScript[E]
+  ): (Set[Bytes], Set[TxIn]) =
+    def spendingPlutusScriptLanguage(addr: Address) =
+      for
+        scriptHash <- getScriptHash(addr)
+        plutusScript <- AlonzoScripts.lookupPlutusScript(
+          scriptHash,
+          scriptsProvided.unScriptsProvided
+        )
+      yield AlonzoScripts.plutusScriptLanguage(plutusScript)
+    def isSpendingPlutusScript(addr: Address) = spendingPlutusScriptLanguage(addr).isDefined
+    val spendInputs = b.inputs[L](txBody)
+    val spendUTxO = UTxOs.txInsFilter(utxo, spendInputs).unUTxO
+    spendUTxO.foldLeft((Set.empty[Bytes], Set.empty[TxIn])) {
+      case (ans @ (hashSet, inputSet), (txIn, txOut)) =>
+        val addr = o.address(txOut)
+        o.datum(txOut) match
+          case Datum.NoDatum
+              if spendingPlutusScriptLanguage(addr)
+                .exists(_.id < xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3.id) =>
+            (hashSet, inputSet + txIn)
+          case Datum.Hash(dataHash) if isSpendingPlutusScript(addr) =>
+            (hashSet + dataHash, inputSet)
+          case _ => ans
+    }
+
+  /** `getScriptHash` (`State/UTxO.hs:222-224`, cardano-ledger f649f975): the script of an address's
+    * payment credential, none for a key's or a bootstrap address.
+    */
+  private def getScriptHash(addr: Address): Option[Bytes] = addr.kind match
+    case Address.Kind.Shelley(_, payment, _, _) => credScriptHash(payment)
+    case Address.Kind.Byron(_)                  => None
 
   /** `getAlonzoScriptsHashesNeeded` (`Alonzo/UTxO.hs:241-242`, cardano-ledger f649f975). */
   def getAlonzoScriptsHashesNeeded[E <: EraTag](scriptsNeeded: AlonzoScriptsNeeded[E]): Set[Bytes] =
@@ -334,6 +396,19 @@ object BabbageUTxO:
   ): Map[Bytes, Script[E]] =
     getReferenceScriptsNonDistinct(utxo, inputs).toMap
 
+  /** `getBabbageSupplementalDataHashes` (`Babbage/UTxO.hs:74-83`, cardano-ledger f649f975): the
+    * hashes of the datums of the body's outputs, its collateral return among them
+    * (`allSizedOutputsTxBodyF`), and of the outputs of its reference inputs the UTxO set holds.
+    */
+  def getBabbageSupplementalDataHashes[E <: EraTag, L <: TxLevel](
+      utxo: UTxO[E],
+      txBody: TxBody[L, E]
+  )(using b: BabbageEraTxBody[E], l: b.Level[L]): Set[Bytes] =
+    val newOuts = b.allSizedOutputs[L](txBody).map(_.value)
+    val referencedOuts = UTxOs.txInsFilter(utxo, b.referenceInputs[L](txBody)).unUTxO.values
+    val outs = newOuts ++ referencedOuts
+    outs.flatMap(b.outputsOf.dataHash).toSet
+
   /** `getBabbageScriptsProvided` (`Babbage/UTxO.hs:136-146`, cardano-ledger f649f975): the
     * reference scripts of the spent and reference inputs, and the witnesses' scripts, a reference
     * script kept where both have a hash (`Map.union`, left-biased).
@@ -349,8 +424,8 @@ object BabbageUTxO:
     val ins: Set[TxIn] = b.referenceInputs[L](txBody)(using lb) ++ b.inputs[L](txBody)(using lb)
     ScriptsProvided(t.witsOf.scriptTxWits(t.wits[L](tx)) ++ getReferenceScripts(utxo, ins))
 
-/** Conway's instance (`instance EraUTxO ConwayEra`, `eras/conway/impl/src/Cardano/Ledger/Conway/
-  * UTxO.hs:119-137`, cardano-ledger f649f975).
+/** Conway's instance (`instance EraUTxO ConwayEra` and `instance AlonzoEraUTxO ConwayEra`,
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:119-147`, cardano-ledger f649f975).
   */
 object EraUTxO:
-  given conway: EraUTxO[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO.instance
+  given conway: AlonzoEraUTxO[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO.instance
