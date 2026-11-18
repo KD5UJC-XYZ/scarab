@@ -12,13 +12,14 @@ import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 import DecodeError.{Arity, Kind}
 
 /** Dijkstra's `NewEpochState` in the `state` layout of the Leios build (#826): the state of the
-  * first Dijkstra epoch the build wrote (`fixtures/leios/state/dijkstra-203`) read and written byte
-  * for byte at version 12, and the 11.1 line's Dijkstra state still refused. The fixture holds no
-  * proposal, no future pool parameters and no pool key, so the switches of the reference's decoders
-  * at version 12 (cardano-ledger 9df9f98c) are tested on hand-built items: the bounded ratios, a
-  * pool's parameters and a proposal's update on both sides of the switch, and the indefinite
-  * records and strings at 12 only, where the reference accepts them (below 12 the reference refuses
-  * them and this build's state codecs accept them, which is not tested here).
+  * first Dijkstra epoch the build wrote (`fixtures/leios/state/dijkstra-203`) and the public
+  * testnet's at epoch 100 (`fixtures/leios/state/testnet-2168639`) read and written byte for byte
+  * at version 12, and the 11.1 line's Dijkstra state still refused. Neither holds a proposal or
+  * future pool parameters, and only the testnet's pools hold keys, so the switches of the
+  * reference's decoders at version 12 (cardano-ledger 9df9f98c) are tested on hand-built items: the
+  * bounded ratios, a pool's parameters and a proposal's update on both sides of the switch, and the
+  * indefinite records and strings at 12 only, where the reference accepts them (below 12 the
+  * reference refuses them and this build's state codecs accept them, which is not tested here).
   */
 class DijkstraEpochStateSuite extends FunSuite:
   private def items(n: Node): Vector[Node] = n.value match
@@ -51,6 +52,27 @@ class DijkstraEpochStateSuite extends FunSuite:
     val pools = LedgerState.pState[Dijkstra].get(state.es.ls).stakePools
     assertEquals(pools.size, 3)
     assert(pools.values.forall(_.blsKey == PoolBlsKey.Leios(None)))
+  }
+
+  /** The public Leios testnet's state at slot 2,168,639 (epoch 100), which a following node of the
+    * testnet's release wrote (`fixtures/leios/state/testnet-2168639`): far into Dijkstra, with 154
+    * pools that each hold a voting key and the indefinite maps the reference writes.
+    */
+  test(
+    "the testnet's NewEpochState at slot 2,168,639: read and written byte for byte, every pool keyed"
+  ) {
+    val bytes = Files.readAllBytes(Path.of("fixtures/leios/state/testnet-2168639/state"))
+    val testnet =
+      Cbor.decode(Bytes.wrap(bytes), HaskellState.limits).fold(e => fail(e.toString), identity)
+    val codec = LeiosStateCodecs.newEpochState[Dijkstra]
+    val state = read(codec, at(testnet, 1, 0, 7, 1, 1, 1))
+    assertEquals(state.epoch.toBigInt, BigInt(100))
+    assertEquals(codec.write(state), Right(at(testnet, 1, 0, 7, 1, 1, 1).original))
+    val pools = LedgerState.pState[Dijkstra].get(state.es.ls).stakePools
+    assertEquals(pools.size, 154)
+    assert(pools.values.forall(_.blsKey match
+      case PoolBlsKey.Leios(key) => key.isDefined
+      case PoolBlsKey.Node11_1   => false))
   }
 
   test("the 11.1 line's Dijkstra state is still refused both ways") {
