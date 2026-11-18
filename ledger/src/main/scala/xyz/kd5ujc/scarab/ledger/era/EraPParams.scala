@@ -27,8 +27,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * here: each range is a class of its own with instances at the eras of the range (decided
   * 2026-11-15, #85), and none of those eras has its record yet. `ppDG` and `ppProtocolVersionL` are
   * members of every era. Not yet here: `emptyUpgradePParamsUpdate`, `upgradePParamsHKD` and
-  * `downgradePParamsHKD`, which come with Babbage's record, and `eraPParams`, the parameters'
-  * descriptions (#85).
+  * `downgradePParamsHKD`, which come with Babbage's record (#85).
   *
   * The class carries the union of the reference builds' members: `ppMaxPledgeLeverageG` and
   * `ppMinPoolMarginG` are members at the Leios build's pin (cardano-ledger 9df9f98c
@@ -66,6 +65,11 @@ trait EraPParams[E <: EraTag]:
 
   /** `ppMinPoolMarginG`: the least margin a pool may declare. */
   def ppMinPoolMarginG: Getter[PParams[E], UnitInterval]
+
+  /** `eraPParams` (`Core/PParams.hs:489`, cardano-ledger f649f975): the era's parameters, each
+    * described ([[PParam]]), in the order of the record.
+    */
+  def eraPParams: Vector[PParam[E]]
 
   /** `emptyPParams`. */
   final def emptyPParams: PParams[E] = PParams[E](emptyPParamsIdentity)
@@ -146,6 +150,82 @@ object EraPParams:
   def ppPoolDepositCompactL[E <: EraTag](using p: EraPParams[E]): Lens[PParams[E], CompactCoin] =
     PParams.lensHKD[E].andThen(p.hkdPoolDepositCompactL[Identity])
 
+  // The descriptions of the parameters every era has (`Shelley/PParams.hs:338-497`, cardano-ledger
+  // f649f975), but those the reference confines to a range of eras (`ppD`, `ppExtraEntropy`,
+  // `ppProtocolVersion` and `ppMinUTxOValue`), whose classes are not here.
+
+  /** `ppTxFeePerByte` (`Shelley/PParams.hs:338-345`, cardano-ledger f649f975). */
+  def ppTxFeePerByte[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("txFeePerByte", 0, p.hkdTxFeePerByteL[Identity], p.hkdTxFeePerByteL[StrictMaybe])
+
+  /** `ppTxFeeFixed` (`Shelley/PParams.hs:351-358`, cardano-ledger f649f975). */
+  def ppTxFeeFixed[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field(
+      "txFeeFixed",
+      1,
+      p.hkdTxFeeFixedCompactL[Identity],
+      p.hkdTxFeeFixedCompactL[StrictMaybe]
+    )
+
+  /** `ppMaxBBSize` (`Shelley/PParams.hs:364-371`, cardano-ledger f649f975). */
+  def ppMaxBBSize[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("maxBlockBodySize", 2, p.hkdMaxBBSizeL[Identity], p.hkdMaxBBSizeL[StrictMaybe])
+
+  /** `ppMaxTxSize` (`Shelley/PParams.hs:373-380`, cardano-ledger f649f975). */
+  def ppMaxTxSize[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("maxTxSize", 3, p.hkdMaxTxSizeL[Identity], p.hkdMaxTxSizeL[StrictMaybe])
+
+  /** `ppMaxBHSize` (`Shelley/PParams.hs:382-389`, cardano-ledger f649f975). */
+  def ppMaxBHSize[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("maxBlockHeaderSize", 4, p.hkdMaxBHSizeL[Identity], p.hkdMaxBHSizeL[StrictMaybe])
+
+  /** `ppKeyDeposit` (`Shelley/PParams.hs:391-398`, cardano-ledger f649f975). */
+  def ppKeyDeposit[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field(
+      "stakeAddressDeposit",
+      5,
+      p.hkdKeyDepositCompactL[Identity],
+      p.hkdKeyDepositCompactL[StrictMaybe]
+    )
+
+  /** `ppPoolDeposit` (`Shelley/PParams.hs:400-407`, cardano-ledger f649f975). */
+  def ppPoolDeposit[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field(
+      "stakePoolDeposit",
+      6,
+      p.hkdPoolDepositCompactL[Identity],
+      p.hkdPoolDepositCompactL[StrictMaybe]
+    )
+
+  /** `ppEMax` (`Shelley/PParams.hs:409-416`, cardano-ledger f649f975). */
+  def ppEMax[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("poolRetireMaxEpoch", 7, p.hkdEMaxL[Identity], p.hkdEMaxL[StrictMaybe])
+
+  /** `ppNOpt` (`Shelley/PParams.hs:418-425`, cardano-ledger f649f975). */
+  def ppNOpt[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("stakePoolTargetNum", 8, p.hkdNOptL[Identity], p.hkdNOptL[StrictMaybe])
+
+  /** `ppA0` (`Shelley/PParams.hs:426-433`, cardano-ledger f649f975). */
+  def ppA0[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("poolPledgeInfluence", 9, p.hkdA0L[Identity], p.hkdA0L[StrictMaybe])
+
+  /** `ppRho` (`Shelley/PParams.hs:436-443`, cardano-ledger f649f975). */
+  def ppRho[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("monetaryExpansion", 10, p.hkdRhoL[Identity], p.hkdRhoL[StrictMaybe])
+
+  /** `ppTau` (`Shelley/PParams.hs:445-452`, cardano-ledger f649f975). */
+  def ppTau[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field("treasuryCut", 11, p.hkdTauL[Identity], p.hkdTauL[StrictMaybe])
+
+  /** `ppMinPoolCost` (`Shelley/PParams.hs:490-497`, cardano-ledger f649f975). */
+  def ppMinPoolCost[E <: EraTag](using p: EraPParams[E]): PParam[E] =
+    PParam.field(
+      "minPoolCost",
+      16,
+      p.hkdMinPoolCostCompactL[Identity],
+      p.hkdMinPoolCostCompactL[StrictMaybe]
+    )
+
 object AlonzoEraPParams:
   given conway: AlonzoEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: AlonzoEraPParams[Dijkstra] = DijkstraEraPParamsInstance
@@ -168,6 +248,57 @@ object AlonzoEraPParams:
   ): Lens[PParams[E], Unsigned[W16]] =
     PParams.lensHKD[E].andThen(p.hkdCollateralPercentageL[Identity])
 
+  // The descriptions of Alonzo's parameters (`Alonzo/PParams.hs:667-728`, cardano-ledger f649f975),
+  // but `ppCoinsPerUTxOWord`, Alonzo's alone, whose class is not here.
+
+  /** `ppCostModels` (`Alonzo/PParams.hs:667-674`, cardano-ledger f649f975). */
+  def ppCostModels[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
+    PParam.field("costModels", 18, p.hkdCostModelsL[Identity], p.hkdCostModelsL[StrictMaybe])
+
+  /** `ppPrices` (`Alonzo/PParams.hs:676-683`, cardano-ledger f649f975). */
+  def ppPrices[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
+    PParam.field("executionUnitPrices", 19, p.hkdPricesL[Identity], p.hkdPricesL[StrictMaybe])
+
+  /** `ppMaxTxExUnits` (`Alonzo/PParams.hs:685-692`, cardano-ledger f649f975). */
+  def ppMaxTxExUnits[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
+    PParam.field(
+      "maxTxExecutionUnits",
+      20,
+      p.hkdMaxTxExUnitsL[Identity],
+      p.hkdMaxTxExUnitsL[StrictMaybe]
+    )
+
+  /** `ppMaxBlockExUnits` (`Alonzo/PParams.hs:694-701`, cardano-ledger f649f975). */
+  def ppMaxBlockExUnits[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
+    PParam.field(
+      "maxBlockExecutionUnits",
+      21,
+      p.hkdMaxBlockExUnitsL[Identity],
+      p.hkdMaxBlockExUnitsL[StrictMaybe]
+    )
+
+  /** `ppMaxValSize` (`Alonzo/PParams.hs:703-710`, cardano-ledger f649f975). */
+  def ppMaxValSize[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
+    PParam.field("maxValueSize", 22, p.hkdMaxValSizeL[Identity], p.hkdMaxValSizeL[StrictMaybe])
+
+  /** `ppCollateralPercentage` (`Alonzo/PParams.hs:712-719`, cardano-ledger f649f975). */
+  def ppCollateralPercentage[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
+    PParam.field(
+      "collateralPercentage",
+      23,
+      p.hkdCollateralPercentageL[Identity],
+      p.hkdCollateralPercentageL[StrictMaybe]
+    )
+
+  /** `ppMaxCollateralInputs` (`Alonzo/PParams.hs:721-728`, cardano-ledger f649f975). */
+  def ppMaxCollateralInputs[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
+    PParam.field(
+      "maxCollateralInputs",
+      24,
+      p.hkdMaxCollateralInputsL[Identity],
+      p.hkdMaxCollateralInputsL[StrictMaybe]
+    )
+
 object BabbageEraPParams:
   given conway: BabbageEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: BabbageEraPParams[Dijkstra] = DijkstraEraPParamsInstance
@@ -177,6 +308,15 @@ object BabbageEraPParams:
       p: BabbageEraPParams[E]
   ): Lens[PParams[E], CoinPerByte] =
     PParams.lensHKD[E].andThen(p.hkdCoinsPerUTxOByteL[Identity])
+
+  /** `ppCoinsPerUTxOByte` (`Babbage/PParams.hs:405-412`, cardano-ledger f649f975). */
+  def ppCoinsPerUTxOByte[E <: EraTag](using p: BabbageEraPParams[E]): PParam[E] =
+    PParam.field(
+      "utxoCostPerByte",
+      17,
+      p.hkdCoinsPerUTxOByteL[Identity],
+      p.hkdCoinsPerUTxOByteL[StrictMaybe]
+    )
 
 object ConwayEraPParams:
   given conway: ConwayEraPParams[Conway] = ConwayEraPParamsInstance
@@ -199,6 +339,91 @@ object ConwayEraPParams:
       p: ConwayEraPParams[E]
   ): Lens[PParams[E], NonNegativeInterval] =
     PParams.lensHKD[E].andThen(p.hkdMinFeeRefScriptCostPerByteL[Identity])
+
+  // The descriptions of Conway's parameters (`Conway/PParams.hs:1266-1354`, cardano-ledger
+  // f649f975).
+
+  /** `ppPoolVotingThresholds` (`Conway/PParams.hs:1266-1273`, cardano-ledger f649f975). */
+  def ppPoolVotingThresholds[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "poolVotingThresholds",
+      25,
+      p.hkdPoolVotingThresholdsL[Identity],
+      p.hkdPoolVotingThresholdsL[StrictMaybe]
+    )
+
+  /** `ppDRepVotingThresholds` (`Conway/PParams.hs:1275-1282`, cardano-ledger f649f975). */
+  def ppDRepVotingThresholds[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "dRepVotingThresholds",
+      26,
+      p.hkdDRepVotingThresholdsL[Identity],
+      p.hkdDRepVotingThresholdsL[StrictMaybe]
+    )
+
+  /** `ppCommitteeMinSize` (`Conway/PParams.hs:1284-1291`, cardano-ledger f649f975). */
+  def ppCommitteeMinSize[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "committeeMinSize",
+      27,
+      p.hkdCommitteeMinSizeL[Identity],
+      p.hkdCommitteeMinSizeL[StrictMaybe]
+    )
+
+  /** `ppCommitteeMaxTermLength` (`Conway/PParams.hs:1293-1300`, cardano-ledger f649f975). */
+  def ppCommitteeMaxTermLength[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "committeeMaxTermLength",
+      28,
+      p.hkdCommitteeMaxTermLengthL[Identity],
+      p.hkdCommitteeMaxTermLengthL[StrictMaybe]
+    )
+
+  /** `ppGovActionLifetime` (`Conway/PParams.hs:1302-1309`, cardano-ledger f649f975). */
+  def ppGovActionLifetime[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "govActionLifetime",
+      29,
+      p.hkdGovActionLifetimeL[Identity],
+      p.hkdGovActionLifetimeL[StrictMaybe]
+    )
+
+  /** `ppGovActionDeposit` (`Conway/PParams.hs:1311-1318`, cardano-ledger f649f975). */
+  def ppGovActionDeposit[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "govActionDeposit",
+      30,
+      p.hkdGovActionDepositCompactL[Identity],
+      p.hkdGovActionDepositCompactL[StrictMaybe]
+    )
+
+  /** `ppDRepDeposit` (`Conway/PParams.hs:1320-1327`, cardano-ledger f649f975). */
+  def ppDRepDeposit[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "dRepDeposit",
+      31,
+      p.hkdDRepDepositCompactL[Identity],
+      p.hkdDRepDepositCompactL[StrictMaybe]
+    )
+
+  /** `ppDRepActivity` (`Conway/PParams.hs:1329-1336`, cardano-ledger f649f975). */
+  def ppDRepActivity[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field("dRepActivity", 32, p.hkdDRepActivityL[Identity], p.hkdDRepActivityL[StrictMaybe])
+
+  /** `ppMinFeeRefScriptCostPerByte` (`Conway/PParams.hs:1338-1345`, cardano-ledger f649f975). */
+  def ppMinFeeRefScriptCostPerByte[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam.field(
+      "minFeeRefScriptCostPerByte",
+      33,
+      p.hkdMinFeeRefScriptCostPerByteL[Identity],
+      p.hkdMinFeeRefScriptCostPerByteL[StrictMaybe]
+    )
+
+  /** `ppGovProtocolVersion` (`Conway/PParams.hs:1347-1354`, cardano-ledger f649f975): the protocol
+    * version, which an update cannot set.
+    */
+  def ppGovProtocolVersion[E <: EraTag](using p: ConwayEraPParams[E]): PParam[E] =
+    PParam[E, ProtVer]("protocolVersion", p.ppProtocolVersionL, None)
 
 /** Conway's instances (`instance EraPParams ConwayEra` to `instance ConwayEraPParams ConwayEra`,
   * `Conway/PParams.hs:825-984`, cardano-ledger f649f975).
@@ -261,6 +486,44 @@ private object ConwayEraPParamsInstance extends ConwayEraPParams[Conway]:
     * cardano-ledger 9df9f98c).
     */
   val ppMinPoolMarginG: Getter[PParams[Conway], UnitInterval] = Getter(_ => UnitInterval.zero)
+
+  /** `eraPParams` (`Conway/PParams.hs:862-894`, cardano-ledger f649f975). */
+  lazy val eraPParams: Vector[PParam[Conway]] =
+    import EraPParams.*, AlonzoEraPParams.*, BabbageEraPParams.*, ConwayEraPParams.*
+    given ConwayEraPParams[Conway] = this
+    Vector(
+      ppTxFeePerByte,
+      ppTxFeeFixed,
+      ppMaxBBSize,
+      ppMaxTxSize,
+      ppMaxBHSize,
+      ppKeyDeposit,
+      ppPoolDeposit,
+      ppEMax,
+      ppNOpt,
+      ppA0,
+      ppRho,
+      ppTau,
+      ppGovProtocolVersion,
+      ppMinPoolCost,
+      ppCoinsPerUTxOByte,
+      ppCostModels,
+      ppPrices,
+      ppMaxTxExUnits,
+      ppMaxBlockExUnits,
+      ppMaxValSize,
+      ppCollateralPercentage,
+      ppMaxCollateralInputs,
+      ppPoolVotingThresholds,
+      ppDRepVotingThresholds,
+      ppCommitteeMinSize,
+      ppCommitteeMaxTermLength,
+      ppGovActionLifetime,
+      ppGovActionDeposit,
+      ppDRepDeposit,
+      ppDRepActivity,
+      ppMinFeeRefScriptCostPerByte
+    )
 
   def hkdCostModelsL[F[_]: HKDFunctor]: Lens[R[F], F[CostModels]] =
     GenLens[R[F]](_.costModels).andThen(THKD.value)

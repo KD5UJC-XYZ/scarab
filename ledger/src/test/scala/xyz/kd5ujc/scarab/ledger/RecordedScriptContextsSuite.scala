@@ -10,7 +10,7 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
-import xyz.kd5ujc.scarab.plutus.{EvalRequest, PlutusLanguage}
+import xyz.kd5ujc.scarab.plutus.{EvalRequest, PlutusData, PlutusLanguage}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 
@@ -322,4 +322,54 @@ class RecordedScriptContextsSuite extends FunSuite:
         case (ours, collected) =>
           fail(s"the reference ${if collected then "collected" else "refused"}; the node: $ours")
     }
+  }
+
+  /** Whether `needle` is `haystack` or one of its parts, the parts visited from a work list. */
+  private def contains(haystack: PlutusData, needle: PlutusData): Boolean =
+    @scala.annotation.tailrec
+    def go(todo: List[PlutusData]): Boolean = todo match
+      case Nil                          => false
+      case d :: _ if d == needle        => true
+      case PlutusData.Constr(_, f) :: r => go(f.toList ++ r)
+      case PlutusData.Map(kvs) :: r     => go(kvs.toList.flatMap((k, v) => List(k, v)) ++ r)
+      case PlutusData.List(xs) :: r     => go(xs.toList ++ r)
+      case _ :: r                       => go(r)
+    go(List(haystack))
+
+  /** The script context of a PlutusV3 request of the reference, from its `PlutusWithContext`. */
+  private def v3Context(encoding: Bytes): Option[PlutusData] =
+    cbor(encoding).value match
+      case Value.Arr(Vector(_, script, argument, _, _)) =>
+        script.value match
+          case Value.Arr(Vector(language, _))
+              if integer(language) == BigInt(PlutusLanguage.V3.id) =>
+            Some(PlutusData.fromNode(argument).fold(e => fail(e.toString), identity))
+          case _ => None
+      case other => fail(s"not a PlutusWithContext: $other")
+
+  test(
+    "the recorded parameter changes as the era types show them are in the reference's contexts"
+  ) {
+    import xyz.kd5ujc.scarab.ledger.era.{PParamsUpdate, ToPlutusData}
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+    import xyz.kd5ujc.scarab.ledger.state.Conway
+    val seen = (named("preview") ++ named("preprod")).flatMap { row =>
+      val name = field[String](row, "name")
+      val updates = input(row).tx.body.proposals.map(_.action).collect {
+        case GovAction.ParameterChange(_, update, _) => update
+      }
+      val contexts = field[Vector[Json]](field[Json](row, "oracle"), "scripts")
+        .flatMap(s => s.hcursor.downField("contextCbor").focus.flatMap(_.asString))
+        .flatMap(h => v3Context(hex(h)))
+      updates.map { u =>
+        val typed = ToPlutusData[PParamsUpdate[Conway]].toPlutusData(
+          PParamsUpdate[Conway](ConwayPParams.fromUpdate(u).fold(e => fail(s"$name: $e"), identity))
+        )
+        assertNotEquals(typed, PlutusData.Map(Vector.empty), name)
+        assert(contexts.nonEmpty, s"$name: no PlutusV3 context")
+        contexts.foreach(c => assert(contains(c, typed), s"$name: $typed"))
+        name
+      }
+    }
+    assertEquals(seen.size, 2, seen)
   }

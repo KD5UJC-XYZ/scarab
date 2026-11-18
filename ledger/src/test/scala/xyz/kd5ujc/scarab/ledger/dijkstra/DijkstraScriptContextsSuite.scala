@@ -162,3 +162,47 @@ class DijkstraScriptContextsSuite extends FunSuite:
     assert(arguments(top).exists(_.purpose.isInstanceOf[DijkstraPurpose.Guarding]))
     assertEquals(subs.map(arguments(_).size), Vector(1, 0))
   }
+
+  /** Whether `needle` is `haystack` or one of its parts, the parts visited from a work list. */
+  private def contains(haystack: PlutusData, needle: PlutusData): Boolean =
+    @scala.annotation.tailrec
+    def go(todo: List[PlutusData]): Boolean = todo match
+      case Nil                          => false
+      case d :: _ if d == needle        => true
+      case PlutusData.Constr(_, f) :: r => go(f.toList ++ r)
+      case PlutusData.Map(kvs) :: r     => go(kvs.toList.flatMap((k, v) => List(k, v)) ++ r)
+      case PlutusData.List(xs) :: r     => go(xs.toList ++ r)
+      case _ :: r                       => go(r)
+    go(List(haystack))
+
+  /** The parameter changes of a body, each as the era types show it in Plutus data. */
+  private def typedUpdates(name: String, body: DijkstraTxBody): Vector[PlutusData] =
+    import xyz.kd5ujc.scarab.ledger.era.{PParamsUpdate, ToPlutusData}
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraPParams
+    import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+    body.proposals.map(_.action).collect { case DijkstraGovAction.ParameterChange(_, update, _) =>
+      val typed = ToPlutusData[PParamsUpdate[Dijkstra]].toPlutusData(
+        PParamsUpdate[Dijkstra](
+          DijkstraPParams.fromUpdate(update).fold(e => fail(s"$name: $e"), identity)
+        )
+      )
+      assertEquals(typed, DijkstraScriptContexts.changedParameters(update), name)
+      typed
+    }
+
+  // In both cases the parameter change is the top-level body's. The top-level scripts of
+  // `governance` see it; `sub-transaction scripts` has scripts only in its sub-transaction, whose
+  // contexts do not show the top-level body, so its update is compared with the flat path's alone.
+  test("the era types' parameter updates as Plutus data are the flat path's and the reference's") {
+    val (gc, gr) = named("governance")
+    val governance = typedUpdates("governance", read(gc)._1.body)
+    val referenceContexts = contexts(field(gr, "top"))
+    assertEquals(governance.size, 1)
+    assert(referenceContexts.nonEmpty)
+    governance.foreach(typed => assert(referenceContexts.forall(contains(_, typed)), s"$typed"))
+    val (sc, _) = named("sub-transaction scripts")
+    val (tx, _) = read(sc)
+    assertEquals(typedUpdates("sub-transaction scripts", tx.body).size, 1)
+    assertEquals(tx.body.subTransactions.flatMap(_.body.proposals), Vector.empty)
+    assert((governance ++ typedUpdates("sub", tx.body)).forall(_ != PlutusData.Map(Vector.empty)))
+  }

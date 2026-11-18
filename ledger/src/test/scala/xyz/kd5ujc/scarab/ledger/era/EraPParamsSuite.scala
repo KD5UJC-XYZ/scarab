@@ -10,6 +10,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ConwayParamUpdate,
+  ScriptContexts,
   DecodeField,
   GovAction,
   Tx,
@@ -265,3 +266,88 @@ class EraPParamsSuite extends ScalaCheckSuite:
   test("Conway has no instance of the eras' parameters it does not have"):
     assert(compileErrors("summon[EraPParams[xyz.kd5ujc.scarab.ledger.state.Babbage]]").nonEmpty)
     assertEquals(compileErrors("summon[EraPParams[Conway]]"), "")
+
+  // The update as Plutus data (`ToPlutusData (PParamsUpdate era)`) against the flat path's, which
+  // builds the V3 script contexts now.
+
+  private def plutus(u: ConwayParamUpdate): xyz.kd5ujc.scarab.plutus.PlutusData =
+    ToPlutusData[PParamsUpdate[Conway]].toPlutusData(conwayUpdate(u))
+
+  property("an update as Plutus data is the flat path's"):
+    forAll(genUpdate)(u => assertEquals(plutus(u), ScriptContexts.changedParameters(u)))
+
+  test("an update of every field that is not a word is the flat path's Plutus data"):
+    assertEquals(plutus(ratios), ScriptContexts.changedParameters(ratios))
+
+  test("the recorded Preview parameter changes are the flat path's Plutus data"):
+    assert(clue(previewUpdates.size) > 0)
+    previewUpdates.foreach(u => assertEquals(plutus(u), ScriptContexts.changedParameters(u)))
+
+  test(
+    "an update's fields are in the order of their tags, whatever the order they are given in"
+  ):
+    val u = TestLedger.conwayUpdate(30 -> BigInt(5), 0 -> BigInt(1), 8 -> BigInt(7))
+    val keys = plutus(u) match
+      case xyz.kd5ujc.scarab.plutus.PlutusData.Map(kvs) => kvs.map(_._1)
+      case other                                        => fail(s"not a map: $other")
+    assertEquals(keys, Vector(0, 8, 30).map(k => xyz.kd5ujc.scarab.plutus.PlutusData.I(BigInt(k))))
+    assertEquals(plutus(u), ScriptContexts.changedParameters(u))
+    assertEquals(
+      ToPlutusData[PParamsUpdate[Conway]].toPlutusData(era.emptyPParamsUpdate),
+      xyz.kd5ujc.scarab.plutus.PlutusData.Map(Vector.empty)
+    )
+
+  test("Conway's descriptions are the reference's names and tags, in its order"):
+    val described = era.eraPParams.map(p => (p.ppName, p.ppUpdate.map(_.ppuTag.value.toInt)))
+    assertEquals(
+      described,
+      Vector(
+        ("txFeePerByte", Some(0)),
+        ("txFeeFixed", Some(1)),
+        ("maxBlockBodySize", Some(2)),
+        ("maxTxSize", Some(3)),
+        ("maxBlockHeaderSize", Some(4)),
+        ("stakeAddressDeposit", Some(5)),
+        ("stakePoolDeposit", Some(6)),
+        ("poolRetireMaxEpoch", Some(7)),
+        ("stakePoolTargetNum", Some(8)),
+        ("poolPledgeInfluence", Some(9)),
+        ("monetaryExpansion", Some(10)),
+        ("treasuryCut", Some(11)),
+        ("protocolVersion", None),
+        ("minPoolCost", Some(16)),
+        ("utxoCostPerByte", Some(17)),
+        ("costModels", Some(18)),
+        ("executionUnitPrices", Some(19)),
+        ("maxTxExecutionUnits", Some(20)),
+        ("maxBlockExecutionUnits", Some(21)),
+        ("maxValueSize", Some(22)),
+        ("collateralPercentage", Some(23)),
+        ("maxCollateralInputs", Some(24)),
+        ("poolVotingThresholds", Some(25)),
+        ("dRepVotingThresholds", Some(26)),
+        ("committeeMinSize", Some(27)),
+        ("committeeMaxTermLength", Some(28)),
+        ("govActionLifetime", Some(29)),
+        ("govActionDeposit", Some(30)),
+        ("dRepDeposit", Some(31)),
+        ("dRepActivity", Some(32)),
+        ("minFeeRefScriptCostPerByte", Some(33))
+      )
+    )
+
+  test("a description's lenses read the parameters and the update of the record's field"):
+    val p = TestLedger.params(10)
+    val pp = conwayParams(p)
+    val ppu = conwayUpdate(TestLedger.conwayUpdate(3 -> BigInt(4096)))
+    era.eraPParams.foreach { d =>
+      d.ppUpdate.foreach { u =>
+        val set = u.ppuLens.get(ppu)
+        assertEquals(set.isDefined, u.ppuTag.value == 3, d.ppName)
+      }
+    }
+    val maxTx = era.eraPParams(3)
+    assertEquals(
+      maxTx.plutusData.toPlutusData(maxTx.ppLens.get(pp)),
+      xyz.kd5ujc.scarab.plutus.PlutusData.I(p.maxTxSize)
+    )

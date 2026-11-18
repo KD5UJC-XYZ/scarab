@@ -4,7 +4,9 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.DecodeField
-import xyz.kd5ujc.scarab.ledger.era.{PParamsError, UnitInterval}
+import xyz.kd5ujc.scarab.ledger.era.{PParamsError, ToPlutusData, UnitInterval}
+import xyz.kd5ujc.scarab.ledger.era.ToPlutusData.toPlutusData
+import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** The stake pools' voting thresholds (`data PoolVotingThresholds`, cardano-ledger f649f975
   * `eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:304-310`), each a `UnitInterval`.
@@ -35,6 +37,20 @@ object PoolVotingThresholds:
     UnitInterval.zero,
     UnitInterval.zero
   )
+
+  /** `instance ToPlutusData PoolVotingThresholds` (`Conway/PParams.hs:376-384`, cardano-ledger
+    * f649f975): the thresholds in their order, as a list.
+    */
+  given plutusData: ToPlutusData[PoolVotingThresholds] = x =>
+    PlutusData.List(
+      Vector(
+        x.pvtMotionNoConfidence.toPlutusData,
+        x.pvtCommitteeNormal.toPlutusData,
+        x.pvtCommitteeNoConfidence.toPlutusData,
+        x.pvtHardForkInitiation.toPlutusData,
+        x.pvtPPSecurityGroup.toPlutusData
+      )
+    )
 
   /** The thresholds the node keeps, each refused outside `[0, 1]`. */
   def fromStored(
@@ -93,6 +109,25 @@ object DRepVotingThresholds:
     UnitInterval.zero,
     UnitInterval.zero
   )
+
+  /** `instance ToPlutusData DRepVotingThresholds` (`Conway/PParams.hs:447-459`, cardano-ledger
+    * f649f975): the thresholds in their order, as a list.
+    */
+  given plutusData: ToPlutusData[DRepVotingThresholds] = x =>
+    PlutusData.List(
+      Vector(
+        x.dvtMotionNoConfidence.toPlutusData,
+        x.dvtCommitteeNormal.toPlutusData,
+        x.dvtCommitteeNoConfidence.toPlutusData,
+        x.dvtUpdateToConstitution.toPlutusData,
+        x.dvtHardForkInitiation.toPlutusData,
+        x.dvtPPNetworkGroup.toPlutusData,
+        x.dvtPPEconomicGroup.toPlutusData,
+        x.dvtPPTechnicalGroup.toPlutusData,
+        x.dvtPPGovGroup.toPlutusData,
+        x.dvtTreasuryWithdrawal.toPlutusData
+      )
+    )
 
   /** The thresholds the node keeps, each refused outside `[0, 1]`. */
   def fromStored(
