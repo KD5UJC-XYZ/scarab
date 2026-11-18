@@ -413,8 +413,9 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
   test("on the wire, a whole message the decoder refuses ends the connection as its parts do") {
     // an era past the last and the last index a `Word8` holds, Byron's fifth constructor and a
     // Conway transaction not under tag 24, refused before the transaction is read; a transaction of
-    // Conway and of Babbage that the era's decoder refuses, after; each sent whole and cut after
-    // its fourth byte, both ending alike
+    // Conway and of Babbage that the era's decoder refuses, after; a tag 25 the framing would fail
+    // after, at a break, and a reserved head where the tag is due, which the reference's decoder
+    // fails on first; each sent whole and cut after its fourth byte, both ending alike
     val babbage = hex("00")
     val conway = hex("84a0a0f5f6")
     Vector(
@@ -426,8 +427,6 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
         undecodable(malformed(Era.Conway, conway)),
       ("82008205d818" + Bytes(bstr(babbage)).hex) ->
         undecodable(malformed(Era.Babbage, babbage)),
-      // the framing would fail later in the message, at a break or a reserved head: the
-      // reference's decoder fails first, at the tag
       "82008206d819ff" -> undecodable(GenTx.Refusal.NotCborInCbor(Era.Conway)),
       "82008206dc" -> undecodable(GenTx.Refusal.NotCborInCbor(Era.Conway))
     ).traverse { (message, ending) =>
