@@ -364,11 +364,11 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       handler = LocalSubmission.handler[IO](p.mempool)(fatal =>
         IO(fail(s"unexpected fatal: $fatal"))
       )
-      waiting <- handler(wrapped(s.wide)).start
-      _ <- p.waiting(idOf(s.wide))
-      refused <- handler(malformed).timeout(failsafe)
-      lines <- p.mempool.lines
-      _ <- waiting.cancel
+      // the waiting submission is cancelled however this ends
+      answered <- handler(wrapped(s.wide)).background.use(_ =>
+        p.waiting(idOf(s.wide)) *> handler(malformed).timeout(failsafe).product(p.mempool.lines)
+      )
+      (refused, lines) = answered
     yield
       refused match
         case xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Response.Undecodable(_) => ()
