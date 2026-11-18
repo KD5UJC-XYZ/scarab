@@ -177,9 +177,26 @@ review is posted on the pull request as a comment, with the disposition of each 
 rejected and why). A review by the agent that wrote the change does not replace it, and a failed, cancelled or
 empty run is no review. The body's "Independent review" section links that comment and summarises the verdict and
 the disposition of each finding. Fixes that change more than wording get a second review, scoped to the fix
-commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md). `scripts/pr_policy.py`
-refuses a pull request that is not a draft unless the section is there with a link in it; a draft passes, so a pull
-request stays a draft until its review is posted.
+commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md).
+
+An agent's review runs through `scripts/codex_review.py`, which pins the reviewer's model and gives it the network
+and live web search in a read-only sandbox. The review's reasoning effort follows the risk of the change; the
+script holds the model and these floors, and refuses an effort below them:
+
+| Change | Lowest effort |
+|---|---|
+| Level 0: wording, notes, comments | `medium` |
+| Level 0 that touches a design document or an ADR (`docs/design/`, `docs/adr/`) | `high` |
+| Levels 1 and 2 | `high` |
+| Levels 3 and 4: consensus-critical, a persisted format, a stage boundary | `xhigh` |
+
+A higher effort is always allowed; use it where a change could split the chain from the reference. The script
+stamps the review with the model and effort its session file records, and the stamp is posted with the review.
+`scripts/pr_policy.py` refuses a pull request that is not a draft unless the section is there with a link to a
+comment on the pull request that is a review: one carrying that stamp, at or above the floor for the stated level
+and the changed files, or one posted by another person. A draft passes, so a pull request stays a draft until its
+review is posted. The stamp guards against a mistaken run (a forgotten effort, a default model); it is not a
+signature.
 
 ### The one scenario per area
 

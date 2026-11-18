@@ -18,19 +18,27 @@ this is the order of work.
      facts that are true at the head; and any question the change raises of its own;
    - the output: findings ranked P1, P2 and P3, each with file and line, evidence and a suggested fix, or that
      there are none and what was checked.
-3. Run the review read-only on the worktree with the brief as its prompt: Codex in its read-only sandbox
-   (`codex exec --sandbox read-only`), or an agent tool's Codex integration given the same brief. A review takes
-   minutes; run it in the background rather than block on it.
-4. Accept the result only if the run completed, exited successfully and produced findings or an explicit "none".
-   A failed, cancelled or empty run is no review: run it again, and never report it as a clean one.
+3. Run the review with `scripts/codex_review.py --level <the body's level> --brief <brief> --out <review file>`
+   from the worktree. It runs Codex read-only with the pinned model, at the lowest effort the level allows
+   (CONTRIBUTING.md, "Independent review") or at a higher one given with `--effort`; the reviewer has the network
+   and live web search, to read the reference at its pin, and runs no command outside the sandbox. A review takes
+   minutes at `high` and longer at `xhigh`; run it in the background rather than block on it. Do not run the review
+   through an agent tool's Codex integration: it cannot set the effort, and Codex's default effort is lower than
+   any floor.
+4. The script accepts the run only if it completed with a final message, its session file records the pinned
+   model, the effort, the read-only sandbox and the network, and the worktree is unchanged; it then writes the
+   review with its stamp. A refused, failed, cancelled or empty run is no review: run it again, and never report it
+   as a clean one.
 5. Check each finding against the code before acting on it: the reviewer can be wrong. Fix the real findings and
    write down why each of the others is rejected.
-6. Post the review on the pull request (`gh pr comment <number> --body-file <file>`): each finding quoted, and its
-   disposition, fixed in which commit or rejected and why.
+6. Post the review on the pull request (`gh pr comment <number> --body-file <file>`), starting with the file the
+   script wrote, stamp included: each finding quoted, and its disposition, fixed in which commit or rejected and
+   why.
 7. Fill in the body's "Independent review" section: the link to that comment, the verdict, and the disposition of
    each finding in a line.
-8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, and post and
-   link it the same way. After a rebase that changes the diff, the review covers the new head.
+8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, through the
+   script at the same level with `--base <the commit before the fixes>`, and post and link it the same way. After a
+   rebase that changes the diff, the review covers the new head.
 
 A contributor who is not an agent asks a maintainer or another contributor for the review, who posts it on the
 pull request; steps 5 to 8 are the same.

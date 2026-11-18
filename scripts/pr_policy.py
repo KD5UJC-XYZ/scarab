@@ -8,8 +8,11 @@ pull request of level 1 or higher carries the two sections CONTRIBUTING.md asks 
 approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
 `None` may go on in prose. A pull request that is not a draft (the event's `draft` flag) also carries an
 "Independent review" section with a link, to the review of its final diff posted on it (CONTRIBUTING.md,
-"Independent review"); a draft passes without it. The stated level has floors from the changed files (`--files`, the pull request's file
-list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
+"Independent review"); a draft passes without it. Given the pull request's comments (`--comments`, one JSON object
+per line with `id`, `body` and `user`), the section must link a review on this pull request: a comment with the stamp
+of `codex_review.py`, or one another person posted. Every stamp in a linked comment names the pinned model and an
+effort at or above the floor for the stated level and the changed files (CONTRIBUTING.md, "Independent review").
+The stated level has floors from the changed files (`--files`, the pull request's file list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
 (`promote_main.py`) calls `evaluate` only, never the body checks.
@@ -35,6 +38,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_storage_format import approval_problems, outside_format_change, touches_freeze  # noqa: E402
+import codex_review  # noqa: E402
 
 
 MODES = ("transition", "dev-only-main")
@@ -172,15 +176,49 @@ def has_link(text):
     return any(LINK.match(defined.get((ref or label).strip().lower(), "")) for label, ref in REFERENCE.findall(rest))
 
 
-def check_review(pr):
+def check_review(pr, level=None, files=(), comments=None):
     """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders
-    (`has_link`), in the section as `rendered_section` reads it, outside code spans."""
+    (`has_link`), in the section as `rendered_section` reads it, outside code spans. With its `comments`, the link
+    must reach a comment on this pull request, and a linked comment by its author must carry a Codex review stamp
+    that meets the floor for `level` and `files` (`linked_reviews`)."""
     if pr.get("draft") is True:
         return
     text = rendered_section(pr.get("body"), REVIEW)
     require(text is not None and has_link(without_code_spans(text)),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
+    if comments is not None and level is not None:
+        linked_reviews(pr, without_code_spans(text), level, files, comments)
+
+
+def linked_reviews(pr, text, level, files, comments):
+    """The linked comments of this pull request that are reviews: one that carries a Codex review stamp, every stamp
+    meeting the floor, or one another person posted. At least one is required; an unstamped comment of the author
+    (a reply, a disposition) may be linked beside them."""
+    number = pr.get("number")
+    repository = ((pr.get("base") or {}).get("repo") or {}).get("full_name", "")
+    link = re.compile(r"https://github\.com/" + re.escape(repository) + r"/pull/" + str(number)
+                      + r"(?:/files|/commits)?#issuecomment-(\d+)\b", re.IGNORECASE)
+    by_id = {str(c.get("id")): c for c in comments}
+    linked = [by_id[i] for i in dict.fromkeys(link.findall(text)) if i in by_id]
+    floor = codex_review.floor(level, files)
+    require(linked, f'the "Independent review" section links no comment on this pull request (#{number}); link the '
+            "posted review comment (CONTRIBUTING.md, \"Independent review\")")
+    author = (pr.get("user") or {}).get("login")
+    reviews = []
+    for comment in linked:
+        user = comment.get("user") or {}
+        found = codex_review.stamps(comment.get("body"))
+        for fields in found:
+            problem = codex_review.stamp_problem(fields, level, files)
+            require(problem is None, f"the linked comment {comment.get('id')}: {problem}; run the review again "
+                    "with scripts/codex_review.py (CONTRIBUTING.md, \"Independent review\")")
+        if found or (user.get("login") != author and user.get("type") != "Bot"):
+            reviews.append(comment)
+    require(reviews, "no linked comment is a review: the pull request's author links a Codex review stamped by "
+            f"scripts/codex_review.py at effort {floor} or above, or a review another person posted "
+            "(CONTRIBUTING.md, \"Independent review\")")
+    return reviews
 
 
 def level_floor(files):
@@ -297,7 +335,7 @@ def check_storage_format(pr, files, now):
     return True
 
 
-def check_body(pr, files=()):
+def check_body(pr, files=(), comments=None):
     """The level the body states; None for a bot's pull request and for a promotion of `dev`, whose changes each
     passed this check as their own pull request."""
     if (pr.get("user") or {}).get("type") == "Bot":
@@ -316,7 +354,7 @@ def check_body(pr, files=()):
         found = sections(body)
         check_deviations(found.get(DEVIATIONS))
         check_gaps(found.get(GAPS))
-    check_review(pr)
+    check_review(pr, level, files, comments)
     return level
 
 
@@ -351,6 +389,8 @@ def main():
     parser.add_argument("--repository-id", type=int, default=os.environ.get("GITHUB_REPOSITORY_ID"))
     parser.add_argument("--mode", default=os.environ.get("SCARAB_PROMOTION_POLICY") or "transition")
     parser.add_argument("--files", type=Path, help="the pull request's changed paths, one per line")
+    parser.add_argument("--comments", type=Path,
+                        help="the pull request's comments, one JSON object per line with id, body and user")
     args = parser.parse_args()
     require(args.event is not None and args.repository is not None, "require event and repository identity")
     event = json.loads(args.event.read_text())
@@ -359,8 +399,11 @@ def main():
     pr = event.get("pull_request", {})
     result = evaluate(pr, args.repository, args.repository_id, args.mode)
     files = args.files.read_text(encoding="utf-8").split() if args.files else []
+    comments = ([json.loads(line) for line in args.comments.read_text(encoding="utf-8").splitlines() if line.strip()]
+                if args.comments else None)
     storage = check_storage_format(pr, files, datetime.now(timezone.utc))
-    print(json.dumps(dict(result, level=check_body(pr, files), storageFormatChange=storage), sort_keys=True))
+    print(json.dumps(dict(result, level=check_body(pr, files, comments), storageFormatChange=storage),
+                     sort_keys=True))
 
 
 if __name__ == "__main__":

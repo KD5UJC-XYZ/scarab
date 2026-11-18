@@ -212,6 +212,81 @@ class PrBodyTests(unittest.TestCase):
         self.assertEqual(policy.evaluate(pr, "example/scarab", 42, "dev-only-main")["head"], "dev")
 
 
+def comment(id_, body, login="author", user_type="User"):
+    return {"id": id_, "body": body, "user": {"login": login, "type": user_type}}
+
+
+def stamped(effort, model=policy.codex_review.MODEL, text="No findings; checked the diff."):
+    return policy.codex_review.stamp({"model": model, "effort": effort, "level": 1, "head": "a" * 40}) + "\n" + text
+
+
+LINK = "https://github.com/example/scarab/pull/8#issuecomment-"
+
+
+class ReviewCommentTests(unittest.TestCase):
+    def check(self, level, comments, links=("11",), files=None):
+        files = files if files is not None else (["docs/running.md"] if level == 0 else ["scripts/x.py"])
+        pr = pull_request(head="feature")
+        pr["user"] = {"login": "author", "type": "User"}
+        review = "## Independent review\n\nClean: " + ", ".join(LINK + i for i in links) + "\n"
+        pr["body"] = body_of(level, "None", "None", review)
+        return policy.check_body(pr, list(files), comments)
+
+    def test_a_stamped_review_at_or_above_the_floor_passes(self):
+        for level, effort in [(0, "medium"), (1, "high"), (2, "xhigh"), (3, "xhigh"), (4, "max")]:
+            with self.subTest(level=level, effort=effort):
+                self.assertEqual(self.check(level, [comment(11, stamped(effort))]), level)
+
+    def test_a_review_below_the_floor_or_on_another_model_fails(self):
+        for level, effort, model, message in [(1, "medium", None, "below high"), (3, "high", None, "below xhigh"),
+                                              (0, "low", None, "below medium"),
+                                              (1, "high", "gpt-daybreak-blue-latest", "not gpt"),
+                                              (1, "bogus", None, "unknown")]:
+            body = stamped(effort, model or policy.codex_review.MODEL)
+            with self.subTest(level=level, effort=effort, model=model), \
+                    self.assertRaisesRegex(policy.PolicyError, message):
+                self.check(level, [comment(11, body)])
+
+    def test_a_design_document_or_adr_raises_a_level_zero_floor_to_high(self):
+        for path in ["docs/design/leios.md", "docs/adr/0001-haskell-node-as-reference.md"]:
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(policy.PolicyError, "below high"):
+                    self.check(0, [comment(11, stamped("medium"))], files=[path])
+                self.assertEqual(self.check(0, [comment(11, stamped("high"))], files=[path]), 0)
+        self.assertEqual(self.check(0, [comment(11, stamped("medium"))], files=["docs/running.md"]), 0)
+
+    def test_the_link_must_reach_a_comment_on_this_pull_request(self):
+        with self.assertRaisesRegex(policy.PolicyError, "links no comment"):
+            self.check(1, [comment(11, stamped("high"))], links=("99",))
+        pr = pull_request(head="feature")
+        pr["user"] = {"login": "author", "type": "User"}
+        pr["body"] = body_of(1, "None", "None",
+                             "## Independent review\n\nhttps://github.com/example/scarab/pull/7#issuecomment-11\n")
+        with self.assertRaisesRegex(policy.PolicyError, "links no comment"):
+            policy.check_body(pr, ["scripts/x.py"], [comment(11, stamped("high"))])
+
+    def test_the_author_needs_a_stamp_and_another_person_does_not(self):
+        with self.assertRaisesRegex(policy.PolicyError, "no linked comment is a review"):
+            self.check(1, [comment(11, "Looks fine to me.")])
+        with self.assertRaisesRegex(policy.PolicyError, "no linked comment is a review"):
+            self.check(1, [comment(11, "Looks fine.", login="some-bot", user_type="Bot")])
+        self.assertEqual(self.check(1, [comment(11, "Reviewed; no findings.", login="maintainer")]), 1)
+        self.assertEqual(self.check(1, [comment(11, stamped("high")), comment(12, "Dispositions below.")],
+                                    links=("11", "12")), 1)
+
+    def test_every_stamp_in_a_linked_comment_meets_the_floor(self):
+        with self.assertRaisesRegex(policy.PolicyError, "below high"):
+            self.check(1, [comment(11, stamped("high")), comment(12, stamped("medium"))], links=("11", "12"))
+
+    def test_a_draft_and_a_run_without_comments_keep_the_link_only_check(self):
+        pr = pull_request(head="feature")
+        pr["user"], pr["draft"] = {"login": "author", "type": "User"}, True
+        pr["body"] = body_of(1, "None", "None", None)
+        self.assertEqual(policy.check_body(pr, ["scripts/x.py"], [comment(11, "nothing")]), 1)
+        pr["draft"], pr["body"] = False, body_of(1, "None", "None")
+        self.assertEqual(policy.check_body(pr, ["scripts/x.py"]), 1)
+
+
 NOW = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
 STORAGE_TITLE = "fix(storage)!: storage format V10 drops the bootstrap sidecar fields"
 STORAGE_FILES = [fmt.MANIFEST, "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala",

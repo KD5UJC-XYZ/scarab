@@ -2,13 +2,15 @@
 name: PR policy
 
 # Evaluate metadata using trusted default-branch code. No PR checkout, cache, secret or build; the only network use is
-# a read of the pull request's changed paths, for the level floors of scripts/pr_policy.py.
+# a read of the pull request's changed paths, for the level floors of scripts/pr_policy.py, and of its comments, for
+# the review the body links.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, ready_for_review]
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -33,7 +35,9 @@ jobs:
         run: |
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
             > "$RUNNER_TEMP/files.txt"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | {id, body, user: {login: .user.login, type: .user.type}}' > "$RUNNER_TEMP/comments.jsonl"
       - name: Validate event metadata
         env:
           SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}
-        run: python3 scripts/pr_policy.py --files "$RUNNER_TEMP/files.txt"
+        run: python3 scripts/pr_policy.py --files "$RUNNER_TEMP/files.txt" --comments "$RUNNER_TEMP/comments.jsonl"
