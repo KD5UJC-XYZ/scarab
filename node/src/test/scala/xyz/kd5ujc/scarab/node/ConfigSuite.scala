@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.network.selection.{
   UseLedgerPeers
 }
 import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, Word32}
+import xyz.kd5ujc.scarab.node.mempool.MempoolTimeouts
 import munit.FunSuite
 
 /** The Haskell node's `config.json` and `topology.json`, read as `cardano-node run` reads them,
@@ -586,6 +587,85 @@ class ConfigSuite extends FunSuite:
     assertEquals(flag("4294967295"), Right(Some(4294967295L)))
     assert(flag("4294967296").isLeft)
     assert(flag("-1").isLeft)
+  }
+
+  test("the mempool's time limits are all three or none, as cardano-node reads them") {
+    // `.:? "MempoolTimeoutSoft"` and its two siblings, each a `DiffTime` of seconds (`POM.hs`
+    // 400-402), all set or all unset, unset being 1, 1.5 and 5 seconds (`POM.hs` 889-897)
+    val base = parser.parse(text("preview", "config.json")).toOption.get
+    def read(fields: (String, Json)*) = NodeConfig
+      .parse(ReferenceBuild.Default)(base.deepMerge(Json.obj(fields*)).noSpaces)
+      .map(_.settings.mempoolTimeouts)
+    def seconds(picos: BigInt) = DiffTime.picoseconds(picos)
+    def number(text: String) = parser.parse(text).toOption.getOrElse(Json.Null)
+    val unit = BigInt(1000000000000L)
+    assertEquals(parsed("preview").settings.mempoolTimeouts, MempoolTimeouts.default)
+    assertEquals(
+      MempoolTimeouts.default,
+      MempoolTimeouts(seconds(unit), seconds(unit * 3 / 2), seconds(unit * 5))
+    )
+    // `.:?` reads `null` as unset
+    assertEquals(
+      read(
+        "MempoolTimeoutSoft" -> Json.Null,
+        "MempoolTimeoutHard" -> Json.Null,
+        "MempoolTimeoutCapacity" -> Json.Null
+      ),
+      Right(MempoolTimeouts.default)
+    )
+    // any number of seconds, of any sign, floored to a picosecond (aeson's `FromJSON DiffTime`)
+    assertEquals(
+      read(
+        "MempoolTimeoutSoft" -> number("0.25"),
+        "MempoolTimeoutHard" -> number("-1e-100"),
+        "MempoolTimeoutCapacity" -> number("1e3")
+      ),
+      Right(MempoolTimeouts(seconds(unit / 4), seconds(BigInt(-1)), seconds(unit * 1000)))
+    )
+    // some and not all: the reference's refusal
+    List(
+      Seq("MempoolTimeoutSoft" -> Json.fromInt(2)) -> Set("MempoolTimeoutSoft"),
+      Seq("MempoolTimeoutHard" -> Json.fromInt(2), "MempoolTimeoutCapacity" -> Json.fromInt(9)) ->
+        Set("MempoolTimeoutHard", "MempoolTimeoutCapacity"),
+      Seq("MempoolTimeoutSoft" -> Json.fromInt(1), "MempoolTimeoutHard" -> Json.Null) ->
+        Set("MempoolTimeoutSoft")
+    ).foreach((fields, set) =>
+      assertEquals(read(fields*), Left(ConfigError(ConfigProblem.MempoolTimeouts(set))), set)
+    )
+    assertEquals(
+      ConfigProblem.MempoolTimeouts(Set("MempoolTimeoutSoft")).message,
+      "Mempool timeouts must be either all set or all unset"
+    )
+    // a value aeson's `FromJSON DiffTime` refuses refuses the configuration
+    List(Json.fromString("1"), number("1e1025"), Json.True, Json.obj()).foreach(bad =>
+      assert(
+        read(
+          "MempoolTimeoutSoft" -> bad,
+          "MempoolTimeoutHard" -> Json.fromInt(2),
+          "MempoolTimeoutCapacity" -> Json.fromInt(5)
+        ).isLeft,
+        bad.noSpaces
+      )
+    )
+  }
+
+  test(
+    "the hard limit is floored to microseconds and narrowed to 64 bits, as io-classes takes it"
+  ) {
+    // `timeout = MonadTimer.timeout . diffTimeToMicrosecondsAsInt` (io-classes 1.8.0.1 `SI.hs`
+    // 43-49, 262) and base's `timeout` (`System/Timeout.hs` 99-101): negative is no limit, zero
+    // cuts off at once
+    def hard(picos: BigInt) =
+      MempoolTimeouts.default.copy(hard = DiffTime.picoseconds(picos)).hardLimit
+    import scala.concurrent.duration.*
+    assertEquals(hard(BigInt(1500000000000L)), MempoolTimeouts.HardLimit.After(1500.millis))
+    assertEquals(hard(BigInt(1999999)), MempoolTimeouts.HardLimit.After(1.micro))
+    assertEquals(hard(BigInt(999999)), MempoolTimeouts.HardLimit.Immediate)
+    assertEquals(hard(BigInt(0)), MempoolTimeouts.HardLimit.Immediate)
+    assertEquals(hard(BigInt(-1)), MempoolTimeouts.HardLimit.Unbounded)
+    // 2^64 microseconds narrow to 0, 2^63 to the least Int
+    assertEquals(hard(BigInt(2).pow(64) * 1000000), MempoolTimeouts.HardLimit.Immediate)
+    assertEquals(hard(BigInt(2).pow(63) * 1000000), MempoolTimeouts.HardLimit.Unbounded)
   }
 
   test("PBftSignatureThreshold is a Maybe Double, as cardano-node 11.1.3 reads it") {

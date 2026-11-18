@@ -93,6 +93,12 @@ enum ConfigProblem:
     * cardano-node 11.1.3 reads it (`cardano-node/src/Cardano/Node/Configuration/POM.hs:475-487`).
     */
   case MempoolCapacity(actual: io.circe.Json)
+
+  /** Some of `MempoolTimeoutSoft`, `MempoolTimeoutHard` and `MempoolTimeoutCapacity` are set and
+    * not all, `set` those that are: cardano-node refuses the configuration with the text this case
+    * renders (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Configuration/POM.hs:889-897`).
+    */
+  case MempoolTimeouts(set: Set[String])
   case PeerTargets[E <: DomainError](cause: E)
 
   /** The outbound limit (`MaxOutboundConnections`, `--max-outbound`) is below the counted dials the
@@ -192,6 +198,7 @@ enum ConfigProblem:
     case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
     case MempoolCapacity(actual) =>
       s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
+    case MempoolTimeouts(_)            => "Mempool timeouts must be either all set or all unset"
     case ListenAddress(address, cause) => s"--listen $address: ${cause.show}"
     case OutboundLimitBelowTargets(limit, established, establishedBig) =>
       s"the outbound connection limit $limit is below ${established + establishedBig}, the " +

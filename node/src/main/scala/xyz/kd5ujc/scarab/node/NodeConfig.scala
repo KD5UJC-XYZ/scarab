@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
 import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, OutboundLimit, Word32}
 import xyz.kd5ujc.scarab.network.selection.{ConsensusMode, Targets}
+import xyz.kd5ujc.scarab.node.mempool.MempoolTimeouts
 
 /** The genesis files a configuration names (`ByronGenesisFile` or the older `GenesisFile`,
   * `ShelleyGenesisFile`, `AlonzoGenesisFile`, `ConwayGenesisFile`, and, with experimental hard
@@ -111,6 +112,10 @@ final case class PeerTargetOverrides(
   *   `MaxOutboundConnections`: the opt-in outbound limit, a positive number of connections
   *   ([[OutboundLimit]]); `--max-outbound` wins over it. Not a key of the reference, which has no
   *   outbound limit; absent, the node has none either.
+  * @param mempoolTimeouts
+  *   `MempoolTimeoutSoft`, `MempoolTimeoutHard` and `MempoolTimeoutCapacity` (`POM.hs` 400-402,
+  *   889-897, cardano-node 11.1.3): numbers of seconds, all three or none; none is the reference's
+  *   defaults, 1, 1.5 and 5 ([[mempool.MempoolTimeouts]]).
   */
 final case class ConfigSettings(
     protocol: String = "Cardano",
@@ -137,7 +142,8 @@ final case class ConfigSettings(
     leios: LeiosSettings = LeiosSettings(),
     ledgerDb: LedgerDbSettings = LedgerDbSettings(),
     startAsNonProducingNode: Option[Boolean] = None,
-    maxOutboundConnections: Option[OutboundLimit.Connections] = None
+    maxOutboundConnections: Option[OutboundLimit.Connections] = None,
+    mempoolTimeouts: MempoolTimeouts = MempoolTimeouts.default
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless
     * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
@@ -488,6 +494,27 @@ object NodeConfig:
       )
     }
 
+  /** The mempool's time limits as cardano-node reads them (cardano-node 11.1.3
+    * `cardano-node/src/Cardano/Node/Configuration/POM.hs:400-402`, `889-897`; cardano-node 11.2.1
+    * `402-404`, `939-947`): each key a `DiffTime` ([[diffTimeDecoder]]), `null` or absent as unset
+    * (`.:?`); all three set, or none, which is the defaults; some and not all refuse the
+    * configuration.
+    */
+  private def timeouts(k: Keys): Either[ConfigError, MempoolTimeouts] =
+    val names = Vector("MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity")
+    names.traverse(name => k.opt[DiffTime](name)(using diffTimeDecoder)).flatMap {
+      case Vector(Some(soft), Some(hard), Some(capacity)) =>
+        Right(MempoolTimeouts(soft, hard, capacity))
+      case values if values.forall(_.isEmpty) => Right(MempoolTimeouts.default)
+      case values =>
+        Left(
+          ConfigError(
+            ConfigProblem
+              .MempoolTimeouts(names.zip(values).collect { case (n, Some(_)) => n }.toSet)
+          )
+        )
+    }
+
   /** `MempoolCapacityBytesOverride` as cardano-node 11.1.3 reads it
     * (`cardano-node/src/Cardano/Node/Configuration/POM.hs:475-487`): a number is a `Word32`
     * ([[word32Decoder]]), 0 included, the string `NoOverride` is no override, and a `null` or
@@ -611,6 +638,7 @@ object NodeConfig:
       socket <- k.opt[String]("SocketPath")
       database <- k.opt[String]("DatabasePath")
       mempool <- capacity(k)
+      mempoolTimeouts <- timeouts(k)
       targets <- (
         k.opt[Int]("TargetNumberOfRootPeers"),
         k.opt[Int]("TargetNumberOfKnownPeers"),
@@ -736,6 +764,7 @@ object NodeConfig:
           leios,
           ledgerDb,
           nonProducing,
-          maxOutbound
+          maxOutbound,
+          mempoolTimeouts
         )
       )
