@@ -543,6 +543,21 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     file.ext.map(_.headerState.tip) match
       case Some(WithOrigin.At(tip)) => assertEquals(tip.slot, SlotNo.fromUnsigned(2168639))
       case other                    => fail(s"no tip: $other")
+    // its Praos2 state holds an announcement, `[[issuer, hash, size]]`, and 152 issuers' counters
+    file.header.chainDep.current.state match
+      case ChainDepState.Praos2(state) =>
+        assertEquals(state.praos.ocertCounters.size, 152)
+        assertEquals(
+          state.announcement.map(a => (a.issuer.bytes, a.announcement.hash.bytes, a.announcement.size)),
+          Some(
+            (
+              hex("09d2e4fc904957604573d87e9cb20e14049bbc2e31de0a12e4d4bf83"),
+              hex("e243f7bdebde1ad84f69ce30bf9fcac5993ee3b8bb137a5fb4c915230abbc629"),
+              143859L
+            )
+          )
+        )
+      case other => fail(s"not a Praos2 state: $other")
   }
 
   test("a Dijkstra state file is refused by the 11.1 layout, at its telescope and its tip") {
