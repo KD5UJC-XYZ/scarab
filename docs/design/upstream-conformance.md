@@ -1,6 +1,6 @@
 # Upstream conformance adapters
 
-Status: current implementation and bounded evidence; the agreed risk-based v0.2 scope of [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49), including the source-refresh closeout in [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273), is complete. This is not whole-suite or every-interpreter equivalence.
+Status: as built for the bounded adapters below, whose evidence is retained. [K2 / #49](https://github.com/KD5UJC-XYZ/scarab/issues/49) was closed on 2026-10-20 under a bounded, risk-based scope, including the source-refresh closeout in [PR #273](https://github.com/KD5UJC-XYZ/scarab/pull/273); [CNF-1](../design-rules.md#cnf-1) supersedes that closeout, and the upstream cases these adapters do not run whole are required work under #49. This is not whole-suite or every-interpreter equivalence.
 
 The Haskell implementations and their formal adapters are independent observations.
 A native acceptance, a formal acceptance, equality of their translated outputs, and a
@@ -351,7 +351,8 @@ exclusions. Native wiring uses response1 for both protocols; twelve unequal orig
 separately labelled local controls. A controlled overlap barrier and extra nonvacuity assertion ensure
 Scarab actually services both admitted lanes. Neither trace identity nor identical runtime scheduling
 is required. Original bytes, native verdicts, observed headers and executable/source provenance are
-retained; broader generator and transport campaigns are optional K2 follow-ups in the [roadmap](../roadmap.md).
+retained; broader generator and transport campaigns remain under K2 / #49 in the [roadmap](../roadmap.md), where
+the upstream cases not yet run whole are required work.
 
 Local wire regressions complement the exported observations. `ChainSyncBatchSuite`
 requires all three requests to arrive before any response, then collects forward,
@@ -379,9 +380,12 @@ The [Plutus evidence](../plutus-conformance.md) now passes all 1,009 original ev
 cases with exact results and budgets under the upstream term/counting profile. The former
 thirteen harness exceptions are removed; separate ledger tests retain Flat admission, protocol
 gates and restricting-budget behavior. Earlier 996/1009 measurements remain historical evidence.
-The [risk-based closeout audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
-distinguishes the remaining reference limitations from optional broader seeded and
-rejection campaigns. The retained EPOCH failure is now classified by
+The 2026-10-20 [risk-based closeout audit](https://github.com/KD5UJC-XYZ/scarab/issues/49#issuecomment-6293250618)
+distinguished the remaining reference limitations from broader seeded and rejection
+campaigns, which it treated as optional. [CNF-1](../design-rules.md#cnf-1) supersedes that
+bounded closeout: the upstream cases not yet run whole are required work under #49, and
+a case not yet run is incomplete, not a pass ([CNF-2](../design-rules.md#cnf-2)).
+The retained EPOCH failure is now classified by
 [#267](https://github.com/KD5UJC-XYZ/scarab/issues/267): its generated completed
 pulser has parameter values inconsistent with the current parameters despite no
 enacted actions. Native Haskell keeps current parameters; the formal rule trusts
@@ -414,9 +418,10 @@ now executes the same formal computation successfully on the unchanged singleton
 and two dependent batches; accepted translated states compare equal. Two deliberate
 bad batches reject on both sides, with differing failure text retained explicitly.
 These repaired-executable observations do not relabel the original crash as a pass.
-The bounded operational fairness and timeout-cleanup checks above satisfy the
-agreed scope. Reproducing exact Haskell schedules or timer internals is not the
-acceptance criterion; broader seeds, action families and backend campaigns remain
-optional K2 roadmap follow-ups. Historical missing-state provenance is #129.
+The bounded operational fairness and timeout-cleanup checks above met the 2026-10-20
+bounded closeout, which CNF-1 supersedes. Reproducing exact Haskell schedules or timer
+internals is not the acceptance criterion; broader seeds, action families and backend
+campaigns remain under #49, where the upstream cases not yet run whole are required work.
+Historical missing-state provenance is #129.
 No persisted native format is changed; maintained native
 snapshots remain V5. Raw upstream trace CBOR is not a native snapshot version.
