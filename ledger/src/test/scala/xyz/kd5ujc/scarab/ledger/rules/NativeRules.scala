@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   LedgerGlobals,
   PlutusStats,
+  ProtocolParams,
   TestLedger,
   Tx,
   TxEnv,
@@ -63,8 +64,13 @@ object NativeRules:
   /** [[state]] in the era `E`. */
   def stateIn[E <: EraTag](protocolMajor: Int, funds: Vector[(TxIn, TxOut)])(using
       ShelleyBasedEra[E]
+  ): NewEpochState[E] = stateUnder[E](TestLedger.params(protocolMajor), funds)
+
+  /** [[stateIn]] under the parameters `pp`. */
+  def stateUnder[E <: EraTag](pp: ProtocolParams, funds: Vector[(TxIn, TxOut)])(using
+      ShelleyBasedEra[E]
   ): NewEpochState[E] =
-    val nes = Build.funded(Build.nes[E](5, TestLedger.params(protocolMajor)), funds.toMap)
+    val nes = Build.funded(Build.nes[E](5, pp), funds.toMap)
     val reserves = Coin(TestLedger.Supply - nes.es.ls.utxo.utxo.utxo.coin)
     nes.copy(es = nes.es.copy(chainAccount = nes.es.chainAccount.copy(reserves = reserves)))
 

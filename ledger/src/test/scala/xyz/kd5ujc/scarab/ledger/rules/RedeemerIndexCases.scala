@@ -60,23 +60,36 @@ object RedeemerIndexCases extends Assertions:
     * its account.
     */
   def state[E <: EraTag](major: Int)(using ShelleyBasedEra[E]): NewEpochState[E] =
-    val nes = NativeRules.stateIn[E](
-      major,
+    chain[E](
+      TestLedger.params(major),
       Vector(
         funding -> TestLedger.out(alice.address(), 1000 * ada),
         collateral -> TestLedger.out(alice.address(), 100 * ada),
         locked -> lockedOut
-      )
+      ),
+      credential,
+      Vector(poolId, otherPoolId)
     )
-    val staking = ok(Convert.credential[Staking](credential))
+
+  /** The era's chain under the parameters `pp`: `funds` in its UTxO set, the pools `pools`
+    * registered and the stake credential `staked` registered with nothing in its account.
+    */
+  def chain[E <: EraTag](
+      pp: ProtocolParams,
+      funds: Vector[(TxIn, TxOut)],
+      staked: Credential,
+      pools: Vector[Bytes]
+  )(using ShelleyBasedEra[E]): NewEpochState[E] =
+    val nes = NativeRules.stateUnder[E](pp, funds)
+    val staking = ok(Convert.credential[Staking](staked))
     val registered =
-      Vector(poolId, otherPoolId).map(id =>
+      pools.map(id =>
         ok(KeyHash.fromBytes[StakePool](id)) -> NativeRewardFixture.stakePool(staking)
       )
     val ls = nes.es.ls
-    val pools = EraLedger.pState(ls).copy(stakePools = Sorted.map(registered))
+    val stakePools = EraLedger.pState(ls).copy(stakePools = Sorted.map(registered))
     NativeRewardFixture.registered(
-      nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, pools))),
+      nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, stakePools))),
       Vector(staking)
     )
 
@@ -162,21 +175,28 @@ object RedeemerIndexCases extends Assertions:
 
   /** The verdict on the transaction `of` builds from the parameters in force, at version `major`,
     * with every predicate failure in the reference's order, as the node's pool judges a submitted
-    * transaction: Conway's MEMPOOL, the LEDGER of an earlier era. The refusal, or the number of
-    * scripts evaluated.
+    * transaction ([[judged]]). The refusal, or the number of scripts evaluated.
     */
   def verdict[E <: EraTag](major: Int)(of: ProtocolParams => Tx)(using
-      era: ShelleyBasedEra[E]
+      ShelleyBasedEra[E]
   ): Either[Vector[PredicateFailure], Long] =
     val nes = state[E](major)
-    val tx = of(EraLedger.curPParams(nes.es.ls.utxo.gov))
-    val globals = NativeRules.globalsOf(ctx)
-    val judged = era match
+    judged[E](nes, ctx)(of(EraLedger.curPParams(nes.es.ls.utxo.gov)))
+
+  /** The verdict on `tx` in the chain `nes` with the rules' context `context`, as the node's pool
+    * judges a submitted transaction: Conway's MEMPOOL, the LEDGER of an earlier era, every
+    * predicate failure in the reference's order. The refusal, or the number of scripts evaluated.
+    */
+  def judged[E <: EraTag](nes: NewEpochState[E], context: TxEnv)(tx: Tx)(using
+      era: ShelleyBasedEra[E]
+  ): Either[Vector[PredicateFailure], Long] =
+    val globals = NativeRules.globalsOf(context)
+    val judgment = era match
       case ShelleyBasedEra.SConway =>
         Judgment
           .run(Mempool, Judgment.Policy.Accumulate)(
             globals,
-            LedgerEnv(ctx, nes.es.chainAccount.treasury),
+            LedgerEnv(context, nes.es.chainAccount.treasury),
             Counted(nes.es.ls, PlutusStats.zero),
             tx
           )
@@ -186,12 +206,12 @@ object RedeemerIndexCases extends Assertions:
         Judgment
           .run(ShelleyLedger.sts[E], Judgment.Policy.Accumulate)(
             globals,
-            ShelleyLedgerEnv(ctx, nes.es.chainAccount),
+            ShelleyLedgerEnv(context, nes.es.chainAccount),
             Counted(nes.es.ls, PlutusStats.zero),
             tx
           )
           .map(_.map(_.plutus))
-    judged
+    judgment
       .fold(defect => fail(s"no verdict: ${defect.message}"), identity)
       .left
       .map(_.toChain.toVector)

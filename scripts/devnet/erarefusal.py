@@ -7,12 +7,18 @@ with the transaction and the provenance of the run in `refused-raw-plutus.jsonl`
 `PlutusFailureReferenceSuite` checks that `PreConwayFailureCbor` / `PredicateFailureCbor` write those bytes.
 Nothing is asserted about the reference's text here: the bytes are the evidence, and a case the reference
 accepts or refuses with a list the Scala model cannot rebuild shows up when the suite is run on the recording.
+
+The redeemer-index cases (`redeemer_index`) keep every verdict, accepted or refused, in `redeemer-index.jsonl`
+of the run directory, with the outputs each transaction spends and the Plutus V1 cost model in force, so that
+`RedeemerIndexReferenceSuite` can put the very transaction to Scarab's rules; `refused_fixture.py
+redeemer-index` assembles `fixtures/devnet/redeemer-index.jsonl` from it.
 """
 import random
 import subprocess
 
 from . import eratx
 from .eraload import ENV, MAGIC, SOCKET
+from .ntcquery import decode_all
 from .eraplutus import COLLATERAL, DATUM, FEE, FUND, OK, UNITS
 from .util import REFERENCE_IMAGE, REPO
 
@@ -22,6 +28,27 @@ def provenance():
         return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True).stdout.strip()
     return {"commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain", "--", "scripts")),
             "image": REFERENCE_IMAGE}
+
+
+def rendering(load, era, tx, label):
+    """The `cardano-cli` rendering of the reference's refusal of `tx`, from a second submission."""
+    cli = load.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit "
+                  f"--testnet-magic {MAGIC} --socket-path {SOCKET} --tx-file /work/tx/{label}.tx",
+                  stdin=eratx.envelope(era, tx))
+    return (cli.stderr or cli.stdout).strip().split("CallStack")[0].strip()
+
+
+def run_context(load, era):
+    """The node, the protocol in force and the provenance of the run, kept with each recorded verdict."""
+    node = load.sh("cardano-node --version").stdout.strip().splitlines()
+    protocol = None
+    try:
+        from .eraplutus import reference_observation
+        protocol = reference_observation(load, era)
+    except Exception as e:
+        protocol = {"error": repr(e)}
+    return {"node": node[0] if node else "", "protocol": protocol,
+            "command": f"python3 scripts/devnet.py --name {load.name} e2e", **provenance()}
 
 
 def record(load, era, tx, label):
@@ -37,23 +64,134 @@ def record(load, era, tx, label):
         load.refusal_evidence.append(row)
         load.log({"refusalAccepted": label})
         return
-    cli = load.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit "
-                  f"--testnet-magic {MAGIC} --socket-path {SOCKET} --tx-file /work/tx/{label}.tx",
-                  stdin=eratx.envelope(era, tx))
-    text = (cli.stderr or cli.stdout).strip().split("CallStack")[0].strip()
-    node = load.sh("cardano-node --version").stdout.strip().splitlines()
-    protocol = None
-    try:
-        from .eraplutus import reference_observation
-        protocol = reference_observation(load, era)
-    except Exception as e:
-        protocol = {"error": repr(e)}
+    text = rendering(load, era, tx, label)
     entry = {"label": label, "era": era, "tx": tx.hex(), "reason": reason.hex(), "cli": text[:3000],
-             "node": node[0] if node else "", "protocol": protocol,
-             "command": f"python3 scripts/devnet.py --name {load.name} e2e", **provenance()}
+             **run_context(load, era)}
     load.keep_tx("refused-raw-plutus.jsonl", entry)
     load.refusal_evidence.append({**row, "reasonBytes": len(reason), "cli": text[:300]})
     load.log({"refusal": label, "reasonHex": reason.hex()[:400], "cli": text[:600]})
+
+
+REDEEMER_INDEX = "redeemer-index.jsonl"
+
+# The redeemer-index cases of each era, in the order `redeemer_index` sends them; a recording is complete only
+# with every one of them, once (`refused_fixture.redeemer_index_fixture` refuses anything else).
+PRE_CONWAY_CASES = ("missing-redeemers-every-purpose", "repeated-certificate-redeemers-0-1",
+                    "repeated-certificate-no-redeemer", "distinct-certificates-redeemer-0",
+                    "repeated-certificate-redeemer-0")
+CONWAY_CASES = ("missing-redeemers-every-purpose", "distinct-certificates-redeemer-0",
+                "distinct-certificates-redeemers-0-1")
+REDEEMER_INDEX_ERAS = ("alonzo", "babbage", "conway")
+
+
+def redeemer_index_cases(era):
+    """The labels of `era`'s redeemer-index cases, in the order they are sent."""
+    return [f"{era}-{case}" for case in (CONWAY_CASES if era == "conway" else PRE_CONWAY_CASES)]
+
+
+def redeemer_index_labels():
+    """Every label a complete redeemer-index recording holds."""
+    return [label for era in REDEEMER_INDEX_ERAS for label in redeemer_index_cases(era)]
+
+
+def keep_verdict(load, era, tx, txid, label, spent, models):
+    """Submit `tx` over LocalTxSubmission and keep the reference's verdict in `redeemer-index.jsonl`: accepted, or
+    refused with the raw reason and the CLI's rendering, next to the outputs the transaction spends (`spent`, the
+    output CBOR by `txid#ix`) and the Plutus V1 cost model in force. An accepted transaction is waited for, so that
+    the next case spends the outputs it left."""
+    try:
+        with load.lsq_factory() as session:
+            reason = session.submit(tx, load.ERA_INDEX[era])
+    except Exception as e:
+        load.log({"redeemerIndexCaptureFailed": label, "error": repr(e)})
+        return None
+    entry = {"label": label, "era": era, "tx": tx.hex(), "verdict": "refused" if reason is not None else "accepted",
+             "spent": spent, "costModelPlutusV1": models[1]}
+    if reason is not None:
+        entry.update(reason=reason.hex(), cli=rendering(load, era, tx, label)[:3000])
+    load.keep_tx(REDEEMER_INDEX, {**entry, **run_context(load, era)})
+    load.refusal_evidence.append({"label": label, "era": era, "refused": reason is not None})
+    load.log({"redeemerIndex": label, "verdict": entry["verdict"], "reasonHex": entry.get("reason", "")[:400]})
+    if reason is None and not load.confirm(txid):
+        load.log({"redeemerIndexUnconfirmed": label})
+    return entry["verdict"]
+
+
+def redeemer_index(load, era, rw, cred, h, pools, script_addr, datum_hash, spend, collateral, avoid, models):
+    """The redeemer index of a certificate, each case's verdict kept whatever it is (`keep_verdict`).
+
+    Before Conway a certificate that occurs again takes the redeemer index of its first occurrence
+    (`getAlonzoScriptsNeeded`, cardano-ledger f649f975 `Alonzo/UTxO.hs:318-361`): two identical delegations of the
+    script's credential, with a redeemer at index 0 alone, at 0 and 1, and with none. Conway gives each certificate
+    its own index (`Conway/UTxO.hs:62-80`) and its body cannot repeat one (`decodeOSet`), so its pair delegates to two
+    pools. Then one transaction that needs the script for each purpose of these eras, spending, withdrawing,
+    certifying and minting, with no redeemer. The cases that change the ledger (accepted ones) come last."""
+    pre_conway = era != "conway"
+    first, other = [2, cred, pools[0]], [2, cred, pools[1]]
+
+    def redeemer(tag, index):
+        return (tag, index, DATUM, UNITS)
+
+    def sdh(redeemers, datums):
+        return eratx.script_data_hash(eratx.enc(eratx.redeemers_cbor(era, redeemers)),
+                                      eratx.enc([DATUM]) if datums else b"", models)
+
+    def outputs_of(tx, by_input):
+        body = decode_all(tx)[0]
+        spent = {}
+        for txid, ix in list(body[0]) + list(body.get(13, [])):
+            key = (txid.hex(), ix)
+            address, coin, assets = by_input[key]
+            out = eratx.tx_out(era, address, coin, assets or None,
+                               datum_hash=datum_hash if address == script_addr else None)
+            spent[f"{key[0]}#{ix}"] = eratx.enc(out).hex()
+        return spent
+
+    def case(label, certs, redeemers, datums=False, **kw):
+        _, _, by_addr = load.snapshot()
+        by_input = {txin: (address, coin, assets) for address, outs in by_addr.items() for txin, coin, assets in outs}
+        built = load.act(era, label, rw, certs=certs, plutus={1: [OK]}, collateral=collateral, avoid=avoid,
+                         redeemers=list(redeemers) or None, script_data=sdh(redeemers, datums), fee=FEE,
+                         build_only=era, datums=[DATUM] if datums else None, **kw)
+        if not built:
+            load.log({"redeemerIndexNotBuilt": label})
+            return None
+        tx, txid = built
+        try:
+            spent = outputs_of(tx, by_input)
+        except Exception as e:
+            load.log({"redeemerIndexSpentUnknown": label, "error": repr(e)})
+            return None
+        return keep_verdict(load, era, tx, txid, label, spent, models)
+
+    def attempt(label, *args, **kw):
+        try:
+            return case(label, *args, **kw)
+        except Exception as e:  # one case must not stop the next
+            load.log({"redeemerIndexCaseFailed": label, "error": repr(e)})
+            return None
+
+    token = {h: {b"A": 1}}
+    kept = {}
+    kept[f"{era}-missing-redeemers-every-purpose"] = attempt(
+        f"{era}-missing-redeemers-every-purpose", [first], [], datums=True, spend_extra=[spend],
+        withdrawals={eratx.reward_address(h, script=True): 0}, mint=token)
+    if pre_conway:
+        for label, certs, redeemers in [
+                (f"{era}-repeated-certificate-redeemers-0-1", [first, first], [redeemer(2, 0), redeemer(2, 1)]),
+                (f"{era}-repeated-certificate-no-redeemer", [first, first], []),
+                (f"{era}-distinct-certificates-redeemer-0", [first, other], [redeemer(2, 0)]),
+                (f"{era}-repeated-certificate-redeemer-0", [first, first], [redeemer(2, 0)])]:
+            kept[label] = attempt(label, certs, redeemers)
+    else:
+        for label, certs, redeemers in [
+                (f"{era}-distinct-certificates-redeemer-0", [first, other], [redeemer(2, 0)]),
+                (f"{era}-distinct-certificates-redeemers-0-1", [first, other], [redeemer(2, 0), redeemer(2, 1)])]:
+            kept[label] = attempt(label, certs, redeemers)
+    missing = [label for label in redeemer_index_cases(era) if kept.get(label) is None]
+    if missing:
+        load.log({"redeemerIndexIncomplete": era, "missing": missing})
+    return missing
 
 
 def exercise(load, era):
@@ -74,6 +212,10 @@ def exercise(load, era):
     if era != "alonzo":
         outputs += [(rw.address, 4_000_000, None, {"inline_datum": [42, b"inline"]}),
                     (rw.address, 8_000_000, None, {"script_ref": eratx.all_script(eratx.sig_script(funder.pay.hash))})]
+    # the redeemer-index cases' own script-locked output and funds: a case above the reference accepts spends the
+    # others, and its change is not in the ledger's UTxO until a block holds it
+    own = len(outputs)
+    outputs += [(script_addr, FUND, None, {"datum_hash": datum_hash}), (rw.address, 60_000_000, None, {})]
     # registering the script credential needs no witness: it is the refused certificates that name its script;
     # it stays registered into the later eras
     register = "refusal-script-registered" not in load.done
@@ -88,7 +230,7 @@ def exercise(load, era):
     load.done.add("refusal-script-registered")
     spend = ((setup, 0), FUND, {})
     collateral = [(setup, 1)]
-    avoid = [(setup, ix) for ix in range(1, len(outputs)) if ix != 3]
+    avoid = [(setup, ix) for ix in range(1, own) if ix != 3]
 
     def sdh(redeemers, datums, models, empty=None):
         encoded = eratx.enc(eratx.redeemers_cbor(era, redeemers)) if empty is None else empty
@@ -149,3 +291,7 @@ def exercise(load, era):
     if w1:
         attempt(f"{era}-missing-vkey-witness", spend_extra=[w1[0]])
     attempt(f"{era}-output-too-small", outputs=[(load.wallets[2].address, 100_000, None, {})])
+    # (5) the redeemer index of a certificate: last, since its accepted cases change the ledger
+    pools = [load.read_key(f"{ENV}/pools-keys/pool{n}/cold.skey").hash for n in (1, 2)]
+    redeemer_index(load, era, rw, cred, h, pools, script_addr, datum_hash, ((setup, own), FUND, {}), collateral,
+                   [(setup, ix) for ix in range(1, own + 1)], v1)

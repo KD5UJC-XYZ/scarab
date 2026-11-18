@@ -413,6 +413,9 @@ def main():
     rf.add_argument("--raw-plutus", action="store_true",
                     help="instead write fixtures/devnet/refused-raw-plutus.jsonl (the raw reasons of `e2e`'s Plutus and "
                          "witness refusals) from the run directory of a finished `e2e`")
+    rf.add_argument("--redeemer-index", action="store_true",
+                    help="instead write fixtures/devnet/redeemer-index.jsonl (every verdict of `e2e`'s redeemer-index "
+                         "cases, accepted or refused) from the run directory of a finished `e2e`")
     rf.set_defaults(run=refused_fixture)
     rs = sub.add_parser("restart", parents=[scala_options],
                         help="up + follow --db, SIGTERM (must exit within 30 s), follow --db again (must restore the snapshot)")

@@ -1436,6 +1436,166 @@ class RefusedFixtureTest(unittest.TestCase):
         self.assertEqual([l["scenario"] for l in lines], ["vrf", "vrf", "unelected", "refoverlap"])
 
 
+class RedeemerIndexTest(unittest.TestCase):
+    """`erarefusal.redeemer_index` against a fake load whose reference refuses every other submission."""
+
+    class Session:
+        def __init__(self, load):
+            self.load = load
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def submit(self, tx, era_index):
+            self.load.submitted.append(tx)
+            return b"\x81" if len(self.load.submitted) % 2 else None
+
+    class Load:
+        ERA_INDEX = {"alonzo": 4, "babbage": 5, "conway": 6}
+        act = eraload.EraLoad.act
+
+        def __init__(self, utxo):
+            self.stop, self.tip, self.name = types.SimpleNamespace(is_set=lambda: False), {"slot": 1}, "t"
+            self.utxo, self.submitted, self.kept, self.logs, self.confirmed = utxo, [], [], [], []
+            self.refusal_evidence = []
+
+        def snapshot(self):
+            by = {}
+            for txin, (address, coin, assets) in self.utxo.items():
+                by.setdefault(address, []).append((txin, coin, assets))
+            return 0, 5, by
+
+        def funds(self, address):
+            return sorted(self.snapshot()[2].get(address, []), key=lambda u: -u[1])
+
+        def lsq_factory(self):
+            return RedeemerIndexTest.Session(self)
+
+        def keep_tx(self, file, entry):
+            self.kept.append((file, entry))
+
+        def confirm(self, txid):
+            self.confirmed.append(txid)
+            return True
+
+        def log(self, entry):
+            self.logs.append(entry)
+
+    def run_era(self, era):
+        from devnet import erarefusal
+        from devnet.eraplutus import DATUM, FUND, OK
+        wallet = eraload.Wallet(__import__("random").Random(1))
+        h = eratx.plutus_script_hash(OK, 1)
+        locked = eratx.enterprise_address(h, script=True)
+        setup = "cd" * 32
+        load = self.Load({(setup, 1): (wallet.address, 3_000_000, {}), (setup, 3): (wallet.address, 60_000_000, {}),
+                          (setup, 6): (locked, FUND, {}), (setup, 7): (wallet.address, 60_000_000, {})})
+        context = {"node": "n", "protocol": {}, "command": "c", "commit": "x", "dirty": False, "image": "i"}
+        with patch.object(erarefusal, "run_context", lambda *_: context), \
+                patch.object(erarefusal, "rendering", lambda *_: "refused"):
+            erarefusal.redeemer_index(load, era, wallet, [1, h], h, [b"\x11" * 28, b"\x22" * 28], locked,
+                                      eratx.blake2b(eratx.enc(DATUM)), ((setup, 6), FUND, {}), [(setup, 1)],
+                                      [(setup, ix) for ix in range(1, 7)], {1: [0] * 166})
+        return setup, load
+
+    def test_every_verdict_is_kept_with_the_outputs_spent(self):
+        setup, load = self.run_era("babbage")
+        files = {f for f, _ in load.kept}
+        self.assertEqual(files, {"redeemer-index.jsonl"})
+        entries = [e for _, e in load.kept]
+        self.assertEqual([e["label"] for e in entries], [
+            "babbage-missing-redeemers-every-purpose", "babbage-repeated-certificate-redeemers-0-1",
+            "babbage-repeated-certificate-no-redeemer", "babbage-distinct-certificates-redeemer-0",
+            "babbage-repeated-certificate-redeemer-0"])
+        self.assertEqual([e["verdict"] for e in entries], ["refused", "accepted"] * 2 + ["refused"])
+        self.assertTrue(all(("reason" in e) == (e["verdict"] == "refused") for e in entries))
+        self.assertEqual(len(load.confirmed), 2, "each accepted transaction is waited for")
+        every = entries[0]["spent"]
+        self.assertEqual(set(every), {f"{setup}#7", f"{setup}#6", f"{setup}#1"},
+                         "the funding input, the script-locked one and the collateral")
+        self.assertEqual(len(cbor_items(bytes.fromhex(every[f"{setup}#6"]))), 3, "the locked output keeps its datum")
+        self.assertEqual(entries[0]["costModelPlutusV1"], [0] * 166)
+
+    def test_conway_delegates_to_two_pools(self):
+        _, load = self.run_era("conway")
+        self.assertEqual([e["label"] for _, e in load.kept], [
+            "conway-missing-redeemers-every-purpose", "conway-distinct-certificates-redeemer-0",
+            "conway-distinct-certificates-redeemers-0-1"])
+
+    def test_each_era_sends_its_declared_cases_and_misses_none(self):
+        from devnet import erarefusal
+        for era in erarefusal.REDEEMER_INDEX_ERAS:
+            with self.subTest(era=era):
+                _, load = self.run_era(era)
+                self.assertEqual([e["label"] for _, e in load.kept], erarefusal.redeemer_index_cases(era))
+                self.assertFalse([l for l in load.logs if "redeemerIndexIncomplete" in l])
+
+    def test_a_case_whose_submission_fails_is_reported_missing(self):
+        from devnet import erarefusal
+
+        def fail(session, tx, era_index):
+            raise ConnectionError("closed")
+        with patch.object(self.Session, "submit", fail):
+            _, load = self.run_era("alonzo")
+        self.assertEqual(load.kept, [])
+        self.assertIn({"redeemerIndexIncomplete": "alonzo", "missing": erarefusal.redeemer_index_cases("alonzo")},
+                      load.logs)
+
+    def assemble(self, rows, existing=None):
+        """`refused-fixture --redeemer-index` over a run directory holding `rows`, into a destination that holds
+        `existing` (or does not exist): the exit it raised, if any, and the destination's contents after it."""
+        with tempfile.TemporaryDirectory() as d:
+            run, out = pathlib.Path(d) / "run", pathlib.Path(d) / "out.jsonl"
+            run.mkdir()
+            (run / "redeemer-index.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+            if existing is not None:
+                out.write_text(existing)
+            exited = None
+            with patch.object(refused_fixture, "data_root", lambda name: run), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    refused_fixture.refused_fixture(types.SimpleNamespace(
+                        name="t", out=str(out), raw_plutus=False, redeemer_index=True))
+                except SystemExit as e:
+                    exited = e
+            return exited, (out.read_text() if out.exists() else None)
+
+    def complete(self):
+        from devnet import erarefusal
+        return [{"label": label, "verdict": "refused", "tx": "00"} for label in erarefusal.redeemer_index_labels()]
+
+    def test_the_fixture_is_the_run_directory_line_for_line(self):
+        rows = self.complete()
+        self.assertEqual(len(rows), 13)
+        exited, written = self.assemble(rows)
+        self.assertIsNone(exited)
+        self.assertEqual([json.loads(l) for l in written.splitlines()], rows)
+
+    def test_an_incomplete_recording_writes_no_fixture(self):
+        rows = self.complete()
+        cases = {
+            "no Alonzo case": [r for r in rows if not r["label"].startswith("alonzo-")],
+            "one case missing": [r for r in rows if r["label"] != "babbage-repeated-certificate-no-redeemer"],
+            "a case recorded twice": rows + [rows[4]],
+            "an unexpected case": rows + [{"label": "conway-repeated-certificate-redeemer-0", "verdict": "refused"}],
+        }
+        for name, recorded in cases.items():
+            for existing in (None, "the fixture as it was\n"):
+                with self.subTest(name, destination="new" if existing is None else "existing"):
+                    exited, after = self.assemble(recorded, existing)
+                    self.assertIsNotNone(exited, "an incomplete recording must refuse")
+                    self.assertIn("incomplete", str(exited.code))
+                    self.assertEqual(after, existing, "nothing is written, and an existing fixture is left as it was")
+
+
+def cbor_items(raw):
+    """The items of a CBOR array, decoded."""
+    return ntcquery.decode_all(raw)
+
+
 class SubmissionVerdictTest(unittest.TestCase):
     """What `expect_rejected` makes of the CLI's answer (the xvrf-dup-active observation: error "", not refused)."""
     EXPECTED = ["VRFKeyHashAlreadyRegistered"]

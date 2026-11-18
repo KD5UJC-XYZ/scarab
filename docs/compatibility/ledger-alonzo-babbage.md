@@ -33,8 +33,15 @@ certifying, minting, then voting and proposing (`extSymmetricDifference`, `Alonz
 LocalTxSubmission refusal bytes but not the verdict. `CertificateRedeemerIndexSuite` runs both
 transactions and the order through the rules the node's pool applies (each era's LEDGER, Conway's
 MEMPOOL); `MissingRedeemersRefusalSuite` has the refusal's CBOR, derived by hand from the
-reference's encoders and not yet compared with a refusal the reference node answered for such a
-transaction. The collection's request order is compared with the reference in
+reference's encoders. The reference node 11.1.3 answered both on the devnet, in Alonzo at
+protocol 5 and Babbage at 7: two identical script-locked delegations with a redeemer at index 0
+accepted, with redeemers at 0 and 1 refused with `ExtraRedeemers` (certificate index 1), with none
+refused listing the first occurrence twice; delegations to two pools with a redeemer at 0 refused
+with the second's missing redeemer; and the refusal of a transaction that needs the script for
+spending, withdrawing, certifying and minting with no redeemer
+(`fixtures/devnet/redeemer-index.jsonl`, recorded by the `e2e` load). `RedeemerIndexReferenceSuite`
+puts each of those transactions to the node's pool rules and requires the same verdict, and of a
+refusal the same bytes. The collection's request order is compared with the reference in
 `ContextCollectionSuite` and `RecordedScriptContextsSuite`.
 
 UTXOS and the block's execution units run in every era from Alonzo whatever the protocol version (cardano-ledger f649f975): Alonzo at version 4 evaluates the scripts against the `is_valid` flag and takes the collateral of a transaction that fails phase 2 (`Alonzo/Rules/Utxos.hs:159-238`, `Alonzo/Rules/Utxo.hs:775-784`, `Babbage/Rules/Utxo.hs:474-485`; #881, `EraNotVersionUtxosSuite`, through `ShelleyUtxo.sts`), and limits the execution units of the block (`validateExUnits`, `Alonzo/Rules/Bbody.hs:149-167,212`; #882, `ShelleyBbodySuite`), which Shelley's BBODY does not, at any version.

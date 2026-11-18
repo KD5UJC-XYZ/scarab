@@ -213,6 +213,7 @@
     "fixtures/devnet/lsq/genesis/conway-genesis.json": "6c3b213c988b2c1d40ba9af53a06ceb8edc3a7639495430782c8a6aa0d58e0d2",
     "fixtures/devnet/lsq/genesis/shelley-genesis.json": "5b91c0b96f9644a4dd446f91d95944a411e15b9d61262cdba6124470a0dce706",
     "fixtures/devnet/lsq/golden.json": "3140be49b1889e00266772826bfe5e0c5c843a541dd73844721b1382b86e7c68",
+    "fixtures/devnet/redeemer-index.jsonl": "143a820ab9f06ee2157eb2a3eec2e62c7b8a21b19dff132654d9b6073f88338a",
     "fixtures/devnet/refused-raw-eras.jsonl": "14e8fb9ba012d4db8a29c25fc655fc56297ed35e9dce8f5b372a4f2221fe58a9",
     "fixtures/devnet/refused-raw-plutus.jsonl": "f6a7739d067554c1d01894626c24ac60c05cce9a6bb69cc1a715a001fd41c8ce",
     "fixtures/devnet/refused-txs.jsonl": "69aeafb755cde09c6e70dba76a70a8e84939d7a0cd0df7b94b7a770c4a5b015c",
