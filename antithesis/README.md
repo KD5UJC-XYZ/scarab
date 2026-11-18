@@ -161,6 +161,16 @@ did in `/logs/reload.log`, and the driver's two positive controls, "s1 accepts a
 change of generation the node took) and "s1 reads a changed topology on SIGHUP", fail unless the steps ran.
 `hotValency` 1 changes how s1 follows the pools, so the fork rates are not comparable with `pool`'s.
 
+## `pool/config-thin-catalog`: only Scarab's own classes instrumented
+
+An experiment beside `pool`: Antithesis instruments everything under `/opt/antithesis/catalog/`, and `pool` links the
+whole assembly there, so the libraries (cats-effect, fs2, http4s, Bouncy Castle, the Scala library) carry coverage
+hooks as well as Scarab's own classes, and the Haskell pools carry none. This config's s1 runs the same JAR split in
+two by `scarab/split_jar.py`, entries unchanged: `scarab.jar`, the one the catalog's link names, holds everything under
+`xyz/`, and `scarab-libs.jar` the rest, outside the catalog and on the same classpath. Run beside `pool`, Antithesis's
+"Virtual time per wall time" says what instrumenting the libraries costs; coverage then guides exploration by Scarab's
+code alone.
+
 ## `pool/config-late-start`: the earlier start order
 
 An experiment beside `pool`: s1's container starts only once both Haskell pools listen, as `pool` started it until
@@ -216,6 +226,7 @@ CONFIG=config-k200 antithesis/pool/scripts/launch.sh on 15m  # k = 200
 CONFIG=config-late-start antithesis/pool/scripts/launch.sh on 15m  # experiment: the earlier start order
 CONFIG=config-short-kes SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # 250-slot KES periods
 CONFIG=config-reload SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # the same, s1 reloaded by SIGHUP
+CONFIG=config-thin-catalog SETUP_TIMEOUT=15m antithesis/pool/scripts/launch.sh on 15m  # only Scarab's classes instrumented
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 
