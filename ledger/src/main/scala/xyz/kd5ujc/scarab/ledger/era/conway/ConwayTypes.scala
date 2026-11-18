@@ -18,6 +18,8 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoScriptRep,
+  AsIx,
+  AsIxItem,
   BabbageEraTxOut,
   BabbageTxOutRep,
   ConwayEraScript,
@@ -25,6 +27,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraTxCert,
   EraField,
   EraTxError,
+  Indexable,
   Language,
   MultiAssetValue,
   NativeScriptRep,
@@ -406,6 +409,33 @@ object ConwayTxBody:
       Coin(b.donation)
     )
 
+  /** `conwayRedeemerPointerInverse` (`Conway/TxBody.hs:662-679`, cardano-ledger f649f975): the item
+    * at the pointer's index among the policies minted (in their order), the inputs, the
+    * withdrawals' accounts (in theirs), the certificates, the voters (in theirs) or the proposals.
+    */
+  def conwayRedeemerPointerInverse(
+      txBody: ConwayTxBody,
+      ptr: ConwayPlutusPurpose[AsIx]
+  ): Option[ConwayPlutusPurpose[AsIxItem]] =
+    import ConwayPlutusPurpose.*
+    ptr match
+      case ConwayMinting(idx) =>
+        Indexable
+          .fromIndexSet(idx, SortedSet.from(txBody.mint.keySet))
+          .map(ConwayMinting(_))
+      case ConwaySpending(idx) =>
+        Indexable.fromIndexSet(idx, txBody.spendInputs).map(ConwaySpending(_))
+      case ConwayWithdrawing(idx) =>
+        Indexable.fromIndexMap(idx, txBody.withdrawals).map(ConwayWithdrawing(_))
+      case ConwayCertifying(idx) =>
+        Indexable.fromIndexOSet(idx, txBody.certs).map(ConwayCertifying(_))
+      case ConwayVoting(idx) =>
+        Indexable
+          .fromIndexMap(idx, txBody.votingProcedures.unVotingProcedures)
+          .map(ConwayVoting(_))
+      case ConwayProposing(idx) =>
+        Indexable.fromIndexOSet(idx, txBody.proposalProcedures).map(ConwayProposing(_))
+
   val instance: ConwayEraTxBody[Conway] { type Level[L <: TxLevel] = TopOnly[L] } =
     new ConwayEraTxBody[Conway]:
       type Level[L <: TxLevel] = TopOnly[L]
@@ -473,6 +503,14 @@ object ConwayTxBody:
       ): Option[Network] =
         l match
           case TopOnly.Top => body.networkId
+      // `redeemerPointerInverse = conwayRedeemerPointerInverse`, `Conway/TxBody.hs:425`,
+      // cardano-ledger f649f975
+      override def redeemerPointerInverse[L <: TxLevel](
+          body: TxBody[L, Conway],
+          ptr: ConwayPlutusPurpose[AsIx]
+      )(using l: TopOnly[L]): Option[ConwayPlutusPurpose[AsIxItem]] =
+        l match
+          case TopOnly.Top => ConwayTxBody.conwayRedeemerPointerInverse(body, ptr)
       override def referenceInputs[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
       ): SortedSet[TxIn] =
