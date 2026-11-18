@@ -41,6 +41,21 @@
    "evidence": ["CostModelDecodeSuite", "CborDatasetSuite"],
    "digest": "55e5978f6e713e65"
   },
+  "def ledger.CborRead.enforceSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "enforceSize",
+     "lines": [1403, 1404]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["BlockEnvelopeSuite"],
+   "digest": "aae2adc3ab60f9e9"
+  },
   "class ledger.era.MaxPledgeLeverage": {
    "upstream": [
     {

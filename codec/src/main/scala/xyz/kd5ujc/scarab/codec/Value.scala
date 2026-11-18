@@ -28,6 +28,20 @@ sealed abstract class Node:
     */
   final def isIndefinite: Boolean = original.byteOr(0)(false)(b => (b & 31) == 31)
 
+  /** The items of the item if it is a definite list of exactly `size` items, as the reference's
+    * `enforceSize` reads one: `decodeListLen`, then `matchSize` (cardano-binary of cardano-base
+    * 060819b5 `cardano-binary/src/Cardano/Binary/FromCBOR.hs:191-202`; cardano-ledger-binary of
+    * cardano-ledger f649f975 `Decoding/Decoder.hs:1403-1415`). `decodeListLen` takes the heads
+    * `0x80` to `0x9b` alone (`tryConsumeListLen`, cborg 0.2.10.0
+    * `src/Codec/CBOR/Read.hs:1925-1964`), so the same items written as an indefinite list
+    * `9f .. ff` are not one; a decoder that takes either form reads the length with
+    * `decodeListLenOrIndef` instead. A node built by hand without original bytes reads as definite.
+    */
+  final def enforceSize(size: Int): Either[Node.NotSized, Vector[Node]] = value match
+    case Value.Arr(_) if isIndefinite => Left(Node.NotSized.Indefinite)
+    case Value.Arr(xs) => Either.cond(xs.sizeIs == size, xs, Node.NotSized.Length(xs.size))
+    case other         => Left(Node.NotSized.NotAList(other))
+
   /** Whether the item is a record read with its fields after an empty indefinite list `9f ff`, by a
     * decode given it as [[Cbor.Detached]]: its value is the list of those fields, its original
     * bytes run from the `9f` to the end of its last field, and [[isIndefinite]] holds. A node built
@@ -76,6 +90,17 @@ object Node:
     * definite, with the shortest head ([[Node.isIndefinite]] is false).
     */
   def apply(value: Value, original: Bytes): Node = new Strict(value, original)
+
+  /** Why an item is not the definite list of a given size that [[Node.enforceSize]] reads. */
+  enum NotSized extends DomainError:
+    /** Not a list at all; `value` is what the item is. */
+    case NotAList(value: Value)
+
+    /** A list written with an indefinite length. */
+    case Indefinite
+
+    /** A definite list of `actual` items. */
+    case Length(actual: Int)
 
   private final class Strict(val value: Value, val original: Bytes) extends Node:
     def offset: Int = original.unsafeOffset

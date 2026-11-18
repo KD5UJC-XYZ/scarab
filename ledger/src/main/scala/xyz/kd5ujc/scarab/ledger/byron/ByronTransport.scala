@@ -500,7 +500,7 @@ object ByronTransport:
     }
 
   private[ledger] def tuple(node: Node, size: Int, context: DecodeSite): Result[Vector[Node]] =
-    definite(node, context) *> CborRead.arrayN(node, size, context)
+    CborRead.enforceSize(node, size, context)
 
   private def map(node: Node, context: DecodeSite): Result[Vector[(Node, Node)]] =
     definite(node, context) *> CborRead.map(node, context)

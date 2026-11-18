@@ -134,10 +134,25 @@ private[ledger] object CborRead:
       Either.cond(!n.isDetached, xs, LedgerDecodeError.DetachedList(what))
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Array, n.value))
 
+  /** The items of a list of `size` items, definite or indefinite: where the reference reads the
+    * length with `decodeListLenOrIndef` (`decodeRecordNamed`, `decodeRecordSum`, `decodeList`).
+    * Where it reads it with `decodeListLen`, [[enforceSize]] reads the list.
+    */
   def arrayN(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
     array(n, what).flatMap(xs =>
       Either.cond(xs.sizeIs == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
     )
+
+  /** `enforceSize`: the items of a definite list of exactly `size` items ([[Node.enforceSize]]). An
+    * indefinite list is [[LedgerDecodeError.IndefiniteLength]] whatever it holds.
+    */
+  def enforceSize(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
+    n.enforceSize(size).leftMap {
+      case Node.NotSized.NotAList(value) =>
+        LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Array, value)
+      case Node.NotSized.Indefinite     => LedgerDecodeError.IndefiniteLength(what)
+      case Node.NotSized.Length(actual) => LedgerDecodeError.ArrayLength(what, size, actual)
+    }
 
   /** A record the reference reads with `RecD` below decoder version 12: `decodeCount (RecD cn) n`
     * reads the length with `decodeRecordNamed` around a decoder that reads nothing
@@ -153,11 +168,7 @@ private[ledger] object CborRead:
     n.value match
       case Value.Arr(xs) if n.isDetached =>
         Either.cond(xs.sizeIs == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
-      case _ =>
-        array(n, what).flatMap(xs =>
-          definite(n, what) *>
-            Either.cond(xs.sizeIs == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
-        )
+      case _ => enforceSize(n, size, what)
 
   /** `RecD` before 12, `decodeRecordNamed` around the fields from 12 (`Plutus/ExUnits.hs:195-203`,
     * cardano-ledger f649f975).

@@ -61,10 +61,10 @@ object HfcHeader:
   def decode(bytes: Bytes): Either[HfcHeaderError, HfcHeader] =
     for
       root <- Cbor.decode(bytes, limits).leftMap(HfcHeaderError.Syntax(_))
-      parts <- root.value match
-        // `decodeListLen` of the reference reads a definite length only (see `definite`)
-        case Value.Arr(Vector(index, payload)) if definite(root) => Right((index, payload))
-        case _ => Left(HfcHeaderError.NotAnEnvelope)
+      // `decodeListLen` of the reference reads a definite length only (`Node.enforceSize`)
+      parts <- root.enforceSize(2) match
+        case Right(Vector(index, payload)) => Right((index, payload))
+        case _                             => Left(HfcHeaderError.NotAnEnvelope)
       (index, payload) = parts
       era <- index.value match
         case Value.UInt(i) => Right(i)
@@ -78,22 +78,18 @@ object HfcHeader:
         case None => Right(Unrecognised(era, payload.original))
     yield header
 
-  /** Whether the item was written with a definite length. The decoder of the reference reads the
-    * envelope with `decodeListLen` and the embedded header with `decodeBytes`, which take the
-    * definite forms only (cborg `Codec.CBOR.Read.tryConsumeListLen` accepts 0x80 to 0x9b and
-    * `tryConsumeBytes` 0x40 to 0x5b; the indefinite forms are `decodeListLenIndef` and
-    * `decodeBytesIndef`), so `9f 07 .. ff` is no envelope there. Shortest-form integer heads are
-    * not demanded (`[7, ..]` as `98 02 18 07 ..` reads), and are not here: the era and the header
-    * bytes are what an envelope means, the encoder writes the canonical form as `encodeNS` does.
+  /** The bytes of `tag24(bytes)`. The decoder of the reference reads the envelope with
+    * `decodeListLen` and the embedded header with `decodeBytes`, which take the definite forms only
+    * (cborg `Codec.CBOR.Read.tryConsumeListLen` accepts 0x80 to 0x9b and `tryConsumeBytes` 0x40 to
+    * 0x5b; the indefinite forms are `decodeListLenIndef` and `decodeBytesIndef`), so `9f 07 .. ff`
+    * is no envelope there and `5f .. ff` no header. Shortest-form integer heads are not demanded
+    * (`[7, ..]` as `98 02 18 07 ..` reads), and are not here: the era and the header bytes are what
+    * an envelope means, the encoder writes the canonical form as `encodeNS` does.
     */
-  private def definite(item: Node): Boolean =
-    !item.original.headOption.exists(head => head == 0x9f.toByte || head == 0x5f.toByte)
-
-  /** The bytes of `tag24(bytes)`. */
   private def embedded(payload: Node): Either[HfcHeaderError, Bytes] = payload.value match
     case Value.Tag(t, inner) if t == 24 =>
       inner.value match
-        case Value.ByteString(b) if b.size <= MaxHeader && definite(inner) => Right(b)
+        case Value.ByteString(b) if b.size <= MaxHeader && !inner.isIndefinite => Right(b)
         case _ => Left(HfcHeaderError.NotEmbeddedCbor)
     case _ => Left(HfcHeaderError.NotEmbeddedCbor)
 

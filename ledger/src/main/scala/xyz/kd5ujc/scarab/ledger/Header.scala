@@ -378,8 +378,7 @@ object Header:
     */
   private[ledger] def vrfCert(n: Node, strings: ByteStrings): Either[ChainError, VrfCert] =
     for
-      _ <- CborRead.definite(n, DecodeField.Header).leftMap(fail)
-      xs <- array(n, 2)
+      xs <- CborRead.enforceSize(n, 2, DecodeField.Header).leftMap(fail)
       out <- CborRead.bytes(xs(0), DecodeField.Header)(using strings).leftMap(fail)
       proof <- bytes(xs(1), 80, strings)
     yield VrfCert(out, proof)

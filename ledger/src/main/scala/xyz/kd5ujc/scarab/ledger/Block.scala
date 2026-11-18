@@ -135,7 +135,9 @@ object Block:
       at: Era => DecoderVersion
   ): Either[ChainError, Block] =
     for
-      outer <- array(root, 2)
+      // `enforceSize "CardanoBlock" 2` (ouroboros-consensus 82ecba329
+      // `Ouroboros/Consensus/Cardano/Node.hs:184`), before the tag of any era is read
+      outer <- enforceSize(root, 2)
       tag <- outer(0).value match
         case Value.UInt(t) => Right(t)
         case _ =>
@@ -157,7 +159,7 @@ object Block:
             .toRight(fail(LedgerDecodeError.ByronBlockUnexpected))
             .flatMap(byron(tag == 0, outer(1), _))
         // `[header, [txs, leios_cert / nil, peras_cert / nil]]`, read as the Leios testnet's build
-        // reads it: the envelope again (a definite list), then the block at decoder version 12
+        // reads it: the envelope again, then the block at decoder version 12
         case Era.Dijkstra => LeiosBlock.read(root).map(Dijkstra(_))
         case _            => shelley(era, at(era), outer(1))
     yield block
@@ -168,7 +170,9 @@ object Block:
       epochSlots: BigInt
   ): Either[ChainError, Block] =
     for
-      parts <- array(n, 3)
+      // `enforceSize "Block" 3` and `enforceSize "BoundaryBlock" 3` (cardano-ledger f649f975
+      // `eras/byron/ledger/impl/src/Cardano/Chain/Block/Block.hs:329,486`)
+      parts <- enforceSize(n, 3)
       header <- Header.byronFromRaw(parts(0).original, boundary, epochSlots)
       hint <- Header.byronSizeHint(BigInt(n.original.size) + 9)
     // GetHeader ByronBlock includes the CBOR-in-CBOR and EBB tag overhead (7 + 2),
@@ -182,6 +186,8 @@ object Block:
 
   private def shelley(era: Era, version: DecoderVersion, n: Node): Either[ChainError, Block] =
     for
+      // `decodeRecordNamed "Block"` (`libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:106`,
+      // cardano-ledger f649f975): a definite list or an indefinite one, unlike the envelope
       parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
       header <- Header.fromRaw(era, parts(0).original, version)
       body <- segregated(parts, era, version)
@@ -276,6 +282,8 @@ object Block:
     ChainError.Decode(DecodeField.Block, reason)
   private def array(n: Node, size: Int): Either[ChainError, Vector[Node]] =
     CborRead.arrayN(n, size, DecodeField.Block).leftMap(fail)
+  private def enforceSize(n: Node, size: Int): Either[ChainError, Vector[Node]] =
+    CborRead.enforceSize(n, size, DecodeField.Block).leftMap(fail)
   private def list(n: Node): Either[ChainError, Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
     case _ =>

@@ -305,8 +305,7 @@ object LeiosBlock:
     */
   private[ledger] def read(root: Node): Either[ChainError, LeiosBlock] =
     for
-      _ <- CborRead.definite(root, DecodeField.LeiosBlock).leftMap(fail)
-      outer <- array(root, 2)
+      outer <- CborRead.enforceSize(root, 2, DecodeField.LeiosBlock).leftMap(fail)
       tag <- uint(outer(0))
       _ <- Either.cond(
         tag == HfcHeader.DijkstraBlockTag,
