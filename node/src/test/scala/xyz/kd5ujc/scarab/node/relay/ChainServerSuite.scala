@@ -574,6 +574,31 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("an intersection finds a stored point in the index, reading no block") {
+    tempDir.use { dir =>
+      counted(dir) { (server, log) =>
+        server.source.use { source =>
+          for
+            tip <- server.tip
+            // a stored slot whose block has another hash, a slot past the store, and a stored block
+            found <- source.intersect(
+              Vector(ref(14, salt = 1).point, ref(77).point, ref(12).point)
+            )
+            intersecting <- log.getAndSet(Vector.empty)
+            back <- source.poll
+            forward <- source.poll
+            following <- log.get
+          yield
+            assertEquals(found, Right(ref(12).point -> tip))
+            assertEquals(intersecting, Vector.empty[CountedReads.Read])
+            assertEquals(back, Some(Update.RollBackward(ref(12).point, tip)))
+            assertEquals(forward.collect { case Update.RollForward(h, _) => h.raw }, Some(raw(13)))
+            assertEquals(following, Vector(blockAt(dir)(13)))
+        }
+      }
+    }
+  }
+
   test("a BlockFetch range finds its ends in the index and reads each of its blocks once") {
     tempDir.use { dir =>
       counted(dir) { (server, log) =>

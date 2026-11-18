@@ -66,9 +66,12 @@ final class ChainServer[F[_]: Async] private (
     * `Storage/ChainDB/Impl/Follower.hs` 457-525). Origin, the anchor and a volatile point are
     * checked against the chain as it is and taken in one update, so a fork switch that drops the
     * point cannot come between the check and the move (465-472). A point older than the volatile
-    * chain is looked up in the store outside the update, as the reference reads its ImmutableDB
-    * outside the transaction (510-522); the store never drops a block, so the follower moved after
-    * the lookup stands on our chain however the volatile chain changed meanwhile.
+    * chain is looked up in the store's index outside the update, the block not read, as the
+    * reference opens an ImmutableDB iterator at the point outside the transaction (510-522), which
+    * finds it in the chunk's indexes and reads no block (`streamAfterPoint`, `ImmutableDB/API.hs`
+    * 542-576; `checkLowerBound` and `getSlotInfo`, `ImmutableDB/Impl/Iterator.hs` 226-243 and
+    * 281-352); the store never drops a block, so the follower moved after the lookup stands on our
+    * chain however the volatile chain changed meanwhile.
     */
   private def checkIfPointOnChain(id: Long, point: Point)(using
       Raise[F, StorageError]
@@ -77,7 +80,7 @@ final class ChainServer[F[_]: Async] private (
       case ChainServer.Standing.Taken  => F.pure(true)
       case ChainServer.Standing.Absent => F.pure(false)
       case ChainServer.Standing.Older(older, stored) =>
-        stored.get(older).flatMap {
+        stored.refOf(older).flatMap {
           case Some(_) => state.update(_.move(id, Cursor.RollbackTo(older))).as(true)
           case None    => F.pure(false)
         }
