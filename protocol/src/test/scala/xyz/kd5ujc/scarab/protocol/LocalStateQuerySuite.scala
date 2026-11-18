@@ -252,10 +252,10 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
       else QueryPrefix.Short
 
   test("a Query whose query the reader refuses before it has all arrived ends there") {
+    // the reader is given the query's bytes alone, and a prefix it does not refuse waits
     List(
       "8203820f" -> DecodeResult.Failed(ProtocolError.UndecodableQueryPrefix(cause)),
       "8203820f82" -> DecodeResult.Failed(ProtocolError.UndecodableQueryPrefix(cause)),
-      // the reader is given the query's bytes alone, and a prefix it does not refuse waits
       "82038200" -> DecodeResult.NeedMore,
       "8203" -> DecodeResult.NeedMore
     ).foreach { (wire, judged) =>

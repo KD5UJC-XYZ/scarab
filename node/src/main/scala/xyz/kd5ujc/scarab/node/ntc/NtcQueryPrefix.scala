@@ -17,41 +17,19 @@ import xyz.kd5ujc.scarab.protocol.LocalStateQuery
   * unless another pin is named.
   */
 object NtcQueryPrefix:
-  /** The decoders a query passes through, outermost first. */
+  /** The decoders a query passes through, outermost first, at ouroboros-consensus 82ecba32: the
+    * top-level query, `handleTopLevelQuery` (`Ouroboros/Consensus/Ledger/Query.hs:482-491`); the
+    * hard-fork combinator's block query
+    * (`HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:456-479`); `decodeNS` around a
+    * `QueryIfCurrent` (`HardFork/Combinator/Serialisation/Common.hs:420-425`); `QueryAnytime` 's
+    * query (`HardFork/Combinator/Ledger/Query.hs:545-550`) and its era, the `Serialise` of
+    * `EraIndex` (`HardFork/Combinator/Abstract/SingleEraBlock.hs:169-175`); `decodeQueryHardFork`
+    * (`SerialiseNodeToClient.hs:410-417`); `decodeByronQuery`, a bare tag
+    * (`Byron/Ledger/Ledger.hs:556-561`); `decodeShelleyQuery` (`Shelley/Ledger/Query.hs:916-998`)
+    * and `GetLedgerPeerSnapshot` 's peer kind (`Shelley/Ledger/Query.hs:986-992`).
+    */
   enum Level:
-    /** The top-level query, `handleTopLevelQuery` (`Ouroboros/Consensus/Ledger/Query.hs:482-491`).
-      */
-    case Query
-
-    /** The hard-fork combinator's block query
-      * (`HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:456-479`).
-      */
-    case BlockQuery
-
-    /** `decodeNS` around a `QueryIfCurrent`
-      * (`HardFork/Combinator/Serialisation/Common.hs:420-425`).
-      */
-    case EraQuery
-
-    /** `QueryAnytime`'s query (`HardFork/Combinator/Ledger/Query.hs:545-550`). */
-    case Anytime
-
-    /** `QueryAnytime` 's era, the `Serialise` of `EraIndex`
-      * (`HardFork/Combinator/Abstract/SingleEraBlock.hs:169-175`).
-      */
-    case AnytimeEra
-
-    /** `decodeQueryHardFork` (`SerialiseNodeToClient.hs:410-417`). */
-    case HardFork
-
-    /** `decodeByronQuery`, a bare tag (`Byron/Ledger/Ledger.hs:556-561`). */
-    case Byron
-
-    /** `decodeShelleyQuery` (`Shelley/Ledger/Query.hs:916-998`). */
-    case Ledger
-
-    /** `GetLedgerPeerSnapshot`'s peer kind (`Shelley/Ledger/Query.hs:986-992`). */
-    case PeerKind
+    case Query, BlockQuery, EraQuery, Anytime, AnytimeEra, HardFork, Byron, Ledger, PeerKind
 
   /** Where the reference's decoder of queries fails on the part of a query that has arrived. */
   enum Refusal extends DomainError:
@@ -73,8 +51,8 @@ object NtcQueryPrefix:
     /** An era index past the last era of `CardanoEras` (`nsFromIndex`). */
     case UnknownEra(level: Level, index: Int)
 
-    /** A query that `requireCG` guards, of an era before Conway
-      * (`Shelley/Ledger/Query.hs:936-942`).
+    /** A query that `requireCG` guards, of an era before Conway (`Shelley/Ledger/Query.hs:936-942`,
+      * ouroboros-consensus 82ecba32).
       */
     case ConwayOnly(tag: Int)
 
@@ -158,7 +136,8 @@ object NtcQueryPrefix:
               QueryEra.Babbage | QueryEra.Conway | QueryEra.Dijkstra),
               next
             ) =>
-          // Conway's governance from Conway on (`getConwayEraGovDict`, `Shelley/Eras.hs:215`)
+          // Conway's governance from Conway on (`getConwayEraGovDict`, `Shelley/Eras.hs:215`,
+          // ouroboros-consensus 82ecba32)
           ledger(tokens, next, e.index >= QueryEra.Conway.index)
       }
 

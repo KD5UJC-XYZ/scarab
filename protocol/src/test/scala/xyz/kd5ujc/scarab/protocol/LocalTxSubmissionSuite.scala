@@ -118,10 +118,10 @@ class LocalTxSubmissionSuite extends FunSuite:
     if input.take(2) == hex("8208") then TxPrefix.Refused(cause) else TxPrefix.Short
 
   test("a SubmitTx whose transaction the reader refuses before it has all arrived ends there") {
+    // the reader is given the transaction's bytes alone, and a prefix it does not refuse waits
     List(
       "82008208" -> DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause)),
       "82008208d818" -> DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause)),
-      // the reader is given the transaction's bytes alone, and a prefix it does not refuse waits
       "82008206" -> DecodeResult.NeedMore,
       "8200" -> DecodeResult.NeedMore
     ).foreach { (wire, judged) =>
