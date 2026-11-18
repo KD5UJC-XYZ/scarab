@@ -23,6 +23,12 @@ trait EraTxWits[E <: EraTag]:
   /** `scriptTxWitsL`: by hash. */
   def scriptTxWits(wits: TxWits[E]): SortedMap[Bytes, Script[E]]
 
+  /** The hashes of [[scriptTxWits]] in the order the scripts arrived, each once: the node's own,
+    * which no rule's verdict reads, only the choice of the first script a decoder gives no verdict
+    * for (the reference's decoding always gives one), as the flat checks choose it.
+    */
+  def scriptTxWitsArrival(wits: TxWits[E]): Vector[Bytes]
+
 /** The datums and redeemers of a witness set, from Alonzo (`AlonzoEraTxWits`,
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:480-483`, cardano-ledger f649f975), whose
   * scripts have Plutus scripts (the superclass `AlonzoEraScript era`).

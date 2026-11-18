@@ -7,6 +7,8 @@ import xyz.kd5ujc.scarab.ledger.{TxIn, Voter}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
   AlonzoEraUTxO,
+  AlonzoStAnnTx,
+  TopOnly,
   AlonzoScriptsNeeded,
   AsItem,
   AlonzoUTxO,
@@ -247,3 +249,34 @@ object ConwayUTxO:
         txOf.bodyOf.outputsOf,
         summon
       )
+
+    // `scriptsProvidedStAnnTx = scriptsProvidedAlonzoStAnnTx` and the other three,
+    // `Conway/UTxO.hs:141-147`, cardano-ledger f649f975
+    override def scriptsProvidedStAnnTx[L <: TxLevel](
+        stAnnTx: xyz.kd5ujc.scarab.ledger.era.StAnnTx[L, Conway]
+    )(using l: txOf.bodyOf.Level[L]): ScriptsProvided[Conway] =
+      l match
+        case TopOnly.Top => AlonzoStAnnTx.scriptsProvidedAlonzoStAnnTx(stAnnTx)
+
+    override def scriptsNeededStAnnTx[L <: TxLevel](
+        stAnnTx: xyz.kd5ujc.scarab.ledger.era.StAnnTx[L, Conway]
+    )(using l: txOf.bodyOf.Level[L]): AlonzoScriptsNeeded[Conway] =
+      l match
+        case TopOnly.Top => AlonzoStAnnTx.scriptsNeededAlonzoStAnnTx(stAnnTx)
+
+    override def plutusScriptsWithContextStAnnTx[L <: TxLevel](
+        stAnnTx: xyz.kd5ujc.scarab.ledger.era.StAnnTx[L, Conway]
+    )(using
+        l: txOf.bodyOf.Level[L]
+    ): Either[
+      cats.data.NonEmptyList[xyz.kd5ujc.scarab.ledger.era.CollectError[Conway]],
+      List[xyz.kd5ujc.scarab.ledger.era.PlutusWithContext]
+    ] =
+      l match
+        case TopOnly.Top => AlonzoStAnnTx.plutusScriptsWithContextAlonzoStAnnTx(stAnnTx)
+
+    override def plutusLanguagesUsedStAnnTx[L <: TxLevel](
+        stAnnTx: xyz.kd5ujc.scarab.ledger.era.StAnnTx[L, Conway]
+    )(using l: txOf.bodyOf.Level[L]): Set[xyz.kd5ujc.scarab.plutus.PlutusLanguage] =
+      l match
+        case TopOnly.Top => AlonzoStAnnTx.plutusLanguagesUsedAlonzoStAnnTx(stAnnTx)

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
+import scala.collection.immutable.ListMap
+import cats.Id
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
@@ -9,9 +11,11 @@ import xyz.kd5ujc.scarab.ledger.{
   Mismatch,
   PredicateFailure,
   Purpose,
+  ScriptLocation,
   UtxowFailure,
   Verdicts
 }
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptDecoder}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.rules.Test
@@ -23,6 +27,16 @@ import xyz.kd5ujc.scarab.ledger.state.EraTag
 // `UtxowFailure`, so its verdict is the one the flat rules give.
 
 private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
+
+/** The defect of a script the decoder gives no verdict for, in the transaction `txId`, as the flat
+  * checks report it.
+  */
+private def unavailable(txId: Bytes)(u: UnavailableScript): LedgerDefect =
+  LedgerFailure.Unavailable(
+    txId,
+    ScriptLocation.Phase1(u.scriptHash),
+    EvalFailure.Unsupported(u.cause)
+  )
 
 /** Shelley's predicates of UTXOW (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs`,
   * cardano-ledger f649f975).
@@ -72,6 +86,59 @@ object ShelleyUtxow:
     Test.failureOnNonEmpty(needed -- witsKeyHashes)(_.isEmpty)(missing =>
       utxow(UtxowFailure.MissingVKeyWitnesses(missing))
     )
+
+  /** `validateMetadata` (`Shelley/Rules/Utxow.hs:427-443`, cardano-ledger f649f975): the body's
+    * hash of the auxiliary data and the data go together, and with both the hash is the data's
+    * (`ConflictingMetadataHash`) and the data well formed at the parameters' protocol version
+    * (`InvalidMetadata`, `validateTxAuxData` with the annotated transaction's cache), both
+    * reported. A script the decoder gives no verdict for is a defect of this implementation
+    * ([[UnavailableScript]]), the first in the order the scripts arrived, as in the flat check. The
+    * scripts are read only where the data and its hash are both present, the reference's order; the
+    * flat check reads them first, which differs only where the decoder gives no verdict: there,
+    * data without its hash is this predicate's `MissingTxBodyMetadataHash` and the flat check's
+    * defect.
+    */
+  def validateMetadata[E <: EraTag, L <: TxLevel](
+      decoder: ScriptDecoder[Id],
+      pp: PParams[E],
+      stAnnTx: StAnnTx[L, E]
+  )(using
+      t: EraTx[E],
+      l: t.bodyOf.Level[L],
+      p: EraPParams[E]
+  ): Either[LedgerDefect, Test[PredicateFailure]] =
+    val tx = t.txStAnnTx(stAnnTx)
+    val txBody = t.body(tx)
+    val pv = p.ppProtocolVersionL.get(pp)
+    (t.bodyOf.auxDataHash(txBody), t.auxData(tx)) match
+      case (None, None) => Right(Test.pass)
+      case (Some(mdh), None) =>
+        Right(Test.failureUnless(false, utxow(UtxowFailure.MissingTxMetadata(mdh))))
+      case (None, Some(md)) =>
+        Right(
+          Test.failureUnless(
+            false,
+            utxow(
+              UtxowFailure.MissingTxBodyMetadataHash(
+                EraTxAuxData.hashTxAuxData(md)(using t.auxDataOf)
+              )
+            )
+          )
+        )
+      case (Some(mdh), Some(md)) =>
+        val computed = EraTxAuxData.hashTxAuxData(md)(using t.auxDataOf)
+        t.auxDataOf
+          .validateTxAuxData(decoder, t.cacheStAnnTx(stAnnTx), pv, md)
+          .leftMap(unavailable(t.bodyOf.id(txBody)))
+          .map(valid =>
+            Test.all(
+              Test.failureUnless(
+                computed == mdh,
+                utxow(UtxowFailure.ConflictingMetadataHash(Mismatch(mdh, computed)))
+              ),
+              Test.failureUnless(valid, utxow(UtxowFailure.InvalidMetadata))
+            )
+          )
 
 /** Alonzo's predicates of UTXOW (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs`,
   * cardano-ledger f649f975).
@@ -231,5 +298,89 @@ object BabbageUtxow:
       ),
       Test.failureOnNonEmpty(missing)(_.isEmpty)(hs =>
         utxow(UtxowFailure.MissingScriptWitnesses(hs))
+      )
+    )
+
+  /** `validateScriptsWellFormed` (`Babbage/Rules/Utxow.hs:234-251`, cardano-ledger f649f975): the
+    * scripts of the witnesses and the reference scripts of the outputs, the collateral return's
+    * included, are well formed, with the annotated transaction's cache.
+    */
+  def validateScriptsWellFormed[E <: EraTag](
+      decoder: ScriptDecoder[Id],
+      pp: PParams[E],
+      stAnnTx: StAnnTx[TxLevel.Top, E]
+  )(using
+      t: EraTx[E],
+      b: BabbageEraTxBody[E],
+      s: AlonzoEraScript[E],
+      p: EraPParams[E],
+      cache: StAnnTxCache[E] =:= Map[Bytes, SupportedPlutusRunnable[E]]
+  ): Either[LedgerDefect, Test[PredicateFailure]] =
+    val top = t.bodyOf.top
+    val tx = t.txStAnnTx(stAnnTx)(using top)
+    val txBody = t.body(tx)(using top)
+    val normalOuts = b.outputs(txBody)(using b.top)
+    val returnOut = b.collateralReturn(txBody)
+    val wits = t.wits(tx)(using top)
+    val witScripts = t.witsOf.scriptTxWits(wits)
+    // the witnesses' scripts in the order they arrived, which only the choice of the first script
+    // the decoder gives no verdict for reads
+    val inArrival = ListMap.from(
+      t.witsOf.scriptTxWitsArrival(wits).flatMap(h => witScripts.get(h).map(h -> _))
+    )
+    validateScriptsWellFormedTxOuts(
+      decoder,
+      cache(t.cacheStAnnTx(stAnnTx)(using top)),
+      pp,
+      inArrival,
+      normalOuts ++ returnOut.toVector
+    )(using b.outputsOf, s, p).leftMap(unavailable(t.bodyOf.id(txBody)(using top)))
+
+  /** `validateScriptsWellFormedTxOuts` (`Babbage/Rules/Utxow.hs:254-276`, cardano-ledger f649f975):
+    * the witnesses' scripts that are not valid (`MalformedScriptWitnesses`), then the outputs'
+    * reference scripts, by their hashes (`MalformedReferenceScripts`), both reported, each script
+    * checked by `isValidScript`. The first script the decoder gives no verdict for is returned, in
+    * the order the scripts are visited: the witnesses' in the map's order
+    * ([[validateScriptsWellFormed]] gives the order they arrived), then the outputs' in the
+    * outputs' order, the collateral return's last, as the flat check visits them; the reference's
+    * decoding always gives a verdict, so it has no such choice.
+    */
+  def validateScriptsWellFormedTxOuts[E <: EraTag](
+      decoder: ScriptDecoder[Id],
+      plutusScriptsCache: Map[Bytes, SupportedPlutusRunnable[E]],
+      pp: PParams[E],
+      witScripts: Map[Bytes, Script[E]],
+      txOuts: Iterable[TxOut[E]]
+  )(using
+      o: BabbageEraTxOut[E],
+      s: AlonzoEraScript[E],
+      p: EraPParams[E]
+  ): Either[UnavailableScript, Test[PredicateFailure]] =
+    val pv = p.ppProtocolVersionL.get(pp)
+    def filterInvalidScripts(
+        scripts: Map[Bytes, Script[E]]
+    ): Either[UnavailableScript, Set[Bytes]] =
+      scripts.toVector
+        .traverse((scriptHash, script) =>
+          AlonzoTxAuxData
+            .isValidScript(decoder, plutusScriptsCache, pv, scriptHash, script)
+            .map(valid => Option.unless(valid)(scriptHash))
+        )
+        .map(_.flatten.toSet)
+    val refScripts = ListMap.from(
+      txOuts.toVector
+        .flatMap(o.referenceScript)
+        .map(script => s.hashScript(script) -> script)
+        .distinctBy(_._1)
+    )
+    for
+      witnesses <- filterInvalidScripts(witScripts)
+      references <- filterInvalidScripts(refScripts)
+    yield Test.all(
+      Test.failureOnNonEmpty(witnesses)(_.isEmpty)(hs =>
+        utxow(UtxowFailure.MalformedScriptWitnesses(hs))
+      ),
+      Test.failureOnNonEmpty(references)(_.isEmpty)(hs =>
+        utxow(UtxowFailure.MalformedReferenceScripts(hs))
       )
     )
