@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.uplc.builtin.core
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.uplc.{Constant, DefaultUni, PlutusData, Signature, Text}
+import xyz.kd5ujc.scarab.uplc.{Constant, PlutusData, Signature, Text}
 import xyz.kd5ujc.scarab.uplc.builtin.{
   Argument,
   BuiltinFailure,
@@ -36,17 +36,15 @@ private[core] object Reader:
   given Reader[Unit] = of(Signature.Type.Unit) { case Constant.Unit => () }
   given Reader[PlutusData] = of(Signature.Type.Data) { case Constant.Data(d) => d }
 
-  // A list constant holds elements of its element type only (`Constant.List.of`), so the
-  // collections below drop nothing.
+  // A list of `Data` and a list of pairs of `Data` each have one form, which keeps the values
+  // themselves (`Constant.List`), so these read them as they are, in constant time, as the
+  // reference does (`readKnownConstant`, `KnownType.hs:310-323`, plutus 1.71.0.0 `261766ad`).
   given dataList: Reader[Vector[PlutusData]] =
-    of(Signature.Type.List(Signature.Type.Data)) { case Constant.List(DefaultUni.Data, items) =>
-      items.collect { case Constant.Data(d) => d }
-    }
+    of(Signature.Type.List(Signature.Type.Data)) { case Constant.List.OfData(ds) => ds }
 
   given dataPairList: Reader[Vector[(PlutusData, PlutusData)]] =
     of(Signature.Type.List(Signature.Type.Pair(Signature.Type.Data, Signature.Type.Data))) {
-      case Constant.List(DefaultUni.Pair(DefaultUni.Data, DefaultUni.Data), items) =>
-        items.collect { case Constant.Pair(Constant.Data(k), Constant.Data(v)) => (k, v) }
+      case Constant.List.OfDataPairs(es) => es
     }
 
 /** What a denotation gives back on success: a value of the machine and the log lines it emits. */
@@ -138,18 +136,9 @@ private[core] object Reading:
 
   /** The constant as a list, or the structural error of a list builtin given something else. */
   def list(c: Constant, position: Int): Either[BuiltinFailure, Constant.List] = c match
-    case l @ Constant.List(_, _) => Right(l)
-    case other => Left(structural(UnliftingCause.ExpectedList(position, other.typeOf)))
+    case l: Constant.List => Right(l)
+    case other            => Left(structural(UnliftingCause.ExpectedList(position, other.typeOf)))
 
   def pair(c: Constant, position: Int): Either[BuiltinFailure, Constant.Pair] = c match
     case p @ Constant.Pair(_, _) => Right(p)
     case other => Left(structural(UnliftingCause.ExpectedPair(position, other.typeOf)))
-
-  /** A list constant built from elements that have its element type by construction; the refusal of
-    * [[Constant.List.of]] cannot happen and is reported as the mismatch it would be.
-    */
-  def listOf(elementType: DefaultUni, items: Vector[Constant]): Either[BuiltinFailure, Constant] =
-    Constant.List
-      .of(elementType, items)
-      .left
-      .map(m => structural(UnliftingCause.ElementMismatch(m.expected, m.found)))

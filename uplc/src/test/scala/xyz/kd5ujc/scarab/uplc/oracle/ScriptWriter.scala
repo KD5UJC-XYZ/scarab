@@ -56,7 +56,7 @@ object ScriptWriter:
     case Constant.ByteString(b) => byteString(written, b.toArray)
     case Constant.String(t)     => byteString(written, t.utf8.toArray)
     case Constant.Data(d)       => byteString(written, DataSerialisation.serialise(d).toArray)
-    case l: Constant.List       => items(written, l.items)
+    case l: Constant.List       => items(written, l.items.toVector)
     case a: Constant.Array      => items(written, a.items)
     case Constant.Pair(a, b) =>
       val first = value(written, a)

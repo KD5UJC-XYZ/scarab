@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   UnliftingCause
 }
 
-import Reading.{failed, list, listOf, pair, structural}
+import Reading.{failed, list, pair, structural}
 
 /** The denotations of the core builtins of plutus 1.70.0.0 (`507cab8c`), the meanings of
   * `toBuiltinMeaning` in `PlutusCore/Default/Builtins.hs` (cited by line), which plutus 1.71.0.0
@@ -78,9 +78,6 @@ object CoreDenotations:
   private def bytes(b: Bytes): Either[BuiltinFailure, Constant] = Right(Constant.ByteString(b))
   private def data(d: PlutusData): Either[BuiltinFailure, Constant] = Right(Constant.Data(d))
 
-  private def dataList(ds: Vector[PlutusData]): Either[BuiltinFailure, Constant] =
-    listOf(DefaultUni.Data, ds.map(Constant.Data(_)))
-
   private val DataPair: DefaultUni = DefaultUni.Pair(DefaultUni.Data, DefaultUni.Data)
 
   /** `nonZeroSecondArg` (`Builtins.hs:248-266`, plutus 1.70.0.0): "Cannot divide by zero" when `y`
@@ -115,7 +112,7 @@ object CoreDenotations:
     * so the reference's unreachable clause stays unreachable).
     */
   private def dropList(n: BigInt, xs: Constant.List): Constant.List =
-    val size = xs.items.size
+    val size = xs.size
     if n.signum <= 0 then xs else if n >= size then xs.drop(size) else xs.drop(n.toInt)
 
   private val bodies: Map[DefaultFun, Body] =
@@ -214,7 +211,7 @@ object CoreDenotations:
             ifEmpty <- r.opaque(1)
             otherwise <- r.opaque(2)
             xs <- list(c, 0)
-          yield r.value(if xs.items.isEmpty then ifEmpty else otherwise)),
+          yield r.value(if xs.isEmpty then ifEmpty else otherwise)),
       MkCons -> ([V] =>
         (r: Reading[V]) =>
           for
@@ -231,7 +228,7 @@ object CoreDenotations:
           for
             c <- r.someConstant(0)
             xs <- list(c, 0)
-            x <- xs.items.headOption.toRight(failed(EvaluationFailure.EmptyList))
+            x <- xs.headOption.toRight(failed(EvaluationFailure.EmptyList))
           yield r.constant(x)),
       TailList -> ([V] =>
         (r: Reading[V]) =>
@@ -244,7 +241,7 @@ object CoreDenotations:
         (r: Reading[V]) =>
           r.someConstant(0)
             .flatMap(list(_, 0))
-            .map(xs => r.constant(Constant.Bool(xs.items.isEmpty))))
+            .map(xs => r.constant(Constant.Bool(xs.isEmpty))))
     )
 
     // `Builtins.hs:1732-1744` of plutus 1.70.0.0
@@ -262,7 +259,9 @@ object CoreDenotations:
         })
     )
 
-    // `Builtins.hs:1745-1787` of plutus 1.70.0.0; `constrData` reads a `Word64` in D and E.
+    // `Builtins.hs:1745-1787` of plutus 1.70.0.0; `constrData` reads a `Word64` in D and E. The
+    // node holds the list it is given, as `Constr`, `Map` and `List` do in the reference
+    // (`Builtins.hs:1763-1791`, plutus 1.71.0.0 `261766ad`).
     val dataConstructors: Map[DefaultFun, Body] = Map(
       ConstrData -> constant2[BigInt, Vector[PlutusData]]((i, ds) =>
         data(PlutusData.Constr(i, ds))
@@ -273,20 +272,20 @@ object CoreDenotations:
       BData -> constant1[Bytes](b => data(PlutusData.B(b)))
     )
 
-    // `Builtins.hs:1788-1841` of plutus 1.70.0.0
+    // `Builtins.hs:1788-1841` of plutus 1.70.0.0: the list of the node, shared (`pure ds`,
+    // `Builtins.hs:1806-1838` of plutus 1.71.0.0 `261766ad`).
     val dataDestructors: Map[DefaultFun, Body] = Map(
       UnConstrData -> constant1[PlutusData] {
         case PlutusData.Constr(i, fields) =>
-          dataList(fields).map(Constant.Pair(Constant.Integer(i), _))
+          Right(Constant.Pair(Constant.Integer(i), Constant.List.OfData(fields)))
         case _ => Left(failed(EvaluationFailure.UnexpectedData(DataShape.Constr)))
       },
       UnMapData -> constant1[PlutusData] {
-        case PlutusData.Map(entries) =>
-          listOf(DataPair, entries.map((k, v) => Constant.Pair(Constant.Data(k), Constant.Data(v))))
+        case PlutusData.Map(entries) => Right(Constant.List.OfDataPairs(entries))
         case _ => Left(failed(EvaluationFailure.UnexpectedData(DataShape.Map)))
       },
       UnListData -> constant1[PlutusData] {
-        case PlutusData.List(items) => dataList(items)
+        case PlutusData.List(items) => Right(Constant.List.OfData(items))
         case _ => Left(failed(EvaluationFailure.UnexpectedData(DataShape.List)))
       },
       UnIData -> constant1[PlutusData] {

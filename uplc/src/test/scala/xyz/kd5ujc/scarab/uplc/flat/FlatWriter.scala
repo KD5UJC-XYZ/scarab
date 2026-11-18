@@ -81,7 +81,7 @@ object FlatWriter:
         }
         .append("0")
         .toString
-    case l: Constant.List  => items(written, l.items)
+    case l: Constant.List  => items(written, l.items.toVector)
     case a: Constant.Array => items(written, a.items)
     case Constant.Pair(a, b) =>
       val first = value(written, a)

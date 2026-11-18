@@ -120,7 +120,7 @@ object Measure:
     case Constant.Bls12_381_G2_Element(_) => single(G2Words)
     case Constant.Bls12_381_MlResult(_)   => single(MlResultWords)
     case Constant.Value(v)                => single(v.totalSize.toLong)
-    case Constant.List(_, items)          => list(items.size)
+    case l: Constant.List                 => list(l.size)
     case Constant.Array(_, items)         => single(items.size.toLong)
     // Pairs are only ever costed by constant functions (lines 199-205).
     case Constant.Pair(_, _) => Costs.Last(SatInt.maxValue)

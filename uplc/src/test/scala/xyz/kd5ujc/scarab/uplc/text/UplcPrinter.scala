@@ -162,8 +162,8 @@ object UplcPrinter:
     // field element.
     case Con.Bls12_381_MlResult(m) => Atom(s"0x${m.raw.hex}")
     case Con.Value(v)              => Atom(valueText(v))
-    case l: Con.List               => Group("[", l.items.map(OfValue(_, parens = false)), ", ", "]")
-    case a: Con.Array              => Group("[", a.items.map(OfValue(_, parens = false)), ", ", "]")
+    case l: Con.List  => Group("[", l.items.toVector.map(OfValue(_, parens = false)), ", ", "]")
+    case a: Con.Array => Group("[", a.items.map(OfValue(_, parens = false)), ", ", "]")
     case Con.Pair(x, y) =>
       Group("(", Vector(OfValue(x, parens = false), OfValue(y, parens = false)), ", ", ")")
 

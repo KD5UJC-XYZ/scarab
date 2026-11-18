@@ -6,6 +6,105 @@
   "uplc/src/main/scala"
  ],
  "entries": {
+  "class uplc.Constant.List.OfConstants": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
+     "symbol": "DefaultUniList",
+     "lines": [
+      155,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "CekConformance171Suite",
+    "GeneratedOracle171Suite",
+    "DataReferenceSuite"
+   ],
+   "note": "a value of a list type of any other element type, which the reference holds as a Haskell list of the element type's values; here the elements as constants, each of the list's element type",
+   "digest": "5e7ae407c8895fbf"
+  },
+  "class uplc.Constant.List.OfData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
+     "symbol": "DefaultUniList",
+     "lines": [
+      155,
+      156
+     ]
+    },
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
+     "symbol": "UnListData",
+     "lines": [
+      1828,
+      1838
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "CekConformance171Suite",
+    "GeneratedOracle171Suite",
+    "DataReferenceSuite"
+   ],
+   "note": "a value of the list type of Data, which the reference holds as the Haskell [Data] of the Data node and shares in unListData, unConstrData, listData, constrData and caseBuiltinData; here the Vector[PlutusData] of the node, shared alike. The reference has one list representation for every element type; Scarab keeps the values for Data and (Data, Data) and constants for the rest",
+   "digest": "8fe21640442b5ea0"
+  },
+  "class uplc.Constant.List.OfDataPairs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
+     "symbol": "DefaultUniList",
+     "lines": [
+      155,
+      156
+     ]
+    },
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
+     "symbol": "DefaultUniPair",
+     "lines": [
+      159,
+      160
+     ]
+    },
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
+     "symbol": "UnMapData",
+     "lines": [
+      1817,
+      1827
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "CekConformance171Suite",
+    "GeneratedOracle171Suite",
+    "DataReferenceSuite"
+   ],
+   "note": "a value of the list type of pairs of Data, which the reference holds as the Haskell [(Data, Data)] of a Map node and shares in unMapData and mapData; here the node's Vector of entries, shared alike",
+   "digest": "137ef4b1b2b91477"
+  },
   "def uplc.ParamNames.evaluation": {
    "upstream": [
     {
@@ -173,6 +272,16 @@
    "reason": "Scarab's wiring of its one Plutus backend, the evaluator and the script decoder that the rules, the mempool and the forger each take; plutus has no counterpart",
    "definitions": [
     "val plutus.PlutusBackend.default"
+   ]
+  },
+  {
+   "reason": "Scala accessors of the list constant, and the type that makes a list's form follow from its element type, which the builtin denotations, case, costing, Flat encoding and equality read; the reference applies Haskell's own list functions to its list value (null, head, length) and has one form, so they have no counterpart of their own",
+   "definitions": [
+    "def uplc.Constant.List#headOption",
+    "def uplc.Constant.List#isEmpty",
+    "def uplc.Constant.List#items",
+    "def uplc.Constant.List#size",
+    "type uplc.Constant.List.General"
    ]
   }
  ]

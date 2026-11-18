@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.cek
 
-import xyz.kd5ujc.scarab.uplc.{
-  Constant,
-  DefaultUni,
-  PlutusData,
-  ProgramVersion,
-  ProtocolMajor,
-  Term
-}
+import xyz.kd5ujc.scarab.uplc.{Constant, PlutusData, ProgramVersion, ProtocolMajor, Term}
 
 /** How `case` treats a constant: the reference's `CaserBuiltin`
   * (`PlutusCore/Builtin/Case.hs:45-67`, plutus 1.70.0.0 `507cab8c`), a parameter of the machine.
@@ -54,7 +47,7 @@ enum CaserBuiltin:
           case Constant.Data(x) => caseData(x, scrutinee, branches)
           case list: Constant.List =>
             if len == 1 || len == 2 then
-              list.items.headOption match
+              list.headOption match
                 case Some(head)       => Applied(branches(0), head :: list.drop(1) :: Nil)
                 case None if len == 1 => Refused(CaseBuiltinError.EmptyList)
                 case None             => Branch(branches(1))
@@ -64,7 +57,9 @@ enum CaserBuiltin:
           case other => Refused(CaseBuiltinError.UnsupportedType(other.typeOf))
 
   /** The handler of `Data`: refusal without it, `caseBuiltinData` with it (`Universe.hs:1019-1034`,
-    * plutus 1.70.0.0): a `Constr` selects the branch of its tag, applied to its fields as a list.
+    * plutus 1.70.0.0): a `Constr` selects the branch of its tag, applied to its fields as a list,
+    * the node's own (`someValueOf (DefaultUniList DefaultUniData) fields`, `Universe.hs:1040-1046`
+    * of plutus 1.71.0.0 `261766ad`).
     */
   private def caseData(
       data: PlutusData,
@@ -77,7 +72,7 @@ enum CaserBuiltin:
         data match
           case PlutusData.Constr(tag, fields) =>
             if tag.signum >= 0 && tag < BigInt(branches.size) then
-              Applied(branches(tag.toInt), CaserBuiltin.dataList(fields) :: Nil)
+              Applied(branches(tag.toInt), Constant.List.OfData(fields) :: Nil)
             else Refused(CaseBuiltinError.OutOfBounds(scrutinee, branches.size))
           case _ => Refused(CaseBuiltinError.DataNotConstr)
       case _ => Refused(CaseBuiltinError.DataUnsupported)
@@ -106,9 +101,3 @@ object CaserBuiltin:
 
     /** `HeadError`. */
     case Refused(error: CaseBuiltinError)
-
-  // Every element is a `Data`, so the list is well typed and `of` cannot refuse it.
-  private def dataList(fields: Vector[PlutusData]): Constant =
-    Constant.List
-      .of(DefaultUni.Data, fields.map(Constant.Data(_)))
-      .getOrElse(Constant.List.empty(DefaultUni.Data))
