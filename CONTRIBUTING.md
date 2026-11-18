@@ -198,7 +198,7 @@ or a GitHub review submitted by a person other than the author. The links includ
 request, and the linked reviews must reach the head: after commits that change more than wording, a second review
 that starts at the head the last one covered, linked beside it; when the commits since the last review need none (a rebase that leaves the diff
 as reviewed, a wording fix), a line `Since the review: <head commit> <what changed>` in the section says so for that
-head, and a later push needs a new review or a new line. A draft
+commit, and a later push needs a review of the commits after it (starting there) or a new line. A draft
 passes, so a pull request stays a draft until its review is posted; the check runs on a push or a body edit, so
 after correcting a linked comment, edit the body or re-run the check. The stamp guards against a mistaken run (a
 forgotten effort, a default model, a review of an older head); it is not a signature.

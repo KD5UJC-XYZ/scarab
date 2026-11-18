@@ -171,8 +171,9 @@ def without_code_spans(text):
 
 
 def label_key(label):
-    """A link label as GitHub matches it: whitespace collapsed, case folded."""
-    return " ".join(label.split()).casefold()
+    """A link label as GitHub matches it: runs of space, tab and line ends collapsed (no other whitespace), case
+    folded."""
+    return re.sub(r"[ \t\r\n]+", " ", label.strip(" \t\r\n")).casefold()
 
 
 def definitions(text):
@@ -235,10 +236,11 @@ def destinations(text):
 def linked_reviews(pr, text, level, files, comments, reviews, merge_base):
     """The reviews the section links on this pull request: a comment whose first line is the stamp of
     `codex_review.py` with the pinned model at or above the floor, or a GitHub review submitted by a person other than
-    the author. At least one is required; a Codex review of the whole pull request (`scope=full`, starting at the
-    `merge_base`, or at an earlier one when a `Since the review` line excuses the head after a rebase) or a person's
-    review starts the coverage, and a review of fixes (`scope=fixes`) extends it only from a head already covered
-    (its `from`); the coverage must reach the head unless the section says, in a line
+    the author. At least one is required. A Codex review of the whole pull request (`scope=full`) from the
+    `merge_base`, or a person's review, starts the coverage; a line `Since the review: <commit> <reason>` declares a
+    commit covered (a rebase that left the diff as reviewed, a wording fix), and then a whole review from an earlier
+    merge base also stands. A review of fixes (`scope=fixes`) extends the coverage only from a covered commit (its
+    `from`); the coverage must reach the head unless the section says, in a line
     `Since the review: <head> <reason>` naming the current head, why the commits after the review need none (a rebase
     that leaves the diff as reviewed, a wording fix). Every linked stamp must meet the floor; an unstamped comment (a
     disposition, a reply) may be linked beside them."""
@@ -261,8 +263,12 @@ def linked_reviews(pr, text, level, files, comments, reviews, merge_base):
             "posted review (CONTRIBUTING.md, \"Independent review\")")
     author = (pr.get("user") or {}).get("id")
     head = str((pr.get("head") or {}).get("sha"))
-    excused = any(head.startswith(sha.lower()) for sha in SINCE_REVIEW.findall(text))
-    accepted, reviewed, fixes = [], set(), []
+    since = [sha.lower() for sha in SINCE_REVIEW.findall(text)]
+
+    def covered(commit):
+        return commit in reviewed or any(str(commit).startswith(sha) for sha in since)
+
+    accepted, reviewed, fixes, earlier = [], set(), [], False
     for comment in linked_comments:
         try:
             fields = codex_review.stamp_of(comment.get("body"))
@@ -273,8 +279,10 @@ def linked_reviews(pr, text, level, files, comments, reviews, merge_base):
             require(problem is None, f"the linked comment {comment.get('id')}: {problem}; run the review again "
                     "with scripts/codex_review.py (CONTRIBUTING.md, \"Independent review\")")
             accepted.append(comment)
-            if fields["scope"] == "full" and (fields["from"] == merge_base or excused):
+            if fields["scope"] == "full" and fields["from"] == merge_base:
                 reviewed.add(fields["head"])
+            elif fields["scope"] == "full":
+                earlier = True
             else:
                 fixes.append((fields["from"], fields["head"]))
     for review in linked_reviews_:
@@ -286,15 +294,15 @@ def linked_reviews(pr, text, level, files, comments, reviews, merge_base):
     require(accepted, "no linked item is a review: link a comment that starts with the stamp of "
             f"scripts/codex_review.py at effort {need} or above, or a GitHub review submitted by a person other than "
             "the author (CONTRIBUTING.md, \"Independent review\")")
-    require(reviewed, "no linked review covers the whole pull request from its merge base "
+    require(reviewed or (earlier and since), "no linked review covers the whole pull request from its merge base "
             f"{str(merge_base or '')[:12]}: link the review of the whole diff, or review it again after a retarget "
             "(CONTRIBUTING.md, \"Independent review\")")
     while True:
-        extended = {head for start, head in fixes if start in reviewed} - reviewed
+        extended = {head for start, head in fixes if covered(start)} - reviewed
         if not extended:
             break
         reviewed |= extended
-    require(head in reviewed or excused,
+    require(covered(head),
             f"no linked review covers the head {head[:12]}: review the commits since the last review (a second "
             f"review scoped to them), or say in a line \"Since the review: {head[:12]} <reason>\" why they need none "
             "(CONTRIBUTING.md, \"Independent review\")")

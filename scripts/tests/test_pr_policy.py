@@ -356,6 +356,16 @@ class ReviewEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(policy.PolicyError, "from its merge base"):
             self.check(1, [comment(11, stamped("high", head="b" * 40))], merge_base="e" * 40)
 
+    def test_a_fix_reviewed_after_an_excused_rebase_extends_the_coverage(self):
+        rebased, head = "d" * 40, "a" * 40
+        body = (f"## Independent review\n\nClean: {URL}#issuecomment-11, {URL}#issuecomment-12\n\n"
+                "- Since the review: ddddddd rebased onto main, diff unchanged\n")
+        fix = comment(12, stamped("high", head=head, scope="fixes", start=rebased))
+        self.assertEqual(self.check(1, [comment(11, stamped("high", head="b" * 40)), fix], body=body,
+                                    merge_base="e" * 40), 1)
+        with self.assertRaisesRegex(policy.PolicyError, "covers the head"):
+            self.check(1, [comment(11, stamped("high", head="b" * 40))], body=body, merge_base="e" * 40)
+
     def test_a_stamp_without_its_start_and_scope_is_refused(self):
         legacy = policy.codex_review.stamp({"model": policy.codex_review.MODEL, "effort": "high", "level": 1,
                                             "head": "a" * 40}) + "\nNo findings."
@@ -372,8 +382,9 @@ class ReviewEvidenceTests(unittest.TestCase):
                      f"[r]: {URL}#issuecomment-11\n")
         spaced = (f"## Independent review\n\nClean: [review][round two]\n\n[round   two]: https://example.org/stale\n"
                   f"[Round Two]: {URL}#issuecomment-11\n")
-        for body in [unused, suffixed, in_label, titled, in_reference, redefined, spaced]:
-            with self.subTest(body=body), self.assertRaisesRegex(policy.PolicyError, "links no comment"):
+        nbsp = f"## Independent review\n\nClean: [review][round two]\n\n[round\u00a0two]: {URL}#issuecomment-11\n"
+        for body in [unused, suffixed, in_label, titled, in_reference, redefined, spaced, nbsp]:
+            with self.subTest(body=body), self.assertRaisesRegex(policy.PolicyError, "links no comment|section that links the review"):
                 self.check(1, [comment(11, stamped("high"))], body=body)
         for body in [f"## Independent review\n\nClean: [review]({URL}#issuecomment-11).\n",
                      f"## Independent review\n\nClean: <{URL}#issuecomment-11>\n",
