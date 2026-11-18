@@ -115,8 +115,8 @@ trait MaryEraTxBody[E <: EraTag] extends AllegraEraTxBody[E]:
     mint(body).keySet
 
 /** The script fields of a body, from Alonzo (`AlonzoEraTxBody`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs:127-154`, cardano-ledger f649f975). Its
-  * redeemer pointers come with the era's purposes.
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs:127-154`, cardano-ledger f649f975), with
+  * its redeemer pointers in the era's purposes.
   */
 trait AlonzoEraTxBody[E <: EraTag] extends MaryEraTxBody[E]:
   override def outputsOf: AlonzoEraTxOut[E]
@@ -128,6 +128,13 @@ trait AlonzoEraTxBody[E <: EraTag] extends MaryEraTxBody[E]:
   def reqSignerHashes[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[Bytes]
   def scriptIntegrityHash[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Bytes]
   def networkId[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Network]
+
+  /** `redeemerPointerInverse` (`Alonzo/TxBody.hs:151-154`, cardano-ledger f649f975): the purpose,
+    * with its item, that a redeemer's pointer names in the body, none if it names nothing.
+    */
+  def redeemerPointerInverse[L <: TxLevel](body: TxBody[L, E], ptr: PlutusPurpose[AsIx, E])(using
+      Level[L]
+  ): Option[PlutusPurpose[AsIxItem, E]]
 
 /** The reference inputs and the collateral return, from Babbage (`BabbageEraTxBody`,
   * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs:110-121`, cardano-ledger f649f975).

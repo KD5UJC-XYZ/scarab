@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
   AlonzoEraUTxO,
   AlonzoScriptsNeeded,
+  AsItem,
   AlonzoUTxO,
   BabbageEraTxOut,
   BabbageUTxO,
@@ -231,3 +232,16 @@ object ConwayUTxO:
         txBody: TxBody[L, Conway]
     )(using l: txOf.bodyOf.Level[L]): Set[Bytes] =
       BabbageUTxO.getBabbageSupplementalDataHashes[Conway, L](utxo, txBody)(using txOf.bodyOf, l)
+
+    // `getSpendingDatum = getBabbageSpendingDatum`, `Conway/UTxO.hs:139`, cardano-ledger f649f975
+    override def getSpendingDatum[L <: TxLevel](
+        utxo: UTxO[Conway],
+        tx: Tx[L, Conway],
+        sp: ConwayPlutusPurpose[AsItem]
+    )(using l: txOf.bodyOf.Level[L]): Option[Bytes] =
+      BabbageUTxO.getBabbageSpendingDatum[Conway, L](utxo, tx, sp)(using
+        txOf,
+        l,
+        txOf.bodyOf.outputsOf,
+        summon
+      )

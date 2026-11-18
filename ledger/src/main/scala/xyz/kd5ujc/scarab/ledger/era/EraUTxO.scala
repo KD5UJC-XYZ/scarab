@@ -71,10 +71,9 @@ trait EraUTxO[E <: EraTag]:
 
 /** The datums of a transaction of era `E` from Alonzo (`class EraUTxO era => AlonzoEraUTxO era`,
   * cardano-ledger f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:129-162`), with
-  * `getSupplementalDataHashes` only: `getSpendingDatum`, which reads the Plutus data and the
-  * spending purpose (`toSpendingPurpose`), and the four members of the annotated transaction
-  * (`scriptsProvidedStAnnTx`, `scriptsNeededStAnnTx`, `plutusScriptsWithContextStAnnTx`,
-  * `plutusLanguagesUsedStAnnTx`) are not members yet (#85).
+  * `getSupplementalDataHashes` and `getSpendingDatum`: the four members of the annotated
+  * transaction (`scriptsProvidedStAnnTx`, `scriptsNeededStAnnTx`,
+  * `plutusScriptsWithContextStAnnTx`, `plutusLanguagesUsedStAnnTx`) are not members yet (#85).
   */
 trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
   /** `getSupplementalDataHashes`: the hashes of the datums a witness set may carry that no spent
@@ -83,6 +82,13 @@ trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
   def getSupplementalDataHashes[L <: TxLevel](utxo: UTxO[E], txBody: TxBody[L, E])(using
       txOf.bodyOf.Level[L]
   ): Set[Bytes]
+
+  /** `getSpendingDatum`: the datum a spending purpose's input needs, as the bytes it arrived as;
+    * none for another purpose.
+    */
+  def getSpendingDatum[L <: TxLevel](utxo: UTxO[E], tx: Tx[L, E], sp: PlutusPurpose[AsItem, E])(
+      using txOf.bodyOf.Level[L]
+  ): Option[Bytes]
 
 /** `ScriptsProvided` (`State/UTxO.hs:229-232`, cardano-ledger f649f975): the scripts a transaction
   * provides, by hash.
@@ -408,6 +414,38 @@ object BabbageUTxO:
     val referencedOuts = UTxOs.txInsFilter(utxo, b.referenceInputs[L](txBody)).unUTxO.values
     val outs = newOuts ++ referencedOuts
     outs.flatMap(b.outputsOf.dataHash).toSet
+
+  /** `getBabbageSpendingDatum` (`Babbage/UTxO.hs:88-101`, cardano-ledger f649f975): of a spending
+    * purpose whose input the UTxO set holds, the output's inline datum, or else the witnesses'
+    * datum of its datum hash. Read through the evidence that the era's purpose is Conway's, as
+    * `toSpendingPurpose` is not a member of the script class yet (#85).
+    */
+  def getBabbageSpendingDatum[E <: EraTag, L <: TxLevel](
+      utxo: UTxO[E],
+      tx: Tx[L, E],
+      sp: PlutusPurpose[AsItem, E]
+  )(using
+      t: AlonzoEraTx[E],
+      l: t.bodyOf.Level[L],
+      o: BabbageEraTxOut[E],
+      ev: PlutusPurpose[AsItem, E] =:= conway.ConwayPlutusPurpose[AsItem]
+  ): Option[Bytes] =
+    val toSpendingPurpose = ev(sp) match
+      case conway.ConwayPlutusPurpose.ConwaySpending(asItem) => Some(asItem)
+      case conway.ConwayPlutusPurpose.ConwayMinting(_) |
+          conway.ConwayPlutusPurpose.ConwayCertifying(_) |
+          conway.ConwayPlutusPurpose.ConwayWithdrawing(_) |
+          conway.ConwayPlutusPurpose.ConwayVoting(_) |
+          conway.ConwayPlutusPurpose.ConwayProposing(_) =>
+        None
+    for
+      AsItem(txIn) <- toSpendingPurpose
+      txOut <- utxo.unUTxO.get(txIn)
+      txOutDataFromWits = o
+        .dataHash(txOut)
+        .flatMap(t.witsOf.datsTxWits(t.wits[L](tx)).datums.get)
+      datum <- o.data(txOut).orElse(txOutDataFromWits)
+    yield datum
 
   /** `getBabbageScriptsProvided` (`Babbage/UTxO.hs:136-146`, cardano-ledger f649f975): the
     * reference scripts of the spent and reference inputs, and the witnesses' scripts, a reference
