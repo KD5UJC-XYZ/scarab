@@ -167,6 +167,9 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   level 1 and above, and report its result. Plain preflight runs the non-sbt checks; `--check` also runs
   the Scala build and tests. Do not add `--check` for a documentation-only change. A mixed change follows
   the highest applicable level; a PR is not ready while its required checks fail.
+- A rebase that conflicts only in the correspondence map or the performance register, with the code
+  merging cleanly, needs only the lighter gate in [CONTRIBUTING.md](CONTRIBUTING.md#rebase-validation):
+  `scripts/preflight` without `--check` plus the touched modules' test suites; say so in the PR.
 - After a rebase, re-check every factual claim your change makes against the new base, not only that
   it builds.
 - Get the [independent review](CONTRIBUTING.md#independent-review) before a pull request leaves draft.
