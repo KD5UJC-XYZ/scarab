@@ -54,8 +54,8 @@ class EraTxSuite extends munit.FunSuite:
   // whose bodies have Babbage's fields, through the class and the outputs' class it names.
   private def inlineDatums[E <: xyz.kd5ujc.scarab.ledger.state.EraTag, L <: TxLevel](
       body: TxBody[L, E]
-  )(using b: BabbageEraTxBody[E], l: b.Level[L]): Vector[Bytes] =
-    b.outputs(body).flatMap(b.outputsOf.data)
+  )(using b: BabbageEraTxBody[E], l: b.Level[L]): Vector[Data] =
+    b.outputs(body).flatMap(b.outputsOf.data(_).fold(e => fail(s"an inline datum: $e"), identity))
 
   test("a function written once over the body class reads Conway's bodies") {
     // its sharing across eras' bodies is shown again when Dijkstra's body is typed (stage 3)

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{DataSite, Datum, TxIn, TxOutSource}
+import xyz.kd5ujc.scarab.ledger.{DataSite, TxIn, TxOutSource}
 import xyz.kd5ujc.scarab.ledger.state.EraTag
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
@@ -44,8 +44,10 @@ object BabbageTxInfo:
     script.map(x => PV1.ScriptHash(s.hashScript(x)))
 
   /** `transTxOutV2` (`Babbage/TxInfo.hs:130-156`, cardano-ledger f649f975): the output in the V2
-    * form, a Byron address refused; an inline datum is read from its bytes, only for an address
-    * that is not Byron, as the reference's lazy `datum` is forced only there (lines 142-156).
+    * form, a Byron address refused; an inline datum is read as data through `binaryDataToData`,
+    * only for an address that is not Byron, as the reference's lazy `datum` is forced only there
+    * (lines 142-156). Its failure, the node's own `Undecodable`, is where the reference raises
+    * `error`: only an inline datum taken unread ([[BabbageTxOutRep.fromStored]]) can reach it.
     */
   def transTxOutV2[E <: EraTag](txOutSource: TxOutSource, txOut: TxOut[E])(using
       o: BabbageEraTxOut[E],
@@ -55,11 +57,15 @@ object BabbageTxInfo:
     val value = o.value(txOut)
     val referenceScript = transReferenceScript(o.referenceScript(txOut))(using o.scripts)
     def datum: Either[ContextError[E], PV2.OutputDatum] = o.datum(txOut) match
-      case Datum.NoDatum  => Right(PV2.OutputDatum.NoOutputDatum)
-      case Datum.Hash(dh) => Right(PV2.OutputDatum.OutputDatumHash(transDataHash(dh)))
-      case Datum.Inline(binaryData) =>
-        decodeData(binaryData, DataSite.InlineDatum)
-          .bimap(undecodable[E], d => PV2.OutputDatum.OutputDatum(PV1.Datum(d)))
+      case Datum.NoDatum       => Right(PV2.OutputDatum.NoOutputDatum)
+      case Datum.DatumHash(dh) => Right(PV2.OutputDatum.OutputDatumHash(transDataHash(dh)))
+      case Datum.Datum(binaryData) =>
+        BinaryData
+          .binaryDataToData(binaryData)
+          .bimap(
+            _ => undecodable[E](DataSite.InlineDatum),
+            d => PV2.OutputDatum.OutputDatum(PV1.Datum(d.getPlutusData))
+          )
     transAddr(o.address(txOut)) match
       case None => Left(inj.inject(BabbageContextError.ByronTxOutInContext(txOutSource)))
       case Some(addr) =>

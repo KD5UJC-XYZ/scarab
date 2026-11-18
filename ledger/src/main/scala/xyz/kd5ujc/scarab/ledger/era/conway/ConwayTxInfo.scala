@@ -5,6 +5,7 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
+  DataSite,
   GovActionId,
   RewardAccount,
   TranslationError,
@@ -542,19 +543,24 @@ object ConwayTxInfo:
 
   /** `transTxOutV1` of Conway (`Conway/TxInfo.hs:304-320`, cardano-ledger f649f975): the output in
     * the V1 form, an inline datum refused, then a Byron address; a reference script, which the V1
-    * output has no field for, is left out, unlike Babbage's.
+    * output has no field for, is left out, unlike Babbage's. The inline datum is read as data to
+    * ask whether there is one (`isSJust (txOut ^. dataTxOutL)`, whose strict `SJust` forces
+    * `binaryDataToData`): an inline datum taken unread ([[BabbageTxOutRep.fromStored]]) that does
+    * not read as data is the node's own `Undecodable`, where the reference raises `error`.
     */
   def transTxOutV1[E <: EraTag](txOutSource: TxOutSource, txOut: TxOut[E])(using
       o: BabbageEraTxOut[E],
       inj: Inject[xyz.kd5ujc.scarab.ledger.era.BabbageContextError[E], ContextError[E]],
       v: Value[E] =:= MultiAssetValue
   ): Either[ContextError[E], PV1.TxOut] =
-    if o.data(txOut).isDefined then
-      Left(inj.inject(BabbageContextError.InlineDatumsNotSupported(txOutSource)))
-    else
-      AlonzoTxInfo
-        .transTxOut[E](txOut)
-        .toRight(inj.inject(BabbageContextError.ByronTxOutInContext(txOutSource)))
+    o.data(txOut) match
+      case Left(_) => Left(BabbageTxInfo.undecodable[E](DataSite.InlineDatum))
+      case Right(Some(_)) =>
+        Left(inj.inject(BabbageContextError.InlineDatumsNotSupported(txOutSource)))
+      case Right(None) =>
+        AlonzoTxInfo
+          .transTxOut[E](txOut)
+          .toRight(inj.inject(BabbageContextError.ByronTxOutInContext(txOutSource)))
 
   /** `transTxInInfoV1` of Conway (`Conway/TxInfo.hs:322-335`, cardano-ledger f649f975): an input
     * with the output the UTxO set holds for it, in the V1 form.

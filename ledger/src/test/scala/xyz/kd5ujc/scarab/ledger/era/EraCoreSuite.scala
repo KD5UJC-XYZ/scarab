@@ -162,7 +162,7 @@ class EraCoreSuite extends munit.FunSuite:
       assertEquals(typed.map(EraTxOut.conway.raw), flat.map(_.raw))
       val hashes = typed.map(EraTxOut.conway.referenceScript(_).map(EraScript.conway.hashScript))
       assertEquals(hashes, flat.map(_.scriptRef.map(_.hash)))
-      assertEquals(typed.map(EraTxOut.conway.datum), flat.map(_.datum))
+      assertEquals(typed.map(o => Datum.toStored(EraTxOut.conway.datum(o))), flat.map(_.datum))
       hashes.count(_.isDefined)
     }.sum
     // the recorded blocks have no output with a reference script: those are the next test's

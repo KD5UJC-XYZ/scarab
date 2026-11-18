@@ -10,7 +10,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Address,
   ByteStrings,
   CborRead,
-  Datum,
   DecoderVersion,
   TxOut as FlatTxOut,
   Value
@@ -24,6 +23,8 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   BabbageEraTxOut,
+  BinaryData,
+  Datum,
   EraScript,
   EraTxOut,
   MultiAssetValue,
@@ -78,10 +79,12 @@ class DijkstraTxOutSuite extends FunSuite:
     all.map(string(r, "name") -> _)
   }
 
+  // the block decoder's datum as the era's: an inline datum the build read is data
   private def datum(d: DijkstraDatum): Datum = d match
-    case DijkstraDatum.NoDatum   => Datum.NoDatum
-    case DijkstraDatum.Hash(h)   => Datum.Hash(h)
-    case DijkstraDatum.Inline(r) => Datum.Inline(r)
+    case DijkstraDatum.NoDatum => Datum.NoDatum
+    case DijkstraDatum.Hash(h) => Datum.DatumHash(h)
+    case DijkstraDatum.Inline(r) =>
+      Datum.Datum(BinaryData.makeBinaryData(r).fold(e => fail(s"not data: $e"), identity))
 
   test("every output the build read reads, with its fields and its reference script") {
     assert(outputs.sizeIs > 100, outputs.size.toString)
@@ -138,6 +141,40 @@ class DijkstraTxOutSuite extends FunSuite:
         .map(_.kind)
     )
     assertEquals(kinds.toSet, xyz.kd5ujc.scarab.ledger.ScriptKind.values.toSet)
+  }
+
+  test(
+    "an inline datum is read as data from a block, and taken unread from the store, as the reference's DecCBOR and MemPack"
+  ) {
+    // `[1, 24(h'f6')]`: the bytes of `null`, which are not data
+    val notData = Bytes(Vector(0xf6.toByte))
+    val refusal = xyz.kd5ujc.scarab.plutus.PlutusData
+      .decode(notData)
+      .swap
+      .getOrElse(fail("null read as data"))
+    val raw = hex("a3" + "00" + "581d61" + "66" * 28 + "01" + "1a000f4240" + "02" + "8201d81841f6")
+    // the block decoder refuses it
+    assertEquals(
+      node(raw).flatMap(DijkstraTxOut.read),
+      Left(
+        xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+          .PlutusData(xyz.kd5ujc.scarab.ledger.DecodeField.InlineDatum, refusal)
+      )
+    )
+    // the store's output keeps it unread, and reads it as data where it is asked for
+    val stored = FlatTxOut
+      .fromBytes(raw)(using ByteStrings.Chunked)
+      .fold(e => fail(e.toString), identity)
+    val out = DijkstraTxOut.fromStored(stored).fold(e => fail(e.toString), identity)
+    assertEquals(
+      EraTxOut.dijkstra.datum(out) match
+        case Datum.Datum(binaryData)            => Some(binaryData.bytes)
+        case Datum.NoDatum | Datum.DatumHash(_) => None
+      ,
+      Some(notData)
+    )
+    assertEquals(DijkstraTxOut.toStored(out), stored)
+    assertEquals(EraTxOut.dijkstra.data(out), Left(refusal))
   }
 
   test("a native reference script with a guard is stored without a tree and read back whole") {

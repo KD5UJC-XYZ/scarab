@@ -3,12 +3,15 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, Datum, LedgerDecodeError, ScriptKind}
+import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, LedgerDecodeError, ScriptKind}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraScript,
   AlonzoScriptRep,
   BabbageEraTxOut,
   BabbageTxOutRep,
+  BabbageTxOuts,
+  Data,
+  Datum,
   EraTxError,
   Language,
   MultiAssetValue,
@@ -20,6 +23,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Val
 }
 import xyz.kd5ujc.scarab.ledger.state.Babbage
+import xyz.kd5ujc.scarab.plutus.PlutusData
 
 // Babbage's types: the opaque types are transparent in this file only, so only this file makes a
 // value of Babbage.
@@ -129,8 +133,9 @@ opaque type BabbageTxOut = BabbageTxOutRep[BabbageScript]
 
 object BabbageTxOut:
   /** A stored output read as a Babbage output (`ejectHardForkTxOut` of the current era,
-    * ouroboros-consensus 82ecba329 `Cardano/Ledger.hs:137-162`): its reference script read as a
-    * Babbage script.
+    * ouroboros-consensus 82ecba329 `Cardano/Ledger.hs:137-162`): its inline datum taken unread, as
+    * the reference's `MemPack` of `BinaryData` takes it, and its reference script read as a Babbage
+    * script.
     */
   private[ledger] def fromStored(
       out: xyz.kd5ujc.scarab.ledger.TxOut
@@ -151,7 +156,7 @@ object BabbageTxOut:
       out.raw,
       out.address,
       out.value.stored,
-      out.datum,
+      Datum.toStored(out.datum),
       out.scriptRef.map(storedScript),
       out.valueSize
     )
@@ -175,11 +180,8 @@ object BabbageTxOut:
     override def address(out: BabbageTxOut): Address = out.address
     override def value(out: BabbageTxOut): MultiAssetValue = out.value
     override def raw(out: BabbageTxOut): Bytes = out.raw
-    override def dataHash(out: BabbageTxOut): Option[Bytes] = out.datum match
-      case Datum.Hash(h)                   => Some(h)
-      case Datum.NoDatum | Datum.Inline(_) => None
+    override def dataHash(out: BabbageTxOut): Option[Bytes] = BabbageTxOuts.dataHash(out.datum)
     override def datum(out: BabbageTxOut): Datum = out.datum
-    override def data(out: BabbageTxOut): Option[Bytes] = out.datum match
-      case Datum.Inline(d)               => Some(d)
-      case Datum.NoDatum | Datum.Hash(_) => None
+    override def data(out: BabbageTxOut): Either[PlutusData.DecodeError, Option[Data]] =
+      BabbageTxOuts.data(out.datum)
     override def referenceScript(out: BabbageTxOut): Option[BabbageScript] = out.scriptRef

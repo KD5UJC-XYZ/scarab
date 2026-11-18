@@ -8,7 +8,6 @@ import xyz.kd5ujc.scarab.ledger.{
   ByteStrings,
   CborRead,
   DecodeField,
-  Datum,
   FieldKeys,
   LedgerDecodeError
 }
@@ -26,6 +25,10 @@ import xyz.kd5ujc.scarab.ledger.{
   * f649f975): the bytes an output arrived as, and its value's size, are kept beside them and are
   * not compared. An inline datum and a script compare by their own bytes, which the reference keeps
   * (`BinaryData`, a script's `MemoBytes`).
+  *
+  * The datum is the era's ([[Datum]]): an inline datum read as data where the output was read from
+  * a block or a transaction ([[fromDecoded]]), and taken unread where it was read from the store
+  * ([[fromStored]]), as the reference's `DecCBOR` and `MemPack` of `BinaryData` take it.
   *
   * @param valueSize
   *   the size in bytes of the value as it arrived, as the flat output keeps it
@@ -52,13 +55,39 @@ object BabbageTxOutRep:
   // `TxOut.referenceScript`).
   private given ByteStrings = ByteStrings.Chunked
 
-  /** A stored output as the representation of an era whose script `decodeScript` reads: its
-    * reference script read again from its bytes, in the era's script type (`#6.24(bytes .cbor
-    * script)`, field 3 of the map form). The flat output keeps the hash of a reference script and
-    * not its bytes, so the era's script is read from the output's encoding, as the flat output's
-    * `referenceScript` reads it.
+  /** The evidence an inline datum's unchecked construction asks for ([[BinaryData.stored]],
+    * [[Datum.stored]]). Its constructor is this object's, which makes one in [[fromStored]] alone,
+    * so no other code takes bytes as data unread. That the output `fromStored` is given was read
+    * from the store is not a type: its callers, each era's `fromStored` (`private[ledger]`), are
+    * trusted to pass one, as the reference trusts what its `MemPack` reads; in the node's code they
+    * are reached from `ConwayUTxO.fromStored` alone. A store that reads the era's outputs itself
+    * would make it a type (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6989194084).
+    */
+  final class StoreRead private[BabbageTxOutRep] ()
+
+  /** An output its era's decoder read from a block or a transaction, as the representation of an
+    * era whose script `decodeScript` reads: its inline datum read as data ([[Datum.decoded]], the
+    * reference's `DecCBOR`) and its reference script as [[fromStored]] reads it.
+    */
+  private[era] def fromDecoded[S](out: xyz.kd5ujc.scarab.ledger.TxOut)(
+      decodeScript: Node => ByteStrings ?=> Either[LedgerDecodeError, S]
+  ): Either[LedgerDecodeError, BabbageTxOutRep[S]] =
+    Datum.decoded(out.datum).flatMap(of(out, _)(decodeScript))
+
+  /** A stored output as the representation of an era whose script `decodeScript` reads: its inline
+    * datum taken unread ([[Datum.stored]], the reference's `MemPack`), and its reference script
+    * read again from its bytes, in the era's script type (`#6.24(bytes .cbor script)`, field 3 of
+    * the map form). The flat output keeps the hash of a reference script and not its bytes, so the
+    * era's script is read from the output's encoding, as the flat output's `referenceScript` reads
+    * it.
     */
   private[era] def fromStored[S](out: xyz.kd5ujc.scarab.ledger.TxOut)(
+      decodeScript: Node => ByteStrings ?=> Either[LedgerDecodeError, S]
+  ): Either[LedgerDecodeError, BabbageTxOutRep[S]] =
+    given StoreRead = StoreRead()
+    of(out, Datum.stored(out.datum))(decodeScript)
+
+  private def of[S](out: xyz.kd5ujc.scarab.ledger.TxOut, datum: Datum)(
       decodeScript: Node => ByteStrings ?=> Either[LedgerDecodeError, S]
   ): Either[LedgerDecodeError, BabbageTxOutRep[S]] =
     val script =
@@ -90,7 +119,7 @@ object BabbageTxOutRep:
         out.address,
         MultiAssetValue.of(out.value),
         out.valueSize,
-        out.datum,
+        datum,
         s
       )
     )
