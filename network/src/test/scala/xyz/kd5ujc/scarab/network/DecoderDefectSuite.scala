@@ -209,6 +209,45 @@ class DecoderDefectSuite extends FailsOnUncaught:
     )
 
   test(
+    "local submission: the node's transaction decoder refuses it, the connection ends with no reply (#924)"
+  ):
+    val cause = xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedUint64
+    typed {
+      linked(
+        protocols = Set(Protocols.LocalTxSubmission),
+        client = Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator),
+        server = Mux.Config.nodeToClient
+      ).use { (client, server) =>
+        for
+          theirs <- client.channel(Protocols.LocalTxSubmission)
+          ours <- server.channel(Protocols.LocalTxSubmission)
+          submit = xyz.kd5ujc.scarab.protocol.LocalTxSubmission.encode(
+            xyz.kd5ujc.scarab.protocol.LocalTxSubmission.State.Idle,
+            xyz.kd5ujc.scarab.protocol.ChainSync.Role.Client,
+            xyz.kd5ujc.scarab.protocol.LocalTxSubmission.Message
+              .SubmitTx(Bytes(Vector(0x80.toByte)))
+          )
+          _ <- submit.fold(e => IO(fail(e.toString)), theirs.send)
+          ended <- LocalTxSubmissionServer.run(
+            ours,
+            _ => IO.pure(LocalTxSubmissionServer.Response.Undecodable(cause)),
+            LocalTxSubmission.TxReader.whole
+          )
+        yield ended
+      }
+    }.map(result =>
+      assertEquals(
+        result,
+        Left(
+          NetworkError.Decode(
+            Protocols.LocalTxSubmission,
+            xyz.kd5ujc.scarab.protocol.ProtocolError.UndecodableTransaction(cause)
+          )
+        )
+      )
+    )
+
+  test(
     "local submission: the node's rules threw, the connection ends as ServingDefect (issue 564)"
   ):
     val cause = injected

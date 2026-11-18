@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.LocalTxSubmission
+import xyz.kd5ujc.scarab.protocol.{LocalTxSubmission, ProtocolError}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 
 import NetworkError.RuntimeViolation
@@ -34,6 +34,13 @@ object LocalTxSubmissionServer:
     case Accepted
     case Rejected(reason: Bytes)
     case ServiceUnavailable(error: Unavailable)
+
+    /** The decoder of a transaction refuses it, with its typed reason: no answer, and the
+      * connection ends with the protocol's decode error, as the reference's codec, which decodes
+      * the transaction, ends it, and as a prefix it refuses ends it
+      * ([[LocalTxSubmission.TxReader]]).
+      */
+    case Undecodable(cause: DomainError)
 
     /** The node's decoder threw on the submitted transaction: no answer, and the connection ends
       * with [[NetworkError.DecoderDefect]], as an exception of the codec ends it in the reference
@@ -84,8 +91,10 @@ object LocalTxSubmissionServer:
                 send(LocalTxSubmission.State.Busy, LocalTxSubmission.Message.RejectTx(reason))
                   .as(Left(()))
               case Response.ServiceUnavailable(error) => Temporal[F].pure(Right(Some(error)))
-              case Response.InputDefect(cause)        => NetworkError.DecoderDefect(id, cause).raise
-              case Response.ServingDefect(cause)      => NetworkError.ServingDefect(id, cause).raise
+              case Response.Undecodable(cause) =>
+                NetworkError.Decode(id, ProtocolError.UndecodableTransaction(cause)).raise
+              case Response.InputDefect(cause)   => NetworkError.DecoderDefect(id, cause).raise
+              case Response.ServingDefect(cause) => NetworkError.ServingDefect(id, cause).raise
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
           case other => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))
