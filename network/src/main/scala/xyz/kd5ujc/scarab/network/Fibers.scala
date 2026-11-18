@@ -41,13 +41,15 @@ object Fibers:
   def land[F[_]: Applicative, E, A](result: Either[E, A])(using raise: Raise[F, E]): F[A] =
     result.fold(raise.raise[E, A](_), Applicative[F].pure)
 
-  /** The outcome of the first of two scoped bodies that fails, or of both: the others are cancelled
-    * once one has failed (the `parSequence` of values, which fails fast without an exception).
+  /** The first failure of the scoped bodies, or `Right(())` once all have ended without one: the
+    * others are cancelled once one has failed (the `parSequence` of values, which fails fast
+    * without an exception). A body records its failure before it ends, so a failure of the last
+    * body to end is read after the others, not lost to the race.
     */
   def failFast[F[_]: Concurrent, E](bodies: List[F[Either[E, Unit]]]): F[Either[E, Unit]] =
     Deferred[F, E].flatMap { failed =>
       val watched = bodies.map(_.flatMap(_.fold(failed.complete(_).void, _ => Concurrent[F].unit)))
       Concurrent[F]
-        .race(failed.get, watched.parSequence_)
-        .map(_.fold(_.asLeft[Unit], _ => ().asRight[E]))
+        .race(failed.get, watched.parSequence_ *> failed.tryGet)
+        .map(_.fold(_.asLeft[Unit], _.toLeft(())))
     }

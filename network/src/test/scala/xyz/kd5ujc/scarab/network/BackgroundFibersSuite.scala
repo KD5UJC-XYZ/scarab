@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
+import cats.effect.testkit.TestControl
+import cats.syntax.all.*
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 import scala.concurrent.duration.*
 
 import Peers.*
@@ -10,7 +14,8 @@ import Peers.*
   * connection is lost under them (issue 130). [[MuxChannel]] takes the calling fiber's `Raise`;
   * [[Fibers.scoped]] captures failures as values before they cross the fiber boundary. The harness
   * also demonstrates that an escaped capability is reported as an uncaught
-  * `cats.mtl.Handle$Submarine`.
+  * `cats.mtl.Handle$Submarine`. [[Fibers.failFast]] reports a failure even when the body that fails
+  * is the last one running.
   */
 class BackgroundFibersSuite extends FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 30.seconds
@@ -21,6 +26,33 @@ class BackgroundFibersSuite extends FailsOnUncaught:
       result => assertEquals(result, Left(NetworkError.Defect(cause)))
     }
   }
+
+  // a fixed set of schedules, each of them reproducible from its seed
+  private val schedules = (0L until 32L).toList
+
+  private def seeded(seed: Long): Option[String] =
+    Some(Base64.getEncoder.encodeToString(seed.toString.getBytes(StandardCharsets.UTF_8)))
+
+  for (others, label) <- List(0 -> "alone", 1 -> "after another body signals its end")
+  do
+    test(s"failFast reports the failure of the last body still running, $label (issue 924)") {
+      val failure = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+      // the failing body fails only after the other has signalled, just before it returns
+      val program = Deferred[IO, Unit].flatMap { ended =>
+        val clean = List.fill(others)(ended.complete(()).as(().asRight[NetworkError]))
+        val last = ended.get.whenA(others > 0).as(failure.asLeft[Unit])
+        Fibers.failFast[IO, NetworkError](clean :+ last)
+      }
+      schedules
+        .traverse(seed => TestControl.executeEmbed(program, seed = seeded(seed)).tupleLeft(seed))
+        .map { results =>
+          assertEquals(
+            results.filter(_._2 != Left(failure)),
+            Nil,
+            "the seeds that lost the failure"
+          )
+        }
+    }
 
   test("the runtime of these suites sees a Submarine that escapes its scope (the harness works)") {
     // Deliberately use the completed scope's capability in a new fiber to test the reporter.
