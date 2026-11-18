@@ -8,8 +8,8 @@ does); CONTRIBUTING.md "Independent review" states the rule and `scripts/pr_poli
 `--effort` may raise the effort above the floor, never lower it.
 
 The review runs with the network on and the file system read-only: a permission profile that extends Codex's
-`:read-only` profile with network access, and no approvals, so every command the reviewer runs stays in that
-sandbox. Live web search is requested; whether Codex grants it is not checked. Every setting is passed on the
+`:read-only` profile with network access, no approvals and no user or project exec-policy rules (which could allow a
+command outside the sandbox), so every command the reviewer runs stays in that sandbox. Live web search is requested; whether Codex grants it is not checked. Every setting is passed on the
 command line, so the user's own Codex configuration cannot change the model, the effort or the sandbox.
 
 The floor comes from the pull request's whole diff (`--pr-base`); `--base` sets the review's scope, which a second
@@ -24,8 +24,9 @@ to files in the worktree become `path:line`, other absolute links plain text, an
 directory is refused, since the comment is public. The stamp records what the session file shows; it is evidence
 against a mistaken run, not a signature.
 
-Run the copy on the base branch, not the one under review, when the change touches this file:
-`git show origin/main:scripts/codex_review.py > /tmp/codex_review.py`, then `python3 /tmp/codex_review.py --cd .`.
+To review someone else's change, run the base branch's copy in Python's isolated mode, so no code of the change runs
+before the sandbox does: `git show origin/main:scripts/codex_review.py > <scratch>/codex_review.py`, then
+`python3 -I <scratch>/codex_review.py --cd <worktree> ...`.
 
 Usage: python3 scripts/codex_review.py --level N --brief BRIEF.md --out REVIEW.md [--effort E] [--base origin/main]
 """
@@ -116,7 +117,7 @@ def command(effort, workdir, last_message, codex="codex"):
     return [codex, "exec", "-m", MODEL, "-c", f'model_reasoning_effort="{effort}"',
             "-c", f'default_permissions="{PROFILE}"', "-c", f'permissions.{PROFILE}.extends=":read-only"',
             "-c", f"permissions.{PROFILE}.network.enabled=true", "-c", 'approval_policy="never"',
-            "-c", 'web_search="live"', "--json", "-o", str(last_message), "-C", str(workdir), "-"]
+            "-c", 'web_search="live"', "--ignore-rules", "--json", "-o", str(last_message), "-C", str(workdir), "-"]
 
 
 def no_constant(name):
@@ -186,17 +187,17 @@ def session_settings(path):
         elif entry.get("type") == "turn_context":
             sandbox = payload.get("sandbox_policy") or {}
             turns.append({"model": payload.get("model"), "effort": payload.get("effort"),
-                          "sandbox": sandbox.get("type"),
+                          "approval": payload.get("approval_policy"), "sandbox": sandbox.get("type"),
                           "network": "on" if sandbox.get("network_access") is True else "off"})
         elif payload.get("type") == "model_reroute":
             raise ReviewError(f"Codex rerouted the run to another model: {json.dumps(payload)[:300]}")
-    if meta is None or not turns:
-        raise ReviewError(f"the session file {Path(path).name} has no metadata or turn context")
+    if not meta or not meta.get("cli_version") or not turns:
+        raise ReviewError(f"the session file {Path(path).name} has no CLI version or no turn context")
     return turns, meta.get("cli_version")
 
 
 def check_session(turns, effort):
-    expected = {"model": MODEL, "effort": effort, "sandbox": "read-only", "network": "on"}
+    expected = {"model": MODEL, "effort": effort, "approval": "never", "sandbox": "read-only", "network": "on"}
     for turn in turns:
         if turn != expected:
             wrong = {k: turn.get(k) for k, v in expected.items() if turn.get(k) != v}
@@ -265,7 +266,7 @@ def main(argv=None):
         effort = args.effort or need
         if rank(effort) < rank(need):
             raise ReviewError(f"effort {effort} is below {need}, the floor for this change")
-        if git(workdir, "status", "--porcelain"):
+        if git(workdir, "status", "--porcelain", "--untracked-files=normal"):
             raise ReviewError("the worktree has uncommitted changes; the review covers committed work only")
         head = git(workdir, "rev-parse", "HEAD").strip()
         base = args.base or args.pr_base
@@ -283,7 +284,7 @@ def main(argv=None):
             message = last.read_text(encoding="utf-8").strip() if last.exists() else ""
         if not message:
             raise ReviewError("the run ended without a final message")
-        if git(workdir, "status", "--porcelain") or git(workdir, "rev-parse", "HEAD").strip() != head:
+        if git(workdir, "status", "--porcelain", "--untracked-files=normal") or git(workdir, "rev-parse", "HEAD").strip() != head:
             raise ReviewError("the worktree changed during the review; a review makes no edits")
         turns, cli = session_settings(session_file(thread, os.environ.get("CODEX_HOME") or Path.home() / ".codex"))
         check_session(turns, effort)

@@ -234,13 +234,14 @@ URL = "https://github.com/example/scarab/pull/8"
 
 
 class ReviewEvidenceTests(unittest.TestCase):
-    def check(self, level, comments=(), reviews=(), links=("#issuecomment-11",), files=None, body=None):
+    def check(self, level, comments=(), reviews=(), links=("#issuecomment-11",), files=None, body=None,
+              merge_base="c" * 40):
         files = files if files is not None else (["docs/running.md"] if level == 0 else ["scripts/x.py"])
         pr = pull_request(head="feature")
         pr["user"] = {"login": "author", "id": AUTHOR, "type": "User"}
         review = body or "## Independent review\n\nClean: " + ", ".join(URL + link for link in links) + "\n"
         pr["body"] = body_of(level, "None", "None", review)
-        return policy.check_body(pr, list(files), (list(comments), list(reviews)))
+        return policy.check_body(pr, list(files), (list(comments), list(reviews), merge_base))
 
     def test_a_stamped_review_at_or_above_the_floor_passes(self):
         for level, effort in [(0, "medium"), (1, "high"), (2, "xhigh"), (3, "xhigh"), (4, "max")]:
@@ -327,7 +328,7 @@ class ReviewEvidenceTests(unittest.TestCase):
     def test_reviews_of_fixes_extend_the_coverage_only_from_a_head_already_covered(self):
         first, second, head = "b" * 40, "d" * 40, "a" * 40
         fixes = stamped("high", head=head, scope="fixes", start=first)
-        with self.assertRaisesRegex(policy.PolicyError, "only fix commits"):
+        with self.assertRaisesRegex(policy.PolicyError, "covers the whole pull request"):
             self.check(1, [comment(12, fixes)], links=("#issuecomment-12",))
         self.assertEqual(self.check(1, [comment(11, stamped("high", head=first)), comment(12, fixes)],
                                     links=("#issuecomment-11", "#issuecomment-12")), 1)
@@ -342,6 +343,11 @@ class ReviewEvidenceTests(unittest.TestCase):
                                         comment(13, gap)],
                                     links=("#issuecomment-11", "#issuecomment-12", "#issuecomment-13")), 1)
 
+    def test_a_full_review_must_start_at_the_merge_base_so_a_retarget_needs_a_new_one(self):
+        self.assertEqual(self.check(1, [comment(11, stamped("high"))]), 1)
+        with self.assertRaisesRegex(policy.PolicyError, "from its merge base"):
+            self.check(1, [comment(11, stamped("high"))], merge_base="e" * 40)
+
     def test_a_stamp_without_its_start_and_scope_is_refused(self):
         legacy = policy.codex_review.stamp({"model": policy.codex_review.MODEL, "effort": "high", "level": 1,
                                             "head": "a" * 40}) + "\nNo findings."
@@ -354,7 +360,9 @@ class ReviewEvidenceTests(unittest.TestCase):
         in_label = f"## Independent review\n\nClean: [{URL}#issuecomment-11 (review)](https://example.org/wrong)\n"
         titled = f'## Independent review\n\nClean: [review]({URL}#issuecomment-11. "Round two")\n'
         in_reference = f"## Independent review\n\nClean: [Round two: {URL}#issuecomment-11][r]\n\n[r]: https://example.org/\n"
-        for body in [unused, suffixed, in_label, titled, in_reference]:
+        redefined = (f"## Independent review\n\nClean: [review][r]\n\n[r]: https://example.org/stale\n"
+                     f"[r]: {URL}#issuecomment-11\n")
+        for body in [unused, suffixed, in_label, titled, in_reference, redefined]:
             with self.subTest(body=body), self.assertRaisesRegex(policy.PolicyError, "links no comment"):
                 self.check(1, [comment(11, stamped("high"))], body=body)
         for body in [f"## Independent review\n\nClean: [review]({URL}#issuecomment-11).\n",
@@ -372,12 +380,12 @@ class ReviewEvidenceTests(unittest.TestCase):
         pr = pull_request(head="feature")
         pr["user"], pr["draft"] = {"login": "author", "id": AUTHOR, "type": "User"}, True
         pr["body"] = body_of(1, "None", "None", None)
-        self.assertEqual(policy.check_body(pr, ["scripts/x.py"], ([], [])), 1)
+        self.assertEqual(policy.check_body(pr, ["scripts/x.py"], ([], [], "c" * 40)), 1)
 
     def test_the_command_line_needs_the_files_the_comments_and_the_reviews(self):
-        for missing in ["--files", "--comments", "--reviews"]:
+        for missing in ["--files", "--comments", "--reviews", "--merge-base"]:
             argv = ["pr_policy.py", "--event", "e.json", "--repository", "example/scarab", "--repository-id", "42",
-                    "--files", "f", "--comments", "c", "--reviews", "r"]
+                    "--files", "f", "--comments", "c", "--reviews", "r", "--merge-base", "m"]
             i = argv.index(missing)
             del argv[i:i + 2]
             with self.subTest(missing=missing), mock.patch.object(sys, "argv", argv), mock.patch("sys.stderr"), \

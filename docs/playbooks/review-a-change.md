@@ -22,9 +22,10 @@ this is the order of work.
    file outside the worktree>` from the worktree, with everything committed. It runs Codex with the pinned model, at
    the lowest effort the change allows (CONTRIBUTING.md, "Independent review") or at a higher one given with
    `--effort`. The reviewer has the network, to read the reference at its pin, and a read-only file system; with
-   approvals off, its commands run only in that sandbox, and live web search is requested. When the change touches
-   the script itself, run the copy on the base branch (`git show origin/main:scripts/codex_review.py`) with `--cd`
-   naming the worktree, so the code under review is not what runs the review. A review takes minutes at `high` and
+   approvals and exec-policy rules off, its commands run only in that sandbox, and live web search is requested. To
+   review someone else's change, run the base branch's copy (`git show origin/main:scripts/codex_review.py` into a
+   scratch file) with `python3 -I` and `--cd` naming the worktree, so no code of the change runs before the sandbox
+   does. A review takes minutes at `high` and
    longer at `xhigh`; run it in the background rather than block on it. Do not run the review through an agent
    tool's Codex integration: it cannot set the effort, and the model's default effort is below every floor.
 4. The script accepts the run only if Codex completed its turn with a final message, its session file records the

@@ -9,7 +9,8 @@ approval link) and "Gaps" (`None`, or bullets that each start with an issue link
 `None` may go on in prose. A pull request that is not a draft (the event's `draft` flag) also carries an
 "Independent review" section with a link, to the review of its final diff posted on it (CONTRIBUTING.md,
 "Independent review"); a draft passes without it. Given the pull request's comments (`--comments`, one JSON object
-per line with `id`, `body` and `user`) and reviews (`--reviews`, with `id`, `state` and `user`), the section must link
+per line with `id`, `body` and `user`), the merge base of its base and head (`--merge-base`; a full review must start
+there, so a retarget needs a new one), and reviews (`--reviews`, with `id`, `state` and `user`), the section must link
 a review on this pull request: a comment whose first line is the stamp of `codex_review.py`, naming the pinned model
 and an effort at or above the floor for the stated level and the changed files, or a GitHub review submitted by a
 person other than the author (compared by account id). A review of the whole pull request, extended by reviews of
@@ -207,7 +208,9 @@ def destinations(text):
     """The URLs the text links as GitHub renders it: inline link destinations, autolinks, bare URLs outside link
     labels (without trailing punctuation, which GitHub leaves out of the link), and the targets of reference links
     it uses; an unused reference definition links nothing."""
-    defined = {label.strip().lower(): target for label, target in REFERENCE_DEFINITION.findall(text)}
+    defined = {}
+    for label, target in REFERENCE_DEFINITION.findall(text):
+        defined.setdefault(label.strip().lower(), target)
     rest = REFERENCE_DEFINITION.sub("", text)
     found = [angled or plain for angled, plain in INLINE_LINK.findall(rest)]
     used = [key for key in ((ref or label).strip().lower() for label, ref in REFERENCE.findall(rest)) if key in defined]
@@ -218,7 +221,7 @@ def destinations(text):
     return found + [defined[key] for key in used]
 
 
-def linked_reviews(pr, text, level, files, comments, reviews):
+def linked_reviews(pr, text, level, files, comments, reviews, merge_base=None):
     """The reviews the section links on this pull request: a comment whose first line is the stamp of
     `codex_review.py` with the pinned model at or above the floor, or a GitHub review submitted by a person other than
     the author. At least one is required; a Codex review of the whole pull request (`scope=full`) or a person's
@@ -256,7 +259,7 @@ def linked_reviews(pr, text, level, files, comments, reviews):
             require(problem is None, f"the linked comment {comment.get('id')}: {problem}; run the review again "
                     "with scripts/codex_review.py (CONTRIBUTING.md, \"Independent review\")")
             accepted.append(comment)
-            if fields["scope"] == "full":
+            if fields["scope"] == "full" and merge_base in (None, fields["from"]):
                 reviewed.add(fields["head"])
             else:
                 fixes.append((fields["from"], fields["head"]))
@@ -269,7 +272,8 @@ def linked_reviews(pr, text, level, files, comments, reviews):
     require(accepted, "no linked item is a review: link a comment that starts with the stamp of "
             f"scripts/codex_review.py at effort {need} or above, or a GitHub review submitted by a person other than "
             "the author (CONTRIBUTING.md, \"Independent review\")")
-    require(reviewed, "the linked Codex reviews cover only fix commits: link the review of the whole pull request too "
+    require(reviewed, "no linked review covers the whole pull request from its merge base "
+            f"{str(merge_base or '')[:12]}: link the review of the whole diff, or review it again after a retarget "
             "(CONTRIBUTING.md, \"Independent review\")")
     while True:
         extended = {head for start, head in fixes if start in reviewed} - reviewed
@@ -459,6 +463,8 @@ def main():
     parser.add_argument("--reviews", type=Path, required=True,
                         help="the pull request's reviews, one JSON object per line with id, state, commit_id and "
                              "user (id, type)")
+    parser.add_argument("--merge-base", type=Path, required=True,
+                        help="a file holding the merge base of the pull request's base and head commits")
     args = parser.parse_args()
     require(args.event is not None and args.repository is not None, "require event and repository identity")
     event = json.loads(args.event.read_text())
@@ -473,7 +479,9 @@ def main():
             evidence.append(codex_review.records(path.read_text(encoding="utf-8")))
         except codex_review.ReviewError as error:
             raise PolicyError(f"the review evidence in {path.name}: {error}") from error
-    evidence = tuple(evidence)
+    merge_base = args.merge_base.read_text(encoding="utf-8").strip()
+    require(COMMIT.fullmatch(merge_base), "the merge base is not a full commit id")
+    evidence = (*evidence, merge_base)
     storage = check_storage_format(pr, files, datetime.now(timezone.utc))
     print(json.dumps(dict(result, level=check_body(pr, files, evidence), storageFormatChange=storage),
                      sort_keys=True))

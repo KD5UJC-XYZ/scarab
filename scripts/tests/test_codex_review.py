@@ -46,15 +46,17 @@ FAKE = textwrap.dedent('''\
     day = pathlib.Path(os.environ["CODEX_HOME"], "sessions", "2026", "11", "18")
     day.mkdir(parents=True, exist_ok=True)
     with open(day / f"rollout-2026-11-18T00-00-00-{thread}.jsonl", "w") as f:
-        f.write(json.dumps({"type": "session_meta", "payload": {"cli_version": "0.169.0"}}) + "\\n")
+        meta = {} if os.environ.get("FAKE_NO_META") else {"cli_version": "0.169.0"}
+        f.write(json.dumps({"type": "session_meta", "payload": meta}) + "\\n")
         f.write(json.dumps({"type": "turn_context", "payload": {
             "model": model, "effort": os.environ.get("FAKE_EFFORT", effort),
+            "approval_policy": os.environ.get("FAKE_APPROVAL", "never"),
             "sandbox_policy": {"type": "read-only", "network_access": network}}}) + "\\n")
         if os.environ.get("FAKE_TRUNCATED"):
             f.write('{"type": "turn_context", "payload": {"model": "oth' + "\\n")
         if os.environ.get("FAKE_SECOND_TURN"):
             f.write(json.dumps({"type": "turn_context", "payload": {
-                "model": os.environ["FAKE_SECOND_TURN"], "effort": effort,
+                "model": os.environ["FAKE_SECOND_TURN"], "effort": effort, "approval_policy": "never",
                 "sandbox_policy": {"type": "read-only", "network_access": network}}}) + "\\n")
     message = os.environ.get("FAKE_MESSAGE", "P2 [Foo.scala](" + str(work) + "/Foo.scala#L3): " + brief.strip().split("\\n")[-1])
     out.write_text(message)
@@ -118,7 +120,7 @@ class FloorAndStampTests(unittest.TestCase):
     def test_the_command_pins_model_effort_read_only_network_and_no_approvals(self):
         line = " ".join(review.command("high", Path("/w"), Path("/o")))
         for part in [f"-m {review.MODEL}", 'model_reasoning_effort="high"', 'extends=":read-only"',
-                     "network.enabled=true", 'approval_policy="never"', 'web_search="live"', "-C /w", "--json"]:
+                     "network.enabled=true", 'approval_policy="never"', 'web_search="live"', "-C /w", "--json", "--ignore-rules"]:
             self.assertIn(part, line)
         self.assertNotIn("--sandbox", line)
 
@@ -182,7 +184,7 @@ class RunTests(unittest.TestCase):
         for env in [{"FAKE_MODEL": "gpt-daybreak-blue-latest"}, {"FAKE_EFFORT": "low"}, {"FAKE_NO_NETWORK": "1"},
                     {"FAKE_FAIL": "1"}, {"FAKE_NO_COMPLETION": "1"}, {"FAKE_REROUTE": "1"},
                     {"FAKE_SECOND_TURN": "other-model"}, {"FAKE_TRUNCATED": "1"}, {"FAKE_EDIT": "1"},
-                    {"FAKE_COMMIT": "1"}, {"FAKE_MESSAGE": ""},
+                    {"FAKE_COMMIT": "1"}, {"FAKE_APPROVAL": "on-request"}, {"FAKE_NO_META": "1"}, {"FAKE_MESSAGE": ""},
                     {"FAKE_MESSAGE": "see " + HOME + "x"}]:
             with self.subTest(env=env):
                 if self.home.exists():
@@ -193,6 +195,7 @@ class RunTests(unittest.TestCase):
                 self.assertFalse(self.out.exists())
 
     def test_a_dirty_worktree_or_an_output_inside_it_is_refused_before_codex_runs(self):
+        subprocess.run(["git", "-C", str(self.work), "config", "status.showUntrackedFiles", "no"], check=True)
         (self.work / "untracked.txt").write_text("x")
         self.assertEqual(self.run_review(), 1)
         (self.work / "untracked.txt").unlink()
