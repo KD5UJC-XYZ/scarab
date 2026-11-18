@@ -54,7 +54,8 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
 
   // (prefix, a completion of it, the refusal): every completion of a refused prefix is refused
   // whole too, so whether a transaction is admitted does not depend on how its bytes arrive; a tag
-  // other than 24 is refused around a byte string and around the transaction itself
+  // other than 24 is refused around a byte string and around the transaction itself, and so are the
+  // transaction not under tag 24 and a chunked string under it
   private val refused = Vector(
     ("8208", wrappedTx, GenTx.Refusal.UnknownEra(8)),
     ("82190100", wrappedTx, GenTx.Refusal.EraIndex),
@@ -84,7 +85,6 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     ("8207d8185f", chunkedTx.drop(2), GenTx.Refusal.ExpectedBytes(Era.Dijkstra)),
     ("8207d819", Bytes(bstr(tx)).hex, GenTx.Refusal.NotCborInCbor(Era.Dijkstra)),
     ("9f", "06" + wrappedTx + "ff", GenTx.Refusal.EraEnvelope),
-    // the transaction not under tag 24, and a chunked string under it
     ("820684", tx.drop(1).hex, GenTx.Refusal.ExpectedTag(Era.Conway)),
     ("82069f", tx.drop(1).hex + "ff", GenTx.Refusal.ExpectedTag(Era.Conway)),
     ("8201d8185f", chunkedTx.drop(2), GenTx.Refusal.ExpectedBytes(Era.Shelley)),
@@ -266,13 +266,14 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
 
   test("on the wire, a prefix the decoder fails on ends the connection before the rest arrives") {
     // the task's rows of #924: an era past the last, and an envelope of three and Byron's fifth
-    // constructor as LocalTxMonitor's probe had them
+    // constructor as LocalTxMonitor's probe had them; a tag other than 24; and the three forms the
+    // reference refuses at their first token: an indefinite envelope, a transaction not under tag 24
+    // and a chunked string under it
     Vector(
       "82008208" -> GenTx.Refusal.UnknownEra(8),
       "820083" -> GenTx.Refusal.EraEnvelope,
       "820082008204" -> GenTx.Refusal.UnknownByronTag(4),
       "82008206d819" -> GenTx.Refusal.NotCborInCbor(Era.Conway),
-      // the three forms the reference refuses at their first token
       "82009f" -> GenTx.Refusal.EraEnvelope,
       "8200820684" -> GenTx.Refusal.ExpectedTag(Era.Conway),
       "82008206d8185f" -> GenTx.Refusal.ExpectedBytes(Era.Conway)
