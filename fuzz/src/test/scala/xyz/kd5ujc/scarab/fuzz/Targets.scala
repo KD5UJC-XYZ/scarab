@@ -873,19 +873,29 @@ object Targets:
         for state <- LocalTxSubmission.State.values; role <- ChainSync.Role.values do
           val decoder = LocalTxSubmission.incremental(state, role, GenTx.reader)
           val chunk = 1 + b.headOption.fold(0)(v => (v & 0xff) % 23)
+          // the verdict and the length of input it was given at
           @tailrec def feed(
               end: Int,
               cursor: decoder.Cursor
-          ): DecodeResult[LocalTxSubmission.Message] =
+          ): (DecodeResult[LocalTxSubmission.Message], Int) =
             val (next, result) = decoder.resume(cursor, b.take(end))
-            if end == b.size || result != DecodeResult.NeedMore then result
+            if end == b.size || result != DecodeResult.NeedMore then (result, end)
             else feed(math.min(b.size, end + chunk), next)
-          val result = feed(0, decoder.initial)
+          val (result, end) = feed(0, decoder.initial)
           seen("local-tx-submission-incremental", result.isInstanceOf[DecodeResult.Decoded[?]])
           req(
-            result == LocalTxSubmission.decodePrefix(state, role, b, GenTx.reader),
+            result == LocalTxSubmission.decodePrefix(state, role, b.take(end), GenTx.reader),
             "fragmented submission differs"
           )
+          // the reader only ends a transaction it refuses before the rest arrives; any other
+          // verdict is the one without it
+          result match
+            case DecodeResult.Failed(ProtocolError.UndecodableTransaction(_)) => ()
+            case other =>
+              req(
+                other == LocalTxSubmission.decodePrefix(state, role, b.take(end)),
+                "the transaction reader changed another verdict"
+              )
       }
     ),
     roundTrip(
