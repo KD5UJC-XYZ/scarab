@@ -475,6 +475,13 @@ object ConwayTxBody:
         body.collateralReturn
       // `allInputsTxBodyF = babbageAllInputsTxBodyF`, `Conway/TxBody.hs:344`, cardano-ledger f649f975
       override def allInputs(body: ConwayTxBody): SortedSet[TxIn] = allInputsBabbage(body)
+      // `spendableInputsTxBodyF = to (`withTopTxLevelOnly` (^. babbageSpendableInputsTxBodyF))`,
+      // `Conway/TxBody.hs:341`, cardano-ledger f649f975
+      override def spendableInputs[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): SortedSet[TxIn] =
+        l match
+          case TopOnly.Top => spendableInputsBabbage(body)
       // `getTotalDepositsTxBody = conwayTotalDepositsTxBody`, `Conway/TxBody.hs:356,363-380`,
       // cardano-ledger f649f975: the certificates' deposits and the proposals'
       override def getTotalDepositsTxBody(

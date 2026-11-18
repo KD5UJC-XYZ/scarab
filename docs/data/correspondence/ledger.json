@@ -5871,10 +5871,13 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "note": "the keys that must sign (`getWitsVKeyNeeded`) and the subclass `AlonzoEraUTxO` come with UTXOW",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023765",
+   "evidence": [
+    "ConwayUtxoChecksSuite",
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "every member of the reference's class; the associated type ScriptsNeeded is the family of that name (Families.scala) and the superclass EraTx the member txOf",
    "digest": "022250243e0f55d0"
   },
   "val ledger.era.conway.ConwayUTxO.instance": {
@@ -5890,15 +5893,14 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
    "evidence": [
     "ConwayUtxoChecksSuite",
     "ConwayUtxowChecksSuite"
    ],
-   "note": "the instance of the class's members so far: `getConsumedMaryValue`, `conwayProducedValue`, `getBabbageScriptsProvided`, `getConwayScriptsNeeded`, `getAlonzoScriptsHashesNeeded` and `getConwayMinFeeTxUtxo`; `getWitsVKeyNeeded` comes with UTXOW",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023765",
-   "digest": "bde5b60019accbfe"
+   "note": "every member of the reference's instance; ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, or only the missing witness, failed",
+   "digest": "2025105b2c05d42f"
   },
   "def ledger.era.UTxOs.txInsFilter": {
    "upstream": [
@@ -10121,6 +10123,161 @@
    "structure": "same",
    "note": "computed when a rule asks, with that rule's era, where the reference keeps the value mkAlonzoStAnnTx computed with the era's getScriptsNeeded",
    "digest": "f38a181e70255433"
+  },
+  "def ledger.era.EraTxBody#spendableInputs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "spendableInputsTxBodyF",
+     "lines": [
+      255,
+      258
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "69a5aec03184aefd"
+  },
+  "def ledger.era.BabbageEraTxBody#spendableInputsBabbage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "symbol": "babbageSpendableInputsTxBodyF",
+     "lines": [
+      223,
+      229
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "c09e70cb3d8273d6"
+  },
+  "def ledger.era.EraTxWits.keyHashWitnessesTxWits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "keyHashWitnessesTxWits",
+     "lines": [
+      538,
+      545
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "524ff963c9b71fda"
+  },
+  "def ledger.era.EraUTxO#getWitsVKeyNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "getWitsVKeyNeeded",
+     "lines": [
+      280,
+      282
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "09ae22a032c68c47"
+  },
+  "def ledger.era.ShelleyUTxO.getShelleyWitsVKeyNeededNoGov": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "symbol": "getShelleyWitsVKeyNeededNoGov",
+     "lines": [
+      203,
+      251
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "1d4f7a059d7c0c76"
+  },
+  "def ledger.era.conway.ConwayUTxO.getConwayWitsVKeyNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "getConwayWitsVKeyNeeded",
+     "lines": [
+      172,
+      180
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "95d60b796759415a"
+  },
+  "def ledger.era.conway.ConwayUTxO.voterWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "voterWitnesses",
+     "lines": [
+      182,
+      194
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "digest": "3abd4ec1c567cae5"
+  },
+  "def ledger.era.rules.ShelleyUtxow.validateNeededWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+     "symbol": "validateNeededWitnesses",
+     "lines": [
+      409,
+      423
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxowFailure, so its verdict is compared with the flat rule's, and its refusal with the reference's bytes where it is UTXOW's only",
+   "digest": "1b68d14d34c1a0bb"
   }
  },
  "glue": [

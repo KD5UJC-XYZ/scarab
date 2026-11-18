@@ -494,8 +494,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     exactly. They differ only past the supply, which no set of collateral outputs reaches.
   - A failure that carries an output or a value carries the node's stored form of it, through a glue class
     (`StoredTxOut`) with Conway's instance only, until each era's failure types (§3.4).
-  - `EraUTxO` lands without the witnesses needed (`getWitsVKeyNeeded`) and without `AlonzoEraUTxO`,
-    tracked on #85; the scripts needed and provided came with UTXOW (below).
+  - `EraUTxO` lands without `AlonzoEraUTxO`, tracked on #85; the scripts needed and provided and the
+    witnesses needed came with UTXOW (below).
 - **The outputs** (`era/rules/`): `validateOutputTooSmallUTxO` with `babbageMinUTxOValue`,
   `validateOutputTooBigUTxO` and `validateOutputBootAddrAttrsTooBig`, each compared with the flat predicate on
   every Conway case of the refusal corpus; the corpus never exceeds the value size, so a crafted limit of one
@@ -539,10 +539,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     chosen by build until the builds are types (`BuildRules`, #1063).
   - Still to port before UTXO is whole: UTXOS and the state's update (`updateUTxOState`,
     `updateTreasuryDonation`), which take the annotated transaction (`StAnnTx`, #85).
-- **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): three of the predicates
+- **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): four of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
-  arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts` and
-  `checkScriptIntegrityHash`, with the script integrity it compares (`ScriptIntegrity`, `mkScriptIntegrity`,
+  arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts`, `validateNeededWitnesses`
+  and `checkScriptIntegrityHash`, with the script integrity it compares (`ScriptIntegrity`, `mkScriptIntegrity`,
   `hashScriptIntegrity`, and the language views `getLanguageView` and `encodeLangViews`).
   - Their verdicts equal the flat checks' on every transaction of the recorded Conway refusal corpora
     (`ConwayUtxowChecksSuite`), where the scripts and the integrity hash refuse and the signatures never do.
@@ -569,10 +569,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     case puts a script input after another, writes two policies out of their order and a script
     certificate second, where a wrong order or index would show. Alonzo's spending, withdrawing and minting needs take the evidence that the era's purpose is
     Conway's, as `AlonzoEraScript`'s purpose builders are not members yet (#85).
-  - The needed key witnesses (`getWitsVKeyNeeded`), the failing native scripts, the datums and the
-    redeemers wait for `EraUTxO`'s and `AlonzoEraUTxO`'s remaining members (#85); the auxiliary data and
-    the well-formed scripts take the transaction annotated with its decoded Plutus scripts (`StAnnTx`, with
-    its cache), which the era types do not have yet (on #85's checklist).
+  - The keys that must sign are `EraUTxO`'s `getWitsVKeyNeeded` (`getConwayWitsVKeyNeeded`: Shelley's keys
+    without the governance ones, of the spendable inputs, certificates, pool owners and withdrawals, then
+    the required signers and the voters), which `validateNeededWitnesses` reads against the witnesses' keys
+    (`keyHashWitnessesTxWits`). It gives the flat check's verdict on every case of the refusal corpus, and
+    where the reference refused a transaction for its missing witness alone, its failure encodes to the
+    reference's refusal byte for byte.
+  - The failing native scripts, the datums and the redeemers wait for `AlonzoEraUTxO`'s members (#85); the
+    auxiliary data and the well-formed scripts take the transaction annotated with its decoded Plutus
+    scripts (`StAnnTx`, with its cache), which the era types do not have yet (on #85's checklist).
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in
