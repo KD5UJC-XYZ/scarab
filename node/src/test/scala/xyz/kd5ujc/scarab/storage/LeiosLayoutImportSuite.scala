@@ -240,7 +240,9 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
     }
   }
 
-  test("slot 203, a Dijkstra state, imports under leios-b004fe0c and exports byte for byte") {
+  test(
+    "slot 203, a Dijkstra state with its tip moved, imports under leios-b004fe0c and exports byte for byte"
+  ) {
     val files =
       Vector("state" -> movedState, "tables" -> readDijkstra("tables"), "meta" -> movedMeta)
     tempDir.use { root =>
