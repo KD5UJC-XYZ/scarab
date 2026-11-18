@@ -18,7 +18,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * value is derived by hand from the `EncCBOR` instances, field by field, as
   * [[PreConwayFailureCborSuite]]'s are; the nesting of each era's failures, and which of the two
   * Conway's MEMPOOL and Babbage's LEDGER report first, are those of the refusals the reference node
-  * answered in [[PlutusFailureReferenceSuite]].
+  * answered in [[PlutusFailureReferenceSuite]]. The reference node's refusal of such a transaction
+  * on the devnet, in each era, is checked byte for byte in [[RedeemerIndexReferenceSuite]].
   */
 class MissingRedeemersRefusalSuite extends FunSuite:
   private val h = script.hash.hex
