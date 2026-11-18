@@ -772,7 +772,7 @@ selected by the build (step c).
 ## 14. The Leios build's layout as built (#826 step b)
 
 The `state` file of `leios-b004fe0c` (cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read
-and written in every Shelley-based era up to Conway. The encoders and decoders of every type a
+and written in every Shelley-based era up to Conway, and in Dijkstra (below). The encoders and decoders of every type a
 Shelley-to-Conway `state` file holds were diffed between the pins of the two builds, era by era; the
 records below are those that differ. Everything else, the binary layer below version 12 among it
 (the encoder is 048b78d2's line for line; the decoder accepts chunked strings from version 12 only),
@@ -824,7 +824,8 @@ the following epoch when the mark rotates into the set position (`State/SnapShot
 544-550`, `State/LeiosCommittee.hs:65-93`). `Snap` performs that rotation before Dijkstra; Dijkstra's
 SNAP is not implemented (#826). A `PerasResolver` with an epoch context is not modelled: the eras before
 Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's (the
-WFALS committee, ouroboros-consensus 2416493b `Shelley/Node/Peras.hs:136-148`) is
+WFALS committee, ouroboros-consensus 2416493b `Shelley/Node/Peras.hs:226-234`,
+`Peras/Voting/V1.hs:39`) is
 `DijkstraNotYet.PerasEpochContext`: Peras is off in the build, and no state it wrote holds one.
 
 **The codecs.** The codec traits take the layout (`stateLayout`); `HaskellStateCodecs` is 11.1's
