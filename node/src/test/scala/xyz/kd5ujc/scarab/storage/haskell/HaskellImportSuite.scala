@@ -237,6 +237,58 @@ class HaskellImportSuite extends CatsEffectSuite:
     }
   }
 
+  test("a Leios node's endorser-block database is read into the Leios store beside the blocks") {
+    import xyz.kd5ujc.scarab.storage.RocksLeiosStore
+    import xyz.kd5ujc.scarab.storage.leios.LeiosReferenceDb
+    import xyz.kd5ujc.scarab.storage.LeiosStoreSuite.{
+      allowing,
+      body,
+      hash,
+      ok as leiosOk,
+      point,
+      tx,
+      word32
+    }
+    import xyz.kd5ujc.scarab.storage.leios.LeiosReferenceDbSuite.exported
+    tempDir.use { dir =>
+      val haskell = dir.toNioPath.resolve("haskell")
+      copyDir(previewRoot, haskell)
+      val db = dir.toNioPath.resolve("scala-db")
+      for
+        _ <- allowing(RocksLeiosStore.resource[IO](dir / "source")).use { s =>
+          leiosOk(
+            s.writeEbPoint(point(7, 1), word32(1)) *> s.writeEbBody(
+              point(7, 1),
+              body(2),
+              Vector.empty
+            ) *>
+              s.writeTxs(point(7, 1), Vector(0 -> tx(0), 1 -> tx(1)))
+          ) *> exported(s, fsPath(haskell))
+        }
+        report <- attempt(
+          HaskellImport.run[IO](config(haskell, db, previewSetup, previewChunk), _ => IO.unit)
+        )
+        closure <- allowing(RocksLeiosStore.resource[IO](fsPath(db.resolve("leios")))).use(s =>
+          leiosOk(s.lookupEbClosure(hash(1)))
+        )
+        plain <- attempt(
+          HaskellImport.run[IO](
+            config(previewRoot, dir.toNioPath.resolve("plain"), previewSetup, previewChunk),
+            _ => IO.unit
+          )
+        )
+      yield
+        assertEquals(report.map(_.leios), Right(Some(LeiosReferenceDb.Counts(1, 1, 2))))
+        assertEquals(report.map(_.appended), Right(golden.size.toLong))
+        assertEquals(closure.map(_.map(_._2)), Some(Vector(tx(0), tx(1))))
+        assertEquals(plain.map(_.leios), Right(None))
+        assert(
+          !JFiles.exists(dir.toNioPath.resolve("plain").resolve("leios")),
+          "no Leios database, no store"
+        )
+    }
+  }
+
   test("a database of another protocol magic is refused before anything is written") {
     tempDir.use { dir =>
       val haskell = dir.toNioPath.resolve("haskell")

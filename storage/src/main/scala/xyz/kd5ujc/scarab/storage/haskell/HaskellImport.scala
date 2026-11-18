@@ -18,6 +18,8 @@ import xyz.kd5ujc.scarab.storage.{
   FileImmutableStore,
   NetworkIdentityFile
 }
+import xyz.kd5ujc.scarab.storage.{LeiosStoreError, RocksLeiosStore}
+import xyz.kd5ujc.scarab.storage.leios.LeiosReferenceDb
 import scala.concurrent.duration.FiniteDuration
 
 /** Why a Haskell ImmutableDB was not imported. */
@@ -57,6 +59,9 @@ enum HaskellImportError:
   /** The store holds a chain that the source does not contain. */
   case TargetNotInSource(slot: BigInt, hash: String)
 
+  /** The Leios database (`leios.vol.db`, `leios.imm.db`) was not imported. */
+  case Leios(error: LeiosReferenceDb.Error)
+
   def message: String = this match
     case Source(e)                => e.message
     case Target(e)                => e.message
@@ -76,6 +81,7 @@ enum HaskellImportError:
       s"the first block names $f as its predecessor, the configured genesis requires $e: another network or genesis"
     case TargetNotInSource(s, h) =>
       s"the target database ends at slot $s (${h.take(16)}), which the Haskell database does not contain"
+    case Leios(e) => s"the Leios database: ${e.message}"
 
 object HaskellImport:
   /** @param haskellDb
@@ -103,6 +109,8 @@ object HaskellImport:
     *   The source went on past `stopSlot`.
     * @param truncation
     *   What was ignored at the end of the source's most recent chunk, if anything.
+    * @param leios
+    *   What was read of the source's Leios database, if it has one.
     */
   final case class Report(
       appended: Long,
@@ -111,7 +119,8 @@ object HaskellImport:
       tip: Option[BlockRef],
       stoppedAtSlot: Boolean,
       truncation: Option[(ChunkNo, Truncation)],
-      elapsed: FiniteDuration
+      elapsed: FiniteDuration,
+      leios: Option[LeiosReferenceDb.Counts] = None
   )
 
   private enum Phase:
@@ -173,6 +182,25 @@ object HaskellImport:
             )
           yield (block, BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary))
 
+    /** The source's Leios database into the store at `leios/` of the target, if it has one. */
+    val importLeios: F[Option[LeiosReferenceDb.Counts]] =
+      given Raise[F, LeiosReferenceDb.Error] = new Raise[F, LeiosReferenceDb.Error]:
+        def functor: Functor[F] = F
+        def raise[E2 <: LeiosReferenceDb.Error, A](e: E2): F[A] =
+          outer.raise(HaskellImportError.Leios(e))
+      given Raise[F, LeiosStoreError] = new Raise[F, LeiosStoreError]:
+        def functor: Functor[F] = F
+        def raise[E2 <: LeiosStoreError, A](e: E2): F[A] =
+          outer.raise(HaskellImportError.Leios(LeiosReferenceDb.Error.Store(e)))
+      LeiosReferenceDb.present[F](config.haskellDb).flatMap {
+        case false => F.pure(None)
+        case true =>
+          RocksLeiosStore
+            .resource[F](config.db / "leios")
+            .use(LeiosReferenceDb.importInto[F](config.haskellDb, _))
+            .map(Some(_))
+      }
+
     DatabaseOwnership.resource[F](config.db).use { _ =>
       for
         began <- Clock[F].monotonic
@@ -188,6 +216,9 @@ object HaskellImport:
           chunkSlots = config.chunkSlots.value
         )
         _ <- NetworkIdentityFile.admit[F](config.db, config.identity, admission)
+        // before the blocks: a Leios database's chain holds Dijkstra blocks, which the block
+        // import below refuses (`EraNotYet`)
+        leios <- importLeios
         reader = HaskellImmutableReader[F](config.haskellDb / "immutable", config.chunkSlots)
         truncation <- cats.effect.Ref.of[F, Option[(ChunkNo, Truncation)]](None)
         chunkCount <- cats.effect.Ref.of[F, Int](0)
@@ -277,6 +308,7 @@ object HaskellImport:
         newTip,
         stopped,
         dropped,
-        finished - began
+        finished - began,
+        leios
       )
     }

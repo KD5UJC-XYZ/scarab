@@ -19,7 +19,8 @@ import xyz.kd5ujc.scarab.node.NodeSetup
   * its blocks to our immutable store under `--db`, so that `follow --db <dir>` replays them locally
   * instead of downloading them. The chain links, the block numbers, the header hashes and the
   * protocol magic are checked; a database of another network is refused. Re-running it continues
-  * after the blocks already stored.
+  * after the blocks already stored. A Leios node's endorser-block database (`leios.vol.db` and
+  * `leios.imm.db`, never written) is read into the Leios store at `<db>/leios` first.
   */
 object HaskellImportCommand:
   val Usage: String =
@@ -121,6 +122,10 @@ object HaskellImportCommand:
                     "ignoredReason" -> r.truncation
                       .flatMap(_._2.cause)
                       .fold(Json.Null)(c => Json.fromString(c.message)),
+                    "leiosPoints" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.points)),
+                    "leiosBodies" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.bodies)),
+                    "leiosTransactions" -> r.leios
+                      .fold(Json.Null)(c => Json.fromLong(c.transactions)),
                     "seconds" -> Json.fromLong(r.elapsed.toSeconds)
                   ).as(ExitCode.Success)
                 case None => IO.pure(ExitCode(1))
