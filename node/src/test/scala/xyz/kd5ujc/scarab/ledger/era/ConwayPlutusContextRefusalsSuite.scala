@@ -123,3 +123,66 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
   }
 
   private val RefusalCaseCount = 84
+
+  /** A failure in a form both paths give it in (the votes as a map, a certificate and a proposal as
+    * the flat ones).
+    */
+  private def normFlat(e: TranslationError): Any = e match
+    case TranslationError.VotingProceduresFieldNotSupported(votes) =>
+      ("votes", votes.map((voter, vs) => voter -> vs.toMap).toMap)
+    case other => other
+
+  private def normTyped(e: ConwayContextError[Conway]): Any = e match
+    case ConwayContextError.VotingProceduresFieldNotSupported(votes) =>
+      ("votes", votes.unVotingProcedures.map((voter, vs) => voter -> vs.toMap).toMap)
+    case ConwayContextError.ProposalProceduresFieldNotSupported(proposals) =>
+      TranslationError.ProposalProceduresFieldNotSupported(proposals.toVector.map(_.read))
+    case ConwayContextError.TreasuryDonationFieldNotSupported(coin) =>
+      TranslationError.TreasuryDonationFieldNotSupported(coin.value)
+    case ConwayContextError.CurrentTreasuryFieldNotSupported(coin) =>
+      TranslationError.CurrentTreasuryFieldNotSupported(coin.value)
+    case ConwayContextError.CertificateNotSupported(cert) =>
+      TranslationError.CertificateNotSupported(conway.ConwayTxCert.toStored(cert))
+    case ConwayContextError.BabbageContextError(
+          BabbageContextError.InlineDatumsNotSupported(source)
+        ) =>
+      TranslationError.InlineDatumsNotSupported(source)
+    case other => asFlat(other)
+
+  test(
+    "the typed V1 and V2 TxInfos are the flat ones on every Conway case of the refusal corpora"
+  ) {
+    val ctx = EraPlutusContext.conway
+    val purpose = ConwayPlutusPurpose.ConwaySpending[AsPurpose](AsPurpose())
+    val outcomes = seen.flatMap { s =>
+      val pv = ProtVer(
+        Version.mkVersion(s.major).getOrElse(fail(s"version ${s.major}")),
+        Unsigned.from[Unsigned.Width.W32](BigInt(0)).getOrElse(fail("minor"))
+      )
+      val result = ctx.mkTxInfoResult(LedgerTxInfo(pv, clock, s.utxo, s.typed))
+      val env = ScriptContexts.Environment(
+        ShelleyBasedEra.SConway,
+        s.major,
+        s.stored.filter((in, _) => s.flat.body.inputs.contains(in)),
+        s.stored.filter((in, _) => s.flat.body.referenceInputs.contains(in)),
+        clock
+      )
+      val v1 = ctx
+        .lookupTxInfoResult[Language.PlutusV1](result)
+        .unPlutusTxInfoResult
+        .flatMap(_(purpose))
+        .bimap(normTyped, ToData[PV1.TxInfo].toBuiltinData)
+      val v2 = ctx
+        .lookupTxInfoResult[Language.PlutusV2](result)
+        .unPlutusTxInfoResult
+        .flatMap(_(purpose))
+        .bimap(normTyped, ToData[PV2.TxInfo].toBuiltinData)
+      Vector(PlutusLanguage.V1 -> v1, PlutusLanguage.V2 -> v2).map { (language, ours) =>
+        val flat = ScriptContexts.txInfo(language, s.flat, env)
+        assertEquals(ours, flat.left.map(normFlat), s"${s.label}, $language")
+        flat
+      }
+    }
+    assertEquals(outcomes.size, 2 * RefusalCaseCount)
+    assert(outcomes.exists(_.isRight))
+  }

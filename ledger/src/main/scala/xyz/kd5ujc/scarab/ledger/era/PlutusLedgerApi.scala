@@ -222,6 +222,109 @@ object PV1:
   given interval[A](using ToData[A]): ToData[Interval[A]] = i =>
     PlutusData.constr(0, i.ivFrom.toData, i.ivTo.toData)
 
+  /** The derived `Ord StakingCredential` (`V1/Credential.hs:43-54`, plutus 507cab8c): a hash before
+    * a pointer; a key's credential before a script's (`V1/Credential.hs:30-37`), each by its bytes
+    * (`deriving stock Ord` of the hashes, `V1/Crypto.hs:36-37`, `V1/Scripts.hs:96-107`); a pointer
+    * by its three integers.
+    */
+  given stakingCredentialOrdering: Ordering[StakingCredential] =
+    def credential(c: Credential): (Int, Bytes) = c match
+      case Credential.PubKeyCredential(h) => (0, h.getPubKeyHash)
+      case Credential.ScriptCredential(h) => (1, h.getScriptHash)
+    (a, b) =>
+      (a, b) match
+        case (StakingCredential.StakingHash(x), StakingCredential.StakingHash(y)) =>
+          summon[Ordering[(Int, Bytes)]].compare(credential(x), credential(y))
+        case (StakingCredential.StakingHash(_), StakingCredential.StakingPtr(_, _, _)) => -1
+        case (StakingCredential.StakingPtr(_, _, _), StakingCredential.StakingHash(_)) => 1
+        case (StakingCredential.StakingPtr(a1, a2, a3), StakingCredential.StakingPtr(b1, b2, b3)) =>
+          summon[Ordering[(BigInt, BigInt, BigInt)]].compare((a1, a2, a3), (b1, b2, b3))
+
+  /** `data TxOut` of V1 (`V1/Tx.hs:111-115,170`, plutus 507cab8c): no inline datum and no reference
+    * script.
+    */
+  final case class TxOut(
+      txOutAddress: Address,
+      txOutValue: Value,
+      txOutDatumHash: Option[DatumHash]
+  )
+
+  /** `data DCert` (`V1/DCert.hs:53-73,83-93`, plutus 507cab8c), the certificate of V1 and V2. */
+  enum DCert:
+    case DCertDelegRegKey(credential: StakingCredential)
+    case DCertDelegDeRegKey(credential: StakingCredential)
+    case DCertDelegDelegate(delegator: StakingCredential, delegatee: PubKeyHash)
+    case DCertPoolRegister(poolId: PubKeyHash, poolVfr: PubKeyHash)
+    case DCertPoolRetire(poolId: PubKeyHash, epoch: BigInt)
+    case DCertGenesis
+    case DCertMir
+
+  /** `data ScriptPurpose` of V1 and V2 (`V1/Contexts.hs:88-94,306-313`, plutus 507cab8c). */
+  enum ScriptPurpose:
+    case Minting(currencySymbol: CurrencySymbol)
+    case Spending(txOutRef: TxOutRef)
+    case Rewarding(credential: StakingCredential)
+    case Certifying(dCert: DCert)
+
+  /** `data TxInInfo` of V1 (`V1/Contexts.hs:74-77,304`, plutus 507cab8c). */
+  final case class TxInInfo(txInInfoOutRef: TxOutRef, txInInfoResolved: TxOut)
+
+  /** `data TxInfo` of V1 (`V1/Contexts.hs:100-121,305`, plutus 507cab8c). */
+  final case class TxInfo(
+      txInfoInputs: Vector[TxInInfo],
+      txInfoOutputs: Vector[TxOut],
+      txInfoFee: Value,
+      txInfoMint: Value,
+      txInfoDCert: Vector[DCert],
+      txInfoWdrl: Vector[(StakingCredential, BigInt)],
+      txInfoValidRange: POSIXTimeRange,
+      txInfoSignatories: Vector[PubKeyHash],
+      txInfoData: Vector[(DatumHash, Datum)],
+      txInfoId: TxId
+  )
+
+  /** `data ScriptContext` of V1 (`V1/Contexts.hs:154-158,314`, plutus 507cab8c). */
+  final case class ScriptContext(scriptContextTxInfo: TxInfo, scriptContextPurpose: ScriptPurpose)
+
+  given txOut: ToData[TxOut] = o =>
+    PlutusData.constr(0, o.txOutAddress.toData, o.txOutValue.toData, o.txOutDatumHash.toData)
+
+  given dCert: ToData[DCert] =
+    case DCert.DCertDelegRegKey(c)      => PlutusData.constr(0, c.toData)
+    case DCert.DCertDelegDeRegKey(c)    => PlutusData.constr(1, c.toData)
+    case DCert.DCertDelegDelegate(c, p) => PlutusData.constr(2, c.toData, p.toData)
+    case DCert.DCertPoolRegister(p, v)  => PlutusData.constr(3, p.toData, v.toData)
+    case DCert.DCertPoolRetire(p, e)    => PlutusData.constr(4, p.toData, e.toData)
+    case DCert.DCertGenesis             => PlutusData.constr(5)
+    case DCert.DCertMir                 => PlutusData.constr(6)
+
+  given scriptPurpose: ToData[ScriptPurpose] =
+    case ScriptPurpose.Minting(c)    => PlutusData.constr(0, c.toData)
+    case ScriptPurpose.Spending(r)   => PlutusData.constr(1, r.toData)
+    case ScriptPurpose.Rewarding(c)  => PlutusData.constr(2, c.toData)
+    case ScriptPurpose.Certifying(d) => PlutusData.constr(3, d.toData)
+
+  given txInInfo: ToData[TxInInfo] = i =>
+    PlutusData.constr(0, i.txInInfoOutRef.toData, i.txInInfoResolved.toData)
+
+  given txInfo: ToData[TxInfo] = t =>
+    PlutusData.constr(
+      0,
+      t.txInfoInputs.toData,
+      t.txInfoOutputs.toData,
+      t.txInfoFee.toData,
+      t.txInfoMint.toData,
+      t.txInfoDCert.toData,
+      t.txInfoWdrl.toData,
+      t.txInfoValidRange.toData,
+      t.txInfoSignatories.toData,
+      t.txInfoData.toData,
+      t.txInfoId.toData
+    )
+
+  given scriptContext: ToData[ScriptContext] = c =>
+    PlutusData.constr(0, c.scriptContextTxInfo.toData, c.scriptContextPurpose.toData)
+
 /** The types of `PlutusLedgerApi.V2` (plutus 507cab8c) that V1 lacks. */
 object PV2:
   import ToData.toData
@@ -254,6 +357,55 @@ object PV2:
       o.txOutDatum.toData,
       o.txOutReferenceScript.toData
     )
+
+  /** `data TxInInfo` of V2 (`V2/Contexts.hs:66-69,279`, plutus 507cab8c). */
+  final case class TxInInfo(txInInfoOutRef: PV1.TxOutRef, txInInfoResolved: TxOut)
+
+  /** `data TxInfo` of V2 (`V2/Contexts.hs:80-107,280`, plutus 507cab8c). */
+  final case class TxInfo(
+      txInfoInputs: Vector[TxInInfo],
+      txInfoReferenceInputs: Vector[TxInInfo],
+      txInfoOutputs: Vector[TxOut],
+      txInfoFee: PV1.Value,
+      txInfoMint: PV1.Value,
+      txInfoDCert: Vector[PV1.DCert],
+      txInfoWdrl: AssocMap[PV1.StakingCredential, BigInt],
+      txInfoValidRange: PV1.POSIXTimeRange,
+      txInfoSignatories: Vector[PV1.PubKeyHash],
+      txInfoRedeemers: AssocMap[PV1.ScriptPurpose, PV1.Redeemer],
+      txInfoData: AssocMap[PV1.DatumHash, PV1.Datum],
+      txInfoId: PV1.TxId
+  )
+
+  /** `data ScriptContext` of V2 (`V2/Contexts.hs:155-159,281`, plutus 507cab8c), its purpose V1's.
+    */
+  final case class ScriptContext(
+      scriptContextTxInfo: TxInfo,
+      scriptContextPurpose: PV1.ScriptPurpose
+  )
+
+  given txInInfo: ToData[TxInInfo] = i =>
+    PlutusData.constr(0, i.txInInfoOutRef.toData, i.txInInfoResolved.toData)
+
+  given txInfo: ToData[TxInfo] = t =>
+    PlutusData.constr(
+      0,
+      t.txInfoInputs.toData,
+      t.txInfoReferenceInputs.toData,
+      t.txInfoOutputs.toData,
+      t.txInfoFee.toData,
+      t.txInfoMint.toData,
+      t.txInfoDCert.toData,
+      t.txInfoWdrl.toData,
+      t.txInfoValidRange.toData,
+      t.txInfoSignatories.toData,
+      t.txInfoRedeemers.toData,
+      t.txInfoData.toData,
+      t.txInfoId.toData
+    )
+
+  given scriptContext: ToData[ScriptContext] = c =>
+    PlutusData.constr(0, c.scriptContextTxInfo.toData, c.scriptContextPurpose.toData)
 
 /** The types of `PlutusLedgerApi.V3` (plutus 507cab8c, `V3/Contexts.hs`, `V3/Tx.hs`,
   * `V3/MintValue.hs`).

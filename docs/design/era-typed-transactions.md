@@ -643,9 +643,29 @@ Conway's rules on the classes follow as the rest of stage 2.
     hard-fork, no-confidence and committee actions with members of both kinds out of order, the
     certificates the corpus lacks with a deposit and a refund left out at version 9, withdrawals and mints out of order, and pointers past
     each container's end.
-  - Not yet (#85): the Plutus V1 and V2 instances, so the families have their V3 case alone; the class
-    `EraPlutusContext` with its memoised `TxInfoResult` (which holds all three languages) and supported
-    languages; and the collection of the scripts with their contexts (`mkPlutusWithContext`,
+  - The node still builds contexts with the flat translation.
+- **Plutus V1 and V2, and the era's script contexts** (the same modules): Conway's instances for Plutus V1
+  and V2 (`Conway/TxInfo.hs:399-480`) with the translations they call (Conway's `transTxOutV1`,
+  `transTxInInfoV1`, `guardConwayFeaturesForPlutusV1V2`, `transTxCertV1V2` and `transPlutusPurposeV1V2`,
+  Alonzo's V1 output, withdrawals, mint, common certificates and legacy arguments, Babbage's V2 input and
+  arguments), so the language families have every case the reference's have (V4's as V3's types), the
+  inputs' without Alonzo's own V1 case. `EraPlutusContext` is the reference's class with
+  `mkSupportedLanguage`, `mkTxInfoResult` and `lookupTxInfoResult`, Conway's instance memoising each
+  language's information lazily (`ConwayTxInfoResult`), and `SupportedLanguage` equal and ordered by its
+  language.
+  - Each language's instance selects its own information from the memoised result
+    (`EraPlutusTxInfo#lookupTxInfoResult`), so the reference's impossible lookup of a language the era does not
+    support (`lookupTxInfoResultImpossible`) has no counterpart. The redeemer and the datum of the legacy
+    arguments are read from their bytes after the purpose, whose failure is the reference's.
+  - `EraPlutusContextSuite`: the typed V1 and V2 `TxInfo`s, through the era's memoised result, equal the flat
+    ones or refuse alike on the same 432 rows and the 62 recorded block transactions, at the row's version and
+    at 9, 10 and 11, reaching every refusal a V1 or V2 context has in Conway but `PlutusPurposeNotSupported`,
+    which the guard on votes and proposals reaches first, as in the reference. Each of the 141 Plutus V1 and
+    V2 requests the reference collected there (14 recorded, 78 of the matrix, 49 of the script results) has
+    the typed arguments byte for byte. `ConwayPlutusContextRefusalsSuite` compares the V1 and V2 `TxInfo`s on
+    the 84 refusal-corpus cases too.
+  - Not yet (#85): `mkSupportedPlutusRunnable`, which needs the era types' runnable scripts; and the
+    collection of the scripts with their contexts (`mkPlutusWithContext`,
     `scriptsWithContextFromLedgerTxInfo`) and the annotated transaction (`StAnnTx`) built on them. The node
     still builds contexts with the flat translation.
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
