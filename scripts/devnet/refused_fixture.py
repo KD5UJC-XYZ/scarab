@@ -47,9 +47,25 @@ def raw_plutus_fixture(args):
     print(json.dumps({"written": str(out), "lines": len(rows)}))
 
 
+REDEEMER_INDEX_OUT = REPO / "fixtures" / "devnet" / "redeemer-index.jsonl"
+
+
+def redeemer_index_fixture(args):
+    """Every verdict `erarefusal.redeemer_index` kept in an `e2e` run, accepted or refused, as it was recorded."""
+    rows = read(data_root(args.name) / "redeemer-index.jsonl")
+    out = pathlib.Path(REDEEMER_INDEX_OUT if args.out == str(DEFAULT_OUT) else args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows))
+    print(json.dumps({"written": str(out), "lines": len(rows)}))
+
+
 def refused_fixture(args):
+    if args.raw_plutus and args.redeemer_index:
+        sys.exit("--raw-plutus and --redeemer-index write different fixtures: name one")
     if args.raw_plutus:
         return raw_plutus_fixture(args)
+    if args.redeemer_index:
+        return redeemer_index_fixture(args)
     out = pathlib.Path(args.out)
     lines = build(data_root(args.name))
     kinds = {}
