@@ -5,7 +5,6 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
-  DataSite,
   GovActionId,
   RewardAccount,
   TranslationError,
@@ -34,6 +33,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   BabbageTxInfo,
   ConwayEraPParams,
   ContextError,
+  Data,
   Delegatee,
   EraPlutusTxInfo,
   EraTx,
@@ -363,34 +363,29 @@ object ConwayTxInfo:
     case PV3.ScriptPurpose.Proposing(ix, proposal) => PV3.ScriptInfo.ProposingScript(ix, proposal)
 
   /** `toPlutusV3Args` (`Conway/TxInfo.hs:745-766`, cardano-ledger f649f975): the script context of
-    * the information, the redeemer and the purpose with the spending datum, each datum read from
-    * the bytes it arrived as: the redeemer before the spending datum, so that where both do not
-    * read as data the failure is the redeemer's, as the flat path's (`ScriptContexts.arguments`).
+    * the information, the redeemer and the purpose with the spending datum.
     */
   def toPlutusV3Args(
       pv: ProtVer,
       txInfo: PV3.TxInfo,
       plutusPurpose: ConwayPlutusPurpose[AsIxItem],
-      maybeSpendingData: Option[Bytes],
-      redeemerData: Bytes
+      maybeSpendingData: Option[Data],
+      redeemerData: Data
   )(using
       t: ConwayEraPlutusTxInfo[Language.PlutusV3, Conway]
   ): Either[ContextError[Conway], PlutusV3Args] =
-    for
-      scriptPurpose <- t.toPlutusScriptPurpose(pv, plutusPurpose)
-      redeemer <- BabbageTxInfo
-        .transRedeemer(redeemerData)
-        .leftMap(BabbageTxInfo.undecodable[Conway])
-      spendingData <- maybeSpendingData
-        .traverse(decodeData(_, DataSite.Datum))
-        .leftMap(BabbageTxInfo.undecodable[Conway])
-    yield PlutusV3Args(
-      PV3.ScriptContext(
-        txInfo,
-        redeemer,
-        scriptPurposeToScriptInfo(scriptPurpose, spendingData.map(transDatum))
+    t.toPlutusScriptPurpose(pv, plutusPurpose).map { scriptPurpose =>
+      PlutusV3Args(
+        PV3.ScriptContext(
+          txInfo,
+          BabbageTxInfo.transRedeemer(redeemerData),
+          scriptPurposeToScriptInfo(
+            scriptPurpose,
+            maybeSpendingData.map(d => transDatum(d.getPlutusData))
+          )
+        )
       )
-    )
+    }
 
   /** `transValidityInterval` of Conway (`Conway/TxInfo.hs:790-814`, cardano-ledger f649f975): the
     * interval in POSIX time, an interval with an end alone open at its end, unlike Alonzo's; a slot
@@ -499,9 +494,8 @@ object ConwayTxInfo:
             pv,
             tx
           )
-          datums <- AlonzoTxInfo
+          datums = AlonzoTxInfo
             .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
-            .leftMap(BabbageTxInfo.undecodable[Conway])
         yield PV3.TxInfo(
           txInfoInputs = inputsInfo,
           txInfoReferenceInputs = refInputsInfo,
@@ -531,8 +525,8 @@ object ConwayTxInfo:
           pv: ProtVer,
           txInfo: PV3.TxInfo,
           purpose: ConwayPlutusPurpose[AsIxItem],
-          maybeSpendingData: Option[Bytes],
-          redeemerData: Bytes
+          maybeSpendingData: Option[Data],
+          redeemerData: Data
       ): Either[ContextError[Conway], PlutusV3Args] =
         toPlutusV3Args(pv, txInfo, purpose, maybeSpendingData, redeemerData)
 
@@ -698,9 +692,8 @@ object ConwayTxInfo:
             lti.ltiProtVer,
             txBody
           )
-          datums <- AlonzoTxInfo
+          datums = AlonzoTxInfo
             .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
-            .leftMap(BabbageTxInfo.undecodable[Conway])
         yield PV1.TxInfo(
           txInfoInputs = inputs,
           txInfoOutputs = outputs,
@@ -719,8 +712,8 @@ object ConwayTxInfo:
           pv: ProtVer,
           txInfo: PV1.TxInfo,
           purpose: ConwayPlutusPurpose[AsIxItem],
-          maybeSpendingData: Option[Bytes],
-          redeemerData: Bytes
+          maybeSpendingData: Option[Data],
+          redeemerData: Data
       ): Either[ContextError[Conway], PlutusV1Args] =
         AlonzoTxInfo.toPlutusV1Args[Conway](pv, txInfo, purpose, maybeSpendingData, redeemerData)
 
@@ -791,9 +784,8 @@ object ConwayTxInfo:
             pv,
             tx
           )
-          datums <- AlonzoTxInfo
+          datums = AlonzoTxInfo
             .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
-            .leftMap(BabbageTxInfo.undecodable[Conway])
         yield PV2.TxInfo(
           txInfoInputs = inputs,
           txInfoReferenceInputs = refInputs,
@@ -814,8 +806,8 @@ object ConwayTxInfo:
           pv: ProtVer,
           txInfo: PV2.TxInfo,
           purpose: ConwayPlutusPurpose[AsIxItem],
-          maybeSpendingData: Option[Bytes],
-          redeemerData: Bytes
+          maybeSpendingData: Option[Data],
+          redeemerData: Data
       ): Either[ContextError[Conway], PlutusV2Args] =
         BabbageTxInfo.toPlutusV2Args[Conway](pv, txInfo, purpose, maybeSpendingData, redeemerData)
 

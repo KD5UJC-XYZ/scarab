@@ -418,7 +418,9 @@ object BabbageUTxO:
   /** `getBabbageSpendingDatum` (`Babbage/UTxO.hs:88-101`, cardano-ledger f649f975): of a spending
     * purpose whose input the UTxO set holds, the output's inline datum, or else the witnesses'
     * datum of its datum hash. Read through the evidence that the era's purpose is Conway's, as
-    * `toSpendingPurpose` is not a member of the script class yet (#85).
+    * `toSpendingPurpose` is not a member of the script class yet (#85). The datum is the bytes it
+    * arrived as, where the reference's is `Data era`: an inline datum is not held decoded yet
+    * (#85), so a witness datum is given as its bytes too.
     */
   def getBabbageSpendingDatum[E <: EraTag, L <: TxLevel](
       utxo: UTxO[E],
@@ -444,6 +446,7 @@ object BabbageUTxO:
       txOutDataFromWits = o
         .dataHash(txOut)
         .flatMap(t.witsOf.datsTxWits(t.wits[L](tx)).datums.get)
+        .map(_.originalBytes)
       datum <- o.data(txOut).orElse(txOutDataFromWits)
     yield datum
 

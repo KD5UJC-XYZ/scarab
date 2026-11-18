@@ -227,6 +227,11 @@ class EraPlutusContextSuite extends munit.FunSuite:
       case 5     => ConwayPlutusPurpose.ConwayProposing(AsIx(ix))
       case other => fail(s"not a Conway tag: $other")
 
+  // The spending datum `getSpendingDatum` gives as its bytes, as the reference's `Data era`: an
+  // inline datum is not held decoded yet (#85).
+  private def spendingDatum(bytes: Bytes): Data =
+    Data.decode(bytes).fold(e => fail(s"a spending datum that is not data: $e"), identity)
+
   /** The typed V3 script context of the redeemer at `pointer`, serialised. */
   private def typedContext(c: Case, pointer: ConwayPlutusPurpose[AsIx]): Bytes =
     val (tx, utxo, lti) = typed(c)
@@ -235,16 +240,18 @@ class EraPlutusContextSuite extends munit.FunSuite:
       .redeemerPointerInverse[TxLevel.Top](body, pointer)
       .getOrElse(fail(s"${c.name}: $pointer names nothing"))
     val redeemer = t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries(pointer)._1
-    val datum = u.getSpendingDatum[TxLevel.Top](
-      utxo,
-      tx,
-      ConwayPlutusPurpose.hoistPlutusPurpose[
-        AsIxItem,
-        AsItem
-      ]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a))(
-        purpose
-      )
-    )(using u.txOf.bodyOf.top)
+    val datum = u
+      .getSpendingDatum[TxLevel.Top](
+        utxo,
+        tx,
+        ConwayPlutusPurpose.hoistPlutusPurpose[
+          AsIxItem,
+          AsItem
+        ]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a))(
+          purpose
+        )
+      )(using u.txOf.bodyOf.top)
+      .map(spendingDatum)
     val args = for
       info <- PlutusContext.mkPlutusTxInfoFromResult[Language.PlutusV3, Conway](
         ConwayPlutusPurpose.hoistPlutusPurpose[
@@ -413,42 +420,6 @@ class EraPlutusContextSuite extends munit.FunSuite:
   }
 
   test(
-    "a redeemer and a spending datum that do not read as data: the redeemer's, as the flat path's"
-  ) {
-    val (tx, _, lti) = typed(base)
-    val body = t.body[TxLevel.Top](tx)
-    val redeemers = t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries
-    val (pointer, (redeemer, _)) = redeemers.head
-    val purpose = t.bodyOf
-      .redeemerPointerInverse[TxLevel.Top](body, pointer)
-      .getOrElse(fail(s"$pointer names nothing"))
-    val info = PlutusContext
-      .mkPlutusTxInfoFromResult[Language.PlutusV3, Conway](
-        ConwayPlutusPurpose.hoistPlutusPurpose[
-          AsIxItem,
-          AsPurpose
-        ]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsPurpose(a))(purpose),
-        v3.toPlutusTxInfo(lti)
-      )
-      .fold(e => fail(e.toString), identity)
-    val bad = Bytes(Vector(0xff.toByte))
-    def args(datum: Bytes, rdmr: Bytes): Either[TranslationError, Unit] =
-      ConwayTxInfo
-        .toPlutusV3Args(lti.ltiProtVer, info, purpose, Some(datum), rdmr)(using v3)
-        .left
-        .map(asFlat)
-        .map(_ => ())
-    assertEquals(
-      args(bad, bad),
-      Left(TranslationError.Undecodable(xyz.kd5ujc.scarab.ledger.DataSite.Redeemer))
-    )
-    assertEquals(
-      args(bad, redeemer),
-      Left(TranslationError.Undecodable(xyz.kd5ujc.scarab.ledger.DataSite.Datum))
-    )
-  }
-
-  test(
     "a Byron output whose inline datum does not read as data: ByronTxOutInContext first, as the flat path's"
   ) {
     val in = base.flat.body.inputs.sorted.head
@@ -476,7 +447,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
   }
 
   test(
-    "a redeemer that does not read as data: both decoders refuse it, so no translation reaches its Undecodable"
+    "a redeemer that does not read as data: both decoders refuse it, so the era's witness set holds every redeemer as data"
   ) {
     val parts = rawWitnesses(
       base,
@@ -492,6 +463,31 @@ class EraPlutusContextSuite extends munit.FunSuite:
       .PlutusData(xyz.kd5ujc.scarab.ledger.DecodeField.Redeemer, notData)
     assertEquals(FlatTx.fromBlock(parts, Era.Conway).map(_ => ()), Left(refused))
     assertEquals(ConwayTx.decode(parts).map(_ => ()), Left(EraTxError.Decode(refused)))
+  }
+
+  test(
+    "a witness datum that does not read as data: both decoders refuse it, so the era's witness set holds every datum as data"
+  ) {
+    val parts = rawWitnesses(base, 4 -> arr(CborValue.Text("not data")))
+    val notData = PlutusData.DecodeError.UnexpectedItem(CborValue.Text("not data"))
+    val refused = xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+      .PlutusData(xyz.kd5ujc.scarab.ledger.DecodeField.Datums, notData)
+    assertEquals(FlatTx.fromBlock(parts, Era.Conway).map(_ => ()), Left(refused))
+    assertEquals(ConwayTx.decode(parts).map(_ => ()), Left(EraTxError.Decode(refused)))
+  }
+
+  test(
+    "the era's witness set holds each datum and redeemer decoded, with the bytes it arrived as"
+  ) {
+    val (tx, _, _) = typed(base)
+    val w = t.witsOf
+    val datums = w.datsTxWits(t.wits[TxLevel.Top](tx)).datums
+    val redeemers = w.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries.values.map(_._1)
+    assert(redeemers.nonEmpty)
+    (datums.values ++ redeemers).foreach(d =>
+      assertEquals(PlutusData.decode(d.originalBytes), Right(d.getPlutusData))
+    )
+    datums.foreach((hash, d) => assertEquals(d.hashData, hash))
   }
 
   // The base's redeemers as a map from pointer to data and units, whichever form they arrived in.
@@ -904,13 +900,15 @@ class EraPlutusContextSuite extends munit.FunSuite:
       .redeemerPointerInverse[TxLevel.Top](body, pointer)
       .getOrElse(fail(s"${c.name}: $pointer names nothing"))
     val redeemer = t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries(pointer)._1
-    val datum = u.getSpendingDatum[TxLevel.Top](
-      utxo,
-      tx,
-      ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
-        [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
-      )(purpose)
-    )(using u.txOf.bodyOf.top)
+    val datum = u
+      .getSpendingDatum[TxLevel.Top](
+        utxo,
+        tx,
+        ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
+          [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+        )(purpose)
+      )(using u.txOf.bodyOf.top)
+      .map(spendingDatum)
     val asPurpose = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsPurpose](
       [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsPurpose(a)
     )(purpose)

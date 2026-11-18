@@ -30,10 +30,12 @@ trait EraTxWits[E <: EraTag]:
 trait AlonzoEraTxWits[E <: EraTag] extends EraTxWits[E]:
   override def scriptsOf: AlonzoEraScript[E]
 
-  /** `datsTxWitsL`: the datums, with the bytes they arrived as. */
+  /** `datsTxWitsL`: the datums, with the bytes they arrived as, each decoded. */
   def datsTxWits(wits: TxWits[E]): TxDats
 
-  /** `rdmrsTxWitsL`: the redeemers by the era's purpose, with the bytes they arrived as. */
+  /** `rdmrsTxWitsL`: the redeemers by the era's purpose, with the bytes they arrived as, each
+    * decoded.
+    */
   def rdmrsTxWits(wits: TxWits[E]): Redeemers[PlutusPurpose[AsIx, E]]
 
 /** The instances of each era, the one place that lists the eras having each witness class. */

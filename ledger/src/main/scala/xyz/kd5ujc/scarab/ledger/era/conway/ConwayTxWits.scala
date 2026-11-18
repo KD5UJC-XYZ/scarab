@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 import scala.collection.immutable.{SortedMap, SortedSet}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
-import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   BootstrapWitness,
   ByteStrings,
@@ -16,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Unsigned,
   Witnesses
 }
-import xyz.kd5ujc.scarab.ledger.era.{AsIx, EraTxError, Plutus, Redeemers, TxDats, WitVKey}
+import xyz.kd5ujc.scarab.ledger.era.{AsIx, Data, EraTxError, Plutus, Redeemers, TxDats, WitVKey}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Conway's witness set: `AlonzoTxWits ConwayEra` (`data AlonzoTxWitsRaw`,
@@ -56,6 +55,10 @@ object ConwayTxWits:
     * hash.
     */
   def decode(raw: Bytes): Either[EraTxError, ConwayTxWits] =
+    // a datum and a redeemer's data are read as the flat decoder read them, which refuses data
+    // that does not decode with this error; kept decoded here
+    def data(bytes: Bytes, site: DecodeField) =
+      Data.decode(bytes).leftMap(e => EraTxError.Decode(LedgerDecodeError.PlutusData(site, e)))
     for
       flat <- Witnesses.decode(raw, Era.Conway).leftMap(EraTxError.Decode(_))
       scripts <- DetachedRecords
@@ -84,14 +87,16 @@ object ConwayTxWits:
             .toRight(
               EraTxError.Decode(LedgerDecodeError.UnknownTag(DecodeField.RedeemerTag, r.tag))
             )
-        yield purpose -> (r.data, r.exUnits)
+          redeemer <- data(r.data, DecodeField.Redeemer)
+        yield purpose -> (redeemer, r.exUnits)
       )
+      datums <- flat.datums.traverse(data(_, DecodeField.Datums))
     yield ConwayTxWits(
       raw,
       SortedSet.from(flat.vkeys.map(WitVKey(_, _))),
       flat.bootstrap,
       scripts,
-      TxDats(flat.datumsRaw, SortedMap.from(flat.datums.map(d => Blake2b.hash256.hash(d) -> d))),
+      TxDats(flat.datumsRaw, SortedMap.from(datums.map(d => d.hashData -> d))),
       Redeemers(flat.redeemersRaw, SortedMap.from(redeemers))
     )
 

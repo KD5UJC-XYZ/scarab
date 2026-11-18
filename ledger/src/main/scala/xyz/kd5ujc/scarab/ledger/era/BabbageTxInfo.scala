@@ -2,9 +2,9 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{DataSite, Datum, TxIn, TxOutSource}
 import xyz.kd5ujc.scarab.ledger.state.EraTag
+import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** Why Babbage's translation of a transaction to a script context fails (`data BabbageContextError
   * era`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs:253-260`, cardano-ledger
@@ -65,11 +65,8 @@ object BabbageTxInfo:
       case Some(addr) =>
         datum.map(d => PV2.TxOut(addr, AlonzoTxInfo.transValue(v(value)), d, referenceScript))
 
-  /** `transRedeemer` (`Babbage/TxInfo.hs:188-189`, cardano-ledger f649f975): the redeemer's data,
-    * read from the bytes it arrived as.
-    */
-  def transRedeemer(raw: Bytes): Either[DataSite, PV1.Redeemer] =
-    decodeData(raw, DataSite.Redeemer).map(PV1.Redeemer(_))
+  /** `transRedeemer` (`Babbage/TxInfo.hs:188-189`, cardano-ledger f649f975). */
+  def transRedeemer(data: Data): PV1.Redeemer = PV1.Redeemer(data.getPlutusData)
 
   /** `transRedeemerPtr` (`Babbage/TxInfo.hs:191-207`, cardano-ledger f649f975): the purpose a
     * redeemer's pointer names in the language's form, with the redeemer; a pointer that names
@@ -78,41 +75,22 @@ object BabbageTxInfo:
   def transRedeemerPtr[L <: Language, E <: EraTag, T <: TxLevel](
       pv: ProtVer,
       txBody: TxBody[T, E],
-      ptr: PlutusPurpose[AsIx, E],
-      data: Bytes
+      redeemer: (PlutusPurpose[AsIx, E], (Data, ExUnits))
   )(using
       t: EraPlutusTxInfo[L, E],
       b: AlonzoEraTxBody[E],
       l: b.Level[T],
       inj: Inject[BabbageContextError[E], ContextError[E]]
   ): Either[ContextError[E], (PlutusScriptPurpose[L], PV1.Redeemer)] =
-    for
-      plutusScriptPurpose <- redeemerPurpose[L, E, T](pv, txBody, ptr)
-      redeemer <- transRedeemer(data).leftMap(undecodable[E])
-    yield (plutusScriptPurpose, redeemer)
-
-  /** The part of `transRedeemerPtr` the reference's decoded data does not touch: the purpose the
-    * pointer names, in the language's form, or the pointer refused.
-    */
-  private def redeemerPurpose[L <: Language, E <: EraTag, T <: TxLevel](
-      pv: ProtVer,
-      txBody: TxBody[T, E],
-      ptr: PlutusPurpose[AsIx, E]
-  )(using
-      t: EraPlutusTxInfo[L, E],
-      b: AlonzoEraTxBody[E],
-      l: b.Level[T],
-      inj: Inject[BabbageContextError[E], ContextError[E]]
-  ): Either[ContextError[E], PlutusScriptPurpose[L]] =
+    val (ptr, (d, _)) = redeemer
     b.redeemerPointerInverse[T](txBody, ptr) match
-      case None     => Left(inj.inject(BabbageContextError.RedeemerPointerPointsToNothing(ptr)))
-      case Some(sp) => t.toPlutusScriptPurpose(pv, sp)
+      case None => Left(inj.inject(BabbageContextError.RedeemerPointerPointsToNothing(ptr)))
+      case Some(sp) =>
+        t.toPlutusScriptPurpose(pv, sp)
+          .map(plutusScriptPurpose => (plutusScriptPurpose, transRedeemer(d)))
 
   /** `transTxRedeemers` (`Babbage/TxInfo.hs:211-226`, cardano-ledger f649f975): every redeemer of
-    * the witnesses, in the order of their pointers, by its purpose. Every pointer and purpose is
-    * translated, in the reference's order, before any redeemer is read from its bytes, so that the
-    * node's own `Undecodable` comes after any failure the reference has, as the flat path's
-    * (`ScriptContexts.redeemerMap`).
+    * the witnesses, in the order of their pointers, by its purpose.
     */
   def transTxRedeemers[L <: Language, E <: EraTag, T <: TxLevel](pv: ProtVer, tx: Tx[T, E])(using
       t: EraPlutusTxInfo[L, E],
@@ -120,13 +98,12 @@ object BabbageTxInfo:
       l: x.bodyOf.Level[T],
       inj: Inject[BabbageContextError[E], ContextError[E]]
   ): Either[ContextError[E], AssocMap[PlutusScriptPurpose[L], PV1.Redeemer]] =
-    val entries = x.witsOf.rdmrsTxWits(x.wits[T](tx)).entries.toVector
-    for
-      purposes <- entries.traverse((ptr, _) =>
-        redeemerPurpose[L, E, T](pv, x.body[T](tx), ptr)(using t, x.bodyOf, l, inj)
-      )
-      redeemers <- entries.traverse((_, entry) => transRedeemer(entry._1).leftMap(undecodable[E]))
-    yield AssocMap(purposes.zip(redeemers))
+    x.witsOf
+      .rdmrsTxWits(x.wits[T](tx))
+      .entries
+      .toVector
+      .traverse(transRedeemerPtr[L, E, T](pv, x.body[T](tx), _)(using t, x.bodyOf, l, inj))
+      .map(AssocMap(_))
 
   /** `transTxInInfoV2` (`Babbage/TxInfo.hs:174-186`, cardano-ledger f649f975): an input with the
     * output the UTxO set holds for it, in the V2 form.
@@ -148,11 +125,10 @@ object BabbageTxInfo:
       pv: ProtVer,
       txInfo: PV2.TxInfo,
       scriptPurpose: PlutusPurpose[AsIxItem, E],
-      maybeSpendingData: Option[Bytes],
-      redeemerData: Bytes
+      maybeSpendingData: Option[Data],
+      redeemerData: Data
   )(using
-      t: EraPlutusTxInfo[Language.PlutusV2, E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]]
+      t: EraPlutusTxInfo[Language.PlutusV2, E]
   ): Either[ContextError[E], PlutusV2Args] =
     AlonzoTxInfo
       .toLegacyPlutusArgs[Language.PlutusV2, E](
