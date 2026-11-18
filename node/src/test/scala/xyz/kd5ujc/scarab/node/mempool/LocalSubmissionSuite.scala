@@ -84,7 +84,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                     bearer,
                     magic,
                     LocalSubmission
-                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+                    GenTx.reader
                   )
                   .map(_.message)
               )
@@ -153,7 +154,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                     serverEnd,
                     magic,
                     LocalSubmission
-                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+                    GenTx.reader
                   )
                   .map(_.message)
               )
@@ -241,7 +243,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                 bearer,
                 magic,
                 LocalSubmission
-                  .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+                  .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+                GenTx.reader
               )
             )
             .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
@@ -353,7 +356,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                         case false =>
                           LocalSubmission
                             .handler(mempool)(fatal => IO(fail(s"unexpected fatal: $fatal")))(item)
-                      }
+                      },
+                    GenTx.reader
                   )
                 )
                 .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))

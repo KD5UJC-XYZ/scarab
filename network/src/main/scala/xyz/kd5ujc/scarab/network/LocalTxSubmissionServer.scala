@@ -63,7 +63,7 @@ object LocalTxSubmissionServer:
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
       submit: Bytes => F[Response],
-      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
+      txs: LocalTxSubmission.TxReader
   )(using Raise[F, NetworkError]): F[Option[Unavailable]] =
     val id = Protocols.LocalTxSubmission
     def illegal[A](detail: NetworkError.Violation): F[A] =
@@ -92,11 +92,14 @@ object LocalTxSubmissionServer:
         }
     Temporal[F].tailRecM(())(_ => step)
 
-  /** One inbound node-to-client connection: handshake (versions 16 to 23), then submission. */
+  /** One inbound node-to-client connection: handshake (versions 16 to 23), then submission, each
+    * transaction not all of which has arrived judged by `txs`.
+    */
   def accept[F[_]: cats.effect.Async](
       bearer: Bearer[F],
       magic: Long,
-      submit: Bytes => F[Response]
+      submit: Bytes => F[Response],
+      txs: LocalTxSubmission.TxReader
   )(using Raise[F, NetworkError]): F[End] =
     Mux
       .resource(
@@ -124,7 +127,7 @@ object LocalTxSubmissionServer:
             .race(
               Fibers.scoped[F, NetworkError, Option[Unavailable]](
                 NetworkError.fromThrowable("local-tx-submission", _)
-              )(run(channel, submit)),
+              )(run(channel, submit, txs)),
               mux.closed
             )
           reason <- ended.fold(

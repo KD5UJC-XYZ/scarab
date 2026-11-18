@@ -6,7 +6,13 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, LocalTxMonitor, NtnVersion}
+import xyz.kd5ujc.scarab.protocol.{
+  ChainSync,
+  ChainSyncFixtures,
+  LocalTxMonitor,
+  LocalTxSubmission,
+  NtnVersion
+}
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 
@@ -190,7 +196,8 @@ class DecoderDefectSuite extends FailsOnUncaught:
           _ <- submit.fold(e => IO(fail(e.toString)), theirs.send)
           ended <- LocalTxSubmissionServer.run(
             ours,
-            _ => IO.pure(LocalTxSubmissionServer.Response.InputDefect(cause))
+            _ => IO.pure(LocalTxSubmissionServer.Response.InputDefect(cause)),
+            LocalTxSubmission.TxReader.whole
           )
         yield ended
       }
@@ -223,7 +230,8 @@ class DecoderDefectSuite extends FailsOnUncaught:
           _ <- submit.fold(e => IO(fail(e.toString)), theirs.send)
           ended <- LocalTxSubmissionServer.run(
             ours,
-            _ => IO.pure(LocalTxSubmissionServer.Response.ServingDefect(cause))
+            _ => IO.pure(LocalTxSubmissionServer.Response.ServingDefect(cause)),
+            LocalTxSubmission.TxReader.whole
           )
         yield ended
       }
@@ -277,7 +285,11 @@ class DecoderDefectSuite extends FailsOnUncaught:
     List(
       run(
         Protocols.LocalTxSubmission,
-        LocalTxSubmissionServer.run(_, _ => IO.pure(LocalTxSubmissionServer.Response.Accepted))
+        LocalTxSubmissionServer.run(
+          _,
+          _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+          LocalTxSubmission.TxReader.whole
+        )
       ),
       run(Protocols.LocalStateQuery, LocalStateQueryServer.run(_, stateQuery)),
       run(Protocols.LocalTxMonitor, LocalTxMonitorServer.run(_, mempool)),

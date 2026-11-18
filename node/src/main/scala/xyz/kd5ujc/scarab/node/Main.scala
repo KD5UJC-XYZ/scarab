@@ -200,10 +200,10 @@ object Main extends IOApp:
               bearer,
               magic,
               serving.submit,
+              GenTx.reader,
               serving.stateQuery,
               chainSync = serving.chainSync,
-              txMonitor = serving.txMonitor,
-              txs = GenTx.reader
+              txMonitor = serving.txMonitor
             )
           )
           logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>

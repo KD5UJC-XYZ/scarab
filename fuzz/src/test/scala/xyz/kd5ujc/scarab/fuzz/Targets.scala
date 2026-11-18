@@ -18,7 +18,13 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody}
-import xyz.kd5ujc.scarab.node.mempool.{GenTxId, LocalSubmission, MempoolState, RelayedTransactions}
+import xyz.kd5ujc.scarab.node.mempool.{
+  GenTx,
+  GenTxId,
+  LocalSubmission,
+  MempoolState,
+  RelayedTransactions
+}
 import xyz.kd5ujc.scarab.node.AnnouncedHeaders
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
@@ -857,7 +863,7 @@ object Targets:
               .map(_.toArray)
           ) ++
           netCorpus("local-tx-submission:localTxSubmissionMessage")(),
-      LocalTxSubmission.decodePrefix(_, _, _),
+      LocalTxSubmission.decodePrefix(_, _, _, GenTx.reader),
       LocalTxSubmission.encode
     ),
     Target(
@@ -865,7 +871,7 @@ object Targets:
       netCorpus("local-tx-submission:localTxSubmissionMessage"),
       probe("local-tx-submission-incremental") { b =>
         for state <- LocalTxSubmission.State.values; role <- ChainSync.Role.values do
-          val decoder = LocalTxSubmission.incremental(state, role)
+          val decoder = LocalTxSubmission.incremental(state, role, GenTx.reader)
           val chunk = 1 + b.headOption.fold(0)(v => (v & 0xff) % 23)
           @tailrec def feed(
               end: Int,
@@ -877,7 +883,7 @@ object Targets:
           val result = feed(0, decoder.initial)
           seen("local-tx-submission-incremental", result.isInstanceOf[DecodeResult.Decoded[?]])
           req(
-            result == LocalTxSubmission.decodePrefix(state, role, b),
+            result == LocalTxSubmission.decodePrefix(state, role, b, GenTx.reader),
             "fragmented submission differs"
           )
       }

@@ -92,7 +92,8 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
             .accept(
               serverEnd,
               magic,
-              LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+              LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+              GenTx.reader
             )
             .map(_.message)
         ).start

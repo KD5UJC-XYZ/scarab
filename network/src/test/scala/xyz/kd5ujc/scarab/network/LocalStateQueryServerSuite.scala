@@ -146,6 +146,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
               serverEnd,
               magic,
               _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              LocalTxSubmission.TxReader.whole,
               Some(t.source)
             )
             .map(ServerEnd.Finished(_))

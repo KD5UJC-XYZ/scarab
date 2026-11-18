@@ -24,23 +24,23 @@ object NodeToClientServer:
       bearer: Bearer[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
+      txs: LocalTxSubmission.TxReader,
       stateQuery: Option[LocalStateQueryServer.Source[F, Nothing]] = None,
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
-      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
-      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
+      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =
-    acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, chainSync, txMonitor, txs = txs)
+    acceptBackend[F, Nothing](bearer, magic, submit, txs, stateQuery, chainSync, txMonitor)
       .map(_.fold(identity, identity))
 
   def acceptBackend[F[_]: Async, E](
       bearer: Bearer[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
+      txs: LocalTxSubmission.TxReader,
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
-      openMux: MuxFactory[F] = MuxFactory.nodeToClient[F],
-      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
+      openMux: MuxFactory[F] = MuxFactory.nodeToClient[F]
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
     openMux
       .open(
@@ -51,7 +51,7 @@ object NodeToClientServer:
           txMonitor = txMonitor.isDefined
         )
       )
-      .use(mux => acceptOn(mux, magic, submit, stateQuery, chainSync, txMonitor, txs))
+      .use(mux => acceptOn(mux, magic, submit, txs, stateQuery, chainSync, txMonitor))
 
   /** Opens a connection's multiplexer over its bearer. */
   trait MuxFactory[F[_]]:
@@ -94,10 +94,10 @@ object NodeToClientServer:
       mux: Mux[F],
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
+      txs: LocalTxSubmission.TxReader,
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
-      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
-      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
+      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
     // the connection's protocols run in fibers of their own; each in an error scope of its own, and
     // the first to fail ends the others (`Fibers.failFast`)

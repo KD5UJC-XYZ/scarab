@@ -351,6 +351,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
               serverEnd,
               magic,
               _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              GenTx.reader,
               txMonitor = Some(source)
             )
             .map(Right(_): Ended)

@@ -273,6 +273,7 @@ class NtcQueryPrefixSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with
               serverEnd,
               magic,
               _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+              xyz.kd5ujc.scarab.node.mempool.GenTx.reader,
               Some(source)
             )
             .map(Right(_): Ended)
