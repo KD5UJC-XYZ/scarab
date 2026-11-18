@@ -852,6 +852,13 @@
     "val protocol.LocalTxSubmission.TxReader.whole",
     "enum protocol.LocalTxSubmission.TxPrefix"
    ]
+  },
+  {
+   "reason": "the query reader's judgement of a LocalStateQuery query that has not all arrived: the reference hands the codec the decoder of queries itself (decodeQuery, LocalStateQuery/Codec.hs:169-170 at ouroboros-network c45735a5) and reads the query from the stream; Scarab reads a whole query as one item, and the judgement is in the node, outside the areas",
+   "definitions": [
+    "def protocol.LocalStateQuery.QueryReader#prefix",
+    "enum protocol.LocalStateQuery.QueryPrefix"
+   ]
   }
  ]
 }

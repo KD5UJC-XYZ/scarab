@@ -175,6 +175,13 @@ enum ProtocolError extends DomainError:
     */
   case UndecodableTransaction(cause: DomainError)
 
+  /** The part of a LocalStateQuery `MsgQuery` query that has arrived, which the node's decoder of
+    * queries fails on whatever follows, with its typed reason
+    * ([[LocalStateQuery.QueryReader.prefix]]): the reference reads the query in the codec, so such
+    * a prefix ends the connection at once.
+    */
+  case UndecodableQueryPrefix(cause: DomainError)
+
   /** The transaction id of a LocalTxMonitor `MsgHasTx` that its era's decoder refuses, with the
     * node's typed reason (kept as the `DomainError` it is, as for [[UndecodableTransaction]]). The
     * reference reads the id in the codec (`decodeTxId`,
@@ -363,6 +370,7 @@ enum ProtocolError extends DomainError:
     case PeerSharing(cause)            => cause.message
     case Leios(cause)                  => cause.toString
     case UndecodableTransaction(cause) => s"undecodable transaction: $cause"
+    case UndecodableQueryPrefix(cause) => s"undecodable query: $cause"
     case UndecodableTxId(cause)        => s"undecodable transaction id: $cause"
 
 object ProtocolError:

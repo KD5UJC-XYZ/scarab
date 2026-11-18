@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 
 import ChainSync.{DecodeResult, Point, Role}
 
@@ -55,9 +55,22 @@ object LocalStateQuery:
     /** How the query at the start of `input` reads; `input` may hold less than it or more. */
     def span(input: Bytes): QuerySpan
 
+    /** What the query's decoder makes of `input`, the part of a query that has arrived, when the
+      * message is not whole: the reference's codec reads the query from the stream (`decodeQuery`,
+      * ouroboros-network c45735a5
+      * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalStateQuery/Codec.hs:169-170`),
+      * so a prefix its decoder fails on ends the connection before the rest arrives. A whole query
+      * is judged as before.
+      */
+    def prefix(input: Bytes): QueryPrefix
+
   object QueryReader:
-    /** Each query one item of a tree: the queries of a profile that holds no `RecD` record. */
-    val items: QueryReader = _ => QuerySpan.Item
+    /** Each query one item of a tree: the queries of a profile that holds no `RecD` record. No
+      * prefix is judged: the query is read whole before anything is said of it.
+      */
+    val items: QueryReader = new QueryReader:
+      def span(input: Bytes): QuerySpan = QuerySpan.Item
+      def prefix(input: Bytes): QueryPrefix = QueryPrefix.Short
 
   enum QuerySpan:
     /** One item, as a tree of items reads it. */
@@ -73,6 +86,16 @@ object LocalStateQuery:
 
     /** The query's decoder fails on it, whatever follows. */
     case Refused
+
+  /** What the query's decoder makes of a query not all of which has arrived
+    * ([[QueryReader.prefix]]).
+    */
+  enum QueryPrefix:
+    /** The query's decoder waits for more. */
+    case Short
+
+    /** The query's decoder fails on it, whatever follows. */
+    case Refused(cause: DomainError)
 
   type Target = LocalStateQueryEngine.Target[Point]
   val Target: LocalStateQueryEngine.Target.type = LocalStateQueryEngine.Target

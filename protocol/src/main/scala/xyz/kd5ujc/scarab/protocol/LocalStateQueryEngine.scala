@@ -112,8 +112,44 @@ object LocalStateQueryEngine:
     w.result
   }
 
-  /** The client's messages in `Idle` and `Acquired`, the server's in `Acquiring` and `Querying`. */
+  /** The client's messages in `Idle` and `Acquired`, the server's in `Acquiring` and `Querying`.
+    * Each message is read as before; while the query of a client's `Query` has not all arrived,
+    * `queries` says whether its decoder has already failed on what has
+    * ([[LocalStateQuery.QueryReader.prefix]]).
+    */
   def decodePrefix[P](
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      point: ChainSyncEngine.PointCodec[P],
+      queries: LocalStateQuery.QueryReader
+  ): DecodeResult[Message[P]] =
+    decoded(state, sender, bytes, point, queries) match
+      case DecodeResult.NeedMore => waiting(state, sender, bytes, queries)
+      case other                 => other
+
+  /** An incomplete message: a `Query` whose query `queries` refuses ends here, anything else waits.
+    */
+  private def waiting[P](
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      queries: LocalStateQuery.QueryReader
+  ): DecodeResult[Message[P]] =
+    ProtocolWire.prefix {
+      val r = new ProtocolWire.Reader(bytes, limits(sender))
+      val arity = r.arrayLength()
+      val tag = r.uint().value
+      (state, sender, arity, tag.toInt) match
+        case (State.Acquired, Role.Client, 2, 3) if tag == 3 =>
+          queries.prefix(bytes.drop(r.position)) match
+            case LocalStateQuery.QueryPrefix.Short => DecodeResult.NeedMore
+            case LocalStateQuery.QueryPrefix.Refused(cause) =>
+              bad(ProtocolError.UndecodableQueryPrefix(cause))
+        case _ => DecodeResult.NeedMore
+    }
+
+  private def decoded[P](
       state: State,
       sender: Role,
       bytes: Bytes,

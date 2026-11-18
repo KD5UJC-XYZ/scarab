@@ -314,15 +314,21 @@ object NtcQuery:
     * refuses is refused, as the reference's stream decoder fails on it whatever follows. A query
     * without an empty indefinite list `9f ff` is one item of a tree, as before (#700).
     */
-  val reader: LocalStateQuery.QueryReader = input =>
-    if !DetachedRecords.mayHold(input) then LocalStateQuery.QuerySpan.Item
-    else
-      DetachedRecords.prefix(input, shape) match
-        case DetachedRecords.Prefix.Item(end, records) if !records.isEmpty =>
-          LocalStateQuery.QuerySpan.Prefix(end)
-        case DetachedRecords.Prefix.Short      => LocalStateQuery.QuerySpan.Short
-        case DetachedRecords.Prefix.Refused    => LocalStateQuery.QuerySpan.Refused
-        case DetachedRecords.Prefix.Item(_, _) => LocalStateQuery.QuerySpan.Item
+  val reader: LocalStateQuery.QueryReader = new LocalStateQuery.QueryReader:
+    def span(input: Bytes): LocalStateQuery.QuerySpan =
+      if !DetachedRecords.mayHold(input) then LocalStateQuery.QuerySpan.Item
+      else
+        DetachedRecords.prefix(input, shape) match
+          case DetachedRecords.Prefix.Item(end, records) if !records.isEmpty =>
+            LocalStateQuery.QuerySpan.Prefix(end)
+          case DetachedRecords.Prefix.Short      => LocalStateQuery.QuerySpan.Short
+          case DetachedRecords.Prefix.Refused    => LocalStateQuery.QuerySpan.Refused
+          case DetachedRecords.Prefix.Item(_, _) => LocalStateQuery.QuerySpan.Item
+
+    /** A query not all of which has arrived, as the reference's decoder of queries reads it from
+      * the stream ([[NtcQueryPrefix]]).
+      */
+    def prefix(input: Bytes): LocalStateQuery.QueryPrefix = NtcQueryPrefix.prefix(input)
 
   /** The query as the reference's decoders read it, as far as it holds a `RecD` record
     * ([[DetachedRecords]]): the set of `GovActionId` of `GetProposals` (`(2, 31)`,
@@ -623,6 +629,26 @@ object NtcQuery:
       }
     }
 
+  /** The ledger queries `requireCG` guards, refused before Conway whatever their arguments
+    * (`Shelley/Ledger/Query.hs:968-997`, ouroboros-consensus 82ecba32).
+    */
+  private[ntc] val governanceQueries: Set[Int] = Set(23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39)
+
+  /** The sizes and tags `decodeShelleyQuery` has a case for (`Shelley/Ledger/Query.hs:944-998`,
+    * ouroboros-consensus 82ecba32), as [[shelleyLeaf]] reads them; `(2, 9)` is `GetCBOR`.
+    */
+  private[ntc] def ledgerQueryTakes(size: Long, tag: Int): Boolean = size match
+    case 1 => withoutArguments(tag)
+    case 2 => withOneArgument(tag)
+    case 4 => tag == 27
+    case _ => false
+
+  private val withoutArguments: Set[Int] =
+    Set(0, 1, 3, 4, 5, 7, 8, 11, 12, 13, 14, 16, 18, 23, 24, 29, 32, 33, 34, 37, 38)
+
+  private val withOneArgument: Set[Int] =
+    Set(2, 6, 9, 10, 15, 17, 19, 20, 21, 22, 25, 26, 28, 30, 31, 34, 35, 36, 39)
+
   private def shelleyLeaf(n: Node)(using
       read: Reading
   )(using
@@ -639,9 +665,7 @@ object NtcQuery:
             if xs.sizeIs == 2 then f(xs(1)) else Left(Error.Arity(s"ledger query $tag", 2, xs.size))
           def none(q: LedgerQuery): R[LedgerQuery] =
             if xs.sizeIs == 1 then Right(q) else Left(Error.Arity(s"ledger query $tag", 1, xs.size))
-          // the queries `requireCG` guards, refused before Conway whatever their arguments
-          val governance = Set(23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39)
-          if governance(tag) && !read.governance then Left(Error.ConwayOnly(tag))
+          if governanceQueries(tag) && !read.governance then Left(Error.ConwayOnly(tag))
           else
             tag match
               case 0 => none(GetLedgerTip)

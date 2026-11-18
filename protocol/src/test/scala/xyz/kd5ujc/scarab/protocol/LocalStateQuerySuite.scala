@@ -201,7 +201,9 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
 
   test("a query's span is the reader's: whole items up to it, more to wait for, or a refusal") {
     def hex(s: String) = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
-    def reader(span: QuerySpan): QueryReader = _ => span
+    def reader(answer: QuerySpan): QueryReader = new QueryReader:
+      def span(input: Bytes): QuerySpan = answer
+      def prefix(input: Bytes): QueryPrefix = QueryPrefix.Short
     // [3, 81 9fff] then 01 02: one query of five bytes to a reader of the ledger, three items as a
     // tree reads them
     val wire = hex("8203819fff0102")
@@ -235,4 +237,58 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
       decodePrefix(State.Acquired, Role.Client, wire, reader(QuerySpan.Prefix(6))),
       DecodeResult.NeedMore
     )
+  }
+
+  private def bytesOf(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
+
+  /** A reader of whole items that refuses a query starting with `82 0f` before it has all arrived,
+    * or every one with `always`.
+    */
+  private val cause = ProtocolError.ExpectedUint64
+  private def judging(always: Boolean): QueryReader = new QueryReader:
+    def span(input: Bytes): QuerySpan = QuerySpan.Item
+    def prefix(input: Bytes): QueryPrefix =
+      if always || input.take(2) == bytesOf("820f") then QueryPrefix.Refused(cause)
+      else QueryPrefix.Short
+
+  test("a Query whose query the reader refuses before it has all arrived ends there") {
+    List(
+      "8203820f" -> DecodeResult.Failed(ProtocolError.UndecodableQueryPrefix(cause)),
+      "8203820f82" -> DecodeResult.Failed(ProtocolError.UndecodableQueryPrefix(cause)),
+      // the reader is given the query's bytes alone, and a prefix it does not refuse waits
+      "82038200" -> DecodeResult.NeedMore,
+      "8203" -> DecodeResult.NeedMore
+    ).foreach { (wire, judged) =>
+      assertEquals(
+        decodePrefix(State.Acquired, Role.Client, bytesOf(wire), judging(false)),
+        judged,
+        wire
+      )
+    }
+    // without a reader that judges prefixes, the query is read whole
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, bytesOf("8203820f"), QueryReader.items),
+      DecodeResult.NeedMore
+    )
+    // a whole query is read as before, whatever the reader says of a prefix
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, bytesOf("8203820f00"), judging(true)),
+      DecodeResult.Decoded(Message.Query(bytesOf("820f00")), 5)
+    )
+  }
+
+  property("only a client's Query in Acquired is judged before it has all arrived") {
+    forAll(walks.suchThat(_.nonEmpty)) { walk =>
+      walk.forall { (state, message) =>
+        encode(state, who(state), message).toOption.exists { bytes =>
+          (0 until bytes.size).forall { n =>
+            val judged = message match
+              case Message.Query(_) if n >= 2 =>
+                DecodeResult.Failed(ProtocolError.UndecodableQueryPrefix(cause))
+              case _ => DecodeResult.NeedMore
+            decodePrefix(state, who(state), bytes.take(n), judging(true)) == judged
+          }
+        }
+      }
+    }
   }
