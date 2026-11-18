@@ -87,10 +87,14 @@ class DijkstraPParamsSuite extends DisciplineSuite:
   private val refusals: Map[String, PartialFunction[LedgerDecodeError, Unit]] = Map(
     "refScriptCostStride zero" -> { case LedgerDecodeError.Zero(_) => () },
     "refScriptCostMultiplier zero" -> {
-      case LedgerDecodeError.RationalOutOfBounds(_, n, d) if n == 0 && d == 1 => ()
+      case LedgerDecodeError.RationalOutOfBounds(_, LedgerDecodeError.OutOfBounds.Reduced(r))
+          if r == Rational.zero =>
+        ()
     },
     "perasHealingFactor zero" -> {
-      case LedgerDecodeError.RationalOutOfBounds(_, n, d) if n == 0 && d == 1 => ()
+      case LedgerDecodeError.RationalOutOfBounds(_, LedgerDecodeError.OutOfBounds.Reduced(r))
+          if r == Rational.zero =>
+        ()
     },
     "an unknown key" -> { case LedgerDecodeError.UnknownKey(_, k) if k == 57 => () }
   )

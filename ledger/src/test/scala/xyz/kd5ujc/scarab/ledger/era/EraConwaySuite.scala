@@ -750,7 +750,10 @@ class EraConwaySuite extends munit.FunSuite:
       (
         "a ratio above one in the update",
         "8400f6a10ad81e820302f6",
-        _ == LedgerDecodeError.RationalOutOfBounds(DecodeField.Rho, 3, 2)
+        _ == LedgerDecodeError.RationalOutOfBounds(
+          DecodeField.Rho,
+          LedgerDecodeError.OutOfBounds.Reduced(Rational(3, 2))
+        )
       ),
       (
         "a guardrails hash of 27 bytes on a change",
@@ -780,7 +783,10 @@ class EraConwaySuite extends munit.FunSuite:
       (
         "a threshold above one",
         "8504f680a0d81e820302",
-        _ == LedgerDecodeError.RationalOutOfBounds(DecodeField.Quorum, 3, 2)
+        _ == LedgerDecodeError.RationalOutOfBounds(
+          DecodeField.Quorum,
+          LedgerDecodeError.OutOfBounds.Reduced(Rational(3, 2))
+        )
       ),
       (
         "a guardrails hash of 27 bytes on withdrawals",

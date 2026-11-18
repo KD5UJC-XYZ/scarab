@@ -90,7 +90,7 @@ private[ledger] object ReferenceCorpus:
       case LedgerDecodeError.DuplicateKey(_)              => Some(DuplicateKey)
       case LedgerDecodeError.ExpectedTag(_, _, _)         => Some(ExpectedTag)
       case LedgerDecodeError.NumberOutOfRange(_, _, _, _) => Some(NumberOutOfRange)
-      case LedgerDecodeError.RationalOutOfBounds(_, _, _) => Some(RationalOutOfBounds)
+      case LedgerDecodeError.RationalOutOfBounds(_, _)    => Some(RationalOutOfBounds)
       case LedgerDecodeError.UnknownFields(_, _)          => Some(UnknownFields)
       case LedgerDecodeError.UnknownKey(_, _)             => Some(UnknownKey)
       case LedgerDecodeError.ZeroDenominator(_)           => Some(ZeroDenominator)

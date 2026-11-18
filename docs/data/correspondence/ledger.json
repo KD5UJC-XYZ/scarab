@@ -20115,6 +20115,12 @@
     "class ledger.era.BabbageTxOutRep.StoreRead",
     "def ledger.era.Datum.toStored"
    ]
+  },
+  {
+   "reason": "what a refusal of a tag 30 rational keeps of its value: the reference's refusal holds the reduced value only as text (`DecoderErrorCustom \"BoundedRatio\" (show r)`, cardano-ledger 29a7d656 `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:398-402`), so there is no type to mirror; a value whose reduced form is beyond Word64 is refused without being reduced, and only its components' bit lengths are kept",
+   "definitions": [
+    "enum ledger.LedgerDecodeError.OutOfBounds"
+   ]
   }
  ]
 }

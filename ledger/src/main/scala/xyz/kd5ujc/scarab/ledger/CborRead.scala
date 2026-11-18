@@ -322,7 +322,7 @@ private[ledger] object CborRead:
       Either.cond(
         fits(r, bound),
         r,
-        LedgerDecodeError.RationalOutOfBounds(what, r.numerator, r.denominator)
+        LedgerDecodeError.RationalOutOfBounds(what, LedgerDecodeError.OutOfBounds.Reduced(r))
       )
     )
 
@@ -343,22 +343,38 @@ private[ledger] object CborRead:
             _ <- Either.cond(
               fits(r, bound),
               (),
-              LedgerDecodeError.RationalOutOfBounds(what, r.numerator, r.denominator)
+              LedgerDecodeError.RationalOutOfBounds(what, LedgerDecodeError.OutOfBounds.Reduced(r))
             )
           yield r
         case _ => Left(LedgerDecodeError.ExpectedTag(what, 30, n.value))
 
-  /** `decodeRationalWithTag`: the reduced rational, before any bound. */
+  /** `decodeRationalWithTag` (`Binary/Plain.hs:159-168`, cardano-ledger 29a7d656), then the first
+    * test of `fromRationalBoundedRatio` over `Word64` (`BaseTypes.hs:349-360`): the reduced
+    * rational, when its numerator's magnitude and its denominator are below 2^64. The reference
+    * refuses any other in every field, whatever its sign or interval; it is refused here as soon as
+    * a bounded run of Euclid's algorithm shows it ([[Rational.within]]), so that no input costs
+    * time quadratic in its length, and its reduced value is not kept.
+    */
   private[ledger] def ratio(n: Node, what: DecodeSite): Result[Rational] = n.value match
     case Value.Tag(t, inner) if t == 30 =>
       arrayN(inner, 2, what).flatMap(xs =>
         (integer(xs(0), what), integer(xs(1), what)).tupled.flatMap { case (num, den) =>
-          Either.cond(den != 0, Rational(num, den), LedgerDecodeError.ZeroDenominator(what))
+          if den == 0 then Left(LedgerDecodeError.ZeroDenominator(what))
+          else
+            Rational
+              .within(num, den, Word64Bits)
+              .toRight(
+                LedgerDecodeError.RationalOutOfBounds(
+                  what,
+                  LedgerDecodeError.OutOfBounds.Wide(num.abs.bitLength, den.abs.bitLength)
+                )
+              )
         }
       )
     case _ => Left(LedgerDecodeError.ExpectedTag(what, 30, n.value))
 
-  private val Word64Max = (BigInt(1) << 64) - 1
+  private val Word64Bits = 64
+  private val Word64Max = (BigInt(1) << Word64Bits) - 1
 
   /** `fromRationalBoundedRatio` over `Word64`. */
   private[ledger] def fits(r: Rational, bound: Bound): Boolean =

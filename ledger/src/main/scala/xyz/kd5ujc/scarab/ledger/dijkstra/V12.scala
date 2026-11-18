@@ -211,7 +211,7 @@ private[ledger] object V12:
         _ <- Either.cond(
           bounded(r, interval),
           (),
-          LedgerDecodeError.RationalOutOfBounds(what, r.numerator, r.denominator)
+          LedgerDecodeError.RationalOutOfBounds(what, LedgerDecodeError.OutOfBounds.Reduced(r))
         )
       yield r
     case other => Left(LedgerDecodeError.ExpectedTag(what, 30, other))

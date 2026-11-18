@@ -58,7 +58,13 @@ enum LedgerDecodeError extends DomainError:
     */
   case TextTooLong(site: DecodeSite, limit: Int, actual: Int)
   case ZeroDenominator(site: DecodeSite)
-  case RationalOutOfBounds(site: DecodeSite, numerator: BigInt, denominator: BigInt)
+
+  /** A tag 30 a `BoundedRatio` field refuses (`boundRational`: `fromRationalBoundedRatio` and
+    * `fromRatioBoundedRatio`, `BaseTypes.hs:349-379`, cardano-ledger 29a7d656), with what is known
+    * of its value ([[LedgerDecodeError.OutOfBounds]]).
+    */
+  case RationalOutOfBounds(site: DecodeSite, value: LedgerDecodeError.OutOfBounds)
+
   case UnknownTag(site: DecodeSite, tag: BigInt)
   case TaggedArity(site: DecodeSite, tag: BigInt, actual: Int)
   case AtMostOne(site: DecodeSite, actual: Int)
@@ -166,6 +172,22 @@ object LedgerDecodeError:
 
   enum Shape:
     case Unsigned, Integer, Bytes, Text, Boolean, Null, Array, Map, ArrayOrMap, Metadatum
+
+  /** The value of a refused rational ([[RationalOutOfBounds]]). The reference's refusal shows the
+    * reduced value (`DecoderErrorCustom "BoundedRatio" (show r)`, `BaseTypes.hs:398-402`,
+    * cardano-ledger 29a7d656). Scarab keeps it when its numerator's magnitude and its denominator
+    * are below 2^64. Of any other, only the lengths of its components as written are kept: it is
+    * refused once a bounded reduction shows that it does not fit ([[CborRead.ratio]]), which may be
+    * before its reduced value is known.
+    */
+  enum OutOfBounds:
+    /** The reduced value: negative, or outside the field's interval. */
+    case Reduced(value: xyz.kd5ujc.scarab.codec.Rational)
+
+    /** A value whose reduced numerator's magnitude or denominator is 2^64 or more: the bit lengths
+      * of its numerator's magnitude and of its denominator's, as written.
+      */
+    case Wide(numeratorBits: Int, denominatorBits: Int)
 
   /** The certificates of Shelley to Babbage that Conway's decoder refuses ([[RetiredCertificate]]),
     * by tag.

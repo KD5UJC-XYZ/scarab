@@ -134,7 +134,12 @@ class ConwayParamUpdateSuite extends FunSuite:
     })
     assertEquals(
       refusal("a10ad81e820302"),
-      Some(LedgerDecodeError.RationalOutOfBounds(DecodeField.Rho, 3, 2))
+      Some(
+        LedgerDecodeError.RationalOutOfBounds(
+          DecodeField.Rho,
+          LedgerDecodeError.OutOfBounds.Reduced(Rational(3, 2))
+        )
+      )
     )
     assertEquals(
       refusal("a114" + "83010203"),
