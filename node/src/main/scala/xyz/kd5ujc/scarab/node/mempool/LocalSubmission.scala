@@ -208,14 +208,20 @@ object LocalSubmission:
       LocalTxSubmissionServer.Response.Rejected(_)
     )
 
+  /** The node's answer to a submission: the transaction is read in its era first ([[unwrap]],
+    * [[MempoolState.read]]), as the reference's codec reads it before the mempool sees it, so a
+    * transaction its decoder refuses, or that a decoder throws on, ends the connection at once,
+    * never behind a submission that waits for room; one that reads takes its place in line.
+    */
   def handler[F[_]: Async](
       mempool: Mempool[F]
   )(fatal: Fatal => F[Unit]): Bytes => F[LocalTxSubmissionServer.Response] = item =>
-    unwrap(item) match
+    Async[F].delay(unwrap(item).flatMap(MempoolState.read)).flatMap {
       case Left(rejection) => Async[F].pure(response(Refused(rejection, None)))
-      case Right(submission) =>
+      case Right(read) =>
         StorageBoundary.run(fatal) {
           mempool
-            .submit(submission, Source.Local)
+            .submitRead(read, Source.Local)
             .map(_.fold(response, _ => LocalTxSubmissionServer.Response.Accepted))
         }
+    }
