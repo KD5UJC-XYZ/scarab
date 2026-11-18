@@ -5983,8 +5983,8 @@
     "ConwayUtxowChecksSuite",
     "EraPlutusContextSuite"
    ],
-   "note": "every member of the reference's EraUTxO instance, and of its AlonzoEraUTxO instance the two members the class has (getSupplementalDataHashes = getBabbageSupplementalDataHashes, getSpendingDatum = getBabbageSpendingDatum); ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, only the missing witness or only the datums failed",
-   "digest": "a0e06b1844f9b34f"
+   "note": "every member of the reference's EraUTxO instance, and of its AlonzoEraUTxO instance (getSupplementalDataHashes = getBabbageSupplementalDataHashes, getSpendingDatum = getBabbageSpendingDatum, and the annotated transaction's four as Alonzo's); ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, only the missing witness or only the datums failed",
+   "digest": "368229c9c40312aa"
   },
   "def ledger.era.UTxOs.txInsFilter": {
    "upstream": [
@@ -9615,7 +9615,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicates in its order, every failure accumulated, as a pure Test rather than a rule in the judgment monad; what it reads from Globals and the STS policy, and the era's injection of Shelley's failures, come in UtxoContext; its signal is the transaction, since the era types have no StAnnTx yet (#85). Its refusal is the reference's refusal byte for byte where only UTXO failed (ConwayUtxoChecksSuite), under each case's build",
+   "note": "the reference's predicates in its order, every failure accumulated, as a pure Test rather than a rule in the judgment monad; what it reads from Globals and the STS policy, and the era's injection of Shelley's failures, come in UtxoContext; its signal is the transaction, until UTXO takes the annotated transaction (`StAnnTx`) as its signal (#85). Its refusal is the reference's refusal byte for byte where only UTXO failed (ConwayUtxoChecksSuite), under each case's build",
    "digest": "1321e9a6a9d6648f"
   },
   "val ledger.era.rules.ConwayUtxo.injectShelleyFailure11_1": {
@@ -10498,11 +10498,14 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023765",
-   "note": "getSupplementalDataHashes and getSpendingDatum (its failure returned where the reference raises `error`); the annotated transaction's scriptsProvidedStAnnTx, scriptsNeededStAnnTx, plutusScriptsWithContextStAnnTx and plutusLanguagesUsedStAnnTx are not members yet",
-   "digest": "593ff590a3197b45"
+   "note": "every member of the reference's class; getSpendingDatum's failure returned where the reference raises `error`",
+   "digest": "593ff590a3197b45",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayUtxowChecksSuite"
+   ]
   },
   "def ledger.era.AlonzoEraUTxO#getSupplementalDataHashes": {
    "upstream": [
@@ -19810,6 +19813,456 @@
    ],
    "note": "the model under a tag, its parameters as the `Int64`s the reference's `cmValues :: [Int64]` holds, which `CostModels.from` proves of every model",
    "digest": "f4aa951a1a17a320"
+  },
+  "type ledger.era.StAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "StAnnTx",
+     "lines": [
+      180,
+      180
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "Conway's case `AlonzoStAnnTx` at the top level alone, as the reference's only constructor is of a top-level transaction",
+   "digest": "b0479d3530ca2d91"
+  },
+  "type ledger.era.StAnnTxCache": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "StAnnTxCache",
+     "lines": [
+      183,
+      183
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "de29d7e9d37bef75"
+  },
+  "def ledger.era.EraTx#txStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "txStAnnTxG",
+     "lines": [
+      185,
+      185
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "ef81af84f8321f7b"
+  },
+  "def ledger.era.EraTx#cacheStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "cacheStAnnTxG",
+     "lines": [
+      188,
+      188
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "f7cd4363c9866d4c"
+  },
+  "class ledger.era.AlonzoStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "AlonzoStAnnTx",
+     "lines": [
+      556,
+      565
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "its level is the family's (`StAnnTx`), which has Conway's at the top level alone, as the reference's GADT has its one constructor",
+   "digest": "a5b9696b16630f22"
+  },
+  "def ledger.era.AlonzoStAnnTx.mkAlonzoStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
+     "symbol": "mkAlonzoStAnnTx",
+     "lines": [
+      121,
+      160
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); a function, which `ApplyTx`'s member `mkStAnnTx` is for Conway when the mempool comes",
+   "digest": "bc7cc2f1dc32243f"
+  },
+  "def ledger.era.AlonzoStAnnTx.scriptsProvidedAlonzoStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "scriptsProvidedAlonzoStAnnTx",
+     "lines": [
+      177,
+      184
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "bc74d30cb216cba1"
+  },
+  "def ledger.era.AlonzoStAnnTx.scriptsNeededAlonzoStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "scriptsNeededAlonzoStAnnTx",
+     "lines": [
+      186,
+      193
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "4ee7ea010d279d57"
+  },
+  "def ledger.era.AlonzoStAnnTx.plutusScriptsWithContextAlonzoStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "plutusScriptsWithContextAlonzoStAnnTx",
+     "lines": [
+      195,
+      204
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "c5b5fa61269143a6"
+  },
+  "def ledger.era.AlonzoStAnnTx.plutusLanguagesUsedAlonzoStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "plutusLanguagesUsedAlonzoStAnnTx",
+     "lines": [
+      206,
+      214
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "f72287041514d928"
+  },
+  "def ledger.era.AlonzoEraUTxO#scriptsProvidedStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "scriptsProvidedStAnnTx",
+     "lines": [
+      154,
+      154
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "eb31ed13aae62420"
+  },
+  "def ledger.era.AlonzoEraUTxO#scriptsNeededStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "scriptsNeededStAnnTx",
+     "lines": [
+      156,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "a244dcb16c6cc519"
+  },
+  "def ledger.era.AlonzoEraUTxO#plutusScriptsWithContextStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "plutusScriptsWithContextStAnnTx",
+     "lines": [
+      158,
+      160
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "307c57f32c90bcdb"
+  },
+  "def ledger.era.AlonzoEraUTxO#plutusLanguagesUsedStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "plutusLanguagesUsedStAnnTx",
+     "lines": [
+      162,
+      162
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "394fe1a8e3ff29f5"
+  },
+  "def ledger.era.EraTxAuxData#validateTxAuxData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "validateTxAuxData",
+     "lines": [
+      489,
+      489
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the reference's 210 Conway observations of auxiliary data (`fixtures/reference/auxiliary-scripts`, its decoder and `validateTxAuxData` at protocols 9 to 11) run through the era types: decoded where the reference decodes, the hash, and valid where the reference's predicate is (EraPlutusContextSuite)",
+   "digest": "e5dabc9ff7d4c3df"
+  },
+  "def ledger.era.EraTxAuxData#originalBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "hashTxAuxData",
+     "lines": [
+      499,
+      500
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the bytes the auxiliary data arrived as, which its hash is of (`hashAnnotated`, through the superclass `SafeToHash`)",
+   "digest": "8a3918a2f95c5bb8"
+  },
+  "def ledger.era.EraTxAuxData.hashTxAuxData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "hashTxAuxData",
+     "lines": [
+      499,
+      500
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "66b0503473643e20"
+  },
+  "def ledger.era.AlonzoTxAuxData.isValidScript": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "isValidScript",
+     "lines": [
+      494,
+      515
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "a Plutus script's verdict, of its cached runnable's binary if the cache has its hash, is the decoder's, its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the reference's `error` case, a script neither native nor Plutus, is not a script an era has",
+   "digest": "4dbf2d94c44e9606"
+  },
+  "def ledger.era.AlonzoTxAuxData.validateAlonzoTxAuxData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "validateAlonzoTxAuxData",
+     "lines": [
+      363,
+      373
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "each Plutus script of a language the era has, by its hash, as `getAlonzoTxAuxDataScripts` (`:192-207`) gives it, taken as its binary and language where the reference makes it a script (`mkBinaryPlutusScript`, #85's item on AlonzoEraScript's builders); its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the scripts visited in the order they arrived (`plutusScriptsArrival`): where the decoder gives no verdict for several scripts, the defect names the first in the order they arrived, as the flat check's does (the reference's decoding always gives a verdict, so it has no such choice); the reference's 210 Conway observations of auxiliary data (`fixtures/reference/auxiliary-scripts`, its decoder and `validateTxAuxData` at protocols 9 to 11) run through the era types: decoded where the reference decodes, the hash, and valid where the reference's predicate is (EraPlutusContextSuite)",
+   "digest": "30147c01cca3aff9"
+  },
+  "def ledger.era.rules.ShelleyUtxow.validateMetadata": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+     "symbol": "validateMetadata",
+     "lines": [
+      427,
+      443
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the flat `UtxowFailure`s; the reference's 210 Conway observations of auxiliary data (`fixtures/reference/auxiliary-scripts`, its decoder and `validateTxAuxData` at protocols 9 to 11) run through the era types: decoded where the reference decodes, the hash, and valid where the reference's predicate is (EraPlutusContextSuite), with `InvalidMetadata` exactly where the data is not valid; its verdicts also compared with the flat check's (`TxChecks.auxiliaryChecks`) on the Conway corpus and crafted auxiliary data; the scripts read only where the data and its hash are both present, the reference's order, where the flat check reads them first, which differs only where the decoder gives no verdict (a crafted case pins it); its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is the flat check's defect; where the decoder gives no verdict for several scripts, the defect names the first in the order they arrived, as the flat check's does (the reference's decoding always gives a verdict, so it has no such choice)",
+   "digest": "54484dd4a1aadc71"
+  },
+  "def ledger.era.rules.BabbageUtxow.validateScriptsWellFormed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
+     "symbol": "validateScriptsWellFormed",
+     "lines": [
+      234,
+      251
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the flat `UtxowFailure`s, its verdicts compared with the flat check's (`TxChecks.scriptsWellFormed`) on the Conway corpus, crafted malformed witness and reference scripts (an output's, the collateral return's, both with a witness), a Plutus V3 script at protocol 8 and 9, and the reference's recorded refusal of a malformed witness and reference script (the Conway devnet's refusal corpus); the witnesses' scripts given in the order they arrived; where the decoder gives no verdict for several scripts, the defect names the first in the order they arrived, as the flat check's does (the reference's decoding always gives a verdict, so it has no such choice); no pinned reference observation of a malformed reference script on the collateral return, or of the predicate's verdict by protocol major, exists (tracked: https://github.com/KD5UJC-XYZ/scarab/issues/922#issuecomment-6992883963), so those cases are compared with the flat check alone",
+   "digest": "659e4c846be1bfb9"
+  },
+  "def ledger.era.rules.BabbageUtxow.validateScriptsWellFormedTxOuts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
+     "symbol": "validateScriptsWellFormedTxOuts",
+     "lines": [
+      254,
+      276
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the scripts visited in the witness map's order, then the outputs' in the outputs' order, the collateral return's last, so that where the decoder gives no verdict for several scripts, the defect names the first in the order they arrived, as the flat check's does (the reference's decoding always gives a verdict, so it has no such choice)",
+   "digest": "c58934407a4c51c8"
   }
  },
  "glue": [
@@ -20249,6 +20702,24 @@
     "val ledger.DetachedRecords.Walking#found",
     "val ledger.DetachedRecords.Walking#item",
     "val ledger.DetachedRecords.Walking#stack"
+   ]
+  },
+  {
+   "reason": "the order a witness set's scripts and auxiliary data's Plutus scripts arrived in, the node's own, which no verdict reads, only the choice of the first script the `plutus` module's decoder gives no verdict for, as the flat checks choose it (the reference's decoding always gives a verdict)",
+   "definitions": [
+    "def ledger.era.AlonzoEraTxAuxData#plutusScriptsArrival",
+    "def ledger.era.EraTxWits#scriptTxWitsArrival",
+    "val ledger.era.conway.ConwayTxAuxData#plutusArrival",
+    "val ledger.era.conway.ConwayTxWits#scriptArrival"
+   ]
+  },
+  {
+   "reason": "the annotated transaction's and Alonzo's auxiliary data's companions, holding their functions, and the defect of a script the `plutus` module's decoder gives no verdict for, with the flat checks' form of it",
+   "definitions": [
+    "class ledger.era.UnavailableScript",
+    "def ledger.era.rules.unavailable",
+    "object ledger.era.AlonzoStAnnTx",
+    "object ledger.era.AlonzoTxAuxData"
    ]
   }
  ]
