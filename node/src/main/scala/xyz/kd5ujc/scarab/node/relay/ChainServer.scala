@@ -61,12 +61,27 @@ final class ChainServer[F[_]: Async] private (
           }
           .flatMap(changed => version.update(_ + 1).whenA(changed))
 
-  /** Is `point` on our chain: Origin, the anchor, volatile, or stored. */
-  private def onChain(chain: ServedChain, point: Point)(using Raise[F, StorageError]): F[Boolean] =
-    point match
-      case Point.Origin                   => F.pure(chain.anchor.isEmpty || store.isDefined)
-      case p if chain.containsVolatile(p) => F.pure(true)
-      case p                              => store.fold(F.pure(false))(_.get(p).map(_.isDefined))
+  /** Whether `point` is on our chain, and if it is, follower `id` moved to roll back to it: the
+    * reference's `checkIfPointOnChain` (ouroboros-consensus 82ecba32,
+    * `Storage/ChainDB/Impl/Follower.hs` 457-525). Origin, the anchor and a volatile point are
+    * checked against the chain as it is and taken in one update, so a fork switch that drops the
+    * point cannot come between the check and the move (465-472). A point older than the volatile
+    * chain is looked up in the store outside the update, as the reference reads its ImmutableDB
+    * outside the transaction (510-522); the store never drops a block, so the follower moved after
+    * the lookup stands on our chain however the volatile chain changed meanwhile.
+    */
+  private def checkIfPointOnChain(id: Long, point: Point)(using
+      Raise[F, StorageError]
+  ): F[Boolean] =
+    state.modify(ChainServer.standing(id, point, store)).flatMap {
+      case ChainServer.Standing.Taken  => F.pure(true)
+      case ChainServer.Standing.Absent => F.pure(false)
+      case ChainServer.Standing.Older(older, stored) =>
+        stored.get(older).flatMap {
+          case Some(_) => state.update(_.move(id, Cursor.RollbackTo(older))).as(true)
+          case None    => F.pure(false)
+        }
+    }
 
   /** One cursor per connected node-to-node ChainSync client: headers. */
   def source: Resource[F, ChainSyncServer.Source[F, NtNHeader]] =
@@ -99,20 +114,12 @@ final class ChainServer[F[_]: Async] private (
       .map { id =>
         new ChainSyncServer.Source[F, P]:
           def intersect(points: Vector[Point]) = StorageBoundary.run(fatal) {
-            state.get.flatMap { chain =>
-              points
-                .findM(onChain(chain, _))
-                .flatMap {
-                  case Some(found) =>
-                    // as the reference's follower: the first instruction after an intersection
-                    // is a roll-back to the point found
-                    state
-                      .update(_.move(id, Cursor.RollbackTo(found)))
-                      .as(Right(found -> chain.tip))
-                  case None => F.pure(Left(chain.tip))
-                }
-            }
-
+            // as the reference's `handleFindIntersect` (`MiniProtocol/ChainSync/Server.hs`
+            // 157-166): the first offered point on our chain moves the follower, whose first
+            // instruction is then a roll-back to it, and the tip is read after the move
+            points
+              .findM(checkIfPointOnChain(id, _))
+              .flatMap(found => tip.map(t => found.map(_ -> t).toRight(t)))
           }
 
           def poll: F[Option[ChainSyncServer.Update[P]]] = StorageBoundary.run(fatal) {
@@ -219,6 +226,32 @@ object ChainServer:
   type HeaderOf = Bytes => Either[ChainError, Info]
 
   final case class Info(ntn: NtNHeader, blockNo: BigInt)
+
+  /** Where a point offered for an intersection stands on the served chain as it is now. */
+  private enum Standing[+S]:
+    /** On the chain: the follower was moved to roll back to it. */
+    case Taken
+
+    /** Not on the chain. */
+    case Absent
+
+    /** Older than the volatile chain: on the chain if `store` holds it. */
+    case Older(point: Point.Block, store: S)
+
+  /** The chain with follower `id` moved to roll back to `point` if `point` is volatile, the anchor,
+    * or Origin while the whole chain is volatile or a store serves it from the start (the
+    * reference's Genesis is always in its ImmutableDB, `Follower.hs` 506-509); otherwise the chain
+    * unchanged.
+    */
+  private def standing[S](id: Long, point: Point, store: Option[S])(
+      chain: ServedChain
+  ): (ServedChain, Standing[S]) =
+    (point, store) match
+      case _ if chain.containsVolatile(point) =>
+        (chain.move(id, Cursor.RollbackTo(point)), Standing.Taken)
+      case (Point.Origin, Some(_)) => (chain.move(id, Cursor.RollbackTo(point)), Standing.Taken)
+      case (block: Point.Block, Some(s)) => (chain, Standing.Older(block, s))
+      case _                             => (chain, Standing.Absent)
 
   /** Decode the header of a full block. For Byron the size hint is the block's byte size. */
   def headerOfBlock(byronEpochSlots: BigInt): HeaderOf =

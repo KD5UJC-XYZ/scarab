@@ -57,6 +57,9 @@ runs the handshake (versions 16 to 23) and then those on one connection.
 `ChainProducerState`: the volatile chain (last `k` blocks with their headers and raw bytes) plus
 the read pointer of every connected client. A rollback rewrites exactly the pointers of the clients
 that had read past the new tip (they get a RollBackward to it and then follow the new branch). A
+FindIntersect checks each offered point against the chain as it is and moves the client's pointer in
+the same update, as the reference's follower does (`checkIfPointOnChain`); a point older than the
+volatile chain is looked up in the store, which never drops a block, before the pointer moves to it. A
 client behind the volatile chain is served from the `ImmutableStore`. `ChainServer` is a
 `ChainPersistence`, composed after the storage persistence so a block is stored before it leaves the
 volatile chain. Without `--db` only the volatile chain can be served.
