@@ -1,0 +1,3 @@
+### Fixed (Plutus)
+
+- Bound the own evaluator's cache of decoded programs by the heap they hold as well as by their number: an estimate meant never to be below a program's heap (`ProgramWeight`, checked against the measured heap of the most amplifying shapes found), 64 MiB in all, besides the 512 entries. A script's decoded program can hold hundreds of times its bytes, so 512 large programs no longer exhaust a 768 MiB heap. Phase-1 script well-formedness reuses a program an evaluation kept and keeps none of its own, so a transaction refused in phase 1 leaves nothing in the cache, and a refused script is no longer kept. Verdicts are unchanged.

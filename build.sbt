@@ -252,7 +252,22 @@ lazy val plutus = scarab("plutus")
       Libraries.cats,
       Libraries.catsEffect,
       Libraries.circeParserTest
-    )
+    ),
+    Test / testGrouping := {
+      // ProgramCacheMemorySuite checks what the program cache holds in a separate JVM with the
+      // shipped launchers' 768 MiB heap, reading the fixtures from the build's root as the build
+      // JVM does. Other suites run in the build JVM.
+      val (bounded, others) =
+        (Test / definedTests).value.partition(_.name.endsWith(".ProgramCacheMemorySuite"))
+      val options = Vector("-Xmx768m") ++ jdk25Flags
+      val fork = (Test / forkOptions).value
+        .withRunJVMOptions(options)
+        .withWorkingDirectory((ThisBuild / baseDirectory).value)
+      Seq(
+        Tests.Group("plutus", others, Tests.InProcess),
+        Tests.Group("heap-bound", bounded, Tests.SubProcess(fork))
+      )
+    }
   )
 
 // The pure ledger rules and types: blocks, headers, genesis, transactions, scripts, governance,

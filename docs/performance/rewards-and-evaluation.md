@@ -534,3 +534,72 @@ takes the tag as a Java string, which cannot carry every byte string a script ma
 **To repeat.** `BuiltinTimeMain` uses only what the build at `3cad1f045` has: copy its source into a checkout of
 that commit for the "before" column. In the JDK container, at each build: `bash scripts/sbtw "tools/runMain
 xyz.kd5ujc.scarab.uplc.BuiltinTimeMain 5"` (the rounds, then any shape names to run only those).
+
+## 59. The program cache: what it saves, and the heap of a decoded program
+
+The own evaluator keeps the program it decodes from each script (`ScarabEvaluator`, `BoundedCache`), so that a
+script evaluated again is not decoded again. The interpreter is a pure function in `Id`, called from the pure ledger
+rules, so the cache is one atomic cell holding an immutable least-recently-used map: a kept imperative site under
+the performance exception of the design rules ([FUN-2](../design-rules.md#fun-2) (a)). It is bounded by 512 entries
+and by 64 MiB of `ProgramWeight`, an estimate of the heap a decoded program holds that is never below it.
+`ProgramCacheHeapMain` (`tools`) measures what the cache saves, what a decoded program holds against its weight,
+and what one interpreter keeps. Table 2 is for the build at `b71d5ec38`, and tables 1, 3 and 4 for the build at
+`1dbc9b291`, before that commit's change to the weight of a `value`; both on a shared 24-core x86-64 host (load
+average 8 to 12 from other work), in the JDK build container (`--cpus 5`), with `java -Xmx768m -XX:+UseG1GC`.
+
+What the cache saves: decoding is about a sixth of decoding and evaluating, on a second round over the recorded
+Leios testnet chain (`fixtures/reference/leios-testnet-chain-scripts`), whose 273 requests name 62 scripts.
+
+<!-- register:table perf-65.t1 -->
+| Recorded Leios testnet chain, 273 script requests naming 62 scripts | median, ms | total, ms |
+|---|---:|---:|
+| decoding the script (`deserialiseScript`) | 0.10 | 40.1 |
+| decoding and evaluating it | 0.38 | 263.4 |
+<!-- /register -->
+
+What a decoded program holds: 40 distinct programs of each shape, the heap in use after full collections less that
+before, divided by the programs held; their weight; and the median time to decode and to weigh one, on a second
+round. A shape's script is 16,000 bytes (`AmplifyingScripts`, tests); the recorded scripts are those above. Every
+shape holds less than its weight; `ProgramCacheSuite` checks each weight against these heaps.
+
+<!-- register:table perf-65.t2 -->
+| Shape (a 16,000-byte script) | heap, KiB | heap per script byte | weight, KiB | heap / weight | decode, ms | weigh, ms |
+|---|---:|---:|---:|---:|---:|---:|
+| a list of pairs of empty lists | 9,079 | 581.5 | 12,137 | 0.75 | 51.6 | 1.89 |
+| a chain of `lam` | 1,249 | 80.0 | 1,998 | 0.63 | 0.8 | 0.23 |
+| a list of empty lists | 3,289 | 210.6 | 4,496 | 0.73 | 27.0 | 0.83 |
+| a list of a deep type, empty (protocol 10) | 199 | 12.8 | 399 | 0.50 | 4.2 | 0.06 |
+| a chain of single-field `constr` (V3) | 784 | 50.3 | 1,069 | 0.73 | 1.4 | 0.19 |
+| a deep `data` value | 870 | 55.8 | 1,862 | 0.47 | 3.3 | 0.31 |
+| a list of `data` | 81 | 5.3 | 280 | 0.29 | 2.7 | 0.03 |
+| a list of pairs of `data` | 262 | 17.1 | 749 | 0.35 | 1.9 | 0.07 |
+| a list of empty values (V3, protocol 12) | 6,285 | 402.5 | 12,484 | 0.50 | 27.5 | 1.31 |
+| the recorded Leios testnet scripts (2,148 bytes on average) | 92 | 43.9 | 136 | 0.67 | 0.3 | 0.09 |
+<!-- /register -->
+
+The weight's walk of the terms is written by hand, not with `Schemes.cata` ([STK-2](../design-rules.md#stk-2)'s
+clause for a hot path): a program is weighed on every miss of the cache, and counting the terms alone with the fold
+takes eight to seventeen times as long as weighing the whole program.
+
+<!-- register:table perf-65.t3 -->
+| Counting or weighing a program, median of five rounds | `Schemes.cata`, the terms only, ms | `ProgramWeight.of`, ms |
+|---|---:|---:|
+| a chain of `lam` | 4.613 | 0.284 |
+| a chain of single-field `constr` | 5.323 | 0.313 |
+| the recorded Leios testnet scripts | 0.512 | 0.065 |
+<!-- /register -->
+
+What one interpreter keeps of 512 distinct large programs: phase-1 well-formedness reuses a kept program and keeps
+none of its own; evaluation keeps them within the weight bound. The heap held is after full collections, with the
+interpreter reachable.
+
+<!-- register:table perf-65.t4 -->
+| 512 distinct 16,000-byte lists of pairs of empty lists, one interpreter | admitted or judged | programs kept | their weight, MiB | heap held, MiB |
+|---|---:|---:|---:|---:|
+| phase-1 well-formedness (`validate`) | 512 | 0 | 0 | 0 |
+| evaluation (`evaluate`) | 512 | 5 | 57 | 50 |
+<!-- /register -->
+
+**To repeat.** In the JDK container, export the full classpath of the `tools` module through `scripts/sbtw` and
+run, for each table, `java -Xmx768m -XX:+UseG1GC -cp <classpath> xyz.kd5ujc.scarab.plutus.ProgramCacheHeapMain`
+with `leios` (table 1), `programs 40` (table 2), `fold 10` (table 3) and `cache 512` (table 4).

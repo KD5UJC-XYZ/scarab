@@ -525,6 +525,46 @@
     "def uplc.bls.G2Cofactor.psi",
     "def uplc.bls.G2Cofactor.clear"
    ]
+  },
+  {
+   "reason": "Scarab's memoisation of the programs its own evaluator decodes, bounded by their number and by an estimate of the heap they hold: the least-recently-used map and its bounds, the weight of a decoded program, and the interpreter that holds the cache; internal to Scarab, it changes no result",
+   "definitions": [
+    "class plutus.Limits",
+    "class plutus.Lru",
+    "class plutus.Lru.Entry",
+    "class plutus.ScarabEvaluator.Interpreter",
+    "def plutus.BoundedCache#snapshot",
+    "def plutus.BoundedCache.apply",
+    "def plutus.BoundedCache.counted",
+    "def plutus.Lru#keys",
+    "def plutus.Lru#peek",
+    "def plutus.Lru#put",
+    "def plutus.Lru#size",
+    "def plutus.Lru#touched",
+    "def plutus.Lru.empty",
+    "def plutus.ProgramWeight.constant",
+    "def plutus.ProgramWeight.entry",
+    "def plutus.ProgramWeight.of",
+    "def plutus.ScarabEvaluator.Interpreter#evaluate",
+    "def plutus.ScarabEvaluator.Interpreter#held",
+    "def plutus.ScarabEvaluator.Interpreter#scripts",
+    "def plutus.ScarabEvaluator.Interpreter#validate",
+    "def plutus.Weight.*",
+    "def plutus.Weight.+",
+    "def plutus.Weight.-",
+    "def plutus.Weight.bytes",
+    "def plutus.Weight.exceeds",
+    "def plutus.Weight.mebibytes",
+    "def plutus.Weight.toLong",
+    "object plutus.BoundedCache",
+    "object plutus.Lru",
+    "object plutus.ProgramWeight",
+    "object plutus.Weight",
+    "type plutus.Weight",
+    "val plutus.ScarabEvaluator.Programs",
+    "val plutus.Weight.unbounded",
+    "val plutus.Weight.zero"
+   ]
   }
  ]
 }

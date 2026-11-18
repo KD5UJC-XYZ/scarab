@@ -43,8 +43,9 @@ import xyz.kd5ujc.scarab.uplc.ledger.{
   *
   * Evaluation is a deterministic function of the request, so [[pure]] is the interpreter the pure
   * ledger rules use. The two caches (the evaluation context of each language and cost-model list,
-  * the program of each language, protocol and script) are memoisation only: they never change a
-  * result, and an answer that is no verdict is never kept.
+  * the program of each language, protocol and script an evaluation decoded, within [[Programs]])
+  * are memoisation only: they never change a result, and an answer that is no verdict is never
+  * kept.
   */
 object ScarabEvaluator:
   /** Contexts kept: one per language and cost-model list, which change with the protocol parameters
@@ -52,8 +53,12 @@ object ScarabEvaluator:
     */
   private val Contexts = 16
 
-  /** Programs kept. */
-  private val Programs = 512
+  /** Programs kept: at most 512, and at most 64 MiB of them by [[ProgramWeight]]. A script's
+    * decoded program can hold hundreds of times its bytes (a list of pairs of empty lists holds
+    * about 580 bytes of heap for each byte of its script), so a bound on the number of entries
+    * alone is no bound on the heap.
+    */
+  private[plutus] val Programs = Limits(entries = 512, weight = Weight.mebibytes(64))
 
   /** A fresh interpreter with its own caches. */
   def pure: ScriptEvaluator[Id] = Interpreter()
@@ -69,7 +74,7 @@ object ScarabEvaluator:
   /** The shared interpreter, so that its caches persist. */
   lazy val default: ScriptEvaluator[Id] = shared
 
-  /** The script decoder of the shared interpreter: it shares the program cache. */
+  /** The script decoder of the shared interpreter: it reuses the programs its evaluations keep. */
   lazy val defaultDecoder: ScriptDecoder[Id] = shared
 
   /** The same interpreter suspended in `F`. */
@@ -85,12 +90,25 @@ object ScarabEvaluator:
 
   private type Admitted = Either[LedgerEval.NotAdmitted, Program]
 
-  private final class Interpreter extends ScriptEvaluator[Id] with ScriptDecoder[Id]:
-    // Instance-scoped caches: `evaluate` is a pure function of its request; BoundedCache is
-    // synchronized, and an attempt with no verdict is never retained.
+  private[plutus] final class Interpreter extends ScriptEvaluator[Id] with ScriptDecoder[Id]:
+    // Instance-scoped caches: `evaluate` is a pure function of its request; a BoundedCache is safe
+    // to share between threads, and an attempt with no verdict is never retained.
     private val contexts =
-      BoundedCache[ContextKey, Either[Unavailability, LedgerContext]](Contexts)
-    private val programs = BoundedCache[ProgramKey, Admitted](Programs)
+      BoundedCache.counted[ContextKey, Either[Unavailability, LedgerContext]](Contexts)
+    private val programs =
+      BoundedCache[ProgramKey, Admitted](
+        Programs,
+        (key, admitted) =>
+          admitted.fold(_ => Weight.unbounded, ProgramWeight.entry(key.script, _, Programs.weight))
+      )
+
+    /** The number of programs kept, and their weight. */
+    private[plutus] def held: (Int, Weight) =
+      val now = programs.snapshot
+      (now.size, now.weight)
+
+    /** The scripts of the programs kept, the least recently used first. */
+    private[plutus] def scripts: Vector[Bytes] = programs.snapshot.keys.map(_.script)
 
     def evaluate(request: EvalRequest): EvalResult =
       bounded(request.budget).fold(
@@ -122,6 +140,11 @@ object ScarabEvaluator:
             )
           )
 
+    /** `deserialiseScript` for phase-1 well-formedness: a program kept by an evaluation is reused,
+      * and one decoded here is not kept. Phase 1 decodes every script of a transaction whatever its
+      * other checks say, so a transaction refused there leaves nothing in the cache; a script that
+      * runs is kept by its evaluation.
+      */
     def validate(
         language: PlutusLanguage,
         protocolMajor: Int,
@@ -130,18 +153,27 @@ object ScarabEvaluator:
       guarded[Either[ScriptDecodeFailure, Unit]](reason =>
         Left(ScriptDecodeFailure.Unavailable(reason))
       )(
-        admitted(language, protocolMajor, script).void.leftMap {
-          case LedgerOutcome.Refused(error) =>
-            ScriptDecodeFailure.Malformed(ScriptProblem.Uplc(error))
-          case ScriptResult.Unavailable(reason) =>
-            ScriptDecodeFailure.Unavailable(BackendFailure.Uplc(reason))
-        }
+        programs
+          .get(ProgramKey(language, protocolMajor, script))
+          .getOrElse(LedgerEval.deserialiseScript(language, ProtocolMajor(protocolMajor), script))
+          .void
+          .leftMap {
+            case LedgerOutcome.Refused(error) =>
+              ScriptDecodeFailure.Malformed(ScriptProblem.Uplc(error))
+            case ScriptResult.Unavailable(reason) =>
+              ScriptDecodeFailure.Unavailable(BackendFailure.Uplc(reason))
+          }
       )
 
+    /** The program of `script` for an evaluation, memoised. The key, and the program decoded from
+      * it, own exactly the script's bytes ([[Bytes.compact]]), so an entry never holds a larger
+      * buffer the script was read from.
+      */
     private def admitted(language: PlutusLanguage, protocol: Int, script: Bytes): Admitted =
+      val owned = script.compact
       programs.getOrElseUpdate(
-        ProgramKey(language, protocol, script),
-        LedgerEval.deserialiseScript(language, ProtocolMajor(protocol), script)
+        ProgramKey(language, protocol, owned),
+        LedgerEval.deserialiseScript(language, ProtocolMajor(protocol), owned)
       )(retained)
 
     /** The evaluation context of the request's language and cost model, made once
@@ -157,10 +189,11 @@ object ScarabEvaluator:
           .flatten
       )(_.isRight)
 
-  /** Whether a decoding result may be kept: a verdict, never its absence. */
-  private def retained(admitted: Admitted): Boolean = admitted match
-    case Left(_: ScriptResult.Unavailable) => false
-    case _                                 => true
+  /** Whether a decoding result may be kept: an admitted program. Never the absence of a verdict;
+    * and not a refusal, whose value (the tags of a type it could not read, a `data` item) has no
+    * bound its weight could follow. A refused script is decoded again at each evaluation.
+    */
+  private def retained(admitted: Admitted): Boolean = admitted.isRight
 
   /** The budget as the machine's: the ledger's `ExUnits` are memory and steps, `ExBudget` is CPU
     * and memory. A component beyond 64 bits gets no verdict.

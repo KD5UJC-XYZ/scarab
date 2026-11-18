@@ -325,7 +325,10 @@ reference's (`ReferenceCosting`, `ReferenceBudget`); the same corpus passed on i
 An implementation limit is `Phase2.Outcome.Unavailable` and `LedgerFailure.Unavailable`, regardless
 of the transaction validity flag. It supplies no script verdict and no consensus predicate failure.
 Unavailable decoder attempts are not retained by the bounded program cache, and the evaluator keeps no
-answer that is no verdict (`ScarabEvaluator`). Known malformed input remains memoised. The node's supervision boundary handles unavailability as
+answer that is no verdict (`ScarabEvaluator`). The cache keeps the programs evaluations admit, not
+refusals, within a number of entries and an estimate of the heap they hold (`ScarabEvaluator.Programs`,
+`ProgramWeight`); phase-1 well-formedness reuses a kept program and keeps none of its own. The node's
+supervision boundary handles unavailability as
 unavailable validation. This remains distinct from
 reference-proven setup, scope, budget and runtime script failures.
 
