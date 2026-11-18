@@ -14,7 +14,10 @@
   wrapped in tag 24 or a chunked string under it (which the node used to admit), and a transaction of an era
   from Shelley to Conway that its era's decoder refuses (which used to get the era mismatch or a free-text
   rejection). A transaction the reference decodes and refuses keeps its `MsgRejectTx`. Byron's and Dijkstra's
-  transactions are not read past their envelopes, and keep the era mismatch.
+  transactions are not read past their envelopes, and keep the era mismatch. A transaction is read before it
+  takes a place in the mempool's line, so one its decoder refuses never waits behind one that waits for room.
+  It no longer logs `mempoolRejected` or counts in `scarab_mempool_rejected_total` (`Malformed`,
+  `InputDefect`); its connection's `inbound` `closed` line gives the decoder's reason.
 - LocalStateQuery ends the connection as soon as the part of a query that has arrived is one the reference's
   decoder of queries fails on in its envelopes, instead of waiting for the rest: a top-level, block or ledger
   query's size and tag it has no case for (`82 03 82 0f`), an era index past the last
