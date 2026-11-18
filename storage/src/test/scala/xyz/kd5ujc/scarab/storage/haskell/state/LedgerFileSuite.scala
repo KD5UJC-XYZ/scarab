@@ -271,6 +271,53 @@ class LedgerFileSuite extends ScalaCheckSuite:
     )
   }
 
+  test("the 11.1 layout does not write a Dijkstra tip or telescope, 11.1's in every other part") {
+    val file = HaskellLedgerFile
+      .decode(Bytes.wrap(Files.readAllBytes(fixtureRoot.resolve("conway-4593/state"))))
+      .fold(e => fail(e.render), identity)
+    val header = file.header
+    assertEquals(headerState.check(header), None)
+    val conwayTip = header.tip match
+      case WithOrigin.At(t)  => t
+      case WithOrigin.Origin => fail("no tip")
+    val hash = conwayTip.info match
+      case TipInfo.ShelleyBasedTip(_, h) => h
+      case other                         => fail(s"not a Shelley-based tip: $other")
+    val dijkstraTip =
+      conwayTip.copy(info = TipInfo.ShelleyBasedTip(ShelleyBasedEra.SDijkstra, hash))
+    assertEquals(
+      annTip.check(dijkstraTip).map(v => (v.typeName, v.actual)),
+      Some(("AnnTip", "Dijkstra"))
+    )
+    assertEquals(
+      headerState.check(header.copy(tip = WithOrigin.At(dijkstraTip))).map(_.path),
+      Some(List("tip"))
+    )
+    // the Leios layout writes it
+    assertEquals(LeiosStateCodecs.annTip.check(dijkstraTip), None)
+    // the chain-dependent telescope carried on into Dijkstra, its bounds 11.1's and its state the
+    // Praos2 state of Conway's Praos state with no announcement
+    val dep = header.chainDep
+    val praos2 = dep.current.state match
+      case ChainDepState.Praos(p) =>
+        ChainDepState.Praos2(xyz.kd5ujc.scarab.consensus.Praos2.State(p, None))
+      case other => fail(s"not a Praos state: $other")
+    val start = dep.current.start
+    val end = start.copy(slot = start.slot + 1, epoch = start.epoch + 1)
+    val inDijkstra = dep.extend(end, praos2).fold(e => fail(e.toString), identity)
+    assertEquals(inDijkstra.era, Era.Dijkstra)
+    val telescope11 = Envelope.telescope(StateLayout.Node11_1, chainDepStateOf)
+    assertEquals(telescope11.check(dep), None)
+    assertEquals(
+      telescope11.check(inDijkstra).map(v => (v.typeName, v.actual)),
+      Some(("Telescope", "Dijkstra"))
+    )
+    assertEquals(
+      headerState.check(header.copy(chainDep = inDijkstra)).map(_.path),
+      Some(List("chainDep"))
+    )
+  }
+
   test("a telescope whose eras do not abut is refused as a violation, naming the telescope") {
     // Byron ended at 5, Shelley started at 6: one past era, then the current one (Shelley, TPraos)
     val tpraos = bytesOf { w =>

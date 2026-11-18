@@ -135,7 +135,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     * `[era, committee]`): the eras before Dijkstra have none (`VoidPerasVotingCommitteeScheme`,
     * whose decoder fails, `Peras/Void.hs:168-170`, ouroboros-consensus 2416493b), so the reference
     * refuses one of them as this does; Dijkstra's (`V1.PerasVotingCommitteeScheme`, the WFALS
-    * committee, `Shelley/Node/Peras.hs:136-148`, `Committee/WFALS.hs`) is not read yet
+    * committee, `Shelley/Node/Peras.hs:226-234`, `Peras/Voting/V1.hs:39`) is not read yet
     * ([[DijkstraNotYet.PerasEpochContext]]): Peras is off in the build, and no state it wrote holds
     * one.
     */

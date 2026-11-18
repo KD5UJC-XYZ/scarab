@@ -45,9 +45,9 @@ enum DijkstraNotYet extends DomainError:
 
   /** A Peras epoch context in the Peras state of the Leios build's layout that holds Dijkstra's
     * voting committee (`BoundedPerasEpochContext`, ouroboros-consensus 2416493b
-    * `Peras/Context.hs:170-203`; the committee of `V1.PerasVotingCommitteeScheme`,
-    * `Shelley/Node/Peras.hs:136-148`, `Committee/WFALS.hs`): Peras is off in the build, whose
-    * states hold no epoch context. Persisted formats.
+    * `Peras/Context.hs:170-203`; Dijkstra's committee scheme `V1.PerasVotingCommitteeScheme`,
+    * `Shelley/Node/Peras.hs:226-234`, which is `WFALS`, `Peras/Voting/V1.hs:39`): Peras is off in
+    * the build, whose states hold no epoch context. Persisted formats.
     */
   case PerasEpochContext
 

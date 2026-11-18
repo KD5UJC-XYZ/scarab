@@ -548,7 +548,9 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
       case ChainDepState.Praos2(state) =>
         assertEquals(state.praos.ocertCounters.size, 152)
         assertEquals(
-          state.announcement.map(a => (a.issuer.bytes, a.announcement.hash.bytes, a.announcement.size)),
+          state.announcement.map(a =>
+            (a.issuer.bytes, a.announcement.hash.bytes, a.announcement.size)
+          ),
           Some(
             (
               hex("09d2e4fc904957604573d87e9cb20e14049bbc2e31de0a12e4d4bf83"),
