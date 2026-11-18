@@ -420,7 +420,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   reference's `Ord WitVKey`, bootstrap witnesses, Conway scripts by hash, the datums by hash and the
   redeemers keyed by Conway's own purpose (`ConwayPlutusPurpose`, in the forms `AsIx`, `AsItem` and
   `AsIxItem`), the last two with the bytes they arrived as (`TxDats`, `Redeemers`), which the script
-  integrity hash is over. The witness
+  integrity hash is over, and each datum and redeemer's data decoded with its own bytes (`Data`, the
+  reference's `Data era`). The witness
   classes are `EraTxWits` and `AlonzoEraTxWits`. The flat decoder reads the set and refuses what Conway
   refuses. Its scripts are then read again from the same bytes into Conway's types, each native script with
   its own bytes, and they must be the flat decoder's by hash. Every recorded Conway witness set reads with
@@ -621,14 +622,16 @@ Conway's rules on the classes follow as the rest of stage 2.
     and with the repeats the translation gives it.
   - Each failure is the era's context error (`ContextError`, Conway's `ConwayContextError` carrying Babbage's
     and Alonzo's, injected as the reference's `Inject` instances do). Two differ in representation: a time
-    past the horizon carries the clock's typed failure where the reference's carries a Text, and the data the
-    reference holds decoded is read from the bytes it arrived as, its failure the node's own `Undecodable`
-    (as in Dijkstra's flat context), which no transaction an era's decoder read reaches. The epoch
-    information and the system start are the flat translation's one clock.
+    past the horizon carries the clock's typed failure where the reference's carries a Text, and an output's
+    inline datum, which the reference's `binaryDataToData` takes as data, is read from the bytes it arrived
+    as, its failure the node's own `Undecodable` (as in Dijkstra's flat context), which no output an era's
+    decoder read reaches. A redeemer and a witness datum are the witness set's decoded `Data`, so their
+    translation cannot fail. The epoch information and the system start are the flat translation's one
+    clock.
   - Two members the context needs: `redeemerPointerInverse` on `AlonzoEraTxBody` (Conway's
     `conwayRedeemerPointerInverse`, through `Indexable`'s `fromIndex`) and `getSpendingDatum` on
     `AlonzoEraUTxO` (`getBabbageSpendingDatum`), its spending purpose read through the evidence that the era's
-    purpose is Conway's.
+    purpose is Conway's; its datum is the bytes it arrived as, as an inline datum is not held decoded yet.
   - `EraPlutusContextSuite`: on every Conway row of the reference's recorded contexts, context matrix,
     context errors and script results (432 transactions), the typed V3 `TxInfo` equals the flat one, or both
     refuse alike, at the row's version and at 9, 10 and 11, whatever the languages its scripts use. Each of
