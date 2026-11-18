@@ -1569,7 +1569,6 @@
    "def ledger.TxChecks.providedScripts": null,
    "def ledger.TxChecks.scriptsWellFormed": null,
    "def ledger.TxChecks.supplementalDatumHashes": null,
-   "def ledger.TxChecks.valueWords": null,
    "def ledger.TxChecks.verifiedWits": null,
    "def ledger.TxDefect#message": null,
    "def ledger.TxEnv#static": null,

@@ -24,7 +24,7 @@ import MemPack.{Failure, MultiAssetFault, Quantity, Result}
   * The bytes carry no padding. An empty asset name has no bytes and its offset is the end of E, so
   * a name's length is the distance to the next greater offset, or to the end of the representation.
   */
-private[mempack] object MultiAssetRep:
+private[ledger] object MultiAssetRep:
   private val PolicySize = 28
   private val MaxOffset = 0xffff
   private val TwoTo64 = BigInt(1) << 64

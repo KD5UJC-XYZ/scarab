@@ -513,6 +513,13 @@ Conway's rules on the classes follow as the rest of stage 2.
   - `Val` gains its superclass `Eq` as a member (`eqv`): `MaryValue`'s `pointwise (==)` is the equality of
     two canonical values, and every `MultiAssetValue` is one, made canonical by `MultiAssetValue.of` as the
     reference's `MultiAsset` is, and kept so by the arithmetic.
+  - `Val` gains its size and compact-form members (`size`, `isAdaOnlyCompact`, `coinCompact`,
+    `injectCompact`, `modifyCompactCoin`), with its superclass `Compactible` (`toCompact`, `fromCompact`) and
+    each value's compact form: `CompactCoin` for `AdaValue`, and for `MultiAssetValue` a `CompactValue` whose
+    multi-asset case holds the packed representation the MemPack codec writes (`MultiAssetRep`), built only
+    by `to`. The `size` of a `MultiAssetValue` is the minimum-UTxO rule's `valueWords`. Assets too many to
+    compact have no compact form here; the reference only asserts that they never come, and its decoder
+    refuses them.
 - **The forecast** (`era/rules/`): `validateOutsideForecast`, the end of a validity interval with redeemers
   translated through the era history extended linearly from the current slot (`PosixClock.Extended`).
   The flat rule has none, so it is compared with the reference's recorded verdicts
