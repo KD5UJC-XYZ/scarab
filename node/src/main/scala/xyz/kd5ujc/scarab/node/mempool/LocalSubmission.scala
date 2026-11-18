@@ -51,8 +51,9 @@ object LocalSubmission:
     * included, `unwrapCBORinCBOR` (`Shelley/Ledger/Mempool.hs:261-266`), tag 24 around a definite
     * byte string (`decodeTag`, `decodeBytes`,
     * `ouroboros-network/api/lib/Ouroboros/Network/Block.hs:501-504`, ouroboros-network c45735a5). A
-    * Byron transaction and one of an index past the last era are not read: whatever follows the
-    * index gets the era mismatch.
+    * Byron transaction and one of an index past the last era are not read: they get the era
+    * mismatch, unless tag 24 follows the index around something other than a byte string, which is
+    * refused as malformed ([[foreign]]).
     */
   def unwrap(item: Bytes): Either[Rejection, Submission] =
     def malformed(problem: TransactionDecodeProblem): Rejection = Rejection.Malformed(problem)
