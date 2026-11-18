@@ -292,16 +292,16 @@ class SubmissionSession:
 
 
 class SubmissionPrefixesTest(unittest.TestCase):
-    refused = set(ntclocal.REFUSED_SUBMISSIONS.values())
+    sent = {**ntclocal.REFUSED_SUBMISSIONS, **ntclocal.REFUSED_WHOLE_SUBMISSIONS}
+    refused = set(sent.values())
 
     def test_each_prefix_is_sent_as_a_submit_tx_on_a_connection_of_its_own(self):
-        sessions = [SubmissionSession(self.refused) for _ in ntclocal.REFUSED_SUBMISSIONS]
+        sessions = [SubmissionSession(self.refused) for _ in self.sent]
         opened = iter(sessions)
         report, failures = ntclocal.submission_prefixes(lambda: SubmissionSession(self.refused), lambda: next(opened))
         self.assertEqual(failures, [])
-        self.assertEqual(set(report), set(ntclocal.REFUSED_SUBMISSIONS))
-        self.assertEqual([s.sent for s in sessions],
-                         [[(6, b"\x82\x00" + item)] for item in ntclocal.REFUSED_SUBMISSIONS.values()])
+        self.assertEqual(set(report), set(self.sent))
+        self.assertEqual([s.sent for s in sessions], [[(6, b"\x82\x00" + item)] for item in self.sent.values()])
 
     def test_an_answered_prefix_fails(self):
         answered = self.refused - {ntclocal.REFUSED_SUBMISSIONS["era-8-prefix"]}
@@ -313,7 +313,7 @@ class SubmissionPrefixesTest(unittest.TestCase):
     def test_a_connection_that_ends_before_the_prefix_is_sent_is_not_a_refusal(self):
         report, failures = ntclocal.submission_prefixes(lambda: SubmissionSession(self.refused),
                                                         lambda: SubmissionSession(self.refused, opens=False))
-        self.assertEqual(len(failures), len(ntclocal.REFUSED_SUBMISSIONS))
+        self.assertEqual(len(failures), len(self.sent))
         self.assertTrue(all(row["scala"]["stage"] == "open" and not row["scala"]["closed"]
                             for row in report.values()))
 
@@ -321,6 +321,11 @@ class SubmissionPrefixesTest(unittest.TestCase):
         for label, item in ntclocal.REFUSED_SUBMISSIONS.items():
             with self.subTest(label=label), self.assertRaises(ntcquery.Incomplete):
                 ntcquery.decode(item)
+
+    def test_each_whole_transaction_is_one_whole_item(self):
+        for label, item in ntclocal.REFUSED_WHOLE_SUBMISSIONS.items():
+            with self.subTest(label=label):
+                self.assertEqual(ntcquery.decode(item)[1], len(item))
 
 
 class HeldFoundTest(unittest.TestCase):

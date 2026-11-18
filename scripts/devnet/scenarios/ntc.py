@@ -696,7 +696,7 @@ def ntc(args):
         safety, safety_failures = ntcsafety.run(lambda: open_h(args), lambda: open_s(root))
         failures.extend(safety_failures)
         print(json.dumps({"querySafety": safety}), flush=True)
-        # transaction prefixes the reference's decoder fails on, each on a connection of its own (#924)
+        # transactions and prefixes the reference's codec refuses, each on a connection of its own (#924)
         prefixes, prefix_failures = submission_prefixes(lambda: bounded(open_h(args)), lambda: bounded(open_s(root)))
         failures.extend(prefix_failures)
         print(json.dumps({"submissionPrefixes": prefixes}), flush=True)

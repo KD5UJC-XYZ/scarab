@@ -327,6 +327,17 @@ REFUSED_SUBMISSIONS = {
     "conway-not-under-tag-24-prefix": b"\x82\x06\x84",
     "conway-chunked-under-tag-24-prefix": b"\x82\x06\xd8\x18\x5f",
 }
+# Whole transactions the reference's codec refuses (#924): an era index past the last, a Conway transaction not under
+# tag 24, and transactions of Conway and of Babbage under tag 24 that their era's decoder refuses. The reference ends
+# the connection, with no `MsgRejectTx`; so must the Scala node, as on a prefix.
+NOT_A_TRANSACTION = b"\x84\xa0\xa0\xf5\xf6"
+REFUSED_WHOLE_SUBMISSIONS = {
+    "era-8-whole": b"\x82\x08\xd8\x18\x45" + NOT_A_TRANSACTION,
+    "era-255-whole": b"\x82\x18\xff\xd8\x18\x45" + NOT_A_TRANSACTION,
+    "conway-not-under-tag-24-whole": b"\x82\x06" + NOT_A_TRANSACTION,
+    "conway-malformed-whole": b"\x82\x06\xd8\x18\x45" + NOT_A_TRANSACTION,
+    "babbage-malformed-whole": b"\x82\x05\xd8\x18\x41\x00",
+}
 
 
 def _submission_closes(opener, item):
@@ -352,9 +363,10 @@ def _submission_closes(opener, item):
 
 
 def submission_prefixes(open_h, open_s):
-    """(report, failures): each of `REFUSED_SUBMISSIONS` ends a connection of its own on both nodes."""
+    """(report, failures): each of `REFUSED_SUBMISSIONS` and `REFUSED_WHOLE_SUBMISSIONS` ends a connection of its own
+    on both nodes."""
     report, failures = {}, []
-    for label, item in REFUSED_SUBMISSIONS.items():
+    for label, item in {**REFUSED_SUBMISSIONS, **REFUSED_WHOLE_SUBMISSIONS}.items():
         row = {"reference": _submission_closes(open_h, item), "scala": _submission_closes(open_s, item)}
         report[label] = row
         if not all(result["closed"] for result in row.values()):
