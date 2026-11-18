@@ -256,7 +256,7 @@ inventory, backups and copy rehearsals remain under M11/J3.1
 Set 2026-10-29. The order of the open work, with the reason for it. IDs are the roadmap IDs; the issues carry the
 state and the milestone. This section is rewritten when the order changes.
 
-**v0.2, reference-grade evidence (complete)**
+**v0.2, reference-grade evidence (milestone closed 2026-10-29)**
 
 The v0.2 exit gate, a Scala-forged block adopted on preprod (H1/H1a,
 [#37](https://github.com/KD5UJC-XYZ/scarab/issues/37)/[#115](https://github.com/KD5UJC-XYZ/scarab/issues/115)),
