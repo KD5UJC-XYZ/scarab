@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Cbor, DomainError, Node, Value}
 
-/** The envelope of an externally submitted transaction, before the ledger rules run. */
-enum TransactionDecodeProblem:
+/** The envelope of an externally submitted transaction, before the ledger rules run: where the
+  * decoder of a submitted transaction fails on it.
+  */
+enum TransactionDecodeProblem extends DomainError:
   case Syntax(cause: Cbor.Error)
   case Ledger(cause: LedgerDecodeError)
 
@@ -21,6 +23,16 @@ enum TransactionDecodeProblem:
   case EraOutOfRange(value: BigInt)
   case EraExpected(actual: Value)
 
+  /** An era index past the last era of `CardanoEras` ("decodeNS: invalid index"). */
+  case UnknownEra(index: Int)
+
+  /** Byron's payload is not the definite list of two that `enforceSize "MempoolPayload" 2` reads.
+    */
+  case ByronEnvelope(cause: Node.NotSized)
+
+  /** Byron's payload names no constructor from 0 to 3 that `decodeWord8` reads. */
+  case ByronConstructor(actual: Value)
+
   /** Not the definite list of two, era and transaction, that `enforceSize` reads. */
   case EraEnvelope(cause: Node.NotSized)
 
@@ -32,6 +44,9 @@ enum TransactionDecodeProblem:
     case NotCborInCbor(_)     => "expected tag 24 (CBOR-in-CBOR)"
     case EraOutOfRange(value) => s"era index $value is past 255"
     case EraExpected(_)       => "era is not an integer"
+    case UnknownEra(index)    => s"era index $index is past the last era"
+    case ByronEnvelope(_)     => "expected Byron's [constructor, payload]"
+    case ByronConstructor(_)  => "Byron's constructor is not one from 0 to 3"
     case EraEnvelope(_)       => "expected [era, transaction]"
 
 enum MempoolProblem:

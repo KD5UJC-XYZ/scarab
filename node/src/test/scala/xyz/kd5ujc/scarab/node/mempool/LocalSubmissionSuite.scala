@@ -65,7 +65,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
     yield reply
 
   test(
-    "a local client submits through the Unix socket: accepted once, then refused with a reason"
+    "a local client submits through the Unix socket: accepted once, refused with a reason, closed on a malformed one"
   ) {
     val (good, id) = pay(1)
     val (clash, _) = pay(1, fee = 2 * ada)
@@ -116,20 +116,30 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                       accepted <- submit(ch, wrap(good))
                       again <- submit(ch, wrap(good))
                       conflicting <- submit(ch, wrap(clash))
-                      garbage <- submit(ch, Bytes(Vector(0x01)))
-                      wrongEra <- submit(ch, Bytes(Vector(0x82, 0x05, 0x41, 0x00).map(_.toByte)))
+                      // Byron's payload, which the pool does not read: the era mismatch
+                      wrongEra <- submit(
+                        ch,
+                        Bytes(Vector(0x82, 0x00, 0x82, 0x00, 0x00).map(_.toByte))
+                      )
                       held <- mempool.snapshot.map(_.entries.map(_.id))
+                      // not a transaction at all: the connection ends, with no reply
+                      garbage <- Handle
+                        .allow[NetworkError](
+                          submit(ch, Bytes(Vector(0x01))).map(_.asRight[NetworkError])
+                        )
+                        .rescue(error => IO.pure(error.asLeft[LocalTxSubmission.Message]))
                     yield (
                       agreed.version,
                       accepted,
-                      List(again, conflicting, garbage, wrongEra),
-                      held
+                      List(again, conflicting, wrongEra),
+                      held,
+                      garbage
                     )
                   }
               }
               .rescue(e => IO.raiseError(RuntimeException(e.message)))
           }
-          .map { case (version, accepted, refused, held) =>
+          .map { case (version, accepted, refused, held, garbage) =>
             assertEquals(version, 23)
             assertEquals(accepted, LocalTxSubmission.Message.AcceptTx)
             assert(
@@ -137,6 +147,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
               refused.toString
             )
             assertEquals(held, Vector(id))
+            assert(garbage.isLeft, s"a reply to a malformed transaction: $garbage")
           }
       }
   }

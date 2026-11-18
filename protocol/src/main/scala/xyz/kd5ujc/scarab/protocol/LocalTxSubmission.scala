@@ -37,16 +37,18 @@ object LocalTxSubmission:
     case RejectTx(reason: Bytes)
     case Done
 
-  /** How the decoder of a `MsgSubmitTx` transaction judges one only part of which has arrived. The
-    * reference's codec reads the transaction with the block type's decoder from the stream
-    * (`decodeWithByteSpan decodeTx`, ouroboros-network c45735a5
+  /** How the decoder of a `MsgSubmitTx` transaction judges one, all of it or the part that has
+    * arrived. The reference's codec reads the transaction with the block type's decoder from the
+    * stream (`decodeWithByteSpan decodeTx`, ouroboros-network c45735a5
     * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxSubmission/Codec.hs:148-154`),
-    * so a prefix that decoder fails on ends the connection before the rest arrives; the node, which
-    * knows the transactions' structure, says where. A whole transaction is read as one item, as
-    * before.
+    * so a transaction that decoder fails on ends the connection, a prefix of one before the rest
+    * arrives; the node, which knows the transactions' structure, says where. The codec asks of a
+    * whole transaction too, so a message ends alike whether it arrives whole or in parts.
     */
   trait TxReader:
-    /** What the transaction's decoder makes of `input`, the part of it that has arrived. */
+    /** What the transaction's decoder makes of `input`, the transaction or the part of it that has
+      * arrived.
+      */
     def prefix(input: Bytes): TxPrefix
 
   object TxReader:
@@ -54,7 +56,9 @@ object LocalTxSubmission:
     val whole: TxReader = _ => TxPrefix.Short
 
   enum TxPrefix:
-    /** The transaction's decoder waits for more. */
+    /** The transaction's decoder has not failed on it: it waits for more, or, of a whole
+      * transaction, has read what the reader judges.
+      */
     case Short
 
     /** The transaction's decoder fails on it, whatever follows. */
@@ -99,8 +103,8 @@ object LocalTxSubmission:
     w.result
   }
 
-  /** Each message read as before; while the transaction of a client's `SubmitTx` has not all
-    * arrived, `txs` says whether its decoder has already failed on what has ([[TxReader]]).
+  /** Each message read as before, then a client's `SubmitTx` judged by `txs` ([[TxReader]]): a
+    * transaction it refuses, whole or while it has not all arrived, ends there.
     */
   def decodePrefix(
       state: State,
@@ -108,9 +112,31 @@ object LocalTxSubmission:
       bytes: Bytes,
       txs: TxReader = TxReader.whole
   ): DecodeResult[Message] =
-    decoded(state, sender, bytes) match
+    judged(state, sender, bytes, txs, decoded(state, sender, bytes))
+
+  /** `result`, the message as read, judged by `txs`: a `SubmitTx` whose transaction it refuses ends
+    * here; an incomplete message waits unless [[waiting]] ends it.
+    */
+  private def judged(
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      txs: TxReader,
+      result: DecodeResult[Message]
+  ): DecodeResult[Message] =
+    result match
       case DecodeResult.NeedMore => waiting(state, sender, bytes, txs)
-      case other                 => other
+      // read whole, a `SubmitTx` is a client's in `Idle`: [[transition]] allows it nowhere else
+      case DecodeResult.Decoded(Message.SubmitTx(tx), _) =>
+        txs.prefix(tx) match
+          case TxPrefix.Short => result
+          case TxPrefix.Refused(cause) =>
+            DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause))
+      case DecodeResult.Decoded(
+            Message.AcceptTx | Message.RejectTx(_) | Message.Done,
+            _
+          ) | DecodeResult.Failed(_) =>
+        result
 
   private def decoded(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
     ProtocolWire.prefix {
@@ -169,6 +195,5 @@ object LocalTxSubmission:
       type Cursor = framed.Cursor
       val initial: Cursor = framed.initial
       def resume(cursor: Cursor, input: Bytes): (Cursor, DecodeResult[Message]) =
-        framed.resume(cursor, input) match
-          case (next, DecodeResult.NeedMore) => (next, waiting(state, sender, input, txs))
-          case done                          => done
+        val (next, result) = framed.resume(cursor, input)
+        (next, judged(state, sender, input, txs, result))

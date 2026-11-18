@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem
 import xyz.kd5ujc.scarab.network.{
   Bearer,
@@ -194,6 +194,34 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     }
   }
 
+  test("the whole read refuses what the judge refuses, and a refusal of its decoder has no reply") {
+    def problem(item: String) = LocalSubmission.unwrap(hex(item)) match
+      case Left(Rejection.Malformed(p)) => p
+      case other                        => fail(s"$item: $other")
+    assertEquals(problem("8208" + wrappedTx), TransactionDecodeProblem.UnknownEra(8))
+    assertEquals(problem("8218ff" + wrappedTx), TransactionDecodeProblem.UnknownEra(255))
+    assertEquals(
+      problem("8200" + "83000000"),
+      TransactionDecodeProblem.ByronEnvelope(Node.NotSized.Length(3))
+    )
+    problem("8200" + "d818" + Bytes(bstr(tx)).hex) match
+      case TransactionDecodeProblem.ByronEnvelope(Node.NotSized.NotAList(Value.Tag(t, _)))
+          if t == 24 =>
+        ()
+      case other => fail(s"Byron's payload under tag 24: $other")
+    assertEquals(
+      problem("8200" + "820400"),
+      TransactionDecodeProblem.ByronConstructor(Value.UInt(4))
+    )
+    // Byron's payload as far as its constructor, which the pool does not read further
+    assertEquals(LocalSubmission.unwrap(hex("8200820000")), Right(Submission(0, hex("820000"))))
+    val refused = TransactionDecodeProblem.UnknownEra(8)
+    assertEquals(
+      LocalSubmission.response(Refused(Rejection.Malformed(refused), None)),
+      LocalTxSubmissionServer.Response.Undecodable(refused)
+    )
+  }
+
   test("a transaction of every era the reference reads waits until it has arrived") {
     // eras 1 to 7 under CBOR-in-CBOR, and Byron's four kinds of payload
     val forms = (1 to 7).map(era => f"82$era%02x" + wrappedTx) ++
@@ -211,9 +239,9 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     )
 
   /** One node-to-client connection to a node whose pool holds a Conway ledger, its
-    * LocalTxSubmission served as the node serves it ([[GenTx.reader]]); the client runs `client`
-    * with the channel and how the server ended. The server runs in a fiber of the connection's
-    * scope.
+    * LocalTxSubmission served as the node serves it ([[GenTx.reader]]), beside LocalTxMonitor as in
+    * the node, whose server waits for the client throughout; the client runs `client` with the
+    * channel and how the server ended. The server runs in a fiber of the connection's scope.
     */
   private def onTheWire[A](
       client: (MuxChannel[IO], IO[Ended]) => Handle[IO, NetworkError] ?=> IO[A]
@@ -232,7 +260,8 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
               serverEnd,
               magic,
               LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
-              GenTx.reader
+              GenTx.reader,
+              txMonitor = Some(LocalMonitor.source(mempool))
             )
             .map(Right(_): Ended)
         )
@@ -315,13 +344,74 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     ).void
   }
 
-  test("on the wire, a whole message of an era past the last is answered as before") {
-    // the reference ends the connection here too; the node's whole read answers the era mismatch
-    onTheWire((ch, _) => sendParts(ch, Vector(hex("82008208" + wrappedTx))) *> receive(ch))
-      .map {
-        case LocalTxSubmission.Message.RejectTx(_) => ()
-        case other                                 => fail(s"expected the era mismatch, got $other")
+  /** How the server ends, or what it answers, when the client sends `parts` and waits. */
+  private def outcome(parts: Vector[Bytes]): IO[Either[Ended, LocalTxSubmission.Message]] =
+    onTheWire { (ch, server) =>
+      // the reply, or none once the client sees the connection end
+      val reply: IO[Option[LocalTxSubmission.Message]] =
+        Handle.allow[NetworkError](receive(ch).map(Option(_))).rescue(_ => IO.pure(None))
+      for
+        _ <- sendParts(ch, parts)
+        first <- IO.race(server, reply)
+        result <- first match
+          case Left(ended)         => IO.pure(Left(ended))
+          case Right(None)         => server.map(Left(_))
+          case Right(Some(answer)) => IO.pure(Right(answer))
+      yield result
+    }
+
+  /** The decoder of a whole transaction of `era` refuses `raw` with a problem, as the mempool reads
+    * it.
+    */
+  private def malformed(era: Era, raw: Bytes): TransactionDecodeProblem =
+    MempoolState.read(Submission(era.index, raw)) match
+      case Left(Rejection.Malformed(problem)) => problem
+      case other                              => fail(s"not malformed in $era: $other")
+
+  private def undecodable(cause: xyz.kd5ujc.scarab.codec.DomainError): Ended =
+    Left(
+      NetworkError.Decode(Protocols.LocalTxSubmission, ProtocolError.UndecodableTransaction(cause))
+    )
+
+  test("on the wire, a whole message the decoder refuses ends the connection as its parts do") {
+    // an era past the last and the last index a `Word8` holds, Byron's fifth constructor and a
+    // Conway transaction not under tag 24, refused before the transaction is read; a transaction of
+    // Conway and of Babbage that the era's decoder refuses, after; each sent whole and cut after
+    // its fourth byte, both ending alike
+    val babbage = hex("00")
+    val conway = hex("84a0a0f5f6")
+    Vector(
+      ("82008208" + wrappedTx) -> undecodable(GenTx.Refusal.UnknownEra(8)),
+      ("820082" + "18ff" + wrappedTx) -> undecodable(GenTx.Refusal.UnknownEra(255)),
+      ("820082008204" + "5820" + "11" * 32) -> undecodable(GenTx.Refusal.UnknownByronTag(4)),
+      ("8200820684" + tx.drop(1).hex) -> undecodable(GenTx.Refusal.ExpectedTag(Era.Conway)),
+      ("82008206d818" + Bytes(bstr(conway)).hex) ->
+        undecodable(malformed(Era.Conway, conway)),
+      ("82008205d818" + Bytes(bstr(babbage)).hex) ->
+        undecodable(malformed(Era.Babbage, babbage))
+    ).traverse { (message, ending) =>
+      val whole = hex(message)
+      Vector(Vector(whole), Vector(whole.take(4), whole.drop(4))).traverse(parts =>
+        outcome(parts).map(result =>
+          assertEquals(result, Left(ending), s"$message in ${parts.size}")
+        )
+      )
+    }.void
+  }
+
+  test("on the wire, a whole transaction the decoder reads gets its refusal, as before") {
+    // a Conway transaction of no inputs, which the rules refuse, and Byron's payload, which the
+    // pool does not read: the era mismatch
+    val empty = hex("84a3008001800200a0f5f6")
+    Vector(
+      "82008206d818" + Bytes(bstr(empty)).hex,
+      "8200820082" + "00" + "00"
+    ).traverse(message =>
+      outcome(Vector(hex(message))).map {
+        case Right(LocalTxSubmission.Message.RejectTx(_)) => ()
+        case other => fail(s"$message: expected a refusal, got $other")
       }
+    ).void
   }
 
   test("the judge reads the transaction's first tokens only: the codec agrees at every cut") {

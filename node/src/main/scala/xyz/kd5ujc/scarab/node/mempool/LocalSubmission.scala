@@ -17,12 +17,13 @@ import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
   * transaction in CBOR-in-CBOR (tag 24 around its bytes), as on node-to-node ([[unwrap]]).
   */
 object LocalSubmission:
-  /** What has no rejection bytes to send: an implementation limit, a crypto provider that failed on
-    * a witness, a decoder or the rules that threw on the transaction, or a refusal this build has
-    * no encoding for.
+  /** What has no rejection bytes to send: a transaction its decoder refuses (the reference's codec
+    * ends the connection), an implementation limit, a crypto provider that failed on a witness, a
+    * decoder or the rules that threw on the transaction, or a refusal this build has no encoding
+    * for.
     */
-  type NoReply = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | Rejection.InputDefect |
-    Rejection.RulesDefect | RefusalPresentationError | NoEncoding
+  type NoReply = Rejection.Malformed | LedgerFailure.Unavailable | LedgerFailure.Unverifiable |
+    Rejection.InputDefect | Rejection.RulesDefect | RefusalPresentationError | NoEncoding
 
   /** A refusal by the rules of `era` that this build cannot write: one of `failures` has no
     * encoding in that era's ledger ([[PreConwayFailureCbor]]). There is no free-text failure before
@@ -34,6 +35,7 @@ object LocalSubmission:
 
   extension (reason: NoReply)
     def message: String = reason match
+      case m: Rejection.Malformed        => m.message
       case f: LedgerFailure.Unavailable  => f.message
       case f: LedgerFailure.Unverifiable => f.message
       case d: Rejection.InputDefect      => d.message
@@ -43,17 +45,20 @@ object LocalSubmission:
 
   val ConwayEra = 6
 
-  /** The transaction inside a wrapped one, with the era it names, read as the reference's decoder
-    * of a `GenTx` reads it whole (`dispatchDecoder`,
+  /** The transaction inside a wrapped one, with the era it names, read as far as the reference's
+    * decoder of a `GenTx` decides before the transaction of an era (`dispatchDecoder`,
     * `HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:258-276, 362-367`,
-    * ouroboros-consensus 82ecba32): `decodeNS` 's `enforceSize "decodeNS" 2` and `decodeWord8`
-    * (`Common.hs:420-425`), each at any width of its head; and in a Shelley-based era, Dijkstra
-    * included, `unwrapCBORinCBOR` (`Shelley/Ledger/Mempool.hs:261-266`), tag 24 around a definite
-    * byte string (`decodeTag`, `decodeBytes`,
-    * `ouroboros-network/api/lib/Ouroboros/Network/Block.hs:501-504`, ouroboros-network c45735a5). A
-    * Byron transaction and one of an index past the last era are not read: they get the era
-    * mismatch, unless tag 24 follows the index around something other than a byte string, which is
-    * refused as malformed ([[foreign]]).
+    * ouroboros-consensus 82ecba32): `decodeNS` 's `enforceSize "decodeNS" 2`, `decodeWord8` and an
+    * index of one of the eight eras (`Common.hs:420-425`), each at any width of its head; in a
+    * Shelley-based era, Dijkstra included, `unwrapCBORinCBOR`
+    * (`Shelley/Ledger/Mempool.hs:261-266`), tag 24 around a definite byte string (`decodeTag`,
+    * `decodeBytes`, `ouroboros-network/api/lib/Ouroboros/Network/Block.hs:501-504`,
+    * ouroboros-network c45735a5); in Byron, `MempoolPayload` 's `enforceSize "MempoolPayload" 2`
+    * and a constructor from 0 to 3
+    * (`eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs:85-93`, cardano-ledger f649f975).
+    * These are the steps [[GenTx.prefix]] takes. A transaction of an era from Shelley to Conway is
+    * then read in its era by the mempool ([[MempoolState.read]]); one of Byron or Dijkstra is not
+    * read further, and gets the era mismatch.
     */
   def unwrap(item: Bytes): Either[Rejection, Submission] =
     def malformed(problem: TransactionDecodeProblem): Rejection = Rejection.Malformed(problem)
@@ -61,13 +66,7 @@ object LocalSubmission:
       root <- Cbor
         .decode(item, Cbor.Limits.Unbounded)
         .leftMap(e => malformed(TransactionDecodeProblem.Syntax(e)))
-      pair <- root
-        .enforceSize(2)
-        .flatMap {
-          case Vector(era, payload) => Right((era, payload))
-          case items                => Left(Node.NotSized.Length(items.size))
-        }
-        .leftMap(e => malformed(TransactionDecodeProblem.EraEnvelope(e)))
+      pair <- pairOf(root).leftMap(e => malformed(TransactionDecodeProblem.EraEnvelope(e)))
       (era, payload) = pair
       index <- era.value match
         case Value.UInt(e) if e <= 0xff => Right(e.toInt)
@@ -79,8 +78,16 @@ object LocalSubmission:
               Era.Dijkstra
             ) =>
           cborInCbor(payload).leftMap(malformed)
-        case Some(Era.Byron) | None => foreign(payload).leftMap(malformed)
+        case Some(Era.Byron) => byron(payload).leftMap(malformed)
+        case None            => Left(malformed(TransactionDecodeProblem.UnknownEra(index)))
     yield Submission(index, raw)
+
+  /** The two items of a definite list of two (`enforceSize _ 2`). */
+  private def pairOf(n: Node): Either[Node.NotSized, (Node, Node)] =
+    n.enforceSize(2).flatMap {
+      case Vector(first, second) => Right((first, second))
+      case items                 => Left(Node.NotSized.Length(items.size))
+    }
 
   /** `unwrapCBORinCBOR`'s tag 24 around a definite byte string: the bytes. */
   private def cborInCbor(payload: Node): Either[TransactionDecodeProblem, Bytes] =
@@ -92,25 +99,27 @@ object LocalSubmission:
           case other               => Left(TransactionDecodeProblem.TaggedPayload(other))
       case other => Left(TransactionDecodeProblem.NotCborInCbor(other))
 
-  /** The payload of an era whose transactions the pool does not read, which gets the era mismatch:
-    * the bytes under tag 24, or the payload itself.
-    */
-  private def foreign(payload: Node): Either[TransactionDecodeProblem, Bytes] =
-    payload.value match
-      case Value.Tag(t, inner) if t == 24 =>
-        inner.value match
-          case Value.ByteString(b) => Right(b)
-          case other               => Left(TransactionDecodeProblem.TaggedPayload(other))
-      case _ => Right(payload.original)
+  /** Byron's `MempoolPayload` as far as its constructor: the payload itself. */
+  private def byron(payload: Node): Either[TransactionDecodeProblem, Bytes] =
+    pairOf(payload)
+      .leftMap(TransactionDecodeProblem.ByronEnvelope(_))
+      .flatMap((constructor, _) =>
+        constructor.value match
+          case Value.UInt(c) if c <= 3 => Right(payload.original)
+          case other                   => Left(TransactionDecodeProblem.ByronConstructor(other))
+      )
 
   /** The rejection as sent to the client, the pool's ledger being of `era` (none while it has no
     * ledger): the ledger's `ApplyTxErr` of that era for a refused transaction (the predicate
     * failures `cardano-cli` renders), the hard-fork combinator's era mismatch for a transaction of
     * another era that does not reach the ledger's. What the ledger does not report as a predicate
-    * failure (a malformed transaction, a full mempool) is sent as Conway's free-text
-    * `ConwayMempoolFailure`. An implementation limit, a crypto provider that failed on a witness,
-    * and a refusal of an earlier era with no encoding here remain typed values and have no
-    * rejection bytes: there is no verdict to send.
+    * failure (a full mempool) is sent as Conway's free-text `ConwayMempoolFailure`. A transaction
+    * its decoder refuses gets no reply: the reference's codec decodes the transaction
+    * (`decodeWithByteSpan decodeTx`, ouroboros-network c45735a5
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxSubmission/Codec.hs:148-154`)
+    * and ends the connection where it fails. An implementation limit, a crypto provider that failed
+    * on a witness, and a refusal of an earlier era with no encoding here remain typed values and
+    * have no rejection bytes either: there is no verdict to send.
     */
   def reasonItem(
       rejection: Rejection,
@@ -134,7 +143,7 @@ object LocalSubmission:
       case Rejection.Ledger(error) => text(MempoolProblem.Ledger(error))
       case Rejection.AlreadyHeld(_) =>
         text(MempoolProblem.AllInputsSpent)
-      case Rejection.Malformed(cause) => text(MempoolProblem.Malformed(cause))
+      case malformed: Rejection.Malformed => Left(malformed)
       case Rejection.Limits(_, failures) =>
         inEra(era, failures.toList.toVector)
       case full: Rejection.Full => text(full.problem)
@@ -187,6 +196,9 @@ object LocalSubmission:
           LocalTxSubmissionServer.Response.ServiceUnavailable(
             LocalTxSubmissionServer.Unavailable.Presentation(error)
           )
+        // the transaction's decoder refuses it: no reply, the client's connection ends as the
+        // reference's codec ends it, and as a prefix of it ends it ([[GenTx.prefix]])
+        case Rejection.Malformed(cause) => LocalTxSubmissionServer.Response.Undecodable(cause)
         // the decoder threw on the client's bytes: no reply, the client's connection is closed
         case Rejection.InputDefect(cause) => LocalTxSubmissionServer.Response.InputDefect(cause)
         // the rules threw on the transaction: no reply, the client's connection is closed and the

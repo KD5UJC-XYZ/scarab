@@ -137,15 +137,26 @@ class LocalTxSubmissionSuite extends FunSuite:
     )
   }
 
-  test("a whole message is read as before, whatever the reader says of a prefix") {
-    val whole = hex("82008208d81841aa")
+  test("a whole SubmitTx the reader refuses ends as its prefix does; another is read as before") {
+    // the reader is given the whole transaction too, and the message ends with the refusal its
+    // prefix gets, whether it is read at once or in parts
+    val refused = hex("82008208d81841aa")
+    val read = hex("82008206d81841aa")
+    val failed = DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause))
+    assertEquals(decodePrefix(State.Idle, Role.Client, refused, refusing), failed)
+    assertEquals(incremental(State.Idle, Role.Client, refusing).decodePrefix(refused), failed)
     assertEquals(
-      decodePrefix(State.Idle, Role.Client, whole, refusing),
-      DecodeResult.Decoded(Message.SubmitTx(hex("8208d81841aa")), whole.size)
+      decodePrefix(State.Idle, Role.Client, read, refusing),
+      DecodeResult.Decoded(Message.SubmitTx(hex("8206d81841aa")), read.size)
     )
     assertEquals(
-      incremental(State.Idle, Role.Client, refusing).decodePrefix(whole),
-      DecodeResult.Decoded(Message.SubmitTx(hex("8208d81841aa")), whole.size)
+      incremental(State.Idle, Role.Client, refusing).decodePrefix(read),
+      DecodeResult.Decoded(Message.SubmitTx(hex("8206d81841aa")), read.size)
+    )
+    // without a reader that judges transactions, both are read
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, refused),
+      DecodeResult.Decoded(Message.SubmitTx(hex("8208d81841aa")), refused.size)
     )
   }
 
