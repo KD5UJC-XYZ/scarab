@@ -50,7 +50,8 @@ readers it imports): the image's `Main.hs`, package file and cabal project are t
 `source-repository-package` checkout is at the commit the cabal project pins (cardano-ledger `9df9f98c`
 among them) and unchanged; cabal, offline, finds the executable up to date; the entry point is that
 executable; and the ledger sources the result depends on have their pinned digests. The provenance
-binds the executable's and the build files' digests, and `--replay` and `--record` refuse an image whose
-build differs from them; `--record --accept-build` accepts a build reviewed anew. The [fixture](../../../fixtures/reference/dijkstra-state-translation/README.md)
+binds the image's immutable ID and the executable's and the build files' digests, and `--replay` and
+`--record` refuse an image with another ID (its unmeasured layers may differ) or whose build differs from
+them; `--record --accept-build` accepts an image reviewed anew. The [fixture](../../../fixtures/reference/dijkstra-state-translation/README.md)
 records the result, the pins, what the crossing does besides, and the scope. No public-network
 connection, node or key is needed.

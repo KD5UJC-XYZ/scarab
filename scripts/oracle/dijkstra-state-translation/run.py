@@ -15,7 +15,8 @@ answers only after it is measured, as the chain oracle of the Leios testnet harn
 each `source-repository-package` checkout is at the commit the cabal project pins and unchanged, cabal finds the
 executable up to date offline, the entry point is that executable, and the ledger sources the result depends on
 have their pinned digests. Replay and record also refuse an image whose executable or build files are not the
-ones the provenance accepted, unless the record is given `--accept-build` for a build reviewed anew.
+ones the provenance accepted, or whose immutable ID is not the recorded one, unless the record is given
+`--accept-build` for an image reviewed anew.
 
   run.py                                  offline: the inputs, the program and the fixture match the provenance
   run.py --replay [--name N]              run the measured image (no network, read-only) and compare
@@ -310,18 +311,30 @@ def image_binding(image_id, name):
             "pinnedSources": {commit: "unchanged" for commit in sorted(sources)}}
 
 
-def accepted(binding, accept_build):
-    """The binding, if the provenance accepted the same executable and build files, or if the build is accepted
-    anew."""
+def refusal(image_id, binding, provenance):
+    """Why the provenance does not accept this image, or None: it accepts only the image it recorded, by its
+    immutable ID, with the same executable, build files and checkouts. The ID binds the layers the measurement
+    does not read (the base image, the runtime libraries)."""
+    oracle = provenance.get("oracle") if isinstance(provenance, dict) else None
+    if not isinstance(oracle, dict) or "imageFilesSha256" not in oracle:
+        return "the fixture accepts no oracle build yet: record with --accept-build"
+    if image_id != provenance.get("imageId"):
+        return (f"the image {image_id} is not the one the provenance accepted ({provenance.get('imageId')}): "
+                "record with --accept-build only for an image reviewed anew")
+    if (binding["imageFilesSha256"] != oracle["imageFilesSha256"]
+            or binding["pinnedSources"] != oracle.get("pinnedSources")):
+        return ("the image's executable or build files differ from the accepted oracle build "
+                "(record with --accept-build only for a build reviewed anew)")
+    return None
+
+
+def accepted(image_id, binding, accept_build):
+    """The binding, if the provenance accepted this image ([[refusal]]), or if it is accepted anew."""
     if accept_build:
         return binding
-    recorded_oracle = json.loads(PROVENANCE.read_text()).get("oracle") if PROVENANCE.is_file() else None
-    if not isinstance(recorded_oracle, dict) or "imageFilesSha256" not in recorded_oracle:
-        raise SystemExit("the fixture accepts no oracle build yet: record with --accept-build")
-    if (binding["imageFilesSha256"] != recorded_oracle["imageFilesSha256"]
-            or binding["pinnedSources"] != recorded_oracle.get("pinnedSources")):
-        raise SystemExit("the image's executable or build files differ from the accepted oracle build "
-                         "(record with --accept-build only for a build reviewed anew)")
+    why = refusal(image_id, binding, json.loads(PROVENANCE.read_text()) if PROVENANCE.is_file() else None)
+    if why is not None:
+        raise SystemExit(why)
     return binding
 
 
@@ -365,7 +378,7 @@ def run_image(image_id, name, nes):
 def measured_image(name, accept_build):
     """The image resolved once to its ID, measured, its build accepted, and its ledger sources the pinned ones."""
     image_id = CHAIN.resolve(IMAGE)
-    binding = accepted(image_binding(image_id, name), accept_build)
+    binding = accepted(image_id, image_binding(image_id, name), accept_build)
     return image_id, binding, source_hashes(image_id, name)
 
 

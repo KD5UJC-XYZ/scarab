@@ -110,6 +110,16 @@ class RetainedFixtureTest(unittest.TestCase):
         # Offline, a different executable is a build the record accepted; replay refuses it against the image.
         self.assertEqual(problems(changed(both_binary_digests)), [])
 
+    def test_replay_accepts_only_the_recorded_image(self):
+        binding = {"imageFilesSha256": PROVENANCE["oracle"]["imageFilesSha256"],
+                   "pinnedSources": PROVENANCE["oracle"]["pinnedSources"]}
+        self.assertIsNone(run.refusal(PROVENANCE["imageId"], binding, PROVENANCE))
+        # another valid immutable ID with the same measured files: its unmeasured layers may differ
+        self.assertIsNotNone(run.refusal("sha256:" + ZERO, binding, PROVENANCE))
+        other_files = dict(binding, imageFilesSha256=dict(binding["imageFilesSha256"], **{BINARY: ZERO}))
+        self.assertIsNotNone(run.refusal(PROVENANCE["imageId"], other_files, PROVENANCE))
+        self.assertIsNotNone(run.refusal(PROVENANCE["imageId"], binding, changed(remover("oracle"))))
+
     def test_the_rows_are_bound(self):
         self.assertNotEqual(problems(PROVENANCE, rows=ROWS + ROWS), [])
         self.assertNotEqual(problems(PROVENANCE, rows=[dict(ROWS[0], name="other")]), [])
