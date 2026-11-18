@@ -49,8 +49,8 @@
     {
       "id": "k2-upstream-conformance",
       "component": "Observable upstream conformance (K2, #49)",
-      "status": "implemented",
-      "summary": "Bounded v0.2 upstream conformance: production adapters for governance, ledger batches, rewards and Mux closure",
+      "status": "partial",
+      "summary": "Bounded upstream conformance adapters for governance, ledger batches, rewards and Mux closure; the upstream cases they do not run whole remain under #49",
       "evidence": {
         "docs": [
           "docs/design/upstream-conformance.md#observable-functional-equivalence"
