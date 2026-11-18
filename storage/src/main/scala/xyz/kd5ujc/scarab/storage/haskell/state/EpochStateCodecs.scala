@@ -184,11 +184,18 @@ trait EpochStateCodecs extends RewardCodecs:
         override def check(a: NewEpochState[E]): Option[ConstraintViolation] =
           ofThisLayout("NewEpochState", a.layout).map(_.at("layout")).orElse(record.check(view(a)))
 
-  /** The codec of the state of an era, at the version the reference writes it at. Dijkstra's state
-    * is refused both ways ([[Versions.notYet]]): its parameters and its EPOCH's committee are not
-    * Conway's in this layout.
+  /** The codec of the state of an era, at the version the reference writes it at
+    * ([[Versions.eraLow]]). Dijkstra's state is the Leios build's, read and written at version 12
+    * (cardano-ledger 9df9f98c `Shelley/LedgerState/Types.hs:393-422`); the 11.1 line's is refused
+    * both ways ([[Versions.notYet]]), as its parameters are ([[Params.codecIn]]).
     */
   given newEpochState[E <: EraTag](using era: ShelleyBasedEra[E]): Codec[NewEpochState[E]] =
     given ProtVer = Versions.eraLow(era)
-    if era == ShelleyBasedEra.SDijkstra then Versions.notYet("NewEpochState")
-    else newEpochStateAt[E]
+    era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        newEpochStateAt[E]
+      case ShelleyBasedEra.SDijkstra =>
+        stateLayout match
+          case StateLayout.Node11_1 => Versions.notYet("NewEpochState")
+          case StateLayout.Leios    => newEpochStateAt[E]

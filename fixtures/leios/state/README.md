@@ -65,11 +65,11 @@ Checked by `LeiosLayoutSuite` (storage):
   committee size and key age zero and the set's committee empty, as they are before Dijkstra. It is
   read and written again byte for byte, and the 11.1 layout refuses it at the extended state's
   length.
-- Slot 203's ledger telescope and header state are in Dijkstra, whose state this build does not read
-  yet (`DijkstraNotYet.LedgerState`, #54): it is refused there. Its Peras state is the same
-  constant, and the bounds of its seven past eras, in both telescopes, are read and written byte for
-  byte. Its mark snapshot is `[snapshot, 1, 900, 40178]` and its set `[snapshot, []]`; reading them
-  is the Dijkstra state's work.
+- Slot 203's ledger telescope and header state are in Dijkstra: the file is refused at its
+  telescope (`DijkstraNotYet.LedgerState`, #54). Its Peras state is the same constant, and the
+  bounds of its seven past eras, in both telescopes, are read and written byte for byte. Its
+  `NewEpochState` alone is read and written byte for byte at version 12 (`DijkstraEpochStateSuite`),
+  its mark snapshot `[snapshot, 1, 900, 40178]` and its set `[snapshot, []]` among it.
 
 `LeiosLayoutImportSuite` (node) imports `conway-195` under `--reference-build leios-b004fe0c`, exports
 it with `state`, `tables` and `meta` byte for byte, and checks that `11.1` refuses the import. The
