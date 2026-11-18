@@ -179,3 +179,27 @@ class LocalTxSubmissionSuite extends FunSuite:
       }
     }
   }
+
+  test("the reader is asked only of a client's SubmitTx in Idle, whatever the message's tag") {
+    val always: TxReader = _ => TxPrefix.Refused(cause)
+    // SubmitTx's key from the server in Busy, and RejectTx's from a client in Idle: each waits until
+    // it has all arrived and is then refused for its agency, as without a reader
+    List(
+      (State.Busy, Role.Server, "82008208", "00"),
+      (State.Busy, Role.Server, "820083", "000000"),
+      (State.Idle, Role.Client, "82028208", "00")
+    ).foreach { (state, sender, prefix, rest) =>
+      assertEquals(decodePrefix(state, sender, hex(prefix), always), DecodeResult.NeedMore, prefix)
+      assertEquals(
+        incremental(state, sender, always).decodePrefix(hex(prefix)),
+        DecodeResult.NeedMore,
+        s"incremental $prefix"
+      )
+      val whole = hex(prefix + rest)
+      assertEquals(decodePrefix(state, sender, whole, always), decodePrefix(state, sender, whole))
+      assert(
+        decodePrefix(state, sender, whole).isInstanceOf[DecodeResult.Failed[?]],
+        s"whole $prefix$rest"
+      )
+    }
+  }

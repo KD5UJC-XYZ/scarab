@@ -124,9 +124,9 @@ object LocalTxSubmission:
       DecodeResult.Decoded(message, r.position)
     }
 
-  /** An incomplete message: a `SubmitTx` whose transaction `txs` refuses ends here, anything else
-    * waits. Only the heads of the first tokens are read, so a transaction that arrives in many
-    * parts is not read again from its start each time (#749).
+  /** An incomplete message: a client's `SubmitTx` in `Idle` whose transaction `txs` refuses ends
+    * here, anything else waits. Only the heads of the first tokens are read, so a transaction that
+    * arrives in many parts is not read again from its start each time (#749).
     */
   private def waiting(
       state: State,
@@ -136,12 +136,17 @@ object LocalTxSubmission:
   ): DecodeResult[Message] =
     ProtocolWire.prefix {
       val r = new ProtocolWire.Reader(bytes, wire)
-      readTag(state, sender, r) match
-        case Tag.Submit =>
+      (state, sender, readTag(state, sender, r)) match
+        case (State.Idle, Role.Client, Tag.Submit) =>
           txs.prefix(bytes.drop(r.position)) match
             case TxPrefix.Short          => DecodeResult.NeedMore
             case TxPrefix.Refused(cause) => bad(ProtocolError.UndecodableTransaction(cause))
-        case Tag.Accept | Tag.Reject | Tag.Done => DecodeResult.NeedMore
+        case (
+              State.Idle | State.Busy | State.Done,
+              Role.Client | Role.Server,
+              Tag.Submit | Tag.Accept | Tag.Reject | Tag.Done
+            ) =>
+          DecodeResult.NeedMore
     }
 
   /** The same codec with framing progress retained across incomplete prefixes; an incomplete
