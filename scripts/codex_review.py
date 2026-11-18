@@ -191,7 +191,8 @@ def session_settings(path):
                           "network": "on" if sandbox.get("network_access") is True else "off"})
         elif payload.get("type") == "model_reroute":
             raise ReviewError(f"Codex rerouted the run to another model: {json.dumps(payload)[:300]}")
-    if not meta or not meta.get("cli_version") or not turns:
+    cli = (meta or {}).get("cli_version")
+    if not isinstance(cli, str) or not re.fullmatch(r"[0-9A-Za-z.+-]{1,40}", cli) or not turns:
         raise ReviewError(f"the session file {Path(path).name} has no CLI version or no turn context")
     return turns, meta.get("cli_version")
 

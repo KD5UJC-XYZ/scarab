@@ -46,7 +46,7 @@ FAKE = textwrap.dedent('''\
     day = pathlib.Path(os.environ["CODEX_HOME"], "sessions", "2026", "11", "18")
     day.mkdir(parents=True, exist_ok=True)
     with open(day / f"rollout-2026-11-18T00-00-00-{thread}.jsonl", "w") as f:
-        meta = {} if os.environ.get("FAKE_NO_META") else {"cli_version": "0.169.0"}
+        meta = {"cli_version": json.loads(os.environ.get("FAKE_CLI", '"0.169.0"'))}
         f.write(json.dumps({"type": "session_meta", "payload": meta}) + "\\n")
         f.write(json.dumps({"type": "turn_context", "payload": {
             "model": model, "effort": os.environ.get("FAKE_EFFORT", effort),
@@ -184,7 +184,7 @@ class RunTests(unittest.TestCase):
         for env in [{"FAKE_MODEL": "gpt-daybreak-blue-latest"}, {"FAKE_EFFORT": "low"}, {"FAKE_NO_NETWORK": "1"},
                     {"FAKE_FAIL": "1"}, {"FAKE_NO_COMPLETION": "1"}, {"FAKE_REROUTE": "1"},
                     {"FAKE_SECOND_TURN": "other-model"}, {"FAKE_TRUNCATED": "1"}, {"FAKE_EDIT": "1"},
-                    {"FAKE_COMMIT": "1"}, {"FAKE_APPROVAL": "on-request"}, {"FAKE_NO_META": "1"}, {"FAKE_MESSAGE": ""},
+                    {"FAKE_COMMIT": "1"}, {"FAKE_APPROVAL": "on-request"}, {"FAKE_CLI": "null"}, {"FAKE_CLI": "true"}, {"FAKE_CLI": '"  "'}, {"FAKE_MESSAGE": ""},
                     {"FAKE_MESSAGE": "see " + HOME + "x"}]:
             with self.subTest(env=env):
                 if self.home.exists():

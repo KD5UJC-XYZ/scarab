@@ -170,14 +170,27 @@ def without_code_spans(text):
     return "".join(out)
 
 
+def label_key(label):
+    """A link label as GitHub matches it: whitespace collapsed, case folded."""
+    return " ".join(label.split()).casefold()
+
+
+def definitions(text):
+    """The link reference definitions of `text`, by label; the first definition of a label wins, as on GitHub."""
+    defined = {}
+    for label, target in REFERENCE_DEFINITION.findall(text):
+        defined.setdefault(label_key(label), target)
+    return defined
+
+
 def has_link(text):
     """Whether `text` renders a link: an inline link, an autolink or a bare URL outside link reference definitions,
     or a reference link whose label one of them defines with a URL."""
-    defined = {label.strip().lower(): target for label, target in REFERENCE_DEFINITION.findall(text)}
+    defined = definitions(text)
     rest = REFERENCE_DEFINITION.sub("", text)
     if LINK.search(rest):
         return True
-    return any(LINK.match(defined.get((ref or label).strip().lower(), "")) for label, ref in REFERENCE.findall(rest))
+    return any(LINK.match(defined.get(label_key(ref or label), "")) for label, ref in REFERENCE.findall(rest))
 
 
 def check_review(pr, level=None, files=(), evidence=None):
@@ -208,12 +221,10 @@ def destinations(text):
     """The URLs the text links as GitHub renders it: inline link destinations, autolinks, bare URLs outside link
     labels (without trailing punctuation, which GitHub leaves out of the link), and the targets of reference links
     it uses; an unused reference definition links nothing."""
-    defined = {}
-    for label, target in REFERENCE_DEFINITION.findall(text):
-        defined.setdefault(label.strip().lower(), target)
+    defined = definitions(text)
     rest = REFERENCE_DEFINITION.sub("", text)
     found = [angled or plain for angled, plain in INLINE_LINK.findall(rest)]
-    used = [key for key in ((ref or label).strip().lower() for label, ref in REFERENCE.findall(rest)) if key in defined]
+    used = [key for key in (label_key(ref or label) for label, ref in REFERENCE.findall(rest)) if key in defined]
     rest = INLINE_LINK.sub(" ", rest)
     found += AUTOLINK.findall(rest)
     rest = REFERENCE.sub(" ", AUTOLINK.sub(" ", rest))
@@ -221,10 +232,11 @@ def destinations(text):
     return found + [defined[key] for key in used]
 
 
-def linked_reviews(pr, text, level, files, comments, reviews, merge_base=None):
+def linked_reviews(pr, text, level, files, comments, reviews, merge_base):
     """The reviews the section links on this pull request: a comment whose first line is the stamp of
     `codex_review.py` with the pinned model at or above the floor, or a GitHub review submitted by a person other than
-    the author. At least one is required; a Codex review of the whole pull request (`scope=full`) or a person's
+    the author. At least one is required; a Codex review of the whole pull request (`scope=full`, starting at the
+    `merge_base`, or at an earlier one when a `Since the review` line excuses the head after a rebase) or a person's
     review starts the coverage, and a review of fixes (`scope=fixes`) extends it only from a head already covered
     (its `from`); the coverage must reach the head unless the section says, in a line
     `Since the review: <head> <reason>` naming the current head, why the commits after the review need none (a rebase
@@ -248,6 +260,8 @@ def linked_reviews(pr, text, level, files, comments, reviews, merge_base=None):
             f'the "Independent review" section links no comment or review on this pull request (#{number}); link the '
             "posted review (CONTRIBUTING.md, \"Independent review\")")
     author = (pr.get("user") or {}).get("id")
+    head = str((pr.get("head") or {}).get("sha"))
+    excused = any(head.startswith(sha.lower()) for sha in SINCE_REVIEW.findall(text))
     accepted, reviewed, fixes = [], set(), []
     for comment in linked_comments:
         try:
@@ -259,7 +273,7 @@ def linked_reviews(pr, text, level, files, comments, reviews, merge_base=None):
             require(problem is None, f"the linked comment {comment.get('id')}: {problem}; run the review again "
                     "with scripts/codex_review.py (CONTRIBUTING.md, \"Independent review\")")
             accepted.append(comment)
-            if fields["scope"] == "full" and merge_base in (None, fields["from"]):
+            if fields["scope"] == "full" and (fields["from"] == merge_base or excused):
                 reviewed.add(fields["head"])
             else:
                 fixes.append((fields["from"], fields["head"]))
@@ -280,8 +294,6 @@ def linked_reviews(pr, text, level, files, comments, reviews, merge_base=None):
         if not extended:
             break
         reviewed |= extended
-    head = str((pr.get("head") or {}).get("sha"))
-    excused = any(head.startswith(sha.lower()) for sha in SINCE_REVIEW.findall(text))
     require(head in reviewed or excused,
             f"no linked review covers the head {head[:12]}: review the commits since the last review (a second "
             f"review scoped to them), or say in a line \"Since the review: {head[:12]} <reason>\" why they need none "

@@ -348,6 +348,14 @@ class ReviewEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(policy.PolicyError, "from its merge base"):
             self.check(1, [comment(11, stamped("high"))], merge_base="e" * 40)
 
+    def test_a_rebase_with_an_unchanged_diff_keeps_its_review_when_the_section_says_so(self):
+        rebased = (f"## Independent review\n\nClean: {URL}#issuecomment-11\n\n"
+                   "- Since the review: aaaaaaa rebased onto main, diff unchanged\n")
+        self.assertEqual(self.check(1, [comment(11, stamped("high", head="b" * 40))], body=rebased,
+                                    merge_base="e" * 40), 1)
+        with self.assertRaisesRegex(policy.PolicyError, "from its merge base"):
+            self.check(1, [comment(11, stamped("high", head="b" * 40))], merge_base="e" * 40)
+
     def test_a_stamp_without_its_start_and_scope_is_refused(self):
         legacy = policy.codex_review.stamp({"model": policy.codex_review.MODEL, "effort": "high", "level": 1,
                                             "head": "a" * 40}) + "\nNo findings."
@@ -362,7 +370,9 @@ class ReviewEvidenceTests(unittest.TestCase):
         in_reference = f"## Independent review\n\nClean: [Round two: {URL}#issuecomment-11][r]\n\n[r]: https://example.org/\n"
         redefined = (f"## Independent review\n\nClean: [review][r]\n\n[r]: https://example.org/stale\n"
                      f"[r]: {URL}#issuecomment-11\n")
-        for body in [unused, suffixed, in_label, titled, in_reference, redefined]:
+        spaced = (f"## Independent review\n\nClean: [review][round two]\n\n[round   two]: https://example.org/stale\n"
+                  f"[Round Two]: {URL}#issuecomment-11\n")
+        for body in [unused, suffixed, in_label, titled, in_reference, redefined, spaced]:
             with self.subTest(body=body), self.assertRaisesRegex(policy.PolicyError, "links no comment"):
                 self.check(1, [comment(11, stamped("high"))], body=body)
         for body in [f"## Independent review\n\nClean: [review]({URL}#issuecomment-11).\n",
