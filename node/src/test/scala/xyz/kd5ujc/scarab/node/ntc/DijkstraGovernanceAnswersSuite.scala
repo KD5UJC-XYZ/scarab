@@ -15,7 +15,15 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.ledger.{PlutusStats, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
-import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.state.{
+  ConwayGovState,
+  Dijkstra,
+  FuturePParams,
+  NewEpochState,
+  ShelleyBasedEra,
+  SlotNo,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead, Read}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -36,6 +44,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs, 
   * `Encoding/Encoder.hs:318-321`, cardano-ledger 9df9f98c). Each is inside `[result]`, the
   * hard-fork combinator's answer of the current era (`encodeEitherMismatch`,
   * `HardFork/Combinator/Serialisation/Common.hs:546-550`).
+  *
+  * Neither state holds future parameters (both answer `[]`), so an answer of held ones is checked
+  * on each state with its current parameters set as its future ones: `[params]`, the reference's
+  * bytes of the current parameters inside the `Maybe`.
   *
   * Under the Leios build each is answered at every node-to-client version alike (that build has no
   * legacy parameters encoding); under the 11.1 build none is, as its Dijkstra state is not read or
@@ -162,6 +174,26 @@ class DijkstraGovernanceAnswersSuite extends FunSuite:
         Right(true),
         c.name
       )
+    }
+  }
+
+  test("future parameters a state holds are answered as `Just` Dijkstra's parameters") {
+    states.foreach { c =>
+      val gov: ConwayGovState = c.nes.es.ls.utxo.gov
+      Vector(
+        FuturePParams.DefinitePParamsUpdate(gov.curPParams),
+        FuturePParams.PotentialPParamsUpdate(Some(gov.curPParams))
+      ).foreach { future =>
+        val ls = c.nes.es.ls
+        val utxo = ls.utxo.copy[Dijkstra](gov = gov.copy(futurePParams = future))
+        val held =
+          c.nes.copy[Dijkstra](es = c.nes.es.copy[Dijkstra](ls = ls.copy[Dijkstra](utxo = utxo)))
+        assertEquals(
+          asked(leios, c.copy(nes = held), LedgerQuery.GetFuturePParams, NtcVersion.V23),
+          Right(result(CborOut.build(_.array(1).raw(c.current)))),
+          s"${c.name} $future"
+        )
+      }
     }
   }
 
