@@ -104,10 +104,12 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   stops the node; failed callbacks wait cancelably for shutdown, without blaming the requesting peer.
   Local state queries instead preserve #158's resource-scoped pinned backing view: acquisition
   shares the follower's publication mutex, and backend failures remain values until the acquired
-  view and sibling protocols have been released. `Main.landLocalBackend` then reports storage
-  failures as `Fatal.Storage`. An incoherent point/backing generation retains
-  `NetworkError.StateAcquireFailure` through cleanup; the listener wraps it in
-  `ChainError.StateAcquire` and reports `Fatal.Internal` (exit 6), without client blame or retry.
+  view and sibling protocols have been released. `Main.landLocalBackend` then ~~reports storage
+  failures as `Fatal.Storage`~~ ends that client with the storage failure ([amendment](#amendment-2026-11-17-an-incoherent-local-state-acquisition-ends-that-client)).
+  An incoherent point/backing generation retains
+  `NetworkError.StateAcquireFailure` through cleanup; ~~the listener wraps it in
+  `ChainError.StateAcquire` and reports `Fatal.Internal` (exit 6),~~ the listener logs it as that
+  client's ending and the node goes on ([amendment](#amendment-2026-11-17-an-incoherent-local-state-acquisition-ends-that-client)), without client blame or retry.
   G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
   capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
   G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; ~~unexpected
@@ -331,7 +333,7 @@ Still stopping the node, decided separately (issue 567):
 - a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; ~~issue 579 tracks its test~~ [tested](#amendment-2026-10-29-the-outbound-connection-monitors-failure-is-tested));
 - ~~the mempool's revalidation and forging;~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node))
 - a defect in releasing a connection's resources (`ConnectionResources`);
-- an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
+- an internal failure of the node's state (`InternalFailure`~~, `StateAcquireFailure`~~; [it ends its local client alone](#amendment-2026-11-17-an-incoherent-local-state-acquisition-ends-that-client)).
 
 ## Amendment (2026-10-28): an invariant of the Genesis code on one connection ends that connection
 
@@ -591,3 +593,33 @@ both cases, and checks the same path in each:
 - over a connection we dialled;
 - over the peer's own accepted duplex connection, which the outbound governor reuses with no dial.
 
+## Amendment (2026-11-17): an incoherent local state acquisition ends that client
+
+Owner's decision, 2026-11-17 ([decisions register](../decisions.md#networking-and-local-clients)), which reverses
+decision H6 of issue 567 (option A): a local state-query acquisition whose ledger view and pinned backing generation
+do not describe one state (`NetworkError.StateAcquireFailure`) ends that client's connection, and the node goes on.
+The reference does not stop there either (a Mirror): a node-to-client connection's exception is judged by
+`rethrowPolicy <> daLocalRethrowPolicy` (ouroboros-network `c45735a5`,
+`ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 355), whose `rethrowPolicy` (286-322) stops the node only on
+an `IOManagerError`, the error of Win32-network's I/O manager (`Ouroboros/Network/IOManager.hs` is a shim of it),
+and consensus sets `localRethrowPolicy = mempty` (ouroboros-consensus `82ecba32`,
+`ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node.hs` 812-813).
+
+H6 rested on wiring that had already changed. Until #541 (merged 2026-10-28) the node-to-client server reported a
+failed client through the node-to-node reporter, `ListenerFailures.report`, which makes this failure
+`Fatal.Internal`; since #541 it reports through `ListenerFailures.reportLocal`, which only logs the ending. The node
+has therefore not stopped on an incoherent local acquisition since #541, and the decision keeps that behaviour.
+
+- The acquisition is still never answered: the client gets no `MsgAcquired`; its pinned view and its other
+  mini-protocols are released, an `inbound ... closed` line names the cause, and its connection closes. The client
+  is not blamed and the acquisition is not retried.
+- A storage failure that the local state-query backend returns ends that client too, as `InboundEnd.Storage`
+  (`Main.landLocalBackend`), not as `Fatal.Storage` as the Consequences said. One under a local ChainSync cursor becomes a
+  `Fatal` value (`StorageBoundary`; `Fatal.Storage` for most errors), but it goes to that client's own reporter and
+  ends that client alone (`InboundEnd.Fault`, `Main.localServer`).
+- `ListenerFailures.report`, the node-to-node reporter, keeps its case that makes a `StateAcquireFailure`
+  `Fatal.Internal`; no node-to-node connection raises one, since only LocalStateQuery does.
+- Test: `ListenerFailuresSuite` serves an incoherent acquisition through `Main.localServer`, the node's own
+  node-to-client server: the client's connection closes, the pinned view and the sibling ChainSync are released
+  before the line is logged, and the server accepts and serves a second client while its stop, which would stop
+  the node, does not come.
