@@ -59,8 +59,20 @@ H2 is **(1) only**.
   image is built from that commit. The `kes-agent-1.4.0.0` tag the design first pinned is outside the range;
   the design still cites its file paths, whose wire-relevant files match 1.3.0.0's.
 - **The JVM flag.** `-XX:+HeapDumpOnOutOfMemoryError` is off by default, so disabling it does nothing; the
-  flag the shipped image sets is `-XX:-CreateCoredumpOnCrash`, beside `-XX:+DisableAttachMechanism`, as
-  [the design](../design/kes-agent.md#security-what-conformance-does-and-does-not-buy) already says.
+  flag ~~the shipped image sets~~ to set is `-XX:-CreateCoredumpOnCrash`, beside `-XX:+DisableAttachMechanism`, as
+  [the design](../design/kes-agent.md#security-what-conformance-does-and-does-not-buy) already says
+  ([the shipped image sets neither](#amendment-2026-11-17-the-shipped-image-sets-neither-jvm-flag)).
 
 The rest of the decision stands: the client only, the upstream agent unmodified, no remote signing, and the
 in-process copy accepted and documented.
+
+## Amendment (2026-11-17): the shipped image sets neither JVM flag
+
+The image of a release candidate (`docker/candidate.Dockerfile`) sets neither `-XX:-CreateCoredumpOnCrash` nor
+`-XX:+DisableAttachMechanism`: its entry point is `java --sun-misc-unsafe-memory-access=allow -jar
+/opt/scarab/scarab.jar`. No image recipe in the repository's history has set them. The [design](../design/kes-agent.md) lists them among what
+lands with agent mode, which it records as not implemented. The decision is unchanged; this corrects the amendment
+of 2026-11-07, which said the image sets them.
+
+Setting `-XX:+DisableAttachMechanism` in the image would also stop `jcmd`, which the operator documentation suggests
+for native memory diagnostics with `--memory-report-seconds` ([flags](../running/flags.md)).

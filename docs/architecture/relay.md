@@ -42,8 +42,8 @@ outbound governor promotes the peer and reuses the connection (see "Connections"
 **Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
 clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
 a `Source` that holds one client's cursor. `BlockFetchServer` streams an inclusive range from a
-`Blocks` source and answers NoBlocks for anything that is not a contiguous stretch of our chain (or
-longer than `maxBlocks`). `KeepAliveServer` echoes cookies. `TxSubmissionClient` and
+`Blocks` source and answers NoBlocks for anything that is not a contiguous stretch of our chain; the
+length of a range is not bounded, as the reference's server streams any range it holds. `KeepAliveServer` echoes cookies. `TxSubmissionClient` and
 `TxSubmissionServer` are the two roles of TxSubmission2: the client offers a `Source` of
 transactions (each once per connection, by ticket number) and hands out bodies on request; the
 server asks for ids with a blocking request, fetches the bodies it does not know (verifying the id
@@ -110,8 +110,10 @@ one, so a local client passes the peers in line and only the head of the line wa
 cancelable (a closed client or a lost peer leaves the line) and the `mempoolWaiting` event marks it. A peer's
 wait stalls that peer's TxSubmission2 replies, as in the reference, outside every protocol deadline. A transaction is validated in the slot after the tip, on the ledger ticked to that slot, over an epoch boundary
 and into the next era when the slot is past them (`PoolLedger.at`). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
-state changes (one state lock, held for one validation or one revalidation, never while an add waits), offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
-that offer them again are not asked for the body.
+state changes (one state lock, held for one validation or one revalidation, never while an add waits) and offers `source`/`sink` for TxSubmission2.
+The sink knows an id only while the pool holds its transaction, as the reference's `mempoolHasTx` reads the current
+snapshot (ouroboros-consensus `82ecba32`, `NodeKernel.hs` 929): a transaction refused or adopted earlier and offered
+again is asked for again.
 
 **Chain selection** (`consensus/ChainSelection.scala`, `Follower.scala`). A peer session keeps a
 candidate (the headers it announced after the point where it joined our chain). The Praos rule: the
