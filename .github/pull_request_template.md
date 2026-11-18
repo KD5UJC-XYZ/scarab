@@ -5,7 +5,7 @@
 ## Level and gates (see CONTRIBUTING.md, "Gates and ceremony by level of change")
 
 - Level: 0 docs / 1 small code / 2 behaviour in one area / 3 consensus-critical / 4 stage boundary
-- [ ] `scripts/sbtw check` passes (level 1 and above)
+- [ ] `scripts/sbtw check` passes (level 1 and above; after a rebase, CONTRIBUTING.md, "Rebase validation")
 - [ ] Level 0: relative links in the changed documents resolve; a design document or ADR also has its reference claims checked against the pinned source (CONTRIBUTING.md, "Levels")
 - [ ] One scenario per area touched (level 2 and above), with its result:
 - [ ] Independent review linked under "Independent review" (CONTRIBUTING.md, "Independent review")

@@ -251,13 +251,14 @@ Dedicated public genesis-sync and observation campaigns remain v0.3 work; per-ch
 gates remain required.
 
 <a id="rebase-validation"></a>
-**Rebase validation** follows the change-level gates, with one exception. When a rebase conflicts only in
-the correspondence map (`docs/data/correspondence/`) or the performance register
-(`docs/data/performance-log.json` and the pages rendered from it), and the code merges cleanly, run
-`scripts/preflight` without `--check` plus the test suites of the modules the change touches. The pull
-request says so plainly, and `main`'s CI runs the full check after the merge. Otherwise do not reuse
-receipts from a different source revision as if they tested the rebased code. The owner's decision of
-2026-11-18 is in the [decisions register](docs/decisions.md#process).
+**Rebase validation** follows the change-level gates, with one exception. When every conflict the rebase
+met is confined to the correspondence map (`docs/data/correspondence/`), the performance register
+(`docs/data/performance-log.json` and the pages rendered from it), or both, and the code applies without
+conflict resolution, run `scripts/preflight` without `--check` plus every test suite of each module that
+the pull request's whole diff touches. Run these checks on the rebased head, say plainly in the pull
+request that this exception was used, and let `main`'s CI check the merged code. Never present receipts
+from another revision as checks of the rebased head. The owner's decision of 2026-11-18 is in the
+[decisions register](docs/decisions.md#process).
 
 ### Changelog fragments
 
