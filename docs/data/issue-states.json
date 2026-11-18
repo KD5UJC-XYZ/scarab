@@ -48,7 +48,7 @@
   "46": ["closed", "not_planned", false],
   "47": ["closed", "completed", false],
   "48": ["closed", "completed", false],
-  "49": ["closed", "completed", false],
+  "49": ["open", "reopened", false],
   "50": ["closed", "completed", false],
   "51": ["open", "", true],
   "52": ["open", "", false],
