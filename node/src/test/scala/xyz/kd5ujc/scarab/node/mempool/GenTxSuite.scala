@@ -222,6 +222,43 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     )
   }
 
+  test(
+    "a framing failure after a token the judge refuses ends as the judge's refusal, as in parts"
+  ) {
+    def read(input: String) =
+      LocalTxSubmission.decodePrefix(
+        LocalTxSubmission.State.Idle,
+        Role.Client,
+        hex(input),
+        GenTx.reader
+      )
+    val refused = DecodeResult.Failed(
+      ProtocolError.UndecodableTransaction(GenTx.Refusal.NotCborInCbor(Era.Conway))
+    )
+    // a break after tag 25, and a reserved head where the tag is due
+    Vector("82008206d819ff" -> "82008206d819", "82008206dc" -> "82008206dc").foreach {
+      (whole, prefix) =>
+        assertEquals(read(whole), refused, whole)
+        assertEquals(read(prefix), refused, prefix)
+        assertEquals(
+          LocalTxSubmission
+            .incremental(LocalTxSubmission.State.Idle, Role.Client, GenTx.reader)
+            .decodePrefix(hex(whole)),
+          refused,
+          s"incremental $whole"
+        )
+    }
+    // a failure past every token the judge reads stands: a break after Byron's constructor
+    assertEquals(
+      read("820082008200ff"),
+      LocalTxSubmission.decodePrefix(
+        LocalTxSubmission.State.Idle,
+        Role.Client,
+        hex("820082008200ff")
+      )
+    )
+  }
+
   test("a transaction of every era the reference reads waits until it has arrived") {
     // eras 1 to 7 under CBOR-in-CBOR, and Byron's four kinds of payload
     val forms = (1 to 7).map(era => f"82$era%02x" + wrappedTx) ++
@@ -388,7 +425,11 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
       ("82008206d818" + Bytes(bstr(conway)).hex) ->
         undecodable(malformed(Era.Conway, conway)),
       ("82008205d818" + Bytes(bstr(babbage)).hex) ->
-        undecodable(malformed(Era.Babbage, babbage))
+        undecodable(malformed(Era.Babbage, babbage)),
+      // the framing would fail later in the message, at a break or a reserved head: the
+      // reference's decoder fails first, at the tag
+      "82008206d819ff" -> undecodable(GenTx.Refusal.NotCborInCbor(Era.Conway)),
+      "82008206dc" -> undecodable(GenTx.Refusal.NotCborInCbor(Era.Conway))
     ).traverse { (message, ending) =>
       val whole = hex(message)
       Vector(Vector(whole), Vector(whole.take(4), whole.drop(4))).traverse(parts =>

@@ -214,3 +214,25 @@ class LocalTxSubmissionSuite extends FunSuite:
       )
     }
   }
+
+  test("a message the framing fails on ends with the reader's refusal when the reader refuses") {
+    // `82 08` then a break where an item is due: the framing fails at the break, the reader at the
+    // index before it, and the message ends with the reader's refusal, as it does in parts
+    val broken = hex("82008208ff")
+    val failed = DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause))
+    assertEquals(decodePrefix(State.Idle, Role.Client, broken, refusing), failed)
+    assertEquals(incremental(State.Idle, Role.Client, refusing).decodePrefix(broken), failed)
+    assertEquals(decodePrefix(State.Idle, Role.Client, broken.take(4), refusing), failed)
+    // a reader that does not refuse leaves the framing's failure as it was
+    val framing = decodePrefix(State.Idle, Role.Client, broken)
+    assert(framing.isInstanceOf[DecodeResult.Failed[?]], framing.toString)
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, hex("82008206ff"), refusing),
+      decodePrefix(State.Idle, Role.Client, hex("82008206ff"))
+    )
+    // and so does a failure of another message, or of a SubmitTx out of its agency
+    assertEquals(
+      decodePrefix(State.Busy, Role.Server, broken, refusing),
+      decodePrefix(State.Busy, Role.Server, broken)
+    )
+  }

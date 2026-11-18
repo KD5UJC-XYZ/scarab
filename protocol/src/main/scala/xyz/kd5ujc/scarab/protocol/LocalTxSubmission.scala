@@ -115,7 +115,11 @@ object LocalTxSubmission:
     judged(state, sender, bytes, txs, decoded(state, sender, bytes))
 
   /** `result`, the message as read, judged by `txs`: a `SubmitTx` whose transaction it refuses ends
-    * here; an incomplete message waits unless [[waiting]] ends it.
+    * here; an incomplete message waits unless [[waiting]] ends it. A message the framing fails on
+    * is judged as an incomplete one first: `txs` reads the transaction's heads in order from its
+    * start, so a token it refuses is at or before the one the framing failed at, and that refusal
+    * is the reference's, which reads the transaction from the stream; the message then ends as it
+    * would in parts. Any other failure stands.
     */
   private def judged(
       state: State,
@@ -135,8 +139,13 @@ object LocalTxSubmission:
       case DecodeResult.Decoded(
             Message.AcceptTx | Message.RejectTx(_) | Message.Done,
             _
-          ) | DecodeResult.Failed(_) =>
+          ) =>
         result
+      case DecodeResult.Failed(_) =>
+        waiting(state, sender, bytes, txs) match
+          case refused @ DecodeResult.Failed(ProtocolError.UndecodableTransaction(_)) => refused
+          case DecodeResult.NeedMore | DecodeResult.Failed(_) | DecodeResult.Decoded(_, _) =>
+            result
 
   private def decoded(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
     ProtocolWire.prefix {
