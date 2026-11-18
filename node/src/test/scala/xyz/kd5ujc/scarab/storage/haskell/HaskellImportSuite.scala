@@ -6,7 +6,9 @@ import cats.effect.IO
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath, StandardCopyOption}
 import java.security.MessageDigest
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.protocol.{ChainSync, DijkstraNotYet}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.node.NodeSetup
@@ -89,6 +91,36 @@ class HaskellImportSuite extends CatsEffectSuite:
         .use((store, _) => store.stream(ChainSync.Point.Origin).compile.toVector)
     }
 
+  /** What our store's index gives for each block the reference's index holds, and for another hash
+    * at each of their slots: the reference answers a point's slot, hash and whether it is a
+    * boundary block from its primary and secondary indexes alone (`getBlockComponentImpl`,
+    * `ImmutableDB/Impl.hs` 447-496, ouroboros-consensus 82ecba32), and a point its index does not
+    * hold is missing.
+    */
+  private def foundInIndex(
+      db: JPath,
+      blocks: Vector[HaskellBlock]
+  ): IO[(Vector[Option[BlockRef]], Vector[Option[BlockRef]])] =
+    def at(slot: Long, hash: Bytes) =
+      new ChainSync.Point.Block(ChainSync.UInt64.saturating(BigInt(slot)), hash)
+    val other = Bytes(Vector.fill(32)(0x5a.toByte))
+    ok {
+      FileImmutableStore
+        .open[IO](fsPath(db) / "immutable")
+        .use((store, _) =>
+          (
+            blocks.traverse(b => store.refOf(at(b.slot, b.hash))),
+            blocks.traverse(b => store.refOf(at(b.slot, other)))
+          ).tupled
+        )
+    }
+
+  /** The reference index's answer for each block: its slot, hash and whether it is a boundary
+    * block.
+    */
+  private def indexed(blocks: Vector[HaskellBlock]): Vector[Option[(BigInt, Bytes, Boolean)]] =
+    blocks.map(b => Some((BigInt(b.slot), b.hash, b.isEbb)))
+
   // ---- the real Preview chunks ----
 
   test("the reader lists the chunks and yields exactly the blocks our own store holds") {
@@ -149,6 +181,33 @@ class HaskellImportSuite extends CatsEffectSuite:
             )
           }
       }
+    }
+  }
+
+  test(
+    "each block of the Preview index is found in our store's index as the reference's gives it"
+  ) {
+    tempDir.use { dir =>
+      val db = dir.toNioPath.resolve("scala-db")
+      for
+        read <- attemptRead(
+          HaskellImmutableReader[IO](fsPath(previewRoot.resolve("immutable")), previewChunk)
+            .blocks()
+            .compile
+            .toVector
+        )
+        blocks = read.fold(e => fail(e.message), identity)
+        imported <- attempt(
+          HaskellImport.run[IO](config(previewRoot, db, previewSetup, previewChunk), _ => IO.unit)
+        )
+        _ = imported.fold(e => fail(e.message), identity)
+        found <- foundInIndex(db, blocks)
+        (refs, others) = found
+      yield
+        assertEquals(blocks.size, golden.size)
+        assertEquals(refs.map(_.map(r => (r.slot, r.hash, r.boundary))), indexed(blocks))
+        assertEquals(refs.map(_.map(_.blockNo)), golden.map(g => Some(BigInt(g.blockNo))))
+        assertEquals(others.flatten, Vector.empty[BlockRef])
     }
   }
 
@@ -328,10 +387,16 @@ class HaskellImportSuite extends CatsEffectSuite:
         report = r.fold(e => fail(e.message), identity)
         _ = assertEquals(report.appended, erasRaw.size.toLong)
         out <- stored(db)
+        found <- foundInIndex(db, blocks)
+        (refs, others) = found
       yield
         assertEquals(out.map(_.raw), erasRaw)
         assert(out.head.ref.boundary)
         assertEquals(out.count(_.ref.boundary), blocks.count(_.isEbb))
+        // a boundary block and the main block of its slot are each found as the reference's
+        // index tells them apart
+        assertEquals(refs.map(_.map(r => (r.slot, r.hash, r.boundary))), indexed(blocks))
+        assertEquals(others.flatten, Vector.empty[BlockRef])
     }
   }
 

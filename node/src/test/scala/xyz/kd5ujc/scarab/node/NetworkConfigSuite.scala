@@ -764,6 +764,8 @@ class NetworkConfigSuite extends FailsOnUncaught:
       def sync(using Fails) = IO.unit
       def tip(using Fails) = IO.pure(Some(BlockRef(BigInt(1000), hashAt(0), BigInt(1000))))
       def get(point: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using Fails) = IO.pure(None)
+      def refOf(point: xyz.kd5ujc.scarab.protocol.ChainSync.Point.Block)(using Fails) =
+        IO.pure(None)
       def pointsAtSlot(slot: BigInt)(using Fails) = IO.pure(Vector.empty)
       def pointAtOrAfterSlot(slot: BigInt)(using Fails) =
         lookups.update(_ :+ slot) *> held(slot) *>

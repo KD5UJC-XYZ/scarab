@@ -668,6 +668,39 @@
    "note": "the past chunks' part of emptyCached; the chunk appended to is held apart, in Current",
    "digest": "2527fff7977f7286"
   },
+  "def storage.ImmutableStore#refOf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl.hs",
+     "symbol": "getBlockComponentImpl",
+     "lines": [
+      447,
+      496
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Iterator.hs",
+     "symbol": "getSlotInfo",
+     "lines": [
+      281,
+      352
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "HaskellImportSuite",
+    "ImmutableServingSuite",
+    "ChainServerSuite"
+   ],
+   "note": "getBlockComponent for the components a point's index entry answers (GetSlot, GetHash, GetIsEBB): getSlotInfo finds the point in the primary and secondary indexes and extractBlockComponent answers them from the entry, the block not read. Here one method gives the entry's slot, hash, boundary flag and block number (which the reference's secondary index does not hold), found in the chunk's entries as the store holds them, and the chunk file is not opened (the reference opens it, Impl.hs 466-469). HaskellImportSuite compares what it finds, for every block and for another hash at each slot, with the reference's own primary and secondary indexes: the Preview ImmutableDB cardano-node 11.1.3 wrote, and a Byron-to-Conway database with boundary blocks written by the reference's encoding rules; the other suites check that no block is read",
+   "digest": "aae023bb0d47d5d9"
+  },
   "def storage.haskell.state.Envelope.telescope": {
    "upstream": [
     {

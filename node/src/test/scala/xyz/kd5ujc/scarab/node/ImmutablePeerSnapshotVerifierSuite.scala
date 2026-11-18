@@ -36,6 +36,7 @@ class ImmutablePeerSnapshotVerifierSuite extends FailsOnUncaught:
         def sync(using Raise[IO, StorageError]) = IO.unit
         def tip(using Raise[IO, StorageError]) = points.get.map(_.lastOption)
         def get(point: ChainSync.Point)(using Raise[IO, StorageError]) = IO.pure(None)
+        def refOf(point: ChainSync.Point.Block)(using Raise[IO, StorageError]) = IO.pure(None)
         def pointsAtSlot(slot: BigInt)(using Raise[IO, StorageError]) =
           points.get.map(_.filter(_.slot == slot))
         def pointAtOrAfterSlot(slot: BigInt)(using Raise[IO, StorageError]) =
@@ -109,6 +110,7 @@ class ImmutablePeerSnapshotVerifierSuite extends FailsOnUncaught:
         def sync(using Raise[IO, StorageError]) = IO.unit
         def tip(using Raise[IO, StorageError]) = summon[Raise[IO, StorageError]].raise(missing)
         def get(point: ChainSync.Point)(using Raise[IO, StorageError]) = IO.pure(None)
+        def refOf(point: ChainSync.Point.Block)(using Raise[IO, StorageError]) = IO.pure(None)
         def pointsAtSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(Vector.empty)
         def pointAtOrAfterSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)
         def byBlockNo(n: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)

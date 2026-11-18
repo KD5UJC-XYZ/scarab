@@ -47,6 +47,8 @@ class IntersectForkSuite extends FailsOnUncaught:
     def get(point: Point)(using Raise[IO, StorageError]): IO[Option[Bytes]] =
       if point == unstored then entered.complete(()) *> gate.get *> underlying.get(point)
       else underlying.get(point)
+    def refOf(point: Point.Block)(using Raise[IO, StorageError]): IO[Option[BlockRef]] =
+      underlying.refOf(point)
     def pointsAtSlot(slot: BigInt)(using Raise[IO, StorageError]): IO[Vector[BlockRef]] =
       underlying.pointsAtSlot(slot)
     def pointAtOrAfterSlot(slot: BigInt)(using Raise[IO, StorageError]): IO[Option[BlockRef]] =
@@ -167,6 +169,8 @@ class IntersectForkSuite extends FailsOnUncaught:
       def tip(using Raise[IO, StorageError]) = IO.pure(Some(ref(1)))
       def get(point: Point)(using Raise[IO, StorageError]) =
         IO.pure(Option.when(point == ref(1).point)(raw(1)))
+      def refOf(point: Point.Block)(using Raise[IO, StorageError]) =
+        IO.pure(Option.when(point == ref(1).point)(ref(1)))
       def pointsAtSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(Vector.empty)
       def pointAtOrAfterSlot(slot: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)
       def byBlockNo(n: BigInt)(using Raise[IO, StorageError]) = IO.pure(None)

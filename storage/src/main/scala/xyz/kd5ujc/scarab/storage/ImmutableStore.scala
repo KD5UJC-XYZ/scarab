@@ -46,6 +46,16 @@ trait ImmutableStore[F[_]]:
   /** The raw block at `point` (slot and hash), if stored. */
   def get(point: ChainSync.Point)(using cats.mtl.Raise[F, StorageError]): F[Option[Bytes]]
 
+  /** The block at `point` as its index entry gives it (slot, hash, number and whether it is a
+    * boundary block), if stored: found in its chunk's index, the block not read. The reference
+    * finds a point in its primary and secondary indexes and answers its hash, slot and whether it
+    * is a boundary block from the entry (`getBlockComponentImpl`, `ImmutableDB/Impl.hs` 447-496;
+    * `getSlotInfo`, `ImmutableDB/Impl/Iterator.hs` 281-352, ouroboros-consensus 82ecba32).
+    */
+  def refOf(point: ChainSync.Point.Block)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Option[BlockRef]]
+
   /** Immutable index entries at a slot, without reading block bodies. A Byron boundary block and
     * the following main block can share a slot, so both references are returned in index order.
     */
@@ -828,6 +838,11 @@ object FileImmutableStore:
               case ChainSync.Point.Origin => F.pure(None)
               case b: ChainSync.Point.Block =>
                 locate(b).flatMap(_.traverse { case (c, i, es) => read(c, es(i)) })
+
+          def refOf(point: ChainSync.Point.Block)(using
+              cats.mtl.Raise[F, StorageError]
+          ): F[Option[BlockRef]] =
+            locate(point).map(_.map { case (_, i, es) => es(i).ref })
 
           def pointsAtSlot(slot: BigInt)(using
               cats.mtl.Raise[F, StorageError]
