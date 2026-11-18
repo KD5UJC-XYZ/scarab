@@ -114,8 +114,8 @@ object Phase2:
     * success. Missing redeemers keep accumulating after a setup failure, but later contexts are not
     * built (`Alonzo/Plutus/Evaluate.hs:141-185`, cardano-ledger f649f975). This is deliberately not
     * an accumulating traversal of every context error. The scripts needed and their contexts are
-    * those of the era `E` ([[Purpose.collection]], [[ScriptContexts.Environment]]), whatever the
-    * protocol version; the evaluator is given the version.
+    * those of the era `E` ([[TxChecks.scriptsNeeded]], [[ScriptContexts.Environment]]), whatever
+    * the protocol version; the evaluator is given the version.
     */
   def collect[E <: EraTag](
       tx: Tx,
@@ -132,9 +132,9 @@ object Phase2:
         .flatMap(s => s.plutus.map(s.hash -> _))
         .toMap
     val redeemers = tx.witnesses.redeemers.map(r => (r.tag, r.index) -> r).toMap
-    val needed = Purpose.collection(tx.body, spent, era).flatMap { purpose =>
-      purpose.scriptHash.flatMap(scripts.get).filter(_.kind.isPlutus).map(purpose -> _)
-    }
+    val needed = TxChecks
+      .redeemersNeeded(TxChecks.scriptsNeeded[E](tx.body, spent), scripts)
+      .flatMap((purpose, hash) => scripts.get(hash).map(purpose -> _))
     type Infos = Map[PlutusLanguage, Either[TranslationError, PlutusData]]
     type Prepared[A] = State[Infos, A]
     type Setup[A] = EitherT[Prepared, CollectError, A]

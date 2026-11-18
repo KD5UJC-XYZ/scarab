@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PlutusStats,
   TxChecks,
   PredicateFailure,
+  Purpose,
   Script,
   Tx,
   TxIn,
@@ -84,14 +85,14 @@ final case class StAnnTx(tx: Tx, utxo: NodeUtxo):
   lazy val scripts: Map[Bytes, Script] =
     TxChecks.providedScripts(tx.witnesses, spent ++ referenced)
 
-  /** The hashes of the scripts it needs, with the redeemer pointers that use each
-    * (`scriptsNeeded`); defined for a transaction whose inputs the set holds.
+  /** The purposes that need a script, each with the script's hash, as the era `E` 's
+    * `getScriptsNeeded` lists them ([[TxChecks.scriptsNeeded]]): `scriptsNeededStAnnTx`, which
+    * `mkAlonzoStAnnTx` computes with the era's `getScriptsNeeded` (`Alonzo.hs:137`,
+    * `Alonzo/UTxO.hs:186-193`, cardano-ledger f649f975). The rule that asks names its era; defined
+    * for a transaction whose inputs the set holds.
     */
-  lazy val needed: Map[Bytes, Set[(Int, BigInt)]] = TxChecks.scriptsNeeded(tx.body, spentByInput)
-
-  /** The redeemer pointers of the needed scripts that are Plutus scripts. */
-  lazy val plutusPurposes: Set[(Int, BigInt)] =
-    needed.collect { case (h, ps) if scripts.get(h).exists(_.kind.isPlutus) => ps }.flatten.toSet
+  def needed[E <: EraTag](using ShelleyBasedEra[E]): Vector[(Purpose, Bytes)] =
+    TxChecks.scriptsNeeded[E](tx.body, spentByInput)
 
 /** The lenses into the Conway certificate state that its rules use (each step of a path is one
   * concrete record, as `ConwayLedgerState` does).

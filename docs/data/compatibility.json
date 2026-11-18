@@ -838,7 +838,9 @@
           "ScriptIntegritySuite",
           "ShelleyBbodySuite",
           "ValueConservationSuite",
-          "EpochGeometrySuite"
+          "EpochGeometrySuite",
+          "CertificateRedeemerIndexSuite",
+          "MissingRedeemersRefusalSuite"
         ],
         "paths": [
           "fixtures/reference/instant-stake/README.md",
@@ -866,7 +868,9 @@
           "BbodySuite",
           "ValueConservationSuite",
           "EpochGeometrySuite",
-          "ConwayCertsChecksSuite"
+          "ConwayCertsChecksSuite",
+          "CertificateRedeemerIndexSuite",
+          "MissingRedeemersRefusalSuite"
         ],
         "issues": [
           828,

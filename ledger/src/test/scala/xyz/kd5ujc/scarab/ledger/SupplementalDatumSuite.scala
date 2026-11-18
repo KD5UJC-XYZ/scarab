@@ -32,7 +32,10 @@ class SupplementalDatumSuite extends FunSuite:
 
   private val spent = base.tx.body.inputs.map(in => in -> base.spent(in)).toMap
   private val scripts = base.tx.witnesses.scriptsByHash
-  private val needed = TxChecks.scriptsNeeded(base.tx.body, spent).values.flatten.toSet
+  private val needed =
+    TxChecks.scriptsNeeded(base.tx.body, spent)(using
+      TestLedger.usualEra(base.params.protocolMajor.toInt)
+    )
   private val template = base.tx.body.outputs.headOption.getOrElse(fail("no output"))
 
   private def withWitnessDatums(extra: Bytes*): Tx =
@@ -68,7 +71,7 @@ class SupplementalDatumSuite extends FunSuite:
           TxChecks.datumChecks(base.tx, spent, Vector.empty, scripts)(using
             TestLedger.usualEra((base.params).protocolMajor.toInt)
           ),
-          TxChecks.redeemerChecks(base.tx, spent, scripts, needed)
+          TxChecks.redeemerChecks(base.tx, scripts, needed)
         )
       ),
       Right(())

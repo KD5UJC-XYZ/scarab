@@ -171,7 +171,6 @@ object Utxos:
           ann.scripts,
           ann.spentByInput,
           ann.referencedByInput,
-          ann.plutusPurposes,
           evaluate = !failing && env.ctx.validation == TxEnv.Validation.All
         )
       )
@@ -355,7 +354,9 @@ object Utxow
     val tx = ann.tx
     val pp = env.pp
     val scripts = ann.scripts
-    val needed = ann.needed.keySet
+    // the purposes that need a script, in the era's order and with its redeemer indices
+    val purposes = ann.needed[E]
+    val needed = purposes.map(_._2).toSet
     val received = tx.witnesses.scripts.map(_.hash).toSet
     val vkeyHashes = tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1))
     val provided = TxChecks.providedKeyHashes(tx, vkeyHashes)
@@ -410,7 +411,7 @@ object Utxow
             test(
               TxChecks.datumChecks[E](tx, ann.spentByInput, ann.referenced, scripts)
             ),
-            test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
+            test(TxChecks.redeemerChecks(tx, scripts, purposes)),
             signatures,
             witnesses,
             test(mir),
@@ -440,7 +441,7 @@ object Utxow
           )
         ),
         test(TxChecks.datumChecks[E](tx, ann.spentByInput, ann.referenced, scripts)),
-        test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
+        test(TxChecks.redeemerChecks(tx, scripts, purposes)),
         signatures,
         witnesses,
         metadata,

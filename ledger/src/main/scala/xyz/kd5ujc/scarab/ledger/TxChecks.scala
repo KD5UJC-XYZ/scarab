@@ -53,10 +53,10 @@ object TxChecks:
       scripts: Map[Bytes, Script],
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
-      plutusPurposes: Set[Pointer],
       evaluate: Boolean
   )(using ShelleyBasedEra[E]): Result[PlutusStats] =
     val body = tx.body
+    val plutusPurposes = redeemersNeeded(scriptsNeeded[E](body, spent), scripts)
     val stats =
       if plutusPurposes.isEmpty && body.scriptDataHash.isEmpty then plutus
       else plutus.copy(integrityChecked = plutus.integrityChecked + 1)
@@ -257,23 +257,34 @@ object TxChecks:
   private[ledger] def providedScripts(wits: Witnesses, outs: Vector[TxOut]): Map[Bytes, Script] =
     outs.flatMap(_.scriptRef).map(s => s.hash -> s).toMap ++ wits.scriptsByHash
 
-  /** Script hashes the transaction must provide, with the redeemer pointers that use each.
+  /** The purposes of the transaction that need a script, each with the script's hash, as the era
+    * `E` 's `getScriptsNeeded` lists them (`AlonzoScriptsNeeded`, `Alonzo/UTxO.hs:102-103`,
+    * cardano-ledger f649f975; [[Purpose.collection]]): spending, withdrawing, certifying, minting,
+    * voting, proposing, a certificate that occurs again before Conway with the index of its first
+    * occurrence. UTXOW's scripts needed (`getAlonzoScriptsHashesNeeded`, `Alonzo/UTxO.hs:241-242`),
+    * the redeemers it asks for and the ones it misses ([[redeemerChecks]]) and the scripts UTXOS
+    * collects ([[Phase2.collect]]) all come from it.
     *
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input: an input it does not hold needs no
-    *   script (`getScriptsNeeded` over the UTxO, `Alonzo/UTxO.hs`)
+    *   script (`getSpendingScriptsNeeded`, `Alonzo/UTxO.hs:370-383`)
     */
-  private[ledger] def scriptsNeeded(
+  private[ledger] def scriptsNeeded[E <: EraTag](
       body: TxBody,
       spent: Map[TxIn, TxOut]
-  ): Map[Bytes, Set[Pointer]] =
-    Purpose
-      .all(body, spent)
-      .flatMap(p => p.scriptHash.map(h => h -> ((p.tag, BigInt(p.index)))))
-      .groupMap(_._1)(_._2)
-      .view
-      .mapValues(_.toSet)
-      .toMap
+  )(using era: ShelleyBasedEra[E]): Vector[(Purpose, Bytes)] =
+    Purpose.collection(body, spent, era).flatMap(p => p.scriptHash.map(p -> _))
+
+  /** The purposes of `needed` whose script the transaction provides and is a Plutus script, in the
+    * order of `needed`: the ones that take a redeemer (`redeemersNeeded` of
+    * `hasExactSetOfRedeemers`, `Alonzo/Rules/Utxow.hs:247-252`, cardano-ledger f649f975) and whose
+    * scripts UTXOS runs (`resolveNeededPlutusScriptsWithPurpose`, `Alonzo/UTxO.hs`).
+    */
+  private[ledger] def redeemersNeeded(
+      needed: Vector[(Purpose, Bytes)],
+      scripts: Map[Bytes, Script]
+  ): Vector[(Purpose, Bytes)] =
+    needed.filter((_, h) => scripts.get(h).exists(_.kind.isPlutus))
 
   /** Datum hashes a witness set may carry without a spent input asking for them: those of the
     * outputs (the collateral return too, from Babbage) and of the reference inputs (Babbage
@@ -372,33 +383,27 @@ object TxChecks:
     )(LedgerFailure.Undecodable(tx.body.id, TxDefect.PlutusFieldsBeforeAlonzo))
 
   /** `hasExactSetOfRedeemers` (`Alonzo/Rules/Utxow.hs:239-262`, cardano-ledger f649f975): the
-    * redeemers no Plutus purpose needs (`ExtraRedeemers`), then the Plutus purposes with no
-    * redeemer (`MissingRedeemers`).
+    * redeemers no Plutus purpose needs, by pointer (`ExtraRedeemers`), then the Plutus purposes
+    * with no redeemer in the order of `needed` (`MissingRedeemers`), one the list holds twice
+    * listed twice (`extSymmetricDifference`, `:378-383`).
     *
-    * @param spent
-    *   the outputs of the inputs the UTxO set holds, by input
+    * @param needed
+    *   the purposes that need a script, with its hash, of the transaction's era ([[scriptsNeeded]])
     */
   private[ledger] def redeemerChecks(
       tx: Tx,
-      spent: Map[TxIn, TxOut],
       scripts: Map[Bytes, Script],
-      plutusPurposes: Set[Pointer]
+      needed: Vector[(Purpose, Bytes)]
   ): Test[PredicateFailure] =
-    val body = tx.body
+    def pointer(p: Purpose): Pointer = (p.tag, BigInt(p.index))
+    val plutus = redeemersNeeded(needed, scripts)
+    val pointers = plutus.map((p, _) => pointer(p)).toSet
     val provided = tx.witnesses.redeemers.map(r => (r.tag, r.index)).toSet
-    // Plutus purposes without a redeemer, with the script each one needs
-    val unredeemed = Purpose
-      .all(body, spent)
-      .flatMap(p =>
-        p.scriptHash
-          .filter(h => scripts.get(h).exists(_.kind.isPlutus))
-          .filter(_ => !provided.contains((p.tag, BigInt(p.index))))
-          .map(p -> _)
-      )
+    val unredeemed = plutus.filterNot((p, _) => provided.contains(pointer(p)))
     Test.all(
       Test.failureUnless(
-        provided.subsetOf(plutusPurposes),
-        utxow(UtxowFailure.ExtraRedeemers((provided -- plutusPurposes).toVector.sorted))
+        provided.subsetOf(pointers),
+        utxow(UtxowFailure.ExtraRedeemers((provided -- pointers).toVector.sorted))
       ),
       Test.failureUnless(unredeemed.isEmpty, utxow(UtxowFailure.MissingRedeemers(unredeemed)))
     )
@@ -417,7 +422,8 @@ object TxChecks:
       spent: Map[TxIn, TxOut],
       scripts: Map[Bytes, Script]
   )(using ShelleyBasedEra[E]): Test[PredicateFailure] =
-    val languages = scriptsNeeded(tx.body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
+    val languages =
+      scriptsNeeded[E](tx.body, spent).flatMap((_, h) => scripts.get(h)).map(_.kind).toSet
     Test.failureUnless(
       ScriptIntegrity.hash[E](tx, pp, languages) == tx.body.scriptDataHash,
       utxow(ScriptIntegrity.mismatch[E](tx, pp, languages))

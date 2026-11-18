@@ -39,7 +39,6 @@ class Phase2UnavailableSuite extends FunSuite:
       scripts,
       tx.body.inputs.flatMap(in => c.spent.get(in).map(in -> _)).toMap,
       tx.body.referenceInputs.flatMap(in => c.references.get(in).map(in -> _)).toMap,
-      Set(0 -> BigInt(0)),
       evaluate = true
     )(using TestLedger.usualEra((c.params).protocolMajor.toInt))
 

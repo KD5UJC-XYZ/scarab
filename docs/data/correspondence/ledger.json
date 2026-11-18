@@ -10001,6 +10001,126 @@
    ],
    "note": "Conway's function written for Conway, as conwayProducedValue is; its purposes are Conway's own",
    "digest": "7d946057f8cdbe43"
+  },
+  "def ledger.TxChecks.scriptsNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "getAlonzoScriptsNeeded",
+     "lines": [
+      313,
+      361
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "symbol": "getConwayScriptsNeeded",
+     "lines": [
+      62,
+      105
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ContextCollectionSuite",
+    "RecordedScriptContextsSuite"
+   ],
+   "note": "the era chosen by its ShelleyBasedEra, as the reference chooses getScriptsNeeded by its EraUTxO instance; the purposes come from Purpose.collection, which indexes every purpose by position, keeps a repeated certificate at its first index before Conway and regroups them in the reference order, and those with no script credential are dropped here, where the reference builds one list per kind with only the purposes that need a script",
+   "digest": "25081dee4fa1d5cc"
+  },
+  "def ledger.TxChecks.redeemersNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "symbol": "hasExactSetOfRedeemers",
+     "lines": [
+      246,
+      252
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "resolveNeededPlutusScriptsWithPurpose",
+     "lines": [
+      442,
+      450
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ContextCollectionSuite",
+    "RecordedScriptContextsSuite"
+   ],
+   "note": "the redeemersNeeded comprehension of hasExactSetOfRedeemers (a provided script that is not native), which resolveNeededPlutusScriptsWithPurpose also applies to the scripts needed; one function for both, keeping the purposes' order",
+   "digest": "4b08c7f9fafdac24"
+  },
+  "def ledger.TxChecks.redeemerChecks": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "symbol": "hasExactSetOfRedeemers",
+     "lines": [
+      239,
+      262
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "symbol": "extSymmetricDifference",
+     "lines": [
+      378,
+      383
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the redeemers needed are TxChecks.redeemersNeeded; the extra redeemers in the order of the redeemers' map keys, then the missing purposes in the order of the scripts needed, duplicates kept",
+   "digest": "4c7f9d731cbcb081"
+  },
+  "def ledger.rules.StAnnTx#needed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "scriptsNeededAlonzoStAnnTx",
+     "lines": [
+      186,
+      193
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
+     "symbol": "mkAlonzoStAnnTx",
+     "lines": [
+      134,
+      137
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "computed when a rule asks, with that rule's era, where the reference keeps the value mkAlonzoStAnnTx computed with the era's getScriptsNeeded",
+   "digest": "f38a181e70255433"
   }
  },
  "glue": [

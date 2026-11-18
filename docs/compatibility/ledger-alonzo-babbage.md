@@ -17,6 +17,26 @@ Each era's UTXO runs its own checks whatever the protocol version (cardano-ledge
 
 UTXOW also follows the era whatever the protocol version (#880, `EraNotVersionUtxowSuite`, through each era's LEDGER): Alonzo at version 4 permits datums and reads its tag-259 auxiliary data; Alonzo at version 7 checks every supplied native script before the missing-script check (`Alonzo/Rules/Utxow.hs:324-372` at cardano-ledger f649f975). Babbage at version 6 includes reference inputs and the collateral return among supplemental datum hashes (`Babbage/UTxO.hs:74-84`) and checks malformed reference scripts (`Babbage/Rules/Utxow.hs:379`). Absent redeemers use the era's `eraProtVerLow`, so Babbage at version 9 still hashes `0x80` (`Alonzo/TxWits.hs:157-162,203-211,227-230`, `MemoBytes/Internal.hs:294-295`). `ScriptIntegritySuite` checks the unchanged preimage bytes in every era at its usual versions; `PreviewEmptyRedeemersSuite` preserves the real Babbage and Conway transaction hashes even when only their protocol version is changed. The script decoder still receives the protocol version; the mismatch failure changes at version 11 as the reference does (`Alonzo/Rules/Utxow.hs:282-286`).
 
+The scripts a transaction needs come from one list, the era's `getScriptsNeeded` (cardano-ledger
+f649f975): UTXOW's needed scripts, the redeemers it asks for and those it reports missing, and
+UTXOS's collection (`TxChecks.scriptsNeeded`). In Alonzo and Babbage a certificate that occurs again
+in a transaction takes the redeemer index of its first occurrence (`getAlonzoScriptsNeeded`,
+`Alonzo/UTxO.hs:318-361`; `Babbage/UTxO.hs:52`); from Conway each certificate has its own position
+(`getConwayScriptsNeeded`, `Conway/UTxO.hs:62-80`). So before Conway a transaction with two identical
+script-locked certificates is accepted with one redeemer at the first index, and refused with
+`ExtraRedeemers` when it carries one redeemer per position (`hasExactSetOfRedeemers`,
+`Alonzo/Rules/Utxow.hs:239-262`). UTXOW used to give each certificate its own position in every era,
+and gave both such transactions the opposite verdict before Conway; UTXOS already took the era's
+indices. `MissingRedeemers` lists the purposes in the order of that list: spending, withdrawing,
+certifying, minting, then voting and proposing (`extSymmetricDifference`, `Alonzo/Rules/Utxow.hs:378-383`;
+`Conway/UTxO.hs:67-73`). It used to list minting before certifying and withdrawing, which changed the
+LocalTxSubmission refusal bytes but not the verdict. `CertificateRedeemerIndexSuite` runs both
+transactions and the order through the rules the node's pool applies (each era's LEDGER, Conway's
+MEMPOOL); `MissingRedeemersRefusalSuite` has the refusal's CBOR, derived by hand from the
+reference's encoders and not yet compared with a refusal the reference node answered for such a
+transaction. The collection's request order is compared with the reference in
+`ContextCollectionSuite` and `RecordedScriptContextsSuite`.
+
 UTXOS and the block's execution units run in every era from Alonzo whatever the protocol version (cardano-ledger f649f975): Alonzo at version 4 evaluates the scripts against the `is_valid` flag and takes the collateral of a transaction that fails phase 2 (`Alonzo/Rules/Utxos.hs:159-238`, `Alonzo/Rules/Utxo.hs:775-784`, `Babbage/Rules/Utxo.hs:474-485`; #881, `EraNotVersionUtxosSuite`, through `ShelleyUtxo.sts`), and limits the execution units of the block (`validateExUnits`, `Alonzo/Rules/Bbody.hs:149-167,212`; #882, `ShelleyBbodySuite`), which Shelley's BBODY does not, at any version.
 
 The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters and the PPUP too-late check use, is computed exactly (`EpochGeometrySuite`). The reference's `Word64` doubling of the stability window wraps for a window of 2^63 slots or more, which Scarab does not reproduce (#825): an approved deviation ([owner decision](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)).

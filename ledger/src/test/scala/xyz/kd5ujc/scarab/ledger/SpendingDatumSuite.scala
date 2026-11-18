@@ -35,7 +35,10 @@ class SpendingDatumSuite extends FunSuite:
     val accepted = field[Boolean](field[Json](json, "reference"), "accepted")
     val spent = c.tx.body.inputs.map(in => in -> c.spent(in)).toMap
     val scripts = c.tx.witnesses.scriptsByHash
-    val needed = TxChecks.scriptsNeeded(c.tx.body, spent).values.flatten.toSet
+    val needed =
+      TxChecks.scriptsNeeded(c.tx.body, spent)(using
+        TestLedger.usualEra(c.params.protocolMajor.toInt)
+      )
     val redeemer = c.tx.witnesses.redeemers.headOption.getOrElse(fail("no spending redeemer"))
     val purpose = Purpose
       .resolve(c.tx.body, c.spent, redeemer.tag, redeemer.index)
@@ -156,7 +159,7 @@ class SpendingDatumSuite extends FunSuite:
             TxChecks.datumChecks(c.tx, r.spent, c.references.values.toVector, r.scripts)(using
               TestLedger.usualEra((c.params).protocolMajor.toInt)
             ),
-            TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
+            TxChecks.redeemerChecks(c.tx, r.scripts, r.needed)
           )
         ),
         r.phase1
@@ -184,7 +187,7 @@ class SpendingDatumSuite extends FunSuite:
                 )(using
                   TestLedger.usualEra((c.params.copy(protocolMajor = protocol)).protocolMajor.toInt)
                 ),
-                TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
+                TxChecks.redeemerChecks(c.tx, r.scripts, r.needed)
               )
             ),
             r.phase1

@@ -68,7 +68,10 @@ object Purpose:
 
   /** Every purpose of the transaction in the ledger's orders: inputs sorted by id and index,
     * policies sorted by id, certificates and proposals by position, withdrawals by account and
-    * voters by `Ord Voter`. Inputs missing from `spent` are skipped.
+    * voters by `Ord Voter`. Inputs missing from `spent` are skipped. Each purpose's index is its
+    * position, the purpose a redeemer pointer names (`alonzoRedeemerPointerInverse`,
+    * `Alonzo/TxBody.hs:531-544`; `conwayRedeemerPointerInverse`, `Conway/TxBody.hs:662-679`,
+    * cardano-ledger f649f975); the scripts a transaction needs are [[collection]]'s.
     */
   def all(body: TxBody, spent: Map[TxIn, TxOut]): Vector[Purpose] =
     val spending = body.inputs.sorted.zipWithIndex.flatMap { case (in, ix) =>
@@ -94,9 +97,11 @@ object Purpose:
     * `getAlonzoScriptsNeeded` (`Alonzo/UTxO.hs:121,313-365`, `Babbage/UTxO.hs:52`) give a duplicate
     * certificate the index of its first occurrence while it keeps its place in the sequence;
     * Conway's `getConwayScriptsNeeded` (`Conway/UTxO.hs:62-80,128`), which Dijkstra's extends
-    * (cardano-ledger 9df9f98c `Dijkstra/UTxO.hs:190-192`), its own index. No era before Alonzo
-    * collects scripts (UTXOS runs from Alonzo, `ShelleyUtxo`); those eras take Alonzo's only to
-    * make the choice total.
+    * (cardano-ledger 9df9f98c `Dijkstra/UTxO.hs:190-192`), its own index. Every purpose is listed,
+    * those with no script credential too; [[TxChecks.scriptsNeeded]] keeps the ones that need a
+    * script, and UTXOW and UTXOS take them from it. The eras before Alonzo have no redeemers, and
+    * their UTXOW needs only the scripts' hashes, which do not depend on the indices; they take
+    * Alonzo's to make the choice total.
     */
   private[ledger] def collection(
       body: TxBody,

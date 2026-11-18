@@ -194,16 +194,12 @@ object ApplyBenchMain:
           time(TxChecks.providedScripts(tx.witnesses, spent ++ refOuts))
         ns("providedScripts") += tProvided
         val byInput = body.inputs.flatMap(in => utxo.get(in).map(in -> _)).toMap
-        val (needed, tNeeded) = time(TxChecks.scriptsNeeded(body, byInput))
+        val (needed, tNeeded) = time(TxChecks.scriptsNeeded[Alonzo](body, byInput))
         ns("scriptsNeeded") += tNeeded
-        val purposes = needed
-          .collect { case (h, ps) if scripts.get(h).exists(_.kind.isPlutus) => ps }
-          .flatten
-          .toSet
         ns("datumChecks") += time(
           TxChecks.datumChecks[Alonzo](tx, byInput, refOuts, scripts)
         )._2
-        ns("redeemerChecks") += time(TxChecks.redeemerChecks(tx, byInput, scripts, purposes))._2
+        ns("redeemerChecks") += time(TxChecks.redeemerChecks(tx, scripts, needed))._2
         ns("auxiliaryChecks") += time(
           TxChecks.auxiliaryChecks[Alonzo](pp, tx, e)
         )._2

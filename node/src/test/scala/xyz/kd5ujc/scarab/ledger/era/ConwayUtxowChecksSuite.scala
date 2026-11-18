@@ -119,7 +119,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
     * (`plutusLanguagesUsedStAnnTx`), from the flat annotation.
     */
   private def languages(s: Seen): Set[PlutusLanguage] =
-    s.ann.needed.keySet.flatMap(s.ann.scripts.get).map(_.kind).collect {
+    s.ann.needed[Conway].map(_._2).toSet.flatMap(s.ann.scripts.get).map(_.kind).collect {
       case ScriptKind.PlutusV1 => PlutusLanguage.V1
       case ScriptKind.PlutusV2 => PlutusLanguage.V2
       case ScriptKind.PlutusV3 => PlutusLanguage.V3

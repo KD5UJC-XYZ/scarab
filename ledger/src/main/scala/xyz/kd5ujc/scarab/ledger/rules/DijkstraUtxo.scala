@@ -91,7 +91,11 @@ object DijkstraStAnnTx:
         .leftMap(DijkstraPending.ConwayForm(_))
       ann = StAnnTx(conway, utxo)
       // a needed Plutus script, of an input or a reference script, whatever the witnesses hold
-      _ <- Either.cond(ann.plutusPurposes.isEmpty, (), DijkstraPending.Phase2)
+      _ <- Either.cond(
+        TxChecks.redeemersNeeded(ann.needed[Dijkstra], ann.scripts).isEmpty,
+        (),
+        DijkstraPending.Phase2
+      )
     yield DijkstraStAnnTx(tx, ann)
 
   /** The native scripts the transaction can use, in Dijkstra's form, by hash
