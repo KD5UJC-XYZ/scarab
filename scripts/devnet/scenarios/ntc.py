@@ -40,7 +40,7 @@ import time
 from cleanup import container_labels
 from .. import cborspan, ledgercompare, ntccli, ntcquery, ntcsafety
 from ..ntclocal import (Session, backlog_follow, compare_follow, first_instruction, live_follow, monitor_rounds,
-                        await_wakes, tx_id, has_tx_ids)
+                        await_wakes, tx_id, has_tx_ids, submission_prefixes)
 from ..eraload import names_constructor
 from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -696,6 +696,10 @@ def ntc(args):
         safety, safety_failures = ntcsafety.run(lambda: open_h(args), lambda: open_s(root))
         failures.extend(safety_failures)
         print(json.dumps({"querySafety": safety}), flush=True)
+        # transaction prefixes the reference's decoder fails on, each on a connection of its own (#924)
+        prefixes, prefix_failures = submission_prefixes(lambda: bounded(open_h(args)), lambda: bounded(open_s(root)))
+        failures.extend(prefix_failures)
+        print(json.dumps({"submissionPrefixes": prefixes}), flush=True)
         monitor = {}
         try:
             monitor_comparison(args, root, monitor)

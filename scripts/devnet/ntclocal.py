@@ -312,6 +312,53 @@ def has_tx_ids(open_h, open_s):
     return report, failures
 
 
+# Leading bytes of a LocalTxSubmission transaction that the reference's decoder of `GenTx` fails on before it
+# ends (#924): `decodeNS`'s list of two and era index, Byron's `MempoolPayload` constructor and a Shelley-based era's
+# tag 24 (ouroboros-consensus 82ecba32 `HardFork/Combinator/Serialisation/Common.hs:420-425`; cardano-ledger
+# f649f975 `eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs:85-93`; ouroboros-network c45735a5
+# `ouroboros-network/api/lib/Ouroboros/Network/Block.hs:501-504`). The reference reads the transaction from the
+# stream and ends the connection at once; so must the Scala node, without the rest of the message.
+REFUSED_SUBMISSIONS = {
+    "era-8-prefix": b"\x82\x08",
+    "envelope-of-3-prefix": b"\x83",
+    "byron-constructor-4-prefix": b"\x82\x00\x82\x04",
+    "conway-tag-25-prefix": b"\x82\x06\xd8\x19",
+}
+
+
+def _submission_closes(opener, item):
+    """Whether `MsgSubmitTx` of the bytes `item`, written as they are on a fresh connection, ends it. Only an end met
+    while reading the reply counts as closed; a failure before (opening, or writing the message) is reported with
+    its stage and fails the probe, and the opener's session deadline bounds a node that neither answers nor
+    closes."""
+    stage = "open"
+    try:
+        with opener() as session:
+            stage = "send"
+            session._send(6, b"\x82\x00" + item)
+            stage = "reply"
+            try:
+                session._recv(6)
+                return {"closed": False, "reply": session.last_raw.hex()}
+            except (EOFError, ConnectionResetError, BrokenPipeError):
+                return {"closed": True}
+    except ntcquery.Deadline as e:
+        return {"closed": False, "timedOut": True, "stage": stage, "error": repr(e)}
+    except (EOFError, OSError, RuntimeError, AssertionError) as e:
+        return {"closed": False, "stage": stage, "error": repr(e)}
+
+
+def submission_prefixes(open_h, open_s):
+    """(report, failures): each of `REFUSED_SUBMISSIONS` ends a connection of its own on both nodes."""
+    report, failures = {}, []
+    for label, item in REFUSED_SUBMISSIONS.items():
+        row = {"reference": _submission_closes(open_h, item), "scala": _submission_closes(open_s, item)}
+        report[label] = row
+        if not all(result["closed"] for result in row.values()):
+            failures.append(f"LocalTxSubmission {label} did not end the connection on both nodes: {row}")
+    return report, failures
+
+
 def compare_snapshots(h, s):
     """(comparable, differences): the snapshots compare when slot and transactions agree; then every
     step must be equal."""

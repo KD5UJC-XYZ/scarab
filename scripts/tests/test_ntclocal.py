@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from devnet import cbor, ntclocal  # noqa: E402
+from devnet import cbor, ntclocal, ntcquery  # noqa: E402
 
 
 class Session:
@@ -264,6 +264,63 @@ class HasTxIdsTest(unittest.TestCase):
         _, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused),
                                           lambda: MonitorSession(self.refused, answer=b"\x82\x08\xf5"))
         self.assertEqual(len(failures), len(ntclocal.ACCEPTED_IDS) + 1)
+
+
+class SubmissionSession:
+    """A LocalTxSubmission session that ends the connection on the items `closes` names once it has read them, and
+    otherwise answers. `opens=False` ends it before anything is sent."""
+
+    def __init__(self, closes, opens=True):
+        self.closes, self.opens, self.sent, self.last_raw = closes, opens, [], b""
+
+    def __enter__(self):
+        if not self.opens:
+            raise EOFError("node closed the connection")
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def _send(self, protocol, payload):
+        self.sent.append((protocol, payload))
+
+    def _recv(self, protocol):
+        if self.sent[-1][1][2:] in self.closes:
+            raise EOFError("node closed the connection")
+        self.last_raw = b"\x81\x01"
+        return [1]
+
+
+class SubmissionPrefixesTest(unittest.TestCase):
+    refused = set(ntclocal.REFUSED_SUBMISSIONS.values())
+
+    def test_each_prefix_is_sent_as_a_submit_tx_on_a_connection_of_its_own(self):
+        sessions = [SubmissionSession(self.refused) for _ in ntclocal.REFUSED_SUBMISSIONS]
+        opened = iter(sessions)
+        report, failures = ntclocal.submission_prefixes(lambda: SubmissionSession(self.refused), lambda: next(opened))
+        self.assertEqual(failures, [])
+        self.assertEqual(set(report), set(ntclocal.REFUSED_SUBMISSIONS))
+        self.assertEqual([s.sent for s in sessions],
+                         [[(6, b"\x82\x00" + item)] for item in ntclocal.REFUSED_SUBMISSIONS.values()])
+
+    def test_an_answered_prefix_fails(self):
+        answered = self.refused - {ntclocal.REFUSED_SUBMISSIONS["era-8-prefix"]}
+        _, failures = ntclocal.submission_prefixes(lambda: SubmissionSession(self.refused),
+                                                   lambda: SubmissionSession(answered))
+        self.assertEqual(len(failures), 1)
+        self.assertIn("era-8-prefix", failures[0])
+
+    def test_a_connection_that_ends_before_the_prefix_is_sent_is_not_a_refusal(self):
+        report, failures = ntclocal.submission_prefixes(lambda: SubmissionSession(self.refused),
+                                                        lambda: SubmissionSession(self.refused, opens=False))
+        self.assertEqual(len(failures), len(ntclocal.REFUSED_SUBMISSIONS))
+        self.assertTrue(all(row["scala"]["stage"] == "open" and not row["scala"]["closed"]
+                            for row in report.values()))
+
+    def test_each_prefix_is_not_a_whole_item(self):
+        for label, item in ntclocal.REFUSED_SUBMISSIONS.items():
+            with self.subTest(label=label), self.assertRaises(ntcquery.Incomplete):
+                ntcquery.decode(item)
 
 
 class HeldFoundTest(unittest.TestCase):
