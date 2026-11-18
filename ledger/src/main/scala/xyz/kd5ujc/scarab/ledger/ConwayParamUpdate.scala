@@ -35,6 +35,11 @@ object Unsigned:
   def from[W <: Width](n: BigInt)(using b: Bound[W]): Option[Unsigned[W]] =
     Option.when(n.signum >= 0 && n <= b.max)(n)
 
+  /** `fromIntegral` into the word of width `W` (Haskell's `base`): `n` modulo 2^width, as the
+    * reference narrows an `Int` count or position into a `Word32`.
+    */
+  def wrapping[W <: Width](n: BigInt)(using b: Bound[W]): Unsigned[W] = n.mod(b.max + 1)
+
   /** `decodeWord8`, `decodeWord16`, `decodeWord32` or `decodeWord64` (cardano-ledger-binary over
     * cborg): an unsigned integer item of any head width whose value fits the width.
     */

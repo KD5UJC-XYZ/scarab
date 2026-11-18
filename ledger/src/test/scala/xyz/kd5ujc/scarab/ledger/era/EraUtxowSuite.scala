@@ -48,6 +48,45 @@ class EraUtxowSuite extends munit.FunSuite:
   private def both(t: Block.Transaction): (FlatTx, ConwayTx) =
     (FlatTx.fromBlock(t, Era.Conway).toOption.get, ConwayTx.decode(t).toOption.get)
 
+  /** A purpose's tag, index and script, as the flat path names it and as `getScriptsNeeded` does.
+    */
+  private def flatNeeded(f: FlatTx): Vector[(Int, BigInt, Bytes)] =
+    xyz.kd5ujc.scarab.ledger.Purpose
+      .collection(f.body, Map.empty, ShelleyBasedEra.SConway)
+      .flatMap(p => p.scriptHash.map(h => (p.tag, BigInt(p.index), h)))
+
+  private def typedNeeded(c: ConwayTx): Vector[(Int, BigInt, Bytes)] =
+    val u = EraUTxO.conway
+    u.getScriptsNeeded[TxLevel.Top](UTxO[Conway](Map.empty), tx.body[TxLevel.Top](c)(using top))(
+      using u.txOf.bodyOf.top
+    ).unAlonzoScriptsNeeded
+      .map { (purpose, hash) =>
+        import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose.*
+        val (tag, ix) = purpose match
+          case ConwaySpending(a)    => (0, a.ix.value)
+          case ConwayMinting(a)     => (1, a.ix.value)
+          case ConwayCertifying(a)  => (2, a.ix.value)
+          case ConwayWithdrawing(a) => (3, a.ix.value)
+          case ConwayVoting(a)      => (4, a.ix.value)
+          case ConwayProposing(a)   => (5, a.ix.value)
+        (tag, ix, hash)
+      }
+
+  test("getScriptsNeeded is the flat path's on every recorded Conway transaction, inputs aside"):
+    val needs = transactions.map { t =>
+      val (f, c) = both(t)
+      val typed = typedNeeded(c)
+      assertEquals(typed, flatNeeded(f))
+      typed
+    }
+    // the inputs, policies and certificates in an order a mistake would change are crafted
+    // (`ConwayUtxowChecksSuite`), as no recorded transaction has them
+    val patterns: Vector[(String, Vector[(Int, BigInt, Bytes)] => Boolean)] = Vector(
+      "a withdrawal from a script's account" -> (_.exists(_._1 == 3)),
+      "a script voter" -> (_.exists(_._1 == 4))
+    )
+    assertEquals(patterns.collect { case (what, p) if !needs.exists(p) => what }, Vector.empty)
+
   private def params(major: Int): (ProtocolParams, PParams[Conway]) =
     val flat = TestLedger.params(major)
     (flat, PParams[Conway](ConwayPParams.fromStored(flat).toOption.get))

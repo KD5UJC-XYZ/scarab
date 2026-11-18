@@ -88,6 +88,13 @@ type PlutusPurpose[F[_, _], E <: EraTag] = E match
   case Conway   => conway.ConwayPlutusPurpose[F]
   case Dijkstra => dijkstra.DijkstraPlutusPurpose[F]
 
+/** `ScriptsNeeded era` (`State/UTxO.hs:243-245`, cardano-ledger f649f975): what UTXOW needs to find
+  * the scripts a transaction must run, by era. Conway's is Alonzo's form (`type ScriptsNeeded
+  * ConwayEra = AlonzoScriptsNeeded ConwayEra`, `Conway/UTxO.hs:120`).
+  */
+type ScriptsNeeded[E <: EraTag] = E match
+  case Conway => AlonzoScriptsNeeded[Conway]
+
 /** The auxiliary data of era `E` (`type TxAuxData era`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:483`, cardano-ledger f649f975).
   */

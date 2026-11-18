@@ -30,9 +30,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
 /** Conway's UTXOW predicates on the era types (`era/rules/Utxow.scala`) against the flat ones, on
   * every transaction of the recorded Conway refusal corpora: the same verdict, failures included,
-  * from each. The scripts a transaction needs come from the flat annotation, as the era types have
-  * no `EraUTxO` yet. A predicate the corpus never fails is named, and refused on a case crafted
-  * from a recorded one.
+  * from each. The scripts a transaction needs and provides are the era types' own (`EraUTxO`'s
+  * `getScriptsNeeded` and `getScriptsProvided`), checked against the flat path's on every case. A
+  * predicate the corpus never fails is named, and refused on a case crafted from a recorded one.
   */
 class ConwayUtxowChecksSuite extends FunSuite:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
@@ -125,21 +125,22 @@ class ConwayUtxowChecksSuite extends FunSuite:
       case ScriptKind.PlutusV3 => PlutusLanguage.V3
     }
 
-  /** `getReferenceScripts` (`Babbage/UTxO.hs:150-166`, cardano-ledger f649f975) by hash, over the
-    * typed UTxO set restricted to the inputs and the reference inputs.
+  /** The scripts the body needs, by `EraUTxO`'s `getScriptsNeeded`. */
+  private def scriptsNeeded(s: Seen): AlonzoScriptsNeeded[Conway] =
+    EraUTxO.conway.getScriptsNeeded[TxLevel.Top](
+      s.utxo,
+      tx.body[TxLevel.Top](s.typed)(using top)
+    )(using EraUTxO.conway.txOf.bodyOf.top)
+
+  /** `getReferenceScripts` (`Babbage/UTxO.hs:148-155`, cardano-ledger f649f975) of the inputs and
+    * the reference inputs, by hash: what `babbageUtxowTransition` reads (`Babbage/Rules/Utxow.hs`).
     */
   private def referenceScripts(s: Seen): Set[Bytes] =
     val bodies = EraTxBody.conway
     val body = tx.body[TxLevel.Top](s.typed)(using top)
-    val ins = bodies.referenceInputs[TxLevel.Top](body)(using bodies.top) ++
+    val ins: Set[TxIn] = bodies.referenceInputs[TxLevel.Top](body)(using bodies.top) ++
       bodies.inputs[TxLevel.Top](body)(using bodies.top)
-    val outs = EraTxOut.conway
-    s.utxo.unUTxO.view
-      .filterKeys(ins.contains)
-      .values
-      .flatMap(outs.referenceScript)
-      .map(outs.scripts.hashScript)
-      .toSet
+    BabbageUTxO.getReferenceScripts(s.utxo, ins).keySet
 
   /** Each predicate: its name, the flat verdict and the typed one, as failures (a defect is a
     * `Left`).
@@ -181,7 +182,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
           failuresOf(
             BabbageUtxow.babbageMissingScripts[Conway](
               s.pp,
-              s.ann.needed.keySet,
+              EraUTxO.conway.getScriptsHashesNeeded(scriptsNeeded(s)),
               referenceScripts(s),
               tx.witsOf.scriptTxWits(wits).keySet
             )
@@ -213,6 +214,138 @@ class ConwayUtxowChecksSuite extends FunSuite:
     val (_, flat, typed) = pairs(s).find(_._1 == name).getOrElse(fail(s"no predicate $name"))
     assertEquals(typed, flat, s"${s.label}: $name")
     right(s"${s.label}: $name")(flat)
+
+  /** A purpose as the flat path names it: its tag, index and script. */
+  private def flatNeeded(s: Seen): Vector[(Int, BigInt, Bytes)] =
+    xyz.kd5ujc.scarab.ledger.Purpose
+      .collection(s.flat.body, s.ann.spentByInput, ShelleyBasedEra.SConway)
+      .flatMap(p => p.scriptHash.map(h => (p.tag, BigInt(p.index), h)))
+
+  private def typedNeeded(s: Seen): Vector[(Int, BigInt, Bytes)] =
+    scriptsNeeded(s).unAlonzoScriptsNeeded.map { (purpose, hash) =>
+      import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose.*
+      val (tag, ix) = purpose match
+        case ConwaySpending(a)    => (0, a.ix.value)
+        case ConwayMinting(a)     => (1, a.ix.value)
+        case ConwayCertifying(a)  => (2, a.ix.value)
+        case ConwayWithdrawing(a) => (3, a.ix.value)
+        case ConwayVoting(a)      => (4, a.ix.value)
+        case ConwayProposing(a)   => (5, a.ix.value)
+      (tag, ix, hash)
+    }
+
+  test("getScriptsNeeded is the flat path's, in order with each purpose's index, on every case"):
+    seen.foreach(s => assertEquals(typedNeeded(s), flatNeeded(s), s.label))
+
+  // what a wrong order or index would change: the corpus has a guardrails script; the recorded
+  // blocks a script's withdrawal and a script voter (`EraUtxowSuite`); the crafted case below a
+  // script input after another, policies out of order and a script certificate after another
+  test("the corpus has a proposal's guardrails script among the scripts needed"):
+    assert(seen.exists(s => typedNeeded(s).exists(_._1 == 5)))
+
+  test(
+    "crafted: a script input after a key input, policies written out of order, a script certificate second"
+  ):
+    val s0 = seen
+      .find(s => typedNeeded(s).exists(_._1 == 0))
+      .getOrElse(fail("no case that spends a script-locked output"))
+    val keyLocked = s0.stored.values
+      .find(_.address.kind match
+        case xyz.kd5ujc.scarab.ledger.Address.Kind.Shelley(
+              _,
+              xyz.kd5ujc.scarab.ledger.Credential.Key(_),
+              _,
+              _
+            ) =>
+          true
+        case _ => false)
+      .getOrElse(fail("no key-locked output"))
+    // an input before every other (the least transaction id), spending a key-locked output
+    val first = TxIn(Bytes(Vector.fill(32)(0.toByte)), 0)
+    def node(v: Value): Node = leaf(v)
+    def bytes(fill: Int, n: Int): Node = node(Value.ByteString(Bytes(Vector.fill(n)(fill.toByte))))
+    def uint(n: Int): Node = node(Value.UInt(n))
+    val firstInput = node(Value.Arr(Vector(node(Value.ByteString(first.id)), uint(0))))
+    def isKey(k: Int)(n: Node): Boolean = n.value == Value.UInt(k)
+    // two policies, the greater written first, so only the policies' order indexes them right
+    val mint = node(
+      Value.Map(
+        Vector(
+          bytes(0x22, 28) -> node(
+            Value.Map(Vector(node(Value.ByteString(Bytes.empty)) -> uint(1)))
+          ),
+          bytes(0x11, 28) -> node(Value.Map(Vector(node(Value.ByteString(Bytes.empty)) -> uint(1))))
+        )
+      )
+    )
+    // a key's registration, then a script's unregistration: the script's certificate is the second
+    val certs = node(
+      Value.Arr(
+        Vector(
+          node(
+            Value.Arr(Vector(uint(7), node(Value.Arr(Vector(uint(0), bytes(0x31, 28)))), uint(2)))
+          ),
+          node(
+            Value.Arr(Vector(uint(8), node(Value.Arr(Vector(uint(1), bytes(0x32, 28)))), uint(2)))
+          )
+        )
+      )
+    )
+    val s1 = edited(s0, 0)(fields =>
+      fields
+        .map {
+          case (k, v) if isKey(0)(k) =>
+            k -> (v.value match
+              case Value.Tag(tag, inner) =>
+                inner.value match
+                  case Value.Arr(ins) => node(Value.Tag(tag, node(Value.Arr(ins :+ firstInput))))
+                  case other          => fail(s"inputs: $other")
+              case Value.Arr(ins) => node(Value.Arr(ins :+ firstInput))
+              case other          => fail(s"inputs: $other"))
+          case kv => kv
+        }
+        .filterNot((k, _) => isKey(9)(k) || isKey(4)(k)) :+ (node(Value.UInt(9)) -> mint) :+
+        (node(Value.UInt(4)) -> certs)
+    )
+    val stored = s1.stored + (first -> keyLocked)
+    val s = s1.copy(stored = stored, utxo = right("crafted UTxO")(ConwayUTxO.fromStored(stored)))
+    val needs = typedNeeded(s)
+    assertEquals(needs, flatNeeded(s))
+    assert(needs.exists((tag, ix, _) => tag == 0 && ix > 0), s"a script input first: $needs")
+    assertEquals(
+      needs.filter(_._1 == 1).map(n => (n._2, n._3)),
+      Vector(
+        (BigInt(0), Bytes(Vector.fill(28)(0x11.toByte))),
+        (BigInt(1), Bytes(Vector.fill(28)(0x22.toByte)))
+      )
+    )
+    assertEquals(
+      needs.filter(_._1 == 2).map(n => (n._2, n._3)),
+      Vector((BigInt(1), Bytes(Vector.fill(28)(0x32.toByte))))
+    )
+
+  test("getScriptsProvided is the flat path's scripts on every case: hashes, kinds and bytes"):
+    val scripts = tx.witsOf.scriptsOf
+    val bytesCompared = seen.map { s =>
+      val body = s.flat.body
+      val outs = (body.inputs ++ body.referenceInputs).flatMap(s.stored.get)
+      val flat = TxChecks.providedScripts(s.flat.witnesses, outs.toVector)
+      val typed = EraUTxO.conway
+        .getScriptsProvided[TxLevel.Top](s.utxo, s.typed)(using EraUTxO.conway.txOf.bodyOf.top)
+        .unScriptsProvided
+      assertEquals(typed.keySet, flat.keySet, s.label)
+      // each script's kind, and its bytes where the flat path keeps them (a witness script; an
+      // output's reference script keeps only its hash and tree)
+      typed.toVector.map { (h, script) =>
+        assertEquals(scripts.scriptPrefixTag(script).toInt, flat(h).kind.tag, s"${s.label}: $h")
+        flat(h).plutus.orElse(flat(h).encoding) match
+          case Some(payload) =>
+            assertEquals(scripts.originalBytes(script), payload, s"${s.label}: bytes of $h")
+            1
+          case None => 0
+      }.sum
+    }.sum
+    assert(bytesCompared > 0, "no script whose bytes both paths keep")
 
   test("the corpus has Conway cases, each read by both paths"):
     assert(clue(seen.size) > 0)

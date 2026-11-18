@@ -2,9 +2,12 @@
 package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.TxIn
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.{TxIn, Voter}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
+  AlonzoScriptsNeeded,
+  AlonzoUTxO,
   BabbageEraTxOut,
   BabbageUTxO,
   EraTx,
@@ -12,9 +15,11 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxError,
   EraTxOut,
   EraUTxO,
+  GovAction,
   MaryUTxO,
   MultiAssetValue,
   PParams,
+  ScriptsProvided,
   Tx,
   TxBody,
   TxLevel,
@@ -78,6 +83,60 @@ object ConwayUTxO:
   ): Coin =
     EraTx.conway.getMinFeeTx[L](pp, tx, txNonDistinctRefScriptsSize[L](utxo, tx))(using l)
 
+  /** `getConwayScriptsNeeded` (`Conway/UTxO.hs:62-105`, cardano-ledger f649f975): Alonzo's
+    * spending, withdrawing and minting needs, the certificates' by their own position (no
+    * duplicate's first index, as before Conway), each voter by its position among the voters
+    * (`Map.keys`) with a script credential, and each proposal by its position whose parameter
+    * change or treasury withdrawal names a guardrails script.
+    */
+  def getConwayScriptsNeeded[L <: TxLevel](utxo: UTxO[Conway], body: TxBody[L, Conway])(using
+      l: EraTxBody.conway.Level[L]
+  ): AlonzoScriptsNeeded[Conway] =
+    val b = EraTxBody.conway
+    def credScriptHash(credential: xyz.kd5ujc.scarab.ledger.Credential): Option[Bytes] =
+      credential match
+        case xyz.kd5ujc.scarab.ledger.Credential.Script(h) => Some(h)
+        case xyz.kd5ujc.scarab.ledger.Credential.Key(_)    => None
+    val certifyingScriptsNeeded = AlonzoScriptsNeeded[Conway](
+      AlonzoUTxO
+        .zipAsIxItem(b.certs[L](body)) { asIxItem =>
+          b.certsOf
+            .getScriptWitnessTxCert(asIxItem.item)
+            .map(hash => (ConwayPlutusPurpose.ConwayCertifying(asIxItem), hash))
+        }
+        .flatten
+    )
+    val votingScriptsNeeded = AlonzoScriptsNeeded[Conway](
+      AlonzoUTxO
+        .zipAsIxItem(b.votingProcedures[L](body).unVotingProcedures.keys) { asIxItem =>
+          val voterScript = asIxItem.item match
+            case Voter.CommitteeHot(credential) => credScriptHash(credential)
+            case Voter.DRepVoter(credential)    => credScriptHash(credential)
+            case Voter.Pool(_)                  => None
+          voterScript.map(hash => (ConwayPlutusPurpose.ConwayVoting(asIxItem), hash))
+        }
+        .flatten
+    )
+    val proposingScriptsNeeded = AlonzoScriptsNeeded[Conway](
+      AlonzoUTxO
+        .zipAsIxItem(b.proposalProcedures[L](body).toVector) { asIxItem =>
+          val guardrails = asIxItem.item.pProcGovAction match
+            case GovAction.ParameterChange(_, _, Some(guardrailsScriptHash)) =>
+              Some(guardrailsScriptHash.bytes)
+            case GovAction.TreasuryWithdrawals(_, Some(guardrailsScriptHash)) =>
+              Some(guardrailsScriptHash.bytes)
+            case _ => None
+          guardrails.map(hash => (ConwayPlutusPurpose.ConwayProposing(asIxItem), hash))
+        }
+        .flatten
+    )
+    AlonzoUTxO.getSpendingScriptsNeeded[Conway, L](utxo, body) ++
+      AlonzoUTxO.getWithdrawingScriptsNeeded[Conway, L](body) ++
+      certifyingScriptsNeeded ++
+      AlonzoUTxO.getMintingScriptsNeeded[Conway, L](body) ++
+      votingScriptsNeeded ++
+      proposingScriptsNeeded
+
   val instance: EraUTxO[Conway] = new EraUTxO[Conway]:
     override val txOf: EraTx.conway.type = EraTx.conway
     // `getConsumedValue = getConsumedMaryValue`, `Conway/UTxO.hs:122`, cardano-ledger f649f975
@@ -97,6 +156,23 @@ object ConwayUTxO:
         isPoolRegistered: KeyHash[StakePool] => Boolean,
         body: TxBody[TxLevel.Top, Conway]
     ): MultiAssetValue = conwayProducedValue(pp, isPoolRegistered, body)
+    // `getScriptsProvided = getBabbageScriptsProvided`, `Conway/UTxO.hs:126`, cardano-ledger
+    // f649f975
+    override def getScriptsProvided[L <: TxLevel](utxo: UTxO[Conway], tx: Tx[L, Conway])(using
+        l: txOf.bodyOf.Level[L]
+    ): ScriptsProvided[Conway] =
+      BabbageUTxO.getBabbageScriptsProvided[Conway, L](utxo, tx)(using txOf, txOf.bodyOf, l, l)
+
+    // `getScriptsNeeded = getConwayScriptsNeeded`, `Conway/UTxO.hs:128`, cardano-ledger f649f975
+    override def getScriptsNeeded[L <: TxLevel](utxo: UTxO[Conway], body: TxBody[L, Conway])(using
+        l: txOf.bodyOf.Level[L]
+    ): AlonzoScriptsNeeded[Conway] = getConwayScriptsNeeded[L](utxo, body)(using l)
+
+    // `getScriptsHashesNeeded = getAlonzoScriptsHashesNeeded`, `Conway/UTxO.hs:130`,
+    // cardano-ledger f649f975
+    override def getScriptsHashesNeeded(scriptsNeeded: AlonzoScriptsNeeded[Conway]): Set[Bytes] =
+      AlonzoUTxO.getAlonzoScriptsHashesNeeded(scriptsNeeded)
+
     // `getMinFeeTxUtxo = getConwayMinFeeTxUtxo`, `Conway/UTxO.hs:134`, cardano-ledger f649f975
     override def getMinFeeTxUtxo[L <: TxLevel](
         pp: PParams[Conway],
