@@ -7,6 +7,7 @@ import cats.effect.std.Supervisor
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
+import fs2.concurrent.SignallingRef
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{BlockFailure, NodeError, ValidationError}
@@ -46,6 +47,14 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       ) = IO.unit
     ServerHandlers(NtNHeader.codec, Resource.pure(cursor), blocks, transactions)
 
+  private def lostBy(source: PeerNetwork.Addr)(
+      observed: Vector[Event[PeerNetwork.Addr]]
+  ): Vector[FailureClass] =
+    observed.collect {
+      case Event.Observed(peer, Observation.Lost(failure, _, false, _), _, _) if peer == source =>
+        failure
+    }
+
   List((true, false), (false, false), (false, true)).foreach { (originalLive, replacement) =>
     test(
       s"cached attribution targets only its adding bearer (live=$originalLive replacement=$replacement)"
@@ -61,7 +70,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
             consumer = InMemoryPeers.address(2)
             _ <- List(source, consumer).traverse_(transport.serve(_, handlers))
             manager <- ConnectionManager.create[IO](noTimeWait)
-            events <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
+            events <- SignallingRef.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
             entered <- cats.effect.std.Queue.unbounded[IO, Unit]
             finalized <- Ref.of[IO, Int](0)
             metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
@@ -139,6 +148,11 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               yield ()
             }
             _ <- if originalLive then current.traverse_(_.closed.timeout(2.seconds)) else IO.unit
+            // the monitor reports the loss from its own fiber once the connection has closed
+            _ <- events
+              .waitUntil(lostBy(source)(_).nonEmpty)
+              .timeout(2.seconds)
+              .whenA(originalLive)
             replacementState <-
               if replacement then manager.lookup(remote).map(_.exists(_.state.isLive))
               else IO.pure(false)
@@ -147,11 +161,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               .flatMap(e => IO.fromOption(e.toOption)(new AssertionError("consumer address")))
             innocent <- manager.lookup(consumerRemote)
             observed <- events.get
-            sourceFailures = observed.collect {
-              case Event.Observed(peer, Observation.Lost(failure, _, false, _), _, _)
-                  if peer == source =>
-                failure
-            }
+            sourceFailures = lostBy(source)(observed)
             rejected = observed.collect {
               case Event.Observed(
                     peer,
