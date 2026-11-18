@@ -155,7 +155,7 @@ class ByronSubmissionSuite extends FunSuite:
 
   // a `Signature`, a redeem key and a redeem signature are read with plain `decodeBytes`
   // (`Signing/Signature.hs:129-130`, `Crypto/Orphans.hs:89-92, 111-114`), and so is a hash
-  // (`Hashing.hs:157-165`): any width of length
+  // (`Hashing.hs:157-165`), cardano-ledger f649f975: any width of length
   test("a signature, a redeem key or a hash whose length is not in its shortest form is read") {
     Vector(
       "transaction's witness signature" -> submitted(0, rewitnessed(keyTx)(_.original, wide)),

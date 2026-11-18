@@ -123,7 +123,8 @@ object ByronTransport:
     yield ()
 
   // `TxInWitness.hs:118-128`: a verification key and its signature (0), or a redeem key, 32 bytes
-  // of plain `decodeBytes` (`Crypto/Orphans.hs:89-92`), and its signature (2)
+  // of plain `decodeBytes` (`Crypto/Orphans.hs:89-92`), and its signature (2); cardano-ledger
+  // f649f975
   private def witness(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 2, DecodeField.Witness)
@@ -150,7 +151,8 @@ object ByronTransport:
   private def address(node: Node): Result[Unit] = ByronAddress.decode(node.original).void
 
   // `Delegation/Certificate.hs:209-218`: the epoch, the issuer's and the delegate's verification
-  // keys, and a `Signature`, 64 bytes of plain `decodeBytes` (`Signing/Signature.hs:129-130`)
+  // keys, and a `Signature`, 64 bytes of plain `decodeBytes` (`Signing/Signature.hs:129-130`);
+  // cardano-ledger f649f975
   private def delegation(node: Node, keys: Keys): Result[Unit] =
     for
       fields <- tuple(node, 4, DecodeField.DelegationCertificate)
