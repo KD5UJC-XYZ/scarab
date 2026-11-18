@@ -1674,7 +1674,8 @@
           "LeiosCommitteeReferenceSuite",
           "LeiosGenesisReferenceSuite",
           "LeiosEpochReferenceSuite",
-          "LeiosTxBytesSuite"
+          "LeiosTxBytesSuite",
+          "DijkstraEpochStateSuite"
         ],
         "issues": [
           826

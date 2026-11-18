@@ -67,7 +67,7 @@ trait SnapshotCodecs extends GovStateCodecs:
           vrfVerKeyHash,
           coin,
           coin,
-          unitInterval,
+          unitIntervalAt,
           delegatorCount,
           credential[Staking]
         )
@@ -117,7 +117,7 @@ trait SnapshotCodecs extends GovStateCodecs:
           leiosPoolBlsKey,
           coin,
           coin,
-          unitInterval,
+          unitIntervalAt,
           delegatorCount,
           credential[Staking]
         )

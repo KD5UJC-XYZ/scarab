@@ -610,6 +610,13 @@
    "definitions": [
     "def storage.haskell.state.Params.completeIn"
    ]
+  },
+  {
+   "reason": "the ten items of a StakePoolParams of the Leios layout from version 12 whose third holds no BLS key, and their conversion to the held nine; Scarab's PoolParams has no key, so the reader that uses them (NodeTypeCodecs.poolParams, which cites decodeStakePoolParamsFlat, cardano-ledger 9df9f98c State/StakePool.hs:744-771) reads ten items through this record",
+   "definitions": [
+    "class storage.haskell.state.PoolParamsBlsSlot",
+    "def storage.haskell.state.PoolParamsBlsSlot#params"
+   ]
   }
  ]
 }

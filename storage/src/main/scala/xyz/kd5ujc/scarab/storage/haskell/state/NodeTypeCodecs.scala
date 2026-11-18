@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
-import xyz.kd5ujc.scarab.codec.{Bytes, Interned, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Interned, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   Committee,
@@ -11,11 +11,14 @@ import xyz.kd5ujc.scarab.ledger.{
   Credential,
   DRep,
   DRepState,
+  DecodeField,
+  DecoderVersion,
   EnactState,
   GenDelegPair,
   GovAction,
   GovActionId,
   GovActionState,
+  LedgerDecodeError,
   ParamUpdate,
   PoolParams,
   PrevIds,
@@ -28,6 +31,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Vote
 }
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Sorted}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, StateLayout}
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
   ConstraintViolation,
@@ -41,6 +45,24 @@ import xyz.kd5ujc.scarab.models.runtime.{
 import DecodeError.Kind
 import NodeOrders.given
 import Wire.*
+
+/** `StakePoolParams` of ten items, its third the BLS key's place holding none
+  * ([[NodeTypeCodecs.poolParams]]).
+  */
+private[state] final case class PoolParamsBlsSlot(
+    operator: Bytes,
+    vrfKeyHash: Bytes,
+    blsKey: Unit,
+    pledge: BigInt,
+    cost: BigInt,
+    margin: Rational,
+    rewardAccount: RewardAccount,
+    owners: Set[Bytes],
+    relays: Bytes,
+    metadata: Option[Bytes]
+):
+  def params: PoolParams =
+    PoolParams(operator, vrfKeyHash, pledge, cost, margin, rewardAccount, owners, relays, metadata)
 
 /** The codecs of the types the mirror shares with the node's own ledger (`Committee`, `Proposals`,
   * `EnactState`, `PoolParams`, ...): the shapes the node-to-client answers are written in, and
@@ -171,26 +193,67 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     def decode(n: Node): Decoded[BigInt] = under.decode(n)
     def encode(a: BigInt, out: Writer): Unit = out.integer(a)
 
+  /** The third of ten items of a `StakePoolParams` in the Leios layout from version 12
+    * (`decodeBlsKeyBackwardsCompatible`, cardano-ledger 9df9f98c `State/StakePool.hs:762-771`):
+    * `null` is no key; a list is a key, refused ([[DijkstraNotYet.PoolParamsBlsKey]]). Never
+    * written: the writer writes nine items.
+    */
+  private val noBlsKey: Codec[Unit] = new Codec[Unit]:
+    def decode(n: Node): Decoded[Unit] = n.value match
+      case Value.Null   => Right(())
+      case Value.Arr(_) => Left(DecodeError.at(n, Kind.Domain(DijkstraNotYet.PoolParamsBlsKey)))
+      case _            => Left(Codec.mismatch("null or a BLS key", n))
+    def encode(a: Unit, out: Writer): Unit = out.nul()
+
   /** `StakePoolParams` (`State/StakePool.hs:550-572`, cardano-ledger f649f975): nine fields in a
     * flat array, the owners a set, the metadata `null` when there is none. Held relays and metadata
     * are written from their values, as by [[ConwayCodecs]]; no relays at all is `Bytes.empty`,
     * written as an empty array and read back as it.
+    *
+    * In the Leios layout from version 12 a pool may carry its BLS key third
+    * (`decodeStakePoolParamsFlat`, cardano-ledger 9df9f98c `State/StakePool.hs:744-771`): ten items
+    * whose third is `null` are no key and read as the nine; ten whose third is a list are a key,
+    * refused ([[DijkstraNotYet.PoolParamsBlsKey]]): the held parameters have no place for it. The
+    * writer writes nine, as the reference does for a pool with no key (`:716-736`).
     */
-  given poolParams(using ProtVer): Codec[PoolParams] = new Codec[PoolParams]:
+  given poolParams(using v: ProtVer): Codec[PoolParams] = new Codec[PoolParams]:
     private val stored = Record.of[PoolParams](
       (
         hash28,
         hash32Bytes,
         heldCoin,
         heldCoin,
-        unitInterval,
+        unitIntervalAt,
         rewardAccount,
         sortedSet(hash28),
         relays,
         nullable(poolMetadata)
       )
     )
-    def decode(n: Node): Decoded[PoolParams] = stored.decode(n)
+    private val withSlot = Record.of[PoolParamsBlsSlot](
+      (
+        hash28,
+        hash32Bytes,
+        noBlsKey,
+        heldCoin,
+        heldCoin,
+        unitIntervalAt,
+        rewardAccount,
+        sortedSet(hash28),
+        relays,
+        nullable(poolMetadata)
+      )
+    )
+    private val read: Node => Decoded[PoolParams] = stateLayout match
+      case StateLayout.Node11_1 => stored.decode
+      case StateLayout.Leios =>
+        if v.atLeast(12) then
+          n =>
+            n.value match
+              case Value.Arr(xs) if xs.sizeIs == 10 => withSlot.decode(n).map(_.params)
+              case _                                => stored.decode(n)
+        else stored.decode
+    def decode(n: Node): Decoded[PoolParams] = read(n)
     def encode(a: PoolParams, out: Writer): Unit =
       out.arrayHead(9)
       ConwayCodecs.poolFields(a, out)
@@ -249,6 +312,34 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     override def check(a: ConwayParamUpdate): Option[ConstraintViolation] =
       ConwayCodecs.parameterUpdate.check(a)
 
+  /** The keys of the parameters Dijkstra adds to an update, 34 to 56 (cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:798-1123`); the keys up to 33 are
+    * Conway's, the same `PParam` s (`:741-776`).
+    */
+  private val dijkstraUpdateKeys: Set[BigInt] = (34 to 56).map(BigInt(_)).toSet
+
+  /** The `PParamsUpdate` of a proposal in a Dijkstra state, read at version 12 (`decodeSparseKeyed`
+    * over the era's keys, each value `decCBOR` at 12, cardano-ledger 9df9f98c
+    * `Core/PParams.hs:264-299`): Conway's keys as a body is read at 12
+    * ([[ConwayParamUpdate.decode]]), its bounded ratios of `Word64` s and its `ExUnits` and
+    * `Prices` definite or indefinite. A key of a parameter Dijkstra adds is refused
+    * ([[DijkstraNotYet.ParameterUpdate]]); any other unknown key as the reference refuses it.
+    */
+  private val paramUpdateFrom12: Codec[ConwayParamUpdate] = new Codec[ConwayParamUpdate]:
+    def decode(n: Node): Decoded[ConwayParamUpdate] =
+      ConwayParamUpdate
+        .decode(n, DecoderVersion.Dijkstra)
+        .left
+        .map {
+          case LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, key)
+              if dijkstraUpdateKeys.contains(key) =>
+            DecodeError.at(n, Kind.Domain(DijkstraNotYet.ParameterUpdate))
+          case why => DecodeError.at(n, Kind.Domain(why))
+        }
+    def encode(a: ConwayParamUpdate, out: Writer): Unit = conwayParamUpdate.encode(a, out)
+    override def check(a: ConwayParamUpdate): Option[ConstraintViolation] =
+      conwayParamUpdate.check(a)
+
   given govActionId: Codec[GovActionId] =
     Record.of[GovActionId]((hash32Bytes, word16))
 
@@ -265,7 +356,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     * threshold (a unit interval).
     */
   given committee(using ProtVer): Codec[Committee] =
-    Record.of[Committee]((sortedMap(nodeCredential, amount), unitInterval))
+    Record.of[Committee]((sortedMap(nodeCredential, amount), unitIntervalAt))
 
   given constitution(using ProtVer): Codec[Constitution] =
     Record.of[Constitution]((anchor, nullable(hash28)))
@@ -288,12 +379,14 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     private val added = sortedMap(nodeCredential, amount)
     private val version = Record.of[(BigInt, BigInt)]((Codec.uintBig(13), word32))
     private val maxMajor: BigInt = if v.atLeast(12) then 13 else 12
+    private val threshold = unitIntervalAt
+    private val parameters = if v.atLeast(12) then paramUpdateFrom12 else conwayParamUpdate
     def decode(n: Node): Decoded[GovAction] =
       variant(n).flatMap {
         case (t, Vector(g, u, p)) if t == 0 =>
           for
             prev <- previous.decode(g).at("previous")
-            update <- conwayParamUpdate.decode(u).at("update")
+            update <- parameters.decode(u).at("update")
             pol <- policy.decode(p).at("policy")
           yield GovAction.ParameterChange(prev, update, pol)
         case (t, Vector(g, pv)) if t == 1 =>
@@ -320,7 +413,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
             prev <- previous.decode(g).at("previous")
             gone <- removed.decode(r).at("removed")
             members <- added.decode(a).at("added")
-            quorum <- unitInterval.decode(q).at("quorum")
+            quorum <- threshold.decode(q).at("quorum")
           yield GovAction.UpdateCommittee(prev, gone, members, quorum)
         case (t, Vector(g, c)) if t == 5 =>
           for
@@ -333,7 +426,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     def encode(a: GovAction, out: Writer): Unit = a match
       case GovAction.ParameterChange(prev, update, pol) =>
         out.arrayHead(4); out.uint(0L)
-        previous.encode(prev, out); conwayParamUpdate.encode(update, out)
+        previous.encode(prev, out); parameters.encode(update, out)
         policy.encode(pol, out)
       case GovAction.HardFork(prev, major, minor) =>
         out.arrayHead(3); out.uint(1L)
@@ -349,7 +442,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       case GovAction.UpdateCommittee(prev, gone, members, quorum) =>
         out.arrayHead(5); out.uint(4L)
         previous.encode(prev, out); removed.encode(gone, out); added.encode(members, out)
-        unitInterval.encode(quorum, out)
+        threshold.encode(quorum, out)
       case GovAction.NewConstitution(prev, script, anchor) =>
         out.arrayHead(3); out.uint(5L)
         previous.encode(prev, out); constitution.encode(Constitution(anchor, script), out)
