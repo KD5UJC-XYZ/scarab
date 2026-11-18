@@ -18,7 +18,11 @@ class DecodeCauseSuite extends FunSuite:
   test("local submission retains the unexpected envelope value") {
     assertEquals(
       LocalSubmission.unwrap(encoded(Value.Null)),
-      Left(Rejection.Malformed(TransactionDecodeProblem.EraEnvelope(Value.Null)))
+      Left(
+        Rejection.Malformed(
+          TransactionDecodeProblem.EraEnvelope(Node.NotSized.NotAList(Value.Null))
+        )
+      )
     )
   }
 

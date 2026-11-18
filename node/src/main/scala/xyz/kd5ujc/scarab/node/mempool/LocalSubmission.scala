@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.mempool
 import xyz.kd5ujc.scarab.ledger.{TransactionDecodeProblem, MempoolProblem, MempoolLedgerProblem}
 import cats.effect.Async
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.{PredicateFailureCbor, RefusalPresentationError}
@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 /** Transactions submitted by local clients (`cardano-cli transaction submit` over the
   * node-to-client socket). The client sends the hard-fork-combinator wrapped transaction
   * `[era, tx]`, where `era` is the index of the transaction's era (Conway is 6) and `tx` is the
-  * transaction itself or, as on node-to-node, CBOR-in-CBOR (tag 24).
+  * transaction in CBOR-in-CBOR (tag 24 around its bytes), as on node-to-node ([[unwrap]]).
   */
 object LocalSubmission:
   /** What has no rejection bytes to send: an implementation limit, a crypto provider that failed on
@@ -43,31 +43,64 @@ object LocalSubmission:
 
   val ConwayEra = 6
 
-  /** The transaction inside a wrapped one, with the era it names. */
+  /** The transaction inside a wrapped one, with the era it names, read as the reference's decoder
+    * of a `GenTx` reads it whole (`dispatchDecoder`,
+    * `HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:258-276, 362-367`,
+    * ouroboros-consensus 82ecba32): `decodeNS` 's `enforceSize "decodeNS" 2` and `decodeWord8`
+    * (`Common.hs:420-425`), each at any width of its head; and in a Shelley-based era, Dijkstra
+    * included, `unwrapCBORinCBOR` (`Shelley/Ledger/Mempool.hs:261-266`), tag 24 around a definite
+    * byte string (`decodeTag`, `decodeBytes`,
+    * `ouroboros-network/api/lib/Ouroboros/Network/Block.hs:501-504`, ouroboros-network c45735a5). A
+    * Byron transaction and one of an index past the last era are not read: whatever follows the
+    * index gets the era mismatch.
+    */
   def unwrap(item: Bytes): Either[Rejection, Submission] =
-    Cbor
-      .decode(item, Cbor.Limits.Unbounded)
-      .left
-      .map(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e)))
-      .flatMap { root =>
-        root.value match
-          case Value.Arr(Vector(era, payload)) =>
-            era.value match
-              case Value.UInt(e) if e.isValidInt =>
-                payload.value match
-                  case Value.Tag(t, inner) if t == 24 =>
-                    inner.value match
-                      case Value.ByteString(b) => Right(Submission(e.toInt, b))
-                      case _ =>
-                        Left(
-                          Rejection.Malformed(TransactionDecodeProblem.TaggedPayload(inner.value))
-                        )
-                  case _ => Right(Submission(e.toInt, payload.original))
-              case Value.UInt(e) =>
-                Left(Rejection.Malformed(TransactionDecodeProblem.EraOutOfRange(e)))
-              case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraExpected(era.value)))
-          case _ => Left(Rejection.Malformed(TransactionDecodeProblem.EraEnvelope(root.value)))
-      }
+    def malformed(problem: TransactionDecodeProblem): Rejection = Rejection.Malformed(problem)
+    for
+      root <- Cbor
+        .decode(item, Cbor.Limits.Unbounded)
+        .leftMap(e => malformed(TransactionDecodeProblem.Syntax(e)))
+      pair <- root
+        .enforceSize(2)
+        .flatMap {
+          case Vector(era, payload) => Right((era, payload))
+          case items                => Left(Node.NotSized.Length(items.size))
+        }
+        .leftMap(e => malformed(TransactionDecodeProblem.EraEnvelope(e)))
+      (era, payload) = pair
+      index <- era.value match
+        case Value.UInt(e) if e <= 0xff => Right(e.toInt)
+        case Value.UInt(e) => Left(malformed(TransactionDecodeProblem.EraOutOfRange(e)))
+        case other         => Left(malformed(TransactionDecodeProblem.EraExpected(other)))
+      raw <- Era.fromIndex(BigInt(index)) match
+        case Some(
+              Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway |
+              Era.Dijkstra
+            ) =>
+          cborInCbor(payload).leftMap(malformed)
+        case Some(Era.Byron) | None => foreign(payload).leftMap(malformed)
+    yield Submission(index, raw)
+
+  /** `unwrapCBORinCBOR`'s tag 24 around a definite byte string: the bytes. */
+  private def cborInCbor(payload: Node): Either[TransactionDecodeProblem, Bytes] =
+    payload.value match
+      case Value.Tag(t, inner) if t == 24 =>
+        inner.value match
+          case Value.ByteString(b) if !inner.isIndefinite => Right(b)
+          case Value.ByteString(_) => Left(TransactionDecodeProblem.ChunkedPayload)
+          case other               => Left(TransactionDecodeProblem.TaggedPayload(other))
+      case other => Left(TransactionDecodeProblem.NotCborInCbor(other))
+
+  /** The payload of an era whose transactions the pool does not read, which gets the era mismatch:
+    * the bytes under tag 24, or the payload itself.
+    */
+  private def foreign(payload: Node): Either[TransactionDecodeProblem, Bytes] =
+    payload.value match
+      case Value.Tag(t, inner) if t == 24 =>
+        inner.value match
+          case Value.ByteString(b) => Right(b)
+          case other               => Left(TransactionDecodeProblem.TaggedPayload(other))
+      case _ => Right(payload.original)
 
   /** The rejection as sent to the client, the pool's ledger being of `era` (none while it has no
     * ledger): the ledger's `ApplyTxErr` of that era for a refused transaction (the predicate

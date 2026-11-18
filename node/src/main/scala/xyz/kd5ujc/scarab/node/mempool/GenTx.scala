@@ -61,24 +61,18 @@ object GenTx:
     *     c45735a5); the transaction in it is read only once it has all arrived (`fromSerialised`,
     *     `Block.hs:477-486`), as [[LocalSubmission.unwrap]] reads a whole one.
     *
-    * A prefix is refused only where every message that starts with it is refused whole too
-    * ([[LocalSubmission.unwrap]], [[MempoolState.read]]), so whether a transaction is admitted does
-    * not depend on how its bytes arrive. Three forms the reference fails on wait here, because the
-    * whole read admits them in the eras the pool reads: an indefinite envelope, a list where the
-    * tag is due (a transaction not wrapped in CBOR-in-CBOR) and a chunked string after tag 24.
-    * Byron's and Dijkstra's transactions are never read whole ([[MempoolState.Read.Foreign]]), so
-    * in those eras every prefix the reference fails on is refused.
+    * Only these envelopes are read: a deeper token the reference fails on is judged once the
+    * message has all arrived, whole. Byron's payload, for instance, is read no further than its
+    * constructor, so a transaction of three items after constructor 0 (`82 00 82 00 82 00 83`),
+    * which the reference refuses at once (`enforceSize "TxAux" 2`,
+    * `eras/byron/ledger/impl/src/Cardano/Chain/UTxO/TxAux.hs:108-114`, cardano-ledger f649f975),
+    * waits. Every message a prefix refused here starts is refused whole too
+    * ([[LocalSubmission.unwrap]], [[MempoolState.read]]).
     */
   def prefix(input: Bytes): LocalTxSubmission.TxPrefix =
     val tokens = PrefixTokens(input, LocalTxSubmission.TxPrefix.Short)
     tokens
-      .head(0)
-      .flatMap(envelope =>
-        // an indefinite envelope is read whole; its era is judged as a definite one's
-        if envelope.major == 4 && (envelope.argument == 2 || envelope.info == 31) then
-          Right(envelope.next)
-        else Left(refused(Refusal.EraEnvelope))
-      )
+      .listOf(2, 0, refused(Refusal.EraEnvelope))
       .flatMap(tokens.word8(_, refused(Refusal.EraIndex)))
       .flatMap((index, next) =>
         Era
@@ -97,14 +91,6 @@ object GenTx:
   private def refused(refusal: Refusal): LocalTxSubmission.TxPrefix =
     LocalTxSubmission.TxPrefix.Refused(refusal)
 
-  /** How the pool reads a transaction of an era whole, as far as the first tokens decide. */
-  private enum Whole:
-    /** Never: the era's transactions get the era mismatch, whatever their bytes. */
-    case Foreign
-
-    /** Wrapped in tag 24 or not, the wrapped bytes chunked or not ([[LocalSubmission.unwrap]]). */
-    case Lenient
-
   private def transaction(tokens: Tokens, at: Int, era: Era): Step[LocalTxSubmission.TxPrefix] =
     era match
       case Era.Byron =>
@@ -118,31 +104,25 @@ object GenTx:
               refused(Refusal.UnknownByronTag(constructor))
             )
           )
-      case Era.Dijkstra => wrapped(tokens, at, era, Whole.Foreign)
-      case Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway =>
-        wrapped(tokens, at, era, Whole.Lenient)
+      case Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway |
+          Era.Dijkstra =>
+        wrapped(tokens, at, era)
 
-  /** `unwrapCBORinCBOR`'s tag 24 and the head of its byte string. */
-  private def wrapped(
-      tokens: Tokens,
-      at: Int,
-      era: Era,
-      whole: Whole
-  ): Step[LocalTxSubmission.TxPrefix] =
+  /** `unwrapCBORinCBOR`'s tag 24 and the head of its definite byte string. */
+  private def wrapped(tokens: Tokens, at: Int, era: Era): Step[LocalTxSubmission.TxPrefix] =
     tokens
       .head(at)
       .flatMap(tag =>
-        (tag.major, whole) match
-          case (4, Whole.Lenient)           => Right(LocalTxSubmission.TxPrefix.Short)
-          case (6, _) if tag.argument == 24 => tokens.head(tag.next).flatMap(bytes(era, whole))
-          case (6, _)                       => Left(refused(Refusal.NotCborInCbor(era)))
-          case (_, Whole.Foreign | Whole.Lenient) => Left(refused(Refusal.ExpectedTag(era)))
+        if tag.major != 6 then Left(refused(Refusal.ExpectedTag(era)))
+        else if tag.argument != 24 then Left(refused(Refusal.NotCborInCbor(era)))
+        else
+          tokens
+            .head(tag.next)
+            .flatMap(bytes =>
+              Either.cond(
+                bytes.major == 2 && bytes.info < 28,
+                LocalTxSubmission.TxPrefix.Short,
+                refused(Refusal.ExpectedBytes(era))
+              )
+            )
       )
-
-  private def bytes(era: Era, whole: Whole)(
-      head: PrefixTokens.Head
-  ): Step[LocalTxSubmission.TxPrefix] =
-    (head.major, head.info, whole) match
-      case (2, info, _) if info < 28             => Right(LocalTxSubmission.TxPrefix.Short)
-      case (2, 31, Whole.Lenient)                => Right(LocalTxSubmission.TxPrefix.Short)
-      case (_, _, Whole.Foreign | Whole.Lenient) => Left(refused(Refusal.ExpectedBytes(era)))

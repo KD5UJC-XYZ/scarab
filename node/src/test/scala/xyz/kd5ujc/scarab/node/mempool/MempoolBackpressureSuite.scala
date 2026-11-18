@@ -350,6 +350,8 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       assertEquals(response, xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Response.Accepted)
   }
 
-  /** The hard-fork-combinator wrapping of a Conway transaction as `cardano-cli` sends it. */
+  /** The hard-fork-combinator wrapping of a Conway transaction as `cardano-cli` sends it,
+    * `[6, 24(h'tx')]`.
+    */
   private def wrapped(raw: Bytes): Bytes =
-    Bytes(Vector(0x82.toByte, 0x06.toByte) ++ raw.value)
+    Bytes(Vector(0x82, 0x06, 0xd8, 0x18).map(_.toByte) ++ TxKit.bstr(raw))

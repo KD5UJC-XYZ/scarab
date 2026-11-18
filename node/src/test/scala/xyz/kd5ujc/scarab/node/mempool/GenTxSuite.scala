@@ -7,7 +7,8 @@ import cats.syntax.all.*
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem
 import xyz.kd5ujc.scarab.network.{
   Bearer,
   HandshakeClient,
@@ -82,7 +83,12 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     ("82079f", tx.drop(1).hex + "ff", GenTx.Refusal.ExpectedTag(Era.Dijkstra)),
     ("8207d8185f", chunkedTx.drop(2), GenTx.Refusal.ExpectedBytes(Era.Dijkstra)),
     ("8207d819", Bytes(bstr(tx)).hex, GenTx.Refusal.NotCborInCbor(Era.Dijkstra)),
-    ("9f08", wrappedTx + "ff", GenTx.Refusal.UnknownEra(8))
+    ("9f", "06" + wrappedTx + "ff", GenTx.Refusal.EraEnvelope),
+    // the transaction not under tag 24, and a chunked string under it
+    ("820684", tx.drop(1).hex, GenTx.Refusal.ExpectedTag(Era.Conway)),
+    ("82069f", tx.drop(1).hex + "ff", GenTx.Refusal.ExpectedTag(Era.Conway)),
+    ("8201d8185f", chunkedTx.drop(2), GenTx.Refusal.ExpectedBytes(Era.Shelley)),
+    ("8206d8185f", chunkedTx.drop(2), GenTx.Refusal.ExpectedBytes(Era.Conway))
   )
 
   test(
@@ -107,7 +113,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     Vector(
       "",
       "82",
-      "9f",
+      "98",
       "8219",
       "821901",
       "8206",
@@ -115,7 +121,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
       "8206d818",
       "8206d81858",
       "8206d8185a0000",
-      "820682",
+      "8206d900",
       "8200",
       "820082",
       "82008219",
@@ -126,27 +132,65 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
       .foreach(prefix => assert(short(hex(prefix)), s"prefix $prefix"))
   }
 
-  /** A Conway transaction in each form the node admits whole: CBOR-in-CBOR at any width of the
-    * string's head, chunked, not wrapped at all, in an indefinite envelope, and at any width of the
-    * envelope's length and of the era index.
+  /** A Conway transaction in each form the reference reads: each head at any of its widths (the
+    * envelope's length, the era index, tag 24 and the length of the definite string under it), as
+    * cborg reads them (`decodeListLen`, `decodeWord8`, `decodeTag`, `decodeBytes`).
     */
-  private val admittedForms: Gen[Bytes] =
-    val strings = Gen.oneOf(
-      Bytes(bstr(tx)).hex,
-      f"59${tx.size}%04x" + tx.hex,
-      f"5a${tx.size}%08x" + tx.hex,
-      chunkedTx
-    )
+  private val referenceForms: Gen[Bytes] =
     for
-      envelope <- Gen.oneOf("82", "9802", "990002", "9f")
-      index <- Gen.oneOf("06", "1806", "190006", "1b0000000000000006")
-      payload <- Gen.oneOf(strings.map("d818" + _), Gen.const(tx.hex))
-    yield hex(envelope + index + payload + (if envelope == "9f" then "ff" else ""))
+      envelope <- Gen.oneOf("82", "9802", "990002", "9a00000002", "9b0000000000000002")
+      index <- Gen.oneOf("06", "1806", "190006", "1a00000006", "1b0000000000000006")
+      tag <- Gen.oneOf("d818", "d90018", "da00000018", "db0000000000000018")
+      length <- Gen.oneOf(
+        Bytes(head(2, tx.size)).hex,
+        f"59${tx.size}%04x",
+        f"5a${tx.size}%08x",
+        f"5b${tx.size}%016x"
+      )
+    yield hex(envelope + index + tag + length + tx.hex)
 
-  property("no prefix of a transaction the node admits is refused") {
-    forAll(admittedForms) { item =>
+  property("a transaction in a form the reference reads is admitted, and no prefix is refused") {
+    forAll(referenceForms) { item =>
       assertEquals(admitted(item), Right(txId), item.hex)
       (0 until item.size).foreach(n => assert(short(item.take(n)), s"${item.hex} cut at $n"))
+    }
+  }
+
+  test("a form the reference refuses at its first token is refused there and whole") {
+    // an indefinite envelope, a transaction not under tag 24, a chunked string under it
+    Vector(
+      (
+        "9f06" + wrappedTx + "ff",
+        1,
+        GenTx.Refusal.EraEnvelope,
+        Rejection.Malformed(
+          TransactionDecodeProblem.EraEnvelope(Node.NotSized.Indefinite)
+        )
+      ),
+      (
+        "8206" + tx.hex,
+        3,
+        GenTx.Refusal.ExpectedTag(Era.Conway),
+        Rejection.Malformed(
+          TransactionDecodeProblem.NotCborInCbor(
+            Cbor
+              .decode(tx, Cbor.Limits.Unbounded)
+              .fold(e => fail(e.message), _.value)
+          )
+        )
+      ),
+      (
+        "8206d818" + chunkedTx,
+        5,
+        GenTx.Refusal.ExpectedBytes(Era.Conway),
+        Rejection.Malformed(
+          TransactionDecodeProblem.ChunkedPayload
+        )
+      )
+    ).foreach { (whole, at, refusal, rejection) =>
+      assertEquals(GenTx.prefix(hex(whole).take(at)), LocalTxSubmission.TxPrefix.Refused(refusal))
+      assert(short(hex(whole).take(at - 1)), s"$whole cut at ${at - 1}")
+      assertEquals(admitted(hex(whole)), Left(rejection), whole)
     }
   }
 
@@ -188,7 +232,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
               serverEnd,
               magic,
               LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
-              txs = GenTx.reader
+              GenTx.reader
             )
             .map(Right(_): Ended)
         )
@@ -227,7 +271,11 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
       "82008208" -> GenTx.Refusal.UnknownEra(8),
       "820083" -> GenTx.Refusal.EraEnvelope,
       "820082008204" -> GenTx.Refusal.UnknownByronTag(4),
-      "82008206d819" -> GenTx.Refusal.NotCborInCbor(Era.Conway)
+      "82008206d819" -> GenTx.Refusal.NotCborInCbor(Era.Conway),
+      // the three forms the reference refuses at their first token
+      "82009f" -> GenTx.Refusal.EraEnvelope,
+      "8200820684" -> GenTx.Refusal.ExpectedTag(Era.Conway),
+      "82008206d8185f" -> GenTx.Refusal.ExpectedBytes(Era.Conway)
     ).traverse { (prefix, refusal) =>
       onTheWire { (ch, server) =>
         // the reply the server should not send, or none once the client sees the connection end
@@ -254,13 +302,12 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     }.void
   }
 
-  test("on the wire, a transaction split after its era, or not wrapped, is admitted") {
+  test("on the wire, a transaction split after its era or inside its tag is admitted") {
     val wrapped = hex("820082") ++ hex("06" + wrappedTx)
-    val bare = hex("8200820684") ++ tx.drop(1)
     Vector(
       Vector(wrapped.take(4), wrapped.drop(4)),
-      Vector(wrapped.take(6), wrapped.slice(6, 9), wrapped.drop(9)),
-      Vector(bare.take(5), bare.drop(5))
+      Vector(wrapped.take(5), wrapped.drop(5)),
+      Vector(wrapped.take(6), wrapped.slice(6, 9), wrapped.drop(9))
     ).traverse(parts =>
       onTheWire((ch, _) => sendParts(ch, parts) *> receive(ch))
         .map(reply => assertEquals(reply, LocalTxSubmission.Message.AcceptTx))
