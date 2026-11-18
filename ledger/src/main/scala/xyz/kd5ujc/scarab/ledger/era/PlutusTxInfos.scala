@@ -97,8 +97,8 @@ object PlutusTxInfos:
   /** `transDatum` (`Plutus/TxInfo.hs:212-213`, cardano-ledger f649f975). */
   def transDatum(data: PlutusData): PV1.Datum = PV1.Datum(data)
 
-  /** Data of the transaction read from the bytes it arrived as, where the reference holds it
-    * decoded (`Data era`, `BinaryData era`): the node's own, failing at `site`.
+  /** An output's inline datum read from the bytes it arrived as, where the reference's
+    * `binaryDataToData` takes its `BinaryData era` as data: the node's own, failing at `site`.
     */
   def decodeData(raw: Bytes, site: DataSite): Either[DataSite, PlutusData] =
     PlutusData.decode(raw).left.map(_ => site)

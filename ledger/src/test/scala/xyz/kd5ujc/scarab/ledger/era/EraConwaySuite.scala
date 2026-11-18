@@ -89,11 +89,14 @@ class EraConwaySuite extends munit.FunSuite:
       val scripts = w.scriptTxWits(c)
       assertEquals(scripts.keySet, flat.scriptsByHash.keySet)
       scripts.foreach((hash, s) => assertEquals(w.scriptsOf.hashScript(s), hash))
-      assertEquals(w.datsTxWits(c).datums.values.toSet, flat.datums.toSet)
+      assertEquals(w.datsTxWits(c).datums.values.map(_.originalBytes).toSet, flat.datums.toSet)
       assertEquals(w.datsTxWits(c).raw, flat.datumsRaw)
       assertEquals(w.rdmrsTxWits(c).raw, flat.redeemersRaw)
       assertEquals(
-        w.rdmrsTxWits(c).entries.toVector.map((p, v) => (p.tag, BigInt(p.ix.value.toString), v)),
+        w.rdmrsTxWits(c)
+          .entries
+          .toVector
+          .map((p, v) => (p.tag, BigInt(p.ix.value.toString), (v._1.originalBytes, v._2))),
         flat.redeemers.map(r => (r.tag, r.index, (r.data, r.exUnits))).sortBy(r => (r._1, r._2))
       )
       (scripts.size, w.rdmrsTxWits(c).entries.size)

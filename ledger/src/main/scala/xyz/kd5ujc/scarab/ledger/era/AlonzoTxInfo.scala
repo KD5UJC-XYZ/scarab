@@ -11,14 +11,15 @@ import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag}
   * era`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs:213-216`, cardano-ledger
   * f649f975), which every later era's error carries. A time past the horizon carries the clock's
   * typed failure, where the reference's carries its `Text`; [[Undecodable]] is the node's own, as
-  * the reference holds the data of a transaction decoded.
+  * an output's inline datum is read from the bytes it arrived as where the reference's
+  * `binaryDataToData` takes it as data (`Plutus/Data.hs:244-249`, an `error` otherwise).
   */
 enum AlonzoContextError[E <: EraTag]:
   case TranslationLogicMissingInput(txIn: TxIn)
   case TimeTranslationPastHorizon(cause: TranslationError)
 
-  /** Data of the transaction, at `site`, that does not decode: never of a transaction or an output
-    * an era's decoder read, which reads each as data.
+  /** An output's inline datum, at `site`, that does not decode: never of an output an era's decoder
+    * read, which reads it as data.
     */
   case Undecodable(site: DataSite)
 
@@ -59,15 +60,15 @@ object AlonzoTxInfo:
     b.reqSignerHashes[T](txBody).toVector.map(transKeyHashBytes)
 
   /** `transTxWitsDatums` (`Alonzo/Plutus/TxInfo.hs:317-318`, cardano-ledger f649f975): the datums
-    * by hash, in the hashes' order, each read from the bytes it arrived as.
+    * by hash, in the hashes' order.
     */
   def transTxWitsDatums[E <: EraTag](txWits: TxWits[E])(using
       w: AlonzoEraTxWits[E]
-  ): Either[DataSite, Vector[(PV1.DatumHash, PV1.Datum)]] =
+  ): Vector[(PV1.DatumHash, PV1.Datum)] =
     w.datsTxWits(txWits)
       .datums
       .toVector
-      .traverse((hash, raw) => decodeData(raw, DataSite.Datum).map(transDataPair(hash, _)))
+      .map((hash, data) => transDataPair(hash, data.getPlutusData))
 
   /** `transPolicyID` (`Alonzo/Plutus/TxInfo.hs:323-324`, cardano-ledger f649f975). */
   def transPolicyID(policy: Bytes): PV1.CurrencySymbol = PV1.CurrencySymbol(policy)
@@ -175,38 +176,34 @@ object AlonzoTxInfo:
 
   /** `toLegacyPlutusArgs` (`Alonzo/Plutus/TxInfo.hs:180-194`, cardano-ledger f649f975): the purpose
     * in the language's form in its context, the redeemer, and the datum of a spending script before
-    * them. The redeemer and the datum are read from the bytes they arrived as, after the purpose,
-    * whose failure is the reference's.
+    * them.
     */
   def toLegacyPlutusArgs[L <: Language, E <: EraTag](
       pv: ProtVer,
       mkScriptContext: PlutusScriptPurpose[L] => PlutusScriptContext[L],
       scriptPurpose: PlutusPurpose[AsIxItem, E],
-      maybeSpendingData: Option[Bytes],
-      redeemerData: Bytes
+      maybeSpendingData: Option[Data],
+      redeemerData: Data
   )(using
-      t: EraPlutusTxInfo[L, E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]]
+      t: EraPlutusTxInfo[L, E]
   ): Either[ContextError[E], LegacyPlutusArgs[L]] =
-    def undecodable(site: DataSite) = inj.inject(AlonzoContextError.Undecodable(site))
-    for
-      scriptContext <- t.toPlutusScriptPurpose(pv, scriptPurpose).map(mkScriptContext)
-      redeemer <- decodeData(redeemerData, DataSite.Redeemer).leftMap(undecodable)
-      spendingData <- maybeSpendingData.traverse(decodeData(_, DataSite.Datum)).leftMap(undecodable)
-    yield spendingData match
-      case None        => LegacyPlutusArgs.LegacyPlutusArgs2(redeemer, scriptContext)
-      case Some(datum) => LegacyPlutusArgs.LegacyPlutusArgs3(datum, redeemer, scriptContext)
+    t.toPlutusScriptPurpose(pv, scriptPurpose).map(mkScriptContext).map { scriptContext =>
+      val redeemer = redeemerData.getPlutusData
+      maybeSpendingData match
+        case None => LegacyPlutusArgs.LegacyPlutusArgs2(redeemer, scriptContext)
+        case Some(spendingData) =>
+          LegacyPlutusArgs.LegacyPlutusArgs3(spendingData.getPlutusData, redeemer, scriptContext)
+    }
 
   /** `toPlutusV1Args` (`Alonzo/Plutus/TxInfo.hs:167-178`, cardano-ledger f649f975). */
   def toPlutusV1Args[E <: EraTag](
       pv: ProtVer,
       txInfo: PV1.TxInfo,
       scriptPurpose: PlutusPurpose[AsIxItem, E],
-      maybeSpendingData: Option[Bytes],
-      redeemerData: Bytes
+      maybeSpendingData: Option[Data],
+      redeemerData: Data
   )(using
-      t: EraPlutusTxInfo[Language.PlutusV1, E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]]
+      t: EraPlutusTxInfo[Language.PlutusV1, E]
   ): Either[ContextError[E], PlutusV1Args] =
     toLegacyPlutusArgs[Language.PlutusV1, E](
       pv,

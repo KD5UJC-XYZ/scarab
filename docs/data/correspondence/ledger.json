@@ -13109,7 +13109,7 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the superclass `PlutusLanguage l` as a member, and the language's selection among the era's memoised information (`lookupTxInfoResult`) as one; the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
+   "note": "the superclass `PlutusLanguage l` as a member, and the language's selection among the era's memoised information (`lookupTxInfoResult`) as one",
    "digest": "b6c0c376f337199b"
   },
   "def ledger.era.EraPlutusTxInfo#plutusLanguage": {
@@ -13207,12 +13207,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
-   "digest": "fced85ed7f21ae3a"
+   "digest": "50466a18fe50c0a2"
   },
   "def ledger.era.EraPlutusTxInfo#toPlutusTxInInfo": {
    "upstream": [
@@ -13780,12 +13779,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the spending purpose read through the evidence that the era's purpose is Conway's, as `toSpendingPurpose` is not a member of the script class yet (#85)",
-   "digest": "0b2db4bbb0d1b1c3"
+   "note": "the spending purpose read through the evidence that the era's purpose is Conway's, as `toSpendingPurpose` is not a member of the script class yet (#85); the datum is the bytes it arrived as, where the reference's is `Data era`, as an inline datum is not held decoded yet (#85)",
+   "digest": "add8c0ea6d63ea0b"
   },
   "def ledger.era.PlutusTxInfos.transKeyHash": {
    "upstream": [
@@ -14171,7 +14170,7 @@
     "ConwayPlutusContextRefusalsSuite",
     "ContextMatrixSuite"
    ],
-   "note": "`TimeTranslationPastHorizon` carries the clock's typed failure, the reference's a Text; `Undecodable` is the node's own, which no transaction an era's decoder read reaches; the evidence is transitive: EraPlutusContextSuite and ConwayPlutusContextRefusalsSuite show each typed failure is the flat one, and ContextMatrixSuite shows the flat failures encode to the reference's bytes",
+   "note": "`TimeTranslationPastHorizon` carries the clock's typed failure, the reference's a Text; `Undecodable` is the node's own, for an output's inline datum, which the reference's `binaryDataToData` takes as data (an `error` otherwise), and which no output an era's decoder read reaches; the evidence is transitive: EraPlutusContextSuite and ConwayPlutusContextRefusalsSuite show each typed failure is the flat one, and ContextMatrixSuite shows the flat failures encode to the reference's bytes",
    "digest": "ab1d069f01665620"
   },
   "def ledger.era.AlonzoTxInfo.transLookupTxOut": {
@@ -14248,12 +14247,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
-   "digest": "7a1566c54dafd291"
+   "digest": "194826b8585f48a6"
   },
   "def ledger.era.AlonzoTxInfo.transPolicyID": {
    "upstream": [
@@ -14394,7 +14392,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches; an inline datum is read only for an address that is not Byron, where the reference forces its lazy `datum`, so a Byron address is refused first, as in the flat path",
+   "note": "an inline datum is read from the bytes it arrived as, where the reference's `binaryDataToData` takes its `BinaryData` as data (an `error` otherwise), a failure the node's own `Undecodable`, which no output an era's decoder read reaches; an inline datum is read only for an address that is not Byron, where the reference forces its lazy `datum`, so a Byron address is refused first, as in the flat path",
    "digest": "e3c654765f464eda"
   },
   "def ledger.era.BabbageTxInfo.transRedeemer": {
@@ -14411,12 +14409,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
-   "digest": "c88c8b79a9adb2a4"
+   "digest": "1303043435cc3517"
   },
   "def ledger.era.BabbageTxInfo.transRedeemerPtr": {
    "upstream": [
@@ -14432,12 +14429,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, after the pointer and its purpose, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches (both decoders refuse a redeemer that is not data, `EraPlutusContextSuite`)",
-   "digest": "40e79ea0d258f587"
+   "digest": "499d3d5b05a3d07d"
   },
   "def ledger.era.BabbageTxInfo.transTxRedeemers": {
    "upstream": [
@@ -14453,12 +14449,98 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "two passes where the reference has one: every pointer and purpose in the reference's order (its `transRedeemerPtr` without the data), then every redeemer read from its bytes, so that the node's own `Undecodable` comes after any failure the reference has, as in the flat path (`ScriptContexts.redeemerMap`); no transaction an era's decoder read reaches it",
-   "digest": "36d833eee807486f"
+   "digest": "cc37b9eef4621803"
+  },
+  "class ledger.era.Data": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "Data",
+     "lines": [
+      111,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "decoded Plutus data with the bytes it arrived as, made only by decoding them; not indexed by the era, as the era types' TxDats and Redeemers that hold it are not",
+   "digest": "7f405de25b251c07"
+  },
+  "def ledger.era.Data#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "Eq",
+     "lines": [
+      112,
+      112
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the derived Eq of `MemoBytes`, by the bytes and the value",
+   "digest": "046be3dfcbbcb79e"
+  },
+  "def ledger.era.Data#hashData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "hashData",
+     "lines": [
+      259,
+      260
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "digest": "bf80ef7b14a8e378"
+  },
+  "def ledger.era.Data.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "DecCBOR (Annotator (Data era))",
+     "lines": [
+      121,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the bytes of one item read as Plutus data (`PlutusData`'s `decCBOR`, lines 99-100), kept with it, as `Mem` keeps them",
+   "digest": "6a0cf2ad6a9582aa"
   },
   "enum ledger.era.conway.ConwayContextError": {
    "upstream": [
@@ -14545,13 +14627,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
-   "digest": "75ce3d109772a83f"
+   "digest": "891985841c9c0c30"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxInInfoV3": {
    "upstream": [
@@ -14991,12 +15072,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches; the redeemer is read before the spending datum, so that where neither reads the failure is the redeemer's, as the flat path's (`ScriptContexts.arguments`)",
-   "digest": "4726b545438785db"
+   "digest": "3db5d44e2388a837"
   },
   "def ledger.era.conway.ConwayTxInfo.scriptPurposeToScriptInfo": {
    "upstream": [
@@ -17912,13 +17992,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the data the reference holds decoded (`Data era`) is read from the bytes it arrived as, after the purpose, whose failure is the reference's; a failure the node's own `Undecodable`, which no transaction an era's decoder read reaches",
-   "digest": "e960068d75cc8fdf"
+   "digest": "7de346b4278054fa"
   },
   "def ledger.era.AlonzoTxInfo.toPlutusV1Args": {
    "upstream": [
@@ -17939,7 +18018,7 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "6f5d5c9fef3171be"
+   "digest": "1126a18ff0eed5c8"
   },
   "def ledger.era.BabbageTxInfo.transTxInInfoV2": {
    "upstream": [
@@ -17981,7 +18060,7 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "5dd5929b8ca15b41"
+   "digest": "2f0953e9d36fb49e"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxOutV1": {
    "upstream": [
@@ -18104,13 +18183,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the datums read from the bytes they arrived as, a failure the node's own `Undecodable` after every failure the reference has",
-   "digest": "8064fb33b6c5510e"
+   "digest": "6c89ab565a651b94"
   },
   "val ledger.era.conway.ConwayTxInfo.plutusV2": {
    "upstream": [
@@ -18126,13 +18204,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "the redeemers and datums read from the bytes they arrived as, a failure the node's own `Undecodable` after every failure the reference has",
-   "digest": "a6a8efcc9a30282d"
+   "digest": "28e36f59d0fe5bd2"
   },
   "val ledger.era.conway.ConwayTxInfo.context": {
    "upstream": [
@@ -18854,7 +18931,9 @@
     "def ledger.era.VotingProcedures#hashCode",
     "def ledger.era.VotingProcedures#toString",
     "def ledger.era.SupportedLanguage#hashCode",
-    "def ledger.era.SupportedLanguage#toString"
+    "def ledger.era.SupportedLanguage#toString",
+    "def ledger.era.Data#hashCode",
+    "def ledger.era.Data#toString"
    ]
   },
   {
@@ -18872,7 +18951,9 @@
     "object ledger.era.rules.CERTS",
     "object ledger.era.rules.DELEG",
     "object ledger.era.rules.GOVCERT",
-    "object ledger.era.rules.POOL"
+    "object ledger.era.rules.POOL",
+    "given ledger.era.Data.given_CanEqual_Data_Data",
+    "object ledger.era.Data"
    ]
   },
   {

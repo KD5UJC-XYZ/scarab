@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{TranslationError, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
 import xyz.kd5ujc.scarab.plutus.PlutusData
@@ -166,8 +165,7 @@ final case class PlutusTxInfoResult[L <: Language, E <: EraTag](
 )
 
 /** The translation of a transaction of era `E` to the context of language `L` (`class
-  * EraPlutusTxInfo (l :: Language) era`, `Context.hs:105-144`, cardano-ledger f649f975). Data the
-  * reference holds decoded (`Data era`) is given as the bytes it arrived as.
+  * EraPlutusTxInfo (l :: Language) era`, `Context.hs:105-144`, cardano-ledger f649f975).
   */
 trait EraPlutusTxInfo[L <: Language, E <: EraTag]:
   /** The language (the superclass `PlutusLanguage l`). */
@@ -186,8 +184,8 @@ trait EraPlutusTxInfo[L <: Language, E <: EraTag]:
       pv: ProtVer,
       txInfo: PlutusTxInfo[L],
       purpose: PlutusPurpose[AsIxItem, E],
-      maybeSpendingData: Option[Bytes],
-      redeemerData: Bytes
+      maybeSpendingData: Option[Data],
+      redeemerData: Data
   ): Either[ContextError[E], PlutusArgs[L]]
 
   def toPlutusTxInInfo(utxo: UTxO[E], txIn: TxIn): Either[ContextError[E], PlutusTxInInfo[E, L]]
