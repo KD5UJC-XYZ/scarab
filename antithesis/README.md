@@ -167,10 +167,11 @@ An experiment beside `pool`: Antithesis instruments everything under `/opt/antit
 whole assembly there, so the libraries (cats-effect, fs2, http4s, Bouncy Castle, the Scala library) carry coverage
 hooks as well as Scarab's own classes, and the Haskell pools carry none. This config's s1 runs the same JAR split in
 two by `scarab/split_jar.py`, entries unchanged: `scarab.jar`, the one the catalog's link names, holds everything under
-`xyz/`, and `scarab-libs.jar` the rest, outside the catalog and on the same classpath. Run beside `pool`, Antithesis's
-"Virtual time per wall time" says what instrumenting the libraries costs; coverage then guides exploration by Scarab's
-code alone. `pool` also differs from it in packaging (one assembly against two JARs), so its like-for-like control is
-`pool/config-split-catalog`: the same two JARs, both linked into the catalog (`scarab/Dockerfile.split`).
+`xyz/`, and `scarab-libs.jar` the rest, outside the catalog and on the same classpath; coverage then guides
+exploration by Scarab's code alone. Its control is `pool/config-split-catalog`: the same two JARs, both linked into
+the catalog (`scarab/Dockerfile.split`). Run side by side, the two differ only in which classes are instrumented, so
+Antithesis's "Virtual time per wall time" says what instrumenting the libraries costs. Against `pool`, the packaging
+differs too (one assembly against two JARs).
 
 ## `pool/config-late-start`: the earlier start order
 
