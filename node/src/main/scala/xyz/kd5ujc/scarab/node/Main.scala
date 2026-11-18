@@ -104,6 +104,7 @@ import xyz.kd5ujc.scarab.node.metrics.{
   PhaseLabel
 }
 import xyz.kd5ujc.scarab.node.mempool.{
+  GenTx,
   LocalMonitor,
   LocalSubmission,
   Mempool,
@@ -201,7 +202,8 @@ object Main extends IOApp:
               serving.submit,
               serving.stateQuery,
               chainSync = serving.chainSync,
-              txMonitor = serving.txMonitor
+              txMonitor = serving.txMonitor,
+              txs = GenTx.reader
             )
           )
           logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>

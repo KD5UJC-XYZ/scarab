@@ -56,14 +56,22 @@ class LocalTxSubmissionIncrementalSuite extends FunSuite:
     )
     val messages = payloads.map(p => hex("8200" + p)) ++
       Vector("8103", "820500", "8100", "9f0000ff", "98021800820000").map(hex)
-    for input <- messages; state <- State.values; role <- Role.values do
-      val decoder = LocalTxSubmission.incremental(state, role)
+    // with no judgement of a prefix, and with one that refuses a transaction from its first byte 9f
+    val judging: LocalTxSubmission.TxReader = input =>
+      if input.take(1) == hex("9f") then
+        LocalTxSubmission.TxPrefix.Refused(ProtocolError.ExpectedUint64)
+      else LocalTxSubmission.TxPrefix.Short
+    for
+      input <- messages; state <- State.values; role <- Role.values
+      txs <- List(LocalTxSubmission.TxReader.whole, judging)
+    do
+      val decoder = LocalTxSubmission.incremental(state, role, txs)
       (0 to input.size).foldLeft(decoder.initial) { (cursor, size) =>
         val prefix = input.take(size)
         val (next, result) = decoder.resume(cursor, prefix)
         assertEquals(
           result,
-          LocalTxSubmission.decodePrefix(state, role, prefix),
+          LocalTxSubmission.decodePrefix(state, role, prefix, txs),
           s"${prefix.hex}: $state/$role"
         )
         next

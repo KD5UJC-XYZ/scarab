@@ -857,7 +857,7 @@ object Targets:
               .map(_.toArray)
           ) ++
           netCorpus("local-tx-submission:localTxSubmissionMessage")(),
-      LocalTxSubmission.decodePrefix,
+      LocalTxSubmission.decodePrefix(_, _, _),
       LocalTxSubmission.encode
     ),
     Target(

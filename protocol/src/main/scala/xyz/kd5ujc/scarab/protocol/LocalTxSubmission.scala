@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 
 import ChainSync.{DecodeResult, Role}
 import ProtocolWire.{attempt, bad, get}
@@ -36,6 +36,29 @@ object LocalTxSubmission:
     case AcceptTx
     case RejectTx(reason: Bytes)
     case Done
+
+  /** How the decoder of a `MsgSubmitTx` transaction judges one only part of which has arrived. The
+    * reference's codec reads the transaction with the block type's decoder from the stream
+    * (`decodeWithByteSpan decodeTx`, ouroboros-network c45735a5
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxSubmission/Codec.hs:148-154`),
+    * so a prefix that decoder fails on ends the connection before the rest arrives; the node, which
+    * knows the transactions' structure, says where. A whole transaction is read as one item, as
+    * before.
+    */
+  trait TxReader:
+    /** What the transaction's decoder makes of `input`, the part of it that has arrived. */
+    def prefix(input: Bytes): TxPrefix
+
+  object TxReader:
+    /** Judges no prefix: the transaction is read whole before anything is said of it. */
+    val whole: TxReader = _ => TxPrefix.Short
+
+  enum TxPrefix:
+    /** The transaction's decoder waits for more. */
+    case Short
+
+    /** The transaction's decoder fails on it, whatever follows. */
+    case Refused(cause: DomainError)
 
   private enum Tag:
     case Submit, Accept, Reject, Done
@@ -76,7 +99,20 @@ object LocalTxSubmission:
     w.result
   }
 
-  def decodePrefix(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
+  /** Each message read as before; while the transaction of a client's `SubmitTx` has not all
+    * arrived, `txs` says whether its decoder has already failed on what has ([[TxReader]]).
+    */
+  def decodePrefix(
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      txs: TxReader = TxReader.whole
+  ): DecodeResult[Message] =
+    decoded(state, sender, bytes) match
+      case DecodeResult.NeedMore => waiting(state, sender, bytes, txs)
+      case other                 => other
+
+  private def decoded(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
     ProtocolWire.prefix {
       val r = new ProtocolWire.Reader(bytes, wire)
       val message = readTag(state, sender, r) match
@@ -88,8 +124,34 @@ object LocalTxSubmission:
       DecodeResult.Decoded(message, r.position)
     }
 
-  /** The same codec with framing progress retained across incomplete prefixes. */
-  def incremental(state: State, sender: Role): IncrementalDecoder[Message] =
+  /** An incomplete message: a `SubmitTx` whose transaction `txs` refuses ends here, anything else
+    * waits. Only the heads of the first tokens are read, so a transaction that arrives in many
+    * parts is not read again from its start each time (#749).
+    */
+  private def waiting(
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      txs: TxReader
+  ): DecodeResult[Message] =
+    ProtocolWire.prefix {
+      val r = new ProtocolWire.Reader(bytes, wire)
+      readTag(state, sender, r) match
+        case Tag.Submit =>
+          txs.prefix(bytes.drop(r.position)) match
+            case TxPrefix.Short          => DecodeResult.NeedMore
+            case TxPrefix.Refused(cause) => bad(ProtocolError.UndecodableTransaction(cause))
+        case Tag.Accept | Tag.Reject | Tag.Done => DecodeResult.NeedMore
+    }
+
+  /** The same codec with framing progress retained across incomplete prefixes; an incomplete
+    * message is judged as [[decodePrefix]] judges it.
+    */
+  def incremental(
+      state: State,
+      sender: Role,
+      txs: TxReader = TxReader.whole
+  ): IncrementalDecoder[Message] =
     def prefix(bytes: Bytes): DecodeResult[Option[Int]] = ProtocolWire.prefix {
       val r = new ProtocolWire.Reader(bytes, wire)
       val payload = readTag(state, sender, r) match
@@ -97,4 +159,11 @@ object LocalTxSubmission:
         case _                       => None
       DecodeResult.Decoded(payload, r.position)
     }
-    CborMessageDecoder(prefix, decodePrefix(state, sender, _))
+    val framed = CborMessageDecoder(prefix, decoded(state, sender, _))
+    new IncrementalDecoder[Message]:
+      type Cursor = framed.Cursor
+      val initial: Cursor = framed.initial
+      def resume(cursor: Cursor, input: Bytes): (Cursor, DecodeResult[Message]) =
+        framed.resume(cursor, input) match
+          case (next, DecodeResult.NeedMore) => (next, waiting(state, sender, input, txs))
+          case done                          => done

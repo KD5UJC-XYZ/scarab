@@ -168,9 +168,10 @@ enum ProtocolError extends DomainError:
   case PeerSharing(cause: xyz.kd5ujc.scarab.protocol.PeerSharing.Error)
   case Leios(cause: LeiosWireError)
 
-  /** A transaction of a TxSubmission2 reply that the era's ledger decoders refuse, with their typed
-    * reason (the ledger's errors are not visible to the protocols, so it is kept as the
-    * `DomainError` it is).
+  /** A transaction that its decoders refuse, with their typed reason (the ledger's and the node's
+    * errors are not visible to the protocols, so it is kept as the `DomainError` it is): one of a
+    * TxSubmission2 reply, or the part of a LocalTxSubmission `MsgSubmitTx` transaction that has
+    * arrived ([[LocalTxSubmission.TxReader]]).
     */
   case UndecodableTransaction(cause: DomainError)
 

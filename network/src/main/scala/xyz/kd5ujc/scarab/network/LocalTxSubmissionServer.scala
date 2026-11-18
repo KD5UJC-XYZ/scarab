@@ -57,9 +57,13 @@ object LocalTxSubmissionServer:
       case ConnectionClosed(error)   => error.message
       case ServiceUnavailable(error) => s"service unavailable: ${error.message}"
 
+  /** Serve submissions until the client is done. `txs` judges a transaction that has not all
+    * arrived, as the node's decoder of transactions reads one ([[LocalTxSubmission.TxReader]]).
+    */
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
-      submit: Bytes => F[Response]
+      submit: Bytes => F[Response],
+      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
   )(using Raise[F, NetworkError]): F[Option[Unavailable]] =
     val id = Protocols.LocalTxSubmission
     def illegal[A](detail: NetworkError.Violation): F[A] =
@@ -69,7 +73,7 @@ object LocalTxSubmissionServer:
     val step: F[Either[Unit, Option[Unavailable]]] =
       channel
         .recvIncremental(LocalTxSubmission.MaxMessageBytes)(
-          LocalTxSubmission.incremental(LocalTxSubmission.State.Idle, Role.Client)
+          LocalTxSubmission.incremental(LocalTxSubmission.State.Idle, Role.Client, txs)
         )
         .flatMap {
           case LocalTxSubmission.Message.SubmitTx(tx) =>

@@ -7,7 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import cats.effect.Resource
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.NtcVersion
+import xyz.kd5ujc.scarab.protocol.{LocalTxSubmission, NtcVersion}
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 
@@ -26,9 +26,10 @@ object NodeToClientServer:
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, Nothing]] = None,
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
-      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
+      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
+      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
   )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =
-    acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, chainSync, txMonitor)
+    acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, chainSync, txMonitor, txs = txs)
       .map(_.fold(identity, identity))
 
   def acceptBackend[F[_]: Async, E](
@@ -38,7 +39,8 @@ object NodeToClientServer:
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
-      openMux: MuxFactory[F] = MuxFactory.nodeToClient[F]
+      openMux: MuxFactory[F] = MuxFactory.nodeToClient[F],
+      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
     openMux
       .open(
@@ -49,7 +51,7 @@ object NodeToClientServer:
           txMonitor = txMonitor.isDefined
         )
       )
-      .use(mux => acceptOn(mux, magic, submit, stateQuery, chainSync, txMonitor))
+      .use(mux => acceptOn(mux, magic, submit, stateQuery, chainSync, txMonitor, txs))
 
   /** Opens a connection's multiplexer over its bearer. */
   trait MuxFactory[F[_]]:
@@ -94,7 +96,8 @@ object NodeToClientServer:
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
-      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
+      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
+      txs: LocalTxSubmission.TxReader = LocalTxSubmission.TxReader.whole
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
     // the connection's protocols run in fibers of their own; each in an error scope of its own, and
     // the first to fail ends the others (`Fibers.failFast`)
@@ -134,7 +137,7 @@ object NodeToClientServer:
         .traverse(source => mux.channel(Protocols.LocalTxMonitor).map(_ -> source))
       served = Fibers.failFast[F, NetworkError](
         List(
-          child(LocalTxSubmissionServer.run(submission, submit).flatMap {
+          child(LocalTxSubmissionServer.run(submission, submit, txs).flatMap {
             case None        => Async[F].unit
             case Some(error) => unavailable.complete(error).void *> Async[F].never[Unit]
           }),

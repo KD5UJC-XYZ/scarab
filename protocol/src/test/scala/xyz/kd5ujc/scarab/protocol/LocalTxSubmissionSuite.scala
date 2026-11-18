@@ -109,3 +109,73 @@ class LocalTxSubmissionSuite extends FunSuite:
     assert(missingValue.isLeft)
     assertEquals(completePair, Right(true))
   }
+
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
+
+  /** A reader that refuses a transaction starting with `82 08` and waits on anything else. */
+  private val cause = ProtocolError.ExpectedUint64
+  private val refusing: TxReader = input =>
+    if input.take(2) == hex("8208") then TxPrefix.Refused(cause) else TxPrefix.Short
+
+  test("a SubmitTx whose transaction the reader refuses before it has all arrived ends there") {
+    List(
+      "82008208" -> DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause)),
+      "82008208d818" -> DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause)),
+      // the reader is given the transaction's bytes alone, and a prefix it does not refuse waits
+      "82008206" -> DecodeResult.NeedMore,
+      "8200" -> DecodeResult.NeedMore
+    ).foreach { (wire, judged) =>
+      assertEquals(decodePrefix(State.Idle, Role.Client, hex(wire), refusing), judged, wire)
+      val decoder = incremental(State.Idle, Role.Client, refusing)
+      assertEquals(decoder.decodePrefix(hex(wire)), judged, s"incremental $wire")
+    }
+    // without a reader that judges prefixes, the transaction is read whole
+    assertEquals(decodePrefix(State.Idle, Role.Client, hex("82008208")), DecodeResult.NeedMore)
+    assertEquals(
+      incremental(State.Idle, Role.Client).decodePrefix(hex("82008208")),
+      DecodeResult.NeedMore
+    )
+  }
+
+  test("a whole message is read as before, whatever the reader says of a prefix") {
+    val whole = hex("82008208d81841aa")
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, whole, refusing),
+      DecodeResult.Decoded(Message.SubmitTx(hex("8208d81841aa")), whole.size)
+    )
+    assertEquals(
+      incremental(State.Idle, Role.Client, refusing).decodePrefix(whole),
+      DecodeResult.Decoded(Message.SubmitTx(hex("8208d81841aa")), whole.size)
+    )
+  }
+
+  test("only a client's SubmitTx in Idle is judged before it has all arrived") {
+    val always: TxReader = _ => TxPrefix.Refused(cause)
+    // the same bytes as a RejectTx carrying an item, in Busy
+    assertEquals(
+      decodePrefix(State.Busy, Role.Server, hex("82028208"), always),
+      DecodeResult.NeedMore
+    )
+    val messages = List(
+      (State.Idle, Role.Client, Message.SubmitTx(tx)),
+      (State.Busy, Role.Server, Message.AcceptTx),
+      (State.Busy, Role.Server, Message.RejectTx(reason)),
+      (State.Idle, Role.Client, Message.Done)
+    )
+    messages.foreach { (state, sender, message) =>
+      val wire = encode(state, sender, message).fold(e => fail(e.toString), identity)
+      (0 until wire.size).foreach { n =>
+        val judged = message match
+          case Message.SubmitTx(_) if n >= 2 =>
+            DecodeResult.Failed(ProtocolError.UndecodableTransaction(cause))
+          case _ => DecodeResult.NeedMore
+        val prefix = wire.take(n)
+        assertEquals(decodePrefix(state, sender, prefix, always), judged, s"$message cut at $n")
+        assertEquals(
+          incremental(state, sender, always).decodePrefix(prefix),
+          judged,
+          s"incremental $message cut at $n"
+        )
+      }
+    }
+  }
