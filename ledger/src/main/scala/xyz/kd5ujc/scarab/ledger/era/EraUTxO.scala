@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import xyz.kd5ujc.scarab.ledger.TxIn
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.{Address, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
   Coin,
@@ -19,9 +20,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * `libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs:242-285`). The superclass `EraTx era`
   * is a member ([[txOf]]), as the other classes' superclasses of other families are.
   *
-  * The members that find the scripts a transaction needs and provides and the keys that must sign
-  * it (`ScriptsNeeded`, `getScriptsProvided`, `getScriptsNeeded`, `getScriptsHashesNeeded`,
-  * `getWitsVKeyNeeded`) are UTXOW's, and come with it (#85).
+  * The keys that must sign a transaction (`getWitsVKeyNeeded`) are UTXOW's last member, and come
+  * with `validateNeededWitnesses` (#85).
   */
 trait EraUTxO[E <: EraTag]:
   /** The transactions' class (the superclass `EraTx era`). */
@@ -44,12 +44,122 @@ trait EraUTxO[E <: EraTag]:
       body: TxBody[TxLevel.Top, E]
   ): Value[E]
 
+  /** `getScriptsProvided`: the scripts the transaction provides, from its witnesses and, from
+    * Babbage, the outputs of its inputs the UTxO set holds.
+    */
+  def getScriptsProvided[L <: TxLevel](utxo: UTxO[E], tx: Tx[L, E])(using
+      txOf.bodyOf.Level[L]
+  ): ScriptsProvided[E]
+
+  /** `getScriptsNeeded`: what finds the scripts the body needs, by purpose. */
+  def getScriptsNeeded[L <: TxLevel](utxo: UTxO[E], body: TxBody[L, E])(using
+      txOf.bodyOf.Level[L]
+  ): ScriptsNeeded[E]
+
+  /** `getScriptsHashesNeeded`: the hashes of the scripts needed. */
+  def getScriptsHashesNeeded(scriptsNeeded: ScriptsNeeded[E]): Set[Bytes]
+
   /** `getMinFeeTxUtxo`: the minimum fee, its witnesses excluded, the reference scripts the UTxO set
     * gives it counted.
     */
   def getMinFeeTxUtxo[L <: TxLevel](pp: PParams[E], tx: Tx[L, E], utxo: UTxO[E])(using
       txOf.bodyOf.Level[L]
   ): Coin
+
+/** `ScriptsProvided` (`State/UTxO.hs:229-232`, cardano-ledger f649f975): the scripts a transaction
+  * provides, by hash.
+  */
+final case class ScriptsProvided[E <: EraTag](unScriptsProvided: Map[Bytes, Script[E]])
+
+/** `AlonzoScriptsNeeded` (`Alonzo/UTxO.hs:102-104`, cardano-ledger f649f975): each script needed
+  * with the purpose that needs it, in the reference's order; a script may be needed for several
+  * purposes.
+  */
+final case class AlonzoScriptsNeeded[E <: EraTag](
+    unAlonzoScriptsNeeded: Vector[(PlutusPurpose[AsIxItem, E], Bytes)]
+):
+  /** The derived `Semigroup` (`Alonzo/UTxO.hs:104`, cardano-ledger f649f975): both, in order. */
+  def ++(that: AlonzoScriptsNeeded[E]): AlonzoScriptsNeeded[E] =
+    AlonzoScriptsNeeded(unAlonzoScriptsNeeded ++ that.unAlonzoScriptsNeeded)
+
+/** Alonzo's functions of the UTxO set (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs`,
+  * cardano-ledger f649f975). The reference builds each purpose through the era's script class
+  * (`SpendingPurpose` and the rest, `AlonzoEraScript`), whose builders are not members here yet
+  * (#85): these functions take the evidence that the era's purpose is Conway's, as CERTS takes
+  * Conway's certificates.
+  */
+object AlonzoUTxO:
+  private type Ix = Unsigned[Unsigned.Width.W32]
+
+  /** `zipAsIxItem` (`Alonzo/UTxO.hs:364-368`, cardano-ledger f649f975): each item with its
+    * position, the `Int` narrowed to a `Word32` (`fromIntegral`).
+    */
+  def zipAsIxItem[A, C](items: Iterable[A])(f: AsIxItem[Ix, A] => C): Vector[C] =
+    items.iterator.zipWithIndex
+      .map((item, ix) => f(AsIxItem(Unsigned.wrapping[Unsigned.Width.W32](BigInt(ix)), item)))
+      .toVector
+
+  /** The script hash of a credential (`credScriptHash`). */
+  private def credScriptHash(credential: xyz.kd5ujc.scarab.ledger.Credential): Option[Bytes] =
+    credential match
+      case xyz.kd5ujc.scarab.ledger.Credential.Script(h) => Some(h)
+      case xyz.kd5ujc.scarab.ledger.Credential.Key(_)    => None
+
+  /** `getSpendingScriptsNeeded` (`Alonzo/UTxO.hs:370-383`, cardano-ledger f649f975): each input, by
+    * its position among the inputs, whose output the UTxO set holds at a script's payment address
+    * (`getScriptHash`).
+    */
+  def getSpendingScriptsNeeded[E <: EraTag, L <: TxLevel](utxo: UTxO[E], body: TxBody[L, E])(using
+      b: EraTxBody[E],
+      l: b.Level[L],
+      ev: PlutusPurpose[AsIxItem, E] =:= conway.ConwayPlutusPurpose[AsIxItem]
+  ): AlonzoScriptsNeeded[E] =
+    val o = b.outputsOf
+    AlonzoScriptsNeeded(
+      zipAsIxItem(b.inputs[L](body)) { asIxItem =>
+        for
+          out <- utxo.unUTxO.get(asIxItem.item)
+          hash <- o.address(out).kind match
+            case Address.Kind.Shelley(_, payment, _, _) => credScriptHash(payment)
+            case Address.Kind.Byron(_)                  => None
+        yield (ev.flip(conway.ConwayPlutusPurpose.ConwaySpending(asIxItem)), hash)
+      }.flatten
+    )
+
+  /** `getWithdrawingScriptsNeeded` (`Alonzo/UTxO.hs:385-394`, cardano-ledger f649f975): each
+    * withdrawal from a script's account, by its position in the withdrawals' order (`Map.keys` of
+    * the accounts).
+    */
+  def getWithdrawingScriptsNeeded[E <: EraTag, L <: TxLevel](body: TxBody[L, E])(using
+      b: EraTxBody[E],
+      l: b.Level[L],
+      ev: PlutusPurpose[AsIxItem, E] =:= conway.ConwayPlutusPurpose[AsIxItem]
+  ): AlonzoScriptsNeeded[E] =
+    AlonzoScriptsNeeded(
+      zipAsIxItem(b.withdrawals[L](body).keys.toVector.sorted) { asIxItem =>
+        credScriptHash(asIxItem.item.credential).map(hash =>
+          (ev.flip(conway.ConwayPlutusPurpose.ConwayWithdrawing(asIxItem)), hash)
+        )
+      }.flatten
+    )
+
+  /** `getMintingScriptsNeeded` (`Alonzo/UTxO.hs:403-411`, cardano-ledger f649f975): each policy the
+    * body mints or burns, by its position in the policies' order (`mintedTxBodyF`, a set).
+    */
+  def getMintingScriptsNeeded[E <: EraTag, L <: TxLevel](body: TxBody[L, E])(using
+      b: MaryEraTxBody[E],
+      l: b.Level[L],
+      ev: PlutusPurpose[AsIxItem, E] =:= conway.ConwayPlutusPurpose[AsIxItem]
+  ): AlonzoScriptsNeeded[E] =
+    AlonzoScriptsNeeded(
+      zipAsIxItem(b.mint[L](body).keys.toVector.sorted) { asIxItem =>
+        (ev.flip(conway.ConwayPlutusPurpose.ConwayMinting(asIxItem)), asIxItem.item)
+      }
+    )
+
+  /** `getAlonzoScriptsHashesNeeded` (`Alonzo/UTxO.hs:241-242`, cardano-ledger f649f975). */
+  def getAlonzoScriptsHashesNeeded[E <: EraTag](scriptsNeeded: AlonzoScriptsNeeded[E]): Set[Bytes] =
+    scriptsNeeded.unAlonzoScriptsNeeded.map(_._2).toSet
 
 /** The core's functions of the UTxO set (`State/UTxO.hs`, cardano-ledger f649f975). */
 object UTxOs:
@@ -174,6 +284,29 @@ object BabbageUTxO:
       .sortBy(_._1)
       .flatMap((_, out) => o.referenceScript(out))
       .map(script => (o.scripts.hashScript(script), script))
+
+  /** `getReferenceScripts` (`Babbage/UTxO.hs:150-155`, cardano-ledger f649f975): the reference
+    * scripts of `inputs` ' outputs by hash (`Map.fromList`, a later one of a hash kept).
+    */
+  def getReferenceScripts[E <: EraTag](utxo: UTxO[E], inputs: Set[TxIn])(using
+      BabbageEraTxOut[E]
+  ): Map[Bytes, Script[E]] =
+    getReferenceScriptsNonDistinct(utxo, inputs).toMap
+
+  /** `getBabbageScriptsProvided` (`Babbage/UTxO.hs:136-146`, cardano-ledger f649f975): the
+    * reference scripts of the spent and reference inputs, and the witnesses' scripts, a reference
+    * script kept where both have a hash (`Map.union`, left-biased).
+    */
+  def getBabbageScriptsProvided[E <: EraTag, L <: TxLevel](utxo: UTxO[E], tx: Tx[L, E])(using
+      t: EraTx[E],
+      b: BabbageEraTxBody[E],
+      l: t.bodyOf.Level[L],
+      lb: b.Level[L],
+      o: BabbageEraTxOut[E]
+  ): ScriptsProvided[E] =
+    val txBody = t.body[L](tx)
+    val ins: Set[TxIn] = b.referenceInputs[L](txBody)(using lb) ++ b.inputs[L](txBody)(using lb)
+    ScriptsProvided(t.witsOf.scriptTxWits(t.wits[L](tx)) ++ getReferenceScripts(utxo, ins))
 
 /** Conway's instance (`instance EraUTxO ConwayEra`, `eras/conway/impl/src/Cardano/Ledger/Conway/
   * UTxO.hs:119-137`, cardano-ledger f649f975).

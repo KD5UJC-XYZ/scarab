@@ -494,8 +494,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     exactly. They differ only past the supply, which no set of collateral outputs reaches.
   - A failure that carries an output or a value carries the node's stored form of it, through a glue class
     (`StoredTxOut`) with Conway's instance only, until each era's failure types (§3.4).
-  - `EraUTxO` lands without the members UTXOW reads (the scripts needed and provided, the witnesses needed)
-    and without `AlonzoEraUTxO`, tracked on #85.
+  - `EraUTxO` lands without the witnesses needed (`getWitsVKeyNeeded`) and without `AlonzoEraUTxO`,
+    tracked on #85; the scripts needed and provided came with UTXOW (below).
 - **The outputs** (`era/rules/`): `validateOutputTooSmallUTxO` with `babbageMinUTxOValue`,
   `validateOutputTooBigUTxO` and `validateOutputBootAddrAttrsTooBig`, each compared with the flat predicate on
   every Conway case of the refusal corpus; the corpus never exceeds the value size, so a crafted limit of one
@@ -561,11 +561,18 @@ Conway's rules on the classes follow as the rest of stage 2.
     as the reference does, and as the flat check does. The bootstrap witnesses follow, in the order of
     `bootAddrTxWits`, which the decoder keeps in the reference's set order (by address root); crafted cases
     fail them alone and after key witnesses, in that order in both paths.
-  - The scripts needed and provided (`ScriptsNeeded`, `getScriptsProvided`), the needed key witnesses
-    (`getWitsVKeyNeeded`), the failing native scripts, the datums and the redeemers wait for `EraUTxO`'s
-    members that UTXOW reads (#85); the auxiliary data and the well-formed scripts take the transaction
-    annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do not have
-    yet (on #85's checklist).
+  - The scripts needed and provided are `EraUTxO`'s (`ScriptsNeeded`, Alonzo's form `AlonzoScriptsNeeded`,
+    `getConwayScriptsNeeded` and `getBabbageScriptsProvided`), and `babbageMissingScripts` reads them. The
+    scripts needed equal the flat path's on every case of the refusal corpus and every recorded Conway
+    transaction, in order and with each purpose's index; the scripts provided equal the flat path's on
+    every case of the refusal corpus, which has the UTxO set their reference scripts come from. A crafted
+    case puts a script input after another, writes two policies out of their order and a script
+    certificate second, where a wrong order or index would show. Alonzo's spending, withdrawing and minting needs take the evidence that the era's purpose is
+    Conway's, as `AlonzoEraScript`'s purpose builders are not members yet (#85).
+  - The needed key witnesses (`getWitsVKeyNeeded`), the failing native scripts, the datums and the
+    redeemers wait for `EraUTxO`'s and `AlonzoEraUTxO`'s remaining members (#85); the auxiliary data and
+    the well-formed scripts take the transaction annotated with its decoded Plutus scripts (`StAnnTx`, with
+    its cache), which the era types do not have yet (on #85's checklist).
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in
