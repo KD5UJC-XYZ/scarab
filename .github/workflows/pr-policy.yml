@@ -2,15 +2,15 @@
 name: PR policy
 
 # Evaluate metadata using trusted default-branch code. No PR checkout, cache, secret or build; the only network use is
-# a read of the pull request's changed paths, for the level floors of scripts/pr_policy.py, and of its comments, for
-# the review the body links.
+# a read of the pull request's changed paths (both sides of a rename), for the level and review floors of
+# scripts/pr_policy.py, and of its comments and reviews, for the review the body links. Comment bodies are data: they
+# reach the script as JSON in a file, never through the shell.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, ready_for_review]
 
 permissions:
   contents: read
-  issues: read
   pull-requests: read
 
 concurrency:
@@ -33,11 +33,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
-            > "$RUNNER_TEMP/files.txt"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --jq '.[] | {id, body, user: {login: .user.login, type: .user.type}}' > "$RUNNER_TEMP/comments.jsonl"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+            --jq '.[] | {id, state, user: {login: .user.login, type: .user.type}}' > "$RUNNER_TEMP/reviews.jsonl"
       - name: Validate event metadata
         env:
           SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}
-        run: python3 scripts/pr_policy.py --files "$RUNNER_TEMP/files.txt" --comments "$RUNNER_TEMP/comments.jsonl"
+        run: |
+          python3 scripts/pr_policy.py --files "$RUNNER_TEMP/files.txt" --comments "$RUNNER_TEMP/comments.jsonl" \
+            --reviews "$RUNNER_TEMP/reviews.jsonl"

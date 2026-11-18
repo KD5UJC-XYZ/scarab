@@ -2,22 +2,27 @@
 # SPDX-License-Identifier: Apache-2.0
 """Run the independent Codex review of a pull request's diff, with the model and effort its level requires.
 
-This file is the one home of the reviewer's model (`MODEL`) and of the lowest reasoning effort each level of change
-allows (`LEVEL_FLOOR`, CONTRIBUTING.md "Independent review"); `scripts/pr_policy.py` reads both from here. A change
-to a design document or an ADR raises the floor to `DECISIVE_FLOOR`, since it decides what later code does.
+This file is the one home of the reviewer's model (`MODEL`) and of the lowest reasoning effort each change allows
+(`LEVEL_FLOOR`, and `DECISIVE_FLOOR` for a change to a design document or an ADR, which decides what later code
+does); CONTRIBUTING.md "Independent review" states the rule and `scripts/pr_policy.py` reads both from here.
 `--effort` may raise the effort above the floor, never lower it.
 
-The review runs read-only with the network on: a permission profile that extends Codex's `:read-only` profile with
-network access, live web search, and no approvals, so nothing runs outside the sandbox. Every setting is passed on
-the command line, so the user's own Codex configuration cannot change what runs. The run is accepted only when it
-completed with a final message, the session file Codex wrote for it records the model, the effort, the read-only
-sandbox and the network, and `git status` is the same before and after.
+The review runs with the network on and the file system read-only: a permission profile that extends Codex's
+`:read-only` profile with network access, and no approvals, so every command the reviewer runs stays in that
+sandbox. Live web search is requested; whether Codex grants it is not checked. Every setting is passed on the
+command line, so the user's own Codex configuration cannot change the model, the effort or the sandbox.
 
-The output file starts with a stamp, an HTML comment that `pr_policy.py` reads from the posted comment
-(`<!-- codex-review model=... effort=... level=... head=... -->`), and a line for the reader, then the review. Links
-to absolute paths are rewritten as plain text and the worktree's path is removed; a review that still names a home
+The run is accepted only when the worktree is clean before it, Codex exits successfully with a completed turn and a
+final message, the session file Codex wrote records the model and effort in every turn with no reroute to another
+model, the read-only sandbox and the network, and the worktree's HEAD and status are unchanged after it. The output
+file, outside the worktree, starts with a stamp line that `pr_policy.py` reads from the posted comment
+(`<!-- codex-review model=... effort=... level=... head=... -->`), then a line for the reader and the review. Links
+to files in the worktree become `path:line`, other absolute links plain text, and a review that still names a home
 directory is refused, since the comment is public. The stamp records what the session file shows; it is evidence
 against a mistaken run, not a signature.
+
+Run the copy on the base branch, not the one under review, when the change touches this file:
+`git show origin/main:scripts/codex_review.py > /tmp/codex_review.py`, then `python3 /tmp/codex_review.py --cd .`.
 
 Usage: python3 scripts/codex_review.py --level N --brief BRIEF.md --out REVIEW.md [--effort E] [--base origin/main]
 """
@@ -38,9 +43,10 @@ LEVEL_FLOOR = {0: "medium", 1: "high", 2: "high", 3: "xhigh", 4: "xhigh"}
 DECISIVE = re.compile(r"docs/(?:adr|design)/.*")
 DECISIVE_FLOOR = "high"
 PROFILE = "scarab_review"
-STAMP = re.compile(r"<!--\s*codex-review\s+([^>]*?)\s*-->")
-FIELD = re.compile(r"([a-z]+)=(\S+)")
-PATH_LINK = re.compile(r"\[([^\]]+)\]\(/[^)\s]*\)")
+STAMP = re.compile(r"<!-- codex-review ([a-z]+=[^\s>]+(?: [a-z]+=[^\s>]+){0,15}) -->")
+REQUIRED = ("model", "effort", "level", "head")
+LINK = re.compile(r"\[([^\]\n]{1,300})\]\((/[^)\s]{1,500})\)")
+LINE = re.compile(r"(?:#L|:)(\d+)(?:-L?\d+)?$")
 HOME_PATH = re.compile(r"(?:/home|/Users)/[A-Za-z0-9_][A-Za-z0-9._-]*/")
 
 
@@ -68,9 +74,23 @@ def stamp(fields):
     return "<!-- codex-review " + " ".join(f"{k}={v}" for k, v in fields.items()) + " -->"
 
 
-def stamps(text):
-    """The stamps in `text`, each as a dict of its fields."""
-    return [dict(FIELD.findall(m.group(1))) for m in STAMP.finditer(text or "")]
+def stamp_of(text):
+    """The fields of the stamp on the first line of `text`, or None when the first line is not a stamp. A stamp
+    with a repeated or missing field, or with no review after it, is refused."""
+    first, _, rest = (text or "").lstrip("\n").partition("\n")
+    match = STAMP.fullmatch(first.strip())
+    if not match:
+        return None
+    pairs = [pair.split("=", 1) for pair in match.group(1).split(" ")]
+    fields = dict(pairs)
+    if len(fields) != len(pairs):
+        raise ReviewError("the stamp repeats a field")
+    missing = [k for k in REQUIRED if k not in fields]
+    if missing:
+        raise ReviewError(f"the stamp lacks {', '.join(missing)}")
+    if not rest.strip():
+        raise ReviewError("the stamp has no review after it")
+    return fields
 
 
 def stamp_problem(fields, level, files=()):
@@ -94,21 +114,34 @@ def command(effort, workdir, last_message, codex="codex"):
             "-c", 'web_search="live"', "--json", "-o", str(last_message), "-C", str(workdir), "-"]
 
 
+def records(text):
+    """The JSON objects of a JSON-lines text, split on newlines only: a JSON string may hold other line breaks."""
+    out = []
+    for line in text.split("\n"):
+        if line.strip():
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return out
+
+
 def thread_of(events):
-    """The thread id of a run from its JSON event lines; a failed turn or an error event refuses the run."""
-    thread = None
-    for line in events.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    """The thread id of a run from its JSON events. The run must end with a completed turn and no failed one; an
+    error event alone is not a failure, since Codex reports retried errors too."""
+    thread, completed = None, False
+    for event in records(events):
         kind = event.get("type")
         if kind == "thread.started":
             thread = event.get("thread_id")
-        elif kind in ("turn.failed", "error"):
-            raise ReviewError(f"the run failed: {json.dumps(event)[:400]}")
+        elif kind == "turn.failed":
+            raise ReviewError(f"the turn failed: {json.dumps(event)[:400]}")
+        elif kind == "turn.completed":
+            completed = True
     if not thread:
         raise ReviewError("the run reported no thread")
+    if not completed:
+        raise ReviewError("the run reported no completed turn")
     return thread
 
 
@@ -120,32 +153,51 @@ def session_file(thread, home):
 
 
 def session_settings(path):
-    """Model, effort, sandbox and CLI version of a session, from its metadata and its first turn context."""
-    meta, context = None, None
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        entry = json.loads(line)
+    """Each turn's model, effort, sandbox and network, and the CLI version, from a session file; a reroute to
+    another model is refused."""
+    meta, turns = None, []
+    for entry in records(Path(path).read_text(encoding="utf-8")):
+        payload = entry.get("payload") or {}
         if entry.get("type") == "session_meta" and meta is None:
-            meta = entry.get("payload") or {}
-        elif entry.get("type") == "turn_context" and context is None:
-            context = entry.get("payload") or {}
-    if meta is None or context is None:
-        raise ReviewError(f"the session file {path.name} has no metadata or turn context")
-    sandbox = context.get("sandbox_policy") or {}
-    return {"model": context.get("model"), "effort": context.get("effort"), "sandbox": sandbox.get("type"),
-            "network": "on" if sandbox.get("network_access") is True else "off", "cli": meta.get("cli_version")}
+            meta = payload
+        elif entry.get("type") == "turn_context":
+            sandbox = payload.get("sandbox_policy") or {}
+            turns.append({"model": payload.get("model"), "effort": payload.get("effort"),
+                          "sandbox": sandbox.get("type"),
+                          "network": "on" if sandbox.get("network_access") is True else "off"})
+        elif payload.get("type") == "model_reroute":
+            raise ReviewError(f"Codex rerouted the run to another model: {json.dumps(payload)[:300]}")
+    if meta is None or not turns:
+        raise ReviewError(f"the session file {Path(path).name} has no metadata or turn context")
+    return turns, meta.get("cli_version")
 
 
-def check_session(settings, effort):
+def check_session(turns, effort):
     expected = {"model": MODEL, "effort": effort, "sandbox": "read-only", "network": "on"}
-    wrong = {k: settings.get(k) for k, v in expected.items() if settings.get(k) != v}
-    if wrong:
-        raise ReviewError(f"the session ran with {wrong}, not {expected}")
+    for turn in turns:
+        if turn != expected:
+            wrong = {k: turn.get(k) for k, v in expected.items() if turn.get(k) != v}
+            raise ReviewError(f"a turn ran with {wrong}, not {expected}")
 
 
 def scrub(text, workdir):
-    """The review without links to absolute paths and without the worktree's path; refused if a home path is left."""
-    text = PATH_LINK.sub(r"\1", text)
-    text = text.replace(str(Path(workdir).resolve()) + "/", "").replace(str(workdir).rstrip("/") + "/", "")
+    """The review without absolute paths: a link into the worktree becomes `path:line`, another absolute link its
+    label; refused if a home path is left."""
+    roots = sorted({str(Path(workdir).resolve()), str(workdir).rstrip("/")}, key=len, reverse=True)
+
+    def relative(match):
+        label, target = match.groups()
+        for root in roots:
+            if target.startswith(root + "/"):
+                path = target[len(root) + 1:]
+                line = LINE.search(path)
+                where = LINE.sub("", path) + (f":{line.group(1)}" if line else "")
+                return label if label in (where, path) else f"{label} (`{where}`)"
+        return label
+
+    text = LINK.sub(relative, text)
+    for root in roots:
+        text = text.replace(root + "/", "")
     left = HOME_PATH.search(text)
     if left:
         raise ReviewError(f"the review still names a home directory ({left.group(0)}...); edit it before posting")
@@ -156,26 +208,35 @@ def git(workdir, *args):
     return subprocess.run(["git", "-C", str(workdir), *args], check=True, capture_output=True, text=True).stdout
 
 
+def changed_files(workdir, base):
+    """The paths the diff touches, both sides of a rename, as Git stores them (no quoting)."""
+    out = git(workdir, "diff", "-z", "--no-renames", "--name-only", f"{base}...HEAD")
+    return [path for path in out.split("\0") if path]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--level", type=int, required=True, help="the level the pull request body states (0-4)")
     parser.add_argument("--brief", type=Path, required=True,
                         help="the review brief (docs/playbooks/review-a-change.md)")
-    parser.add_argument("--out", type=Path, required=True, help="where to write the review, to post as a comment")
-    parser.add_argument("--effort", help="an effort at or above the level's floor (default: the floor)")
+    parser.add_argument("--out", type=Path, required=True,
+                        help="where to write the review, outside the worktree, to post as a comment")
+    parser.add_argument("--effort", help="an effort at or above the change's floor (default: the floor)")
     parser.add_argument("--base", default="origin/main", help="the base the diff is taken against")
     parser.add_argument("--cd", type=Path, default=Path.cwd(), help="the worktree to review (default: here)")
     parser.add_argument("--codex", default=os.environ.get("CODEX", "codex"), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
         workdir = args.cd.resolve()
-        files = git(workdir, "diff", "--name-only", f"{args.base}...HEAD").split()
-        need = floor(args.level, files)
+        if args.out.resolve().is_relative_to(workdir):
+            raise ReviewError("write the review outside the worktree under review")
+        need = floor(args.level, changed_files(workdir, args.base))
         effort = args.effort or need
         if rank(effort) < rank(need):
             raise ReviewError(f"effort {effort} is below {need}, the floor for this change")
+        if git(workdir, "status", "--porcelain"):
+            raise ReviewError("the worktree has uncommitted changes; the review covers committed work only")
         head = git(workdir, "rev-parse", "HEAD").strip()
-        before = git(workdir, "status", "--porcelain")
         brief = args.brief.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as scratch:
             last = Path(scratch, "last-message.md")
@@ -187,13 +248,12 @@ def main(argv=None):
             message = last.read_text(encoding="utf-8").strip() if last.exists() else ""
         if not message:
             raise ReviewError("the run ended without a final message")
-        if git(workdir, "status", "--porcelain") != before:
+        if git(workdir, "status", "--porcelain") or git(workdir, "rev-parse", "HEAD").strip() != head:
             raise ReviewError("the worktree changed during the review; a review makes no edits")
-        home = os.environ.get("CODEX_HOME") or Path.home() / ".codex"
-        settings = session_settings(session_file(thread, home))
-        check_session(settings, effort)
+        turns, cli = session_settings(session_file(thread, os.environ.get("CODEX_HOME") or Path.home() / ".codex"))
+        check_session(turns, effort)
         fields = {"model": MODEL, "effort": effort, "level": args.level, "head": head, "base": args.base,
-                  "cli": settings["cli"], "sandbox": "read-only", "network": "on"}
+                  "cli": cli, "sandbox": "read-only", "network": "on"}
         header = (f"Independent review by Codex `{MODEL}` at effort `{effort}` (floor `{need}` for level "
                   f"{args.level}), read-only with network, of `{head[:12]}` against `{args.base}`.")
         args.out.write_text(f"{stamp(fields)}\n{header}\n\n{scrub(message, workdir)}\n", encoding="utf-8")

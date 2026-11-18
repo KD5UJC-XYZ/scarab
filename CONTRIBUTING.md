@@ -180,7 +180,7 @@ the disposition of each finding. Fixes that change more than wording get a secon
 commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md).
 
 An agent's review runs through `scripts/codex_review.py`, which pins the reviewer's model and gives it the network
-and live web search in a read-only sandbox. The review's reasoning effort follows the risk of the change; the
+in a read-only sandbox, with live web search requested. The review's reasoning effort follows the risk of the change; the
 script holds the model and these floors, and refuses an effort below them:
 
 | Change | Lowest effort |
@@ -192,11 +192,11 @@ script holds the model and these floors, and refuses an effort below them:
 
 A higher effort is always allowed; use it where a change could split the chain from the reference. The script
 stamps the review with the model and effort its session file records, and the stamp is posted with the review.
-`scripts/pr_policy.py` refuses a pull request that is not a draft unless the section is there with a link to a
-comment on the pull request that is a review: one carrying that stamp, at or above the floor for the stated level
-and the changed files, or one posted by another person. A draft passes, so a pull request stays a draft until its
-review is posted. The stamp guards against a mistaken run (a forgotten effort, a default model); it is not a
-signature.
+`scripts/pr_policy.py` refuses a pull request that is not a draft unless the section links a review on the pull
+request: a comment that starts with that stamp, at or above the floor for the stated level and the changed files,
+or a GitHub review submitted by a person other than the author. A draft passes, so a pull request stays a draft
+until its review is posted. The stamp guards against a mistaken run (a forgotten effort, a default model); it is
+not a signature.
 
 ### The one scenario per area
 

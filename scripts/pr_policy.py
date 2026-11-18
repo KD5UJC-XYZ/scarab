@@ -9,9 +9,10 @@ approval link) and "Gaps" (`None`, or bullets that each start with an issue link
 `None` may go on in prose. A pull request that is not a draft (the event's `draft` flag) also carries an
 "Independent review" section with a link, to the review of its final diff posted on it (CONTRIBUTING.md,
 "Independent review"); a draft passes without it. Given the pull request's comments (`--comments`, one JSON object
-per line with `id`, `body` and `user`), the section must link a review on this pull request: a comment with the stamp
-of `codex_review.py`, or one another person posted. Every stamp in a linked comment names the pinned model and an
-effort at or above the floor for the stated level and the changed files (CONTRIBUTING.md, "Independent review").
+per line with `id`, `body` and `user`) and reviews (`--reviews`, with `id`, `state` and `user`), the section must link
+a review on this pull request: a comment whose first line is the stamp of `codex_review.py`, naming the pinned model
+and an effort at or above the floor for the stated level and the changed files, or a GitHub review submitted by a
+person other than the author (CONTRIBUTING.md, "Independent review").
 The stated level has floors from the changed files (`--files`, the pull request's file list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
@@ -176,49 +177,64 @@ def has_link(text):
     return any(LINK.match(defined.get((ref or label).strip().lower(), "")) for label, ref in REFERENCE.findall(rest))
 
 
-def check_review(pr, level=None, files=(), comments=None):
+def check_review(pr, level=None, files=(), evidence=None):
     """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders
-    (`has_link`), in the section as `rendered_section` reads it, outside code spans. With its `comments`, the link
-    must reach a comment on this pull request, and a linked comment by its author must carry a Codex review stamp
-    that meets the floor for `level` and `files` (`linked_reviews`)."""
+    (`has_link`), in the section as `rendered_section` reads it, outside code spans. With its `evidence` (comments
+    and reviews), the link must reach a review on this pull request (`linked_reviews`)."""
     if pr.get("draft") is True:
         return
     text = rendered_section(pr.get("body"), REVIEW)
     require(text is not None and has_link(without_code_spans(text)),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
-    if comments is not None and level is not None:
-        linked_reviews(pr, without_code_spans(text), level, files, comments)
+    if evidence is not None and level is not None:
+        linked_reviews(pr, without_code_spans(text), level, files, *evidence)
 
 
-def linked_reviews(pr, text, level, files, comments):
-    """The linked comments of this pull request that are reviews: one that carries a Codex review stamp, every stamp
-    meeting the floor, or one another person posted. At least one is required; an unstamped comment of the author
-    (a reply, a disposition) may be linked beside them."""
+HUMAN_VERDICTS = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
+
+
+def linked_reviews(pr, text, level, files, comments, reviews):
+    """The reviews the section links on this pull request: a comment whose first line is the stamp of
+    `codex_review.py` with the pinned model at or above the floor, or a GitHub review submitted by a person other than
+    the author. At least one is required; every linked stamp must meet the floor, and an unstamped comment (a
+    disposition, a reply) may be linked beside them."""
     number = pr.get("number")
     repository = ((pr.get("base") or {}).get("repo") or {}).get("full_name", "")
     link = re.compile(r"https://github\.com/" + re.escape(repository) + r"/pull/" + str(number)
-                      + r"(?:/files|/commits)?#issuecomment-(\d+)\b", re.IGNORECASE)
-    by_id = {str(c.get("id")): c for c in comments}
-    linked = [by_id[i] for i in dict.fromkeys(link.findall(text)) if i in by_id]
-    floor = codex_review.floor(level, files)
-    require(linked, f'the "Independent review" section links no comment on this pull request (#{number}); link the '
-            "posted review comment (CONTRIBUTING.md, \"Independent review\")")
+                      + r"(?:/files|/commits)?#(issuecomment|pullrequestreview)-(\d+)(?![\w-])", re.IGNORECASE)
+    found = {kind.lower(): set() for kind in ("issuecomment", "pullrequestreview")}
+    for kind, ident in link.findall(text):
+        found[kind.lower()].add(ident)
+    comment_by_id = {str(c.get("id")): c for c in comments}
+    review_by_id = {str(r.get("id")): r for r in reviews}
+    linked_comments = [comment_by_id[i] for i in sorted(found["issuecomment"]) if i in comment_by_id]
+    linked_reviews_ = [review_by_id[i] for i in sorted(found["pullrequestreview"]) if i in review_by_id]
+    need = codex_review.floor(level, files)
+    require(linked_comments or linked_reviews_,
+            f'the "Independent review" section links no comment or review on this pull request (#{number}); link the '
+            "posted review (CONTRIBUTING.md, \"Independent review\")")
     author = (pr.get("user") or {}).get("login")
-    reviews = []
-    for comment in linked:
-        user = comment.get("user") or {}
-        found = codex_review.stamps(comment.get("body"))
-        for fields in found:
+    accepted = []
+    for comment in linked_comments:
+        try:
+            fields = codex_review.stamp_of(comment.get("body"))
+        except codex_review.ReviewError as error:
+            raise PolicyError(f"the linked comment {comment.get('id')}: {error}") from error
+        if fields is not None:
             problem = codex_review.stamp_problem(fields, level, files)
             require(problem is None, f"the linked comment {comment.get('id')}: {problem}; run the review again "
                     "with scripts/codex_review.py (CONTRIBUTING.md, \"Independent review\")")
-        if found or (user.get("login") != author and user.get("type") != "Bot"):
-            reviews.append(comment)
-    require(reviews, "no linked comment is a review: the pull request's author links a Codex review stamped by "
-            f"scripts/codex_review.py at effort {floor} or above, or a review another person posted "
-            "(CONTRIBUTING.md, \"Independent review\")")
-    return reviews
+            accepted.append(comment)
+    for review in linked_reviews_:
+        user = review.get("user") or {}
+        if (user.get("login") and user.get("login") != author and user.get("type") == "User"
+                and review.get("state") in HUMAN_VERDICTS):
+            accepted.append(review)
+    require(accepted, "no linked item is a review: link a comment that starts with the stamp of "
+            f"scripts/codex_review.py at effort {need} or above, or a GitHub review submitted by a person other than "
+            "the author (CONTRIBUTING.md, \"Independent review\")")
+    return accepted
 
 
 def level_floor(files):
@@ -335,12 +351,12 @@ def check_storage_format(pr, files, now):
     return True
 
 
-def check_body(pr, files=(), comments=None):
+def check_body(pr, files=(), evidence=None):
     """The level the body states; None for a bot's pull request and for a promotion of `dev`, whose changes each
     passed this check as their own pull request."""
     if (pr.get("user") or {}).get("type") == "Bot":
         return None
-    if pr.get("head", {}).get("ref") == "dev" and pr.get("base", {}).get("ref") == "main":
+    if promotion(pr):
         return None
     body = pr.get("body") or ""
     level = level_of(body)
@@ -354,7 +370,7 @@ def check_body(pr, files=(), comments=None):
         found = sections(body)
         check_deviations(found.get(DEVIATIONS))
         check_gaps(found.get(GAPS))
-    check_review(pr, level, files, comments)
+    check_review(pr, level, files, evidence)
     return level
 
 
@@ -389,8 +405,10 @@ def main():
     parser.add_argument("--repository-id", type=int, default=os.environ.get("GITHUB_REPOSITORY_ID"))
     parser.add_argument("--mode", default=os.environ.get("SCARAB_PROMOTION_POLICY") or "transition")
     parser.add_argument("--files", type=Path, help="the pull request's changed paths, one per line")
-    parser.add_argument("--comments", type=Path,
+    parser.add_argument("--comments", type=Path, required=True,
                         help="the pull request's comments, one JSON object per line with id, body and user")
+    parser.add_argument("--reviews", type=Path, required=True,
+                        help="the pull request's reviews, one JSON object per line with id, state and user")
     args = parser.parse_args()
     require(args.event is not None and args.repository is not None, "require event and repository identity")
     event = json.loads(args.event.read_text())
@@ -398,11 +416,10 @@ def main():
             "event repository identity differs from the trusted runner")
     pr = event.get("pull_request", {})
     result = evaluate(pr, args.repository, args.repository_id, args.mode)
-    files = args.files.read_text(encoding="utf-8").split() if args.files else []
-    comments = ([json.loads(line) for line in args.comments.read_text(encoding="utf-8").splitlines() if line.strip()]
-                if args.comments else None)
+    files = [f for f in args.files.read_text(encoding="utf-8").split("\n") if f] if args.files else []
+    evidence = tuple(codex_review.records(path.read_text(encoding="utf-8")) for path in (args.comments, args.reviews))
     storage = check_storage_format(pr, files, datetime.now(timezone.utc))
-    print(json.dumps(dict(result, level=check_body(pr, files, comments), storageFormatChange=storage),
+    print(json.dumps(dict(result, level=check_body(pr, files, evidence), storageFormatChange=storage),
                      sort_keys=True))
 
 

@@ -29,6 +29,8 @@ FAKE = textwrap.dedent('''\
     network = "network.enabled=true" in " ".join(settings) and not os.environ.get("FAKE_NO_NETWORK")
     thread = "01a1f035-0000-7000-8000-00000000abcd"
     print(json.dumps({"type": "thread.started", "thread_id": thread}))
+    if os.environ.get("FAKE_RETRY"):
+        print(json.dumps({"type": "error", "message": "stream disconnected; retrying"}))
     if os.environ.get("FAKE_FAIL"):
         print(json.dumps({"type": "turn.failed", "error": {"message": "boom"}}))
         sys.exit(0)
@@ -41,10 +43,18 @@ FAKE = textwrap.dedent('''\
         f.write(json.dumps({"type": "turn_context", "payload": {
             "model": model, "effort": os.environ.get("FAKE_EFFORT", effort),
             "sandbox_policy": {"type": "read-only", "network_access": network}}}) + "\\n")
-    message = os.environ.get("FAKE_MESSAGE", "P2 [Foo.scala:3](" + str(work) + "/Foo.scala#L3): brief was "
+        if os.environ.get("FAKE_REROUTE"):
+            f.write(json.dumps({"type": "event_msg", "payload": {"type": "model_reroute", "from_model": model,
+                                                                  "to_model": "other"}}) + "\\n")
+        if os.environ.get("FAKE_SECOND_TURN"):
+            f.write(json.dumps({"type": "turn_context", "payload": {
+                "model": os.environ["FAKE_SECOND_TURN"], "effort": effort,
+                "sandbox_policy": {"type": "read-only", "network_access": network}}}) + "\\n")
+    message = os.environ.get("FAKE_MESSAGE", "P2 [Foo.scala](" + str(work) + "/Foo.scala#L3): brief was "
                              + str(len(brief)) + " chars")
     out.write_text(message)
-    print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1}}))
+    if not os.environ.get("FAKE_NO_COMPLETION"):
+        print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1}}))
 ''')
 
 
@@ -58,19 +68,28 @@ class FloorAndStampTests(unittest.TestCase):
         with self.assertRaises(review.ReviewError):
             review.floor(5)
 
-    def test_a_stamp_reads_back_and_is_judged_against_the_floor(self):
-        text = "intro\n" + review.stamp({"model": review.MODEL, "effort": "high", "level": 2, "head": "a" * 40})
-        [fields] = review.stamps(text)
+    def test_a_stamp_reads_back_from_the_first_line_and_is_judged_against_the_floor(self):
+        line = review.stamp({"model": review.MODEL, "effort": "high", "level": 2, "head": "a" * 40})
+        fields = review.stamp_of(line + "\nreview")
         self.assertEqual((fields["model"], fields["effort"], fields["level"]), (review.MODEL, "high", "2"))
         self.assertIsNone(review.stamp_problem(fields, 2))
         self.assertIn("below xhigh", review.stamp_problem(fields, 3))
         self.assertIn("not " + review.MODEL, review.stamp_problem(dict(fields, model="other"), 1))
-        self.assertEqual(review.stamps("no stamp <!-- a comment -->"), [])
+        self.assertIsNone(review.stamp_of("intro\n" + line + "\nreview"))
+        self.assertIsNone(review.stamp_of("no stamp <!-- a comment -->"))
+        for text, message in [(line, "no review"), (line.replace(" head=", " level=3 head=") + "\nx", "repeats"),
+                              (line.replace(" level=2", "") + "\nx", "lacks level")]:
+            with self.subTest(text=text), self.assertRaisesRegex(review.ReviewError, message):
+                review.stamp_of(text)
 
-    def test_links_to_absolute_paths_and_the_worktree_path_are_removed_and_a_home_path_is_refused(self):
+    def test_json_lines_split_on_newlines_only(self):
+        self.assertEqual(review.records('{"a": "x\u0085y"}\nnot json\n{"b": 1}\n'), [{"a": "x\u0085y"}, {"b": 1}])
+
+    def test_links_into_the_worktree_become_path_and_line_other_absolute_links_their_label(self):
         work = "/srv/w/scarab"
-        self.assertEqual(review.scrub(f"[A.scala:3]({work}/A.scala#L3) and {work}/B.scala", work),
-                         "A.scala:3 and B.scala")
+        self.assertEqual(review.scrub(f"[A.scala]({work}/x/A.scala#L3) [x/B.scala:4]({work}/x/B.scala:4) "
+                                      f"[C]({work}/x/C.scala#L5-L9) [doc](/opt/doc) {work}/D.scala", work),
+                         "A.scala (`x/A.scala:3`) x/B.scala:4 C (`x/C.scala:5`) doc D.scala")
         with self.assertRaisesRegex(review.ReviewError, "home directory"):
             review.scrub("see " + HOME + "notes.txt", work)
 
@@ -116,22 +135,26 @@ class RunTests(unittest.TestCase):
     def test_a_good_run_writes_the_stamp_the_header_and_the_scrubbed_review(self):
         self.assertEqual(self.run_review(), 0)
         text = self.out.read_text()
-        [fields] = review.stamps(text)
+        fields = review.stamp_of(text)
         self.assertEqual((fields["model"], fields["effort"], fields["level"], fields["network"], fields["cli"]),
                          (review.MODEL, "high", "1", "on", "0.169.0"))
-        self.assertIn("P2 Foo.scala:3: brief was 17 chars", text)
+        self.assertIn("P2 Foo.scala (`Foo.scala:3`): brief was 17 chars", text)
         self.assertNotIn(str(self.work), text)
 
     def test_a_higher_effort_is_allowed_and_a_lower_one_refused(self):
         self.assertEqual(self.run_review("--effort", "xhigh"), 0)
-        self.assertEqual(review.stamps(self.out.read_text())[0]["effort"], "xhigh")
+        self.assertEqual(review.stamp_of(self.out.read_text())["effort"], "xhigh")
         self.out.unlink()
         self.assertEqual(self.run_review("--effort", "medium"), 1)
         self.assertFalse(self.out.exists())
 
+    def test_a_retried_error_followed_by_a_completed_turn_is_accepted(self):
+        self.assertEqual(self.run_review(FAKE_RETRY="1"), 0)
+
     def test_a_run_is_refused_when_the_session_or_the_worktree_is_not_as_required(self):
         for env in [{"FAKE_MODEL": "gpt-daybreak-blue-latest"}, {"FAKE_EFFORT": "low"}, {"FAKE_NO_NETWORK": "1"},
-                    {"FAKE_FAIL": "1"}, {"FAKE_EDIT": "1"}, {"FAKE_MESSAGE": ""},
+                    {"FAKE_FAIL": "1"}, {"FAKE_NO_COMPLETION": "1"}, {"FAKE_REROUTE": "1"},
+                    {"FAKE_SECOND_TURN": "other-model"}, {"FAKE_EDIT": "1"}, {"FAKE_MESSAGE": ""},
                     {"FAKE_MESSAGE": "see " + HOME + "x"}]:
             with self.subTest(env=env):
                 if self.home.exists():
@@ -141,6 +164,26 @@ class RunTests(unittest.TestCase):
                 self.assertEqual(self.run_review(**env), 1)
                 self.assertFalse(self.out.exists())
 
+    def test_a_dirty_worktree_or_an_output_inside_it_is_refused_before_codex_runs(self):
+        (self.work / "untracked.txt").write_text("x")
+        self.assertEqual(self.run_review(), 1)
+        (self.work / "untracked.txt").unlink()
+        self.out = self.work / "review.md"
+        self.assertEqual(self.run_review(), 1)
+        self.assertFalse(self.home.exists())
+
+    def test_the_floor_reads_both_sides_of_a_rename_and_unquoted_paths(self):
+        git = ["git", "-C", str(self.work), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+        (self.work / "docs" / "adr").mkdir(parents=True)
+        (self.work / "docs" / "adr" / "0001-ré.md").write_text("adr\n")
+        subprocess.run(git + ["add", "."], check=True)
+        subprocess.run(git + ["commit", "-qm", "adr"], check=True)
+        self.assertIn("docs/adr/0001-ré.md", review.changed_files(self.work, "base"))
+        self.assertEqual(review.floor(0, review.changed_files(self.work, "base")), "high")
+        subprocess.run(git + ["branch", "-f", "base"], check=True)
+        subprocess.run(git + ["mv", "docs/adr/0001-ré.md", "docs/old.md"], check=True)
+        subprocess.run(git + ["commit", "-qm", "move"], check=True)
+        self.assertEqual(sorted(review.changed_files(self.work, "base")), ["docs/adr/0001-ré.md", "docs/old.md"])
 
 if __name__ == "__main__":
     unittest.main()

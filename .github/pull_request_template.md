@@ -42,9 +42,10 @@ owner's exact answer, with UTC times such as 2026-11-14T09:30:00Z. -->
 
 ## Independent review
 
-<!-- CONTRIBUTING.md, "Independent review": the link to the review comment (written by scripts/codex_review.py
-with its stamp, at the effort floor of the level or above), the verdict, and each finding's disposition. The PR
-policy check reads this section and the linked comment. -->
+<!-- CONTRIBUTING.md, "Independent review": the link to the review (a comment that starts with the stamp of
+scripts/codex_review.py at the change's effort floor or above, or a GitHub review submitted by a person other than
+the author), the verdict, and each finding's disposition. The PR policy check reads this section and the review it
+links. -->
 
 ## Evidence and docs
 
