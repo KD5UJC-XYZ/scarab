@@ -1021,6 +1021,23 @@ object Targets:
         }
       ),
       Target(
+        "block-header-alone",
+        () => Corpus.blocks ++ Corpus.sampledEras("block", "alonzo") ++ Corpus.tricky,
+        in =>
+          // Two decoder calls retain the normal linear allocation allowance per call.
+          Probe.run("block-header-alone", in, perByte = 2000L) {
+            val b = raw(in)
+            val header = Block.decodeHeader(b, Corpus.byronEpochSlots)
+            seen("block-header-alone", header.isRight)
+            // the header read alone is the decoded block's header, and a refusal of it is decode's
+            Block.decode(b, Corpus.byronEpochSlots) match
+              case Right(block) =>
+                req(header == Right(block.header), "the header read alone is not the block's")
+              case Left(error) =>
+                req(header.left.forall(_ == error), "the header read alone is refused otherwise")
+          }
+      ),
+      Target(
         "block-decoder-version-12",
         () => Corpus.blocks ++ Corpus.sampledEras("block", "alonzo") ++ Corpus.tricky,
         probe("block-decoder-version-12") { b =>

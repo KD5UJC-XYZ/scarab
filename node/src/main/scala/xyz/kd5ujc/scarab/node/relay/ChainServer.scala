@@ -286,18 +286,15 @@ object ChainServer:
       case (block: Point.Block, Some(s)) => (chain, Standing.Older(block, s))
       case _                             => (chain, Standing.Absent)
 
-  /** Decode the header of a full block. For Byron the size hint is the block's byte size. */
+  /** The header of a whole block, its body's contents not decoded ([[Block.decodeHeader]]). For
+    * Byron the size hint is the block's byte size.
+    */
   def headerOfBlock(byronEpochSlots: BigInt): HeaderOf =
     raw =>
-      Block.decode(raw, byronEpochSlots).map { block =>
-        block.header match
-          case h: Header.Byron =>
-            NtNHeader(
-              Era.Byron,
-              h.raw,
-              Some(NtNHeader.ByronInfo(h.boundary, h.blockSizeHint.value))
-            )
-          case h => NtNHeader(h.era, h.raw, None)
+      Block.decodeHeader(raw, byronEpochSlots).map {
+        case h: Header.Byron =>
+          NtNHeader(Era.Byron, h.raw, Some(NtNHeader.ByronInfo(h.boundary, h.blockSizeHint.value)))
+        case h => NtNHeader(h.era, h.raw, None)
       }
 
   def open[F[_]: Async](

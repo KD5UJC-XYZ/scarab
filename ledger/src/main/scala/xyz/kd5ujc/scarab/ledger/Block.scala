@@ -116,6 +116,20 @@ object Block:
   def decodeShelley(raw: Bytes, version: Era => DecoderVersion): Either[ChainError, Block] =
     decodeWith(raw, None, version, DetachedRecords.Shapes.blockAt(version))
 
+  /** The header of a block, read as [[decode]] reads it: the whole block parsed as CBOR, the
+    * envelope, then the header of the era its tag names; the body's contents (transactions,
+    * auxiliary data, its hash) are not decoded. A block whose CBOR, envelope or header [[decode]]
+    * refuses is refused with the same error, as the two share that code; a well-formed block whose
+    * body's contents do not decode still gives its header. The node's ChainSync server sends a
+    * block's header from it: the reference reads a stored block's header bytes alone, located by
+    * the offsets its secondary index keeps (`readHeader`, `Storage/ImmutableDB/Impl/Iterator.hs`
+    * 694-704, ouroboros-consensus 82ecba32), which Scarab's index does not keep.
+    */
+  def decodeHeader(raw: Bytes, byronEpochSlots: BigInt): Either[ChainError, Header] =
+    decodeWith(raw, DetachedRecords.Shapes.block)(
+      readHeader(_, Some(byronEpochSlots), DecoderVersion.of)
+    )
+
   /** A block whose transactions hold a `RecD` record written as an empty indefinite list is read as
     * the reference reads it, its parts spanning the fields after the list ([[DetachedRecords]]).
     */
@@ -125,18 +139,30 @@ object Block:
       version: Era => DecoderVersion,
       shape: DetachedRecords.Shape
   ): Either[ChainError, Block] =
-    DetachedRecords.read(raw, limits, shape)(e => fail(LedgerDecodeError.Syntax(e)))(
-      read(_, byronEpochSlots, version)
-    )
+    decodeWith(raw, shape)(read(_, byronEpochSlots, version))
 
-  private def read(
+  private def decodeWith[A](raw: Bytes, shape: DetachedRecords.Shape)(
+      reader: Node => Either[ChainError, A]
+  ): Either[ChainError, A] =
+    DetachedRecords.read(raw, limits, shape)(e => fail(LedgerDecodeError.Syntax(e)))(reader)
+
+  /** What a block's envelope holds, by its tag: the block of that era, not read yet. */
+  private enum Enveloped:
+    case Byron(boundary: Boolean, block: Node, epochSlots: BigInt)
+    case Shelley(era: Era, block: Node)
+
+    /** A Dijkstra block, which [[LeiosBlock]] reads from its envelope again. */
+    case Dijkstra
+
+  /** The envelope `[tag, block]`, read before the block of any era: `enforceSize "CardanoBlock" 2`
+    * (ouroboros-consensus 82ecba329 `Ouroboros/Consensus/Cardano/Node.hs:184`), then the era its
+    * tag names. A Byron block needs `byronEpochSlots`.
+    */
+  private def envelope(
       root: Node,
-      byronEpochSlots: Option[BigInt],
-      at: Era => DecoderVersion
-  ): Either[ChainError, Block] =
+      byronEpochSlots: Option[BigInt]
+  ): Either[ChainError, Enveloped] =
     for
-      // `enforceSize "CardanoBlock" 2` (ouroboros-consensus 82ecba329
-      // `Ouroboros/Consensus/Cardano/Node.hs:184`), before the tag of any era is read
       outer <- enforceSize(root, 2)
       tag <- outer(0).value match
         case Value.UInt(t) => Right(t)
@@ -153,22 +179,53 @@ object Block:
       era <- Era
         .fromBlockTag(tag)
         .toRight(fail(LedgerDecodeError.UnknownTag(DecodeField.BlockEra, tag)))
-      block <- era match
+      inside <- era match
         case Era.Byron =>
           byronEpochSlots
             .toRight(fail(LedgerDecodeError.ByronBlockUnexpected))
-            .flatMap(byron(tag == 0, outer(1), _))
+            .map(Enveloped.Byron(tag == 0, outer(1), _))
         // `[header, [txs, leios_cert / nil, peras_cert / nil]]`, read as the Leios testnet's build
         // reads it: the envelope again, then the block at decoder version 12
-        case Era.Dijkstra => LeiosBlock.read(root).map(Dijkstra(_))
-        case _            => shelley(era, at(era), outer(1))
-    yield block
+        case Era.Dijkstra => Right(Enveloped.Dijkstra)
+        case _            => Right(Enveloped.Shelley(era, outer(1)))
+    yield inside
 
+  private def read(
+      root: Node,
+      byronEpochSlots: Option[BigInt],
+      at: Era => DecoderVersion
+  ): Either[ChainError, Block] =
+    envelope(root, byronEpochSlots).flatMap {
+      case Enveloped.Byron(boundary, n, epochSlots) =>
+        byron(boundary, n, epochSlots).map((header, parts) =>
+          Byron(header, parts(1).original, parts(2).original, n.original.size)
+        )
+      case Enveloped.Shelley(era, n) =>
+        for
+          (header, parts) <- shelley(era, at(era), n)
+          body <- segregated(parts, era, at(era))
+        yield Shelley(era, header, body.transactions, body.size, body.hash, body.segments)
+      case Enveloped.Dijkstra => LeiosBlock.read(root).map(Dijkstra(_))
+    }
+
+  /** [[read]] up to the header: the same envelope and the same header, and nothing after it. */
+  private def readHeader(
+      root: Node,
+      byronEpochSlots: Option[BigInt],
+      at: Era => DecoderVersion
+  ): Either[ChainError, Header] =
+    envelope(root, byronEpochSlots).flatMap {
+      case Enveloped.Byron(boundary, n, epochSlots) => byron(boundary, n, epochSlots).map(_._1)
+      case Enveloped.Shelley(era, n)                => shelley(era, at(era), n).map(_._1)
+      case Enveloped.Dijkstra                       => LeiosBlock.header(root).map(_.dijkstraView)
+    }
+
+  /** A Byron block's header, with its size hint, and its three parts. */
   private def byron(
       boundary: Boolean,
       n: Node,
       epochSlots: BigInt
-  ): Either[ChainError, Block] =
+  ): Either[ChainError, (Header.Byron, Vector[Node])] =
     for
       // `enforceSize "Block" 3` and `enforceSize "BoundaryBlock" 3` (cardano-ledger f649f975
       // `eras/byron/ledger/impl/src/Cardano/Chain/Block/Block.hs:329,486`)
@@ -177,21 +234,20 @@ object Block:
       hint <- Header.byronSizeHint(BigInt(n.original.size) + 9)
     // GetHeader ByronBlock includes the CBOR-in-CBOR and EBB tag overhead (7 + 2),
     // consensus 82ecba329 Byron/Ledger/Block.hs:154–175.
-    yield Byron(
-      header.withSizeHint(hint),
-      parts(1).original,
-      parts(2).original,
-      n.original.size
-    )
+    yield (header.withSizeHint(hint), parts)
 
-  private def shelley(era: Era, version: DecoderVersion, n: Node): Either[ChainError, Block] =
+  /** A Shelley-based block's header and its parts. */
+  private def shelley(
+      era: Era,
+      version: DecoderVersion,
+      n: Node
+  ): Either[ChainError, (Header.Shelley, Vector[Node])] =
     for
       // `decodeRecordNamed "Block"` (`libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:106`,
       // cardano-ledger f649f975): a definite list or an indefinite one, unlike the envelope
       parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
       header <- Header.fromRaw(era, parts(0).original, version)
-      body <- segregated(parts, era, version)
-    yield Shelley(era, header, body.transactions, body.size, body.hash, body.segments)
+    yield (header, parts)
 
   /** The transactions of a block body in the segregated layout of Shelley to Conway (`[header,
     * bodies, witnesses, auxiliary data, invalid]`, the header first and so ignored here) with the

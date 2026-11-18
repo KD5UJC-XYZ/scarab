@@ -305,6 +305,24 @@ object LeiosBlock:
     */
   private[ledger] def read(root: Node): Either[ChainError, LeiosBlock] =
     for
+      (header, body) <- framed(root)
+      xs <- array(body, 3)
+      txs <- list(xs(0)).flatMap(_.traverse(DijkstraTx.inBlock(_).leftMap(fail)))
+      cert <- nullable(xs(1))(certificate)
+      peras <- nullable(xs(2))(c =>
+        CborRead.bytes(c, DecodeField.PerasCertificate)(using ByteStrings.Chunked).leftMap(fail)
+      )
+      bytes = body.original
+    yield LeiosBlock(header, txs, cert, peras, bytes.size.toLong, Blake2b.hash256.hash(bytes))
+
+  /** The header of a block already read as a tree of items, its envelope and header read as
+    * [[read]] reads them and its body's contents not decoded ([[Block.decodeHeader]]).
+    */
+  private[ledger] def header(root: Node): Either[ChainError, LeiosHeader] = framed(root).map(_._1)
+
+  /** The envelope, the block's two parts and its header: what [[read]] and [[header]] share. */
+  private def framed(root: Node): Either[ChainError, (LeiosHeader, Node)] =
+    for
       outer <- CborRead.enforceSize(root, 2, DecodeField.LeiosBlock).leftMap(fail)
       tag <- uint(outer(0))
       _ <- Either.cond(
@@ -314,14 +332,7 @@ object LeiosBlock:
       )
       parts <- array(outer(1), 2)
       header <- LeiosHeader.decode(parts(0).original)
-      xs <- array(parts(1), 3)
-      txs <- list(xs(0)).flatMap(_.traverse(DijkstraTx.inBlock(_).leftMap(fail)))
-      cert <- nullable(xs(1))(certificate)
-      peras <- nullable(xs(2))(c =>
-        CborRead.bytes(c, DecodeField.PerasCertificate)(using ByteStrings.Chunked).leftMap(fail)
-      )
-      body = parts(1).original
-    yield LeiosBlock(header, txs, cert, peras, body.size.toLong, Blake2b.hash256.hash(body))
+    yield (header, parts(1))
 
   /** `DecCBOR LeiosCert` (cardano-ledger-binary `Decoding/DecCBOR.hs:721-736`, 9df9f98c):
     * `decodeRecordNamed` of the signers, a byte string of at most 8192 bytes, and the signature, a
