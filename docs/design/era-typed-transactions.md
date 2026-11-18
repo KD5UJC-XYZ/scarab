@@ -605,10 +605,49 @@ Conway's rules on the classes follow as the rest of stage 2.
     spends only Plutus V3 outputs, so crafted cases spend one without a datum as Plutus V3 (no failure, CIP-69)
     and as Plutus V1 (unspendable), add redeemers no purpose needs out of their order, and need a Plutus script
     to mint, certify, withdraw and vote with no redeemer.
-  - The members of `AlonzoEraUTxO` that read the Plutus data (`getSpendingDatum`) or the annotated transaction
-    wait (#85), and so do the failing native scripts. The auxiliary data and the well-formed scripts take the
+  - The members of `AlonzoEraUTxO` that read the annotated transaction wait (#85), and so do the failing
+    native scripts; `getSpendingDatum` came with the script context (below). The auxiliary data and the well-formed scripts take the
     transaction annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do
     not have yet (on #85's checklist).
+- **The Plutus V3 script context** (`era/PlutusContext.scala`, `era/PlutusLedgerApi.scala`, the `TxInfo`
+  modules `era/PlutusTxInfos.scala`, `era/AlonzoTxInfo.scala`, `era/BabbageTxInfo.scala` and
+  `era/conway/ConwayTxInfo.scala`): the reference's `EraPlutusTxInfo l era` (`Alonzo/Plutus/Context.hs`), with
+  `LedgerTxInfo`, `PlutusTxInfoResult` and the language families as match types over the language, and
+  Conway's instance for Plutus V3 with its translations (`Conway/TxInfo.hs`), each over Alonzo's, Babbage's and
+  the core's that it calls.
+  - The context's values are the types of plutus-ledger-api (plutus 507cab8c, `V1`, `V2`, `V3`), each with
+    its `ToData` encoding as the Template Haskell derives it, so each translation builds the value the
+    reference builds and serialises to the reference's bytes; a map is an association list, in the order
+    and with the repeats the translation gives it.
+  - Each failure is the era's context error (`ContextError`, Conway's `ConwayContextError` carrying Babbage's
+    and Alonzo's, injected as the reference's `Inject` instances do). Two differ in representation: a time
+    past the horizon carries the clock's typed failure where the reference's carries a Text, and the data the
+    reference holds decoded is read from the bytes it arrived as, its failure the node's own `Undecodable`
+    (as in Dijkstra's flat context), which no transaction an era's decoder read reaches. The epoch
+    information and the system start are the flat translation's one clock.
+  - Two members the context needs: `redeemerPointerInverse` on `AlonzoEraTxBody` (Conway's
+    `conwayRedeemerPointerInverse`, through `Indexable`'s `fromIndex`) and `getSpendingDatum` on
+    `AlonzoEraUTxO` (`getBabbageSpendingDatum`), its spending purpose read through the evidence that the era's
+    purpose is Conway's.
+  - `EraPlutusContextSuite`: on every Conway row of the reference's recorded contexts, context matrix,
+    context errors and script results (432 transactions), the typed V3 `TxInfo` equals the flat one, or both
+    refuse alike, at the row's version and at 9, 10 and 11, whatever the languages its scripts use. Each of
+    the 142 Plutus V3 contexts the reference collected there (54 recorded, 64 of the matrix, 24 of the script
+    results) is the typed one byte for byte. On the 62 Conway transactions of the recorded blocks, every
+    input given one stand-in output as the blocks carry no UTxO set, the two `TxInfo`s are equal at 9, 10
+    and 11; their proposals hold all seven actions. `ConwayPlutusContextRefusalsSuite` (node) compares them
+    on the 84 Conway cases of the refusal corpora, with the UTxO set each was refused against, Byron
+    outputs and missing inputs among them. Crafted cases cover what
+    the corpus lacks against the flat translation: a missing input, a clock that cannot translate the slot,
+    an undecodable inline datum, reference inputs that are inputs (refused from version 11 alone), the
+    hard-fork, no-confidence and committee actions with members of both kinds out of order, the
+    certificates the corpus lacks with a deposit and a refund left out at version 9, withdrawals and mints out of order, and pointers past
+    each container's end.
+  - Not yet (#85): the Plutus V1 and V2 instances, so the families have their V3 case alone; the class
+    `EraPlutusContext` with its memoised `TxInfoResult` (which holds all three languages) and supported
+    languages; and the collection of the scripts with their contexts (`mkPlutusWithContext`,
+    `scriptsWithContextFromLedgerTxInfo`) and the annotated transaction (`StAnnTx`) built on them. The node
+    still builds contexts with the flat translation.
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in
