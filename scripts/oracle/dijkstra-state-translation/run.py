@@ -9,22 +9,45 @@ extended state and the oracle (`Main.hs`) decodes it at Conway's version, runs t
 Dijkstra state at Dijkstra's version; it also reads the snapshot's UTxO table and upgrades each output as
 ejecting it into Dijkstra does. The README says which parts of the crossing are the consensus layer's.
 
-  run.py                         offline: the inputs, the program and the fixture match the provenance
-  run.py --replay [--name N]     run the image (no network, read-only) and compare with the fixture
-  run.py --record [--name N]     run the image and rewrite the fixture and its provenance
+The image is resolved once to its immutable ID, which the measurement, the runs and the record all use, and it
+answers only after it is measured, as the chain oracle of the Leios testnet harness measures its image
+(`scripts/oracle/leios-testnet/chain/run.py`): its `Main.hs`, package and cabal project are the repository's,
+each `source-repository-package` checkout is at the commit the cabal project pins and unchanged, cabal finds the
+executable up to date offline, the entry point is that executable, and the ledger sources the result depends on
+have their pinned digests. Replay and record also refuse an image whose executable or build files are not the
+ones the provenance accepted, unless the record is given `--accept-build` for a build reviewed anew.
+
+  run.py                                  offline: the inputs, the program and the fixture match the provenance
+  run.py --replay [--name N]              run the measured image (no network, read-only) and compare
+  run.py --record [--name N] [--accept-build]
+                                          run the measured image and rewrite the fixture and its provenance
 """
 import argparse
 import datetime
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from cleanup import container_labels  # noqa: E402
+
+
+def _chain():
+    spec = importlib.util.spec_from_file_location(
+        "leios_chain_run", ROOT / "scripts/oracle/leios-testnet/chain/run.py")
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
+# The chain oracle's image resolution and cabal-project readers.
+CHAIN = _chain()
 
 FIXTURE = ROOT / "fixtures/reference/dijkstra-state-translation"
 CASES_FILE = FIXTURE / "cases.jsonl"
@@ -36,8 +59,46 @@ TABLES = f"{INPUTS}/{CASE}/tables"
 GENESIS = f"{INPUTS}/genesis/dijkstra-genesis.json"
 CONFIG = f"{INPUTS}/genesis/config.json"
 IMAGE = "scarab-dijkstra-state-translation-oracle:local"
-BASE_IMAGE = "scarab-leios-testnet:local"
 PROGRAM = "scripts/oracle/dijkstra-state-translation/Main.hs"
+PACKAGE = "scarab-dijkstra-state-translation"
+PROJECT = "/oracle/leios-testnet"
+IMAGE_HARNESS = f"{PROJECT}/dijkstra-state-translation/Main.hs"
+IMAGE_BINARY = f"/usr/local/bin/{PACKAGE}"
+IMAGE_BUILD = (f"{PROJECT}/dijkstra-state-translation/{PACKAGE}.cabal", f"{PROJECT}/cabal.project",
+               f"{PROJECT}/cabal.project.local", IMAGE_BINARY)
+# What each of the image's files must be: the repository's file, or the line the Dockerfile writes.
+REPOSITORY_FILES = {
+    IMAGE_HARNESS: (HERE / "Main.hs").read_bytes(),
+    IMAGE_BUILD[0]: (HERE / f"{PACKAGE}.cabal").read_bytes(),
+    IMAGE_BUILD[1]: (ROOT / "scripts/oracle/leios-testnet/cabal.project").read_bytes(),
+    IMAGE_BUILD[2]: b"packages: dijkstra-state-translation\n",
+}
+# Run in the image by bash, one key and value a line, as the chain oracle's measurement (its `MEASURE`): under
+# `set -euo pipefail` a failing command ends it and the last line is missing. A checkout is unchanged only when
+# it equals its commit with no untracked or ignored file. Cabal must find the executable up to date offline.
+MEASURE = "\n".join([
+    "set -euo pipefail",
+    f"cd {PROJECT}",
+    f'for path in {" ".join((IMAGE_HARNESS, *IMAGE_BUILD))}; do',
+    '  line=$(sha256sum "$path")',
+    '  echo "file:$path ${line%% *}"',
+    "done",
+    "for dir in dist-newstyle/src/*/; do",
+    '  head=$(git -C "$dir" rev-parse HEAD)',
+    '  listing=$(git -C "$dir" status --porcelain --ignored --untracked-files=all)',
+    '  differs=0; git -C "$dir" diff --quiet HEAD || differs=$?',
+    '  [ "$differs" -le 1 ] || exit "$differs"',
+    '  state=changed',
+    '  if [ "$differs" -eq 0 ] && [ -z "$listing" ]; then state=unchanged; fi',
+    '  echo "source:$head $state"',
+    "done",
+    f"dry=$(cabal build {PACKAGE} --offline --dry-run --extra-lib-dirs=/usr/local/lib 2>/dev/null)",
+    'if printf "%s\\n" "$dry" | grep -qx "Up to date"; then echo "build current"; fi',
+    f"binary=$(cabal list-bin {PACKAGE})",
+    'line=$(sha256sum "$binary")',
+    'echo "built ${line%% *}"',
+    'echo "measured all"',
+])
 LEDGER = "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
 CONSENSUS = "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"
 
@@ -194,12 +255,80 @@ def inputs():
     }, state[start:end]
 
 
-def source_hashes(name):
+def container(name, *options, read_only=True):
+    return ["docker", "run", "--rm", "--name", name, *container_labels("oracle", name), "--network", "none",
+            *(["--read-only"] if read_only else []), *options]
+
+
+def measure(image_id, name):
+    """The keys and values MEASURE prints in the image, which must run to its end."""
+    # cabal writes its caches even for a dry run, so this container alone is writable; it is removed after.
+    done = subprocess.run([*container(name, "--entrypoint", "bash", read_only=False), image_id,
+                           "-c", MEASURE], capture_output=True, text=True)
+    measured = {}
+    for line in done.stdout.splitlines():
+        if " " in line:
+            key, value = line.split(" ", 1)
+            measured.setdefault(key, []).append(value)
+    if done.returncode != 0 or measured.get("measured") != ["all"]:
+        raise SystemExit(f"{image_id}: the image could not be measured (exit {done.returncode}): "
+                         f"{done.stderr.strip()[-400:]}")
+    return measured
+
+
+def image_binding(image_id, name):
+    """The image runs the build of the repository's oracle against the pinned, unchanged checkouts: the digests of
+    its harness, build files and executable, and the checkouts' commits."""
+    if CHAIN.ledger_pin() != LEDGER:
+        raise SystemExit(f"the cabal project pins cardano-ledger {CHAIN.ledger_pin()}, not {LEDGER}")
+    if CHAIN.entrypoint(image_id) != [IMAGE_BINARY]:
+        raise SystemExit(f"{image_id} does not run {IMAGE_BINARY}")
+    measured = measure(image_id, name)
+    files = {key[len("file:"):]: values[0] for key, values in measured.items()
+             if key.startswith("file:") and len(values) == 1}
+    sources = {key[len("source:"):]: values for key, values in measured.items() if key.startswith("source:")}
+    built = measured.get("built", [""])
+    refusals = [
+        (all(CHAIN.DIGEST.fullmatch(files.get(path, "")) for path in (IMAGE_HARNESS, *IMAGE_BUILD))
+         and len(built) == 1 and CHAIN.DIGEST.fullmatch(built[0]) is not None,
+         "an image file or the built executable could not be measured"),
+        (files.get(IMAGE_HARNESS) == sha256(REPOSITORY_FILES[IMAGE_HARNESS]),
+         "stale oracle: the image's Main.hs is not the repository's"),
+        (all(files.get(path) == sha256(content) for path, content in REPOSITORY_FILES.items()),
+         "the image's package or cabal project is not the repository's"),
+        (sorted(sources) == CHAIN.pinned(),
+         f"the image's checkouts are not those the cabal project pins: {sorted(sources)}"),
+        (all(values == ["unchanged"] for values in sources.values()), "a pinned checkout differs from its commit"),
+        (measured.get("build") == ["current"], "stale executable: cabal would rebuild it from the image's sources"),
+        (built == [files.get(IMAGE_BINARY)], "the entry point is not the executable cabal built"),
+    ]
+    for holds, why in refusals:
+        if not holds:
+            raise SystemExit(f"{image_id}: {why}")
+    return {"imageFilesSha256": {path: files[path] for path in (IMAGE_HARNESS, *IMAGE_BUILD)},
+            "pinnedSources": {commit: "unchanged" for commit in sorted(sources)}}
+
+
+def accepted(binding, accept_build):
+    """The binding, if the provenance accepted the same executable and build files, or if the build is accepted
+    anew."""
+    if accept_build:
+        return binding
+    recorded_oracle = json.loads(PROVENANCE.read_text()).get("oracle") if PROVENANCE.is_file() else None
+    if not isinstance(recorded_oracle, dict) or "imageFilesSha256" not in recorded_oracle:
+        raise SystemExit("the fixture accepts no oracle build yet: record with --accept-build")
+    if (binding["imageFilesSha256"] != recorded_oracle["imageFilesSha256"]
+            or binding["pinnedSources"] != recorded_oracle.get("pinnedSources")):
+        raise SystemExit("the image's executable or build files differ from the accepted oracle build "
+                         "(record with --accept-build only for a build reviewed anew)")
+    return binding
+
+
+def source_hashes(image_id, name):
     script = "; ".join(
         f"sha256sum $(find /oracle/leios-testnet/dist-newstyle/src -path '*/{path}')" for path in SOURCES.values())
     output = subprocess.check_output(
-        ["docker", "run", "--rm", "--name", name, *container_labels("oracle", name), "--network", "none",
-         "--read-only", "--entrypoint", "sh", IMAGE, "-c", script], text=True).splitlines()
+        [*container(name, "--entrypoint", "sh"), image_id, "-c", script], text=True).splitlines()
     if len(output) != len(SOURCES):
         raise SystemExit(f"expected one copy of each pinned source in the image, found {output}")
     found = {label: line.split()[0] for label, line in zip(SOURCES, output, strict=True)}
@@ -209,14 +338,13 @@ def source_hashes(name):
     return found
 
 
-def run_image(name, nes):
+def run_image(image_id, name, nes):
     with tempfile.TemporaryDirectory(prefix="scarab-dijkstra-state-translation-") as scratch:
         (Path(scratch) / "nes.cbor").write_bytes(nes)
         done = subprocess.run(
-            ["docker", "run", "--rm", "--name", name, *container_labels("oracle", name),
-             "--network", "none", "--read-only", "--cpus", "8", "--memory", "24g",
-             "-v", f"{scratch}:/in:ro", "-v", f"{ROOT / INPUTS}:/inputs:ro",
-             IMAGE, "/in/nes.cbor", f"/inputs/{CASE}/tables", "/inputs/genesis/dijkstra-genesis.json"],
+            [*container(name, "--cpus", "8", "--memory", "24g",
+                        "-v", f"{scratch}:/in:ro", "-v", f"{ROOT / INPUTS}:/inputs:ro"),
+             image_id, "/in/nes.cbor", f"/inputs/{CASE}/tables", "/inputs/genesis/dijkstra-genesis.json"],
             capture_output=True, text=True)
     if done.returncode:
         raise SystemExit(f"the oracle failed: {done.stderr}")
@@ -233,8 +361,11 @@ def run_image(name, nes):
     return result
 
 
-def image_id(image):
-    return subprocess.check_output(["docker", "image", "inspect", image, "--format", "{{.Id}}"], text=True).strip()
+def measured_image(name, accept_build):
+    """The image resolved once to its ID, measured, its build accepted, and its ledger sources the pinned ones."""
+    image_id = CHAIN.resolve(IMAGE)
+    binding = accepted(image_binding(image_id, name), accept_build)
+    return image_id, binding, source_hashes(image_id, name)
 
 
 def recorded():
@@ -249,6 +380,14 @@ def offline(case):
         problems.append("the inputs differ from the recorded case")
     if provenance["programSha256"] != file_sha256(PROGRAM):
         problems.append(f"{PROGRAM} differs from the recorded program")
+    if provenance.get("packageSha256") != file_sha256(f"scripts/oracle/dijkstra-state-translation/{PACKAGE}.cabal"):
+        problems.append(f"{PACKAGE}.cabal differs from the recorded package")
+    oracle = provenance.get("oracle")
+    if not (isinstance(oracle, dict) and isinstance(oracle.get("imageFilesSha256"), dict)
+            and set(oracle["imageFilesSha256"]) == {IMAGE_HARNESS, *IMAGE_BUILD}
+            and oracle["imageFilesSha256"][IMAGE_HARNESS] == file_sha256(PROGRAM)
+            and oracle.get("oracleBinarySha256") == oracle["imageFilesSha256"][IMAGE_BINARY]):
+        problems.append("the provenance binds no oracle build of the repository's Main.hs")
     if provenance["casesSha256"] != file_sha256(CASES_FILE.relative_to(ROOT)):
         problems.append(f"{CASES_FILE.name} differs from its provenance")
     if provenance["inputs"] != {STATE: case["stateSha256"], TABLES: case["tablesSha256"],
@@ -264,11 +403,15 @@ def main():
     mode.add_argument("--replay", action="store_true")
     parser.add_argument("--name", default="dijkstra-state-translation",
                         help="the container name and owner label of the oracle's runs")
+    parser.add_argument("--accept-build", action="store_true",
+                        help="with --record: accept the image's executable and build files anew")
     args = parser.parse_args()
+    if args.accept_build and not args.record:
+        parser.error("--accept-build only with --record")
     case, nes = inputs()
     if args.record:
-        sources = source_hashes(args.name)
-        result = run_image(args.name, nes)
+        image_id, binding, sources = measured_image(args.name, args.accept_build)
+        result = run_image(image_id, args.name, nes)
         FIXTURE.mkdir(parents=True, exist_ok=True)
         CASES_FILE.write_text(json.dumps(dict(case, reference=result), sort_keys=True) + "\n")
         PROVENANCE.write_text(json.dumps({
@@ -280,9 +423,10 @@ def main():
                      "transition counter, cumulative transaction bytes, telescope, chain-dependent state, header "
                      "and Peras state), nor Dijkstra's TICK that follows it",
             "image": IMAGE,
-            "imageId": image_id(IMAGE),
-            "baseImage": BASE_IMAGE,
-            "baseImageId": image_id(BASE_IMAGE),
+            "imageId": image_id,
+            "oracle": {"imageFilesSha256": binding["imageFilesSha256"],
+                       "oracleBinarySha256": binding["imageFilesSha256"][IMAGE_BINARY],
+                       "pinnedSources": binding["pinnedSources"], "network": "none"},
             "ledger": {"repository": "IntersectMBO/cardano-ledger", "revision": LEDGER,
                        "packages": ["cardano-ledger-dijkstra 0.5.0.0", "cardano-ledger-conway 1.25.0.0"]},
             "consensusSourceCommit": CONSENSUS,
@@ -291,6 +435,7 @@ def main():
                        GENESIS: case["dijkstraGenesisSha256"]},
             "program": PROGRAM,
             "programSha256": file_sha256(PROGRAM),
+            "packageSha256": file_sha256(f"scripts/oracle/dijkstra-state-translation/{PACKAGE}.cabal"),
             "cases": 1,
             "casesSha256": file_sha256(CASES_FILE.relative_to(ROOT)),
             "measuredAt": datetime.date.today().isoformat(),
@@ -303,8 +448,8 @@ def main():
         print("; ".join(problems) + ": run --record", file=sys.stderr)
         return 1
     if args.replay:
-        source_hashes(args.name)
-        fresh = run_image(args.name, nes)
+        image_id, _, _ = measured_image(args.name, False)
+        fresh = run_image(image_id, args.name, nes)
         if fresh != recorded()[0]["reference"]:
             print(f"the oracle's translation of {CASE} differs from the fixture", file=sys.stderr)
             return 1

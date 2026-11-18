@@ -1,11 +1,9 @@
 {
-  "baseImage": "scarab-leios-testnet:local",
-  "baseImageId": "sha256:9517a62a14d30271d2abe89db50e1fba78ac508ad0f3acdef3574808226ccd79",
   "cases": 1,
   "casesSha256": "016ed4e3f22dfef35c9c8adc2a9e60b0b935b0eafacefab020bc58c79f6220e0",
   "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
   "image": "scarab-dijkstra-state-translation-oracle:local",
-  "imageId": "sha256:73d288a77d0a2a644eea9de4d0ac3b4ab4edc2170a3841bf0497e02d7c4cb1ed",
+  "imageId": "sha256:27de9484c74a8d2ecff4ac2013499c11a70d581349be3d188c55d2393f72af53",
   "inputs": {
     "fixtures/leios/state/conway-195/state": "736c7ab5d10f12c977bd58761e013e794a01a422f9062373d84fc41e5b19371c",
     "fixtures/leios/state/conway-195/tables": "26342a6f034fc527c725daf43b1804f992232f8d9b34c0a234735cebf07bf1b1",
@@ -20,6 +18,22 @@
     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
   },
   "measuredAt": "2026-11-17",
+  "oracle": {
+    "imageFilesSha256": {
+      "/oracle/leios-testnet/cabal.project": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
+      "/oracle/leios-testnet/cabal.project.local": "7a16201b2688ba3bad490cacc123df41364c172c99634e802241ef41e81e9a58",
+      "/oracle/leios-testnet/dijkstra-state-translation/Main.hs": "62f76cdf7372118792343940367d44941203d15dc330308e55e9e505dffc654a",
+      "/oracle/leios-testnet/dijkstra-state-translation/scarab-dijkstra-state-translation.cabal": "a8c839722ebd437a494f248e932276bf6ad92ed9cceb97123b61866b34a646b1",
+      "/usr/local/bin/scarab-dijkstra-state-translation": "ab9df95b72d9f6fbcc484e6d477e8340790842ab9ad3575e20bbe7c70be64436"
+    },
+    "network": "none",
+    "oracleBinarySha256": "ab9df95b72d9f6fbcc484e6d477e8340790842ab9ad3575e20bbe7c70be64436",
+    "pinnedSources": {
+      "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c": "unchanged",
+      "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
+    }
+  },
+  "packageSha256": "a8c839722ebd437a494f248e932276bf6ad92ed9cceb97123b61866b34a646b1",
   "program": "scripts/oracle/dijkstra-state-translation/Main.hs",
   "programSha256": "62f76cdf7372118792343940367d44941203d15dc330308e55e9e505dffc654a",
   "schemaVersion": 1,

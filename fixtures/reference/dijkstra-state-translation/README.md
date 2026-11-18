@@ -5,8 +5,10 @@ One case measured on 2026-11-17 against the unchanged Haskell ledger of the publ
 (cardano-node `b004fe0c`, cardano-ledger `9df9f98c`, cardano-ledger-dijkstra 0.5.0.0), for
 [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826). The oracle source and
 [recipe](../../../scripts/oracle/dijkstra-state-translation/README.md) are committed; `provenance.json`
-records the image identities, the program's hash, the SHA-256 of each input and of each ledger source the
-result depends on, as found in the image and checked against the pin.
+records the image's immutable ID, the oracle build it accepted (the digests of the image's `Main.hs`, package
+file, cabal project and executable, and the pinned checkouts found unchanged), the program's hash, and the
+SHA-256 of each input and of each ledger source the result depends on, as found in the image and checked
+against the pin.
 
 ## The case
 

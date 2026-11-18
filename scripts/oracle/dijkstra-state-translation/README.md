@@ -11,6 +11,7 @@ docker build --label xyz.kd5ujc.scarab.kind=oracle \
 python3 scripts/oracle/dijkstra-state-translation/run.py            # offline: inputs, program and fixture match the provenance
 python3 scripts/oracle/dijkstra-state-translation/run.py --replay   # run the image (no network, read-only) and compare
 python3 scripts/oracle/dijkstra-state-translation/run.py --record   # rewrite the fixture and its provenance
+python3 scripts/oracle/dijkstra-state-translation/run.py --record --accept-build   # ... for a build reviewed anew
 ```
 
 The input is the [Leios build's snapshot](../../../fixtures/leios/state/README.md) `conway-195`, the
@@ -39,7 +40,17 @@ cardano-node `b004fe0c` pins:
   `translateTxOutWith` (`Cardano/CanHardFork.hs:757-765`).
 
 No ledger code is patched and none is missing from the image: `FromJSON DijkstraGenesis` and every
-decoder used are the build's own. `run.py` checks in the image that the ledger sources the result depends
-on are those of `9df9f98c`. The [fixture](../../../fixtures/reference/dijkstra-state-translation/README.md)
+decoder used are the build's own. `Main.hs` is a second package of the Leios testnet harness's cabal project
+(`scarab-dijkstra-state-translation.cabal`), built by cabal against that project's dependencies.
+
+`run.py` does not trust the image's tag. It resolves the image once to its immutable ID, which the
+measurement, the runs and the provenance all use, and measures that image as the
+[chain oracle](../leios-testnet/chain/run.py) measures its own (whose image resolution and cabal-project
+readers it imports): the image's `Main.hs`, package file and cabal project are the repository's; each
+`source-repository-package` checkout is at the commit the cabal project pins (cardano-ledger `9df9f98c`
+among them) and unchanged; cabal, offline, finds the executable up to date; the entry point is that
+executable; and the ledger sources the result depends on have their pinned digests. The provenance
+binds the executable's and the build files' digests, and `--replay` and `--record` refuse an image whose
+build differs from them; `--record --accept-build` accepts a build reviewed anew. The [fixture](../../../fixtures/reference/dijkstra-state-translation/README.md)
 records the result, the pins, what the crossing does besides, and the scope. No public-network
 connection, node or key is needed.

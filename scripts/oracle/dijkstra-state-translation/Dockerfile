@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-# Built on the Leios testnet oracle (scripts/oracle/leios-testnet), whose project already holds
-# cardano-ledger-dijkstra and the other ledger packages at the revisions cardano-node b004fe0c pins.
+# The parent image is the Leios testnet oracle (scripts/oracle/leios-testnet/Dockerfile), whose
+# project already holds the ledger and cardano-base revisions of cardano-node b004fe0c; this oracle
+# is a second package of that project, built against the same dependencies. run.py measures the
+# image it runs (the build files, the pinned checkouts, cabal's verdict and the executable) and does
+# not trust this tag.
 FROM scarab-leios-testnet:local
 WORKDIR /oracle/leios-testnet
-COPY scripts/oracle/dijkstra-state-translation/Main.hs /oracle/dijkstra-state-translation/Main.hs
-RUN cabal exec -- ghc -Wall -Werror -L/usr/local/lib -optl-Wl,-rpath,/usr/local/lib \
-      -package cardano-ledger-dijkstra -package cardano-ledger-conway -package cardano-ledger-shelley \
-      -package cardano-ledger-core -package cardano-ledger-binary -package mempack \
-      -package microlens -package aeson -package bytestring -package containers -package text \
-      /oracle/dijkstra-state-translation/Main.hs -o /usr/local/bin/scarab-dijkstra-state-translation
+COPY scripts/oracle/dijkstra-state-translation/scarab-dijkstra-state-translation.cabal dijkstra-state-translation/
+COPY scripts/oracle/dijkstra-state-translation/Main.hs dijkstra-state-translation/
+RUN printf 'packages: dijkstra-state-translation\n' > cabal.project.local \
+ && cabal build scarab-dijkstra-state-translation --offline --jobs=8 --extra-lib-dirs=/usr/local/lib \
+ && cp "$(cabal list-bin scarab-dijkstra-state-translation)" /usr/local/bin/scarab-dijkstra-state-translation
 ENTRYPOINT ["/usr/local/bin/scarab-dijkstra-state-translation"]
