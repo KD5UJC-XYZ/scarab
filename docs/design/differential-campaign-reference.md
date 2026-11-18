@@ -40,9 +40,9 @@ Validation is timed. With the node's default limits, a Conway transaction whose 
 1 s is refused, whoever submitted it, with an error whose text holds the measured duration and the transaction id; a
 validation cut off at 1.5 s is refused the same way for a local client and raises an exception for a remote peer.
 Shelley to Babbage, and Dijkstra, have no such error: there a validation that finishes late is judged as any other,
-and one cut off raises an exception for a local client too (R5). That the node hands these limits to the mempool is
-not checked (N12). Such a verdict depends on the machine's speed. Scarab's mempool has no such timeout
-([metrics](../running/metrics.md); [#340](https://github.com/KD5UJC-XYZ/scarab/issues/340)).
+and one cut off raises an exception for a local client too (R5). The node always hands the mempool these limits, its
+configuration's or the defaults (R5). Such a verdict depends on the machine's speed. Scarab's mempool applies the same
+limits ([relay and mempool](../compatibility/relay-and-mempool.md#validation-time-limits)).
 
 The transaction is decoded inside the message decoder (R7): a transaction the reference cannot decode gets no
 `SubmitFail`. That the connection then ends is not checked (N2).
@@ -89,7 +89,7 @@ the `InvalidBlock` trace, not from a disconnect.
 | R2 | `HardForkApplyTxErr` is `HardForkApplyTxErrFromEra` or `HardForkApplyTxErrWrongEra`; a Shelley-based era's `ApplyTxErr` is the ledger's `ApplyTxError`; Conway's is `NonEmpty (ConwayLedgerPredFailure ConwayEra)`. | consensus 82ecba32 `HardFork/Combinator/Mempool.hs` 61-66, `shelley` `Shelley/Ledger/Mempool.hs` 154; ledger f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway.hs` 51, 4c81e909 `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs` 181 | yes |
 | R3 | The mempool ticks the tip's ledger state to the slot after the tip (`ForgeInUnknownSlot`); at Origin, to the first possible slot. | consensus 82ecba32 `Mempool/Impl/Common.hs` 295, 319-338 | yes |
 | R4 | `addTx` first measures the transaction (`txMeasurePhase1`) and refuses at once one whose measure fails; then, if it does not fit, it waits for the mempool's size to change and tries again; only then does it validate. | consensus 82ecba32 `Mempool/API.hs` 142-145; `Mempool/Update.hs` 198-235 | yes |
-| R5 | Defaults soft 1 s, hard 1.5 s, capacity 5 s. Where the era has the error, a validation that finishes over the soft limit is refused, whoever submitted it, as `ConwayMempoolFailure` with the text `"MempoolTxTooSlow (<duration>) <txid>"`, and one cut off at the hard limit is refused so for a local client; otherwise a cut-off raises `MkExnMempoolTimeout`. Only Conway has the error: Shelley to Babbage and Dijkstra have none. | node 11.1.3 `Configuration/POM.hs` 889-897; consensus 82ecba32 `Mempool/Update.hs` 127-130, 237-296, `shelley` `Shelley/Eras.hs` 169-220 | yes, except that the node passes the limits to the mempool (N12) |
+| R5 | Defaults soft 1 s, hard 1.5 s, capacity 5 s. Where the era has the error, a validation that finishes over the soft limit is refused, whoever submitted it, as `ConwayMempoolFailure` with the text `"MempoolTxTooSlow (<duration>) <txid>"`, and one cut off at the hard limit is refused so for a local client; otherwise a cut-off raises `MkExnMempoolTimeout`. Only Conway has the error: Shelley to Babbage and Dijkstra have none. | node 11.1.3 `Configuration/POM.hs` 889-897, `Node/Run.hs` 388-392; consensus 82ecba32 `Mempool/Update.hs` 127-130, 237-296, `shelley` `Shelley/Eras.hs` 169-220 | yes |
 | R6 | Conway's MEMPOOL rule refuses all-inputs-spent transactions and, unless `hardforkConwayDisallowUnelectedCommitteeFromVoting` holds, votes by unelected committee members, then runs LEDGER. | ledger f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs` 103-139 | yes, except the predicate's definition: protocol version 11 is from the comment at 124-125 |
 | R7 | The LocalTxSubmission codec decodes the transaction inside `MsgSubmitTx`'s decoder. | network c45735a5 `Protocol/LocalTxSubmission/Codec.hs` 148-169 | yes; what follows a failed decode is N2 |
 | R8 | TxSubmission2 inbound V1 traces and counts refused transactions and sends back no verdict; the protocol goes on. | network c45735a5 `TxSubmission/Inbound/V1.hs` 313-329 | yes; that V1 is the default is N10 |
@@ -131,7 +131,8 @@ Each is confirmed, by reading the pinned source or by a run, in the campaign's s
 - **N10** (S1). That TxSubmission's V1 logic is the 11.1.3 default (R8), as [metrics](../running/metrics.md) says.
 - **N11** (S4). That 11.1.3's default trace options hide `InvalidBlock` (R16), as `scripts/devnet/reference_tracing.py`
   3-16 says, and what its log prints of a refused block.
-- **N12** (S1). That the node passes its mempool time limits to the mempool (R5).
+- ~~**N12** (S1). That the node passes its mempool time limits to the mempool (R5).~~ Checked on 2026-11-18: node
+  11.1.3 `Node/Run.hs` 388-392 always passes `Just MempoolTimeoutConfig`, now part of R5.
 - **N13** (S1). What the node's log prints of a refused transaction (R18).
 - **N14** (S4). What, if anything, reads the protocol version a Praos header declares (R10).
 - **N15** (S1). What `txInBlockSize` and `txMeasureAlonzo` measure, and which limits they refuse (R21).
