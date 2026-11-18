@@ -13,7 +13,8 @@ sandbox. Live web search is requested; whether Codex grants it is not checked. E
 command line, so the user's own Codex configuration cannot change the model, the effort or the sandbox.
 
 The floor comes from the pull request's whole diff (`--pr-base`); `--base` sets the review's scope, which a second
-review narrows to the fix commits. The run is accepted only when the worktree is clean before it, Codex exits
+review narrows to the fix commits. The scope is resolved before the run, added to the brief as a `git diff` range,
+and recorded in the stamp as `scope=full` (from the pull request's base) or `scope=fixes`. The run is accepted only when the worktree is clean before it, Codex exits
 successfully with a completed turn and a final message and reports no reroute to another model, the session file
 Codex wrote records the model and effort in every turn, the read-only sandbox and the network, and the worktree's HEAD and status are unchanged after it. The output
 file, outside the worktree, starts with a stamp line that `pr_policy.py` reads from the posted comment
@@ -90,7 +91,7 @@ def stamp_of(text):
     missing = [k for k in REQUIRED if k not in fields]
     if missing:
         raise ReviewError(f"the stamp lacks {', '.join(missing)}")
-    body = [line for line in rest.split("\n") if line.strip() and not line.startswith(ATTRIBUTION)]
+    body = [line for line in rest.split("\n") if line.strip() and not line.strip().startswith(ATTRIBUTION)]
     if not body:
         raise ReviewError("the stamp has no review after it")
     return fields
@@ -117,17 +118,24 @@ def command(effort, workdir, last_message, codex="codex"):
             "-c", 'web_search="live"', "--json", "-o", str(last_message), "-C", str(workdir), "-"]
 
 
+def no_constant(name):
+    raise ValueError(f"{name} is not JSON")
+
+
 def records(text, strict=True):
     """The JSON objects of a JSON-lines text, split on newlines only: a JSON string may hold other line breaks. A
-    line that is not JSON is refused, or skipped when not `strict` (Codex's standard output)."""
+    line that is not a JSON object is refused, or skipped when not `strict` (Codex's standard output)."""
     out = []
     for number, line in enumerate(text.split("\n"), 1):
         if line.strip():
             try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError as error:
+                value = json.loads(line, parse_constant=no_constant)
+                if not isinstance(value, dict):
+                    raise ValueError("not a JSON object")
+                out.append(value)
+            except ValueError as error:
                 if strict:
-                    raise ReviewError(f"line {number} is not JSON: {error}") from error
+                    raise ReviewError(f"line {number} is not a JSON object: {error}") from error
     return out
 
 
@@ -254,7 +262,9 @@ def main(argv=None):
         if git(workdir, "status", "--porcelain"):
             raise ReviewError("the worktree has uncommitted changes; the review covers committed work only")
         head = git(workdir, "rev-parse", "HEAD").strip()
-        brief = args.brief.read_text(encoding="utf-8")
+        scope = git(workdir, "rev-parse", "--verify", "--end-of-options", f"{args.base}^{{commit}}").strip()
+        brief = (args.brief.read_text(encoding="utf-8").rstrip("\n")
+                 + f"\n\nThe review's scope is `git diff {scope}...{head}`.\n")
         with tempfile.TemporaryDirectory() as scratch:
             last = Path(scratch, "last-message.md")
             run = subprocess.run(command(effort, workdir, last, args.codex), input=brief, capture_output=True,
@@ -269,8 +279,9 @@ def main(argv=None):
             raise ReviewError("the worktree changed during the review; a review makes no edits")
         turns, cli = session_settings(session_file(thread, os.environ.get("CODEX_HOME") or Path.home() / ".codex"))
         check_session(turns, effort)
+        full = scope == git(workdir, "rev-parse", "--verify", "--end-of-options", f"{args.pr_base}^{{commit}}").strip()
         fields = {"model": MODEL, "effort": effort, "level": args.level, "head": head, "base": args.base,
-                  "prbase": args.pr_base,
+                  "prbase": args.pr_base, "scope": "full" if full else "fixes",
                   "cli": cli, "sandbox": "read-only", "network": "on"}
         header = (f"{ATTRIBUTION}`{MODEL}` at effort `{effort}` (floor `{need}` for level "
                   f"{args.level}), read-only with network, of `{head[:12]}` against `{args.base}`.")

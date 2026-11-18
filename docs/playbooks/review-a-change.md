@@ -40,9 +40,11 @@ this is the order of work.
    each finding in a line.
 8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, through the
    script at the same level with `--base <the commit before the fixes>` (the floor still comes from the whole pull
-   request), and post and link it the same way. After a rebase that changes the diff, the review covers the new
-   head; after one that does not, or a wording fix, add `Since the review: <what changed>` to the section instead.
+   request), and post it and link it beside the first. After a rebase that changes the diff, the review covers the
+   new head; after one that does not, or a wording fix, add `Since the review: <head commit> <what changed>` to the
+   section instead.
 
 A contributor who is not an agent asks a maintainer or another contributor for the review, who submits it as a
 GitHub review of the pull request (`gh pr review`), not a comment; its link (`#pullrequestreview-<id>`) goes in the
-section, the author records the dispositions in the pull request body, and steps 5, 7 and 8 are the same.
+section, the author records the dispositions in the pull request body, and steps 5 and 7 are the same. A second
+review after fixes is another submitted GitHub review, of the new head.

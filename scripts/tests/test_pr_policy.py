@@ -304,7 +304,7 @@ class ReviewEvidenceTests(unittest.TestCase):
             self.check(1, [comment(11, stamped("high")), comment(12, stamped("medium"))],
                        links=("#issuecomment-11", "#issuecomment-12"))
 
-    def test_a_review_must_cover_the_head_unless_the_section_says_why_the_later_commits_need_none(self):
+    def test_a_review_must_cover_the_head_unless_the_section_excuses_that_head(self):
         old = "b" * 40
         with self.assertRaisesRegex(policy.PolicyError, "covers the head"):
             self.check(1, [comment(11, stamped("high", head=old))])
@@ -312,20 +312,37 @@ class ReviewEvidenceTests(unittest.TestCase):
             self.check(1, reviews=[human_review(21, commit=old)], links=("#pullrequestreview-21",))
         self.assertEqual(self.check(1, [comment(11, stamped("high", head=old)), comment(12, stamped("high"))],
                                     links=("#issuecomment-11", "#issuecomment-12")), 1)
-        since = f"## Independent review\n\nClean: {URL}#issuecomment-11\n\n- Since the review: a rebase, diff unchanged\n"
-        self.assertEqual(self.check(1, [comment(11, stamped("high", head=old))], body=since), 1)
-        empty = since.replace(": a rebase, diff unchanged", ":")
-        with self.assertRaisesRegex(policy.PolicyError, "covers the head"):
-            self.check(1, [comment(11, stamped("high", head=old))], body=empty)
+        section = f"## Independent review\n\nClean: {URL}#issuecomment-11\n\n"
+        self.assertEqual(self.check(1, [comment(11, stamped("high", head=old))],
+                                    body=section + "- Since the review: `aaaaaaa` a rebase, diff unchanged\n"), 1)
+        for since in ["- Since the review: bbbbbbb a rebase\n", "- Since the review: aaaaaaa\n- comment: x\n",
+                      "- Since the review:\n  aaaaaaa a rebase\n", "- Since the review: a rebase\n"]:
+            with self.subTest(since=since), self.assertRaisesRegex(policy.PolicyError, "covers the head"):
+                self.check(1, [comment(11, stamped("high", head=old))], body=section + since)
+
+    def test_a_review_of_the_fixes_alone_is_not_enough(self):
+        fixes = policy.codex_review.stamp({"model": policy.codex_review.MODEL, "effort": "high", "level": 1,
+                                           "head": "a" * 40, "scope": "fixes"}) + "\nNo findings."
+        with self.assertRaisesRegex(policy.PolicyError, "only fix commits"):
+            self.check(1, [comment(12, fixes)], links=("#issuecomment-12",))
+        self.assertEqual(self.check(1, [comment(11, stamped("high", head="b" * 40)), comment(12, fixes)],
+                                    links=("#issuecomment-11", "#issuecomment-12")), 1)
+        self.assertEqual(self.check(1, [comment(12, fixes)], [human_review(21, commit="b" * 40)],
+                                    links=("#issuecomment-12", "#pullrequestreview-21")), 1)
 
     def test_only_a_rendered_link_with_the_exact_fragment_counts(self):
         unused = f"## Independent review\n\nClean: https://example.org/x\n\n[r]: {URL}#issuecomment-11\n"
         suffixed = f"## Independent review\n\nClean: [review]({URL}#issuecomment-11.old)\n"
-        for body in [unused, suffixed]:
+        in_label = f"## Independent review\n\nClean: [{URL}#issuecomment-11 (review)](https://example.org/wrong)\n"
+        titled = f'## Independent review\n\nClean: [review]({URL}#issuecomment-11. "Round two")\n'
+        for body in [unused, suffixed, in_label, titled]:
             with self.subTest(body=body), self.assertRaisesRegex(policy.PolicyError, "links no comment"):
                 self.check(1, [comment(11, stamped("high"))], body=body)
         for body in [f"## Independent review\n\nClean: [review]({URL}#issuecomment-11).\n",
                      f"## Independent review\n\nClean: <{URL}#issuecomment-11>\n",
+                     f"## Independent review\n\nClean: **[review]({URL}#issuecomment-11)**\n",
+                     f'## Independent review\n\nClean: [review]({URL}#issuecomment-11 "Round two")\n',
+                     f"## Independent review\n\nClean, see {URL}#issuecomment-11.\n",
                      f"## Independent review\n\nClean: [the review][r].\n\n[r]: {URL}#issuecomment-11\n"]:
             with self.subTest(body=body):
                 self.assertEqual(self.check(1, [comment(11, stamped("high"))], body=body), 1)

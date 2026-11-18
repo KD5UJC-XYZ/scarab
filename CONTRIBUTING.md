@@ -194,9 +194,11 @@ A higher effort is always allowed; use it where a change could split the chain f
 stamps the review with the model and effort its session file records, and the stamp is posted with the review.
 `scripts/pr_policy.py` refuses a pull request that is not a draft unless the section links a review on the pull
 request: a comment that starts with that stamp, at or above the floor for the stated level and the changed files,
-or a GitHub review submitted by a person other than the author. One linked review must cover the head: after
-commits that change more than wording, that is the second review; when the later commits need none (a rebase that
-leaves the diff as reviewed, a wording fix), a line `Since the review: <what changed>` in the section says so. A draft
+or a GitHub review submitted by a person other than the author. The links include a review of the whole pull
+request, and one linked review must cover the head: after commits that change more than wording, that is the second
+review, linked beside the first; when the commits since the last review need none (a rebase that leaves the diff
+as reviewed, a wording fix), a line `Since the review: <head commit> <what changed>` in the section says so for that
+head, and a later push needs a new review or a new line. A draft
 passes, so a pull request stays a draft until its review is posted; the check runs on a push or a body edit, so
 after correcting a linked comment, edit the body or re-run the check. The stamp guards against a mistaken run (a
 forgotten effort, a default model, a review of an older head); it is not a signature.

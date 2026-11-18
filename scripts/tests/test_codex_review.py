@@ -56,8 +56,7 @@ FAKE = textwrap.dedent('''\
             f.write(json.dumps({"type": "turn_context", "payload": {
                 "model": os.environ["FAKE_SECOND_TURN"], "effort": effort,
                 "sandbox_policy": {"type": "read-only", "network_access": network}}}) + "\\n")
-    message = os.environ.get("FAKE_MESSAGE", "P2 [Foo.scala](" + str(work) + "/Foo.scala#L3): brief was "
-                             + str(len(brief)) + " chars")
+    message = os.environ.get("FAKE_MESSAGE", "P2 [Foo.scala](" + str(work) + "/Foo.scala#L3): " + brief.strip().split("\\n")[-1])
     out.write_text(message)
     if not os.environ.get("FAKE_NO_COMPLETION"):
         print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1}}))
@@ -93,6 +92,9 @@ class FloorAndStampTests(unittest.TestCase):
         self.assertEqual(review.records(text, strict=False), [{"a": "x\u0085y"}, {"b": 1}])
         with self.assertRaisesRegex(review.ReviewError, "line 2"):
             review.records(text)
+        for bad in ["null", "[]", '{"a": NaN}', '"x"']:
+            with self.subTest(bad=bad), self.assertRaisesRegex(review.ReviewError, "line 1 is not a JSON object"):
+                review.records(bad)
 
     def test_a_stamp_needs_review_text_beyond_its_attribution_and_must_start_the_comment(self):
         line = review.stamp({"model": review.MODEL, "effort": "high", "level": 1, "head": "a" * 40})
@@ -100,6 +102,8 @@ class FloorAndStampTests(unittest.TestCase):
             review.stamp_of(line + "\n" + review.ATTRIBUTION + "`x` at effort `high`.\n\n")
         self.assertIsNone(review.stamp_of("    " + line + "\nreview"))
         self.assertIsNone(review.stamp_of("\n" + line + "\nreview"))
+        with self.assertRaisesRegex(review.ReviewError, "no review"):
+            review.stamp_of(line + "\n  " + review.ATTRIBUTION + "`x`.\n")
 
     def test_links_into_the_worktree_become_path_and_line_other_absolute_links_their_label(self):
         work = "/srv/w/scarab"
@@ -146,7 +150,8 @@ class RunTests(unittest.TestCase):
         environment = {"CODEX_HOME": str(self.home), **env}
         with mock.patch.dict(os.environ, environment), mock.patch("sys.stderr"), mock.patch("sys.stdout"):
             return review.main(["--level", "1", "--brief", str(self.brief), "--out", str(self.out),
-                                "--base", "base", "--pr-base", "base", "--cd", str(self.work), "--codex", str(self.fake), *extra])
+                                "--pr-base", "base", "--cd", str(self.work), "--codex", str(self.fake),
+                                *(extra if "--base" in extra else ("--base", "base", *extra))])
 
     def test_a_good_run_writes_the_stamp_the_header_and_the_scrubbed_review(self):
         self.assertEqual(self.run_review(), 0)
@@ -154,7 +159,11 @@ class RunTests(unittest.TestCase):
         fields = review.stamp_of(text)
         self.assertEqual((fields["model"], fields["effort"], fields["level"], fields["network"], fields["cli"]),
                          (review.MODEL, "high", "1", "on", "0.169.0"))
-        self.assertIn("P2 Foo.scala (`Foo.scala:3`): brief was 17 chars", text)
+        base = subprocess.run(["git", "-C", str(self.work), "rev-parse", "base"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+        self.assertIn(f"P2 Foo.scala (`Foo.scala:3`): The review's scope is `git diff {base}...{fields['head']}`.",
+                      text)
+        self.assertEqual(fields["scope"], "full")
         self.assertNotIn(str(self.work), text)
 
     def test_a_higher_effort_is_allowed_and_a_lower_one_refused(self):
@@ -212,7 +221,11 @@ class RunTests(unittest.TestCase):
                                           "--base", "fixes", "--pr-base", "base", "--cd", str(self.work),
                                           "--codex", str(self.fake)]), 0)
         fields = review.stamp_of(self.out.read_text())
-        self.assertEqual((fields["effort"], fields["base"]), ("high", "fixes"))
+        self.assertEqual((fields["effort"], fields["base"], fields["scope"]), ("high", "fixes", "fixes"))
+
+    def test_an_unknown_scope_is_refused_before_codex_runs(self):
+        self.assertEqual(self.run_review("--base", "no-such-commit"), 1)
+        self.assertFalse(self.home.exists())
 
     def test_the_floor_reads_both_sides_of_a_rename_and_unquoted_paths(self):
         git = ["git", "-C", str(self.work), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
