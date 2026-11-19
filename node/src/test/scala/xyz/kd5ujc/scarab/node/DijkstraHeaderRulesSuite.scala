@@ -195,14 +195,18 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures", "eras", "genesis"))
     .fold(e => fail(e.message), identity)
 
-  /** The Byron header state whose last header is the devnet's block 32, which the first Dijkstra
-    * header extends: the envelope checks of every era hold, so the era match decides.
+  /** The Byron header state whose last header is the devnet's block 32 (put at `slot`), which the
+    * first Dijkstra header extends: the envelope checks of every era hold, so the era match
+    * decides.
     */
-  private def byronParent(r: NodeHeaderRules[MirrorState]): NodeHeaderState =
+  private def byronParent(
+      r: NodeHeaderRules[MirrorState],
+      slot: BigInt = lastConway.slot
+  ): NodeHeaderState =
     r.at(erasSetup.mirrorStart) match
       case b: NodeHeaderState.Byron =>
         b.copy(
-          previous = Some(ByronTip(lastConway.hash, 3, lastConway.slot, false)),
+          previous = Some(ByronTip(lastConway.hash, slot / 50, slot, false)),
           previousBlockNo = Some(lastConway.blockNo)
         )
       case other => fail(s"not a Byron header state: $other")
@@ -232,20 +236,26 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   test("from a Byron anchor with no Shelley boundary yet, a Dijkstra header meets the Byron view") {
     assertEquals(erasSetup.mirrorStart.era, Era.Byron)
     val r = byronRules(None, Map.empty)
-    val first = dijkstraHeaders.head
-    // past the Byron forecast of 2k slots from the origin: no verdict yet
-    assertEquals(
-      r.validate(erasSetup.mirrorStart, None, byronParent(r), first),
-      Outcome.Later(ForecastReason.Horizon(first.slot, -1))
-    )
-    // within it (the anchor said to be at slot 199, a synthetic tip): the era match refuses it,
-    // its epoch Byron's (50 slots)
-    r.validate(erasSetup.mirrorStart, Some(ref(lastConway)), byronParent(r), first) match
+    // the first Dijkstra header put at a slot (synthetic: neither the envelope nor the era match
+    // reads its signatures), after a parent at slot 9
+    def at(slot: BigInt) = dijkstraHeaders.head match
+      case h: Header.Shelley => h.copy(slot = slot)
+      case other             => fail(s"not a Shelley-based header: $other")
+    val parent = byronParent(r, 9)
+    // the Byron forecast from the genesis is at its last slot, 0, and reaches 2k + 1 = 11 slots,
+    // exclusive (`Byron/Ledger/Ledger.hs:315-323`, ouroboros-consensus 2416493b): at slot 2k = 10
+    // the era match refuses the header, its epoch Byron's (50 slots)
+    r.validate(erasSetup.mirrorStart, None, parent, at(10)) match
       case Outcome.Invalid(
             HeaderError.Envelope(EnvelopeError.WrongEra(Era.Dijkstra, Era.Byron, epoch, _))
           ) =>
-        assertEquals(epoch, first.slot / 50)
+        assertEquals(epoch, BigInt(0))
       case other => fail(s"expected the era mismatch with Byron, got $other")
+    // at slot 2k + 1 = 11 it is past the range: no verdict yet
+    assertEquals(
+      r.validate(erasSetup.mirrorStart, None, parent, at(11)),
+      Outcome.Later(ForecastReason.Horizon(11, 0))
+    )
   }
 
   test("from a Byron anchor whose Shelley boundary is Allegra's too, the view stops at Shelley") {

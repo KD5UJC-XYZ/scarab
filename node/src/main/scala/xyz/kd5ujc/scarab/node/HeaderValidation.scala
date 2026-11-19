@@ -269,12 +269,12 @@ private[node] final class Praos2Headers private ():
     * header. The forecast's era and range are the Byron anchor's, as the hard-fork combinator's
     * (`oneForecast`, `HardFork/Combinator/Ledger.hs:555-620`, ouroboros-consensus 2416493b): before
     * a known Shelley boundary (configured, or decided by the Byron ledger's update) the Byron view,
-    * up to the stability window of `2k` slots past the anchor's tip (`ledgerViewForecastAt` of
-    * Byron, `Byron/Ledger/Ledger.hs:300-323`); from the boundary on the initial Shelley view, up to
-    * Shelley's stability window past the boundary (`crossEraForecastByronToShelleyWrapper`,
-    * `Cardano/CanHardFork.hs:433-487`), and never an era beyond Shelley. Neither is Dijkstra's:
-    * past the range no verdict yet, within it the envelope checks of every era and the era match,
-    * which refuses the header.
+    * up to `2k` slots past the Byron ledger's last slot, exclusive (`ledgerViewForecastAt` of
+    * Byron, `Byron/Ledger/Ledger.hs:300-323`, whose forecast is always at `cvsLastSlot`, 0 at the
+    * genesis); from the boundary on the initial Shelley view, up to Shelley's stability window past
+    * the boundary (`crossEraForecastByronToShelleyWrapper`, `Cardano/CanHardFork.hs:433-487`), and
+    * never an era beyond Shelley. Neither is Dijkstra's: past the range no verdict yet, within it
+    * the envelope checks of every era and the era match, which refuses the header.
     *
     * @param tip
     *   the anchor's tip, none at the origin
@@ -301,9 +301,14 @@ private[node] final class Praos2Headers private ():
             geometry.epochOf(h.slot)
           )
         case None =>
-          (Era.Byron, tip.fold(2 * k)(_.slot + 1 + 2 * k), h.slot / byron.ledger.epochSlots)
+          // the Byron forecast is at the ledger's last slot, 0 at the genesis
+          // (`at = NotOrigin (cvsLastSlot st)`), so its bound is that slot + 1 + 2k there too
+          (Era.Byron, ledger.lastSlot + 1 + 2 * k, h.slot / byron.ledger.epochSlots)
       if h.slot >= maxFor then
-        Prepared.Unknown(ForecastReason.Horizon(h.slot, tip.fold(BigInt(-1))(_.slot)))
+        Prepared.Unknown(
+          ForecastReason
+            .Horizon(h.slot, boundary.fold(ledger.lastSlot)(_ => tip.fold(BigInt(-1))(_.slot)))
+        )
       else
         genericEnvelope.fold(
           Prepared.Invalid(_),
