@@ -359,10 +359,8 @@ object Translate:
       globals: Globals,
       nes: NewEpochState[Conway]
   ): Either[TickFailure, NewEpochState[Dijkstra]] =
-    for
-      genesis <- globals.ledger.dijkstra.toRight(TickFailure.NoDijkstraGenesis)
-      pools <- populateVRFKeyHashes(nes.es.ls.cert.pState).left.map(TickFailure.Vocab(_))
-    yield
+    globals.ledger.dijkstra.toRight(TickFailure.NoDijkstraGenesis).map { genesis =>
+      val pools = populateVRFKeyHashes(nes.es.ls.cert.pState)
       val ls = nes.es.ls
       val gov = ls.utxo.gov
       val upgrade = genesis.upgrade
@@ -402,6 +400,7 @@ object Translate:
         nes.layout,
         ()
       )
+    }
 
   /** `populateVRFKeyHashes` of cardano-ledger 9df9f98c
     * (`libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs:528-538`), which the
@@ -414,7 +413,7 @@ object Translate:
     * of the 11.1 build (f649f975), which adds to the map it has and counts every waiting
     * re-registration.
     */
-  def populateVRFKeyHashes(pools: PState): Either[VocabError, PState] =
+  def populateVRFKeyHashes(pools: PState): PState =
     def add(
         counts: SortedMap[VRFVerKeyHash, NonZero[Word64]],
         vrf: VRFVerKeyHash
@@ -429,14 +428,11 @@ object Translate:
       pools.stakePools.valuesIterator.foldLeft(Sorted.empty[VRFVerKeyHash, NonZero[Word64]])(
         (counts, pool) => add(counts, pool.vrf)
       )
-    pools.future.toVector
-      .traverse((id, params) => VRFVerKeyHash.fromBytes(params.vrfKeyHash).map(id -> _))
-      .map { future =>
-        val counts = future.foldLeft(active) { case (counts, (id, vrf)) =>
-          if pools.stakePools.get(id).map(_.vrf).contains(vrf) then counts else add(counts, vrf)
-        }
-        pools.copy(vrfKeyHashes = counts)
-      }
+    val counts = pools.future.foldLeft(active) { case (counts, (id, params)) =>
+      if pools.stakePools.get(id).map(_.vrf).contains(params.vrf) then counts
+      else add(counts, params.vrf)
+    }
+    pools.copy(vrfKeyHashes = counts)
 
   /** `TranslateEra DijkstraEra UTxO` (`Dijkstra/Translation.hs:225-227`), `upgradeTxOut` of every
     * output (`upgradeBabbageTxOut`, `Conway/TxOut.hs:68-81`): the address, the value and the datum

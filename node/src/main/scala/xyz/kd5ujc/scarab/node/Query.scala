@@ -370,7 +370,7 @@ object Projection:
           case (id, ps) => id.bytes.hex -> poolState(ps)
         }),
         "futurePools" -> Json.fromFields(pools.future.toVector.sortBy(_._1.bytes.hex).map {
-          case (id, pp) => id.bytes.hex -> pool(pp)
+          case (id, pp) => id.bytes.hex -> pool(flat.rules.Convert.poolParamsBack(pp))
         }),
         "genDelegs" -> Json.fromFields(
           EraViews.genDelegs(cert).toVector.sortBy(_._1.bytes.hex).map { case (g, d) =>

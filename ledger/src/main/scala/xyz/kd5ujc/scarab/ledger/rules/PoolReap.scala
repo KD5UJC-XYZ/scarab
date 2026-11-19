@@ -92,9 +92,7 @@ object PoolReap:
     // the active VRF key hash of each pool re-registered with another key, in pool order
     val superseded: Vector[VRFVerKeyHash] =
       ps0.stakePools.iterator.flatMap { (id, sps) =>
-        ps0.future.get(id).flatMap { f =>
-          VRFVerKeyHash.fromBytes(f.vrfKeyHash).toOption.filter(_ != sps.vrf).as(sps.vrf)
-        }
+        ps0.future.get(id).filter(_.vrf != sps.vrf).as(sps.vrf)
       }.toVector
     // the future parameters take effect
     val activated: Either[VocabError, SortedMap[KeyHash[StakePool], StakePoolState]] =

@@ -7,7 +7,7 @@ import monocle.{Focus, Lens}
 import scala.collection.immutable.{SortedMap, SortedSet}
 import scala.reflect.ClassTag
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.{Anchor, GenDelegPair, PoolParams}
+import xyz.kd5ujc.scarab.ledger.{Anchor, GenDelegPair}
 
 // The certificate state: delegation (`DState`), pools (`PState`), voting (`VState`, Conway). The
 // Haskell types are indexed by the era; only `DState`'s accounts depend on it, and that dependency
@@ -112,12 +112,13 @@ object StakePoolState:
 /** `PState era` (`State/CertState.hs:232-246`): the pools. `vrfKeyHashes` counts the registrations
   * of each VRF key hash. The native rules maintain this map from protocol version 11; the genesis
   * injection registers none (`injectStakePools`, cardano-ledger f649f975
-  * `Shelley/Transition.hs:526-543`).
+  * `Shelley/Transition.hs:526-543`). `future` holds the parameters of the re-registrations that
+  * take effect at the next epoch (`psFutureStakePoolParams`).
   */
 final case class PState(
     vrfKeyHashes: SortedMap[VRFVerKeyHash, NonZero[Word64]],
     stakePools: SortedMap[KeyHash[StakePool], StakePoolState],
-    future: SortedMap[KeyHash[StakePool], PoolParams],
+    future: SortedMap[KeyHash[StakePool], StakePoolParams],
     retiring: SortedMap[KeyHash[StakePool], EpochNo]
 ) derives Eq,
       Show,
@@ -128,7 +129,8 @@ object PState:
     Focus[PState](_.vrfKeyHashes)
   val stakePools: Lens[PState, SortedMap[KeyHash[StakePool], StakePoolState]] =
     Focus[PState](_.stakePools)
-  val future: Lens[PState, SortedMap[KeyHash[StakePool], PoolParams]] = Focus[PState](_.future)
+  val future: Lens[PState, SortedMap[KeyHash[StakePool], StakePoolParams]] =
+    Focus[PState](_.future)
   val retiring: Lens[PState, SortedMap[KeyHash[StakePool], EpochNo]] = Focus[PState](_.retiring)
 
 /** `DRepState` (`DRep.hs:166-172`, cardano-ledger f649f975): a registered DRep. Not the node's

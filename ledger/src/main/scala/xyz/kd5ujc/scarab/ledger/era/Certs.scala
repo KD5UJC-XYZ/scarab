@@ -2,8 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{Anchor, ByteStrings, PoolIdentity, PoolParams}
+import xyz.kd5ujc.scarab.ledger.Anchor
 import xyz.kd5ujc.scarab.ledger.state.{
   ColdCommittee,
   Coin,
@@ -15,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   KeyRole,
   StakePool,
+  StakePoolParams,
   Staking
 }
 
@@ -23,52 +23,16 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * between the eras' certificates, and its meaning is one in every era.
   */
 enum PoolCert:
+  /** The parameters are the state's ([[xyz.kd5ujc.scarab.ledger.state.StakePoolParams]]), as the
+    * reference's certificate holds the core library's `StakePoolParams`.
+    */
   case RegPool(params: StakePoolParams)
   case RetirePool(pool: KeyHash[StakePool], epoch: EpochNo)
 
   /** The pool's key, which signs the certificate (`poolCertKeyHashWitness`). */
   def witness: Bytes = this match
-    case RegPool(params)     => params.value.operator
+    case RegPool(params)     => params.id.bytes
     case RetirePool(pool, _) => pool.bytes
-
-/** A pool's parameters as a certificate registers them (`data StakePoolParams`, cardano-ledger
-  * f649f975 `libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:424-435`). The relays
-  * and the metadata are kept as the bytes they were read from ([[PoolParams]]), and two parameters
-  * are equal when what those bytes mean is equal ([[PoolParams.identity]]), as the reference's
-  * derived `Eq` compares the decoded `StrictSeq StakePoolRelay` and `PoolMetadata`: an empty relay
-  * list read as `80` and as `9800` is one list. `sppId`, the pool's key hash, is the operator's 28
-  * bytes as the reference types them (`sppId :: KeyHash StakePool`). The metadata's hash (`pmHash`
-  * of `sppMetadata`) is read when the parameters are, so POOL reads it as the reference's field;
-  * only [[of]] makes one, so the key hash is always the operator's and the hash always that of the
-  * metadata it keeps.
-  */
-final class StakePoolParams private (
-    val sppId: KeyHash[StakePool],
-    val value: PoolParams,
-    val metadataHash: Option[Bytes]
-):
-  private lazy val identity: PoolIdentity = PoolParams.identity(value)
-
-  override def equals(that: Any): Boolean = that match
-    case o: StakePoolParams => identity == o.identity
-    case _                  => false
-  override def hashCode(): Int = identity.hashCode
-  override def toString: String = s"StakePoolParams($value)"
-
-object StakePoolParams:
-  given CanEqual[StakePoolParams, StakePoolParams] = CanEqual.derived
-
-  /** The parameters a decoder read, with the pool's key hash and their metadata's hash. A decoder
-    * has already read the metadata with its URL bounded ([[PoolParams.decodeMetadata]]), so its
-    * hash is always read.
-    */
-  private[era] def of(value: PoolParams): Either[EraTxError, StakePoolParams] =
-    (
-      KeyHash.fromBytes[StakePool](value.operator).leftMap(EraTxError.Vocab(_)),
-      value.metadata
-        .traverse(PoolParams.metadataHash(_)(using ByteStrings.Chunked))
-        .leftMap(EraTxError.Decode(_))
-    ).mapN(new StakePoolParams(_, value, _))
 
 /** What a Conway delegation delegates to (`data Delegatee`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:379-383`, cardano-ledger f649f975): a

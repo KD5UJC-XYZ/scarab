@@ -171,7 +171,7 @@ class ConwayLedgerSuite extends FunSuite:
   /** The VRF key hashes the pools use, registered or waiting in a re-registration. */
   private def vrfKeysOfPools(ps: PState): Set[Bytes] =
     ps.stakePools.valuesIterator.map(_.vrf.bytes).toSet ++
-      ps.future.valuesIterator.map(_.vrfKeyHash)
+      ps.future.valuesIterator.map(_.vrf.bytes)
 
   /** `next` with the UTxO of `start` again (and the instant stake it makes): the funds a first
     * transaction spent, for a second one against the state the first left.
@@ -399,7 +399,7 @@ class ConwayLedgerSuite extends FunSuite:
       signers = Vector(op)
     )
     val next = accepted(s, rereg)
-    assertEquals(pStateOf(next).future.get(poolId(op)).map(_.cost), Some(BigInt(340)))
+    assertEquals(pStateOf(next).future.get(poolId(op)).map(_.cost.value), Some(BigInt(340)))
     val retire = pay(
       "retire",
       alice,
@@ -861,7 +861,7 @@ class ConwayLedgerSuite extends FunSuite:
     val own = Set(poolParams(one).vrfKeyHash, poolParams(two).vrfKeyHash)
     assertEquals(vrfKeys(pStateOf(s)), own)
     val s1 = accepted(s, reg("fresh", one, fresh))
-    assertEquals(pStateOf(s1).future.get(poolId(one)).map(_.vrfKeyHash), Some(fresh))
+    assertEquals(pStateOf(s1).future.get(poolId(one)).map(_.vrf.bytes), Some(fresh))
     // the map the rules leave: the keys in use and the scheduled one
     assertEquals(vrfKeys(pStateOf(s1)), own + fresh)
     // the scheduled key is held: another pool cannot take it
@@ -872,7 +872,7 @@ class ConwayLedgerSuite extends FunSuite:
     // a second re-registration in the epoch frees the first key
     val other = Blake2bHash(Bytes(Vector(4, 5, 6)))
     val s2 = accepted(withFundsOf(s)(s1), reg("again", one, other))
-    assertEquals(pStateOf(s2).future.get(poolId(one)).map(_.vrfKeyHash), Some(other))
+    assertEquals(pStateOf(s2).future.get(poolId(one)).map(_.vrf.bytes), Some(other))
     assertEquals(vrfKeys(pStateOf(s2)), own + other)
     accepted(withFundsOf(s)(s2), reg("freed", two, fresh))
   }
@@ -932,7 +932,6 @@ class ConwayLedgerSuite extends FunSuite:
     def counted(build: ReferenceBuild, ps: PState): Option[Long] =
       HardFork
         .populateVRFKeyHashes(build, ps)
-        .fold(e => fail(e.toString), identity)
         .vrfKeyHashes
         .get(shared11)
         .map(_.value.bits)
@@ -961,28 +960,9 @@ class ConwayLedgerSuite extends FunSuite:
     assertEquals(
       HardFork
         .populateVRFKeyHashes(ReferenceBuild.Release11_1, saturated)
-        .map(_.vrfKeyHashes.get(vrf)),
-      Right(Some(full))
-    )
-  }
-
-  test(
-    "HARDFORK refuses a waiting re-registration whose VRF key hash is not 32 bytes, in every build"
-  ) {
-    val one = key()
-    val s = base(fundedBy(alice), pools = Vector(poolParams(one)))
-    val malformed = Bytes(Vector.fill(31)(1))
-    val refusal = VRFVerKeyHash.fromBytes(malformed).swap.getOrElse(fail("31 bytes taken"))
-    val before = pStateOf(s)
-    val pools = before.copy(future =
-      before.future.updated(poolId(one), poolParams(one).copy(vrfKeyHash = malformed))
-    )
-    ReferenceBuild.values.foreach(build =>
-      assertEquals(
-        HardFork.populateVRFKeyHashes(build, pools).map(_.vrfKeyHashes),
-        Left(refusal),
-        build.name
-      )
+        .vrfKeyHashes
+        .get(vrf),
+      Some(full)
     )
   }
 

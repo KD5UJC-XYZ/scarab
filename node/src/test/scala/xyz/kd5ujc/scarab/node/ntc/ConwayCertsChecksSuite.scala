@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import cats.data.NonEmptyChain
 import java.nio.file.Path
 import munit.FunSuite
@@ -111,7 +112,7 @@ class ConwayCertsChecksSuite extends FunSuite:
           setup.globals.network,
           bytes,
           right(s"$what flat")(Tx.fromEnvelope(bytes, Era.Conway)),
-          right(s"$what typed")(ConwayTx.fromEnvelope(bytes)),
+          right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           gov.curPParams,
           PParams[Conway](
             right(s"$what typed parameters")(ConwayPParams.fromStored(gov.curPParams))
@@ -314,7 +315,7 @@ class ConwayCertsChecksSuite extends FunSuite:
                 (
                   s"$at#$k",
                   right(s"$at#$k flat")(Tx.fromBlock(t, Era.Conway)),
-                  right(s"$at#$k typed")(ConwayTx.decode(t))
+                  right(s"$at#$k typed")(ConwayTx.decode(t, StateLayout.Node11_1))
                 )
               )
             case other => fail(s"$at: not a Conway block: $other")
@@ -426,7 +427,7 @@ class ConwayCertsChecksSuite extends FunSuite:
     val nodes = certs.map(read)
     (
       nodes.map(n => right("flat certificate")(Certificate.decode(n, Era.Conway))),
-      nodes.map(n => right("typed certificate")(ConwayTxCert.decode(n)))
+      nodes.map(n => right("typed certificate")(ConwayTxCert.decode(n, StateLayout.Node11_1)))
     )
 
   /** A recorded state to craft against: one with two pools, an account and a DRep registered, so
@@ -712,7 +713,7 @@ class ConwayCertsChecksSuite extends FunSuite:
     s.copy(
       bytes = again,
       flat = right("edited flat")(Tx.fromEnvelope(again, Era.Conway)),
-      typed = right("edited typed")(ConwayTx.fromEnvelope(again))
+      typed = right("edited typed")(ConwayTx.fromEnvelope(again, StateLayout.Node11_1))
     )
 
   private def isKey(k: Int)(n: Node): Boolean = n.value == Value.UInt(k)

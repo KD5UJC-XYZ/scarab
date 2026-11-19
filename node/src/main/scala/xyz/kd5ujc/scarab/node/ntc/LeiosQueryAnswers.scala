@@ -63,7 +63,11 @@ object LeiosQueryAnswers:
       val asked = pools.fold(p.stakePools)(keep => p.stakePools.filter((id, _) => keep(id.bytes)))
       asked.toVector
         .traverse((id, s) =>
-          result(s, p.retiring.get(id), p.future.get(id), delegators).map(id -> _)
+          p.future
+            .get(id)
+            .traverse(CertStateAnswers.futureParams)
+            .flatMap(result(s, p.retiring.get(id), _, delegators))
+            .map(id -> _)
         )
         .flatMap(rs => stakePoolStates.write(Sorted.map(rs)).leftMap(_ => Unanswered.Unwritable))
     }

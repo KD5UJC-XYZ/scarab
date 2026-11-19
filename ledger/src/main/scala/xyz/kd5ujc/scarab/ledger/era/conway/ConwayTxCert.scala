@@ -3,14 +3,13 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{Anchor, Certificate, Credential as FlatCredential}
+import xyz.kd5ujc.scarab.ledger.{Anchor, Certificate, Credential as FlatCredential, DecoderVersion}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayDelegCert,
   ConwayEraTxCert,
   ShelleyEraTxCert,
   ConwayGovCert,
-  StakePoolParams,
   Delegatee,
   EraField,
   EraTxError,
@@ -27,10 +26,13 @@ import xyz.kd5ujc.scarab.ledger.state.{
   HotCommittee,
   KeyHash,
   KeyRole,
+  PoolMetadata,
+  PoolParamsBlsKey,
   StakePool,
+  StakePoolParams,
   Staking
 }
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** A Conway certificate (`data ConwayTxCert era`, cardano-ledger f649f975
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:643-647`): a staking, a pool or a
@@ -46,65 +48,81 @@ object ConwayTxCert:
   given CanEqual[ConwayTxCert, ConwayTxCert] = CanEqual.derived
 
   /** A certificate as Conway's decoder reads it ([[Certificate.decode]] at Conway): its tags 5 and
-    * 6 are refused there, before their fields are read.
+    * 6 are refused there, before their fields are read. A pool registration's parameters are in
+    * `layout`, the layout of the build that reads them ([[fromFlat]]).
     */
-  def decode(n: Node): Either[EraTxError, ConwayTxCert] =
-    Certificate.decode(n, Era.Conway).left.map(EraTxError.Decode(_)).flatMap(fromFlat)
+  def decode(n: Node, layout: StateLayout): Either[EraTxError, ConwayTxCert] =
+    Certificate.decode(n, Era.Conway).left.map(EraTxError.Decode(_)).flatMap(fromFlat(_, layout))
 
   /** The Conway certificate of a flat one: refused if Conway has no such certificate, or if it
-    * delegates to neither a pool nor a DRep, which no decoder reads.
+    * delegates to neither a pool nor a DRep, which no decoder reads. A pool registration's
+    * parameters are the state's, in `layout`: the 11.1 build's `StakePoolParams` has no voting key,
+    * and the Leios build's reads none in a Conway body, which is read at version 9
+    * (`decodeStakePoolParamsFlat`, cardano-ledger 9df9f98c `State/StakePool.hs:746-762`;
+    * [[PoolParamsBlsKey.certified]]). Its metadata's hash is read with it.
     */
-  private[era] def fromFlat(c: Certificate): Either[EraTxError, ConwayTxCert] = c match
-    case Certificate.Register(cred, deposit) =>
-      credential[Staking](cred).map(c =>
-        ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(c, deposit.map(Coin(_))))
-      )
-    case Certificate.Unregister(cred, refund) =>
-      credential[Staking](cred).map(c =>
-        ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(c, refund.map(Coin(_))))
-      )
-    case Certificate.Delegate(cred, pool, drep, deposit) =>
-      val delegatee =
-        (pool.traverse(poolKey), drep.traverse(Convert.drep(_).leftMap(EraTxError.Vocab(_)))).tupled
-          .flatMap {
-            case (Some(p), Some(d)) => Right(Delegatee.DelegStakeVote(p, d))
-            case (Some(p), None)    => Right(Delegatee.DelegStake(p))
-            case (None, Some(d))    => Right(Delegatee.DelegVote(d))
-            case (None, None)       => Left(EraTxError.NoDelegatee)
-          }
-      (credential[Staking](cred), delegatee).mapN((c, to) =>
-        deposit match
-          case Some(d) => ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(c, to, Coin(d)))
-          case None    => ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(c, to))
-      )
-    case Certificate.RegisterPool(params) =>
-      StakePoolParams.of(params).map(p => ConwayTxCertPool(PoolCert.RegPool(p)))
-    case Certificate.RetirePool(pool, epoch) =>
-      (poolKey(pool), EpochNo.fromBigInt(epoch).leftMap(EraTxError.Vocab(_)))
-        .mapN((p, e) => ConwayTxCertPool(PoolCert.RetirePool(p, e)))
-    case Certificate.RegisterDRep(cred, deposit, anchor) =>
-      credential[DRepRole](cred).map(c =>
-        ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(c, Coin(deposit), anchor))
-      )
-    case Certificate.UnregisterDRep(cred, refund) =>
-      credential[DRepRole](cred).map(c =>
-        ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(c, Coin(refund)))
-      )
-    case Certificate.UpdateDRep(cred, anchor) =>
-      credential[DRepRole](cred).map(c =>
-        ConwayTxCertGov(ConwayGovCert.ConwayUpdateDRep(c, anchor))
-      )
-    case Certificate.CommitteeAuthorize(cold, hot) =>
-      (credential[ColdCommittee](cold), credential[HotCommittee](hot)).mapN((c, h) =>
-        ConwayTxCertGov(ConwayGovCert.ConwayAuthCommitteeHotKey(c, h))
-      )
-    case Certificate.CommitteeResign(cold, anchor) =>
-      credential[ColdCommittee](cold).map(c =>
-        ConwayTxCertGov(ConwayGovCert.ConwayResignCommitteeColdKey(c, anchor))
-      )
-    case Certificate.GenesisDelegate(_, _, _) =>
-      Left(EraTxError.NotInEra(EraField.GenesisDelegation))
-    case Certificate.MoveRewards(_, _) => Left(EraTxError.NotInEra(EraField.InstantaneousRewards))
+  private[era] def fromFlat(c: Certificate, layout: StateLayout): Either[EraTxError, ConwayTxCert] =
+    c match
+      case Certificate.Register(cred, deposit) =>
+        credential[Staking](cred).map(c =>
+          ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(c, deposit.map(Coin(_))))
+        )
+      case Certificate.Unregister(cred, refund) =>
+        credential[Staking](cred).map(c =>
+          ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(c, refund.map(Coin(_))))
+        )
+      case Certificate.Delegate(cred, pool, drep, deposit) =>
+        val delegatee =
+          (
+            pool.traverse(poolKey),
+            drep.traverse(Convert.drep(_).leftMap(EraTxError.Vocab(_)))
+          ).tupled
+            .flatMap {
+              case (Some(p), Some(d)) => Right(Delegatee.DelegStakeVote(p, d))
+              case (Some(p), None)    => Right(Delegatee.DelegStake(p))
+              case (None, Some(d))    => Right(Delegatee.DelegVote(d))
+              case (None, None)       => Left(EraTxError.NoDelegatee)
+            }
+        (credential[Staking](cred), delegatee).mapN((c, to) =>
+          deposit match
+            case Some(d) => ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(c, to, Coin(d)))
+            case None    => ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(c, to))
+        )
+      case Certificate.RegisterPool(params) =>
+        for
+          metadata <- params.metadata
+            .traverse(PoolMetadata.read(_, DecoderVersion.of(Era.Conway), layout))
+            .leftMap(EraTxError.Decode(_))
+          p <- Convert
+            .stakePoolParams(params, PoolParamsBlsKey.certified(layout), metadata)
+            .leftMap(EraTxError.Vocab(_))
+        yield ConwayTxCertPool(PoolCert.RegPool(p))
+      case Certificate.RetirePool(pool, epoch) =>
+        (poolKey(pool), EpochNo.fromBigInt(epoch).leftMap(EraTxError.Vocab(_)))
+          .mapN((p, e) => ConwayTxCertPool(PoolCert.RetirePool(p, e)))
+      case Certificate.RegisterDRep(cred, deposit, anchor) =>
+        credential[DRepRole](cred).map(c =>
+          ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(c, Coin(deposit), anchor))
+        )
+      case Certificate.UnregisterDRep(cred, refund) =>
+        credential[DRepRole](cred).map(c =>
+          ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(c, Coin(refund)))
+        )
+      case Certificate.UpdateDRep(cred, anchor) =>
+        credential[DRepRole](cred).map(c =>
+          ConwayTxCertGov(ConwayGovCert.ConwayUpdateDRep(c, anchor))
+        )
+      case Certificate.CommitteeAuthorize(cold, hot) =>
+        (credential[ColdCommittee](cold), credential[HotCommittee](hot)).mapN((c, h) =>
+          ConwayTxCertGov(ConwayGovCert.ConwayAuthCommitteeHotKey(c, h))
+        )
+      case Certificate.CommitteeResign(cold, anchor) =>
+        credential[ColdCommittee](cold).map(c =>
+          ConwayTxCertGov(ConwayGovCert.ConwayResignCommitteeColdKey(c, anchor))
+        )
+      case Certificate.GenesisDelegate(_, _, _) =>
+        Left(EraTxError.NotInEra(EraField.GenesisDelegation))
+      case Certificate.MoveRewards(_, _) => Left(EraTxError.NotInEra(EraField.InstantaneousRewards))
 
   /** The node's flat certificate of a Conway one, which the flat failures carry
     * ([[xyz.kd5ujc.scarab.ledger.Purpose.Certifying]]): glue until each era's failures are its own
@@ -126,7 +144,8 @@ object ConwayTxCert:
       case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(c, to, deposit)) =>
         val (pool, drep) = delegatee(to)
         Certificate.Delegate(Convert.back(c), pool, drep, Some(deposit.value))
-      case ConwayTxCertPool(PoolCert.RegPool(params)) => Certificate.RegisterPool(params.value)
+      case ConwayTxCertPool(PoolCert.RegPool(params)) =>
+        Certificate.RegisterPool(Convert.poolParamsBack(params))
       case ConwayTxCertPool(PoolCert.RetirePool(pool, epoch)) =>
         Certificate.RetirePool(pool.bytes, epoch.toBigInt)
       case ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(c, deposit, anchor)) =>

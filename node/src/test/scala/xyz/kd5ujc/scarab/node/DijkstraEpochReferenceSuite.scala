@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{PoolParams, RewardAccount}
-import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, Sts, Tick, Translate}
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, EraLedger, Globals, Sts, Tick, Translate}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.{
   ConwayGovState,
@@ -18,6 +18,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   NewEpochState,
   PState,
   PoolBlsKey,
+  PoolMetadata,
+  PoolParamsBlsKey,
   ShelleyBasedEra,
   SlotNo,
   StakePool,
@@ -129,9 +131,16 @@ class DijkstraEpochReferenceSuite extends FunSuite:
           s.relays,
           s.metadata
         )
-        p.copy(future = p.future.updated(id, params))
+        // `sppBlsKey = bksKey <$> spsBlsKey sps`: the pool's own voting key, whose layout is the state's
+        val blsKey = s.blsKey match
+          case PoolBlsKey.Node11_1 => PoolParamsBlsKey.Node11_1
+          case PoolBlsKey.Leios(k) => PoolParamsBlsKey.Leios(k.map(_.key))
+        val metadata = right(s.metadata.traverse(PoolMetadata.held))
+        p.copy(future =
+          p.future.updated(id, right(Convert.stakePoolParams(params, blsKey, metadata)))
+        )
       case "populateVRFKeyHashes" =>
-        Translate.populateVRFKeyHashes(p).fold(e => fail(e.toString), identity)
+        Translate.populateVRFKeyHashes(p)
       case "retire" =>
         p.copy(retiring =
           p.retiring

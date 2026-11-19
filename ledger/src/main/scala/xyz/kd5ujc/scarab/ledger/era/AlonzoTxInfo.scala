@@ -169,7 +169,7 @@ object AlonzoTxInfo:
       })
       .orElse(c.getRegPoolTxCert(txCert).map { params =>
         PV1.DCert
-          .DCertPoolRegister(transKeyHash(params.sppId), PV1.PubKeyHash(params.value.vrfKeyHash))
+          .DCertPoolRegister(transKeyHash(params.id), PV1.PubKeyHash(params.vrf.bytes))
       })
       .orElse(c.getRetirePoolTxCert(txCert).map { (poolId, retireEpochNo) =>
         PV1.DCert.DCertPoolRetire(transKeyHash(poolId), transEpochNo(retireEpochNo))

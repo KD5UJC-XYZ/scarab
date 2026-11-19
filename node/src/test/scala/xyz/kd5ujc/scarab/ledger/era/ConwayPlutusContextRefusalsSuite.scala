@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import cats.syntax.all.*
 import java.nio.file.Path
 import munit.FunSuite
@@ -58,7 +59,7 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
         Seen(
           what,
           right(s"$what flat")(FlatTx.fromEnvelope(bytes, Era.Conway)),
-          right(s"$what typed")(ConwayTx.fromEnvelope(bytes)),
+          right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           stored,
           right(s"$what typed UTxO")(ConwayUTxO.fromStored(stored)),
           ConwayNewEpochState.gov.get(nes).curPParams.protocolMajor.toInt

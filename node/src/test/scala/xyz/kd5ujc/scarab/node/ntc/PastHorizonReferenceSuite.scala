@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.syntax.all.*
 import io.circe.parser.parse
@@ -319,7 +320,9 @@ class PastHorizonReferenceSuite extends FunSuite:
         case PosixClock.Forecast(start, horizon) => (start, horizon)
         case other                               => fail(s"${r.label}: $other")
       val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity).raw
-      val tx = ConwayTx.fromEnvelope(raw).fold(e => fail(s"${r.label}: $e"), identity)
+      val tx = ConwayTx
+        .fromEnvelope(raw, StateLayout.Node11_1)
+        .fold(e => fail(s"${r.label}: $e"), identity)
       val tx0 = EraTx.conway
       val end = tx0.bodyOf
         .vldt(tx0.body[TxLevel.Top](tx)(using tx0.bodyOf.top))(using tx0.bodyOf.top)

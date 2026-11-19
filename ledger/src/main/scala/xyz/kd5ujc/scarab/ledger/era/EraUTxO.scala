@@ -308,7 +308,9 @@ object ShelleyUTxO:
           case xyz.kd5ujc.scarab.ledger.Credential.Key(h)    => Some(h)
           case xyz.kd5ujc.scarab.ledger.Credential.Script(_) => None
       )
-    val owners = certs.flatMap(b.certsOf.getRegPoolTxCert(_).toVector.flatMap(_.value.owners)).toSet
+    val owners = certs
+      .flatMap(b.certsOf.getRegPoolTxCert(_).toVector.flatMap(_.owners.toVector.map(_.bytes)))
+      .toSet
     val certAuthors = certs.flatMap(b.certsOf.getVKeyWitnessTxCert).toSet
     certAuthors ++ inputAuthors ++ owners ++ wdrlAuthors
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
@@ -113,7 +114,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
           network,
           Network.of(BigInt(network)).getOrElse(fail(s"$what network $network")),
           right(s"$what flat")(Tx.fromEnvelope(bytes, Era.Conway)),
-          right(s"$what typed")(ConwayTx.fromEnvelope(bytes)),
+          right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           stored,
           right(s"$what typed UTxO")(ConwayUTxO.fromStored(stored)),
           flatPp,
@@ -369,7 +370,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
       case other => fail(s"an envelope that is not an array: $other")
     s.copy(
       flat = right("edited flat")(Tx.fromEnvelope(again, Era.Conway)),
-      typed = right("edited typed")(ConwayTx.fromEnvelope(again))
+      typed = right("edited typed")(ConwayTx.fromEnvelope(again, StateLayout.Node11_1))
     )
 
   private def key(k: Int): Node = Node(Value.UInt(k), Bytes.empty)

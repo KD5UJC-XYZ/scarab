@@ -9,8 +9,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ConwayGovCert,
   Delegatee,
   PParams,
-  PoolCert,
-  StakePoolParams
+  PoolCert
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -24,6 +23,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   KeyRole,
   StakePool,
+  StakePoolParams,
   Staking
 }
 

@@ -30,22 +30,12 @@ enum PParamsError:
   /** A value of an update whose form is not that of its key's field. */
   case ValueNotOfKey(key: Int)
 
-/** `UnitInterval` (`BoundedRatio UnitInterval Word64`, `libs/cardano-ledger-core/src/Cardano/
-  * Ledger/BaseTypes.hs:543-545`, cardano-ledger f649f975): `[0, 1]`, numerator and denominator
-  * within `Word64`.
+/** `UnitInterval` (`BaseTypes.hs:543-545`, cardano-ledger f649f975), defined with the state's
+  * vocabulary ([[xyz.kd5ujc.scarab.ledger.state.UnitInterval]]), which the pool parameters hold.
   */
-opaque type UnitInterval = Rational
-
-object UnitInterval:
-  /** `minBound`: zero. */
-  val zero: UnitInterval = Rational.zero
-
-  /** `boundRational`. */
-  def boundRational(r: Rational): Option[UnitInterval] = BoundedRatio.Unit.bound(r)
-
-  extension (u: UnitInterval)
-    /** `unboundRational`. */
-    def rational: Rational = u
+type UnitInterval = xyz.kd5ujc.scarab.ledger.state.UnitInterval
+val UnitInterval: xyz.kd5ujc.scarab.ledger.state.UnitInterval.type =
+  xyz.kd5ujc.scarab.ledger.state.UnitInterval
 
 /** `NonNegativeInterval` (`BaseTypes.hs:468-486`, cardano-ledger f649f975):
   * `[0, maxBound :: Word64]`.

@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Unique}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.state.Coin
 
@@ -95,6 +95,49 @@ object PoolParams:
       ByteStrings
   ): Either[LedgerDecodeError, Bytes] =
     metadata(raw, CborRead.url(_, DecodeField.PoolMetadataURL, version))
+
+  /** `DecCBOR PoolMetadata` at `version` in the build of `layout` (cardano-ledger f649f975
+    * `State/StakePool.hs:522-524`, 9df9f98c `:683-685`), as a stored record of the state is read:
+    * `decodeRecordNamed` of two items, a `Url` (`BaseTypes.hs:678-685`: at most 64 bytes of UTF-8
+    * below version 9 and 128 from it) and the hash, a byte string (`decodeByteArray`, definite
+    * below version 12 and definite or chunked from it in both builds, [[ByteStrings.of]]). The
+    * `Url` 's text is `decodeString`, which differs by build: f649f975 takes definite text at every
+    * version ([[CborRead.text]]), and 9df9f98c also chunked text from version 12
+    * (`Decoding/Decoder.hs:1564-1598`). The result is the hash.
+    */
+  private[ledger] def metadataAt(
+      raw: Bytes,
+      version: DecoderVersion,
+      layout: StateLayout
+  ): Either[LedgerDecodeError, Bytes] =
+    given ByteStrings = ByteStrings.of(version)
+    metadata(raw, urlAt(_, version, layout))
+
+  /** A `Url` read at `version` in the build of `layout` ([[metadataAt]]). */
+  private def urlAt(
+      n: Node,
+      version: DecoderVersion,
+      layout: StateLayout
+  ): Either[LedgerDecodeError, String] =
+    val text = layout match
+      case StateLayout.Leios if version.atLeast(12) =>
+        CborRead
+          .indefinite(n)
+          .map(_._1)
+          .toRight(
+            LedgerDecodeError
+              .Expected(DecodeField.PoolMetadataURL, LedgerDecodeError.Shape.Text, n.value)
+          )
+      case StateLayout.Leios | StateLayout.Node11_1 => CborRead.text(n, DecodeField.PoolMetadataURL)
+    text.flatMap { s =>
+      val limit = if version.atLeast(9) then 128 else 64
+      val size = s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+      Either.cond(
+        size <= limit,
+        s,
+        LedgerDecodeError.TextTooLong(DecodeField.PoolMetadataURL, limit, size)
+      )
+    }
 
   /** The hash of a metadata term the body decoder took ([[decodeMetadata]]), for POOL. */
   private[ledger] def metadataHash(

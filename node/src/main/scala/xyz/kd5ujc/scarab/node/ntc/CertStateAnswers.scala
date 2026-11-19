@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import scala.collection.immutable.TreeMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Credential, PoolParams, ProtocolParams, RewardAccount}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state as mirror
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.Codec
@@ -92,15 +93,23 @@ object CertStateAnswers:
     inEra(l) {
       def pick[V](m: Map[Bytes, V]): Map[Bytes, V] =
         ids.fold(m)(keep => m.filter((id, _) => keep(id)))
-      poolStateCodec.answerRead(pState(l).map { state =>
+      pState(l).leftMap(Unanswered.Refused(_)).flatMap { state =>
         val registeredPools = pick(state.stakePools.iterator.map((id, p) => id.bytes -> p).toMap)
-        (
-          registeredPools.map((id, p) => id -> registered(network, id, p)),
-          pick(state.future.iterator.map((id, p) => id.bytes -> p).toMap),
-          pick(state.retiring.iterator.map((id, e) => id.bytes -> e.toBigInt).toMap),
-          registeredPools.map((id, p) => id -> p.deposit.toBigInt)
-        )
-      })
+        pick(state.future.iterator.map((id, p) => id.bytes -> p).toMap).toVector
+          .traverse((id, p) => futureParams(p).map(id -> _))
+          .flatMap(future =>
+            poolStateCodec.answerRead(
+              Right(
+                (
+                  registeredPools.map((id, p) => id -> registered(network, id, p)),
+                  future.toMap,
+                  pick(state.retiring.iterator.map((id, e) => id.bytes -> e.toBigInt).toMap),
+                  registeredPools.map((id, p) => id -> p.deposit.toBigInt)
+                )
+              )
+            )
+          )
+      }
     }
 
   /** `GetStakeSnapshots`: `queryStakeSnapshots`, each pool's stake in the mark, set and go
@@ -166,6 +175,15 @@ object CertStateAnswers:
       l: EraRead[E]
   ): Read[Iterator[(Credential, EraViews.Account)]] =
     l.cert.map(c => EraViews.accounts(c)(using l.era).map((k, a) => EraRead.credential(k) -> a))
+
+  /** A pool's future parameters as the node's parameters write them (`StakePoolParams`'s nine
+    * items): parameters holding a voting key, which nine items have no place for, are not written.
+    */
+  private[ntc] def futureParams(p: mirror.StakePoolParams): Either[Unanswered, PoolParams] =
+    p.blsKey match
+      case mirror.PoolParamsBlsKey.Leios(Some(_)) => Left(Unanswered.Unwritable)
+      case mirror.PoolParamsBlsKey.Leios(None) | mirror.PoolParamsBlsKey.Node11_1 =>
+        Right(Convert.poolParamsBack(p))
 
   /** The parameters of a registered pool as the reference reads them back
     * (`stakePoolStateToStakePoolParams`, `State/StakePool.hs:275-291`, cardano-ledger f649f975):

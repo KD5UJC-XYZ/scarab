@@ -53,6 +53,18 @@ object Build:
       )
     )
 
+  /** The state's parameters of the node's `params` in the 11.1 layout (or the one of `blsKey`), as
+    * POOL makes them, their metadata's hash read.
+    */
+  def stakePoolParams(
+      params: node.PoolParams,
+      blsKey: PoolParamsBlsKey = PoolParamsBlsKey.Node11_1
+  ): StakePoolParams =
+    params.metadata
+      .fold[Either[Any, Option[PoolMetadata]]](Right(None))(PoolMetadata.held(_).map(Some(_)))
+      .flatMap(Convert.stakePoolParams(params, blsKey, _))
+      .fold(e => fail(s"$e"), identity)
+
   /** `nes` with the pool registered and its supplied VRF keys seeded in the key-count map,
     * independently of the protocol version. `future` is a re-registration waiting for the next
     * epoch. Tests of pre-version-11 key-map maintenance must set their starting map explicitly.
@@ -78,7 +90,7 @@ object Build:
     val ps = LedgerState.pState[E].get(ls)
     val next = ps.copy(
       stakePools = ps.stakePools.updated(operator, state),
-      future = future.fold(ps.future)(f => ps.future.updated(operator, f)),
+      future = future.fold(ps.future)(f => ps.future.updated(operator, stakePoolParams(f))),
       vrfKeyHashes = keys.foldLeft(ps.vrfKeyHashes)((m, k) => m.updated(k, NonZero.oneWord))
     )
     nes.copy(es = nes.es.copy(ls = LedgerState.pState[E].replace(next)(ls)))

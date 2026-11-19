@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, TxBody as FlatTxBody}
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut
@@ -38,7 +39,7 @@ class EraTxSuite extends munit.FunSuite:
     assert(conway.nonEmpty)
     conway.foreach { raw =>
       val flat = FlatTxBody.decode(raw, Era.Conway).toOption.get
-      val c = ConwayTxBody.decode(raw).toOption.get
+      val c = ConwayTxBody.decode(raw, StateLayout.Node11_1).toOption.get
       assertEquals(c.id, flat.id)
       assertEquals(c.outputs.map(o => EraTxOut.conway.raw(o.value)), flat.outputs.map(_.raw))
       assertEquals(
@@ -59,7 +60,7 @@ class EraTxSuite extends munit.FunSuite:
 
   test("a function written once over the body class reads Conway's bodies") {
     // its sharing across eras' bodies is shown again when Dijkstra's body is typed (stage 3)
-    val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_).toOption.get)
+    val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_, StateLayout.Node11_1).toOption.get)
     def run[E <: xyz.kd5ujc.scarab.ledger.state.EraTag](bodies: Vector[TxBody[TxLevel.Top, E]])(
         using b: BabbageEraTxBody[E]
     ): Int = bodies.map(inlineDatums[E, TxLevel.Top](_)(using b, b.top).size).sum
@@ -80,7 +81,7 @@ class EraTxSuite extends munit.FunSuite:
   }
 
   test("a body of a level an era does not have is refused: Conway has top-level bodies only") {
-    val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_).toOption.get).head
+    val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_, StateLayout.Node11_1).toOption.get).head
     // a method of any level runs on a top-level body with the era's evidence of the top level
     assertEquals(EraTxBody.conway.inputs[TxLevel.Top](c)(using EraTxBody.conway.top), c.spendInputs)
     // Conway's only evidence is of the top level, so a sub-transaction body cannot be read
@@ -129,7 +130,7 @@ class EraTxSuite extends munit.FunSuite:
     val conway = bodiesOf(Era.Conway)
     val withSigners = conway.count { raw =>
       val flat = FlatTxBody.decode(raw, Era.Conway).fold(e => fail(e.toString), identity)
-      val c = ConwayTxBody.decode(raw).fold(e => fail(e.toString), identity)
+      val c = ConwayTxBody.decode(raw, StateLayout.Node11_1).fold(e => fail(e.toString), identity)
       val b = EraTxBody.conway
       val expected = flat.requiredSigners.sorted
       assertEquals(b.reqSignerHashes[TxLevel.Top](c)(using b.top).toVector, expected)

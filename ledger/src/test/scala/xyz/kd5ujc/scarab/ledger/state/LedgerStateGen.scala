@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Constitution,
   EnactState,
   GenDelegPair,
-  PoolParams,
   PrevIds,
   Proposals,
   PulsingSnapshot,
@@ -198,7 +197,7 @@ object LedgerStateGen:
       .zip(
         sortedMap(arb[VRFVerKeyHash], arb[NonZero[Word64]]),
         sortedMap(arb[KeyHash[StakePool]], arb[StakePoolState]),
-        Gen.const(Sorted.empty[KeyHash[StakePool], PoolParams]),
+        Gen.const(Sorted.empty[KeyHash[StakePool], StakePoolParams]),
         sortedMap(arb[KeyHash[StakePool]], arb[EpochNo])
       )
       .map(PState(_, _, _, _))

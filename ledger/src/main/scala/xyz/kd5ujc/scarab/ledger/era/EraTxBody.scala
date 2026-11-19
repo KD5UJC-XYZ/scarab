@@ -309,13 +309,6 @@ enum EraTxError:
     */
   case StoredOutputDiffers
 
-  /** A Dijkstra pool registration, whose parameters hold the pool's voting key (`sppBlsKey`,
-    * `libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:476-488`, cardano-ledger
-    * 9df9f98c): the era types' pool parameters do not hold that key yet (#85), so a body that
-    * registers a pool is not read into them. Not a verdict of the ledger on the certificate.
-    */
-  case PoolVotingKeyNotYetTyped
-
   /** The encoding a translation into the next era wrote is refused when read again at that era's
     * version, though the next era reads every value of the previous one: a defect of the encoder,
     * not a refusal of the value translated.

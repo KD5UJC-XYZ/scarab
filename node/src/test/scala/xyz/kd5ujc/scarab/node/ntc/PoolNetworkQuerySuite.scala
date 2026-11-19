@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.models.runtime.Writer
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.Credential
 import xyz.kd5ujc.scarab.ledger.state.{
+  Build,
   Coin,
   KeyHash,
   LedgerState,
@@ -38,7 +39,7 @@ class PoolNetworkQuerySuite extends FunSuite:
 
   /** The state with the re-registration of the pool, its account on the other network, waiting. */
   private def withFuture: MirrorState =
-    changed(ps => ps.copy(future = ps.future.updated(key, moved)))
+    changed(ps => ps.copy(future = ps.future.updated(key, Build.stakePoolParams(moved))))
 
   /** The state with its pool state changed by `change`. */
   private def changed(change: PState => PState): MirrorState =
