@@ -39,12 +39,22 @@ unsupported.
 
 ## Reporting
 
-Please report privately through GitHub: on the repository, **Security -> Report a vulnerability**
-(a private security advisory). Do not open a public issue for an exploitable problem. You will get
-an acknowledgement as soon as a maintainer reads it; this is a research project run by a small
-team, so there is no response-time guarantee. A divergence that does not endanger anyone (for
-example a rejected valid transaction found on a testnet) can be reported with the public "bug"
-issue template.
+While Scarab is pre-release, two kinds of problem are reported privately:
+
+- one that could split a Scarab node from the chain: make it accept a block, or a transaction a block
+  can carry, that the reference refuses, refuse one the reference accepts, or select a different chain;
+- an exploitable problem against running nodes that is critical or high (priority P0 or P1), such as a
+  remote crash, hang or memory exhaustion, or exposed key material.
+
+Report these through GitHub: on the repository, **Security -> Report a vulnerability** (a private
+security advisory), and do not open a public issue for them.
+
+Everything else is reported publicly with the issue templates ("bug", or the audit form for a review
+finding): lower-severity problems, configuration and local files, node-to-client answers, and differences
+from the reference that cannot split the chain. Describe the problem and the reference's behaviour.
+
+You will get an acknowledgement as soon as a maintainer reads a report; this is a research project run by
+a small team, so there is no response-time guarantee.
 
 ## Keys and secrets
 

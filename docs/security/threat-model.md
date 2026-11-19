@@ -102,7 +102,7 @@ The reviewer evidence bundle (O5) is deferred until an audit candidate is select
 candidate-wide passing receipts are asserted here. Preserve historical source identities and skips
 in the meantime. Findings use the [audit process](../process.md#findings-from-an-independent-audit):
 name the boundary, assumption, violated invariant, acceptance criteria and regression evidence;
-report exploitable details privately under [SECURITY.md](../../SECURITY.md).
+report a finding that could split a node from the chain, or an exploitable one at P0 or P1, privately, as [SECURITY.md](../../SECURITY.md#reporting) says.
 
 [mux]: ../../network/src/main/scala/xyz/kd5ujc/scarab/network/Mux.scala
 [ingress]: ../../network/src/main/scala/xyz/kd5ujc/scarab/network/IngressLimits.scala

@@ -202,7 +202,8 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) (Docker-only build, style rules, the
 gates each kind of change must pass), [docs/process.md](docs/process.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Agent
 sessions follow [AGENTS.md](AGENTS.md). Report
-vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Never commit signing keys.
+security problems as described in [SECURITY.md](SECURITY.md): privately only one that could split a
+node from the chain, or an exploitable one rated P0 or P1. Never commit signing keys.
 
 Licensed under [Apache-2.0](LICENSE). Third-party notices and fixture attributions are in
 [NOTICE](NOTICE); resolved dependency licences in [docs/licenses.md](docs/licenses.md).
