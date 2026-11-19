@@ -184,16 +184,22 @@ final class OutboundPeers[F[_]: Async, A] private (
               .use { bearer =>
                 bearer.connectionId
                   .fold(F.pure(Option.empty[ConnectionId.Endpoint]))(_.map(_.toOption.map(_.local)))
-                  .flatMap(connection.connected) *>
+                  .flatMap(connection.connected) *> {
+                  val serve = mode match
+                    case DiffusionMode.InitiatorOnly         => None
+                    case DiffusionMode.InitiatorAndResponder => hot.serve
+                  // a duplex connection this side announces is registered with the inbound
+                  // governor once negotiated, before the outbound side uses it (`Core.hs`
+                  // 1594-1630 at c45735a5)
                   NodeToNode
                     .negotiate[F, NtNHeader](
                       bearer,
                       hot.magic,
                       connection,
                       hot.network,
-                      serve = mode match
-                        case DiffusionMode.InitiatorOnly         => None
-                        case DiffusionMode.InitiatorAndResponder => hot.serve
+                      serve,
+                      announced =
+                        handle => hot.inboundGovernor.traverse_(_(remote, handle.peerSharing))
                     )
                     .use { handle =>
                       ready.complete(Right((connection, handle))) *>
@@ -206,6 +212,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                               .abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
                           )
                     }
+                }
               }
         }
       }
@@ -1240,6 +1247,12 @@ object OutboundPeers:
     *   the node stops ([[FailurePolicy.disposition]]).
     * @param serve
     *   Responder protocols served on outbound peers whose diffusion mode is duplex.
+    * @param inboundGovernor
+    *   Registers the peer of a dialled connection whose handshake agreed on duplex with the inbound
+    *   governor, for the connection's life, with whether it agreed on peer sharing: present when
+    *   the node runs one, as the reference's connection manager announces such a connection to its
+    *   inbound governor only in responder mode (`InResponderMode`, `ConnectionManager/Core.hs`
+    *   1621-1625 at ouroboros-network `c45735a5`, the same at `4646039f` and `2f1c154f`).
     */
   final case class Hot[F[_]](
       magic: Long,
@@ -1255,7 +1268,8 @@ object OutboundPeers:
       lost: PeerError => F[Unit],
       fatal: Fatal => F[Unit],
       serve: Option[ServerHandlers[F, NtNHeader]] = None,
-      genesis: Option[GenesisRuntime[F]] = None
+      genesis: Option[GenesisRuntime[F]] = None,
+      inboundGovernor: Option[(SocketAddress[IpAddress], Boolean) => Resource[F, Unit]] = None
   )
 
   /** A connection of ours, and what its owner can do to it.

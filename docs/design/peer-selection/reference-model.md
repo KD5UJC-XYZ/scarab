@@ -218,7 +218,9 @@ roots, bootstrap peers in the sensitive state; `CD/PeerSelection/PeerSelectionAc
 big ledger peers, `BigLedgerPeers.hs`); and `KnownPeers.belowTarget`, when below the known target and
 PeerSharing is enabled, flips a coin between *inbound peers* (the peers that connected to us and negotiated a
 duplex connection, advertised as peer-sharing willing, at most `maxInboundPeers = 10` at once, not more often
-than every `inboundPeersRetryDelay = 60 s`) and *peer share requests* (section 1.13), taking inbound peers when
+than every `inboundPeersRetryDelay = 60 s`; only the inbound governor's mature duplex peers, registered at least
+`inboundMaturePeerDelay = 15 * 60` seconds before a step of the inbound governor, `InboundGovernor.hs:84-85`,
+`InboundGovernor/State.hs:74-83`) and *peer share requests* (section 1.13), taking inbound peers when
 the coin says so or when there is nobody to ask (`G/KnownPeers.hs:54-228`, `Policies.hs:62-75`).
 
 **Asynchronous demotions** (`Monitor.connections`, `G/Monitor.hs:111-320`). The governor never polls a

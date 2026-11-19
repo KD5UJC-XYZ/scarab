@@ -420,7 +420,13 @@
           "PeerSharingSuite",
           "PeerShareSuite",
           "PeerShareGovernorSuite",
-          "UpstreamPeerSharingBehaviorSuite"
+          "UpstreamPeerSharingBehaviorSuite",
+          "DuplexPeersSuite",
+          "InboundMaturitySuite",
+          "InboundPeerMaturitySuite",
+          "OutboundDuplexPeerSuite",
+          "ConnectionManagerSuite",
+          "AcceptPublicationSuite"
         ]
       },
       "page": "docs/compatibility/network-peersharing.md"

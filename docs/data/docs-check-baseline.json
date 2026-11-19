@@ -1236,12 +1236,6 @@
    "count": 1
   },
   {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection/g1-4-as-built.md",
-   "key": "KnownPeers.insert",
-   "count": 1
-  },
-  {
    "kind": "line-citation",
    "path": "docs/design/peer-selection/reference-model.md",
    "key": "Handshake.scala:50",

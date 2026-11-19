@@ -53,7 +53,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import cats.syntax.all.*
 import java.nio.file.{InvalidPathException, Path}
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
@@ -2103,6 +2103,10 @@ object Main extends IOApp:
         def geometry = ref.get.map(_.state.geometry(genesis.geometry))
       val marker =
         options.db.fold(GsmRunner.Marker.none[IO])(d => GsmRunner.Marker.file[IO](d.resolve("gsm")))
+      // the inbound governor runs beside the server, so dialled duplex connections are registered
+      // with it only when the node listens (responder mode)
+      val inboundGovernor =
+        run.listening.map(_ => sharing.tracked(_, ConnectionState.DataFlow.Duplex, _))
       val hot = OutboundPeers.Hot[IO](
         magic = genesis.networkMagic,
         network = NodeToNode
@@ -2129,7 +2133,8 @@ object Main extends IOApp:
         lost = lost,
         fatal = fatalSink,
         serve = Some(handlers),
-        genesis = genesisRuntime
+        genesis = genesisRuntime,
+        inboundGovernor = inboundGovernor
       )
       val emitOutput = (out: Output[PeerNetwork.Addr]) =>
         measured.peerSelection(out) *> (out match
@@ -2210,8 +2215,11 @@ object Main extends IOApp:
             ) { (bearer, remote) =>
               governor.serve(bearer, remote).void
             }
+            // the inbound governor's loop runs while the server does, and a defect of it ends the
+            // server, as the reference's `Server.with` runs both and ends with either
             .evalMap(server =>
-              logged(NodeEvent.Listening(server.address.toString)).as(server.stopped)
+              logged(NodeEvent.Listening(server.address.toString))
+                .as(IO.race(server.stopped, governor.run).map(_.merge))
             )
         )
       Connections(manager, governor, network, relay)

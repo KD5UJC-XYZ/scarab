@@ -901,19 +901,22 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         (ours, theirs) <- selfConnection(m.cm)
         hOut <- handle(DataFlow.Duplex)
         hIn <- handle(DataFlow.Duplex)
-        _ <- ours.negotiated(hOut)
+        dialling <- ours.negotiated(hOut)
         first <- ours.state
-        _ <- theirs.negotiated(hIn)
+        accepting <- theirs.negotiated(hIn)
         second <- ours.state
         trace <- m.changes
         kept <- handleAfterRelease(m.cm, ours)
-      yield (first, second, trace, kept eq hOut)
+      yield (first, second, trace, kept eq hOut, (dialling, accepting))
     }.map { r =>
-      val (first, second, trace, kept) = result(r)
+      val (first, second, trace, kept, announcements) = result(r)
       assertEquals(first, dupTicking)
       assertEquals(second, first)
       assertEquals(trace, selfConnected :+ (unnegotiatedIn -> dupTicking))
       assert(kept, "the outbound side's handle was overwritten")
+      // the accept took the entry, so its side announces the connection and ours does not
+      // (`Core.hs` 1622-1630, 982-989)
+      assertEquals(announcements, (Announcement.ByAcceptingSide, Announcement.Announced))
     }
   }
 
@@ -925,21 +928,39 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         (ours, theirs) <- selfConnection(m.cm)
         hOut <- handle(DataFlow.Duplex)
         hIn <- handle(DataFlow.Duplex)
-        _ <- theirs.negotiated(hIn)
+        accepting <- theirs.negotiated(hIn)
         first <- ours.state
-        _ <- ours.negotiated(hOut)
+        dialling <- ours.negotiated(hOut)
         second <- ours.state
         trace <- m.changes
         kept <- handleAfterRelease(m.cm, ours)
-      yield (first, second, trace, kept eq hIn)
+      yield (first, second, trace, kept eq hIn, (dialling, accepting))
     }.map { r =>
-      val (first, second, trace, kept) = result(r)
+      val (first, second, trace, kept, announcements) = result(r)
       val idle = ConnectionState.InboundIdle(DataFlow.Duplex)
       assertEquals(first, idle)
       assertEquals(second, dupTicking)
       assertEquals(trace, selfConnected ++ Vector(unnegotiatedIn -> idle, idle -> dupTicking))
       assert(kept, "the inbound side's handle was overwritten")
+      // `SelfConn'⁻¹` announces nothing; the accepting side did (`Core.hs` 1632-1648, 982-989)
+      assertEquals(announcements, (Announcement.ByAcceptingSide, Announcement.Announced))
     }
+  }
+
+  test("an accepted connection and a dialled one each announce themselves") {
+    managed() { m =>
+      for
+        (theirs, _) <- m.cm.include(peer(1), None).allocated
+        hIn <- handle(DataFlow.Duplex)
+        accepting <- theirs.negotiated(hIn)
+        reserved <- acquired(m.cm, 2)
+        ours <- reserved match
+          case (Acquired.Reserved(c), _) => IO.pure(c)
+          case (other, _) => IO.raiseError(new AssertionError(s"not reserved: $other"))
+        hOut <- handle(DataFlow.Duplex)
+        dialling <- ours.connected(None) *> ours.negotiated(hOut)
+      yield (accepting, dialling)
+    }.map(r => assertEquals(result(r), (Announcement.Announced, Announcement.Announced)))
   }
 
   // released by the outbound side before the inbound handshake ended: `OutboundIdle` becomes
@@ -1130,7 +1151,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
                         c.connected(None).whenA(s == ConnectionState.ReservedOutbound)
                       ) *>
                         handle(if duplex then DataFlow.Duplex else DataFlow.Unidirectional)
-                          .flatMap(c.negotiated)
+                          .flatMap(c.negotiated(_).void)
                     )
                   })
                 case Op.AwakeRemote(n) =>

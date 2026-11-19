@@ -415,7 +415,9 @@ object NodeToNodeServer:
 
   /** An inbound connection: negotiate, publish it to the manager, serve, and return the reason it
     * ended: the peer or a failure closed it, or the manager ended it ([[Connection.stopped]]).
-    * `negotiated` runs once the handshake succeeded and may use the multiplexer.
+    * `negotiated` runs once the handshake succeeded and the manager published the connection, as
+    * the reference announces an accepted connection to its inbound governor only then
+    * (`ConnectionManager/Core.hs` 982-995); it may use the multiplexer.
     */
   def accept[F[_]: Async, P](
       bearer: Bearer[F],
@@ -452,8 +454,10 @@ object NodeToNodeServer:
             agreed.data.peerSharing,
             initiators = !agreed.data.initiatorOnly,
             responders = Some(responders)
-          ) *> published(connection, Negotiated(mux, agreed)) *>
-            negotiated(agreed, mux) *>
+          ) *> published(connection, Negotiated(mux, agreed)).flatMap {
+            case Some(Announcement.Announced)              => negotiated(agreed, mux)
+            case Some(Announcement.ByAcceptingSide) | None => Resource.unit[F]
+          } *>
             remoteActivity(mux, responders, settings.protocolIdleTimeout, connection)
         ).surround(Async[F].race(mux.closed, connection.stopped))
         result <- reason match
@@ -465,17 +469,20 @@ object NodeToNodeServer:
     // a connection the manager ends while it negotiates (a prune) ends there
     Async[F].race(connection.stopped, served).map(_.merge)
 
-  /** Publish the negotiated `handle` with its state; a connection the manager refuses now is
-    * stopped (the reference's handler fails, and its mux with it).
+  /** Publish the negotiated `handle` with its state, and tell whether this side announces the
+    * connection to the inbound governor; a connection the manager refuses now is stopped (the
+    * reference's handler fails, and its mux with it), and announces nothing.
     */
   private[network] def published[F[_]: Async](
       connection: Connection[F],
       handle: Negotiated[F]
-  ): Resource[F, Unit] =
+  ): Resource[F, Option[Announcement]] =
     Resource.eval(
       Handle
-        .allow[ConnectionError](connection.negotiated(handle))
+        .allow[ConnectionError](connection.negotiated(handle).map(Option(_)))
         .rescue(error =>
-          handle.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+          handle.mux
+            .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+            .as(Option.empty[Announcement])
         )
     )

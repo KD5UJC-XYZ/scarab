@@ -6,6 +6,7 @@ import cats.mtl.Handle
 import cats.syntax.all.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import xyz.kd5ujc.scarab.network.*
+import xyz.kd5ujc.scarab.protocol.ConnectionState
 
 /** What happened on an inbound connection, for the log. */
 enum InboundEvent:
@@ -43,6 +44,12 @@ final class InboundGovernor[F[_]: Async] private (
   private def emit(remote: SocketAddress[IpAddress], event: InboundEvent): F[Unit] =
     events.traverse_(_.emit(remote.toString, event))
 
+  /** The inbound governor's own loop, which runs as long as the server does, as the reference's
+    * runs beside its accept loop (`Server.with`): the steps that mature its duplex peers
+    * ([[PeerSharingRuntime.maturing]]). Without peer sharing it has nothing to do.
+    */
+  def run: F[Nothing] = sharing.fold(Async[F].never[Nothing])(_.maturing)
+
   /** Serve one accepted connection until it ends; returns why it ended. Never raises. */
   def serve(bearer: Bearer[F], remote: SocketAddress[IpAddress]): F[ConnectionEnd] =
     // the connection is known by its local address too (`ConnMap.hs` 45-50)
@@ -77,16 +84,23 @@ final class InboundGovernor[F[_]: Async] private (
         .flatTap(reason => emit(remote, InboundEvent.Closed(InboundEnd.Connection(reason))))
     }
 
-  /** After the handshake: the data flow for the log, and a duplex peer for peer sharing. */
+  /** After the handshake, once the manager published the connection: the data flow for the log, and
+    * the connection tracked by the inbound governor, of either data flow; a duplex one's peer is
+    * registered as fresh, which the outbound governor sees only once it is mature
+    * ([[PeerSharingRuntime.inbound]]).
+    */
   private def negotiated(
       remote: SocketAddress[IpAddress],
       agreed: HandshakeClient.Agreed
   ): Resource[F, Unit] =
-    val duplex = !agreed.data.initiatorOnly
-    Resource.eval(
-      emit(remote, if duplex then InboundEvent.Duplex else InboundEvent.Unidirectional)
-    ) *>
-      sharing.filter(_ => duplex).traverse_(_.accepted(remote, agreed.data.peerSharing))
+    val flow =
+      if agreed.data.initiatorOnly then ConnectionState.DataFlow.Unidirectional
+      else ConnectionState.DataFlow.Duplex
+    val event = flow match
+      case ConnectionState.DataFlow.Duplex         => InboundEvent.Duplex
+      case ConnectionState.DataFlow.Unidirectional => InboundEvent.Unidirectional
+    Resource.eval(emit(remote, event)) *>
+      sharing.traverse_(_.tracked(remote, flow, agreed.data.peerSharing))
 
 object InboundGovernor:
   /** The connection table as JSON (`GET /connections`). */

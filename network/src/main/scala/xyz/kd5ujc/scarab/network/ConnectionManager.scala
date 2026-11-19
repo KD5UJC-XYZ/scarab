@@ -63,6 +63,20 @@ final case class Negotiated[F[_]](mux: Mux[F], agreed: HandshakeClient.Agreed):
   /** The transport's identity, captured once by the mux (none for in-memory bearers). */
   def identity: Option[Either[ConnectionIdentityError, ConnectionId]] = mux.connectionId
 
+/** Whether the side that negotiated a connection announces it to the inbound governor
+  * (`NewConnection`, `ConnectionManager/Core.hs` 982-989 and 1594-1648 at ouroboros-network
+  * `c45735a5`, the same at `4646039f` and `2f1c154f`). The accepting side announces every
+  * connection it negotiates; the dialling side announces one only while it is still its own, since
+  * an accepted connection with our own identity that took the entry is announced by its accepting
+  * side.
+  */
+enum Announcement derives CanEqual:
+  /** This side announces the connection. */
+  case Announced
+
+  /** The connection is one to ourselves that the accepting side announces, not this one. */
+  case ByAcceptingSide
+
 /** The result of an operation the reference defines on some states only (`OperationResult`,
   * `ConnectionManager/Types.hs`): its value, or the state it does not apply to (`None` for a
   * connection no longer in the table, the reference's `UnknownConnectionSt`).
@@ -101,9 +115,10 @@ trait Connection[F[_]]:
   def connected(local: Option[ConnectionId.Endpoint])(using Raise[F, ConnectionError]): F[Unit]
 
   /** The handshake agreed `handle` 's data flow; the handle is published with the negotiated state
-    * (`Negotiated^{flow}`, `Core.hs` 873-903 and 1588-1660).
+    * (`Negotiated^{flow}`, `Core.hs` 873-903 and 1588-1660), and whether this side announces the
+    * connection to the inbound governor is told.
     */
-  def negotiated(handle: Negotiated[F])(using Raise[F, ConnectionError]): F[Unit]
+  def negotiated(handle: Negotiated[F])(using Raise[F, ConnectionError]): F[Announcement]
 
   /** The handshake agreed no version: the connection is taken out of the table through
     * `Terminating` (`terminateInboundWithErrorOrQuery`, `terminateOutboundWithErrorOrQuery`).
@@ -660,50 +675,70 @@ object ConnectionManager:
               )
             case Some((key, entry)) =>
               val flow = agreed.dataFlow
-              // the events, and whether the state takes this handle: a state the other side of a
-              // self-connection reached keeps the handle it has (`Core.hs` 885-887, 1624-1652)
-              val events: Either[ConnectionError, (Vector[Event], Boolean)] =
+              // the events, whether the state takes this handle (a state the other side of a
+              // self-connection reached keeps the handle it has, `Core.hs` 885-887, 1624-1652),
+              // and whether this side announces the connection (982-989, 1622-1630)
+              val events: Either[ConnectionError, (Vector[Event], Boolean, Announcement)] =
                 (side, entry.state) match
                   case (_, ConnectionState.Terminating | ConnectionState.Terminated) =>
                     Left(ConnectionError.Disconnected(at.toString, entry.state, None))
                   // the common cases, `Core.hs` 913-930 and 1588-1622
                   case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
-                    Right((Vector(Event.Negotiated(flow, Provenance.Inbound)), true))
+                    Right(
+                      (
+                        Vector(Event.Negotiated(flow, Provenance.Inbound)),
+                        true,
+                        Announcement.Announced
+                      )
+                    )
                   case (Side.Outbound(_), ConnectionState.Unnegotiated(Provenance.Outbound)) =>
-                    Right((Vector(Event.Negotiated(flow, Provenance.Outbound)), true))
+                    Right(
+                      (
+                        Vector(Event.Negotiated(flow, Provenance.Outbound)),
+                        true,
+                        Announcement.Announced
+                      )
+                    )
                   // a connection to ourselves. The inbound side: `SelfConnNegotiated` (913-930);
                   // the outbound side that won the race keeps it (932-934); an outbound idle one
-                  // becomes inbound idle with its flow (936-945)
+                  // becomes inbound idle with its flow (936-945). The inbound side announces it
+                  // in each case
                   case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Outbound)) =>
-                    Right((Vector(Event.SelfConnNegotiated(flow)), true))
+                    Right((Vector(Event.SelfConnNegotiated(flow)), true, Announcement.Announced))
                   case (
                         Side.Inbound,
                         ConnectionState.OutboundUni | ConnectionState.OutboundDup(_)
                       ) =>
-                    Right((Vector.empty, false))
+                    Right((Vector.empty, false, Announcement.Announced))
                   case (Side.Inbound, ConnectionState.OutboundIdle(_)) =>
-                    Right((Vector(Event.SelfConnIdle), true))
+                    Right((Vector(Event.SelfConnIdle), true, Announcement.Announced))
                   // the outbound side writes its negotiated state whatever the provenance the
                   // accept left, in one move (1600-1622); `SelfConn'⁻¹` keeps the inbound side's
-                  // handle (1624-1652)
+                  // handle (1624-1652). The accept took the entry in both, and announces it
                   case (Side.Outbound(_), ConnectionState.Unnegotiated(Provenance.Inbound)) =>
-                    Right((Vector(Event.Negotiated(flow, Provenance.Outbound)), true))
+                    Right(
+                      (
+                        Vector(Event.Negotiated(flow, Provenance.Outbound)),
+                        true,
+                        Announcement.ByAcceptingSide
+                      )
+                    )
                   case (Side.Outbound(_), ConnectionState.InboundIdle(_)) =>
-                    Right((Vector(Event.SelfConnReversed), false))
+                    Right((Vector(Event.SelfConnReversed), false, Announcement.ByAcceptingSide))
                   case (Side.Outbound(_), other) =>
                     Left(ConnectionError.ForbiddenOperation(at.toString, other))
                   case (Side.Inbound, other) =>
                     Left(ConnectionError.ImpossibleState(at.toString, other))
-              events.flatMap((moves, takes) =>
+              events.flatMap((moves, takes, announcement) =>
                 walk(key._1, entry, moves*)
                   .leftMap(ConnectionError.IllegalTransition(at.toString, _))
-                  .map((next, log) => (next, log, takes))
+                  .map((next, log) => (next, log, takes, announcement))
               ) match
                 case Left(error) => (t, Effects.none[F], Left(error))
-                case Right((next, log, takes)) =>
+                case Right((next, log, takes, announcement)) =>
                   val kept = if takes then next.copy(handle = Some(agreed)) else next
-                  (t.put(key, kept), Effects.log[F](log), Right(()))
-        }.flatMap(_.fold(refuse[Unit](_), F.pure))
+                  (t.put(key, kept), Effects.log[F](log), Right(announcement))
+        }.flatMap(_.fold(refuse[Announcement](_), F.pure))
 
       // `computeConnStateOnError` for `HandshakeFailure` is `TerminatingState`, which keeps the
       // error, written in the transaction that deletes the entry from the table (`Core.hs`

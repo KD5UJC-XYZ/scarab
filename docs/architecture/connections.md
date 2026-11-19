@@ -77,14 +77,17 @@ are Scarab's own, not the reference's sequence.
 **`InboundGovernor`** (`node`). `serve(bearer, remote)` is the inbound handler of `--listen`: it admits the
 connection to the manager, runs `NodeToNodeServer.accept` (handshake, our servers, the peer's activity),
 publishes the negotiated handle and reports the data flow (`inbound` log events `accepted`, `duplex`,
-`unidirectional`, `closed`, `refused`). It runs none of our clients.
+`unidirectional`, `closed`, `refused`). It runs none of our clients. The peer of a duplex connection is
+registered with the inbound governor's own loop (`run`, beside the server), whose steps mature it; the outbound
+governor learns it only once mature ([inbound peers](../compatibility/network-peersharing.md#inbound-peers)).
 
 **Outbound.** `OutboundPeers.establish` acquires through the manager with the peer's provenance. A reused
 connection's handle gets our initiators attached (`NodeToNode.attach`: KeepAlive, PeerSharing; the hot
 protocols on activation), with no handshake and no responder installed again. A reservation is dialled by a
 fiber of its own under the outer supervisor, which owns the transport as the reference's connection thread
 does: `NodeToNode.negotiate` runs the handshake, publishes the handle and, on a duplex connection, our
-responders and the peer's activity. A clean close releases the outbound use only; a protocol failure or a
+responders and the peer's activity; while the node listens, the peer of a duplex one is registered with the
+inbound governor too, as an accepted one's is. A clean close releases the outbound use only; a protocol failure or a
 close timeout stops the shared mux (`PeerStateActions.hs` 1079-1104). Outbound peers configured with
 `InitiatorAndResponder` offer duplex; `InitiatorOnly` peers do not. `sessions` in `GET /connections` is, for each
 peer, its running hot session (`active`: the connection it runs over, as `connections` lists it, its activation,

@@ -342,6 +342,11 @@ object NodeToNode:
     * governor of a duplex outbound connection (`ConnectionManager/Core.hs` 1607-1617). The resource
     * is the connection's: its release closes the multiplexer. A handshake that agreed no version
     * takes the connection out of the table ([[ConnectionManager.recordingRefusal]]).
+    *
+    * @param announced
+    *   held for the connection's life when it is duplex and this side announces it to the inbound
+    *   governor ([[Announcement.Announced]]): not when the accepting side of a connection to
+    *   ourselves took it (`Core.hs` 1622-1630)
     */
   def negotiate[F[_]: Async, P](
       bearer: Bearer[F],
@@ -349,7 +354,8 @@ object NodeToNode:
       connection: Connection[F],
       settings: Settings = Settings(),
       serve: Option[ServerHandlers[F, P]] = None,
-      server: NodeToNodeServer.Settings = NodeToNodeServer.Settings()
+      server: NodeToNodeServer.Settings = NodeToNodeServer.Settings(),
+      announced: Negotiated[F] => Resource[F, Unit] = (_: Negotiated[F]) => Resource.unit[F]
   )(using Raise[F, NetworkError]): Resource[F, Negotiated[F]] =
     val offers = Handshake.nodeToNodeOffers(
       settings.maxVersion,
@@ -384,7 +390,7 @@ object NodeToNode:
               NodeToNodeServer.applicationProtocols(agreed.data.peerSharing),
               Set.empty
             )
-          ) *> NodeToNodeServer.published(connection, handle)
+          ) *> NodeToNodeServer.published(connection, handle).void
         ) { handlers =>
           Resource.eval(NodeToNodeServer.Responders.create[F]).flatMap { responders =>
             NodeToNodeServer.start(
@@ -394,7 +400,10 @@ object NodeToNode:
               peerSharing = agreed.data.peerSharing,
               initiators = true,
               responders = Some(responders)
-            ) *> NodeToNodeServer.published(connection, handle) *>
+            ) *> NodeToNodeServer.published(connection, handle).flatMap {
+              case Some(Announcement.Announced)              => announced(handle)
+              case Some(Announcement.ByAcceptingSide) | None => Resource.unit[F]
+            } *>
               NodeToNodeServer.remoteActivity(
                 mux,
                 responders,
