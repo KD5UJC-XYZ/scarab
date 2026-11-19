@@ -47,7 +47,7 @@ the reference-only devnet evidence below does not satisfy that condition.
   - guards, direct deposits, balance intervals, Plutus scripts, redeemers, datums and forms the Conway decoder refuses: they halt with `DijkstraNotYet.Rules` (#54);
   - the pool-registration transition and its VRF-key occurrence accounting (#826);
   - parameter-change proposals, whose store still holds Conway updates (#826);
-  - the rules in block application and at epoch boundaries, which still refuse with `DijkstraNotYet.Rules` (#54, T11);
+  - the rules in block application, which still refuse with `DijkstraNotYet.Rules` (#54, T11); the epoch boundary is implemented: Dijkstra's EPOCH, SNAP (the Leios committee of `ppLeiosCommitteeSize`, the key age the KES constants give) and POOLREAP (one VRF-key reference released per pool), checked byte for byte by `DijkstraEpochReferenceSuite` against the build's own TICK on both captured Dijkstra states across two boundaries, with and without the reward update, and on states derived from them with retirements and re-registrations (`fixtures/reference/dijkstra-epoch`); a re-registration of a pool that holds a voting key is not held yet (#826);
   - the node-to-client queries and failure encoders;
   - a crossing made by the Scala node on a devnet.
 - **Persistence:**

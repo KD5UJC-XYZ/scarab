@@ -6,8 +6,21 @@ import io.circe.{ACursor, HCursor, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Sts, Tick}
-import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
+import xyz.kd5ujc.scarab.ledger.{PoolParams, RewardAccount}
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, HardFork, Sts, Tick}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Dijkstra,
+  EpochNo,
+  KeyHash,
+  NewEpochState,
+  PState,
+  PoolBlsKey,
+  ShelleyBasedEra,
+  SlotNo,
+  StakePool,
+  VRFVerKeyHash
+}
+import xyz.kd5ujc.scarab.node.read.EraRead
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
 
@@ -21,6 +34,17 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
   * committee the mark seats and the key age the KES constants give, and the reward update. The
   * globals are the node's for each network's configuration, checked against those the native tick
   * ran with. No case is excluded.
+  *
+  * Neither state retires or re-registers a pool, so the oracle also derives states from each with
+  * the ledger's own lenses (`cases.json`'s `derivation.changes`): a pool retiring at the next
+  * epoch; a pool re-registered with another VRF key hash while a second pool shares its current one
+  * (POOLREAP releases one reference per pool, `Dijkstra/Rules/PoolReap.hs`); both; and the sharing
+  * pool retiring too. The same changes are made here, the derived state is checked against the
+  * oracle's, and it is ticked across the boundary. A re-registration of a pool that holds a voting
+  * key gives future parameters that carry it (`stakePoolStateToStakePoolParams`), which a pool's
+  * parameters do not hold here yet (`DijkstraNotYet.PoolParamsBlsKey`, #826 comment 6967015840, #85
+  * item 38): on the testnet, where every pool holds one, those derivations are checked to be such,
+  * and not compared.
   */
 class DijkstraEpochReferenceSuite extends FunSuite:
   private given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
@@ -72,19 +96,89 @@ class DijkstraEpochReferenceSuite extends FunSuite:
     val nes = Vector(1, 0, 7, 1, 1, 1).foldLeft(root)((n, i) => items(n)(i))
     right(state.decode(nes).left.map(_.render))
 
+  private def keyHash(hex: String): KeyHash[StakePool] =
+    right(KeyHash.fromBytes[StakePool](right(Bytes.fromHex(hex))))
+  private def vrf(hex: String): VRFVerKeyHash = right(
+    VRFVerKeyHash.fromBytes(right(Bytes.fromHex(hex)))
+  )
+
+  /** One of the oracle's changes to the pool state (`derivation.changes`). */
+  private def change(p: PState, c: ACursor): PState =
+    text(c, "change") match
+      case "setActiveVrf" =>
+        val id = keyHash(text(c, "pool"))
+        p.copy(stakePools =
+          p.stakePools.updated(id, p.stakePools(id).copy(vrf = vrf(text(c, "vrf"))))
+        )
+      case "setFutureParams" =>
+        // `stakePoolStateToStakePoolParams Testnet` (`State/StakePool.hs:325-343`, cardano-ledger 9df9f98c) with another VRF
+        val id = keyHash(text(c, "pool"))
+        val s = p.stakePools(id)
+        assertEquals(text(c, "network"), "Testnet")
+        val params = PoolParams(
+          id.bytes,
+          right(Bytes.fromHex(text(c, "vrf"))),
+          s.pledge.value,
+          s.cost.value,
+          s.margin,
+          RewardAccount(0, EraRead.credential(s.accountId)),
+          s.owners.iterator.map(_.bytes).toSet,
+          s.relays,
+          s.metadata
+        )
+        p.copy(future = p.future.updated(id, params))
+      case "populateVRFKeyHashes" => HardFork.populateVRFKeyHashes(p)
+      case "retire" =>
+        p.copy(retiring =
+          p.retiring
+            .updated(keyHash(text(c, "pool")), right(EpochNo.fromBigInt(number(c, "epoch"))))
+        )
+      case other => fail(s"unknown change $other")
+
+  /** Whether a derivation gives future parameters to a pool that holds a voting key. */
+  private def keyedFuture(c: HCursor, nes: NewEpochState[Dijkstra]): Boolean =
+    val pools = EraLedger.pState(nes.es.ls).stakePools
+    c.downField("derivation")
+      .downField("changes")
+      .values
+      .getOrElse(Vector.empty)
+      .map(_.hcursor)
+      .exists(ch =>
+        text(ch, "change") == "setFutureParams" &&
+          (pools(keyHash(text(ch, "pool"))).blsKey match
+            case PoolBlsKey.Leios(Some(_))                    => true
+            case PoolBlsKey.Leios(None) | PoolBlsKey.Node11_1 => false)
+      )
+
+  /** The state the case starts from: the input, or the oracle's derivation of it. */
+  private def startOf(c: HCursor, nes: NewEpochState[Dijkstra]): NewEpochState[Dijkstra] =
+    val derivation = c.downField("derivation")
+    derivation.get[String]("name").toOption match
+      case None => nes
+      case Some(name) =>
+        val changes = right(derivation.downField("changes").values.toRight("no changes")).toVector
+        val ls = nes.es.ls
+        val derived = changes.foldLeft(EraLedger.pState(ls))((p, j) => change(p, j.hcursor))
+        val out = nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, derived)))
+        val encoded = right(state.write(out).left.map(_.toString))
+        derivation.get[String]("file").toOption.foreach { file =>
+          assertEquals(encoded.hex, Bytes.wrap(Files.readAllBytes(fixture.resolve(file))).hex, name)
+        }
+        assertEquals(sha256(encoded), text(derivation, "stateSha256"), name)
+        out
+
   /** The configuration directory of the network whose Shelley genesis the oracle read. */
   private def configOf(genesis: String): Path = Path.of(genesis).getParent
 
   test("the corpus holds both states on both paths, and the node's globals are the native tick's") {
     assertEquals(
       cases.map(c => (text(c, "name"), text(c, "path"))).toSet,
-      Set(
-        ("dijkstra-203", "boundaries"),
-        ("dijkstra-203", "rewards"),
-        ("testnet-2168639", "boundaries"),
-        ("testnet-2168639", "rewards")
-      )
+      for
+        name <- Set("dijkstra-203", "testnet-2168639")
+        path <- Set("boundaries", "rewards")
+      yield (name, path)
     )
+    assertEquals(cases.size, 20)
     cases.foreach { c =>
       val g = globalsOf(configOf(text(c, "genesis")))
       val native = c.downField("globals")
@@ -106,24 +200,40 @@ class DijkstraEpochReferenceSuite extends FunSuite:
   cases.foreach { c =>
     val name = text(c, "name")
     val path = text(c, "path")
-    test(s"$name, $path: Dijkstra's tick agrees with the native tick after every slot") {
+    val derivation = c.downField("derivation").get[String]("name").getOrElse("none")
+    test(
+      s"$name, $derivation, $path: Dijkstra's tick agrees with the native tick after every slot"
+    ) {
       val globals = globalsOf(configOf(text(c, "genesis")))
-      val start = input(name, text(c, "stateSha256"))
-      assertEquals(sha256(state.encodeUnchecked(start)), text(c, "newEpochStateSha256"))
-      val ticks = right(c.downField("ticks").values.toRight("no ticks")).toVector
-      ticks.foldLeft(start) { (before, tickJson) =>
-        val tick = tickJson.hcursor
-        val slot = right(SlotNo.fromBigInt(number(tick, "slot")))
-        val at = s"at slot ${number(tick, "slot")}"
-        val after = right(Sts(Tick.sts[Dijkstra])(globals, (), before, slot).leftMap(_.show))
-        val encoded = right(state.write(after).left.map(_.toString))
-        tick.get[String]("file").toOption.foreach { file =>
-          val expected = Bytes.wrap(Files.readAllBytes(fixture.resolve(file)))
-          assertEquals(encoded.hex, expected.hex, at)
-        }
-        assertEquals(sha256(encoded), text(tick, "stateSha256"), at)
-        assertEquals(after.epoch.toBigInt, number(tick.downField("facts"), "epoch"), at)
-        after
-      }
+      val read = input(name, text(c, "stateSha256"))
+      assertEquals(sha256(state.encodeUnchecked(read)), text(c, "newEpochStateSha256"))
+      if keyedFuture(c, read) then
+        // the gap above: the reference's derived state holds a keyed future pool, ten items
+        assertEquals(
+          (name, derivation.contains("reregister") || derivation.startsWith("both")),
+          ("testnet-2168639", true)
+        )
+      else
+        val start = startOf(c, read)
+        tickAll(c, globals, start)
     }
   }
+
+  /** Each tick of the case from `start`, the state after it equal to the native one. */
+  private def tickAll(c: HCursor, globals: Globals, start: NewEpochState[Dijkstra]): Unit =
+    val ticks = right(c.downField("ticks").values.toRight("no ticks")).toVector
+    ticks.foldLeft(start) { (before, tickJson) =>
+      val tick = tickJson.hcursor
+      val slot = right(SlotNo.fromBigInt(number(tick, "slot")))
+      val at = s"at slot ${number(tick, "slot")}"
+      val after = right(Sts(Tick.sts[Dijkstra])(globals, (), before, slot).leftMap(_.show))
+      val encoded = right(state.write(after).left.map(_.toString))
+      tick.get[String]("file").toOption.foreach { file =>
+        val expected = Bytes.wrap(Files.readAllBytes(fixture.resolve(file)))
+        assertEquals(encoded.hex, expected.hex, at)
+      }
+      assertEquals(sha256(encoded), text(tick, "stateSha256"), at)
+      assertEquals(after.epoch.toBigInt, number(tick.downField("facts"), "epoch"), at)
+      after
+    }
+    ()
