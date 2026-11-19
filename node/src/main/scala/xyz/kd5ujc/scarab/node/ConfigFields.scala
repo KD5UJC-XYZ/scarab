@@ -11,33 +11,37 @@ import xyz.kd5ujc.scarab.ledger.state.{NonZero, Word64}
 /** Primitive instances used by the configuration reader (aeson 2.2.5.0,
   * `src/Data/Aeson/Types/FromJSON.hs:187-212, 1688-1689, 1733-1744, 1814-1815`); optional fields
   * treat missing keys and null as absent (`:858-859, 922-925, 1616-1618`).
+  *
+  * @tparam K
+  *   the keys it may read: the configuration's own ([[NodeConfig.TopLevelKey]]), so that a read of
+  *   a key the parser does not declare does not compile, or any (`String`) for a nested object.
   */
-private[node] final class ConfigFields private (val name: String, val fields: JsonObject):
-  def value(key: String): Option[Json] = fields(key).filterNot(_.isNull)
+private[node] final class ConfigFields[K <: String] private (val name: String, fields: JsonObject):
+  def value(key: K): Option[Json] = fields(key).filterNot(_.isNull)
 
-  def optional[A: Decoder](key: String): Either[ConfigError, Option[A]] =
+  def optional[A: Decoder](key: K): Either[ConfigError, Option[A]] =
     value(key).traverse(_.as[A].leftMap(e => ConfigError(ConfigProblem.JsonField(name, key, e))))
 
-  def required[A: Decoder](key: String): Either[ConfigError, A] =
+  def required[A: Decoder](key: K): Either[ConfigError, A] =
     optional[A](key).flatMap(_.toRight(ConfigError(ConfigProblem.MissingField(name, key))))
 
-  def obj(key: String): Either[ConfigError, Option[ConfigFields]] =
+  def obj(key: K): Either[ConfigError, Option[ConfigFields[String]]] =
     value(key).traverse(ConfigFields.read(s"$name.$key", _))
 
-  private def number[A](key: String)(read: Json => Either[NumberError, A]) =
+  private def number[A](key: K)(read: Json => Either[NumberError, A]) =
     value(key).traverse(j =>
       read(j).leftMap(e => ConfigFields.error(ConfigFieldError.Number(name, key, e)))
     )
 
-  def word64(key: String): Either[ConfigError, Option[Word64]] = number(key)(FromJson.word64)
+  def word64(key: K): Either[ConfigError, Option[Word64]] = number(key)(FromJson.word64)
 
-  def nonZeroWord64(key: String): Either[ConfigError, Option[NonZero[Word64]]] =
+  def nonZeroWord64(key: K): Either[ConfigError, Option[NonZero[Word64]]] =
     number(key)(FromJson.nonZeroWord64)
 
-  def integer(key: String): Either[ConfigError, Option[BigInt]] = number(key)(FromJson.integer)
+  def integer(key: K): Either[ConfigError, Option[BigInt]] = number(key)(FromJson.integer)
 
   /** The reference build's Int is signed 64-bit, independently of Scala's Int. */
-  def int64(key: String): Either[ConfigError, Option[Long]] =
+  def int64(key: K): Either[ConfigError, Option[Long]] =
     number(key)(FromJson.scientific).flatMap(
       _.traverse(s =>
         s.toBoundedInteger(BigInt(Long.MinValue), BigInt(Long.MaxValue))
@@ -57,7 +61,7 @@ private[node] final class ConfigFields private (val name: String, val fields: Js
     * base 4.18.3.0 `GHC/Float.hs:577-591, 1218-1281`) and `toDouble` both round to nearest, ties to
     * even, overflowing to an infinity and underflowing to a signed zero.
     */
-  def realFloat(key: String): Either[ConfigError, Option[Double]] =
+  def realFloat(key: K): Either[ConfigError, Option[Double]] =
     value(key).traverse {
       case j if j.asString.contains("+inf") => Right(Double.PositiveInfinity)
       case j if j.asString.contains("-inf") => Right(Double.NegativeInfinity)
@@ -70,9 +74,13 @@ private[node] final class ConfigFields private (val name: String, val fields: Js
     }
 
 private[node] object ConfigFields:
-  def read(name: String, json: Json): Either[ConfigError, ConfigFields] =
+  /** A nested object, whose keys are its own. */
+  def read(name: String, json: Json): Either[ConfigError, ConfigFields[String]] = keyed(name, json)
+
+  /** An object read only by the keys `K`. */
+  def keyed[K <: String](name: String, json: Json): Either[ConfigError, ConfigFields[K]] =
     json.asObject
-      .map(new ConfigFields(name, _))
+      .map(new ConfigFields[K](name, _))
       .toRight(ConfigError(ConfigProblem.ExpectedObject(name, json)))
 
   def error(cause: ConfigFieldError): ConfigError = ConfigError(ConfigProblem.Ancillary(cause))

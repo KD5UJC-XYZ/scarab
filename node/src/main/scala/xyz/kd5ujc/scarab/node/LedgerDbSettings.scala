@@ -58,7 +58,7 @@ object LedgerDbSettings:
     Set("SnapshotInterval", "NumOfDiskSnapshots", "SlotOffset", "RateLimit", "MinDelay", "MaxDelay")
 
   private[node] def parse(
-      k: ConfigFields,
+      k: ConfigFields[NodeConfig.TopLevelKey],
       build: ReferenceBuild
   ): Either[ConfigError, LedgerDbSettings] =
     val defaults = LedgerSnapshotSettings.defaults(build)
@@ -90,7 +90,7 @@ object LedgerDbSettings:
     yield result
 
   private def readDatabase(
-      k: ConfigFields,
+      k: ConfigFields[String],
       topInterval: Option[NonZero[Word64]],
       topNumber: Option[Word64],
       defaults: LedgerSnapshotSettings
@@ -143,7 +143,7 @@ object LedgerDbSettings:
     )
 
   private def readSnapshots(
-      k: ConfigFields,
+      k: ConfigFields[String],
       topInterval: Option[NonZero[Word64]],
       topNumber: Option[Word64],
       defaults: LedgerSnapshotSettings

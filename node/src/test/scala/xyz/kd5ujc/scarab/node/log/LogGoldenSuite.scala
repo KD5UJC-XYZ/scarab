@@ -246,6 +246,9 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(
           NodeEvent.UnstableReferenceBuild(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)
         )
+        _ <- node(
+          NodeEvent.ConfigKeysIgnored(cats.data.NonEmptyList.of("MinNodeVersion", "TraceOptions"))
+        )
         all <- lines.get
       yield all
     }

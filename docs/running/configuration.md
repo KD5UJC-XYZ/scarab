@@ -10,6 +10,27 @@ syntax works, full YAML does not) the way `cardano-node run` reads it (`Cardano.
 and `--topology <topology.json>` its P2P topology (`Cardano.Node.Configuration.TopologyP2P`). The public
 Preview, preprod and mainnet files are the tests (`ConfigSuite` over `fixtures/<network>/genesis`).
 
+The node reads the flat configuration, every key at the top level, the only form cardano-node 11.1.3
+reads. cardano-node 11.2.1 also reads a second form, the cardano-config envelope (`$schema`, `Version`,
+`MinNodeVersion` and every setting nested under `Configuration`), which its release ships as
+`configuration/cardano/mainnet-config.json`. It tells the two apart by a top-level `Configuration` key
+(`classifyConfigurationFile`). The node does not read the envelope yet, and refuses it rather than read
+it as an empty configuration:
+
+- in a `--genesis-dir` directory, under every `--reference-build`, with `ConfigError` `CardanoConfigEnvelope`;
+- with `--config`, as the selected build's node tells the file apart: `11.2` and `leios-b004fe0c` refuse it
+  with `CardanoConfigEnvelope`; `11.1`, the default, reads the file flat as cardano-node 11.1.3 does, and
+  refuses it, as 11.1.3 does, for its missing `ByronGenesisFile`.
+
+Use the network's flat configuration instead: for mainnet, `configuration/cardano/mainnet-config.json`
+of cardano-node 11.1.3; for any network, a published `config.json` without a top-level `Configuration`
+key. The genesis files and their hashes do not depend on the form, and cardano-node 11.2.1 reads the
+flat file too, so one flat file serves both nodes. Converting an envelope by hand takes more than
+moving each section's keys to the top level: cardano-config renames some keys
+(`TargetNumberOfRootPeers` is `DeadlineTargetNumberOfRootPeers` in the envelope,
+`MempoolCapacityBytesOverride` is `CapacityBytesOverride`) and drops `LastKnownBlockVersion-Major`
+and `-Minor`, which a flat `--config` file must name.
+
 What the configuration does:
 
 | Key | Use |
@@ -34,7 +55,7 @@ What the configuration does:
 | `MaxConcurrencyDeadline` | nonnegative target active fetching peers in deadline mode (default 1); preferred-peer handover can temporarily exceed it |
 | `MaxConcurrencyBulkSync` | corresponding nonnegative bulk-sync fetching-peer target (default 1) |
 | `TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`, and the three `...BigLedgerPeers` | the targets of the peer governor (see "Peer selection"); absent keys leave the reference defaults |
-| everything else (`TraceOptions`, ...) | ignored |
+| everything else (`TraceOptions`, ...) | ignored. With `--genesis-dir` the node names these keys at start in a `configKeysIgnored` warning ([logging](logging.md)); with `--config` it says nothing of them, as cardano-node 11.1.3 says nothing. The warning is an [approved deviation](../decisions.md#genesis-storage-and-keys) |
 
 The Leios settings follow `cardano-node` [b004fe0c's configuration reader](https://github.com/IntersectMBO/cardano-node/blob/b004fe0c50913dcdaa827a98e68a43d0ccce152a/cardano-node/src/Cardano/Node/Configuration/POM.hs#L390)
 and [Leios instances](https://github.com/IntersectMBO/cardano-node/blob/b004fe0c50913dcdaa827a98e68a43d0ccce152a/cardano-node/src/Cardano/Node/Configuration/Leios.hs#L24).
@@ -226,7 +247,8 @@ java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.nod
   --db "${SCARAB_DATA_DIR:-/tmp/scarab}/preview-db"
 ```
 
-(`--genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001` still works.)
+(`--genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001` still works, with a
+flat `config.json`; an envelope is refused, see [Configuration and topology files](#configuration-and-topology-files).)
 The Preview genesis files (Byron, Shelley, Alonzo, Conway), `config.json`, `topology.json` and the
 `peer-snapshot.json` the topology names come from the official Cardano network configuration (`fixtures/preview/genesis/` holds a copy of all but the snapshot for the tests). Fetch them
 into the config directory, in a container like everything else:

@@ -81,6 +81,9 @@ enum EventKind(val area: Area, val severity: Severity):
     * for.
     */
   case UnstableReferenceBuild extends EventKind(Area.Node, Severity.Warning)
+
+  /** A genesis directory's configuration has top-level keys the node does not read. */
+  case ConfigKeysIgnored extends EventKind(Area.Node, Severity.Warning)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   // the node-to-client socket as the network layer sets it up, the reference's
   // `Startup.DiffusionInit` traces of it (ouroboros-network c45735a5,

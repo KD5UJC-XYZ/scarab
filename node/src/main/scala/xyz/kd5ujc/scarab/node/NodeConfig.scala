@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.json.FromJson
 import cats.syntax.all.*
-import io.circe.{Decoder, HCursor, Json, parser}
+import io.circe.{Decoder, HCursor, Json, JsonObject, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
 import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, OutboundLimit, Word32}
@@ -179,6 +179,12 @@ final case class ConfigSettings(
   * Byron rules also read `RequiresNetworkMagic` and `PBftSignatureThreshold`. The genesis files and
   * their hashes, the protocol and the other settings are read as `cardano-node` reads them (see
   * [[NodeConfig.parse]]).
+  *
+  * @param ignoredKeys
+  *   The top-level keys of the configuration that the node does not read, in the file's order. The
+  *   node reports them at start for a genesis directory's configuration
+  *   ([[Main.ignoredKeysReported]]), not for a `--config` file, which it reads as cardano-node
+  *   11.1.3 does, and 11.1.3 reports none.
   */
 final case class NodeConfig(
     byronGenesisHash: Option[Bytes],
@@ -187,7 +193,8 @@ final case class NodeConfig(
     pbftSignatureThreshold: Option[Double] = None,
     files: GenesisFiles = GenesisFiles.standard,
     hashes: GenesisHashes = GenesisHashes(),
-    settings: ConfigSettings = ConfigSettings()
+    settings: ConfigSettings = ConfigSettings(),
+    ignoredKeys: List[String] = Nil
 ):
   /** The configured first Shelley epoch, if the configuration fixes it. */
   def firstShelleyEpoch: Option[BigInt] = hardForkEpochs.get(Era.Shelley)
@@ -205,7 +212,146 @@ object NodeConfig:
     */
   val DefaultPBftSignatureThreshold: Double = 0.22
 
-  private val Eras = Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
+  /** Every top-level key the parser reads, declared once. [[Keys]] and the configuration's
+    * [[ConfigFields]] read only these ([[TopLevelKey]]), so a read of a key not declared here does
+    * not compile: a new key is added here, beside its read. The keys of a configuration outside the
+    * declaration are the ones it lists as not read ([[NodeConfig.ignoredKeys]]). A test
+    * (`ConfigDialectSuite`) checks that each declared key is read.
+    */
+  private[node] type TopLevel = (
+      "ByronGenesisFile",
+      "ShelleyGenesisFile",
+      "GenesisFile",
+      "AlonzoGenesisFile",
+      "ConwayGenesisFile",
+      "DijkstraGenesisFile",
+      "CheckpointsFile",
+      "ByronGenesisHash",
+      "ShelleyGenesisHash",
+      "AlonzoGenesisHash",
+      "ConwayGenesisHash",
+      "DijkstraGenesisHash",
+      "CheckpointsFileHash",
+      "RequiresNetworkMagic",
+      "PBftSignatureThreshold",
+      "Protocol",
+      "LastKnownBlockVersion-Major",
+      "LastKnownBlockVersion-Minor",
+      "LastKnownBlockVersion-Alt",
+      "MaxKnownMajorProtocolVersion",
+      "ExperimentalHardForksEnabled",
+      "TestEnableDevelopmentHardForkEras",
+      "ExperimentalProtocolsEnabled",
+      "TestEnableDevelopmentNetworkProtocols",
+      "TestShelleyHardForkAtEpoch",
+      "TestShelleyHardForkAtVersion",
+      "TestAllegraHardForkAtEpoch",
+      "TestAllegraHardForkAtVersion",
+      "TestMaryHardForkAtEpoch",
+      "TestMaryHardForkAtVersion",
+      "TestAlonzoHardForkAtEpoch",
+      "TestAlonzoHardForkAtVersion",
+      "TestBabbageHardForkAtEpoch",
+      "TestBabbageHardForkAtVersion",
+      "TestConwayHardForkAtEpoch",
+      "TestConwayHardForkAtVersion",
+      "TestDijkstraHardForkAtEpoch",
+      "TestDijkstraHardForkAtVersion",
+      "ConsensusMode",
+      "PeerSharing",
+      "StartAsNonProducingNode",
+      "DiffusionMode",
+      "SocketPath",
+      "DatabasePath",
+      "MempoolCapacityBytesOverride",
+      "TargetNumberOfRootPeers",
+      "TargetNumberOfKnownPeers",
+      "TargetNumberOfEstablishedPeers",
+      "TargetNumberOfActivePeers",
+      "TargetNumberOfKnownBigLedgerPeers",
+      "TargetNumberOfEstablishedBigLedgerPeers",
+      "TargetNumberOfActiveBigLedgerPeers",
+      "SyncTargetNumberOfRootPeers",
+      "SyncTargetNumberOfKnownPeers",
+      "SyncTargetNumberOfEstablishedPeers",
+      "SyncTargetNumberOfActivePeers",
+      "SyncTargetNumberOfKnownBigLedgerPeers",
+      "SyncTargetNumberOfEstablishedBigLedgerPeers",
+      "SyncTargetNumberOfActiveBigLedgerPeers",
+      "LowLevelGenesisOptions",
+      "AcceptedConnectionsLimit",
+      "MaxOutboundConnections",
+      "MaxConcurrencyDeadline",
+      "MaxConcurrencyBulkSync",
+      "MinBigLedgerPeersForTrustedState",
+      "EgressBudgetMbps",
+      "LeiosDbConfig",
+      "LeiosMinOfferLead",
+      "LeiosAdaptiveEndorsements",
+      "LedgerDB",
+      "SnapshotInterval",
+      "NumOfDiskSnapshots"
+  )
+
+  /** A key of [[TopLevel]]. */
+  private[node] type TopLevelKey = Tuple.Union[TopLevel]
+
+  /** The keys of [[TopLevel]], as values. */
+  private[node] val TopLevelKeys: Set[String] =
+    scala.compiletime.constValueTuple[TopLevel].toList.toSet[String]
+
+  /** The eras whose start a test network may fix, with the keys of their triggers
+    * (`Test<Era>HardForkAtEpoch`, `Test<Era>HardForkAtVersion`, [[ConfigNumberField]]).
+    */
+  private[node] val HardForks: Vector[(Era, TopLevelKey, TopLevelKey)] = Vector(
+    (Era.Shelley, "TestShelleyHardForkAtEpoch", "TestShelleyHardForkAtVersion"),
+    (Era.Allegra, "TestAllegraHardForkAtEpoch", "TestAllegraHardForkAtVersion"),
+    (Era.Mary, "TestMaryHardForkAtEpoch", "TestMaryHardForkAtVersion"),
+    (Era.Alonzo, "TestAlonzoHardForkAtEpoch", "TestAlonzoHardForkAtVersion"),
+    (Era.Babbage, "TestBabbageHardForkAtEpoch", "TestBabbageHardForkAtVersion"),
+    (Era.Conway, "TestConwayHardForkAtEpoch", "TestConwayHardForkAtVersion")
+  )
+
+  /** How a reader tells a configuration's two dialects apart: the flat one, every key at the top
+    * level, and the cardano-config envelope, every setting nested under `Configuration`.
+    */
+  private enum Dialects:
+    /** cardano-node 11.1.3 reads every file flat (`POM.hs` 322-324, `parseNodeConfigurationFP`
+      * 1014-1017), and refuses an envelope for its absent genesis files (`POM.hs` 585-593).
+      */
+    case FlatOnly
+
+    /** cardano-node 11.2.1 and b004fe0c tell an envelope by its top-level `Configuration` key,
+      * whatever its value (`classifyConfigurationFile`, `CardanoConfigResolve.hs` 143-147 and
+      * 141-145), and read it with cardano-config alone (`buildNodeConfiguration`, 119-122 and
+      * 117-120).
+      */
+    case ByConfigurationKey
+
+  private object Dialects:
+    /** A `--config` file (`strict`) is told apart as the selected build's node tells it. A genesis
+      * directory, which the reference does not have, tells the envelope apart under every build, so
+      * that its configuration never reads as empty.
+      */
+    def of(build: ReferenceBuild, strict: Boolean): Dialects =
+      if !strict then ByConfigurationKey
+      else
+        build match
+          case ReferenceBuild.Release11_1                                => FlatOnly
+          case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => ByConfigurationKey
+
+  /** The flat dialect, the only one the node reads: an envelope, where `dialects` tells it apart,
+    * is refused ([[ConfigProblem.CardanoConfigEnvelope]]).
+    */
+  private def flat(dialects: Dialects, top: JsonObject): Either[ConfigError, Unit] =
+    dialects match
+      case Dialects.FlatOnly => Right(())
+      case Dialects.ByConfigurationKey =>
+        Either.cond(
+          !top.contains("Configuration"),
+          (),
+          ConfigError(ConfigProblem.CardanoConfigEnvelope)
+        )
 
   /** aeson's `FromJSON Word32` (`parseBoundedIntegral`): a JSON number (not a string) with an
     * integral value in `0 .. 2^32 - 1`, in any notation (`512`, `512.0`, `5.12e2`).
@@ -266,9 +412,11 @@ object NodeConfig:
       "delay"
     )(AcceptedConnectionsLimit.apply)(using word32Decoder, word32Decoder, diffTimeDecoder)
 
-  /** Typed access to the keys of one configuration object; `null` counts as absent. */
+  /** Typed access to the configuration's keys, the declared ones only ([[TopLevel]]); `null` counts
+    * as absent.
+    */
   private final class Keys(c: HCursor):
-    def opt[A: Decoder](name: String): Either[ConfigError, Option[A]] =
+    def opt[A: Decoder](name: TopLevelKey): Either[ConfigError, Option[A]] =
       c.downField(name)
         .focus
         .filterNot(_.isNull)
@@ -279,8 +427,8 @@ object NodeConfig:
     /** `FromJSON Word64` (`parseBoundedIntegral`): `EpochNo` derives it, and `Word` is 64 bits wide
       * on the platforms the reference is built for.
       */
-    def word64(field: ConfigNumberField): Either[ConfigError, Option[BigInt]] =
-      c.downField(field.key)
+    def word64(key: TopLevelKey, field: ConfigNumberField): Either[ConfigError, Option[BigInt]] =
+      c.downField(key)
         .focus
         .filterNot(_.isNull)
         .traverse(
@@ -289,7 +437,7 @@ object NodeConfig:
             .bimap(e => ConfigError(ConfigProblem.ConfigNumber(field, e)), _.toBigInt)
         )
 
-    def hash(name: String): Either[ConfigError, Option[Bytes]] =
+    def hash(name: TopLevelKey): Either[ConfigError, Option[Bytes]] =
       opt[String](name).flatMap(
         _.traverse(h =>
           Bytes
@@ -317,11 +465,11 @@ object NodeConfig:
 
   /** `name` and the older `GenesisFile` for the Byron and Shelley files: one of them, never both.
     */
-  private def fileName(k: Keys, role: String): Either[ConfigError, Option[String]] =
-    (k.opt[String](s"${role}GenesisFile"), k.opt[String]("GenesisFile")).tupled.flatMap {
+  private def fileName(k: Keys, name: TopLevelKey): Either[ConfigError, Option[String]] =
+    (k.opt[String](name), k.opt[String]("GenesisFile")).tupled.flatMap {
       case (Some(_), Some(_)) =>
         Left(
-          ConfigError(ConfigProblem.ConflictingFields(Set(s"${role}GenesisFile", "GenesisFile")))
+          ConfigError(ConfigProblem.ConflictingFields(Set(name, "GenesisFile")))
         )
       case (a, b) => Right(a.orElse(b))
     }
@@ -329,8 +477,8 @@ object NodeConfig:
   /** The renamed boolean `name`, which must agree with its old name when both are given. */
   private def renamed(
       k: Keys,
-      name: String,
-      old: String
+      name: TopLevelKey,
+      old: TopLevelKey
   ): Either[ConfigError, Option[Boolean]] =
     (k.opt[Boolean](name), k.opt[Boolean](old)).tupled.flatMap { (value, previous) =>
       Either.cond(
@@ -362,8 +510,10 @@ object NodeConfig:
     * Shelley, Alonzo and Conway genesis files and `LastKnownBlockVersion-Major` and `-Minor` must
     * be named, and a Dijkstra genesis file once experimental hard forks are enabled. Without it (a
     * genesis directory) a missing genesis file takes the directory's standard name. In both the
-    * protocol must be `Cardano`, `GenesisFile` must not be given next to the specific name, and a
-    * listed hash must be 32 bytes of hexadecimal.
+    * protocol must be `Cardano`, `GenesisFile` must not be given next to the specific name, a
+    * listed hash must be 32 bytes of hexadecimal, and the keys the parser does not read are listed
+    * ([[NodeConfig.ignoredKeys]]). A cardano-config envelope is refused where [[Dialects]] tells it
+    * apart: in a genesis directory, and with `strict` where the selected build's node tells it.
     */
   def parse(
       build: ReferenceBuild
@@ -372,28 +522,35 @@ object NodeConfig:
       json <- parser
         .parse(text)
         .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("configuration", e)))
-      _ <- Either.cond(
-        json.isObject,
-        (),
-        ConfigError(ConfigProblem.ExpectedObject("configuration", json))
-      )
-      k = Keys(json.hcursor)
+      top <- json.asObject.toRight(ConfigError(ConfigProblem.ExpectedObject("configuration", json)))
+      _ <- flat(Dialects.of(build, strict), top)
+      config <- declared(build)(json, strict)
+    yield config.copy(ignoredKeys = top.keys.filterNot(TopLevelKeys.contains).toList)
+
+  /** The configuration from its declared keys ([[TopLevel]]), the only ones the parser can read. */
+  private def declared(
+      build: ReferenceBuild
+  )(json: Json, strict: Boolean): Either[ConfigError, NodeConfig] =
+    val k = Keys(json.hcursor)
+    for
       hardForks <- renamed(k, "ExperimentalHardForksEnabled", "TestEnableDevelopmentHardForkEras")
-      fields <- ConfigFields.read("configuration", json)
+      fields <- ConfigFields.keyed[TopLevelKey]("configuration", json)
       leios <- LeiosSettings.parse(fields)
       ledgerDb <- LedgerDbSettings.parse(fields, build)
       dijkstraEpoch <-
-        if hardForks.contains(true) then k.word64(ConfigNumberField.DijkstraHardForkAtEpoch)
+        if hardForks.contains(true) then
+          k.word64("TestDijkstraHardForkAtEpoch", ConfigNumberField.DijkstraHardForkAtEpoch)
         else Right(None)
       dijkstraVersion <-
-        if hardForks.contains(true) then k.word64(ConfigNumberField.DijkstraHardForkAtVersion)
+        if hardForks.contains(true) then
+          k.word64("TestDijkstraHardForkAtVersion", ConfigNumberField.DijkstraHardForkAtVersion)
         else Right(None)
       byronHash <- k.hash("ByronGenesisHash")
-      forks <- Eras.traverse(era =>
-        k.word64(ConfigNumberField.HardForkAtEpoch(era)).map(_.map(era -> _))
+      forks <- HardForks.traverse((era, epoch, _) =>
+        k.word64(epoch, ConfigNumberField.HardForkAtEpoch(era)).map(_.map(era -> _))
       )
-      versions <- Eras.traverse(era =>
-        k.word64(ConfigNumberField.HardForkAtVersion(era)).map(_.map(era -> _))
+      versions <- HardForks.traverse((era, _, version) =>
+        k.word64(version, ConfigNumberField.HardForkAtVersion(era)).map(_.map(era -> _))
       )
       magic <- k
         .opt[String]("RequiresNetworkMagic")
@@ -404,8 +561,8 @@ object NodeConfig:
       // `npcByronPbftSignatureThresh <- v .:? "PBftSignatureThreshold"`, a `Maybe Double`
       // (cardano-node 11.1.3 `POM.hs:600`)
       threshold <- fields.realFloat("PBftSignatureThreshold")
-      byronFile <- fileName(k, "Byron")
-      shelleyFile <- fileName(k, "Shelley")
+      byronFile <- fileName(k, "ByronGenesisFile")
+      shelleyFile <- fileName(k, "ShelleyGenesisFile")
       alonzoFile <- k.opt[String]("AlonzoGenesisFile")
       conwayFile <- k.opt[String]("ConwayGenesisFile")
       dijkstraFile <-

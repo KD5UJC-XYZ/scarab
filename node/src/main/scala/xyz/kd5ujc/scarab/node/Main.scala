@@ -786,6 +786,16 @@ object Main extends IOApp:
           .toRight(ConfigError(ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir"))))
           .flatMap(NodeSetup.fromDirectory(options.referenceBuild))
 
+  /** The top-level keys of the configuration the node does not read, which it reports at start for
+    * a genesis directory's configuration (`--genesis-dir` alone), its own way to be configured. A
+    * `--config` file is read as cardano-node 11.1.3 reads it, which reports none.
+    */
+  private[node] def ignoredKeysReported(
+      options: Options,
+      setup: NodeSetup
+  ): Option[cats.data.NonEmptyList[String]] =
+    options.configFile.fold(cats.data.NonEmptyList.fromList(setup.config.ignoredKeys))(_ => None)
+
   /** The node-to-client socket path: `--local-socket`, else, with `--config`, the file's
     * `SocketPath`, as it was written (the reference's `ncSocketPath`, not normalised).
     */
@@ -1180,6 +1190,9 @@ object Main extends IOApp:
         KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
       )
       setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
+      _ <- ignoredKeysReported(requested, setup).traverse_(keys =>
+        Log[IO].emit[NodeEvent](NodeEvent.ConfigKeysIgnored(keys))
+      )
       encoding <- CommandLine.encoding[IO]
       // the file names of the configuration the setup was read from, under the owner's rule for
       // names (#953), before any is used to remove or make a file: the configuration's text is

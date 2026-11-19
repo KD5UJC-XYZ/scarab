@@ -77,6 +77,14 @@ enum ConfigProblem:
   case SecurityParamZero
 
   case ExpectedObject(context: String, actual: io.circe.Json)
+
+  /** The configuration is a cardano-config envelope (`$schema`, `Version`, `MinNodeVersion` and
+    * every setting nested under `Configuration`), which the reference tells from the flat dialect
+    * by its top-level `Configuration` key (`classifyConfigurationFile`) and reads with
+    * cardano-config alone. The node reads only the flat dialect yet, so it refuses the file rather
+    * than read its top level as a configuration with every key absent.
+    */
+  case CardanoConfigEnvelope
   case Selection(context: String, value: String, allowed: Set[String])
   case ConflictingFields(fields: Set[String])
   case RenamedField(previous: String, current: String)
@@ -145,6 +153,9 @@ enum ConfigProblem:
       s"genesis securityParam $k: the chain store counts at most ${Int.MaxValue} blocks"
     case SecurityParamZero => "Byron genesis protocolConsts.k 0: the security parameter is not zero"
     case JsonSyntax(context, cause) => s"$context is not JSON: ${cause.message}"
+    case CardanoConfigEnvelope =>
+      "configuration: a cardano-config envelope (a top-level Configuration key), a dialect this " +
+        "node does not read yet; give it the flat configuration, with every key at the top level"
     case CanonicalJsonSyntax(context, cause) =>
       s"$context is not canonical JSON: unexpected input at byte ${cause.offset}"
     case JsonField(context, field, cause) => s"$context $field: ${cause.message}"

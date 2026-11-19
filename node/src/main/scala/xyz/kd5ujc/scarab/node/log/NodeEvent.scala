@@ -70,6 +70,11 @@ enum NodeEvent:
     */
   case UnstableReferenceBuild(build: xyz.kd5ujc.scarab.protocol.ReferenceBuild)
 
+  /** The configuration of a genesis directory (`--genesis-dir`) has top-level keys the node does
+    * not read ([[NodeConfig.ignoredKeys]]), in the file's order.
+    */
+  case ConfigKeysIgnored(keys: cats.data.NonEmptyList[String])
+
   /** A listener is open (`--listen`, `--local-socket`). */
   case Listening(address: String)
 
@@ -419,8 +424,9 @@ object NodeEvent:
         "build" -> build.name.asJson,
         "experimentalHardForksEnabled" -> false.asJson
       )
-    case Listening(address) => EventKind.Listening.line("address" -> address.asJson)
-    case Memory(sample)     => EventKind.Memory.line("sample" -> sample)
+    case ConfigKeysIgnored(keys) => EventKind.ConfigKeysIgnored.line("keys" -> keys.toList.asJson)
+    case Listening(address)      => EventKind.Listening.line("address" -> address.asJson)
+    case Memory(sample)          => EventKind.Memory.line("sample" -> sample)
     case CpuStarvation(drift, threshold, interval) =>
       EventKind.CpuStarvation.line(
         "clockDriftMs" -> drift.toMillis.asJson,

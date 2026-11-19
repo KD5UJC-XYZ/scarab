@@ -33,10 +33,17 @@ final case class LeiosSettings(
   def unused: List[String] = configured.toList.sorted.map(key => s"$key: recognised but unused")
 
 object LeiosSettings:
-  private val keys =
-    Set("EgressBudgetMbps", "LeiosDbConfig", "LeiosMinOfferLead", "LeiosAdaptiveEndorsements")
+  private val keys: List[NodeConfig.TopLevelKey] =
+    List[NodeConfig.TopLevelKey](
+      "EgressBudgetMbps",
+      "LeiosDbConfig",
+      "LeiosMinOfferLead",
+      "LeiosAdaptiveEndorsements"
+    )
 
-  private[node] def parse(k: ConfigFields): Either[ConfigError, LeiosSettings] =
+  private[node] def parse(
+      k: ConfigFields[NodeConfig.TopLevelKey]
+  ): Either[ConfigError, LeiosSettings] =
     for
       egress <- k.realFloat("EgressBudgetMbps")
       database <- k
@@ -63,10 +70,12 @@ object LeiosSettings:
       database.getOrElse(LeiosDbBackend.SQLite),
       lead,
       adaptive,
-      keys.filter(k.value(_).nonEmpty)
+      keys.filter(k.value(_).nonEmpty).toSet[String]
     )
 
-  private def readAdaptive(k: ConfigFields): Either[ConfigError, Option[LeiosAdaptiveSettings]] =
+  private def readAdaptive(
+      k: ConfigFields[String]
+  ): Either[ConfigError, Option[LeiosAdaptiveSettings]] =
     for
       enabled <- k.optional[Boolean]("Enabled")
       gain <- k.realFloat("GainP")

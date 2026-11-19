@@ -2148,9 +2148,12 @@ object Targets:
 
   /** The operator's `config.json`, read as `cardano-node run` reads it. The run path is the strict
     * form (`NodeSetup`); the lenient one only defaults what strict requires, so a configuration
-    * accepted strictly is accepted with the same value without those checks. This is a divergence
-    * guard between the two entry points, not a second oracle for the value: both share one parse,
-    * and `strict` only adds the trailing required-field checks.
+    * accepted strictly is accepted with the same value without those checks, but for one case: the
+    * lenient form, a genesis directory's, refuses a cardano-config envelope (a top-level
+    * `Configuration` key) under every build, where the strict form under the 11.1 build reads the
+    * file flat, as cardano-node 11.1.3 does. This is a divergence guard between the two entry
+    * points, not a second oracle for the value: both share one parse, and `strict` only adds the
+    * trailing required-field checks and decides where the envelope is told apart.
     */
   private val nodeConfiguration: Vector[Target] =
     import java.nio.charset.StandardCharsets.UTF_8
@@ -2183,10 +2186,22 @@ object Targets:
                 "a configuration refused only for a missing required field is refused without the checks too"
               )
             NodeConfig.parse(build)(text, strict = true).foreach { config =>
-              req(
-                NodeConfig.parse(build)(text) == Right(config),
-                "a configuration read strictly is not read with the same value without the checks"
-              )
+              val lenient = NodeConfig.parse(build)(text)
+              val envelope = io.circe.parser
+                .parse(text)
+                .toOption
+                .flatMap(_.asObject)
+                .exists(_.contains("Configuration"))
+              if envelope then
+                req(
+                  lenient.left.map(_.problem) == Left(ConfigProblem.CardanoConfigEnvelope),
+                  "a genesis directory reads a cardano-config envelope"
+                )
+              else
+                req(
+                  lenient == Right(config),
+                  "a configuration read strictly is not read with the same value without the checks"
+                )
               hit("node-config-strict")
             }
           }
