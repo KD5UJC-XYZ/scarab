@@ -17,10 +17,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -28,6 +31,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -53,10 +57,13 @@
      "bytes": 20186,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -64,6 +71,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -86,10 +94,13 @@
      "bytes": 20155,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 3,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 3,
@@ -97,6 +108,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -136,10 +148,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -147,6 +162,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -172,10 +188,13 @@
      "bytes": 24562,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 1,
       "fees": 0,
+      "futurePParams": "none",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 1,
@@ -183,6 +202,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -205,10 +225,13 @@
      "bytes": 20262,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 7199675998,
       "deposited": 1506000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -216,6 +239,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199866805589002,
@@ -238,10 +262,13 @@
      "bytes": 24086,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 7199675998,
       "deposited": 1506000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "none",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -249,6 +276,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199866805589002,
@@ -271,10 +299,13 @@
      "bytes": 20327,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 7384168432,
       "deposited": 1506000000,
       "epoch": 3,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 3,
@@ -282,6 +313,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199863623094485,
@@ -315,10 +347,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 0,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -326,6 +361,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 1,
      "reserves": 199991000000000,
@@ -365,10 +401,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -376,6 +415,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -401,10 +441,13 @@
      "bytes": 19738,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1006000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -412,6 +455,7 @@
        "maxKeyAge": 40178,
        "seats": 2
       },
+      "maxPledgeLeverage": null,
       "pools": 2,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -450,10 +494,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 0,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -461,6 +508,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 1,
      "reserves": 199991000000000,
@@ -500,10 +548,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -511,6 +562,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -536,10 +588,13 @@
      "bytes": 24593,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 1,
       "fees": 0,
+      "futurePParams": "none",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 1,
@@ -547,6 +602,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 1,
       "reserves": 199991000000000,
@@ -574,10 +630,13 @@
      "bytes": 19762,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 7199675998,
       "deposited": 1006000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -585,6 +644,7 @@
        "maxKeyAge": 40178,
        "seats": 2
       },
+      "maxPledgeLeverage": null,
       "pools": 2,
       "poolsRetiring": 0,
       "reserves": 199866805589002,
@@ -632,10 +692,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -643,6 +706,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 0,
      "reserves": 199991000000000,
@@ -691,10 +755,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -702,6 +769,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -727,10 +795,13 @@
      "bytes": 20186,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -738,6 +809,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -793,10 +865,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -804,6 +879,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 0,
      "reserves": 199991000000000,
@@ -852,10 +928,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -863,6 +942,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -888,10 +968,13 @@
      "bytes": 24701,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 1,
       "fees": 0,
+      "futurePParams": "none",
       "futurePools": 1,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 1,
@@ -899,6 +982,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -934,10 +1018,13 @@
      "bytes": 20262,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 7199675998,
       "deposited": 1506000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -945,6 +1032,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 0,
       "reserves": 199866805589002,
@@ -1005,10 +1093,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -1016,6 +1107,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 1,
      "reserves": 199991000000000,
@@ -1069,10 +1161,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -1080,6 +1175,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -1105,10 +1201,13 @@
      "bytes": 19738,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1006000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -1116,6 +1215,7 @@
        "maxKeyAge": 40178,
        "seats": 2
       },
+      "maxPledgeLeverage": null,
       "pools": 2,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -1180,10 +1280,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -1191,6 +1294,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 1,
      "reserves": 199991000000000,
@@ -1244,10 +1348,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -1255,6 +1362,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -1280,10 +1388,13 @@
      "bytes": 24732,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 1,
       "fees": 0,
+      "futurePParams": "none",
       "futurePools": 1,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 1,
@@ -1291,6 +1402,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 1,
       "reserves": 199991000000000,
@@ -1330,10 +1442,13 @@
      "bytes": 19794,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 7199675998,
       "deposited": 1006000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -1341,6 +1456,7 @@
        "maxKeyAge": 40178,
        "seats": 2
       },
+      "maxPledgeLeverage": null,
       "pools": 2,
       "poolsRetiring": 0,
       "reserves": 199866805589002,
@@ -1405,10 +1521,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -1416,6 +1535,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 1,
      "reserves": 199991000000000,
@@ -1464,10 +1584,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -1475,6 +1598,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -1500,10 +1624,13 @@
      "bytes": 19738,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1006000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -1511,6 +1638,7 @@
        "maxKeyAge": 40178,
        "seats": 2
       },
+      "maxPledgeLeverage": null,
       "pools": 2,
       "poolsRetiring": 0,
       "reserves": 199991000000000,
@@ -1571,10 +1699,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 0,
      "deposited": 1506000000,
      "epoch": 1,
      "fees": 0,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 1,
@@ -1582,6 +1713,7 @@
       "maxKeyAge": 40178,
       "seats": 3
      },
+     "maxPledgeLeverage": null,
      "pools": 3,
      "poolsRetiring": 1,
      "reserves": 199991000000000,
@@ -1630,10 +1762,13 @@
     "stabilityWindow": 75
    },
    "inputFacts": {
+    "accountBalances": 0,
     "deposited": 1506000000,
     "epoch": 1,
     "fees": 0,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 1,
@@ -1641,6 +1776,7 @@
      "maxKeyAge": 40178,
      "seats": 3
     },
+    "maxPledgeLeverage": null,
     "pools": 3,
     "poolsRetiring": 0,
     "reserves": 199991000000000,
@@ -1666,10 +1802,13 @@
      "bytes": 24732,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 0,
       "deposited": 1506000000,
       "epoch": 1,
       "fees": 0,
+      "futurePParams": "none",
       "futurePools": 1,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 1,
@@ -1677,6 +1816,7 @@
        "maxKeyAge": 40178,
        "seats": 3
       },
+      "maxPledgeLeverage": null,
       "pools": 3,
       "poolsRetiring": 1,
       "reserves": 199991000000000,
@@ -1712,10 +1852,13 @@
      "bytes": 19794,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 7199675998,
       "deposited": 1006000000,
       "epoch": 2,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 2,
@@ -1723,6 +1866,7 @@
        "maxKeyAge": 40178,
        "seats": 2
       },
+      "maxPledgeLeverage": null,
       "pools": 2,
       "poolsRetiring": 0,
       "reserves": 199866805589002,
@@ -1759,6 +1903,633 @@
    "version": 12
   },
   {
+   "derivation": {
+    "bytes": 20266,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-pledge-cap.cbor",
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "129634e67f6aff844b94c6b45ddfadc7c923674445e208c4f035be5d98e88979",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 20202,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-pledge-cap-boundaries-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "5c32195afb55b1b7f72139bc7b2b2bc45cc396cadb8bcea4ceee1ea4d24774bf",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20266,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-pledge-cap.cbor",
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "129634e67f6aff844b94c6b45ddfadc7c923674445e208c4f035be5d98e88979",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 24558,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-pledge-cap-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "c82e8b0f004ea9be7e9b6c2f519fd3ecc8cb54112d94b7cf15165ef6c35c1e4b",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 20218,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199874005265000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 116994735000,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-pledge-cap-rewards-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "d7166d12deb710786ff8cd921f281fe937ab9572bd7fe5c058025f755b0a0e7b",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 24025,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-committee-size.cbor",
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "68f1150cf2732fef243c659f0e6bae252d18502296d90da6c10110bb5919d138",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 20180,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-committee-size-boundaries-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "cab4a4a79a78d3bfeb6853bb9745ad0cea8da745da0f218e30298db43f81a649",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 24025,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-committee-size.cbor",
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "68f1150cf2732fef243c659f0e6bae252d18502296d90da6c10110bb5919d138",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 28330,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "definite",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-committee-size-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "840666fec8ab81cde85317d5bfd5ee2b216cdf9a269a02ad1bfc7516103ca8f8",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 20256,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 116994735000,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-committee-size-rewards-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "7da61d42a83b2b3d5377025617160fba26466d868fa05290fa4d75d845e74843",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
    "derivation": "none",
    "epoch": 100,
    "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
@@ -1775,10 +2546,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -1786,6 +2560,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -1811,10 +2586,13 @@
      "bytes": 505632,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 101,
       "fees": 374107671341,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -1822,6 +2600,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -1844,10 +2623,13 @@
      "bytes": 502155,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 102,
       "fees": 374107671341,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 102,
@@ -1855,6 +2637,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -1894,10 +2677,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -1905,6 +2691,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -1930,10 +2717,13 @@
      "bytes": 789606,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 100,
       "fees": 271372435560,
+      "futurePParams": "none",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 100,
@@ -1941,6 +2731,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -1963,10 +2754,13 @@
      "bytes": 505624,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14844238231823,
       "deposited": 79756000000,
       "epoch": 101,
       "fees": 102735235781,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -1974,6 +2768,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14224294265516808,
@@ -1996,10 +2791,13 @@
      "bytes": 772175,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 14844238231823,
       "deposited": 79756000000,
       "epoch": 101,
       "fees": 102735235781,
+      "futurePParams": "none",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -2007,6 +2805,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14224294265516808,
@@ -2029,10 +2828,13 @@
      "bytes": 502119,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14905257903441,
       "deposited": 79756000000,
       "epoch": 102,
       "fees": 0,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 102,
@@ -2040,6 +2842,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14221533794266336,
@@ -2073,10 +2876,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 0,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -2084,6 +2890,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 1,
      "reserves": 14231792686148440,
@@ -2123,10 +2930,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -2134,6 +2944,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -2159,10 +2970,13 @@
      "bytes": 504535,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14679976326893,
       "deposited": 79256000000,
       "epoch": 101,
       "fees": 374107671341,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -2170,6 +2984,7 @@
        "maxKeyAge": 374,
        "seats": 153
       },
+      "maxPledgeLeverage": null,
       "pools": 153,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -2208,10 +3023,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 0,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -2219,6 +3037,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 1,
      "reserves": 14231792686148440,
@@ -2258,10 +3077,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -2269,6 +3091,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -2294,10 +3117,13 @@
      "bytes": 789638,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 100,
       "fees": 271372435560,
+      "futurePParams": "none",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 100,
@@ -2305,6 +3131,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 1,
       "reserves": 14231792686148440,
@@ -2332,10 +3159,13 @@
      "bytes": 504535,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14844738231823,
       "deposited": 79256000000,
       "epoch": 101,
       "fees": 102735235781,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -2343,6 +3173,7 @@
        "maxKeyAge": 374,
        "seats": 153
       },
+      "maxPledgeLeverage": null,
       "pools": 153,
       "poolsRetiring": 0,
       "reserves": 14224294265516808,
@@ -2390,10 +3221,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -2401,6 +3235,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 0,
      "reserves": 14231792686148440,
@@ -2449,10 +3284,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -2460,6 +3298,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -2485,10 +3324,13 @@
      "bytes": 505632,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 101,
       "fees": 374107671341,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -2496,6 +3338,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -2551,10 +3394,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -2562,6 +3408,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 0,
      "reserves": 14231792686148440,
@@ -2610,10 +3457,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -2621,6 +3471,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -2646,10 +3497,13 @@
      "bytes": 790040,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 100,
       "fees": 271372435560,
+      "futurePParams": "none",
       "futurePools": 1,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 100,
@@ -2657,6 +3511,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -2692,10 +3547,13 @@
      "bytes": 505624,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14844238231823,
       "deposited": 79756000000,
       "epoch": 101,
       "fees": 102735235781,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -2703,6 +3561,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 0,
       "reserves": 14224294265516808,
@@ -2763,10 +3622,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -2774,6 +3636,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 1,
      "reserves": 14231792686148440,
@@ -2827,10 +3690,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -2838,6 +3704,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -2863,10 +3730,13 @@
      "bytes": 504525,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14679976326893,
       "deposited": 79256000000,
       "epoch": 101,
       "fees": 374107671341,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -2874,6 +3744,7 @@
        "maxKeyAge": 374,
        "seats": 153
       },
+      "maxPledgeLeverage": null,
       "pools": 153,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -2938,10 +3809,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -2949,6 +3823,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 1,
      "reserves": 14231792686148440,
@@ -3002,10 +3877,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -3013,6 +3891,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -3038,10 +3917,13 @@
      "bytes": 790072,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 100,
       "fees": 271372435560,
+      "futurePParams": "none",
       "futurePools": 1,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 100,
@@ -3049,6 +3931,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 1,
       "reserves": 14231792686148440,
@@ -3088,10 +3971,13 @@
      "bytes": 504469,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14844738231823,
       "deposited": 79256000000,
       "epoch": 101,
       "fees": 102735235781,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -3099,6 +3985,7 @@
        "maxKeyAge": 374,
        "seats": 153
       },
+      "maxPledgeLeverage": null,
       "pools": 153,
       "poolsRetiring": 0,
       "reserves": 14224294265516808,
@@ -3163,10 +4050,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -3174,6 +4064,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 1,
      "reserves": 14231792686148440,
@@ -3222,10 +4113,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -3233,6 +4127,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -3258,10 +4153,13 @@
      "bytes": 504721,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79256000000,
       "epoch": 101,
       "fees": 374107671341,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -3269,6 +4167,7 @@
        "maxKeyAge": 374,
        "seats": 153
       },
+      "maxPledgeLeverage": null,
       "pools": 153,
       "poolsRetiring": 0,
       "reserves": 14231792686148440,
@@ -3329,10 +4228,13 @@
      }
     ],
     "facts": {
+     "accountBalances": 14679476326893,
      "deposited": 79756000000,
      "epoch": 100,
      "fees": 271372435560,
+     "futurePParams": "potential",
      "futurePools": 1,
+     "leiosCommitteeSize": 900,
      "mark": {
       "committeeSize": 900,
       "epoch": 100,
@@ -3340,6 +4242,7 @@
       "maxKeyAge": 374,
       "seats": 154
      },
+     "maxPledgeLeverage": null,
      "pools": 154,
      "poolsRetiring": 1,
      "reserves": 14231792686148440,
@@ -3388,10 +4291,13 @@
     "stabilityWindow": 6480
    },
    "inputFacts": {
+    "accountBalances": 14679476326893,
     "deposited": 79756000000,
     "epoch": 100,
     "fees": 271372435560,
+    "futurePParams": "potential",
     "futurePools": 0,
+    "leiosCommitteeSize": 900,
     "mark": {
      "committeeSize": 900,
      "epoch": 100,
@@ -3399,6 +4305,7 @@
      "maxKeyAge": 374,
      "seats": 154
     },
+    "maxPledgeLeverage": null,
     "pools": 154,
     "poolsRetiring": 0,
     "reserves": 14231792686148440,
@@ -3424,10 +4331,13 @@
      "bytes": 790072,
      "crossedBoundary": false,
      "facts": {
+      "accountBalances": 14679476326893,
       "deposited": 79756000000,
       "epoch": 100,
       "fees": 271372435560,
+      "futurePParams": "none",
       "futurePools": 1,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 100,
@@ -3435,6 +4345,7 @@
        "maxKeyAge": 374,
        "seats": 154
       },
+      "maxPledgeLeverage": null,
       "pools": 154,
       "poolsRetiring": 1,
       "reserves": 14231792686148440,
@@ -3470,10 +4381,13 @@
      "bytes": 504717,
      "crossedBoundary": true,
      "facts": {
+      "accountBalances": 14844238231823,
       "deposited": 79256000000,
       "epoch": 101,
       "fees": 102735235781,
+      "futurePParams": "potential",
       "futurePools": 0,
+      "leiosCommitteeSize": 900,
       "mark": {
        "committeeSize": 900,
        "epoch": 101,
@@ -3481,6 +4395,7 @@
        "maxKeyAge": 374,
        "seats": 153
       },
+      "maxPledgeLeverage": null,
       "pools": 153,
       "poolsRetiring": 0,
       "reserves": 14224294265516808,
@@ -3515,6 +4430,716 @@
    ],
    "tipSlot": 2168639,
    "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 509985,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "a870385e79b1eed9f20a3e60096e4c49a6ebbf93abf5349e1d9b87a40d64b4b8",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 505648,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "b4b69f764174cb9276044a59a0a6e2fa92758a5d4bcfd90d0c47325d783a0382",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 509985,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "a870385e79b1eed9f20a3e60096e4c49a6ebbf93abf5349e1d9b87a40d64b4b8",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 789248,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "52a2da771f6bdf178bbdc3de63f34566e32f87881e52e2ddf25237254f9dfcd5",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 505648,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14706870559916,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224431633188715,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "0ca20a1faa2773a4c536539532c284ef5f0fe4bc43fe64cf9aa65a33026c548c",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 513746,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "8f5afcb61cc652d969048de33a07d7b9fadc894646b0df44416a51f4b087407b",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 505626,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 101,
+       "keyedSeats": 2,
+       "maxKeyAge": 374,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "2ec41a769e840605047b2b17089d91e1c24973734f879026f9bf8bb16bcfa6da",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 513746,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "8f5afcb61cc652d969048de33a07d7b9fadc894646b0df44416a51f4b087407b",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 793376,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "definite",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "8ec3ef934d9383d13545e7728601313be0579905b970fe0e69dfced9474d6c4d",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 505618,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 101,
+       "keyedSeats": 2,
+       "maxKeyAge": 374,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "88d5c55617109c5182e6173f2f92d628779a34e480de0edd4a43a8b809cba625",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
   }
- ]
+ ],
+ "genesis": {
+  "byronUtxo": "empty",
+  "createInitialState": {
+   "bytes": 7689,
+   "facts": {
+    "accountBalances": 0,
+    "deposited": 0,
+    "epoch": 0,
+    "fees": 0,
+    "futurePParams": "none",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 0,
+     "keyedSeats": 0,
+     "maxKeyAge": 374,
+     "seats": 1
+    },
+    "maxPledgeLeverage": null,
+    "pools": 1,
+    "poolsRetiring": 0,
+    "reserves": 14999999100000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 1
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 1
+   },
+   "file": "genesis-testnet-create-initial-state.cbor",
+   "stateSha256": "2f5ba4767941ef6ba61af4e59cb4255b2cfaa418c6a95186f41d9f8b8f4812c3",
+   "utxo": "a282582028b1571a56a87be2a35689da84e650cdb4f67d4a5785008517f535123f171f800082581d60f405259e3b805556a2d27f88e3c2a0b4f345fe3db26f0ea5c13bc25b1b006a94d74f430000825820431b72256f17e542fc1b141e44905f4bacf0f3343d64ccfa295f24dc3c9d4fd800825839001c82bd289a68eadfcb0e6cb181aa84ea8eff7ab9155a2c4193f3906c229c1ef7ee70091be326d0ffc140d054a028864bd4a860aafd3a1b251a35a4e900"
+  },
+  "equal": false,
+  "fromByron": {
+   "bytes": 12051,
+   "facts": {
+    "accountBalances": 0,
+    "deposited": 0,
+    "epoch": 0,
+    "fees": 0,
+    "futurePParams": "none",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 0,
+     "keyedSeats": 0,
+     "maxKeyAge": 374,
+     "seats": 1
+    },
+    "maxPledgeLeverage": null,
+    "pools": 1,
+    "poolsRetiring": 0,
+    "reserves": 14999999100000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 1
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 1
+   },
+   "file": "genesis-testnet.cbor",
+   "stateSha256": "d4c320cfdc71cb50fc24a40d19dd34d819ec77dca92cd61c7f4100aede91fc63",
+   "utxo": "a282582028b1571a56a87be2a35689da84e650cdb4f67d4a5785008517f535123f171f800082581d60f405259e3b805556a2d27f88e3c2a0b4f345fe3db26f0ea5c13bc25b1b006a94d74f430000825820431b72256f17e542fc1b141e44905f4bacf0f3343d64ccfa295f24dc3c9d4fd800825839001c82bd289a68eadfcb0e6cb181aa84ea8eff7ab9155a2c4193f3906c229c1ef7ee70091be326d0ffc140d054a028864bd4a860aafd3a1b251a35a4e900"
+  },
+  "genesis": [
+   "fixtures/leios/testnet/config/shelley-genesis.json",
+   "fixtures/leios/testnet/config/alonzo-genesis.json",
+   "fixtures/leios/testnet/config/conway-genesis.json",
+   "fixtures/leios/testnet/config/dijkstra-genesis.json"
+  ],
+  "name": "testnet",
+  "translated": {
+   "bytes": 9587,
+   "file": "genesis-testnet-translated.cbor",
+   "stateSha256": "4daa5c5352077e49b4f8784caa842bc9c5cc87046e9674b0d785cb9622e8ae4b"
+  },
+  "version": 12
+ }
 }

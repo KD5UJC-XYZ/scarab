@@ -82,7 +82,22 @@ STATES = {
 PATHS = ("boundaries", "rewards")
 # The states `Main.hs` derives from each input before ticking it (its `derivation`), each ticked along the paths up
 # to their first boundary. P, Q and R are the input's registered pools in key order.
-DERIVATIONS = ("retire", "reregister-new-vrf", "both", "both-sharer")
+DERIVATIONS = ("retire", "reregister-new-vrf", "both", "both-sharer", "pledge-cap", "committee-size")
+# Each derivation's pool roles and VRF key hash roles (`Main.hs`'s `derivation`).
+POOL_ROLES = {"retire": ["P"], "reregister-new-vrf": ["P", "Q"], "both": ["P", "Q", "R"],
+              "both-sharer": ["P", "Q"], "pledge-cap": [], "committee-size": []}
+VRF_ROLES = {"retire": ["P"], "reregister-new-vrf": ["P", "new", "Q"], "both": ["P", "new", "Q", "R"],
+             "both-sharer": ["P", "new", "Q"], "pledge-cap": [], "committee-size": []}
+# The pledge leverage cap of `pledge-cap` (`pledgeCap`, numerator and denominator) and the Leios committee size of
+# `committee-size`'s future parameters (`futureCommitteeSize`).
+PLEDGE_CAP = [1, 1]
+FUTURE_COMMITTEE_SIZE = 2
+# The facts other than the pool state's that a derivation changes, with their derived values.
+CHANGED_FACTS = {"pledge-cap": {"maxPledgeLeverage": PLEDGE_CAP}, "committee-size": {"futurePParams": "definite"}}
+# The genesis files of the Dijkstra genesis case: the public Leios testnet's, which start every era at epoch 0.
+GENESIS_DIR = "fixtures/leios/testnet/config"
+GENESIS_FILES = ("shelley-genesis.json", "alonzo-genesis.json", "conway-genesis.json", "dijkstra-genesis.json")
+GENESIS_NAME = "testnet"
 # The VRF key hash every derived re-registration takes (`newVrfBytes`).
 NEW_VRF = "ee" * 32
 CASE_ONLY = ("slots", "derivedSlots", "keepInEpoch", "keepDerived")
@@ -163,6 +178,20 @@ PINNED = {
         "ae7d5e0db3afe5f97183008047d2f7ecf2974c7d1249752284a600b55557d414",
     "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs":
         "459d7de8a2c1bb070476cb0bebb0cd758efeea61ea7e450306af3654f1592e70",
+    "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Transition.hs":
+        "4d343b18d71142017eb25458f17b335bf7bd3183395c7551d824f1552c6fab82",
+    "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs":
+        "17152a4b587514eb00a2bd36cbf7043daa814018c4a29795d6184252fbb76923",
+    "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs":
+        "2342bd7fcc497dd9aa312ce13994205a6acb5eec278c9001df035d99d8dbc8cf",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Transition.hs":
+        "f71c44727ba75ad5fc900c454c16abfa6008a63638a133f28e66c6934ca56ab1",
+    "eras/shelley/impl/src/Cardano/Ledger/Shelley/Transition.hs":
+        "6886aa7e600f352a3ed7f7822af115a0bdfcf406a6fe4affdfb409e6d9094e05",
+    "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/ByronTranslation.hs":
+        "3bde7cd55f6c79459938c3cc5d5a96fcf39132b8464a4f87597f15628ecf8608",
+    "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rewards.hs":
+        "e2b8b93438e1abc39ef521f99ef50313ad45de161bca73c703cf123da4eb5a39",
 }
 
 
@@ -251,7 +280,18 @@ def inputs():
 
 
 def genesis_files():
-    return {spec["genesis"]: file_sha256(spec["genesis"]) for spec in STATES.values()}
+    """The digests of the Shelley genesis files of the inputs and of the genesis case's files, Byron's among them."""
+    paths = {spec["genesis"] for spec in STATES.values()}
+    paths |= {f"{GENESIS_DIR}/{name}" for name in (*GENESIS_FILES, "byron-genesis.json")}
+    return {path: file_sha256(path) for path in sorted(paths)}
+
+
+def byron_utxo_empty():
+    """The genesis case starts from the empty Byron UTxO, which is Byron's genesis UTxO only when its genesis has no
+    AVVM and no non-AVVM balance (cardano-ledger-byron's `genesisUtxo`)."""
+    byron = json.loads((ROOT / GENESIS_DIR / "byron-genesis.json").read_text())
+    if byron.get("avvmDistr") or byron.get("nonAvvmBalances"):
+        raise SystemExit(f"{GENESIS_DIR}/byron-genesis.json: Byron balances, so the Byron UTxO is not empty")
 
 
 def container(name, *options, read_only=True, user=True):
@@ -401,6 +441,10 @@ def case_rows(case, derivation, result):
 
 def expected_changes(derivation, pools, vrfs, epoch, network):
     """The changes a derivation makes, by the roles of its pools and VRF key hashes (`Main.hs`'s `derivation`)."""
+    if derivation == "pledge-cap":
+        return [{"change": "setMaxPledgeLeverage", "numerator": PLEDGE_CAP[0], "denominator": PLEDGE_CAP[1]}]
+    if derivation == "committee-size":
+        return [{"change": "setFutureLeiosCommitteeSize", "leiosCommitteeSize": FUTURE_COMMITTEE_SIZE}]
     retire = {"retire": "P", "both": "R", "both-sharer": "Q"}.get(derivation)
     reregister = [] if derivation == "retire" else [
         {"change": "setActiveVrf", "pool": pools.get("Q"), "vrf": vrfs.get("P")},
@@ -436,9 +480,7 @@ def check_derivation(case, derivation_name, derivation, input_facts, network, re
     """A derived state is the input with the derivation's changes only: its pools and their roles in key order, the
     changes `Main.hs` names, the facts outside the pool state unchanged, and the VRF key hash counts modelled."""
     pools = derivation.get("pools", {})
-    roles = ["P"] if derivation_name == "retire" else ["P", "Q", "R"] if derivation_name == "both" else ["P", "Q"]
-    vrf_roles = (["P"] if derivation_name == "retire"
-                 else ["P", "new", "Q", *(["R"] if derivation_name == "both" else [])])
+    roles, vrf_roles = POOL_ROLES[derivation_name], VRF_ROLES[derivation_name]
     if (set(derivation) != {"name", "pools", "changes", "stateSha256", "bytes", "file", "facts", "vrfCounts"}
             or derivation["name"] != derivation_name or sorted(pools) != sorted(roles)
             or [pools[r] for r in roles] != sorted(pools[r] for r in roles)
@@ -451,6 +493,7 @@ def check_derivation(case, derivation_name, derivation, input_facts, network, re
         refuse(f"{derivation_name}: the changes are not the derivation's")
     facts = derivation["facts"]
     unchanged = {k: v for k, v in input_facts.items() if k not in ("poolsRetiring", "futurePools", "vrfKeyHashes")}
+    unchanged.update(CHANGED_FACTS.get(derivation_name, {}))
     if ({k: facts.get(k) for k in unchanged} != unchanged
             or facts["poolsRetiring"] != input_facts["poolsRetiring"] + sum(c["change"] == "retire" for c in changes)
             or facts["futurePools"] != input_facts["futurePools"]
@@ -524,7 +567,11 @@ def check(case, rows):
                 refuse(f"{where}: the tick's facts do not follow from the states")
             if crossed and (after["epoch"] != before["epoch"] + 1
                             or after["mark"]["epoch"] != after["epoch"]
-                            or after["mark"]["committeeSize"] != before["mark"]["committeeSize"]
+                            or after["mark"]["committeeSize"] != after["leiosCommitteeSize"]
+                            or after["leiosCommitteeSize"] != (FUTURE_COMMITTEE_SIZE
+                                                               if derivation_name == "committee-size"
+                                                               else before["leiosCommitteeSize"])
+                            or after["mark"]["seats"] > after["leiosCommitteeSize"]
                             or after["mark"]["maxKeyAge"] != key_age
                             or after["set"] != {k: before["mark"][k] for k in ("seats", "keyedSeats")}
                             or after["rewardUpdate"] != "absent"):
@@ -547,6 +594,89 @@ def check(case, rows):
                                          or after["futurePools"] != 0))):
                     refuse(f"{where}: the pools or VRF key hash counts are not those the boundary leaves")
             before = after
+    # The pledge leverage cap binds: at the boundary the capped reward update pays the reward accounts less than the
+    # uncapped one at the same slot, the rest staying in the reserves, the treasury's share alike.
+    rewards = {("none" if row["derivation"] == "none" else row["derivation"]["name"]): row
+               for row in rows if row["path"] == "rewards"}
+    capped = rewards["pledge-cap"]["ticks"][-1]
+    uncapped = next(t for t in rewards["none"]["ticks"] if t["slot"] == capped["slot"])
+    if not (capped["rewardUpdateApplied"] and uncapped["rewardUpdateApplied"]
+            and capped["facts"]["accountBalances"] < uncapped["facts"]["accountBalances"]
+            and capped["facts"]["reserves"] > uncapped["facts"]["reserves"]
+            and capped["facts"]["treasury"] == uncapped["facts"]["treasury"]):
+        refuse("pledge-cap: the capped reward update is not smaller than the uncapped one")
+
+
+GENESIS_STATE_FILES = {"translated": f"genesis-{GENESIS_NAME}-translated.cbor",
+                       "fromByron": f"genesis-{GENESIS_NAME}.cbor",
+                       "createInitialState": f"genesis-{GENESIS_NAME}-create-initial-state.cbor"}
+
+
+def genesis_record(result):
+    """The fixture's record of the genesis case, and the bytes of its three states by file name: the state the era
+    translations reach before the injection (with its UTxO), and the injected states from Byron and from
+    `createInitialState` (without their UTxO, which is beside them)."""
+    kept, record = {}, {"name": GENESIS_NAME, "genesis": [f"{GENESIS_DIR}/{name}" for name in GENESIS_FILES],
+                        "byronUtxo": "empty", "version": result["version"], "equal": result["equal"]}
+    translated = bytes.fromhex(result["translated"])
+    kept[GENESIS_STATE_FILES["translated"]] = translated
+    record["translated"] = {"stateSha256": sha256(translated), "bytes": len(translated),
+                            "file": GENESIS_STATE_FILES["translated"]}
+    for key in ("fromByron", "createInitialState"):
+        state = bytes.fromhex(result[key]["state"])
+        kept[GENESIS_STATE_FILES[key]] = state
+        record[key] = {"stateSha256": sha256(state), "bytes": len(state), "file": GENESIS_STATE_FILES[key],
+                       "utxo": result[key]["utxo"], "facts": result[key]["facts"]}
+    return record, kept
+
+
+def check_genesis(record):
+    """The genesis case is what was asked and what Dijkstra's injection makes: version 12; the genesis files of the
+    testnet; both injected states at epoch 0 with the genesis's pools registered and their VRF key hashes counted,
+    the mark of epoch 0 with the Dijkstra genesis's committee size and the key age of the Shelley genesis's KES
+    setup, a non-empty committee and the set the same; `equal` true exactly when the two states and their UTxO
+    are."""
+    def refuse(why):
+        raise SystemExit(f"genesis {GENESIS_NAME}: {why}")
+
+    byron_utxo_empty()
+    shelley = json.loads((ROOT / GENESIS_DIR / "shelley-genesis.json").read_text())
+    dijkstra = json.loads((ROOT / GENESIS_DIR / "dijkstra-genesis.json").read_text())
+    pools = len({**shelley.get("staking", {}).get("pools", {}),
+                 **shelley.get("extraConfig", {}).get("stakePools", {}).get("data", {})})
+    g = genesis(f"{GENESIS_DIR}/shelley-genesis.json")
+    key_age = math.ceil(Fraction(g["maxKESEvolutions"] * g["slotsPerKESPeriod"], g["epochLength"])) + 2
+    if (set(record) != {"name", "genesis", "byronUtxo", "version", "equal", "translated", "fromByron",
+                        "createInitialState"}
+            or record["name"] != GENESIS_NAME or record["byronUtxo"] != "empty" or record["version"] != VERSION
+            or record["genesis"] != [f"{GENESIS_DIR}/{name}" for name in GENESIS_FILES]
+            or any(record[key]["file"] != file for key, file in GENESIS_STATE_FILES.items())):
+        refuse("not the case asked")
+    for key in ("fromByron", "createInitialState"):
+        facts = record[key]["facts"]
+        mark = facts["mark"]
+        if (facts["epoch"] != 0 or facts["pools"] != pools or facts["vrfKeyHashes"] != pools
+                or facts["rewardUpdate"] != "absent" or mark["epoch"] != 0
+                or mark["committeeSize"] != dijkstra["leiosCommitteeSize"]
+                or facts["leiosCommitteeSize"] != dijkstra["leiosCommitteeSize"] or mark["maxKeyAge"] != key_age
+                or not 0 < mark["seats"] <= mark["committeeSize"]
+                or facts["set"] != {k: mark[k] for k in ("seats", "keyedSeats")}):
+            refuse(f"{key}: not the state Dijkstra's injection seats")
+    same = (record["fromByron"]["stateSha256"] == record["createInitialState"]["stateSha256"]
+            and record["fromByron"]["utxo"] == record["createInitialState"]["utxo"])
+    if record["equal"] is not same:
+        refuse("equal does not say whether the two states are equal")
+
+
+def run_genesis(image_id, name):
+    byron_utxo_empty()
+    done = subprocess.run([*container(name, "-v", f"{ROOT / GENESIS_DIR}:/g:ro"), image_id, "genesis",
+                           *(f"/g/{file}" for file in GENESIS_FILES)], capture_output=True, text=True)
+    if done.returncode:
+        raise SystemExit(f"the oracle failed on the genesis case: {done.stderr}")
+    record, kept = genesis_record(json.loads(done.stdout))
+    check_genesis(record)
+    return record, kept
 
 
 def run_image(image_id, name, states):
@@ -587,6 +717,10 @@ def recorded():
     return json.loads(CASES_FILE.read_text())["cases"]
 
 
+def recorded_genesis():
+    return json.loads(CASES_FILE.read_text()).get("genesis")
+
+
 def state_files():
     return sorted(path.name for path in FIXTURE.glob("*.cbor"))
 
@@ -606,18 +740,23 @@ SCOPE = ("Dijkstra's unchanged TICK (applyTickNoEvents) of the Leios testnet bui
          "point before its boundary; and, up to the first boundary, four states derived from each with the "
          "ledger's own lenses and functions (a pool retiring; a pool re-registering with another VRF key hash while "
          "a second pool shares its active one, the counts recomputed by populateVRFKeyHashes; both, retiring a third "
-         "pool or the sharing one) to exercise Dijkstra's POOLREAP. No ledger rule makes the derived states. Each "
+         "pool or the sharing one) to exercise Dijkstra's POOLREAP; a binding pledge leverage cap (CIP-50) in the "
+         "current and previous parameters; and definite future parameters with another Leios committee size. No "
+         "ledger rule makes the derived states. Also Dijkstra's genesis injection (injectIntoTestState) on the "
+         "Leios testnet's genesis files, applied to the state the era translations reach from the empty Byron UTxO, "
+         "as the node starts a chain in Dijkstra, and to createInitialState for comparison. Each "
          "state reached is written with toCBOR at version 12, as a ledger snapshot "
          "holds it. The ledger's NewEpochState only: not the consensus layer's ledger state around it (tip, "
          "transition, cumulative transaction bytes), nor the header state")
 
 
-def validate(provenance, rows, cases_sha256, cases, files=None):
+def validate(provenance, rows, cases_sha256, cases, files, genesis_case):
     """What is wrong with a retained fixture: its provenance (`provenance.json`, parsed), its rows (`cases.json`'s
-    cases), the digest of its case file and the names and digests of its state files, against the inputs and
-    against the repository. Each field of the provenance is checked: its schema exactly, the pins, the ledger
-    sources, and the oracle build it accepted (no network, the image's ID, every build file the repository
-    determines, the executable's digest and the pinned checkouts)."""
+    cases), the digest of its case file, the names and digests of its state files (None to skip them) and its
+    genesis case (`cases.json`'s `genesis`), against the inputs and against the repository. Each field of the
+    provenance is checked: its schema exactly, the pins, the ledger sources, and the oracle build it accepted (no
+    network, the image's ID, every build file the repository determines, the executable's digest and the pinned
+    checkouts)."""
     problems = []
 
     def require(holds, why):
@@ -651,6 +790,15 @@ def validate(provenance, rows, cases_sha256, cases, files=None):
     named = {t["file"]: t["stateSha256"] for row in rows for t in row.get("ticks", []) if t.get("file")}
     named.update({row["derivation"]["file"]: row["derivation"]["stateSha256"] for row in rows
                   if isinstance(row.get("derivation"), dict) and row["derivation"].get("file")})
+    if isinstance(genesis_case, dict):
+        named.update({genesis_case[key]["file"]: genesis_case[key]["stateSha256"] for key in GENESIS_STATE_FILES
+                      if isinstance(genesis_case.get(key), dict) and genesis_case[key].get("file")})
+        try:
+            check_genesis(genesis_case)
+        except SystemExit as refused:
+            problems.append(str(refused))
+    else:
+        problems.append("no genesis case")
     require(provenance["stateFiles"] == dict(sorted(named.items())),
             "the state files of the provenance are not those the cases name")
     if files is not None:
@@ -696,7 +844,7 @@ def offline(cases):
     """What is wrong with the retained fixture against its inputs and the repository."""
     files = {name: sha256((FIXTURE / name).read_bytes()) for name in state_files()}
     return validate(json.loads(PROVENANCE.read_text()), recorded(), file_sha256(CASES_FILE.relative_to(ROOT)), cases,
-                    files)
+                    files, recorded_genesis())
 
 
 def main():
@@ -716,14 +864,16 @@ def main():
     if args.record:
         image_id, binding, sources = measured_image(args.name, args.accept_build)
         results = run_image(image_id, args.name, states)
+        genesis_case, genesis_kept = run_genesis(image_id, args.name)
         rows = [row for case_rows_, _ in results for row in case_rows_]
         kept = {name: data for _, files in results for name, data in files.items()}
+        kept.update(genesis_kept)
         FIXTURE.mkdir(parents=True, exist_ok=True)
         for stale in set(state_files()) - set(kept):
             (FIXTURE / stale).unlink()
         for name, data in kept.items():
             (FIXTURE / name).write_bytes(data)
-        CASES_FILE.write_text(json.dumps({"cases": rows}, indent=1, sort_keys=True) + "\n")
+        CASES_FILE.write_text(json.dumps({"cases": rows, "genesis": genesis_case}, indent=1, sort_keys=True) + "\n")
         PROVENANCE.write_text(json.dumps({
             "schemaVersion": 1,
             "scope": SCOPE,
@@ -757,9 +907,12 @@ def main():
     if args.replay:
         image_id, _, _ = measured_image(args.name, False)
         fresh = run_image(image_id, args.name, states)
+        genesis_case, genesis_kept = run_genesis(image_id, args.name)
         rows = [row for case_rows_, _ in fresh for row in case_rows_]
         kept = {name: data for _, files in fresh for name, data in files.items()}
-        if rows != recorded() or any((FIXTURE / name).read_bytes() != data for name, data in kept.items()):
+        kept.update(genesis_kept)
+        if (rows != recorded() or genesis_case != recorded_genesis()
+                or any((FIXTURE / name).read_bytes() != data for name, data in kept.items())):
             print("the oracle's states differ from the fixture", file=sys.stderr)
             return 1
         print(f"{', '.join(STATES)}: the image's states equal the fixture")

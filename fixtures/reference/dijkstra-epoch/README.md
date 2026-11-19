@@ -13,8 +13,9 @@ ledger source the states depend on (as found in the image and checked against th
 
 Each [Leios build state file](../../../fixtures/leios/state/README.md) used, its `NewEpochState` ticked with
 Dijkstra's unchanged `TICK` along two paths (the [recipe](../../../scripts/oracle/dijkstra-epoch/README.md) says
-why these slots), and four states derived from each (below). `cases.json` holds one case per input, derivation
-and path, twenty in all, in that order: each input's two paths (`derivation` `"none"`), then each derivation's.
+why these slots), and six states derived from each (below). `cases.json` holds one case per input, derivation
+and path, twenty-eight in all, in that order: each input's two paths (`derivation` `"none"`), then each
+derivation's; and, under `genesis`, the [genesis case](#dijkstras-genesis-injection).
 
 | input | path | slot: epoch, reward update after the tick (applied at the boundary?) | state bytes |
 |---|---|---|---|
@@ -43,6 +44,8 @@ modifications in the order they are made, which is all a test needs to build the
 | `setFutureParams` | `pool`, `network`, `vrf` | the pool's future parameters become `stakePoolStateToStakePoolParams network pool (its StakePoolState)` with VRF key hash `vrf` (`psFutureStakePoolParamsL`, `sppVrfL`) |
 | `populateVRFKeyHashes` | | `psVRFKeyHashes` recomputed from the pools: one per active hash, one per future hash that differs from its pool's active one |
 | `retire` | `pool`, `epoch` | the pool's retirement at `epoch` (`psRetiringL`) |
+| `setMaxPledgeLeverage` | `numerator`, `denominator` | the current and the previous parameters' `ppMaxPledgeLeverageL` set to `MaxPledgeLeverage (SJust (numerator / denominator))` |
+| `setFutureLeiosCommitteeSize` | `leiosCommitteeSize` | the governance state's future parameters set to `DefinitePParamsUpdate` of the current ones with `ppLeiosCommitteeSizeL` set (`cgsFuturePParamsL`) |
 
 | derivation | changes | VRF key hash counts: derived state → after the boundary |
 |---|---|---|
@@ -50,11 +53,28 @@ modifications in the order they are made, which is all a test needs to build the
 | `reregister-new-vrf` | `setActiveVrf` Q to P's hash, `setFutureParams` P with "new", `populateVRFKeyHashes` | P's 2 → 1 (Q keeps it), "new" 1 → 1, Q's own 0 → 0 |
 | `both` | as `reregister-new-vrf`, then `retire` R | P's 2 → 1, "new" 1 → 1, Q's own 0 → 0, R's 1 → 0 |
 | `both-sharer` | as `reregister-new-vrf`, then `retire` Q | P's 2 → 0 (P moves off it, Q retires), "new" 1 → 1, Q's own 0 → 0 |
+| `pledge-cap` | `setMaxPledgeLeverage` 1/1 | none (no pool or VRF role) |
+| `committee-size` | `setFutureLeiosCommitteeSize` 2 | none |
 
 Each derived state is ticked along both paths up to the first boundary (`boundaries`: the next epoch's first slot;
-`rewards`: the reward start point, then that slot), with the same results on both inputs. A derived state's bytes
-are in `<input>-<derivation>.cbor` and its ticks' in `<input>-<derivation>-<path>-<slot>.cbor`, for the devnet;
-the testnet's derived states (0.5 to 0.8 MB each) are recorded by digest and size only. The 26 files take 2.5 MB.
+`rewards`: the reward start point, then that slot), with the same VRF key hash counts on both inputs. A derived
+state's bytes are in `<input>-<derivation>.cbor` and its ticks' in `<input>-<derivation>-<path>-<slot>.cbor`, for the
+devnet; the testnet's derived states (0.5 to 0.8 MB each) are recorded by digest and size only.
+
+### Dijkstra's genesis injection
+
+`genesis` in `cases.json` records the initial state of a chain that is in Dijkstra from its genesis, made from the
+[Leios testnet's genesis files](../../../fixtures/leios/testnet/config/) as the node makes it: the era translations
+from Byron's genesis UTxO (empty: the Byron genesis has no balance), then Dijkstra's `injectIntoTestState`; and, for
+comparison, the same injection applied to `createInitialState` (the [recipe](../../../scripts/oracle/dijkstra-epoch/README.md)
+cites both). Its fields: `name` (`testnet`), `genesis` (the four genesis files the program reads), `byronUtxo`
+(`empty`), `version` (12), `translated` (the state the translations reach, before the injection, with its UTxO:
+`stateSha256`, `bytes`, `file`), `fromByron` and `createInitialState` (each the injected state without its UTxO,
+as the node's ledger snapshot holds it: `stateSha256`, `bytes`, `file`, `utxo` (the UTxO's CBOR, hex) and `facts`),
+and `equal` (whether the two injected states and their UTxO are the same: they are not). The files are
+`genesis-testnet-translated.cbor` (9,587 bytes), `genesis-testnet.cbor` (12,051) and
+`genesis-testnet-create-initial-state.cbor` (7,689). With the ten base files and the devnet's 24 derived ones, the
+fixture's 37 files take 2.8 MB.
 
 | field | contents |
 |---|---|
@@ -63,7 +83,7 @@ the testnet's derived states (0.5 to 0.8 MB each) are recorded by digest and siz
 | `version`, `roundTrip` | 12, and the input encodes back to its own bytes |
 | `globals` | what the oracle's `Globals` give: `epochSize`, `securityParameter`, `stabilityWindow` (`3k/f`), `randomnessStabilisationWindow` (`4k/f`), `maxKESEvo`, `slotsPerKESPeriod`, the Leios key age `maxKeyAge` Dijkstra's SNAP derives from them (40,178 epochs on the devnet, 374 on the testnet), and the first slots of the input's epoch and of the next two |
 | `inputFacts`, `ticks[].facts` | read from each state with the ledger's accessors: `epoch`, `rewardUpdate` (`absent`, `pulsing` or `complete`, the `nesRu` field), `treasury`, `reserves`, `pools` and `poolsRetiring` (the pool state's maps), `fees` (the snapshots' fee), and the mark (`epoch`, `committeeSize`, `maxKeyAge`, `seats`, `keyedSeats`) and set (`seats`, `keyedSeats`) snapshots' Leios committees |
-| `inputFacts`, `ticks[].facts` (continued) | `futurePools` (pools with future parameters), `vrfKeyHashes` (distinct hashes in `psVRFKeyHashes`), `deposited` (the UTxO state's deposits) |
+| `inputFacts`, `ticks[].facts` (continued) | `futurePools` (pools with future parameters), `vrfKeyHashes` (distinct hashes in `psVRFKeyHashes`), `deposited` (the UTxO state's deposits), `accountBalances` (the reward accounts' balances, summed), `leiosCommitteeSize` and `maxPledgeLeverage` (the current parameters'; the cap as `[numerator, denominator]` or null), `futurePParams` (`none`, `definite` or `potential`) |
 | `derivation` | `"none"`, or the derived state: `name`, `pools` (role → pool id), `changes` (above), `stateSha256`, `bytes`, `file` (or null), `facts`, and `vrfCounts` (role → `{vrf, count}`, the count in `psVRFKeyHashes`, 0 when absent; roles `P`, `new`, `Q`, `R` as the derivation names them) |
 | `ticks[]` | each tick in order: `slot`, `stateSha256`, `bytes`, `file` (or null), `facts`, `crossedBoundary`, `rewardUpdateApplied` (a boundary crossed by a state holding a reward update), `poolsRetired` (pools registered before the tick and not after) and `vrfCounts` (as the derivation's, `{}` without one) |
 
@@ -91,6 +111,21 @@ the testnet's derived states (0.5 to 0.8 MB each) are recorded by digest and siz
 - `POOLREAP` releases one reference to a VRF key hash for each pool that stops using it, by retiring or by moving to
   other future parameters, and drops the hash only when no reference is left: P's hash, shared with Q, counts 1 after
   P moves to "new", and 0 when Q also retires.
+- A pledge leverage cap of 1 binds on both inputs: the reward update the pulser computes with it pays the reward
+  accounts less at the boundary than the uncapped one, the rest staying in the reserves, the treasury's share the
+  same. The devnet's pools pledge nothing, so their reward is 0 under any cap: reward accounts 0 against
+  7,199,675,998, reserves 199,874,005,265,000 against 199,866,805,589,002. The testnet's pools pledge some, so the cap
+  cuts their reward without ending it: 14,706,870,559,916 against 14,844,238,231,823 in the reward accounts,
+  14,224,431,633,188,715 against 14,224,294,265,516,808 in the reserves.
+- Definite future parameters with committee size 2 are enacted at the boundary, and the new mark is made with them:
+  committee size 2 and 2 seats (the devnet's keyless, the testnet's keyed), while the set keeps the old mark's 3 or
+  154. The parameters then hold 2, and the future parameters go back to `potential`, as after every boundary.
+- The genesis case's injected states hold the genesis's pool, its VRF key hash counted once, and a committee of one
+  seat in both the mark and the set, keyless although the genesis gives the pool a voting key; committee size 900
+  and key age 374, as the Dijkstra and Shelley genesis files give them. The state the node makes differs from the
+  injection applied to `createInitialState` only in the governance state: the translation into Conway installs the
+  Conway genesis's constitutional committee and constitution, and the DRep pulser built from them, which
+  `createInitialState` leaves empty. Their facts and UTxO are the same.
 - Ticking a state straight to the first slot of the epoch after next crosses no boundary: `NEWEPOCH` acts only
   when the slot's epoch is the state's epoch plus one
   (`eras/conway/impl/src/Cardano/Ledger/Conway/Rules/NewEpoch.hs:160`).
@@ -102,10 +137,12 @@ the testnet's derived states (0.5 to 0.8 MB each) are recorded by digest and siz
 Exercised: one and two consecutive boundaries in Dijkstra, with and without a reward update (from a pulser started,
 never forced), a pulsing reward update in the encoding, a Leios committee with keyless and with keyed seats rotating
 from mark to set, and the key age derived from two networks' KES setups and epoch sizes. On the derived states only:
-a pool retirement with and without a registered reward account, future parameters with another VRF key hash, and a
-VRF key hash two pools share. Not exercised: a governance action enacted or expired, a protocol-version change
-(`HARDFORK`), a reward update forced complete late in an epoch (`RewardsTooLate`), a committee with more pools than
-seats, a retirement or re-registration the chain itself reached (no ledger rule makes the derived states, and
+a pool retirement with and without a registered reward account, future parameters with another VRF key hash, a
+VRF key hash two pools share, a binding pledge leverage cap, and a committee size changed at the boundary, with more
+pools than seats. Also Dijkstra's genesis injection on one network's genesis files. Not exercised: a governance
+action enacted or expired, a protocol-version change (`HARDFORK`), a reward update forced complete late in an epoch
+(`RewardsTooLate`), a genesis with Byron balances or more than one pool, a retirement, re-registration or parameter
+change the chain itself reached (no ledger rule makes the derived states, and
 Dijkstra's `POOL` refuses a VRF key hash another pool holds), and future parameters that change more than the VRF key
 hash. The states are those of the ledger's `NewEpochState` only; consensus's ledger state around it (tip, transition,
 cumulative transaction bytes) and the header state are not ticked here.

@@ -28,14 +28,21 @@ run = load()
 CASES = [case for case, _ in run.inputs()]
 PROVENANCE = json.loads(run.PROVENANCE.read_text())
 ROWS = run.recorded()
+GENESIS = run.recorded_genesis()
 CASES_SHA256 = hashlib.sha256(run.CASES_FILE.read_bytes()).hexdigest()
 FILES = {name: hashlib.sha256((run.FIXTURE / name).read_bytes()).hexdigest() for name in run.state_files()}
 ZERO = "0" * 64
 BINARY = run.IMAGE_BINARY
 
 
-def problems(provenance, rows=ROWS, cases_sha256=CASES_SHA256, files=FILES):
-    return run.validate(provenance, rows, cases_sha256, CASES, files)
+def problems(provenance, rows=ROWS, cases_sha256=CASES_SHA256, files=FILES, genesis=GENESIS):
+    return run.validate(provenance, rows, cases_sha256, CASES, files, genesis)
+
+
+def with_genesis(edit):
+    record = copy.deepcopy(GENESIS)
+    edit(record)
+    return record
 
 
 def changed(edit):
@@ -280,6 +287,73 @@ class RetainedFixtureTest(unittest.TestCase):
             self.assertEqual(at(name, "both", "boundaries", 0), {"P": 1, "new": 1, "Q": 0, "R": 0})
             self.assertEqual(at(name, "both-sharer", "rewards", 1), {"P": 0, "new": 1, "Q": 0})
             self.assertEqual(at(name, "retire", "boundaries", 0), {"P": 0})
+
+    def test_the_pledge_cap_and_committee_size_are_bound(self):
+        def facts(**fields):
+            return lambda t: t["facts"].update(fields)
+        uncapped = ROWS[row_index("dijkstra-203", "rewards")]["ticks"][1]["facts"]
+        for name, rows in {
+            "another cap": with_derivation("dijkstra-203", "pledge-cap", lambda d: d["changes"][0].update(numerator=2)),
+            "no cap in the derived state": with_derivation(
+                "testnet-2168639", "pledge-cap", lambda d: d["facts"].update(maxPledgeLeverage=None)),
+            "the capped reward the uncapped one": with_tick(
+                "dijkstra-203", "rewards", 1, facts(accountBalances=uncapped["accountBalances"]), "pledge-cap"),
+            "the capped reward larger": with_tick(
+                "testnet-2168639", "rewards", 1, facts(accountBalances=10 ** 16), "pledge-cap"),
+            "another future size": with_derivation(
+                "dijkstra-203", "committee-size", lambda d: d["changes"][0].update(leiosCommitteeSize=3)),
+            "no definite future parameters": with_derivation(
+                "testnet-2168639", "committee-size", lambda d: d["facts"].update(futurePParams="none")),
+            "the old size after the boundary": with_tick(
+                "dijkstra-203", "boundaries", 0, facts(leiosCommitteeSize=900), "committee-size"),
+            "the new mark of the old size": with_tick(
+                "testnet-2168639", "boundaries", 0, lambda t: t["facts"]["mark"].update(committeeSize=900),
+                "committee-size"),
+            "more seats than the size": with_tick(
+                "dijkstra-203", "rewards", 1, lambda t: t["facts"]["mark"].update(seats=3), "committee-size"),
+        }.items():
+            with self.subTest(name):
+                self.assertNotEqual(problems(PROVENANCE, rows=rows), [], name)
+
+    def test_the_new_derivations_are_recorded(self):
+        for name in run.STATES:
+            capped = ROWS[row_index(name, "rewards", "pledge-cap")]["ticks"][1]["facts"]
+            uncapped = ROWS[row_index(name, "rewards")]["ticks"][1]["facts"]
+            self.assertLess(capped["accountBalances"], uncapped["accountBalances"])
+            self.assertEqual(capped["treasury"], uncapped["treasury"])
+            sized = ROWS[row_index(name, "boundaries", "committee-size")]
+            self.assertEqual(sized["derivation"]["facts"]["leiosCommitteeSize"], 900)
+            self.assertEqual(sized["ticks"][0]["facts"]["mark"]["committeeSize"], run.FUTURE_COMMITTEE_SIZE)
+            self.assertEqual(sized["ticks"][0]["facts"]["mark"]["seats"], run.FUTURE_COMMITTEE_SIZE)
+        # The devnet's pools pledge nothing, so a cap leaves their pools no reward at all.
+        self.assertEqual(ROWS[row_index("dijkstra-203", "rewards", "pledge-cap")]["ticks"][1]["facts"]
+                         ["accountBalances"], 0)
+
+    def test_the_genesis_case_is_bound(self):
+        self.assertEqual(problems(PROVENANCE, genesis=GENESIS), [])
+        self.assertNotEqual(problems(PROVENANCE, genesis=None), [])
+        for name, record in {
+            "another version": with_genesis(lambda g: g.update(version=11)),
+            "equal claimed": with_genesis(lambda g: g.update(equal=True)),
+            "another state": with_genesis(lambda g: g["fromByron"].update(stateSha256=ZERO)),
+            "another file": with_genesis(lambda g: g["translated"].update(file="x.cbor")),
+            "no pool": with_genesis(lambda g: g["fromByron"]["facts"].update(pools=0)),
+            "an empty committee": with_genesis(lambda g: g["fromByron"]["facts"]["mark"].update(seats=0)),
+            "another committee size": with_genesis(
+                lambda g: g["createInitialState"]["facts"]["mark"].update(committeeSize=2)),
+            "another key age": with_genesis(lambda g: g["fromByron"]["facts"]["mark"].update(maxKeyAge=40178)),
+            "the set not the mark": with_genesis(
+                lambda g: g["fromByron"]["facts"].update(set={"seats": 0, "keyedSeats": 0})),
+            "another Byron UTxO": with_genesis(lambda g: g.update(byronUtxo="genesis")),
+        }.items():
+            with self.subTest(name):
+                self.assertNotEqual(problems(PROVENANCE, genesis=record), [], name)
+
+    def test_the_genesis_states_differ_in_the_governance_state_only(self):
+        # The translations carry the Conway genesis's committee and constitution; createInitialState does not.
+        self.assertFalse(GENESIS["equal"])
+        self.assertEqual(GENESIS["fromByron"]["facts"], GENESIS["createInitialState"]["facts"])
+        self.assertEqual(GENESIS["fromByron"]["utxo"], GENESIS["createInitialState"]["utxo"])
 
     def test_the_paths_are_the_ones_asked(self):
         for case in CASES:

@@ -48,7 +48,7 @@ rounded up, `eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs:768-789`):
 
 Neither input has a pool retirement, future pool parameters or a VRF key hash two pools share, so Dijkstra's
 `POOLREAP` and its VRF key hash counting (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs:104-212`)
-would go unexercised. `Main.hs` therefore also derives four states from each input before ticking it, with the
+would go unexercised. `Main.hs` therefore also derives states from each input before ticking it, four for these, with the
 ledger's own lenses and functions and nothing patched, as the [node-to-client query
 oracle](../leios-ntc-queries/README.md) derives its states. P, Q and R are the input's registered pools in key order;
 "new" is the VRF key hash of 32 bytes of `0xee`, registered to no pool (`Main.hs` refuses an input where it is):
@@ -69,6 +69,38 @@ slot of the next epoch, and the reward start point then that slot. `Main.hs` rep
 the derivation's VRF key hashes by role (P's, "new", Q's own and R's), and `run.py` checks them against the counts
 `populateVRFKeyHashes` gives for the pools P, Q and R (the invariant `POOLREAP` keeps, `Rules/Pool.hs:176-186`), on
 the derived state and after the boundary, where the future parameters are active and the retiring pools are gone.
+
+Two more derivations change the protocol parameters instead, through the ledger's own lenses:
+
+| derivation | changes | what it exercises |
+|---|---|---|
+| `pledge-cap` | the current and previous parameters' `ppMaxPledgeLeverageL` set to `MaxPledgeLeverage (SJust 1)` | the CIP-50 cap in `maxPool'` (`libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs:141-163`), which the reward pulser reads from the previous parameters (`eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/PulsingReward.hs:120`, `Rewards.hs:361, 385`): a pool's share is capped at the leverage times its pledge |
+| `committee-size` | the governance state's future parameters set to `DefinitePParamsUpdate` of the current ones with `ppLeiosCommitteeSizeL` 2 (`cgsFuturePParamsL`) | a committee size that changes at the boundary: Dijkstra's `EPOCH` enacts the future parameters (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs:190`) before `SNAP` reads them (`:237`), so the new mark carries the new size |
+
+`run.py` checks, on the `rewards` path, that the capped reward update is applied and pays the reward accounts less
+than the uncapped one at the same slot (the base case's), the rest staying in the reserves and the treasury's share
+the same; and, at every boundary, that the new mark's committee size is the parameter in force after it, with no
+more seats than that size.
+
+### Dijkstra's genesis injection
+
+`Main.hs genesis` makes the initial state of a chain that is in Dijkstra from its genesis, on the [Leios testnet's
+genesis files](../../../fixtures/leios/testnet/config/) (every era at epoch 0; its Shelley genesis injects one pool
+with a voting key, one delegation and two funds). It follows the node: consensus translates Byron's state through
+every era and then applies the current era's `injectIntoTestState` (ouroboros-consensus `2416493b`
+`Ouroboros/Consensus/Cardano/Node.hs:846-892`, the translations in `Cardano/CanHardFork.hs:351-379, 550-737`), so
+`Main.hs` runs `translateToShelleyLedgerStateFromUtxo` on Byron's genesis UTxO, then `translateEra'` into Allegra,
+Mary, Alonzo, Babbage, Conway and Dijkstra with each era's translation context, then Dijkstra's
+`injectIntoTestState` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Transition.hs:59-101`: Conway's injection,
+`populateVRFKeyHashes`, `seatInitialLeiosCommittee`), with the transition configuration composed as
+cardano-ledger-api's `mkLatestTransitionConfig` composes it. Byron's genesis UTxO is empty because the Byron
+genesis has no AVVM or non-AVVM balance, which `run.py` checks. For comparison it also applies the injection to
+`createInitialState` of the same configuration, as the [Leios genesis harness](../leios-genesis/README.md) does
+for Conway. The two differ: the translation into Conway installs the Conway genesis's constitutional committee and
+constitution, and the DRep pulser is built from them, where `createInitialState` starts from an empty governance
+state. This case lives here rather than in the Leios genesis harness, because that harness compiles a program per
+run against Conway and compares native results case by case, while this one is a measured image whose record
+already binds Dijkstra's sources.
 
 The states the ticks reach need nothing but the input state. The snapshot's `NewEpochState` holds no UTxO (it is
 in the snapshot's `tables`), and consensus ticks it without them (`Shelley/Ledger/Ledger.hs:607-609`); Dijkstra's
