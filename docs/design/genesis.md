@@ -154,6 +154,13 @@ carry no new adding client. Peer cancellation cannot remove a queued admission o
 selection. Worker shutdown and infrastructure failure settle current and queued work, following
 `Background.hs:658–708` and `Types.hs:740–755`; they never masquerade as a peer refusal.
 
+As built, a block the node forges does not enter the add queue: `Follower.adoptForged` judges it under the selection
+lock, projected through LoE and eligibility by the same `CandidateSelection.project` the worker applies to every
+candidate, so before the node is caught up a forged block past the LoE plus `k` is not adopted, as the reference's
+chain selection trims it (ouroboros-consensus 82ecba329 `ChainSel.hs:767-777`; the
+[compatibility page](../compatibility/ouroboros-genesis.md#a-forged-block-and-the-limit-on-eagerness) lists what is
+checked). Such a block is not retained, so LoE reconsideration does not see it.
+
 Startup resets selection to the immutable anchor and considers the complete recovered forest,
 including originals beyond the ordinary delivery-cache capacity. Opening network clients and servers
 waits for that initial selection to finish. Readiness failures land through the acquiring caller’s

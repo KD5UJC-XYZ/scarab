@@ -175,14 +175,7 @@ final class Follower[F[_]: Async, S] private (
         for
           current <- chain.get
           selected <- local
-          control <- genesis.get.map(_.map(_.governor))
-          fragment = Fragment(
-            selected.anchor,
-            selected.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
-              block
-            }
-          )
-          limit <- control.traverse(_.limitAt(fragment)).map(_.flatten)
+          limit <- limitFor(selected)
         yield
           if phase == BlockSelection.Phase.Startup then
             CandidateSelection.startup(current.k, selected, candidates, limit, tiebreaker)
@@ -227,6 +220,24 @@ final class Follower[F[_]: Async, S] private (
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
     BlockSelection.resource(pool, work, fatal, application, originPredecessor)
+
+  /** The Limit on Eagerness on `selected`: the LoE fragment of the GSM state (`setGetLoEFragment`,
+    * Node/Genesis.hs:252-278, ouroboros-consensus 82ecba329; the same at 808e40054 and 2416493bf),
+    * none in Praos mode or once the node is caught up. Chain selection trims every candidate to it,
+    * a peer's and a block this node forged alike (`constructPreferableCandidates`,
+    * Storage/ChainDB/Impl/ChainSel.hs:767-777).
+    */
+  private def limitFor(selected: ChainSelection.Local): F[Option[Fragment]] =
+    genesis.get.flatMap(
+      _.flatTraverse(
+        _.governor.limitAt(
+          Fragment(
+            selected.anchor,
+            selected.blocks.map(_.point).collect { case block: ChainSync.Point.Block => block }
+          )
+        )
+      )
+    )
 
   private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
     for
@@ -671,12 +682,17 @@ final class Follower[F[_]: Async, S] private (
       Follower.Unjudged(block, cause, attempt)
     )
 
-  /** Adopt a block this node has just forged. It goes through the node's block rules like any other
-    * block. If it extends our tip it is adopted. If the tip has moved on (a block of the same
-    * height arrived first: a slot battle) chain selection decides as it does for a peer's chain:
-    * the block replaces the tip only when it is strictly preferred (the VRF tie-break), otherwise
-    * it is `Lost`. A block the rules refuse is `Invalid`. The chain is untouched unless the block
-    * is `Adopted`.
+  /** Adopt a block this node has just forged. Chain selection takes it as it takes a peer's
+    * candidate, as the reference hands it to `ChainDB.addBlockAsync` like any block
+    * (`forkBlockForging`, NodeKernel.hs:756, ouroboros-consensus 82ecba329; Forge.hs:284 at
+    * 808e40054): the Limit on Eagerness trims it ([[limitFor]]), and what is left replaces our
+    * chain from the block's predecessor only when it is strictly preferred
+    * ([[CandidateSelection.project]]). A block that extends our tip is preferred unless the LoE
+    * leaves none of it: in Genesis mode, before the node is caught up, our selection may not reach
+    * more than `k` blocks past the LoE fragment. A block of the same height as our tip (a slot
+    * battle) replaces it only on the VRF tie-break. A block selection does not take is `Lost`,
+    * which the forger reports as `TraceDidntAdoptBlock` (NodeKernel.hs:769). A block the rules
+    * refuse is `Invalid`. The chain is untouched unless the block is `Adopted`.
     */
   def adoptForged(header: Header, raw: Bytes)(using
       handle: Handle[F, NodeError]
@@ -685,29 +701,25 @@ final class Follower[F[_]: Async, S] private (
       for
         before <- chain.get
         l <- local
+        limit <- limitFor(l)
         known = before.blocks.map(_._1) ++ before.anchor.block
         // where the block would attach, and how many blocks of ours that replaces
         plan: Either[Follower.AdoptionLoss, (ChainSync.Point, Int)] =
-          if before.tipRef.map(_.hash) == header.prevHash then Right((before.tip, 0))
-          else
-            header.prevHash.fold(Option(ChainSync.Point.Origin: ChainSync.Point))(h =>
+          header.prevHash
+            .fold(Option(ChainSync.Point.Origin: ChainSync.Point))(h =>
               known.find(_.hash == h).map(_.point)
-            ) match
-              case None =>
-                Left(
-                  Follower.AdoptionLoss.DetachedPredecessor(before.tip, header.prevHash)
-                )
-              case Some(base) =>
-                ChainSelection.decide(
-                  tiebreaker(header.era),
-                  l,
-                  ChainSelection.Candidate(base, Vector(header))
-                ) match
-                  case ChainSelection.Decision.Switch(to, depth, _) => Right((to, depth))
-                  case _ =>
-                    Left(
-                      Follower.AdoptionLoss.SelectionPrefersTip(before.tip)
-                    )
+            )
+            .toRight(Follower.AdoptionLoss.DetachedPredecessor(before.tip, header.prevHash))
+            .flatMap { base =>
+              val offered = Vector(ChainSelection.Candidate(base, Vector(header)))
+              def selected(under: Option[Fragment]) =
+                CandidateSelection.project(before.k, l, offered, under, tiebreaker).headOption
+              // a block selection would take but for the LoE is held back by it
+              def lost =
+                if selected(None).isDefined then Follower.AdoptionLoss.LimitOnEagerness(before.tip)
+                else Follower.AdoptionLoss.SelectionPrefersTip(before.tip)
+              selected(limit).map(chosen => (chosen.base, l.depthTo(chosen.base))).toRight(lost)
+            }
         result <- plan match
           case Left(reason) => F.pure(Follower.Adoption.Lost(reason))
           case Right((at, depth)) =>
@@ -863,11 +875,19 @@ object Follower:
   enum AdoptionLoss:
     case DetachedPredecessor(tip: ChainSync.Point, predecessor: Option[Bytes])
     case SelectionPrefersTip(tip: ChainSync.Point)
+
+    /** The Limit on Eagerness leaves none of the block to chain selection, which would take it
+      * otherwise (`trimToLoE`, Storage/ChainDB/Impl/ChainSel.hs:823-845, ouroboros-consensus
+      * 82ecba329).
+      */
+    case LimitOnEagerness(tip: ChainSync.Point)
     def message: String = this match
       case DetachedPredecessor(tip, _) =>
         s"the tip moved to ${Points.show(tip)} and the block's predecessor is not on our chain"
       case SelectionPrefersTip(tip) =>
         s"the tip moved to ${Points.show(tip)}, which chain selection prefers to the block"
+      case LimitOnEagerness(tip) =>
+        s"the Limit on Eagerness keeps the block from chain selection, whose tip is ${Points.show(tip)}"
 
   enum Adoption:
     case Adopted(block: BlockRef)

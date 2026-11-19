@@ -34,3 +34,31 @@ terminations are the same as before this behaviour was built. Not shown: no run 
 GDD's timing, and the equivalence is shown only on these cases. The governor stores the LoE fragment before it
 disconnects the losers, where the reference kills them first; in the replayed cases this order ends the peers in the
 reference's order and the other did not.
+
+## A forged block and the Limit on Eagerness
+
+A block the node forges goes to chain selection as a peer's candidate does: `Follower.adoptForged` projects it
+through the Limit on Eagerness with `CandidateSelection.project`, the projection the selection worker applies to
+every candidate. The reference's forging loop hands its block to `ChainDB.addBlockAsync` (ouroboros-consensus
+82ecba329 `NodeKernel.hs:756`; `NodeKernel/Forge.hs:284` at 808e40054), whose chain selection trims every candidate
+to the LoE fragment, the one that extends the current chain included, before it keeps those preferable to the
+current chain (`constructPreferableCandidates`, `Storage/ChainDB/Impl/ChainSel.hs:735-777`). The LoE fragment is
+the empty fragment at the immutable tip in PreSyncing, the GDD's fragment in Syncing, and none once caught up
+(`Node/Genesis.hs:252-278`, the same at 808e40054 and 2416493bf). A block the LoE leaves out is not adopted and is
+traced `TraceDidntAdoptBlock` (`NodeKernel.hs:761-769`); Scarab logs `didntAdoptBlock`, then `lost`. Neither
+forging loop has a Genesis gate of its own.
+
+`ForgedLimitOnEagernessSuite` (the follower) and `ForgeLimitOnEagernessSuite` (the forging loop, with the real
+block rules) check these cases in simulated time:
+
+- in PreSyncing, and in Syncing with the LoE fragment at the immutable tip, the first `k` blocks are adopted and a
+  forged block past the LoE plus `k` is not, the immutable tip staying where it was; a peer's candidate carrying
+  the same block is held back alike;
+- caught up, in Praos mode, and with LoE and GDD disabled, every forged block is adopted and the immutable tip
+  follows `k` blocks behind;
+- a forged block of the tip's height within the LoE is still decided by chain selection's tie-break.
+
+Not shown: no run against a reference node, and no devnet scenario forges in Genesis mode. The reference stores a
+block it did not select in its VolatileDB and considers it again when the LoE tip moves or the node is caught up
+(`ChainSelReprocessLoEBlocks`, `ChainSel.hs:358-413`, which the GDD governor triggers, `Genesis/Governor.hs:172-184`);
+Scarab keeps no forged block it did not adopt, so it does not select such a block later.
