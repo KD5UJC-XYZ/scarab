@@ -17,7 +17,7 @@ partial: the era is named and the node refuses to enter it. Its maximum major pr
 - the other parts of the crossing (#823): the mempool's transaction translation and rematch, the ledger-view forecast across the boundary, and the Praos to Praos2 chain-dependent state;
 - the header gate's rules for a Dijkstra header under `--reference-build leios-b004fe0c` (#54): Dijkstra's own ledger-view forecast or the one across the boundary, the chain-dependent state translated into Praos2's, and Praos2's envelope and protocol rules, as the build's ChainSync client runs them; the release builds keep refusing a Dijkstra header as of the wrong era.
 
-None of these is reachable from the node's own chain yet: with the node's maximum major version of 11 the era history never enters Dijkstra.
+Under the Leios build the node's maximum major version is the configured one (12 on the testnet) and its era history enters Dijkstra, from the genesis on the public testnet, where the header gate validates the chain's headers (`DijkstraHeaderGateSuite`); `follow` still refuses that build and no Dijkstra block is applied (`DijkstraNotYet.Rules`). The release builds' maximum stays 11, which never enters Dijkstra.
 
 The continuation is tracked in [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826) for the
 reference-build behavior, committee and state lifecycle, and Dijkstra persistence, and in

@@ -12,6 +12,7 @@
   parameters and the snapshots), not the UTxO. A defect of
   the node's own state or configuration on such a header (a Dijkstra view that cannot be made, a
   Praos2 parameter that cannot hold) ends the peer's session uncharged
-  (`PeerError.HeaderUndecided`). The node still does not enter Dijkstra: with its
-  maximum major version of 11 a Dijkstra header is refused as of the wrong era in every build, and
-  `follow` refuses the Leios build.
+  (`PeerError.HeaderUndecided`). With the node's own setup of the testnet the gate validates its
+  headers from the chain's Dijkstra genesis on; `follow` still refuses the Leios build, and under
+  the release builds, whose maximum major version is 11, a Dijkstra header is refused as of the
+  wrong era.

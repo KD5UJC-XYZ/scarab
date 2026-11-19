@@ -60,10 +60,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
   *     on that chain (`fixtures/leios/testnet/headers-after-2168639.tsv`), checked against the
   *     stake of 154 pools.
   *
-  * Both chains are at major version 12, which the node's maximum of 11 refuses until it enters
-  * Dijkstra (#54); the suite's configurations raise it to 12, as the reference's
-  * `ExperimentalHardForksEnabled` does. With the node's own maximum every Dijkstra header stays
-  * refused as of the wrong era, in either build.
+  * Under the Leios build the node's maximum major version is the configured one, 12 on both chains
+  * (#54); at a maximum of 11, the release builds', every Dijkstra header is refused as of the wrong
+  * era, in either build.
   */
 class DijkstraHeaderRulesSuite extends munit.FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
@@ -127,7 +126,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   private lazy val devnetSetup = NodeSetup
     .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis/config.json"))
     .fold(e => fail(e.message), identity)
-  private lazy val devnetPraos = withMax(devnetSetup.praos, 12)
+  private lazy val devnetPraos = devnetSetup.praos
 
   /** The states after each Conway block, the genesis state first. */
   private lazy val conway: Vector[(Header, MirrorState)] =
@@ -218,6 +217,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   private def byronRules(shelley: Option[BigInt], forks: Map[Era, BigInt]) =
     val praos = erasSetup.praos
     val span = praos.geometry.byron
+    // the capture is read with the 11.1 build's setup: the Leios build's maximum is given here
     NodeHeaderRules[MirrorState](
       withMax(
         praos.copy(
@@ -283,8 +283,10 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   }
 
   test(
-    "with the node's own maximum version every build refuses a Dijkstra header as of the wrong era"
+    "at a maximum major version of 11, the release builds', every build refuses a Dijkstra header as of the wrong era"
   ) {
+    // the node's own setup of the devnet, of the Leios build, has the configured 12
+    assertEquals(devnetSetup.praos.forks.maxMajorProtVer, 12)
     ReferenceBuild.values.foreach { build =>
       val r = rules(devnetSetup, withMax(devnetSetup.praos, 11), build)
       assertEquals(
@@ -343,7 +345,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     withBabbageStart { setup =>
       val anchor = setup.mirrorStart
       assertEquals(anchor.era, Era.Babbage)
-      val r = rules(setup, withMax(setup.praos, 12), ReferenceBuild.LeiosB004fe0c)
+      val r = rules(setup, setup.praos, ReferenceBuild.LeiosB004fe0c)
       // the header extends the devnet's block 32, as the candidate chain it came on does
       val prev = r.at(anchor) match
         case s: NodeHeaderState.Shelley => s.copy(previous = Some(ref(lastConway)))
@@ -465,7 +467,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     rows(testnet.resolve("testnet/headers-after-2168639.tsv"))
       .map(r => received(testnetSetup, hex(r(4))))
   private lazy val testnetRules =
-    rules(testnetSetup, withMax(testnetSetup.praos, 12), ReferenceBuild.LeiosB004fe0c)
+    rules(testnetSetup, testnetSetup.praos, ReferenceBuild.LeiosB004fe0c)
 
   /** The anchor's header state, as the gate starts a session at its tip. */
   private lazy val testnetStart: NodeHeaderState =

@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.consensus.{
   SelectView,
   VolatileChain
 }
-import xyz.kd5ujc.scarab.consensus.state.MirrorState
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{
   GenesisInternalProblem,
   Header,
@@ -26,15 +26,16 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.FailureClass
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader, ReferenceBuild, StateLayout}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
 /** The canonical header gate ([[HeaderCheck.forNodeChain]], the gate every peer session of the node
-  * runs) on the public Leios testnet's headers under `--reference-build leios-b004fe0c`, with the
-  * node's chain anchored at the testnet's ledger state at slot 2,168,639
-  * (`fixtures/leios/state/testnet-2168639`) and the eight headers that follow it on that chain
-  * (`fixtures/leios/testnet/headers-after-2168639.tsv`). The maximum major version is raised to 12,
-  * as the reference's `ExperimentalHardForksEnabled` does (#54).
+  * runs) on the public Leios testnet's headers under `--reference-build leios-b004fe0c`, built from
+  * the testnet's configuration by [[NodeSetup]] with nothing overridden (its maximum major version
+  * is the configured 12, #54): from the chain's genesis, whose state is Dijkstra's with Praos2's
+  * chain-dependent state, its first headers (`fixtures/leios/testnet/headers-from-origin.tsv`), and
+  * from the testnet's ledger state at slot 2,168,639 (`fixtures/leios/state/testnet-2168639`) the
+  * eight headers that follow it on that chain (`fixtures/leios/testnet/headers-after-2168639.tsv`).
   */
 class DijkstraHeaderGateSuite extends FailsOnUncaught:
   private given Tell[IO, GenesisInternalProblem] with
@@ -47,8 +48,7 @@ class DijkstraHeaderGateSuite extends FailsOnUncaught:
   private lazy val setup = NodeSetup
     .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(testnet.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)
-  private lazy val praos: PraosConfig =
-    setup.praos.copy(forks = setup.praos.forks.copy(maxMajorProtVer = 12))
+  private lazy val praos: PraosConfig = setup.praos
   private lazy val anchor: MirrorState =
     val raw = Bytes.wrap(Files.readAllBytes(testnet.resolve("state/testnet-2168639/state")))
     val file =
@@ -59,9 +59,13 @@ class DijkstraHeaderGateSuite extends FailsOnUncaught:
     hex("aed73a1050263343a16d9a980b2f6dce1152c2e959b69987230a9e5f4844f619"),
     BigInt(97273)
   )
-  private lazy val headers: Vector[Header] =
+  private lazy val headers: Vector[Header] = read("headers-after-2168639.tsv")
+
+  /** The headers of a capture of `fixtures/leios/testnet`, each read from its ChainSync envelope.
+    */
+  private def read(file: String): Vector[Header] =
     Files
-      .readAllLines(testnet.resolve("testnet/headers-after-2168639.tsv"))
+      .readAllLines(testnet.resolve("testnet").resolve(file))
       .asScala
       .toVector
       .filter(l => l.nonEmpty && !l.startsWith("#"))
@@ -77,15 +81,17 @@ class DijkstraHeaderGateSuite extends FailsOnUncaught:
   /** A session of the canonical gate from the anchor's block, with `config` 's header rules: the
     * outcome of offering it every header, and its counts.
     */
-  private def session(config: PraosConfig) =
-    val chain = VolatileChain[MirrorState](
-      setup.geometry.k.toInt,
-      Anchor(Some(anchorTip), anchor),
-      Vector.empty
-    )
+  private def session(
+      config: PraosConfig,
+      from: Anchor[MirrorState] = Anchor(Some(anchorTip), anchor),
+      offered: Vector[Header] = headers
+  ) =
+    val chain = VolatileChain[MirrorState](setup.geometry.k.toInt, from, Vector.empty)
     val selection = ChainSelection.Local(
       chain.anchor.point,
-      SelectView(anchorTip.blockNo, anchorTip.slot, None, 0, None),
+      from.block.fold(SelectView(-1, 0, None, 0, None))(b =>
+        SelectView(b.blockNo, b.slot, None, 0, None)
+      ),
       Vector.empty
     )
     for
@@ -98,12 +104,28 @@ class DijkstraHeaderGateSuite extends FailsOnUncaught:
           Compute.inline[IO],
           10000
         )
-        .start(anchorTip.point)
+        .start(chain.anchor.point)
       outcome <- Fault.fiber(
-        gate.accept(headers.map(h => SyncEvent.RollForward(h, ChainSync.Tip.Origin)))
+        gate.accept(offered.map(h => SyncEvent.RollForward(h, ChainSync.Tip.Origin)))
       )
       counts <- gate.counts
     yield (outcome, counts)
+
+  test("the node's own setup of the testnet runs Praos2 from a Dijkstra genesis") {
+    assertEquals(praos.forks.maxMajorProtVer, 12)
+    assertEquals(setup.mirrorStart.era, Era.Dijkstra)
+    setup.mirrorStart.protocol.dep match
+      case ChainDepState.Praos2(state) => assertEquals(state.announcement, None)
+      case other                       => fail(s"not Praos2's state: $other")
+  }
+
+  test("the gate validates the testnet's first headers from its genesis") {
+    val first = read("headers-from-origin.tsv").take(50)
+    session(praos, Anchor(None, setup.mirrorStart), first).map { (outcome, counts) =>
+      assertEquals(outcome, Right(()))
+      assertEquals(counts.validated, 50L)
+    }
+  }
 
   test("the gate validates the testnet's headers after its ledger state, every one") {
     session(praos).map { (outcome, counts) =>
