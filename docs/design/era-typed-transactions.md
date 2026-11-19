@@ -790,14 +790,66 @@ Conway's rules on the classes follow as the rest of stage 2.
   - `EraCertState` landed without the deposit and refund totals of a body, which the value conserved
     adds (above). Two more gaps are on #85: the committee and its proposals as the node's records in the
     environments, and a pool's parameters with the node's field types.
+- **Dijkstra's transactions** (`ledger/.../era/dijkstra/`: the body, the transaction, the witness set and the
+  auxiliary data; `TxBody.hs`, `Tx.hs`, `TxWits.hs` and `TxAuxData.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`,
+  cardano-ledger 9df9f98c): the families' Dijkstra cases, of both levels.
+  - The body mirrors the GADT `DijkstraTxBodyRaw` (`TxBody.hs:172-220`): a sealed `DijkstraTxBody[L]` whose top-level
+    case alone has the fee, the collateral, the sub-transactions and the starting balance intervals, so code that
+    reads a sub-transaction's fee or collateral does not compile. The fields both levels share are held once.
+    Inputs are a sorted set, outputs `Sized` Dijkstra outputs through its checked read, certificates and proposals
+    `OSet`s, votes `VotingProcedures[Dijkstra]`, guards `Credential[Guard]` (the reference's `Credential Guard`),
+    each required top-level guard's data decoded, and the account balance intervals the reference's
+    `AccountBalanceInterval`, with its `Inclusive` and `Exclusive` bounds. The sub-transactions are an `OMap` by id,
+    in the order the flat decoder read them, which refused an id twice with its own error; the ordered map refuses a
+    repeated id again.
+  - The body classes are the reference's up to `DijkstraEraTxBody` (`TxBody.hs:1581-1599`), at `BothLevels`.
+    Dijkstra has no `AlonzoEraTxBodyToConway`; its required signers are its guards' key hashes
+    (`TxBody.hs:1419`). `redeemerPointerInverse` covers the seven purposes, a guard that is a key naming nothing;
+    `allInputs`, a member of `EraTx` at 9df9f98c, stays on `EraTxBody`, as at f649f975, and adds each
+    sub-transaction's spent and reference inputs.
+  - The witness set and the auxiliary data are Alonzo's, with Dijkstra's scripts, Plutus V4 among them, made from
+    the flat decoder's values: each native script read from the bytes it kept, each script with the flat decoder's
+    hash. The flat decoder does not keep the bytes of the datums and redeemers (keys 4 and 5), which the script
+    integrity hash is over; they are read again from the set's bytes and must be the flat decoder's. The auxiliary
+    data's Plutus scripts arrive by language, as the flat decoder lists them and as the reference's
+    `Map Language` holds them, where Conway's keep the encoded map's order.
+  - The decoders (`DijkstraTx.inBlock` and `fromSubmission`) read bytes with the flat decoder, which decides what is
+    refused, and project what it read; the projection takes nothing else, and a body of the other level than it is
+    read at is refused (`EraTxError.OtherLevel`). The projections and the constructors of the bodies and
+    transactions are reachable from those decoders alone: the projections take a proof (`DijkstraTx.FromBytes`)
+    only `DijkstraTx` makes and keeps, so a body's level and bytes are the ones it was read with, given a node
+    that is the CBOR parser's. `inBlock` trusts its node to be the parser's, as every decoder of a node does: a
+    node built by hand can hold a value its bytes are not
+    ([#85, tracked](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999001864)).
+    A proposal keeps the flat proposal it was read as, era-indexed (`ProposalRead[E]`), since a
+    Dijkstra parameter change has no flat Conway proposal; GOV's `checkBootstrapProposal`, whose failure carries the
+    flat Conway proposal, takes evidence that the era's is one.
+  - `DijkstraTxSuite` reads the Dijkstra transactions the repository holds with both decoders: the Leios corpus's
+    536 transactions alone (the 273 the flat decoder accepts, 16 of which register a pool, and the 263 it refuses,
+    some before either decoder, as bytes that are not one item of CBOR), the 63 transactions of the corpus's blocks
+    that decode, the testnet's blocks' 40, the devnet chain's one and its submitted transaction, the 11 and 200
+    transactions of the script-context fixtures, the 11 distinct transactions of the UTXOW cases
+    (`fixtures/reference/dijkstra-rules`), and, through the mempool decoder, the 149 distinct Dijkstra mempool
+    forms of the crossing corpus (`fixtures/reference/dijkstra-crossing`, 9 of which register a pool). Each the flat decoder accepts is read with its fields equal to the flat
+    decoder's (outputs and the collateral return field by field with each value's size, metadata in full,
+    bootstrap witnesses in full, the size for the fee, which is each crossing case's mempool form's length,
+    each certificate and governance action read back, a parameter change as Plutus data against the flat path's),
+    or is refused as a pool registration; each it refuses, the era decoder refuses with its error.
+    Sub-transactions are checked at their level, in order and by id: 38 recorded on the testnet's chain (of its
+    280), 23 synthetic. Every redeemer key of each purpose resolves as the flat resolution does.
+  - Not yet: a body that registers a pool is refused (`EraTxError.PoolVotingKeyNotYetTyped`, 26 corpus
+    transactions), as the era types' pool parameters do not hold the pool's voting key
+    ([#85 item 38](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211)). The transaction class
+    instances (`EraTx`, `AlonzoEraTx`), with Dijkstra's annotated transaction and `getTotalExUnits` as a member that
+    adds the sub-transactions' units, come with the script contexts and `EraUTxO`.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.
 - The spike's Babbage body is removed, so no partial body remains, and Babbage keeps its output and script
-  types. A function written once over the body classes (`EraTxSuite`) runs in Conway alone until Dijkstra's
-  body is typed (stage 3).
+  types. A function written once over the body classes (`EraTxSuite`) runs in Conway alone; Dijkstra's body is
+  typed (above), and its rules come in stage 3.
 
 **What it does not show yet:** a full rule pipeline (LEDGER) on typed transactions, which is stage 2.
 Bodies decoded from recorded blocks are compared on id, fee, output bytes and one era-only field.
