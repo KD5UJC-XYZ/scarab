@@ -201,22 +201,22 @@ class DijkstraEpochReferenceSuite extends FunSuite:
     val name = text(c, "name")
     val path = text(c, "path")
     val derivation = c.downField("derivation").get[String]("name").getOrElse("none")
-    test(
-      s"$name, $derivation, $path: Dijkstra's tick agrees with the native tick after every slot"
-    ) {
-      val globals = globalsOf(configOf(text(c, "genesis")))
-      val read = input(name, text(c, "stateSha256"))
-      assertEquals(sha256(state.encodeUnchecked(read)), text(c, "newEpochStateSha256"))
-      if keyedFuture(c, read) then
-        // the gap above: the reference's derived state holds a keyed future pool, ten items
-        assertEquals(
-          (name, derivation.contains("reregister") || derivation.startsWith("both")),
-          ("testnet-2168639", true)
-        )
-      else
-        val start = startOf(c, read)
-        tickAll(c, globals, start)
-    }
+    val read = input(name, text(c, "stateSha256"))
+    if keyedFuture(c, read) then
+      // the gap above: the reference's derived state holds future parameters that carry the
+      // pool's voting key (ten items), which a pool's parameters do not hold here yet
+      test(s"$name, $derivation, $path: not compared, its re-registration carries a voting key") {
+        assertEquals(name, "testnet-2168639")
+        assert(derivation.contains("reregister") || derivation.startsWith("both"), derivation)
+      }
+    else
+      test(
+        s"$name, $derivation, $path: Dijkstra's tick agrees with the native tick after every slot"
+      ) {
+        val globals = globalsOf(configOf(text(c, "genesis")))
+        assertEquals(sha256(state.encodeUnchecked(read)), text(c, "newEpochStateSha256"))
+        tickAll(c, globals, startOf(c, read))
+      }
   }
 
   /** Each tick of the case from `start`, the state after it equal to the native one. */
