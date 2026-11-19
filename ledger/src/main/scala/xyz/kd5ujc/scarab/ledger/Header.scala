@@ -476,12 +476,12 @@ object Header:
 
   /** A Byron `VerificationKey`: 64 bytes read with `decodeBytesCanonical` (`decCBORXPub`,
     * `eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs:96-97`, cardano-ledger
-    * f649f975), so the length is in its shortest form. A `Signature` reads plain `decodeBytes`
+    * f649f975), so the length is in its shortest form, by the reader of every Byron key
+    * ([[byron.ByronTransport.verificationKey]]). A `Signature` reads plain `decodeBytes`
     * (`Signing/Signature.hs:129-130`).
     */
   private def verificationKey(n: Node): Either[ChainError, Bytes] =
-    ByronTransport.canonicalBytes(n, DecodeField.Header).leftMap(fail) *>
-      bytes(n, 64, ByteStrings.Definite)
+    ByronTransport.verificationKey(n, DecodeField.Header).leftMap(fail)
 
   /** `[2, [[epoch, issuer, delegate, cert], sig]]`: heavyweight delegation, the only kind; the kind
     * is a `Word8` (`Block/Header.hs:691-700`, cardano-ledger f649f975).
