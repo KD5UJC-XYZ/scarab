@@ -36,7 +36,7 @@ cardano-ledger-binary 1.9.1.0 rev 048b78d and ouroboros-consensus 4.2.1.0 rev 82
    `SingleHostName` without a port is an SRV domain** as well as every `MultiHostName`; a pool without a usable relay is no ledger peer.
    The ledger's list is ordered by stake, largest first, and its relays are the pool's current relays followed by its future relays
    (`queryStakePoolRelays`, cardano-ledger-api `State/Query.hs:720-736`), with the stake of the pool distribution (`nesPd`, the *set* snapshot).
-5. *SRV pools stay in the maps and resolve after selection.* The reference weighs and accumulates pools with SRV relays, and a draw can return `LedgerRelay.Srv`. D9 resolves the selected SRV domain through RootPeersDNS and returns every address for its selected target.
+5. *SRV pools stay in the maps and resolve after selection.* The reference weighs and accumulates pools with SRV relays, and a draw can return `LedgerRelay.Srv`. D9 resolves the selected SRV domain through RootPeersDNS, and one address of its selected target is kept (item 5 of the deviations below).
 6. *The snapshot replaces both maps* (`stakeMapWithSlotOverSource`, `LedgerPeers.hs:419-431`): section 1.12 says "for big ledger peers"; the
    ordinary map is weighted (square root) from the snapshot's pools as well. The snapshot wins when it is at a block (not the origin), at
    or after the ledger's slot (origin = 0) and at or after `useLedgerAfterSlot` (`Always` = 0); the maps already made from a snapshot are
@@ -172,7 +172,13 @@ a pool whose relays do not decode skipped and reported (`poolSkipped`), stable s
    an unrelated event.
 4. *Close and deactivate subtract the transitions in progress among the big ledger peers*; the reference subtracts those of all peers
    (`EstablishedPeers.hs` 848-849), so an ordinary demotion in flight delays a big one there.
-5. *DNS root addresses are resolved by the provider.* The reference resolves in RootPeersDNS (`pickDomainAddrs`); Scarab retains all successful A/AAAA addresses for the governor. SRV priority, weight, selected-target TTL, and empty-answer TTL follow the pinned policy.
+5. **Resolved.** *DNS root addresses are resolved by the provider.* Of the addresses of each drawn ledger relay domain, from all its
+   drawn relays (an SRV domain's from its selected target), the provider keeps one, drawn at random, as the reference's `pickDomainAddrs`
+   does (`LedgerPeers.hs` 334-368 at ouroboros-network `c45735a5`). The domains are keyed as the ledger spells them, an SRV domain always
+   with `_cardano._tcp.` in front (`RelayAccessPoint.hs` 312-321), and every SRV lookup of one request chooses its target with the same
+   generator, split from the provider's apart from the one that draws the addresses (`LedgerPeers.hs` 337 and 350). The draws come from
+   the provider's generator (`Rng`), as the other draws of peer selection do. Topology roots keep every successful A/AAAA address, as
+   the reference's do. SRV priority, weight, selected-target TTL, and empty-answer TTL follow the pinned policy.
 6. *An unreadable snapshot file is ignored* (Praos mode, as the reference); Genesis-mode snapshot validation is implemented in G1.5.
 7. *`Source` is `Origin`; the traces* of the big ledger families are cases of their own (`ForgetBigLedger`, `PromoteBigLedger`, `DemoteBigLedger`,
    `BigLedgerRequest/Results/Failure`) rather than a flag on the ordinary ones, and are logged as the same events with `bigLedger: true`.

@@ -197,7 +197,8 @@ the reference's (hard 512, soft 384, delay 5 s, `Configuration.hs:76-81`), appli
 (from the topology and `--peer`; re-read on SIGHUP), `requestPublicRoots(kind, n, rng): F[(PublicRoots, Duration)]`
 (configured public roots, bootstrap peers in the sensitive state, ledger peers when `UseLedgerPeers` allows),
 and `ledgerPeers: F[Option[LedgerSnapshot]]`.
-The node-owned `PeerDns` resource resolves topology and ledger host names to every successful A/AAAA answer.
+The node-owned `PeerDns` resource resolves topology and ledger host names to every successful A/AAAA answer;
+of the addresses of a drawn ledger relay name the root provider keeps one, drawn at random (`pickDomainAddrs`).
 Local groups are re-resolved at independent per-source deadlines and installed through the acknowledged
 `RootsConfigured` owner event; a failed lookup retains the last successful addresses, while a successful empty
 answer removes them. Public and bootstrap requests return a refresh TTL to the governor. SRV names query `_cardano._tcp.<domain>`, retain

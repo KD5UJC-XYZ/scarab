@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.Applicative
+import cats.data.NonEmptyVector
 import cats.effect.{Async, Ref}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
@@ -362,24 +363,97 @@ object NodeRootProvider:
               (values, answer.records.map(_.ttl))
             }
 
+  /** The SRV prefix put in front of a ledger relay's SRV domain (`srvPrefix`,
+    * `Cardano/Network/Diffusion/Configuration.hs` 84, ouroboros-network 4646039f).
+    */
+  private val LedgerSrvPrefix = "_cardano._tcp"
+
+  /** The domain of a drawn ledger relay as the reference keys its lookups (`resolveLedgerPeers`,
+    * `RootPeersDNS/LedgerPeers.hs` 81-86): the bytes the ledger gives, unnormalised, an SRV domain
+    * with the SRV prefix and a dot in front of it, always (`prefixLedgerRelayAccessPoint`,
+    * `RelayAccessPoint.hs` 329-338). `x` and `x.` are two domains, as they are two keys there.
+    */
+  private final case class LedgerDomain(bytes: String)
+
+  /** A drawn ledger relay as `pickDomainAddrs` takes it (`partitionPeer`, `LedgerPeers.hs`
+    * 371-382): an IP relay's address as it is, or a domain and the addresses its lookup gave.
+    */
+  private enum Drawn:
+    case Address(peer: Option[Addr])
+    case Named(domain: LedgerDomain, addresses: Vector[Addr])
+
+  /** The ledger relays the worker drew, as peer addresses (`LedgerPeers.hs` 334-368 and
+    * `RootPeersDNS/LedgerPeers.hs` 72-109, ouroboros-network 4646039f, as at c45735a5). Two
+    * generators are split from the provider's (`splitGen`, `LedgerPeers.hs` 337 and 350): one that
+    * every SRV lookup of the request chooses its target with, so identical answers choose the same
+    * target (`DNSActions.hs` 427-477), and one that draws the addresses. An IP relay is taken as it
+    * is. The addresses of each drawn domain are put together from every drawn relay of it, a failed
+    * lookup adding none, and one of them is drawn at random (`pickDomainAddrs`): a drawn domain
+    * gives at most one address, however many its DNS answers hold. The lookups still run one after
+    * another and the TTL is still the answers' ([[PeerDns.ttlForResults]]).
+    */
   private[node] def resolveLedger[F[_]: Async](
       relays: Vector[LedgerRelay],
       dns: PeerDns[F],
       rng: Ref[F, Rng]
   ): F[(Set[Addr], FiniteDuration)] =
-    relays
-      .traverse {
-        case LedgerRelay.Srv(domain) =>
-          DnsName.from(domain) match
-            case Left(_)     => Async[F].pure(Vector.empty[Addr] -> Vector.empty[FiniteDuration])
-            case Right(name) => resolveService(name, dns, rng)
-        case relay =>
-          address(relay).fold(
-            Async[F].pure(Vector.empty[Addr] -> Vector.empty[FiniteDuration])
-          )(peer => resolveOne(peer, dns))
+    val none = Vector.empty[FiniteDuration]
+    rng
+      .modify { current =>
+        val (rest, resolver) = current.split
+        val (next, picking) = rest.split
+        next -> (resolver, picking)
       }
-      .map { results =>
-        (results.flatMap(_._1).toSet, PeerDns.ttlForResults(results.flatMap(_._2)))
+      .flatMap { (resolver, picking) =>
+        relays
+          .traverse {
+            case LedgerRelay.Srv(name) =>
+              val domain = LedgerDomain(s"$LedgerSrvPrefix.$name")
+              DnsName.from(domain.bytes) match
+                case Left(_) => Async[F].pure(Option.empty[Drawn] -> none)
+                case Right(query) =>
+                  serviceAddresses(
+                    query,
+                    dns,
+                    records =>
+                      Async[F].pure(PeerDns.selectService(records, resolver).toOption.map(_._1))
+                  ).map { case (addresses, ttls) =>
+                    Some(Drawn.Named(domain, addresses)) -> ttls
+                  }
+            case relay @ LedgerRelay.Address(_, _) =>
+              Async[F].pure(Some(Drawn.Address(address(relay))) -> none)
+            case relay @ LedgerRelay.Domain(name, _) =>
+              address(relay).fold(Async[F].pure(Option.empty[Drawn] -> none)) { peer =>
+                resolveOne(peer, dns).map { case (addresses, ttls) =>
+                  Some(Drawn.Named(LedgerDomain(name), addresses)) -> ttls
+                }
+              }
+          }
+          .map { results =>
+            val drawn = results.flatMap(_._1)
+            val plain = drawn.flatMap {
+              case Drawn.Address(peer) => peer.toVector
+              case Drawn.Named(_, _)   => Vector.empty
+            }
+            val named = drawn.flatMap {
+              case Drawn.Address(_)           => Vector.empty
+              case Drawn.Named(domain, peers) => Vector(domain -> peers)
+            }
+            val byDomain = named.groupMap(_._1)(_._2)
+            val candidates = named
+              .map(_._1)
+              .distinct
+              .flatMap(domain =>
+                NonEmptyVector.fromVector(byDomain.getOrElse(domain, Vector.empty).flatten.distinct)
+              )
+            val picked = candidates
+              .foldLeft(picking -> plain.toSet) { case ((generator, picked), addresses) =>
+                val (index, next) = generator.uniformR(0L, addresses.length - 1L)
+                next -> (picked ++ addresses.toVector.lift(index.toInt))
+              }
+              ._2
+            picked -> PeerDns.ttlForResults(results.flatMap(_._2))
+          }
       }
 
   private[node] def resolveService[F[_]: Async](
@@ -394,25 +468,39 @@ object NodeRootProvider:
     query match
       case Left(_) => Async[F].pure(Vector.empty[Addr] -> Vector.empty[FiniteDuration])
       case Right(name) =>
-        dns.services(name).flatMap {
-          case Left(_) => Async[F].pure(Vector.empty[Addr] -> Vector.empty[FiniteDuration])
-          case Right(records) =>
-            rng
-              .modify { current =>
-                PeerDns.selectService(records, current) match
-                  case Left(_)                => current -> Option.empty[DnsServiceRecord]
-                  case Right((service, next)) => next -> Some(service)
+        serviceAddresses(
+          name,
+          dns,
+          records =>
+            rng.modify { current =>
+              PeerDns.selectService(records, current) match
+                case Left(_)                => current -> Option.empty[DnsServiceRecord]
+                case Right((service, next)) => next -> Some(service)
+            }
+        )
+
+  /** The addresses of the SRV target `select` chooses among `query` 's records, each with the
+    * record's port and TTL (`srvRecordLookupWithTTL`, `DNSActions.hs` 427-477): none when the
+    * lookup fails or no target is usable.
+    */
+  private def serviceAddresses[F[_]: Async](
+      query: DnsName,
+      dns: PeerDns[F],
+      select: Vector[DnsServiceRecord] => F[Option[DnsServiceRecord]]
+  ): F[(Vector[Addr], Vector[FiniteDuration])] =
+    dns.services(query).flatMap {
+      case Left(_) => Async[F].pure(Vector.empty[Addr] -> Vector.empty[FiniteDuration])
+      case Right(records) =>
+        select(records).flatMap {
+          case None => Async[F].pure(Vector.empty[Addr] -> Vector.empty[FiniteDuration])
+          case Some(service) =>
+            dns.addresses(service.target).map { answer =>
+              val addresses = answer.records.flatMap { record =>
+                Port
+                  .fromInt(service.port)
+                  .map(port => SocketAddress[Host](record.address, port))
               }
-              .flatMap {
-                case None => Async[F].pure(Vector.empty[Addr] -> Vector.empty[FiniteDuration])
-                case Some(service) =>
-                  dns.addresses(service.target).map { answer =>
-                    val addresses = answer.records.flatMap { record =>
-                      Port
-                        .fromInt(service.port)
-                        .map(port => SocketAddress[Host](record.address, port))
-                    }
-                    addresses -> addresses.map(_ => service.ttl)
-                  }
-              }
+              addresses -> addresses.map(_ => service.ttl)
+            }
         }
+    }
