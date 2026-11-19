@@ -121,7 +121,7 @@ fixture's 37 files take 2.8 MB.
   committee size 2 and 2 seats (the devnet's keyless, the testnet's keyed), while the set keeps the old mark's 3 or
   154. The parameters then hold 2, and the future parameters go back to `potential`, as after every boundary.
 - The genesis case's injected states hold the genesis's pool, its VRF key hash counted once, and a committee of one
-  seat in both the mark and the set, keyless although the genesis gives the pool a voting key; committee size 900
+  seat in both the mark and the set, keyless, as the genesis gives the pool no voting key (its `blsKey` is `null`); committee size 900
   and key age 374, as the Dijkstra and Shelley genesis files give them. The state the node makes differs from the
   injection applied to `createInitialState` only in the governance state: the translation into Conway installs the
   Conway genesis's constitutional committee and constitution, and the DRep pulser built from them, which

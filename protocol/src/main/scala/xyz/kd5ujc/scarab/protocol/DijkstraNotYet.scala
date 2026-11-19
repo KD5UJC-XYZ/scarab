@@ -47,7 +47,7 @@ enum DijkstraNotYet extends DomainError:
   def message: String = this match
     case LedgerState =>
       "a Dijkstra ledger state of the 11.1 layout is not read or written by this build"
-    case Rules   => "the ledger rules of Dijkstra are not implemented"
+    case Rules => "the ledger rules of Dijkstra are not implemented"
     case PoolParamsBlsKey =>
       "a pool's BLS key in a Dijkstra state's pool parameters is not read by this build"
     case ParameterUpdate =>

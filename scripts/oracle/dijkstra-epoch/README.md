@@ -86,7 +86,7 @@ more seats than that size.
 
 `Main.hs genesis` makes the initial state of a chain that is in Dijkstra from its genesis, on the [Leios testnet's
 genesis files](../../../fixtures/leios/testnet/config/) (every era at epoch 0; its Shelley genesis injects one pool
-with a voting key, one delegation and two funds). It follows the node: consensus translates Byron's state through
+whose `blsKey` is `null`, so no voting key, one delegation and two funds). It follows the node: consensus translates Byron's state through
 every era and then applies the current era's `injectIntoTestState` (ouroboros-consensus `2416493b`
 `Ouroboros/Consensus/Cardano/Node.hs:846-892`, the translations in `Cardano/CanHardFork.hs:351-379, 550-737`), so
 `Main.hs` runs `translateToShelleyLedgerStateFromUtxo` on Byron's genesis UTxO, then `translateEra'` into Allegra,
