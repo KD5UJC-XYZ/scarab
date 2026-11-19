@@ -159,7 +159,10 @@ lock, projected through LoE and eligibility by the same `CandidateSelection.proj
 candidate, so before the node is caught up a forged block past the LoE plus `k` is not adopted, as the reference's
 chain selection trims it (ouroboros-consensus 82ecba329 `ChainSel.hs:767-777`; the
 [compatibility page](../compatibility/ouroboros-genesis.md#a-forged-block-and-the-limit-on-eagerness) lists what is
-checked). Such a block is not retained, so LoE reconsideration does not see it.
+checked). Such a block is retained: it is put in the received log and joins the processed forest as a block of no
+session (`BlockPool.Source.Forged`, whose refusal blames nobody), as the reference's ChainDB puts it in the VolatileDB
+before chain selection (`ChainSel.hs:450`). LoE reconsideration then sees it with every other processed block, and
+adopts it if it is still valid and preferred once the LoE allows it.
 
 Startup resets selection to the immutable anchor and considers the complete recovered forest,
 including originals beyond the ordinary delivery-cache capacity. Opening network clients and servers
