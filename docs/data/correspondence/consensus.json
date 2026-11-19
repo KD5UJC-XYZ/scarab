@@ -446,6 +446,27 @@
    ],
    "note": "mkUpperBound of an era with no Peras rounds, the epoch size and slot length given rather than an EraParams: the slot modulo 2^64, the time exact, the round kept (Leios) or none (11.1). MirrorStep.startOf places an era entered after the start with it, as whenExtend does; LeiosBoundsEvidenceSuite compares that bound with the first Dijkstra state the Leios build wrote, QueryGoldenSuite the GetInterpreter ends with the reference node's",
    "digest": "5d9020a052fe63f2"
+  },
+  "def consensus.DijkstraCrossing.forecastInEra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/SupportsProtocol.hs",
+     "symbol": "ledgerViewForecastAtPolyPraos",
+     "lines": [
+      105,
+      140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraHeaderRulesSuite"
+   ],
+   "note": "the Dijkstra forecast's three cases (the tip's own view, TICKF's view before the exclusive bound of the stability window past the tip's successor, OutsideForecastRange after it) as the reference's; the view holds only the fields header validation reads (Praos2.LedgerView), not the committee, the quorum or the transaction-byte bound. DijkstraHeaderRulesSuite validates the public testnet's headers after its ledger state at slot 2,168,639 against it, the leader check on that state's stake",
+   "digest": "3ab17240a2526cf0"
   }
  },
  "glue": [

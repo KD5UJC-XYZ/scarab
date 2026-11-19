@@ -301,6 +301,7 @@
     "fixtures/leios/testnet/config/shelley-genesis.json": "0c7365b3e74a52a09d1ad169438b714919dd36710c9feed8e49be65e73990ab7",
     "fixtures/leios/testnet/config/topology.json": "eaac2c4782cba20a08dd39e6ce06c2960759079801c52c2ad46ad77a59fc466d",
     "fixtures/leios/testnet/handshake-replies.tsv": "7e6316ec33422771b07260128739759a1fd6af21409e45c1695b2ba6072ded95",
+    "fixtures/leios/testnet/headers-after-2168639.tsv": "46ca0a254867ffb6985c980b5cb013cf918abd458849d1bbadd7f658e8405460",
     "fixtures/leios/testnet/headers-from-origin.tsv": "bc1fc2a8a0dad975d04205579b8fefed09f132014f0e9cea1e0b73b0d18e2bcf",
     "fixtures/leios/testnet/headers-notable.tsv": "f1561d5d63b25d010c1a67840343fe6ae19d3788ae124f1df263bce4fae97df0",
     "fixtures/licenses/block-fetch-consensus-LICENSE": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",

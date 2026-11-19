@@ -95,6 +95,7 @@ final class NodeHeaderRules[S](
               ledger,
               anchor.afterVoting,
               tip,
+              ledgerTip,
               old.state,
               h,
               genericEnvelope = envelope(ledgerTip, h, previousBoundary = false)
@@ -117,6 +118,7 @@ final class NodeHeaderRules[S](
                     ledger,
                     0L,
                     tip,
+                    ledgerTip,
                     old.state,
                     h,
                     forecastLimit = old.firstEpoch.map(first =>
@@ -306,6 +308,7 @@ final class NodeHeaderRules[S](
               view,
               0L,
               tip,
+              parent,
               pending,
               header,
               forecastLimit =
