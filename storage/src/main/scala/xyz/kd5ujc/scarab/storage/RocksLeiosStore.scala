@@ -888,10 +888,19 @@ object RocksLeiosStore:
   private def publish(stage: java.nio.file.Path, dir: java.nio.file.Path): Unit =
     if Files.isDirectory(dir) then Files.delete(dir)
     Files.move(stage, dir, StandardCopyOption.ATOMIC_MOVE)
-    Files.delete(dir.resolve(StagingMarker))
+
+  /** Make a rename in `dir`'s parent durable. */
+  private def syncParent(dir: java.nio.file.Path): Unit =
     Using.resource(FileChannel.open(dir.toAbsolutePath.getParent, StandardOpenOption.READ))(
       _.force(true)
     )
+
+  /** How often a first open looks at its target again when it changed while it looked. */
+  private val FirstOpenAttempts = 4
+
+  /** What a first open finds at its target. */
+  private enum Target:
+    case Published, Vacant, Occupied
 
   /** The staging directories of `dir` that first opens left, those that hold the marker. They are
     * removed once `dir` holds a store: no staging directory can be published any more, and a first
@@ -921,21 +930,28 @@ object RocksLeiosStore:
     * that holds anything but a store is refused.
     */
   private[storage] def prepare[F[_]: Async](dir: Path)(using Raise[F, LeiosStoreError]): F[Unit] =
-    prepareAround(dir, Async[F].unit)
+    prepareAround(dir, Async[F].unit, target => Async[F].blocking(syncParent(target)))
 
-  /** [[prepare]], running `between` after it found no store at `dir` and whether `dir` is a
-    * directory, and before it lists what `dir` holds: where another first open may remove an empty
-    * `dir` and publish its store there.
+  /** [[prepare]], running `between` after it first looked at `dir` and before it acts on what it
+    * found, where another first open may remove an empty `dir` or publish its store there; and
+    * making its own rename durable with `sync`.
+    *
+    * It looks at `dir` until what it finds settles, at most [[FirstOpenAttempts]] times: a store is
+    * validated; an absent or empty `dir` gets a store staged and published; anything else is
+    * refused. A look that fails, or a publication that loses its rename to another first open's,
+    * looks again. Only a failure up to the rename looks again: once this open's own rename is done,
+    * a failure to make it durable is its error.
     */
-  private[storage] def prepareAround[F[_]: Async](dir: Path, between: F[Unit])(using
-      Raise[F, LeiosStoreError]
-  ): F[Unit] =
+  private[storage] def prepareAround[F[_]: Async](
+      dir: Path,
+      between: F[Unit],
+      sync: java.nio.file.Path => F[Unit]
+  )(using Raise[F, LeiosStoreError]): F[Unit] =
     val F = Async[F]
     val nio = dir.toNioPath
     def fail[A](e: LeiosStoreError): F[A] = e.raise[F, A]
     def io[A](body: => A): F[A] =
       F.blocking(body).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
-    val published: F[Boolean] = io(Files.exists(nio.resolve("CURRENT")))
     def bestEffort(body: => Unit): F[Unit] = F.blocking(body).attempt.void
     val validated: F[Unit] =
       io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
@@ -943,10 +959,16 @@ object RocksLeiosStore:
         .flatMap(found =>
           F.unlessA(found.toSet == FamilyNames.toSet)(fail(LeiosStoreError.ForeignDatabase(found)))
         )
-    val unpublished: F[Boolean] = published.map(!_)
-    // A new store, staged and published; a first open that loses the rename to another opens the
-    // other's store.
-    val staged: F[Unit] =
+    // what `dir` is, or why it could not be told: it may change while it is looked at
+    val look: F[Either[Throwable, Target]] = F.blocking {
+      if Files.exists(nio.resolve("CURRENT")) then Target.Published
+      else if Files.notExists(nio) then Target.Vacant
+      else if Files.isDirectory(nio) && Using.resource(Files.list(nio))(_.findAny().isEmpty) then
+        Target.Vacant
+      else Target.Occupied
+    }.attempt
+    // a staged store published here, or the reason it was not: before or at its rename only
+    val staged: F[Either[Throwable, Unit]] =
       SecureRandom
         .javaSecuritySecureRandom[F]
         .flatMap(random => UUIDGen.fromSecureRandom[F](using F, random).randomUUID)
@@ -956,39 +978,28 @@ object RocksLeiosStore:
             build(stage)
             publish(stage, nio)
           }.attempt
-            .flatMap {
-              case Right(_) => F.unit
-              case Left(e) =>
-                unpublished.ifM(
-                  fail[Unit](LeiosStoreError.Io(e)),
-                  bestEffort(RocksUtxoStore.deleteTree(stage))
-                )
-            }
+            .flatTap(moved => F.whenA(moved.isLeft)(bestEffort(RocksUtxoStore.deleteTree(stage))))
         }
-    // Whether `dir` holds anything, or why it could not be listed: it may have gone while it was
-    // looked at, as when another first open removes an empty `dir` to publish its store there.
-    val holds: F[Either[Throwable, Boolean]] =
-      io(Files.isDirectory(nio)).flatMap { directory =>
-        between *> F
-          .blocking(directory && Using.resource(Files.list(nio))(_.findAny().isPresent))
-          .attempt
+    def settle(attempt: Int): F[Unit] =
+      def again(cause: Throwable): F[Unit] =
+        if attempt + 1 >= FirstOpenAttempts then
+          fail(LeiosStoreError.FirstOpenUnsettled(attempt + 1, cause))
+        else settle(attempt + 1)
+      look.flatTap(_ => F.whenA(attempt == 0)(between)).flatMap {
+        case Right(Target.Published) => validated
+        case Right(Target.Occupied)  => fail(LeiosStoreError.ForeignDatabase(Vector.empty))
+        case Right(Target.Vacant) =>
+          staged.flatMap {
+            case Right(()) =>
+              // this open's own rename: only making it durable is left, and its failure is ours
+              io(Files.delete(nio.resolve(StagingMarker))) *> sync(nio).attempt.flatMap(
+                _.fold(e => fail(LeiosStoreError.Io(e)), F.pure)
+              )
+            case Left(e) => again(e)
+          }
+        case Left(e) => again(e)
       }
-    val made: F[Unit] =
-      unpublished.ifM(
-        holds.flatMap {
-          // another first open may have published its store since: that is validated, and
-          // anything else in the directory is refused
-          case Right(true) =>
-            unpublished.ifM(fail(LeiosStoreError.ForeignDatabase(Vector.empty)), validated)
-          case Left(e) =>
-            unpublished.ifM(
-              io(Files.exists(nio)).ifM(fail(LeiosStoreError.Io(e)), staged),
-              validated
-            )
-          case Right(false) => staged
-        },
-        validated
-      )
+    val made: F[Unit] = settle(0)
     // A first open still staging may be removing its own directory, or still writing into it,
     // while it is removed here: each removal is a best effort, and what is left goes next time.
     // Looking for them is a best effort too: another first open may have removed the root, or it

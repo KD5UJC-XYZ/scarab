@@ -494,7 +494,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
     for
       // another first open publishes between this one's check and its look at the directory
       prepared <- attempt(
-        RocksLeiosStore.prepareAround[IO](leios, ok(RocksLeiosStore.prepare[IO](leios)))
+        around(leios, ok(RocksLeiosStore.prepare[IO](leios)))
       )
       points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
     yield
@@ -509,7 +509,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
       // another first open removes the empty target to publish there, between this one's check
       // that it is a directory and its listing of it
       prepared <- attempt(
-        RocksLeiosStore.prepareAround[IO](
+        around(
           leios,
           IO.blocking(java.nio.file.Files.delete(leios.toNioPath))
         )
@@ -526,7 +526,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
       for
         _ <- IO.blocking(java.nio.file.Files.createDirectories(leios.toNioPath))
         prepared <- attempt(
-          RocksLeiosStore.prepareAround[IO](leios, ok(RocksLeiosStore.prepare[IO](leios)))
+          around(leios, ok(RocksLeiosStore.prepare[IO](leios)))
         )
         points <- store(leios).use(s =>
           ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints)
@@ -534,6 +534,34 @@ class LeiosStoreSuite extends CatsEffectSuite:
       yield
         assertEquals(prepared, Right(()))
         assertEquals(points, Vector(point(1, 1)))
+  }
+
+  dirs.test("a first open whose rename cannot be made durable fails, though its store is there") {
+    dir =>
+      val leios = dir / "leios"
+      val injected = new java.io.IOException("injected sync failure")
+      for
+        prepared <- attempt(
+          RocksLeiosStore.prepareAround[IO](leios, IO.unit, _ => IO.raiseError(injected))
+        )
+        published <- IO.blocking(java.nio.file.Files.exists(leios.toNioPath.resolve("CURRENT")))
+      yield
+        assertEquals(prepared, Left(LeiosStoreError.Io(injected)))
+        assert(published, "the rename was done; only its sync failed")
+  }
+
+  dirs.test("a first open that cannot settle stops at its bound with a typed error") { dir =>
+    val leios = dir / "leios"
+    for
+      // a file where the staging directories go: every staging fails, and the open looks again
+      _ <- IO.blocking(
+        java.nio.file.Files.write(RocksLeiosStore.stagingRoot(leios.toNioPath), "x".getBytes)
+      )
+      prepared <- attempt(RocksLeiosStore.prepare[IO](leios))
+    yield assert(prepared.left.exists {
+      case LeiosStoreError.FirstOpenUnsettled(4, _) => true
+      case _                                        => false
+    })
   }
 
   dirs.test("a store opens though its staging directory cannot be read") { dir =>
@@ -785,6 +813,10 @@ object LeiosStoreSuite:
       handles.asScala.foreach(_.close())
       db.close()
     }
+
+  /** A first open with `between` run after its first look, its rename's sync left out. */
+  def around(dir: Path, between: IO[Unit])(using Handle[IO, LeiosStoreError]): IO[Unit] =
+    RocksLeiosStore.prepareAround[IO](dir, between, _ => IO.unit)
 
   /** Hash `i` of many: distinct for every `i` below 2^31. */
   def wide(i: Int): EbHash =
