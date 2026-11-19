@@ -411,7 +411,7 @@ object LogSamples:
     ),
     MempoolEvent.Waiting(Some(hash), TxMeasure(300, 0, 0, 0), TxMeasure(100, 0, 0, 0)),
     MempoolEvent.WaitingForTime(
-      hash,
+      Some(hash),
       xyz.kd5ujc.scarab.network.DiffTime.picoseconds(BigInt("5250000000000")),
       xyz.kd5ujc.scarab.network.DiffTime.picoseconds(BigInt("5000000000000"))
     ),
@@ -421,7 +421,7 @@ object LogSamples:
     ),
     MempoolEvent.Rejected(
       Some(hash),
-      Rejection.TimedOut(xyz.kd5ujc.scarab.node.mempool.MempoolTimeout(hash, 1500.millis))
+      Rejection.TimedOut(xyz.kd5ujc.scarab.node.mempool.MempoolTimeout(Some(hash), 1500.millis))
     ),
     MempoolEvent.Adopted(hash),
     MempoolEvent.Removed(hash),

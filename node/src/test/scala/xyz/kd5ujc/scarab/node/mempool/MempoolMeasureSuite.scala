@@ -280,7 +280,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     }
   }
 
-  test("the order: measure, duplicate, capacity, reference scripts, capacity, the ledger") {
+  test("the order: measure, capacity, reference scripts, capacity, the duplicate and the ledger") {
     val (t1, id1) = pay(1)
     val (big, _) = unknownInput()
     val narrow = (l: MempoolLedger) => l.withParams(_.copy(maxBlockBodySize = 1024 + 50))
@@ -290,12 +290,14 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       add(pool(narrow(ledger(2)).withParams(_.copy(maxTxSize = 50))), big).left
         .exists(_.isInstanceOf[Rejection.Limits])
     )
-    // a duplicate on a pool without room is answered as a duplicate, not as full
+    // a duplicate on a pool without room waits for room, as the reference's MEMPOOL rule, which
+    // refuses it, comes after the capacity; with room it is refused as the duplicate it is
     val over = held(pool(ledger(2)), t1)
       .sync(Right(narrow(ledger(2))), 1000, env)
       ._1
     assert(over.free.bytes < 0)
-    assertEquals(add(over, t1), Left(Rejection.AlreadyHeld(id1)))
+    assert(add(over, t1).left.exists(_.isInstanceOf[Rejection.Full]), s"${add(over, t1)}")
+    assertEquals(add(held(pool(ledger(2)), t1), t1), Left(Rejection.AlreadyHeld(id1)))
     // the first capacity check does not look at reference scripts: a pool full in bytes makes a
     // transaction with too many of them wait (here: Full) instead of refusing it
     val l = withRefScript(ledger(2), RefScripts.MaxRefScriptSizePerTx + 1)

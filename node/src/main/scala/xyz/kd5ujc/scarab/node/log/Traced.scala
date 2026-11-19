@@ -328,7 +328,7 @@ object Traced:
       )
     case MempoolEvent.WaitingForTime(id, used, capacity) =>
       EventKind.MempoolWaiting.line(
-        "tx" -> id.hex.asJson,
+        "tx" -> id.map(_.hex).asJson,
         "reason" -> "validation time of the held transactions over the capacity".asJson,
         "usedSeconds" -> seconds(used).asJson,
         "capacitySeconds" -> seconds(capacity).asJson

@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.network.{DiffTime, LocalTxSubmissionServer, NetworkErro
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 import xyz.kd5ujc.scarab.plutus.{EvalRequest, ExUnits, ScarabEvaluator, ScriptEvaluator}
-import xyz.kd5ujc.scarab.protocol.{Era, TxSubmission2}
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, TxSubmission2}
 
 import TestLedger.{out, txIn}
 import TxKit.*
@@ -192,10 +192,12 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       response = LocalSubmission.response(Refused(Rejection.TooSlow(id1, Era.Conway, cut), None))
     yield
       assertEquals(local, Left(Rejection.TooSlow(id1, Era.Conway, cut)))
-      assertEquals(remote, Left(Rejection.TimedOut(MempoolTimeout(id2, cut))))
+      assertEquals(remote, Left(Rejection.TimedOut(MempoolTimeout(Some(id2), cut))))
       assertEquals(
         ended,
-        Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(MempoolTimeout(id3, cut))))
+        Some(
+          NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(MempoolTimeout(Some(id3), cut)))
+        )
       )
       assert(response.isInstanceOf[LocalTxSubmissionServer.Response.Rejected], s"$response")
       // nothing was held, and the next transaction is taken
@@ -242,14 +244,14 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       held <- pool.snapshot
     yield
       assertEquals(late, Right(id1))
-      assertEquals(cutOff, Left(Rejection.TimedOut(MempoolTimeout(id2, cut))))
+      assertEquals(cutOff, Left(Rejection.TimedOut(MempoolTimeout(Some(id2), cut))))
       assertEquals(held.entries.map(e => (e.id, e.validation)), Vector(id1 -> 5.seconds))
       // no reply: the client's connection ends, as `ExnMempoolTimeout` ends the reference's
       assertEquals(
         LocalSubmission.response(
-          Refused(Rejection.TimedOut(MempoolTimeout(id2, cut)), Some(Era.Babbage))
+          Refused(Rejection.TimedOut(MempoolTimeout(Some(id2), cut)), Some(Era.Babbage))
         ),
-        LocalTxSubmissionServer.Response.Aborted(MempoolTimeout(id2, cut))
+        LocalTxSubmissionServer.Response.Aborted(MempoolTimeout(Some(id2), cut))
       )
   }
 
@@ -269,6 +271,14 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  /** The first event that satisfies `wanted`. */
+  private def next(events: Queue[IO, MempoolEvent])(wanted: MempoolEvent => Boolean) =
+    events.take.iterateUntil(wanted).timeout(failsafe)
+
+  private val waitingForTime: MempoolEvent => Boolean =
+    case MempoolEvent.WaitingForTime(_, _, _) => true
+    case _                                    => false
+
   test("past the capacity of time the pool waits for a change; one transaction can take it past") {
     val (t1, id1) = pay(1)
     val (t2, id2) = pay(2)
@@ -279,24 +289,29 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       timing <- scripted(Step.Took(5.seconds), Step.Took(1.nano), Step.Took(Duration.Zero))
       pool <- mempool(ledger(3), timing, (e: MempoolEvent) => events.offer(e), capacity)
       // 0 taken: the first is validated, and takes the pool to its capacity, 5 s
-      _ <- pool.add(t1, Source.Local).map(assertEquals(_, Right(id1)))
+      first <- pool.add(t1, Source.Local)
       // 5 s is not past 5 s: the second is validated, and takes the pool past it
-      _ <- pool.add(t2, Source.Remote).map(assertEquals(_, Right(id2)))
-      third <- pool.add(t3, Source.Local).start
-      waiting <- events.take
-        .iterateUntil {
-          case MempoolEvent.WaitingForTime(_, _, _) => true
-          case _                                    => false
-        }
-        .timeout(failsafe)
-      // the wait holds no lock: the pool changes, and the third is validated then
-      _ <- pool.removeTxsEvenIfValid(Set(id1))
-      added <- third.joinWithNever.timeout(failsafe)
+      second <- pool.add(t2, Source.Remote)
+      // the third waits, cancelled whatever happens next; the wait holds no lock: the pool
+      // changes, and the third is validated then
+      waited <- pool.add(t3, Source.Local).background.use { third =>
+        for
+          waiting <- next(events)(waitingForTime)
+          _ <- pool.removeTxsEvenIfValid(Set(id1))
+          added <- third.flatMap(_.embedNever).timeout(failsafe)
+        yield (waiting, added)
+      }
       held <- pool.snapshot
     yield
+      assertEquals((first, second), (Right(id1), Right(id2)))
+      val (waiting, added) = waited
       assertEquals(
         waiting,
-        MempoolEvent.WaitingForTime(id3, DiffTime.of(5.seconds + 1.nano), DiffTime.of(5.seconds))
+        MempoolEvent.WaitingForTime(
+          Some(id3),
+          DiffTime.of(5.seconds + 1.nano),
+          DiffTime.of(5.seconds)
+        )
       )
       assertEquals(added, Right(id3))
       assertEquals(
@@ -304,6 +319,128 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Vector(id2 -> 1.nano, id3 -> Duration.Zero)
       )
       assertEquals(held.validationTime, DiffTime.of(1.nano))
+  }
+
+  test(
+    "a duplicate waits for room and for time, as the reference's MEMPOOL rule comes after them"
+  ) {
+    val (t1, id1) = pay(1)
+    val start = MempoolState.empty(Right(ledger(2)), 1000, None)
+    val measured = (s: MempoolState) =>
+      s.measure(MempoolState.read(Submission(Era.Conway.index, t1)).toOption.get, env)
+    val (held, _) = start.add(t1, env, Source.Local).fold(r => fail(r.message), identity)
+    // with room and time, it is refused as the duplicate it is
+    assertEquals(held.add(t1, env, Source.Local), Left(Rejection.AlreadyHeld(id1)))
+    // past the capacity of time, it waits before its refusal
+    val slow = held.copy(entries = held.entries.map(_.copy(validation = 6.seconds)))
+    measured(slow) match
+      case Right(m) =>
+        assertEquals(
+          slow.tryAdd(m, env, Source.Local, Some(DiffTime.of(5.seconds))),
+          MempoolState.Tried.NoTime(DiffTime.of(6.seconds), DiffTime.of(5.seconds))
+        )
+      case other => fail(s"not measured: $other")
+    // in a pool over its capacity in bytes, it waits for room
+    val narrow = held
+      .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50))), 1000, env)
+      ._1
+    assert(narrow.free.bytes < 0)
+    assert(measured(narrow).left.exists(_.isInstanceOf[Rejection.Full]), s"${measured(narrow)}")
+  }
+
+  /** `[{}, 5]`: a Shelley update proposal with no proposals, which no Conway body reads. */
+  private val update: Vector[Byte] = head(4, 2) ++ head(5, 0) ++ head(0, 5)
+
+  /** Alice pays bob from `txIn(i)` in Alonzo, with an update proposal: the whole transaction and
+    * its id.
+    */
+  private def alonzoWithUpdate(i: Int): (Bytes, Bytes) =
+    val body = Bytes(
+      head(5, 5) ++
+        Vector(0x00.toByte) ++ head(4, 1) ++ head(4, 2) ++ bstr(txIn(i).id) ++ head(0, 0) ++
+        Vector(0x01.toByte) ++ head(4, 1) ++ head(4, 2) ++ bstr(bob.address().raw) ++
+        head(0, 99 * ada) ++ Vector(0x02.toByte) ++ head(0, ada) ++
+        Vector(0x03.toByte) ++ head(0, 100000) ++ Vector(0x06.toByte) ++ update
+    )
+    val id = Blake2b.hash256.hash(body)
+    val witnesses = Bytes(
+      head(5, 1) ++ Vector(0x00.toByte) ++ head(4, 1) ++ head(4, 2) ++ bstr(alice.vkey) ++
+        bstr(alice.sign(id))
+    )
+    (EraInjection.envelope(Block.Transaction(body, witnesses, None, true), Era.Alonzo), id)
+
+  private def built(build: ReferenceBuild): MempoolEnv =
+    env.copy(globals = env.globals.copy(referenceBuild = build))
+
+  test(
+    "11.1: a transaction no later era reads is refused by the rules, after the waits and timed"
+  ) {
+    val (raw, id) = alonzoWithUpdate(1)
+    val submitted = MempoolState.read(Submission(Era.Alonzo.index, raw)).toOption.get
+    val mismatch = Rejection.WrongEra(Era.Babbage.index, Era.Conway)
+    val eleven = built(ReferenceBuild.Release11_1)
+    // measured as nothing: a pool over its capacity makes it wait, and so does one past its time
+    val start = MempoolState.empty(Right(ledger(2)), 1000, None)
+    val (held, _) = start.add(pay(2)._1, env, Source.Local).fold(r => fail(r.message), identity)
+    val narrow = held
+      .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50))), 1000, env)
+      ._1
+    assert(narrow.measure(submitted, eleven).left.exists(_.isInstanceOf[Rejection.Full]))
+    val slow = held.copy(entries = held.entries.map(_.copy(validation = 6.seconds)))
+    slow.measure(submitted, eleven) match
+      case Right(m) =>
+        assertEquals(
+          slow.tryAdd(m, eleven, Source.Local, Some(DiffTime.of(5.seconds))),
+          MempoolState.Tried.NoTime(DiffTime.of(6.seconds), DiffTime.of(5.seconds))
+        )
+        assertEquals(
+          slow.tryAdd(m, eleven, Source.Local, None),
+          MempoolState.Tried.Done(Left(mismatch))
+        )
+      case other => fail(s"not measured: $other")
+    // in time it is refused with the mismatch; late, as too slow, naming the era it came in
+    for
+      timing <- scripted(Step.Took(Duration.Zero), Step.Took(2.seconds), Step.Cut(1500.millis))
+      pool <- mempool(ledger(2), timing, env = eleven)
+      inTime <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Local)
+      late <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Remote)
+      cut <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Local)
+      limits <- timing.limits.get
+    yield
+      assertEquals(inTime.left.map(_.rejection), Left(mismatch))
+      assertEquals(late.left.map(_.rejection), Left(Rejection.TooSlow(id, Era.Alonzo, 2.seconds)))
+      assertEquals(cut.left.map(_.rejection), Left(Rejection.TooSlow(id, Era.Alonzo, 1500.millis)))
+      assertEquals(limits.size, 3)
+      assert(
+        MempoolProblem
+          .TooSlow(2.seconds, Era.Alonzo, id)
+          .message
+          .contains("= S (S (S (S (Z (WrapGenTxId {")
+      )
+  }
+
+  test("11.2 and the Leios build: a transaction no later era reads is refused at its measure") {
+    val (raw, _) = alonzoWithUpdate(1)
+    val submitted = MempoolState.read(Submission(Era.Alonzo.index, raw)).toOption.get
+    Vector(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).traverse_ { build =>
+      // redecoded, the transaction does not read in Conway: the mismatch names Alonzo
+      val mismatch = Rejection.WrongEra(Era.Alonzo.index, Era.Conway)
+      val start = MempoolState.empty(Right(ledger(2)), 1000, None)
+      val (held, _) = start.add(pay(2)._1, env, Source.Local).fold(r => fail(r.message), identity)
+      val narrow = held
+        .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50))), 1000, env)
+        ._1
+      // refused at once, even by a pool over its capacity, and never timed
+      assertEquals(narrow.measure(submitted, built(build)), Left(mismatch), s"$build")
+      for
+        timing <- scripted(Step.Took(2.seconds))
+        pool <- mempool(ledger(2), timing, env = built(build))
+        refused <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Local)
+        limits <- timing.limits.get
+      yield
+        assertEquals(refused.left.map(_.rejection), Left(mismatch), s"$build")
+        assertEquals(limits, Vector.empty, s"$build: timed")
+    }
   }
 
   test("a held transaction keeps the time its admission took when the pool is validated again") {
@@ -387,7 +524,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           assert(took >= 200.millis, s"cut off after $took")
         case other => fail(s"a client's transaction cut off: $other")
       remote match
-        case Left(Rejection.TimedOut(MempoolTimeout(`id`, took))) =>
+        case Left(Rejection.TimedOut(MempoolTimeout(Some(`id`), took))) =>
           assert(took >= 200.millis, s"cut off after $took")
         case other => fail(s"a peer's transaction cut off: $other")
       assertEquals(held.entries, Vector.empty)

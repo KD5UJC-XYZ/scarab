@@ -205,6 +205,10 @@ final case class MempoolEnv(
   /** How a transaction of another era is taken: the selected reference build's way (REF-3). */
   def injection: EraInjection = EraInjection.of(globals.referenceBuild)
 
+  /** Where one that does not reach the ledger's era is refused: the selected build's place (REF-3).
+    */
+  def mismatch: EraInjection.Mismatch = EraInjection.Mismatch.of(globals.referenceBuild)
+
 /** A transaction as a client or a peer hands it over: the era its `GenTx` names, as its index in
   * the hard-fork combinator's era list (`[era, tx]`, `dispatchDecoder`,
   * `HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:362-374`, ouroboros-consensus
@@ -282,13 +286,12 @@ final case class MempoolState(
     * (size, and execution units from Alonzo, against the parameters), the capacity in those
     * components, the second measure (reference scripts against the state after the held
     * transactions, in Conway), the capacity in all of them, and only then the rules of the ledger.
-    * A refusal of a measure is the only failure returned; the ledger does not run. In Conway,
-    * Scarab checks for a duplicate between the first measure and the capacity: the reference has
-    * none (a duplicate fails the MEMPOOL rule, after waiting for room), so a duplicate here is
-    * answered even by a full pool. A held transaction passes both measures, which its revalidation
-    * keeps true (the LEDGER rule checks the same limits), so the check does not hide a measure
-    * refusal. Before Conway there is no MEMPOOL rule and so no such check: LEDGER refuses a
-    * duplicate, whose inputs the held transaction spent.
+    * A refusal of a measure is the only failure returned; the ledger does not run. In Conway a
+    * duplicate of a held transaction is refused where the reference's MEMPOOL rule refuses it,
+    * first among the rules, so it waits for room as any other transaction; before Conway there is
+    * no MEMPOOL rule, and LEDGER refuses it, its inputs being spent. A transaction that does not
+    * reach the ledger's era is refused where the selected build refuses it
+    * ([[EraInjection.Mismatch]]).
     */
   def add(
       submission: Submission,
@@ -314,8 +317,10 @@ final case class MempoolState(
   /** The steps of an admission before the timed one, as `doAddTx` takes them before it times
     * `pureTryAddTx` (ouroboros-consensus 82ecba32 `Mempool/Update.hs` 205-238): the transaction in
     * the ledger's era, its first measure (size, and execution units from Alonzo, against the
-    * parameters) and the capacity in those components. In Conway, Scarab checks for a duplicate
-    * between the first measure and the capacity ([[add]]).
+    * parameters) and the capacity in those components. A transaction that does not reach the
+    * ledger's era is refused here where the selected build refuses it in its first measure, and
+    * otherwise measures nothing and is refused by the rules, after the waits and in the timed step
+    * ([[EraInjection.Mismatch]]).
     */
   def measure(
       read: MempoolState.Read,
@@ -324,23 +329,28 @@ final case class MempoolState(
     for
       ledger <- current.leftMap(Rejection.NoLedger(_))
       baseLedger <- base.leftMap(Rejection.NoLedger(_))
-      injected <- MempoolState.inject(read, env.injection, ledger.era)
-      (submitted, in) = injected
-      id = in.parts.id
+      matched <- MempoolState.inject(read, env.injection, ledger.era) match
+        case Right((submitted, in)) => Right(MempoolState.Measured.Matched(submitted, in))
+        case Left(mismatch: Rejection.WrongEra) =>
+          env.mismatch match
+            case EraInjection.Mismatch.InMeasure => Left(mismatch)
+            case EraInjection.Mismatch.InRules =>
+              Right(MempoolState.Measured.Unmatched(mismatch, MempoolState.named(read)))
+        case Left(other) => Left(other)
       // the measures and the rules run as `pureTryAddTx` does in the caller's thread: an exception
       // of theirs is no verdict and ends the submitter's connection, not the node (issue 564)
       phase1 <- MempoolState.judging(
         for
-          phase1 <- Capacity.phase1(in.tx, ledger).leftMap(Rejection.Limits(id, _))
-          _ <- Either.cond(
-            ledger.era != Era.Conway || !contains(id),
-            (),
-            Rejection.AlreadyHeld(id)
-          )
+          phase1 <- matched match
+            case MempoolState.Measured.Matched(_, in) =>
+              Capacity.phase1(in.tx, ledger).leftMap(Rejection.Limits(in.parts.id, _))
+            // `txMeasurePhase1` of a transaction of another era: `Measure.zero`
+            // (`HardFork/Combinator/Mempool.hs` 376, ouroboros-consensus 82ecba32)
+            case MempoolState.Measured.Unmatched(_, _) => Right(TxMeasure.zero)
           _ <- room(phase1)
         yield phase1
       )
-    yield MempoolState.Measured(ledger, baseLedger, submitted, in, phase1)
+    yield MempoolState.Measured(ledger, baseLedger, matched, phase1)
 
   /** The timed step of an admission, `pureTryAddTx` (ouroboros-consensus 82ecba32
     * `Mempool/Update.hs` 321-451): the second measure (reference scripts against the state after
@@ -365,20 +375,29 @@ final case class MempoolState(
           )
     )
 
-  /** The second measure and the capacity in all its components: the reference-script bytes. */
+  /** The second measure and the capacity in all its components: the reference-script bytes, none
+    * for a transaction of another era (`txMeasurePhase2`, `HardFork/Combinator/Mempool.hs` 421,
+    * ouroboros-consensus 82ecba32).
+    */
   private def checked(measured: MempoolState.Measured): Either[Rejection, Long] =
     MempoolState.judging(
       for
-        refScriptBytes <- Capacity
-          .phase2(measured.ledger, measured.in.tx)
-          .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(measured.id, f)))
+        refScriptBytes <- measured.matched match
+          case MempoolState.Measured.Matched(_, in) =>
+            Capacity
+              .phase2(measured.ledger, in.tx)
+              .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(in.parts.id, f)))
+          case MempoolState.Measured.Unmatched(_, _) => Right(0L)
         _ <- room(measured.phase1.copy(refScriptsBytes = refScriptBytes))
       yield refScriptBytes
     )
 
   /** The era's rule judges the transaction: in Conway MEMPOOL (`Rules/Mempool.hs`, [[Mempool]]),
     * which refuses one none of whose inputs is unspent as "probably a duplicate" with that alone,
-    * then LEDGER; before Conway LEDGER.
+    * then LEDGER; before Conway LEDGER. A duplicate of a held transaction is refused first, as
+    * MEMPOOL refuses it, in Conway. A transaction that does not reach the ledger's era is refused
+    * here with the era mismatch, as the hard-fork combinator's `applyTx` refuses it (`applyHelper`,
+    * `HardFork/Combinator/Mempool.hs` 501-506, ouroboros-consensus 82ecba32).
     */
   private def admitted(
       measured: MempoolState.Measured,
@@ -386,25 +405,37 @@ final case class MempoolState(
       env: MempoolEnv,
       source: Source
   ): Either[Rejection, MempoolState.Admitted] =
-    MempoolState.judging(
-      measured.ledger
-        .admit(measured.in.tx, env.txEnv(tipSlot, measured.base), env.rules, source)
-        .bimap(
-          Rejection.Ledger(_),
-          (next, held) => MempoolState.Admitted(measured, refScriptBytes, next, held)
+    measured.matched match
+      case MempoolState.Measured.Unmatched(mismatch, _) => Left(mismatch)
+      case MempoolState.Measured.Matched(_, in) =>
+        val id = in.parts.id
+        MempoolState.judging(
+          for
+            _ <- Either.cond(
+              measured.ledger.era != Era.Conway || !contains(id),
+              (),
+              Rejection.AlreadyHeld(id)
+            )
+            admitted <- measured.ledger
+              .admit(in.tx, env.txEnv(tipSlot, measured.base), env.rules, source)
+              .bimap(
+                Rejection.Ledger(_),
+                (next, held) =>
+                  MempoolState.Admitted(measured.ledger.era, in, refScriptBytes, next, held)
+              )
+          yield admitted
         )
-    )
 
   /** The pool holding an admitted transaction whose validation took `took`. */
   def hold(admitted: MempoolState.Admitted, took: FiniteDuration): (MempoolState, Entry) =
-    import admitted.{held, measured, refScriptBytes}
+    import admitted.{held, in, refScriptBytes}
     // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
     // transaction is relayed with its other parts as received and the flag of the verdict, as
     // the reference relays the transaction it rebuilt.
     val entry =
       Entry(
-        measured.ledger.era,
-        measured.in.parts.copy(isValid = held.isValid),
+        admitted.era,
+        in.parts.copy(isValid = held.isValid),
         held,
         nextTicket,
         refScriptBytes,
@@ -587,22 +618,48 @@ object MempoolState:
         )
 
   /** A transaction past the steps of an admission before the timed one ([[MempoolState.measure]]):
-    * the ledger and its base, the era it was submitted in, the transaction in the ledger's era, and
-    * its first measure.
+    * the ledger and its base, the transaction in the ledger's era or the era mismatch the rules
+    * will refuse it with ([[Measured.Unmatched]]), and its first measure.
     */
   final case class Measured(
       ledger: PoolLedger,
       base: PoolLedger,
-      submitted: Era,
-      in: EraTx,
+      matched: Measured.Matched | Measured.Unmatched,
       phase1: TxMeasure
   ):
-    def id: Bytes = in.parts.id
+    /** The submitted transaction's id, when it was read. */
+    def id: Option[Bytes] = named.map(_._2)
 
-  /** A transaction the rules admit: the reference-script bytes, the ledger after it and the
-    * transaction as held.
+    /** The era the transaction was submitted in and its id, when it was read. */
+    def named: Option[(Era, Bytes)] = matched match
+      case Measured.Matched(submitted, in)  => Some(submitted -> in.parts.id)
+      case Measured.Unmatched(_, submitted) => submitted
+
+  object Measured:
+    /** The transaction in the ledger's era, read in `submitted`. */
+    final case class Matched(submitted: Era, in: EraTx)
+
+    /** A transaction that does not reach the ledger's era, where the selected build measures it as
+      * nothing and the rules refuse it ([[EraInjection.Mismatch.InRules]]); `submitted` is the era
+      * it was read in and its id, none when the pool does not read transactions of that era.
+      */
+    final case class Unmatched(mismatch: Rejection.WrongEra, submitted: Option[(Era, Bytes)])
+
+  /** The era a submission was read in and its id, when the pool reads transactions of that era. */
+  private def named(read: Read): Option[(Era, Bytes)] = read match
+    case Read.Decoded(era, transaction) => Some(era -> transaction.parts.id)
+    case Read.Foreign(_)                => None
+
+  /** A transaction the rules admit, in the ledger's era `era`: the reference-script bytes, the
+    * ledger after it and the transaction as held.
     */
-  final case class Admitted(measured: Measured, refScriptBytes: Long, next: PoolLedger, held: Tx)
+  final case class Admitted(
+      era: Era,
+      in: EraTx,
+      refScriptBytes: Long,
+      next: PoolLedger,
+      held: Tx
+  )
 
   /** What the timed step of an admission gives ([[MempoolState.tryAdd]]), the reference's
     * `TriedToAddTx` (ouroboros-consensus 82ecba32 `Mempool/Update.hs` 133-143): the transaction

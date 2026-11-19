@@ -43,7 +43,7 @@ enum MempoolEvent:
   /** A transaction waits for the pool to change because the validations of the held transactions
     * took `used`, longer than the pool's `capacity` of time (once per submission, as [[Waiting]]).
     */
-  case WaitingForTime(id: Bytes, used: DiffTime, capacity: DiffTime)
+  case WaitingForTime(id: Option[Bytes], used: DiffTime, capacity: DiffTime)
 
   /** A held transaction left the pool with `reason`, for `cause`: the pool was validated again and
     * no longer admits it, or the forger withdrew it.
@@ -229,18 +229,22 @@ object Mempool:
     * era has an error for it, as `mkMempoolApplyTxError` makes one: only Conway's
     * `ConwayMempoolFailure` (ouroboros-consensus 82ecba32 `shelley` `Shelley/Eras.hs` 169-220,
     * 808e4005 179-230: none from Shelley to Babbage, nor in Dijkstra; Byron's is
-    * `nothingMkMempoolApplyTxError`, `byron` `Byron/Ledger/Mempool.hs` 143).
+    * `nothingMkMempoolApplyTxError`, `byron` `Byron/Ledger/Mempool.hs` 143). Its text names the
+    * submitted transaction, so there is none either for a transaction of an era whose transactions
+    * the pool does not read (Byron, Dijkstra), whose id it cannot show.
     */
   private[mempool] def tooSlow(
       ledger: Era,
       measured: MempoolState.Measured,
       took: FiniteDuration
   ): Option[Rejection.TooSlow] =
-    ledger match
-      case Era.Conway => Some(Rejection.TooSlow(measured.id, measured.submitted, took))
-      case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
-          Era.Dijkstra =>
-        None
+    measured.named.flatMap((submitted, id) =>
+      ledger match
+        case Era.Conway => Some(Rejection.TooSlow(id, submitted, took))
+        case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
+            Era.Dijkstra =>
+          None
+    )
 
   /** How many submissions wait for their turn: `remote` behind the peer's transaction that holds
     * the remote line, `common` behind the one that holds the common line.
@@ -424,7 +428,7 @@ object Mempool:
                 case Source.Remote => None
               answer(
                 current,
-                Some(measured.id),
+                measured.id,
                 refusal.getOrElse(Rejection.TimedOut(MempoolTimeout(measured.id, took)))
               )
             case Timed.Done(tried, took) =>
@@ -433,9 +437,7 @@ object Mempool:
               Option
                 .when(late)(Mempool.tooSlow(era, measured, took))
                 .flatten
-                .fold(finished(current, measured, tried, took))(
-                  answer(current, Some(measured.id), _)
-                )
+                .fold(finished(current, measured, tried, took))(answer(current, measured.id, _))
           }
 
       /** The answer of a validation that took `took`, not refused as too slow: a wait while the
@@ -453,7 +455,7 @@ object Mempool:
             version.get.map(
               Attempt.Wait(_, MempoolEvent.WaitingForTime(measured.id, used, capacity))
             )
-          case MempoolState.Tried.Done(Left(reason)) => answer(current, Some(measured.id), reason)
+          case MempoolState.Tried.Done(Left(reason)) => answer(current, measured.id, reason)
           case MempoolState.Tried.Done(Right(admitted)) =>
             val (next, entry) = current.hold(admitted, took)
             state.set(next) *> version.update(_ + 1) *>

@@ -52,15 +52,16 @@ object MempoolTimeouts:
     case Immediate
     case After(limit: FiniteDuration)
 
-/** The hard limit cut off the validation of the transaction `id` after `took`: no verdict, and the
-  * connection that submitted it ends, the reference's `ExnMempoolTimeout` (ouroboros-consensus
-  * 82ecba32 `Mempool/API.hs` 542-553, thrown at `Mempool/Update.hs` 285-291), which no rethrow
-  * policy names, so its peer is disconnected and the node goes on (`ouroboros-consensus-diffusion`
+/** The hard limit cut off the validation of the transaction `id` (none for a transaction of an era
+  * whose transactions the pool does not read) after `took`: no verdict, and the connection that
+  * submitted it ends, the reference's `ExnMempoolTimeout` (ouroboros-consensus 82ecba32
+  * `Mempool/API.hs` 542-553, thrown at `Mempool/Update.hs` 285-291), which no rethrow policy names,
+  * so its peer is disconnected and the node goes on (`ouroboros-consensus-diffusion`
   * `Node/RethrowPolicy.hs` 40-45).
   */
-final case class MempoolTimeout(id: Bytes, took: FiniteDuration) extends DomainError:
+final case class MempoolTimeout(id: Option[Bytes], took: FiniteDuration) extends DomainError:
   def message: String =
-    s"ExnMempoolTimeout ${MempoolProblem.shown(took)} ${id.hex}"
+    s"ExnMempoolTimeout ${MempoolProblem.shown(took)}" + id.fold("")(i => s" ${i.hex}")
 
 /** The outcome of a timed validation: its result and how long it took, or how long it ran before
   * the hard limit cut it off.
