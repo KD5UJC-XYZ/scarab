@@ -280,7 +280,8 @@ private[node] final class Praos2Headers private ():
       Praos2.EpochInfo.fromGeometry(cfg.geometry)
     )
     // `translateChainDepState` of `TranslateProto (Praos c) (Praos2 c)`, and of TPraos through
-    // Praos (`Protocol/Praos2.hs:189-209`): the state of the era before, carried over
+    // Praos (`Protocol/Praos2.hs:189-209`, ouroboros-consensus 2416493b): the state of the era
+    // before, carried over
     val translated = prev.in(Era.Conway)
     Prepared.Check(() =>
       val checked: Either[Outcome[ProtocolState], ProtocolState] =
@@ -323,9 +324,9 @@ private[node] final class Praos2Headers private ():
 private[node] object Praos2Headers:
   /** The rules of a Dijkstra header in `build`: Praos2's in the Leios build, whose Dijkstra header
     * is the Leios header (`ShelleyProtocolHeader (Praos2 c) = Leios.Header c`,
-    * `Protocol/Praos2.hs:57`); none in the release lines, whose Dijkstra runs Praos on Conway's
-    * header and which this node never enters (their Dijkstra headers keep the refusal of every
-    * other era's path).
+    * `Protocol/Praos2.hs:57`, ouroboros-consensus 2416493b); none in the release lines, whose
+    * Dijkstra runs Praos on Conway's header and which this node never enters (their Dijkstra
+    * headers keep the refusal of every other era's path).
     */
   def of(build: ReferenceBuild): Option[Praos2Headers] = build match
     case ReferenceBuild.LeiosB004fe0c                            => Some(Praos2Headers())

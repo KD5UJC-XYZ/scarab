@@ -256,7 +256,8 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     // the fourth header (slot 2,168,718) with its certificate flag set: its predecessor (slot
     // 2,168,714) announced an endorser block, whose certificate may come 14 slots later at the
     // earliest (3 * 1 s + 4 s + 7 s, slots of 1 s); the Leios checks run before the signature
-    // checks (`updateChainDepState` of Praos2, `Protocol/Praos2.hs:131-132`), so the changed bytes
+    // checks (`updateChainDepState` of Praos2, `Protocol/Praos2.hs:131-132`, ouroboros-consensus
+    // 2416493b), so the changed bytes
     // are refused for the certificate, not the signature
     val before =
       fold(testnetRules, testnetAnchor, Some(anchorTip), testnetStart, testnetHeaders.take(3))
