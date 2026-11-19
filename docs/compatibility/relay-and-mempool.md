@@ -32,16 +32,21 @@ and 5 s, on by default as cardano-node 11.1.3 passes them, `Node/Run.hs` 388-392
   shows a `DiffTime` (`1.234567891s`) and the id as the hard-fork combinator shows the submitted transaction's
   (`HardForkGenTxId {getHardForkGenTxId = S (S (... (Z (WrapGenTxId {unwrapGenTxId = txid: TxId {unTxId = SafeHash
   "<hex>"}}))...))}`). A peer's refused transaction ends nothing.
-- **Hard:** the validation runs under `Sync.interruptible`; at the limit it is cancelled, the evaluator the mempool is
-  given stops once its thread is interrupted ([`ScarabEvaluator.interruptible`](../../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluator.scala)),
-  and the cut-off returns once it has stopped. A local client's Conway transaction is then refused as above; otherwise
-  (a peer's, or before Conway) the submitter's connection ends, as `ExnMempoolTimeout`, which no rethrow policy names,
-  ends the reference's, and the node goes on. The limit is taken as the reference's runtime takes it: floored to
+- **Hard:** the validation runs under `Sync.interruptible`; at the limit its cancellation is requested by interrupting
+  its thread, and it completes cooperatively: the evaluator the mempool is given
+  ([`ScarabEvaluator.interruptible`](../../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluator.scala)) polls
+  for the interrupt once every 200 counted steps of the machine, and decoding, weighing, building a script's context
+  and a single builtin call are not interrupted mid-way, so the cut-off returns once the validation reaches its next
+  poll or its end. A local client's Conway transaction is then refused as above; otherwise (a peer's, or before
+  Conway) the submitter's connection ends, as `ExnMempoolTimeout`, which no rethrow policy names, ends the
+  reference's, and the node goes on. The limit is taken as the reference's runtime takes it: floored to
   microseconds and narrowed to 64 bits (io-classes 1.8.0.1 `MonadTimer/SI.hs` 43-49, 262), negative being none and
   zero a cut-off before the validation starts; a limit past 292 years is not distinguished from none.
 - **Capacity:** each held transaction records how long its validation took, which revalidation keeps; while the held
   transactions took longer than the capacity together, a new transaction waits for the pool to change (one
   transaction can take them past it), after the second measure and the room in every component and before the rules.
+  This is the wait of `11.1` and `11.2` (`Mempool/Update.hs` 423-426 at `82ecba32`, 426-429 at `808e4005`); the Leios
+  build has none at admission (433-438 at `2416493b`).
 - **No verdict:** a validation the rules or the evaluator give no verdict on (`RulesDefect`, `LedgerFailure.Unavailable`
   or `Unverifiable`) keeps its cause and its handling (the submitter's connection ends) however long it took: in the
   reference the exception escapes `timeout` and never meets the soft limit.
@@ -55,9 +60,10 @@ and 5 s, on by default as cardano-node 11.1.3 passes them, `Node/Run.hs` 388-392
   `mempoolWaiting` line; `cardano_node_metrics_txsMempoolTimeoutSoft_counter` and `..._txsMempoolTimeoutHard_counter`
   count them as the reference's do ([metrics](../running/metrics.md)).
 - **Evidence:** `MempoolTimeoutsSuite` (the soft boundary from either source, a late refusal of the rules, the reply's
-  bytes and text, a cut-off per source and era, the capacity's wait and release, durations kept through revalidation,
-  and the audit's G2 `hashToGroup` loop cut off at the hard limit through the node's own timing with the pool left
-  empty, a no-verdict failure past the soft limit, a duplicate's and an era mismatch's place under each build);
+  bytes and text, a cut-off per source and era, the capacity's wait and release and its absence under the Leios build,
+  durations kept through revalidation, and the audit's G2 `hashToGroup` loop cut off at the hard limit through the
+  node's own timing with the pool left empty, a no-verdict failure past the soft limit, a duplicate's and an era
+  mismatch's place under each build);
   `MempoolMeasureSuite` and `MempoolBackpressureSuite` (a duplicate waits for room); `ConfigSuite` (all, none, `null`,
   some, values aeson refuses, the microsecond floor); `CekStopSuite` and `InterruptibleEvaluatorSuite` (an
   evaluation's verdict and budget unchanged until it is stopped: on the 945 programs of the 1,009 conformance cases of
@@ -65,14 +71,17 @@ and 5 s, on by default as cardano-node 11.1.3 passes them, `Node/Run.hs` 388-392
   boundary corpus).
 - **Not checked:** a capture of the reference's refusal text (the text was read from the derived `Show` instances,
   not executed); the duration in it is each node's own measurement, so it never compares exactly (the
-  [campaign's Q7](../design/differential-campaign.md#10-risks-and-open-questions)). A builtin call that runs long
-  between two steps of the machine is stopped at the next step after it returns, as GHC stops a computation at its
-  next allocation. Under `11.1`, a transaction of an era whose transactions the pool does not read (Byron, Dijkstra)
-  has no id the pool can show, so where the reference would refuse it as too slow (a soft limit below the time its
-  era check takes, or a hard limit below a microsecond), Scarab refuses it with the era mismatch, or ends a local
-  client's connection when the hard limit cuts it off. A cancellation during the validation leaves the pool as it
-  was; once a transaction is held, its state, the pool's version and the `mempoolAdded` event are separate steps, as
-  before.
+  [campaign's Q7](../design/differential-campaign.md#10-risks-and-open-questions)). How far past the hard limit a
+  validation runs before it stops: GHC delivers the reference's `timeout` at the computation's next allocation,
+  Scarab's at the validation's next poll, so a long builtin call or context construction finishes first.
+- **Gaps:** under `11.1`, a transaction of an era whose transactions the pool does not read (Byron, Dijkstra) has no
+  id the pool can show, so where the reference refuses it as too slow, Scarab refuses it with the era mismatch, or ends
+  a local client's connection when the hard limit cuts it off. This shows when the era check of such a submission takes
+  longer than the soft limit: rare, but possible at the default limits, as when a pause of the runtime falls in it.
+  Under the Leios build the capacity bounds the forger's revalidation of its snapshot instead, a tenth of it per step
+  (`Mempool/Query.hs` 148-164 at `2416493b`), which Scarab does not do; the build does not run yet.
+- **Cancellation:** a cancellation during the validation leaves the pool as it was; once a transaction is held, its
+  state, the pool's version and the `mempoolAdded` event are separate steps, as before.
 
 ## Differences decided on 2026-11-14 (#956)
 
