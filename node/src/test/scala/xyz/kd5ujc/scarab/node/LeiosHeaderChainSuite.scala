@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.LeiosHeaderChain
-import xyz.kd5ujc.scarab.consensus.state.ProtocolState
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, LeiosHeader}
 import xyz.kd5ujc.scarab.protocol.HfcHeader
@@ -42,7 +42,11 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
         },
       LeiosHeaderChain.GenesisEpochs
     )
-  private val initial = LeiosHeaderChain.initial(setup.mirrorStart.protocol)
+  // the chain starts in Dijkstra, whose Praos2 state carries Praos's, which these rules run over
+  private val initial = LeiosHeaderChain.initial(setup.mirrorStart.protocol match
+    case ProtocolState(ChainDepState.Praos2(s), extras) =>
+      ProtocolState(ChainDepState.Praos(s.praos), extras)
+    case other => fail(s"the start state is not Praos2's: $other"))
 
   private val headers: Vector[Header.Shelley] =
     Files

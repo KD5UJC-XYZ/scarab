@@ -406,9 +406,18 @@ object NodeSetup:
         .map(_.copy(dijkstra = dijkstra, referenceBuild = build))
       // Dijkstra's trigger is carried as the reference carries it (`TestDijkstraHardForkAtEpoch`,
       // read with `ExperimentalHardForksEnabled`), and never fires below a maximum major protocol
-      // version of 12 (`HardForkConfig.trigger`)
+      // version of 12 (`HardForkConfig.trigger`). The Leios build's maximum is the node's protocol
+      // version (`maxMajorProtVer = MaxMajorProtVer $ pvMajor cardanoProtocolVersion`,
+      // `Cardano/Node.hs:548-549`, ouroboros-consensus 2416493b): 12 with
+      // `ExperimentalHardForksEnabled`, so its chain enters Dijkstra (owner decision on #54,
+      // 2026-11-19); the 11.1 line's stays 11, with #788.
+      maxMajor = build match
+        case ReferenceBuild.LeiosB004fe0c => config.settings.protocolVersion._1.toInt
+        case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
+          HardForkConfig.MaxMajorProtVer
       forks = HardForkConfig.fromEpochs(
-        config.hardForkEpochs ++ config.settings.dijkstraHardForkEpoch.map(Era.Dijkstra -> _)
+        config.hardForkEpochs ++ config.settings.dijkstraHardForkEpoch.map(Era.Dijkstra -> _),
+        maxMajor
       )
       // The era the first slot is in: Byron unless Shelley starts at epoch 0, then the eras whose
       // transition the genesis state decides (`HardForkConfig.initialEra`), never the Shelley
