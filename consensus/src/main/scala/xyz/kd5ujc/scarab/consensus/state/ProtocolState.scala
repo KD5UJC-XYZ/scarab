@@ -128,12 +128,14 @@ object ProtocolState:
         Nonce.Neutral,
         Nonce.Neutral
       )
-      ProtocolState(
-        // a chain that starts in Dijkstra holds Praos2's state: Praos's translated, every field
-        // carried and no announcement (`translateChainDepState` of `TranslateProto (Praos c)
-        // (Praos2 c)`, `Protocol/Praos2.hs:189-200`, ouroboros-consensus 2416493b)
+      // a chain that starts in Dijkstra holds Praos2's state: Praos's translated, every field
+      // carried and no announcement (`translateChainDepState` of `TranslateProto (Praos c)
+      // (Praos2 c)`, `Protocol/Praos2.hs:189-200`, ouroboros-consensus 2416493b)
+      val dep =
         if era == Era.Dijkstra then
           ChainDepState.Praos2(xyz.kd5ujc.scarab.consensus.DijkstraCrossing.chainDepState(praos))
-        else ChainDepState.Praos(praos),
+        else ChainDepState.Praos(praos)
+      ProtocolState(
+        dep,
         ProtocolExtras(0, Nonce.Neutral)
       )
