@@ -36,6 +36,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The Conway LEDGER rules on the era-indexed state, on one transaction at a time: the suite builds
   * the native state, runs the rules on the transaction and checks what they do with it: the
@@ -926,13 +927,63 @@ class ConwayLedgerSuite extends FunSuite:
     val shared = poolParams(two).copy(vrfKeyHash = poolParams(one).vrfKeyHash)
     val s = base(fundedBy(alice), pools = Vector(poolParams(one), shared))
     val before = pStateOf(s)
-    val after = HardFork.populateVRFKeyHashes(before.copy(vrfKeyHashes = Sorted.empty))
     val shared11 =
       VRFVerKeyHash.fromBytes(poolParams(one).vrfKeyHash).fold(e => fail(e.toString), identity)
-    assertEquals(after.vrfKeyHashes.get(shared11).map(_.value.bits), Some(2L))
-    // the same where the map already holds the key (once, as the state was built): it starts
-    // again
-    assertEquals(HardFork.populateVRFKeyHashes(before).vrfKeyHashes, after.vrfKeyHashes)
+    def counted(build: ReferenceBuild, ps: PState): Option[Long] =
+      HardFork
+        .populateVRFKeyHashes(build, ps)
+        .fold(e => fail(e.toString), identity)
+        .vrfKeyHashes
+        .get(shared11)
+        .map(_.value.bits)
+    // from an empty map, as the reference has it before version 11: the same in every build
+    ReferenceBuild.values.foreach(build =>
+      assertEquals(counted(build, before.copy(vrfKeyHashes = Sorted.empty)), Some(2L), build.name)
+    )
+    // where the map already holds the key (once, as the state was built): 11.1 adds the two pools
+    // to it (`HardFork.hs:107-125`, cardano-ledger f649f975), 11.2 and the Leios build count them
+    // again from nothing (`State/CertState.hs:525-535` at 29a7d656, 528-538 at 9df9f98c)
+    assertEquals(counted(ReferenceBuild.Release11_1, before), Some(3L))
+    assertEquals(counted(ReferenceBuild.Release11_2, before), Some(2L))
+    assertEquals(counted(ReferenceBuild.LeiosB004fe0c, before), Some(2L))
+  }
+
+  test("under 11.1 HARDFORK keeps a count at the largest word where adding one would wrap") {
+    // `combine` keeps the old count where `+ 1` would reach zero (`HardFork.hs:121-125`,
+    // cardano-ledger f649f975)
+    val one = key()
+    val s = base(fundedBy(alice), pools = Vector(poolParams(one)))
+    val before = pStateOf(s)
+    val vrf =
+      VRFVerKeyHash.fromBytes(poolParams(one).vrfKeyHash).fold(e => fail(e.toString), identity)
+    val full = NonZero.from(Word64.max).fold(e => fail(e.toString), identity)
+    val saturated = before.copy(vrfKeyHashes = before.vrfKeyHashes.updated(vrf, full))
+    assertEquals(
+      HardFork
+        .populateVRFKeyHashes(ReferenceBuild.Release11_1, saturated)
+        .map(_.vrfKeyHashes.get(vrf)),
+      Right(Some(full))
+    )
+  }
+
+  test(
+    "HARDFORK refuses a waiting re-registration whose VRF key hash is not 32 bytes, in every build"
+  ) {
+    val one = key()
+    val s = base(fundedBy(alice), pools = Vector(poolParams(one)))
+    val malformed = Bytes(Vector.fill(31)(1))
+    val refusal = VRFVerKeyHash.fromBytes(malformed).swap.getOrElse(fail("31 bytes taken"))
+    val before = pStateOf(s)
+    val pools = before.copy(future =
+      before.future.updated(poolId(one), poolParams(one).copy(vrfKeyHash = malformed))
+    )
+    ReferenceBuild.values.foreach(build =>
+      assertEquals(
+        HardFork.populateVRFKeyHashes(build, pools).map(_.vrfKeyHashes),
+        Left(refusal),
+        build.name
+      )
+    )
   }
 
   /** A Plutus V3 transaction that spends an output its script locks, with one collateral input and,

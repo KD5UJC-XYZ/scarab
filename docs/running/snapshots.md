@@ -101,7 +101,8 @@ and V9 files migrate to V10 on open, #395, #726, #54, #826; a V9 file migrates a
 reference build, the only one whose layout it can hold). A V5 or V7 snapshot taken while the chain was in Byron whose
 Byron update state holds a software proposal or an application version is refused with
 `ResyncRequired`: its installer metadata was not kept and cannot be recovered, so that chain has to
-be synced again from genesis (ADR 0006, amendment of 2026-11-03). V1–V4 inputs
+be synced again from genesis (ADR 0006, amendment of 2026-11-03). So is a snapshot of a state that no
+chain of the build reaches ([below](#unreachable-ledger-state)). V1–V4 inputs
 need separate verified current-format replacements using pinned historical source, as described in
 [Storage migrations](../storage-migrations.md); this build refuses retired formats before mutable stores
 open. Work on a copy; the original is never opened by the new build. With the node stopped (a running
@@ -149,6 +150,21 @@ snapshot of a mainnet follower that is a day behind covers some thousands of blo
 Historical builds that supported V4→V5 migration also emitted `formatMigrated` with
 `"kind":"SnapshotFile"`, `"from":"V4"`, `"to":"V5"` and the number of migrated files. That is
 historical conversion evidence, not an automatic upgrade supported by this build.
+
+<a id="unreachable-ledger-state"></a>
+**A ledger state that no chain of the build reaches.** Under the `11.1` build a ledger state below
+protocol version 11 whose pools' VRF key hashes are not empty is refused with `UnreachableLedgerState`,
+which names where it came from: a snapshot as the node restores it, whatever version it was written in
+and migrated from (the start stops); the `state` file that `import-ledger-snapshot` and `import-mithril`
+read; and the state that `import-scls` rebuilds on its base snapshot (nothing is published). No chain of
+cardano-node 11.1.3 holds that map before 11 (POOL writes it only from 11, cardano-ledger f649f975
+`Shelley/Era.hs:259-262`), but the retired flat conversion derived it from 10, and the 11.1 hard fork,
+which adds to the map it has, would count each pool twice on entering 11. Such a chain has to be synced
+again from genesis: replay it from the immutable chunks (stop the node, remove `<db>/snapshots` and
+`<db>/utxo`, start it again) or sync a new database, or import a ledger state the reference node wrote.
+The `11.2` and Leios builds admit such a state, their hard fork recomputing the map. Refusing it, rather
+than repairing it in a migration step or at the hard fork, is the owner's decision (asked
+2026-11-18T08:22:34Z and decided 2026-11-18T14:21:46Z).
 
 ## `import-haskell-db`: start from a Haskell node's blocks
 

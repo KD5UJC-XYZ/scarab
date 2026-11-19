@@ -98,3 +98,17 @@ object SnapshotFormat:
 
         def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[S]]] =
           F.map(format.decode(content))(_.map(s => s.copy(state = restore(s.state))))
+
+    /** The format that refuses a state it reads that `admit` refuses (not one it writes): a state
+      * the node must not run from refused as it comes in, before its checkpoint is restored. The
+      * restore treats the refusal as [[LedgerSnapshots.Fallback.of]] says.
+      */
+    def admitting(admit: StateSnapshot[S] => Either[StorageError, Unit])(using
+        F: cats.Functor[F]
+    ): SnapshotFormat[F, S] =
+      new SnapshotFormat[F, S]:
+        def encode(snapshot: StateSnapshot[S]): F[Either[SnapshotRefusal, Array[Byte]]] =
+          format.encode(snapshot)
+
+        def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[S]]] =
+          F.map(format.decode(content))(_.flatMap(s => admit(s).map(_ => s)))

@@ -20338,6 +20338,49 @@
    ],
    "note": "its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the scripts visited in the witness map's order, then the outputs' in the outputs' order, the collateral return's last, so that where the decoder gives no verdict for several scripts, the defect names the first in the order they arrived, as the flat check's does (the reference's decoding always gives a verdict, so it has no such choice)",
    "digest": "c58934407a4c51c8"
+  },
+  "def ledger.rules.HardFork.populateVRFKeyHashes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/HardFork.hs",
+     "symbol": "populateVRFKeyHashes",
+     "lines": [
+      107,
+      125
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "symbol": "populateVRFKeyHashes",
+     "lines": [
+      525,
+      535
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "symbol": "populateVRFKeyHashes",
+     "lines": [
+      528,
+      538
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayGovernanceSuite",
+    "ConwayLedgerSuite",
+    "DijkstraTranslationSuite"
+   ],
+   "note": "one counterpart per build, selected by the reference build: 11.1 (f649f975) adds the pools to the map it has; 11.2 (29a7d656) and the Leios build (9df9f98c) recompute it, through Translate.populateVRFKeyHashes. Under 11.1 the map it adds to is the reference's: a state below 11 whose map is not empty, which no chain of 11.1.3 reaches, is refused where it is restored or imported (storage.StateAdmission)",
+   "digest": "484d663cc0640bb6"
   }
  },
  "glue": [
@@ -20795,6 +20838,15 @@
     "def ledger.era.rules.unavailable",
     "object ledger.era.AlonzoStAnnTx",
     "object ledger.era.AlonzoTxAuxData"
+   ]
+  },
+  {
+   "reason": "the refusal of a ledger state, restored or imported, that no chain of the configured reference build reaches and that its rules would carry to another state than the reference's: Scarab's own stale data, which the reference has no check for because no chain it runs reaches it (it decodes PState as it is, State/CertState.hs 257-265, cardano-ledger f649f975); refused rather than repaired by the owner's decision (asked 2026-11-18T08:22:34Z and decided 2026-11-18T14:21:46Z), docs/running/snapshots.md#unreachable-ledger-state",
+   "definitions": [
+    "enum ledger.UnreachableStateProblem",
+    "def ledger.UnreachableStateProblem#message",
+    "enum ledger.LedgerStateSource",
+    "def ledger.LedgerStateSource#describe"
    ]
   }
  ]

@@ -15,14 +15,21 @@ its symbols, not its lines.
 
 ## 1. The problem
 
-`ReferenceBuild` (`protocol`) is a run-time enum with two cases: `Release11_1` (`11.1`, the default) and
-`LeiosB004fe0c` (`leios-b004fe0c`). Its value reaches the code in four ways.
+`ReferenceBuild` (`protocol`) is a run-time enum with three cases: `Release11_1` (`11.1`, the default),
+`Release11_2` (`11.2`, whose layout is not read or written yet) and `LeiosB004fe0c` (`leios-b004fe0c`). Its value
+reaches the code in four ways.
 
-- **One rule matches on the build.** `UtxoTests.injectedBootAddrAttrsTooBig` refuses an oversized bootstrap
+- **Two rules match on the build.** `UtxoTests.injectedBootAddrAttrsTooBig` refuses an oversized bootstrap
   address attribute as `OutputTooBig` under `11.1` and as `OutputBootAddrAttrsTooBig` under the Leios build
   (#832). The Shelley-based UTXO paths only pass the build through to it: `UtxoTests.shelleyAfterPpup`, and
-  `TxEnv.referenceBuild` for the later eras. `LedgerGlobals.referenceBuild` and `TxEnv.referenceBuild` both
-  default to `ReferenceBuild.Default`, so a caller that names no build gets `11.1`.
+  `TxEnv.referenceBuild` for the later eras. `HardFork.populateVRFKeyHashes`, which Conway's EPOCH reaches
+  through `LedgerGlobals.referenceBuild` at a change of protocol version whose major is 11, adds to the map
+  of VRF key hashes it has under `11.1` (`HardFork.hs:107-125`) and recomputes it from nothing under `11.2`
+  and the Leios build (`State/CertState.hs`). The admission of a ledger state that a snapshot or an import
+  brings in matches on it too (`StateAdmission.admit`; what it refuses, and under which build, is in
+  [snapshots.md](../running/snapshots.md#unreachable-ledger-state)). `LedgerGlobals.referenceBuild` and
+  `TxEnv.referenceBuild` both default to `ReferenceBuild.Default`, so a caller that names no build gets
+  `11.1`.
 - **Most differences match on the state's layout.** `StateLayout.of(build)` gives `Node11_1` or `Leios`.
   Six enums extend `LayoutPart`, each with a case per layout holding that layout's fields:
   - `SnapShots.Layout` and `PoolBlsKey` (both in `SnapShots.scala`; `PoolBlsKey` sits in `StakePoolState`

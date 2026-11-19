@@ -7,17 +7,20 @@ import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
-/** HARDFORK (`Conway/Rules/HardFork.hs:68`, cardano-ledger f649f975): the rule that runs at the
-  * epoch boundary where the protocol version changed.
+/** HARDFORK (`Conway/Rules/HardFork.hs:68-80`, cardano-ledger f649f975; 65-77 at 29a7d656 and
+  * 9df9f98c): the rule that runs at the epoch boundary where the protocol version changed, a change
+  * of the minor version included (`Conway/Rules/Epoch.hs:367-371` at f649f975, 371-375 at
+  * 29a7d656). What it does depends on the major version of the new one:
   *
-  *   - Entering protocol version 10 (the end of the bootstrap phase) it rebuilds every DRep's index
-  *     of delegators from the accounts and drops the delegations to DReps that are not registered
+  *   - 10 (entering it ends the bootstrap phase): it rebuilds every DRep's index of delegators from
+  *     the accounts and drops the delegations to DReps that are not registered
   *     (`updateDRepDelegations`).
-  *   - Entering 11 it populates the VRF key hashes of the pools (`populateVRFKeyHashes`,
-  *     `HardFork.hs:107`), which POOL keeps from then on ([[Pool]]). The retired flat conversion
-  *     derived them from version 10; a state the new rules carry across the fork needs them here
-  *     (J2.4; the rest of J3.3, the VRF key hashes in the node's own checks, stays).
+  *   - 11: it populates the VRF key hashes of the pools ([[populateVRFKeyHashes]], where the builds
+  *     differ), which POOL keeps from then on ([[Pool]]). The retired flat conversion derived them
+  *     from version 10; a state the new rules carry across the fork needs them here (J2.4; the rest
+  *     of J3.3, the VRF key hashes in the node's own checks, stays).
   */
 object HardFork:
   /** `updateDRepDelegations` (`HardFork.hs:82`, cardano-ledger f649f975). */
@@ -57,39 +60,69 @@ object HardFork:
         (dreps.updated(drep, state.copy(delegators = state.delegators + credential)), accounts)
       case None => (dreps, accounts.updated(credential, account.copy(drep = None)))
 
-  /** `populateVRFKeyHashes` (`HardFork.hs:107`, cardano-ledger f649f975): the count of each VRF key
-    * hash is the number of pools that use it, registered ones and re-registrations that wait for
-    * the boundary, each counted. The map starts empty (the reference has none before version 11; a
-    * state converted from the node's, which derived it from 10, is taken to the same).
+  /** `populateVRFKeyHashes`, which HARDFORK applies to the pools at every change of protocol
+    * version whose new major version is 11 (`HardFork.hs:77-78` at f649f975, 74-75 at 29a7d656 and
+    * 9df9f98c): the first version of 11 and every later one, a new minor version among them. Each
+    * count saturates at the largest word. The builds count differently:
+    *
+    *   - 11.1 (cardano-ledger f649f975, `Conway/Rules/HardFork.hs:107-125`): one more for each
+    *     registered pool and one more for each re-registration waiting for the boundary, added to
+    *     the counts the map already has. The map is empty until the first version of 11 (POOL keeps
+    *     it only from 11, `hardforkConwayDisallowDuplicatedVRFKeys`, `Shelley/Era.hs:259-262`; the
+    *     genesis registers none), so that first change counts each pool once; each later change at
+    *     11 counts every registered pool once more, and POOLREAP takes only one count for a pool
+    *     that retires (`Shelley/Rules/PoolReap.hs:224-237`), leaving its key hash in the map.
+    *   - 11.2 (cardano-ledger 29a7d656) and the Leios build (cardano-ledger 9df9f98c): the counts
+    *     recomputed from nothing, a waiting re-registration counted only where its key hash differs
+    *     from its pool's (`State/CertState.hs:525-535` at 29a7d656, 528-538 at 9df9f98c;
+    *     [[Translate.populateVRFKeyHashes]]).
+    *
+    * A waiting re-registration whose VRF key hash is not 32 bytes long is refused as a
+    * [[VocabError]], as POOL refuses one.
     */
-  def populateVRFKeyHashes(pools: PState): PState =
-    def add(
-        counts: SortedMap[VRFVerKeyHash, NonZero[Word64]],
-        vrf: VRFVerKeyHash
-    ): SortedMap[VRFVerKeyHash, NonZero[Word64]] =
-      counts.get(vrf) match
-        case None => counts.updated(vrf, NonZero.oneWord)
-        // saturates at the largest word, where adding one would reach zero
-        case Some(n) =>
-          NonZero
-            .from(Word64.fromUnsigned(n.value.bits + 1))
-            .fold(_ => counts, counts.updated(vrf, _))
-    val registered = pools.stakePools.valuesIterator.map(_.vrf)
-    val pending =
-      pools.future.valuesIterator.flatMap(f => VRFVerKeyHash.fromBytes(f.vrfKeyHash).toOption)
-    pools.copy(vrfKeyHashes =
-      (registered ++ pending).foldLeft(Sorted.empty[VRFVerKeyHash, NonZero[Word64]])(add)
-    )
+  def populateVRFKeyHashes(build: ReferenceBuild, pools: PState): Either[VocabError, PState] =
+    build match
+      case ReferenceBuild.Release11_1 =>
+        pools.future.toVector
+          .traverse((_, params) => VRFVerKeyHash.fromBytes(params.vrfKeyHash))
+          .map { pending =>
+            val registered = pools.stakePools.valuesIterator.map(_.vrf)
+            pools.copy(vrfKeyHashes =
+              (registered ++ pending).foldLeft(pools.vrfKeyHashes)(addVRFKeyHashOccurrence)
+            )
+          }
+      case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+        Translate.populateVRFKeyHashes(pools)
 
-  /** `hardforkTransition` (`HardFork.hs:68`, cardano-ledger f649f975). */
-  def apply(es: EpochState[Conway], newVersion: Int): EpochState[Conway] =
+  /** `addVRFKeyHashOccurrence` (`HardFork.hs:121-125`, cardano-ledger f649f975): one more count of
+    * `vrf`, saturating at the largest word, where adding one would reach zero.
+    */
+  private def addVRFKeyHashOccurrence(
+      counts: SortedMap[VRFVerKeyHash, NonZero[Word64]],
+      vrf: VRFVerKeyHash
+  ): SortedMap[VRFVerKeyHash, NonZero[Word64]] =
+    counts.get(vrf) match
+      case None => counts.updated(vrf, NonZero.oneWord)
+      case Some(n) =>
+        NonZero
+          .from(Word64.fromUnsigned(n.value.bits + 1))
+          .fold(_ => counts, counts.updated(vrf, _))
+
+  /** `hardforkTransition` (`HardFork.hs:68-80`, cardano-ledger f649f975; 65-77 at 29a7d656 and
+    * 9df9f98c), with the rule of `build` where the builds differ.
+    */
+  def apply(
+      build: ReferenceBuild,
+      es: EpochState[Conway],
+      newVersion: Int
+  ): Either[VocabError, EpochState[Conway]] =
     if newVersion == 10 then
-      es.copy(ls = es.ls.copy[Conway](cert = updateDRepDelegations(es.ls.cert)))
+      Right(es.copy(ls = es.ls.copy[Conway](cert = updateDRepDelegations(es.ls.cert))))
     else if newVersion == 11 then
-      es.copy(ls =
-        es.ls.copy[Conway](cert = es.ls.cert.copy(pState = populateVRFKeyHashes(es.ls.cert.pState)))
+      populateVRFKeyHashes(build, es.ls.cert.pState).map(pools =>
+        es.copy(ls = es.ls.copy[Conway](cert = es.ls.cert.copy(pState = pools)))
       )
-    else es
+    else Right(es)
 
 /** EPOCH of Conway (`Conway/Rules/Epoch.hs:244,269`, cardano-ledger f649f975): the boundary of an
   * epoch, after the rewards are applied: the new snapshot (SNAP) and the retiring pools (POOLREAP),
@@ -217,12 +250,12 @@ object ConwayEpoch:
       deposited = Coin(totalObligation(ls2))
       ls3 = ls2.copy[Conway](utxo = ls2.utxo.copy(deposited = deposited, donation = Coin.zero))
       es2 = es1.copy(chainAccount = es1.chainAccount.copy(treasury = treasury), ls = ls3)
-    yield
       // the hard fork rule, if the protocol version changed
-      val forked =
+      forked <-
         if gov1.curPParams.version != gov1.prevPParams.version then
-          HardFork(es2, gov1.curPParams.protocolMajor.toInt)
-        else es2
+          HardFork(globals.ledger.referenceBuild, es2, gov1.curPParams.protocolMajor.toInt)
+        else Right(es2)
+    yield
       val pulser = ConwayPulser.fresh(globals, forked, epoch)
       forked.copy(ls =
         forked.ls.copy[Conway](utxo =

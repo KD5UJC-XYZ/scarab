@@ -864,7 +864,7 @@
       "id": "ledger-conway",
       "component": "Ledger: Conway",
       "status": "implemented",
-      "summary": "Conway ledger rules including scripts, all certificates, treasury donation and the protocol-11 pool rule",
+      "summary": "Conway ledger rules including scripts, all certificates, treasury donation and the protocol-11 pool rule, with the VRF key hashes HARDFORK counts as the selected reference build does",
       "evidence": {
         "suites": [
           "DevnetRefusedTxSuite",
@@ -874,7 +874,10 @@
           "ConwayCertsChecksSuite",
           "CertificateRedeemerIndexSuite",
           "MissingRedeemersRefusalSuite",
-          "RedeemerIndexReferenceSuite"
+          "RedeemerIndexReferenceSuite",
+          "ConwayGovernanceSuite",
+          "ConwayLedgerSuite",
+          "StateAdmissionSuite"
         ],
         "issues": [
           828,

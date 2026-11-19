@@ -2473,7 +2473,6 @@
    "def ledger.rules.GovViewEnv.from": null,
    "def ledger.rules.Handover.toShelley": null,
    "def ledger.rules.HardFork.apply": null,
-   "def ledger.rules.HardFork.populateVRFKeyHashes": null,
    "def ledger.rules.HardFork.updateDRepDelegations": null,
    "def ledger.rules.Hfc.pending": null,
    "def ledger.rules.Hfc.tick": null,

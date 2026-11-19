@@ -513,6 +513,46 @@ enum TransitionCounterProblem extends DomainError:
       s"the snapshot's anchor (${anchor.fold("origin")(s => s"slot $s")}) is not its ledger tip (${tip
           .fold("origin")(s => s"slot $s")})"
 
+/** What makes a ledger state, read from a snapshot or an import, one that no chain of the
+  * configured reference build reaches and that the build's rules would carry to another state than
+  * the reference's ([[StorageError.UnreachableLedgerState]]).
+  */
+enum UnreachableStateProblem extends DomainError:
+  /** The pools' VRF key hashes hold `entries` entries at protocol major version `major`, below 11.
+    * The reference's map is empty there: POOL writes it only from 11 and HARDFORK first fills it on
+    * entering 11 (cardano-ledger f649f975 `Shelley/Era.hs:259-262`,
+    * `Conway/Rules/HardFork.hs:77-78`). The retired flat conversion derived the map from 10, and
+    * the 11.1 HARDFORK adds to the map it has, so a pool of such a state would be counted twice on
+    * entering 11.
+    */
+  case VRFKeyHashesBeforeVersion11(major: BigInt, entries: Int)
+
+  def message: String = this match
+    case VRFKeyHashesBeforeVersion11(major, entries) =>
+      s"its pools' VRF key hashes hold $entries entries at protocol version $major, where the reference holds none before 11"
+
+/** Where a ledger state that a check of its content refuses came from
+  * ([[StorageError.UnreachableLedgerState]]).
+  */
+enum LedgerStateSource derives CanEqual:
+  /** A snapshot of the node's database, as the node restores it at start: `file` is the name the
+    * node writes the snapshot of its anchor under (none for a snapshot without an anchor, which the
+    * node never writes).
+    */
+  case Snapshot(file: Option[java.nio.file.Path])
+
+  /** The `state` file of a reference node's database, as `import-ledger-snapshot` reads it. */
+  case ReferenceState(file: java.nio.file.Path)
+
+  /** The state an SCLS import rebuilds on the snapshot `base` of the node's database. */
+  case SclsImport(base: java.nio.file.Path)
+
+  def describe: String = this match
+    case Snapshot(Some(file)) => s"the snapshot $file"
+    case Snapshot(None)       => "a snapshot without an anchor"
+    case ReferenceState(file) => s"the ledger state $file"
+    case SclsImport(base)     => s"the SCLS import onto the snapshot $base"
+
 enum StorageError extends NodeError:
   /** Reconstruction failed independently of whether the stored bytes are well formed. */
   case Reconstruction[E <: DomainError](what: String, cause: E) extends StorageError
@@ -559,6 +599,19 @@ enum StorageError extends NodeError:
     * 0006, amendment of 2026-11-03).
     */
   case ResyncRequired(what: String, kind: FileKind, found: FormatVersion, loss: FormatLoss)
+
+  /** A ledger state from `source` that no chain of the configured reference build `build` reaches
+    * and that its rules would carry to another state than the reference's (`problem`): it is not
+    * used, and the chain has to be synced again, or a ledger state the reference wrote imported.
+    * Stale local data of a retired Scarab conversion, not a fault of any peer. Refused where it is
+    * restored or imported, rather than repaired by a migration step or at the hard fork: the
+    * owner's decision (asked 2026-11-18T08:22:34Z and decided 2026-11-18T14:21:46Z).
+    */
+  case UnreachableLedgerState(
+      source: LedgerStateSource,
+      build: ReferenceBuild,
+      problem: UnreachableStateProblem
+  )
 
   /** A ledger snapshot whose Haskell state bytes were written under the reference build `recorded`,
     * whose layout is not that of the `configured` one. No conversion between builds exists, so the
@@ -627,6 +680,8 @@ enum StorageError extends NodeError:
       s"$w: retired ${k.label} format '${k.identifier(f)}'; use the archived migration build to convert a copy to '${k.identifier(oldest)}' before opening it"
     case ResyncRequired(w, k, f, loss) =>
       s"$w: the ${k.label} format '${k.identifier(f)}' did not keep ${loss.message}, which '${k.identifier(k.current)}' keeps and no migration can recover; sync the chain again from genesis: replay it from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again) or sync a new database"
+    case UnreachableLedgerState(source, build, problem) =>
+      s"${source.describe} holds a ledger state that no chain of the reference build ${build.describe} reaches: ${problem.message}; sync the chain again from genesis: replay it from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again) or sync a new database, or import a ledger state the reference node wrote"
     case ReferenceBuildMismatch(w, recorded, configured) =>
       s"$w was recorded under the reference build ${recorded.describe}, which is not the configured ${configured.describe}; no conversion between builds exists"
     case UnknownReferenceBuild(w, recorded, configured) =>

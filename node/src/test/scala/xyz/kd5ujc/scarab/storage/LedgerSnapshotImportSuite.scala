@@ -15,8 +15,15 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.crypto.witness.PublicKey32
 import xyz.kd5ujc.scarab.ledger as node
-import xyz.kd5ujc.scarab.ledger.{Block, StorageError}
-import xyz.kd5ujc.scarab.ledger.state.{ConwayGovState, ConwayNewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.{Block, LedgerStateSource, StorageError, UnreachableStateProblem}
+import xyz.kd5ujc.scarab.ledger.rules.EraLedger
+import xyz.kd5ujc.scarab.ledger.state.{
+  ConwayGovState,
+  ConwayNewEpochState,
+  NonZero,
+  ShelleyBasedEra,
+  VRFVerKeyHash
+}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.*
@@ -327,6 +334,71 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
         )
         _ <- IO(assert(report.exists(_.evidence.isInstanceOf[Evidence.Verified])))
       yield ()
+    }
+  }
+
+  /** A VRF key hash the captures' pools do not use. */
+  private val taken = VRFVerKeyHash
+    .fromBytes(Bytes.wrap(Array.fill(32)(7.toByte)))
+    .fold(e => fail(e.toString), identity)
+
+  /** `m` with `taken` among its pools' VRF key hashes, which no chain of 11.1.3 holds below 11
+    * (POOL writes the map from 11, `Shelley/Era.hs:259-262`, cardano-ledger f649f975).
+    */
+  private def derived(m: MirrorState): MirrorState =
+    m.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        given ShelleyBasedEra[e] = i.era
+        val nes = i.state.nes
+        val ls = nes.es.ls
+        val pools = EraLedger.pState(ls)
+        val counts = pools.vrfKeyHashes.updated(taken, NonZero.oneWord)
+        val edited = nes.copy(es =
+          nes.es.copy(ls = EraLedger.withPState(ls, pools.copy(vrfKeyHashes = counts)))
+        )
+        m.copy(ext =
+          m.ext.copy(ledgerState =
+            m.ext.ledgerState.withState(
+              EraLedgerState.InShelleyEra(i.era, i.state.copy(nes = edited))
+            )
+          )
+        )
+      case _ => fail("not a Shelley-based capture")
+
+  private def majorOf(m: MirrorState): BigInt = m.ext.ledgerState.state match
+    case i: EraLedgerState.InShelleyEra[e] =>
+      given ShelleyBasedEra[e] = i.era
+      EraLedger.curPParams(i.state.nes.es.ls.utxo.gov).protocolMajor
+    case _ => fail("not a Shelley-based capture")
+
+  test("under 11.1 a state below 11 whose pools' VRF key hashes are not empty is not imported") {
+    // its HARDFORK would add to the map (`StateAdmission`)
+    Vector(Era.Babbage, Era.Conway).traverse_ { era =>
+      tempDir.use { root =>
+        for
+          input <- source(root, era, derived)
+          (ledger, db, state, _) = input
+          _ <- IO(assert(majorOf(state) < 11, s"$era: the capture is at ${majorOf(state)}"))
+          before <- IO(fingerprint(db))
+          refused <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+          _ <- IO {
+            assertEquals(
+              refused.map(_.anchor),
+              Left(
+                Error.Storage(
+                  StorageError.UnreachableLedgerState(
+                    LedgerStateSource.ReferenceState((ledger / "state").toNioPath),
+                    ReferenceBuild.Release11_1,
+                    UnreachableStateProblem.VRFKeyHashesBeforeVersion11(majorOf(state), 1)
+                  )
+                )
+              ),
+              s"$era"
+            )
+            assertEquals(fingerprint(db), before, s"$era: nothing published")
+          }
+        yield ()
+      }
     }
   }
 
@@ -694,6 +766,88 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
             JFiles.readAllBytes((root / "reexport.scls").toNioPath).toVector,
             JFiles.readAllBytes(artifact.toNioPath).toVector
           )
+        }
+      yield ()
+    }
+  }
+
+  test(
+    "under 11.1 an SCLS import onto a base below 11 with VRF key hashes is refused, unpublished"
+  ) {
+    // the base snapshot holds a map no chain of 11.1.3 holds below 11, as the retired conversion
+    // left one; its SCLS export carries it, and the import would rebuild it (`StateAdmission`)
+    val codec = SclsExport.Config(
+      SclsStreaming.Config.fromInts(1024 * 1024, 1000, 4096).fold(e => fail(e.toString), identity),
+      SclsEntrySorter.Config.fromInt(1024 * 1024).fold(e => fail(e.toString), identity)
+    )
+    def interchange[A](
+        body: Handle[IO, SclsInterchange.Error] ?=> IO[A]
+    ): IO[Either[SclsInterchange.Error, A]] =
+      Handle
+        .allow[SclsInterchange.Error](body.map(_.asRight[SclsInterchange.Error]))
+        .rescue(e => IO.pure(Left(e)))
+    tempDir.use { root =>
+      for
+        inputs <- source(root, Era.Conway)
+        (ledger, db, state, _) = inputs
+        initialized <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+        _ <- IO(assert(initialized.isRight, initialized.toString))
+        // the base written again by the node's own format, with `taken` in its map
+        file = db / "snapshots" / FileLedgerSnapshots.nameOf(anchor(state))
+        clean <- restored(db, state)
+        content <- SnapshotV10
+          .format[IO](SnapshotCheck.Structure, ReferenceLayout.Release11_1)
+          .encode(clean.copy(state = derived(clean.state)))
+          .map(_.fold(e => fail(e.toString), identity))
+        _ <- IO.blocking(JFiles.write(file.toNioPath, FileLedgerSnapshots.closed(content)))
+        base = SclsBase.Config(db, root, anchor(state), setup.identity)
+        artifact = root / "export.scls"
+        exported <- interchange(
+          SclsInterchange.exportFile[IO](
+            SclsInterchange.ExportConfig(
+              base,
+              artifact,
+              SclsRecord.Summary("test", "test", None),
+              codec
+            )
+          )
+        )
+        _ <- IO(assert(exported.isRight, exported.toString))
+        target = root / "target"
+        _ <- ok {
+          NetworkIdentityFile.write[IO](target, setup.identity) *>
+            FileImmutableStore.open[IO](target / "immutable").use { (store, _) =>
+              store.append(anchor(state), captures(Era.Conway)._2)
+            }
+        }
+        before <- IO(fingerprint(target))
+        imported <- interchange(
+          SclsInterchange.importFile[IO](
+            SclsInterchange.ImportConfig(
+              base,
+              artifact,
+              target,
+              setup.geometry.byron.epochSlots,
+              SclsImport.Config(codec)
+            )
+          )
+        )
+        _ <- IO {
+          assertEquals(
+            imported.map(_.anchor),
+            Left(
+              SclsInterchange.Error.Import(
+                SclsImport.Error.Storage(
+                  StorageError.UnreachableLedgerState(
+                    LedgerStateSource.SclsImport(file.toNioPath),
+                    ReferenceBuild.Release11_1,
+                    UnreachableStateProblem.VRFKeyHashesBeforeVersion11(majorOf(state), 1)
+                  )
+                )
+              )
+            )
+          )
+          assertEquals(fingerprint(target), before, "nothing published")
         }
       yield ()
     }

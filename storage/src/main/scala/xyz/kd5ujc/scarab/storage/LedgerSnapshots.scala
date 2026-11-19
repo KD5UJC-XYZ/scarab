@@ -101,6 +101,10 @@ object LedgerSnapshots:
       *   - An absent checkpoint is the reference's missing tables file, which `readIncremental`
       *     raises (`Util/CBOR.hs:206`): it stops the start, and so does a file that cannot be read
       *     (`Io`), a decoder defect, and any other error.
+      *   - A state that no chain of the configured build reaches (`UnreachableLedgerState`,
+      *     [[StateAdmission]]) is Scarab's own stale data, which the reference never reads: it
+      *     stops the start, as a previous file whose state cannot be converted does, and the
+      *     operator syncs the chain again.
       */
     def of(error: StorageError): Fallback = error match
       case _: StorageError.Corrupt[?] | _: StorageError.Missing |

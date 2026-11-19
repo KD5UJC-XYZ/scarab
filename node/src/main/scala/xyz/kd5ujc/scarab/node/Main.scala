@@ -42,6 +42,7 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotMigration,
   SnapshotPolicy,
   SnapshotV10,
+  StateAdmission,
   StateBacking,
   UtxoBacking,
   UtxoHandle,
@@ -1453,8 +1454,11 @@ object Main extends IOApp:
           // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
           // node has seen begin so far.
           given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
+          // A restored state no chain of the build reaches is refused (`StateAdmission`).
           given SnapshotFormat[IO, MirrorState] =
-            SnapshotV10.format[IO](options.snapshotCheck, layout)
+            SnapshotV10
+              .format[IO](options.snapshotCheck, layout)
+              .admitting(StateAdmission.restored(layout.build))
           // What a scrape reads besides the counters the events keep: each source answers for itself
           // and is added when it exists, so the endpoint can listen before the stores are opened (a
           // collector that is not there yet leaves its gauges absent).

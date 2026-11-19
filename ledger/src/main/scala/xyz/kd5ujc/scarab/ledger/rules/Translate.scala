@@ -404,13 +404,15 @@ object Translate:
       )
 
   /** `populateVRFKeyHashes` of cardano-ledger 9df9f98c
-    * (`libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs:528-539`), which the
-    * translation applies to the pools (`Dijkstra/Translation.hs:113-116`): the count of each VRF
-    * key hash recomputed from nothing, one for each registered pool that uses it and one more for
-    * each re-registration waiting for the boundary whose key hash differs from its pool's (or whose
-    * pool is not registered), saturating at the largest word (`addVRFKeyHashOccurrence`, 501-510).
-    * Not Conway's of f649f975 ([[HardFork.populateVRFKeyHashes]]), which adds to the map it has and
-    * counts every waiting re-registration.
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs:528-538`), which the
+    * translation applies to the pools (`Dijkstra/Translation.hs:113-116`), and of cardano-ledger
+    * 29a7d656 (the same file, 525-535), which the HARDFORK of the 11.2 and Leios builds applies
+    * ([[HardFork.populateVRFKeyHashes]]): the count of each VRF key hash recomputed from nothing,
+    * one for each registered pool that uses it and one more for each re-registration waiting for
+    * the boundary whose key hash differs from its pool's (or whose pool is not registered),
+    * saturating at the largest word (`addVRFKeyHashOccurrence`, 504-511 at both). Not the HARDFORK
+    * of the 11.1 build (f649f975), which adds to the map it has and counts every waiting
+    * re-registration.
     */
   def populateVRFKeyHashes(pools: PState): Either[VocabError, PState] =
     def add(

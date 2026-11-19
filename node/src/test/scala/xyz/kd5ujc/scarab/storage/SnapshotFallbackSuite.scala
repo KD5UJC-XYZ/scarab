@@ -431,7 +431,12 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
       StorageError.Io("snapshot", new java.io.IOException("unreadable")),
       StorageError.UtxoCheckpoint("c", CheckpointProblem.Absent),
       StorageError.DecoderDefect("snapshot", new RuntimeException("defect")),
-      StorageError.UnknownVersion("snapshot", xyz.kd5ujc.scarab.ledger.FileKind.SnapshotFile, "x")
+      StorageError.UnknownVersion("snapshot", xyz.kd5ujc.scarab.ledger.FileKind.SnapshotFile, "x"),
+      StorageError.UnreachableLedgerState(
+        xyz.kd5ujc.scarab.ledger.LedgerStateSource.Snapshot(None),
+        ReferenceBuild.Release11_1,
+        xyz.kd5ujc.scarab.ledger.UnreachableStateProblem.VRFKeyHashesBeforeVersion11(BigInt(10), 1)
+      )
     )
     deleted.foreach(e => assertEquals(Fallback.of(e), Fallback.Delete, e.message))
     kept.foreach(e => assertEquals(Fallback.of(e), Fallback.Keep, e.message))

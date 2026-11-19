@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   Telescope,
   TelescopeError
 }
-import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, Utxo, UtxoKeyLayout}
+import xyz.kd5ujc.scarab.ledger.{LedgerStateSource, StorageError, TxIn, TxOut, Utxo, UtxoKeyLayout}
 import xyz.kd5ujc.scarab.ledger.rules.ConwayEpoch
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
@@ -39,6 +39,7 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotCheck,
   SnapshotSidecar,
   SnapshotV10,
+  StateAdmission,
   StateBacking,
   StateSnapshot,
   UtxoStore
@@ -236,6 +237,20 @@ object SclsImport:
               )
             )
             snapshot <- lift(reconstruct(ledger, utxo))
+            // a state no chain of the build reaches is not published (`StateAdmission`)
+            _ <- lift(
+              StateAdmission
+                .of(
+                  ReferenceBuild.Release11_1,
+                  LedgerStateSource.SclsImport(
+                    (base.database / "snapshots" / FileLedgerSnapshots.nameOf(
+                      base.context.anchor
+                    )).toNioPath
+                  ),
+                  snapshot.state
+                )
+                .leftMap(Error.Storage(_))
+            )
             checkpoint = stage / "artifacts" / "utxo" / "checkpoints" / StateBacking.stem(
               base.context.anchor
             )

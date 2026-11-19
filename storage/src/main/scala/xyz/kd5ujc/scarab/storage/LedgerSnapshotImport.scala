@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras, Follo
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.crypto.witness.PublicKey32
 import xyz.kd5ujc.scarab.ledger.{
+  LedgerStateSource,
   NetworkIdentity,
   Nonce,
   ProtocolParams,
@@ -238,6 +239,20 @@ object LedgerSnapshotImport:
             (),
             Error.EraMismatch(ext.ledgerState.era, ext.headerState.chainDep.era)
           )
+        )
+        // a state no chain of the build reaches, which no reference node writes
+        _ <- lift(
+          StateAdmission
+            .admit(config.layout.build, ext.ledgerState.state)
+            .leftMap(problem =>
+              Error.Storage(
+                StorageError.UnreachableLedgerState(
+                  LedgerStateSource.ReferenceState((config.ledger / "state").toNioPath),
+                  config.layout.build,
+                  problem
+                )
+              )
+            )
         )
         anchor <- lift(StateMirror.anchorOf(file.header.tip).toRight(Error.Origin))
         _ <- lift(

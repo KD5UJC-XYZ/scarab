@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.GenesisState.InjectionSource
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraFixture, DijkstraScript}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, ReferenceBuild}
 
 /** The translation of a Conway new-epoch state into Dijkstra (`TranslateEra DijkstraEra`,
   * cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs`):
@@ -158,8 +158,24 @@ class DijkstraTranslationSuite extends FunSuite:
       )
     )
     assertEquals(counted.copy(vrfKeyHashes = stale.vrfKeyHashes), stale)
-    // Conway's of f649f975 counts pool 0's re-registration too and keeps what the map held
-    assertEquals(HardFork.populateVRFKeyHashes(stale).vrfKeyHashes.get(vrf(0)), Some(count(2)))
+    // the HARDFORK of 11.2 and the Leios build is the same; 11.1's (f649f975) counts pool 0's
+    // re-registration too and adds to what the map held
+    def hardFork(build: ReferenceBuild) =
+      HardFork.populateVRFKeyHashes(build, stale).fold(e => fail(e.toString), _.vrfKeyHashes)
+    assertEquals(hardFork(ReferenceBuild.Release11_2), counted.vrfKeyHashes)
+    assertEquals(hardFork(ReferenceBuild.LeiosB004fe0c), counted.vrfKeyHashes)
+    assertEquals(
+      hardFork(ReferenceBuild.Release11_1),
+      Sorted.map(
+        Vector(
+          vrf(0) -> count(2),
+          vrf(1) -> count(1),
+          vrf(2) -> count(2),
+          vrf(7) -> count(3),
+          vrf(9) -> count(1)
+        )
+      )
+    )
   }
 
   // ---- the state

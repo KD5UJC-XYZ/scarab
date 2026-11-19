@@ -42,6 +42,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   VState,
   VocabError
 }
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 import TestLedger.*
 
@@ -285,8 +286,11 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     case Right(_)    => None
 
   /** The state one epoch later: the tick into the next epoch, on the state the rules left. */
-  private def boundary(st: Step): Step =
-    NativeRules.boundary(EraNes.InEra(ShelleyBasedEra.SConway, st.nes), globals) match
+  private def boundary(st: Step): Step = boundaryUnder(globals)(st)
+
+  /** [[boundary]] with the constants `g`, a reference build among them. */
+  private def boundaryUnder(g: LedgerGlobals)(st: Step): Step =
+    NativeRules.boundary(EraNes.InEra(ShelleyBasedEra.SConway, st.nes), g) match
       case next: EraNes.InEra[x] =>
         val nes = NewEpochState
           .retype(next.era, ShelleyBasedEra.SConway)(next.nes)
@@ -1023,6 +1027,202 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       boundary(s5).pState.stakePools.get(poolId(a)).map(_.vrf),
       Some(must(VRFVerKeyHash.fromBytes(f1)))
     )
+  }
+
+  test(
+    "a change of minor version at 11 counts the VRF key hashes as the build does: a reaped pool's key stays taken under 11.1"
+  ) {
+    // HARDFORK adds the pools to the map it has under 11.1 (`HardFork.hs:107-125`, cardano-ledger
+    // f649f975) and counts them from nothing under 11.2 (`State/CertState.hs:525-535`,
+    // cardano-ledger 29a7d656); it is the only part of the boundary that reads the build. The state
+    // is in 11.1's layout and the transactions are judged under the default build, as 11.2's layout
+    // is not written yet (`ReferenceBuildNotYet.Layout`); POOL refuses a key hash the map holds with
+    // the same code at both pins (`Shelley/Rules/Pool.hs:262-267`).
+    val reused = Blake2b.hash256.hash(Bytes(Vector(0x57, 1)))
+    def countOf(st: Step): Option[Long] =
+      st.pState.vrfKeyHashes.get(must(VRFVerKeyHash.fromBytes(reused))).map(_.value.bits)
+    def taken(op: Key) =
+      Some(PredicateFailure.pool(PoolFailure.VRFKeyHashAlreadyRegistered(op.hash, reused)))
+
+    /** Pool B registers with `reused` at 11.0, a hard fork to 11.1 is enacted, B retires and is
+      * reaped; then B registers again with its keys, and a new pool C registers with B's key, each
+      * on the state the reaping left.
+      */
+    def scenario(build: ReferenceBuild)(
+        afterFork: Option[Long],
+        afterReap: Option[Long],
+        verdict: Key => Option[PredicateFailure]
+    ): Unit =
+      val g = globals.copy(referenceBuild = build)
+      val w = World(11)
+      val b = key()
+      val c = key()
+      def register(st: Step, op: Key) =
+        submit(
+          w,
+          st,
+          Vector(op, w.poolOwner),
+          certs = Vector(Certificate.RegisterPool(w.poolParams(op).copy(vrfKeyHash = reused))),
+          deposits = w.params.poolDeposit
+        )
+      val s1 = ok(register(w.initial, b))
+      assertEquals(countOf(s1), Some(1L), s"${build.name}: registered")
+      // a hard fork to 11.1 that the DReps and the pools accept, enacted two boundaries later
+      val s2 = ok(
+        submit(
+          w,
+          s1,
+          Vector.empty,
+          proposals = Vector(proposal(w, GovAction.HardFork(None, 11, 1))),
+          deposits = 1000 * ada
+        )
+      )
+      val id = idOf(s2, 0)
+      val s3 = ok(
+        submit(
+          w,
+          s2,
+          w.dreps ++ w.pools,
+          votes = w.dreps.map(drepVote(_, id, Vote.Yes)) ++ w.pools.map(poolVote(_, id, Vote.Yes))
+        )
+      )
+      val forked = boundaryUnder(g)(boundaryUnder(g)(s3))
+      assertInvariants(forked, s"${build.name}: forked")
+      assertEquals(forked.params.version, (BigInt(11), BigInt(1)), build.name)
+      assertEquals(countOf(forked), afterFork, s"${build.name}: after the change of version")
+      // B retires at the next boundary, which reaps it
+      val s4 = ok(
+        submit(
+          w,
+          forked,
+          Vector(b),
+          certs = Vector(Certificate.RetirePool(b.hash, forked.epoch + 1))
+        )
+      )
+      val reaped = boundaryUnder(g)(s4)
+      assertInvariants(reaped, s"${build.name}: reaped")
+      assertEquals(reaped.pState.stakePools.get(poolId(b)), None, s"${build.name}: B reaped")
+      assertEquals(countOf(reaped), afterReap, s"${build.name}: after the reaping")
+      assertEquals(refusal(register(reaped, b)), verdict(b), s"${build.name}: B again")
+      assertEquals(refusal(register(reaped, c)), verdict(c), s"${build.name}: C")
+
+    // 11.1: B counted again at the change of version, so its key outlives it
+    scenario(ReferenceBuild.Release11_1)(Some(2L), Some(1L), taken)
+    // 11.2: counted afresh, and free once B is reaped
+    scenario(ReferenceBuild.Release11_2)(Some(1L), None, _ => None)
+  }
+
+  test(
+    "entering 11 from 10 the 11.1 build counts a pool once from an empty map, twice from one derived at 10"
+  ) {
+    // Below 11 the reference's map is empty: POOL writes it only from 11 (`Shelley/Era.hs:259-262`,
+    // cardano-ledger f649f975), and HARDFORK first fills it on entering 11 (`HardFork.hs:77-78`).
+    // The retired flat conversion derived it from 10; from such a map the 11.1 HARDFORK, which adds
+    // to the map it has (`HardFork.hs:107-125`), counts a pool twice, and its key outlives the
+    // pool. The storage refuses such a state under 11.1 where it is restored or imported
+    // (`StateAdmissionSuite`); 11.2 and the Leios build recompute the map and reach the reference's.
+    val w = World(10)
+    val b = key()
+    val c = key()
+    val bKey = must(VRFVerKeyHash.fromBytes(w.poolParams(b).vrfKeyHash))
+    def countOf(st: Step): Option[Long] = st.pState.vrfKeyHashes.get(bKey).map(_.value.bits)
+    def withCounts(st: Step, counts: SortedMap[VRFVerKeyHash, native.NonZero[native.Word64]]) =
+      val ls = st.nes.es.ls
+      st.copy(nes =
+        st.nes.copy(es =
+          st.nes.es.copy(ls =
+            ls.copy[Conway](cert =
+              ls.cert.copy(pState = ls.cert.pState.copy(vrfKeyHashes = counts))
+            )
+          )
+        )
+      )
+    val none = Sorted.empty[VRFVerKeyHash, native.NonZero[native.Word64]]
+    // the test builder seeds the map whatever the version (`Build.pool`): emptied, as at 10
+    val clean = withCounts(w.initial, none)
+    val registered = ok(
+      submit(
+        w,
+        clean,
+        Vector(b, w.poolOwner),
+        certs = Vector(Certificate.RegisterPool(w.poolParams(b))),
+        deposits = w.params.poolDeposit
+      )
+    )
+    assertEquals(registered.pState.vrfKeyHashes, none, "POOL at 10 leaves the map as it is")
+    // one count of each registered pool's key, as the retired conversion derived the map
+    val derived = withCounts(
+      registered,
+      registered.pState.stakePools.valuesIterator
+        .map(_.vrf)
+        .foldLeft(none)((m, k) => m.updated(k, native.NonZero.oneWord))
+    )
+
+    /** From `start` at 10: a hard fork to 11.0 enacted, then B retired and reaped, then a new pool
+      * C registered with B's key; the count of B's key after the fork and after the reaping, and
+      * the verdict on C.
+      */
+    def scenario(
+        build: ReferenceBuild,
+        start: Step
+    ): (Option[Long], Option[Long], Option[PredicateFailure]) =
+      val g = globals.copy(referenceBuild = build)
+      val s1 = ok(
+        submit(
+          w,
+          start,
+          Vector.empty,
+          proposals = Vector(proposal(w, GovAction.HardFork(None, 11, 0))),
+          deposits = 1000 * ada
+        )
+      )
+      val id = idOf(s1, 0)
+      val s2 = ok(
+        submit(
+          w,
+          s1,
+          w.dreps ++ w.pools,
+          votes = w.dreps.map(drepVote(_, id, Vote.Yes)) ++ w.pools.map(poolVote(_, id, Vote.Yes))
+        )
+      )
+      val forked = boundaryUnder(g)(boundaryUnder(g)(s2))
+      assertInvariants(forked, s"${build.name}: forked")
+      assertEquals(forked.params.version, (BigInt(11), BigInt(0)), build.name)
+      val s3 = ok(
+        submit(
+          w,
+          forked,
+          Vector(b),
+          certs = Vector(Certificate.RetirePool(b.hash, forked.epoch + 1))
+        )
+      )
+      val reaped = boundaryUnder(g)(s3)
+      assertEquals(reaped.pState.stakePools.get(poolId(b)), None, s"${build.name}: B reaped")
+      val takenBy = submit(
+        w,
+        reaped,
+        Vector(c, w.poolOwner),
+        certs = Vector(
+          Certificate.RegisterPool(
+            w.poolParams(c).copy(vrfKeyHash = w.poolParams(b).vrfKeyHash)
+          )
+        ),
+        deposits = w.params.poolDeposit
+      )
+      (countOf(forked), countOf(reaped), refusal(takenBy))
+
+    // the reference's: counted once on entering 11, free once B is reaped, in every build
+    ReferenceBuild.values.foreach(build =>
+      assertEquals(scenario(build, registered), (Some(1L), None, None), s"${build.name}: empty map")
+    )
+    // from the derived map 11.1 counts B twice, and its key outlives it: C is refused
+    val taken = PredicateFailure.pool(
+      PoolFailure.VRFKeyHashAlreadyRegistered(c.hash, w.poolParams(b).vrfKeyHash)
+    )
+    assertEquals(scenario(ReferenceBuild.Release11_1, derived), (Some(2L), Some(1L), Some(taken)))
+    // 11.2 and the Leios build count afresh and reach the reference's from it too
+    assertEquals(scenario(ReferenceBuild.Release11_2, derived), (Some(1L), None, None))
+    assertEquals(scenario(ReferenceBuild.LeiosB004fe0c, derived), (Some(1L), None, None))
   }
 
   test("before protocol version 11 two pools may share a VRF key hash") {
