@@ -4,16 +4,16 @@ package xyz.kd5ujc.scarab.plutus
 import cats.effect.IO
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
-import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.ledger.{EvaluationError, Unavailability}
 
 /** The evaluator the mempool's admission runs ([[ScarabEvaluator.interruptible]]) is the node's
   * ([[ScarabEvaluator.default]]) on a thread nothing interrupts, verdict and budget alike; once its
   * thread is interrupted, as cancelling `IO.interruptible` interrupts it, it ends, with no verdict,
-  * however long the script would have run.
+  * however long the script would have run. In the node's test tree for `FailsOnUncaught`, as
+  * `IO.race` starts fibers (TST-3).
   */
-class InterruptibleEvaluatorSuite extends CatsEffectSuite:
+class InterruptibleEvaluatorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def requests: Vector[EvalRequest] =
     for
       probe <- PlutusBoundaryCorpus.probes

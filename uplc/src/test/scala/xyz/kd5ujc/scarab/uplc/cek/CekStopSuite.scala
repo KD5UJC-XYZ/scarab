@@ -7,9 +7,11 @@ import xyz.kd5ujc.scarab.uplc.cost.{CekConformance, DefaultCostModels, ExBudget,
 import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
 /** A machine that may stop ([[CekMachine.runUntil]]) is the reference's until its stop gives a
-  * reason: on every conformance case of plutus 1.71.0.0, in both budget modes, a stop that is asked
-  * and never answers leaves the result, the budget and the logs as [[CekMachine.run]] gives them;
-  * one that answers ends the evaluation with its reason, also one that would never end.
+  * reason: on every program of the conformance cases of plutus 1.71.0.0 (945 of the 1,009; the
+  * other 64 are the reference's parse refusals, which have no program), in both budget modes, a
+  * stop that is asked and never answers leaves the result, the budget and the logs as
+  * [[CekMachine.run]] gives them; one that answers ends the evaluation with its reason, also one
+  * that would never end.
   */
 class CekStopSuite extends munit.FunSuite:
   private lazy val costs = DefaultCostModels.costs(SemanticsVariant.G)
@@ -40,14 +42,47 @@ class CekStopSuite extends munit.FunSuite:
       case CekResult.Failure(failure) => Left((failure.error, failure.cause.map(_.term)))
     (result, report.budget, report.logs)
 
-  private lazy val programs: Vector[(String, Program)] =
-    ReferenceCorpus
-      .conformance(ReferenceCorpus.Plutus171)
-      .fold(p => fail(p.toString), identity)
-      .flatMap(c => UplcParser.program(c.program).toOption.map(c.name -> _))
+  private lazy val cases =
+    ReferenceCorpus.conformance(ReferenceCorpus.Plutus171).fold(p => fail(p.toString), identity)
 
-  test("on every conformance case, a stop that never answers changes nothing, in both modes") {
-    assert(programs.size > 900, s"${programs.size} programs read")
+  /** How a case reads: a program the reference runs, the parse refusal the reference records, or a
+    * case this suite would drop, with why.
+    */
+  private enum Reading:
+    case Runs(name: String, program: Program)
+    case Refused(name: String)
+    case Wrong(name: String, why: String)
+
+  /** Each case read as its expectation says: a program for every case the reference runs, and no
+    * program for the cases whose expectation is the reference's parse refusal; anything else is a
+    * case this suite would drop, which it reports by name.
+    */
+  private lazy val read: (Vector[String], Vector[(String, Program)], Vector[(String, String)]) =
+    val readings = cases.map { c =>
+      (c.expected, UplcParser.program(c.program)) match
+        case (ReferenceCorpus.Expected.ParseError, Left(_)) => Reading.Refused(c.name)
+        case (ReferenceCorpus.Expected.ParseError, Right(_)) =>
+          Reading.Wrong(c.name, "parsed, though the reference refuses it")
+        case (_, Left(error))    => Reading.Wrong(c.name, error.toString)
+        case (_, Right(program)) => Reading.Runs(c.name, program)
+    }
+    (
+      readings.collect { case Reading.Refused(name) => name },
+      readings.collect { case Reading.Runs(name, program) => name -> program },
+      readings.collect { case Reading.Wrong(name, why) => name -> why }
+    )
+
+  test("the corpus is read whole: 945 programs to run, and the 64 the reference refuses to parse") {
+    val (refused, programs, wrong) = read
+    assertEquals(wrong, Vector.empty)
+    assertEquals(cases.size, 1009)
+    assertEquals(refused.size, 64)
+    assertEquals(programs.size, 945)
+  }
+
+  test("on every program of the corpus, a stop that never answers changes nothing, in both modes") {
+    val (_, programs, _) = read
+    assertEquals(programs.size, 945)
     val asked = Asked()
     val modes = Vector(
       BudgetMode.Counting,
