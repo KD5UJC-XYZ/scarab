@@ -641,7 +641,7 @@ object MempoolState:
 
     /** A transaction that does not reach the ledger's era, where the selected build measures it as
       * nothing and the rules refuse it ([[EraInjection.Mismatch.InRules]]); `submitted` is the era
-      * it was read in and its id, none when the pool does not read transactions of that era.
+      * it was read in and its id, none when the pool does not take transactions of that era.
       */
     final case class Unmatched(mismatch: Rejection.WrongEra, submitted: Option[(Era, Bytes)])
 

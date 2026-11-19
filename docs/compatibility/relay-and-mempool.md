@@ -74,10 +74,11 @@ and 5 s, on by default as cardano-node 11.1.3 passes them, `Node/Run.hs` 388-392
   [campaign's Q7](../design/differential-campaign.md#10-risks-and-open-questions)). How far past the hard limit a
   validation runs before it stops: GHC delivers the reference's `timeout` at the computation's next allocation,
   Scarab's at the validation's next poll, so a long builtin call or context construction finishes first.
-- **Gaps:** under `11.1`, a transaction of an era whose transactions the pool does not read (Byron, Dijkstra) has no
-  id the pool can show, so where the reference refuses it as too slow, Scarab refuses it with the era mismatch, or ends
-  a local client's connection when the hard limit cuts it off. This shows when the era check of such a submission takes
-  longer than the soft limit: rare, but possible at the default limits, as when a pause of the runtime falls in it.
+- **Gaps:** under `11.1`, a transaction of an era whose transactions the pool does not take (Byron, whose payload is
+  read whole but whose id is not derived, and Dijkstra) has no id the pool can show, so where the reference refuses it
+  as too slow, Scarab refuses it with the era mismatch, or ends a local client's connection when the hard limit cuts it
+  off. This shows when the era check of such a submission takes longer than the soft limit: rare, but possible at the
+  default limits, as when a pause of the runtime falls in it.
   Under the Leios build the capacity bounds the forger's revalidation of its snapshot instead, a tenth of it per step
   (`Mempool/Query.hs` 148-164 at `2416493b`), which Scarab does not do; the build does not run yet.
 - **Cancellation:** a cancellation during the validation leaves the pool as it was; once a transaction is held, its

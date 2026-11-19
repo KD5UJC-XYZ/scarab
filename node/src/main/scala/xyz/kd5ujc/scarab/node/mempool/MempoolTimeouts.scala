@@ -66,7 +66,7 @@ object MempoolTimeouts:
     case After(limit: FiniteDuration)
 
 /** The hard limit cut off the validation of the transaction `id` (none for a transaction of an era
-  * whose transactions the pool does not read) after `took`: no verdict, and the connection that
+  * whose transactions the pool does not take) after `took`: no verdict, and the connection that
   * submitted it ends, the reference's `ExnMempoolTimeout` (ouroboros-consensus 82ecba32
   * `Mempool/API.hs` 542-553, thrown at `Mempool/Update.hs` 285-291), which no rethrow policy names,
   * so its peer is disconnected and the node goes on (`ouroboros-consensus-diffusion`
