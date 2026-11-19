@@ -73,6 +73,42 @@ class DijkstraPlutusPurposeSuite extends FunSuite:
     )
   }
 
+  test(
+    "the spending, minting, certifying and withdrawing purposes build and read back, and only those"
+  ) {
+    // Alonzo's builders of Dijkstra's instance (`Scripts.hs:508-526`, cardano-ledger 9df9f98c)
+    val ix = w32(2)
+    assertEquals(scripts.mkSpendingPurpose[AsIx](AsIx(ix)), DijkstraSpending[AsIx](AsIx(ix)))
+    assertEquals(scripts.mkMintingPurpose[AsIx](AsIx(ix)), DijkstraMinting[AsIx](AsIx(ix)))
+    assertEquals(scripts.mkCertifyingPurpose[AsIx](AsIx(ix)), DijkstraCertifying[AsIx](AsIx(ix)))
+    assertEquals(
+      scripts.mkWithdrawingPurpose[AsIx](AsIx(ix)),
+      DijkstraWithdrawing[AsIx](AsIx(ix))
+    )
+    all.foreach { p =>
+      assertEquals(scripts.toSpendingPurpose[AsIx](p).isDefined, p.tag == 0, p.toString)
+      assertEquals(scripts.toMintingPurpose[AsIx](p).isDefined, p.tag == 1, p.toString)
+      assertEquals(scripts.toCertifyingPurpose[AsIx](p).isDefined, p.tag == 2, p.toString)
+      assertEquals(scripts.toWithdrawingPurpose[AsIx](p).isDefined, p.tag == 3, p.toString)
+    }
+    // and with the item
+    val in = xyz.kd5ujc.scarab.ledger.TxIn(hex("33" * 32), BigInt(1))
+    val spending = scripts.mkSpendingPurpose[AsItem](AsItem(in))
+    assertEquals(scripts.toSpendingPurpose[AsItem](spending), Some(AsItem(in)))
+    val policy = hex("44" * 28)
+    val minting = scripts.mkMintingPurpose[AsItem](AsItem(policy))
+    assertEquals(scripts.toMintingPurpose[AsItem](minting), Some(AsItem(policy)))
+    val pk = KeyHash.fromBytes[StakePool](hex("50" * 28)).fold(e => fail(e.toString), identity)
+    val cert = EraTxCert.dijkstra.mkRetirePoolTxCert(pk, EpochNo.fromUnsigned(10))
+    val certifying = scripts.mkCertifyingPurpose[AsItem](AsItem(cert))
+    assertEquals(scripts.toCertifyingPurpose[AsItem](certifying), Some(AsItem(cert)))
+    val account =
+      xyz.kd5ujc.scarab.ledger.RewardAccount(0, FlatCredential.Script(hex("55" * 28)))
+    val withdrawing = scripts.mkWithdrawingPurpose[AsItem](AsItem(account))
+    assertEquals(scripts.toWithdrawingPurpose[AsItem](withdrawing), Some(AsItem(account)))
+    assertEquals(scripts.toSpendingPurpose[AsItem](withdrawing), None)
+  }
+
   test("redeemer keys order by constructor, then index, as the derived Ord") {
     // `Ord (DijkstraPlutusPurpose AsIx era)` (`Scripts.hs:260`, cardano-ledger 9df9f98c)
     val keys = Vector(

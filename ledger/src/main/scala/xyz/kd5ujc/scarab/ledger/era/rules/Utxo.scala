@@ -299,8 +299,9 @@ object AlonzoUtxo:
       failure(UtxoFailure.InsufficientCollateral(bal, Rational(collPerc * txfee, 100).ceil))
     )
 
-  /** `validateExUnitsTooBigUTxO` (`Alonzo/Rules/Utxo.hs:451-465`, cardano-ledger f649f975): the
-    * units of every redeemer (`totExUnits`) pointwise at most `ppMaxTxExUnits`.
+  /** `validateExUnitsTooBigUTxO` (`Alonzo/Rules/Utxo.hs:451-465`, cardano-ledger f649f975;
+    * `:464-476` at 9df9f98c): the transaction's units (`getTotalExUnits`, at f649f975 `totExUnits`)
+    * pointwise at most `ppMaxTxExUnits`.
     */
   def validateExUnitsTooBigUTxO[E <: EraTag, L <: TxLevel](pp: PParams[E], tx: Tx[L, E])(using
       t: AlonzoEraTx[E],
@@ -308,7 +309,7 @@ object AlonzoUtxo:
       p: AlonzoEraPParams[E]
   ): Test[PredicateFailure] =
     val maxTxExUnits = AlonzoEraPParams.ppMaxTxExUnitsL[E].get(pp).units
-    val totalExUnits = AlonzoTx.totExUnits(tx)
+    val totalExUnits = t.getTotalExUnits[L](tx)
     Test.failureUnless(
       totalExUnits.fits(maxTxExUnits),
       failure(UtxoFailure.ExUnitsTooBig(Mismatch(totalExUnits, maxTxExUnits)))

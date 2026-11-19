@@ -131,10 +131,8 @@ final case class AlonzoScriptsNeeded[E <: EraTag](
     AlonzoScriptsNeeded(unAlonzoScriptsNeeded ++ that.unAlonzoScriptsNeeded)
 
 /** Alonzo's functions of the UTxO set (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs`,
-  * cardano-ledger f649f975). The reference builds each purpose through the era's script class
-  * (`SpendingPurpose` and the rest, `AlonzoEraScript`), whose builders are not members here yet
-  * (#85): these functions take the evidence that the era's purpose is Conway's, as CERTS takes
-  * Conway's certificates.
+  * cardano-ledger f649f975, the same at 9df9f98c). Each purpose is built through the era's script
+  * class (`SpendingPurpose` and the rest), whose builders are members of [[ConwayEraScript]] here.
   */
 object AlonzoUTxO:
   private type Ix = Unsigned[Unsigned.Width.W32]
@@ -160,7 +158,7 @@ object AlonzoUTxO:
   def getSpendingScriptsNeeded[E <: EraTag, L <: TxLevel](utxo: UTxO[E], body: TxBody[L, E])(using
       b: EraTxBody[E],
       l: b.Level[L],
-      ev: PlutusPurpose[AsIxItem, E] =:= conway.ConwayPlutusPurpose[AsIxItem]
+      s: ConwayEraScript[E]
   ): AlonzoScriptsNeeded[E] =
     val o = b.outputsOf
     AlonzoScriptsNeeded(
@@ -170,7 +168,7 @@ object AlonzoUTxO:
           hash <- o.address(out).kind match
             case Address.Kind.Shelley(_, payment, _, _) => credScriptHash(payment)
             case Address.Kind.Byron(_)                  => None
-        yield (ev.flip(conway.ConwayPlutusPurpose.ConwaySpending(asIxItem)), hash)
+        yield (s.mkSpendingPurpose(asIxItem), hash)
       }.flatten
     )
 
@@ -181,12 +179,12 @@ object AlonzoUTxO:
   def getWithdrawingScriptsNeeded[E <: EraTag, L <: TxLevel](body: TxBody[L, E])(using
       b: EraTxBody[E],
       l: b.Level[L],
-      ev: PlutusPurpose[AsIxItem, E] =:= conway.ConwayPlutusPurpose[AsIxItem]
+      s: ConwayEraScript[E]
   ): AlonzoScriptsNeeded[E] =
     AlonzoScriptsNeeded(
       zipAsIxItem(b.withdrawals[L](body).keys.toVector.sorted) { asIxItem =>
         credScriptHash(asIxItem.item.credential).map(hash =>
-          (ev.flip(conway.ConwayPlutusPurpose.ConwayWithdrawing(asIxItem)), hash)
+          (s.mkWithdrawingPurpose(asIxItem), hash)
         )
       }.flatten
     )
@@ -197,11 +195,11 @@ object AlonzoUTxO:
   def getMintingScriptsNeeded[E <: EraTag, L <: TxLevel](body: TxBody[L, E])(using
       b: MaryEraTxBody[E],
       l: b.Level[L],
-      ev: PlutusPurpose[AsIxItem, E] =:= conway.ConwayPlutusPurpose[AsIxItem]
+      s: ConwayEraScript[E]
   ): AlonzoScriptsNeeded[E] =
     AlonzoScriptsNeeded(
       zipAsIxItem(b.mint[L](body).keys.toVector.sorted) { asIxItem =>
-        (ev.flip(conway.ConwayPlutusPurpose.ConwayMinting(asIxItem)), asIxItem.item)
+        (s.mkMintingPurpose(asIxItem), asIxItem.item)
       }
     )
 
@@ -443,11 +441,9 @@ object BabbageUTxO:
 
   /** `getBabbageSpendingDatum` (`Babbage/UTxO.hs:88-101`, cardano-ledger f649f975): of a spending
     * purpose whose input the UTxO set holds, the output's inline datum, or else the witnesses'
-    * datum of its datum hash. Read through the evidence that the era's purpose is Conway's, as
-    * `toSpendingPurpose` is not a member of the script class yet (#85). The output's inline datum
-    * is read as data first, as the reference's `<|>` forces its strict `SJust`; its failure, which
-    * only an inline datum taken unread ([[BabbageTxOutRep.fromStored]]) can reach, is returned
-    * where the reference raises `error`.
+    * datum of its datum hash. The output's inline datum is read as data first, as the reference's
+    * `<|>` forces its strict `SJust`; its failure, which only an inline datum taken unread
+    * ([[BabbageTxOutRep.fromStored]]) can reach, is returned where the reference raises `error`.
     */
   def getBabbageSpendingDatum[E <: EraTag, L <: TxLevel](
       utxo: UTxO[E],
@@ -457,19 +453,11 @@ object BabbageUTxO:
       t: AlonzoEraTx[E],
       l: t.bodyOf.Level[L],
       o: BabbageEraTxOut[E],
-      ev: PlutusPurpose[AsItem, E] =:= conway.ConwayPlutusPurpose[AsItem]
+      s: ConwayEraScript[E]
   ): Either[PlutusData.DecodeError, Option[Data]] =
-    val toSpendingPurpose = ev(sp) match
-      case conway.ConwayPlutusPurpose.ConwaySpending(asItem) => Some(asItem)
-      case conway.ConwayPlutusPurpose.ConwayMinting(_) |
-          conway.ConwayPlutusPurpose.ConwayCertifying(_) |
-          conway.ConwayPlutusPurpose.ConwayWithdrawing(_) |
-          conway.ConwayPlutusPurpose.ConwayVoting(_) |
-          conway.ConwayPlutusPurpose.ConwayProposing(_) =>
-        None
     val spent =
       for
-        AsItem(txIn) <- toSpendingPurpose
+        AsItem(txIn) <- s.toSpendingPurpose(sp)
         txOut <- utxo.unUTxO.get(txIn)
       yield txOut
     spent.flatTraverse { txOut =>

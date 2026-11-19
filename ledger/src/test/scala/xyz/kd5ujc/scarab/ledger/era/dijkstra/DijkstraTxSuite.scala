@@ -54,6 +54,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ConwayGovCert,
   Datum,
   Delegatee,
+  EraScript,
   EraTxBody,
   EraTxError,
   EraTxWits,
@@ -516,6 +517,26 @@ class DijkstraTxSuite extends FunSuite:
         DijkstraPurposes.inverse(flat, tag, ix.toLong).map(flatItem),
         s"$what: purpose $tag at $ix"
       )
+      b.redeemerPointerInverse(era, ptr).foreach(roundTrips(_, s"$what: purpose $tag at $ix"))
+
+  /** A purpose read by each of the script class's readers and built again by that reader's builder
+    * (`ConwayEraScript`, `DijkstraEraScript`, and Alonzo's builders, `Scripts.hs:508-581`,
+    * cardano-ledger 9df9f98c): only the reader of its own constructor reads it, and its builder
+    * gives it back.
+    */
+  private def roundTrips(p: DijkstraPlutusPurpose[AsIxItem], what: String): Unit =
+    val s = EraScript.dijkstra
+    val rebuilt = Vector(
+      s.toSpendingPurpose[AsIxItem](p).map(s.mkSpendingPurpose[AsIxItem]),
+      s.toMintingPurpose[AsIxItem](p).map(s.mkMintingPurpose[AsIxItem]),
+      s.toCertifyingPurpose[AsIxItem](p).map(s.mkCertifyingPurpose[AsIxItem]),
+      s.toWithdrawingPurpose[AsIxItem](p).map(s.mkWithdrawingPurpose[AsIxItem]),
+      s.toVotingPurpose[AsIxItem](p).map(s.mkVotingPurpose[AsIxItem]),
+      s.toProposingPurpose[AsIxItem](p).map(s.mkProposingPurpose[AsIxItem]),
+      s.toGuardingPurpose[AsIxItem](p).map(s.mkGuardingPurpose[AsIxItem])
+    )
+    assertEquals(rebuilt.flatten, Vector(p), what)
+    assertEquals(rebuilt.indexWhere(_.isDefined), p.tag, what)
 
   private def sameWits(era: DijkstraTxWits, flat: DijkstraWitnesses, what: String): Unit =
     assertEquals(era.raw, flat.raw, what)

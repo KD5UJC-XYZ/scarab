@@ -84,24 +84,35 @@ trait AlonzoEraTx[E <: EraTag] extends EraTx[E]:
   /** `isValidTxL`. */
   def isValid(tx: Tx[TxLevel.Top, E]): IsPhase2Valid
 
+  /** `getTotalExUnits` (`Alonzo/Tx.hs:330-331`, cardano-ledger 9df9f98c): the units of every
+    * redeemer of the witnesses, added up, the class's default, which Dijkstra's instance overrides
+    * to add its sub-transactions' units. The units are the witness decoder's, whose components it
+    * reads as unsigned integers. At f649f975 it is the function `totExUnits`
+    * (`Alonzo/Tx.hs:460-464`), which the default is.
+    */
+  def getTotalExUnits[L <: TxLevel](
+      tx: Tx[L, E]
+  )(using bodyOf.Level[L]): xyz.kd5ujc.scarab.plutus.ExUnits =
+    witsOf
+      .rdmrsTxWits(wits[L](tx))
+      .entries
+      .valuesIterator
+      .map(_._2)
+      .foldLeft(xyz.kd5ujc.scarab.plutus.ExUnits.zero)(_ + _)
+
 /** The functions of Alonzo's transactions (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs`,
   * cardano-ledger f649f975).
   */
 object AlonzoTx:
-  /** `totExUnits` (`Alonzo/Tx.hs:460-464`, cardano-ledger f649f975): the units of every redeemer of
-    * the witnesses, added up. The units are the witness decoder's, whose components it reads as
-    * unsigned integers.
+  /** `totExUnits` (`Alonzo/Tx.hs:460-464`, cardano-ledger f649f975; `:510-514` at 9df9f98c, where
+    * it is the deprecated name of `getTotalExUnits`): the transaction's units, the class member
+    * [[AlonzoEraTx.getTotalExUnits]].
     */
   def totExUnits[E <: EraTag, L <: TxLevel](tx: Tx[L, E])(using
       t: AlonzoEraTx[E],
       l: t.bodyOf.Level[L]
   ): xyz.kd5ujc.scarab.plutus.ExUnits =
-    t.witsOf
-      .rdmrsTxWits(t.wits(tx))
-      .entries
-      .valuesIterator
-      .map(_._2)
-      .foldLeft(xyz.kd5ujc.scarab.plutus.ExUnits.zero)(_ + _)
+    t.getTotalExUnits[L](tx)
 
   /** `txscriptfee` (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs:185-190`,
     * cardano-ledger f649f975): the price of the units, rounded up.
@@ -113,8 +124,9 @@ object AlonzoTx:
       ) * prices.prSteps.rational).ceil
     )
 
-  /** `alonzoMinFeeTx` (`Alonzo/Tx.hs:445-458`, cardano-ledger f649f975): the fee per byte of the
-    * transaction's size, the fixed fee, and the price of its units.
+  /** `alonzoMinFeeTx` (`Alonzo/Tx.hs:445-458`, cardano-ledger f649f975; `:498-508` at 9df9f98c,
+    * where the units are `getTotalExUnits`): the fee per byte of the transaction's size, the fixed
+    * fee, and the price of its units.
     */
   def alonzoMinFeeTx[E <: EraTag, L <: TxLevel](pp: PParams[E], tx: Tx[L, E])(using
       t: AlonzoEraTx[E],
@@ -124,7 +136,7 @@ object AlonzoTx:
     Coin(
       BigInt(t.sizeTxF(tx)) * EraPParams.ppTxFeePerByteL[E].get(pp).unCoinPerByte.toBigInt +
         EraPParams.ppTxFeeFixedCompactL[E].get(pp).toBigInt +
-        txscriptfee(AlonzoEraPParams.ppPricesL[E].get(pp), totExUnits(tx)).value
+        txscriptfee(AlonzoEraPParams.ppPricesL[E].get(pp), t.getTotalExUnits[L](tx)).value
     )
 
 /** The instances of each era, the one place that lists the eras having each class. */

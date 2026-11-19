@@ -6,6 +6,8 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Credential as FlatCredential,
   NativeScript as FlatNativeScript,
+  RewardAccount,
+  TxIn,
   Unsigned,
   Voter
 }
@@ -62,8 +64,9 @@ trait AllegraEraScript[E <: EraTag] extends ShelleyEraScript[E]:
 /** The Plutus scripts from Alonzo (`AlonzoEraScript`,
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-198`, cardano-ledger f649f975). The
   * reference's `hoistPlutusPurpose` and builders and readers of the spending, minting, certifying
-  * and withdrawing purposes (`Scripts.hs:200-225`) are not here yet: Babbage's instance needs
-  * Babbage's purposes and certificates, which come with Babbage (tracked on #85).
+  * and withdrawing purposes (`Scripts.hs:200-225`) are members of [[ConwayEraScript]] here:
+  * Babbage's instance needs Babbage's purposes and certificates, which come with Babbage (tracked
+  * on #85).
   */
 trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
   /** The newest language of the era (`eraMaxLanguage`), one of the reference's `Language`. */
@@ -124,6 +127,49 @@ trait ConwayEraScript[E <: EraTag] extends AlonzoEraScript[E]:
   def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
       purpose: PlutusPurpose[G, E]
   ): PlutusPurpose[F, E]
+
+  // The builders and readers of the spending, minting, certifying and withdrawing purposes
+  // (`Alonzo/Scripts.hs:205-219`, cardano-ledger f649f975; `:207-221` at 9df9f98c): the
+  // reference's `AlonzoEraScript` members, here from Conway as `hoistPlutusPurpose` is, until
+  // Babbage's purposes are among the era types (#85,
+  // https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792). Each reader gives
+  // the item of its own purpose, none for another.
+
+  /** `mkSpendingPurpose`. */
+  def mkSpendingPurpose[F[_, _]](txIn: F[Unsigned[Unsigned.Width.W32], TxIn]): PlutusPurpose[F, E]
+
+  /** `toSpendingPurpose`. */
+  def toSpendingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], TxIn]]
+
+  /** `mkMintingPurpose`, of a policy's script hash. */
+  def mkMintingPurpose[F[_, _]](policy: F[Unsigned[Unsigned.Width.W32], Bytes]): PlutusPurpose[F, E]
+
+  /** `toMintingPurpose`. */
+  def toMintingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], Bytes]]
+
+  /** `mkCertifyingPurpose`. */
+  def mkCertifyingPurpose[F[_, _]](
+      txCert: F[Unsigned[Unsigned.Width.W32], TxCert[E]]
+  ): PlutusPurpose[F, E]
+
+  /** `toCertifyingPurpose`. */
+  def toCertifyingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], TxCert[E]]]
+
+  /** `mkWithdrawingPurpose`, of an account. */
+  def mkWithdrawingPurpose[F[_, _]](
+      account: F[Unsigned[Unsigned.Width.W32], RewardAccount]
+  ): PlutusPurpose[F, E]
+
+  /** `toWithdrawingPurpose`. */
+  def toWithdrawingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], RewardAccount]]
 
 /** The guarding purpose and the guard script from Dijkstra (`DijkstraEraScript`, cardano-ledger
   * 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:567-572`), in any form `F`
