@@ -5,10 +5,23 @@ import cats.Id
 
 /** The evaluator and the script decoder, which share their caches: what the node's rules, its
   * mempool and its forger evaluate and admit scripts with. Every one of them takes it explicitly.
+  *
+  * @param interruptible
+  *   the evaluator as the mempool's admission runs it: one that stops, with no verdict, once the
+  *   thread it runs on is interrupted, so that the admission's hard time limit ends it
+  *   ([[ScarabEvaluator.interruptible]]); on a thread nothing interrupts, it is `evaluator`
   */
-final case class PlutusBackend(evaluator: ScriptEvaluator[Id], decoder: ScriptDecoder[Id])
+final case class PlutusBackend(
+    evaluator: ScriptEvaluator[Id],
+    decoder: ScriptDecoder[Id],
+    interruptible: ScriptEvaluator[Id]
+)
 
 object PlutusBackend:
   /** The node's backend: the shared interpreter of Scarab's own evaluator ([[ScarabEvaluator]]). */
   val default: PlutusBackend =
-    PlutusBackend(ScarabEvaluator.default, ScarabEvaluator.defaultDecoder)
+    PlutusBackend(
+      ScarabEvaluator.default,
+      ScarabEvaluator.defaultDecoder,
+      ScarabEvaluator.interruptible
+    )

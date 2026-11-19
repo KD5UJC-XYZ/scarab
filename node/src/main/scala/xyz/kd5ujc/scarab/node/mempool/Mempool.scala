@@ -12,12 +12,14 @@ import io.circe.{Encoder, JsonObject}
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.{
+  DiffTime,
   NetworkError,
   Protocols,
   TxSubmissionClient,
   TxSubmissionServer,
   Word32
 }
+import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
@@ -37,6 +39,11 @@ enum MempoolEvent:
     * pool had left.
     */
   case Waiting(id: Option[Bytes], needed: TxMeasure, free: TxMeasure)
+
+  /** A transaction waits for the pool to change because the validations of the held transactions
+    * took `used`, longer than the pool's `capacity` of time (once per submission, as [[Waiting]]).
+    */
+  case WaitingForTime(id: Option[Bytes], used: DiffTime, capacity: DiffTime)
 
   /** A held transaction left the pool with `reason`, for `cause`: the pool was validated again and
     * no longer admits it, or the forger withdrew it.
@@ -214,7 +221,30 @@ object Mempool:
         Some(NetworkError.DecoderDefect(Protocols.TxSubmission2, cause))
       case Rejection.RulesDefect(cause) =>
         Some(NetworkError.ServingDefect(Protocols.TxSubmission2, cause))
+      case Rejection.TimedOut(timeout) =>
+        Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(timeout)))
       case _ => None
+
+  /** The refusal of a validation that took `took` in the era of the pool's ledger, `ledger`, if the
+    * era has an error for it, as `mkMempoolApplyTxError` makes one: only Conway's
+    * `ConwayMempoolFailure` (ouroboros-consensus 82ecba32 `shelley` `Shelley/Eras.hs` 169-220,
+    * 808e4005 179-230: none from Shelley to Babbage, nor in Dijkstra; Byron's is
+    * `nothingMkMempoolApplyTxError`, `byron` `Byron/Ledger/Mempool.hs` 143). Its text names the
+    * submitted transaction, so there is none either for a transaction of an era whose transactions
+    * the pool does not take (Byron, Dijkstra), whose id it cannot show.
+    */
+  private[mempool] def tooSlow(
+      ledger: Era,
+      measured: MempoolState.Measured,
+      took: FiniteDuration
+  ): Option[Rejection.TooSlow] =
+    measured.named.flatMap((submitted, id) =>
+      ledger match
+        case Era.Conway => Some(Rejection.TooSlow(id, submitted, took))
+        case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
+            Era.Dijkstra =>
+          None
+    )
 
   /** How many submissions wait for their turn: `remote` behind the peer's transaction that holds
     * the remote line, `common` behind the one that holds the common line.
@@ -234,11 +264,16 @@ object Mempool:
     */
   private enum Attempt:
     case Done(result: Either[Refused, Bytes])
-    case Wait(seen: Long, id: Option[Bytes], full: Rejection.Full)
+    case Wait(seen: Long, waiting: MempoolEvent)
 
   /** @param capacityOverride
     *   The `MempoolCapacityBytesOverride` in bytes, rounded up to whole blocks; `None` is two
     *   blocks of the parameters in force ([[Capacity.of]]).
+    * @param timeouts
+    *   The time limits of a validation ([[MempoolTimeouts]]); none, as the reference's `Nothing`,
+    *   enforces none, and the validations are timed all the same.
+    * @param timing
+    *   How a validation is run and timed ([[Timing.interruptible]]).
     * @param utxoStore
     *   Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
     *   of each transaction from it, as the block path does.
@@ -255,7 +290,9 @@ object Mempool:
       events: MempoolEvents[F],
       utxoStore: Option[UtxoStore[F]] = None,
       environment: Option[Ask[F, MempoolEnv]] = None,
-      tipHash: Option[Bytes] = None
+      tipHash: Option[Bytes] = None,
+      timeouts: Option[MempoolTimeouts] = None,
+      timing: Option[Timing[F]] = None
   )(using assertions: Assertions[F]): F[Mempool[F]] =
     for
       state <- Ref.of[F, MempoolState](
@@ -268,6 +305,7 @@ object Mempool:
     yield new Mempool[F]:
       private val F = Async[F]
       private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
+      private val timed = timing.getOrElse(Timing.interruptible[F])
 
       /** A held transaction left the pool: said, and asserted when the pool's revalidation dropped
         * it.
@@ -317,10 +355,8 @@ object Mempool:
           F.tailRecM(false) { announced =>
             attempt(submission, source).flatMap {
               case Attempt.Done(result) => F.pure(result.asRight[Boolean])
-              case Attempt.Wait(seen, id, full) =>
-                events
-                  .emit(MempoolEvent.Waiting(id, full.needed, full.free))
-                  .unlessA(announced) *>
+              case Attempt.Wait(seen, waiting) =>
+                events.emit(waiting).unlessA(announced) *>
                   version.waitUntil(_ > seen).as(true.asLeft[Either[Refused, Bytes]])
             }
           }
@@ -329,7 +365,11 @@ object Mempool:
       /** The state lock is held for this step only, never while waiting. Every change of the pool
         * happens under it and bumps `version`, so the version read here is the one of the state
         * that was measured and the wait cannot miss a change. The step starts from the first
-        * measure again each time: a new tip may have changed the parameters and the capacity.
+        * measure again each time: a new tip may have changed the parameters and the capacity. Its
+        * validation is timed as the reference's `doAddTx` times it ([[validated]]); a refusal, a
+        * cut-off and a cancellation during the validation leave the pool as it was. Once a
+        * transaction is held, its state, the version and the `Added` event are three effects, so a
+        * cancellation between them leaves the state without the version or the event, as before.
         */
       private def attempt(
           of: MempoolState => Either[Rejection, MempoolState.Read],
@@ -355,25 +395,108 @@ object Mempool:
               )
             case None => F.pure(held)
           activeEnv <- readEnv
-          result <- F.blocking(submission.flatMap(current.add(_, activeEnv, source)))
-          era = current.era
-          out <- result match
-            case Right((next, entry)) =>
-              state.set(next) *> version.update(_ + 1) *>
-                events
-                  .emit(MempoolEvent.Added(entry.id, entry.size, next.entries.size, next.bytes))
-                  .as(Attempt.Done(entry.id.asRight[Refused]))
-            case Left(full: Rejection.Full) if full.needed.fits(current.capacity) =>
-              version.get.map(Attempt.Wait(_, read.map(_.parts.id), full))
-            case Left(reason) =>
-              val id = reason match
-                case Rejection.AlreadyHeld(i) => Some(i)
-                case _                        => None
-              events
-                .emit(MempoolEvent.Rejected(id.orElse(read.map(_.parts.id)), reason))
-                .as(Attempt.Done(Refused(reason, era).asLeft[Bytes]))
+          measured <- F.blocking(submission.flatMap(current.measure(_, activeEnv)))
+          out <- measured.fold(
+            answer(current, read.map(_.parts.id), _),
+            validated(current, _, activeEnv, source)
+          )
         yield out
       }
+
+      /** The timed step of an admission and what follows, in the order of `doAddTx`
+        * (ouroboros-consensus 82ecba32 `Mempool/Update.hs` 239-319; 808e4005 240-320): the
+        * validation ([[MempoolState.tryAdd]]) is timed from after the UTxO entries are read, under
+        * the hard limit. Cut off, it is refused with the era's error for a local client
+        * ([[Mempool.tooSlow]]), or ends the submitter's connection ([[Rejection.TimedOut]]).
+        * Finished after longer than the soft limit, it is refused with the era's error whatever its
+        * result, where the era has one. Otherwise its result is the answer, and a transaction held
+        * records how long its validation took.
+        */
+      private def validated(
+          current: MempoolState,
+          measured: MempoolState.Measured,
+          env: MempoolEnv,
+          source: Source
+      ): F[Attempt] =
+        val era = measured.ledger.era
+        timed
+          .within(timeouts.fold(MempoolTimeouts.HardLimit.Unbounded)(_.hardLimit))(
+            current.tryAdd(
+              measured,
+              env,
+              source,
+              timeouts.flatMap(_.admissionCapacity(env.globals.referenceBuild))
+            )
+          )
+          .flatMap {
+            case Timed.Cut(took) =>
+              val refusal = source match
+                case Source.Local  => Mempool.tooSlow(era, measured, took)
+                case Source.Remote => None
+              answer(
+                current,
+                measured.id,
+                refusal.getOrElse(Rejection.TimedOut(MempoolTimeout(measured.id, took)))
+              )
+            // no verdict: in the reference the exception of the evaluation escapes its `timeout`
+            // and never meets the soft limit (`Mempool/Update.hs` 243-245), so the failure keeps
+            // its cause and its handling
+            case Timed.Done(
+                  MempoolState.Tried.Done(
+                    Left(
+                      failure @ (Rejection.RulesDefect(_) | Rejection.InputDefect(_) | Rejection
+                        .Ledger(_: LedgerFailure.Unavailable | _: LedgerFailure.Unverifiable))
+                    )
+                  ),
+                  _
+                ) =>
+              answer(current, measured.id, failure)
+            case Timed.Done(tried, took) =>
+              val late =
+                timeouts.exists(t => DiffTime.of(took).toPicoseconds > t.soft.toPicoseconds)
+              Option
+                .when(late)(Mempool.tooSlow(era, measured, took))
+                .flatten
+                .fold(finished(current, measured, tried, took))(answer(current, measured.id, _))
+          }
+
+      /** The answer of a validation that took `took`, not refused as too slow: a wait while the
+        * held transactions took longer than the capacity, a refusal, or the transaction held with
+        * the time it took.
+        */
+      private def finished(
+          current: MempoolState,
+          measured: MempoolState.Measured,
+          tried: MempoolState.Tried,
+          took: FiniteDuration
+      ): F[Attempt] =
+        tried match
+          case MempoolState.Tried.NoTime(used, capacity) =>
+            version.get.map(
+              Attempt.Wait(_, MempoolEvent.WaitingForTime(measured.id, used, capacity))
+            )
+          case MempoolState.Tried.Done(Left(reason)) => answer(current, measured.id, reason)
+          case MempoolState.Tried.Done(Right(admitted)) =>
+            val (next, entry) = current.hold(admitted, took)
+            state.set(next) *> version.update(_ + 1) *>
+              events
+                .emit(MempoolEvent.Added(entry.id, entry.size, next.entries.size, next.bytes))
+                .as(Attempt.Done(entry.id.asRight[Refused]))
+
+      /** A refusal of `id`, or a wait for room when it is a lack of room that an empty pool would
+        * not have.
+        */
+      private def answer(current: MempoolState, id: Option[Bytes], reason: Rejection): F[Attempt] =
+        reason match
+          case full: Rejection.Full if full.needed.fits(current.capacity) =>
+            version.get.map(Attempt.Wait(_, MempoolEvent.Waiting(id, full.needed, full.free)))
+          case _ =>
+            val named = reason match
+              case Rejection.AlreadyHeld(i) => Some(i)
+              case _                        => None
+            events
+              .emit(MempoolEvent.Rejected(named.orElse(id), reason))
+              .as(Attempt.Done(Refused(reason, current.era).asLeft[Bytes]))
 
       def snapshot = state.get
 

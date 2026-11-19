@@ -326,6 +326,13 @@ object Traced:
         "tx" -> id.map(_.hex).asJson,
         "reason" -> Rejection.Full(needed, free).message.asJson
       )
+    case MempoolEvent.WaitingForTime(id, used, capacity) =>
+      EventKind.MempoolWaiting.line(
+        "tx" -> id.map(_.hex).asJson,
+        "reason" -> "validation time of the held transactions over the capacity".asJson,
+        "usedSeconds" -> seconds(used).asJson,
+        "capacitySeconds" -> seconds(capacity).asJson
+      )
     case MempoolEvent.Adopted(id) => EventKind.MempoolAdopted.line("tx" -> id.hex.asJson)
     case MempoolEvent.Removed(id) => EventKind.MempoolRemoved.line("tx" -> id.hex.asJson)
     case MempoolEvent.Dropped(id, reason, cause) =>

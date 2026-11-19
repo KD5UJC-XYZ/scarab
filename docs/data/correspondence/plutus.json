@@ -565,6 +565,17 @@
     "val plutus.Weight.unbounded",
     "val plutus.Weight.zero"
    ]
+  },
+  {
+   "reason": "Scarab's means of ending an evaluation its caller has cancelled, the mempool's hard time limit: the reference's mempool ends the evaluation with GHC's asynchronous exception (`timeout`, ouroboros-consensus `Mempool/Update.hs` 239-245 at 82ecba32, 240-246 at 808e4005), which the JVM cannot deliver to a running computation, so the machine asks a stop each time it spends its counted steps, and one that never answers is the reference's machine; plutus has no counterpart",
+   "definitions": [
+    "trait uplc.cek.Stop",
+    "def uplc.cek.Stop#apply",
+    "object uplc.cek.Stop",
+    "val uplc.cek.Stop.never",
+    "def uplc.cek.CekMachine.runUntil",
+    "val plutus.ScarabEvaluator.interruptible"
+   ]
   }
  ]
 }

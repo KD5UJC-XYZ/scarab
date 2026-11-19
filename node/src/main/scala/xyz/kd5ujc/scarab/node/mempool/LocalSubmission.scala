@@ -19,11 +19,12 @@ import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 object LocalSubmission:
   /** What has no rejection bytes to send: a transaction its decoder refuses (the reference's codec
     * ends the connection), an implementation limit, a crypto provider that failed on a witness, a
-    * decoder or the rules that threw on the transaction, or a refusal this build has no encoding
-    * for.
+    * decoder or the rules that threw on the transaction, a validation the hard time limit cut off
+    * in an era with no error for it, or a refusal this build has no encoding for.
     */
   type NoReply = Rejection.Malformed | LedgerFailure.Unavailable | LedgerFailure.Unverifiable |
-    Rejection.InputDefect | Rejection.RulesDefect | RefusalPresentationError | NoEncoding
+    Rejection.InputDefect | Rejection.RulesDefect | Rejection.TimedOut | RefusalPresentationError |
+    NoEncoding
 
   /** A refusal by the rules of `era` that this build cannot write: one of `failures` has no
     * encoding in that era's ledger ([[PreConwayFailureCbor]]). There is no free-text failure before
@@ -40,6 +41,7 @@ object LocalSubmission:
       case f: LedgerFailure.Unverifiable => f.message
       case d: Rejection.InputDefect      => d.message
       case d: Rejection.RulesDefect      => d.message
+      case d: Rejection.TimedOut         => d.message
       case d: RefusalPresentationError   => d.message
       case d: NoEncoding                 => d.message
 
@@ -132,6 +134,10 @@ object LocalSubmission:
       case Rejection.Ledger(error: LedgerFailure.Unverifiable) => Left(error)
       case defect: Rejection.InputDefect                       => Left(defect)
       case defect: Rejection.RulesDefect                       => Left(defect)
+      case cutOff: Rejection.TimedOut                          => Left(cutOff)
+      // Conway's `ConwayMempoolFailure` with the reference's text (`Mempool/Update.hs` 278-283)
+      case Rejection.TooSlow(id, submitted, took) =>
+        text(MempoolProblem.TooSlow(took, submitted, id))
       case Rejection.WrongEra(transaction, ledger) =>
         Right(
           PredicateFailureCbor.eraMismatch(
@@ -206,6 +212,10 @@ object LocalSubmission:
         // the rules threw on the transaction: no reply, the client's connection is closed and the
         // node goes on (issue 564)
         case Rejection.RulesDefect(cause) => LocalTxSubmissionServer.Response.ServingDefect(cause)
+        // the hard time limit cut the validation off where the era has no error for it: no reply,
+        // the client's connection ends, as `ExnMempoolTimeout` ends the reference's
+        // (`Mempool/Update.hs` 285-291)
+        case Rejection.TimedOut(timeout) => LocalTxSubmissionServer.Response.Aborted(timeout)
       },
       LocalTxSubmissionServer.Response.Rejected(_)
     )

@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import scala.util.control.NonFatal
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{Program, ProtocolMajor}
-import xyz.kd5ujc.scarab.uplc.cek.CekError
+import xyz.kd5ujc.scarab.uplc.cek.{CekError, Stop}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 import xyz.kd5ujc.scarab.uplc.ledger.{
   EvaluationError,
@@ -77,6 +77,19 @@ object ScarabEvaluator:
   /** The script decoder of the shared interpreter: it reuses the programs its evaluations keep. */
   lazy val defaultDecoder: ScriptDecoder[Id] = shared
 
+  /** The shared interpreter, whose machine stops, with no verdict ([[Unavailability.Interrupted]]),
+    * once the thread it runs on is interrupted: the mempool's admission runs it under
+    * `Sync.interruptible`, whose cancellation by the hard time limit interrupts the thread. Until
+    * then its every step, charge and verdict are [[default]]'s.
+    */
+  lazy val interruptible: ScriptEvaluator[Id] = shared.evaluate(_, UntilInterrupted)
+
+  /** A stop once the thread is interrupted: the interrupt status is the interface through which
+    * `Sync.interruptible` cancels (FUN-2 (b)), read and left as it is.
+    */
+  private val UntilInterrupted: Stop[Unavailability] =
+    () => Option.when(Thread.currentThread().isInterrupted)(Unavailability.Interrupted)
+
   /** The same interpreter suspended in `F`. */
   def suspended[F[_]: Sync]: ScriptEvaluator[F] =
     val underlying = Interpreter()
@@ -110,19 +123,25 @@ object ScarabEvaluator:
     /** The scripts of the programs kept, the least recently used first. */
     private[plutus] def scripts: Vector[Bytes] = programs.snapshot.keys.map(_.script)
 
-    def evaluate(request: EvalRequest): EvalResult =
+    def evaluate(request: EvalRequest): EvalResult = evaluate(request, Stop.never)
+
+    def evaluate(request: EvalRequest, stop: Stop[Unavailability]): EvalResult =
       bounded(request.budget).fold(
         failure(_),
         budget =>
           guarded(reason => failure(EvalFailure.Unsupported(reason)))(
-            result(outcome(request, budget))
+            result(outcome(request, budget, stop))
           )
       )
 
     /** `deserialiseScript`, then `evaluateScriptRestricting` in the context of the request's cost
       * model: [[LedgerEval.evaluateSerialised]] with the program and the context memoised.
       */
-    private def outcome(request: EvalRequest, budget: ExBudget): LedgerOutcome =
+    private def outcome(
+        request: EvalRequest,
+        budget: ExBudget,
+        stop: Stop[Unavailability]
+    ): LedgerOutcome =
       admitted(request.language, request.protocolMajor, request.script) match
         case Left(refused: LedgerOutcome.Refused)        => refused
         case Left(unavailable: ScriptResult.Unavailable) => unavailable
@@ -136,7 +155,8 @@ object ScarabEvaluator:
               _,
               budget,
               program,
-              request.args
+              request.args,
+              stop
             )
           )
 

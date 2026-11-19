@@ -613,10 +613,10 @@ runs; the seeds. Raw run artifacts are not published.
   minimums the matrix gives in brackets), with at most 5% of attempts inconclusive. These numbers are this document's
   proposal.
 - **Q7. How are timing-dependent refusals handled?** The reference refuses a transaction that takes too long to
-  validate, with a text that holds the duration (R5); Scarab has no such timeout (#340), and the text cannot be
-  compared exactly. Recommendation: the campaign keeps generated work far below the limit, counts such a refusal as
-  `NoVerdict(timing)`, and leaves the difference itself to #340; whether the variable text is a category the owner
-  closes is the owner's, as [ADR 0001's
+  validate, with a text that holds the duration (R5); Scarab applies the same limits with the same text, whose
+  duration is each node's own measurement, so the text cannot be compared exactly. Recommendation: the campaign keeps
+  generated work far below the limit and counts such a refusal as `NoVerdict(timing)`; whether the variable text is a
+  category the owner closes is the owner's, as [ADR 0001's
   amendment](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity) says.
 - **Q8. How are eras before Conway compared live?** Recommendation: through path R, scoped until each era's offline
   admission adapter passes (§4), and path L reported incomplete before Conway; the campaign asks for no change to

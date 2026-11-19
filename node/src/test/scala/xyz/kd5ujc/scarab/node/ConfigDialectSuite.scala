@@ -261,7 +261,7 @@ class ConfigDialectSuite extends FunSuite:
     )
     assert(
       compileErrors(
-        """(f: ConfigFields[NodeConfig.TopLevelKey]) => f.value("MempoolTimeoutSoft")"""
+        """(f: ConfigFields[NodeConfig.TopLevelKey]) => f.value("TraceOptions")"""
       ).nonEmpty,
       "a key the parser does not declare is not readable"
     )

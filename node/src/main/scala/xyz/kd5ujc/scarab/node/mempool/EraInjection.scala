@@ -62,6 +62,26 @@ object EraInjection:
     case Reapply
     case Apply
 
+  /** Where the mempool refuses a submitted transaction that does not reach the ledger's era. */
+  enum Mismatch:
+    /** In its first measure, before any wait: `txMeasurePhase1` throws the mismatch
+      * (`HardFork/Combinator/Mempool.hs` 357-362, ouroboros-consensus 808e4005; 390 at 2416493b).
+      */
+    case InMeasure
+
+    /** By the rules, in the timed step: both measures are nothing (`Measure.zero`,
+      * `HardFork/Combinator/Mempool.hs` 371-376 and 416-421, ouroboros-consensus 82ecba32), so the
+      * transaction waits for room and for time as any other, and `applyTx` refuses it (501-506).
+      */
+    case InRules
+
+  object Mismatch:
+    /** The place of the selected build (REF-3). */
+    def of(build: ReferenceBuild): Mismatch = build match
+      case ReferenceBuild.Release11_1   => InRules
+      case ReferenceBuild.Release11_2   => InMeasure
+      case ReferenceBuild.LeiosB004fe0c => InMeasure
+
   /** The injection of the selected build (REF-3): 11.1 is cardano-node 11.1.3's; 11.2 is
     * cardano-node 11.2.1's, and the Leios build's is the same code (`InjectTxs.hs` is the same file
     * at ouroboros-consensus 808e4005 and 2416493b).

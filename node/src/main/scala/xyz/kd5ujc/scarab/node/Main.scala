@@ -1784,7 +1784,7 @@ object Main extends IOApp:
             MempoolEnv(
               globals,
               chain.state.geometry(genesis.geometry),
-              run.plutus.evaluator,
+              run.plutus.interruptible,
               run.plutus.decoder,
               clock = Some(clock)
             ): E
@@ -1812,12 +1812,13 @@ object Main extends IOApp:
       mempool <- Mempool.create[IO](
         mempoolLedger,
         resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(-1))(_.slot),
-        MempoolEnv(globals, geometry, run.plutus.evaluator, run.plutus.decoder),
+        MempoolEnv(globals, geometry, run.plutus.interruptible, run.plutus.decoder),
         options.mempoolBytes,
         Log.mempool[IO].alongside(measured.mempool),
         utxoStore = Some(store),
         environment = Some(mempoolEnvironment),
-        tipHash = resumed.lastOption.map(_.ref).orElse(anchor).map(_.hash)
+        tipHash = resumed.lastOption.map(_.ref).orElse(anchor).map(_.hash),
+        timeouts = Some(setup.config.settings.mempoolTimeouts)
       )
       _ <- collectors.add(Collectors.mempool(mempool))
       served = server.persistence[MirrorState]

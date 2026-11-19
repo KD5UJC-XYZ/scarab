@@ -104,6 +104,12 @@ enum Unavailability:
   /** A non-fatal exception thrown inside the evaluation: none of its parts signals failure so. */
   case Thrown(cause: Throwable)
 
+  /** The evaluation was stopped before its end, at its caller's request ([[LedgerEval]]'s `stop`):
+    * the mempool's hard time limit, where the reference kills the evaluation (`timeout`,
+    * ouroboros-consensus 82ecba32 `Mempool/Update.hs` 239-245), so that nothing is judged.
+    */
+  case Interrupted
+
 /** What the ledger's handling of one script gives: refused by `deserialiseScript`
   * ([[LedgerOutcome.Refused]]), or what the evaluation gives ([[ScriptResult]]).
   */

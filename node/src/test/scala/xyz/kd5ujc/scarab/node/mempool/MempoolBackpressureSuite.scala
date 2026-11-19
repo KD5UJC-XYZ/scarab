@@ -271,18 +271,22 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     }
   }
 
-  test("a duplicate is answered at once by a pool without room") {
+  test("a duplicate waits for room, as the reference's MEMPOOL rule that refuses it comes after") {
     val held = spend(1)._1
     for
       p <- probe(cost(held) + 1)
       _ <- p.mempool.add(held, Source.Local)
-      local <- p.mempool.add(held, Source.Local).timeout(failsafe)
-      remote <- p.mempool.add(held, Source.Remote).timeout(failsafe)
+      // it waits, cancelled whatever happens next; once the held one is gone it is no duplicate,
+      // and it is taken
+      taken <- p.mempool.add(held, Source.Local).background.use { duplicate =>
+        p.waiting(idOf(held)) *>
+          p.mempool.removeTxsEvenIfValid(Set(idOf(held))) *>
+          duplicate.flatMap(_.embedNever).timeout(failsafe)
+      }
       waits <- p.waitingIds
     yield
-      assertEquals(local, Left(Rejection.AlreadyHeld(idOf(held))))
-      assertEquals(remote, Left(Rejection.AlreadyHeld(idOf(held))))
-      assertEquals(waits, Vector.empty)
+      assertEquals(taken, Right(idOf(held)))
+      assertEquals(waits, Vector(Some(idOf(held))))
   }
 
   test("a transaction that cannot fit even an empty pool is refused at once") {

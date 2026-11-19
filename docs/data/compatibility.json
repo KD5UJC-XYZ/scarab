@@ -1729,6 +1729,7 @@
           "MempoolSuite",
           "MempoolMeasureSuite",
           "MempoolBackpressureSuite",
+          "MempoolTimeoutsSuite",
           "TxSubmission2Suite",
           "EraMempoolSuite",
           "MempoolInterventionSuite",

@@ -26,16 +26,19 @@ class PlutusBackendBlockProbeSuite
 
   private final class Probe:
     val decoded = AtomicInteger(0)
+    private val evaluator: ScriptEvaluator[cats.Id] = _ =>
+      EvalResult.Failure(
+        EvalFailure.Unsupported(BackendFailure.StackExhausted),
+        ExUnits.zero,
+        Vector.empty
+      )
     val backend: PlutusBackend = PlutusBackend(
-      _ =>
-        EvalResult.Failure(
-          EvalFailure.Unsupported(BackendFailure.StackExhausted),
-          ExUnits.zero,
-          Vector.empty
-        ),
+      evaluator,
       (_, _, _) =>
         decoded.incrementAndGet()
         Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
+      ,
+      evaluator
     )
 
   test("the block rules ask the backend they are given, and nothing else") {
