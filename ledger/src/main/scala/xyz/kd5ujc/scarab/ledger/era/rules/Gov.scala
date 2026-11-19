@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction as FlatGovAction,
   GovFailure,
   PredicateFailure,
+  Proposal,
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.*
@@ -92,12 +93,13 @@ object ConwayGov:
     * read.
     */
   def checkBootstrapProposal[E <: EraTag](pp: PParams[E], proposal: ProposalProcedure[E])(using
-      p: EraPParams[E]
+      p: EraPParams[E],
+      read: ProposalRead[E] =:= Proposal
   ): Test[PredicateFailure] =
     if ConwayEra.hardforkConwayBootstrapPhase(p.ppProtocolVersionL.get(pp)) then
       Test.failureUnless(
         isBootstrapAction(proposal.pProcGovAction),
-        govFailure(GovFailure.DisallowedProposalDuringBootstrap(proposal.read))
+        govFailure(GovFailure.DisallowedProposalDuringBootstrap(read(proposal.read)))
       )
     else Test.pass
 

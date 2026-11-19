@@ -43,6 +43,11 @@ sealed trait DRepRole extends KeyRole
 sealed trait ColdCommittee extends KeyRole
 sealed trait HotCommittee extends KeyRole
 
+/** The role of a Dijkstra guard's credential (`Guard`, `Keys/Internal.hs:82`, cardano-ledger
+  * 9df9f98c): a guard a body requires, a key or a script.
+  */
+sealed trait Guard extends KeyRole
+
 /** `Hash.Hash` orders as its bytes, unsigned and lexicographic (`Bytes.compareTo`). */
 private val hashOrder: Order[Bytes] = new SortOrder[Bytes]:
   def compare(a: Bytes, b: Bytes): Int = a.compareTo(b)

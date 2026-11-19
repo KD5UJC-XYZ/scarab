@@ -33,7 +33,8 @@ type TxOut[E <: EraTag] = E match
   * cardano-ledger f649f975).
   */
 type TxBody[L <: TxLevel, E <: EraTag] = E match
-  case Conway => AtTop[L, conway.ConwayTxBody]
+  case Conway   => AtTop[L, conway.ConwayTxBody]
+  case Dijkstra => dijkstra.DijkstraTxBody[L]
 
 /** The certificate of era `E` (`type TxCert era`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs:58`, cardano-ledger f649f975).
@@ -79,7 +80,8 @@ type PlutusScript[E <: EraTag] = E match
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:516`, cardano-ledger f649f975).
   */
 type TxWits[E <: EraTag] = E match
-  case Conway => conway.ConwayTxWits
+  case Conway   => conway.ConwayTxWits
+  case Dijkstra => dijkstra.DijkstraTxWits
 
 /** The Plutus purpose of era `E` in the form `F` (`type PlutusPurpose f era`,
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:172`, cardano-ledger f649f975).
@@ -99,13 +101,15 @@ type ScriptsNeeded[E <: EraTag] = E match
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:483`, cardano-ledger f649f975).
   */
 type TxAuxData[E <: EraTag] = E match
-  case Conway => conway.ConwayTxAuxData
+  case Conway   => conway.ConwayTxAuxData
+  case Dijkstra => dijkstra.DijkstraTxAuxData
 
 /** The transaction of era `E` at level `L` (`type Tx l era`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:167`, cardano-ledger f649f975).
   */
 type Tx[L <: TxLevel, E <: EraTag] = E match
-  case Conway => AtTop[L, conway.ConwayTx]
+  case Conway   => AtTop[L, conway.ConwayTx]
+  case Dijkstra => dijkstra.DijkstraTx[L]
 
 /** The transaction of era `E` at level `L` annotated with what the ledger state gives it (`type
   * StAnnTx (l :: TxLevel) era`, `Core.hs:180`, cardano-ledger f649f975): Conway's is Alonzo's, of a
@@ -116,7 +120,9 @@ type StAnnTx[L <: TxLevel, E <: EraTag] = E match
   case Conway => AtTop[L, AlonzoStAnnTx[Conway]]
 
 /** The cache annotated transactions share (`type StAnnTxCache era`, `Core.hs:183`, cardano-ledger
-  * f649f975): Conway's the runnable scripts by hash (`Conway/Tx.hs:69`).
+  * f649f975): Conway's the runnable scripts by hash (`Conway/Tx.hs:69`), and so is Dijkstra's
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:223`, cardano-ledger 9df9f98c).
   */
 type StAnnTxCache[E <: EraTag] = E match
-  case Conway => Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[Conway]]
+  case Conway   => Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[Conway]]
+  case Dijkstra => Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[Dijkstra]]

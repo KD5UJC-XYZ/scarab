@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{Metadatum, Unsigned}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.{BackendFailure, PlutusLanguage, ScriptDecodeFailure, ScriptDecoder}
 
 /** The metadata every era's auxiliary data has, and its validation (`EraTxAuxData`, cardano-ledger
@@ -162,3 +162,6 @@ object EraTxAuxData:
 
   given conway: AlonzoEraTxAuxData[Conway] =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxAuxData.instance
+
+  given dijkstra: AlonzoEraTxAuxData[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxAuxData.instance

@@ -4,11 +4,14 @@ package xyz.kd5ujc.scarab.ledger.era
 import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{LedgerDecodeError, RewardAccount, TxIn, Update}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.AccountBalanceInterval
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
   Credential,
+  Dijkstra,
   EraTag,
+  Guard,
   KeyHash,
   StakePool,
   Staking,
@@ -236,6 +239,39 @@ trait ConwayEraTxBody[E <: EraTag] extends BabbageEraTxBody[E]:
         ConwayEraPParams.ppGovActionDepositCompactL[E].get(pp).toBigInt
     )
 
+/** The fields of a body from Dijkstra (`DijkstraEraTxBody`,
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs:1581-1599`, cardano-ledger 9df9f98c).
+  */
+trait DijkstraEraTxBody[E <: EraTag] extends ConwayEraTxBody[E]:
+  /** `guardsTxBodyL`: the credentials whose guards the body requires, in the order read. */
+  def guards[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[Credential[Guard]]
+
+  /** `subTransactionsTxBodyL`, of a top-level body only: the sub-transactions by id, in the order
+    * read.
+    */
+  def subTransactions(body: TxBody[TxLevel.Top, E]): OMap[Bytes, Tx[TxLevel.Sub, E]]
+
+  /** `requiredTopLevelGuardsTxBodyL`: the guards the body requires to be among the top-level body's
+    * guards, each with its data or none. The reference reads them from the top-level body and from
+    * each sub-transaction's (`Rules/Utxow.hs:313-318`, cardano-ledger 9df9f98c).
+    */
+  def requiredTopLevelGuards[L <: TxLevel](body: TxBody[L, E])(using
+      Level[L]
+  ): Map[Credential[Guard], Option[Data]]
+
+  /** `directDepositsTxBodyL`: the coin deposited into each account. */
+  def directDeposits[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Map[RewardAccount, Coin]
+
+  /** `accountBalanceIntervalsTxBodyL`: the interval each account's balance must be in. */
+  def accountBalanceIntervals[L <: TxLevel](body: TxBody[L, E])(using
+      Level[L]
+  ): Map[RewardAccount, AccountBalanceInterval]
+
+  /** `startingAccountBalanceIntervalsTxBodyL`, of a top-level body only. */
+  def startingAccountBalanceIntervals(
+      body: TxBody[TxLevel.Top, E]
+  ): Map[RewardAccount, AccountBalanceInterval]
+
 /** Why bytes or a stored value are not a value of an era. */
 enum EraTxError:
   case Decode(cause: LedgerDecodeError)
@@ -259,10 +295,26 @@ enum EraTxError:
   /** The scripts of a witness set read again from its bytes are not the ones its decoder read. */
   case ScriptsReadAgain
 
+  /** A Dijkstra body read at another level than the one asked for, which the decoders never give.
+    */
+  case OtherLevel
+
+  /** The datums or redeemers of a witness set read again from its bytes (keys 4 and 5) are not the
+    * ones its decoder read.
+    */
+  case WitnessDataReadAgain
+
   /** A stored output whose kept fields (its reference script's hash and tree) are not what its
     * bytes read as: the store holds what no decoder wrote.
     */
   case StoredOutputDiffers
+
+  /** A Dijkstra pool registration, whose parameters hold the pool's voting key (`sppBlsKey`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:476-488`, cardano-ledger
+    * 9df9f98c): the era types' pool parameters do not hold that key yet (#85), so a body that
+    * registers a pool is not read into them. Not a verdict of the ledger on the certificate.
+    */
+  case PoolVotingKeyNotYetTyped
 
   /** The encoding a translation into the next era wrote is refused when read again at that era's
     * version, though the next era reads every value of the previous one: a defect of the encoder,
@@ -280,3 +332,6 @@ object EraTxBody:
     type Level[L <: TxLevel] = TopOnly[L]
   }) =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody.instance
+
+  given dijkstra: (DijkstraEraTxBody[Dijkstra] { type Level[L <: TxLevel] = BothLevels[L] }) =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxBody.instance
