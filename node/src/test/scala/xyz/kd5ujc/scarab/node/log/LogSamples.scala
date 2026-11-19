@@ -533,6 +533,11 @@ object LogSamples:
     ForgeEvent.Adopted(block, Some(12L)),
     ForgeEvent.Adopted(block, None),
     ForgeEvent.Lost(BigInt(4200), hash, "slot battle"),
+    ForgeEvent.NotKept(
+      BigInt(4200),
+      hash,
+      xyz.kd5ujc.scarab.node.Follower.Retention.Defect(new IllegalStateException("keeping fault"))
+    ),
     ForgeEvent.KesEvolved(BigInt(33), 2),
     ForgeEvent.KesReloaded(BigInt(4), BigInt(30), BigInt(62), BigInt(33)),
     ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging),
