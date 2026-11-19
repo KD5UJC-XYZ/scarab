@@ -28,7 +28,7 @@ the reference-only devnet evidence below does not satisfy that condition.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite`, `DijkstraNativeScriptEvalSuite` and `DijkstraHeaderRulesSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite`, `DijkstraNativeScriptEvalSuite`, `DijkstraHeaderRulesSuite` and `DijkstraHeaderGateSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
@@ -41,7 +41,7 @@ the reference-only devnet evidence below does not satisfy that condition.
   - its Conway blocks replay through the node's rules;
   - every Dijkstra header the reference adopted passes `Praos2.validate` against the translated chain-dependent state and the forecast view;
   - and the node's header rules accept them, each read from its ChainSync envelope, with the replayed Conway state as the anchor (`DijkstraHeaderRulesSuite`; a changed KES signature is refused as `InvalidKesSignatureOCERT`).
-- **The public Leios testnet:** from its ledger state at slot 2,168,639 (`fixtures/leios/state/testnet-2168639`), the node's header rules accept the eight headers that follow it (`fixtures/leios/testnet/headers-after-2168639.tsv`), the leader check on the stake of that state's 154 pools; a certificate flag set too soon after the announcement is refused as `LeiosCertTooYoung`, before the signatures (`DijkstraHeaderRulesSuite`). A local run on a copy of a reference node's database of that chain (2026-11-18, not published) accepted the 275 headers within the forecast range of its ledger snapshot at slot 2,570,380 and stopped at the range, and Praos2's tick and reupdate over the 6,500 headers from there to slot 2,721,550 gave the Praos2 state of the reference's snapshot at that slot, field for field.
+- **The public Leios testnet:** from its ledger state at slot 2,168,639 (`fixtures/leios/state/testnet-2168639`), the node's header rules accept the eight headers that follow it (`fixtures/leios/testnet/headers-after-2168639.tsv`), the leader check on the stake of that state's 154 pools; a certificate flag set too soon after the announcement is refused as `LeiosCertTooYoung`, before the signatures (`DijkstraHeaderRulesSuite`); the node's canonical header gate validates the same eight headers from that state (`DijkstraHeaderGateSuite`). A local run on a copy of a reference node's database of that chain (2026-11-18, not published) accepted the 275 headers within the forecast range of its ledger snapshot at slot 2,570,380 and stopped at the range, and Praos2's tick and reupdate over the 6,500 headers from there to slot 2,721,550 gave the Praos2 state of the reference's snapshot at that slot, field for field.
 
 ## Explicitly unchecked or unconfirmed
 

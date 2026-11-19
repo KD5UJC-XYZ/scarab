@@ -1941,7 +1941,8 @@
           "DijkstraNativeScriptEvalSuite",
           "DijkstraTxSuite",
           "DijkstraTxCertSuite",
-          "DijkstraHeaderRulesSuite"
+          "DijkstraHeaderRulesSuite",
+          "DijkstraHeaderGateSuite"
         ],
         "paths": [
           "fixtures/reference/dijkstra-genesis",

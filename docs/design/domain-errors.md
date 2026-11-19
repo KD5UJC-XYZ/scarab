@@ -86,7 +86,11 @@ that meets it, and Scarab does the same in each place:
   `SessionEnd.Failed`, the disposition is `Backoff`, and nothing is recorded as invalid. The
   reconnect delay is that of any lost connection (`OutboundPeers.Config.repromoteDelay` plus the
   governor's `coldReconnectFuzz`); the governor's usual bound on repeated transient failures
-  applies, as it does to any other.
+  applies, as it does to any other. `HeaderRules.Outcome.Undecided`, a defect of the node's own
+  state or configuration that leaves a header without a verdict and that the chain's advance does
+  not lift (`HeaderDefect`: a Dijkstra ledger view that cannot be made, a Praos2 parameter that
+  cannot hold), is raised the same way as `PeerError.HeaderUndecided`, `FailureClass.NotThePeers`:
+  the session ends and nothing is counted against the peer (#54).
 - **A transaction outside a block** (`MempoolState.add` over a local client's or a peer's
   submission). The reference evaluates `pureTryAddTx` in the submitting thread
   (`Mempool/Update.hs` 205 and 245) with no handler (`MiniProtocol/LocalTxSubmission/Server.hs`
