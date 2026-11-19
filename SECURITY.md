@@ -39,12 +39,28 @@ unsupported.
 
 ## Reporting
 
-Please report privately through GitHub: on the repository, **Security -> Report a vulnerability**
-(a private security advisory). Do not open a public issue for an exploitable problem. You will get
-an acknowledgement as soon as a maintainer reads it; this is a research project run by a small
-team, so there is no response-time guarantee. A divergence that does not endanger anyone (for
-example a rejected valid transaction found on a testnet) can be reported with the public "bug"
-issue template.
+While Scarab is pre-release, two kinds of problem are reported privately:
+
+- **A chain split.** Given the same blocks and the same rules, Scarab would judge a block differently
+  from the reference (accept one it refuses, or refuse one it accepts), or select a different chain. A
+  transaction's verdict counts when block validation depends on it, for example when Scarab would forge
+  or accept a block holding a transaction the reference refuses; a difference in mempool admission alone
+  does not.
+- **A critical or high exploit against running nodes.** Something that can be used, remotely or locally,
+  against nodes other people run, such as a remote crash, hang or memory exhaustion, or a way to obtain
+  their key material. This is the problem's severity, judged by its impact, not the work priority of the
+  issue that tracks it.
+
+Report these through GitHub: on the repository, **Security -> Report a vulnerability** (a private
+security advisory), and do not open a public issue for them.
+
+Every other problem, when neither condition above applies, is reported publicly with the issue templates
+("bug", or the audit form for a review finding) and fixed in public: lower-severity problems, and
+usually configuration, local files, node-to-client answers and differences from the reference that cannot
+split the chain. Describe the problem and the reference's behaviour.
+
+You will get an acknowledgement as soon as a maintainer reads a report; this is a research project run by
+a small team, so there is no response-time guarantee.
 
 ## Keys and secrets
 
