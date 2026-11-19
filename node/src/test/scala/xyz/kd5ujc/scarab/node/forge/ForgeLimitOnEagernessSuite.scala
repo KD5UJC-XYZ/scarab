@@ -3,12 +3,20 @@ package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.IO
 import cats.effect.testkit.TestControl
+import cats.mtl.Stateful
 import cats.syntax.all.*
+import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.Gsm
-import xyz.kd5ujc.scarab.node.GenesisGovernor
+import xyz.kd5ujc.scarab.node.{
+  BlockPool,
+  CandidateSelection,
+  GenesisGovernor,
+  RefStateful,
+  WorkerTesting
+}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** The forging loop of a node in Genesis mode: a block it forges past the Limit on Eagerness plus
@@ -92,4 +100,60 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
 
   test("CaughtUp, and Praos mode: every forged block is adopted, as before") {
     unlimited(Some(Gsm.Phase.CaughtUp)) *> unlimited(None)
+  }
+
+  /** With the node's selection worker running, as `Main` runs it: the blocks held back in
+    * PreSyncing are kept, and once the node is caught up the worker selects the one of them chain
+    * selection prefers, with the real block rules and without the forger offering it again. The
+    * forger's traces stay those of the submissions (`TraceDidntAdoptBlock`): the reference traces
+    * the later selection as the ChainDB's (`ChainSelReprocessLoEBlocks`, ouroboros-consensus
+    * 82ecba329 ChainSel.hs:358-413), not the forging loop's.
+    */
+  test("PreSyncing, then caught up: a held-back block is selected later; its trace is unchanged") {
+    TestControl
+      .executeEmbed(withHandle {
+        for
+          h <- harness(p, ledgerWith(p, 1))
+          governor <- h.follower.genesisView(noWindow).flatMap(GenesisGovernor.create[IO](_))
+          _ <- h.follower.installGenesis(governor, noWindow)
+          given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(h.ref)
+          pool <- WorkerTesting.pool(h.follower)
+          outcome <- WorkerTesting.selection(h.follower, pool).surround {
+            for
+              _ <- slots.toList.traverse_(s => h.forger.step(s))
+              forged <- forgedIn(h)
+              heldBack = forged.drop(k).map(_.hash).toSet
+              before <- h.chain
+              forest <- pool.processedSnapshot
+              kept = forest.values.toVector.collect {
+                case kept if kept.origin == BlockPool.Source.Forged => kept.delivered.header
+              }
+              _ <- governor.setPhase(Gsm.Phase.CaughtUp)
+              after <- h.ref.discrete
+                .find(_.tipRef.exists(tip => heldBack(tip.hash)))
+                .compile
+                .lastOrError
+                .timeoutTo(1.minute, IO(fail("no held-back block was selected")))
+              traces <- tracesIn(h)
+            yield (forged, traces, before, kept, after)
+          }
+        yield outcome
+      })
+      .map { (forged, traces, before, kept, after) =>
+        assert(forged.size > k + 1, s"more than ${k + 1} of 40 slots won, got ${forged.size}")
+        assertEquals(before.tipRef.map(_.hash), forged.lift(k - 1).map(_.hash), "held back")
+        assertEquals(kept.map(_.hash).toSet, forged.drop(k).map(_.hash).toSet, "and kept")
+        val selected = kept.filter(h => after.tipRef.exists(_.hash == h.hash))
+        assertEquals(selected.map(_.hash), after.tipRef.map(_.hash).toVector, "one of them")
+        assertEquals(
+          selected.flatMap(s => kept.filter(o => CandidateSelection.compareTips(s, o) > 0)),
+          Vector.empty,
+          "caught up, selection takes the held-back block it prefers to all the others"
+        )
+        // caught up, the chain is the first k blocks and the held-back block selection took
+        assertEquals(after.anchor.block.map(_.hash), forged.headOption.map(_.hash), "immutable")
+        assertEquals(after.blocks.dropRight(1).map(_._1.hash), forged.slice(1, k).map(_.hash))
+        assertEquals(adoptedIn(traces), forged.take(k).map(_.hash), "adopted at submission")
+        assertEquals(lostIn(traces), forged.drop(k).map(_.hash), "the rest DidntAdoptBlock")
+      }
   }

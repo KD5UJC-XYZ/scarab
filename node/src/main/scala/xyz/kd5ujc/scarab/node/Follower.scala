@@ -83,6 +83,9 @@ object SelectViews:
   * @param announced
   *   The tip a peer announced most recently, with the last ChainSync replies a session accepted
   *   ([[announce]]): the `peerTip` of the blocks adopted next (#924).
+  * @param keeping
+  *   Where a forged block the Limit on Eagerness holds back is kept for the selection worker to
+  *   consider again ([[adoptForged]]), installed with the worker ([[blockSelection]]).
   */
 final class Follower[F[_]: Async, S] private (
     rules: BlockRules[F, S],
@@ -99,7 +102,8 @@ final class Follower[F[_]: Async, S] private (
     genesis: Ref[F, Option[Follower.Genesis[F, S]]],
     selectionChanged: Ref[F, F[Unit]],
     invalidBlocks: Ref[F, Option[InvalidBlocks[F]]],
-    announced: Ref[F, Option[ChainSync.Tip]]
+    announced: Ref[F, Option[ChainSync.Tip]],
+    keeping: Ref[F, Option[Follower.Keeping[F]]]
 )(using
     chain: Stateful[F, VolatileChain[S]],
     assertions: Assertions[F]
@@ -219,7 +223,21 @@ final class Follower[F[_]: Async, S] private (
             case ChainSelection.Decision.Keep if phase == BlockSelection.Phase.Startup => F.unit
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
-    BlockSelection.resource(pool, work, fatal, application, originPredecessor)
+    // A forged block is prepared as a delivered one is, put in the received log first, and then
+    // joins the processed forest, in the forger's error scope. A forged block whose body does not
+    // match its header (a bug of ours) is not kept: no peer has it, and the rules would refuse it
+    // when selection reached it.
+    val before = summon[BlockSelection.Before[F]]
+    val forged = new Follower.Keeping[F]:
+      def keep(header: Header, raw: Bytes)(using caller: Raise[F, NodeError]): F[Unit] =
+        BlockPool.Delivered
+          .checked(header, raw)
+          .fold(
+            _ => F.unit,
+            block => before.prepare(header, raw)(using caller) *> pool.processForged(block).void
+          )
+    BlockSelection.resource(pool, work, fatal, application, originPredecessor) *>
+      Resource.make(keeping.set(Some(forged)))(_ => keeping.set(None))
 
   /** The Limit on Eagerness on `selected`: the LoE fragment of the GSM state (`setGetLoEFragment`,
     * Node/Genesis.hs:252-278, ouroboros-consensus 82ecba329; the same at 808e40054 and 2416493bf),
@@ -693,6 +711,15 @@ final class Follower[F[_]: Async, S] private (
     * battle) replaces it only on the VRF tie-break. A block selection does not take is `Lost`,
     * which the forger reports as `TraceDidntAdoptBlock` (NodeKernel.hs:769). A block the rules
     * refuse is `Invalid`. The chain is untouched unless the block is `Adopted`.
+    *
+    * A block the LoE holds back is kept in the processed forest of the selection worker
+    * ([[blockSelection]]), as the reference's ChainDB keeps it in its VolatileDB, where it put the
+    * block before chain selection (`VolatileDB.putBlock`, ChainSel.hs:450). When the LoE moves or
+    * the node is caught up ([[GenesisGovernor.selectionChanged]]), the worker selects again over
+    * the whole forest, this block included, as `ChainSelReprocessLoEBlocks` does (ChainSel.hs
+    * 358-413, which `gddWatcher` triggers, Genesis/Governor.hs:172-184; ChainSel.hs:363-418 at
+    * 808e40054). The block is adopted then if it is still valid, joins our chain and is preferred;
+    * the forger's trace of it stays the one of its submission.
     */
   def adoptForged(header: Header, raw: Bytes)(using
       handle: Handle[F, NodeError]
@@ -721,6 +748,8 @@ final class Follower[F[_]: Async, S] private (
               selected(limit).map(chosen => (chosen.base, l.depthTo(chosen.base))).toRight(lost)
             }
         result <- plan match
+          case Left(held @ Follower.AdoptionLoss.LimitOnEagerness(_)) =>
+            keeping.get.flatMap(_.traverse_(_.keep(header, raw))).as(Follower.Adoption.Lost(held))
           case Left(reason) => F.pure(Follower.Adoption.Lost(reason))
           case Right((at, depth)) =>
             for
@@ -871,6 +900,13 @@ object Follower:
         )
       }
 
+  /** Where a forged block the Limit on Eagerness holds back is kept ([[Follower.adoptForged]]): the
+    * processed forest of the selection worker, whose selections read it
+    * ([[Follower.blockSelection]]).
+    */
+  private[node] trait Keeping[F[_]]:
+    def keep(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
+
   /** What happened to a forged block offered to [[Follower.adoptForged]]. */
   enum AdoptionLoss:
     case DetachedPredecessor(tip: ChainSync.Point, predecessor: Option[Bytes])
@@ -878,7 +914,8 @@ object Follower:
 
     /** The Limit on Eagerness leaves none of the block to chain selection, which would take it
       * otherwise (`trimToLoE`, Storage/ChainDB/Impl/ChainSel.hs:823-845, ouroboros-consensus
-      * 82ecba329).
+      * 82ecba329). The block is kept, and selected later if it is still preferred once the LoE
+      * allows it.
       */
     case LimitOnEagerness(tip: ChainSync.Point)
     def message: String = this match
@@ -938,9 +975,20 @@ object Follower:
         Ref.of[F, Option[Genesis[F, S]]](None),
         Ref.of[F, F[Unit]](Async[F].unit),
         Ref.of[F, Option[InvalidBlocks[F]]](None),
-        Ref.of[F, Option[ChainSync.Tip]](None)
+        Ref.of[F, Option[ChainSync.Tip]](None),
+        Ref.of[F, Option[Keeping[F]]](None)
       ).mapN {
-        (views, lock, publishing, window, genesis, selectionChanged, invalidBlocks, announced) =>
+        (
+            views,
+            lock,
+            publishing,
+            window,
+            genesis,
+            selectionChanged,
+            invalidBlocks,
+            announced,
+            keeping
+        ) =>
           new Follower[F, S](
             rules,
             events,
@@ -956,7 +1004,8 @@ object Follower:
             genesis,
             selectionChanged,
             invalidBlocks,
-            announced
+            announced,
+            keeping
           )
       }
     }
