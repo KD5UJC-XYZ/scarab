@@ -128,7 +128,10 @@ trait LeiosStore[F[_]]:
     * transactions are written again. The store holds one closure, so it empties it: a hash evicted
     * again before its transactions are written again holds only those written again, where the
     * reference still holds them all in its immutable partition (an approved Deviation, #830,
-    * decided 2026-11-19T20:56:30Z).
+    * decided 2026-11-19T20:56:30Z). Its evicted points become immutable again, so that a later
+    * collection evicts them again and keeps the endorser block: until it does, the point scans and
+    * a completion list them with the points announced since, where the reference lists those alone
+    * (an approved Deviation, #830, decided 2026-11-19T21:51:57Z).
     */
   def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
       Raise[F, LeiosStoreError]
