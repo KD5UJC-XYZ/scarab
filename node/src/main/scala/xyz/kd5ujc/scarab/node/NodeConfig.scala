@@ -270,6 +270,9 @@ object NodeConfig:
       "SocketPath",
       "DatabasePath",
       "MempoolCapacityBytesOverride",
+      "MempoolTimeoutSoft",
+      "MempoolTimeoutHard",
+      "MempoolTimeoutCapacity",
       "TargetNumberOfRootPeers",
       "TargetNumberOfKnownPeers",
       "TargetNumberOfEstablishedPeers",
@@ -501,8 +504,9 @@ object NodeConfig:
     * configuration.
     */
   private def timeouts(k: Keys): Either[ConfigError, MempoolTimeouts] =
-    val names = Vector("MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity")
-    names.traverse(name => k.opt[DiffTime](name)(using diffTimeDecoder)).flatMap {
+    val names: Vector[TopLevelKey] =
+      Vector[TopLevelKey]("MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity")
+    names.traverse((name: TopLevelKey) => k.opt[DiffTime](name)(using diffTimeDecoder)).flatMap {
       case Vector(Some(soft), Some(hard), Some(capacity)) =>
         Right(MempoolTimeouts(soft, hard, capacity))
       case values if values.forall(_.isEmpty) => Right(MempoolTimeouts.default)
@@ -510,7 +514,7 @@ object NodeConfig:
         Left(
           ConfigError(
             ConfigProblem
-              .MempoolTimeouts(names.zip(values).collect { case (n, Some(_)) => n }.toSet)
+              .MempoolTimeouts(names.zip(values).collect { case (n, Some(_)) => n }.toSet[String])
           )
         )
     }
