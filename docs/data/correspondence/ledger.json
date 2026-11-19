@@ -44,7 +44,7 @@
     "DijkstraEpochReferenceSuite",
     "LeiosEpochReferenceSuite"
    ],
-   "digest": "7dce5efd504716cc"
+   "digest": "8d34ca2bd70a12af"
   },
   "def ledger.rules.ConwayEpoch.withFreshPulser": {
    "upstream": [
@@ -185,7 +185,7 @@
    "evidence": [
     "DijkstraEpochReferenceSuite"
    ],
-   "digest": "30577e30877e1ded"
+   "digest": "d77bcc16bec3b006"
   },
   "val ledger.rules.DijkstraPoolReap.release": {
    "upstream": [
