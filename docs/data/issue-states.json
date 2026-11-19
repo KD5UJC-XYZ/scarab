@@ -83,7 +83,7 @@
   "82": ["closed", "completed", false],
   "83": ["closed", "completed", false],
   "84": ["closed", "completed", false],
-  "85": ["closed", "completed", false],
+  "85": ["open", "reopened", false],
   "86": ["open", "", false],
   "87": ["open", "", false],
   "91": ["closed", "completed", false],
