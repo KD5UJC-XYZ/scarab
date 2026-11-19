@@ -398,20 +398,122 @@ class LeiosStoreSuite extends CatsEffectSuite:
 
   dirs.test("a first open interrupted before its store was published starts again") { dir =>
     val leios = dir / "leios"
+    val root = RocksLeiosStore.stagingRoot(leios.toNioPath)
     for
-      // what an interrupted first open leaves: a staging directory, nothing at `leios`
+      // what an interrupted first open leaves: its marked staging directory, nothing at `leios`;
+      // and a directory there that is not one, which stays
       _ <- IO.blocking {
-        val stage = RocksLeiosStore.staging(leios.toNioPath)
+        val stage = root.resolve("0b5e3c1a-0000-4000-8000-000000000001")
         java.nio.file.Files.createDirectories(stage)
+        java.nio.file.Files
+          .write(stage.resolve(RocksLeiosStore.StagingMarker), Array.emptyByteArray)
         java.nio.file.Files.write(stage.resolve("CURRENT"), "MANIFEST-000001\n".getBytes)
+        java.nio.file.Files.createDirectories(root.resolve("kept"))
       }
       points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
-      stageLeft <- IO.blocking(java.nio.file.Files.exists(RocksLeiosStore.staging(leios.toNioPath)))
+      left <- IO.blocking(listing(root))
       reopened <- store(leios).use(s => ok(s.scanEbPoints))
     yield
       assertEquals(points, Vector(point(1, 1)))
-      assert(!stageLeft, "the staging directory is gone")
+      assertEquals(left, Vector("kept"))
       assertEquals(reopened, points)
+  }
+
+  dirs.test("a first open leaves a database beside it alone") { dir =>
+    val leios = dir / "leios"
+    val beside = dir / "leios.init"
+    for
+      _ <- store(beside).use(s => ok(s.writeEbPoint(point(9, 9), word32(1))))
+      before <- IO.blocking(listing(beside.toNioPath))
+      _ <- store(leios).use_
+      after <- IO.blocking(listing(beside.toNioPath))
+      kept <- store(beside).use(s => ok(s.scanEbPoints))
+    yield
+      assertEquals(after, before)
+      assertEquals(kept, Vector(point(9, 9)))
+  }
+
+  dirs.test("of two concurrent first opens one publishes, and both find the store") { dir =>
+    val leios = dir / "leios"
+    for
+      both <- (
+        attempt(RocksLeiosStore.prepare[IO](leios)),
+        attempt(RocksLeiosStore.prepare[IO](leios))
+      ).parTupled
+      points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
+      staged <- IO.blocking(
+        java.nio.file.Files.exists(RocksLeiosStore.stagingRoot(leios.toNioPath))
+      )
+    yield
+      assertEquals(both, (Right(()), Right(())))
+      assertEquals(points, Vector(point(1, 1)))
+      assert(!staged, "no staging directory is left")
+  }
+
+  dirs.test("collection takes a hash whole, and decides each hash in the write that takes it") {
+    dir =>
+      val frontier = slot(100000)
+      val batch = RocksLeiosStore.GcBatch
+      // fillers 0 to batch - 2 at slots 0 to batch - 2; hash H is the batch's last hash, at slot
+      // batch - 1 and again past the batch's boundary; J and K come after the boundary
+      val fillers = (0 until batch - 1).toVector.map(i => EbPoint(slot(i.toLong), wide(i)))
+      val h = wide(100000)
+      val j = wide(100001)
+      val k = wide(100002)
+      store(dir / "leios").use { s =>
+        ok(for
+          _ <- fillers.traverse_(p => s.writeEbPoint(p, word32(1)))
+          _ <- Vector(
+            EbPoint(slot(batch.toLong - 1), h),
+            EbPoint(slot(batch.toLong + 100), h),
+            EbPoint(slot(batch.toLong + 50), j),
+            EbPoint(slot(batch.toLong + 60), k)
+          ).traverse_(p => s.writeEbPoint(p, word32(1)))
+          cursor <- s.collectBatch(frontier, None)
+          afterFirst <- s.scanEbPoints
+          // between the writes: J is announced at the frontier, K is promoted
+          _ <- s.writeEbPoint(EbPoint(frontier, j), word32(1))
+          _ <- s.promoteToImmutable(Vector(EbPoint(slot(batch.toLong + 60), k)))
+          _ <- cursor.fold(IO.unit)(c => s.collectBatch(frontier, Some(c)).void)
+          last <- s.scanEbPoints
+        yield
+          // H went whole in the first write, its point past the boundary with it
+          assertEquals(afterFirst.filter(_.hash == h), Vector.empty)
+          assertEquals(
+            afterFirst.map(_.hash).toSet,
+            Set(j, k)
+          )
+          assertEquals(
+            last,
+            Vector(
+              EbPoint(slot(batch.toLong + 50), j),
+              EbPoint(slot(batch.toLong + 60), k),
+              EbPoint(frontier, j)
+            )
+          ))
+      }
+  }
+
+  dirs.test("an export reads the store at one moment, whatever a collection does meanwhile") {
+    dir =>
+      store(dir / "leios").use { s =>
+        ok(for
+          _ <- s.writeEbPoint(point(1, 1), word32(1))
+          _ <- s.writeEbBody(point(1, 1), body(1), Vector.empty)
+          _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
+          read <- s.exporting { (hashes, stored) =>
+            s.garbageCollect(slot(10)) *> hashes.traverse(stored)
+          }
+          now <- s.scanEbPoints
+        yield
+          assertEquals(read.map(_.points.map(_._1)), Vector(Vector(slot(1))))
+          assertEquals(read.map(_.txs.values.toVector), Vector(Vector(tx(0))))
+          assertEquals(now, Vector.empty))
+      }
+  }
+
+  test("a body has no product mirror, whose fromProduct would skip the check of its hashes") {
+    assert(compileErrors("summon[scala.deriving.Mirror.ProductOf[LeiosEb]]").nonEmpty)
   }
 
   dirs.test(
@@ -490,6 +592,18 @@ object LeiosStoreSuite:
       handles.asScala.foreach(_.close())
       db.close()
     }
+
+  /** Hash `i` of many: distinct for every `i` below 2^31. */
+  def wide(i: Int): EbHash =
+    EbHash.fromBytes(
+      Bytes(Vector.fill(28)(7.toByte) ++ Vector.tabulate(4)(b => (i >>> (8 * (3 - b))).toByte))
+    )
+
+  /** The names in `dir`, sorted. */
+  def listing(dir: java.nio.file.Path): Vector[String] =
+    scala.util.Using.resource(java.nio.file.Files.list(dir))(
+      _.iterator.asScala.map(_.getFileName.toString).toVector.sorted
+    )
 
   /** Remove the store's format record, as a store stamped by nothing would lack it. */
   def deleteFormat(dir: Path): Unit =

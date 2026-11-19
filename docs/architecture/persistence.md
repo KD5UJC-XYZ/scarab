@@ -195,9 +195,11 @@ nothing migrates it. Its column families:
 | `txs` | hash, transaction offset (u32 big-endian) | the transaction's bytes |
 | `complete` | hash | empty: present once every transaction the body lists is stored |
 
-A new store is made in a staging directory beside `leios/`, its format record synced, and published
-by an atomic rename, so a first open interrupted before the rename leaves nothing at `leios/` and the
-next one starts again. Writes are serialised, as the reference's one write queue serialises them, and
+A new store is made in a staging directory of its own (`leios.staging/<random UUID>/`, marked as
+one), its format record synced, and published by an atomic rename, which refuses a directory that is
+not empty: a first open interrupted before the rename leaves nothing at `leios/`, and of two first
+opens one publishes and the other opens its store. Only marked staging directories are removed, once
+the store is published. Writes are serialised, as the reference's one write queue serialises them, and
 each is one RocksDB batch with the write-ahead log on: the store has no checkpoint to be rebuilt from.
 A read sees the store at one moment, through a RocksDB snapshot, as the reference reads inside one
 SQLite transaction. Each write returns
@@ -207,9 +209,9 @@ and stores a body once, with the local fills whose source holds a transaction of
 zero-led, or repeated in the write. `promoteToImmutable` makes every point of the hash certified, or
 immutable once a transaction of it is stored (the reference's pin and copy); `garbageCollect(slot)`
 removes the volatile points older than the slot unless a point of the same hash is certified or at
-or after it, then the bodies and transactions no point names, in batches of at most 256 volatile
-points, which the store keeps apart in memory, so a collection costs nothing for the immutable
-points. `scanCompleteEbClosuresNotOlderThanSlot`
+or after it, then the bodies and transactions no point names: in writes of at most 256 hashes, each
+hash decided and collected whole in the write that takes it, from the volatile points the store
+keeps apart in memory, so a collection costs nothing for the immutable points. `scanCompleteEbClosuresNotOlderThanSlot`
 lists the complete points at or after a slot, whatever their status: from a slot at or after the
 last collection's, which the reference's one caller asks for, that is what the reference lists from
 its volatile file; from an earlier one the reference no longer lists the points of a hash its

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.effect.{Async, Ref, Resource}
-import cats.effect.std.{Mutex, Semaphore}
+import cats.effect.std.{Mutex, SecureRandom, Semaphore, UUIDGen}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -84,6 +84,7 @@ final class RocksLeiosStore[F[_]] private (
 )(using F: Async[F])
     extends LeiosStore[F]:
   import RocksLeiosStore.*
+  import RocksLeiosStore.given
 
   private val writeOptions = new WriteOptions()
 
@@ -341,47 +342,69 @@ final class RocksLeiosStore[F[_]] private (
       yield result
     }
 
-  /** Collection, in writes of at most [[GcBatch]] volatile points each, as the reference's sweeper
-    * evicts a batch at a time between the writer's jobs (`sweepEbBatch`,
-    * `Impl/SQLite/Maintenance.hs:305-325` at 2416493b). Only the volatile points older than `slot`
-    * are visited, from the points held in memory (the reference's `idx_ebs_sweepable`), so a
-    * collection that removes nothing costs no more however many immutable points the store holds;
-    * whether a hash's points are vetoed is decided again in each write.
+  /** Collection, in writes of at most [[GcBatch]] hashes each, as the reference's sweeper evicts a
+    * batch of hashes at a time between the writer's jobs (`sweepEbBatch`,
+    * `Impl/SQLite/Maintenance.hs:305-325` at 2416493b). A hash is decided once in the write that
+    * takes it, from its points then: unless one is certified or at or after `slot`
+    * (`sql_gc_markable`, `Impl/SQLite/Queries.hs:193-200` at 2416493b), all its volatile points go
+    * in that write, and its body and transactions with them if no point is left, so no hash is ever
+    * left half collected. Only the volatile points older than `slot` are visited, from the points
+    * held in memory (the reference's `idx_ebs_sweepable`), so a collection that removes nothing
+    * costs no more however many immutable points the store holds.
     */
   def garbageCollect(slot: Word64)(using Raise[F, LeiosStoreError]): F[Unit] =
-    val frontier = slot.toBigInt
     def after(cursor: Option[(Word64, EbHash)]): F[Unit] =
-      writing { p =>
-        val pending =
-          cursor.fold(p.volatile.iterator)(c => p.volatile.iteratorFrom(c).filter(_ != c))
-        val batch = pending.takeWhile(_._1.toBigInt < frontier).take(GcBatch).toVector
-        batch
-          .foldLeftM((Vector.empty[Op], p)) { case ((ops, q), (s, hash)) =>
-            val key = hash.bytes.toArray
-            pointsOf(q, hash, key).map { rows =>
-              // `sql_gc_markable`, `Impl/SQLite/Queries.hs:193-200` at 2416493b
-              val vetoed = rows.exists(r => r._4 == EbStatus.Certified || r._1.toBigInt >= frontier)
-              val volatile = rows.exists(r => r._1 == s && r._4 == EbStatus.Volatile)
-              if vetoed || !volatile then (ops, q)
-              else
-                val next = q.removed(hash, s)
-                val swept =
-                  if next.slotsOf(hash).nonEmpty then Vector.empty
-                  else
-                    Vector(
-                      Op.Delete(Family.Bodies, key),
-                      Op.Delete(Family.Complete, key),
-                      Op.DeleteRange(Family.Txs, txKey(key, 0), txRangeEnd(key))
-                    )
-                ((ops :+ Op.Delete(Family.Points, pointKey(slotBits(s), key))) ++ swept, next)
-            }
-          }
-          .map { (ops, next) =>
-            commit(ops)
-            (batch.lastOption, next)
-          }
-      }.flatMap(_.fold(F.unit)(last => after(Some(last))))
+      collectBatch(slot, cursor).flatMap(_.fold(F.unit)(last => after(Some(last))))
     after(None)
+
+  /** One write of a collection: the hashes of the next [[GcBatch]] volatile points older than
+    * `slot` after `cursor`, and the last of those points, from which the next write goes on; none
+    * when there was none.
+    */
+  private[storage] def collectBatch(slot: Word64, cursor: Option[(Word64, EbHash)])(using
+      Raise[F, LeiosStoreError]
+  ): F[Option[(Word64, EbHash)]] =
+    val frontier = slot.toBigInt
+    writing { p =>
+      val pending = cursor
+        .fold(p.volatile.iterator)(c => p.volatile.iteratorFrom(c).filter(_ != c))
+        .takeWhile(_._1.toBigInt < frontier)
+        .to(LazyList)
+      @tailrec def gather(
+          rest: LazyList[(Word64, EbHash)],
+          hashes: Vector[EbHash],
+          last: Option[(Word64, EbHash)]
+      ): (Vector[EbHash], Option[(Word64, EbHash)]) =
+        rest match
+          case (point @ (_, hash)) #:: more =>
+            if hashes.contains(hash) then gather(more, hashes, Some(point))
+            else if hashes.sizeIs >= GcBatch then (hashes, last)
+            else gather(more, hashes :+ hash, Some(point))
+          case _ => (hashes, last)
+      val (hashes, last) = gather(pending, Vector.empty, None)
+      hashes
+        .foldLeftM((Vector.empty[Op], p)) { case ((ops, q), hash) =>
+          val key = hash.bytes.toArray
+          pointsOf(q, hash, key).map { rows =>
+            val vetoed = rows.exists(r => r._4 == EbStatus.Certified || r._1.toBigInt >= frontier)
+            val gone = if vetoed then Vector.empty else rows.filter(_._4 == EbStatus.Volatile)
+            val next = gone.foldLeft(q)((acc, r) => acc.removed(hash, r._1))
+            val swept =
+              if gone.isEmpty || next.slotsOf(hash).nonEmpty then Vector.empty
+              else
+                Vector(
+                  Op.Delete(Family.Bodies, key),
+                  Op.Delete(Family.Complete, key),
+                  Op.DeleteRange(Family.Txs, txKey(key, 0), txRangeEnd(key))
+                )
+            ((ops ++ gone.map(r => Op.Delete(Family.Points, r._2))) ++ swept, next)
+          }
+        }
+        .map { (ops, next) =>
+          commit(ops)
+          (last, next)
+        }
+    }
 
   def promoteToImmutable(points: Vector[EbPoint])(using Raise[F, LeiosStoreError]): F[Unit] =
     writing { p =>
@@ -531,32 +554,61 @@ final class RocksLeiosStore[F[_]] private (
         ((), p)
     }
 
-  /** Every hash the store holds a point or a body of, in byte order. */
-  private[storage] def hashes(using Raise[F, LeiosStoreError]): F[Vector[EbHash]] =
-    state.get.flatMap { p =>
-      reading(fold(families.bodies, Array.emptyByteArray, _ => true, p.slots.keySet.map(_.bytes)) {
-        (acc, k, _) => Right(acc + Bytes.wrap(k))
-      }).map(
-        _.toVector
-          .sorted(using Ordering.fromLessThan[Bytes](_.compareTo(_) < 0))
-          .map(EbHash.fromBytes)
-      )
-    }
-
-  /** What the store holds of `hash`. */
-  private[storage] def stored(hash: EbHash)(using Raise[F, LeiosStoreError]): F[StoredEb] =
-    state.get.flatMap { p =>
-      reading(hashKey(hash).flatMap { key =>
-        (pointsOf(p, hash, key), transactions(key)).mapN { (points, held) =>
-          StoredEb(
-            hash,
-            points.map((slot, _, size, status) => (slot, size, status)),
-            get(families.bodies, key).map(Bytes.wrap),
-            held,
-            has(families.complete, key)
+  /** `use` with every hash the store holds a point or a body of, in byte order, and what it holds
+    * of each: all read from one view, so that what is enumerated and what is read are the store at
+    * one moment, whatever a collection does meanwhile.
+    */
+  private[storage] def exporting[A](use: (Vector[EbHash], EbHash => F[StoredEb]) => F[A])(using
+      Raise[F, LeiosStoreError]
+  ): F[A] =
+    viewing { v =>
+      in(v)(pointsByHash).flatMap { points =>
+        in(v)(fold(families.bodies, Array.emptyByteArray, _ => true, points.keySet) { (acc, k, _) =>
+          Right(acc + EbHash.fromBytes(Bytes.wrap(k)))
+        }).flatMap { hashes =>
+          use(
+            hashes.toVector.sorted,
+            hash => in(v)(storedIn(hash, points.getOrElse(hash, Vector.empty)))
           )
         }
-      })
+      }
+    }
+
+  /** What the store holds of `hash`, read from one view. */
+  private[storage] def stored(hash: EbHash)(using Raise[F, LeiosStoreError]): F[StoredEb] =
+    exporting((_, read) => read(hash))
+
+  /** Every point, by hash, with its announced size and status. */
+  private def pointsByHash(using
+      ReadOptions
+  ): Either[LeiosStoreError, Map[EbHash, Vector[(Word64, Long, EbStatus)]]] =
+    fold(
+      families.points,
+      Array.emptyByteArray,
+      _ => true,
+      Map.empty[EbHash, Vector[(Word64, Long, EbStatus)]]
+    ) { (acc, k, v) =>
+      (pointKeyed(k), pointRecord(k, v)).mapN { (point, record) =>
+        acc.updated(
+          point.hash,
+          acc.getOrElse(point.hash, Vector.empty) :+ (point.slot, record._1, record._2)
+        )
+      }
+    }
+
+  private def storedIn(hash: EbHash, points: Vector[(Word64, Long, EbStatus)])(using
+      ReadOptions
+  ): Either[LeiosStoreError, StoredEb] =
+    hashKey(hash).flatMap { key =>
+      transactions(key).map(held =>
+        StoredEb(
+          hash,
+          points,
+          get(families.bodies, key).map(Bytes.wrap),
+          held,
+          has(families.complete, key)
+        )
+      )
     }
 
   private def closeOptions(): Unit =
@@ -733,19 +785,21 @@ object RocksLeiosStore:
     val db = RocksDB.open(natives.db, dir.toString, descriptors.asJava, handles)
     new Opened(db, new Families(handles.asScala.toVector))
 
-  /** Where a new store is made before it is published at `dir`. */
-  private[storage] def staging(dir: java.nio.file.Path): java.nio.file.Path =
-    dir.resolveSibling(s"${dir.getFileName}.init")
+  /** Where the first opens of `dir` stage a new store, each in a directory of its own. */
+  private[storage] def stagingRoot(dir: java.nio.file.Path): java.nio.file.Path =
+    dir.resolveSibling(s"${dir.getFileName}.staging")
 
-  /** Make a new store at `dir`, which is absent or an empty directory: its families and format
-    * record are written and synced in [[staging]], which is then renamed to `dir` atomically, and
-    * the rename synced. A first open interrupted before the rename leaves only the staging
-    * directory, which the next first open discards; one interrupted after it leaves the store.
+  /** The file a staging directory of this store holds, written before anything else in it: only a
+    * directory that holds it is ever removed as a leftover of a first open.
     */
-  private def initialise(dir: java.nio.file.Path): Unit =
-    val stage = staging(dir)
-    RocksUtxoStore.deleteTree(stage)
-    Files.createDirectories(stage)
+  private[storage] val StagingMarker: String = ".scarab-leios-staging"
+
+  /** Make the families and the synced format record of a new store in `stage`, marked as staging.
+    */
+  private def build(stage: java.nio.file.Path): Unit =
+    Files.createDirectories(stage.getParent)
+    Files.createDirectory(stage)
+    Files.write(stage.resolve(StagingMarker), Array.emptyByteArray)
     Using.resource(new Natives(create = true)) { natives =>
       Using.resource(openAt(stage, natives)) { opened =>
         Using.resource(new WriteOptions().setSync(true))(sync =>
@@ -753,11 +807,86 @@ object RocksLeiosStore:
         )
       }
     }
+
+  /** Publish `stage` as `dir`, which is absent or an empty directory: an atomic rename, synced. A
+    * rename refuses a directory that is not empty, so of two first opens only one publishes.
+    */
+  private def publish(stage: java.nio.file.Path, dir: java.nio.file.Path): Unit =
     if Files.isDirectory(dir) then Files.delete(dir)
     Files.move(stage, dir, StandardCopyOption.ATOMIC_MOVE)
+    Files.delete(dir.resolve(StagingMarker))
     Using.resource(FileChannel.open(dir.toAbsolutePath.getParent, StandardOpenOption.READ))(
       _.force(true)
     )
+
+  /** Remove the staging directories of `dir` that first opens left, those that hold the marker.
+    * Called once `dir` holds a store: no staging directory can be published any more, and a first
+    * open still making one finds its staging gone and opens the published store.
+    */
+  private def discardStaging(dir: java.nio.file.Path): Unit =
+    val root = stagingRoot(dir)
+    if Files.isDirectory(root) then
+      Using
+        .resource(Files.list(root))(
+          _.iterator.asScala
+            .filter(p => Files.isDirectory(p) && Files.isRegularFile(p.resolve(StagingMarker)))
+            .toVector
+        )
+        .foreach(RocksUtxoStore.deleteTree)
+      if Using.resource(Files.list(root))(_.findAny().isEmpty) then Files.delete(root)
+
+  /** Make `dir` hold a store, or check that it holds one of this build's families. A new store is
+    * made in a staging directory of its own (`<dir>.staging/<random UUID>`), marked, its families
+    * and format record written and synced, then published by an atomic rename ([[publish]]). A
+    * first open interrupted before the rename leaves only its staging directory, which a later open
+    * removes; a first open that loses the rename to another opens the other's store. A directory
+    * that holds anything but a store is refused.
+    */
+  private[storage] def prepare[F[_]: Async](dir: Path)(using Raise[F, LeiosStoreError]): F[Unit] =
+    val F = Async[F]
+    val nio = dir.toNioPath
+    def fail[A](e: LeiosStoreError): F[A] = e.raise[F, A]
+    def io[A](body: => A): F[A] =
+      F.blocking(body).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
+    val published: F[Boolean] = io(Files.exists(nio.resolve("CURRENT")))
+    val made: F[Unit] =
+      published.flatMap {
+        case true =>
+          io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
+            .map(_.asScala.toVector.map(Bytes.wrap))
+            .flatMap(found =>
+              F.unlessA(found.toSet == FamilyNames.toSet)(
+                fail(LeiosStoreError.ForeignDatabase(found))
+              )
+            )
+        case false =>
+          io(Files.isDirectory(nio) && Using.resource(Files.list(nio))(_.findAny().isPresent))
+            .flatMap {
+              case true => fail(LeiosStoreError.ForeignDatabase(Vector.empty))
+              case false =>
+                SecureRandom
+                  .javaSecuritySecureRandom[F]
+                  .flatMap { random =>
+                    UUIDGen.fromSecureRandom[F](using F, random).randomUUID
+                  }
+                  .flatMap { id =>
+                    val stage = stagingRoot(nio).resolve(id.toString)
+                    F.blocking {
+                      build(stage)
+                      publish(stage, nio)
+                    }.attempt
+                      .flatMap {
+                        case Right(_) => F.unit
+                        case Left(e) =>
+                          published.flatMap {
+                            case true  => io(RocksUtxoStore.deleteTree(stage))
+                            case false => fail[Unit](LeiosStoreError.Io(e))
+                          }
+                      }
+                  }
+            }
+      }
+    made *> io(discardStaging(nio))
 
   // Permits of `gate`: one for each call, all of them for the release.
   private val Permits = 1L << 40
@@ -775,25 +904,8 @@ object RocksLeiosStore:
     def io[A](body: => A): F[A] =
       F.blocking(body).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
 
-    val prepared: F[Unit] = io(Files.exists(nio.resolve("CURRENT"))).flatMap {
-      case true =>
-        io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
-          .map(_.asScala.toVector.map(Bytes.wrap))
-          .flatMap(found =>
-            F.unlessA(found.toSet == FamilyNames.toSet)(
-              fail(LeiosStoreError.ForeignDatabase(found))
-            )
-          )
-      case false =>
-        io(Files.isDirectory(nio) && Using.resource(Files.list(nio))(_.findAny().isPresent))
-          .flatMap {
-            case true  => fail(LeiosStoreError.ForeignDatabase(Vector.empty))
-            case false => io(initialise(nio))
-          }
-    }
-
     for
-      _ <- Resource.eval(prepared)
+      _ <- Resource.eval(prepare[F](dir))
       natives <- Resource.make(F.delay(new Natives(create = false)))(n => F.blocking(n.close()))
       opened <- Resource.make(io(openAt(nio, natives)))(o => F.blocking(o.close()))
       db = opened.db

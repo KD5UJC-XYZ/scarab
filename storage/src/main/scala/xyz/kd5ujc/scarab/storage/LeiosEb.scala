@@ -14,10 +14,19 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
   * EB body`, `Storage/LeiosDB/Impl/SQLite/Insert.hs:129-130`), and its wire decoder refuses one
   * too. Every hash is 32 bytes, as the reference's `TxHash` (`PackedBytes 32`) is: a body is made
   * by [[LeiosEb.from]] or [[LeiosEb.decode]], which refuse another length, so that what is stored
-  * reads back.
+  * reads back. It is not a case class: a case class's product mirror (`fromProduct`) would make one
+  * without either.
   */
-final case class LeiosEb private (transactions: NonEmptyVector[(LeiosTxHash, Word32)]):
+final class LeiosEb private (val transactions: NonEmptyVector[(LeiosTxHash, Word32)]):
   def size: Int = transactions.length
+
+  override def equals(that: Any): Boolean = that match
+    case other: LeiosEb => transactions == other.transactions
+    case _              => false
+
+  override def hashCode: Int = transactions.hashCode
+
+  override def toString: String = s"LeiosEb(${transactions.toVector.mkString(", ")})"
 
   /** The declared size of the transaction at `offset`, if the body lists one there. */
   def declared(offset: Int): Option[Long] = transactions.get(offset).map(_._2.toLong)
