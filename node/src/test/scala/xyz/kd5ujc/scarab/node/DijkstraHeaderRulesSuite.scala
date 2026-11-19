@@ -4,13 +4,37 @@ package xyz.kd5ujc.scarab.node
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, PraosConfig}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, DijkstraCrossing, Praos2, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome, TimeForecast}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorState}
-import xyz.kd5ujc.scarab.ledger.{Block, EnvelopeError, Header, HeaderError, OCertError, Praos2Error}
-import xyz.kd5ujc.scarab.ledger.state.{SlotNo, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  CrossingForecastFailure,
+  EnvelopeError,
+  Header,
+  HeaderDefect,
+  HeaderError,
+  LeiosHeader,
+  OCertError,
+  Praos2Defect,
+  Praos2Error,
+  Verdicts
+}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
+import xyz.kd5ujc.scarab.ledger.state.{
+  BlockNo,
+  Conway,
+  Dijkstra,
+  NewEpochState,
+  ShelleyBasedEra,
+  SlotNo,
+  Word64,
+  WithOrigin
+}
+import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{Era, HfcHeader, NtNHeader, ReferenceBuild, StateLayout}
+import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
 /** The node's header rules ([[NodeHeaderRules]], which the header gate runs on every peer's
@@ -196,6 +220,131 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     )
   }
 
+  /** The devnet's configuration with Conway entered at epoch 1, as Dijkstra is: its genesis state
+    * is Babbage's, and the end of Babbage at epoch 1 is also Conway's.
+    */
+  private def withBabbageStart[A](body: NodeSetup => A): A =
+    val dir = Files.createTempDirectory("dijkstra-babbage-start")
+    try
+      Files.list(devnet.resolve("genesis")).iterator.asScala.foreach { f =>
+        val text = Files.readString(f)
+        Files.writeString(
+          dir.resolve(f.getFileName),
+          if f.getFileName.toString == "config.json" then
+            text.replace("\"TestConwayHardForkAtEpoch\": 0", "\"TestConwayHardForkAtEpoch\": 1")
+          else text
+        )
+      }
+      body(
+        NodeSetup
+          .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+          .fold(e => fail(e.message), identity)
+      )
+    finally
+      Files.list(dir).iterator.asScala.foreach(Files.delete)
+      Files.delete(dir)
+
+  test(
+    "from a Babbage anchor whose era ends with Conway's, a Dijkstra header is of the wrong era"
+  ) {
+    withBabbageStart { setup =>
+      val anchor = setup.mirrorStart
+      assertEquals(anchor.era, Era.Babbage)
+      val r = rules(setup, withMax(setup.praos, 12), ReferenceBuild.LeiosB004fe0c)
+      // the header extends the devnet's block 32, as the candidate chain it came on does
+      val prev = r.at(anchor) match
+        case s: NodeHeaderState.Shelley => s.copy(previous = Some(ref(lastConway)))
+        case other                      => fail(s"not a Shelley header state: $other")
+      val first = dijkstraHeaders.head
+      // the hard-fork combinator's forecast takes the anchor one era on, to Conway, whatever the
+      // header's era (`oneForecast`): past its range no verdict yet, within it the era match fails
+      assertEquals(
+        r.validate(anchor, None, prev, first),
+        Outcome.Later(ForecastReason.Horizon(first.slot, -1))
+      )
+      // the same anchor said to be at slot 199, a synthetic tip within the range
+      r.validate(anchor, Some(ref(lastConway)), prev, first) match
+        case Outcome.Invalid(
+              HeaderError.Envelope(EnvelopeError.WrongEra(Era.Dijkstra, Era.Conway, epoch, _))
+            ) =>
+          assertEquals(epoch, BigInt(1))
+        case other => fail(s"expected the era mismatch, got $other")
+    }
+  }
+
+  /** Verdicts that count the cryptographic checks asked of them. */
+  private final class Counting extends Verdicts:
+    var asked = 0
+    def witness(vkey: Bytes, signature: Bytes, message: Bytes) =
+      asked += 1; Verdicts.Direct.witness(vkey, signature, message)
+    def opCert(header: Header.Shelley, slotsPerKesPeriod: BigInt, maxKesEvolutions: BigInt) =
+      asked += 1; Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
+    def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes) =
+      asked += 1; Verdicts.Direct.praosVrf(input, vkey, proof, output)
+    def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes) =
+      asked += 1; Verdicts.Direct.tpraosVrf(alpha, vkey, proof, output)
+    def keyHash(vkey: Bytes) = Verdicts.Direct.keyHash(vkey)
+    def takePrepared(hash: Bytes) = None
+
+  test("a header the envelope refuses reaches no cryptographic check") {
+    val nes: NewEpochState[Conway] = MirrorSteps.ledger(crossing) match
+      case Some(i: InEra.Of[e]) =>
+        i.era match
+          case ShelleyBasedEra.SConway => i.read.nes.fold(e => fail(e.toString), identity)
+          case other                   => fail(s"not in Conway: $other")
+      case other => fail(s"no Shelley-based ledger: $other")
+    val globals = Globals(devnetSetup.globals, devnetPraos.geometry)
+    val first = LeiosHeader.decode(dijkstraHeaders.head.raw).fold(e => fail(e.message), identity)
+    val slot = SlotNo.fromUnsigned(first.slot.toLong)
+    val view = DijkstraCrossing
+      .forecast(
+        globals,
+        globals,
+        SlotNo.fromUnsigned(200),
+        slot,
+        WithOrigin.At(SlotNo.fromUnsigned(lastConway.slot.toLong)),
+        nes
+      )
+      .fold(e => fail(e.toString), identity)
+    val state =
+      praos2(rules(devnetSetup, devnetPraos, ReferenceBuild.LeiosB004fe0c).at(crossing) match
+        case s: NodeHeaderState.Shelley =>
+          s.copy(state =
+            s.state.copy(dep = ChainDepState.Praos2(DijkstraCrossing.chainDepState(s.state.view)))
+          )
+        case other => fail(s"not a Shelley header state: $other"))
+    def run(blockNo: Long) =
+      val counting = Counting()
+      val config = Praos2.Config(
+        devnetPraos.copy(verdicts = counting),
+        Word64.fromUnsigned(12),
+        Praos2.EpochInfo.fromGeometry(devnetPraos.geometry)
+      )
+      val tip = Praos2.Tip(lastConway.hash, BlockNo.fromUnsigned(blockNo), SlotNo.fromUnsigned(199))
+      val ticked = Praos2
+        .tick(config, view, slot, Praos2.ChainState(Some(tip), state))
+        .fold(e => fail(e.toString), identity)
+      Praos2.validate(config, first, ticked) -> counting.asked
+    // the right parent: the checks run, and pass
+    val (valid, checks) = run(32)
+    assert(valid.isRight, valid)
+    assert(checks > 0)
+    // a parent one block short: refused by the envelope, before any signature or proof is checked
+    assertEquals(
+      run(31),
+      (Left(Praos2Error.UnexpectedBlockNo(BlockNo.fromUnsigned(32), 33)), 0)
+    )
+  }
+
+  test("a Praos2 parameter that cannot hold leaves a header undecided, never refused or waiting") {
+    val config = devnetPraos.copy(slotsPerKesPeriod = 0)
+    val r = rules(devnetSetup, config, ReferenceBuild.LeiosB004fe0c)
+    assertEquals(
+      r.validate(crossing, Some(ref(lastConway)), r.at(crossing), dijkstraHeaders.head),
+      Outcome.Undecided(HeaderDefect.Praos2(Praos2Defect.NonPositiveKesPeriod(0)))
+    )
+  }
+
   // --- within Dijkstra: the public testnet -------------------------------------------------------
 
   private val testnet = Path.of("fixtures", "leios")
@@ -277,5 +426,29 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
           )
         )
       )
+    )
+  }
+
+  test(
+    "Dijkstra's own forecast reaches to the stability window past the tip's successor, exclusive"
+  ) {
+    val nes: NewEpochState[Dijkstra] = testnetAnchor.ledger(None).toOption.flatten match
+      case Some(i: InEra.Of[e]) =>
+        i.era match
+          case ShelleyBasedEra.SDijkstra => i.read.nes.fold(e => fail(e.toString), identity)
+          case other                     => fail(s"not in Dijkstra: $other")
+      case other => fail(s"no Shelley-based ledger: $other")
+    val globals = Globals(testnetSetup.globals, testnetSetup.praos.geometry)
+    val window = globals.stabilityWindow
+    assertEquals(window, BigInt(6480))
+    val tip = WithOrigin.At(SlotNo.fromUnsigned(anchorTip.slot.toLong))
+    val bound = SlotNo.fromUnsigned((anchorTip.slot + 1 + window).toLong)
+    def at(slot: BigInt) =
+      DijkstraCrossing.forecastInEra(globals, SlotNo.fromUnsigned(slot.toLong), tip, nes)
+    assert(at(anchorTip.slot).isRight)
+    assert(at(anchorTip.slot + window).isRight)
+    assertEquals(
+      at(anchorTip.slot + 1 + window),
+      Left(CrossingForecastFailure.OutsideForecastRange(tip, bound, bound))
     )
   }

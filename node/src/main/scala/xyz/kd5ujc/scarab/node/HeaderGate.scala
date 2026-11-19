@@ -806,6 +806,9 @@ object HeaderCheck:
                     .raise[F, Unit]
                 case Outcome.Later(_) =>
                   protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
+                // no verdict for a defect of our own: this peer's session ends, the peer uncharged
+                case Outcome.Undecided(defect) =>
+                  PeerError.HeaderUndecided(header.point, defect).raise[F, Unit]
             }
 
         private def record(header: Header, next: Option[H])(using Raise[F, PeerError]): F[Unit] =

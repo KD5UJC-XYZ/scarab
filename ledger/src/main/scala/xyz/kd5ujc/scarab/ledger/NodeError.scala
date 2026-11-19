@@ -91,6 +91,13 @@ enum PeerError extends NodeError:
     */
   case Unverifiable(error: VerificationDefect)
 
+  /** A defect of the node's own state or configuration left a header this peer announced without a
+    * verdict ([[HeaderDefect]]): nothing is recorded as invalid and the peer is not charged; the
+    * connection closes, as the reference's exception in a ChainSync client ends that peer
+    * ([[xyz.kd5ujc.scarab.node.FailurePolicy.classify]]).
+    */
+  case HeaderUndecided(point: ChainSync.Point, defect: HeaderDefect)
+
   /** Our ChainSync server could not give this peer its next block: the node keeps no chain database
     * and the block has left its volatile chain ([[NetworkError.NotKept]]). The connection closes
     * and the peer is not charged: the history is the node's to keep. The reference always keeps its
@@ -119,8 +126,9 @@ enum PeerError extends NodeError:
     case GenesisInvariant(problem) => s"the node's own Genesis state broke: ${problem.message}"
     case ServingDefect(protocol, cause) =>
       s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
-    case Unverifiable(e) => e.message
-    case NotKept(cause)  => cause.message
+    case Unverifiable(e)       => e.message
+    case HeaderUndecided(p, d) => s"${Points.show(p)} has no verdict: ${d.message}"
+    case NotKept(cause)        => cause.message
 
 object PeerError:
   enum GenesisProblem:

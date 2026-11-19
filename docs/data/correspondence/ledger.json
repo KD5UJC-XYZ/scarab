@@ -22771,9 +22771,39 @@
    ],
    "note": "one closed type for what Praos2.validate refuses, where the reference has the envelope errors of validateEnvelope (UnexpectedBlockNo, UnexpectedSlotNo, UnexpectedPrevHash, the checkpoint and Shelley's envelope errors under Envelope) beside PolyPraosValidationErr; the VRF and leader failures Praos2 shares with Praos keep their PraosError and the certificate signatures their OCertError. Moved from consensus so that HeaderError can carry it (#54). Praos2ReferenceSuite maps each case to the constructor the reference's validateHeader returns on the same input",
    "digest": "9ba51411d15b4608"
+  },
+  "enum ledger.CrossingForecastFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Forecast.hs",
+     "symbol": "OutsideForecastRange",
+     "lines": [
+      78,
+      87
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraCrossingSuite",
+    "DijkstraHeaderRulesSuite"
+   ],
+   "note": "OutsideForecastRange with its three fields as the reference's; beside it the cases where the reference's forecast of a Dijkstra view cannot fail but the node's can (the translation into Dijkstra refused, a parameter that does not fit its word, a word of the vocabulary), each a defect of the node's own state that the header rules report as no verdict (HeaderDefect.DijkstraView). Moved from consensus so that a header defect can carry it (#54)",
+   "digest": "0d6ab94ff3111254"
   }
  },
  "glue": [
+  {
+   "reason": "the node's own reasons for reaching no verdict on a header where the reference throws an exception the ChainSync client does not catch (PastHorizonException, a successor or narrowing of a machine word, a configuration it never builds), which end the peer's session uncharged (PeerError.HeaderUndecided), and their rendering (#54)",
+   "definitions": [
+    "enum ledger.Praos2Defect",
+    "enum ledger.HeaderDefect",
+    "def ledger.HeaderDefect#message"
+   ]
+  },
   {
    "reason": "the rendering of a Praos2 header refusal in the node's validation messages; the reference renders PolyPraosValidationErr with its derived Show (#54)",
    "definitions": [

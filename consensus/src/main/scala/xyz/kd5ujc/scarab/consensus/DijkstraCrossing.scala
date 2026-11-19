@@ -3,8 +3,8 @@ package xyz.kd5ujc.scarab.consensus
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.state.PraosState
-import xyz.kd5ujc.scarab.ledger.ProtocolParams
-import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, TickFailure, Translate}
+import xyz.kd5ujc.scarab.ledger.{CrossingForecastFailure, ProtocolParams}
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, Translate}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   Dijkstra,
@@ -12,26 +12,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
   PoolDistr,
   ProtVer,
   SlotNo,
-  VocabError,
   WithOrigin
 }
-import xyz.kd5ujc.scarab.protocol.LeiosWireError
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32}
-
-/** Why no Dijkstra ledger view is forecast from a Conway ledger state. */
-enum CrossingForecastFailure:
-  /** `OutsideForecastRange` (`Ouroboros/Consensus/Forecast.hs`, ouroboros-consensus 2416493b): the
-    * slot is not before the exclusive bound `maxFor` of a forecast from the tip `at`.
-    */
-  case OutsideForecastRange(at: WithOrigin[SlotNo], maxFor: SlotNo, forecastFor: SlotNo)
-
-  /** The state does not translate into Dijkstra ([[Translate.conwayToDijkstra]]). */
-  case Translation(cause: TickFailure)
-
-  /** A parameter of the view does not fit the word the reference's view holds it in. */
-  case Parameter(cause: LeiosWireError)
-
-  case Vocabulary(cause: VocabError)
 
 /** The parts of the hard-fork combinator's crossing from Conway (Praos) into Dijkstra (Praos2) that
   * concern the protocol, at ouroboros-consensus 2416493b with cardano-ledger 9df9f98c: the
@@ -112,7 +95,8 @@ object DijkstraCrossing:
       tip: WithOrigin[SlotNo],
       nes: NewEpochState[Dijkstra]
   ): Either[CrossingForecastFailure, Praos2.LedgerView] =
-    inEraBound(dijkstra, forecastFor, tip) *> viewAt(dijkstra, forecastFor, tip, nes)
+    // the view is made only once the bound holds (`ledgerViewForecastAtPolyPraos` throws first)
+    inEraBound(dijkstra, forecastFor, tip).flatMap(_ => viewAt(dijkstra, forecastFor, tip, nes))
 
   /** The bound of [[forecastInEra]]: none at the tip itself, else the stability window past the
     * tip's successor (`maxFor`, exclusive).

@@ -465,8 +465,8 @@
    "evidence": [
     "DijkstraHeaderRulesSuite"
    ],
-   "note": "the Dijkstra forecast's three cases (the tip's own view, TICKF's view before the exclusive bound of the stability window past the tip's successor, OutsideForecastRange after it) as the reference's; the view holds only the fields header validation reads (Praos2.LedgerView), not the committee, the quorum or the transaction-byte bound. DijkstraHeaderRulesSuite validates the public testnet's headers after its ledger state at slot 2,168,639 against it, the leader check on that state's stake",
-   "digest": "3ab17240a2526cf0"
+   "note": "the Dijkstra forecast's three cases (the tip's own view, TICKF's view before the exclusive bound of the stability window past the tip's successor, OutsideForecastRange after it) as the reference's; the view holds only the fields header validation reads (Praos2.LedgerView), not the committee, the quorum or the transaction-byte bound. DijkstraHeaderRulesSuite validates the public testnet's headers after its ledger state at slot 2,168,639 against it, the leader check on that state's stake, and its exclusive bound",
+   "digest": "61e763ebae994a83"
   }
  },
  "glue": [

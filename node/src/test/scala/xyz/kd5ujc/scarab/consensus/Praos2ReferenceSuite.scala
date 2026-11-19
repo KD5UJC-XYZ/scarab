@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
-import xyz.kd5ujc.scarab.ledger.{Header, ProviderDefect, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{Header, Praos2Defect, ProviderDefect, Verdicts}
 import xyz.kd5ujc.scarab.ledger.{
   EnvelopeError,
   LeiosHeader,
@@ -146,10 +146,10 @@ class Praos2ReferenceSuite extends munit.FunSuite:
   private def testConfig(options: Json): Praos2.Config =
     val info = config.epochInfo
     val modifiedInfo = new Praos2.EpochInfo:
-      def epochOf(s: SlotNo): Either[Praos2.Defect, EpochNo] = info.epochOf(s)
-      def firstSlot(e: EpochNo): Either[Praos2.Defect, SlotNo] = info.firstSlot(e)
-      def epochSize(e: EpochNo): Either[Praos2.Defect, Word64] = info.epochSize(e)
-      def slotLengthMillis(s: SlotNo): Either[Praos2.Defect, BigInt] =
+      def epochOf(s: SlotNo): Either[Praos2Defect, EpochNo] = info.epochOf(s)
+      def firstSlot(e: EpochNo): Either[Praos2Defect, SlotNo] = info.firstSlot(e)
+      def epochSize(e: EpochNo): Either[Praos2Defect, Word64] = info.epochSize(e)
+      def slotLengthMillis(s: SlotNo): Either[Praos2Defect, BigInt] =
         optional[BigInt](options, "slotMicros").fold(info.slotLengthMillis(s))(us =>
           Right(us / 1000)
         )
@@ -399,14 +399,14 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     val old = EpochNo.fromUnsigned(0)
     val first = SlotNo.fromUnsigned(0)
     val limited = new Praos2.EpochInfo:
-      def epochOf(s: SlotNo): Either[Praos2.Defect, EpochNo] =
-        Either.cond(s == first, old, Praos2.Defect.SlotOutsideForecast(s))
-      def firstSlot(e: EpochNo): Either[Praos2.Defect, SlotNo] =
-        Either.cond(e == old, first, Praos2.Defect.EpochOutsideForecast(e))
-      def epochSize(e: EpochNo): Either[Praos2.Defect, Word64] =
-        Either.cond(e == old, Word64.fromUnsigned(100), Praos2.Defect.EpochOutsideForecast(e))
-      def slotLengthMillis(s: SlotNo): Either[Praos2.Defect, BigInt] =
-        Left(Praos2.Defect.SlotOutsideForecast(s))
+      def epochOf(s: SlotNo): Either[Praos2Defect, EpochNo] =
+        Either.cond(s == first, old, Praos2Defect.SlotOutsideForecast(s))
+      def firstSlot(e: EpochNo): Either[Praos2Defect, SlotNo] =
+        Either.cond(e == old, first, Praos2Defect.EpochOutsideForecast(e))
+      def epochSize(e: EpochNo): Either[Praos2Defect, Word64] =
+        Either.cond(e == old, Word64.fromUnsigned(100), Praos2Defect.EpochOutsideForecast(e))
+      def slotLengthMillis(s: SlotNo): Either[Praos2Defect, BigInt] =
+        Left(Praos2Defect.SlotOutsideForecast(s))
     val previous = initial.protocol.praos.copy(lastSlot = WithOrigin.At(first))
     val result = Praos2
       .tick(
@@ -426,16 +426,16 @@ class Praos2ReferenceSuite extends munit.FunSuite:
 
   test("missing epoch forecast is a defect before a header verdict") {
     val h = headers.head
-    val missing = Praos2.Defect.EpochOutsideForecast(EpochNo.fromUnsigned(0))
+    val missing = Praos2Defect.EpochOutsideForecast(EpochNo.fromUnsigned(0))
     val info = new Praos2.EpochInfo:
-      def epochOf(s: SlotNo): Either[Praos2.Defect, EpochNo] =
-        Left(Praos2.Defect.SlotOutsideForecast(s))
-      def firstSlot(e: EpochNo): Either[Praos2.Defect, SlotNo] =
-        Left(Praos2.Defect.EpochOutsideForecast(e))
-      def epochSize(e: EpochNo): Either[Praos2.Defect, Word64] =
-        Left(Praos2.Defect.EpochOutsideForecast(e))
-      def slotLengthMillis(s: SlotNo): Either[Praos2.Defect, BigInt] =
-        Left(Praos2.Defect.SlotOutsideForecast(s))
+      def epochOf(s: SlotNo): Either[Praos2Defect, EpochNo] =
+        Left(Praos2Defect.SlotOutsideForecast(s))
+      def firstSlot(e: EpochNo): Either[Praos2Defect, SlotNo] =
+        Left(Praos2Defect.EpochOutsideForecast(e))
+      def epochSize(e: EpochNo): Either[Praos2Defect, Word64] =
+        Left(Praos2Defect.EpochOutsideForecast(e))
+      def slotLengthMillis(s: SlotNo): Either[Praos2Defect, BigInt] =
+        Left(Praos2Defect.SlotOutsideForecast(s))
     assertEquals(
       Praos2.tick(config.copy(epochInfo = info), view, slot(h.slot), initial),
       Left(missing)
@@ -453,23 +453,23 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     val slotResult = Praos2.validate(config, h, Praos2.Ticked(highSlot, view))
     assertEquals(
       blockResult,
-      Left(Praos2.Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.BlockNo))
+      Left(Praos2Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.BlockNo))
     )
     assertEquals(
       slotResult,
-      Left(Praos2.Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.SlotNo))
+      Left(Praos2Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.SlotNo))
     )
   }
 
   test("a zero slot length or KES period is a configuration defect") {
     assertEquals(
       Praos2.minCertificationSlot(0, view, slot(0)),
-      Left(Praos2.Defect.NonPositiveSlotLength(0))
+      Left(Praos2Defect.NonPositiveSlotLength(0))
     )
     val bad = config.copy(praos = config.praos.copy(slotsPerKesPeriod = 0))
     assertEquals(
       Praos2.validateProtocol(bad, headers.head, Praos2.Ticked(initial, view)),
-      Left(Praos2.Defect.NonPositiveKesPeriod(0))
+      Left(Praos2Defect.NonPositiveKesPeriod(0))
     )
   }
 

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.consensus
 
 import cats.data.NonEmptyVector
-import xyz.kd5ujc.scarab.ledger.{HeaderError, ProviderDefect}
+import xyz.kd5ujc.scarab.ledger.{HeaderDefect, HeaderError, ProviderDefect}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -47,10 +47,14 @@ object HeaderRules:
     case Unknown(reason: ForecastReason)
     case Invalid(error: HeaderError)
 
+    /** No forecast for a defect of the node's own ([[Outcome.Undecided]]). */
+    case Undecided(defect: HeaderDefect)
+
     def result: Outcome[H] = this match
-      case Check(run)      => run()
-      case Unknown(reason) => Outcome.Later(reason)
-      case Invalid(error)  => Outcome.Invalid(error)
+      case Check(run)        => run()
+      case Unknown(reason)   => Outcome.Later(reason)
+      case Invalid(error)    => Outcome.Invalid(error)
+      case Undecided(defect) => Outcome.Undecided(defect)
 
     def map[J](f: H => J): Prepared[J] = this match
       case Check(run) =>
@@ -60,9 +64,11 @@ object HeaderRules:
             case Outcome.Invalid(error)       => Outcome.Invalid(error)
             case Outcome.Unverifiable(defect) => Outcome.Unverifiable(defect)
             case Outcome.Later(reason)        => Outcome.Later(reason)
+            case Outcome.Undecided(defect)    => Outcome.Undecided(defect)
         )
-      case Unknown(reason) => Unknown(reason)
-      case Invalid(error)  => Invalid(error)
+      case Unknown(reason)   => Unknown(reason)
+      case Invalid(error)    => Invalid(error)
+      case Undecided(defect) => Undecided(defect)
 
   /** The reference time query uses the same intersection ledger as header validation. */
   trait Timing[S, H]:
@@ -78,25 +84,11 @@ object HeaderRules:
   enum ForecastReason:
     case ShelleyLedgerNotReady
     case Horizon(slot: BigInt, tipSlot: BigInt)
-
-    /** No Dijkstra ledger view could be made from the anchor for a reason other than its range
-      * ([[CrossingForecastFailure]]): a defect of the node's state or configuration, no verdict on
-      * the header.
-      */
-    case DijkstraView(cause: CrossingForecastFailure)
-
-    /** Praos2's epoch queries or words failed on the header ([[Praos2.Defect]]): no verdict, as the
-      * reference's `PastHorizonException` is none.
-      */
-    case Praos2Defect(defect: Praos2.Defect)
-
     def message: String = this match
       case ShelleyLedgerNotReady =>
         "the Shelley ledger exists once the first Shelley block is applied"
       case Horizon(slot, tip) =>
         s"slot $slot is beyond the forecast horizon of the ledger at slot $tip"
-      case DijkstraView(cause)  => s"no Dijkstra ledger view: $cause"
-      case Praos2Defect(defect) => s"Praos2 could not check the header: $defect"
   enum Outcome[+H]:
     /** Every header rule holds; the header state after the header. */
     case Valid(next: H)
@@ -113,6 +105,11 @@ object HeaderRules:
       * the node's chain has advanced.
       */
     case Later(reason: ForecastReason)
+
+    /** A defect of the node's own state or configuration stops the rules short of a verdict, and
+      * the chain's advance does not lift it: its sender is not at fault ([[HeaderDefect]]).
+      */
+    case Undecided(defect: HeaderDefect)
 
 /** The candidate chain of one peer as header validation sees it: the point where it joined ours,
   * the header state there and every header announced since with the state after it (`None` where no

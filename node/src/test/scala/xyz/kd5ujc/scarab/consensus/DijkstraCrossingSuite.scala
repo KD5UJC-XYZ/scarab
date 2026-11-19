@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   ProtocolExtras,
   ProtocolState
 }
-import xyz.kd5ujc.scarab.ledger.{Block, EbAnnouncement, LeiosHeader, Nonce}
+import xyz.kd5ujc.scarab.ledger.{Block, CrossingForecastFailure, EbAnnouncement, LeiosHeader, Nonce}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,

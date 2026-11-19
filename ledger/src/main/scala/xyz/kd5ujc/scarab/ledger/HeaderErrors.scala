@@ -4,7 +4,9 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
-import xyz.kd5ujc.scarab.ledger.state.{BlockNo, SlotNo, VocabError, Word64}
+import xyz.kd5ujc.scarab.ledger.rules.TickFailure
+import xyz.kd5ujc.scarab.ledger.state.{BlockNo, EpochNo, SlotNo, VocabError, WithOrigin, Word64}
+import xyz.kd5ujc.scarab.protocol.LeiosWireError
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 
 /** Why a header is refused before its block is fetched. Closed: every rule family has its case. */
@@ -193,6 +195,52 @@ enum Praos2Error:
     case CounterOverIncremented(c, a) =>
       s"operational certificate counter ${a.toBigInt} is more than one above the last seen ${c.toBigInt}"
     case Praos(e) => e.message
+
+/** Why Praos2's rules reached no verdict on a header: its epoch queries (`EpochInfo`) had no
+  * answer, a parameter of the node's configuration cannot hold, or a machine word of the header has
+  * no successor. None is a verdict on the header (`PastHorizonException` and the reference's other
+  * exceptions are none).
+  */
+enum Praos2Defect:
+  case SlotOutsideForecast(slot: SlotNo)
+  case EpochOutsideForecast(epoch: EpochNo)
+  case ZeroEpochSize(epoch: EpochNo)
+  case NonPositiveSlotLength(milliseconds: BigInt)
+  case NonPositiveKesPeriod(slots: BigInt)
+  case SuccessorOverflow(kind: VocabError.Kind)
+  case Vocabulary(cause: VocabError)
+
+/** Why no Dijkstra ledger view is forecast from a Conway or Dijkstra ledger state. */
+enum CrossingForecastFailure:
+  /** `OutsideForecastRange` (`Ouroboros/Consensus/Forecast.hs`, ouroboros-consensus 2416493b): the
+    * slot is not before the exclusive bound `maxFor` of a forecast from the tip `at`.
+    */
+  case OutsideForecastRange(at: WithOrigin[SlotNo], maxFor: SlotNo, forecastFor: SlotNo)
+
+  /** The state does not translate into Dijkstra (`Translate.conwayToDijkstra`). */
+  case Translation(cause: TickFailure)
+
+  /** A parameter of the view does not fit the word the reference's view holds it in. */
+  case Parameter(cause: LeiosWireError)
+
+  case Vocabulary(cause: VocabError)
+
+/** A header check that reached no verdict for a defect of the node's own state, configuration or
+  * code, which waiting for the chain to advance does not resolve: no verdict on the header and
+  * nothing charged to the peer that sent it (`PeerError.HeaderUndecided`), as the reference's
+  * exception in a ChainSync client ends that peer (`ourBug`, `ShutdownPeer`).
+  */
+enum HeaderDefect:
+  /** Praos2's rules on a Dijkstra header. */
+  case Praos2(defect: Praos2Defect)
+
+  /** The Dijkstra ledger view of the header's slot ([[CrossingForecastFailure]], its range aside).
+    */
+  case DijkstraView(cause: CrossingForecastFailure)
+
+  def message: String = this match
+    case Praos2(d)       => s"Praos2 reached no verdict: $d"
+    case DijkstraView(c) => s"no Dijkstra ledger view: $c"
 
 /** Structural header failures with their original ledger-read cause. */
 enum HeaderStructureProblem:

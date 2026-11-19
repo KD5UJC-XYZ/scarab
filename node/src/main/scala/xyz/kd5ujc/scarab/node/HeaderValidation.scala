@@ -7,7 +7,15 @@ import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome, Prepare
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
-import xyz.kd5ujc.scarab.ledger.state.{BlockNo, EraTag, ShelleyBasedEra, SlotNo, Word64, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.state.{
+  BlockNo,
+  EraTag,
+  ShelleyBasedEra,
+  SlotNo,
+  VocabError,
+  Word64,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 
@@ -53,6 +61,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
           parent,
           prev,
           h,
+          forecastLimit,
           genericEnvelope
         )
       )
@@ -165,25 +174,31 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
 
 /** The header rules of a Dijkstra header in the build whose Dijkstra runs Praos2, the Leios build
   * (`type BlockProtocol (ShelleyBlock (Praos2 c) DijkstraEra)`, ouroboros-consensus 2416493b
-  * `Cardano/Block.hs:277`): the ledger view forecast from the anchor, Conway's across the boundary
-  * ([[DijkstraCrossing.forecast]]) or Dijkstra's own ([[DijkstraCrossing.forecastInEra]]), the
-  * chain-dependent state translated into Praos2's where it is still Praos's
-  * ([[DijkstraCrossing.chainDepState]]) and ticked by Praos2, then `validateHeader`: the envelope
-  * checks of every era, then Praos2's envelope and protocol rules ([[Praos2.validate]];
-  * `HeaderValidation.hs:374-386, 518-526`), as the ChainSync client runs them on each header
-  * (`MiniProtocol/ChainSync/Client.hs:1934-1990`). The era match of the hard-fork combinator
-  * (`HardFork/Combinator/Ledger.hs:395-405`) holds on this path: it is taken only where the anchor,
-  * in Conway or Dijkstra, has the header's slot in Dijkstra; a Dijkstra header of a slot still in
-  * Conway goes the way of every other era's, which refuses it as of the wrong era.
+  * `Cardano/Block.hs:277`). Every Dijkstra header of that build is checked here, never by the rules
+  * of another era.
+  *
+  * The ledger view is forecast from the anchor as the hard-fork combinator forecasts it
+  * (`oneForecast`, `HardFork/Combinator/Ledger.hs:555-620`): in the anchor's era, or once the
+  * anchor's known end is passed in the next era alone, never further. Where that era is Dijkstra
+  * the view is Conway's across the boundary ([[DijkstraCrossing.forecast]]) or Dijkstra's own
+  * ([[DijkstraCrossing.forecastInEra]]), the chain-dependent state is translated into Praos2's
+  * where it is still Praos's ([[DijkstraCrossing.chainDepState]]) and ticked by Praos2, then
+  * `validateHeader` runs: the envelope checks of every era, then Praos2's envelope and protocol
+  * rules ([[Praos2.validate]]; `HeaderValidation.hs:374-386, 518-526`), as the ChainSync client
+  * runs them on each header (`MiniProtocol/ChainSync/Client.hs:1934-1990`). Where the view's era is
+  * another, the header is refused as of the wrong era once the envelope checks of every era hold
+  * (`HardFork/Combinator/Ledger.hs:395-405`).
   */
 private[node] final class Praos2Headers private ():
-  /** The prepared check of `h`, or none where the header is not a Dijkstra header the anchor's era
-    * history places in Dijkstra.
+  /** The prepared check of `h`, or none where it is not a Dijkstra header.
     *
     * @param tip
     *   the anchor's tip, from which the ledger view is forecast
     * @param parent
     *   the header `h` extends, the tip of the chain-dependent state `prev`
+    * @param forecastLimit
+    *   the exclusive bound of a forecast from a Byron anchor's translated ledger, which replaces
+    *   the anchor's own
     */
   def prepare[E <: EraTag](
       cfg: PraosConfig,
@@ -194,76 +209,126 @@ private[node] final class Praos2Headers private ():
       parent: Option[BlockRef],
       prev: ProtocolState,
       h: Header.Shelley,
+      forecastLimit: Option[BigInt],
       genericEnvelope: Either[HeaderError, Unit]
   ): Option[Prepared[ProtocolState]] =
-    val geometry = cfg.geometry
-    val epoch = geometry.epochOf(h.slot)
-    val tipSlot = tip.fold(BigInt(-1))(_.slot)
-    val horizon = (f: CrossingForecastFailure) =>
-      f match
-        case _: CrossingForecastFailure.OutsideForecastRange =>
-          Prepared.Unknown(ForecastReason.Horizon(h.slot, tipSlot))
-        case other @ (_: CrossingForecastFailure.Translation |
-            _: CrossingForecastFailure.Parameter | _: CrossingForecastFailure.Vocabulary) =>
-          Prepared.Unknown(ForecastReason.DijkstraView(other))
-    // the view of the header's slot, where the anchor's era history has it in Dijkstra
-    val view: Option[Either[Prepared[ProtocolState], Praos2.LedgerView]] =
-      Option.when(h.era == Era.Dijkstra)(ledger.era).flatMap {
+    Option.when(h.era == Era.Dijkstra) {
+      val geometry = cfg.geometry
+      val epoch = geometry.epochOf(h.slot)
+      val tipSlot = tip.fold(BigInt(-1))(_.slot)
+      val anchorEra = EraNes.eraOf(ledger.era)
+      // the anchor's era ends before the header's epoch: the view is of the next era
+      val end = cfg.forks
+        .transition(geometry.k)(
+          Hfc.Pending(anchorEra, ledger.epoch.toBigInt, ledger.definiteUpdateMajor, afterVoting)
+        )
+        .filter(_ <= epoch)
+      val viewEra = end.flatMap(_ => HardForkConfig.next(anchorEra)).getOrElse(anchorEra)
+      val horizon = (f: CrossingForecastFailure) =>
+        f match
+          case _: CrossingForecastFailure.OutsideForecastRange =>
+            Prepared.Unknown(ForecastReason.Horizon(h.slot, tipSlot))
+          case other @ (_: CrossingForecastFailure.Translation |
+              _: CrossingForecastFailure.Parameter | _: CrossingForecastFailure.Vocabulary) =>
+            Prepared.Undecided(HeaderDefect.DijkstraView(other))
+      val unread = (e: HeaderStructureProblem) => Prepared.Invalid(HeaderError.Structure(e))
+      val view: Either[Prepared[ProtocolState], Praos2.LedgerView] = ledger.era match
         case ShelleyBasedEra.SDijkstra =>
-          Some(
-            forecastFor(h, tip).flatMap { (slot, at) =>
-              ledger.nes
-                .leftMap(e =>
-                  Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.LedgerRead(e)))
-                )
-                .flatMap(nes =>
-                  DijkstraCrossing.forecastInEra(globals, slot, at, nes).leftMap(horizon)
-                )
-            }
-          )
+          for
+            at <- forecastFor(h, tip)
+            (slot, anchorTip) = at
+            nes <- ledger.nes.leftMap(e => unread(HeaderStructureProblem.LedgerRead(e)))
+            view <- DijkstraCrossing.forecastInEra(globals, slot, anchorTip, nes).leftMap(horizon)
+          yield view
         case ShelleyBasedEra.SConway =>
-          cfg.forks
-            .transition(geometry.k)(
-              Hfc
-                .Pending(Era.Conway, ledger.epoch.toBigInt, ledger.definiteUpdateMajor, afterVoting)
+          end.fold(
+            Left(
+              wrongEra(globals, ledger, tip, h, epoch, viewEra, end, forecastLimit, genericEnvelope)
             )
-            .filter(_ <= epoch)
-            .map { first =>
-              for
-                at <- forecastFor(h, tip)
-                (slot, anchorTip) = at
-                transition <- SlotNo
-                  .fromBigInt(geometry.firstSlot(first))
-                  .leftMap(e =>
-                    Prepared.Unknown(ForecastReason.Praos2Defect(Praos2.Defect.Vocabulary(e)))
-                  )
-                nes <- ledger.nes.leftMap(e =>
-                  Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.LedgerRead(e)))
-                )
-                view <- DijkstraCrossing
-                  .forecast(globals, globals, transition, slot, anchorTip, nes)
-                  .leftMap(horizon)
-              yield view
-            }
-        // an anchor before Conway: the header takes every other era's path, whose era history
-        // (`HardForkConfig.eraOf`) walks each era the anchor's state enters by the header's epoch
+          ) { first =>
+            for
+              at <- forecastFor(h, tip)
+              (slot, anchorTip) = at
+              transition <- vocab(SlotNo.fromBigInt(geometry.firstSlot(first)))
+              nes <- ledger.nes.leftMap(e => unread(HeaderStructureProblem.LedgerRead(e)))
+              view <- DijkstraCrossing
+                .forecast(globals, globals, transition, slot, anchorTip, nes)
+                .leftMap(horizon)
+            yield view
+          }
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-          None
-      }
-    view.map(_.fold(identity, check(cfg, _, parent, prev, h, epoch, genericEnvelope)))
+          Left(
+            wrongEra(globals, ledger, tip, h, epoch, viewEra, end, forecastLimit, genericEnvelope)
+          )
+      view.fold(identity, check(cfg, _, parent, prev, h, epoch, tipSlot, genericEnvelope))
+    }
+
+  private def vocab[A](
+      read: Either[VocabError, A]
+  ): Either[Prepared[ProtocolState], A] =
+    read.leftMap(e => Prepared.Undecided(HeaderDefect.Praos2(Praos2Defect.Vocabulary(e))))
 
   /** The slot to forecast for and the anchor's tip, as the forecast takes them. */
   private def forecastFor(
       h: Header.Shelley,
       tip: Option[BlockRef]
   ): Either[Prepared[ProtocolState], (SlotNo, WithOrigin[SlotNo])] =
-    val defect = (e: xyz.kd5ujc.scarab.ledger.state.VocabError) =>
-      Prepared.Unknown(ForecastReason.Praos2Defect(Praos2.Defect.Vocabulary(e)))
     for
-      slot <- SlotNo.fromBigInt(h.slot).leftMap(defect)
-      at <- tip.traverse(t => SlotNo.fromBigInt(t.slot)).leftMap(defect)
+      slot <- vocab(SlotNo.fromBigInt(h.slot))
+      at <- vocab(tip.traverse(t => SlotNo.fromBigInt(t.slot)))
     yield (slot, at.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(WithOrigin.At(_)))
+
+  /** A Dijkstra header whose slot the anchor's forecast places in `viewEra`, another era: within
+    * the forecast's range (the anchor's own, or across its known end `crossEraForecastBound`,
+    * [[DijkstraCrossing.forecastBound]]), the envelope checks of every era and then the era match,
+    * which refuses it; past the range, no verdict yet.
+    */
+  private def wrongEra[E <: EraTag](
+      globals: Globals,
+      ledger: EraRead[E],
+      tip: Option[BlockRef],
+      h: Header.Shelley,
+      epoch: BigInt,
+      viewEra: Era,
+      end: Option[BigInt],
+      forecastLimit: Option[BigInt],
+      genericEnvelope: Either[HeaderError, Unit]
+  ): Prepared[ProtocolState] =
+    val window = globals.stabilityWindow
+    val ranged = for
+      at <- forecastFor(h, tip)
+      (slot, anchorTip) = at
+      transition <- end.traverse(first =>
+        vocab(SlotNo.fromBigInt(globals.geometry.firstSlot(first)))
+      )
+      successor = tip.fold(BigInt(0))(_.slot + 1)
+      maxFor = forecastLimit.getOrElse(
+        transition.fold(successor + window)(t =>
+          DijkstraCrossing.forecastBound(anchorTip, t, window, window).toBigInt
+        )
+      )
+    yield anchorTip == WithOrigin.At(slot) || slot.toBigInt < maxFor
+    ranged.fold(
+      identity,
+      within =>
+        if !within then
+          Prepared.Unknown(ForecastReason.Horizon(h.slot, tip.fold(BigInt(-1))(_.slot)))
+        else
+          // the ledger's major version as the other eras' envelope reports it, at the header's epoch
+          val params =
+            if epoch == ledger.epoch.toBigInt + 1 then ledger.paramsNextEpoch(globals.ledger)
+            else ledger.params
+          genericEnvelope.fold(
+            Prepared.Invalid(_),
+            _ =>
+              Prepared.Invalid(
+                HeaderError.Envelope(
+                  EnvelopeError.WrongEra(h.era, viewEra, epoch, params.protocolMajor)
+                )
+              )
+          )
+    )
 
   private def check(
       cfg: PraosConfig,
@@ -272,6 +337,7 @@ private[node] final class Praos2Headers private ():
       prev: ProtocolState,
       h: Header.Shelley,
       epoch: BigInt,
+      tipSlot: BigInt,
       genericEnvelope: Either[HeaderError, Unit]
   ): Prepared[ProtocolState] =
     val config = Praos2.Config(
@@ -279,6 +345,15 @@ private[node] final class Praos2Headers private ():
       Word64.fromUnsigned(cfg.forks.maxMajorProtVer.toLong),
       Praos2.EpochInfo.fromGeometry(cfg.geometry)
     )
+    // an epoch query past its forecast waits for the chain; any other defect is the node's own
+    val defect = (d: Praos2Defect) =>
+      d match
+        case _: Praos2Defect.SlotOutsideForecast | _: Praos2Defect.EpochOutsideForecast =>
+          Outcome.Later(ForecastReason.Horizon(h.slot, tipSlot))
+        case other @ (_: Praos2Defect.ZeroEpochSize | _: Praos2Defect.NonPositiveSlotLength |
+            _: Praos2Defect.NonPositiveKesPeriod | _: Praos2Defect.SuccessorOverflow |
+            _: Praos2Defect.Vocabulary) =>
+          Outcome.Undecided(HeaderDefect.Praos2(other))
     // `translateChainDepState` of `TranslateProto (Praos c) (Praos2 c)`, and of TPraos through
     // Praos (`Protocol/Praos2.hs:189-209`, ouroboros-consensus 2416493b): the state of the era
     // before, carried over
@@ -301,17 +376,15 @@ private[node] final class Praos2Headers private ():
               (BlockNo.fromBigInt(p.blockNo), SlotNo.fromBigInt(p.slot))
                 .mapN(Praos2.Tip(p.hash, _, _))
             )
-            .leftMap(e => Outcome.Later(ForecastReason.Praos2Defect(Praos2.Defect.Vocabulary(e))))
-          slot <- SlotNo
-            .fromBigInt(h.slot)
-            .leftMap(e => Outcome.Later(ForecastReason.Praos2Defect(Praos2.Defect.Vocabulary(e))))
+            .leftMap(e => defect(Praos2Defect.Vocabulary(e)))
+          slot <- SlotNo.fromBigInt(h.slot).leftMap(e => defect(Praos2Defect.Vocabulary(e)))
           ticked <- Praos2
             .tick(config, view, slot, Praos2.ChainState(at, state))
-            .leftMap(d => Outcome.Later(ForecastReason.Praos2Defect(d)))
+            .leftMap(defect)
           _ <- genericEnvelope.leftMap(Outcome.Invalid(_))
           next <- Praos2.validate(config, header, ticked).leftMap {
             case e: Praos2Error    => Outcome.Invalid(HeaderError.Praos2(e))
-            case d: Praos2.Defect  => Outcome.Later(ForecastReason.Praos2Defect(d))
+            case d: Praos2Defect   => defect(d)
             case p: ProviderDefect => Outcome.Unverifiable(p)
           }
         yield ProtocolState(
