@@ -202,7 +202,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
   }
 
   dirs.test(
-    "collection removes old volatile points, then what no point names; immutable ones stay"
+    "collection removes old volatile points, then what no point names; immutable ones are evicted"
   ) { dir =>
     store(dir / "leios").use { s =>
       ok(for
@@ -222,11 +222,12 @@ class LeiosStoreSuite extends CatsEffectSuite:
         _ <- s.garbageCollect(slot(101))
         later <- s.scanEbPoints
       yield
-        assertEquals(points, Vector(point(2, 2), point(3, 3), point(100, 2)))
+        // hash 3's point is evicted: kept, with its body, but not in the reference's volatile file
+        assertEquals(points, Vector(point(2, 2), point(100, 2)))
         assertEquals(bodies, Vector(false, true, true))
         assertEquals(txs, Vector.empty)
         assertEquals(complete, Vector(point(100, 2)))
-        assertEquals(later, Vector(point(3, 3))))
+        assertEquals(later, Vector.empty))
     }
   }
 
@@ -376,6 +377,75 @@ class LeiosStoreSuite extends CatsEffectSuite:
       // the reference keeps both of hash 1's points in its volatile file (the one at 30 vetoes
       // their collection) and lists the one at 30
       assertEquals(scanned, Vector(point(30, 1)))
+  }
+
+  dirs.test(
+    "a hash collected, announced again and reopened is not scanned until it is fetched again"
+  ) { dir =>
+    val h = 4
+    for
+      evictedReads <- store(dir / "leios").use { s =>
+        ok(for
+          _ <- s.writeEbPoint(point(5, h), word32(1))
+          _ <- s.writeEbBody(point(5, h), body(2), Vector.empty)
+          _ <- s.writeTxs(point(5, h), Vector(0 -> tx(0), 1 -> tx(1)))
+          _ <- s.promoteToImmutable(Vector(point(5, h)))
+          _ <- s.garbageCollect(slot(10))
+          points <- s.scanEbPoints
+          closure <- s.lookupEbClosure(hash(h))
+          // announced again at the collection's slot: not complete, its body being elsewhere
+          again <- s.writeEbPoint(point(10, h), word32(1))
+        yield (points, closure.map(_.size), again))
+      }
+      scanned <- store(dir / "leios").use(s =>
+        ok(s.scanCompleteEbClosuresNotOlderThanSlot(slot(10)))
+      )
+      fetched <- store(dir / "leios").use { s =>
+        ok(for
+          // the reference drops transactions it has no volatile body for
+          early <- s.writeTxs(point(10, h), Vector(0 -> tx(0)))
+          written <- s.writeEbBody(point(10, h), body(2), Vector.empty)
+          emptied <- s.batchRetrieveTxs(hash(h), Vector(0, 1))
+          closure <- s.lookupEbClosure(hash(h))
+          completed <- s.writeTxs(point(10, h), Vector(0 -> tx(0), 1 -> tx(1)))
+          scanned <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(10))
+          points <- s.scanEbPoints
+        yield (early, written, emptied, closure, completed, scanned, points))
+      }
+    yield
+      val (points, closure, again) = evictedReads
+      assertEquals(points, Vector.empty)
+      assertEquals(closure, Some(2))
+      assertEquals(again, Vector.empty)
+      assertEquals(scanned, Vector.empty)
+      val (early, written, emptied, refetching, completed, rescanned, repointed) = fetched
+      assertEquals(early, Vector.empty)
+      assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
+      assertEquals(emptied, Vector(0 -> zeroes(tx(0).size), 1 -> zeroes(tx(1).size)))
+      assertEquals(refetching, None)
+      assertEquals(completed, Vector(point(10, h)))
+      assertEquals(rescanned, Vector(point(10, h)))
+      assertEquals(repointed, Vector(point(10, h)))
+  }
+
+  dirs.test(
+    "a scan from before the last collection lists what the reference's volatile file holds"
+  ) { dir =>
+    store(dir / "leios").use { s =>
+      ok(for
+        // A: promoted at 3 (evicted by the collection); B: volatile at 5 (collected);
+        // C: promoted at 15 and announced at 25 (kept, the point at 25 vetoes it)
+        _ <- Vector(point(3, 1), point(5, 2), point(15, 3), point(25, 3)).traverse_(p =>
+          s.writeEbPoint(p, word32(1))
+        )
+        _ <- Vector(point(3, 1), point(5, 2), point(15, 3)).traverse_(p =>
+          s.writeEbBody(p, body(1), Vector.empty) *> s.writeTxs(p, Vector(0 -> tx(0)))
+        )
+        _ <- s.promoteToImmutable(Vector(point(3, 1), point(15, 3)))
+        _ <- s.garbageCollect(slot(20))
+        scanned <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(0))
+      yield assertEquals(scanned, Vector(point(15, 3), point(25, 3))))
+    }
   }
 
   dirs.test("collection works through its volatile points in batches") { dir =>

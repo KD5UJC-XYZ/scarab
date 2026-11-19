@@ -5,10 +5,10 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Storage format change for #830: a new endorser-block store, a separate RocksDB instance at leios/ with column families meta (magic SCRBLEIO v1, unstable), points, bodies, txs and complete; the reference LeiosDB's operations; other versions refused, no migration; sqlite-jdbc for the LeiosDB import.",
+  "question": "Storage format change for #830: a new endorser-block store, a separate RocksDB instance at leios/ with column families meta (magic SCRBLEIO v1, unstable), points, bodies, txs and complete; the reference LeiosDB's operations; other versions refused, no migration; sqlite-jdbc for the LeiosDB import. Then, asked 2026-11-19T03:29:37Z, a storage format change of the same store: the points' status byte gains a fourth value, 3 = immutable and evicted from volatile (0 volatile, 1 certified, 2 immutable), the column families the same.",
   "asked_at": "2026-11-18T19:54:33Z",
-  "decision": "Approved as proposed, with a reader and a writer of the reference node's Leios database, one database to maintain (RocksDB), and no regression of the ledger-state import and export.",
-  "decided_at": "2026-11-18T20:00:13Z",
+  "decision": "Approved as proposed (decided 2026-11-18T20:00:13Z), with a reader and a writer of the reference node's Leios database, one database to maintain (RocksDB), and no regression of the ledger-state import and export. Then approved, decided 2026-11-19T17:25:12Z: the fourth status value, as option (b) of the choices put, and nothing else of the format.",
+  "decided_at": "2026-11-19T17:25:12Z",
   "surface_sha256": "96da880bdec6de10bd4e818ff69487c694eded428d27e7dee04cea7464b4c5df"
  },
  "surface": {

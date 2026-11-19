@@ -67,12 +67,12 @@ final case class StoredEb(
   * holds a permit of `gate` while it runs and the release takes all of them, so the database is
   * never closed under a call.
   *
-  * One store holds what the reference splits between its volatile and immutable files, so its
-  * completed-point scan (`scanCompleteEbClosuresNotOlderThanSlot`) is the reference's from a slot
-  * at or after the last collection's, the only slot the reference's one caller asks from (the
-  * immutable tip); from an earlier slot it still lists the points of a hash the reference's
-  * collection evicted from its volatile file. The last collection's slot is not kept on disk, which
-  * would be a change of the format.
+  * One store holds what the reference splits between its volatile and immutable files. A hash the
+  * reference's collection evicted from its volatile file has its points [[EbStatus.Evicted]]: its
+  * body and transactions stay, as the immutable file keeps them, and what the reference reads from
+  * its volatile file alone (the point scans, a novel point's completion, a write of transactions)
+  * does not see it, until its body is written again, which empties its closure for its transactions
+  * to be written again, as the reference's volatile file has it then.
   */
 final class RocksLeiosStore[F[_]] private (
     db: RocksDB,
@@ -224,6 +224,12 @@ final class RocksLeiosStore[F[_]] private (
       txOffset(k).map(held + _)
     )
 
+  /** Whether the collection evicted the hash from the reference's volatile partition. */
+  private def evicted(p: Points, hash: EbHash, key: Array[Byte])(using
+      ReadOptions
+  ): Either[LeiosStoreError, Boolean] =
+    pointsOf(p, hash, key).map(_.exists(_._4 == EbStatus.Evicted))
+
   private def storedPoint(key: Array[Byte])(using
       ReadOptions
   ): Either[LeiosStoreError, (Long, EbStatus)] =
@@ -254,13 +260,19 @@ final class RocksLeiosStore[F[_]] private (
       Raise[F, LeiosStoreError]
   ): F[Vector[EbPoint]] =
     writing { p =>
-      hashKey(point.hash).map { key =>
+      hashKey(point.hash).flatMap { key =>
         val k = pointKey(slotBits(point.slot), key)
-        if has(families.points, k) then (Vector.empty, p)
+        if has(families.points, k) then Right((Vector.empty, p))
         else
-          commit(Vector(Op.Put(Family.Points, k, pointValue(announced.toLong, EbStatus.Volatile))))
-          val completed = if has(families.complete, key) then Vector(point) else Vector.empty
-          (completed, p.added(point.hash, point.slot, EbStatus.Volatile))
+          evicted(p, point.hash, key).map { gone =>
+            commit(
+              Vector(Op.Put(Family.Points, k, pointValue(announced.toLong, EbStatus.Volatile)))
+            )
+            // the reference completes a novel point whose body it holds in its volatile file
+            val completed =
+              if !gone && has(families.complete, key) then Vector(point) else Vector.empty
+            (completed, p.added(point.hash, point.slot, EbStatus.Volatile))
+          }
       }
     }
 
@@ -275,23 +287,39 @@ final class RocksLeiosStore[F[_]] private (
           (),
           LeiosStoreError.PointNotWritten(point)
         )
+        gone <- evicted(p, point.hash, key)
+        rows <- pointsOf(p, point.hash, key)
         result <-
-          if has(families.bodies, key) then Right((BodyWritten(Vector.empty, Vector.empty), p))
+          if has(families.bodies, key) && !gone then
+            Right((BodyWritten(Vector.empty, Vector.empty), p))
           else
+            // a body written again after its hash was evicted: the reference's volatile file takes
+            // it with an empty closure, and its evicted points stay in its immutable file only
+            val retired = rows.filter(_._4 == EbStatus.Evicted)
+            val kept = retired.foldLeft(p)((q, r) => q.removed(point.hash, r._1))
             val filled = fills.foldLeft(SortedMap.empty[Int, Bytes]) { (acc, fill) =>
               if acc.contains(fill.offset) then acc
-              else filledFrom(eb, fill).fold(acc)(acc.updated(fill.offset, _))
+              else filledFrom(p, eb, fill).fold(acc)(acc.updated(fill.offset, _))
             }
             val complete = filled.sizeIs == eb.size
-            (if filled.isEmpty then Right(Vector.empty) else copied(p, point.hash, key)).map {
+            (if filled.isEmpty then Right(Vector.empty) else copied(kept, point.hash, key)).map {
               copy =>
                 commit(
-                  Vector(Op.Put(Family.Bodies, key, eb.encoded.toArray)) ++
+                  retired.map(r => Op.Delete(Family.Points, r._2)) ++
+                    Option
+                      .when(gone)(
+                        Vector(
+                          Op.Delete(Family.Complete, key),
+                          Op.DeleteRange(Family.Txs, txKey(key, 0), txRangeEnd(key))
+                        )
+                      )
+                      .getOrElse(Vector.empty) ++
+                    Vector(Op.Put(Family.Bodies, key, eb.encoded.toArray)) ++
                     filled.toVector.map((o, tx) => Op.Put(Family.Txs, txKey(key, o), tx.toArray)) ++
                     Option.when(complete)(Op.Put(Family.Complete, key, Empty)) ++ copy
                 )
-                val completed = if complete then p.pointsOf(point.hash) else Vector.empty
-                (BodyWritten(completed, filled.keys.toVector), p)
+                val completed = if complete then kept.pointsOf(point.hash) else Vector.empty
+                (BodyWritten(completed, filled.keys.toVector), kept)
             }
       yield result
     }
@@ -300,11 +328,15 @@ final class RocksLeiosStore[F[_]] private (
     * the one the body lists at the fill's offset (`fillFrom`, `Impl/SQLite/Insert.hs:204-237` at
     * 2416493b).
     */
-  private def filledFrom(eb: LeiosEb, fill: LocalFill)(using ReadOptions): Option[Bytes] =
+  private def filledFrom(p: Points, eb: LeiosEb, fill: LocalFill)(using
+      ReadOptions
+  ): Option[Bytes] =
     for
       (listed, declared) <- eb.transactions.get(fill.offset)
       source = fill.source
       if source.offset >= 0 && source.hash.bytes.size == LeiosEb.HashBytes
+      // the reference fills from its volatile file only
+      if evicted(p, source.hash, source.hash.bytes.toArray).contains(false)
       raw <- get(families.txs, txKey(source.hash.bytes.toArray, source.offset))
       tx = Bytes.wrap(raw)
       if tx.size.toLong == declared.toLong && LeiosEb.written(tx) &&
@@ -317,7 +349,9 @@ final class RocksLeiosStore[F[_]] private (
     writing { p =>
       for
         key <- hashKey(point.hash)
-        stored <- body(point.hash, key)
+        gone <- evicted(p, point.hash, key)
+        // the reference drops what it has no volatile body for
+        stored <- if gone then Right(None) else body(point.hash, key)
         result <- stored.fold(Right((Vector.empty[EbPoint], p))) { eb =>
           // the first of each offset, as the reference keeps it (`Insert.hs:287-297` at 2416493b)
           val accepted = txs.foldLeft(SortedMap.empty[Int, Bytes]) { case (acc, (o, tx)) =>
@@ -345,19 +379,20 @@ final class RocksLeiosStore[F[_]] private (
   /** Collection, in writes of at most [[GcBatch]] hashes each, as the reference's sweeper evicts a
     * batch of hashes at a time between the writer's jobs (`sweepEbBatch`,
     * `Impl/SQLite/Maintenance.hs:305-325` at 2416493b). A hash is decided once in the write that
-    * takes it, from its points then: unless one is certified or at or after `slot`
-    * (`sql_gc_markable`, `Impl/SQLite/Queries.hs:193-200` at 2416493b), all its volatile points go
-    * in that write, and its body and transactions with them if no point is left, so no hash is ever
-    * left half collected. Only the volatile points older than `slot` are visited, from the points
-    * held in memory (the reference's `idx_ebs_sweepable`), so a collection that removes nothing
-    * costs no more however many immutable points the store holds.
+    * takes it, from its points in the reference's volatile file then: unless one is certified or at
+    * or after `slot` (`sql_gc_markable`, `Impl/SQLite/Queries.hs:193-200` at 2416493b), all its
+    * volatile points go in that write and its immutable ones become evicted, and its body and
+    * transactions go with them if no point is left, so no hash is ever left half collected. Only
+    * the volatile and immutable points older than `slot` are visited, from the points held in
+    * memory (the reference's `idx_ebs_sweepable`), so a collection that removes nothing costs no
+    * more however many evicted points the store holds.
     */
   def garbageCollect(slot: Word64)(using Raise[F, LeiosStoreError]): F[Unit] =
     def after(cursor: Option[(Word64, EbHash)]): F[Unit] =
       collectBatch(slot, cursor).flatMap(_.fold(F.unit)(last => after(Some(last))))
     after(None)
 
-  /** One write of a collection: the hashes of the next [[GcBatch]] volatile points older than
+  /** One write of a collection: the hashes of the next [[GcBatch]] collectable points older than
     * `slot` after `cursor`, and the last of those points, from which the next write goes on; none
     * when there was none.
     */
@@ -367,7 +402,7 @@ final class RocksLeiosStore[F[_]] private (
     val frontier = slot.toBigInt
     writing { p =>
       val pending = cursor
-        .fold(p.volatile.iterator)(c => p.volatile.iteratorFrom(c).filter(_ != c))
+        .fold(p.sweepable.iterator)(c => p.sweepable.iteratorFrom(c).filter(_ != c))
         .takeWhile(_._1.toBigInt < frontier)
         .to(LazyList)
       @tailrec def gather(
@@ -386,9 +421,13 @@ final class RocksLeiosStore[F[_]] private (
         .foldLeftM((Vector.empty[Op], p)) { case ((ops, q), hash) =>
           val key = hash.bytes.toArray
           pointsOf(q, hash, key).map { rows =>
-            val vetoed = rows.exists(r => r._4 == EbStatus.Certified || r._1.toBigInt >= frontier)
-            val gone = if vetoed then Vector.empty else rows.filter(_._4 == EbStatus.Volatile)
-            val next = gone.foldLeft(q)((acc, r) => acc.removed(hash, r._1))
+            val live = rows.filter(_._4 != EbStatus.Evicted)
+            val vetoed = live.exists(r => r._4 == EbStatus.Certified || r._1.toBigInt >= frontier)
+            val gone = if vetoed then Vector.empty else live.filter(_._4 == EbStatus.Volatile)
+            val kept = if vetoed then Vector.empty else live.filter(_._4 == EbStatus.Immutable)
+            val next = kept.foldLeft(gone.foldLeft(q)((acc, r) => acc.removed(hash, r._1))) {
+              (acc, r) => acc.restated(hash, r._1, EbStatus.Evicted)
+            }
             val swept =
               if gone.isEmpty || next.slotsOf(hash).nonEmpty then Vector.empty
               else
@@ -397,7 +436,9 @@ final class RocksLeiosStore[F[_]] private (
                   Op.Delete(Family.Complete, key),
                   Op.DeleteRange(Family.Txs, txKey(key, 0), txRangeEnd(key))
                 )
-            ((ops ++ gone.map(r => Op.Delete(Family.Points, r._2))) ++ swept, next)
+            val evictions =
+              kept.map(r => Op.Put(Family.Points, r._2, pointValue(r._3, EbStatus.Evicted)))
+            ((ops ++ gone.map(r => Op.Delete(Family.Points, r._2)) ++ evictions) ++ swept, next)
           }
         }
         .map { (ops, next) =>
@@ -413,12 +454,18 @@ final class RocksLeiosStore[F[_]] private (
         .distinct
         .flatTraverse { hash =>
           hashKey(hash).flatMap { key =>
-            val promoted =
-              if holdsPrefix(families.txs, key) then EbStatus.Immutable else EbStatus.Certified
-            pointsOf(p, hash, key).map(_.collect {
-              case (slot, k, size, status) if status != EbStatus.Immutable && status != promoted =>
-                (hash, slot, promoted, Op.Put(Family.Points, k, pointValue(size, promoted)))
-            })
+            evicted(p, hash, key).flatMap { gone =>
+              // copied once the reference's volatile file holds a transaction of it
+              val promoted =
+                if !gone && holdsPrefix(families.txs, key) then EbStatus.Immutable
+                else EbStatus.Certified
+              pointsOf(p, hash, key).map(_.collect {
+                case (slot, k, size, status)
+                    if (status == EbStatus.Volatile || status == EbStatus.Certified) &&
+                      status != promoted =>
+                  (hash, slot, promoted, Op.Put(Family.Points, k, pointValue(size, promoted)))
+              })
+            }
           }
         }
         .map { changes =>
@@ -478,8 +525,10 @@ final class RocksLeiosStore[F[_]] private (
 
   def scanEbPoints(using Raise[F, LeiosStoreError]): F[Vector[EbPoint]] =
     reading(
-      fold(families.points, Array.emptyByteArray, _ => true, Vector.empty[EbPoint]) { (acc, k, _) =>
-        pointKeyed(k).map(acc :+ _)
+      fold(families.points, Array.emptyByteArray, _ => true, Vector.empty[EbPoint]) { (acc, k, v) =>
+        (pointKeyed(k), pointRecord(k, v)).mapN((point, record) =>
+          if record._2 == EbStatus.Evicted then acc else acc :+ point
+        )
       }
     )
 
@@ -491,13 +540,22 @@ final class RocksLeiosStore[F[_]] private (
   private[storage] def scanCompleteIn(view: View, slot: Word64)(using
       Raise[F, LeiosStoreError]
   ): F[Vector[EbPoint]] =
+    val from = slot.toBigInt
+    // every point, for the hashes evicted from the reference's volatile file, wherever their points
     in(view)(
-      fold(families.points, be(slotBits(slot), SlotBytes), _ => true, Vector.empty[EbPoint]) {
-        (acc, k, _) =>
-          pointKeyed(k).map(p =>
-            if has(families.complete, p.hash.bytes.toArray) then acc :+ p else acc
-          )
-      }
+      fold(
+        families.points,
+        Array.emptyByteArray,
+        _ => true,
+        (Vector.empty[EbPoint], Set.empty[EbHash])
+      ) { case ((listed, gone), k, v) =>
+        (pointKeyed(k), pointRecord(k, v)).mapN { (p, record) =>
+          if record._2 == EbStatus.Evicted then (listed, gone + p.hash)
+          else if p.slot.toBigInt >= from && has(families.complete, p.hash.bytes.toArray) then
+            (listed :+ p, gone)
+          else (listed, gone)
+        }
+      }.map((listed, gone) => listed.filterNot(p => gone.contains(p.hash)))
     )
 
   // --- what the import from and the export to the reference's database exchange ---
@@ -627,7 +685,7 @@ object RocksLeiosStore:
   /** The format record a store of this build holds. */
   val FormatRecord: Bytes = Bytes.wrap(Magic.getBytes(US_ASCII) ++ be(Version.toLong, 4))
 
-  /** The most volatile points one write of a collection visits. */
+  /** The most hashes one write of a collection takes. */
   val GcBatch: Int = 256
 
   private val FormatKey: Array[Byte] = "format".getBytes(US_ASCII)
@@ -666,12 +724,12 @@ object RocksLeiosStore:
   private given Ordering[Word64] = Ordering.by(_.toBigInt)
   private given Ordering[EbHash] = Ordering.fromLessThan((a, b) => a.bytes.compareTo(b.bytes) < 0)
 
-  /** The points held in memory: the slots of each hash's points, and the volatile points, the ones
-    * a collection may remove, by slot.
+  /** The points held in memory: the slots of each hash's points, and the volatile and immutable
+    * points, the ones a collection may take (the reference's `idx_ebs_sweepable`), by slot.
     */
   private[storage] final case class Points(
       slots: Map[EbHash, SortedSet[Word64]],
-      volatile: SortedSet[(Word64, EbHash)]
+      sweepable: SortedSet[(Word64, EbHash)]
   )
 
   private object Points:
@@ -684,18 +742,19 @@ object RocksLeiosStore:
 
     /** A point stored with `status`. */
     private def added(hash: EbHash, slot: Word64, status: EbStatus): Points =
-      Points(p.slots.updated(hash, slotsOf(hash) + slot), p.volatile).restated(hash, slot, status)
+      Points(p.slots.updated(hash, slotsOf(hash) + slot), p.sweepable).restated(hash, slot, status)
 
     /** A point's status changed to `status`. */
     private def restated(hash: EbHash, slot: Word64, status: EbStatus): Points = status match
-      case EbStatus.Volatile => p.copy(volatile = p.volatile + (slot -> hash))
-      case _                 => p.copy(volatile = p.volatile - (slot -> hash))
+      case EbStatus.Volatile | EbStatus.Immutable =>
+        p.copy(sweepable = p.sweepable + (slot -> hash))
+      case EbStatus.Certified | EbStatus.Evicted => p.copy(sweepable = p.sweepable - (slot -> hash))
 
     private def removed(hash: EbHash, slot: Word64): Points =
       val left = slotsOf(hash) - slot
       Points(
         if left.isEmpty then p.slots - hash else p.slots.updated(hash, left),
-        p.volatile - (slot -> hash)
+        p.sweepable - (slot -> hash)
       )
 
   private[storage] def be(n: Long, width: Int): Array[Byte] =

@@ -20,19 +20,22 @@ final case class LocalFill(offset: Int, source: TxLocation)
 final case class BodyWritten(completed: Vector[EbPoint], filled: Vector[Int])
 
 /** The status of an announced point: the `status` column of the reference's volatile partition,
-  * without its two transitional states (`Storage/LeiosDB/Impl/SQLite/Schema.hs:20-23` at 2416493b).
-  * A point is [[Volatile]] until a certifying block that becomes immutable promotes its endorser
-  * block; it is then [[Certified]] (the reference's pinned row, awaiting its copy into the
-  * immutable partition) while none of its transactions is stored, and [[Immutable]] (the
-  * reference's copied row) once one is, as the reference's copier copies an endorser block once it
-  * has a closure row (`sql_copy_has_closure`, `Storage/LeiosDB/Impl/SQLite/Queries.hs:131-133`).
-  * The reference's fourth status, marked for collection, has no counterpart:
-  * [[LeiosStore.garbageCollect]] marks and sweeps in one write.
+  * without its two transitional states (`Storage/LeiosDB/Impl/SQLite/Schema.hs:20-23` at 2416493b),
+  * and whether the reference's collection evicted the point from that partition. A point is
+  * [[Volatile]] until a certifying block that becomes immutable promotes its endorser block; it is
+  * then [[Certified]] (the reference's pinned row, awaiting its copy into the immutable partition)
+  * while none of its transactions is stored, and [[Immutable]] (the reference's copied row) once
+  * one is, as the reference's copier copies an endorser block once it has a closure row
+  * (`sql_copy_has_closure`, `Storage/LeiosDB/Impl/SQLite/Queries.hs:131-133`). A collection that
+  * takes an immutable point makes it [[Evicted]]: the reference keeps it in its immutable partition
+  * only, and so do not its volatile reads, which never see it. The reference's marked status has no
+  * counterpart: [[LeiosStore.garbageCollect]] marks and sweeps a hash in one write.
   */
 enum EbStatus(val code: Byte) derives CanEqual:
   case Volatile extends EbStatus(0)
   case Certified extends EbStatus(1)
   case Immutable extends EbStatus(2)
+  case Evicted extends EbStatus(3)
 
 object EbStatus:
   def fromCode(code: Byte): Option[EbStatus] = values.find(_.code == code)
@@ -108,8 +111,9 @@ enum LeiosStoreError extends DomainError:
   */
 trait LeiosStore[F[_]]:
   /** Record an announced point and its announced size (`writeEbPoint`). A point already stored
-    * changes nothing. A novel point of a hash whose closure is already complete is complete on
-    * arrival, and is returned.
+    * changes nothing. A novel point of a hash whose closure is complete in the reference's volatile
+    * partition is complete on arrival, and is returned; one of a hash the collection evicted is
+    * not, as the reference holds its body in its immutable partition only then.
     */
   def writeEbPoint(point: EbPoint, announced: Word32)(using
       Raise[F, LeiosStoreError]
@@ -117,16 +121,19 @@ trait LeiosStore[F[_]]:
 
   /** Store a body, and fill what its fills can from transactions stored for other endorser blocks
     * (`writeEbBody`, `sqlInsertEbBody`). The point must have been written. A body already stored
-    * changes nothing and completes nothing.
+    * changes nothing and completes nothing, unless the collection evicted its hash: the body is
+    * then written to the reference's volatile partition again, its closure there empty until its
+    * transactions are written again.
     */
   def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
       Raise[F, LeiosStoreError]
   ): F[BodyWritten]
 
   /** Store transactions of the point's endorser block, by offset (`writeTxs`, `sqlInsertTxs`). A
-    * transaction is dropped if the body is not stored, its offset is not in the body or came
-    * earlier in the same write, its size is not the declared one, or its bytes are empty or start
-    * with a zero byte. Returns every point of the hash when this write completed its closure.
+    * transaction is dropped if the body is not stored (or its hash is evicted and the body not
+    * written again), its offset is not in the body or came earlier in the same write, its size is
+    * not the declared one, or its bytes are empty or start with a zero byte. Returns every point of
+    * the hash when this write completed its closure.
     */
   def writeTxs(point: EbPoint, txs: Vector[(Int, Bytes)])(using
       Raise[F, LeiosStoreError]
@@ -149,32 +156,30 @@ trait LeiosStore[F[_]]:
       Raise[F, LeiosStoreError]
   ): F[Vector[(Int, Bytes)]]
 
-  /** Every stored point, by slot (`testScanEbPoints`). */
+  /** Every point of the reference's volatile partition, by slot (`testScanEbPoints`): not the
+    * [[EbStatus.Evicted]] ones.
+    */
   def scanEbPoints(using Raise[F, LeiosStoreError]): F[Vector[EbPoint]]
 
   /** The points at or after `slot` whose closure is complete, oldest first
     * (`scanCompleteEbClosuresNotOlderThanSlot`, `sqlScanBodiedPointsSince`,
-    * `Impl/SQLite/Read.hs:170-182` at 2416493b), whatever their status. The reference reads them
-    * from its volatile file, which holds every point of a hash until its collection evicts them all
-    * together, and a point at or after a collection's slot vetoes that (`sql_gc_markable`,
-    * `Queries.hs:193-200` at 2416493b): from a slot at or after the last collection's, which its
-    * one caller asks for (the immutable tip, `NodeKernel.hs:938-948` at 2416493b, past every
-    * collection, which run at the immutable tip), the two lists are the same. From an earlier slot
-    * the reference no longer lists the immutable points of a hash its collection evicted, which
-    * this store keeps; telling them apart would need the last collection's slot kept on disk.
+    * `Impl/SQLite/Read.hs:170-182` at 2416493b): what the reference reads from its volatile
+    * partition, so never an [[EbStatus.Evicted]] point, nor a point of a hash the collection
+    * evicted until its body and closure are written again.
     */
   def scanCompleteEbClosuresNotOlderThanSlot(slot: Word64)(using
       Raise[F, LeiosStoreError]
   ): F[Vector[EbPoint]]
 
   /** Collect what is older than `slot` (`leiosDbGarbageCollect`, `sql_gc_mark` and `sweepEbBatch`):
-    * a [[EbStatus.Volatile]] point older than `slot` goes unless a point of the same hash is
-    * [[EbStatus.Certified]] or at or after `slot`; then the body and transactions of a hash that no
-    * point names.
+    * unless a point of the same hash is [[EbStatus.Certified]] or at or after `slot`, a
+    * [[EbStatus.Volatile]] point older than `slot` goes and an [[EbStatus.Immutable]] one becomes
+    * [[EbStatus.Evicted]]; then the body and transactions of a hash that no point names.
     */
   def garbageCollect(slot: Word64)(using Raise[F, LeiosStoreError]): F[Unit]
 
-  /** Promote the points' endorser blocks (`leiosDbPromoteToImmutable`): every point of each hash
-    * becomes [[EbStatus.Certified]], or [[EbStatus.Immutable]] if a transaction of it is stored.
+  /** Promote the points' endorser blocks (`leiosDbPromoteToImmutable`): every volatile or certified
+    * point of each hash becomes [[EbStatus.Certified]], or [[EbStatus.Immutable]] if a transaction
+    * of it is in the reference's volatile partition.
     */
   def promoteToImmutable(points: Vector[EbPoint])(using Raise[F, LeiosStoreError]): F[Unit]

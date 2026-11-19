@@ -190,7 +190,7 @@ nothing migrates it. Its column families:
 | Family | Key | Value |
 |---|---|---|
 | `meta` | `format` | the magic `SCRBLEIO`, then the version as a 32-bit big-endian integer (1) |
-| `points` | slot (u64 big-endian), endorser-block hash (32 bytes) | announced size (u64 big-endian), status (u8: 0 volatile, 1 certified, 2 immutable) |
+| `points` | slot (u64 big-endian), endorser-block hash (32 bytes) | announced size (u64 big-endian), status (u8: 0 volatile, 1 certified, 2 immutable, 3 immutable and evicted from volatile) |
 | `bodies` | hash | the body's encoding (`encodeLeiosEb`: a map of each transaction hash to its size) |
 | `txs` | hash, transaction offset (u32 big-endian) | the transaction's bytes |
 | `complete` | hash | empty: present once every transaction the body lists is stored |
@@ -207,15 +207,16 @@ the points whose closure it completed. `writeEbPoint` is idempotent; `writeEbBod
 and stores a body once, with the local fills whose source holds a transaction of the listed hash;
 `writeTxs` drops a transaction that is not in the body, of another size than declared, empty or
 zero-led, or repeated in the write. `promoteToImmutable` makes every point of the hash certified, or
-immutable once a transaction of it is stored (the reference's pin and copy); `garbageCollect(slot)`
-removes the volatile points older than the slot unless a point of the same hash is certified or at
-or after it, then the bodies and transactions no point names: in writes of at most 256 hashes, each
+immutable once a transaction of it is stored (the reference's pin and copy); `garbageCollect(slot)`,
+unless a point of the same hash is certified or at or after the slot, removes the volatile points
+older than it and makes the immutable ones evicted, then removes the bodies and transactions no point
+names: in writes of at most 256 hashes, each
 hash decided and collected whole in the write that takes it, from the volatile points the store
-keeps apart in memory, so a collection costs nothing for the immutable points. `scanCompleteEbClosuresNotOlderThanSlot`
-lists the complete points at or after a slot, whatever their status: from a slot at or after the
-last collection's, which the reference's one caller asks for, that is what the reference lists from
-its volatile file; from an earlier one the reference no longer lists the points of a hash its
-collection evicted. The points of each hash are held in memory, read when the store opens.
+keeps apart in memory, so a collection costs nothing for the immutable points. An evicted point is in the reference's immutable file only: its body and transactions stay, and
+lookups find them, but what the reference reads from its volatile file alone does not see the hash,
+from any slot (`scanEbPoints`, `scanCompleteEbClosuresNotOlderThanSlot`, a novel point's completion,
+`writeTxs`) until its body is written again, which empties its closure until its transactions are
+written again, as the reference's volatile file holds it then. The points of each hash are held in memory, read when the store opens.
 
 **Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
 `--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest
