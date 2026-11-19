@@ -111,9 +111,11 @@ enum LeiosStoreError extends DomainError:
   */
 trait LeiosStore[F[_]]:
   /** Record an announced point and its announced size (`writeEbPoint`). A point already stored
-    * changes nothing. A novel point of a hash whose closure is complete in the reference's volatile
-    * partition is complete on arrival, and is returned; one of a hash the collection evicted is
-    * not, as the reference holds its body in its immutable partition only then.
+    * changes nothing, an [[EbStatus.Evicted]] one too, where the reference's volatile partition
+    * takes it again (an approved Deviation, #830, decided 2026-11-19T20:18:25Z). A novel point of a
+    * hash whose closure is complete in the reference's volatile partition is complete on arrival,
+    * and is returned; one of a hash the collection evicted is not, as the reference holds its body
+    * in its immutable partition only then.
     */
   def writeEbPoint(point: EbPoint, announced: Word32)(using
       Raise[F, LeiosStoreError]
