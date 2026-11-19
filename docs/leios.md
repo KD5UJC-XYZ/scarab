@@ -41,6 +41,17 @@ are private working details; reproduce the review from these upstream identities
 | Independent implementations (existence only, not read in depth) | `txpipe/pallas` `pallas-network2/src/protocol/leiosnotify.rs`; `input-output-hk/leios-tools` (`net-rs` Rust node-side tooling with adversarial behaviours) | Useful cross-checks for codecs |
 | Leios paper | <https://eprint.iacr.org/2025/1115.pdf> | Background only |
 
+**When the Leios reference is re-pinned, check which hash an endorser block names its transactions
+by.** At ouroboros-consensus `2416493b` it is `hashTxBytes`, the Blake2b-256 of the transaction's
+raw CBOR (`Leios/Types.hs:162-163`, ouroboros-consensus 2416493b), which the LeiosDB checks on
+insert (`LeiosDB/Impl/SQLite/Insert.hs:231`, ouroboros-consensus 2416493b); the endorser-block
+store in review for #54 does the same. The Dijkstra ledger's `hashTx` is another hash: the
+Blake2b-256 of the body, witness and auxiliary-data hashes and the validity flag
+(`Dijkstra/Tx.hs:440-470`, cardano-ledger 9df9f98c), which consensus does not call at that pin. If a
+later pin names transactions by the ledger's `hashTx`, the store, LeiosFetch and the closure checks
+must follow, or Scarab would disagree with the reference about an endorser block's closure, a
+split risk ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184)).
+
 ## 2. What Linear Leios changes
 
 Leios is an overlay on Praos: the ranking-block (RB) chain, its fork choice, leader election, KES
