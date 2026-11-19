@@ -153,12 +153,15 @@ trait LeiosStore[F[_]]:
   def scanEbPoints(using Raise[F, LeiosStoreError]): F[Vector[EbPoint]]
 
   /** The points at or after `slot` whose closure is complete, oldest first
-    * (`scanCompleteEbClosuresNotOlderThanSlot`), of those the reference holds in its volatile
-    * partition, which it reads (`sqlScanBodiedPointsSince`, `Impl/SQLite/Read.hs:170-182` at
-    * 2416493b): not the [[EbStatus.Immutable]] ones, which its collection evicts from there. A
-    * copied point that the reference has not collected yet is not listed either; its one caller
-    * asks from the immutable tip (`NodeKernel.hs:946-948` at 2416493b), and a promoted endorser
-    * block is older.
+    * (`scanCompleteEbClosuresNotOlderThanSlot`, `sqlScanBodiedPointsSince`,
+    * `Impl/SQLite/Read.hs:170-182` at 2416493b), whatever their status. The reference reads them
+    * from its volatile file, which holds every point of a hash until its collection evicts them all
+    * together, and a point at or after a collection's slot vetoes that (`sql_gc_markable`,
+    * `Queries.hs:193-200` at 2416493b): from a slot at or after the last collection's, which its
+    * one caller asks for (the immutable tip, `NodeKernel.hs:938-948` at 2416493b, past every
+    * collection, which run at the immutable tip), the two lists are the same. From an earlier slot
+    * the reference no longer lists the immutable points of a hash its collection evicted, which
+    * this store keeps; telling them apart would need the last collection's slot kept on disk.
     */
   def scanCompleteEbClosuresNotOlderThanSlot(slot: Word64)(using
       Raise[F, LeiosStoreError]

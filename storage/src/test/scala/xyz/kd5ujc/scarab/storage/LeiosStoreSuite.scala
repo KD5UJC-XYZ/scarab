@@ -43,7 +43,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
   test("a body's encoding and bounds are the reference's bytes") {
     // one transaction of 300 bytes whose hash is 32 bytes of 0x11: `{ h'11..11' => 300 }`
     val listed = LeiosTxHash.fromBytes(Bytes(Vector.fill(32)(0x11.toByte)))
-    val one = LeiosEb(NonEmptyVector.of(listed -> word32(300)))
+    val one = eb(NonEmptyVector.of(listed -> word32(300)))
     assertEquals(one.encoded.hex, "a15820" + "11" * 32 + "19012c")
     assertEquals(LeiosEb.decode(one.encoded), Right(one))
     assertEquals(one.txBounds.map(_.hex), Some("00000000" + "0000012c"))
@@ -52,12 +52,12 @@ class LeiosStoreSuite extends CatsEffectSuite:
   test("a body's encoding is the map MsgLeiosBlock carries, at every head width") {
     // 300 entries: a two-byte map head; sizes of every integer width
     val sizes = Vector(1L, 30L, 300L, 70000L)
-    val wide = LeiosEb(
+    val wide = eb(
       NonEmptyVector.fromVectorUnsafe(
         Vector.tabulate(300)(i => LeiosEb.hashTx(tx(i)) -> word32(sizes(i % 4)))
       )
     )
-    val small = LeiosEb(NonEmptyVector.fromVectorUnsafe(Vector.tabulate(30)(i => entry(tx(i)))))
+    val small = eb(NonEmptyVector.fromVectorUnsafe(Vector.tabulate(30)(i => entry(tx(i)))))
     Vector(wide, small, body(1)).foreach { b =>
       assertEquals(
         LeiosFetch.encode(LeiosFetch.Message.Block(b.transactions.toVector)),
@@ -162,7 +162,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
     dir =>
       val source = body(2)
       // the target lists tx 1 of the source at its offset 0, then a transaction of its own
-      val target = LeiosEb(NonEmptyVector.of(entry(tx(1)), entry(tx(7))))
+      val target = eb(NonEmptyVector.of(entry(tx(1)), entry(tx(7))))
       store(dir / "leios").use { s =>
         ok(for
           _ <- s.writeEbPoint(point(1, 1), word32(1))
@@ -218,15 +218,14 @@ class LeiosStoreSuite extends CatsEffectSuite:
         points <- s.scanEbPoints
         bodies <- Vector(1, 2, 3).traverse(i => s.lookupEbBody(hash(i)).map(_.isDefined))
         txs <- s.batchRetrieveTxs(hash(1), Vector(0))
-        complete <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(0))
+        complete <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(100))
         _ <- s.garbageCollect(slot(101))
         later <- s.scanEbPoints
       yield
         assertEquals(points, Vector(point(2, 2), point(3, 3), point(100, 2)))
         assertEquals(bodies, Vector(false, true, true))
         assertEquals(txs, Vector.empty)
-        // the immutable point is not one the reference's volatile read lists
-        assertEquals(complete, Vector(point(2, 2), point(100, 2)))
+        assertEquals(complete, Vector(point(100, 2)))
         assertEquals(later, Vector(point(3, 3))))
     }
   }
@@ -297,6 +296,143 @@ class LeiosStoreSuite extends CatsEffectSuite:
       })
   }
 
+  test("a body whose hash is not 32 bytes is refused before it reaches a store") {
+    val short = LeiosTxHash.fromBytes(Bytes(Vector.fill(31)(1.toByte)))
+    assertEquals(
+      LeiosEb.from(NonEmptyVector.of(entry(tx(0)), short -> word32(5))),
+      Left(LeiosEb.Error.BadEntry(1))
+    )
+  }
+
+  dirs.test("a point whose body was refused takes the corrected body") { dir =>
+    val short = LeiosTxHash.fromBytes(Bytes(Vector.fill(31)(1.toByte)))
+    store(dir / "leios").use { s =>
+      ok(for
+        _ <- s.writeEbPoint(point(1, 1), word32(1))
+        refused = LeiosEb.from(NonEmptyVector.of(short -> word32(11)))
+        written <- s.writeEbBody(point(1, 1), body(1), Vector.empty)
+        completed <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
+      yield
+        assertEquals(refused, Left(LeiosEb.Error.BadEntry(0)))
+        assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
+        assertEquals(completed, Vector(point(1, 1))))
+    }
+  }
+
+  dirs.test(
+    "a read sees the store at one moment: a write between two reads of a view is not seen"
+  ) { dir =>
+    store(dir / "leios").use { s =>
+      ok(for
+        _ <- s.writeEbPoint(point(1, 1), word32(1))
+        _ <- s.writeEbBody(point(1, 1), body(3), Vector.empty)
+        _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
+        seen <- s.viewing { v =>
+          for
+            before <- s.batchRetrieveTxsIn(v, hash(1), Vector(0, 1, 2))
+            // a write of two offsets, which completes the closure, commits between the reads
+            completed <- s.writeTxs(point(1, 1), Vector(1 -> tx(1), 2 -> tx(2)))
+            after <- s.batchRetrieveTxsIn(v, hash(1), Vector(0, 1, 2))
+            closure <- s.lookupEbClosureIn(v, hash(1))
+            complete <- s.scanCompleteIn(v, slot(0))
+          yield (before, completed, after, closure, complete)
+        }
+        now <- s.batchRetrieveTxs(hash(1), Vector(0, 1, 2))
+        closure <- s.lookupEbClosure(hash(1))
+      yield
+        val (before, completed, after, inView, complete) = seen
+        val unwritten = Vector(0 -> tx(0), 1 -> zeroes(tx(1).size), 2 -> zeroes(tx(2).size))
+        assertEquals(completed, Vector(point(1, 1)))
+        assertEquals(before, unwritten)
+        assertEquals(after, unwritten)
+        assertEquals(inView, None)
+        assertEquals(complete, Vector.empty)
+        assertEquals(now, Vector(0, 1, 2).map(i => i -> tx(i)))
+        assertEquals(closure.map(_.size), Some(3)))
+    }
+  }
+
+  dirs.test(
+    "the scan from the immutable tip lists a promoted point the collection kept, as the reference"
+  ) { dir =>
+    for
+      _ <- store(dir / "leios").use { s =>
+        ok(for
+          // hash 1 announced on both sides of the frontier, hash 2 only before it; both complete
+          _ <- Vector(point(10, 1), point(30, 1), point(5, 2)).traverse_(p =>
+            s.writeEbPoint(p, word32(1))
+          )
+          _ <- Vector(point(10, 1), point(5, 2)).traverse_(p =>
+            s.writeEbBody(p, body(1), Vector.empty) *> s.writeTxs(p, Vector(0 -> tx(0)))
+          )
+          _ <- s.promoteToImmutable(Vector(point(10, 1), point(5, 2)))
+          _ <- s.garbageCollect(slot(20))
+        yield ())
+      }
+      scanned <- store(dir / "leios").use(s =>
+        ok(s.scanCompleteEbClosuresNotOlderThanSlot(slot(20)))
+      )
+    yield
+      // the reference keeps both of hash 1's points in its volatile file (the one at 30 vetoes
+      // their collection) and lists the one at 30
+      assertEquals(scanned, Vector(point(30, 1)))
+  }
+
+  dirs.test("collection works through its volatile points in batches") { dir =>
+    val many = RocksLeiosStore.GcBatch * 2 + 10
+    store(dir / "leios").use { s =>
+      ok(for
+        _ <- (0 until many).toVector.traverse_(i => s.writeEbPoint(point(i.toLong, 7), word32(1)))
+        _ <- s.writeEbPoint(point(1, 8), word32(1))
+        _ <- s.writeEbPoint(point(5000, 8), word32(1))
+        _ <- s.garbageCollect(slot(5000))
+        left <- s.scanEbPoints
+        _ <- s.garbageCollect(slot(5000))
+        again <- s.scanEbPoints
+      yield
+        // hash 7's points all go; hash 8's old point stays, vetoed by its point at the frontier
+        assertEquals(left, Vector(point(1, 8), point(5000, 8)))
+        assertEquals(again, left))
+    }
+  }
+
+  dirs.test("a first open interrupted before its store was published starts again") { dir =>
+    val leios = dir / "leios"
+    for
+      // what an interrupted first open leaves: a staging directory, nothing at `leios`
+      _ <- IO.blocking {
+        val stage = RocksLeiosStore.staging(leios.toNioPath)
+        java.nio.file.Files.createDirectories(stage)
+        java.nio.file.Files.write(stage.resolve("CURRENT"), "MANIFEST-000001\n".getBytes)
+      }
+      points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
+      stageLeft <- IO.blocking(java.nio.file.Files.exists(RocksLeiosStore.staging(leios.toNioPath)))
+      reopened <- store(leios).use(s => ok(s.scanEbPoints))
+    yield
+      assertEquals(points, Vector(point(1, 1)))
+      assert(!stageLeft, "the staging directory is gone")
+      assertEquals(reopened, points)
+  }
+
+  dirs.test(
+    "a directory that holds anything but a store, and a store with no format record, are refused"
+  ) { dir =>
+    val stray = dir / "stray"
+    val unstamped = dir / "unstamped"
+    for
+      _ <- IO.blocking {
+        java.nio.file.Files.createDirectories(stray.toNioPath)
+        java.nio.file.Files.write(stray.toNioPath.resolve("notes"), "x".getBytes)
+      }
+      strayed <- attemptOpen(stray)
+      _ <- store(unstamped).use_
+      _ <- IO.blocking(deleteFormat(unstamped))
+      missing <- attemptOpen(unstamped)
+    yield
+      assertEquals(strayed, Left(LeiosStoreError.ForeignDatabase(Vector.empty)))
+      assertEquals(missing, Left(LeiosStoreError.FormatMissing))
+  }
+
   private def attemptOpen(dir: Path): IO[Either[LeiosStoreError, Unit]] =
     attempt(RocksLeiosStore.resource[IO](dir).use_)
 
@@ -319,7 +455,10 @@ object LeiosStoreSuite:
 
   /** A body of transactions `0` to `n - 1`. */
   def body(n: Int): LeiosEb =
-    LeiosEb(NonEmptyVector.fromVectorUnsafe(Vector.tabulate(n)(i => entry(tx(i)))))
+    eb(NonEmptyVector.fromVectorUnsafe(Vector.tabulate(n)(i => entry(tx(i)))))
+
+  def eb(transactions: NonEmptyVector[(LeiosTxHash, Word32)]): LeiosEb =
+    LeiosEb.from(transactions).fold(e => throw new AssertionError(e.toString), identity)
 
   def attempt[A](body: Handle[IO, LeiosStoreError] ?=> IO[A]): IO[Either[LeiosStoreError, A]] =
     Handle
@@ -348,6 +487,26 @@ object LeiosStoreSuite:
         .find(h => new String(h.getName) == "meta")
         .getOrElse(throw new AssertionError("meta"))
       db.put(meta, "format".getBytes, record.toArray)
+      handles.asScala.foreach(_.close())
+      db.close()
+    }
+
+  /** Remove the store's format record, as a store stamped by nothing would lack it. */
+  def deleteFormat(dir: Path): Unit =
+    val names =
+      scala.util.Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, dir.toString))
+    scala.util.Using.resource(new DBOptions()) { options =>
+      val handles = new java.util.ArrayList[ColumnFamilyHandle]()
+      val db = RocksDB.open(
+        options,
+        dir.toString,
+        names.asScala.map(n => new ColumnFamilyDescriptor(n)).asJava,
+        handles
+      )
+      val meta = handles.asScala
+        .find(h => new String(h.getName) == "meta")
+        .getOrElse(throw new AssertionError("meta"))
+      db.delete(meta, "format".getBytes)
       handles.asScala.foreach(_.close())
       db.close()
     }

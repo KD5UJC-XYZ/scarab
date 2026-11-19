@@ -12,9 +12,11 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
   * (`LeiosEb`, ouroboros-consensus 2416493b `Ouroboros/Consensus/Leios/Types.hs:209-213`). A body
   * lists at least one transaction: the reference refuses to store an empty one (`writeEbBody: empty
   * EB body`, `Storage/LeiosDB/Impl/SQLite/Insert.hs:129-130`), and its wire decoder refuses one
-  * too.
+  * too. Every hash is 32 bytes, as the reference's `TxHash` (`PackedBytes 32`) is: a body is made
+  * by [[LeiosEb.from]] or [[LeiosEb.decode]], which refuse another length, so that what is stored
+  * reads back.
   */
-final case class LeiosEb(transactions: NonEmptyVector[(LeiosTxHash, Word32)]):
+final case class LeiosEb private (transactions: NonEmptyVector[(LeiosTxHash, Word32)]):
   def size: Int = transactions.length
 
   /** The declared size of the transaction at `offset`, if the body lists one there. */
@@ -58,6 +60,14 @@ object LeiosEb:
     /** Entry `index` is not a 32-byte hash mapped to a 32-bit size. */
     case BadEntry(index: Int)
 
+  /** A body of these transactions, refused if a hash is not 32 bytes (`BadEntry` of its index): the
+    * wire's hashes keep any length (`LeiosTxHash`), the reference's are 32 bytes.
+    */
+  def from(transactions: NonEmptyVector[(LeiosTxHash, Word32)]): Either[Error, LeiosEb] =
+    transactions.toVector.indexWhere(_._1.bytes.size != HashBytes) match
+      case -1    => Right(new LeiosEb(transactions))
+      case index => Left(Error.BadEntry(index))
+
   /** The bytes of `hash` 's body, read back: the decoder of the reference's stored bodies
     * (`decodeStoredTxHashes`, `Read.hs:186-198` at 2416493b), which reads 32-byte hashes and 32-bit
     * sizes.
@@ -77,7 +87,7 @@ object LeiosEb:
                 case _ => Left(Error.BadEntry(index))
             }
             .flatMap(NonEmptyVector.fromVector(_).toRight(Error.Empty))
-            .map(LeiosEb(_))
+            .flatMap(from)
         case _ => Left(Error.NotAMap)
     }
 
