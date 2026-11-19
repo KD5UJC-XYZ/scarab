@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{
   NodeError,
   PeerError,
   Points,
+  StorageError,
   ValidationError
 }
 import cats.Monad
@@ -224,17 +225,21 @@ final class Follower[F[_]: Async, S] private (
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
     // A forged block is prepared as a delivered one is, put in the received log first, and then
-    // joins the processed forest, in the forger's error scope. A forged block whose body does not
-    // match its header (a bug of ours) is not kept: no peer has it, and the rules would refuse it
-    // when selection reached it.
+    // joins the processed forest, in the error scope adoptForged gives it (`retain`). A forged
+    // block whose body does not match its header (a bug of ours) is not kept: the rules would
+    // refuse it when selection reached it.
     val before = summon[BlockSelection.Before[F]]
     val forged = new Follower.Keeping[F]:
-      def keep(header: Header, raw: Bytes)(using caller: Raise[F, NodeError]): F[Unit] =
+      def keep(header: Header, raw: Bytes)(using
+          caller: Raise[F, NodeError]
+      ): F[Follower.Retention] =
         BlockPool.Delivered
           .checked(header, raw)
           .fold(
-            _ => F.unit,
-            block => before.prepare(header, raw)(using caller) *> pool.processForged(block).void
+            problem => F.pure(Follower.Retention.Unmatched(problem)),
+            block =>
+              before.prepare(header, raw)(using caller) *>
+                pool.processForged(block).as(Follower.Retention.Kept)
           )
     BlockSelection.resource(pool, work, fatal, application, originPredecessor) *>
       Resource.make(keeping.set(Some(forged)))(_ => keeping.set(None))
@@ -716,10 +721,12 @@ final class Follower[F[_]: Async, S] private (
     * ([[blockSelection]]), as the reference's ChainDB keeps it in its VolatileDB, where it put the
     * block before chain selection (`VolatileDB.putBlock`, ChainSel.hs:450). When the LoE moves or
     * the node is caught up ([[GenesisGovernor.selectionChanged]]), the worker selects again over
-    * the whole forest, this block included, as `ChainSelReprocessLoEBlocks` does (ChainSel.hs
+    * the processed forest, this block included, as `ChainSelReprocessLoEBlocks` does (ChainSel.hs
     * 358-413, which `gddWatcher` triggers, Genesis/Governor.hs:172-184; ChainSel.hs:363-418 at
     * 808e40054). The block is adopted then if it is still valid, joins our chain and is preferred;
-    * the forger's trace of it stays the one of its submission.
+    * the forger's trace of it stays the one of its submission. Whether it was kept is the loss's
+    * [[Follower.Retention]]: a failure to keep it does not change the forger's outcome
+    * ([[retain]]).
     */
   def adoptForged(header: Header, raw: Bytes)(using
       handle: Handle[F, NodeError]
@@ -731,26 +738,32 @@ final class Follower[F[_]: Async, S] private (
         limit <- limitFor(l)
         known = before.blocks.map(_._1) ++ before.anchor.block
         // where the block would attach, and how many blocks of ours that replaces
-        plan: Either[Follower.AdoptionLoss, (ChainSync.Point, Int)] =
+        plan: Either[Follower.Unplanned, (ChainSync.Point, Int)] =
           header.prevHash
             .fold(Option(ChainSync.Point.Origin: ChainSync.Point))(h =>
               known.find(_.hash == h).map(_.point)
             )
-            .toRight(Follower.AdoptionLoss.DetachedPredecessor(before.tip, header.prevHash))
+            .toRight(
+              Follower.Unplanned.Lost(
+                Follower.AdoptionLoss.DetachedPredecessor(before.tip, header.prevHash)
+              )
+            )
             .flatMap { base =>
               val offered = Vector(ChainSelection.Candidate(base, Vector(header)))
               def selected(under: Option[Fragment]) =
                 CandidateSelection.project(before.k, l, offered, under, tiebreaker).headOption
               // a block selection would take but for the LoE is held back by it
               def lost =
-                if selected(None).isDefined then Follower.AdoptionLoss.LimitOnEagerness(before.tip)
-                else Follower.AdoptionLoss.SelectionPrefersTip(before.tip)
+                if selected(None).isDefined then Follower.Unplanned.HeldBack(before.tip)
+                else Follower.Unplanned.Lost(Follower.AdoptionLoss.SelectionPrefersTip(before.tip))
               selected(limit).map(chosen => (chosen.base, l.depthTo(chosen.base))).toRight(lost)
             }
         result <- plan match
-          case Left(held @ Follower.AdoptionLoss.LimitOnEagerness(_)) =>
-            keeping.get.flatMap(_.traverse_(_.keep(header, raw))).as(Follower.Adoption.Lost(held))
-          case Left(reason) => F.pure(Follower.Adoption.Lost(reason))
+          case Left(Follower.Unplanned.HeldBack(tip)) =>
+            retain(header, raw).map(kept =>
+              Follower.Adoption.Lost(Follower.AdoptionLoss.LimitOnEagerness(tip, kept))
+            )
+          case Left(Follower.Unplanned.Lost(reason)) => F.pure(Follower.Adoption.Lost(reason))
           case Right((at, depth)) =>
             for
               rolled <- before.rollback(at).fold(_.raise[F, VolatileChain[S]], _.pure[F])
@@ -789,6 +802,34 @@ final class Follower[F[_]: Async, S] private (
             yield adopted
       yield result
     }
+
+  /** Keep a forged block the Limit on Eagerness holds back for the selection worker
+    * ([[blockSelection]]), and say what came of it. Keeping is the node's work, not the forger's: a
+    * typed failure other than storage, or an exception, leaves the block unkept and the forger's
+    * outcome `Lost` as it is, with the cause ([[Follower.Retention]]). A storage failure is raised,
+    * and stops the node, as a failed write of a peer's block to the received log stops it in the
+    * worker (`Fatal.of`). The scope is built inside `defer`, as in [[judge]].
+    */
+  private def retain(header: Header, raw: Bytes)(using
+      Raise[F, NodeError]
+  ): F[Follower.Retention] =
+    keeping.get.flatMap(
+      _.fold(F.pure(Follower.Retention.NoWorker)) { keeper =>
+        F.defer(
+          Handle
+            .allow[NodeError]((scope: Handle[F, NodeError]) ?=>
+              keeper.keep(header, raw)(using scope).map(_.asRight[NodeError])
+            )
+            .rescue(error => F.pure(error.asLeft[Follower.Retention]))
+        ).attempt
+          .flatMap {
+            case Right(Right(retention))            => F.pure(retention)
+            case Right(Left(storage: StorageError)) => storage.raise[F, Follower.Retention]
+            case Right(Left(other))                 => F.pure(Follower.Retention.Failed(other))
+            case Left(thrown)                       => F.pure(Follower.Retention.Defect(thrown))
+          }
+      }
+    )
 
 object Follower:
   /** Whether a rollback of `depth` blocks is of more than half of `k`: `2 * depth > k`, in `Long`,
@@ -905,7 +946,41 @@ object Follower:
     * ([[Follower.blockSelection]]).
     */
   private[node] trait Keeping[F[_]]:
-    def keep(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
+    def keep(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Retention]
+
+  /** What became of a forged block the Limit on Eagerness holds back ([[Follower.adoptForged]]). */
+  enum Retention:
+    /** In the selection worker's processed forest, for a later selection. */
+    case Kept
+
+    /** No selection worker is running to keep it for: before the node's starts, or after it stops.
+      */
+    case NoWorker
+
+    /** Its body does not match its header, a bug of ours: the rules would refuse it. */
+    case Unmatched(problem: PeerError.ProtocolProblem)
+
+    /** Keeping it failed with a typed error that is not a storage failure. */
+    case Failed(error: NodeError)
+
+    /** Keeping it threw. */
+    case Defect(cause: Throwable)
+
+    def message: String = this match
+      case Kept     => "it is kept for a later selection"
+      case NoWorker => "it is not kept: no selection worker is running"
+      case Unmatched(problem) =>
+        s"it is not kept: its body does not match its header (${problem.message})"
+      case Failed(error) => s"it is not kept: ${error.message}"
+      case Defect(cause) =>
+        s"it is not kept: defect: ${Option(cause.getMessage).getOrElse(cause.getClass.getName)}"
+
+  /** Where [[Follower.adoptForged]] found no switch: a loss as it is, or a block the Limit on
+    * Eagerness holds back, whose loss says whether it was kept.
+    */
+  private enum Unplanned:
+    case Lost(loss: AdoptionLoss)
+    case HeldBack(tip: ChainSync.Point)
 
   /** What happened to a forged block offered to [[Follower.adoptForged]]. */
   enum AdoptionLoss:
@@ -914,17 +989,17 @@ object Follower:
 
     /** The Limit on Eagerness leaves none of the block to chain selection, which would take it
       * otherwise (`trimToLoE`, Storage/ChainDB/Impl/ChainSel.hs:823-845, ouroboros-consensus
-      * 82ecba329). The block is kept, and selected later if it is still preferred once the LoE
-      * allows it.
+      * 82ecba329). `retention` says whether the block is kept, to be selected later if it is still
+      * preferred once the LoE allows it.
       */
-    case LimitOnEagerness(tip: ChainSync.Point)
+    case LimitOnEagerness(tip: ChainSync.Point, retention: Retention)
     def message: String = this match
       case DetachedPredecessor(tip, _) =>
         s"the tip moved to ${Points.show(tip)} and the block's predecessor is not on our chain"
       case SelectionPrefersTip(tip) =>
         s"the tip moved to ${Points.show(tip)}, which chain selection prefers to the block"
-      case LimitOnEagerness(tip) =>
-        s"the Limit on Eagerness keeps the block from chain selection, whose tip is ${Points.show(tip)}"
+      case LimitOnEagerness(tip, retention) =>
+        s"the Limit on Eagerness keeps the block from chain selection, whose tip is ${Points.show(tip)}; ${retention.message}"
 
   enum Adoption:
     case Adopted(block: BlockRef)

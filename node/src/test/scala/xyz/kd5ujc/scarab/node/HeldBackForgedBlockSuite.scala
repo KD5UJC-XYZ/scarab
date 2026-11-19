@@ -4,12 +4,21 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise, Stateful}
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import fs2.concurrent.SignallingRef
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, BlockRules, FollowerEvent, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.{Fragment, LatestSlot}
-import xyz.kd5ujc.scarab.ledger.{BlockFailure, Header, NodeError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{
+  BlockFailure,
+  BlockPoolProblem,
+  Header,
+  NodeError,
+  StorageError,
+  ValidationError
+}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.Gsm
 import xyz.kd5ujc.scarab.node.assertions.Assertions
@@ -22,10 +31,12 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
   * chain selection (ouroboros-consensus 82ecba329 `Storage/ChainDB/Impl/ChainSel.hs:450`), and
   * `ChainSelReprocessLoEBlocks` (ChainSel.hs:358-413), which the GDD governor triggers when the LoE
   * tip changes in Syncing and when the node is caught up (`Genesis/Governor.hs:172-184`), selects
-  * among every successor of the current chain the VolatileDB holds; the same at 808e40054
-  * (ChainSel.hs:363-418, 455). The block is adopted then if it is still valid and preferred; a
-  * better chain that arrived meanwhile wins over it, and a refusal of it blames nobody (the forging
-  * loop's `noPunishment`, NodeKernel.hs:747).
+  * among the successors of the current chain's blocks that the VolatileDB holds, are not on that
+  * chain and are not known invalid; the same at 808e40054 (ChainSel.hs:363-418, 455). The block is
+  * adopted then if it is still valid and preferred; a better chain that arrived meanwhile wins over
+  * it, and a refusal of it blames nobody (the forging loop's `noPunishment`, NodeKernel.hs:747). A
+  * failure to keep the block leaves the forger's outcome as it is, but a storage failure stops the
+  * node, as it does when a peer's block is written to the received log.
   *
   * The node is a follower in Genesis mode with its selection worker and GDD governor, as `Main`
   * installs them, and block rules that record the tip's block number; the blocks are a chain forged
@@ -44,7 +55,7 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
       pool: BlockPool[IO],
       follower: Follower[IO, BigInt],
       governor: GenesisGovernor[IO],
-      events: Ref[IO, Vector[FollowerEvent]],
+      events: SignallingRef[IO, Vector[FollowerEvent]],
       prepared: Ref[IO, Vector[Bytes]],
       fatals: Ref[IO, Vector[Fatal]]
   ):
@@ -55,27 +66,56 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
     def tipAt(point: ChainSync.Point): IO[VolatileChain[BigInt]] =
       follower.committedChain.discrete.find(_.tip == point).compile.lastOrError
 
-    def extended: IO[Vector[BlockRef]] =
-      events.get.map(_.collect { case FollowerEvent.Extended(ref, _, _, _) => ref })
+    def extended: IO[Vector[BlockRef]] = events.get.map(Node.extended)
+
+    /** Until the chain's extension by `hash` is reported. */
+    def extendedBy(hash: Bytes): IO[Unit] =
+      events.discrete.find(Node.extended(_).exists(_.hash == hash)).compile.drain
+
+    /** Until the worker has finished the selection it is running and every one queued: its own
+      * reselection, queued behind them, has run (`BlockAdmissions.reprocess`, first in, first out).
+      */
+    def settled: IO[Unit] = pool.admissions.reprocess
+
+  private object Node:
+    def extended(events: Vector[FollowerEvent]): Vector[BlockRef] =
+      events.collect { case FollowerEvent.Extended(ref, _, _, _) => ref }
+
+  /** What the worker's preparation of a block does, after it records the block. */
+  private enum Preparation:
+    case Records
+    case Raises(error: NodeError)
+    case Throws(cause: Throwable)
 
   /** What is put in the received log before a block joins the processed forest, recorded. */
-  private def recording(prepared: Ref[IO, Vector[Bytes]]): BlockSelection.Before[IO] =
+  private def recording(
+      prepared: Ref[IO, Vector[Bytes]],
+      preparation: Preparation
+  ): BlockSelection.Before[IO] =
     new BlockSelection.Before[IO]:
       def prepare(header: Header, @scala.annotation.unused raw: Bytes)(using
           Raise[IO, NodeError]
-      ): IO[Unit] = prepared.update(_ :+ header.hash)
+      ): IO[Unit] = prepared.update(_ :+ header.hash) *> (preparation match
+        case Preparation.Records       => IO.unit
+        case Preparation.Raises(error) => error.raise[IO, Unit]
+        case Preparation.Throws(cause) => IO.raiseError(cause))
 
   /** A node in `phase` keeping `volatile` blocks, its worker started; `refused` are the blocks its
-    * rules refuse.
+    * rules refuse, and `preparation` what its preparation of a block does.
     */
-  private def node[A](phase: Gsm.Phase, refused: Set[Bytes] = Set.empty, volatile: Int = k)(
+  private def node[A](
+      phase: Gsm.Phase,
+      refused: Set[Bytes] = Set.empty,
+      volatile: Int = k,
+      preparation: Preparation = Preparation.Records
+  )(
       use: Handle[IO, NodeError] ?=> Node => IO[A]
   ): IO[A] =
     for
       state <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(volatile, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
       pool <- BlockPool.create[IO]
-      events <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
+      events <- SignallingRef.of[IO, Vector[FollowerEvent]](Vector.empty)
       prepared <- Ref.of[IO, Vector[Bytes]](Vector.empty)
       fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
       follower <- Follower.create[IO, BigInt](
@@ -93,7 +133,7 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
       governor <- follower.genesisView(windowAt).flatMap(GenesisGovernor.create[IO](_))
       _ <- follower.installGenesis(governor, windowAt) *> governor.setPhase(phase)
       work <- SelectionWork.create[IO](pool.fetchCoordinator.refreshGenesis)
-      given BlockSelection.Before[IO] = recording(prepared)
+      given BlockSelection.Before[IO] = recording(prepared, preparation)
       result <- Handle
         .allow[NodeError] {
           follower
@@ -107,8 +147,11 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
   private def adopted(header: Header): Follower.Adoption =
     Follower.Adoption.Adopted(BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary))
 
-  private def heldBack(tip: Header): Follower.Adoption =
-    Follower.Adoption.Lost(Follower.AdoptionLoss.LimitOnEagerness(tip.point))
+  private def heldBack(
+      tip: Header,
+      retention: Follower.Retention = Follower.Retention.Kept
+  ): Follower.Adoption =
+    Follower.Adoption.Lost(Follower.AdoptionLoss.LimitOnEagerness(tip.point, retention))
 
   private def block(header: Header): ChainSync.Point.Block = header.point match
     case point: ChainSync.Point.Block => point
@@ -157,7 +200,8 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
           offered <- offerThree(n, chain)
           before <- n.extended
           _ <- n.governor.setPhase(Gsm.Phase.CaughtUp)
-          after <- n.tipAt(third.point)
+          _ <- n.extendedBy(third.hash) *> n.settled
+          after <- n.follower.committedChain.get
           extended <- n.extended
           fatals <- n.fatals.get
         yield
@@ -188,7 +232,7 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
             // the governor has not evaluated yet: the LoE fragment is at the immutable tip
             offered <- offerThree(n, chain)
             unmoved <- n.follower.committedChain.get
-            after <- n.governor.run.background.surround(n.tipAt(third.point))
+            after <- n.governor.run.background.surround(n.tipAt(third.point) <* n.settled)
             limit <- n.governor.limit
             fatals <- n.fatals.get
           yield
@@ -234,7 +278,7 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
           )
           unmoved <- n.follower.committedChain.get
           _ <- n.governor.setPhase(Gsm.Phase.CaughtUp)
-          after <- n.tipAt(better.last.point)
+          after <- n.tipAt(better.last.point) <* n.settled
           extended <- n.extended
           fatals <- n.fatals.get
         yield
@@ -263,7 +307,7 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
               offered <- offerThree(n, chain)
               known <- n.pool.invalidBlocks.snapshot
               _ <- n.governor.setPhase(Gsm.Phase.CaughtUp)
-              refused <- n.pool.invalidBlocks.awaitChange(known.revision)
+              refused <- n.pool.invalidBlocks.awaitChange(known.revision) <* n.settled
               after <- n.follower.committedChain.get
               blamed <- session.blamedYet
               reported <- reports.get
@@ -277,5 +321,52 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
           }
         }
       })
+    yield ()
+  }
+
+  test("a failure to keep the held-back block leaves the forger's outcome Lost, with its cause") {
+    val failure = BlockPoolProblem.MissingDeliveredHeader(ChainSync.Point.Origin)
+    val defect = new IllegalStateException("keeping test fault")
+    def unkept(preparation: Preparation, expected: Follower.Retention): IO[Unit] =
+      for
+        chain <- ForgedChain.forge(5000 until 5060)
+        _ <- TestControl.executeEmbed(node(Gsm.Phase.PreSyncing, preparation = preparation) { n =>
+          for
+            adoptions <- chain.headers.zip(chain.raws).take(3).traverse(n.offer(_, _))
+            forest <- n.pool.processedSnapshot
+            _ <- n.governor.setPhase(Gsm.Phase.CaughtUp) *> n.settled
+            after <- n.follower.committedChain.get
+            fatals <- n.fatals.get
+          yield
+            assertEquals(
+              adoptions,
+              chain.headers.take(2).map(adopted) :+ heldBack(chain.headers(1), expected),
+              s"$preparation: the forger is told the block is held back, and why it is not kept"
+            )
+            assertEquals(forest.get(chain.headers(2).hash), None, "not in the processed forest")
+            assertEquals(after.tip, chain.headers(1).point, "so it is not selected later")
+            assertEquals(fatals, Vector.empty, "the node goes on")
+        })
+      yield ()
+    unkept(Preparation.Raises(failure), Follower.Retention.Failed(failure)) *>
+      unkept(Preparation.Throws(defect), Follower.Retention.Defect(defect))
+  }
+
+  test("a storage failure while the held-back block is kept is raised, as for a peer's block") {
+    val failure = StorageError.Io("received-log", new java.io.IOException("keeping test fault"))
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      _ <- TestControl.executeEmbed(
+        node(Gsm.Phase.PreSyncing, preparation = Preparation.Raises(failure)) { n =>
+          for
+            adoptions <- chain.headers.zip(chain.raws).take(2).traverse(n.offer(_, _))
+            third <- Handle
+              .allow[NodeError](n.offer(chain.headers(2), chain.raws(2)).map(_.asRight[NodeError]))
+              .rescue(error => IO.pure(error.asLeft[Follower.Adoption]))
+          yield
+            assertEquals(adoptions, chain.headers.take(2).map(adopted))
+            assertEquals(third, Left(failure), "the storage failure reaches the forger, typed")
+        }
+      )
     yield ()
   }

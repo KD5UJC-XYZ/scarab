@@ -3,18 +3,23 @@ package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.IO
 import cats.effect.testkit.TestControl
-import cats.mtl.Stateful
+import cats.mtl.{Raise, Stateful}
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
+import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.Gsm
 import xyz.kd5ujc.scarab.node.{
   BlockPool,
+  BlockSelection,
   CandidateSelection,
   GenesisGovernor,
   RefStateful,
+  SelectionWork,
   WorkerTesting
 }
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -155,5 +160,47 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
         assertEquals(after.blocks.dropRight(1).map(_._1.hash), forged.slice(1, k).map(_.hash))
         assertEquals(adoptedIn(traces), forged.take(k).map(_.hash), "adopted at submission")
         assertEquals(lostIn(traces), forged.drop(k).map(_.hash), "the rest DidntAdoptBlock")
+      }
+  }
+
+  /** The worker's preparation of a block fails, with a typed failure that is not a storage failure:
+    * the held-back blocks are not kept, and the forger's outcome for each is still the one of a
+    * block selection did not take (`TraceDidntAdoptBlock`); the loop goes on to its last slot.
+    */
+  test("PreSyncing, keeping fails: each held-back block is DidntAdoptBlock, and the loop goes on") {
+    val failing = new BlockSelection.Before[IO]:
+      def prepare(header: Header, @scala.annotation.unused raw: Bytes)(using
+          Raise[IO, NodeError]
+      ): IO[Unit] = BlockPoolProblem.MissingDeliveredHeader(header.point).raise[IO, Unit]
+    TestControl
+      .executeEmbed(withHandle {
+        for
+          h <- harness(p, ledgerWith(p, 1))
+          governor <- h.follower.genesisView(noWindow).flatMap(GenesisGovernor.create[IO](_))
+          _ <- h.follower.installGenesis(governor, noWindow)
+          pool <- WorkerTesting.pool(h.follower)
+          _ <- h.follower.installFetchCoordinator(pool.fetchCoordinator) *>
+            h.follower.installInvalidBlocks(pool.invalidBlocks)
+          work <- SelectionWork.create[IO](pool.fetchCoordinator.refreshGenesis)
+          given BlockSelection.Before[IO] = failing
+          outcome <- h.follower.blockSelection(pool, work, WorkerTesting.unexpected).surround {
+            for
+              _ <- slots.toList.traverse_(s => h.forger.step(s))
+              forged <- forgedIn(h)
+              traces <- tracesIn(h)
+              lost <- h.seen.map(_.collect { case l: ForgeEvent.Lost => l.hash })
+              forest <- pool.processedSnapshot
+              chain <- h.chain
+            yield (forged, traces, lost, forest.keySet, chain)
+          }
+        yield outcome
+      })
+      .map { (forged, traces, lost, forest, chain) =>
+        assert(forged.size > k, s"more than $k of 40 slots won, got ${forged.size}")
+        assertEquals(adoptedIn(traces), forged.take(k).map(_.hash), "adopted at submission")
+        assertEquals(lostIn(traces), forged.drop(k).map(_.hash), "the rest DidntAdoptBlock")
+        assertEquals(lost, forged.drop(k).map(_.hash), "each logged lost")
+        assertEquals(forest, Set.empty, "none is kept")
+        assertEquals(chain.tipRef.map(_.hash), forged.lift(k - 1).map(_.hash), "the tip stays")
       }
   }

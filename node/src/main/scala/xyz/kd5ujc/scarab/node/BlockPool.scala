@@ -552,12 +552,14 @@ final class BlockPool[F[_]: Async] private (
       current.copy(processed = current.processed.updated(hash, processed)) -> true
   }
 
-  /** A block this node forged joins the processed forest, as the reference's ChainDB puts every
-    * block it is given, a forged one included, in its VolatileDB before chain selection runs for it
-    * (`VolatileDB.putBlock`, ouroboros-consensus 82ecba329 `Storage/ChainDB/Impl/ChainSel.hs:450`;
-    * 455 at 808e40054, 489 at 2416493bf). Its body is read back from the received log, where it was
-    * put first, or held without one; a reselection of the forest considers it as any other block,
-    * and a refusal of it blames nobody ([[Source.Forged]]). False if the forest has it already.
+  /** A block this node forged joins the processed forest, as the reference's ChainDB puts a block
+    * it is given, a forged one included, in its VolatileDB before chain selection runs for it,
+    * unless the block is there already, known invalid or no higher than the immutable tip
+    * (`VolatileDB.putBlock`, ouroboros-consensus 82ecba329 `Storage/ChainDB/Impl/ChainSel.hs`
+    * 428-450; 433-455 at 808e40054, 467-489 at 2416493bf). Its body is read back from the received
+    * log, where it was put first, or held without one; a reselection of the forest considers it as
+    * any other block, and a refusal of it blames nobody ([[Source.Forged]]). False if the forest
+    * has it already.
     */
   private[node] def processForged(forged: Delivered): F[Boolean] =
     slots
