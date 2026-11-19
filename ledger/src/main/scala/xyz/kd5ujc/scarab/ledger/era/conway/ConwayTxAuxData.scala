@@ -17,7 +17,17 @@ import xyz.kd5ujc.scarab.ledger.{
   Unsigned
 }
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
-import xyz.kd5ujc.scarab.ledger.era.{AlonzoEraTxAuxData, EraTxError}
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraTxAuxData,
+  AlonzoTxAuxData,
+  EraScript,
+  EraTxError,
+  ProtVer,
+  SupportedPlutusRunnable,
+  UnavailableScript
+}
+import cats.Id
+import xyz.kd5ujc.scarab.plutus.ScriptDecoder
 import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -30,15 +40,19 @@ import xyz.kd5ujc.scarab.protocol.Era
   *   by label (a `Word64`)
   * @param plutusScripts
   *   per language, the Plutus scripts' bytes
+  * @param plutusArrival
+  *   the Plutus scripts with their languages in the order they arrived: the fields in the encoded
+  *   map's order, each list in its order
   */
 final class ConwayTxAuxData private (
     val raw: Bytes,
     val metadata: SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
     val nativeScripts: Vector[ConwayTimelock],
-    val plutusScripts: SortedMap[PlutusLanguage, NonEmptyVector[Bytes]]
+    val plutusScripts: SortedMap[PlutusLanguage, NonEmptyVector[Bytes]],
+    val plutusArrival: Vector[(PlutusLanguage, Bytes)]
 ):
   // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
-  private def fields: Any = (raw, metadata, nativeScripts, plutusScripts)
+  private def fields: Any = (raw, metadata, nativeScripts, plutusScripts, plutusArrival)
   override def equals(that: Any): Boolean = that match
     case o: ConwayTxAuxData => fields == o.fields
     case _                  => false
@@ -69,7 +83,8 @@ object ConwayTxAuxData:
         Cbor.Limits.Unbounded,
         DetachedRecords.Shapes.auxiliaryDataAt(Era.Conway, version.value)
       )(LedgerDecodeError.Syntax(_))(fields)
-    yield ConwayTxAuxData(raw, parts._1, parts._2, parts._3)).leftMap(EraTxError.Decode(_))
+    yield ConwayTxAuxData(raw, parts._1, parts._2, parts._3, parts._4))
+      .leftMap(EraTxError.Decode(_))
 
   private val noMetadata = SortedMap.empty[Unsigned[Unsigned.Width.W64], Metadatum]
   private val noPlutus = SortedMap.empty[PlutusLanguage, NonEmptyVector[Bytes]]
@@ -77,19 +92,22 @@ object ConwayTxAuxData:
   private type Parts = (
       SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
       Vector[ConwayTimelock],
-      SortedMap[PlutusLanguage, NonEmptyVector[Bytes]]
+      SortedMap[PlutusLanguage, NonEmptyVector[Bytes]],
+      Vector[(PlutusLanguage, Bytes)]
   )
 
   // The fields of auxiliary data the flat decoder has read: each form and field is one it took.
   private def fields(node: Node)(using ByteStrings): Either[LedgerDecodeError, Parts] =
     node.value match
-      case _: Value.Map => metadata(node).map((_, Vector.empty, noPlutus))
+      case _: Value.Map => metadata(node).map((_, Vector.empty, noPlutus, Vector.empty))
       case _: Value.Arr =>
         // the `RecD` record the flat decoder read (`CborRead.record`, which takes it detached as
         // well); it read two items, so `xs(0)` and `xs(1)` are present
         CborRead
           .record(node, 2, DecodeField.AuxiliaryData)
-          .flatMap(xs => (metadata(xs(0)), native(xs(1))).mapN((m, n) => (m, n, noPlutus)))
+          .flatMap(xs =>
+            (metadata(xs(0)), native(xs(1))).mapN((m, n) => (m, n, noPlutus, Vector.empty))
+          )
       case Value.Tag(_, contents) =>
         CborRead.map(contents, DecodeField.AuxiliaryData).flatMap { kvs =>
           kvs
@@ -113,7 +131,18 @@ object ConwayTxAuxData:
                 plutus(2, PlutusLanguage.V1),
                 plutus(3, PlutusLanguage.V2),
                 plutus(4, PlutusLanguage.V3)
-              ).mapN((m, n, v1, v2, v3) => (m, n, SortedMap.from(Vector(v1, v2, v3).flatten)))
+              ).mapN { (m, n, v1, v2, v3) =>
+                val plutus = SortedMap.from(Vector(v1, v2, v3).flatten)
+                val languages =
+                  Map(2 -> PlutusLanguage.V1, 3 -> PlutusLanguage.V2, 4 -> PlutusLanguage.V3)
+                // the keys in the encoded map's order, each once (the flat decoder refuses a key
+                // twice)
+                val arrival = keyed
+                  .flatMap((k, _) => Option.when(k.isValidInt)(k.toInt).flatMap(languages.get))
+                  .distinct
+                  .flatMap(l => plutus.get(l).toVector.flatMap(_.toVector.map(l -> _)))
+                (m, n, plutus, arrival)
+              }
             }
         }
       // every other shape, as the flat decoder refuses it
@@ -147,6 +176,19 @@ object ConwayTxAuxData:
       .flatMap(_.traverse(ConwayTimelock.read(_)))
 
   val instance: AlonzoEraTxAuxData[Conway] = new AlonzoEraTxAuxData[Conway]:
+    override def originalBytes(aux: ConwayTxAuxData): Bytes = aux.raw
+    // `validateTxAuxData = validateAlonzoTxAuxData`, `Conway/TxAuxData.hs:30`, cardano-ledger
+    // f649f975
+    override def validateTxAuxData(
+        decoder: ScriptDecoder[Id],
+        stAnnTxCache: Map[Bytes, SupportedPlutusRunnable[Conway]],
+        pv: ProtVer,
+        aux: ConwayTxAuxData
+    ): Either[UnavailableScript, Boolean] =
+      AlonzoTxAuxData.validateAlonzoTxAuxData[Conway](decoder, stAnnTxCache, pv, aux)(using
+        this,
+        EraScript.conway
+      )
     override def metadata(
         aux: ConwayTxAuxData
     ): SortedMap[Unsigned[Unsigned.Width.W64], Metadatum] =
@@ -156,3 +198,5 @@ object ConwayTxAuxData:
         aux: ConwayTxAuxData
     ): SortedMap[PlutusLanguage, NonEmptyVector[Bytes]] =
       aux.plutusScripts
+    override def plutusScriptsArrival(aux: ConwayTxAuxData): Vector[(PlutusLanguage, Bytes)] =
+      aux.plutusArrival

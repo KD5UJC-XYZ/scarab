@@ -18,7 +18,8 @@ object IsPhase2Valid:
 
 /** A transaction of era `E` (`EraTx`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:150-222`, cardano-ledger f649f975): its
-  * body, witnesses and auxiliary data, at the levels its body has. The superclasses of other
+  * body, witnesses and auxiliary data, at the levels its body has, and its annotated form's
+  * transaction and cache (the families [[StAnnTx]] and [[StAnnTxCache]]). The superclasses of other
   * families (`EraTxBody era`, `EraTxWits era`, `EraTxAuxData era`) are members.
   */
 trait EraTx[E <: EraTag]:
@@ -39,6 +40,16 @@ trait EraTx[E <: EraTag]:
 
   /** `auxDataTxL`. */
   def auxData[L <: TxLevel](tx: Tx[L, E])(using bodyOf.Level[L]): Option[TxAuxData[E]]
+
+  /** `txStAnnTxG` (`Core.hs:185`, cardano-ledger f649f975): the annotated transaction's
+    * transaction.
+    */
+  def txStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using bodyOf.Level[L]): Tx[L, E]
+
+  /** `cacheStAnnTxG` (`Core.hs:188`, cardano-ledger f649f975): the cache of the annotated
+    * transaction.
+    */
+  def cacheStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using bodyOf.Level[L]): StAnnTxCache[E]
 
   /** `sizeTxForFeeCalculation` (`Core.hs:203-210`, cardano-ledger f649f975): the bytes of the body,
     * the witnesses and the auxiliary data (one byte for none) as they arrived, and one for the

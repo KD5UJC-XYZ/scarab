@@ -555,7 +555,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     injection is a value per era and build that only the rules package makes (`InjectShelleyUtxoFailure`),
     chosen by build until the builds are types (`BuildRules`, #1063).
   - Still to port before UTXO is whole: UTXOS and the state's update (`updateUTxOState`,
-    `updateTreasuryDonation`), which take the annotated transaction (`StAnnTx`, #85).
+    `updateTreasuryDonation`), on the annotated transaction (`StAnnTx`, below), which UTXO takes as its signal
+    once it moves onto it (#85).
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): six of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts`, `missingRequiredDatums`,
@@ -606,10 +607,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     spends only Plutus V3 outputs, so crafted cases spend one without a datum as Plutus V3 (no failure, CIP-69)
     and as Plutus V1 (unspendable), add redeemers no purpose needs out of their order, and need a Plutus script
     to mint, certify, withdraw and vote with no redeemer.
-  - The members of `AlonzoEraUTxO` that read the annotated transaction wait (#85), and so do the failing
-    native scripts; `getSpendingDatum` came with the script context (below). The auxiliary data and the well-formed scripts take the
-    transaction annotated with its decoded Plutus scripts (`StAnnTx`, with its cache), which the era types do
-    not have yet (on #85's checklist).
+  - The failing native scripts wait (#85); `getSpendingDatum` came with the script context, and the members of
+    `AlonzoEraUTxO` that read the annotated transaction, the auxiliary data's validation and the well-formed
+    scripts came with the annotated transaction (`StAnnTx`, below). UTXOW's transition on it waits (#85).
 - **The Plutus V3 script context** (`era/PlutusContext.scala`, `era/PlutusLedgerApi.scala`, the `TxInfo`
   modules `era/PlutusTxInfos.scala`, `era/AlonzoTxInfo.scala`, `era/BabbageTxInfo.scala` and
   `era/conway/ConwayTxInfo.scala`): the reference's `EraPlutusTxInfo l era` (`Alonzo/Plutus/Context.hs`), with
@@ -705,8 +705,43 @@ Conway's rules on the classes follow as the rest of stage 2.
     and a script the cache holds that the transaction does not provide meets no need.
   - The collection is of a top-level transaction, without the reference's empty memo of sub-transactions'
     contexts, which only Dijkstra fills (#85's item on Dijkstra's script contexts).
-  - Not yet (#85): the annotated transaction (`StAnnTx`), with `validateMetadata` and
-    `validateScriptsWellFormed`, built on these. The node still builds contexts with the flat translation.
+- **The annotated transaction and its UTXOW predicates** (`era/StAnnTx.scala`, `era/EraTxAuxData.scala`,
+  `era/rules/Utxow.scala`; `Core.hs:180-188`, `Alonzo/Tx.hs:556-565`, `Alonzo.hs:121-160`,
+  `Alonzo/UTxO.hs:154-214`, `Alonzo/TxAuxData.hs:363-373,494-515`, `Shelley/Rules/Utxow.hs:427-443` and
+  `Babbage/Rules/Utxow.hs:234-276`, cardano-ledger f649f975): the families `StAnnTx` (Conway's `AlonzoStAnnTx` at
+  the top level alone) and `StAnnTxCache`, `EraTx#txStAnnTx` and `#cacheStAnnTx`, Alonzo's `mkAlonzoStAnnTx` (a
+  function until the mempool brings `ApplyTx`'s `mkStAnnTx`), `AlonzoEraUTxO`'s four members of the annotated
+  transaction, `EraTxAuxData#validateTxAuxData` with `hashTxAuxData`, `isValidScript` over the cache of runnable
+  scripts, and the predicates `validateMetadata` and `validateScriptsWellFormed` (with its `TxOuts` form), which
+  report the flat `UtxowFailure`s.
+  - A script's well-formedness is the `plutus` module's decoder's verdict, the decoder given as an argument; a
+    script it gives no verdict for (`Unavailable`) is returned (`UnavailableScript`), and the predicates report it
+    as the flat checks' defect.
+  - `EraPlutusContextSuite`: on the same 432 rows and 62 recorded block transactions, the annotated transaction
+    holds what its members compute (the scripts provided and needed, the cache, the languages used and the
+    scripts with their contexts), and a cached runnable is kept; `validateMetadata` and
+    `validateScriptsWellFormed` give the flat checks' verdicts (`TxChecks.auxiliaryChecks`,
+    `TxChecks.scriptsWellFormed`), and so they do on auxiliary data without its hash, a hash without its data,
+    another hash, a malformed auxiliary Plutus script, the last two together, a malformed witness script, a
+    malformed reference script on an output and on the collateral return, a malformed witness and reference
+    script together, and a Plutus V3 script at protocol 8 and 9. The reference's recorded refusal of a
+    malformed witness and reference script (the Conway devnet's refusal corpus) is the predicate's, hash for
+    hash, and a cache hit is checked by the cached runnable's binary. The reference's 210 Conway observations
+    of auxiliary data (`fixtures/reference/auxiliary-scripts`) are the era types' too: decoded where the
+    reference decodes, valid where its `validateTxAuxData` is, and `validateMetadata`'s `InvalidMetadata`
+    exactly where it is not. No pinned observation of a malformed collateral return's reference script, or of
+    well-formedness by protocol major, exists yet (tracked on #922); those cases are compared with the flat
+    check alone.
+  - Where the decoder gives no verdict for several scripts, the defect names the first in the order they
+    arrived (the auxiliary scripts in their encoded fields' order, the witnesses' native, Plutus V1, V2 and V3
+    lists, then the outputs' reference scripts in the outputs' order, the collateral return's last), as the
+    flat checks do; the reference's decoding always gives a verdict, so it has no such choice. The witness set
+    and the auxiliary data keep that order for it (`scriptTxWitsArrival`, `plutusScriptsArrival`).
+    `validateMetadata` reads the scripts only where the data and its hash are both present, the reference's
+    order; the flat check reads them first, so data without its hash, with a script the decoder gives no
+    verdict for, is the predicate's `MissingTxBodyMetadataHash` and the flat check's defect.
+  - Not yet (#85): UTXOS, LEDGER and the mempool on the era types. The node still builds contexts and checks
+    transactions with the flat rules.
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in

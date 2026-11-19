@@ -88,6 +88,17 @@ object ConwayTx:
       ): Option[ConwayTxAuxData] =
         l match
           case TopOnly.Top => tx.auxData
+      // `txStAnnTxG` and `cacheStAnnTxG`, `Conway/Tx.hs:71-73`, cardano-ledger f649f975
+      override def txStAnnTx[L <: TxLevel](
+          stAnnTx: xyz.kd5ujc.scarab.ledger.era.StAnnTx[L, Conway]
+      )(using l: TopOnly[L]): xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway] =
+        l match
+          case TopOnly.Top => stAnnTx.asatTx
+      override def cacheStAnnTx[L <: TxLevel](
+          stAnnTx: xyz.kd5ujc.scarab.ledger.era.StAnnTx[L, Conway]
+      )(using l: TopOnly[L]): xyz.kd5ujc.scarab.ledger.era.StAnnTxCache[Conway] =
+        l match
+          case TopOnly.Top => stAnnTx.asatPlutusRunnableCache
       override def sizeTxForFeeCalculation[L <: TxLevel](
           tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway]
       )(using l: TopOnly[L]): Long =

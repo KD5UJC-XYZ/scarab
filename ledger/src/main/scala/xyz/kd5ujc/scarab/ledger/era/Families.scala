@@ -106,3 +106,17 @@ type TxAuxData[E <: EraTag] = E match
   */
 type Tx[L <: TxLevel, E <: EraTag] = E match
   case Conway => AtTop[L, conway.ConwayTx]
+
+/** The transaction of era `E` at level `L` annotated with what the ledger state gives it (`type
+  * StAnnTx (l :: TxLevel) era`, `Core.hs:180`, cardano-ledger f649f975): Conway's is Alonzo's, of a
+  * top-level transaction only (`type StAnnTx l ConwayEra = AlonzoStAnnTx l ConwayEra`,
+  * `Conway/Tx.hs:67`).
+  */
+type StAnnTx[L <: TxLevel, E <: EraTag] = E match
+  case Conway => AtTop[L, AlonzoStAnnTx[Conway]]
+
+/** The cache annotated transactions share (`type StAnnTxCache era`, `Core.hs:183`, cardano-ledger
+  * f649f975): Conway's the runnable scripts by hash (`Conway/Tx.hs:69`).
+  */
+type StAnnTxCache[E <: EraTag] = E match
+  case Conway => Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[Conway]]

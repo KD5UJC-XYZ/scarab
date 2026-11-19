@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Block,
   PlutusCase,
   Phase2,
+  PredicateFailure,
   ScriptContexts,
   TestLedger,
   TranslationError,
@@ -18,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Unsigned,
   testByteStrings
 }
+import xyz.kd5ujc.scarab.ledger.rules.Test as RuleTest
 import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayContextError,
   ConwayPParams,
@@ -28,7 +30,15 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayTxOut
 }
 import xyz.kd5ujc.scarab.ledger.state.{Conway, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
+import cats.Id
+import xyz.kd5ujc.scarab.plutus.{
+  BackendFailure,
+  EvalFailure,
+  PlutusData,
+  PlutusLanguage,
+  ScriptDecodeFailure,
+  ScriptDecoder
+}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 
@@ -1475,4 +1485,660 @@ class EraPlutusContextSuite extends munit.FunSuite:
     )
     assertEquals(withArgs(1), withArgs(1))
     assertNotEquals(withArgs(1), withArgs(2))
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The annotated transaction and its UTXOW predicates (`Alonzo.hs`, `Shelley/Rules/Utxow.hs`,
+  // `Babbage/Rules/Utxow.hs`)
+
+  private val decoder = TestLedger.env.decoder
+  private val top = t.bodyOf.top
+
+  private def annotated(
+      c: Case,
+      cache: Map[Bytes, SupportedPlutusRunnable[Conway]] = Map.empty
+  ): (ConwayTx, UTxO[Conway], AlonzoStAnnTx[Conway]) =
+    val (tx, utxo, _) = typed(c)
+    (tx, utxo, AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](c.posix, eraParams(c), utxo, cache, tx))
+
+  test("the annotated transaction holds what its members compute, on every Conway case") {
+    (cases ++ recordedBlocks).foreach { c =>
+      val pp = eraParams(c)
+      val (tx, utxo, st) = annotated(c)
+      val provided = u.getScriptsProvided[TxLevel.Top](utxo, tx)(using u.txOf.bodyOf.top)
+      val needed =
+        u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](tx))(using u.txOf.bodyOf.top)
+      val (cache, used) = AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose[Conway](
+        protVer(c.major),
+        provided,
+        needed,
+        Map.empty
+      )
+      assert(t.txStAnnTx[TxLevel.Top](st)(using top) eq tx, c.name)
+      assertEquals(t.cacheStAnnTx[TxLevel.Top](st)(using top), cache, c.name)
+      assertEquals(u.scriptsProvidedStAnnTx[TxLevel.Top](st)(using u.txOf.bodyOf.top), provided)
+      assertEquals(u.scriptsNeededStAnnTx[TxLevel.Top](st)(using u.txOf.bodyOf.top), needed)
+      assertEquals(
+        u.plutusLanguagesUsedStAnnTx[TxLevel.Top](st)(using u.txOf.bodyOf.top),
+        used.map((_, r) => r.language).toSet,
+        c.name
+      )
+      assertEquals(
+        u.plutusScriptsWithContextStAnnTx[TxLevel.Top](st)(using u.txOf.bodyOf.top),
+        eraCollect(c, pp),
+        c.name
+      )
+    }
+  }
+
+  test("an annotated transaction keeps a cached runnable, and adds the scripts it provides") {
+    val c = collectedV3
+    val (_, _, plain) = annotated(c)
+    val (hash, _) = plain.asatPlutusRunnableCache.head
+    val earlier = Bytes(Vector.fill(28)(7.toByte))
+    val cached = SupportedPlutusRunnable(
+      EraPlutusTxInfo.conwayPlutusV1,
+      PlutusRunnable[Language.PlutusV1](Plutus(Bytes.empty), hash)
+    )
+    val other = SupportedPlutusRunnable(
+      EraPlutusTxInfo.conwayPlutusV1,
+      PlutusRunnable[Language.PlutusV1](Plutus(Bytes.empty), earlier)
+    )
+    val (_, _, st) = annotated(c, Map(hash -> cached, earlier -> other))
+    val kept = t.cacheStAnnTx[TxLevel.Top](st)(using top)
+    assert(kept(hash) eq cached)
+    assert(kept(earlier) eq other)
+    assertEquals(kept.keySet, plain.asatPlutusRunnableCache.keySet + earlier)
+  }
+
+  /** `c` with the auxiliary data `aux` and the body's hash of it `auxHash`, each none to leave it
+    * out.
+    */
+  private def withAuxiliary(
+      c: Case,
+      name: String,
+      aux: Option[CborValue],
+      auxHash: Option[Bytes]
+  ): Case =
+    val entries = cbor(c.parts.body).value match
+      case CborValue.Map(kvs) =>
+        kvs.filterNot((k, _) => k.value == uint(7)) ++
+          auxHash.map(h => (node(uint(7)), node(CborValue.ByteString(h))))
+      case other => fail(s"not a body: $other")
+    val body = Cbor.encode(CborValue.Map(entries)).fold(e => fail(e.toString), identity)
+    val auxiliary = aux.map(a => Cbor.encode(a).fold(e => fail(e.toString), identity))
+    val parts = c.parts.copy(body = body, auxiliaryData = auxiliary)
+    val flat = FlatTx.fromBlock(parts, Era.Conway).fold(e => fail(s"$name: $e"), identity)
+    c.copy(name = name, parts = parts, flat = flat)
+
+  private def sameMetadata(
+      c: Case
+  ): Either[xyz.kd5ujc.scarab.ledger.LedgerDefect, RuleTest[PredicateFailure]] =
+    val (era, flat) = metadataBoth(c, decoder)
+    assertEquals(era, flat, c.name)
+    era
+
+  /** The era's `validateMetadata` and the flat check of `c` with `scripts` as the decoder. */
+  private def metadataBoth(c: Case, scripts: ScriptDecoder[Id]) =
+    val (_, _, st) = annotated(c)
+    val era =
+      rules.ShelleyUtxow.validateMetadata[Conway, TxLevel.Top](scripts, eraParams(c), st)(using
+        t,
+        top
+      )
+    val flat = xyz.kd5ujc.scarab.ledger.TxChecks
+      .auxiliaryChecks[Conway](flatParams(c), c.flat, TestLedger.env.copy(decoder = scripts))(using
+        ShelleyBasedEra.SConway
+      )
+    (era, flat)
+
+  test("validateMetadata gives the flat check's verdict, on every Conway case and each failure") {
+    val corpus = (cases ++ recordedBlocks).map(sameMetadata)
+    assert(corpus.forall(_.isRight))
+    val c = collectedV3
+    // metadata `{0: "x"}`, then the same with a Plutus V1 script that is not one (`h'00'`), in
+    // Alonzo's form (tag 259)
+    val metadata = CborValue.Map(
+      Vector(
+        node(uint(0)) -> node(CborValue.Map(Vector(node(uint(0)) -> node(CborValue.Text("x")))))
+      )
+    )
+    val plain = CborValue.Tag(259, node(metadata))
+    val malformed = CborValue.Tag(
+      259,
+      node(
+        CborValue.Map(
+          metadata match
+            case CborValue.Map(kvs) =>
+              kvs :+ (node(uint(2)) -> node(arr(CborValue.ByteString(Bytes(Vector(0.toByte))))))
+            case _ => fail("not a map")
+        )
+      )
+    )
+    def hashOf(v: CborValue): Bytes =
+      xyz.kd5ujc.scarab.crypto.Blake2b.hash256
+        .hash(Cbor.encode(v).fold(e => fail(e.toString), identity))
+    val wrong = Bytes(Vector.fill(32)(9.toByte))
+    def failures(name: String, aux: Option[CborValue], hash: Option[Bytes]) =
+      sameMetadata(withAuxiliary(c, name, aux, hash))
+        .fold(e => fail(s"$name: $e"), RuleTest.failures)
+        .map(_.toChain.toVector)
+        .getOrElse(Vector.empty)
+    import xyz.kd5ujc.scarab.ledger.UtxowFailure as F
+    def u(f: F) = PredicateFailure.utxow(f)
+    assertEquals(failures("well formed", Some(plain), Some(hashOf(plain))), Vector.empty)
+    assertEquals(failures("none", None, None), Vector.empty)
+    assertEquals(
+      failures("no hash", Some(plain), None),
+      Vector(u(F.MissingTxBodyMetadataHash(hashOf(plain))))
+    )
+    assertEquals(failures("no data", None, Some(wrong)), Vector(u(F.MissingTxMetadata(wrong))))
+    assertEquals(
+      failures("another hash", Some(plain), Some(wrong)),
+      Vector(u(F.ConflictingMetadataHash(xyz.kd5ujc.scarab.ledger.Mismatch(wrong, hashOf(plain)))))
+    )
+    assertEquals(
+      failures("a malformed script", Some(malformed), Some(hashOf(malformed))),
+      Vector(u(F.InvalidMetadata))
+    )
+    assertEquals(
+      failures("both", Some(malformed), Some(wrong)),
+      Vector(
+        u(F.ConflictingMetadataHash(xyz.kd5ujc.scarab.ledger.Mismatch(wrong, hashOf(malformed)))),
+        u(F.InvalidMetadata)
+      )
+    )
+  }
+
+  private def sameWellFormed(
+      c: Case,
+      scripts: ScriptDecoder[Id] = decoder,
+      major: Int = -1,
+      cache: Map[Bytes, SupportedPlutusRunnable[Conway]] = Map.empty
+  ): Either[xyz.kd5ujc.scarab.ledger.LedgerDefect, RuleTest[PredicateFailure]] =
+    val (era, flat) = wellFormedBoth(c, scripts, major, cache)
+    assertEquals(era, flat, c.name)
+    era
+
+  /** The era's `validateScriptsWellFormed` and the flat check of `c` with `scripts` as the decoder,
+    * at `major` (the case's if none), the annotated transaction's cache `cache` added.
+    */
+  private def wellFormedBoth(
+      c: Case,
+      scripts: ScriptDecoder[Id],
+      major: Int,
+      cache: Map[Bytes, SupportedPlutusRunnable[Conway]]
+  ) =
+    val at = if major < 0 then c.major else major
+    val flatPp = TestLedger.params(at).copy(costModels = c.costModels)
+    val pp =
+      PParams[Conway](ConwayPParams.fromStored(flatPp).fold(e => fail(s"${c.name}: $e"), identity))
+    val (_, _, st) = annotated(c, cache)
+    val era = rules.BabbageUtxow.validateScriptsWellFormed[Conway](scripts, pp, st)
+    val flat = xyz.kd5ujc.scarab.ledger.TxChecks
+      .scriptsWellFormed[Conway](flatPp, c.flat, TestLedger.env.copy(decoder = scripts))(using
+        ShelleyBasedEra.SConway
+      )
+    (era, flat)
+
+  test("validateScriptsWellFormed gives the flat check's verdict, on every Conway case") {
+    val corpus = (cases ++ recordedBlocks).map(c => sameWellFormed(c))
+    assert(corpus.forall(_.exists(_.isValid)))
+    // a Plutus V1 witness script that is not one (`h'00'`)
+    val c = collectedV3
+    val parts = rawWitnesses(c, 3 -> arr(CborValue.ByteString(Bytes(Vector(0.toByte)))))
+    val flat = FlatTx.fromBlock(parts, Era.Conway).fold(e => fail(e.toString), identity)
+    val bad = c.copy(name = "a malformed witness script", parts = parts, flat = flat)
+    val hash = xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(Bytes(Vector(1.toByte, 0.toByte)))
+    assertEquals(
+      sameWellFormed(bad).map(RuleTest.failures).map(_.map(_.toChain.toVector)),
+      Right(
+        Some(
+          Vector(
+            PredicateFailure.utxow(
+              xyz.kd5ujc.scarab.ledger.UtxowFailure.MalformedScriptWitnesses(Set(hash))
+            )
+          )
+        )
+      )
+    )
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The two predicates where the decoder gives no verdict, on crafted scripts and on the
+  // reference's recorded verdict
+
+  private def plutusHash(language: PlutusLanguage, binary: Bytes): Bytes =
+    xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(Bytes(Vector((language.id + 1).toByte)) ++ binary)
+
+  /** The decoder, giving no verdict for the scripts whose hashes are `hashes`. */
+  private def unavailableFor(hashes: Set[Bytes]): ScriptDecoder[Id] = (language, major, script) =>
+    if hashes(plutusHash(language, script)) then
+      Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
+    else decoder.validate(language, major, script)
+
+  private def unavailableAt(c: Case, hash: Bytes) =
+    Left(
+      xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
+        c.flat.body.id,
+        xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(hash),
+        EvalFailure.Unsupported(BackendFailure.StackExhausted)
+      )
+    )
+
+  private def failuresOf(test: RuleTest[PredicateFailure]): Vector[PredicateFailure] =
+    RuleTest.failures(test).map(_.toChain.toVector).getOrElse(Vector.empty)
+
+  private def utxow(f: xyz.kd5ujc.scarab.ledger.UtxowFailure) = PredicateFailure.utxow(f)
+
+  /** Alonzo's auxiliary data (tag 259) with metadata `{0: "x"}` and `scripts`, each language's list
+    * under its key (2 to 4), in the order given.
+    */
+  private def alonzoAux(scripts: Vector[(PlutusLanguage, Vector[Bytes])]): CborValue =
+    val metadata = node(uint(0)) -> node(
+      CborValue.Map(Vector(node(uint(0)) -> node(CborValue.Text("x"))))
+    )
+    CborValue.Tag(
+      259,
+      node(
+        CborValue.Map(
+          metadata +: scripts.map((l, bs) =>
+            node(uint(l.id + 2)) -> node(CborValue.Arr(bs.map(b => node(CborValue.ByteString(b)))))
+          )
+        )
+      )
+    )
+
+  private def encoded(v: CborValue): Bytes = Cbor.encode(v).fold(e => fail(e.toString), identity)
+
+  test(
+    "validateMetadata: data without its hash fails so before a script is read, as the reference"
+  ) {
+    // the flat check reads the auxiliary scripts first, so where the decoder gives no verdict for
+    // one it has the defect; the reference's order gives the predicate's failure
+    val c = collectedV3
+    val script = Bytes(Vector(0x41.toByte, 0.toByte))
+    val aux = alonzoAux(Vector(PlutusLanguage.V1 -> Vector(script)))
+    val noHash = withAuxiliary(c, "no hash", Some(aux), None)
+    val hash = plutusHash(PlutusLanguage.V1, script)
+    val (era, flat) = metadataBoth(noHash, unavailableFor(Set(hash)))
+    assertEquals(
+      era.map(failuresOf),
+      Right(
+        Vector(
+          utxow(
+            xyz.kd5ujc.scarab.ledger.UtxowFailure.MissingTxBodyMetadataHash(
+              xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(encoded(aux))
+            )
+          )
+        )
+      )
+    )
+    assertEquals(flat, unavailableAt(noHash, hash))
+  }
+
+  /** A binary of `first` and one of `second` (two-byte programs that are not valid ones), the
+    * first's hash the larger, so that the order of their hashes picks the second.
+    */
+  private def largerFirst(first: PlutusLanguage, second: PlutusLanguage): (Bytes, Bytes) =
+    val candidates = (1 to 16).toVector.map(i => Bytes(Vector(0x41.toByte, i.toByte)))
+    (for
+      a <- candidates
+      b <- candidates
+      if a != b && plutusHash(first, a).compareTo(plutusHash(second, b)) > 0
+    yield (a, b)).headOption.getOrElse(fail("no pair"))
+
+  test("the first script the decoder gives no verdict for is the flat check's, in arrival order") {
+    val c = collectedV3
+    // auxiliary data whose Plutus V2 field is encoded before its Plutus V1 field: the V2 script
+    // arrives first, though the languages' order and the hashes' order both pick the V1 one
+    val (auxV2, auxV1) = largerFirst(PlutusLanguage.V2, PlutusLanguage.V1)
+    val aux = alonzoAux(
+      Vector(PlutusLanguage.V2 -> Vector(auxV2), PlutusLanguage.V1 -> Vector(auxV1))
+    )
+    val withAux = withAuxiliary(
+      c,
+      "a Plutus V2 field before a Plutus V1 field",
+      Some(aux),
+      Some(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(encoded(aux)))
+    )
+    val firstAux = plutusHash(PlutusLanguage.V2, auxV2)
+    val (eraAux, flatAux) =
+      metadataBoth(withAux, unavailableFor(Set(firstAux, plutusHash(PlutusLanguage.V1, auxV1))))
+    assertEquals(eraAux, flatAux)
+    assertEquals(eraAux, unavailableAt(withAux, firstAux))
+    // a witness set whose Plutus V2 scripts are encoded before its Plutus V1 scripts: both
+    // decoders read the languages in their fixed order, V1 first, though the encoding and the
+    // hashes' order both pick the V2 one
+    val (witV1, witV2) = largerFirst(PlutusLanguage.V1, PlutusLanguage.V2)
+    val parts = rawWitnesses(
+      c,
+      6 -> arr(CborValue.ByteString(witV2)),
+      3 -> arr(CborValue.ByteString(witV1))
+    )
+    val withWits = c.copy(
+      name = "Plutus V2 witnesses before Plutus V1 ones",
+      parts = parts,
+      flat = FlatTx.fromBlock(parts, Era.Conway).fold(e => fail(e.toString), identity)
+    )
+    val firstWit = plutusHash(PlutusLanguage.V1, witV1)
+    assertEquals(
+      sameWellFormed(withWits, unavailableFor(Set(firstWit, plutusHash(PlutusLanguage.V2, witV2)))),
+      unavailableAt(withWits, firstWit)
+    )
+    // an ordinary output's reference script and the collateral return's: the output's first,
+    // though the hashes' order picks the collateral return's
+    val (output, collateral) = largerFirst(PlutusLanguage.V2, PlutusLanguage.V2)
+    val withBoth = withBody(
+      withOutputs(c, "an output's", Vector(outputWithScript(c, 2, output))),
+      "an output's and the collateral return's reference scripts",
+      16 -> outputWithScript(c, 2, collateral)
+    )
+    val firstRef = plutusHash(PlutusLanguage.V2, output)
+    assertEquals(
+      sameWellFormed(
+        withBoth,
+        unavailableFor(Set(firstRef, plutusHash(PlutusLanguage.V2, collateral)))
+      ),
+      unavailableAt(withBoth, firstRef)
+    )
+  }
+
+  test("within one list, and among the outputs, the first script to arrive is the one named") {
+    val c = collectedV3
+    // two auxiliary scripts of one language, the first of the larger hash
+    val (aux1, aux2) = largerFirst(PlutusLanguage.V1, PlutusLanguage.V1)
+    val aux = alonzoAux(Vector(PlutusLanguage.V1 -> Vector(aux1, aux2)))
+    val withAux = withAuxiliary(
+      c,
+      "two auxiliary scripts of one language",
+      Some(aux),
+      Some(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(encoded(aux)))
+    )
+    val auxFirst = plutusHash(PlutusLanguage.V1, aux1)
+    val (eraAux, flatAux) =
+      metadataBoth(withAux, unavailableFor(Set(auxFirst, plutusHash(PlutusLanguage.V1, aux2))))
+    assertEquals(eraAux, flatAux)
+    assertEquals(eraAux, unavailableAt(withAux, auxFirst))
+    // two witness scripts of one language
+    val (wit1, wit2) = largerFirst(PlutusLanguage.V2, PlutusLanguage.V2)
+    val parts =
+      rawWitnesses(c, 6 -> arr(CborValue.ByteString(wit1), CborValue.ByteString(wit2)))
+    val withWits = c.copy(
+      name = "two witness scripts of one language",
+      parts = parts,
+      flat = FlatTx.fromBlock(parts, Era.Conway).fold(e => fail(e.toString), identity)
+    )
+    val witFirst = plutusHash(PlutusLanguage.V2, wit1)
+    assertEquals(
+      sameWellFormed(withWits, unavailableFor(Set(witFirst, plutusHash(PlutusLanguage.V2, wit2)))),
+      unavailableAt(withWits, witFirst)
+    )
+    // two ordinary outputs with reference scripts
+    val (out1, out2) = largerFirst(PlutusLanguage.V2, PlutusLanguage.V2)
+    val withOuts = withOutputs(
+      c,
+      "two outputs with reference scripts",
+      Vector(outputWithScript(c, 2, out1), outputWithScript(c, 2, out2))
+    )
+    val outFirst = plutusHash(PlutusLanguage.V2, out1)
+    assertEquals(
+      sameWellFormed(withOuts, unavailableFor(Set(outFirst, plutusHash(PlutusLanguage.V2, out2)))),
+      unavailableAt(withOuts, outFirst)
+    )
+  }
+
+  /** The outputs of `c`'s body. */
+  private def bodyOutputs(c: Case): Vector[Node] =
+    cbor(c.parts.body).value match
+      case CborValue.Map(kvs) =>
+        kvs.collectFirst { case (k, v) if k.value == uint(1) => v.value } match
+          case Some(CborValue.Arr(outs)) => outs
+          case other                     => fail(s"not outputs: $other")
+      case other => fail(s"not a body: $other")
+
+  /** An output at the address of `c` 's first output, of two ada, with a reference script of the
+    * language `language` (1 to 3 for Plutus V1 to V3) whose binary is `binary`.
+    */
+  private def outputWithScript(c: Case, language: Int, binary: Bytes): CborValue =
+    val address = bodyOutputs(c).headOption.map(_.value) match
+      case Some(CborValue.Map(fs)) =>
+        fs.collectFirst { case (k, v) if k.value == uint(0) => v.value }
+          .getOrElse(fail("no address"))
+      case Some(CborValue.Arr(xs)) => xs.headOption.map(_.value).getOrElse(fail("no address"))
+      case other                   => fail(s"not an output: $other")
+    val script = encoded(arr(uint(language), CborValue.ByteString(binary)))
+    CborValue.Map(
+      Vector(
+        node(uint(0)) -> node(address),
+        node(uint(1)) -> node(uint(2000000)),
+        node(uint(3)) -> node(CborValue.Tag(24, node(CborValue.ByteString(script))))
+      )
+    )
+
+  private def withOutputs(c: Case, name: String, extra: Vector[CborValue]): Case =
+    withBody(c, name, 1 -> CborValue.Arr(bodyOutputs(c) ++ extra.map(node)))
+
+  test(
+    "validateScriptsWellFormed: malformed reference scripts, alone, on the collateral return, with a witness"
+  ) {
+    val c = collectedV3
+    val bad = Bytes(Vector(0.toByte))
+    val badV2 = plutusHash(PlutusLanguage.V2, bad)
+    val badV1 = plutusHash(PlutusLanguage.V1, bad)
+    import xyz.kd5ujc.scarab.ledger.UtxowFailure as F
+    def failures(x: Case) =
+      sameWellFormed(x).fold(e => fail(s"${x.name}: $e"), failuresOf)
+    // on an ordinary output
+    assertEquals(
+      failures(withOutputs(c, "an output's", Vector(outputWithScript(c, 2, bad)))),
+      Vector(utxow(F.MalformedReferenceScripts(Set(badV2))))
+    )
+    // on the collateral return
+    assertEquals(
+      failures(withBody(c, "the collateral return's", 16 -> outputWithScript(c, 2, bad))),
+      Vector(utxow(F.MalformedReferenceScripts(Set(badV2))))
+    )
+    // with a malformed witness script: the witnesses' failure, then the reference scripts'
+    val both = withOutputs(c, "both", Vector(outputWithScript(c, 2, bad)))
+    val bothParts = rawWitnesses(both, 3 -> arr(CborValue.ByteString(bad)))
+    val withBoth = both.copy(
+      parts = bothParts,
+      flat = FlatTx.fromBlock(bothParts, Era.Conway).fold(e => fail(e.toString), identity)
+    )
+    assertEquals(
+      failures(withBoth),
+      Vector(
+        utxow(F.MalformedScriptWitnesses(Set(badV1))),
+        utxow(F.MalformedReferenceScripts(Set(badV2)))
+      )
+    )
+  }
+
+  /** A case one of whose witness scripts is a Plutus V3 script, with the hashes of those scripts.
+    */
+  private lazy val v3Witnesses: (Case, Set[Bytes]) =
+    cases.iterator
+      .map { c =>
+        val (tx, _, _) = typed(c)
+        val scripts = t.witsOf.scriptTxWits(t.wits[TxLevel.Top](tx)(using top))
+        c -> scripts.collect {
+          case (h, s)
+              if EraScript.conway
+                .toPlutusScript(s)
+                .exists(AlonzoScripts.plutusScriptLanguage[Conway](_) == PlutusLanguage.V3) =>
+            h
+        }.toSet
+      }
+      .find(_._2.nonEmpty)
+      .getOrElse(fail("no case has a Plutus V3 witness script"))
+
+  test(
+    "a Plutus V3 script is malformed at protocol 8 and well formed from 9, as the flat check says"
+  ) {
+    val (c, v3) = v3Witnesses
+    // the annotation built at the major it is validated at, as the reference's cache assumes
+    val at8 = sameWellFormed(c.copy(major = 8)).fold(e => fail(e.toString), failuresOf)
+    assertEquals(
+      at8,
+      Vector(utxow(xyz.kd5ujc.scarab.ledger.UtxowFailure.MalformedScriptWitnesses(v3)))
+    )
+    assertEquals(sameWellFormed(c.copy(major = 9)).map(failuresOf), Right(Vector.empty))
+  }
+
+  test("a cache hit is validated by the cached runnable's binary") {
+    val (c, v3) = v3Witnesses
+    val hash = v3.head
+    val other = Bytes(Vector(0x42.toByte, 7.toByte))
+    // the decoder gives no verdict for `other` in Plutus V3 alone
+    val scripts: ScriptDecoder[Id] = (language, major, script) =>
+      if language == PlutusLanguage.V3 && script == other then
+        Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
+      else decoder.validate(language, major, script)
+    val cached = SupportedPlutusRunnable(
+      EraPlutusTxInfo.conwayPlutusV3,
+      PlutusRunnable[Language.PlutusV3](Plutus(other), hash)
+    )
+    val (era, _) = wellFormedBoth(c, scripts, -1, Map(hash -> cached))
+    assertEquals(era, unavailableAt(c, hash))
+    val (uncached, _) = wellFormedBoth(c, scripts, -1, Map.empty)
+    assertEquals(uncached.map(failuresOf), Right(Vector.empty))
+  }
+
+  test("the reference's recorded verdict: a malformed witness and reference script, both refused") {
+    val line = Files
+      .readAllLines(Path.of("fixtures/reference/refusals/conway-devnet/cases/cases.jsonl"))
+      .toArray
+      .toVector
+      .map(_.toString)
+      .map(l => parse(l).fold(e => fail(e.message), identity))
+      .find(field[String](_, "label") == "utxow-malformed-witness-and-reference-script")
+      .getOrElse(fail("no recorded case"))
+    // the item is the era's index and the transaction, wrapped (`[6, 24(bytes)]`)
+    val txBytes = cbor(hex(field[String](line, "item"))).value match
+      case CborValue.Arr(Vector(_, wrapped)) =>
+        wrapped.value match
+          case CborValue.Tag(g, inner) if g == 24 =>
+            inner.value match
+              case CborValue.ByteString(b) => b
+              case other                   => fail(s"not bytes: $other")
+          case other => fail(s"not wrapped: $other")
+      case other => fail(s"not an item: $other")
+    val parts = cbor(txBytes).value match
+      case CborValue.Arr(Vector(body, witnesses, flag, auxiliary)) =>
+        Block.Transaction(
+          body.original,
+          witnesses.original,
+          Option.unless(auxiliary.value == CborValue.Null)(auxiliary.original),
+          flag.value == CborValue.Bool(true)
+        )
+      case other => fail(s"not a transaction: $other")
+    val flat = FlatTx.fromBlock(parts, Era.Conway).fold(e => fail(e.toString), identity)
+    val c = Case(
+      "recorded malformed scripts",
+      parts,
+      flat,
+      Map.empty,
+      Map.empty,
+      10,
+      Map.empty,
+      slot => Right(slot),
+      Json.Null
+    )
+    // the reference's failures, each `[1, [tag, 258([hash])]]`: their tags and hashes
+    val recorded = cbor(hex(field[String](line, "reason"))).value match
+      case CborValue.Arr(Vector(one)) =>
+        one.value match
+          case CborValue.Arr(Vector(_, failures)) =>
+            failures.value match
+              case CborValue.Arr(fs) =>
+                fs.map(_.value).collect { case CborValue.Arr(Vector(_, f)) =>
+                  f.value match
+                    case CborValue.Arr(Vector(tag, set)) =>
+                      val hashes = set.value match
+                        case CborValue.Tag(_, list) =>
+                          list.value match
+                            case CborValue.Arr(hs) =>
+                              hs.map(_.value).collect { case CborValue.ByteString(h) => h }.toSet
+                            case other => fail(s"not hashes: $other")
+                        case other => fail(s"not a set: $other")
+                      tag.value -> hashes
+                    case other => fail(s"not a failure: $other")
+                }
+              case other => fail(s"not failures: $other")
+          case other => fail(s"not an error: $other")
+      case other => fail(s"not a reason: $other")
+    val byTag = recorded.toMap
+    import xyz.kd5ujc.scarab.ledger.UtxowFailure as F
+    assertEquals(
+      sameWellFormed(c).map(failuresOf),
+      Right(
+        Vector(
+          utxow(F.MalformedScriptWitnesses(byTag.getOrElse(uint(16), fail("no 16")))),
+          utxow(F.MalformedReferenceScripts(byTag.getOrElse(uint(17), fail("no 17"))))
+        )
+      )
+    )
+  }
+
+  test("the reference's 210 Conway observations of auxiliary data, on the era types") {
+    // `fixtures/reference/auxiliary-scripts`: the reference's decoder and `validateTxAuxData` at
+    // ConwayEra, protocols 9 to 11; each input is put in a Conway transaction with its hash
+    val rows =
+      parse(Files.readString(Path.of("fixtures/reference/auxiliary-scripts/auxiliary.json")))
+        .fold(e => fail(e.message), identity)
+        .asArray
+        .getOrElse(fail("not an array"))
+        .filter(field[String](_, "era") == "Conway")
+    assertEquals(rows.size, 210)
+    val base = collectedV3
+    val outcomes = rows.map { row =>
+      val name = field[String](row, "name")
+      val major = field[Int](row, "protocolMajor")
+      val bytes = hex(field[String](row, "auxiliary"))
+      val oracle = field[Json](row, "oracle")
+      val decoded = field[Boolean](oracle, "decoded")
+      val hash = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(bytes)
+      val entries = cbor(base.parts.body).value match
+        case CborValue.Map(kvs) =>
+          kvs.filterNot((k, _) => k.value == uint(7)) :+ (node(uint(7)) -> node(
+            CborValue.ByteString(hash)
+          ))
+        case other => fail(s"not a body: $other")
+      val parts = base.parts.copy(
+        body = encoded(CborValue.Map(entries)),
+        auxiliaryData = Some(bytes)
+      )
+      assertEquals(ConwayTx.decode(parts).isRight, decoded, name)
+      if decoded then
+        val c = base.copy(
+          name = name,
+          parts = parts,
+          flat = FlatTx.fromBlock(parts, Era.Conway).fold(e => fail(s"$name: $e"), identity),
+          major = major
+        )
+        val (tx, _, st) = annotated(c)
+        val aux = t.auxData[TxLevel.Top](tx)(using top).getOrElse(fail(s"$name: no data"))
+        val valid = field[Boolean](oracle, "valid")
+        assertEquals(EraTxAuxData.hashTxAuxData[Conway](aux)(using t.auxDataOf), hash, name)
+        assertEquals(
+          t.auxDataOf.validateTxAuxData(decoder, Map.empty, protVer(major), aux),
+          Right(valid),
+          name
+        )
+        assertEquals(
+          rules.ShelleyUtxow
+            .validateMetadata[Conway, TxLevel.Top](decoder, eraParams(c), st)(using t, top)
+            .map(failuresOf),
+          Right(
+            if valid then Vector.empty
+            else Vector(utxow(xyz.kd5ujc.scarab.ledger.UtxowFailure.InvalidMetadata))
+          ),
+          name
+        )
+        Some(valid)
+      else None
+    }
+    // every outcome the corpus has: refused by the decoder, valid, and with an invalid script
+    assertEquals(outcomes.toSet, Set(None, Some(true), Some(false)))
   }

@@ -71,11 +71,9 @@ trait EraUTxO[E <: EraTag]:
       txOf.bodyOf.Level[L]
   ): Coin
 
-/** The datums of a transaction of era `E` from Alonzo (`class EraUTxO era => AlonzoEraUTxO era`,
-  * cardano-ledger f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:129-162`), with
-  * `getSupplementalDataHashes` and `getSpendingDatum`: the four members of the annotated
-  * transaction (`scriptsProvidedStAnnTx`, `scriptsNeededStAnnTx`,
-  * `plutusScriptsWithContextStAnnTx`, `plutusLanguagesUsedStAnnTx`) are not members yet (#85).
+/** The datums of a transaction of era `E` from Alonzo, and what its annotated form holds (`class
+  * EraUTxO era => AlonzoEraUTxO era`, cardano-ledger f649f975
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:129-162`).
   */
 trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
   /** `getSupplementalDataHashes`: the hashes of the datums a witness set may carry that no spent
@@ -92,6 +90,28 @@ trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
   def getSpendingDatum[L <: TxLevel](utxo: UTxO[E], tx: Tx[L, E], sp: PlutusPurpose[AsItem, E])(
       using txOf.bodyOf.Level[L]
   ): Either[PlutusData.DecodeError, Option[Data]]
+
+  /** `scriptsProvidedStAnnTx`: the scripts the annotated transaction provides. */
+  def scriptsProvidedStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using
+      txOf.bodyOf.Level[L]
+  ): ScriptsProvided[E]
+
+  /** `scriptsNeededStAnnTx`: the scripts the annotated transaction needs. */
+  def scriptsNeededStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using
+      txOf.bodyOf.Level[L]
+  ): ScriptsNeeded[E]
+
+  /** `plutusScriptsWithContextStAnnTx`: its Plutus scripts with their contexts, or why they cannot
+    * be collected.
+    */
+  def plutusScriptsWithContextStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using
+      txOf.bodyOf.Level[L]
+  ): Either[cats.data.NonEmptyList[CollectError[E]], List[PlutusWithContext]]
+
+  /** `plutusLanguagesUsedStAnnTx`: the languages of the Plutus scripts it uses. */
+  def plutusLanguagesUsedStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using
+      txOf.bodyOf.Level[L]
+  ): Set[xyz.kd5ujc.scarab.plutus.PlutusLanguage]
 
 /** `ScriptsProvided` (`State/UTxO.hs:229-232`, cardano-ledger f649f975): the scripts a transaction
   * provides, by hash. Each key is its script's hash (`getScriptsProvided` makes it so); the map's
