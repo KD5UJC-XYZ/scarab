@@ -67,7 +67,14 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   private val bob = key()
   private val ada = BigInt(1000000)
   private val eras = Vector(2, 3, 4, 5, 7)
-  private val boundaryGlobals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
+  private val boundaryGlobals = LedgerGlobals(
+    Supply,
+    10000,
+    Rational(1, 20),
+    0,
+    updateQuorum = 2,
+    kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+  )
 
   private def ok[A](v: Either[VocabError, A]): A = v.fold(e => fail(e.toString), identity)
   private def coin(n: BigInt): NativeCoin = NativeCoin(n)
@@ -771,7 +778,14 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val b =
         body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
       run(s, tx(b, Vector(alice) ++ from.map(delegates))).fold(f => fail(f.message), _.state)
-    val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
+    val globals = LedgerGlobals(
+      Supply,
+      10000,
+      Rational(1, 20),
+      0,
+      updateQuorum = 2,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    )
     val adopted = as[Alonzo](afterLastBlock(propose(Vector(0, 1)), globals))
     assertEquals(paramsOf(adopted).keyDeposit, BigInt(3000000))
     val gov = adopted.es.ls.utxo.gov
@@ -899,7 +913,14 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     val s =
       s0.copy(es = s0.es.copy(ls = ls.copy[Babbage](utxo = ls.utxo.copy[Babbage](gov = proposed))))
-    val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
+    val globals = LedgerGlobals(
+      Supply,
+      10000,
+      Rational(1, 20),
+      0,
+      updateQuorum = 2,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    )
     val entered = as[Conway](afterLastBlock(s, globals))
     assertEquals(paramsOf(entered).protocolMajor, BigInt(9))
     assertEquals(entered.es.ls.cert.vState.numDormantEpochs.toBigInt, BigInt(1))
@@ -981,7 +1002,13 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
           snapshots = SnapShots(snap, snap, snap, coin(1000 * ada), SnapShots.Layout.Node11_1)
         )
       )
-      val globals = LedgerGlobals(Supply, 100, Rational(1, 2), 0)
+      val globals = LedgerGlobals(
+        Supply,
+        100,
+        Rational(1, 2),
+        0,
+        kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+      )
       // each epoch makes its reward update (a block after the start of rewards creates it) and
       // the boundary applies it; the pools make the same blocks in the epoch that follows
       val end =

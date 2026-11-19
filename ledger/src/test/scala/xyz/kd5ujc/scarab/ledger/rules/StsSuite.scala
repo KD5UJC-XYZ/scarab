@@ -25,7 +25,13 @@ class StsSuite extends DisciplineSuite:
   type R[A] = RuleT[Nothing, Fail, Int, A]
 
   private val globals = Globals(
-    LedgerGlobals(BigInt(1000), 100, Rational(1, 20), network = 0),
+    LedgerGlobals(
+      BigInt(1000),
+      100,
+      Rational(1, 20),
+      network = 0,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    ),
     EpochGeometry(Instant.EPOCH, 1000, 100, TestGeometry.k(5), TestGeometry.f("0.05"))
   )
   private val otherGlobals = globals.copy(ledger = globals.ledger.copy(network = 1))

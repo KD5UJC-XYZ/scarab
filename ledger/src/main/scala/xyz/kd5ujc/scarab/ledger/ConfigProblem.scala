@@ -276,9 +276,11 @@ enum ConfigNumberField:
 
 /** A Shelley genesis field read with a number instance of the reference. */
 enum GenesisNumberField:
-  case ActiveSlotsCoeff, SecurityParam
+  case ActiveSlotsCoeff, SecurityParam, SlotsPerKESPeriod, MaxKESEvolutions
 
   /** The JSON key. */
   def key: String = this match
-    case ActiveSlotsCoeff => "activeSlotsCoeff"
-    case SecurityParam    => "securityParam"
+    case ActiveSlotsCoeff  => "activeSlotsCoeff"
+    case SecurityParam     => "securityParam"
+    case SlotsPerKESPeriod => "slotsPerKESPeriod"
+    case MaxKESEvolutions  => "maxKESEvolutions"

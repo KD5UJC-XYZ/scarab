@@ -106,7 +106,8 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       geometry.epochLength,
       Rational(1, 2),
       network = 0,
-      updateQuorum = 2
+      updateQuorum = 2,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
   val epochNonce: Nonce = Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(7))))
 

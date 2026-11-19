@@ -37,7 +37,14 @@ object TxKit:
 
   val env: MempoolEnv =
     MempoolEnv(
-      LedgerGlobals(Supply, 1000, Rational(1, 20), network = 0, updateQuorum = 2),
+      LedgerGlobals(
+        Supply,
+        1000,
+        Rational(1, 20),
+        network = 0,
+        updateQuorum = 2,
+        kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+      ),
       EpochGeometry(
         Instant.EPOCH,
         1000,

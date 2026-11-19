@@ -113,6 +113,10 @@ final case class ConwayShapes[E <: EraTag](
     gov: GovState[E] =:= ConwayGovState
 )
 
+object ConwayShapes:
+  given conway: ConwayShapes[Conway] = ConwayShapes(summon, summon, summon, summon)
+  given dijkstra: ConwayShapes[Dijkstra] = ConwayShapes(summon, summon, summon, summon)
+
 /** Which of two shapes `A` and `B` the type family `F` takes in an era, with the proof that `F` is
   * that shape (an era witness gives it: [[ShelleyBasedEra.cert]], ...). The operations below are
   * the only conversions between a family and its shapes; none is a cast.

@@ -21,11 +21,12 @@ import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 final case class ShelleyGenesis(
     networkMagic: Long,
     geometry: EpochGeometry,
-    slotsPerKesPeriod: BigInt,
-    maxKesEvolutions: BigInt,
+    kes: KesParameters,
     maxLovelaceSupply: BigInt,
     raw: Json
-)
+):
+  def slotsPerKesPeriod: BigInt = kes.slotsPerPeriod.toBigInt
+  def maxKesEvolutions: BigInt = kes.maxEvolutions.toBigInt
 
 object Genesis:
   /** The fields are read in the order of the reference's `FromJSON ShelleyGenesis` (cardano-ledger
@@ -48,8 +49,10 @@ object Genesis:
       f <- number(c, GenesisNumberField.ActiveSlotsCoeff)(PositiveUnitInterval.fromJson)
       k <- number(c, GenesisNumberField.SecurityParam)(FromJson.nonZeroWord64)
       epochLength <- field[Long](c, "epochLength")
-      kesPeriod <- field[BigInt](c, "slotsPerKESPeriod")
-      kesEvolutions <- field[BigInt](c, "maxKESEvolutions")
+      // `Word64` both (`sgSlotsPerKESPeriod`, `sgMaxKESEvolutions`, `Shelley/Genesis.hs:314-315`,
+      // cardano-ledger f649f975)
+      kesPeriod <- number(c, GenesisNumberField.SlotsPerKESPeriod)(FromJson.word64)
+      kesEvolutions <- number(c, GenesisNumberField.MaxKESEvolutions)(FromJson.word64)
       slotLength <- field[BigDecimal](c, "slotLength")
       supply <- field[BigInt](c, "maxLovelaceSupply")
       millis <- Either.cond(
@@ -58,7 +61,7 @@ object Genesis:
         ConfigError(ConfigProblem.FractionalSlotMilliseconds(slotLength))
       )
       geometry <- EpochGeometry.checked(start, millis, epochLength, k, f)
-    yield ShelleyGenesis(magic, geometry, kesPeriod, kesEvolutions, supply, json)
+    yield ShelleyGenesis(magic, geometry, KesParameters(kesEvolutions, kesPeriod), supply, json)
 
   private def number[A](c: ACursor, name: GenesisNumberField)(
       read: Json => Either[NumberError, A]

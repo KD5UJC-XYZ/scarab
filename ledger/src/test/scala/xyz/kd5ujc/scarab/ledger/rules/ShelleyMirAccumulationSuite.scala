@@ -30,7 +30,13 @@ class ShelleyMirAccumulationSuite extends FunSuite:
   private type F[A] = RuleT[PredicateFailure, LedgerFailure, ShelleyCertState, A]
   private val credential = Credential.Key(Bytes(Vector.fill(28)(7.toByte)))
   private val globals = Globals(
-    LedgerGlobals(BigInt(1000), 100, Rational(1, 20), network = 0),
+    LedgerGlobals(
+      BigInt(1000),
+      100,
+      Rational(1, 20),
+      network = 0,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    ),
     EpochGeometry(Instant.EPOCH, 1000, 100, TestGeometry.k(5), TestGeometry.f("0.05"))
   )
 

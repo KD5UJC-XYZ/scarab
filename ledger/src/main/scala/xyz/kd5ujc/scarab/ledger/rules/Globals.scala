@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
-import xyz.kd5ujc.scarab.ledger.state.{NonZero, Word64}
+import xyz.kd5ujc.scarab.ledger.state.{EpochInterval, NonZero, VocabError, Word64}
 
 /** The constants of a network that the era-indexed rules read from their environment: Haskell's
   * `Globals` (`Cardano/Ledger/BaseTypes.hs:761-789`, cardano-ledger f649f975), the reader
@@ -50,6 +50,17 @@ final case class Globals(ledger: LedgerGlobals, geometry: EpochGeometry):
     */
   def epochOf(slot: BigInt): BigInt = geometry.epochOf(slot)
   def firstSlot(epoch: BigInt): BigInt = geometry.firstSlot(epoch)
+
+  /** `maxKeyAgeEpochs` (cardano-ledger 9df9f98c `Dijkstra/Rules/Snap.hs:150-165`): the epochs a
+    * registered Leios voting key is honoured for, the KES lifetime ([[LedgerGlobals.kes]]) in whole
+    * epochs plus two ([[EpochInterval.ofKes]]). The reference takes the epoch's length from
+    * `epochInfoPure`; the Shelley-based eras' is the genesis's fixed one ([[EpochGeometry]],
+    * positive by construction), so the epoch it is measured at does not change it.
+    */
+  def maxKeyAgeEpochs: Either[VocabError, EpochInterval] =
+    NonZero
+      .from(Word64.fromUnsigned(geometry.epochLength))
+      .map(EpochInterval.ofKes(ledger.kes.maxEvolutions, ledger.kes.slotsPerPeriod, _))
 
   /** The same constants once the chain is known to enter Shelley at `firstShelleyEpoch`. */
   def resolved(firstShelleyEpoch: BigInt): Globals =

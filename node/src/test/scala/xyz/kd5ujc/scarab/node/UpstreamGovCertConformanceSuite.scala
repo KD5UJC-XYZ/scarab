@@ -61,7 +61,13 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
     // These GOVCERT judgments do not read Globals. RuleT still requires the reference interpreter's
     // ambient capability; all rule inputs it does read come from the exported judgment below.
     Globals(
-      LedgerGlobals(BigInt(0), BigInt(1), Rational.zero, network = 0),
+      LedgerGlobals(
+        BigInt(0),
+        BigInt(1),
+        Rational.zero,
+        network = 0,
+        kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+      ),
       EpochGeometry(Instant.EPOCH, 1000L, 1L, TestGeometry.k(1), TestGeometry.f("0.1"))
     )
 

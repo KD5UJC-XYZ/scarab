@@ -54,7 +54,13 @@ import TestLedger.*
 class ConwayGovernanceSuite extends ScalaCheckSuite:
   private val ada = BigInt(1000000)
   private val half = Rational(1, 2)
-  private val globals = LedgerGlobals(Supply, 100, Rational(1, 20), network = 0)
+  private val globals = LedgerGlobals(
+    Supply,
+    100,
+    Rational(1, 20),
+    network = 0,
+    kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+  )
 
   /** A value the vocabulary must admit: the test's own keys and amounts. */
   private def must[A](v: Either[VocabError, A]): A = v.fold(e => fail(s"$e"), identity)

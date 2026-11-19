@@ -51,7 +51,14 @@ class DijkstraRulesOracleSuite extends FunSuite:
   private val fixture = Path.of("fixtures", "reference", "dijkstra-rules", "cases.jsonl")
 
   private val globals = Globals(
-    LedgerGlobals(TestLedger.Supply, 100, Rational(1, 2), network = 0, updateQuorum = 2),
+    LedgerGlobals(
+      TestLedger.Supply,
+      100,
+      Rational(1, 2),
+      network = 0,
+      updateQuorum = 2,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    ),
     EpochGeometry(Instant.EPOCH, 1000, 10000, TestGeometry.k(5), TestGeometry.f("0.05"))
   )
 

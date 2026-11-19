@@ -133,7 +133,14 @@ object TestLedger:
   /** The constants of the rules over [[geometry]]. */
   val globals: Globals =
     Globals(
-      LedgerGlobals(Supply, 100, Rational(1, 2), network = 0, updateQuorum = 2),
+      LedgerGlobals(
+        Supply,
+        100,
+        Rational(1, 2),
+        network = 0,
+        updateQuorum = 2,
+        kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+      ),
       geometry
     )
 
