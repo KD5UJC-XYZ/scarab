@@ -72,7 +72,9 @@ final case class StoredEb(
   * body and transactions stay, as the immutable file keeps them, and what the reference reads from
   * its volatile file alone (the point scans, a novel point's completion, a write of transactions)
   * does not see it, until its body is written again, which empties its closure for its transactions
-  * to be written again, as the reference's volatile file has it then.
+  * to be written again, as the reference's volatile file has it then. A hash evicted again before
+  * they are holds only what was written again, less than the reference's immutable file holds (an
+  * approved Deviation, `LeiosStore.writeEbBody`).
   */
 final class RocksLeiosStore[F[_]] private (
     db: RocksDB,

@@ -125,7 +125,10 @@ trait LeiosStore[F[_]]:
     * (`writeEbBody`, `sqlInsertEbBody`). The point must have been written. A body already stored
     * changes nothing and completes nothing, unless the collection evicted its hash: the body is
     * then written to the reference's volatile partition again, its closure there empty until its
-    * transactions are written again.
+    * transactions are written again. The store holds one closure, so it empties it: a hash evicted
+    * again before its transactions are written again holds only those written again, where the
+    * reference still holds them all in its immutable partition (an approved Deviation, #830,
+    * decided 2026-11-19T20:56:30Z).
     */
   def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
       Raise[F, LeiosStoreError]
