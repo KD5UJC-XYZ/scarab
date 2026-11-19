@@ -141,7 +141,10 @@ final class EventMetrics[F[_]: Sync] private (
           // c45735a5 `framework/tracing/Network/Mux/Tracing.hs` 345-360, 451-460)
           case Rejection.TooSlow(_, _, _) => metrics.inc(txsMempoolTimeoutSoft)
           case Rejection.TimedOut(_)      => metrics.inc(txsMempoolTimeoutHard)
-          case _                          => Sync[F].unit)
+          case Rejection.Malformed(_) | Rejection.AlreadyHeld(_) | Rejection.Ledger(_) |
+              Rejection.Limits(_, _) | Rejection.Full(_, _) | Rejection.WrongEra(_, _) |
+              Rejection.NoLedger(_) | Rejection.InputDefect(_) | Rejection.RulesDefect(_) =>
+            Sync[F].unit)
       case MempoolEvent.Waiting(_, _, _)        => Sync[F].unit
       case MempoolEvent.WaitingForTime(_, _, _) => Sync[F].unit
       case MempoolEvent.Dropped(_, _, _)        => metrics.inc(mempoolDropped)

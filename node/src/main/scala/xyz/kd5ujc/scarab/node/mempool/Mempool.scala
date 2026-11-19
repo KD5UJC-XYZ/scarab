@@ -367,7 +367,9 @@ object Mempool:
         * that was measured and the wait cannot miss a change. The step starts from the first
         * measure again each time: a new tip may have changed the parameters and the capacity. Its
         * validation is timed as the reference's `doAddTx` times it ([[validated]]); a refusal, a
-        * cut-off and a cancellation leave the pool as it was.
+        * cut-off and a cancellation during the validation leave the pool as it was. Once a
+        * transaction is held, its state, the version and the `Added` event are three effects, so a
+        * cancellation between them leaves the state without the version or the event, as before.
         */
       private def attempt(
           of: MempoolState => Either[Rejection, MempoolState.Read],

@@ -42,20 +42,37 @@ and 5 s, on by default as cardano-node 11.1.3 passes them, `Node/Run.hs` 388-392
 - **Capacity:** each held transaction records how long its validation took, which revalidation keeps; while the held
   transactions took longer than the capacity together, a new transaction waits for the pool to change (one
   transaction can take them past it), after the second measure and the room in every component and before the rules.
+- **No verdict:** a validation the rules or the evaluator give no verdict on (`RulesDefect`, `LedgerFailure.Unavailable`
+  or `Unverifiable`) keeps its cause and its handling (the submitter's connection ends) however long it took: in the
+  reference the exception escapes `timeout` and never meets the soft limit.
+- **Order of the early refusals:** in Conway a duplicate of a held transaction is refused first among the rules, where
+  the reference's MEMPOOL rule refuses it, so it waits for room and for time as any other transaction. A transaction
+  that does not reach the ledger's era is refused where the selected build refuses it: under `11.2` and the Leios
+  build in its first measure, at once (`HardFork/Combinator/Mempool.hs` 357-362 at `808e4005`); under `11.1` it
+  measures nothing, waits as any other and is refused by the rules in the timed step (371-376, 416-421 and 501-506 at
+  `82ecba32`), so it can be refused as too slow, naming the era it came in.
 - **Reporting:** a refusal is a `mempoolRejected` line with reason `TooSlow` or `TimedOut`, a wait for time a
   `mempoolWaiting` line; `cardano_node_metrics_txsMempoolTimeoutSoft_counter` and `..._txsMempoolTimeoutHard_counter`
   count them as the reference's do ([metrics](../running/metrics.md)).
 - **Evidence:** `MempoolTimeoutsSuite` (the soft boundary from either source, a late refusal of the rules, the reply's
   bytes and text, a cut-off per source and era, the capacity's wait and release, durations kept through revalidation,
   and the audit's G2 `hashToGroup` loop cut off at the hard limit through the node's own timing with the pool left
-  empty); `ConfigSuite` (all, none, `null`, some, values aeson refuses, the microsecond floor); `CekStopSuite` and
-  `InterruptibleEvaluatorSuite` (an evaluation's verdict and budget unchanged until it is stopped, on the 1,009
-  conformance cases of plutus 1.71.0.0 and the boundary corpus).
+  empty, a no-verdict failure past the soft limit, a duplicate's and an era mismatch's place under each build);
+  `MempoolMeasureSuite` and `MempoolBackpressureSuite` (a duplicate waits for room); `ConfigSuite` (all, none, `null`,
+  some, values aeson refuses, the microsecond floor); `CekStopSuite` and `InterruptibleEvaluatorSuite` (an
+  evaluation's verdict and budget unchanged until it is stopped: on the 945 programs of the 1,009 conformance cases of
+  plutus 1.71.0.0, the other 64 being the reference's parse refusals, which the suite checks are refused, and on the
+  boundary corpus).
 - **Not checked:** a capture of the reference's refusal text (the text was read from the derived `Show` instances,
   not executed); the duration in it is each node's own measurement, so it never compares exactly (the
   [campaign's Q7](../design/differential-campaign.md#10-risks-and-open-questions)). A builtin call that runs long
   between two steps of the machine is stopped at the next step after it returns, as GHC stops a computation at its
-  next allocation.
+  next allocation. Under `11.1`, a transaction of an era whose transactions the pool does not read (Byron, Dijkstra)
+  has no id the pool can show, so where the reference would refuse it as too slow (a soft limit below the time its
+  era check takes, or a hard limit below a microsecond), Scarab refuses it with the era mismatch, or ends a local
+  client's connection when the hard limit cuts it off. A cancellation during the validation leaves the pool as it
+  was; once a transaction is held, its state, the pool's version and the `mempoolAdded` event are separate steps, as
+  before.
 
 ## Differences decided on 2026-11-14 (#956)
 
