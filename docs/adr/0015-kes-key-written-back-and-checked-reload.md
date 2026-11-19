@@ -1,6 +1,6 @@
 # 0015. The evolved KES key is written back, and credentials are reloaded on SIGHUP only after a check
 
-- **Status**: Accepted; file-backed writeback retained by owner review on 2026-10-19. A separate KES agent is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38); the two-source policy — this path kept exactly as decided here, the agent path preferred for long-running pools — is [ADR 0023](0023-two-kes-credential-sources.md).
+- **Status**: Accepted; file-backed writeback retained by owner review on 2026-10-19, and amended on 2026-11-18 to write back only a KES period the node has confirmed. A separate KES agent is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38); the two-source policy — this path kept exactly as decided here, the agent path preferred for long-running pools — is [ADR 0023](0023-two-kes-credential-sources.md).
 - **Date**: 2026-10-17
 - **Issue**: [#116](https://github.com/KD5UJC-XYZ/scarab/issues/116)
 
@@ -18,7 +18,7 @@ test-network pool (#116).
 
 ## Decision
 
-1. When the KES key moves to a new period it is written back to the `--kes-skey` file ~~before it signs in
+1. ~~When the KES key moves to a new period~~ ([Amended 2026-11-18](#amendment-2026-11-18-only-a-confirmed-period-is-written-back)) it is written back to the `--kes-skey` file ~~before it signs in
    that period~~ ([Amended 2026-11-13](#amendment-2026-11-13-a-moved-key-file-is-not-made-again)), and the key it replaces is overwritten: create the staged file beside it, write every byte,
    force the file, decode and validate its structure, verification key, period and serialized bytes, then
    force the containing directory. ~~Only then overwrite every predecessor byte with zeros and force that
@@ -125,3 +125,70 @@ The cases are covered by `KesRotationSuite`: every boundary of the exchange; a k
 the write-back with either protocol; a retry after a failure that followed the exchange; a stage that went
 missing; an exchange errno and a binding defect; recovery with the key file missing; the rename said once; the
 real `renameat2` on Linux; and a period change between the move and the SIGHUP.
+
+## Amendment (2026-11-18): only a confirmed period is written back
+
+Owner decision recorded in the [decisions register](../decisions.md) (the #1101 KES row of 2026-11-18): asked
+2026-11-18T16:59:59Z and decided 2026-11-18T17:30:01Z, in the chat session doing the work. The question was the
+write-back's behaviour on a reading of the wall clock ahead of the true time. The key evolves at the first slot of
+each KES period, also while the node cannot forecast its slots, and at a reload, by the approved #1101 KES row of
+2026-11-16; each evolution was written back at once. One reading ahead, at a period's first slot inside the era
+history's horizon or at any reload inside the certificate's window, wrote the key at the period of that reading.
+After the clock came back, the key in the file could not sign until the true time reached that period. The
+reference evolves its key in memory only and writes nothing back (ouroboros-consensus 808e4005
+`Ouroboros/Consensus/Protocol/Ledger/HotKey.hs` 385-438).
+
+The file-backed write-back stays, as the interim until the KES agent ([H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38),
+[ADR 0023](0023-two-kes-credential-sources.md)), but **the KES period written to the key file is never later than
+that of a slot that passed the forecast check**: the slot's ledger view can be forecast from the tip of the chain
+the block would extend (`ledgerViewForecastAt`).
+
+- **The slot path.** The key evolves as before, in memory, and is written back only for a slot that passed the
+  forecast check, after that check. The reference makes its forge state update after the checks that precede it:
+  `forecastFor` of the ledger view, `TraceNoLedgerView` otherwise, then `checkShouldForge`, whose first step is
+  `updateForgeState` (ouroboros-consensus 82ecba32 `NodeKernel.hs` 611-631 and 646-669, `Block/Forging.hs`
+  192-202; the same order at 808e4005, `NodeKernel/Forge.hs` 100-111 and 334-353, `Block/Forging.hs` 175-185).
+- **A reload** brings the key to the wall clock's period in memory only and writes nothing. A later slot that
+  passes the forecast check and needs the key writes it, as it writes the key in use over a file that holds an
+  earlier copy of it (a certificate issued again for the key in use).
+- **A key in memory at a later period than such a slot's is not written.** It cannot sign in that slot, as before.
+  A restart reads the file as it is.
+- **At start-up**, a key in its file at a later period than the current one by the wall clock is logged
+  (`kesKeyAhead`, Warning), with how to recover: restore the unevolved key, or issue a new KES key and operational
+  certificate.
+
+Everything else in this record is unchanged: the replacement protocol and its recovery, `kesPersistFailed` and its
+terminal failure, `kesFileAbsent`, the key erased from memory as it moves, the checked reload. The key is still
+written back before it signs in a new period, except where its file is gone: a slot that signs has passed the
+forecast check. So the file holds the key of the latest slot that passed the forecast check and needed it, which
+can be earlier than the key in memory, never later. A reading ahead that stays inside the forecast range, at most
+the stability window past the tip (one KES period on mainnet parameters), still passes the check, and the key the
+reference would sign with in that slot is written.
+
+**The remaining limit.** A reading ahead that stays inside the forecast range still passes the check, so the key
+evolved to that slot's period is written; the reference would sign with that key in that slot too. On mainnet
+parameters the range is one KES period past the tip. The owner accepted this limit until the KES agent (asked
+2026-11-18T22:40:33Z, decided 2026-11-18T22:42:40Z); `kesKeyAhead` at start-up is the operator's signal of it.
+
+**A key in memory past the period a slot needs** (after a reload while the clock read ahead, or a period update
+on a reading ahead) gave every led slot up until a restart, and a reload of the same files was refused
+(`KeyPastPeriod`), because a reload kept the key in use whenever the files held the same key. Asked
+2026-11-18T23:03:14Z, with the detail at 23:32:08Z; decided 2026-11-19T01:13Z: mirror the reference's reload. The
+reference's reload builds its block forging again from the files, each with a hot key made afresh from the file's
+key (cardano-node 11.1.3 `Run.hs` 626-648 and 11.2.1 651-683; ouroboros-consensus 82ecba32 and 808e4005
+`Protocol/Praos/Common.hs` 317-326, `instantiatePraosCredentials`, and `HotKey.hs` 215-225, `mkHotKey`); at a slot,
+a key past the slot's period is not evolved and signs at its own period (`HotKey.hs` 411-414 and 336-343), so no
+slot recovers it. So a reload keeps the key in use only while it is neither past the period it must sign in nor
+erased (`HotKeys.kept`, which is also the key the reload's checks see); otherwise it starts again from the key read
+from the file, which holds a confirmed period, and brings it to the period in memory. A file's key past the period
+is refused (`KeyPastPeriod`), whatever the key in use, a poisoned key is never brought back, and no slot reads the file. The key in
+memory then goes back to the file's period at such a reload, as the reference's does: it moves only forward in
+memory, except that a reload starts again from the file.
+
+The code: `Forecastable` (the forecast check's evidence) and `HotKeys.Confirmed` (a key confirmed by it, the only
+key the write-back takes) in `node/src/main/scala/xyz/kd5ujc/scarab/node/forge/HotKeys.scala`; `HotKeys.confirm`,
+called by the slot driver after a slot's forecast check and by a forge after its forge state update;
+`Forger.keyAhead` and `ForgeEvent.KesKeyAhead`. The cases are covered by `KesWriteBackClockSuite` (a reading ahead
+at a period's first slot and at a reload, then a restart at the true time; a reload at the true time; normal
+operation; a second reload at the true time that starts again from the file, and one refused when the file's key is
+past the present too) and `KesConfirmedWriteBackSuite` (a poisoned key and a reload).

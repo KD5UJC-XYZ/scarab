@@ -104,6 +104,34 @@ object Admitted:
 /** A change of the KES state for `slot` not made: the attempt was not admitted at it. */
 final case class NotAdmitted(slot: BigInt)
 
+/** A slot whose ledger view the node can forecast from the chain it would forge on. The reference's
+  * forging loop makes that check (`forecastFor` of `ledgerViewForecastAt`, `TraceNoLedgerView`
+  * otherwise) before its forge state update: consensus 82ecba329 `NodeKernel.hs` 611-631, then
+  * `checkShouldForge` at 646-669, whose first step is `updateForgeState` (`Block/Forging.hs`
+  * 192-202); the same order at 808e4005 (`NodeKernel/Forge.hs` 100-111 and 334-353,
+  * `Block/Forging.hs` 175-185). Made only by [[Forecastable.check]]: the evolved KES key is written
+  * back only at a period no later than such a slot's ([[HotKeys.confirm]]).
+  */
+final class Forecastable private (val slot: BigInt)
+
+object Forecastable:
+  /** `ledgerViewForecastAt` of the Praos eras (consensus 82ecba329
+    * `Shelley/Ledger/SupportsProtocol.hs` 100-127) from a ledger state at `at`, none at Origin: it
+    * answers for `at` itself and for every slot before `maxFor`, the stability window `window`
+    * after the successor of `at` (`succWithOrigin`, zero at Origin), and for no other.
+    */
+  def check(
+      at: Option[BigInt],
+      window: BigInt,
+      slot: BigInt
+  ): Either[OutsideForecastRange, Forecastable] =
+    val maxFor = at.fold(BigInt(0))(_ + 1) + window
+    Either.cond(
+      at.contains(slot) || slot < maxFor,
+      new Forecastable(slot),
+      OutsideForecastRange(at, maxFor, slot)
+    )
+
 /** Where the credentials rotation replaces come from and where the evolved KES key is written back.
   * The node reads from it at a reload (SIGHUP, as the Haskell node does); a test supplies its own.
   */
@@ -160,9 +188,15 @@ object HotKeySource:
   *
   * Every use of the key goes through [[locked]], which holds a lock; [[advance]] and [[reload]]
   * take the same lock. So a block is always signed with a key and certificate of one reload, and
-  * never twice in a period with different key states: the key only moves forward (a period's
-  * signature is deterministic in the key, which does not change within a period) and it is written
+  * never twice in a period with different key states: the key only moves forward in memory, except
+  * that a reload starts again from the file, as the reference's does ([[HotKeys.kept]]); a period's
+  * signature is deterministic in the key, which does not change within a period. It is written
   * back, and its predecessor overwritten, before it signs in the new period.
+  *
+  * The key evolves in memory; it is written back only at a period no later than that of a slot that
+  * passed the forecast check ([[confirm]], [[HotKeys.Confirmed]]), so that a wrong reading of the
+  * clock, at a period's first slot or at a reload, leaves the file as it was (#1101, the KES row of
+  * 2026-11-18 in the decisions register).
   *
   * Forging can be switched off and on again while the node runs, as the reference's dynamic block
   * forging does it (`setBlockForging`, see [[reload]]): while it is off there is no key in memory,
@@ -175,6 +209,10 @@ object HotKeySource:
   *   (`HotKey.hs` 405-410): the key is erased from memory, every later [[update]] fails with
   *   `KESKeyAlreadyPoisoned`, and a [[reload]] that installs a new key ends it. Unlike the first
   *   failure of `state`, it is not fatal.
+  * @param onDisk
+  *   The period, relative to the certificate, of the key in the file the key in use is written back
+  *   to, as it was read there or last written: a key at a later period is written back when a slot
+  *   that passed the forecast check confirms it. It is set under the lock, with `state`.
   * @param poolId
   *   The pool this node forges for: the hash of the cold key of the credentials it started with.
   * @param renamed
@@ -187,6 +225,7 @@ object HotKeySource:
 final class HotKeys[F[_]: Async] private (
     state: Ref[F, Either[Fatal, Option[PoolCredentials]]],
     poisoned: Ref[F, Option[KesInfo]],
+    onDisk: Ref[F, Int],
     lock: Mutex[F],
     source: Option[HotKeySource[F]],
     config: PraosConfig,
@@ -246,14 +285,16 @@ final class HotKeys[F[_]: Async] private (
   ): F[Option[A]] =
     usingKey(use)
 
-  /** Persist the evolved key before signing. A durability failure is terminal: another slot cannot
-    * repair the safety guarantee that the previous key has been erased from disk. A key file that
-    * is not there (moved away to stop forging, #918) is not made again; the key in memory signs on,
-    * as the reference's would until a SIGHUP, and the node says so.
+  /** Persist the evolved key before signing, the key a confirmation allows: never one at a later
+    * period than a slot that passed the forecast check. A durability failure is terminal: another
+    * slot cannot repair the safety guarantee that the previous key has been erased from disk. A key
+    * file that is not there (moved away to stop forging, #918) is not made again; the key in memory
+    * signs on, as the reference's would until a SIGHUP, and the node says so.
     */
-  private def write(c: PoolCredentials, kesPeriod: BigInt)(using Raise[F, Fatal]): F[Unit] =
+  private def write(confirmed: HotKeys.Confirmed)(using Raise[F, Fatal]): F[Unit] =
+    val kesPeriod = confirmed.kesPeriod
     source.traverse_ { s =>
-      s.persist(c.kes).flatMap {
+      s.persist(confirmed.credentials.kes).flatMap {
         case Persisted.Failed(e) =>
           remember(HotKeys.persistenceFailure(e)).flatMap { fatal =>
             events.emit(ForgeEvent.KesPersistFailed(kesPeriod, e)) *> fatal.raise[F, Unit]
@@ -268,9 +309,32 @@ final class HotKeys[F[_]: Async] private (
             Persisted.Superseded =>
           F.unit
       }
+    } *> onDisk.set(confirmed.relative)
+
+  /** The key of `c` written back if it has moved past the key in its file and `at`, a slot that
+    * passed the forecast check, confirms its period (the lock is held). A key at a later period
+    * than the slot's, as a wrong reading of the clock at a period's first slot or at a reload can
+    * leave it, is not written: the file keeps the key it has, and a restart reads that. A key
+    * erased from memory (poisoned) is never written.
+    */
+  private def persisted(c: PoolCredentials, at: Forecastable)(using Raise[F, Fatal]): F[Unit] =
+    (poisoned.get, onDisk.get).flatMapN { (erased, filed) =>
+      HotKeys
+        .Confirmed(c, at, config.slotsPerKesPeriod)
+        .filter(confirmed => erased.isEmpty && confirmed.relative > filed)
+        .traverse_(write)
     }
 
-  /** Evolve to the exact relative period and write it back (the lock is held). An exhausted signing
+  /** The write-back of the key in use at `at`, a slot that passed the forecast check, as the
+    * reference makes its forge state update after that check ([[Forecastable]]): the key is written
+    * back if it has moved past the key in its file and its period is not later than the slot's
+    * ([[persisted]]). Nothing while forging is disabled.
+    */
+  def confirm(at: Forecastable)(using Raise[F, Fatal]): F[Unit] =
+    usingKey(c => persisted(c, at)).void
+
+  /** Evolve to the exact relative period, in memory (the lock is held): it is written back once a
+    * slot that passed the forecast check confirms its period ([[persisted]]). An exhausted signing
     * lifetime is terminal, as `HotKey.hs:411-438` at consensus 82ecba32 fails when `updateKES`
     * cannot reach an in-window target. A backward target retains its crypto cause. Unchecked: for a
     * slot it is made only through [[evolvedFor]] or [[update]], and for a reload by [[adopt]].
@@ -287,7 +351,8 @@ final class HotKeys[F[_]: Async] private (
           case result =>
             result
               .traverse_ { _ =>
-                (write(c, kesPeriod) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, c.kes.period)))
+                events
+                  .emit(ForgeEvent.KesEvolved(kesPeriod, c.kes.period))
                   .whenA(before != relative)
               }
               .as(result)
@@ -299,8 +364,9 @@ final class HotKeys[F[_]: Async] private (
     * `Shelley/Node/Praos.hs` 83-85). Made only for a slot `admitted` admits, checked under the
     * key's lock; otherwise it is [[NotAdmitted]] and nothing changes. Before the certificate's
     * window the key is left as it is (the leader check then finds it not usable yet); inside it,
-    * the key evolves to the period when that is later than its own, and is written back before
-    * anything signs with it; at or past the end of the window it is poisoned and the update fails
+    * the key evolves in memory to the period when that is later than its own, and is written back
+    * once a slot that passed the forecast check confirms it ([[confirm]]), before anything signs
+    * with it; at or past the end of the window it is poisoned and the update fails
     * (`KESCouldNotEvolve`), as every later one does (`KESKeyAlreadyPoisoned`) until a reload
     * installs another key. The key's state after the update is the value, none while forging is
     * disabled. An exhausted signing lifetime inside the configured window stops this forging worker
@@ -323,18 +389,23 @@ final class HotKeys[F[_]: Async] private (
       )
     )
 
-  /** The key of `c` at the KES period of `slot`, to sign in it (the lock is held): as it is where
-    * it is there already, which changes nothing and needs no admission; evolved to it and written
-    * back where it must move forward, only for a slot `admitted` admits, else [[NotAdmitted]] and
-    * nothing changes. A key past the period cannot go back, and stays as it is.
+  /** The key of `c` at the KES period of `at` 's slot, to sign in it (the lock is held): as it is
+    * where it is there already, which changes nothing and needs no admission; evolved to it where
+    * it must move forward, only for a slot `admitted` admits, else [[NotAdmitted]] and nothing
+    * changes; either way written back before it signs, if its file holds an earlier period. A key
+    * past the period cannot go back, and stays as it is. The slot is one that passed the forecast
+    * check, so the key is never written back ahead of it.
     */
-  private[forge] def evolvedFor(c: PoolCredentials, slot: BigInt, admitted: Option[Admitted])(using
-      Raise[F, Fatal]
+  private[forge] def evolvedFor(c: PoolCredentials, at: Forecastable, admitted: Option[Admitted])(
+      using Raise[F, Fatal]
   ): F[Either[NotAdmitted, Either[ForgeError, Unit]]] =
+    val slot = at.slot
     val kesPeriod = periodOf(slot)
     F.delay(kesPeriod - c.opCert.kesPeriod > c.kes.period).flatMap { forward =>
-      if forward then admittedFor(slot, admitted)(evolved(c, kesPeriod))
-      else evolved(c, kesPeriod).map(Right(_))
+      val moved =
+        if forward then admittedFor(slot, admitted)(evolved(c, kesPeriod))
+        else evolved(c, kesPeriod).map(Right(_))
+      moved.flatTap(_.traverse_(_.traverse_(_ => persisted(c, at))))
     }
 
   /** `change`, made only for a slot `admitted` admits (the lock is held). */
@@ -381,7 +452,8 @@ final class HotKeys[F[_]: Async] private (
     * forging is enabled with them; otherwise the forger stays as it is, forging or disabled, and
     * says why (the reference's `BlockForgingUpdateError`). `counter` is the pool's issue counter on
     * the chain. The reference treats a failure to read its bulk credentials file as an absent file
-    * too (`CredentialsReadError`, lines 664-667); Scarab reads no bulk credentials file.
+    * too (`CredentialsReadError`, lines 664-667); Scarab reads no bulk credentials file. The key
+    * checked is the one the reload installs ([[HotKeys.kept]]).
     */
   def reload(kesPeriod: BigInt, counter: Option[BigInt])(using Raise[F, Fatal]): F[Unit] =
     guarded { inUse =>
@@ -391,16 +463,20 @@ final class HotKeys[F[_]: Async] private (
             HotKeys.reloadFailure(e).fold(refuse(ReloadRefusal.Unreadable(e)))(_.raise[F, Unit])
           case Right(HotKeySource.Reading.Absent(_)) => disable(inUse)
           case Right(HotKeySource.Reading.Found(candidate)) =>
-            HotKeys.validate(
-              poolId,
-              inUse.map(_.kes),
-              candidate.credentials,
-              kesPeriod,
-              counter,
-              config
-            ) match
-              case Left(why) => F.delay(candidate.credentials.kes.forget()) *> refuse(why)
-              case Right(_)  => adopt(inUse, candidate, kesPeriod)
+            poisoned.get.flatMap { erased =>
+              // the key the reload would install, which is the key the checks see
+              val kept = HotKeys.kept(inUse, erased.isDefined, candidate.credentials, kesPeriod)
+              HotKeys.validate(
+                poolId,
+                kept.map(_.kes),
+                candidate.credentials,
+                kesPeriod,
+                counter,
+                config
+              ) match
+                case Left(why) => F.delay(candidate.credentials.kes.forget()) *> refuse(why)
+                case Right(_)  => adopt(inUse, kept, candidate, kesPeriod)
+            }
         }
       }
     }
@@ -421,29 +497,34 @@ final class HotKeys[F[_]: Async] private (
       case _ => None
     fatal.fold(events.emit(ForgeEvent.KesReloadRefused(why)))(_.raise[F, Unit])
 
+  /** The switch to `found` at `kesPeriod`, keeping the key in use where [[HotKeys.kept]] says so
+    * (`kept`): otherwise the file's key replaces it and the key in use is erased from memory. While
+    * forging is disabled no key is in use, and the file's key is taken. The VRF key is the one
+    * read, as the reference's new block forging takes it (`Run.hs` 640-648).
+    */
   private def adopt(
       inUse: Option[PoolCredentials],
+      kept: Option[PoolCredentials],
       found: HotKeySource.Candidate[F],
       kesPeriod: BigInt
   )(using Raise[F, Fatal]): F[Unit] =
-    // a certificate re-issued for the key already in use keeps that key, which is further on than
-    // the file's copy; a new key replaces it and the old one is erased from memory. While forging
-    // is disabled no key is in use, and the file's key is taken. The VRF key is the one read,
-    // as the reference's new block forging takes it (`Run.hs` 640-648)
     val candidate = found.credentials
-    val kept = inUse.filter(_.kes.verificationKey == candidate.kes.verificationKey)
     val kes = kept.fold(candidate.kes)(_.kes)
     val next = PoolCredentials(found.vrf, kes, candidate.opCert, candidate.coldVkey)
     val relative = kesPeriod - candidate.opCert.kesPeriod
     for
+      // the period of the key in the file it was read from, to which the key in use goes now
+      filed <- F.delay(candidate.kes.period)
       _ <- F.delay(if kept.isDefined then candidate.kes.forget() else inUse.foreach(_.kes.forget()))
       _ <- state.set(Right(Some(next)))
       _ <- poisoned.set(None)
+      _ <- onDisk.set(filed)
       _ <- installed.update(i => HotKeys.Installed(i.generation + 1, Some(found.vrf)))
       _ <- found.adopt
-      // the key in use, further on than the file it was read again from, is written there too
-      _ <- write(next, kesPeriod).whenA(kept.isDefined)
-      // a key installed at period 0 is brought to the present at once; its file is rewritten
+      // a key installed at period 0 is brought to the wall clock's period at once, in memory; like
+      // the key in use, further on than the file it was read again from, it is written there only
+      // once a slot that passed the forecast check confirms its period (#1101, the KES row of
+      // 2026-11-18): a reload on a wrong reading of the clock writes nothing
       _ <- evolved(next, kesPeriod)
         .flatMap(_.fold(error => Fatal.Internal(error).raise[F, Unit], _ => F.unit))
         .whenA(relative > kes.period)
@@ -469,6 +550,25 @@ object HotKeys:
     */
   final case class Installed(generation: Long, vrf: Option[Draft03Prover.SigningKey])
 
+  /** The key of `credentials`, at `relative` to its certificate and so at the KES period
+    * `kesPeriod`, confirmed by a slot that passed the forecast check whose period is not earlier:
+    * the only key the write-back takes, so that the period written to the key file is never later
+    * than that of such a slot (#1101, the KES row of 2026-11-18). Made only by [[Confirmed.apply]],
+    * under the key's lock, from the key as it is then.
+    */
+  final class Confirmed private (
+      val credentials: PoolCredentials,
+      val relative: Int,
+      val kesPeriod: BigInt
+  )
+
+  object Confirmed:
+    /** The key of `c` confirmed by `at`, if its period is not later than the slot's. */
+    def apply(c: PoolCredentials, at: Forecastable, slotsPerKesPeriod: BigInt): Option[Confirmed] =
+      val relative = c.kes.period
+      val kesPeriod = c.opCert.kesPeriod + relative
+      Option.when(kesPeriod <= at.slot / slotsPerKesPeriod)(new Confirmed(c, relative, kesPeriod))
+
   /** @param enabled
     *   Forge with `credentials` from the start; false for `--start-as-non-producing-node`, which
     *   reads and checks the credentials at start-up but does not forge until a reload finds them
@@ -487,13 +587,15 @@ object HotKeys:
         Right(Option.when(enabled)(credentials))
       ),
       Ref.of[F, Option[KesInfo]](None),
+      F.delay(credentials.kes.period).flatMap(Ref.of[F, Int](_)),
       Mutex[F],
       Ref.of[F, Boolean](false),
       SignallingRef.of[F, Installed](Installed(0, Option.when(enabled)(credentials.vrf)))
-    ).mapN { (state, poisoned, lock, renamed, installed) =>
+    ).mapN { (state, poisoned, onDisk, lock, renamed, installed) =>
       new HotKeys[F](
         state,
         poisoned,
+        onDisk,
         lock,
         source,
         config,
@@ -556,16 +658,44 @@ object HotKeys:
       fileFailure(file, cause)
     case other => infrastructureFailure(other).getOrElse(Fatal.Internal(other))
 
+  /** The key in use that a reload to `candidate` at `kesPeriod` keeps: the key in use, when the
+    * files hold the same key (a certificate issued again for it, or the same files read again; the
+    * key in use is then as far on as the file's copy, or further), and it is neither past the
+    * period it must sign in nor erased (`erased`: poisoned past its window, its memory zeroed).
+    * Otherwise none, and the reload installs the key read from the file, as the reference's reload
+    * always does: it builds its block forging again from the files (cardano-node 11.1.3 `Run.hs`
+    * 626-648, `mkBlockForging`), each with a hot key made afresh from the file's key
+    * (ouroboros-consensus 82ecba32 `Protocol/Praos/Common.hs` 317-326,
+    * `instantiatePraosCredentials`, and `HotKey.hs` 215-225, `mkHotKey`; the same at 11.2.1,
+    * `Run.hs` 651-683, and 808e4005 `Common.hs` 317-326). So a key in memory past the present, as a
+    * reload while the clock read ahead can leave it, is replaced by the file's at the next reload,
+    * as the reference's is (#1101, the KES row of 2026-11-18); [[validate]] refuses the file's key
+    * too if it is past the period.
+    */
+  private[forge] def kept(
+      inUse: Option[PoolCredentials],
+      erased: Boolean,
+      candidate: HotCredentials,
+      kesPeriod: BigInt
+  ): Option[PoolCredentials] =
+    inUse.filter(c =>
+      !erased && c.kes.verificationKey == candidate.kes.verificationKey &&
+        c.kes.period <= kesPeriod - candidate.opCert.kesPeriod
+    )
+
   /** May a node forging for the pool `poolId` switch to `candidate` at `kesPeriod`, when the pool's
-    * issue counter on the chain is `counter` (none: not seen yet) and `inUse` is the KES key it
-    * signs with now (none while forging is disabled)?
+    * issue counter on the chain is `counter` (none: not seen yet) and `inUse` is the KES key in use
+    * that the reload keeps ([[kept]]; none while forging is disabled, or where the file's key is
+    * installed)?
     *
     * The same rules the chain applies to the headers it will carry (OCERT, `doValidateKESSignature`
     * of ouroboros-consensus-protocol `Protocol/Praos.hs`, tag release-ouroboros-consensus-4.2.1.0,
     * lines 620 to 647), so a certificate that passes here is not refused there: the cold key is the
     * pool's; the certificate names the KES key and carries the cold key's signature; the period is
-    * inside `[start, start + maxKESEvolutions)`; and the counter is the on-chain one or the one
-    * above ([[OCertRules.checkCounter]], the function the header rules use).
+    * inside `[start, start + maxKESEvolutions)`; the key in the file is not past the period it must
+    * sign in, whatever the key in use (the reference's reload signs with the file's key), and nor
+    * is the key in use the reload keeps; and the counter is the on-chain one or the one above
+    * ([[OCertRules.checkCounter]], the function the header rules use).
     */
   def validate(
       poolId: Bytes,
@@ -577,9 +707,10 @@ object HotKeys:
   ): Either[ReloadRefusal, Unit] =
     val start = candidate.opCert.kesPeriod
     val found = Blake2b.hash224.hash(candidate.coldVkey)
-    val keyPeriod = inUse
-      .filter(_.verificationKey == candidate.kes.verificationKey)
-      .fold(candidate.kes.period)(_.period)
+    val wanted = kesPeriod - start
+    // the file's key, whatever the key in use: the reference's reload signs with it
+    val filePeriod = candidate.kes.period
+    val keptPeriod = inUse.filter(_.verificationKey == candidate.kes.verificationKey).map(_.period)
     for
       _ <- Either.cond(
         found == poolId,
@@ -612,9 +743,12 @@ object HotKeys:
         ReloadRefusal.Expired(kesPeriod, start, config.maxKesEvolutions)
       )
       _ <- Either.cond(
-        keyPeriod <= kesPeriod - start,
+        filePeriod <= wanted,
         (),
-        ReloadRefusal.KeyPastPeriod(keyPeriod, kesPeriod - start)
+        ReloadRefusal.KeyPastPeriod(filePeriod, wanted)
+      )
+      _ <- keptPeriod.traverse_(kept =>
+        Either.cond(kept <= wanted, (), ReloadRefusal.KeyPastPeriod(kept, wanted))
       )
       _ <- OCertRules
         .checkCounter(

@@ -537,6 +537,7 @@ object LogSamples:
     ForgeEvent.KesFileAbsent(BigInt(34), "/keys/kes.skey"),
     ForgeEvent.KesWrittenByRename(NoExchange.Refused(22)),
     ForgeEvent.KesWrittenByRename(NoExchange.NotLinux),
+    ForgeEvent.KesKeyAhead(BigInt(53), BigInt(50)),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.Defect(
       BigInt(4203),

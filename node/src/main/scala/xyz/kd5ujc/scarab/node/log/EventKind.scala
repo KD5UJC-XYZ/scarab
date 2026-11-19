@@ -235,6 +235,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case KesPersistFailed extends EventKind(Area.Forge, Severity.Error)
   case KesFileAbsent extends EventKind(Area.Forge, Severity.Warning)
   case KesWrittenByRename extends EventKind(Area.Forge, Severity.Warning)
+  case KesKeyAhead extends EventKind(Area.Forge, Severity.Warning)
   case KeyFileGroupAccess extends EventKind(Area.Forge, Severity.Warning)
   case ForgeFailed extends EventKind(Area.Forge, Severity.Error)
   case ForgeDefect extends EventKind(Area.Forge, Severity.Critical)

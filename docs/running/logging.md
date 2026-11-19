@@ -193,6 +193,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
 | `kesFileAbsent` | `Forge.KesFileAbsent` | Warning | `kesPeriod`, `file` |
 | `kesWrittenByRename` | `Forge.KesWrittenByRename` | Warning | `reason`, `errno` |
+| `kesKeyAhead` | `Forge.KesKeyAhead` | Warning | `keyPeriod`, `kesPeriod`, `message`: at start-up, the KES key read from its file is at a later period than the current one by the wall clock, so it cannot sign before then; restore the unevolved key, or issue a new KES key and operational certificate |
 | `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message`: a slot given up for a reason of Scarab's own, which the reference does not have |
 | `forgeDefect` | `Forge.ForgeDefect` | Critical | `slot`, `kind` (`BodySize` with `bodySize` and `maxBodySize`, or `BlockDecode` with `cause`), `evicted` (the ids of the transactions the block held, which left the mempool): the block built in the slot failed a check only a bug of Scarab's can fail; no block, and the node goes on (#987) |

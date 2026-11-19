@@ -173,7 +173,8 @@ with the old key" (C6). That erasure gives the live key forward security: once t
 t, it cannot sign for a period before t. It covers the key in memory only. With a key file, cardano-node reads the
 signing key from that file (`readLeaderCredentialsSingleton`, `opCertKesKeyCheck`) and its reader does not write the
 file back, so the file can still hold the key of an earlier period (C20). Scarab writes the evolved key back over its
-file ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)). Since the update runs in each slot that
+file ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)), for a slot that passed the forecast check
+(§5.5). Since the update runs in each slot that
 reaches the leader check, the key moves at the first such slot of a new period, which on a synced node is the
 period's first slot; while the node gives slots up before the leader check (no ledger view, for example) the key does
 not move.
@@ -427,7 +428,8 @@ erased no earlier
 ([#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101), the reviews of
 [#1109](https://github.com/KD5UJC-XYZ/scarab/pull/1109)). The one exception is a reload: it checks the new
 credentials against the wall clock's period and brings a new key to that period at once (`adopt`), on both paths
-alike, the code shared and unchanged by #1101.
+alike, the code shared and unchanged by #1101; in memory, for the write-back waits for a slot that passes the
+forecast check (§5.5).
 
 **A slot of a KES period the clock has not reached is not forged ahead.** If the slot's KES period is later than the
 clock's at the wake, in practice when the slot is the first of a period, the fiber passes it over: its attempt would
@@ -576,15 +578,21 @@ slot order, `ForgingStats` folds them in slot order (Q7).
 The slot driver makes decision 3's update at the first slot of each KES period it handles, and at the first slot it
 handles after a start or after forging is switched on. It takes the key reservation, which waits for any forge in
 flight to sign, then calls `HotKeys.updateIn` for the slot, with the admission its take of the slot gives it, which
-evolves the key to the slot's period and writes it back, or poisons it past its certificate's window, as the per-slot
+evolves the key to the slot's period, or poisons it past its certificate's window, as the per-slot
 loop does; the KES gauges are written from the result. A forge holds the same
 reservation from its own forge state update (§5.3 step 2) until its block is signed. Whichever of the two takes the
 reservation first in a period makes the period's update; the other finds the key already at that period. The old key's
 memory is zeroed as now (`Sum6KesSigning`'s `evolve`), so from the period's first slot the key in memory cannot sign
 for an earlier period, as on a synced reference node, and the write-back of [ADR
-0015](../adr/0015-kes-key-written-back-and-checked-reload.md) replaces the earlier key in its file. Unlike the
-reference (§2.6), the key moves even while the node cannot forecast its slots, so it is never older than the clock's
-period. Nor is it ever newer than the per-slot loop's: only an attempt admitted at its slot changes the KES state
+0015](../adr/0015-kes-key-written-back-and-checked-reload.md) replaces the earlier key in its file once a slot of
+the period, or a later one, has passed the forecast check: the slot driver's check of the slot (§5.4 step 4), or a
+forge's after its forge state update. A key the update moved while the node cannot forecast the slot, or a reload
+moved, is written back no earlier; one at a later period than such a slot's is not written at all (the #1101 KES row
+of 2026-11-18 in the [decisions register](../decisions.md),
+[ADR 0015's amendment](../adr/0015-kes-key-written-back-and-checked-reload.md#amendment-2026-11-18-only-a-confirmed-period-is-written-back)).
+Unlike the
+reference (§2.6), the key moves in memory even while the node cannot forecast its slots, so it is never older than
+the clock's period. Nor is it ever newer than the per-slot loop's: only an attempt admitted at its slot changes the KES state
 (§5.3), so a led slot in the first slot of a period is forged after the slot driver's update at its onset,
 and a forge that makes a period's update first (on a late wake, or the first after a reload) is admitted at its slot
 (the clock fiber had published it, or the slot driver had taken it);
@@ -652,7 +660,7 @@ the change that first relies on them adds their rows to the [decisions register]
 | A slot not led | `StartLeadershipCheck`, `StateInfo` and `NodeNotLeader` at Info, three lines at Debug (C2, C7) | `nodeNotLeader`, or the reference's line where a pre-check fails; `startLeadershipCheck` before it at a KES period change, with `stateInfo` where the period's update succeeded, `stateInfo` otherwise only at Warning or Alert; the counters and gauges as now | decision 1; Q1, Q2 |
 | When the leader check runs | at the slot, in the forging thread (C1, C4) | ahead of the epoch, spread over the time left; again at a led slot | decisions 4, 5 |
 | When a led slot's block is built | after the slot's onset (C1) | the wake margin before the onset, but after it in the first slot of a KES period (§5.3); handed to chain selection at the onset, or at the slot driver's take of the slot where the wall clock moved back after the take | decision 6 |
-| When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by the slot driver at the period's first slot, decision 3's timer; also at a led slot as now, only by an attempt admitted at its slot (begun or made again once the clock fiber had published it or the slot driver had taken it), a reload excepted | decision 3 |
+| When the KES key evolves | in `updateForgeState`, at the first slot of a period that reaches the leader check (C6) | by the slot driver at the period's first slot, decision 3's timer; also at a led slot as now, only by an attempt admitted at its slot (begun or made again once the clock fiber had published it or the slot driver had taken it), a reload excepted; in memory, written back only for a slot that passed the forecast check (§5.5) | decision 3; the #1101 KES row of 2026-11-18 in the [decisions register](../decisions.md) |
 | The schedule | not traced (C10) | three metrics and the `leaderSchedule` line | decision 7 |
 
 The per-slot loop is replaced with no flag (decision 8).
@@ -913,6 +921,13 @@ left open, or differs from it, §8 lists the point under S2; it is not repeated 
   is returned as before. `Forger.step` keeps one slot's per-slot decision, as the oracle of the differential test.
 - **The KES key (§5.5)** is updated under one reservation, from a forge's update through its signing; the slot driver's
   update at a period's first slot takes the same reservation.
+  Since the amendment of 2026-11-18 (the #1101 KES row in the [decisions register](../decisions.md)) the update moves
+  the key in memory, and `HotKeys.confirm` writes it back only for a slot that passed the forecast check
+  (`Forecastable`), at a period no later than that slot's (`HotKeys.Confirmed`): the slot driver after a slot's
+  forecast check, a forge after its forge state update and before it signs; a reload writes nothing, and keeps the
+  key in use only while it is not past the period it must sign in (`HotKeys.kept`), else installs the file's key, as
+  the reference's reload does. A key in its file ahead of the present is logged at start-up (`kesKeyAhead`). `KesWriteBackClockSuite` and
+  `KesConfirmedWriteBackSuite` are its tests.
 - **What the operator sees (§5.6):** the four gauges in [metrics](../running/metrics.md), and the `leaderSchedule`
   and discarded-attempt lines in [logging](../running/logging.md).
 - **The tests (§7).** `LeaderScheduleSuite`: the schedule's decision and certificate equal `Leadership.check` on every

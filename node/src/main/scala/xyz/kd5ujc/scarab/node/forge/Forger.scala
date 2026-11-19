@@ -138,6 +138,13 @@ enum ForgeEvent:
     */
   case KesWrittenByRename(reason: NoExchange)
 
+  /** At start-up, the KES key read from its file is at period `keyPeriod`, later than the current
+    * period `kesPeriod` by the wall clock: it cannot sign before then. The file holds a key evolved
+    * ahead of time; restoring the unevolved key, or issuing a new KES key and operational
+    * certificate, lets the pool forge again (#1101, the KES row of 2026-11-18).
+    */
+  case KesKeyAhead(keyPeriod: BigInt, kesPeriod: BigInt)
+
   /** The VRF key file gives its group some access (`mode`): allowed, as in the reference, which
     * warns (`GroupPermissionsExist`).
     */
@@ -323,6 +330,10 @@ final class Forger[F[_]: Async, S](
           )
         )
       )
+      // a key in its file ahead of the present cannot sign until the present reaches it
+      _ <- Forger
+        .keyAhead(credentials, kesPeriodOf(geometry.slotAt(instant)))
+        .traverse_(events.emit)
       _ <- F.both(
         F.both(scheduling, clocked(None)),
         F.both(forging(BigInt(-1), BigInt(-1)), driving(None))
@@ -808,12 +819,14 @@ final class Forger[F[_]: Async, S](
             case Right(context) =>
               forecast(context.base, slot) match
                 case Left(range) => ends(ForgeTrace.NoLedgerView(slot, range))
-                case Right(_) =>
+                case Right(forecastable) =>
                   viewOf(context.base, epoch, slot).flatMap {
                     case Left(e: ForgeError) => failedEnd(slot, e, info)
                     case Left(other)         => other.raise[F, Forger.Decision[F]]
-                    case Right(view) =>
-                      result match
+                    case Right(view)         =>
+                      // the period's update, made before the slot's checks, is written back only
+                      // now that the slot has passed the forecast check (§5.5)
+                      hot.confirm(forecastable) *> (result match
                         case Left(e) => failedEnd(slot, e, info)
                         case Right(Left(failure)) =>
                           ended(slot, info, reached = false)(at =>
@@ -843,7 +856,7 @@ final class Forger[F[_]: Async, S](
                                     case Left(_) | Right(_) => F.pure(Forger.Decision.Led())
                                   }
                               }
-                          })
+                          }))
                   }
         }
 
@@ -1321,22 +1334,23 @@ final class Forger[F[_]: Async, S](
       context <- blockContext(current, slot).fold(hold.giveUp, proceed)
       _ <- hold.say(ForgeTrace.BlockContext(slot, context.blockNo, context.prev))
       _ <- hold.say(ForgeTrace.LedgerState(slot, context.prev))
-      _ <- forecast(context.base, slot)
+      forecastable <- forecast(context.base, slot)
         .fold(r => hold.giveUp(ForgeTrace.NoLedgerView(slot, r)), proceed)
       crossed <- perform(crossedTo(context.base, epoch, slot))
       _ <- hold.say(ForgeTrace.LedgerView(slot))
       _ <- perform(pause(Forger.Point.Context(slot)))
       prepared <- reserved(
-        signing(slot, epoch, period, context, crossed, decide, hold, admitted)
+        signing(forecastable, epoch, period, context, crossed, decide, hold, admitted)
       )
     yield prepared
 
   /** From the forge state's update to the block signed, with the KES key reserved:
     * `checkShouldForge` (`Block/Forging.hs` 192-226), the forge state, then the leader check, then
-    * whether a leader can forge; then the block built and signed.
+    * whether a leader can forge; then the block built and signed. The slot, `forecastable`, has
+    * passed the forecast check: the key the update leaves is written back for it.
     */
   private def signing(
-      slot: BigInt,
+      forecastable: Forecastable,
       epoch: BigInt,
       period: BigInt,
       context: Forger.Context[S],
@@ -1345,11 +1359,13 @@ final class Forger[F[_]: Async, S](
       hold: Holding,
       admitted: Option[Admitted]
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
+    val slot = forecastable.slot
     for
       _ <- perform(pause(Forger.Point.Reserved(slot)))
       record <- perform(recordedOrMade(slot, admitted)).flatMap(_.fold(disabled)(proceed))
       (generation, made) = record
       result <- made.fold(_ => unpublished, proceed)
+      _ <- perform(hot.confirm(forecastable))
       key <- result match
         case Left(e) => perform(lift[KesInfo](Left(e)))
         case Right(Left(failure)) =>
@@ -1411,7 +1427,9 @@ final class Forger[F[_]: Async, S](
       )
       ids = chosen.map(_._1.id)
       _ <- perform(pause(Forger.Point.Signing(slot)))
-      signed <- perform(assemble(context, slot, ticked, cert, vrf, chosen.map(_._2), admitted))
+      signed <- perform(
+        assemble(context, forecastable, ticked, cert, vrf, chosen.map(_._2), admitted)
+      )
         .flatMap(_.fold(disabled)(proceed))
         .flatMap(_.fold(_ => unpublished, proceed))
         .flatMap(_.fold(d => hold.defect(slot, epoch, d, ids), proceed))
@@ -1571,12 +1589,14 @@ final class Forger[F[_]: Async, S](
     * the predecessor of the block to forge (`NodeKernel.hs` 611-629): `ledgerViewForecastAt` of the
     * Praos eras (consensus 82ecba329 `Shelley/Ledger/SupportsProtocol.hs` 100-127) answers for the
     * tip's own slot and for every slot before `maxFor`, the stability window after the successor of
-    * the tip's slot (`succWithOrigin`, zero at Origin), and for no other.
+    * the tip's slot (`succWithOrigin`, zero at Origin), and for no other. A slot it answers for is
+    * the evidence the KES write-back needs ([[Forecastable]]).
     */
-  private def forecast(base: VolatileChain[S], slot: BigInt): Either[OutsideForecastRange, Unit] =
-    val at = base.tipRef.map(_.slot)
-    val maxFor = at.fold(BigInt(0))(_ + 1) + forecastWindow
-    Either.cond(at.contains(slot) || slot < maxFor, (), OutsideForecastRange(at, maxFor, slot))
+  private def forecast(
+      base: VolatileChain[S],
+      slot: BigInt
+  ): Either[OutsideForecastRange, Forecastable] =
+    Forecastable.check(base.tipRef.map(_.slot), forecastWindow, slot)
 
   private def lift[A](e: Either[NodeError, A])(using Handle[F, NodeError]): F[A] =
     e.fold(_.raise[F, A], F.pure)
@@ -1627,7 +1647,7 @@ final class Forger[F[_]: Async, S](
     */
   private def assemble(
       context: Forger.Context[S],
-      slot: BigInt,
+      forecastable: Forecastable,
       ticked: MempoolLedger,
       cert: VrfCert,
       vrf: Draft03Prover.SigningKey,
@@ -1637,6 +1657,7 @@ final class Forger[F[_]: Async, S](
       Handle[F, NodeError],
       Raise[F, Fatal]
   ): F[Option[Either[NotAdmitted, Either[ForgeDefect, (Forger.Built, Long)]]]] =
+    val slot = forecastable.slot
     val body = BlockBuilder.body(pieces)
     val kesPeriod = kesPeriodOf(slot)
     def signedWith(c: PoolCredentials)(using
@@ -1665,8 +1686,8 @@ final class Forger[F[_]: Async, S](
         case Left(e)           => F.pure(Right(Left(e)))
         case Right(headerBody) =>
           // the key at the slot's period before it signs in it: as it is where it is there, else
-          // moved there and written back, only by an attempt admitted at the slot (§5.5)
-          hot.evolvedFor(c, slot, admitted).flatMap {
+          // moved there, only by an attempt admitted at the slot, and written back (§5.5)
+          hot.evolvedFor(c, forecastable, admitted).flatMap {
             case Left(early)    => F.pure(Left(early))
             case Right(Left(e)) => F.pure(Right(Left(e)))
             case Right(Right(_)) =>
@@ -2295,6 +2316,18 @@ object Forger:
     * (`BackoffDelay 60`, consensus 82ecba329 `Node.hs` 550).
     */
   val UnknownSlotBackoff: FiniteDuration = 60.seconds
+
+  /** The warning that the KES key of `c`, as it was read from its file at start-up, is at a later
+    * period than `kesPeriod`, the current one: a key evolved past the present, which cannot sign
+    * until the present reaches it. A key at its certificate's first period is not evolved, and is
+    * never said to be ahead.
+    */
+  private[forge] def keyAhead(
+      c: PoolCredentials,
+      kesPeriod: BigInt
+  ): Option[ForgeEvent.KesKeyAhead] =
+    val at = c.opCert.kesPeriod + c.kes.period
+    Option.when(c.kes.period > 0 && at > kesPeriod)(ForgeEvent.KesKeyAhead(at, kesPeriod))
 
   /** Whether the era history at the chain's tip translates `slot` (`wallclockToSlot` of the summary
     * of the current ledger, `hfbtGetLedgerState`): the horizon of [[ChainRead.clock]], the same one

@@ -571,6 +571,14 @@ object Traced:
         "reason" -> reason.productPrefix.asJson,
         "errno" -> errno.asJson
       )
+    case ForgeEvent.KesKeyAhead(key, period) =>
+      EventKind.KesKeyAhead.line(
+        "keyPeriod" -> key.asJson,
+        "kesPeriod" -> period.asJson,
+        "message" -> (s"the KES key in its file is at period $key, ahead of the current period " +
+          s"$period, and cannot sign before then: restore the unevolved KES key, or issue a new " +
+          "KES key and operational certificate").asJson
+      )
     case ForgeEvent.KesPersistFailed(period, error) =>
       EventKind.KesPersistFailed.line(
         "kesPeriod" -> period.asJson,

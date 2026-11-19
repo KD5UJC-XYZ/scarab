@@ -71,12 +71,20 @@ has to change both before they run out. The node does four things for that; a dr
   `forgetSignKeyKES` on the old key: `HotKey.hs` lines 385 to 436 in ouroboros-consensus-protocol at the tag
   `release-ouroboros-consensus-4.2.1.0`, the release series that cardano-node 11.1.3 requires, `^>= 4.2.0.1`
   in `cardano-node.cabal` line 179), so the period-0 key stays on
-  disk for ever. Scarab retains a different file-backed policy ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)): when the key moves to a new period, at the first slot of the period
-  in which the forge state is updated (as the reference's `updateForgeState` does it, before the leader check,
-  so whether or not the pool leads; a slot given up earlier, without a ledger view or for one of Scarab's own
-  refusals, does not evolve it, nor write the KES gauges), the
+  disk for ever. Scarab retains a different file-backed policy ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)): the key evolves in memory at the first slot of each
+  KES period, whether or not the pool leads, also while the node has no ledger view for the slot
+  ([#1101](https://github.com/KD5UJC-XYZ/scarab/issues/1101)), and at a reload; once a slot of that period, or a later
+  one, has passed the forecast check (its ledger view can be forecast from the tip of the chain), the
   new key is written back to the `--kes-skey` file and the earlier key
-  is overwritten, before the key signs in the new period. The file stays a `cardano-cli` envelope: the period
+  is overwritten, before the key signs in the new period. The period written is never later than that of such a
+  slot ([ADR 0015's amendment of 2026-11-18](../adr/0015-kes-key-written-back-and-checked-reload.md#amendment-2026-11-18-only-a-confirmed-period-is-written-back)):
+  a key moved on a reading of the clock ahead of the true time, at a period's first slot past the forecast range or
+  at a reload, is not written, and a restart reads the file as it is. At start-up, a key in its file at a later
+  period than the current one is logged as `kesKeyAhead` (Warning): it cannot sign before that period; restore the
+  unevolved key, or issue a new KES key and operational certificate. A remaining limit, until the KES agent: a
+  reading ahead that stays inside the forecast range (one KES period past the tip on mainnet parameters) passes the
+  check, and the key evolved to it is written; `kesKeyAhead` at the next start says so.
+  The file stays a `cardano-cli` envelope: the period
   is read off the key itself (the erased seeds of the tree spell it), so there is no new format and no
   migration. A restart needs no earlier key than the live file contains. This reduces the state available from
   a later read of that path if earlier copies have not been retained; it does not establish complete
@@ -102,7 +110,8 @@ has to change both before they run out. The node does four things for that; a dr
   encryption does not block plaintext reads of a mounted volume. The owner accepts this file-backed
   policy for now. The separate upstream KES agent process is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38). The key signs only after the lock that also guards a
   reload is held, so a block is never signed with a key and certificate of two different reloads, and the key
-  only moves forward, so it never signs one period with two states.
+  only moves forward in memory, except that a reload starts again from the file, as the reference's does; a
+  period's signature is deterministic in the key, so it never signs one period with two states.
 - **Reload on SIGHUP.** `kill -HUP` (or `docker kill -s HUP`) makes the node read the VRF key, the certificate
   and the KES key again, as the Haskell node does: `Cardano.Node.Run.installSigHUPHandler` (cardano-node 11.1.3,
   `cardano-node/src/Cardano/Node/Run.hs` line 596) runs `updateBlockForging` (line 626), which reads the
@@ -119,12 +128,17 @@ has to change both before they run out. The node does four things for that; a dr
   malformed certificate input or a certificate verifier failure retains its typed cause as
   `CertificateFailure`, separately from a signature that was checked and rejected; the
   current KES period is inside `[start, start + maxKESEvolutions)` (`NotYetValid`, `Expired`); the key has not
-  been evolved past the period it must sign in (`KeyPastPeriod`); and the certificate counter is the pool's
+  been evolved past the period it must sign in, neither the key in the file nor the key in use the reload keeps
+  (`KeyPastPeriod`); and the certificate counter is the pool's
   counter on the chain or one above it (`Counter`, the rule of `doValidateKESSignature` in ouroboros-consensus-protocol
   `Protocol/Praos.hs` lines 620 to 647 at the tag above, which the node's header validation shares), so the chain will
   take the blocks. A good reload logs `kesReloaded` (`opCertCounter`, `kesStart`, `remainingKesPeriods`),
   erases the old key from memory and brings a period-0 key to the present period at once. Putting the same key
-  back (a spurious HUP, or someone restoring the period-0 file) keeps the key in memory, which is further on.
+  back (a spurious HUP, or someone restoring the period-0 file) keeps the key in memory, which is further on,
+  unless the key in memory is past the present period (as a reload while the clock read ahead leaves it): then the
+  reload starts again from the key read from the file, as the reference's reload always does, and brings it to the
+  present; a file's key past the present is refused (`KeyPastPeriod`), whatever the key in use. So after a fault of the clock that leaves led
+  slots given up with `forgeFailed` (`KesEvolution`), a SIGHUP once the clock is right recovers, with no restart.
   No reload that finds the files can leave the node with a mixture; a reload while a block is being signed
   waits for it. A credential file that does not exist disables forging instead, as in the reference (see
   "Dynamic block forging" below); a file that disappears between that check and its read is a refusal

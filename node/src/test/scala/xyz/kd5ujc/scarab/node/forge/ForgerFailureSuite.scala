@@ -461,7 +461,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
-  test("a failed reload poisons an evolved key before another step in the same period") {
+  test(
+    "a failed write-back after a reload poisons the evolved key for every later step and reload"
+  ) {
     val p = pool(kesStart = 50)
     val cause = new IOException("disk full after evolution")
     val error = ForgeError.KeyFile("kes", ForgeKeyProblem.Io(cause))
@@ -481,27 +483,31 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
               )
             )
           )
-          def persist(key: Sum6KesSigning.SigningKey) = writes.getAndUpdate(_ + 1).map {
-            case 0 => Persisted.Unchanged
-            case _ => Persisted.Failed(error)
-          }
+          def persist(key: Sum6KesSigning.SigningKey) =
+            writes.update(_ + 1).as(Persisted.Failed(error))
         h <- harness(
           p,
           ledgerWith(p, 1),
           source = Some(keys),
           clock = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(5100)))
         )
+        // the reload brings the key to period 51 in memory and writes nothing (#1101, the KES row
+        // of 2026-11-18); the next slot that passes the forecast check writes it, and fails
         reload <- h.forger.reload
         _ = assertEquals(p.creds.kes.period, 1)
+        byReload <- writes.get
         step <- h.forger.step(5101)
+        later <- h.forger.step(5102)
         again <- h.forger.reload
         events <- h.seen
         count <- writes.get
       yield
-        assertEquals(reload, Left(expected))
+        assertEquals(reload, Right(()))
+        assertEquals(byReload, 0)
         assertEquals(step, Left(expected))
+        assertEquals(later, Left(expected))
         assertEquals(again, Left(expected))
-        assertEquals(count, 2)
+        assertEquals(count, 1)
         assertEquals(
           events.collect { case ForgeEvent.KesPersistFailed(_, cause) => cause },
           Vector(error)
@@ -535,7 +541,11 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
               case _: ForgeEvent.KesPersistFailed => reporting.complete(()) *> release.get
               case _                              => IO.unit)
         )
-        failing <- Forger.scoped(toPeriod(keys, 51)).start
+        // the key moved to period 51 and written back once a slot of it passed the forecast check
+        confirmed = Forecastable
+          .check(None, BigInt(1000000), 5100)
+          .fold(r => fail(r.toString), identity)
+        failing <- Forger.scoped(toPeriod(keys, 51) *> keys.confirm(confirmed)).start
         _ <- reporting.get.timeout(3.seconds)
         signer <- Forger
           .scoped(

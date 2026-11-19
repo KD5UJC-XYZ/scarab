@@ -1748,7 +1748,9 @@
           "LeaderScheduleSuite",
           "LeaderScheduleStreamSuite",
           "ScheduledForgerSuite",
-          "ForgeInterleavingSuite"
+          "ForgeInterleavingSuite",
+          "KesWriteBackClockSuite",
+          "KesConfirmedWriteBackSuite"
         ],
         "issues": [
           82,

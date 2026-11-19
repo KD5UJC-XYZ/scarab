@@ -125,7 +125,8 @@ final class EventMetrics[F[_]: Sync] private (
           ForgeEvent.Lost(_, _, _) | ForgeEvent.Failed(_, _) | ForgeEvent.Defect(_, _, _) |
           ForgeEvent.EpochSummary(_, _) | ForgeEvent.KeyFileGroupAccess(_, _) |
           ForgeEvent.Scheduled(_, _, _, _) | ForgeEvent.Discarded(_, _, _) |
-          ForgeEvent.KesFileAbsent(_, _) | ForgeEvent.KesWrittenByRename(_) =>
+          ForgeEvent.KesFileAbsent(_, _) | ForgeEvent.KesWrittenByRename(_) |
+          ForgeEvent.KesKeyAhead(_, _) =>
         // counted from the forger's own statistics at every scrape ([[Collectors.forging]])
         Sync[F].unit
 

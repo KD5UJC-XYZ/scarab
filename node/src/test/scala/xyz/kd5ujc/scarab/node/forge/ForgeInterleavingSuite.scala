@@ -689,7 +689,8 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     )
 
   test(
-    "a slot handed over keeps its admission when the published slot goes back after an unknown spell"
+    "a slot handed over keeps its admission when the published slot goes back after an unknown " +
+      "spell; the reissue then starts again from the file, as the reference's reload does"
   ) {
     // 5100, the first slot of period 51, is handed over at its onset, and its forge is held before
     // the key. The clock then finds 5101 unknown, and after its backoff reads the wall clock moved
@@ -697,7 +698,8 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     // certificate from period 50 (counter 0), taken at relative period 0; the forge goes on, admitted
     // at 5100 when it was handed over, and moves the key to 5100's period, as the per-slot decision
     // of 5100, under way, would; a slot later the same key's certificate issued again (counter 1),
-    // the clock still in period 50, is refused
+    // the clock still in period 50, is taken with the key read from the file, as the reference's
+    // reload makes its hot key afresh (#1101, the KES row of 2026-11-18)
     val s = BigInt(5100)
     val seed = seedLeading(Vector(s))
     val other = seed + 200
@@ -733,14 +735,17 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     yield
       assertEquals(
         ran.events.collect { case r: ForgeEvent.KesReloadRefused => r },
-        Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0))),
-        "the reissue refused"
+        Vector.empty,
+        "the reissue is not refused"
       )
-      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.KesReloaded]), 1, "the first reload")
+      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.KesReloaded]), 2, "both reloads")
       assertEquals(forged(ran, s).map(_.opCertCounter), Some(BigInt(0)), "signed under the first")
   }
 
-  test("a forge waiting for its admission is admitted by the slot driver's take of its slot") {
+  test(
+    "a forge waiting for its admission is admitted by the slot driver's take of its slot; the " +
+      "reissue then starts again from the file, as the reference's reload does"
+  ) {
     // 5101 is led and claimed at its wake; the wall clock jumps 60 ms ahead, into 5101, before the
     // claim's attempt reads it, while the clock fiber, on its monotonic timer, has not published
     // 5101: the attempt is the slot's forge, not admitted, and is held before the key. The clock
@@ -750,8 +755,9 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     // at relative period 0; the forge goes on and, not admitted, ends with the key unmoved, waits
     // for its admission, which the slot driver's take has given, and, made again, moves the key to
     // 5101's period, as the per-slot decision of 5101 would. A slot later that key's certificate
-    // issued again (counter 1), the clock still in period 50, is refused, and the slot is settled
-    // before the clock comes back to it
+    // issued again (counter 1), the clock still in period 50, is taken with the key read from the
+    // file, as the reference's reload makes its hot key afresh (#1101, the KES row of 2026-11-18),
+    // and the slot is settled before the clock comes back to it
     val s = BigInt(5101)
     val seed = seedLeading(Vector(s))
     val other = seed + 200
@@ -793,10 +799,10 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     yield
       assertEquals(
         ran.events.collect { case r: ForgeEvent.KesReloadRefused => r },
-        Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0))),
-        "the reissue refused"
+        Vector.empty,
+        "the reissue is not refused"
       )
-      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.KesReloaded]), 1, "the first reload")
+      assertEquals(ran.events.count(_.isInstanceOf[ForgeEvent.KesReloaded]), 2, "both reloads")
       assertEquals(forged(ran, s).map(_.opCertCounter), Some(BigInt(0)), "signed under the first")
       assert(published.exists(_ < s - 1), s"5101 settled once the clock had published $published")
   }

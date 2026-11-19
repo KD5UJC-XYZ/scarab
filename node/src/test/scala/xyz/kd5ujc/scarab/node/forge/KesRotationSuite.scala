@@ -713,8 +713,11 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         def persist(key: Sum6KesSigning.SigningKey) =
           IO.pure(Persisted.Written(WriteProtocol.Renamed(NoExchange.Refused(22))))
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
-      _ <- Forger.scoped(toPeriod(keys, 51))
-      _ <- Forger.scoped(toPeriod(keys, 52))
+      // each period written back once a slot of it has passed the forecast check
+      confirmed = (slot: BigInt) =>
+        Forecastable.check(None, BigInt(1000000), slot).fold(r => fail(r.toString), identity)
+      _ <- Forger.scoped(toPeriod(keys, 51) *> keys.confirm(confirmed(5100)))
+      _ <- Forger.scoped(toPeriod(keys, 52) *> keys.confirm(confirmed(5200)))
       events <- seen.get
     yield assertEquals(
       events.collect { case e: ForgeEvent.KesWrittenByRename => e },
@@ -817,7 +820,8 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       keys <- HotKeys.create[IO](p.creds, None, config, e => seen.update(_ :+ e))
       // a key past the slot's period changes nothing, with no admission
-      result <- Forger.scoped(keys.locked(c => keys.evolvedFor(c, 4900, None)))
+      at = Forecastable.check(None, BigInt(1000000), 4900).fold(r => fail(r.toString), identity)
+      result <- Forger.scoped(keys.locked(c => keys.evolvedFor(c, at, None)))
       _ = assertEquals(
         result,
         Right(

@@ -171,6 +171,7 @@
 {"event":"kesFileAbsent","at":"2026-10-16T12:00:00Z","kesPeriod":34,"file":"/keys/kes.skey"}
 {"event":"kesWrittenByRename","at":"2026-10-16T12:00:00Z","reason":"Refused","errno":22}
 {"event":"kesWrittenByRename","at":"2026-10-16T12:00:00Z","reason":"NotLinux","errno":null}
+{"event":"kesKeyAhead","at":"2026-10-16T12:00:00Z","keyPeriod":53,"kesPeriod":50,"message":"the KES key in its file is at period 53, ahead of the current period 50, and cannot sign before then: restore the unevolved KES key, or issue a new KES key and operational certificate"}
 {"event":"forgeFailed","at":"2026-10-16T12:00:00Z","slot":4202,"kind":"KeyPeriodOutOfRange","message":"KES period 33 outside the operational certificate window [0, 32)"}
 {"event":"forgeDefect","at":"2026-10-16T12:00:00Z","slot":4203,"kind":"BodySize","bodySize":90116,"maxBodySize":90112,"evicted":["abababababababababababababababababababababababababababababababab"]}
 {"event":"forgeDefect","at":"2026-10-16T12:00:00Z","slot":4205,"kind":"BlockDecode","cause":"peer shares no point with the local chain","evicted":[]}

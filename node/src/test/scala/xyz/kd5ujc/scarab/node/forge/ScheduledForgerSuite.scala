@@ -534,13 +534,19 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     }
   }
 
-  test("a slot handed over keeps its admission when the published slot goes back, as per slot") {
+  test(
+    "a slot handed over keeps its admission when the published slot goes back, as per slot; a " +
+      "reload then starts again from the file, as the reference's does"
+  ) {
     // 5100, the first slot of period 51, is handed over at its onset and its attempt is held before
     // the key. The scheduled run's clock finds 5101 unknown and, after its backoff, reads the wall
     // clock moved back into period 50 and publishes 5090; a reload installs another KES key under a
     // certificate from period 50 (counter 0), taken at relative period 0. The attempt goes on,
     // admitted at 5100, and moves the key to 5100's period, as the per-slot decision of 5100 does;
-    // before its block is handed over, that key's certificate issued again (counter 1) is refused
+    // before its block is handed over, that key's certificate issued again (counter 1) is taken with
+    // the key read from the file, as the reference's reload makes its hot key afresh from the file
+    // (#1101, the KES row of 2026-11-18): the key in use is past the clock's period. On both paths
+    // the block signed with the replaced credentials is not handed over
     val s = BigInt(5100)
     val seed = seedLeading(Vector(s))
     val other = seed + 200
@@ -575,19 +581,22 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
           case r: ForgeEvent.KesReloadRefused => r
         }
         assertEquals(refused(c.scheduled), refused(c.perSlot), "the reloads refused")
-        assertEquals(
-          refused(c.perSlot),
-          Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0)))
-        )
+        assertEquals(refused(c.perSlot), Vector.empty, "the reissue is not refused")
+        assertEquals(reloads(c.scheduled), reloads(c.perSlot), "the reloads taken")
+        assertEquals(reloads(c.perSlot).map(_.counter), Vector(BigInt(0), BigInt(1)))
         same(c)
         def counter(events: Vector[ForgeEvent]) = events.collect {
           case f: ForgeEvent.Forged if f.slot == s => f.opCertCounter
         }
         assertEquals(counter(c.scheduled), counter(c.perSlot), "the certificate signed under")
-        assertEquals(counter(c.perSlot), Vector(BigInt(0)))
+        assertEquals(counter(c.perSlot), Vector.empty, "no block of replaced credentials")
       }
     }
   }
+
+  /** The reloads that switched the credentials. */
+  private def reloads(events: Vector[ForgeEvent]): Vector[ForgeEvent.KesReloaded] =
+    events.collect { case r: ForgeEvent.KesReloaded => r }
 
   test("an early claim's attempt made again is admitted by the slot driver's take, as per slot") {
     // 5101 is led and claimed early, its attempt not admitted and held before the key. The clock
@@ -596,9 +605,12 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     // 5091; a reload installs another KES key under a certificate from period 50 (counter 0), taken
     // at relative period 0. The attempt goes on and, not admitted, ends with the key unmoved; made
     // again, admitted by the driver's take of 5101, it moves the key to 5101's period, as the
-    // per-slot decision of 5101 does, and the slot is settled before the clock comes back to 5101.
-    // Three seconds on, the wall clock still in period 50, that key's certificate issued again
-    // (counter 1) is refused, as it is after the per-slot decision of 5101 has moved the key
+    // per-slot decision of 5101 does, and the slot is settled before the clock comes back to 5101:
+    // its block is signed at 5101's relative period, 1, on both paths. (A certificate issued again
+    // three seconds on, the clock still in period 50, was the probe of that move while a reload kept
+    // the key in use; a reload now starts again from the file, as the reference's does (#1101, the
+    // KES row of 2026-11-18), and it would meet the per-slot decision at its handover but the
+    // scheduled run after it; `ForgeInterleavingSuite` covers it on the scheduled forger.)
     val s = BigInt(5101)
     val seed = seedLeading(Vector(s))
     val other = seed + 200
@@ -631,7 +643,6 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
               s,
               known = slot => slot <= s || slot >= s + 1000,
               within = Vector(Forger.Point.Context(s) -> installed),
-              timed = Vector((66.seconds, Forger.Point.Handing(s), otherKes(other, 50))),
               before = Vector(s + 1 -> settledAt)
             )
           ).flatMap(c => published.get.map(c -> _))
@@ -641,16 +652,14 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
             case r: ForgeEvent.KesReloadRefused => r
           }
           assertEquals(refused(c.scheduled), refused(c.perSlot), "the reloads refused")
-          assertEquals(
-            refused(c.perSlot),
-            Vector(ForgeEvent.KesReloadRefused(ReloadRefusal.KeyPastPeriod(1, 0)))
-          )
+          assertEquals(refused(c.perSlot), Vector.empty)
+          assertEquals(reloads(c.scheduled), reloads(c.perSlot), "the reloads taken")
           same(c)
-          def counter(events: Vector[ForgeEvent]) = events.collect {
-            case f: ForgeEvent.Forged if f.slot == s => f.opCertCounter
+          def signed(events: Vector[ForgeEvent]) = events.collect {
+            case f: ForgeEvent.Forged if f.slot == s => (f.opCertCounter, f.relativeKesPeriod)
           }
-          assertEquals(counter(c.scheduled), counter(c.perSlot), "the certificate signed under")
-          assertEquals(counter(c.perSlot), Vector(BigInt(0)))
+          assertEquals(signed(c.scheduled), signed(c.perSlot), "the certificate and period signed")
+          assertEquals(signed(c.perSlot), Vector((BigInt(0), 1)), "at 5101's period")
           // the slot driver was not left waiting for the clock to come back to 5101
           assert(
             published.flatten.exists(_ < s - 1),
