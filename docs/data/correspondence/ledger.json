@@ -5246,7 +5246,7 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": ["ByronSubmissionSuite"],
-   "digest": "3b89593cc16267a9"
+   "digest": "23dcdeaaaf1268f1"
   },
   "given ledger.byron.ByronAddress.given_Ordering_ByronAddress": {
    "upstream": [
