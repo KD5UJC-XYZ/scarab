@@ -341,8 +341,11 @@ object UpstreamGenesisReplay extends munit.Assertions:
                               .flatMap(pool.seedRecoveredHeaders)
                             _ <- follower.installInvalidBlocks(pool.invalidBlocks)
                             _ <- follower.installFetchCoordinator(pool.fetchCoordinator)
+                            windowAt = (_: Ledger, _: BigInt, _: BigInt) =>
+                              Some(scenario.genesisWindow)
+                            initial <- follower.genesisView(windowAt)
                             governor <- GenesisGovernor.create[IO](
-                              follower.genesisView((_, _, _) => Some(scenario.genesisWindow)),
+                              initial,
                               GenesisGovernor.Config(scenario.config.loe, Duration.Zero),
                               Some(observation =>
                                 val peers =
@@ -394,7 +397,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                               ),
                               Some(clock)
                             )
-                            _ <- follower.installGenesis(governor)
+                            _ <- follower.installGenesis(governor, windowAt)
                             _ <- pool.fetchCoordinator.installGenesis(
                               FetchCoordinator.GenesisControl(
                                 (governor.phase, clock.now, runtime.work.snapshot).mapN(

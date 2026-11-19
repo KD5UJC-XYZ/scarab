@@ -77,6 +77,9 @@ object SelectViews:
   *   worker, and for a block forged by this node.
   * @param window
   *   The window chain selection reads, kept in step with the chain by [[commit]].
+  * @param publishing
+  *   Held while one window is published, so that the GDD governor is handed the windows in the
+  *   order they are published ([[publishWindow]]).
   * @param announced
   *   The tip a peer announced most recently, with the last ChainSync replies a session accepted
   *   ([[announce]]): the `peerTip` of the blocks adopted next (#924).
@@ -90,9 +93,10 @@ final class Follower[F[_]: Async, S] private (
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
     lock: Mutex[F],
+    publishing: Mutex[F],
     cpu: Compute[F],
     window: SignallingRef[F, Follower.Committed[S]],
-    genesis: Ref[F, Option[GenesisGovernor[F]]],
+    genesis: Ref[F, Option[Follower.Genesis[F, S]]],
     selectionChanged: Ref[F, F[Unit]],
     invalidBlocks: Ref[F, Option[InvalidBlocks[F]]],
     announced: Ref[F, Option[ChainSync.Tip]]
@@ -110,8 +114,18 @@ final class Follower[F[_]: Async, S] private (
     def changed(after: Long): F[Long] =
       window.discrete.map(_.revision).filter(_ != after).take(1).compile.lastOrError
 
+  /** The GDD governor reads ChainDB's chain in the transaction that reads the candidates
+    * (ouroboros-consensus 82ecba329, Genesis/Governor.hs:136-148). It is handed each window before
+    * the window is published, so whatever a session checks against a window, the governor already
+    * holds it with the candidates it reads.
+    */
   private def publishWindow(current: VolatileChain[S], selected: ChainSelection.Local): F[Unit] =
-    window.update(previous => Follower.Committed(current, selected, previous.revision + 1))
+    publishing.lock.surround(F.uncancelable { _ =>
+      (window.get, genesis.get).flatMapN { (previous, installed) =>
+        val next = Follower.Committed(current, selected, previous.revision + 1)
+        installed.traverse_(_.select(next)) *> window.set(next)
+      }
+    })
 
   /** A session accepted ChainSync replies whose last announced `tip` (`Peer.Observation.Announced`,
     * before their headers are checked and their blocks fetched): the blocks adopted from now on are
@@ -119,9 +133,17 @@ final class Follower[F[_]: Async, S] private (
     */
   private[node] def announce(tip: ChainSync.Tip): F[Unit] = announced.set(Some(tip))
 
-  /** Installed once by the node before any peer sessions are started. */
-  private[node] def installGenesis(governor: GenesisGovernor[F]): F[Unit] =
-    genesis.set(Some(governor))
+  /** Installed once by the node before any peer sessions are started. From then on the governor is
+    * handed every window before it is published ([[publishWindow]]), the current one first.
+    */
+  private[node] def installGenesis(
+      governor: GenesisGovernor[F],
+      windowAt: (S, BigInt, BigInt) => Option[BigInt]
+  ): F[Unit] =
+    val installed = Follower.Genesis[F, S](governor, windowAt)
+    publishing.lock.surround(F.uncancelable { _ =>
+      window.get.flatMap(installed.select) *> genesis.set(Some(installed))
+    })
 
   private[node] def installFetchCoordinator(coordinator: FetchCoordinator[F]): F[Unit] =
     selectionChanged.set(coordinator.refreshGenesis)
@@ -144,7 +166,7 @@ final class Follower[F[_]: Async, S] private (
           header.blockNo > anchor.blockNo || (header.isBoundary && header.blockNo == anchor.blockNo)
         )
       )
-      def governor = genesis.get
+      def governor = genesis.get.map(_.map(_.governor))
       def locked[A](body: F[A]): F[A] = lock.lock.surround(body)
       def project(
           candidates: Vector[ChainSelection.Candidate],
@@ -153,7 +175,7 @@ final class Follower[F[_]: Async, S] private (
         for
           current <- chain.get
           selected <- local
-          control <- genesis.get
+          control <- genesis.get.map(_.map(_.governor))
           fragment = Fragment(
             selected.anchor,
             selected.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
@@ -220,15 +242,7 @@ final class Follower[F[_]: Async, S] private (
 
   private[node] def genesisView(
       windowAt: (S, BigInt, BigInt) => Option[BigInt]
-  ): F[GenesisGovernor.View] = window.get.map { snapshot =>
-    val current = snapshot.chain
-    val tipSlot = current.anchor.block.fold(BigInt(-1))(_.slot)
-    GenesisGovernor.View(
-      snapshot.fragment,
-      current.k,
-      slot => windowAt(current.anchor.state, tipSlot, slot)
-    )
-  }
+  ): F[GenesisGovernor.View] = window.get.map(Follower.genesisView(_, windowAt))
 
   /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. The session
     * follows the peer's chain and `track` is handed its validated header candidate; the node's
@@ -768,6 +782,28 @@ object Follower:
       )
     )
 
+  /** The GDD governor of a node in Genesis mode, and how a window becomes its view. */
+  private final case class Genesis[F[_], S](
+      governor: GenesisGovernor[F],
+      windowAt: (S, BigInt, BigInt) => Option[BigInt]
+  ):
+    def select(window: Committed[S]): F[Unit] = governor.select(genesisView(window, windowAt))
+
+  /** ChainDB's chain and immutable ledger as the GDD governor reads them: the selection fragment
+    * and the Genesis window the immutable anchor's ledger gives.
+    */
+  private def genesisView[S](
+      snapshot: Committed[S],
+      windowAt: (S, BigInt, BigInt) => Option[BigInt]
+  ): GenesisGovernor.View =
+    val current = snapshot.chain
+    val tipSlot = current.anchor.block.fold(BigInt(-1))(_.slot)
+    GenesisGovernor.View(
+      snapshot.fragment,
+      current.k,
+      slot => windowAt(current.anchor.state, tipSlot, slot)
+    )
+
   /** Publish chain state and its selection window atomically for GDD readers. Capturing the
     * immutable ledger and fragment never waits for a block fetch or a running ledger check.
     */
@@ -877,27 +913,30 @@ object Follower:
       (
         SelectViews.create[F](initialViews),
         chainGate.fold(Mutex[F])(_.pure[F]),
+        Mutex[F],
         SignallingRef[F, Committed[S]](Committed(initial, selected)),
-        Ref.of[F, Option[GenesisGovernor[F]]](None),
+        Ref.of[F, Option[Genesis[F, S]]](None),
         Ref.of[F, F[Unit]](Async[F].unit),
         Ref.of[F, Option[InvalidBlocks[F]]](None),
         Ref.of[F, Option[ChainSync.Tip]](None)
-      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks, announced) =>
-        new Follower[F, S](
-          rules,
-          events,
-          epochOf.getOrElse((_: S, slot: BigInt) => geometry.epochOf(slot)),
-          observe,
-          persistence,
-          tiebreaker,
-          views,
-          lock,
-          compute.getOrElse(Compute.inline[F]),
-          window,
-          genesis,
-          selectionChanged,
-          invalidBlocks,
-          announced
-        )
+      ).mapN {
+        (views, lock, publishing, window, genesis, selectionChanged, invalidBlocks, announced) =>
+          new Follower[F, S](
+            rules,
+            events,
+            epochOf.getOrElse((_: S, slot: BigInt) => geometry.epochOf(slot)),
+            observe,
+            persistence,
+            tiebreaker,
+            views,
+            lock,
+            publishing,
+            compute.getOrElse(Compute.inline[F]),
+            window,
+            genesis,
+            selectionChanged,
+            invalidBlocks,
+            announced
+          )
       }
     }

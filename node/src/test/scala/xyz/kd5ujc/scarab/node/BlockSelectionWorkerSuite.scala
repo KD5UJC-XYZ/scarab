@@ -93,13 +93,12 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         persistence = persistence
       )
       _ <- follower.installInvalidBlocks(pool.invalidBlocks)
+      windowAt = (_: BigInt, _: BigInt, _: BigInt) => Some(BigInt(30))
       governor <-
         (if pulsed then
-           GenesisGovernor
-             .create[IO](follower.genesisView((_, _, _) => Some(30)))
-             .map(Some(_))
+           follower.genesisView(windowAt).flatMap(GenesisGovernor.create[IO](_)).map(Some(_))
          else IO.pure(None))
-      _ <- governor.traverse_(follower.installGenesis)
+      _ <- governor.traverse_(follower.installGenesis(_, windowAt))
       work <- SelectionWork.create[IO](IO.unit)
       given BlockSelection.Before[IO] = preparation
       _ <- Handle

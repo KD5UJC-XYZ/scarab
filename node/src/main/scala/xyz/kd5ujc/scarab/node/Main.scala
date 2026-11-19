@@ -333,23 +333,29 @@ object Main extends IOApp:
       geometry: IO[xyz.kd5ujc.scarab.ledger.EpochGeometry],
       headers: HeaderCheck.Grafting[IO]
   ): IO[Option[GenesisRuntime[IO]]] =
+    val windowAt =
+      (state: MirrorState, tip: BigInt, slot: BigInt) =>
+        GenesisHistory.window(state, tip, slot, setup)
     for
       governor <- Option
         .when(
           setup.config.settings.consensusMode ==
             xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
         )(
-          GenesisGovernor.create[IO](
-            follower
-              .genesisView((state, tip, slot) => GenesisHistory.window(state, tip, slot, setup)),
-            GenesisGovernor.Config(
-              setup.config.settings.genesis.enableLoEAndGDD,
-              ((setup.config.settings.genesis.gddIntervalPicos.max(0) + 999) / 1000)
-                .min(BigInt(Long.MaxValue))
-                .toLong
-                .nanos
+          follower
+            .genesisView(windowAt)
+            .flatMap(view =>
+              GenesisGovernor.create[IO](
+                view,
+                GenesisGovernor.Config(
+                  setup.config.settings.genesis.enableLoEAndGDD,
+                  ((setup.config.settings.genesis.gddIntervalPicos.max(0) + 999) / 1000)
+                    .min(BigInt(Long.MaxValue))
+                    .toLong
+                    .nanos
+                )
+              )
             )
-          )
         )
         .sequence
       runtime <- governor.traverse(g =>
@@ -369,7 +375,7 @@ object Main extends IOApp:
         )
       )
       _ <- runtime.traverse_ { runtime =>
-        follower.installGenesis(runtime.governor) *>
+        follower.installGenesis(runtime.governor, windowAt) *>
           blockPool.fetchCoordinator.installGenesis(
             FetchCoordinator.GenesisControl(
               (runtime.governor.phase, IO.monotonic, runtime.work.snapshot).mapN {

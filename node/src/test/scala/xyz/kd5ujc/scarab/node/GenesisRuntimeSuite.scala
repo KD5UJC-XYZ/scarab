@@ -66,7 +66,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
       selected: ChainSelection.Local = local
   ): IO[Rig] =
     for
-      governor <- GenesisGovernor.create[IO](IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8))))
+      governor <- GenesisGovernor.create[IO](GenesisGovernor.View(empty, 2, _ => Some(8)))
       runtime <- GenesisRuntime.create[IO](
         governor,
         settings,
@@ -474,9 +474,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         val tip = ChainSync.Tip(two.point, ChainSync.UInt64.saturating(2))
         for
           failures <- Ref.of[IO, Vector[PeerError]](Vector.empty)
-          governor <- GenesisGovernor.create[IO](
-            IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8)))
-          )
+          governor <- GenesisGovernor.create[IO](GenesisGovernor.View(empty, 2, _ => Some(8)))
           runtime <- GenesisRuntime.create[IO](
             governor,
             GenesisSettings(enableCSJ = csjEnabled),

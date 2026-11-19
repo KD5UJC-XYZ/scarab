@@ -385,8 +385,9 @@ class FollowerSuite extends FailsOnUncaught:
             fetched.update(_ :+ header.hash).as(bodies(header.hash))
         follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
         pool <- WorkerTesting.pool(follower)
-        governor <- GenesisGovernor.create[IO](follower.genesisView((_, _, _) => Some(30)))
-        _ <- follower.installGenesis(governor)
+        windowAt = (_: BigInt, _: BigInt, _: BigInt) => Some(BigInt(30))
+        governor <- follower.genesisView(windowAt).flatMap(GenesisGovernor.create[IO](_))
+        _ <- follower.installGenesis(governor, windowAt)
         ended <- Deferred[IO, Either[SessionEnd, Unit]]
         result <- xyz.kd5ujc.scarab.network.Fibers
           .scoped[IO, SessionEnd, Unit](SessionEnd.Defect(_)) {

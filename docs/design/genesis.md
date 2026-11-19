@@ -109,6 +109,15 @@ all-era captures and the unchanged Genesis replay corpus remain separate control
 | Devoted BlockFetch | Retain a peer while it supplies the desired chain fast enough to feed validation. The grace-period rule needs an actual selection-work starvation observation. Rotation may retry a block still outstanding elsewhere; retain that old transport accounting and preserve the first successful source. Grace expiry deprioritizes rather than automatically disconnects the peer. |
 | Checkpoints | Preserve configured lightweight checkpoint validation and provenance. They are trust inputs, not replacements for the missing mechanisms or a way to make failing tests pass. |
 
+As built, the GDD governor holds the selection in its own state: the node hands it each committed window before
+publishing it, so one read gives the GSM phase, the chain and immutable ledger, the candidates and the kill handles,
+as `gddWatcher` reads them in one STM transaction (ouroboros-consensus 82ecba329 `Genesis/Governor.hs:129-148`). Each
+evaluation commits the result of that snapshot whatever is written meanwhile: it stores the LoE fragment, then
+disconnects each loser through its session's kill handle, which does nothing once the session has ended; the rate
+limit follows every evaluation (`:167-188`). The next evaluation waits until the fingerprint differs from the one last
+evaluated (`Util/STM.hs:47-56`). The [compatibility page](../compatibility/ouroboros-genesis.md#gdd-evaluations)
+lists what is checked.
+
 Production defaults are taken from `Node/Genesis.hs`, not copied from illustrative
 values in the high-level design:
 

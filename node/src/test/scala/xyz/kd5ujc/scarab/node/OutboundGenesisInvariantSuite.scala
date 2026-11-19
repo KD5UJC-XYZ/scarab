@@ -144,9 +144,7 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
             pool <- BlockPool.create[IO]
             metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
             governor <- GenesisGovernor.create[IO](
-              IO.pure(
-                GenesisGovernor.View(Fragment(ChainSync.Point.Origin, Vector.empty), 2, _ => None)
-              )
+              GenesisGovernor.View(Fragment(ChainSync.Point.Origin, Vector.empty), 2, _ => None)
             )
             // held to the node's clock, as every live session's check is in the node (`Main`)
             check = HeaderClock.grafting[IO](
