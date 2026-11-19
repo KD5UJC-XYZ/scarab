@@ -13,7 +13,14 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.ledger.{Header, ProviderDefect, Verdicts}
-import xyz.kd5ujc.scarab.ledger.{EnvelopeError, LeiosHeader, Nonce, OCertError, PraosError}
+import xyz.kd5ujc.scarab.ledger.{
+  EnvelopeError,
+  LeiosHeader,
+  Nonce,
+  OCertError,
+  Praos2Error,
+  PraosError
+}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   BlockNo,
@@ -216,38 +223,38 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     def tagged(tag: String, args: Json*): Json =
       Json.obj("tag" -> Json.fromString(tag), "args" -> Json.arr(args*))
     error match
-      case Praos2.Error.UnexpectedBlockNo(wanted, got) =>
+      case Praos2Error.UnexpectedBlockNo(wanted, got) =>
         tagged("UnexpectedBlockNo", n(wanted.toBigInt), n(got))
-      case Praos2.Error.UnexpectedSlotNo(wanted, got) =>
+      case Praos2Error.UnexpectedSlotNo(wanted, got) =>
         tagged("UnexpectedSlotNo", n(wanted.toBigInt), n(got))
-      case Praos2.Error.UnexpectedPrevHash(wanted, got) =>
+      case Praos2Error.UnexpectedPrevHash(wanted, got) =>
         tagged("UnexpectedPrevHash", wanted.fold(Json.Null)(h), got.fold(Json.Null)(h))
-      case Praos2.Error.Envelope(EnvelopeError.CheckpointMismatch(no, wanted, got)) =>
+      case Praos2Error.Envelope(EnvelopeError.CheckpointMismatch(no, wanted, got)) =>
         tagged("CheckpointMismatch", n(no), h(wanted), h(got))
-      case Praos2.Error.Envelope(EnvelopeError.ObsoleteNode(v, bound)) =>
+      case Praos2Error.Envelope(EnvelopeError.ObsoleteNode(v, bound)) =>
         tagged("ObsoleteNode", n(v), n(bound))
-      case Praos2.Error.Envelope(EnvelopeError.HeaderSizeTooLarge(size, bound)) =>
+      case Praos2Error.Envelope(EnvelopeError.HeaderSizeTooLarge(size, bound)) =>
         tagged("HeaderSizeTooLarge", n(size), n(bound))
-      case Praos2.Error.Envelope(EnvelopeError.BlockSizeTooLarge(size, bound)) =>
+      case Praos2Error.Envelope(EnvelopeError.BlockSizeTooLarge(size, bound)) =>
         tagged("BlockSizeTooLarge", n(size), n(bound))
-      case Praos2.Error.LeiosEbTooBig(size, bound) =>
+      case Praos2Error.LeiosEbTooBig(size, bound) =>
         tagged("LeiosEbTooBig", n(BigInt(size)), n(BigInt(bound.toLong)))
-      case Praos2.Error.LeiosCertWithoutAnnouncement => tagged("LeiosCertWithoutAnnouncement")
-      case Praos2.Error.LeiosCertTooYoung(a, s, first) =>
+      case Praos2Error.LeiosCertWithoutAnnouncement => tagged("LeiosCertWithoutAnnouncement")
+      case Praos2Error.LeiosCertTooYoung(a, s, first) =>
         tagged("LeiosCertTooYoung", n(a.toBigInt), n(s.toBigInt), n(first.toBigInt))
-      case Praos2.Error.KesBeforeStart(start, current) =>
+      case Praos2Error.KesBeforeStart(start, current) =>
         tagged("KESBeforeStartOCERT", n(start), n(current))
-      case Praos2.Error.KesAfterEnd(current, start, bound) =>
+      case Praos2Error.KesAfterEnd(current, start, bound) =>
         tagged("KESAfterEndOCERT", n(current), n(start), n(bound))
-      case Praos2.Error.CounterTooSmall(old, fresh) =>
+      case Praos2Error.CounterTooSmall(old, fresh) =>
         tagged("CounterTooSmallOCERT", n(old.toBigInt), n(fresh.toBigInt))
-      case Praos2.Error.CounterOverIncremented(old, fresh) =>
+      case Praos2Error.CounterOverIncremented(old, fresh) =>
         tagged("CounterOverIncrementedOCERT", n(old.toBigInt), n(fresh.toBigInt))
-      case Praos2.Error.Certificate(OCertError.NoCounter(key)) =>
+      case Praos2Error.Certificate(OCertError.NoCounter(key)) =>
         tagged("NoCounterForKeyHashOCERT", h(key))
-      case Praos2.Error.Certificate(OCertError.OpCertSignatureRejected) =>
+      case Praos2Error.Certificate(OCertError.OpCertSignatureRejected) =>
         tagged("InvalidSignatureOCERT", n(header.opCert.sequence), n(header.opCert.kesPeriod))
-      case Praos2.Error.Certificate(OCertError.KesSignatureRejected) =>
+      case Praos2Error.Certificate(OCertError.KesSignatureRejected) =>
         val current = header.slot / cfg.praos.slotsPerKesPeriod
         tagged(
           "InvalidKesSignatureOCERT",
@@ -256,14 +263,14 @@ class Praos2ReferenceSuite extends munit.FunSuite:
           n(current - header.opCert.kesPeriod),
           n(cfg.praos.maxKesEvolutions)
         )
-      case Praos2.Error.Praos(PraosError.IssuerWithoutStake(key)) => tagged("VRFKeyUnknown", h(key))
-      case Praos2.Error.Praos(PraosError.UnregisteredPool(key))   => tagged("VRFKeyUnknown", h(key))
-      case Praos2.Error.Praos(PraosError.VrfKeyMismatch(key, actual, registered)) =>
+      case Praos2Error.Praos(PraosError.IssuerWithoutStake(key)) => tagged("VRFKeyUnknown", h(key))
+      case Praos2Error.Praos(PraosError.UnregisteredPool(key))   => tagged("VRFKeyUnknown", h(key))
+      case Praos2Error.Praos(PraosError.VrfKeyMismatch(key, actual, registered)) =>
         assertEquals(registered.size, 1)
         tagged("VRFKeyWrongVRFKey", h(key), h(registered.toVector.head), h(actual))
-      case Praos2.Error.Praos(PraosError.VrfRejected(_)) =>
+      case Praos2Error.Praos(PraosError.VrfRejected(_)) =>
         tagged("VRFKeyBadProof", n(header.slot), nonce(state.praos.epochNonce))
-      case Praos2.Error.Praos(PraosError.NotElected(_, _)) =>
+      case Praos2Error.Praos(PraosError.NotElected(_, _)) =>
         val value =
           PraosLeaderThreshold.leaderValue(header.vrf.output).fold(e => fail(e.toString), identity)
         val share =

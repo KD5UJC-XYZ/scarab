@@ -4,7 +4,8 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
-import xyz.kd5ujc.scarab.ledger.state.VocabError
+import xyz.kd5ujc.scarab.ledger.state.{BlockNo, SlotNo, VocabError, Word64}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 
 /** Why a header is refused before its block is fetched. Closed: every rule family has its case. */
 enum HeaderError:
@@ -20,6 +21,11 @@ enum HeaderError:
 
   /** The TPraos rules (Shelley to Alonzo): overlay schedule, VRF proofs, threshold, certificate. */
   case TPraos(error: TPraosError)
+
+  /** The rules of Praos2, Praos with the Leios overlay (Dijkstra in the Leios build): its envelope
+    * and protocol checks as one header validation reports them.
+    */
+  case Praos2(error: Praos2Error)
 
   /** The header cannot belong to the chain it claims to extend. */
   case Structure(cause: HeaderStructureProblem)
@@ -44,6 +50,7 @@ enum HeaderError:
     case Envelope(e)  => s"envelope: ${e.message}"
     case Praos(e)     => s"praos: ${e.message}"
     case TPraos(e)    => s"tpraos: ${e.message}"
+    case Praos2(e)    => s"praos2: ${e.message}"
     case Structure(r) => s"structure: $r"
 
 /** Why a header fails the envelope checks (ouroboros-consensus `EnvelopeError`, plus the era
@@ -145,6 +152,48 @@ enum TPraosError:
       s"VRF key hash ${g.hex} is not the genesis delegate's ${e.hex}"
     case OCert(e) => e.message
 
+/** `PolyPraosValidationErr (Praos2 c) c` with the envelope errors of `validateEnvelope`, as one
+  * Praos2 header validation reports them (ouroboros-consensus 2416493b
+  * `Protocol/PolyPraos.hs:427-483`, `HeaderValidation.hs:374-386`); the VRF, leader and certificate
+  * failures that Praos2 shares with Praos keep their [[PraosError]].
+  */
+enum Praos2Error:
+  case UnexpectedBlockNo(expected: BlockNo, actual: BigInt)
+  case UnexpectedSlotNo(expected: SlotNo, actual: BigInt)
+  case UnexpectedPrevHash(expected: Option[Bytes], actual: Option[Bytes])
+  case Envelope(cause: EnvelopeError)
+  case LeiosEbTooBig(size: Long, maximum: Word32)
+  case LeiosCertWithoutAnnouncement
+  case LeiosCertTooYoung(announcingSlot: SlotNo, slot: SlotNo, earliest: SlotNo)
+  case KesBeforeStart(start: BigInt, current: BigInt)
+  case KesAfterEnd(current: BigInt, start: BigInt, maxEvolutions: BigInt)
+  case Certificate(cause: OCertError)
+  case CounterTooSmall(current: Word64, actual: Word64)
+  case CounterOverIncremented(current: Word64, actual: Word64)
+  case Praos(cause: PraosError)
+
+  def message: String = this match
+    case UnexpectedBlockNo(e, a) => s"block number $a, expected ${e.toBigInt}"
+    case UnexpectedSlotNo(e, a)  => s"slot $a, expected at least ${e.toBigInt}"
+    case UnexpectedPrevHash(e, a) =>
+      s"previous hash ${a.fold("genesis")(_.hex)}, expected ${e.fold("genesis")(_.hex)}"
+    case Envelope(e)           => e.message
+    case LeiosEbTooBig(s, max) => s"announced endorser block of $s bytes exceeds ${max.toLong}"
+    case LeiosCertWithoutAnnouncement =>
+      "the body holds a Leios certificate, and the previous header announced no endorser block"
+    case LeiosCertTooYoung(a, s, e) =>
+      s"Leios certificate at slot ${s.toBigInt} of an announcement at slot ${a.toBigInt}, earliest ${e.toBigInt}"
+    case KesBeforeStart(start, current) =>
+      s"KES period $current is before the certificate's start $start"
+    case KesAfterEnd(current, start, max) =>
+      s"KES period $current is past the certificate's start $start plus $max evolutions"
+    case Certificate(e) => e.message
+    case CounterTooSmall(c, a) =>
+      s"operational certificate counter ${a.toBigInt} is below the last seen ${c.toBigInt}"
+    case CounterOverIncremented(c, a) =>
+      s"operational certificate counter ${a.toBigInt} is more than one above the last seen ${c.toBigInt}"
+    case Praos(e) => e.message
+
 /** Structural header failures with their original ledger-read cause. */
 enum HeaderStructureProblem:
   case BlockNumber(actual: BigInt, expected: BigInt)
@@ -155,3 +204,8 @@ enum HeaderStructureProblem:
   case MissingByronLedger
   case LedgerRead(cause: xyz.kd5ujc.scarab.ledger.state.MirrorError)
   case EpochPrecedes(epoch: BigInt, ledgerEpoch: BigInt)
+
+  /** A header of Dijkstra whose bytes do not read as the Leios header of the build that runs Praos2
+    * for Dijkstra ([[LeiosHeader.decode]]).
+    */
+  case LeiosHeaderUnread(cause: ChainError)

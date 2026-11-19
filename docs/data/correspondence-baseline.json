@@ -336,7 +336,6 @@
    "enum consensus.LeiosHeaderChain.Fault": null,
    "enum consensus.NoVerdictRetry": null,
    "enum consensus.Praos2.Defect": null,
-   "enum consensus.Praos2.Error": null,
    "enum consensus.genesis.DiffusionPunishment.Invalidity": null,
    "enum consensus.genesis.DiffusionPunishment.Outcome": null,
    "enum consensus.genesis.GenesisDensity.LatestSlot": null,

@@ -78,11 +78,25 @@ object HeaderRules:
   enum ForecastReason:
     case ShelleyLedgerNotReady
     case Horizon(slot: BigInt, tipSlot: BigInt)
+
+    /** No Dijkstra ledger view could be made from the anchor for a reason other than its range
+      * ([[CrossingForecastFailure]]): a defect of the node's state or configuration, no verdict on
+      * the header.
+      */
+    case DijkstraView(cause: CrossingForecastFailure)
+
+    /** Praos2's epoch queries or words failed on the header ([[Praos2.Defect]]): no verdict, as the
+      * reference's `PastHorizonException` is none.
+      */
+    case Praos2Defect(defect: Praos2.Defect)
+
     def message: String = this match
       case ShelleyLedgerNotReady =>
         "the Shelley ledger exists once the first Shelley block is applied"
       case Horizon(slot, tip) =>
         s"slot $slot is beyond the forecast horizon of the ledger at slot $tip"
+      case DijkstraView(cause)  => s"no Dijkstra ledger view: $cause"
+      case Praos2Defect(defect) => s"Praos2 could not check the header: $defect"
   enum Outcome[+H]:
     /** Every header rule holds; the header state after the header. */
     case Valid(next: H)

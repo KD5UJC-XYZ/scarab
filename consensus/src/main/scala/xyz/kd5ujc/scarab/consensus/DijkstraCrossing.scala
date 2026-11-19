@@ -35,8 +35,9 @@ enum CrossingForecastFailure:
 
 /** The parts of the hard-fork combinator's crossing from Conway (Praos) into Dijkstra (Praos2) that
   * concern the protocol, at ouroboros-consensus 2416493b with cardano-ledger 9df9f98c: the
-  * chain-dependent state and the ledger view forecast across the boundary. Both are pure and
-  * neither is wired: the node does not enter Dijkstra (#54).
+  * chain-dependent state and the ledger view forecast across the boundary, and Dijkstra's own
+  * forecast ([[forecastInEra]]). All are pure; the node's header rules use them under the Leios
+  * build (`NodeHeaderRules`), and its ledger does not enter Dijkstra (#54).
   */
 object DijkstraCrossing:
 
@@ -88,19 +89,52 @@ object DijkstraCrossing:
   ): Either[CrossingForecastFailure, Praos2.LedgerView] =
     val maxFor =
       forecastBound(tip, transition, conway.stabilityWindow, dijkstra.stabilityWindow)
-    val innerMax = addSlots(dijkstra.stabilityWindow, successor(tip))
-    val atTip = tip == WithOrigin.At(forecastFor)
     // both bounds read only the tip, which the reference's lazy translation leaves for last
     for
       _ <- within(tip, maxFor, forecastFor)
-      _ <- if atTip then Right(()) else within(tip, innerMax, forecastFor)
+      _ <- inEraBound(dijkstra, forecastFor, tip)
       translated <- Translate
         .conwayToDijkstra(dijkstra, nes)
         .leftMap(CrossingForecastFailure.Translation(_))
-      view <-
-        if atTip then ledgerView(PoolDistr.of(translated.es.snapshots.set), params(translated))
-        else (ledgerView.tupled)(tickf(dijkstra, forecastFor, translated))
+      view <- viewAt(dijkstra, forecastFor, tip, translated)
     yield view
+
+  /** `ledgerViewForecastAtPolyPraos` of Dijkstra (`Shelley/Ledger/SupportsProtocol.hs:105-140`,
+    * ouroboros-consensus 2416493b, the forecast of `ledgerViewForecastAt` for a Praos2 era): the
+    * ledger view of `forecastFor` from the Dijkstra state `nes` at `tip`, the state's own at the
+    * tip (`currentForecast`) and after it the state ticked by TICKF ([[tickf]]), up to the
+    * exclusive bound of the stability window past the tip's successor. Dijkstra is the last era of
+    * the build, so no transition bounds it.
+    */
+  def forecastInEra(
+      dijkstra: Globals,
+      forecastFor: SlotNo,
+      tip: WithOrigin[SlotNo],
+      nes: NewEpochState[Dijkstra]
+  ): Either[CrossingForecastFailure, Praos2.LedgerView] =
+    inEraBound(dijkstra, forecastFor, tip) *> viewAt(dijkstra, forecastFor, tip, nes)
+
+  /** The bound of [[forecastInEra]]: none at the tip itself, else the stability window past the
+    * tip's successor (`maxFor`, exclusive).
+    */
+  private def inEraBound(
+      dijkstra: Globals,
+      forecastFor: SlotNo,
+      tip: WithOrigin[SlotNo]
+  ): Either[CrossingForecastFailure, Unit] =
+    if tip == WithOrigin.At(forecastFor) then Right(())
+    else within(tip, addSlots(dijkstra.stabilityWindow, successor(tip)), forecastFor)
+
+  /** The view of [[forecastInEra]] once its bound holds. */
+  private def viewAt(
+      dijkstra: Globals,
+      forecastFor: SlotNo,
+      tip: WithOrigin[SlotNo],
+      nes: NewEpochState[Dijkstra]
+  ): Either[CrossingForecastFailure, Praos2.LedgerView] =
+    if tip == WithOrigin.At(forecastFor) then
+      ledgerView(PoolDistr.of(nes.es.snapshots.set), params(nes))
+    else (ledgerView.tupled)(tickf(dijkstra, forecastFor, nes))
 
   /** TICKF of Dijkstra, Conway's (`EraRule "TICKF" DijkstraEra = Conway.TICKF`,
     * `Dijkstra/Era.hs:224`; `Conway/Rules/Tickf.hs:59-85`; cardano-ledger 9df9f98c), as far as the

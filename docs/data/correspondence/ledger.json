@@ -22740,9 +22740,46 @@
    "evidence": ["FuturePoolParamsCodecSuite", "DijkstraTxCertSuite"],
    "note": "the hash of a PoolMetadata term read as DecCBOR PoolMetadata at a version, in the build of a layout (PoolMetadata.read)",
    "digest": "79c4d3d624556d8c"
+  },
+  "enum ledger.Praos2Error": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "symbol": "PolyPraosValidationErr",
+     "lines": [
+      427,
+      483
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HeaderValidation.hs",
+     "symbol": "validateEnvelope",
+     "lines": [
+      374,
+      386
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "Praos2ReferenceSuite"
+   ],
+   "note": "one closed type for what Praos2.validate refuses, where the reference has the envelope errors of validateEnvelope (UnexpectedBlockNo, UnexpectedSlotNo, UnexpectedPrevHash, the checkpoint and Shelley's envelope errors under Envelope) beside PolyPraosValidationErr; the VRF and leader failures Praos2 shares with Praos keep their PraosError and the certificate signatures their OCertError. Moved from consensus so that HeaderError can carry it (#54). Praos2ReferenceSuite maps each case to the constructor the reference's validateHeader returns on the same input",
+   "digest": "9ba51411d15b4608"
   }
  },
  "glue": [
+  {
+   "reason": "the rendering of a Praos2 header refusal in the node's validation messages; the reference renders PolyPraosValidationErr with its derived Show (#54)",
+   "definitions": [
+    "def ledger.Praos2Error#message"
+   ]
+  },
   {
    "reason": "the proof that an era from Conway holds Conway's certificate and governance records ([[ConwayShapes]]), given for Conway and Dijkstra, through which Conway's EPOCH helpers serve both eras; the reference shares them through its era classes and has no counterpart",
    "definitions": [

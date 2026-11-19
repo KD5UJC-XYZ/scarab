@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LeiosHeader,
   Nonce,
   OCertError,
+  Praos2Error,
   PraosError,
   ProviderDefect
 }
@@ -127,21 +128,6 @@ object Praos2:
   final case class ChainState(tip: Option[Tip], protocol: State)
   final case class Ticked private[consensus] (chain: ChainState, ledger: LedgerView)
 
-  enum Error:
-    case UnexpectedBlockNo(expected: BlockNo, actual: BigInt)
-    case UnexpectedSlotNo(expected: SlotNo, actual: BigInt)
-    case UnexpectedPrevHash(expected: Option[Bytes], actual: Option[Bytes])
-    case Envelope(cause: EnvelopeError)
-    case LeiosEbTooBig(size: Long, maximum: Word32)
-    case LeiosCertWithoutAnnouncement
-    case LeiosCertTooYoung(announcingSlot: SlotNo, slot: SlotNo, earliest: SlotNo)
-    case KesBeforeStart(start: BigInt, current: BigInt)
-    case KesAfterEnd(current: BigInt, start: BigInt, maxEvolutions: BigInt)
-    case Certificate(cause: OCertError)
-    case CounterTooSmall(current: Word64, actual: Word64)
-    case CounterOverIncremented(current: Word64, actual: Word64)
-    case Praos(cause: PraosError)
-
   enum Defect:
     case SlotOutsideForecast(slot: SlotNo)
     case EpochOutsideForecast(epoch: EpochNo)
@@ -151,7 +137,7 @@ object Praos2:
     case SuccessorOverflow(kind: VocabError.Kind)
     case Vocabulary(cause: VocabError)
 
-  type Failure = Error | Defect | ProviderDefect
+  type Failure = Praos2Error | Defect | ProviderDefect
 
   /** `tickChainDepStatePolyPraos`, PolyPraos.hs:551-587 (ouroboros-consensus 2416493b). The
     * new-epoch test uses the old epoch's first slot and size; it does not ask a limited forecast
@@ -213,12 +199,12 @@ object Praos2:
       )
       registered <- ticked.ledger.pools
         .get(pool)
-        .toRight[Failure](Error.Praos(PraosError.IssuerWithoutStake(pool.bytes)))
+        .toRight[Failure](Praos2Error.Praos(PraosError.IssuerWithoutStake(pool.bytes)))
       vrfHash = Blake2b.hash256.hash(header.vrfVkey)
       _ <- Either.cond[Failure, Unit](
         vrfHash == registered.vrf.bytes,
         (),
-        Error.Praos(PraosError.VrfKeyMismatch(pool.bytes, vrfHash, Set(registered.vrf.bytes)))
+        Praos2Error.Praos(PraosError.VrfKeyMismatch(pool.bytes, vrfHash, Set(registered.vrf.bytes)))
       )
       _ <- Praos
         .verifyVrfWithStake(
@@ -229,7 +215,7 @@ object Praos2:
           Some(Right(PraosLeaderThreshold.Fraction.storedStake(registered.share)))
         )
         .leftMap[Failure] {
-          case e: PraosError     => Error.Praos(e)
+          case e: PraosError     => Praos2Error.Praos(e)
           case d: ProviderDefect => d
         }
       next <- reupdate(config, header, ticked)
@@ -272,7 +258,7 @@ object Praos2:
       _ <- Either.cond[Failure, Unit](
         header.blockNo == expectedNo.toBigInt,
         (),
-        Error.UnexpectedBlockNo(expectedNo, header.blockNo)
+        Praos2Error.UnexpectedBlockNo(expectedNo, header.blockNo)
       )
       expectedSlot <- ticked.chain.tip match
         case None => Right(SlotNo.fromUnsigned(0))
@@ -283,32 +269,36 @@ object Praos2:
       _ <- Either.cond(
         header.slot >= expectedSlot.toBigInt,
         (),
-        Error.UnexpectedSlotNo(expectedSlot, header.slot)
+        Praos2Error.UnexpectedSlotNo(expectedSlot, header.slot)
       )
       previous = ticked.chain.tip.map(_.hash)
       _ <- Either.cond(
         header.prevHash == previous,
         (),
-        Error.UnexpectedPrevHash(previous, header.prevHash)
+        Praos2Error.UnexpectedPrevHash(previous, header.prevHash)
       )
-      _ <- config.praos.checkpoints.validate(header.praosView).leftMap(Error.Envelope(_))
+      _ <- config.praos.checkpoints.validate(header.praosView).leftMap(Praos2Error.Envelope(_))
       view = ticked.ledger
       _ <- Either.cond(
         view.protocolVersion.major.toBigInt <= config.maxMajor.toBigInt,
         (),
-        Error.Envelope(
+        Praos2Error.Envelope(
           EnvelopeError.ObsoleteNode(view.protocolVersion.major.toBigInt, config.maxMajor.toBigInt)
         )
       )
       _ <- Either.cond(
         header.raw.size <= view.maxHeaderSize.toInt,
         (),
-        Error.Envelope(EnvelopeError.HeaderSizeTooLarge(header.raw.size, view.maxHeaderSize.toInt))
+        Praos2Error.Envelope(
+          EnvelopeError.HeaderSizeTooLarge(header.raw.size, view.maxHeaderSize.toInt)
+        )
       )
       _ <- Either.cond(
         header.bodySize <= view.maxBodySize.toLong,
         (),
-        Error.Envelope(EnvelopeError.BlockSizeTooLarge(header.bodySize, view.maxBodySize.toLong))
+        Praos2Error.Envelope(
+          EnvelopeError.BlockSizeTooLarge(header.bodySize, view.maxBodySize.toLong)
+        )
       )
     yield ()
 
@@ -334,13 +324,13 @@ object Praos2:
       slot: SlotNo,
       header: LeiosHeader,
       state: State
-  ): Either[Error | Defect, Unit] =
+  ): Either[Praos2Error | Defect, Unit] =
     for
       _ <- header.leios.announcement.traverse_ { a =>
-        Either.cond[Error | Defect, Unit](
+        Either.cond[Praos2Error | Defect, Unit](
           a.size <= ledger.maxEbReferencesSize.toLong,
           (),
-          Error.LeiosEbTooBig(a.size, ledger.maxEbReferencesSize)
+          Praos2Error.LeiosEbTooBig(a.size, ledger.maxEbReferencesSize)
         )
       }
       _ <-
@@ -351,13 +341,13 @@ object Praos2:
               for
                 millis <- info.slotLengthMillis(slot)
                 earliest <- minCertificationSlot(millis, ledger, announcingSlot)
-                _ <- Either.cond[Error | Defect, Unit](
+                _ <- Either.cond[Praos2Error | Defect, Unit](
                   slot.toBigInt >= earliest.toBigInt,
                   (),
-                  Error.LeiosCertTooYoung(announcingSlot, slot, earliest)
+                  Praos2Error.LeiosCertTooYoung(announcingSlot, slot, earliest)
                 )
               yield ()
-            case _ => Left(Error.LeiosCertWithoutAnnouncement)
+            case _ => Left(Praos2Error.LeiosCertWithoutAnnouncement)
     yield ()
 
   /** The certificate checks precede the VRF checks (PolyPraos.hs:615-624,900-937,
@@ -380,29 +370,29 @@ object Praos2:
         Defect.NonPositiveKesPeriod(config.slotsPerKesPeriod)
       )
       current = header.slot / config.slotsPerKesPeriod
-      _ <- Either.cond(start <= current, (), Error.KesBeforeStart(start, current))
+      _ <- Either.cond(start <= current, (), Praos2Error.KesBeforeStart(start, current))
       end = Word64.fromUnsigned((start + config.maxKesEvolutions).toLong).toBigInt
       _ <- Either.cond(
         current < end,
         (),
-        Error.KesAfterEnd(current, start, config.maxKesEvolutions)
+        Praos2Error.KesAfterEnd(current, start, config.maxKesEvolutions)
       )
       _ <- config.verdicts
         .opCert(header.praosView, config.slotsPerKesPeriod, config.maxKesEvolutions)
-        .refusedAs(Error.Certificate(_))
+        .refusedAs(Praos2Error.Certificate(_))
       previous <- state.ocertCounters
         .get(issuer)
         .orElse(Option.when(knownPool)(Word64.zero))
-        .toRight(Error.Certificate(OCertError.NoCounter(issuer.bytes)))
+        .toRight(Praos2Error.Certificate(OCertError.NoCounter(issuer.bytes)))
       _ <- Either.cond(
         previous.toBigInt <= sequence.toBigInt,
         (),
-        Error.CounterTooSmall(previous, sequence)
+        Praos2Error.CounterTooSmall(previous, sequence)
       )
       upper = Word64.fromUnsigned(previous.bits + 1)
       _ <- Either.cond(
         sequence.toBigInt <= upper.toBigInt,
         (),
-        Error.CounterOverIncremented(previous, sequence)
+        Praos2Error.CounterOverIncremented(previous, sequence)
       )
     yield ()
