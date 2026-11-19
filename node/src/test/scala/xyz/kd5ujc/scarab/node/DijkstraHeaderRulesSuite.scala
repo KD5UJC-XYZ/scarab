@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, PraosConfig}
-import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome}
+import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome, TimeForecast}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{Block, EnvelopeError, Header, HeaderError, OCertError, Praos2Error}
 import xyz.kd5ujc.scarab.ledger.state.{SlotNo, WithOrigin}
@@ -180,6 +180,15 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     }
   }
 
+  test("the gate's time forecast places the Dijkstra headers from the Conway anchor") {
+    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.LeiosB004fe0c)
+    dijkstraHeaders.foreach { h =>
+      r.forecastTime(crossing, Some(ref(lastConway)), r.at(crossing), h) match
+        case TimeForecast.Known(_) => ()
+        case other                 => fail(s"block ${h.blockNo}: $other")
+    }
+  }
+
   test("chain selection breaks a tie of Dijkstra headers with Conway's restricted VRF rule") {
     assertEquals(
       ChainSelection.tiebreakerFor(Era.Dijkstra),
@@ -212,7 +221,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     )
   private lazy val testnetHeaders: Vector[Header] =
     rows(testnet.resolve("testnet/headers-after-2168639.tsv"))
-      .map(r => received(testnetSetup, hex(r(3))))
+      .map(r => received(testnetSetup, hex(r(4))))
   private lazy val testnetRules =
     rules(testnetSetup, withMax(testnetSetup.praos, 12), ReferenceBuild.LeiosB004fe0c)
 
@@ -233,6 +242,14 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
       state.announcement.map(_.announcement.size),
       Some(BigInt("16ca7", 16).toLong)
     )
+  }
+
+  test("the gate's time forecast places the testnet's headers from its ledger state") {
+    testnetHeaders.foreach { h =>
+      testnetRules.forecastTime(testnetAnchor, Some(anchorTip), testnetStart, h) match
+        case TimeForecast.Known(_) => ()
+        case other                 => fail(s"block ${h.blockNo}: $other")
+    }
   }
 
   test("a certificate claimed too soon after the announcement is refused before the signatures") {

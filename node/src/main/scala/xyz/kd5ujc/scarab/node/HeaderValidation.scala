@@ -172,9 +172,9 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
   * checks of every era, then Praos2's envelope and protocol rules ([[Praos2.validate]];
   * `HeaderValidation.hs:374-386, 518-526`), as the ChainSync client runs them on each header
   * (`MiniProtocol/ChainSync/Client.hs:1934-1990`). The era match of the hard-fork combinator
-  * (`HardFork/Combinator/Ledger.hs:395-405`) holds on this path: it is taken only where the
-  * anchor's era history has the header's slot in Dijkstra; a Dijkstra header elsewhere goes the way
-  * of every other era's, which refuses it as of the wrong era.
+  * (`HardFork/Combinator/Ledger.hs:395-405`) holds on this path: it is taken only where the anchor,
+  * in Conway or Dijkstra, has the header's slot in Dijkstra; a Dijkstra header of a slot still in
+  * Conway goes the way of every other era's, which refuses it as of the wrong era.
   */
 private[node] final class Praos2Headers private ():
   /** The prepared check of `h`, or none where the header is not a Dijkstra header the anchor's era
@@ -245,8 +245,8 @@ private[node] final class Praos2Headers private ():
                   .leftMap(horizon)
               yield view
             }
-        // a header two eras ahead of its anchor: every other era's path refuses it as of the
-        // wrong era, or waits for the anchor's forecast range
+        // an anchor before Conway: the header takes every other era's path, whose era history
+        // (`HardForkConfig.eraOf`) walks each era the anchor's state enters by the header's epoch
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
           None
