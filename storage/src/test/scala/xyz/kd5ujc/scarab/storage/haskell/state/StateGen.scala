@@ -474,7 +474,7 @@ object StateGen:
       .zip(
         sortedMap(arb[VRFVerKeyHash], arb[NonZero[Word64]]),
         sortedMap(arb[KeyHash[StakePool]], stakePoolState),
-        sortedMap(arb[KeyHash[StakePool]], poolParams),
+        sortedMap(arb[KeyHash[StakePool]], poolParams.map(Build.stakePoolParams(_))),
         sortedMap(arb[KeyHash[StakePool]], arb[EpochNo])
       )
       .map(PState(_, _, _, _))

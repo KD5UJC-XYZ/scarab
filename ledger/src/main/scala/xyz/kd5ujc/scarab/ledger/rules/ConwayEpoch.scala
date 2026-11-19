@@ -76,21 +76,15 @@ object HardFork:
     *     recomputed from nothing, a waiting re-registration counted only where its key hash differs
     *     from its pool's (`State/CertState.hs:525-535` at 29a7d656, 528-538 at 9df9f98c;
     *     [[Translate.populateVRFKeyHashes]]).
-    *
-    * A waiting re-registration whose VRF key hash is not 32 bytes long is refused as a
-    * [[VocabError]], as POOL refuses one.
     */
-  def populateVRFKeyHashes(build: ReferenceBuild, pools: PState): Either[VocabError, PState] =
+  def populateVRFKeyHashes(build: ReferenceBuild, pools: PState): PState =
     build match
       case ReferenceBuild.Release11_1 =>
-        pools.future.toVector
-          .traverse((_, params) => VRFVerKeyHash.fromBytes(params.vrfKeyHash))
-          .map { pending =>
-            val registered = pools.stakePools.valuesIterator.map(_.vrf)
-            pools.copy(vrfKeyHashes =
-              (registered ++ pending).foldLeft(pools.vrfKeyHashes)(addVRFKeyHashOccurrence)
-            )
-          }
+        val registered = pools.stakePools.valuesIterator.map(_.vrf)
+        val pending = pools.future.valuesIterator.map(_.vrf)
+        pools.copy(vrfKeyHashes =
+          (registered ++ pending).foldLeft(pools.vrfKeyHashes)(addVRFKeyHashOccurrence)
+        )
       case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
         Translate.populateVRFKeyHashes(pools)
 
@@ -123,7 +117,7 @@ object HardFork:
       f(shapes.cert(es.ls.cert)).map(c => es.copy(ls = es.ls.copy[E](cert = shapes.cert.flip(c))))
     if newVersion == 10 then onCert(c => Right(updateDRepDelegations(c)))
     else if newVersion == 11 then
-      onCert(c => populateVRFKeyHashes(build, c.pState).map(p => c.copy(pState = p)))
+      onCert(c => Right(c.copy(pState = populateVRFKeyHashes(build, c.pState))))
     else Right(es)
 
 /** EPOCH of Conway (`Conway/Rules/Epoch.hs:244,269`, cardano-ledger f649f975): the boundary of an

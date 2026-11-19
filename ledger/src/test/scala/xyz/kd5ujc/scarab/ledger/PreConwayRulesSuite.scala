@@ -414,7 +414,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       .fold(f => fail(f.message), _.state)
     assertEquals(s2.es.ls.utxo.deposited.value, poolDeposit)
     val pools = s2.es.ls.cert.pState
-    assertEquals(pools.future.get(poolId(operator)).map(_.pledge), Some(BigInt(7)))
+    assertEquals(pools.future.get(poolId(operator)).map(_.pledge.value), Some(BigInt(7)))
     assertEquals(pools.stakePools.get(poolId(operator)).map(_.pledge.value), Some(BigInt(0)))
   }
 

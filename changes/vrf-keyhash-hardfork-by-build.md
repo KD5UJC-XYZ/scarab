@@ -7,8 +7,8 @@
   a pool that retires leaves its key hash counted once, and a pool registration with that key is refused with
   `VRFKeyHashAlreadyRegistered`, as 11.1.3 refuses it. The `11.2` and Leios builds still recompute the counts from
   nothing, counting a waiting re-registration only where its key hash differs from its pool's (cardano-ledger
-  29a7d656 `State/CertState.hs` 525-535, 9df9f98c 528-538). A waiting re-registration whose VRF key hash is not 32
-  bytes is refused as a vocabulary error in every build, where the count used to leave it out.
+  29a7d656 `State/CertState.hs` 525-535, 9df9f98c 528-538). A waiting re-registration's VRF key hash is the state's
+  typed hash (#85), so none of another length reaches the count.
   `ConwayGovernanceSuite` takes both builds through a change of version from 11.0 to 11.1, the retirement and
   reaping of a pool, and the registration of its key by the same pool and by a new one.
 - **Under `11.1` a ledger state below protocol version 11 that holds pools' VRF key hashes is refused where it is

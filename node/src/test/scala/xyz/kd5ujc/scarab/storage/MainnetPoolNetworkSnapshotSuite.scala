@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, StakeDistribution}
 import xyz.kd5ujc.scarab.ledger.state.{
+  Build,
   CompactCoin,
   FlatView,
   KeyHash,
@@ -25,6 +26,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   SnapShot,
   Sorted,
   StakePool,
+  Staking,
   VocabError
 }
 import xyz.kd5ujc.scarab.ledger.{Block, Certificate, Credential, PoolParams, RewardAccount, Tx}
@@ -139,11 +141,18 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
         CompactCoin.fromBigInt(nes.es.ls.utxo.gov.curPParams.poolDeposit)
       )
       val state =
-        vocab(Convert.poolState(registration, PoolBlsKey.Node11_1, deposit, Sorted.emptySet))
+        vocab(
+          Convert.poolState(
+            registration,
+            PoolBlsKey.Node11_1,
+            deposit,
+            Sorted.emptySet[xyz.kd5ujc.scarab.ledger.state.Credential[Staking]]
+          )
+        )
       val pools = LedgerState.pState[Shelley].get(ls)
       val registered = pools.copy(
         stakePools = pools.stakePools.updated(poolId, state),
-        future = pools.future.updated(poolId, registration)
+        future = pools.future.updated(poolId, Build.stakePoolParams(registration))
       )
       val mark = nes.es.snapshots.mark
       val inMark = StakeDistribution.poolSnapshot(mark.activeStake, mark.activeStake.total, state)
@@ -211,7 +220,7 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
           )
         )
         // the future parameters: as registered, network 0
-        assertEquals(pools.future.get(poolId), Some(registration))
+        assertEquals(pools.future.get(poolId), Some(Build.stakePoolParams(registration)))
       }
     )
   }

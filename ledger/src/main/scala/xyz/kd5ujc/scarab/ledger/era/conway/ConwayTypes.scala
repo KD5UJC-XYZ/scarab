@@ -58,7 +58,7 @@ import xyz.kd5ujc.scarab.ledger.era.babbage.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, KeyHash, StakePool}
 import xyz.kd5ujc.scarab.plutus.PlutusData
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 // Conway's types: the opaque types are transparent in this file only, so only this file makes a
 // value of Conway.
@@ -375,16 +375,20 @@ object ConwayTxBody:
   given CanEqual[ConwayTxBody, ConwayTxBody] = CanEqual.derived
 
   /** A Conway body from its bytes: Conway's decoder (the flat decoder at Conway), its outputs read
-    * as Conway outputs and its certificates as Conway certificates. A protocol-parameter update,
-    * which Conway's decoder does not read, is refused.
+    * as Conway outputs and its certificates as Conway certificates, a pool's parameters in
+    * `layout`, the layout of the build that reads it ([[ConwayTxCert.fromFlat]]). A
+    * protocol-parameter update, which Conway's decoder does not read, is refused.
     */
-  def decode(raw: Bytes): Either[EraTxError, ConwayTxBody] =
+  def decode(raw: Bytes, layout: StateLayout): Either[EraTxError, ConwayTxBody] =
     xyz.kd5ujc.scarab.ledger.TxBody
       .decode(raw, Era.Conway)
       .leftMap(EraTxError.Decode(_))
-      .flatMap(fromFlat)
+      .flatMap(fromFlat(_, layout))
 
-  private def fromFlat(b: xyz.kd5ujc.scarab.ledger.TxBody): Either[EraTxError, ConwayTxBody] =
+  private def fromFlat(
+      b: xyz.kd5ujc.scarab.ledger.TxBody,
+      layout: StateLayout
+  ): Either[EraTxError, ConwayTxBody] =
     // an output's size is the length of the encoding it was read from (`Sized`, as the flat
     // output's `ledgerSize`)
     def sized(out: xyz.kd5ujc.scarab.ledger.TxOut) =
@@ -393,7 +397,7 @@ object ConwayTxBody:
       _ <- Either.cond(b.update.isEmpty, (), EraTxError.NotInEra(EraField.Update))
       outputs <- b.outputs.traverse(sized)
       collateralReturn <- b.collateralReturn.traverse(sized)
-      certs <- b.certificates.traverse(ConwayTxCert.fromFlat)
+      certs <- b.certificates.traverse(ConwayTxCert.fromFlat(_, layout))
       proposals <- b.proposals.traverse(ConwayProcedures.proposal)
       network <- b.networkId.traverse(v =>
         Network

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
+import cats.syntax.all.*
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -25,15 +26,19 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraAnchor,
   DijkstraAuxData,
   DijkstraBalanceInterval,
+  DijkstraBlsKey,
   DijkstraCert,
   DijkstraDatum,
   DijkstraDelegatee,
   DijkstraGovAction,
   DijkstraGovActionId,
   DijkstraLanguage,
+  DijkstraPoolMetadata,
+  DijkstraPoolParams,
   DijkstraProposal,
   DijkstraPurpose,
   DijkstraPurposes,
+  DijkstraRelay,
   DijkstraScript as FlatScript,
   DijkstraTx as FlatTx,
   DijkstraTxBody as FlatBody,
@@ -63,7 +68,16 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel,
   ValidityInterval
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Credential, Dijkstra, FlatView, KeyRole}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Credential,
+  Dijkstra,
+  FlatView,
+  KeyRole,
+  PoolParamsBlsKey,
+  StakePoolParams
+}
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** Dijkstra's transactions on the era types ([[DijkstraTx]], [[DijkstraTxBody]],
@@ -72,8 +86,8 @@ import xyz.kd5ujc.scarab.plutus.PlutusLanguage
   * Dijkstra transaction the repository holds is read by the flat decoder, which decides what is
   * refused, and by the era decoder: the era decoder refuses exactly what the flat one refuses, with
   * its error, and reads what it accepts with every field equal to the flat decoder's, its
-  * sub-transactions at the sub-transaction level in the order and with the ids read; the one other
-  * refusal is a pool registration, whose voting key the era types do not hold yet (#85).
+  * sub-transactions at the sub-transaction level in the order and with the ids read, a pool
+  * registration's parameters with their voting key.
   *
   * The transactions are those of `fixtures/reference/leios-testnet-blocks` (the corpus of the Leios
   * build's verdicts, its blocks and its transactions alone, recorded and synthetic), the public
@@ -259,7 +273,7 @@ class DijkstraTxSuite extends FunSuite:
         DijkstraCert.RegisterDelegate(back(cr), to(d), dep.value)
       case DijkstraTxCertPool(PoolCert.RetirePool(p, e)) =>
         DijkstraCert.RetirePool(p.bytes, e.toBigInt)
-      case DijkstraTxCertPool(PoolCert.RegPool(params)) => fail(s"a pool registration: $params")
+      case DijkstraTxCertPool(PoolCert.RegPool(params)) => DijkstraCert.RegisterPool(pool(params))
       case DijkstraTxCertGov(ConwayAuthCommitteeHotKey(cold, hot)) =>
         DijkstraCert.AuthorizeCommitteeHotKey(back(cold), back(hot))
       case DijkstraTxCertGov(ConwayResignCommitteeColdKey(cold, x)) =>
@@ -269,6 +283,50 @@ class DijkstraTxSuite extends FunSuite:
       case DijkstraTxCertGov(ConwayUnRegDRep(cr, r)) =>
         DijkstraCert.UnregisterDRep(back(cr), r.value)
       case DijkstraTxCertGov(ConwayUpdateDRep(cr, x)) => DijkstraCert.UpdateDRep(back(cr), a(x))
+
+  /** The block decoder's parameters of the era's, every field read back: the relays and the
+    * metadata from the bytes the era's parameters keep, the voting key from the Leios layout's
+    * place, which a Dijkstra registration always has.
+    */
+  private def pool(p: StakePoolParams): DijkstraPoolParams =
+    val key = p.blsKey match
+      case PoolParamsBlsKey.Leios(k) => k.map(b => DijkstraBlsKey(b.key, b.proofOfPossession))
+      case PoolParamsBlsKey.Node11_1 => fail(s"a Dijkstra registration of the 11.1 layout: $p")
+    val relays =
+      if p.relays.isEmpty then Vector.empty
+      else
+        CborRead
+          .decode(p.relays, V12.nestedLimits)
+          .flatMap(V12.list(_, DecodeField.PoolRelay))
+          .flatMap(_.traverse(DijkstraRelay.decode))
+          .fold(e => fail(e.toString), identity)
+    val metadata = p.metadata.map { m =>
+      val read = CborRead
+        .decode(m.bytes, V12.nestedLimits)
+        .flatMap(V12.record(_, 2, DecodeField.PoolMetadata))
+        .flatMap(xs =>
+          (
+            V12.textMax(xs(0), DecodeField.PoolMetadataURL, 128),
+            V12.bytes(xs(1), DecodeField.PoolMetadataHash)
+          ).mapN(DijkstraPoolMetadata(_, _))
+        )
+        .fold(e => fail(e.toString), identity)
+      // the hash the era's metadata read with it is the decoder's
+      assertEquals(m.hash, read.hash)
+      read
+    }
+    DijkstraPoolParams(
+      p.id.bytes,
+      p.vrf.bytes,
+      key,
+      p.pledge.value,
+      p.cost.value,
+      p.margin.rational,
+      Convert.rewardAccountBack(p.accountAddress),
+      p.owners.toSet.map(_.bytes),
+      relays,
+      metadata
+    )
 
   private def actionIds[P <: GovActionPurpose](
       era: Option[GovPurposeId[P]],
@@ -600,8 +658,8 @@ class DijkstraTxSuite extends FunSuite:
     }
     in(flat.body) || flat.body.subTransactions.exists(s => in(s.body))
 
-  /** The era decoder against the flat one on `n`: the flat refusal, the same transaction, or the
-    * refusal of a pool registration. The result counts sub-transactions and pool refusals.
+  /** The era decoder against the flat one on `n`: the flat refusal, or the same transaction. The
+    * result counts sub-transactions and the transactions that register a pool.
     */
   private final case class Tally(txs: Int, subs: Int, pools: Int, refused: Int):
     def +(o: Tally): Tally = Tally(txs + o.txs, subs + o.subs, pools + o.pools, refused + o.refused)
@@ -618,11 +676,7 @@ class DijkstraTxSuite extends FunSuite:
         assertEquals(f, e, what)
         Tally(0, 0, 0, 1)
       case (Right(f), Right(t)) =>
-        assert(!registersPool(f), s"$what: a pool registration read")
-        Tally(1, sameTx(t, f, what), 0, 0)
-      case (Right(f), Left(EraTxError.PoolVotingKeyNotYetTyped)) =>
-        assert(registersPool(f), s"$what: refused as a pool registration")
-        Tally(1, 0, 1, 0)
+        Tally(1, sameTx(t, f, what), if registersPool(f) then 1 else 0, 0)
       case other => fail(s"$what: $other")
 
   // the bytes read as CBOR first, by the one reader both decoders are given, as a block body reads
@@ -648,7 +702,7 @@ class DijkstraTxSuite extends FunSuite:
     val txs = corpus.filter(j => str(j, "kind") == "tx")
     val tally = txs.map(j => inBlock(hex(str(j, "bytes")), str(j, "name"))).foldLeft(none)(_ + _)
     // the corpus's 536 transactions alone: the 273 the build accepts, 16 of which register a pool,
-    // with 20 sub-transactions among them, and the 263 it refuses
+    // each read with its parameters, with 20 sub-transactions among them, and the 263 it refuses
     assertEquals(tally, Tally(txs = 273, subs = 20, pools = 16, refused = 263))
     // among them a parameter change, whose proposal keeps the flat Dijkstra proposal it was read as
     val changes = txs
@@ -659,6 +713,18 @@ class DijkstraTxSuite extends FunSuite:
         case xyz.kd5ujc.scarab.ledger.era.GovAction.ParameterChange(_, _, _) => true
         case _                                                               => false)
     assert(changes > 0, "no parameter change in the corpus")
+    // and its pool registrations, read with the voting key the Leios build's `StakePoolParams`
+    // holds (`sppBlsKey`, cardano-ledger 9df9f98c `State/StakePool.hs:479`), or with its place
+    // empty
+    val keys = txs
+      .flatMap(j => CborRead.decode(hex(str(j, "bytes")), V12.nestedLimits).toOption)
+      .flatMap(n => DijkstraTx.inBlock(n).toOption)
+      .flatMap(t => bodies.certs(t.body)(using BothLevels.Top).toVector)
+      .flatMap(bodies.certsOf.getRegPoolTxCert)
+      .map(_.blsKey match
+        case PoolParamsBlsKey.Leios(key) => key.isDefined
+        case PoolParamsBlsKey.Node11_1   => fail("a Dijkstra registration of the 11.1 layout"))
+    assertEquals((keys.count(identity), keys.count(!_)), (4, 12))
   }
 
   test(

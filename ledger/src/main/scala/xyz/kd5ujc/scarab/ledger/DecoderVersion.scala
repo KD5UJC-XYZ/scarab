@@ -68,6 +68,14 @@ object DecoderVersion:
     val r = range(era)
     Either.cond(r.contains(major), major, OutOfRange(era, major, r))
 
+  /** The decoder version of a major protocol version, one of the versions the reference constructs
+    * (`mkVersion`, 0 to [[MaxVersion]],
+    * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs:111-124`, cardano-ledger
+    * f649f975): the version a stored record written at that version is read at.
+    */
+  def ofMajor(major: BigInt): Option[DecoderVersion] =
+    Option.when(major >= 0 && major <= MaxVersion)(major.toInt)
+
   /** `version` when it is one of `era`'s ([[at]]). */
   def within(era: Era, version: DecoderVersion): Either[OutOfRange, DecoderVersion] =
     at(era, version)

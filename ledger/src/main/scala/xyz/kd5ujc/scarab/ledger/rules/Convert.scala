@@ -39,6 +39,67 @@ object Convert:
     case DRep.DRepAlwaysAbstain      => node.DRep.AlwaysAbstain
     case DRep.DRepAlwaysNoConfidence => node.DRep.AlwaysNoConfidence
 
+  /** The account a reward account names (`AccountAddress`, `Address.hs:183-187`, cardano-ledger
+    * f649f975): its network (`word8ToNetwork`) and its staking credential.
+    */
+  def accountAddress(r: node.RewardAccount): Either[VocabError, AccountAddress] =
+    (
+      Network
+        .of(BigInt(r.network))
+        .toRight(VocabError.OutOfRange(VocabError.Kind.Network, r.network)),
+      credential[Staking](r.credential)
+    ).mapN((network, c) => AccountAddress(network, AccountId(c)))
+
+  /** The node's reward account of an account address. */
+  def rewardAccountBack(a: AccountAddress): node.RewardAccount =
+    node.RewardAccount(a.networkId.wire, back(a.id.credential))
+
+  /** The state's parameters of the node's: the pool's voting key `blsKey`, in the layout of the
+    * state they go into, and the metadata read from the parameters' own ([[PoolMetadata.read]] or
+    * [[PoolMetadata.held]] of `params.metadata`), which the caller has read with its own refusal.
+    */
+  def stakePoolParams(
+      params: node.PoolParams,
+      blsKey: PoolParamsBlsKey,
+      metadata: Option[PoolMetadata]
+  ): Either[VocabError, StakePoolParams] =
+    (
+      keyHash[StakePool](params.operator),
+      VRFVerKeyHash.fromBytes(params.vrfKeyHash),
+      UnitInterval.boundRational(params.margin).toRight(VocabError.NotUnitInterval(params.margin)),
+      accountAddress(params.rewardAccount),
+      params.owners.toList.traverse(keyHash[Staking]).map(Sorted.set(_))
+    ).mapN((id, vrf, margin, account, owners) =>
+      StakePoolParams(
+        id,
+        vrf,
+        blsKey,
+        Coin(params.pledge),
+        Coin(params.cost),
+        margin,
+        account,
+        owners,
+        params.relays,
+        metadata
+      )
+    )
+
+  /** The node's parameters of the state's, without the voting key, which the node's do not hold:
+    * the owners a sorted set, as the node's decoder reads them.
+    */
+  def poolParamsBack(p: StakePoolParams): node.PoolParams =
+    node.PoolParams(
+      p.id.bytes,
+      p.vrf.bytes,
+      p.pledge.value,
+      p.cost.value,
+      p.margin.rational,
+      rewardAccountBack(p.accountAddress),
+      SortedSet.from(p.owners.iterator.map(_.bytes)),
+      p.relays,
+      p.metadata.map(_.bytes)
+    )
+
   /** `mkStakePoolState` (`State/StakePool.hs`): the registered state of a pool from its (future)
     * parameters, its voting key in the state's layout ([[PoolParamsBlsKey.registered]]), the
     * deposit it was registered with and its delegators.
@@ -64,6 +125,31 @@ object Convert:
         owners,
         params.relays,
         params.metadata,
+        deposit,
+        delegators
+      )
+    )
+
+  /** `mkStakePoolState` of the state's parameters: the pool's account is its credential (`aaId`),
+    * and nothing is refused, the parameters' fields being of the state's types already.
+    */
+  def poolState(
+      params: StakePoolParams,
+      blsKey: PoolBlsKey,
+      deposit: CompactCoin,
+      delegators: SortedSet[Credential[Staking]]
+  ): Either[VocabError, StakePoolState] =
+    Right(
+      StakePoolState(
+        params.vrf,
+        blsKey,
+        params.pledge,
+        params.cost,
+        params.margin.rational,
+        params.accountAddress.id.credential,
+        params.owners,
+        params.relays,
+        params.metadata.map(_.bytes),
         deposit,
         delegators
       )

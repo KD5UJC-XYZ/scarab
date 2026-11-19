@@ -102,6 +102,22 @@ enum PoolParamsBlsKey derives Eq, Show:
     case Node11_1   => PoolBlsKey.Node11_1
     case Leios(key) => PoolBlsKey.Leios(key.map(BlsKeyState(_, epoch)))
 
+object PoolParamsBlsKey:
+  /** The voting key of parameters that a certificate before Dijkstra registers, in `layout`: none
+    * in the Leios layout, where the parameters read one from protocol version 12 only
+    * (`decodeStakePoolParamsFlat`, 9df9f98c `State/StakePool.hs:746-762`; see
+    * [[PoolBlsKey.certified]]).
+    */
+  def certified(layout: StateLayout): PoolParamsBlsKey = layout match
+    case StateLayout.Node11_1 => Node11_1
+    case StateLayout.Leios    => Leios(None)
+
+  /** The layout of a value: the 11.1 layout has no key's place. */
+  extension (k: PoolParamsBlsKey)
+    def stateLayout: StateLayout = k match
+      case Node11_1 => StateLayout.Node11_1
+      case Leios(_) => StateLayout.Leios
+
 /** `StakePoolSnapShot` (`State/SnapShots.hs:156-183` (cardano-ledger f649f975), encoding `239-252`:
   * `array(10)` in this order): what the reward calculation needs of one pool, resolved when the
   * snapshot is taken. The Leios layout has the voting key after the VRF key hash, `array(11)`

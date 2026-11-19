@@ -788,8 +788,45 @@ Conway's rules on the classes follow as the rest of stage 2.
     as integers, refusing an expiry outside `EpochNo` and comparing a retirement with an unbounded limit, so
     the two paths differ only past epoch 2^64; that gap is the flat rules' (#85), which stage 3 deletes.
   - `EraCertState` landed without the deposit and refund totals of a body, which the value conserved
-    adds (above). Two more gaps are on #85: the committee and its proposals as the node's records in the
-    environments, and a pool's parameters with the node's field types.
+    adds (above). One more gap is on #85: the committee and its proposals as the node's records in the
+    environments.
+  - A pool's parameters are the state's `StakePoolParams` (`ledger/.../state/StakePool.scala`; `State/StakePool.hs:424-435`
+    at f649f975, `:476-488` at 9df9f98c), era-independent as the reference keeps them in its core library: a
+    `KeyHash[StakePool]`, a `VRFVerKeyHash`, `Coin`s, a `UnitInterval`, an `AccountAddress` (`Address.hs:183-191`
+    at f649f975) and the owners as `KeyHash[Staking]`s. The certificates hold them and so does `PState`'s
+    `future` map, so POOL uses them as they are, with no conversion into the state's vocabulary. `Network` and
+    `UnitInterval` moved into the state's vocabulary for them, the era's names aliases of the state's. The
+    Leios build's voting key (`sppBlsKey`) is `PoolParamsBlsKey`, by the state's layout: #1063's per-layout
+    typing applied to one field, so a value of the 11.1 layout cannot hold a key. Conway's decoders take the
+    layout (`ConwayTxBody.decode(raw, layout)`), which gives the key's place: none at 11.1, empty in the Leios
+    layout, as a Conway body is read at version 9 and the key only from 12. Its phantom era is not kept. The
+    relays and the metadata stay the bytes they were read from, as `StakePoolState` and the state codecs keep
+    them, the metadata's hash read with them; decoding them as the reference's types is tracked on #85
+    ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999387793)).
+  - Writing: the future map is written by the node's parameters' codec, as before, so the native snapshot's
+    state bytes do not change. `FuturePoolParamsCodecSuite` checks, in both layouts, that a non-empty future map
+    writes the bytes the codec of `PState` wrote while it held the node's parameters, and reads them back.
+  - Reading is narrower than before, by the owner's decision of 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z,
+    #85 item 38) that the state read matches the reference. The earlier reader kept any metadata term and any
+    network nibble of the account's header. The future map's metadata is now read as `DecCBOR PoolMetadata` at the
+    state's version (`State/StakePool.hs:522-524` at f649f975, `:683-685` at 9df9f98c): a record of a `Url` and a
+    byte string, the `Url` at most 64 bytes of UTF-8 below version 9 and 128 from it. The hash is definite below
+    version 12 and definite or chunked from it in both builds. The `Url`'s text follows each build's
+    `decodeString`: definite at every version in the 11.1 layout (f649f975), and definite or chunked from version
+    12 in the Leios layout (9df9f98c `Decoding/Decoder.hs:1564-1598`), the layout Dijkstra's state is read in. The
+    account's network must be 0 or 1 (`decodeAccountAddressT`, `Address.hs:930-948`). Each refusal is a typed
+    error, which `FuturePoolParamsCodecSuite` asserts case by case. Keyed parameters of the Leios layout from
+    version 12 are still refused on reading and not written (`DijkstraNotYet.PoolParamsBlsKey`), a gap the Leios
+    work closes (#826).
+  - The era decoders read a registration's metadata the same way, at their era's version: Conway's at 9, and
+    Dijkstra's at 12, where a chunked URL is read as the flat decoder reads it (`DijkstraTxCertSuite`).
+  - Every Conway body of the recorded blocks and of the reference's decoding corpora (396, 32 pool registrations
+    among those the decoder accepts) reads its registrations' parameters field by field as the flat decoder's,
+    in both layouts, and each certificate reads back as the flat one (`EraConwaySuite`).
+  - POOL keeps the parameters in the layout of the state they go into: a new pool's in the build's, a
+    re-registration's in that of the pool's state. Parameters of the other layout, a certificate decoded for the
+    other build, are refused (`LedgerFailure.PoolParamsLayout`; `PoolParamsLayoutSuite`), as the reference, one
+    build, never meets them.
 - **Dijkstra's transactions** (`ledger/.../era/dijkstra/`: the body, the transaction, the witness set and the
   auxiliary data; `TxBody.hs`, `Tx.hs`, `TxWits.hs` and `TxAuxData.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`,
   cardano-ledger 9df9f98c): the families' Dijkstra cases, of both levels.
@@ -834,12 +871,13 @@ Conway's rules on the classes follow as the rest of stage 2.
     decoder's (outputs and the collateral return field by field with each value's size, metadata in full,
     bootstrap witnesses in full, the size for the fee, which is each crossing case's mempool form's length,
     each certificate and governance action read back, a parameter change as Plutus data against the flat path's),
-    or is refused as a pool registration; each it refuses, the era decoder refuses with its error.
+    a pool registration's parameters field by field with their voting key (4 of the corpus's 16 registrations
+    hold one); each it refuses, the era decoder refuses with its error.
     Sub-transactions are checked at their level, in order and by id: 38 recorded on the testnet's chain (of its
     280), 23 synthetic. Every redeemer key of each purpose resolves as the flat resolution does.
-  - Not yet: a body that registers a pool is refused (`EraTxError.PoolVotingKeyNotYetTyped`, 26 corpus
-    transactions), as the era types' pool parameters do not hold the pool's voting key
-    ([#85 item 38](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211)). The transaction class
+  - A pool registration's parameters are the state's (above), with the voting key the Leios build's
+    `StakePoolParams` holds; the flat decoder keeps its relays and metadata decoded, so they are read again
+    from the body's bytes, as the datums and redeemers are. The transaction class
     instances (`EraTx`, `AlonzoEraTx`), with Dijkstra's annotated transaction and `getTotalExUnits` as a member that
     adds the sub-transactions' units, come with the script contexts and `EraUTxO`.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that

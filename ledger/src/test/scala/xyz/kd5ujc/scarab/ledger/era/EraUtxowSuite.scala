@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Block,
@@ -46,7 +47,10 @@ class EraUtxowSuite extends munit.FunSuite:
       .flatMap(_.transactions)
 
   private def both(t: Block.Transaction): (FlatTx, ConwayTx) =
-    (FlatTx.fromBlock(t, Era.Conway).toOption.get, ConwayTx.decode(t).toOption.get)
+    (
+      FlatTx.fromBlock(t, Era.Conway).toOption.get,
+      ConwayTx.decode(t, StateLayout.Node11_1).toOption.get
+    )
 
   /** A purpose's tag, index and script, as the flat path names it and as `getScriptsNeeded` does.
     */

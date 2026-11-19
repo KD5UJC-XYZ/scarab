@@ -2283,23 +2283,6 @@
    "structure": "same",
    "digest": "c40beead6bddd411"
   },
-  "def ledger.era.UnitInterval.boundRational": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "boundRational",
-     "lines": [
-      333,
-      333
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "digest": "ae37ea6d0da2ddc9"
-  },
   "def ledger.era.Version.mkVersion": {
    "upstream": [
     {
@@ -4818,23 +4801,6 @@
    "structure": "same",
    "digest": "1fc612d8946ccc47"
   },
-  "type ledger.era.UnitInterval": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "UnitInterval",
-     "lines": [
-      543,
-      556
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "digest": "267e35c3f8d49bb7"
-  },
   "type ledger.era.Version": {
    "upstream": [
     {
@@ -5144,23 +5110,6 @@
    "structure": "same",
    "note": "the value emptyConwayPParams gives the field",
    "digest": "72db1dfeb6ee18de"
-  },
-  "val ledger.era.UnitInterval.zero": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "minBound",
-     "lines": [
-      558,
-      560
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "digest": "719eec86f944d18d"
   },
   "val ledger.era.Version.Max": {
    "upstream": [
@@ -5958,19 +5907,14 @@
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
      "symbol": "shelleyTotalDepositsTxCerts",
-     "lines": [
-      611,
-      630
-     ]
+     "lines": [611, 630]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "ConwayUtxoChecksSuite"
-   ],
+   "evidence": ["ConwayUtxoChecksSuite"],
    "note": "a protected method of the class, as Scala writes a function over its instance's members",
-   "digest": "09624ebc5a99a2ea"
+   "digest": "d70bdc269fd9eb18"
   },
   "def ledger.era.EraTxCert#shelleyTotalRefundsTxCerts": {
    "upstream": [
@@ -9056,21 +9000,14 @@
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
      "symbol": "poolTransition",
-     "lines": [
-      209,
-      324
-     ]
+     "lines": [209, 324]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
-   "evidence": [
-    "ConwayCertsChecksSuite",
-    "CertsEpochWrapSuite"
-   ],
-   "note": "the pool id, VRF key hash, reward account and owners are converted into the state's vocabulary as the flat rule does (a Vocab defect on a value no decoder admits); a new pool is made in the layout of the build the node follows (its voting key in the Leios layout), as the flat rule does; the retirement limit is summed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rule compares the retirement epoch with an unbounded integer sum, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "ec04d0564c91a3f5"
+   "evidence": ["ConwayCertsChecksSuite", "CertsEpochWrapSuite", "PoolParamsLayoutSuite"],
+   "note": "the parameters are the state's (StakePoolParams), used as they are, and refused when of another layout than the state they go into (LedgerFailure.PoolParamsLayout: a certificate decoded for the other build, which the reference, one build, never meets); a new pool is made in the layout of the build the node follows (its voting key in the Leios layout), as the flat rule does, its voting key from that layout (the parameters' key is not yet kept, which the Leios session's mkStakePoolState follow-up does); the retirement limit is summed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rule compares the retirement epoch with an unbounded integer sum, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
+   "digest": "31090259acd316ac"
   },
   "type ledger.era.EraAccounts.Undrained": {
    "upstream": [
@@ -9112,72 +9049,6 @@
     "CertsEpochWrapSuite"
    ],
    "digest": "66818e2242149dda"
-  },
-  "val ledger.era.StakePoolParams#sppId": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "sppId",
-     "lines": [
-      425,
-      425
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "note": "the operator's 28 bytes as the reference's KeyHash StakePool, read by `of` from the parameters it keeps",
-   "digest": "17d8900a3062702e"
-  },
-  "val ledger.era.StakePoolParams#value": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "StakePoolParams",
-     "lines": [
-      424,
-      434
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
-   "note": "the parameters other than the pool's id as the node's flat PoolParams, its relays and metadata the bytes they were read from, where the reference's fields are typed; equal by what those bytes mean, as the derived Eq",
-   "digest": "8062cac5d7dfa5ac"
-  },
-  "val ledger.era.StakePoolParams#metadataHash": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "pmHash",
-     "lines": [
-      295,
-      295
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "sppMetadata",
-     "lines": [
-      433,
-      433
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
-   "note": "the hash of sppMetadata's PoolMetadata (pmHash), read by `of` when the parameters are, where the reference keeps the decoded PoolMetadata",
-   "digest": "34e10f3d8932247d"
   },
   "def ledger.era.BabbageTxOuts.babbageMinUTxOValue": {
    "upstream": [
@@ -9360,19 +9231,13 @@
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
      "symbol": "DijkstraTxCert",
-     "lines": [
-      185,
-      189
-     ]
+     "lines": [185, 189]
     }
    ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
-   "evidence": [
-    "DijkstraTxCertSuite"
-   ],
-   "note": "the pool certificates are the shared PoolCert, whose StakePoolParams has no place for a registration's BLS key (sppBlsKey, libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:479 at 9df9f98c); no decoder until it has (#826)",
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["DijkstraTxCertSuite", "DijkstraTxSuite"],
+   "note": "the pool certificates are the shared PoolCert, whose StakePoolParams holds a registration's BLS key (sppBlsKey, libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:479 at 9df9f98c); DijkstraTx's decoders read them from what the flat decoder read",
    "digest": "374a71f70f9469a2"
   },
   "def ledger.era.dijkstra.DijkstraTxCert.translate": {
@@ -10553,18 +10418,13 @@
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
      "symbol": "getShelleyWitsVKeyNeededNoGov",
-     "lines": [
-      203,
-      251
-     ]
+     "lines": [203, 251]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "ConwayUtxowChecksSuite"
-   ],
-   "digest": "1d4f7a059d7c0c76"
+   "evidence": ["ConwayUtxowChecksSuite"],
+   "digest": "0ea10563cb8540f0"
   },
   "def ledger.era.conway.ConwayUTxO.getConwayWitsVKeyNeeded": {
    "upstream": [
@@ -15179,19 +15039,14 @@
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transTxCert",
-     "lines": [
-      559,
-      597
-     ]
+     "lines": [559, 597]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "EraPlutusContextSuite"
-   ],
+   "evidence": ["EraPlutusContextSuite"],
    "note": "Conway's certificates; every one has a V3 form, so the reference's impossible case has no counterpart",
-   "digest": "53c4e0bf8a82d809"
+   "digest": "51d62c31100b19b1"
   },
   "def ledger.era.conway.ConwayTxInfo.transDRepCred": {
    "upstream": [
@@ -18382,19 +18237,13 @@
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
      "symbol": "transTxCertCommon",
-     "lines": [
-      364,
-      379
-     ]
+     "lines": [364, 379]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
-   ],
-   "digest": "8c9efc810497733e"
+   "evidence": ["EraPlutusContextSuite", "ConwayPlutusContextRefusalsSuite"],
+   "digest": "6d00744ff2cd61fd"
   },
   "def ledger.era.AlonzoTxInfo.toLegacyPlutusArgs": {
    "upstream": [
@@ -20653,8 +20502,8 @@
     "ConwayLedgerSuite",
     "DijkstraTranslationSuite"
    ],
-   "note": "one counterpart per build, selected by the reference build: 11.1 (f649f975) adds the pools to the map it has; 11.2 (29a7d656) and the Leios build (9df9f98c) recompute it, through Translate.populateVRFKeyHashes. Under 11.1 the map it adds to is the reference's: a state below 11 whose map is not empty, which no chain of 11.1.3 reaches, is refused where it is restored or imported (storage.StateAdmission)",
-   "digest": "484d663cc0640bb6"
+   "note": "one counterpart per build, selected by the reference build: 11.1 (f649f975) adds the pools to the map it has; 11.2 (29a7d656) and the Leios build (9df9f98c) recompute it, through Translate.populateVRFKeyHashes. Under 11.1 the map it adds to is the reference's: a state below 11 whose map is not empty, which no chain of 11.1.3 reaches, is refused where it is restored or imported (storage.StateAdmission). Total: a waiting re-registration's VRF key hash is a VRFVerKeyHash of the state's parameters, so none is refused (#85 item 38)",
+   "digest": "a604215dcbbbc687"
   },
   "def ledger.era.dijkstra.DijkstraTxBody#spendInputs": {
    "upstream": [
@@ -21463,19 +21312,13 @@
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
      "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))",
-     "lines": [
-      339,
-      479
-     ]
+     "lines": [339, 479]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "read from what the flat decoder read, which decides what is refused: its outputs read again through Dijkstra's checked read, its certificates, proposals and votes at the era's types; a body that registers a pool is refused (`EraTxError.PoolVotingKeyNotYetTyped`), as the era types' pool parameters do not hold the pool's voting key yet (#85 item 38) A body read at the other level is refused (`EraTxError.OtherLevel`), which the decoders, reading each body at its level, never give. It takes the proof that its input was read from bytes (`DijkstraTx.FromBytes`), which only `DijkstraTx`'s decoders hold.",
+   "evidence": ["DijkstraTxSuite"],
+   "note": "read from what the flat decoder read, which decides what is refused: its outputs read again through Dijkstra's checked read, its certificates, proposals and votes at the era's types (a pool registration's relays and metadata read again from the body's bytes). A body read at the other level is refused (`EraTxError.OtherLevel`), which the decoders, reading each body at its level, never give. It takes the proof that its input was read from bytes (`DijkstraTx.FromBytes`), which only `DijkstraTx`'s decoders hold.",
    "digest": "21ff2585ce5a0ef2"
   },
   "def ledger.era.dijkstra.DijkstraTxBody.subOf": {
@@ -21485,19 +21328,13 @@
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
      "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))",
-     "lines": [
-      339,
-      479
-     ]
+     "lines": [339, 479]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "read from what the flat decoder read, which decides what is refused: its outputs read again through Dijkstra's checked read, its certificates, proposals and votes at the era's types; a body that registers a pool is refused (`EraTxError.PoolVotingKeyNotYetTyped`), as the era types' pool parameters do not hold the pool's voting key yet (#85 item 38) A body read at the other level is refused (`EraTxError.OtherLevel`), which the decoders, reading each body at its level, never give. It takes the proof that its input was read from bytes (`DijkstraTx.FromBytes`), which only `DijkstraTx`'s decoders hold.",
+   "evidence": ["DijkstraTxSuite"],
+   "note": "read from what the flat decoder read, which decides what is refused: its outputs read again through Dijkstra's checked read, its certificates, proposals and votes at the era's types (a pool registration's relays and metadata read again from the body's bytes). A body read at the other level is refused (`EraTxError.OtherLevel`), which the decoders, reading each body at its level, never give. It takes the proof that its input was read from bytes (`DijkstraTx.FromBytes`), which only `DijkstraTx`'s decoders hold.",
    "digest": "85dd37edf4703e59"
   },
   "val ledger.era.dijkstra.DijkstraTxBody.instance": {
@@ -22391,20 +22228,14 @@
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
      "symbol": "DecCBOR (DijkstraTxCert era)",
-     "lines": [
-      233,
-      252
-     ]
+     "lines": [233, 252]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923351211",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "the certificate the flat decoder read, at the era's types; a pool registration is refused (`EraTxError.PoolVotingKeyNotYetTyped`), as the era types' pool parameters do not hold the pool's voting key yet (#85 item 38)",
-   "digest": "f5d17c4cd696281d"
+   "evidence": ["DijkstraTxSuite"],
+   "note": "the certificate the flat decoder read, at the era's types; a pool registration's parameters at the state's, with the Leios build's voting key (sppBlsKey), its relays and metadata the bytes the body holds them as, read again from the certificate's item",
+   "digest": "0627736f68ea7d55"
   },
   "type ledger.era.OMap": {
    "upstream": [
@@ -22587,6 +22418,328 @@
     "DijkstraTxSuite"
    ],
    "digest": "b36698e2f27683d1"
+  },
+  "def ledger.state.UnitInterval.boundRational": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "boundRational",
+     "lines": [333, 333]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "5480882d23fb93f6"
+  },
+  "val ledger.state.UnitInterval.zero": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "minBound",
+     "lines": [558, 560]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "719eec86f944d18d"
+  },
+  "type ledger.state.UnitInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "UnitInterval",
+     "lines": [543, 556]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "267e35c3f8d49bb7",
+   "note": "defined with the state's vocabulary, which the pool parameters hold, the era's name an alias of it"
+  },
+  "type ledger.era.UnitInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "UnitInterval",
+     "lines": [543, 556]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "e5c7599a17060173",
+   "note": "the state's UnitInterval (ledger.state), which the pool parameters hold"
+  },
+  "val ledger.era.UnitInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "UnitInterval",
+     "lines": [543, 556]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "2757f120828691ce",
+   "note": "the companion of the state's UnitInterval (ledger.state), under the era's name"
+  },
+  "enum ledger.state.Network": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Network",
+     "lines": [878, 881]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "moved from the era package to the state's vocabulary, which an account address holds; the era's name exports it",
+   "digest": "6db64aeb3eae9771"
+  },
+  "def ledger.state.Network.of": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "word8ToNetwork",
+     "lines": [886, 890]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "2e48a4e8b3c03441"
+  },
+  "class ledger.state.AccountId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "AccountId",
+     "lines": [189, 191]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "ed7b4341ff7075f1"
+  },
+  "class ledger.state.AccountAddress": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "AccountAddress",
+     "lines": [183, 187]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "5df284cc74641016"
+  },
+  "class ledger.state.PoolMetadata": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "PoolMetadata",
+     "lines": [293, 297]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["EraConwaySuite", "DijkstraTxSuite"],
+   "note": "the term kept as the bytes it was read from, as StakePoolState and the state codecs keep it, with its hash (pmHash) read once by `read`; decoding it into the reference's Url and ByteString is tracked in https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999387793",
+   "digest": "d521104ab2224200"
+  },
+  "def ledger.state.PoolMetadata#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "PoolMetadata",
+     "lines": [293, 297]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["EraConwaySuite"],
+   "note": "the derived Eq, by what the kept bytes mean",
+   "digest": "fe3900e4786e0a9e"
+  },
+  "def ledger.state.PoolMetadata#hashCode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "PoolMetadata",
+     "lines": [293, 297]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["EraConwaySuite"],
+   "note": "consistent with equals, by what the kept bytes mean",
+   "digest": "ceffcc1bc2f89af4"
+  },
+  "def ledger.state.PoolMetadata.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "DecCBOR PoolMetadata",
+     "lines": [522, 524]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "DecCBOR PoolMetadata",
+     "lines": [683, 685]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR Url",
+     "lines": [678, 685]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeString",
+     "lines": [1564, 1598]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["FuturePoolParamsCodecSuite", "DijkstraTxCertSuite", "EraConwaySuite"],
+   "note": "DecCBOR PoolMetadata at the given decoder version, over the term's kept bytes: a record of two items (definite or indefinite), a Url of at most 64 bytes of UTF-8 below version 9 and 128 from it, its text definite at every version in the 11.1 build's layout (f649f975 decodeString) and definite or chunked from version 12 in the Leios build's (9df9f98c), and the hash, a byte string definite below 12 and definite or chunked from it in both builds. The state's future parameters and the era decoders (Conway at 9, Dijkstra at 12) read with it; the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here.",
+   "digest": "87fd51241fe6eba8"
+  },
+  "class ledger.state.StakePoolParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "StakePoolParams",
+     "lines": [424, 435]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "StakePoolParams",
+     "lines": [476, 488]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["EraConwaySuite", "DijkstraTxSuite", "FuturePoolParamsCodecSuite"],
+   "note": "era-independent in the state package, as the reference keeps it in its core library; 9df9f98c's phantom era (used only by `Era era => DecCBOR`) is not kept. sppBlsKey, the Leios build's third field, is PoolParamsBlsKey, by the state's layout: #1063's per-layout typing applied to one field, so a value of the 11.1 layout holds no key. The relays (StrictSeq StakePoolRelay) are the bytes they were read from and the metadata a PoolMetadata over its bytes, as StakePoolState and the state codecs keep them; decoding them into the reference's types is tracked in https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999387793",
+   "digest": "6989abcae4fffb78"
+  },
+  "def ledger.state.StakePoolParams#equals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "StakePoolParams",
+     "lines": [424, 435]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["EraConwaySuite"],
+   "note": "the derived Eq: the relays and the metadata by what their bytes mean (80 and 9800 are one empty list)",
+   "digest": "23885b28d2373547"
+  },
+  "def ledger.state.StakePoolParams#hashCode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "StakePoolParams",
+     "lines": [424, 435]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["EraConwaySuite"],
+   "note": "consistent with equals",
+   "digest": "419b6df0ea6a0ccf"
+  },
+  "def ledger.state.PoolParamsBlsKey.certified": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "decodeStakePoolParamsFlat",
+     "lines": [746, 772]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a registration before Dijkstra reads no key: a body is read at its era's lowest version, 9 for Conway, and the key from version 12 only",
+   "digest": "9e5ae59d9c0eb756"
+  },
+  "def ledger.PoolParams.metadataAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "DecCBOR PoolMetadata",
+     "lines": [522, 524]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "DecCBOR PoolMetadata",
+     "lines": [683, 685]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR Url",
+     "lines": [678, 685]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeString",
+     "lines": [1564, 1598]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["FuturePoolParamsCodecSuite", "DijkstraTxCertSuite"],
+   "note": "the hash of a PoolMetadata term read as DecCBOR PoolMetadata at a version, in the build of a layout (PoolMetadata.read)",
+   "digest": "79c4d3d624556d8c"
   }
  },
  "glue": [
@@ -22733,7 +22886,6 @@
     "object ledger.era.THKD",
     "object ledger.era.ToData",
     "object ledger.era.ToPlutusData",
-    "object ledger.era.UnitInterval",
     "object ledger.era.Version",
     "object ledger.era.conway.ConwayPParams",
     "object ledger.era.conway.DRepVotingThresholds",
@@ -22741,7 +22893,12 @@
     "object ledger.era.dijkstra.DijkstraEraPParams",
     "object ledger.era.dijkstra.DijkstraPParams",
     "object ledger.era.dijkstra.Milliseconds32",
-    "object ledger.era.dijkstra.SlotInterval"
+    "object ledger.era.dijkstra.SlotInterval",
+    "object ledger.state.UnitInterval",
+    "object ledger.state.Network",
+    "object ledger.state.PoolMetadata",
+    "object ledger.state.StakePoolParams",
+    "object ledger.state.PoolParamsBlsKey"
    ]
   },
   {
@@ -22756,7 +22913,6 @@
     "def ledger.era.PParamsUpdate.hkd",
     "def ledger.era.PositiveInterval.rational",
     "def ledger.era.THKD.value",
-    "def ledger.era.UnitInterval.rational",
     "def ledger.era.Version.lit",
     "def ledger.era.Version.value",
     "def ledger.state.EpochInterval.fromWord32",
@@ -22768,7 +22924,8 @@
     "type ledger.era.conway.ConwayPParams.Net",
     "type ledger.era.conway.ConwayPParams.NoPool",
     "type ledger.era.conway.ConwayPParams.Sec",
-    "type ledger.era.conway.ConwayPParams.Tech"
+    "type ledger.era.conway.ConwayPParams.Tech",
+    "def ledger.state.UnitInterval.rational"
    ]
   },
   {
@@ -22909,9 +23066,8 @@
    ]
   },
   {
-   "reason": "the era-typed certificate rules' helpers with no counterpart: a field of the era's parameters through ppLensHKD, the major protocol version, the Vocab defect the flat rules raise, and the decoder's reading of a pool's metadata hash with its parameters (#85)",
+   "reason": "the era-typed certificate rules' helpers with no counterpart: a field of the era's parameters through ppLensHKD, the major protocol version, and the Vocab defect the flat rules raise",
    "definitions": [
-    "def ledger.era.StakePoolParams.of",
     "def ledger.era.rules.field",
     "def ledger.era.rules.major",
     "def ledger.era.rules.vocab"
@@ -23149,6 +23305,27 @@
     "def ledger.era.OMap.entries",
     "given ledger.era.OMap.given_CanEqual_OMap_K_V_OMap_K_V",
     "object ledger.era.OMap"
+   ]
+  },
+  {
+   "reason": "the conversions between the node's flat pool parameters and reward accounts and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters' and metadata's equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets",
+   "definitions": [
+    "def ledger.rules.Convert.accountAddress",
+    "def ledger.rules.Convert.rewardAccountBack",
+    "def ledger.rules.Convert.stakePoolParams",
+    "def ledger.rules.Convert.poolParamsBack",
+    "given ledger.state.Network.given_CanEqual_Network_Network",
+    "given ledger.state.PoolMetadata.given_CanEqual_PoolMetadata_PoolMetadata",
+    "given ledger.state.StakePoolParams.given_CanEqual_StakePoolParams_StakePoolParams",
+    "given ledger.state.StakePoolParams.given_Eq_StakePoolParams",
+    "given ledger.state.StakePoolParams.given_Show_StakePoolParams",
+    "def ledger.state.PoolMetadata#toString",
+    "def ledger.state.PoolParamsBlsKey.stateLayout",
+    "def ledger.state.Network.wire",
+    "def ledger.state.PoolMetadata.held",
+    "def ledger.DecoderVersion.ofMajor",
+    "def ledger.era.rules.sameLayout",
+    "class ledger.LedgerFailure.PoolParamsLayout"
    ]
   }
  ]

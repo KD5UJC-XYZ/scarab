@@ -117,17 +117,19 @@ class DijkstraTranslationSuite extends FunSuite:
 
   private def vrf(n: Int): VRFVerKeyHash = ok(VRFVerKeyHash.fromBytes(bytes(n, 32)))
 
-  private def reRegistration(p: Int, vrfOf: Int): PoolParams =
-    PoolParams(
-      pool(p).bytes,
-      bytes(vrfOf, 32),
-      pledge = 0,
-      cost = 340000000,
-      margin = Rational(1, 100),
-      rewardAccount = RewardAccount(0, node.Credential.Key(bytes(p, 28))),
-      owners = Set.empty,
-      relays = Bytes.empty,
-      metadata = None
+  private def reRegistration(p: Int, vrfOf: Int): StakePoolParams =
+    Build.stakePoolParams(
+      PoolParams(
+        pool(p).bytes,
+        bytes(vrfOf, 32),
+        pledge = 0,
+        cost = 340000000,
+        margin = Rational(1, 100),
+        rewardAccount = RewardAccount(0, node.Credential.Key(bytes(p, 28))),
+        owners = Set.empty,
+        relays = Bytes.empty,
+        metadata = None
+      )
     )
 
   private def count(n: Long): NonZero[Word64] =
@@ -150,7 +152,7 @@ class DijkstraTranslationSuite extends FunSuite:
       ),
       Sorted.empty
     )
-    val counted = Translate.populateVRFKeyHashes(stale).fold(e => fail(e.toString), identity)
+    val counted = Translate.populateVRFKeyHashes(stale)
     assertEquals(
       counted.vrfKeyHashes,
       Sorted.map(
@@ -161,7 +163,7 @@ class DijkstraTranslationSuite extends FunSuite:
     // the HARDFORK of 11.2 and the Leios build is the same; 11.1's (f649f975) counts pool 0's
     // re-registration too and adds to what the map held
     def hardFork(build: ReferenceBuild) =
-      HardFork.populateVRFKeyHashes(build, stale).fold(e => fail(e.toString), _.vrfKeyHashes)
+      HardFork.populateVRFKeyHashes(build, stale).vrfKeyHashes
     assertEquals(hardFork(ReferenceBuild.Release11_2), counted.vrfKeyHashes)
     assertEquals(hardFork(ReferenceBuild.LeiosB004fe0c), counted.vrfKeyHashes)
     assertEquals(

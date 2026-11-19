@@ -106,7 +106,7 @@ object Derivations:
     val recorded: Set[Bytes] = pState.vrfKeyHashes.keysIterator.map(_.bytes).toSet
     val derived: Set[Bytes] =
       (pState.stakePools.valuesIterator.map(_.vrf.bytes) ++
-        pState.future.valuesIterator.map(_.vrfKeyHash)).toSet
+        pState.future.valuesIterator.map(_.vrf.bytes)).toSet
     val byPool = delegations.groupMap(_._2)(_._1)
     val matching = pState.stakePools.count((id, sp) =>
       sp.delegators.toSet == byPool.getOrElse(id, Vector.empty).toSet
@@ -122,7 +122,7 @@ object Derivations:
           (
             n.value.toBigInt.toLong,
             pState.stakePools.valuesIterator.count(_.vrf.bytes == k.bytes),
-            pState.future.valuesIterator.count(_.vrfKeyHash == k.bytes)
+            pState.future.valuesIterator.count(_.vrf.bytes == k.bytes)
           )
       },
       nes.pd === PoolDistr.of(snaps.set),

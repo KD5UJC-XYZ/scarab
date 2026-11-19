@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
 import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, LedgerDecodeError, Unsigned}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
   AlonzoEraTxAuxData,
@@ -48,10 +48,12 @@ final class ConwayTx private (
 object ConwayTx:
   given CanEqual[ConwayTx, ConwayTx] = CanEqual.derived
 
-  /** A transaction of a Conway block, its parts read by Conway's decoders. */
-  def decode(t: Block.Transaction): Either[EraTxError, ConwayTx] =
+  /** A transaction of a Conway block, its parts read by Conway's decoders, a pool's parameters in
+    * `layout` ([[ConwayTxBody.decode]]).
+    */
+  def decode(t: Block.Transaction, layout: StateLayout): Either[EraTxError, ConwayTx] =
     (
-      ConwayTxBody.decode(t.body),
+      ConwayTxBody.decode(t.body, layout),
       ConwayTxWits.decode(t.witnesses),
       t.auxiliaryData.traverse(ConwayTxAuxData.decode)
     ).mapN((body, wits, aux) => ConwayTx(body, wits, IsPhase2Valid.of(t.isValid), aux))
@@ -60,13 +62,13 @@ object ConwayTx:
     * splits them ([[xyz.kd5ujc.scarab.ledger.Tx.envelopeParts]]), each read by Conway's decoders,
     * as [[xyz.kd5ujc.scarab.ledger.Tx.fromEnvelope]] reads them.
     */
-  def fromEnvelope(bytes: Bytes): Either[EraTxError, ConwayTx] =
+  def fromEnvelope(bytes: Bytes, layout: StateLayout): Either[EraTxError, ConwayTx] =
     DetachedRecords
       .read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(Era.Conway))(
         LedgerDecodeError.Syntax(_)
       )(xyz.kd5ujc.scarab.ledger.Tx.envelopeParts(_, Era.Conway))
       .leftMap(EraTxError.Decode(_))
-      .flatMap(decode)
+      .flatMap(decode(_, layout))
 
   val instance: AlonzoEraTx[Conway] { val bodyOf: EraTxBody.conway.type } =
     new AlonzoEraTx[Conway]:

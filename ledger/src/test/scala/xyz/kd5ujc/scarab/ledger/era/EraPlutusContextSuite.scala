@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import io.circe.{Decoder, Json}
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
@@ -178,7 +179,8 @@ class EraPlutusContextSuite extends munit.FunSuite:
     * read fails, never skips (CNF-2).
     */
   private def typed(c: Case, major: Int = -1): (ConwayTx, UTxO[Conway], LedgerTxInfo[Conway]) =
-    val tx = ConwayTx.decode(c.parts).fold(e => fail(s"${c.name}: $e"), identity)
+    val tx =
+      ConwayTx.decode(c.parts, StateLayout.Node11_1).fold(e => fail(s"${c.name}: $e"), identity)
     val utxo = UTxO[Conway]((c.spent ++ c.references).map { (in, out) =>
       in -> ConwayTxOut.fromStored(out).fold(e => fail(s"${c.name}: $e"), identity)
     })
@@ -573,7 +575,10 @@ class EraPlutusContextSuite extends munit.FunSuite:
     val refused = xyz.kd5ujc.scarab.ledger.LedgerDecodeError
       .PlutusData(xyz.kd5ujc.scarab.ledger.DecodeField.Redeemer, notData)
     assertEquals(FlatTx.fromBlock(parts, Era.Conway).map(_ => ()), Left(refused))
-    assertEquals(ConwayTx.decode(parts).map(_ => ()), Left(EraTxError.Decode(refused)))
+    assertEquals(
+      ConwayTx.decode(parts, StateLayout.Node11_1).map(_ => ()),
+      Left(EraTxError.Decode(refused))
+    )
   }
 
   test(
@@ -584,7 +589,10 @@ class EraPlutusContextSuite extends munit.FunSuite:
     val refused = xyz.kd5ujc.scarab.ledger.LedgerDecodeError
       .PlutusData(xyz.kd5ujc.scarab.ledger.DecodeField.Datums, notData)
     assertEquals(FlatTx.fromBlock(parts, Era.Conway).map(_ => ()), Left(refused))
-    assertEquals(ConwayTx.decode(parts).map(_ => ()), Left(EraTxError.Decode(refused)))
+    assertEquals(
+      ConwayTx.decode(parts, StateLayout.Node11_1).map(_ => ()),
+      Left(EraTxError.Decode(refused))
+    )
   }
 
   test(
@@ -2109,7 +2117,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
         body = encoded(CborValue.Map(entries)),
         auxiliaryData = Some(bytes)
       )
-      assertEquals(ConwayTx.decode(parts).isRight, decoded, name)
+      assertEquals(ConwayTx.decode(parts, StateLayout.Node11_1).isRight, decoded, name)
       if decoded then
         val c = base.copy(
           name = name,

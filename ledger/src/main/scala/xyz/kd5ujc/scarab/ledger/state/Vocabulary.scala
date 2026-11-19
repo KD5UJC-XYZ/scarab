@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import xyz.kd5ujc.scarab.codec.DomainError
-import cats.{Order, Show}
+import cats.{Eq, Order, Show}
 import cats.derived.*
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -23,12 +23,15 @@ enum VocabError extends DomainError derives Show:
   case Zero(what: VocabError.Kind)
   case InvalidRewardRelativeStake(value: Rational)
 
+  /** A ratio that is not a `UnitInterval` (`boundRational`). */
+  case NotUnitInterval(value: Rational)
+
 object VocabError:
   /** The vocabulary type a [[VocabError]] is about. */
   enum Kind derives Show:
     case Coin, CompactCoin, EpochNo, SlotNo, BlockNo, BlockCount, KeyHash, ScriptHash,
       VRFVerKeyHash, Hash32, NonZero, OcertCounter, RewardPulseSize, RewardBlockCount,
-      ProtocolMajor, ProtocolMinor, Word32
+      ProtocolMajor, ProtocolMinor, Word32, Network
 
 // ---- key roles (`Cardano.Ledger.Keys`: `KeyRole`, a phantom of key hashes and credentials)
 
@@ -399,3 +402,43 @@ object WithOrigin:
     case Origin => "Origin"
     case At(a)  => s"At(${Show[A].show(a)})"
   }
+
+// ---- network and intervals
+
+/** `data Network = Testnet | Mainnet`
+  * (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:878-881`, cardano-ledger f649f975,
+  * `deriving (Eq, Ord, Enum, Bounded, ..)`), by its wire value 0 or 1.
+  */
+enum Network derives Eq, Show:
+  case Testnet, Mainnet
+
+object Network:
+  given CanEqual[Network, Network] = CanEqual.derived
+
+  /** `word8ToNetwork` (`BaseTypes.hs:886-890`, cardano-ledger f649f975): 0 is Testnet and 1 is
+    * Mainnet.
+    */
+  def of(value: BigInt): Option[Network] =
+    if value == 0 then Some(Testnet) else if value == 1 then Some(Mainnet) else None
+
+  extension (n: Network)
+    /** The wire value, the constructor's position (`Enum`). */
+    def wire: Int = n.ordinal
+
+/** `UnitInterval` (`BoundedRatio UnitInterval Word64`, `libs/cardano-ledger-core/src/Cardano/
+  * Ledger/BaseTypes.hs:543-545`, cardano-ledger f649f975): `[0, 1]`, numerator and denominator
+  * within `Word64`.
+  */
+opaque type UnitInterval = Rational
+
+object UnitInterval:
+  /** `minBound`: zero. */
+  val zero: UnitInterval = Rational.zero
+
+  /** `boundRational`. */
+  def boundRational(r: Rational): Option[UnitInterval] =
+    xyz.kd5ujc.scarab.ledger.json.BoundedRatio.Unit.bound(r)
+
+  extension (u: UnitInterval)
+    /** `unboundRational`. */
+    def rational: Rational = u

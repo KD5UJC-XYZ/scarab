@@ -623,7 +623,7 @@ class ShelleyLedgerSuite extends FunSuite:
               signers = Vector(op)
             )
           )
-          assertEquals(pools(c, again).future.get(poolId(op)).map(_.cost), Some(BigInt(340)))
+          assertEquals(pools(c, again).future.get(poolId(op)).map(_.cost.value), Some(BigInt(340)))
           val retiring = accepted(
             c,
             s,

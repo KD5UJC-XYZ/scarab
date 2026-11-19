@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 import scala.annotation.unused
 import scala.collection.immutable.SortedSet
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   Credential as FlatCredential,
@@ -185,13 +185,39 @@ object DijkstraTxBody:
   def topBody(body: DijkstraTxBody[TxLevel.Top]): TopTxBody = body match
     case t: TopTxBody => t
 
-  /** The fields of both levels of a body the flat decoder read, at the era's types. A pool
-    * registration is not read ([[EraTxError.PoolVotingKeyNotYetTyped]]).
+  /** The certificates of a body as its bytes hold them (key 4, `decodeOSet` of a set that may be
+    * tagged 258), in the order the flat decoder read them: a pool registration's relays and
+    * metadata are read from them ([[DijkstraProcedures.cert]]).
     */
+  private def certItems(raw: Bytes): Either[EraTxError, Vector[Node]] =
+    (for
+      body <- CborRead.decode(raw, V12.nestedLimits)
+      entries <- V12.entries(body, DecodeField.TransactionBody)
+      certs = entries.collectFirst {
+        case (k, v) if (k.value match
+              case Value.UInt(t) => t == 4
+              case _             => false
+            ) =>
+          v
+      }
+      items <- certs.fold(Right(Vector.empty[Node]))(V12.setItems(_, DecodeField.Certificates))
+    yield items).leftMap(EraTxError.Decode(_))
+
+  /** The fields of both levels of a body the flat decoder read, at the era's types. */
   private def fieldsOf(b: FlatDijkstraTxBody): Either[EraTxError, DijkstraBodyFields] =
+    // read again only when a certificate needs its bytes, a pool registration
+    lazy val items = certItems(b.raw)
+    def item(i: Int): Either[EraTxError, Node] =
+      items.flatMap(
+        _.lift(i).toRight(
+          EraTxError.Decode(
+            LedgerDecodeError.ArrayLength(DecodeField.Certificates, i + 1, b.certificates.size)
+          )
+        )
+      )
     for
       outputs <- b.outputs.traverse(sized)
-      certs <- b.certificates.traverse(DijkstraProcedures.cert)
+      certs <- b.certificates.zipWithIndex.traverse((c, i) => DijkstraProcedures.cert(c, item(i)))
       proposals <- b.proposals.traverse(DijkstraProcedures.proposal)
       network <- b.networkId.traverse(v =>
         Network

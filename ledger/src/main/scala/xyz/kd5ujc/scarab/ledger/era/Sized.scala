@@ -11,14 +11,7 @@ object Sized:
   given [A](using CanEqual[A, A]): CanEqual[Sized[A], Sized[A]] = CanEqual.derived
 
 /** The network a body names (`data Network = Testnet | Mainnet`, cardano-ledger f649f975
-  * `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:878-881`), by its wire value 0 or 1.
+  * `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:878-881`), defined with the state's
+  * vocabulary ([[xyz.kd5ujc.scarab.ledger.state.Network]]), which an account address holds.
   */
-enum Network:
-  case Testnet, Mainnet
-
-object Network:
-  given CanEqual[Network, Network] = CanEqual.derived
-
-  /** `word8ToNetwork`: 0 is Testnet and 1 is Mainnet. */
-  def of(value: BigInt): Option[Network] =
-    if value == 0 then Some(Testnet) else if value == 1 then Some(Mainnet) else None
+export xyz.kd5ujc.scarab.ledger.state.Network

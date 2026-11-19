@@ -60,6 +60,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   NonZero,
   PState,
   PoolBlsKey,
+  StakePoolParams,
   Sorted,
   StakePool,
   StakePoolState,
@@ -89,6 +90,22 @@ private def field[E <: EraTag, A](pp: PParams[E])(
 /** The major protocol version of `pp` (`pvMajor (pp ^. ppProtocolVersionL)`). */
 private def major[E <: EraTag](pp: PParams[E])(using p: EraPParams[E]): Int =
   p.ppProtocolVersionL.get(pp).pvMajor.value
+
+/** The parameters are of `layout`, the layout of the state they go into: a certificate decoded for
+  * another build is refused ([[LedgerFailure.PoolParamsLayout]]), as the reference, one build,
+  * never meets one.
+  */
+private def sameLayout[F[_]: Monad](params: StakePoolParams, layout: StateLayout)(using
+    Raise[F, LedgerFailure]
+): F[Unit] =
+  val found = params.blsKey.stateLayout
+  Sts.lift[F, LedgerFailure, Unit](
+    Either.cond(
+      found == layout,
+      (),
+      LedgerFailure.PoolParamsLayout(params.id.bytes, found, layout)
+    )
+  )
 
 private def vocab[F[_]: Monad, A](result: Either[VocabError, A])(using
     Raise[F, LedgerFailure]
@@ -135,8 +152,10 @@ object POOL:
     def fail(f: PoolFailure): PredicateFailure = PredicateFailure.pool(f)
     poolCert match
       case PoolCert.RegPool(stakePoolParams) =>
-        val params = stakePoolParams.value
-        val sppId = params.operator
+        val sppId = stakePoolParams.id
+        val network = stakePoolParams.accountAddress.networkId.wire
+        val vrf = stakePoolParams.vrf
+        val cost = stakePoolParams.cost.value
         for
           globals <- ask.ask[Globals]
           // `hardforkAlonzoValidatePoolAccountAddressNetID` (`Shelley/Era.hs:248-251`,
@@ -144,12 +163,9 @@ object POOL:
           _ <-
             if pv.pvMajor.value > 4 then
               Sts.predicate[F, PredicateFailure](
-                globals.networkId == params.rewardAccount.network,
+                globals.networkId == network,
                 fail(
-                  PoolFailure.WrongNetworkPool(
-                    Mismatch(params.rewardAccount.network, globals.networkId),
-                    sppId
-                  )
+                  PoolFailure.WrongNetworkPool(Mismatch(network, globals.networkId), sppId.bytes)
                 )
               )
             else Monad[F].unit
@@ -157,29 +173,27 @@ object POOL:
           // above 4.0
           _ <-
             if pv.pvMajor.value > 4 || (pv.pvMajor.value == 4 && pv.pvMinor.value > 0) then
-              stakePoolParams.metadataHash.traverse_(hash =>
+              stakePoolParams.metadata.traverse_(metadata =>
                 Sts.predicate[F, PredicateFailure](
-                  hash.size <= 32,
-                  fail(PoolFailure.PoolMedataHashTooBig(sppId, hash.size))
+                  metadata.hash.size <= 32,
+                  fail(PoolFailure.PoolMedataHashTooBig(sppId.bytes, metadata.hash.size))
                 )
               )
             else Monad[F].unit
           minPoolCost = field[E, CompactCoin](pp)(p.hkdMinPoolCostCompactL[Identity]).toBigInt
           _ <- Sts.predicate[F, PredicateFailure](
-            params.cost >= minPoolCost,
-            fail(PoolFailure.StakePoolCostTooLow(Mismatch(params.cost, minPoolCost)))
+            cost >= minPoolCost,
+            fail(PoolFailure.StakePoolCostTooLow(Mismatch(cost, minPoolCost)))
           )
-          operator <- vocab[F, KeyHash[StakePool]](Convert.keyHash[StakePool](sppId))
-          vrf <- vocab[F, VRFVerKeyHash](VRFVerKeyHash.fromBytes(params.vrfKeyHash))
           ps <- st.get
-          next <- ps.stakePools.get(operator) match
+          next <- ps.stakePools.get(sppId) match
             case None =>
               for
                 _ <-
                   if disallowDuplicatedVRFKeys then
                     Sts.predicate[F, PredicateFailure](
                       !ps.vrfKeyHashes.contains(vrf),
-                      fail(PoolFailure.VRFKeyHashAlreadyRegistered(sppId, params.vrfKeyHash))
+                      fail(PoolFailure.VRFKeyHashAlreadyRegistered(sppId.bytes, vrf.bytes))
                     )
                   else Monad[F].unit
                 layout <- Sts.lift[F, LedgerFailure, StateLayout](
@@ -187,47 +201,48 @@ object POOL:
                     .of(globals.ledger.referenceBuild)
                     .leftMap(LedgerFailure.LayoutNotYet(_))
                 )
+                _ <- sameLayout[F](stakePoolParams, layout)
                 // `mkStakePoolState (pp ^. ppPoolDepositCompactL) mempty stakePoolParams`, in the
                 // layout of the build: in the Leios layout a new pool holds no voting key
                 pool <- vocab[F, StakePoolState](
                   Convert.poolState(
-                    params,
+                    stakePoolParams,
                     PoolBlsKey.certified(layout),
                     field[E, CompactCoin](pp)(p.hkdPoolDepositCompactL[Identity]),
                     Sorted.emptySet[Credential[Staking]]
                   )
                 )
               yield ps.copy(
-                stakePools = ps.stakePools.updated(operator, pool),
+                stakePools = ps.stakePools.updated(sppId, pool),
                 vrfKeyHashes =
                   if disallowDuplicatedVRFKeys then ps.vrfKeyHashes.updated(vrf, NonZero.oneWord)
                   else ps.vrfKeyHashes
               )
             case Some(stakePoolState) =>
-              for _ <-
+              for
+                _ <-
                   if disallowDuplicatedVRFKeys then
                     Sts.predicate[F, PredicateFailure](
                       stakePoolState.vrf == vrf || !ps.vrfKeyHashes.contains(vrf),
-                      fail(PoolFailure.VRFKeyHashAlreadyRegistered(sppId, params.vrfKeyHash))
+                      fail(PoolFailure.VRFKeyHashAlreadyRegistered(sppId.bytes, vrf.bytes))
                     )
                   else Monad[F].unit
+                // the parameters wait in the layout of the pool's state
+                _ <- sameLayout[F](stakePoolParams, stakePoolState.blsKey.stateLayout)
               yield
                 // a re-registration with a fresh VRF key records it, and forgets the key of an
                 // earlier re-registration of the epoch
                 val vrfs =
                   if !disallowDuplicatedVRFKeys then ps.vrfKeyHashes
                   else
-                    ps.future.get(operator) match
+                    ps.future.get(sppId) match
                       case None => ps.vrfKeyHashes.updated(vrf, NonZero.oneWord)
-                      case Some(future) if future.vrfKeyHash != params.vrfKeyHash =>
-                        VRFVerKeyHash
-                          .fromBytes(future.vrfKeyHash)
-                          .fold(_ => ps.vrfKeyHashes, ps.vrfKeyHashes.removed(_))
-                          .updated(vrf, NonZero.oneWord)
+                      case Some(future) if future.vrf != vrf =>
+                        ps.vrfKeyHashes.removed(future.vrf).updated(vrf, NonZero.oneWord)
                       case Some(_) => ps.vrfKeyHashes
                 ps.copy(
-                  future = ps.future.updated(operator, params),
-                  retiring = ps.retiring.removed(operator),
+                  future = ps.future.updated(sppId, stakePoolParams),
+                  retiring = ps.retiring.removed(sppId),
                   vrfKeyHashes = vrfs
                 )
           _ <- st.set(next)

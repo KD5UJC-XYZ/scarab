@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
@@ -88,7 +89,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
           what,
           bytes,
           right(s"$what flat")(FlatTx.fromEnvelope(bytes, Era.Conway)),
-          right(s"$what typed")(ConwayTx.fromEnvelope(bytes)),
+          right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           stored,
           right(s"$what typed UTxO")(ConwayUTxO.fromStored(stored)),
           flatPp,
@@ -541,7 +542,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
     s.copy(
       bytes = again,
       flat = right("edited flat")(FlatTx.fromEnvelope(again, Era.Conway)),
-      typed = right("edited typed")(ConwayTx.fromEnvelope(again))
+      typed = right("edited typed")(ConwayTx.fromEnvelope(again, StateLayout.Node11_1))
     )
 
   private def withMajor(s: Seen, major: Int): Seen =

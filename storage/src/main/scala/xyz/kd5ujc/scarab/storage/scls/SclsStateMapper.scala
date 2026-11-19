@@ -10,11 +10,13 @@ import xyz.kd5ujc.scarab.ledger.{
   Credential as LedgerCredential,
   GovActionId,
   GovActionState,
+  LedgerDecodeError,
   PoolParams,
   Proposals,
   ProposalsError,
   Purposeful
 }
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   BlocksMade,
   CommitteeState,
@@ -32,8 +34,11 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   NewEpochState,
   NonZero,
+  PoolMetadata,
+  PoolParamsBlsKey,
   Sorted,
   StakePool,
+  StakePoolParams,
   StakePoolState,
   Staking,
   HotCommittee,
@@ -79,6 +84,17 @@ object SclsStateMapper:
       */
     case ProposalForest(cause: ProposalsError)
 
+    /** A pool's future parameters whose fields are not of the state's types. */
+    case FuturePoolParams(pool: KeyHash[StakePool], cause: VocabError)
+
+    /** A pool's future parameters whose metadata does not read (`PoolMetadata`). */
+    case FuturePoolMetadata(pool: KeyHash[StakePool], cause: LedgerDecodeError)
+
+    /** A pool's future parameters holding a voting key, which the canonical state's Conway
+      * parameters have no place for.
+      */
+    case FuturePoolBlsKey(pool: KeyHash[StakePool])
+
   private final case class Acc(
       blocks: SortedMap[KeyHash[StakePool], Word64],
       accounts: SortedMap[Credential[Staking], ConwayAccountState],
@@ -86,7 +102,7 @@ object SclsStateMapper:
       committee: Option[Option[Committee]],
       constitution: Option[Constitution],
       stakePools: SortedMap[KeyHash[StakePool], StakePoolState],
-      futurePoolParams: SortedMap[KeyHash[StakePool], PoolParams],
+      futurePoolParams: SortedMap[KeyHash[StakePool], StakePoolParams],
       retiringPools: SortedMap[KeyHash[StakePool], EpochNo],
       vrfKeyHashes: SortedMap[VRFVerKeyHash, NonZero[Word64]],
       parameters: Map[SclsKey.Parameters, Params.ConwayPParams],
@@ -124,14 +140,12 @@ object SclsStateMapper:
     val poolKeys = Sorted.set(
       pState.stakePools.keysIterator ++ pState.future.keysIterator ++ pState.retiring.keysIterator
     )
-    val pools = poolKeys.iterator.map { pool =>
-      SclsKey.Key.StakePools(pool) -> SclsValue.Entry.StakePool(
-        SclsValue.StakePoolValue(
-          pState.stakePools.get(pool),
-          pState.retiring.get(pool),
-          pState.future.get(pool)
+    val pools = poolKeys.toVector.traverse { pool =>
+      pState.future.get(pool).traverse(exportedFuture(pool, _)).map { future =>
+        SclsKey.Key.StakePools(pool) -> SclsValue.Entry.StakePool(
+          SclsValue.StakePoolValue(pState.stakePools.get(pool), pState.retiring.get(pool), future)
         )
-      )
+      }
     }
     val vrfHashes = pState.vrfKeyHashes.iterator.map { case (hash, count) =>
       SclsKey.Key.StakePoolVrfHashes(hash) -> SclsValue.Entry.VrfKeyCount(count)
@@ -174,9 +188,9 @@ object SclsStateMapper:
         .iterator
         .map(id => SclsKey.Key.ProposalRoots(purpose) -> SclsValue.Entry.ProposalRoot(id))
     }
-    params.flatMap { parameterEntries =>
+    (pools, params).tupled.flatMap { (poolEntries, parameterEntries) =>
       projectProposals(gov.proposals.actions).map { proposalEntries =>
-        blocks ++ accounts ++ pools ++ vrfHashes ++ parameterEntries ++ rootEntries ++
+        blocks ++ accounts ++ poolEntries.iterator ++ vrfHashes ++ parameterEntries ++ rootEntries ++
           proposalEntries.iterator ++ SclsDRepMapper.project(base) ++ Iterator(
             SclsKey.Key.CommitteeEntities -> SclsValue.Entry.CommitteeEntity(committeeState),
             SclsKey.Key.Committee -> SclsValue.Entry.GovernanceCommittee(gov.committee),
@@ -186,6 +200,35 @@ object SclsStateMapper:
     }
 
   private val conwayProtVer = ProtVer(Word64.fromUnsigned(9L), Word64.zero)
+
+  /** A pool's future parameters as the canonical state writes them, the node's parameters: one
+    * holding a voting key is refused, as they have no place for it.
+    */
+  private def exportedFuture(
+      pool: KeyHash[StakePool],
+      params: StakePoolParams
+  ): Either[Error, PoolParams] =
+    params.blsKey match
+      case PoolParamsBlsKey.Leios(Some(_)) => Left(Error.FuturePoolBlsKey(pool))
+      case PoolParamsBlsKey.Leios(None) | PoolParamsBlsKey.Node11_1 =>
+        Right(Convert.poolParamsBack(params))
+
+  /** A pool's future parameters the canonical state holds, at the state's types in the layout of
+    * `base`, their metadata's hash read.
+    */
+  private def importedFuture(
+      base: NewEpochState[Conway],
+      pool: KeyHash[StakePool],
+      params: PoolParams
+  ): Either[Error, StakePoolParams] =
+    params.metadata
+      .traverse(PoolMetadata.held)
+      .leftMap(Error.FuturePoolMetadata(pool, _))
+      .flatMap(metadata =>
+        Convert
+          .stakePoolParams(params, PoolParamsBlsKey.certified(base.layout.stateLayout), metadata)
+          .leftMap(Error.FuturePoolParams(pool, _))
+      )
 
   private def projectProposals(
       actions: Vector[GovActionState]
@@ -314,7 +357,7 @@ object SclsStateMapper:
         None,
         None,
         Sorted.empty[KeyHash[StakePool], StakePoolState],
-        Sorted.empty[KeyHash[StakePool], PoolParams],
+        Sorted.empty[KeyHash[StakePool], StakePoolParams],
         Sorted.empty[KeyHash[StakePool], EpochNo],
         Sorted.empty[VRFVerKeyHash, NonZero[Word64]],
         Map.empty,
@@ -358,17 +401,17 @@ object SclsStateMapper:
               else if value.state.isEmpty && value.retiringEpoch.isEmpty && value.futureParams.isEmpty
               then Left(Error.EmptyStakePoolValue(poolKey))
               else
-                Right(
+                value.futureParams.traverse(importedFuture(builder.base, pool, _)).map { future =>
                   acc.copy(
                     stakePools = value.state.fold(acc.stakePools)(acc.stakePools.updated(pool, _)),
-                    futurePoolParams = value.futureParams.fold(acc.futurePoolParams)(
+                    futurePoolParams = future.fold(acc.futurePoolParams)(
                       acc.futurePoolParams.updated(pool, _)
                     ),
                     retiringPools = value.retiringEpoch.fold(acc.retiringPools)(
                       acc.retiringPools.updated(pool, _)
                     )
                   )
-                )
+                }
             case (
                   poolKey @ SclsKey.Key.StakePoolVrfHashes(hash),
                   SclsValue.Entry.VrfKeyCount(count)

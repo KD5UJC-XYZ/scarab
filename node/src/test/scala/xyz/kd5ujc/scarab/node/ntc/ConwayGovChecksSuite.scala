@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
@@ -72,7 +73,7 @@ class ConwayGovChecksSuite extends FunSuite:
           Globals(setup.globals, setup.geometry),
           nes.epoch.toBigInt,
           right(s"$what flat")(Tx.fromEnvelope(bytes, Era.Conway)),
-          right(s"$what typed")(ConwayTx.fromEnvelope(bytes)),
+          right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           gov,
           ConwayNewEpochState.ls.andThen(ConwayLedgerState.cert).get(nes),
           gov.curPParams,
@@ -211,7 +212,7 @@ class ConwayGovChecksSuite extends FunSuite:
       case other => fail(s"an envelope that is not an array: $other")
     s.copy(
       flat = right("edited flat")(Tx.fromEnvelope(again, Era.Conway)),
-      typed = right("edited typed")(ConwayTx.fromEnvelope(again))
+      typed = right("edited typed")(ConwayTx.fromEnvelope(again, StateLayout.Node11_1))
     )
 
   private def withVersion(s: Seen, major: Int): Seen =

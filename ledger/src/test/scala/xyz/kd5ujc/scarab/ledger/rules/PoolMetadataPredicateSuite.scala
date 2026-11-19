@@ -86,7 +86,10 @@ class PoolMetadataPredicateSuite extends FunSuite:
       )
       assertEquals(state, original)
     val next = run(pp, params(31), state).fold(e => fail(e.toString), identity)
-    assertEquals(next.future.values.toVector.map(_.metadata), Vector(Some(metadata(31))))
+    assertEquals(
+      next.future.values.toVector.map(_.metadata.map(_.bytes)),
+      Vector(Some(metadata(31)))
+    )
   }
 
   test("network precedes metadata and metadata precedes cost for a multiply invalid registration") {

@@ -8,7 +8,6 @@ import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
-  ByteStrings,
   Anchor,
   Certificate,
   Committee,
@@ -467,15 +466,15 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
           )
           // `Shelley/Rules/Pool.hs:245-250`: network, metadata hash, then minimum cost,
           // before either registration or re-registration can change the pool state.
-          metadata <- Sts.lift[F, LedgerFailure, Option[Bytes]](
+          metadata <- Sts.lift[F, LedgerFailure, Option[PoolMetadata]](
             params.metadata
-              .traverse(PoolParams.metadataHash(_)(using ByteStrings.Chunked))
+              .traverse(PoolMetadata.held)
               .leftMap(cause => LedgerFailure.Undecodable(id, TxDefect.PoolMetadata(cause)))
           )
           _ <- Sts.predicate[F, PredicateFailure](
-            !pp.restrictsPoolMetadataHash || metadata.forall(_.size <= 32),
+            !pp.restrictsPoolMetadataHash || metadata.forall(_.hash.size <= 32),
             PredicateFailure.pool(
-              PoolFailure.PoolMedataHashTooBig(params.operator, metadata.fold(0)(_.size))
+              PoolFailure.PoolMedataHashTooBig(params.operator, metadata.fold(0)(_.hash.size))
             )
           )
           _ <- Sts.predicate[F, PredicateFailure](
@@ -518,10 +517,20 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
                   if unique then s.vrfKeyHashes.updated(vrf, NonZero.oneWord) else s.vrfKeyHashes
               )
             case Some(current) =>
-              for _ <- Sts.predicate[F, PredicateFailure](
+              for
+                _ <- Sts.predicate[F, PredicateFailure](
                   !unique || current.vrf == vrf || !s.vrfKeyHashes.contains(vrf),
                   PredicateFailure.pool(
                     PoolFailure.VRFKeyHashAlreadyRegistered(params.operator, params.vrfKeyHash)
+                  )
+                )
+                // the parameters in the layout of the pool's state: in the Leios layout a
+                // certificate before Dijkstra registers no voting key
+                future <- Refuse.vocab[F, StakePoolParams](
+                  Convert.stakePoolParams(
+                    params,
+                    PoolParamsBlsKey.certified(current.blsKey.stateLayout),
+                    metadata
                   )
                 )
               yield
@@ -532,17 +541,11 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
                   else
                     s.future.get(operator) match
                       case None => s.vrfKeyHashes.updated(vrf, NonZero.oneWord)
-                      case Some(earlier) if earlier.vrfKeyHash != params.vrfKeyHash =>
-                        VRFVerKeyHash
-                          .fromBytes(earlier.vrfKeyHash)
-                          .fold(
-                            _ => s.vrfKeyHashes,
-                            e => s.vrfKeyHashes.removed(e)
-                          )
-                          .updated(vrf, NonZero.oneWord)
+                      case Some(earlier) if earlier.vrf != vrf =>
+                        s.vrfKeyHashes.removed(earlier.vrf).updated(vrf, NonZero.oneWord)
                       case Some(_) => s.vrfKeyHashes
                 s.copy(
-                  future = s.future.updated(operator, params),
+                  future = s.future.updated(operator, future),
                   retiring = s.retiring.removed(operator),
                   vrfKeyHashes = vrfs
                 )

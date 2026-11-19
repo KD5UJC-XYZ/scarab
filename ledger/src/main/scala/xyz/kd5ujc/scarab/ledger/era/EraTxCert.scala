@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   HotCommittee,
   KeyHash,
   StakePool,
+  StakePoolParams,
   Staking
 }
 
@@ -74,9 +75,8 @@ trait EraTxCert[E <: EraTag]:
     val numKeys = certs.count(lookupRegStakeTxCert(_).isDefined)
     val newRegPools = certs.foldLeft(Set.empty[KeyHash[StakePool]])((regPoolIds, cert) =>
       getRegPoolTxCert(cert) match
-        case Some(params)
-            if !(isPoolRegistered(params.sppId) || regPoolIds.contains(params.sppId)) =>
-          regPoolIds + params.sppId
+        case Some(params) if !(isPoolRegistered(params.id) || regPoolIds.contains(params.id)) =>
+          regPoolIds + params.id
         case _ => regPoolIds
     )
     Coin(

@@ -96,17 +96,19 @@ class LedgerPeersWiringSuite extends FailsOnUncaught:
     val pstate = cert.pState.copy(
       stakePools = Sorted.map(registered.flatMap((n, rs) => pool(n, Some(rs))).toVector),
       future = Sorted.map(future.map { (n, rs) =>
-        key(n) -> xyz.kd5ujc.scarab.ledger.PoolParams(
-          key(n).bytes,
-          Bytes.fromArray(Array.fill(32)(1.toByte)),
-          BigInt(0),
-          BigInt(0),
-          Rational.zero,
-          xyz.kd5ujc.scarab.ledger
-            .RewardAccount(0, xyz.kd5ujc.scarab.ledger.Credential.Key(key(n).bytes)),
-          Set.empty,
-          rs,
-          None
+        key(n) -> xyz.kd5ujc.scarab.ledger.state.Build.stakePoolParams(
+          xyz.kd5ujc.scarab.ledger.PoolParams(
+            key(n).bytes,
+            Bytes.fromArray(Array.fill(32)(1.toByte)),
+            BigInt(0),
+            BigInt(0),
+            Rational.zero,
+            xyz.kd5ujc.scarab.ledger
+              .RewardAccount(0, xyz.kd5ujc.scarab.ledger.Credential.Key(key(n).bytes)),
+            Set.empty,
+            rs,
+            None
+          )
         )
       }.toVector)
     )

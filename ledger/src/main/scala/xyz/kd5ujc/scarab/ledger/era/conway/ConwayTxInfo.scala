@@ -173,8 +173,8 @@ object ConwayTxInfo:
     txCert match
       case ConwayTxCert.ConwayTxCertPool(PoolCert.RegPool(params)) =>
         PV3.TxCert.TxCertPoolRegister(
-          transKeyHash(params.sppId),
-          PV1.PubKeyHash(params.value.vrfKeyHash)
+          transKeyHash(params.id),
+          PV1.PubKeyHash(params.vrf.bytes)
         )
       case ConwayTxCert.ConwayTxCertPool(PoolCert.RetirePool(poolId, retireEpochNo)) =>
         PV3.TxCert.TxCertPoolRetire(transKeyHash(poolId), transEpochNo(retireEpochNo))

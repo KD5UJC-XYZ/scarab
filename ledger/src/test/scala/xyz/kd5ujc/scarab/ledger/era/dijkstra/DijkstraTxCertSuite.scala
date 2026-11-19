@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import munit.FunSuite
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{Anchor, CborRead, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{Anchor, CborRead, DecodeField, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraAnchor,
   DijkstraCert,
   DijkstraDelegatee,
   DijkstraGenesis,
+  DijkstraPoolMetadata,
   DijkstraPurposes,
-  Params
+  Params,
+  V12
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayDelegCert,
@@ -33,6 +36,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   HotCommittee,
   KeyHash,
   KeyRole,
+  PoolParamsBlsKey,
   ScriptHash,
   StakePool,
   Staking
@@ -271,11 +275,11 @@ class DijkstraTxCertSuite extends FunSuite:
   }
 
   test("a pool registration builds, reads back and pays its deposit once, as Conway's") {
-    // the pool's parameters as Conway's decoder reads them: Dijkstra's registration holds the same
-    // StakePoolParams, whose voting key the era types do not hold yet
+    // the pool's parameters as the Leios build's Conway decoder reads them: Dijkstra's registration
+    // holds the same StakePoolParams, here with no voting key
     val regPool =
       s"8a03$pool${"5820" + "76" * 32}0000d81e820001581de0${"72" * 28}8080f6"
-    val params = ConwayTxCert.decode(node(regPool)) match
+    val params = ConwayTxCert.decode(node(regPool), StateLayout.Leios) match
       case Right(ConwayTxCert.ConwayTxCertPool(PoolCert.RegPool(params))) => params
       case other => fail(s"not a registration: $other")
     val reg = c.mkRegPoolTxCert(params)
@@ -292,4 +296,36 @@ class DijkstraTxCertSuite extends FunSuite:
     val certs = Vector(reg, reg, c.mkRegDepositTxCert(cred, Coin(5)))
     assertEquals(c.getTotalDepositsTxCerts(pp, _ => false, certs), Coin(2000000 + 500000000))
     assertEquals(c.getTotalDepositsTxCerts(pp, _ == pk, certs), Coin(2000000))
+  }
+
+  test(
+    "a registration whose metadata URL is chunked text reads, as the flat decoder at 12 reads it"
+  ) {
+    // `[url, hash]` with the URL "x" as chunked text (`7f 61 78 ff`) and a one-byte hash: the
+    // reference reads it at version 12 (`decodeString`, cardano-ledger 9df9f98c
+    // `Decoding/Decoder.hs:1564-1598`), as the flat decoder does
+    val metadata = "827f6178ff4100"
+    val raw = s"8a03$pool${"5820" + "76" * 32}0000d81e820001581de0${"72" * 28}8080$metadata"
+    val n = CborRead.decode(hex(raw), V12.nestedLimits).fold(e => fail(e.toString), identity)
+    val flat = DijkstraCert.decode(n).fold(e => fail(e.toString), identity)
+    flat match
+      case DijkstraCert.RegisterPool(params) =>
+        assertEquals(params.metadata, Some(DijkstraPoolMetadata("x", hex("00"))))
+      case other => fail(s"not a registration: $other")
+    DijkstraProcedures.cert(flat, Right(n)) match
+      case Right(DijkstraTxCert.DijkstraTxCertPool(PoolCert.RegPool(params))) =>
+        assertEquals(params.metadata.map(m => (m.bytes, m.hash)), Some((hex(metadata), hex("00"))))
+        assertEquals(params.blsKey, PoolParamsBlsKey.Leios(None))
+      case other => fail(s"not read: $other")
+  }
+
+  test("a registration whose VRF key hash is 31 bytes is refused by the certificate's reader") {
+    // `decodeStakePoolParamsFlat` reads `sppVrf` as a 32-byte hash (cardano-ledger 9df9f98c
+    // `State/StakePool.hs:746-772`): the era types' VRFVerKeyHash is never given another length
+    val raw = s"8a03$pool${"581f" + "76" * 31}0000d81e820001581de0${"72" * 28}8080f6"
+    val n = CborRead.decode(hex(raw), V12.nestedLimits).fold(e => fail(e.toString), identity)
+    assertEquals(
+      DijkstraCert.decode(n),
+      Left(LedgerDecodeError.ByteLength(DecodeField.PoolVrf, 32, 31))
+    )
   }

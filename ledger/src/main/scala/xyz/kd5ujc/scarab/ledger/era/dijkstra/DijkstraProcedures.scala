@@ -3,13 +3,16 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import scala.collection.immutable.SortedMap
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
+  CborRead,
   Constitution,
+  DecoderVersion,
   Credential as FlatCredential,
   DecodeField,
   GovActionId,
+  LedgerDecodeError,
   Unsigned,
   Voter,
   VotingProcedure
@@ -20,6 +23,7 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraDelegatee,
   DijkstraGovAction,
   DijkstraGovActionId,
+  DijkstraPoolParams,
   DijkstraProposal,
   DijkstraVoter,
   DijkstraVotingProcedure
@@ -40,7 +44,9 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Version,
   VotingProcedures
 }
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.ledger.state.{
+  BlsKey,
   ColdCommittee,
   Coin,
   Credential,
@@ -50,9 +56,15 @@ import xyz.kd5ujc.scarab.ledger.state.{
   HotCommittee,
   KeyHash,
   KeyRole,
+  PoolMetadata,
+  PoolParamsBlsKey,
   ScriptHash,
+  Sorted,
   StakePool,
-  Staking
+  StakePoolParams,
+  Staking,
+  VRFVerKeyHash,
+  VocabError
 }
 
 // Dijkstra's certificates, proposals and votes, read from what the Leios build's block decoder
@@ -84,11 +96,69 @@ object DijkstraProcedures:
     case DijkstraDelegatee.StakeVote(pool, drep) =>
       (poolKey(pool), vocab(Convert.drep(drep))).mapN(Delegatee.DelegStakeVote(_, _))
 
-  /** The certificate the flat decoder read, at the reference's types. A pool registration is not
-    * read ([[EraTxError.PoolVotingKeyNotYetTyped]]): the era types' pool parameters do not hold its
-    * voting key yet (#85). The decoder bounded each other field as the reference's type does.
+  /** The parameters of a pool registration the flat decoder read (`decodeStakePoolParamsFlat`,
+    * cardano-ledger 9df9f98c `State/StakePool.hs:746-772`), at the state's types, with the voting
+    * key the Leios build's `StakePoolParams` holds (`sppBlsKey`, `:479`). The flat decoder keeps
+    * the relays and the metadata decoded; the state keeps the bytes they were read from, as it does
+    * for Conway's, so they are taken from `item`, the certificate as the body's bytes hold it,
+    * whose items the flat decoder read: the tag, then nine items, or ten with the key's place
+    * third. No relays at all is `Bytes.empty`, as Conway's decoder keeps them.
     */
-  private[dijkstra] def cert(c: DijkstraCert): Either[EraTxError, DijkstraTxCert] =
+  private def poolParams(
+      p: DijkstraPoolParams,
+      item: Node
+  ): Either[EraTxError, StakePoolParams] =
+    for
+      xs <- CborRead.array(item, DecodeField.Certificate).leftMap(EraTxError.Decode(_))
+      extra = if xs.sizeIs == 11 then 1 else 0
+      relays <- xs
+        .lift(8 + extra)
+        .toRight(
+          EraTxError.Decode(LedgerDecodeError.ArrayLength(DecodeField.Certificate, 10, xs.size))
+        )
+      metadataItem <- xs
+        .lift(9 + extra)
+        .toRight(
+          EraTxError.Decode(LedgerDecodeError.ArrayLength(DecodeField.Certificate, 10, xs.size))
+        )
+      metadata <- metadataItem.value match
+        case Value.Null => Right(None)
+        case _ =>
+          PoolMetadata
+            .read(metadataItem.original, DecoderVersion.Dijkstra, StateLayout.Leios)
+            .bimap(EraTxError.Decode(_), Some(_))
+      params <- vocab(
+        (
+          KeyHash.fromBytes[StakePool](p.operator),
+          VRFVerKeyHash.fromBytes(p.vrf),
+          UnitInterval.boundRational(p.margin).toRight(VocabError.NotUnitInterval(p.margin)),
+          Convert.accountAddress(p.account),
+          p.owners.toList.traverse(KeyHash.fromBytes[Staking]).map(Sorted.set(_))
+        ).mapN((id, vrf, margin, account, owners) =>
+          StakePoolParams(
+            id,
+            vrf,
+            PoolParamsBlsKey.Leios(p.blsKey.map(k => BlsKey(k.key, k.proofOfPossession))),
+            Coin(p.pledge),
+            Coin(p.cost),
+            margin,
+            account,
+            owners,
+            if relays.original == Bytes(Vector(0x80.toByte)) then Bytes.empty else relays.original,
+            metadata
+          )
+        )
+      )
+    yield params
+
+  /** The certificate the flat decoder read, at the reference's types; `item` is the certificate as
+    * the body's bytes hold it, which a pool registration's parameters are read from
+    * ([[poolParams]]). The decoder bounded each field as the reference's type does.
+    */
+  private[dijkstra] def cert(
+      c: DijkstraCert,
+      item: => Either[EraTxError, Node]
+  ): Either[EraTxError, DijkstraTxCert] =
     import DijkstraTxCert.*
     c match
       case DijkstraCert.Register(cred, deposit) =>
@@ -107,7 +177,8 @@ object DijkstraProcedures:
         (credential[Staking](cred), delegatee(to)).mapN((c, d) =>
           DijkstraTxCertDeleg(DijkstraDelegCert.DijkstraRegDelegCert(c, d, Coin(deposit)))
         )
-      case DijkstraCert.RegisterPool(_) => Left(EraTxError.PoolVotingKeyNotYetTyped)
+      case DijkstraCert.RegisterPool(p) =>
+        item.flatMap(poolParams(p, _)).map(params => DijkstraTxCertPool(PoolCert.RegPool(params)))
       case DijkstraCert.RetirePool(pool, epoch) =>
         (poolKey(pool), vocab(EpochNo.fromBigInt(epoch)))
           .mapN((p, e) => DijkstraTxCertPool(PoolCert.RetirePool(p, e)))

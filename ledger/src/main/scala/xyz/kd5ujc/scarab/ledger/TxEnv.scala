@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.ledger.rules.Test
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
-import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet}
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet, StateLayout}
 
 /** What a decoded transaction holds that its era cannot have. The reference ledger refuses all of
   * these in its transaction decoder (a `DecoderError`), before any rule runs, so none is a
@@ -78,6 +78,8 @@ sealed trait LedgerFailure extends DomainError:
     case LedgerFailure.StateOutOfRange(id, e) =>
       s"tx ${id.hex.take(16)}: a quantity of the ledger state is out of range: $e"
     case LedgerFailure.LayoutNotYet(cause) => cause.message
+    case LedgerFailure.PoolParamsLayout(pool, params, state) =>
+      s"pool ${pool.hex.take(16)}: parameters of the $params layout for a state of the $state layout"
     case LedgerFailure.NativeScriptUnread(id, hash) =>
       s"tx ${id.hex.take(16)}: native script ${hash.hex.take(16)} has no tree to evaluate here"
 
@@ -143,6 +145,15 @@ object LedgerFailure:
     * refuses such a build before any rule runs (`NodeSetup`), so the rules never meet it.
     */
   final case class LayoutNotYet(cause: ReferenceBuildNotYet) extends LedgerDefect
+
+  /** A pool's registration parameters of one build's layout (`sppBlsKey`'s place,
+    * [[xyz.kd5ujc.scarab.ledger.state.PoolParamsBlsKey]]) for a pool state of the other's: a
+    * certificate decoded for one build applied to a state of the other. The reference is one build,
+    * whose decoder gives its own `StakePoolParams`, so it never meets it; POOL refuses it rather
+    * than store parameters the state's codec does not write.
+    */
+  final case class PoolParamsLayout(pool: Bytes, params: StateLayout, state: StateLayout)
+      extends LedgerDefect
 
   /** A native script the transaction can use, among those it needs, whose time-lock tree the flat
     * output does not hold: a Dijkstra native script with a guard, which the flat output keeps by

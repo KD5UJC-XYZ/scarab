@@ -174,9 +174,7 @@ class StateAdmissionSuite extends CatsEffectSuite:
         // the reference's result from its empty map: one count for each pool that uses the key,
         // registered or waiting to re-register (`HardFork.hs:107-125`, cardano-ledger f649f975)
         val expected = (pools.stakePools.valuesIterator.map(_.vrf) ++
-          pools.future.valuesIterator.flatMap(p =>
-            VRFVerKeyHash.fromBytes(p.vrfKeyHash).toOption
-          )).toVector
+          pools.future.valuesIterator.map(_.vrf)).toVector
           .groupMapReduce(identity)(_ => 1L)(_ + _)
         assertEquals(counts.view.mapValues(_.value.bits).toMap, expected)
         assert(

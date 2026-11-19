@@ -93,8 +93,9 @@ object LeiosGen:
         )
     case complete => Gen.const(complete)
 
-  /** A state of `E` in the Leios layout: no pool distribution, the Leios snapshots, and the pools
-    * of the state and of a pending reward update with voting keys.
+  /** A state of `E` in the Leios layout: no pool distribution, the Leios snapshots, the pools of
+    * the state and of a pending reward update with voting keys, and the future parameters with the
+    * voting key's place empty, as a certificate before Dijkstra registers them.
     */
   def newEpochState[E <: EraTag](using ShelleyBasedEra[E]): Gen[NewEpochState[E]] =
     for
@@ -107,7 +108,14 @@ object LeiosGen:
     yield nes.copy(
       es = nes.es.copy(
         snapshots = snapshots,
-        ls = LedgerState.pState[E].modify(_.copy(stakePools = Sorted.map(pools)))(nes.es.ls)
+        ls = LedgerState
+          .pState[E]
+          .modify(ps =>
+            ps.copy(
+              stakePools = Sorted.map(pools),
+              future = ps.future.transform((_, f) => f.copy(blsKey = PoolParamsBlsKey.Leios(None)))
+            )
+          )(nes.es.ls)
       ),
       ru = ru,
       layout = NewEpochState.Layout.Leios

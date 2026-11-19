@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.{GovAction as FlatGovAction, ScriptContexts, Tx as FlatTx}
@@ -28,7 +29,7 @@ class ConwayUpdatePlutusDataSuite extends FunSuite:
         val what = s"${c.path}/${rc.label}"
         val bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
         val flat = right(s"$what flat")(FlatTx.fromEnvelope(bytes, Era.Conway))
-        val typed = right(s"$what typed")(ConwayTx.fromEnvelope(bytes))
+        val typed = right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1))
         val proposals =
           tx.bodyOf
             .proposalProcedures[TxLevel.Top](tx.body[TxLevel.Top](typed)(using top))(using

@@ -15,8 +15,10 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerDecodeError,
   Metadatum,
   NativeScript as FlatNativeScript,
+  PoolParams,
   PreprodDeepTx,
   Proposal,
+  ReferenceCorpus,
   Purpose,
   RewardAccount,
   Script as FlatScript,
@@ -47,11 +49,13 @@ import xyz.kd5ujc.scarab.ledger.state.{
   HotCommittee,
   KeyHash,
   KeyRole,
+  Network,
+  PoolParamsBlsKey,
   ScriptHash,
   StakePool,
   Staking
 }
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** Conway's types (stage 2 of `docs/design/era-typed-transactions.md`): every recorded Conway body
   * read as a `ConwayTxBody` has, through Conway's classes, every field the flat decoder reads; and
@@ -147,7 +151,7 @@ class EraConwaySuite extends munit.FunSuite:
     assert(bodies.nonEmpty)
     val certs = bodies.map { raw =>
       val flat = FlatTxBody.decode(raw, Era.Conway).toOption.get
-      val c = ConwayTxBody.decode(raw).toOption.get
+      val c = ConwayTxBody.decode(raw, StateLayout.Node11_1).toOption.get
       assertEquals(body.id[TxLevel.Top](c), flat.id)
       assertEquals(body.inputs[TxLevel.Top](c).toVector, flat.inputs.sorted)
       assertEquals(body.outputs[TxLevel.Top](c).map(body.outputsOf.raw), flat.outputs.map(_.raw))
@@ -197,9 +201,80 @@ class EraConwaySuite extends munit.FunSuite:
         typed.map(body.certsOf.getScriptWitnessTxCert),
         flat.certificates.map(Purpose.certificateScript)
       )
+      // and each reads back as the flat certificate, a pool's parameters with their bytes
+      assertEquals(typed.map(ConwayTxCert.toStored), flat.certificates)
       typed.size
     }.sum
     assert(certs > 0, "no recorded Conway body has a certificate")
+  }
+
+  /** The Conway bodies of the reference's decoding corpora, with their pool registrations. */
+  private lazy val referenceBodies: Vector[(String, Bytes)] =
+    Vector(
+      ReferenceCorpus.Corpus.ConwayDecoding,
+      ReferenceCorpus.Corpus.PoolRelays,
+      ReferenceCorpus.Corpus.UrlLength,
+      ReferenceCorpus.Corpus.DefiniteText,
+      ReferenceCorpus.Corpus.DefiniteBytes
+    ).flatMap(c => ReferenceCorpus.load(c).fold(e => fail(e.toString), identity))
+      .filter(c => c.era == Era.Conway && c.kind == ReferenceCorpus.Kind.Body)
+      .map(c => c.id -> c.raw)
+
+  test(
+    "every Conway pool registration, recorded and of the reference's corpora, reads at the state's types in the layout of each build"
+  ) {
+    val all = bodies.map(raw => raw.hex.take(16) -> raw) ++ referenceBodies
+    val registrations = all.map { (what, raw) =>
+      val layouts = Vector(StateLayout.Node11_1, StateLayout.Leios)
+      FlatTxBody.decode(raw, Era.Conway) match
+        case Left(e) =>
+          // what the flat decoder refuses, the era decoder refuses with its error, in either layout
+          layouts.foreach(l =>
+            assertEquals(ConwayTxBody.decode(raw, l).map(_ => ()), Left(EraTxError.Decode(e)), what)
+          )
+          0
+        case Right(flat) =>
+          val pools = flat.certificates.collect { case Certificate.RegisterPool(p) => p }
+          layouts.zip(Vector(PoolParamsBlsKey.Node11_1, PoolParamsBlsKey.Leios(None))).foreach {
+            (layout, key) =>
+              val c = ConwayTxBody.decode(raw, layout).fold(e => fail(s"$what: $e"), identity)
+              val certs = body.certs[TxLevel.Top](c).toVector
+              // each certificate reads back as the flat one, a pool's parameters with their bytes
+              assertEquals(certs.map(ConwayTxCert.toStored), flat.certificates, what)
+              val params = certs.flatMap(body.certsOf.getRegPoolTxCert)
+              assertEquals(params.size, pools.size, what)
+              params.zip(pools).foreach { (typed, p) =>
+                // the 11.1 build's parameters have no voting key's place; the Leios build's read
+                // none in a Conway body (`decodeStakePoolParamsFlat`, 9df9f98c `:746-762`)
+                assertEquals(typed.blsKey, key, what)
+                assertEquals(typed.id.bytes, p.operator, what)
+                assertEquals(typed.vrf.bytes, p.vrfKeyHash, what)
+                assertEquals((typed.pledge.value, typed.cost.value), (p.pledge, p.cost), what)
+                assertEquals(typed.margin.rational, p.margin, what)
+                assertEquals(
+                  (typed.accountAddress.networkId.wire, typed.accountAddress.id.credential),
+                  (
+                    p.rewardAccount.network,
+                    Convert.credential[Staking](p.rewardAccount.credential).toOption.get
+                  ),
+                  what
+                )
+                assertEquals(typed.owners.toSet.map(_.bytes), p.owners, what)
+                assertEquals(typed.relays, p.relays, what)
+                assertEquals(typed.metadata.map(_.bytes), p.metadata, what)
+                assertEquals(
+                  typed.metadata.map(_.hash),
+                  p.metadata
+                    .map(PoolParams.metadataHash(_)(using ByteStrings.Chunked).toOption.get),
+                  what
+                )
+              }
+          }
+          pools.size
+    }
+    // the recorded blocks' bodies and the corpora's Conway bodies, and the pool registrations of
+    // those the decoder accepts
+    assertEquals((all.size, registrations.sum), (396, 32))
   }
 
   private def node(hex: String) =
@@ -219,7 +294,7 @@ class EraConwaySuite extends munit.FunSuite:
     ).foreach { (n, retired) =>
       val refused = LedgerDecodeError.RetiredCertificate(retired)
       assertEquals(Certificate.decode(n, Era.Conway), Left(refused))
-      assertEquals(ConwayTxCert.decode(n), Left(EraTxError.Decode(refused)))
+      assertEquals(ConwayTxCert.decode(n, StateLayout.Node11_1), Left(EraTxError.Decode(refused)))
       // Babbage's decoder reads them, and the projection into Conway refuses them
       assert(Certificate.decode(n, Era.Babbage).isRight)
     }
@@ -231,7 +306,7 @@ class EraConwaySuite extends munit.FunSuite:
     val flat = FlatTxBody.decode(withUpdate, Era.Conway)
     assert(flat.isLeft, flat)
     assertEquals(
-      ConwayTxBody.decode(withUpdate).left.toOption,
+      ConwayTxBody.decode(withUpdate, StateLayout.Node11_1).left.toOption,
       flat.left.toOption.map(EraTxError.Decode(_))
     )
   }
@@ -339,17 +414,32 @@ class EraConwaySuite extends munit.FunSuite:
     val regPool = node(
       s"8a03$pool${"5820" + "76" * 32}0000d81e820001581de0${"72" * 28}8080f6"
     )
-    ConwayTxCert.decode(regPool) match
+    ConwayTxCert.decode(regPool, StateLayout.Node11_1) match
       case Right(cert @ ConwayTxCertPool(PoolCert.RegPool(params))) =>
-        assertEquals(params.value.operator, ph)
+        assertEquals(params.id.bytes, ph)
+        assertEquals(params.vrf.bytes, Bytes.fromHex("76" * 32).toOption.get)
+        assertEquals(params.blsKey, PoolParamsBlsKey.Node11_1)
+        assertEquals(params.margin.rational, Rational(0, 1))
+        assertEquals(params.accountAddress.networkId, Network.Testnet)
+        assertEquals(params.relays, Bytes.empty)
+        assertEquals(params.metadata, None)
         assertEquals(c.getVKeyWitnessTxCert(cert), Some(ph))
         assertEquals(c.getScriptWitnessTxCert(cert), None)
         assertEquals(c.getRegPoolTxCert(cert), Some(params))
       case other => fail(s"not a pool registration: $other")
+    // in the Leios build's layout, the same parameters with the voting key's place empty
+    assertEquals(
+      ConwayTxCert
+        .decode(regPool, StateLayout.Leios)
+        .toOption
+        .flatMap(c.getRegPoolTxCert)
+        .map(_.blsKey),
+      Some(PoolParamsBlsKey.Leios(None))
+    )
     assertEquals(cases.map(_._1.take(4)).distinct.size + 1, 17, "every Conway form but tag 3")
     cases.foreach { (hex, expected, scriptWitness, keyWitness) =>
       val n = node(hex)
-      val cert = ConwayTxCert.decode(n)
+      val cert = ConwayTxCert.decode(n, StateLayout.Node11_1)
       assertEquals(cert, Right(expected), hex)
       assertEquals(c.getScriptWitnessTxCert(expected), scriptWitness, hex)
       assertEquals(c.getVKeyWitnessTxCert(expected), keyWitness, hex)
@@ -389,7 +479,9 @@ class EraConwaySuite extends munit.FunSuite:
       s"8311${script}05" -> c.mkUnRegDRepTxCert(cred, Coin(5)),
       s"8312${script}f6" -> c.mkUpdateDRepTxCert(cred, None)
     )
-    built.foreach((hex, cert) => assertEquals(ConwayTxCert.decode(node(hex)), Right(cert), hex))
+    built.foreach((hex, cert) =>
+      assertEquals(ConwayTxCert.decode(node(hex), StateLayout.Node11_1), Right(cert), hex)
+    )
     // and each reader reads back what its builder took, and nothing from another form
     assertEquals(
       c.getRegDepositTxCert(c.mkRegDepositTxCert(cred, Coin(5))),
@@ -432,6 +524,21 @@ class EraConwaySuite extends munit.FunSuite:
     assert(EraTxBody.conway.scriptsOf eq EraTxBody.conway.outputsOf.scripts)
   }
 
+  test("a registration whose VRF key hash is 31 bytes is refused by the certificate's reader") {
+    // `decodeStakePoolParamsFlat` reads `sppVrf` as a 32-byte hash (`State/StakePool.hs:578-589`,
+    // cardano-ledger f649f975): the state's VRFVerKeyHash is never given another length
+    val n = node(s"8a03$pool${"581f" + "76" * 31}0000d81e820001581de0${"72" * 28}8080f6")
+    val refused = LedgerDecodeError.ByteLength(DecodeField.PoolVrf, 32, 31)
+    assertEquals(Certificate.decode(n, Era.Conway), Left(refused))
+    StateLayout.values.foreach(layout =>
+      assertEquals(
+        ConwayTxCert.decode(n, layout),
+        Left(EraTxError.Decode(refused)),
+        layout.toString
+      )
+    )
+  }
+
   test("pool registrations are equal when their relays mean the same, as the reference compares") {
     // the empty relay list as `80`, and as `98 00`: one `StrictSeq StakePoolRelay`, so one
     // `StakePoolParams` under the derived `Eq` (`State/StakePool.hs:424-435`, cardano-ledger
@@ -441,13 +548,14 @@ class EraConwaySuite extends munit.FunSuite:
     val flat = Vector("80", "9800").map(r => Certificate.decode(registration(r), Era.Conway))
     flat.foreach(f => assert(f.isRight, f))
     assertNotEquals(flat(0), flat(1), "the flat certificates keep the relay bytes they read")
-    val typed = Vector("80", "9800").map(r => ConwayTxCert.decode(registration(r)))
+    val typed =
+      Vector("80", "9800").map(r => ConwayTxCert.decode(registration(r), StateLayout.Node11_1))
     assertEquals(typed(0), typed(1))
     val params = typed.flatMap(_.toOption).flatMap(EraTxCert.conway.getRegPoolTxCert)
     assertEquals(params.size, 2)
     assertEquals(params(0).hashCode, params(1).hashCode)
     // a registration with another relay is another certificate
-    val other = ConwayTxCert.decode(registration(s"81${"8400" + "f6" * 3}"))
+    val other = ConwayTxCert.decode(registration(s"81${"8400" + "f6" * 3}"), StateLayout.Node11_1)
     assert(other.isRight, other)
     assertNotEquals(other, typed(0))
   }
@@ -526,7 +634,7 @@ class EraConwaySuite extends munit.FunSuite:
     given tx.bodyOf.Level[TxLevel.Top] = tx.bodyOf.top
     transactions.foreach { t =>
       val flat = xyz.kd5ujc.scarab.ledger.Tx.fromBlock(t, Era.Conway).toOption.get
-      val c = ConwayTx.decode(t).toOption.get
+      val c = ConwayTx.decode(t, StateLayout.Node11_1).toOption.get
       assertEquals(tx.sizeTxForFeeCalculation[TxLevel.Top](c), flat.size)
       assertEquals(tx.isValid(c), IsPhase2Valid.of(flat.isValid))
       assertEquals(tx.bodyOf.id[TxLevel.Top](tx.body[TxLevel.Top](c)), flat.body.id)
@@ -644,7 +752,7 @@ class EraConwaySuite extends munit.FunSuite:
     case GovAction.InfoAction() => FlatGovAction.Info
 
   test("the recorded Conway bodies carry votes and proposals of every action") {
-    val read = bodies.map(raw => ConwayTxBody.decode(raw).toOption.get)
+    val read = bodies.map(raw => ConwayTxBody.decode(raw, StateLayout.Node11_1).toOption.get)
     val proposals = read.flatMap(body.proposalProcedures[TxLevel.Top](_).toVector)
     val votes = read.map(body.votingProcedures[TxLevel.Top](_).unVotingProcedures.size).sum
     assert(proposals.nonEmpty, "no recorded Conway body has a proposal")
@@ -939,15 +1047,22 @@ class EraConwaySuite extends munit.FunSuite:
   test("a submitted Conway transaction reads as its parts do from a block, in every form") {
     transactions.foreach { t =>
       val submitted = xyz.kd5ujc.scarab.ledger.Tx.envelope(t)
-      assertEquals(ConwayTx.fromEnvelope(submitted), ConwayTx.decode(t))
+      assertEquals(
+        ConwayTx.fromEnvelope(submitted, StateLayout.Node11_1),
+        ConwayTx.decode(t, StateLayout.Node11_1)
+      )
       // of three items, a valid transaction (`Alonzo/Tx.hs:541-553`, cardano-ledger f649f975)
       val aux = t.auxiliaryData.getOrElse(Bytes(Vector(0xf6.toByte)))
       val three = Bytes(Vector(0x83.toByte)) ++ t.body ++ t.witnesses ++ aux
-      if t.isValid then assertEquals(ConwayTx.fromEnvelope(three), ConwayTx.decode(t))
+      if t.isValid then
+        assertEquals(
+          ConwayTx.fromEnvelope(three, StateLayout.Node11_1),
+          ConwayTx.decode(t, StateLayout.Node11_1)
+        )
       // indefinite, as the flat decoder reads it
       val indefinite = Bytes(Vector(0x9f.toByte)) ++ submitted.drop(1) ++ Bytes(Vector(0xff.toByte))
       assertEquals(
-        ConwayTx.fromEnvelope(indefinite).isRight,
+        ConwayTx.fromEnvelope(indefinite, StateLayout.Node11_1).isRight,
         xyz.kd5ujc.scarab.ledger.Tx.fromEnvelope(indefinite, Era.Conway).isRight
       )
     }

@@ -18,10 +18,12 @@ import xyz.kd5ujc.scarab.consensus.state.{
 import xyz.kd5ujc.scarab.ledger.{PlutusStats, PoolParams, RewardAccount, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.{
+  Build,
   EpochInterval,
   EraTag,
-  PoolBlsKey,
   NewEpochState,
+  PoolBlsKey,
+  PoolParamsBlsKey,
   ShelleyBasedEra,
   SlotNo,
   WithOrigin,
@@ -126,7 +128,7 @@ class LeiosQueryAnswersSuite extends FunSuite:
         )
         val held = p.copy(
           retiring = p.retiring + (id -> nes.epoch.addInterval(EpochInterval.one)),
-          future = p.future + (id -> params)
+          future = p.future + (id -> Build.stakePoolParams(params, PoolParamsBlsKey.Leios(None)))
         )
         nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, held)))
     }
