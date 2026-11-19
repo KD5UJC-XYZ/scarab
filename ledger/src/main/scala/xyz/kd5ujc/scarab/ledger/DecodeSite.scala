@@ -353,6 +353,8 @@ enum DecodeField(val label: String) extends DecodeSite:
   case ByronInputIndex extends DecodeField("Byron input index")
   case ByronInputs extends DecodeField("Byron inputs")
   case ByronLovelace extends DecodeField("Byron lovelace")
+  case ByronMempoolPayload extends DecodeField("Byron mempool payload")
+  case ByronMempoolPayloadTag extends DecodeField("Byron mempool payload tag")
   case ByronOutput extends DecodeField("Byron output")
   case ByronOutputs extends DecodeField("Byron outputs")
   case ByronOutputValue extends DecodeField("Byron output value")

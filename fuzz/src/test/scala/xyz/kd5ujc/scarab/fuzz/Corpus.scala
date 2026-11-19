@@ -275,6 +275,31 @@ object Corpus extends munit.Assertions:
   lazy val byronHeaders: Vector[Array[Byte]] =
     decoded.collect { case b: Block.Byron => b.header.raw.toArray }
 
+  /** Byron's `MempoolPayload`, `[constructor, payload]`, of each kind found in the committed Byron
+    * main blocks: their transactions (0), the delegation certificate of each header (1; no body of
+    * these blocks holds one), and their update proposals (2) and votes (3).
+    */
+  lazy val byronPayloads: Vector[Array[Byte]] =
+    def items(n: Node): Vector[Node] = n.value match
+      case Value.Arr(xs) => xs
+      case _             => Vector.empty
+    def at(n: Node, path: Int*): Vector[Node] =
+      path.foldLeft(Vector(n))((ns, i) => ns.flatMap(items(_).lift(i)))
+    def payload(constructor: Int, n: Node): Array[Byte] =
+      Array(0x82.toByte, constructor.toByte) ++ n.original.toArray
+    decoded
+      .collect { case b: Block.Byron if !b.header.boundary => b }
+      .flatMap { b =>
+        val body = Cbor.decode(b.body, Cbor.Limits.Unbounded).toOption.toVector
+        val header = Cbor.decode(b.header.raw, Cbor.Limits.Unbounded).toOption.toVector
+        body.flatMap(at(_, 0)).flatMap(items).map(payload(0, _)) ++
+          header.flatMap(at(_, 3, 3, 1, 0)).map(payload(1, _)) ++
+          body.flatMap(at(_, 3, 0)).flatMap(items).map(payload(2, _)) ++
+          body.flatMap(at(_, 3, 1)).flatMap(items).map(payload(3, _))
+      }
+      .distinctBy(_.toVector)
+      .take(60)
+
   /** Original submitted-transaction envelopes: three fields before Alonzo, four from Alonzo. */
   def transactionsOf(era: Era): Vector[Array[Byte]] =
     val reference = era match

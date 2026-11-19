@@ -5226,6 +5226,28 @@
    "note": "`SlotInterval 0` of the empty record",
    "digest": "8c0cb1e6f81ac495"
   },
+  "def ledger.byron.ByronTransport.mempoolPayload": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs",
+     "symbol": "DecCBOR (AMempoolPayload ByteSpan)",
+     "lines": [85, 93]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Mempool.hs",
+     "symbol": "decodeByronGenTx",
+     "lines": [338, 339]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["ByronSubmissionSuite"],
+   "digest": "3b89593cc16267a9"
+  },
   "given ledger.byron.ByronAddress.given_Ordering_ByronAddress": {
    "upstream": [
     {

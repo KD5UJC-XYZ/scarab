@@ -75,8 +75,9 @@ Conway has a pool (#934): each applies a transaction by its own rule, LEDGER fro
 transaction index 0 as the reference's `mkMempoolEnv` does, and every held transaction is of the pool's era; a
 Byron or Dijkstra ledger has no pool (`NoLedger`). A submission names its era (`Submission`); one of another era is
 brought into the pool's era as the selected reference build does (`EraInjection`): under `11.1` it is translated
-forward through each era between, as cardano-node 11.1.3's `hardForkInjectTxs` does, and a later era's or a Byron
-transaction is refused with the combinator's era mismatch; under `11.2` and the Leios build it is serialised in its
+forward through each era between, as cardano-node 11.1.3's `hardForkInjectTxs` does, and a later era's transaction,
+or a Byron payload the decoder of its kind reads whole (`MempoolState.read`; one it refuses is `Malformed`), is
+refused with the combinator's era mismatch; under `11.2` and the Leios build it is serialised in its
 era and decoded in the pool's, earlier or later. When `sync` brings a ledger of a later era, the held transactions
 follow it the same way and keep their tickets: reapplied under `11.1`, applied with every check as from a peer under
 the other builds; one that does not reach the era leaves the pool with the mismatch. `add` validates against the state after all held

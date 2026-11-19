@@ -171,7 +171,8 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   eras.foreach { era =>
     test(s"$era: a Byron transaction is not injected") {
-      submit(era, Era.Byron, Bytes(Vector(0x80.toByte))) match
+      // mainnet's transaction at slot 3,313, as Byron's `MempoolPayload`
+      submit(era, Era.Byron, ByronPayloads.payload(0, ByronPayloads.redeemTx.original)) match
         case Left(rejection) =>
           assertEquals(rejection, Rejection.WrongEra(Era.Byron.index, era))
           assertEquals(reply(rejection, era), mismatch(Era.Byron, era))

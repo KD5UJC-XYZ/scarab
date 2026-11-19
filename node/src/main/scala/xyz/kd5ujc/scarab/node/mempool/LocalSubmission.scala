@@ -57,8 +57,8 @@ object LocalSubmission:
     * and a constructor from 0 to 3
     * (`eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs:85-93`, cardano-ledger f649f975).
     * These are the steps [[GenTx.prefix]] takes. A transaction of an era from Shelley to Conway is
-    * then read in its era by the mempool ([[MempoolState.read]]); one of Byron or Dijkstra is not
-    * read further, and gets the era mismatch.
+    * then read in its era, and Byron's payload whole by the decoder of its kind
+    * ([[MempoolState.read]]); one of Dijkstra is not read further, and gets the era mismatch.
     */
   def unwrap(item: Bytes): Either[Rejection, Submission] =
     def malformed(problem: TransactionDecodeProblem): Rejection = Rejection.Malformed(problem)
@@ -99,7 +99,9 @@ object LocalSubmission:
           case other               => Left(TransactionDecodeProblem.TaggedPayload(other))
       case other => Left(TransactionDecodeProblem.NotCborInCbor(other))
 
-  /** Byron's `MempoolPayload` as far as its constructor: the payload itself. */
+  /** Byron's `MempoolPayload` as far as its constructor: the payload itself, which the decoder of
+    * its kind reads ([[MempoolState.read]]).
+    */
   private def byron(payload: Node): Either[TransactionDecodeProblem, Bytes] =
     pairOf(payload)
       .leftMap(TransactionDecodeProblem.ByronEnvelope(_))

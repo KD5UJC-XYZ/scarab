@@ -116,11 +116,9 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                       accepted <- submit(ch, wrap(good))
                       again <- submit(ch, wrap(good))
                       conflicting <- submit(ch, wrap(clash))
-                      // Byron's payload, which the pool does not read: the era mismatch
-                      wrongEra <- submit(
-                        ch,
-                        Bytes(Vector(0x82, 0x00, 0x82, 0x00, 0x00).map(_.toByte))
-                      )
+                      // a recorded Byron transaction, which the pool's ledger, of a later era,
+                      // does not take: the era mismatch
+                      wrongEra <- submit(ch, ByronPayloads.genTx(ByronPayloads.valid.head._2))
                       held <- mempool.snapshot.map(_.entries.map(_.id))
                       // not a transaction at all: the connection ends, with no reply
                       garbage <- Handle

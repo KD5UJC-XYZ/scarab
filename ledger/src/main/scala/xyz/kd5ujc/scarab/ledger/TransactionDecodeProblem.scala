@@ -33,6 +33,11 @@ enum TransactionDecodeProblem extends DomainError:
   /** Byron's payload names no constructor from 0 to 3 that `decodeWord8` reads. */
   case ByronConstructor(actual: Value)
 
+  /** Byron's payload, which the decoder of its kind refuses (`MempoolPayload.hs:85-93`,
+    * cardano-ledger f649f975).
+    */
+  case ByronPayload(cause: LedgerDecodeError)
+
   /** Not the definite list of two, era and transaction, that `enforceSize` reads. */
   case EraEnvelope(cause: Node.NotSized)
 
@@ -47,6 +52,7 @@ enum TransactionDecodeProblem extends DomainError:
     case UnknownEra(index)    => s"era index $index is past the last era"
     case ByronEnvelope(_)     => "expected Byron's [constructor, payload]"
     case ByronConstructor(_)  => "Byron's constructor is not one from 0 to 3"
+    case ByronPayload(cause)  => s"Byron's payload: ${cause.message}"
     case EraEnvelope(_)       => "expected [era, transaction]"
 
 enum MempoolProblem:

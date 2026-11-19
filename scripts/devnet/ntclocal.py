@@ -23,6 +23,7 @@ import time
 from . import cborspan, ntcquery
 from .cbor import enc
 from .ntcquery import decode
+from .util import REPO
 
 MONITOR, CHAIN_SYNC = 9, 5
 
@@ -339,6 +340,72 @@ REFUSED_WHOLE_SUBMISSIONS = {
     "babbage-malformed-whole": b"\x82\x05\xd8\x18\x41\x00",
 }
 
+# Byron's `MempoolPayload` (#924), each kind read out of a recorded block: the transaction (`TxAux`) of mainnet's block
+# of epoch 20, slot 1 (a verification-key witness; fixtures/mainnet/README.md), the delegation certificate in the
+# header of preprod's first main block, and preprod's proposal for protocol 1.0.0 and its first vote, in the block of
+# epoch 0, slot 2,163 (fixtures/preprod/README.md). A path is the index of each item from the block's top level down.
+BYRON_RECORDED = {
+    "transaction": ("fixtures/mainnet/byron-tx-blocks.hex", 1, (1, 1, 0, 0)),
+    "certificate": ("fixtures/preprod/blocks.hex", 1, (1, 0, 3, 3, 1, 0)),
+    "proposal": ("fixtures/preprod/blocks.hex", 2, (1, 1, 3, 0, 0)),
+    "vote": ("fixtures/preprod/blocks.hex", 2, (1, 1, 3, 1, 0)),
+}
+BYRON_KINDS = {"transaction": 0, "certificate": 1, "proposal": 2, "vote": 3}
+
+
+def byron_recorded(root=None):
+    """{kind: the original bytes of the recorded payload of that kind} (`BYRON_RECORDED`)."""
+    root = root if root is not None else REPO
+    found = {}
+    for kind, (path, line, steps) in BYRON_RECORDED.items():
+        block = bytes.fromhex((root / path).read_text().split()[line])
+        ((start, end),) = cborspan.resolve(block, steps)
+        found[kind] = block[start:end]
+    return found
+
+
+def _items(item):
+    return [item[s:e] for s, e in cborspan.children(item, 0)]
+
+
+def _list(items):
+    """A definite list of fewer than 24 `items`."""
+    return bytes([0x80 | len(items)]) + b"".join(items)
+
+
+def _wide(string):
+    """The definite byte string `string` with its length written in two bytes (`59 00 40` for 64): a head that is
+    not the shortest for a length below 256."""
+    content = cborspan.payload(string, (0, len(string)))
+    return b"\x59" + len(content).to_bytes(2, "big") + content
+
+
+def _byron(kind, payload):
+    """A node-to-client `GenTx` of Byron, `[0, [constructor, payload]]`."""
+    return b"\x82\x00\x82" + bytes([BYRON_KINDS[kind]]) + payload
+
+
+def byron_submissions(root=None):
+    """(refused, answered), the Byron `GenTx`s sent whole (#924). `answered`: the recorded payload of each kind, and
+    the vote with its signature's length written in two bytes, which the reference reads (a `Signature` is read with
+    `decodeBytes`), each answered with the era mismatch by both nodes, whose ledgers are past Byron. `refused`: forms
+    the decoder of their kind refuses past the payload's envelope, each of which must end the connection: a
+    transaction of three items (`enforceSize "TxAux" 2`), a certificate of a negative epoch (`Word64`), a proposal
+    whose protocol version's third number is 256 (`Word8`), a vote whose decision is not a `Bool`, and a vote whose
+    voter's key has its length in two bytes (`decodeBytesCanonical`, `decCBORXPub`; cardano-ledger f649f975)."""
+    p = byron_recorded(root)
+    tx, cert, proposal, vote = (_items(p[kind]) for kind in ("transaction", "certificate", "proposal", "vote"))
+    answered = {f"byron-{kind}": _byron(kind, payload) for kind, payload in p.items()}
+    answered["byron-vote-wide-signature"] = _byron("vote", _list(vote[:3] + [_wide(vote[3])]))
+    refused = {
+        "byron-transaction-of-3-whole": _byron("transaction", b"\x83" + b"".join(tx) + b"\x00"),
+        "byron-certificate-negative-epoch-whole": _byron("certificate", _list([b"\x20"] + cert[1:])),
+        "byron-proposal-alt-256-whole": _byron("proposal", _list([b"\x83\x01\x00\x19\x01\x00"] + proposal[1:])),
+        "byron-vote-not-bool-whole": _byron("vote", _list(vote[:2] + [b"\x01"] + vote[3:])),
+        "byron-vote-wide-voter-key-whole": _byron("vote", _list([_wide(vote[0])] + vote[1:])),
+    }
+    return refused, answered
+
 
 def _submission_closes(opener, item):
     """Whether `MsgSubmitTx` of the bytes `item`, written as they are on a fresh connection, ends it. Only an end met
@@ -362,15 +429,29 @@ def _submission_closes(opener, item):
         return {"closed": False, "stage": stage, "error": repr(e)}
 
 
-def submission_prefixes(open_h, open_s):
-    """(report, failures): each of `REFUSED_SUBMISSIONS` and `REFUSED_WHOLE_SUBMISSIONS` ends a connection of its own
-    on both nodes."""
+def submission_prefixes(open_h, open_s, whole=None):
+    """(report, failures): each of `REFUSED_SUBMISSIONS`, `REFUSED_WHOLE_SUBMISSIONS` and `whole` (labels to whole
+    transactions) ends a connection of its own on both nodes."""
     report, failures = {}, []
-    for label, item in {**REFUSED_SUBMISSIONS, **REFUSED_WHOLE_SUBMISSIONS}.items():
+    for label, item in {**REFUSED_SUBMISSIONS, **REFUSED_WHOLE_SUBMISSIONS, **(whole or {})}.items():
         row = {"reference": _submission_closes(open_h, item), "scala": _submission_closes(open_s, item)}
         report[label] = row
         if not all(result["closed"] for result in row.values()):
             failures.append(f"LocalTxSubmission {label} did not end the connection on both nodes: {row}")
+    return report, failures
+
+
+def submission_answers(open_h, open_s, items):
+    """(report, failures): each of `items` (labels to whole transactions) is answered on a connection of its own by
+    both nodes with a `MsgRejectTx`, `[2, reason]`, the same bytes on both."""
+    report, failures = {}, []
+    for label, item in items.items():
+        row = {"reference": _submission_closes(open_h, item), "scala": _submission_closes(open_s, item)}
+        replies = {result.get("reply") for result in row.values()}
+        row["equal"] = len(replies) == 1 and None not in replies
+        report[label] = row
+        if not row["equal"] or not row["reference"]["reply"].startswith("8202"):
+            failures.append(f"LocalTxSubmission {label} was not answered alike with MsgRejectTx on both nodes: {row}")
     return report, failures
 
 

@@ -1767,6 +1767,7 @@
       "summary": "LocalTxSubmission, LocalStateQuery, LocalTxMonitor and whole-block ChainSync over a Unix socket; query coverage partial",
       "evidence": {
         "suites": [
+          "ByronSubmissionSuite",
           "ByronUpdateInterfaceSuite",
           "DeepQuerySuite",
           "NtcQueryArgumentsSuite",

@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.testByteStrings
-import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody, ByronTransport}
 import xyz.kd5ujc.scarab.node.mempool.{
   GenTx,
   GenTxId,
@@ -1158,6 +1158,23 @@ object Targets:
         "byron-address",
         () => Corpus.byronAddresses ++ Corpus.tricky,
         probe("byron-address") { b => seen("byron-address", ByronAddress.decode(b).isRight) }
+      ),
+      Target(
+        "byron-mempool-payload",
+        () => Corpus.byronPayloads ++ Corpus.tricky,
+        probe("byron-mempool-payload") { b =>
+          val read = ByronTransport.mempoolPayload(b)
+          seen("byron-mempool-payload", read.isRight)
+          // a payload read whole is read in a submission too, and gets the era mismatch there
+          read.foreach(_ =>
+            req(
+              LocalSubmission
+                .unwrap(Bytes(Vector(0x82.toByte, 0x00.toByte)) ++ b)
+                .flatMap(MempoolState.read) == Right(MempoolState.Read.Foreign(0)),
+              "a payload the decoder reads is refused when submitted"
+            )
+          )
+        }
       ),
       Target(
         "tx-submitted",
