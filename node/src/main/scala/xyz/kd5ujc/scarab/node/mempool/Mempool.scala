@@ -421,7 +421,12 @@ object Mempool:
         val era = measured.ledger.era
         timed
           .within(timeouts.fold(MempoolTimeouts.HardLimit.Unbounded)(_.hardLimit))(
-            current.tryAdd(measured, env, source, timeouts.map(_.capacity))
+            current.tryAdd(
+              measured,
+              env,
+              source,
+              timeouts.flatMap(_.admissionCapacity(env.globals.referenceBuild))
+            )
           )
           .flatMap {
             case Timed.Cut(took) =>

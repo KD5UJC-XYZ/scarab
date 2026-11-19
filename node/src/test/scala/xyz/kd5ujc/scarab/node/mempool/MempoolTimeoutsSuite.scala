@@ -329,6 +329,55 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(held.validationTime, DiffTime.of(1.nano))
   }
 
+  test("the time the held transactions took holds a new one back under 11.1 and 11.2, not Leios") {
+    val (t1, id1) = pay(1)
+    val (t2, id2) = pay(2)
+    val limits = MempoolTimeouts.default.copy(soft = DiffTime.of(10.seconds))
+    Vector(ReferenceBuild.Release11_1, ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c)
+      .traverse { build =>
+        for
+          events <- Queue.unbounded[IO, MempoolEvent]
+          timing <- scripted(Step.Took(6.seconds), Step.Took(Duration.Zero))
+          pool <- mempool(
+            ledger(2),
+            timing,
+            (e: MempoolEvent) => events.offer(e),
+            limits,
+            built(build)
+          )
+          first <- pool.add(t1, Source.Local)
+          // past the capacity of 5 s: a wait, cancelled once seen, or the transaction taken at once
+          second <- build match
+            case ReferenceBuild.LeiosB004fe0c =>
+              pool.add(t2, Source.Local).timeout(failsafe).map(Right(_))
+            case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
+              pool
+                .add(t2, Source.Local)
+                .background
+                .use(_ => next(events)(waitingForTime))
+                .map(Left(_))
+          held <- pool.snapshot
+        yield (build, first, second, held.entries.map(_.id))
+      }
+      .map(_.foreach { (build, first, second, held) =>
+        assertEquals(first, Right(id1), s"$build")
+        build match
+          case ReferenceBuild.LeiosB004fe0c =>
+            assertEquals(second, Right(Right(id2)), s"$build")
+            assertEquals(held, Vector(id1, id2), s"$build")
+          case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
+            assertEquals(
+              second,
+              Left(
+                MempoolEvent
+                  .WaitingForTime(Some(id2), DiffTime.of(6.seconds), DiffTime.of(5.seconds))
+              ),
+              s"$build"
+            )
+            assertEquals(held, Vector(id1), s"$build")
+      })
+  }
+
   test(
     "a duplicate waits for room and for time, as the reference's MEMPOOL rule comes after them"
   ) {

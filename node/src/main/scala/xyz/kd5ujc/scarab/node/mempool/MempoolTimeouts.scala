@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.ledger.MempoolProblem
 import xyz.kd5ujc.scarab.network.DiffTime
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The time limits of the mempool's validation of a new transaction, the reference's
   * `MempoolTimeoutConfig` (ouroboros-consensus 82ecba32 `Mempool/API.hs` 272-304), which
@@ -39,7 +40,19 @@ final case class MempoolTimeouts(soft: DiffTime, hard: DiffTime, capacity: DiffT
         .when(micros <= Long.MaxValue / 1000)(MempoolTimeouts.HardLimit.After(micros.micros))
         .getOrElse(MempoolTimeouts.HardLimit.Unbounded)
 
+  /** The capacity of time an admission waits on under `build`: the time the held transactions took
+    * holds a new one back under cardano-node 11.1.3 and 11.2.1 (ouroboros-consensus 82ecba32
+    * `Mempool/Update.hs` 423-426; 808e4005 426-429). The Leios build has no such wait (2416493b
+    * `Mempool/Update.hs` 433-438): there the capacity bounds the forger's revalidation of its
+    * snapshot instead, a tenth of it per step (`Mempool/Query.hs` 164), which Scarab does not do.
+    */
+  def admissionCapacity(build: ReferenceBuild): Option[DiffTime] = build match
+    case ReferenceBuild.Release11_1   => Some(capacity)
+    case ReferenceBuild.Release11_2   => Some(capacity)
+    case ReferenceBuild.LeiosB004fe0c => None
+
 object MempoolTimeouts:
+
   /** cardano-node's limits when its configuration sets none of the three: soft 1 s, hard 1.5 s,
     * capacity 5 s (11.1.3 `Configuration/POM.hs` 893-897; 11.2.1 943-947).
     */
