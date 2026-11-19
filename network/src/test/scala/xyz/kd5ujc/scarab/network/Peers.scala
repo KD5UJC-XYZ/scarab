@@ -52,7 +52,7 @@ object Peers:
         case Left(e) if e.incomplete => DecodeResult.NeedMore
         case Left(e)                 => DecodeResult.Failed(e.cause)
     for
-      proposal <- channel.recv(Handshake.MaxMessageBytes)(decode)
+      proposal <- channel.recvPrefix(Handshake.MaxMessageBytes)(decode)
       answer <- lift(Handshake.responder(Handshake.Suite.NodeToNode, offers, proposal))
       bytes <- lift(Handshake.encode(Handshake.Suite.NodeToNode, answer._1))
       _ <- channel.send(bytes)
@@ -83,7 +83,7 @@ object Peers:
   )(using Net): IO[Unit] =
     def loop(remaining: List[List[Message[Bytes]]]): IO[Unit] =
       channel
-        .recv(65535)(
+        .recvPrefix(65535)(
           ChainSync.decodePrefix(
             ChainSync.State.Idle,
             ChainSync.Role.Client,
@@ -114,7 +114,7 @@ object Peers:
       lift(BlockFetch.encode(state, BlockFetch.Role.Server, message, codec)).flatMap(channel.send)
     def loop: IO[Unit] =
       channel
-        .recv(65535)(
+        .recvPrefix(65535)(
           BlockFetch
             .decodePrefix(BlockFetch.State.Idle, BlockFetch.Role.Client, _, codec)
         )
@@ -147,7 +147,7 @@ object Peers:
   )(using Net): IO[Unit] =
     def loop: IO[Unit] =
       channel
-        .recv(65535)(
+        .recvPrefix(65535)(
           KeepAlive.decodePrefix(KeepAlive.State.Client, KeepAlive.Role.Client, _)
         )
         .flatMap {

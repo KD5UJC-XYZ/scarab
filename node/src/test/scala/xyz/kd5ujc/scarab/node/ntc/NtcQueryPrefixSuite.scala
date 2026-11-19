@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.network.recvPrefix
 import cats.effect.{IO, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -248,7 +249,9 @@ class NtcQueryPrefixSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with
       .fold(error => IO(fail(error.message)), ch.send)
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
-    ch.recv(LocalStateQuery.MaxResultBytes)(LocalStateQuery.decodePrefix(state, Role.Server, _))
+    ch.recvPrefix(LocalStateQuery.MaxResultBytes)(
+      LocalStateQuery.decodePrefix(state, Role.Server, _)
+    )
 
   private type Ended = Either[NetworkError, LocalTxSubmissionServer.End]
 

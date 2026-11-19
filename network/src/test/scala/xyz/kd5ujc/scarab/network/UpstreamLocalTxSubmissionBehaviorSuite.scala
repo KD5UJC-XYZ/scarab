@@ -178,7 +178,7 @@ class UpstreamLocalTxSubmissionBehaviorSuite extends FailsOnUncaught:
                       for
                         request <- encode(LocalTxSubmission.Message.SubmitTx(row.tx))
                         _ <- c.send(request)
-                        reply <- c.recv(LocalTxSubmission.MaxMessageBytes)(
+                        reply <- c.recvPrefix(LocalTxSubmission.MaxMessageBytes)(
                           LocalTxSubmission.decodePrefix(
                             LocalTxSubmission.State.Busy,
                             Role.Server,

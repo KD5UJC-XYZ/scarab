@@ -153,7 +153,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
       linked(protocols = Set(Protocols.KeepAlive)).use { (client, _) =>
         client
           .channel(Protocols.KeepAlive)
-          .flatMap(PoisonedMux.channel(_, cause).recv(100)(_ => DecodeResult.NeedMore))
+          .flatMap(PoisonedMux.channel(_, cause).recvPrefix(100)(_ => DecodeResult.NeedMore))
       }
     }.map(result =>
       result.fold(expectDecoderDefect(Protocols.KeepAlive, cause), _ => fail("expected a failure"))
@@ -165,7 +165,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
         client
           .channel(Protocols.KeepAlive)
           .flatMap(
-            _.recv(100)(_ =>
+            _.recvPrefix(100)(_ =>
               DecodeResult.Failed(
                 xyz.kd5ujc.scarab.protocol.ProtocolError.UnsolicitedKeepAliveResponse
               )

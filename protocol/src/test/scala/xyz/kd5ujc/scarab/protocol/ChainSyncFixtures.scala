@@ -15,7 +15,7 @@ object ChainSyncFixtures:
   private def envelope(bytes: Bytes): Either[ProtocolError, Unit] =
     validateItem(bytes).flatMap { _ =>
       ProtocolWire.attempt {
-        val r = new ChainSyncWire.Reader(bytes, Limits())
+        val r = ChainSyncWire.reader(bytes, Limits())
         if r.tag() != 24 then bad(ProtocolError.ExpectedTag24Header)
         r.bytes(65535)
         if r.position != bytes.size then bad(ProtocolError.TrailingHeaderBytes)

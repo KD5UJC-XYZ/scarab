@@ -181,7 +181,7 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
           c <- client.channel(2)
           s <- server.channel(2)
           _ <- c.send(Bytes(Vector.fill(101)(1.toByte)))
-          result <- s.recv(100)(exactly(101))
+          result <- s.recvPrefix(100)(exactly(101))
         yield result
       }
     }.map(result => assertEquals(result, Left(NetworkError.IngressLimit(2, 101))))
@@ -193,8 +193,8 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
           c <- client.channel(2)
           s <- server.channel(2)
           _ <- c.send(Bytes(Vector.fill(200)(1.toByte)))
-          a <- s.recv(100)(exactly(100))
-          b <- s.recv(100)(exactly(100))
+          a <- s.recvPrefix(100)(exactly(100))
+          b <- s.recvPrefix(100)(exactly(100))
         yield (a.size, b.size)
       }
     }.map(result => assertEquals(result, Right((100, 100))))

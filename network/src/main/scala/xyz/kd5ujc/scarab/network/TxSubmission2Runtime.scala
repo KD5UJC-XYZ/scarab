@@ -124,10 +124,10 @@ private[network] object TxSubmission2Runtime:
       TxSubmissionPolicy
         .timeLimit(state)
         .fold(
-          channel.recv(codec.maxMessageBytes(state))(codec.decodePrefix(state, Role.Server, _))
+          channel.recv(codec.maxMessageBytes(state))(codec.incremental(state, Role.Server))
         )(duration =>
           Timed.within(duration, protocol, state.toString)(
-            channel.recv(codec.maxMessageBytes(state))(codec.decodePrefix(state, Role.Server, _))
+            channel.recv(codec.maxMessageBytes(state))(codec.incremental(state, Role.Server))
           )
         )
     def offers(held: Vector[Held[I]]): F[Vector[TxSubmission2Engine.Offer[I]]] =
@@ -223,7 +223,7 @@ private[network] object TxSubmission2Runtime:
       codec.encode(state, Role.Server, message).fold(error => illegal(error), channel.send)
     def receive(state: State): F[Message[I, B]] =
       val read =
-        channel.recv(codec.maxMessageBytes(state))(codec.decodePrefix(state, Role.Client, _))
+        channel.recv(codec.maxMessageBytes(state))(codec.incremental(state, Role.Client))
       TxSubmissionPolicy
         .timeLimit(state)
         .fold(read)(duration => Timed.within(duration, protocol, state.toString)(read))

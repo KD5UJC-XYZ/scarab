@@ -133,7 +133,9 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
       )
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
-    ch.recv(LocalStateQuery.MaxResultBytes)(LocalStateQuery.decodePrefix(state, Role.Server, _))
+    ch.recvPrefix(LocalStateQuery.MaxResultBytes)(
+      LocalStateQuery.decodePrefix(state, Role.Server, _)
+    )
 
   private def session[A](t: Toy, versions: Vector[Int] = Vector(16, 23))(
       body: (MuxChannel[IO], MuxChannel[IO]) => Handle[IO, NetworkError] ?=> IO[A]
@@ -256,7 +258,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
             _ <- send(ch, State.Idle, Message.Acquire(Target.VolatileTip))
             _ <- receive(ch, State.Acquiring)
             _ <- send(ch, State.Acquired, Message.Query(Bytes(Vector(0x03))))
-            answer <- ch.recv(LocalStateQuery.MaxResultBytes)(
+            answer <- ch.recvPrefix(LocalStateQuery.MaxResultBytes)(
               LocalStateQuery.decodePrefix(State.Querying, Role.Server, _)
             )
             _ <- send(ch, State.Acquired, Message.Release)

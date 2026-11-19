@@ -47,7 +47,9 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
     TxSubmission2.encode(state, role, message).fold(e => fail(e.toString), channel.send)
 
   private def receive(channel: MuxChannel[IO], state: State, role: Role)(using Net): IO[Message] =
-    channel.recv(TxSubmission2.maxMessageBytes(state))(TxSubmission2.decodePrefix(state, role, _))
+    channel.recvPrefix(TxSubmission2.maxMessageBytes(state))(
+      TxSubmission2.decodePrefix(state, role, _)
+    )
 
   test("reference limits cover every active state; the local profile remains stricter"):
     assertEquals(TxSubmission2.maxMessageBytes(State.Init), 65535)
@@ -350,7 +352,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         Net
     ): IO[Unit] = wide.encode(state, Role.Server, message).fold(e => fail(e.toString), channel.send)
     def take(channel: MuxChannel[IO], state: State)(using Net) =
-      channel.recv(wide.maxMessageBytes(state))(wide.decodePrefix(state, Role.Client, _))
+      channel.recvPrefix(wide.maxMessageBytes(state))(wide.decodePrefix(state, Role.Client, _))
     TestControl
       .executeEmbed(typed {
         linked(
@@ -645,7 +647,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
                   Vector(TxSubmission2Engine.Offer(EraTxId(Era.Babbage, id), 10))
                 )
               )
-              request <- c.recv(TxSubmission2.maxMessageBytes(State.Idle))(
+              request <- c.recvPrefix(TxSubmission2.maxMessageBytes(State.Idle))(
                 eras.decodePrefix(State.Idle, Role.Server, _)
               )
               _ <- put(

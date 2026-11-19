@@ -8,13 +8,29 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
-import xyz.kd5ujc.scarab.protocol.{EbPoint, LeiosFetch, LeiosNotify, LeiosWireError}
+import xyz.kd5ujc.scarab.protocol.{
+  EbPoint,
+  IncrementalDecoder,
+  LeiosFetch,
+  LeiosNotify,
+  LeiosWireError
+}
 import scala.concurrent.duration.*
 
 /** A decoded server message with the exact bytes it arrived as. */
 final case class Observed[+A](message: A, raw: Bytes)
 
 private object LeiosDecode:
+  /** A Leios decoder as the multiplexer takes it. The Leios decoders keep no progress on a message
+    * that has not all arrived, so each longer prefix is read from its start: these clients serve
+    * the hand-run probe of the Leios testnet only (`LeiosProbe`), never the node.
+    */
+  def restarting[A](decode: Bytes => DecodeResult[A]): IncrementalDecoder[A] =
+    new IncrementalDecoder[A]:
+      type Cursor = Unit
+      def initial: Cursor = ()
+      def resume(cursor: Cursor, input: Bytes): (Cursor, DecodeResult[A]) = ((), decode(input))
+
   def result[A](
       decoded: Either[LeiosWireError, (A, Int)],
       bytes: Bytes
@@ -54,8 +70,10 @@ object LeiosNotifyClient:
       LeiosNotify.encode(m).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
     def receive(state: LeiosNotify.State): F[Observed[LeiosNotify.Message]] =
       // `byteLimitsLeiosNotify`: the limit of Busy and Quit, the states received in
-      channel.recv(LeiosNotify.SmallByteLimit)(bytes =>
-        LeiosDecode.result(LeiosNotify.decodePrefix(state, bytes), bytes)
+      channel.recv(LeiosNotify.SmallByteLimit)(
+        LeiosDecode.restarting(bytes =>
+          LeiosDecode.result(LeiosNotify.decodePrefix(state, bytes), bytes)
+        )
       )
     new LeiosNotifyClient[F]:
       def requestNext: F[Observed[LeiosNotify.Message]] =
@@ -85,8 +103,10 @@ object LeiosFetchClient:
       def block(point: EbPoint): F[Observed[LeiosFetch.Message]] =
         send(LeiosFetch.Message.BlockRequest(point)) *>
           Timed.within(settings.timeout, id, "Block")(
-            channel.recv(LeiosFetch.BlockByteLimit)(bytes =>
-              LeiosDecode.result(LeiosFetch.decodePrefix(LeiosFetch.State.Block, bytes), bytes)
+            channel.recv(LeiosFetch.BlockByteLimit)(
+              LeiosDecode.restarting(bytes =>
+                LeiosDecode.result(LeiosFetch.decodePrefix(LeiosFetch.State.Block, bytes), bytes)
+              )
             )
           )
       def done: F[Unit] = send(LeiosFetch.Message.Done)

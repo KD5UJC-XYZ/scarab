@@ -107,33 +107,52 @@ object KeepAlive:
       sender: Role,
       bytes: Bytes,
       limits: Limits = Limits()
-  ): DecodeResult[Message] =
-    ProtocolWire.prefix {
+  ): DecodeResult[Message] = incremental(state, sender, limits).decodePrefix(bytes)
+
+  /** [[decodePrefix]], resumed on each longer prefix of a message. */
+  def incremental(
+      state: State,
+      sender: Role,
+      limits: Limits = Limits()
+  ): IncrementalDecoder[Message] =
+    ProtocolWire.incremental[Nothing, Message] { (bytes, from) =>
       val bounds = limits.wire
       if state == State.Done then bad(ProtocolError.KeepAliveIsTerminal)
       if (state == State.Client) != (sender == Role.Client) then
         bad(ProtocolError.WrongKeepAliveAgency)
-      val r = new ProtocolWire.Reader(bytes, bounds)
-      val arity = r.arrayLength()
-      if (state == State.Client && arity != 1 && arity != 2) ||
-        (state == State.Server && arity != 2)
-      then bad(ProtocolError.WrongKeepAliveOuterArityForState)
-      val tag = r.uint().value
-      val request = state == State.Client && arity == 2 && tag == 0
-      val response = state == State.Server && arity == 2 && tag == 1
-      val done = state == State.Client && arity == 1 && tag == 2
-      if !request && !response && !done then bad(ProtocolError.UnknownKeepAliveTagStateOrExactArity)
-      val message =
-        if done then Message.Done
-        else
-          val value = r.uint().value
-          if value > Cookie.Max then bad(ProtocolError.KeepAliveCookieOutsideUint16(value))
-          val cookie = get(Cookie.from(value.toInt))
-          if request then Message.Request(cookie) else Message.Response(cookie)
-      get(transition(state, sender, message))
-      get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
-      DecodeResult.Decoded(message, r.position)
-    }
+      ProtocolWire.Reader(bytes, bounds, from)
+    }((bytes, _, r) => decoded(state, sender, limits, bytes, r))
+
+  /** One message of `state` from `sender`, read by `r`. */
+  private def decoded(
+      state: State,
+      sender: Role,
+      limits: Limits,
+      bytes: Bytes,
+      r: ProtocolWire.Reader
+  )(using
+      ProtocolWire.Scope
+  ): DecodeResult[Message] =
+    val bounds = limits.wire
+    val arity = r.arrayLength()
+    if (state == State.Client && arity != 1 && arity != 2) ||
+      (state == State.Server && arity != 2)
+    then bad(ProtocolError.WrongKeepAliveOuterArityForState)
+    val tag = r.uint().value
+    val request = state == State.Client && arity == 2 && tag == 0
+    val response = state == State.Server && arity == 2 && tag == 1
+    val done = state == State.Client && arity == 1 && tag == 2
+    if !request && !response && !done then bad(ProtocolError.UnknownKeepAliveTagStateOrExactArity)
+    val message =
+      if done then Message.Done
+      else
+        val value = r.uint().value
+        if value > Cookie.Max then bad(ProtocolError.KeepAliveCookieOutsideUint16(value))
+        val cookie = get(Cookie.from(value.toInt))
+        if request then Message.Request(cookie) else Message.Response(cookie)
+    get(transition(state, sender, message))
+    get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
+    DecodeResult.Decoded(message, r.position)
 
   def decode(
       state: State,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.network.recvPrefix
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
@@ -59,7 +60,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
           .map(e => RuntimeException(e.message))
       )
       _ <- channel.send(bytes)
-      reply <- channel.recv(LocalTxSubmission.MaxMessageBytes)(
+      reply <- channel.recvPrefix(LocalTxSubmission.MaxMessageBytes)(
         LocalTxSubmission.decodePrefix(LocalTxSubmission.State.Busy, Role.Server, _)
       )
     yield reply

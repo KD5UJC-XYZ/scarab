@@ -53,7 +53,7 @@ object NtNHeader:
     def decode(bytes: Bytes): Either[ProtocolError, NtNHeader] =
       validateItem(bytes).flatMap { _ =>
         attempt {
-          val r = new ChainSyncWire.Reader(bytes, Limits())
+          val r = ChainSyncWire.reader(bytes, Limits())
           if r.arrayLength() != 2 then bad(ProtocolError.ExpectedEraHeader)
           val era = Era.fromIndex(r.uint().value).getOrElse(bad(ProtocolError.UnknownEraIndex))
           val header =

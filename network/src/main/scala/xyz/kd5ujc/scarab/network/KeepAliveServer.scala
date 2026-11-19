@@ -29,10 +29,9 @@ object KeepAliveServer:
       Timed
         .within(settings.idleTimeout, id, "client")(
           channel.recv(settings.limits.maxMessageBytes)(
-            KeepAlive.decodePrefix(
+            KeepAlive.incremental(
               KeepAlive.State.Client,
               KeepAlive.Role.Client,
-              _,
               settings.limits
             )
           )

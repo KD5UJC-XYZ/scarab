@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.network.recvPrefix
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.{Mutex, Queue}
 import cats.mtl.Handle
@@ -280,7 +281,7 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                         .leftMap(error => new AssertionError(error.message))
                     )
                     _ <- query.send(acquire) *> query.flush
-                    reply <- query.recv(LocalStateQuery.MaxResultBytes)(
+                    reply <- query.recvPrefix(LocalStateQuery.MaxResultBytes)(
                       LocalStateQuery.decodePrefix(LocalStateQuery.State.Acquiring, Role.Server, _)
                     )
                   yield reply

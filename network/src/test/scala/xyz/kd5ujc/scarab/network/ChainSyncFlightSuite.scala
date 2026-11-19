@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.IncrementalDecoder
 import cats.effect.{Deferred, IO, Resource}
 import cats.mtl.Raise
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSyncFixtures
-import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 
 class ChainSyncFlightSuite extends FailsOnUncaught:
   test("canceling a blocked send releases the legacy client busy flag") {
@@ -18,7 +18,7 @@ class ChainSyncFlightSuite extends FailsOnUncaught:
             def send(message: Bytes)(using Raise[IO, NetworkError]) =
               entered.complete(()).void *> IO.never[Unit]
             def flush = IO.unit
-            def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+            def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
                 Raise[IO, NetworkError]
             ) = IO.never[A]
           client <- ChainSyncClient(channel, ChainSyncFixtures.rawItem)
@@ -47,7 +47,7 @@ class ChainSyncFlightSuite extends FailsOnUncaught:
           def send(message: Bytes)(using raise: Raise[IO, NetworkError]) =
             raise.raise[NetworkError, Unit](cause)
           def flush = IO.unit
-          def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+          def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
               Raise[IO, NetworkError]
           ) = IO.never[A]
         for

@@ -307,7 +307,9 @@ object Handshake:
   private def text(t: Term)(using ProtocolWire.Scope): String = t match
     case Term.Text(s) => s
     case _            => bad(ProtocolError.InvalidOrOversizedRefusalText)
-  private def reason[V: VersionCodec](term: Term)(using ProtocolWire.Scope): WireReason[V] =
+  private[protocol] def reason[V: VersionCodec](term: Term)(using
+      ProtocolWire.Scope
+  ): WireReason[V] =
     arr(term) match
       case Vector(Term.Integer(tag), versions) if tag == 0 =>
         val all = arr(versions)
@@ -328,7 +330,7 @@ object Handshake:
         Term.Arr(Vector(Term.Integer(1), versionTerm(v), Term.Text(s)))
       case WireReason.Refused(v, s) =>
         Term.Arr(Vector(Term.Integer(2), versionTerm(v), Term.Text(s)))
-  private def message[V: VersionCodec: Ordering](state: State, term: Term)(using
+  private[protocol] def message[V: VersionCodec: Ordering](state: State, term: Term)(using
       ProtocolWire.Scope
   ): WireMessage[V] =
     if state == State.Done then bad(ProtocolError.HandshakeAlreadyDone)
@@ -354,11 +356,34 @@ object Handshake:
       state: State,
       bytes: Bytes
   ): Either[DecodeError, (WireMessage[V], Bytes)] =
-    new Parser(bytes)
-      .message(state)
-      .flatMap((end, term) => attempt((message[V](state, term), bytes.drop(end))))
-      .left
-      .map(e => DecodeError(e, e.incomplete))
+    incremental[V](state).decodePrefix(bytes) match
+      case ChainSync.DecodeResult.Decoded(message, end) => Right((message, bytes.drop(end)))
+      case ChainSync.DecodeResult.Failed(error) => Left(DecodeError(error, error.incomplete))
+      case ChainSync.DecodeResult.NeedMore =>
+        Left(DecodeError(ProtocolError.IncompleteCbor, incomplete = true))
+
+  /** The decoder of one message, resumed on each longer prefix of it: the parser goes on from the
+    * head it stopped at, with the terms it has read, as the reference's codec reads the message
+    * from the stream (`codecHandshake` is `mkCodecCborLazyBS`,
+    * `ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs:117`, and
+    * `decodeVersions` runs `decodeTerm` from it, `:156-182`, c45735a5 and 4646039f). A message is
+    * read, accepted and refused as [[decodePrefix]] reads it, whatever the parts it arrives in.
+    */
+  def incremental[V: VersionCodec: Ordering](state: State): IncrementalDecoder[WireMessage[V]] =
+    new IncrementalDecoder[WireMessage[V]]:
+      type Cursor = Option[Read[(Int, Term)]]
+      val initial: Cursor = None
+      def resume(cursor: Cursor, input: Bytes): (Cursor, ChainSync.DecodeResult[WireMessage[V]]) =
+        val parser = new Parser(input)
+        cursor.fold(parser.message(state))(_(parser)) match
+          case Step.Done((end, term)) =>
+            (
+              None,
+              attempt(message[V](state, term))
+                .fold(ChainSync.DecodeResult.Failed(_), ChainSync.DecodeResult.Decoded(_, end))
+            )
+          case Step.Failed(error) => (None, ChainSync.DecodeResult.Failed(error))
+          case Step.Short(next)   => (Some(next), ChainSync.DecodeResult.NeedMore)
   def decode[V: VersionCodec: Ordering](
       state: State,
       bytes: Bytes
@@ -374,6 +399,12 @@ object Handshake:
       bytes: Bytes
   ): Either[DecodeError, (Message, Bytes)] =
     profile(suite).decodePrefix(state, bytes)
+
+  /** `decodePrefix` of `suite`, resumed on each longer prefix of a message, as the generic
+    * `incremental` of its versions.
+    */
+  def incremental(suite: Suite, state: State): IncrementalDecoder[Message] =
+    profile(suite).incremental(state)
   def decode(suite: Suite, state: State, bytes: Bytes): Either[DecodeError, Message] =
     decodePrefix(suite, state, bytes).flatMap { case (m, rest) =>
       if rest.size == 0 then Right(m) else Left(DecodeError(ProtocolError.TrailingBytes))
@@ -382,8 +413,10 @@ object Handshake:
   def encodeReason[V: VersionCodec](value: WireReason[V]): Either[ProtocolError, Bytes] =
     attempt(encodeTerm(reasonTerm(value)))
   def decodeReason[V: VersionCodec](bytes: Bytes): Either[DecodeError, WireReason[V]] =
-    new Parser(bytes)
-      .reason(0)
+    val parser = new Parser(bytes)
+    parser
+      .reason(0)(parser)
+      .whole
       .flatMap((end, term) =>
         if end != bytes.size then Left(ProtocolError.TrailingBytes) else attempt(reason[V](term))
       )
@@ -393,6 +426,7 @@ object Handshake:
   private trait CardanoProfile:
     def encode(msg: Message): Either[ProtocolError, Bytes]
     def decodePrefix(state: State, bytes: Bytes): Either[DecodeError, (Message, Bytes)]
+    def incremental(state: State): IncrementalDecoder[Message]
     def negotiate(offers: Vector[(Int, Data)], remote: Vector[(Int, Term)]): Result
 
   private def cardanoProfile[V: VersionCodec: Ordering](
@@ -428,6 +462,8 @@ object Handshake:
     def encode(msg: Message): Either[ProtocolError, Bytes] = typed(msg).flatMap(Handshake.encode[V])
     def decodePrefix(state: State, bytes: Bytes): Either[DecodeError, (Message, Bytes)] =
       Handshake.decodePrefix[V](state, bytes).map((msg, rest) => (untyped(msg), rest))
+    def incremental(state: State): IncrementalDecoder[Message] =
+      Handshake.incremental[V](state).map(untyped)
     private given DataCodec[V, Data, ProtocolError] with
       def decode(version: V, term: Term): Either[ProtocolError, Data] =
         decodeData(suite, number(version), term)
@@ -582,10 +618,54 @@ object Handshake:
     case OpenEntries(done: Vector[(Term, Term)], key: Option[Term])
     case Tagged(number: BigInt)
 
-  /** What one head starts: a whole term, or a container whose items follow it. */
+  /** What one head starts: a whole term, a container whose items follow it, or an indefinite string
+    * of `major` whose chunks follow it.
+    */
   private enum Start:
     case Whole(term: Term)
     case Container(open: Open)
+    case Chunks(major: Int)
+
+  /** The chunks of an indefinite string of `major` read so far, the empty ones dropped. */
+  private final case class Chunked(major: Int, collected: Vector[Bytes])
+
+  /** A read of a message from a prefix of it ([[Read]]): the value and where it ends, a failure,
+    * or, where the prefix ends before the value does, the read that goes on on a longer prefix of
+    * the same message from the head it stopped at, with what it had read.
+    */
+  private enum Step[+A]:
+    case Done(value: A)
+    case Failed(error: ProtocolError)
+    case Short(next: Read[A])
+
+    /** The value, or the failure; a read the prefix ended in is incomplete. */
+    def whole: Either[ProtocolError, A] = this match
+      case Done(value)   => Right(value)
+      case Failed(error) => Left(error)
+      case Short(_)      => Left(ProtocolError.IncompleteCbor)
+
+  /** A read of the parser of a prefix of the message. A continuation is given the parser of the
+    * longer prefix it goes on with, never the one it stopped on.
+    */
+  private type Read[A] = Parser => Step[A]
+
+  /** `first`, then `next` of its value, on the parser of the prefix where `first` ends. The
+    * continuation of a read that stops nests one `bind` of the message's grammar a level, a depth
+    * that is a constant of that grammar ([[Parser.message]], [[Parser.reason]]), not of the input.
+    */
+  private def bind[A, B](first: Read[A])(next: A => Read[B]): Read[B] = parser =>
+    first(parser) match
+      case Step.Done(value)   => next(value)(parser)
+      case Step.Failed(error) => Step.Failed(error)
+      case Step.Short(more)   => Step.Short(bind(more)(next))
+
+  /** A read of a few heads, read again from its start on a longer prefix when this one ends in it.
+    */
+  private def heads[A](read: Parser => Either[ProtocolError, A]): Read[A] = parser =>
+    read(parser) match
+      case Right(value)                    => Step.Done(value)
+      case Left(error) if error.incomplete => Step.Short(heads(read))
+      case Left(error)                     => Step.Failed(error)
 
   /** A container with one more item: closed into its term, or still open. */
   private enum Added:
@@ -666,37 +746,46 @@ object Handshake:
         _ <- if major == 3 then utf8(bytes).void else Right(())
       yield (start + length, bytes)
 
-    /** A definite string, or an indefinite one as its chunks, the empty ones dropped as cborg's
-      * `decodeBytesIndefLen` and `decodeStringIndefLen` drop them (`Term.hs:203-216`, cborg
-      * 0.2.10.0).
+    /** A definite string. An indefinite one is read as its chunks by [[term]], the empty ones
+      * dropped as cborg's `decodeBytesIndefLen` and `decodeStringIndefLen` drop them
+      * (`Term.hs:203-216`, cborg 0.2.10.0).
       */
     private def string(major: Int, ai: Int, at: Int): Either[ProtocolError, (Int, Term)] =
-      // the chunks of an indefinite string up to its break
-      @tailrec def chunks(
-          position: Int,
-          collected: Vector[Bytes]
-      ): Either[ProtocolError, (Int, Vector[Bytes])] =
-        if isBreak(position) then byte(position).as((position + 1, collected))
-        else
-          val next = byte(position).flatMap { head =>
-            if head / 32 != major || (head & 31) == 31 then
-              Left(ProtocolError.InvalidIndefiniteStringChunk)
-            else chunk(major, head & 31, position + 1)
-          }
-          next match
-            case Left(error) => Left(error)
-            case Right((after, bytes)) =>
-              chunks(after, if bytes.isEmpty then collected else collected :+ bytes)
-      if ai != 31 then
-        chunk(major, ai, at).flatMap((end, bytes) =>
-          if major == 2 then Right((end, Term.ByteString(bytes)))
-          else utf8(bytes).map(text => (end, Term.Text(text)))
+      chunk(major, ai, at).flatMap((end, bytes) =>
+        if major == 2 then Right((end, Term.ByteString(bytes)))
+        else utf8(bytes).map(text => (end, Term.Text(text)))
+      )
+
+    /** The next chunk of the indefinite string `open` at `position`, or its break: the string with
+      * the chunk, or the term it closes into, and where it ends.
+      */
+    private def chunkOf(
+        open: Chunked,
+        position: Int
+    ): Either[ProtocolError, Either[(Int, Chunked), (Int, Term)]] =
+      if isBreak(position) then
+        byte(position).flatMap(_ =>
+          if open.major == 2 then Right(Right((position + 1, Term.ByteChunks(open.collected))))
+          else
+            open.collected
+              .traverse(utf8)
+              .map(texts => Right((position + 1, Term.TextChunks(texts))))
         )
       else
-        chunks(at, Vector.empty).flatMap((end, parts) =>
-          if major == 2 then Right((end, Term.ByteChunks(parts)))
-          else parts.traverse(utf8).map(texts => (end, Term.TextChunks(texts)))
-        )
+        byte(position)
+          .flatMap { head =>
+            if head / 32 != open.major || (head & 31) == 31 then
+              Left(ProtocolError.InvalidIndefiniteStringChunk)
+            else chunk(open.major, head & 31, position + 1)
+          }
+          .map((after, bytes) =>
+            Left(
+              (
+                after,
+                if bytes.isEmpty then open else open.copy(collected = open.collected :+ bytes)
+              )
+            )
+          )
 
     /** Major type 7 as cborg's `decodeTerm` reads it (`Term.hs:192-198`, cborg 0.2.10.0, with the
       * token types of `Read.hs:1492-1501`): `0xf8` and the byte after it are a simple value of any
@@ -724,10 +813,11 @@ object Handshake:
         def whole(read: Either[ProtocolError, (Int, Term)]) =
           read.map((next, term) => (next, Start.Whole(term)))
         major match
-          case 0     => whole(argument(ai, after).map((next, n) => (next, Term.Integer(n))))
-          case 1     => whole(argument(ai, after).map((next, n) => (next, Term.Integer(-1 - n))))
-          case 2 | 3 => whole(string(major, ai, after))
-          case 4 if ai == 31 => Right((after, Start.Container(Open.OpenItems(Vector.empty))))
+          case 0 => whole(argument(ai, after).map((next, n) => (next, Term.Integer(n))))
+          case 1 => whole(argument(ai, after).map((next, n) => (next, Term.Integer(-1 - n))))
+          case 2 | 3 if ai == 31 => Right((after, Start.Chunks(major)))
+          case 2 | 3             => whole(string(major, ai, after))
+          case 4 if ai == 31     => Right((after, Start.Container(Open.OpenItems(Vector.empty))))
           case 4 =>
             for
               (next, declared) <- argument(ai, after)
@@ -748,50 +838,81 @@ object Handshake:
           case _ => whole(simple(ai, after))
       }
 
-    /** One term from `at`: the position after it, and the term. */
-    def term(at: Int): Either[ProtocolError, (Int, Term)] =
-      // `open`: the containers open around the position, innermost first; `read`: a term just
-      // read, for the innermost to take
-      @tailrec def go(
-          position: Int,
-          open: List[Open],
-          read: Option[Term]
-      ): Either[ProtocolError, (Int, Term)] = read match
-        case Some(term) =>
+    /** One term from `at`: the position after it, and the term. Where the input ends before the
+      * term does, the read goes on on a longer prefix from the head it stopped at, with the
+      * containers and string chunks it had open: no head is read twice.
+      */
+    def term(at: Int): Read[(Int, Term)] = _.go(at, Nil, None, None)
+
+    // `open`: the containers open around the position, innermost first; `read`: a term just read,
+    // for the innermost to take; `chunks`: the indefinite string whose chunks are being read
+    @tailrec private def go(
+        position: Int,
+        open: List[Open],
+        read: Option[Term],
+        chunks: Option[Chunked]
+    ): Step[(Int, Term)] =
+      def stopped(error: ProtocolError): Step[(Int, Term)] = stop(position, open, chunks, error)
+      (read, chunks) match
+        case (Some(term), _) =>
           open match
-            case Nil => Right((position, term))
+            case Nil => Step.Done((position, term))
             case inner :: outer =>
               add(inner, term) match
-                case Added.Closed(closed) => go(position, outer, Some(closed))
-                case Added.Still(still)   => go(position, still :: outer, None)
-        case None =>
+                case Added.Closed(closed) => go(position, outer, Some(closed), None)
+                case Added.Still(still)   => go(position, still :: outer, None, None)
+        case (None, Some(string)) =>
+          chunkOf(string, position) match
+            case Left(error)                  => stopped(error)
+            case Right(Left((next, more)))    => go(next, open, None, Some(more))
+            case Right(Right((next, closed))) => go(next, open, Some(closed), None)
+        case (None, None) =>
           open match
             case Open.OpenItems(done) :: outer if isBreak(position) =>
               byte(position) match
-                case Left(error) => Left(error)
-                case Right(_)    => go(position + 1, outer, Some(Term.Arr(done, false)))
+                case Left(error) => stopped(error)
+                case Right(_)    => go(position + 1, outer, Some(Term.Arr(done, false)), None)
             case Open.OpenEntries(done, None) :: outer if isBreak(position) =>
               byte(position) match
-                case Left(error) => Left(error)
-                case Right(_)    => go(position + 1, outer, Some(Term.Map(done, false)))
+                case Left(error) => stopped(error)
+                case Right(_)    => go(position + 1, outer, Some(Term.Map(done, false)), None)
             case _ =>
               start(position) match
-                case Left(error)                             => Left(error)
-                case Right((next, Start.Whole(term)))        => go(next, open, Some(term))
-                case Right((next, Start.Container(started))) => go(next, started :: open, None)
-      go(at, Nil, None)
+                case Left(error)                      => stopped(error)
+                case Right((next, Start.Whole(term))) => go(next, open, Some(term), None)
+                case Right((next, Start.Container(started))) =>
+                  go(next, started :: open, None, None)
+                case Right((next, Start.Chunks(major))) =>
+                  go(next, open, None, Some(Chunked(major, Vector.empty)))
+
+    /** Where `go` stopped on `error`: a read that goes on from there on a longer prefix where the
+      * input ran out, the failure otherwise.
+      */
+    private def stop(
+        position: Int,
+        open: List[Open],
+        chunks: Option[Chunked],
+        error: ProtocolError
+    ): Step[(Int, Term)] =
+      if error.incomplete then Step.Short(_.go(position, open, None, chunks))
+      else Step.Failed(error)
 
     /** `count` terms from `at`, in order. */
-    @tailrec private def terms(
+    private def terms(at: Int, count: Int, done: Vector[Term]): Read[(Int, Vector[Term])] =
+      _.termsFrom(at, count, done)
+
+    @tailrec private def termsFrom(
         at: Int,
         count: Int,
         done: Vector[Term]
-    ): Either[ProtocolError, (Int, Vector[Term])] =
-      if done.sizeIs == count then Right((at, done))
+    ): Step[(Int, Vector[Term])] =
+      if done.sizeIs == count then Step.Done((at, done))
       else
-        term(at) match
-          case Left(error)         => Left(error)
-          case Right((next, item)) => terms(next, count, done :+ item)
+        go(at, Nil, None, None) match
+          case Step.Done((next, item)) => termsFrom(next, count, done :+ item)
+          case Step.Failed(error)      => Step.Failed(error)
+          case Step.Short(more) =>
+            Step.Short(bind(more)((next, item) => terms(next, count, done :+ item)))
 
     /** The length of the definite array whose head is at `at`, if the item there is one: the
       * position after its head and the length, read as cborg's `decodeListLen` reads it, into an
@@ -812,38 +933,44 @@ object Handshake:
       * is refused (288) once the items its array declares are read, and an item that is no definite
       * array is read as a term and refused when the reason is checked.
       */
-    def reason(at: Int): Either[ProtocolError, (Int, Term)] =
-      listLength(at).flatMap {
+    def reason(at: Int): Read[(Int, Term)] =
+      bind(heads(_.listLength(at))) {
         case None => term(at)
         case Some((next, declared)) =>
           def named(tag: Term, after: Int): Either[ProtocolError, Int] = tag match
             case Term.Integer(t) if t == 0           => Right(1)
             case Term.Integer(t) if t == 1 || t == 2 => Right(2)
             case _ => fits(BigInt(math.max(declared - 1, 0L)), 1, after)
-          for
-            (afterTag, tag) <- term(next)
-            count <- named(tag, afterTag)
-            (end, items) <- terms(afterTag, count, Vector.empty)
-          yield (end, Term.Arr(tag +: items))
+          bind(term(next)) { (afterTag, tag) =>
+            named(tag, afterTag).fold(
+              error => _ => Step.Failed(error),
+              count =>
+                bind(terms(afterTag, count, Vector.empty))((end, items) =>
+                  _ => Step.Done((end, Term.Arr(tag +: items)))
+                )
+            )
+          }
       }
 
     /** The message from the start of the input. In `StConfirm` a message of two items whose key is
       * 2 is a refusal (`Codec.hs:177-178`, ouroboros-network c45735a5), and its reason is read as
       * [[reason]] reads it; anything else is one term, checked when it is read as a message.
       */
-    def message(state: State): Either[ProtocolError, (Int, Term)] =
-      if state != State.Confirm then term(0)
+    def message(state: State): Step[(Int, Term)] =
+      if state != State.Confirm then term(0)(this)
       else
-        listLength(0).flatMap {
+        bind(heads(_.listLength(0))) {
           case Some((next, length)) if length == 2 =>
-            term(next).flatMap {
+            bind(term(next)) {
               case (afterKey, key @ Term.Integer(k)) if k == 2 =>
-                reason(afterKey).map((end, r) => (end, Term.Arr(Vector(key, r))))
+                bind(reason(afterKey))((end, r) => _ => Step.Done((end, Term.Arr(Vector(key, r)))))
               case (afterKey, key) =>
-                term(afterKey).map((end, item) => (end, Term.Arr(Vector(key, item))))
+                bind(term(afterKey))((end, item) =>
+                  _ => Step.Done((end, Term.Arr(Vector(key, item))))
+                )
             }
           case _ => term(0)
-        }
+        }(this)
 
   /** One step of writing a term: an item to write, or bytes that close an indefinite container. */
   private enum Pending:

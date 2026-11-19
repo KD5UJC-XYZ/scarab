@@ -93,7 +93,7 @@ class DeadlineCleanupSuite extends FailsOnUncaught:
               _ <- c.flush
               expired <- Peers.typed {
                 Timed.within(1.second, 1, "partial")(
-                  s.recv(65536)(exactly(4)).onCancel(cancelled.complete(()).void)
+                  s.recvPrefix(65536)(exactly(4)).onCancel(cancelled.complete(()).void)
                 )
               }
               cleaned <- cancelled.tryGet
@@ -102,9 +102,9 @@ class DeadlineCleanupSuite extends FailsOnUncaught:
                 assertEquals(cleaned, Some(()), "cancellation has completed before timeout returns")
               }
               // Immediate reuse must acquire the same receive lock and retain its buffered prefix.
-              resumed <- (s.recv(65536)(exactly(4)), c.send(hex("0304"))).parTupled.map(_._1)
+              resumed <- (s.recvPrefix(65536)(exactly(4)), c.send(hex("0304"))).parTupled.map(_._1)
               _ <- c.send(hex("0506"))
-              next <- s.recv(65536)(exactly(2))
+              next <- s.recvPrefix(65536)(exactly(2))
             yield (resumed, next)
           }
         }

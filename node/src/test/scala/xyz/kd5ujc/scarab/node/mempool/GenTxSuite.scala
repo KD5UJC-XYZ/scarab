@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.network.recvPrefix
 import cats.effect.{IO, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -287,7 +288,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
   private type Ended = Either[NetworkError, LocalTxSubmissionServer.End]
 
   private def receive(ch: MuxChannel[IO])(using Handle[IO, NetworkError]) =
-    ch.recv(LocalTxSubmission.MaxMessageBytes)(
+    ch.recvPrefix(LocalTxSubmission.MaxMessageBytes)(
       LocalTxSubmission.decodePrefix(LocalTxSubmission.State.Busy, Role.Server, _)
     )
 

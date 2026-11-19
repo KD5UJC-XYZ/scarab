@@ -52,7 +52,7 @@ object PeerSharingClient:
         send(state, PeerSharing.Message.ShareRequest(amount))
       def receive(using Raise[F, NetworkError]): F[Reply] =
         channel.recv(settings.limits.maxMessageBytes)(
-          PeerSharing.decoder(PeerSharing.State.Busy, PeerSharing.Role.Server, settings.limits)
+          PeerSharing.incremental(PeerSharing.State.Busy, PeerSharing.Role.Server, settings.limits)
         )
       def peers(amount: Amount, reply: Reply)(using Raise[F, NetworkError]): F[Vector[Address]] =
         reply match

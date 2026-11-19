@@ -189,10 +189,10 @@ object ChainSync:
     parse(bytes, limits)(_.tip())
 
   private def parse[A](bytes: Bytes, limits: Limits)(
-      body: ProtocolWire.Scope ?=> ChainSyncWire.Reader => A
+      body: ProtocolWire.Reader => ProtocolWire.Scope ?=> A
   ): DecodeResult[A] =
     ProtocolWire.prefix {
-      val reader = new ChainSyncWire.Reader(bytes, limits)
+      val reader = ChainSyncWire.reader(bytes, limits)
       val value = body(reader)
       get(validateItem(bytes.take(reader.position), limits))
       DecodeResult.Decoded(value, reader.position)
@@ -237,7 +237,7 @@ object ChainSync:
         DecodeResult.Decoded(fromEngine(message), consumed)
 
   def validateItem(bytes: Bytes, limits: Limits = Limits()): Either[ProtocolError, Unit] = attempt {
-    val r = new ChainSyncWire.Reader(bytes, limits)
+    val r = ChainSyncWire.reader(bytes, limits)
     r.skip(0)
     if r.position != bytes.size then bad(ProtocolError.TrailingPayloadBytes)
   }

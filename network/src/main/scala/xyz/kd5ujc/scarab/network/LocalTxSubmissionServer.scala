@@ -79,7 +79,7 @@ object LocalTxSubmissionServer:
       LocalTxSubmission.encode(state, Role.Server, message).fold(illegal, channel.send)
     val step: F[Either[Unit, Option[Unavailable]]] =
       channel
-        .recvIncremental(LocalTxSubmission.MaxMessageBytes)(
+        .recv(LocalTxSubmission.MaxMessageBytes)(
           LocalTxSubmission.incremental(LocalTxSubmission.State.Idle, Role.Client, txs)
         )
         .flatMap {

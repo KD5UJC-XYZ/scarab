@@ -22,7 +22,7 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
 
   private def request(channel: MuxChannel[IO])(using
       cats.mtl.Raise[IO, NetworkError]
-  ): IO[Message] = channel.recv(65535)(
+  ): IO[Message] = channel.recvPrefix(65535)(
     BlockFetch.decodePrefix(BlockFetch.State.Idle, BlockFetch.Role.Client, _, codec)
   )
 

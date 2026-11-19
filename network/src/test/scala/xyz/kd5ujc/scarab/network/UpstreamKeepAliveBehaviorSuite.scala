@@ -111,7 +111,7 @@ class UpstreamKeepAliveBehaviorSuite extends FailsOnUncaught:
                           )
                         request <- encoded(KeepAlive.Message.Request(cookie))
                         _ <- c.send(request)
-                        response <- c.recv(KeepAlive.UpstreamMessageBytes)(
+                        response <- c.recvPrefix(KeepAlive.UpstreamMessageBytes)(
                           KeepAlive.decodePrefix(KeepAlive.State.Server, KeepAlive.Role.Server, _)
                         )
                         _ <- IO(assertEquals(response, KeepAlive.Message.Response(cookie)))

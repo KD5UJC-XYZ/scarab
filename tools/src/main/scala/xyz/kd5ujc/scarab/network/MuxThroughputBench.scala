@@ -46,7 +46,7 @@ object MuxThroughputBench extends IOApp.Simple:
                 )
                 .start
               _ <- (1 to messages).toList
-                .traverse_(_ => s.recv(size + 16)(exactly(size)) *> credit.release)
+                .traverse_(_ => s.recvPrefix(size + 16)(exactly(size)) *> credit.release)
               _ <- producer.joinWithNever.flatMap(Fibers.land(_))
               took <- IO.monotonic.map(_ - began)
             yield took.toNanos.toDouble / messages / 1000.0
@@ -75,7 +75,7 @@ object MuxThroughputBench extends IOApp.Simple:
               producer <- Fibers
                 .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(c.send(message))
                 .start
-              _ <- s.recv(size + 16)(whole(size))
+              _ <- s.recvPrefix(size + 16)(whole(size))
               _ <- producer.joinWithNever.flatMap(Fibers.land(_))
               took <- IO.monotonic.map(_ - began)
             yield took.toNanos.toDouble / 1000000.0

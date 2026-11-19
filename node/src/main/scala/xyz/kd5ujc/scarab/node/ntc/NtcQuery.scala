@@ -343,21 +343,41 @@ object NtcQuery:
 
   /** [[reader]] of a session that reads `table`'s queries. */
   def readerFor(table: QueryTable): LocalStateQuery.QueryReader = new LocalStateQuery.QueryReader:
-    def span(input: Bytes): LocalStateQuery.QuerySpan =
-      if !DetachedRecords.mayHold(input) then LocalStateQuery.QuerySpan.Item
-      else
-        DetachedRecords.prefix(input, shape) match
-          case DetachedRecords.Prefix.Item(end, records) if !records.isEmpty =>
-            LocalStateQuery.QuerySpan.Prefix(end)
-          case DetachedRecords.Prefix.Short      => LocalStateQuery.QuerySpan.Short
-          case DetachedRecords.Prefix.Refused    => LocalStateQuery.QuerySpan.Refused
-          case DetachedRecords.Prefix.Item(_, _) => LocalStateQuery.QuerySpan.Item
+    type Reading = QueryReading
+    val unread: Reading =
+      QueryReading(DetachedRecords.Scan.Unseen(0), None, NtcQueryPrefix.Reading.Unread)
+
+    def span(reading: Reading, input: Bytes): (Reading, LocalStateQuery.QuerySpan) =
+      DetachedRecords.mayHold(input, reading.scan) match
+        case scan @ DetachedRecords.Scan.Unseen(_) =>
+          (reading.copy(scan = scan), LocalStateQuery.QuerySpan.Item)
+        case scan @ DetachedRecords.Scan.Seen =>
+          val (walk, span) = DetachedRecords.prefix(input, shape, reading.walk) match
+            case (walk, DetachedRecords.Prefix.Item(end, records)) if !records.isEmpty =>
+              (walk, LocalStateQuery.QuerySpan.Prefix(end))
+            case (walk, DetachedRecords.Prefix.Short)   => (walk, LocalStateQuery.QuerySpan.Short)
+            case (walk, DetachedRecords.Prefix.Refused) => (walk, LocalStateQuery.QuerySpan.Refused)
+            case (walk, DetachedRecords.Prefix.Item(_, _)) => (walk, LocalStateQuery.QuerySpan.Item)
+          (reading.copy(scan = scan, walk = walk), span)
 
     /** A query not all of which has arrived, as the reference's decoder of queries reads it from
       * the stream ([[NtcQueryPrefix]]).
       */
-    def prefix(input: Bytes): LocalStateQuery.QueryPrefix =
-      NtcQueryPrefix.prefix(input)(using table)
+    def prefix(reading: Reading, input: Bytes): (Reading, LocalStateQuery.QueryPrefix) =
+      val (judge, verdict) = NtcQueryPrefix.prefix(reading.judge, input)(using table)
+      (reading.copy(judge = judge), verdict)
+
+  /** How far [[reader]] had read a query not all of which has arrived: its search for an empty
+    * indefinite list, its walk of the query once the query may hold a detached record, and its
+    * judge of the query's envelopes. A longer prefix of the query is read on from it, so that each
+    * of its heads is read once, as the reference's decoder of queries reads the query from the
+    * stream.
+    */
+  final case class QueryReading(
+      scan: DetachedRecords.Scan,
+      walk: Option[DetachedRecords.Walking],
+      judge: NtcQueryPrefix.Reading
+  )
 
   /** The query as the reference's decoders read it, as far as it holds a `RecD` record
     * ([[DetachedRecords]]): the set of `GovActionId` of `GetProposals` (`(2, 31)`,

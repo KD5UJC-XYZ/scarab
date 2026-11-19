@@ -120,16 +120,16 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
                 s <- server.channel(1)
                 serving = Peers.typed {
                   sample.requests.zip(sample.responses).traverse_ { (request, response) =>
-                    s.recv(65536)(exactly(request.size)).flatMap { received =>
+                    s.recvPrefix(65536)(exactly(request.size)).flatMap { received =>
                       IO(assertEquals(received, request)) *> s.send(response)
                     }
-                  } *> s.recv(65536)(exactly(2))
+                  } *> s.recvPrefix(65536)(exactly(2))
                 }
                 outcome <- Resource.make(serving.start)(_.cancel).use { fiber =>
                   for
                     observed <- sample.requests.zip(sample.responses).traverse {
                       (request, response) =>
-                        c.send(request) *> c.recv(65536)(exactly(response.size))
+                        c.send(request) *> c.recvPrefix(65536)(exactly(response.size))
                     }
                     clean =
                       sample.fault == Fault.CleanShutdown || (sample.fault == Fault.CloseOnRead && sample.requests.isEmpty)
@@ -186,10 +186,10 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
                 c <- client.channel(1)
                 s <- server.channel(1)
                 _ <- c.send(hex("01") ++ sample.reminder)
-                _ <- s.recv(65536)(exactly(1))
+                _ <- s.recvPrefix(65536)(exactly(1))
                 _ <- c.send(sample.received)
                 resumed <- server.channel(1)
-                got <- resumed.recv(65536)(exactly(sample.expected.size))
+                got <- resumed.recvPrefix(65536)(exactly(sample.expected.size))
               yield got
             }
         }
@@ -224,8 +224,8 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
                     results <- (
                       Peers.typed(a.send(hex("03"))),
                       a.flush,
-                      Peers.typed(a.recv(10)(exactly(1))),
-                      Peers.typed(b.recv(10)(exactly(1))),
+                      Peers.typed(a.recvPrefix(10)(exactly(1))),
+                      Peers.typed(b.recvPrefix(10)(exactly(1))),
                       (IO.sleep(1.millis) *> mux.abort(reason)) *> mux.abort(
                         NetworkError.BearerClosed(NetworkError.Closure.Aborted)
                       )
@@ -287,7 +287,7 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
                 s <- server.channel(1)
                 first <- Resource
                   .make(
-                    Peers.typed(s.recv(65536)(exactly(4))).start
+                    Peers.typed(s.recvPrefix(65536)(exactly(4))).start
                   )(_.cancel)
                   .use { pending =>
                     // Virtual time advances only once runnable work has quiesced: the receive holds
@@ -296,7 +296,7 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
                       pending.cancel.as(pending)
                   }
                 _ <- c.send(hex("0304"))
-                got <- s.recv(65536)(exactly(4))
+                got <- s.recvPrefix(65536)(exactly(4))
                 state <- first.join
               yield (got, state.isCanceled)
             }

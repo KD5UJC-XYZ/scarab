@@ -87,10 +87,9 @@ private[network] object ChainSyncPipeline:
             .flatMap(timeout =>
               Timed.within(timeout, id, current.toString)(
                 channel.recv(settings.limits.maxMessageBytes)(
-                  ChainSyncEngine.decodePrefix(
+                  ChainSyncEngine.incremental(
                     current,
                     Role.Server,
-                    _,
                     point,
                     tip,
                     payload,

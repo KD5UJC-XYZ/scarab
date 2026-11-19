@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import cats.data.StateT
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
 import ChainSync.DecodeResult
@@ -224,7 +225,7 @@ object PeerSharingEngine:
       need(1) *> StateT { at =>
         val bounds = itemLimits(limit - at)
         ProtocolWire.prefix {
-          val reader = new ProtocolWire.Reader(input.drop(at), bounds)
+          val reader = ProtocolWire.Reader(input.drop(at), bounds)
           val item = reader.item()
           DecodeResult.Decoded(item, reader.position)
         } match
@@ -235,23 +236,66 @@ object PeerSharingEngine:
           case DecodeResult.Decoded(value, consumed) => Right((at + consumed, value))
       }
 
-  /** The peers of a `MsgSharePeers`: a definite or an indefinite list (`Codec.hs:89-93`,
-    * ouroboros-network c45735a5).
+  /** The peers of a `MsgSharePeers` read whole when its input ran out: the list whose first peer
+    * begins at `start` (its head read), its peers up to `at`, and how many more it declares (`None`
+    * for an indefinite list). A longer prefix of the message reads on from `at`, so that each peer
+    * is read once, as the reference's codec reads them from the stream (`codecPeerSharing` is
+    * `mkCodecCborLazyBS`, `Codec.hs:42`, ouroboros-network c45735a5 and 4646039f).
     */
-  private def peers[P](c: Cursor, peer: PeerCodec[P]): Parse[Vector[P]] =
-    c.arrayOrIndefinite().flatMap {
-      case Some(n) =>
-        (n, Vector.empty[P]).tailRecM { (left, acc) =>
-          if left == 0 then stopped(Right(Right(acc)))
-          else peer.readFrom(c).map(a => Left((left - 1, acc :+ a)))
-        }
-      case None =>
-        Vector.empty[P].tailRecM { acc =>
-          c.peekBreak().flatMap {
-            case true  => c.break().as(Right(acc))
-            case false => peer.readFrom(c).map(a => Left(acc :+ a))
-          }
-        }
+  private[protocol] final case class Peers[+P](
+      start: Int,
+      at: Int,
+      left: Option[BigInt],
+      collected: Vector[P]
+  )
+
+  /** How an attempt at a read on a prefix of a message ended: its value and where it ends, short of
+    * input with the peers read whole so far, or with a failure.
+    */
+  private[protocol] enum Attempted[+P, +A]:
+    case Whole(end: Int, value: A)
+    case Short(kept: Option[Peers[P]])
+    case Failed(error: Error)
+
+  private def attempted[A, P, B](read: Read[(Int, A)])(
+      next: (Int, A) => Attempted[P, B]
+  ): Attempted[P, B] =
+    read match
+      case Right((at, value))     => next(at, value)
+      case Left(Stop.Short)       => Attempted.Short(None)
+      case Left(Stop.Fail(error)) => Attempted.Failed(error)
+
+  /** The peers of a `MsgSharePeers` from `at`: a definite or an indefinite list (`Codec.hs:89-93`,
+    * ouroboros-network c45735a5), resumed after the peers `kept` holds when it is this list's.
+    */
+  private def peers[P](
+      c: Cursor,
+      peer: PeerCodec[P],
+      at: Int,
+      kept: Option[Peers[P]]
+  ): Attempted[P, Vector[P]] =
+    attempted(c.arrayOrIndefinite().run(at)) { (first, length) =>
+      @tailrec def loop(
+          position: Int,
+          left: Option[BigInt],
+          acc: Vector[P]
+      ): Attempted[P, Vector[P]] =
+        val element: Read[(Int, Option[P])] = left match
+          case Some(n) if n == 0 => Right((position, None))
+          case Some(_)           => peer.readFrom(c).map(Some(_)).run(position)
+          case None =>
+            c.peekBreak().run(position).flatMap {
+              case (_, true)  => c.break().as(None).run(position)
+              case (_, false) => peer.readFrom(c).map(Some(_)).run(position)
+            }
+        element match
+          case Right((end, None))       => Attempted.Whole(end, acc)
+          case Right((next, Some(one))) => loop(next, left.map(_ - 1), acc :+ one)
+          case Left(Stop.Short)         => Attempted.Short(Some(Peers(first, position, left, acc)))
+          case Left(Stop.Fail(error))   => Attempted.Failed(error)
+      kept.filter(_.start == first) match
+        case Some(k) => loop(k.at, k.left, k.collected)
+        case None    => loop(first, length, Vector.empty)
     }
 
   /** One message from the front of `bytes`; surplus bytes are left to the caller. The ceiling is
@@ -271,28 +315,66 @@ object PeerSharingEngine:
       peer: PeerCodec[P],
       limits: Limits
   ): Decoding[Message[P]] =
+    attemptTyped(state, sender, bytes, peer, limits, None) match
+      case Attempted.Whole(used, message) => Decoding.Decoded(message, used)
+      case Attempted.Short(_)             => Decoding.NeedMore
+      case Attempted.Failed(error)        => Decoding.Failed(error)
+
+  /** One attempt at a message on a prefix of it, resumed after the peers `kept` holds. */
+  private[protocol] def attemptTyped[P](
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      peer: PeerCodec[P],
+      limits: Limits,
+      kept: Option[Peers[P]]
+  ): Attempted[P, Message[P]] =
     val cursor = new Cursor(bytes, limits.maxMessageBytes)
     val agency = state match
       case State.Done => Left(Error.Terminal)
       case State.Idle => Either.cond(sender == Role.Client, (), Error.WrongAgency(state, sender))
       case State.Busy => Either.cond(sender == Role.Server, (), Error.WrongAgency(state, sender))
-    val message: Parse[Message[P]] =
-      for
-        _ <- cursor.definiteArray()
-        key <- cursor.uint()
-        message <- (state, key) match
-          case (State.Idle, k) if k == 0 =>
+    def whole(read: Read[(Int, Message[P])]): Attempted[P, Message[P]] =
+      attempted(read)(Attempted.Whole(_, _))
+    val envelope = agency.left
+      .map(Stop.Fail(_))
+      .flatMap(_ => (cursor.definiteArray() *> cursor.uint()).run(0))
+    attempted(envelope) { (at, key) =>
+      (state, key) match
+        case (State.Idle, k) if k == 0 =>
+          whole(
             cursor
               .ranged(Field.Amount, BigInt(Amount.Max))
               .map(amount => Message.ShareRequest(Amount.trusted(amount)))
-          case (State.Busy, k) if k == 1 => peers(cursor, peer).map(Message.SharePeers(_))
-          case (State.Idle, k) if k == 2 => stopped(Right(Message.Done))
-          case _                         => stopped(fail(Error.UnexpectedKey(state, key)))
-      yield message
-    agency.left.map(Stop.Fail(_)).flatMap(_ => message.run(0)) match
-      case Right((used, message)) => Decoding.Decoded(message, used)
-      case Left(Stop.Short)       => Decoding.NeedMore
-      case Left(Stop.Fail(error)) => Decoding.Failed(error)
+              .run(at)
+          )
+        case (State.Busy, k) if k == 1 =>
+          peers(cursor, peer, at, kept) match
+            case Attempted.Whole(end, found) => Attempted.Whole(end, Message.SharePeers(found))
+            case Attempted.Short(progress)   => Attempted.Short(progress)
+            case Attempted.Failed(error)     => Attempted.Failed(error)
+        case (State.Idle, k) if k == 2 => Attempted.Whole(at, Message.Done)
+        case _                         => Attempted.Failed(Error.UnexpectedKey(state, key))
+    }
+
+  /** The decoder of one message, resumed on each longer prefix of it: the peers of a
+    * `MsgSharePeers` read whole are kept ([[Peers]]); the failure is the codec's as
+    * [[decodePrefix]] gives it.
+    */
+  def incremental[P](
+      state: State,
+      sender: Role,
+      peer: PeerCodec[P],
+      limits: Limits = Limits()
+  ): IncrementalDecoder[Message[P]] = new IncrementalDecoder[Message[P]]:
+    type Cursor = Option[Peers[P]]
+    val initial: Cursor = None
+    def resume(cursor: Cursor, input: Bytes): (Cursor, DecodeResult[Message[P]]) =
+      attemptTyped(state, sender, input, peer, limits, cursor) match
+        case Attempted.Whole(used, message) => (None, DecodeResult.Decoded(message, used))
+        case Attempted.Short(kept)          => (kept, DecodeResult.NeedMore)
+        case Attempted.Failed(error) =>
+          (None, DecodeResult.Failed(ProtocolError.PeerSharing(error)))
 
   def decodePrefix[P](
       state: State,

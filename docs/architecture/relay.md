@@ -31,6 +31,18 @@ pending operation raises it. Each fiber the connection starts (the KeepAlive pin
 the four server fibers) runs in an error scope of its own (`Fibers.scoped`) and, when it fails, aborts the
 multiplexer with the error as a value.
 
+A channel's `recv` takes the message's decoder as an `IncrementalDecoder`: while a message has not all arrived
+the decoder is resumed from its cursor on each longer prefix, after every SDU when the queue runs dry, as the
+reference's driver feeds each chunk to its decoder's continuation (`runDecoderWithLimit`,
+`Driver/Limits.hs:281-331` at ouroboros-network c45735a5 and 4646039f). The decoders of the node's mini-protocols
+(`ProtocolWire.incremental` and each codec's `incremental`) keep in their cursors what they read whole: the heads
+of an item, the elements of a list, a handshake's terms, a query's detached records and envelopes. Each one's
+verdict on a prefix is its codec's `decodePrefix` on it, and `BaseDifferentialSuite` compares those verdicts with
+the decoders' before they resumed. The Leios clients, which only the hand-run Leios probe uses, read each prefix
+from its start. The ingress queue counts payload bytes against its limit as the reference's does
+(`Network/Mux/Ingress.hs:119-133`, both pins); the heap a queued SDU takes beside its payload is not measured
+against the reference's.
+
 **Handshake** (`HandshakeServer`). Reads the proposal, answers through the pure
 `Handshake.responder` (highest common version of 14 and 15 here, 16 to 23 for node-to-client) and
 reports the agreed data. `initiatorOnly` in the agreed data is false only if both sides allow a

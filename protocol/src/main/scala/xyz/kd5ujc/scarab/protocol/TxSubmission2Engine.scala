@@ -54,6 +54,11 @@ private[scarab] object TxSubmission2Engine:
         bytes: Bytes
     ): DecodeResult[Message[I, B]]
 
+    /** [[decodePrefix]], resumed on each longer prefix of a message
+      * ([[TxSubmission2Engine.incremental]]).
+      */
+    def incremental(state: State, sender: Role): IncrementalDecoder[Message[I, B]]
+
   private[protocol] def codec[I, B](
       profile: Profile[I, B],
       size: Int => Either[ProtocolError, Long],
@@ -82,6 +87,8 @@ private[scarab] object TxSubmission2Engine:
       TxSubmission2Engine.encode(state, sender, message, profile)
     def decodePrefix(state: State, sender: Role, bytes: Bytes) =
       TxSubmission2Engine.decodePrefix(state, sender, bytes, profile)
+    def incremental(state: State, sender: Role) =
+      TxSubmission2Engine.incremental(state, sender, profile)
 
   /** Construct a typed profile from exact single-item codecs. The protocol engine owns the CBOR
     * envelope and enforces the current protocol state's byte bounds around each encoded item.
@@ -200,65 +207,123 @@ private[scarab] object TxSubmission2Engine:
     w.result
   }
 
+  /** The list of a message whose input ran out before it ended, with its elements read whole: a
+    * longer prefix of the message goes on after them, so that each element is read once, as the
+    * reference's codec reads each from the stream (`codecTxSubmission2`,
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/TxSubmission2/Codec.hs`, decoded
+    * through `mkCodecCborLazyBS`; c45735a5 and 4646039f).
+    */
+  enum Kept[+I, +B]:
+    case Offers(listing: ProtocolWire.Listing[Offer[I]])
+    case Ids(listing: ProtocolWire.Listing[I])
+    case Bodies(listing: ProtocolWire.Listing[B])
+
   def decodePrefix[I, B](
       state: State,
       sender: Role,
       bytes: Bytes,
       profile: Profile[I, B]
-  ): DecodeResult[Message[I, B]] = ProtocolWire.prefix {
-    if state == State.Done || (state == State.Idle) != (sender == Role.Server) then
-      bad(ProtocolError.WrongTxSubmission2Agency)
-    val limits = ProtocolWire.Limits(
-      profile.maxMessageBytes(state),
-      profile.maxOriginalBytes,
-      32,
-      ProtocolWire.MaxItems,
-      ProtocolWire.MaxItems
+  ): DecodeResult[Message[I, B]] = incremental(state, sender, profile).decodePrefix(bytes)
+
+  /** The decoder of one message, resumed on each longer prefix of it: the elements of its list read
+    * whole are kept, and a longer prefix reads on from the first one that was not.
+    */
+  def incremental[I, B](
+      state: State,
+      sender: Role,
+      profile: Profile[I, B]
+  ): IncrementalDecoder[Message[I, B]] = new IncrementalDecoder[Message[I, B]]:
+    type Cursor = (Option[Kept[I, B]], ProtocolWire.Progress)
+    val initial: Cursor = (None, ProtocolWire.Progress.none)
+    def resume(cursor: Cursor, input: Bytes): (Cursor, DecodeResult[Message[I, B]]) =
+      attempted(state, sender, input, profile, cursor._1, cursor._2) match
+        case ProtocolWire.Attempt.Short(kept, progress) => ((kept, progress), DecodeResult.NeedMore)
+        case ProtocolWire.Attempt.Done(result)          => (initial, result)
+
+  private def attempted[I, B](
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      profile: Profile[I, B],
+      kept: Option[Kept[I, B]],
+      from: ProtocolWire.Progress
+  ): ProtocolWire.Attempt[Kept[I, B], Message[I, B]] =
+    attempt {
+      if state == State.Done || (state == State.Idle) != (sender == Role.Server) then
+        bad(ProtocolError.WrongTxSubmission2Agency)
+      val limits = ProtocolWire.Limits(
+        profile.maxMessageBytes(state),
+        profile.maxOriginalBytes,
+        32,
+        ProtocolWire.MaxItems,
+        ProtocolWire.MaxItems
+      )
+      ProtocolWire.Reader(bytes, limits, from)
+    }.fold(
+      error => ProtocolWire.Attempt.Done(DecodeResult.Failed(error)),
+      r =>
+        ProtocolWire.resumed[Kept[I, B], Message[I, B]](r) {
+          def list[A](listed: Option[ProtocolWire.Listing[A]])(
+              wrap: ProtocolWire.Listing[A] => Kept[I, B]
+          )(f: ProtocolWire.Scope ?=> A): Vector[A] =
+            if r.read() != 0x9f then bad(ProtocolError.ExpectedIndefiniteProtocolList)
+            val start = r.mark
+            val resumed = listed.filter(_.start == start)
+            resumed.foreach(l => r.resumeAt(l.at))
+            @scala.annotation.tailrec
+            def loop(collected: Vector[A]): Vector[A] =
+              val at = r.mark
+              def short: Nothing =
+                ProtocolWire.keep(wrap(ProtocolWire.Listing(start, at, collected, -1L)), r)
+              bytes.lift(r.position) match
+                case None => short
+                case Some(b) if b == 0xff.toByte =>
+                  r.read(); collected
+                case Some(_) if collected.sizeIs >= profile.maxBatch =>
+                  bad(ProtocolError.BatchLimitExceeded(collected.size, profile.maxBatch))
+                case Some(_) =>
+                  ProtocolWire.short(f) match
+                    case Some(value) => loop(collected :+ value)
+                    case None        => short
+            loop(resumed.fold(Vector.empty[A])(_.collected))
+          def uint16(): Int =
+            val n = r.uint().value
+            if n > 65535 then bad(ProtocolError.CountOutsideUint16(n))
+            n.toInt
+          val arity = r.arrayLength()
+          val tag = r.uint().value
+          val message: Message[I, B] = (state, arity, tag.toInt) match
+            case (State.Init, 1, 6) if tag == 6 => Message.Init
+            case (State.Idle, 4, 0) if tag == 0 =>
+              val blockingByte = r.read()
+              if blockingByte != 0xf4 && blockingByte != 0xf5 then
+                bad(ProtocolError.ExpectedBlockingBoolean)
+              val blocking = blockingByte == 0xf5
+              Message.RequestIds(blocking, uint16(), uint16())
+            case (State.Ids(_), 2, 1) if tag == 1 =>
+              Message.ReplyIds(list(kept.collect { case Kept.Offers(l) => l })(Kept.Offers(_)) {
+                if r.arrayLength() != 2 then bad(ProtocolError.OfferArity)
+                val id = profile.readId(r)
+                val size = r.uint().value
+                if size <= 0 || size > 0xffffffffL then bad(ProtocolError.SizeOutsideUint32)
+                val offer = Offer(id, size.toLong)
+                profile.validateOffer(offer)
+                offer
+              })
+            case (State.Idle, 2, 2) if tag == 2 =>
+              Message.RequestTxs(
+                list(kept.collect { case Kept.Ids(l) => l })(Kept.Ids(_))(profile.readId(r))
+              )
+            case (State.Txs, 2, 3) if tag == 3 =>
+              Message.ReplyTxs(
+                list(kept.collect { case Kept.Bodies(l) => l })(Kept.Bodies(_))(profile.readBody(r))
+              )
+            case (State.Ids(true), 1, 4) if tag == 4 => Message.Done
+            case _ => bad(ProtocolError.UnknownTxSubmission2TagStateArity)
+          get(transition(state, sender, message))
+          DecodeResult.Decoded(message, r.position)
+        }
     )
-    val r = new ProtocolWire.Reader(bytes, limits)
-    def list[A](f: () => A): Vector[A] =
-      if r.read() != 0x9f then bad(ProtocolError.ExpectedIndefiniteProtocolList)
-      @scala.annotation.tailrec
-      def loop(collected: Vector[A]): Vector[A] =
-        bytes.lift(r.position) match
-          case None => bad(ProtocolError.TruncatedList)
-          case Some(b) if b == 0xff.toByte =>
-            r.read(); collected
-          case Some(_) if collected.sizeIs >= profile.maxBatch =>
-            bad(ProtocolError.BatchLimitExceeded(collected.size, profile.maxBatch))
-          case Some(_) => loop(collected :+ f())
-      loop(Vector.empty)
-    def uint16(): Int =
-      val n = r.uint().value
-      if n > 65535 then bad(ProtocolError.CountOutsideUint16(n))
-      n.toInt
-    val arity = r.arrayLength()
-    val tag = r.uint().value
-    val message: Message[I, B] = (state, arity, tag.toInt) match
-      case (State.Init, 1, 6) if tag == 6 => Message.Init
-      case (State.Idle, 4, 0) if tag == 0 =>
-        val blockingByte = r.read()
-        if blockingByte != 0xf4 && blockingByte != 0xf5 then
-          bad(ProtocolError.ExpectedBlockingBoolean)
-        val blocking = blockingByte == 0xf5
-        Message.RequestIds(blocking, uint16(), uint16())
-      case (State.Ids(_), 2, 1) if tag == 1 =>
-        Message.ReplyIds(list(() =>
-          if r.arrayLength() != 2 then bad(ProtocolError.OfferArity)
-          val id = profile.readId(r)
-          val size = r.uint().value
-          if size <= 0 || size > 0xffffffffL then bad(ProtocolError.SizeOutsideUint32)
-          val offer = Offer(id, size.toLong)
-          profile.validateOffer(offer)
-          offer
-        ))
-      case (State.Idle, 2, 2) if tag == 2      => Message.RequestTxs(list(() => profile.readId(r)))
-      case (State.Txs, 2, 3) if tag == 3       => Message.ReplyTxs(list(() => profile.readBody(r)))
-      case (State.Ids(true), 1, 4) if tag == 4 => Message.Done
-      case _ => bad(ProtocolError.UnknownTxSubmission2TagStateArity)
-    get(transition(state, sender, message))
-    DecodeResult.Decoded(message, r.position)
-  }
 
   def decode[I, B](
       state: State,

@@ -6,8 +6,6 @@ import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.{Handshake, NtnVersion}
 import scala.concurrent.duration.*
 
@@ -16,12 +14,6 @@ object HandshakeClient:
   final case class Agreed(version: Int, data: Handshake.Data):
     /** The agreed node-to-node version as the typed value (`None` for a node-to-client one). */
     def ntnVersion: Option[NtnVersion] = NtnVersion.fromNumber(version)
-
-  private def decodeReply(suite: Handshake.Suite)(bytes: Bytes): DecodeResult[Handshake.Message] =
-    Handshake.decodePrefix(suite, Handshake.State.Confirm, bytes) match
-      case Right((message, rest))  => DecodeResult.Decoded(message, bytes.size - rest.size)
-      case Left(e) if e.incomplete => DecodeResult.NeedMore
-      case Left(e)                 => DecodeResult.Failed(e.cause)
 
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
@@ -44,7 +36,9 @@ object HandshakeClient:
         .fold(refuse, Temporal[F].pure)
       _ <- channel.send(bytes)
       reply <- Timed.within(timeout, Protocols.Handshake, "confirm")(
-        channel.recv(Handshake.MaxMessageBytes)(decodeReply(suite))
+        channel.recv(Handshake.MaxMessageBytes)(
+          Handshake.incremental(suite, Handshake.State.Confirm)
+        )
       )
       outcome <- client.receive(reply).fold(refuse, Temporal[F].pure)
       agreed <- outcome._2 match

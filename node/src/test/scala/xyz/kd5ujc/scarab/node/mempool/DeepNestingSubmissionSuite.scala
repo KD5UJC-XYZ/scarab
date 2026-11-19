@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.network.recvPrefix
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Resource}
@@ -118,7 +119,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
                     .leftMap(e => RuntimeException(e.message))
                 )
                 _ <- ch.send(bytes)
-                reply <- ch.recv(LocalTxSubmission.MaxMessageBytes)(
+                reply <- ch.recvPrefix(LocalTxSubmission.MaxMessageBytes)(
                   LocalTxSubmission.decodePrefix(LocalTxSubmission.State.Busy, Role.Server, _)
                 )
               yield reply

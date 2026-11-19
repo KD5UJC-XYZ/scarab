@@ -63,7 +63,7 @@ object LeiosProbe extends IOApp:
             ka <- mux.channel(Protocols.KeepAlive, Mux.Role.Initiator)
             n <- mux.channel(Protocols.LeiosNotify, Mux.Role.Responder)
             f <- mux.channel(Protocols.LeiosFetch, Mux.Role.Responder)
-            first = n.recv(2500000)(bytes =>
+            first = n.recvPrefix(2500000)(bytes =>
               LeiosDecode.result(LeiosNotify.decodePrefix(LeiosNotify.State.Idle, bytes), bytes)
             )
             _ <- KeepAliveClient.background[IO](ka, mux).use { _ =>

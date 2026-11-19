@@ -87,7 +87,9 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     sendTo(ch, LocalTxMonitor.encode(state, Role.Client, m))
 
   private def monitorReceive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
-    ch.recv(LocalTxMonitor.MaxMessageBytes)(LocalTxMonitor.decodePrefix(state, Role.Server, _))
+    ch.recvPrefix(LocalTxMonitor.MaxMessageBytes)(
+      LocalTxMonitor.decodePrefix(state, Role.Server, _)
+    )
 
   private def connected[A](
       monitor: Option[LocalTxMonitorServer.Source[IO]],
@@ -399,7 +401,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
       def send(state: ChainSync.State, m: ChainSync.Message[RawNtNBlock]): IO[Unit] =
         sendTo(ch, ChainSync.encode(state, Role.Client, m, codec, limits))
       def receive(state: ChainSync.State) =
-        ch.recv(limits.maxMessageBytes)(
+        ch.recvPrefix(limits.maxMessageBytes)(
           ChainSync.decodePrefix(state, Role.Server, _, codec, limits)
         )
       for

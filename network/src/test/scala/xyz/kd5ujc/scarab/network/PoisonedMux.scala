@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.IncrementalDecoder
 import cats.effect.IO
 import cats.mtl.Raise
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 
 /** A multiplexer whose decoder of one mini-protocol throws: `recv` on `poisoned` hands the bytes to
   * a decoder that throws `injected`. Everything else, `closed` and `abort` included, is the wrapped
@@ -35,6 +35,6 @@ object PoisonedMux:
       def protocol: Int = underlying.protocol
       def send(message: Bytes)(using Raise[IO, NetworkError]): IO[Unit] = underlying.send(message)
       def flush: IO[Unit] = underlying.flush
-      def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+      def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
           Raise[IO, NetworkError]
-      ): IO[A] = underlying.recv(maxBytes)(_ => throw injected)
+      ): IO[A] = underlying.recv(maxBytes)(PrefixDecoders.restarting[A](_ => throw injected))

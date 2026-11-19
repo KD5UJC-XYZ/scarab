@@ -25,7 +25,7 @@ object WireSkipBench:
       this match
         case Imperative =>
           ProtocolWire.attempt {
-            val reader = new ProtocolWire.Reader(input, limits)
+            val reader = ProtocolWire.Reader(input, limits)
             val item = reader.item()
             (item, reader.position)
           }

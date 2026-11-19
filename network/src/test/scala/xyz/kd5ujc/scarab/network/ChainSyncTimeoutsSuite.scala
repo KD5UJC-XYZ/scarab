@@ -60,7 +60,7 @@ class ChainSyncTimeoutsSuite extends FailsOnUncaught:
 
   private def request(channel: MuxChannel[IO])(using Raise[IO, NetworkError]): IO[Unit] =
     channel
-      .recv(65535)(
+      .recvPrefix(65535)(
         ChainSync.decodePrefix(State.Idle, ChainSync.Role.Client, _, ChainSyncFixtures.rawItem)
       )
       .map(message => assertEquals(message, Message.RequestNext))

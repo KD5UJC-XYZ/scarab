@@ -201,7 +201,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
             LocalTxSubmission.Message.SubmitTx(Bytes(Vector(0x80.toByte)))
           )
         )
-        answer <- channel.recv(LocalTxSubmission.MaxMessageBytes)(
+        answer <- channel.recvPrefix(LocalTxSubmission.MaxMessageBytes)(
           LocalTxSubmission.decodePrefix(LocalTxSubmission.State.Busy, Role.Server, _)
         )
       yield answer
@@ -215,7 +215,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
           channel,
           LocalStateQuery.encode(State.Idle, Role.Client, Message.Acquire(Target.VolatileTip))
         )
-        acquired <- channel.recv(LocalStateQuery.MaxResultBytes)(
+        acquired <- channel.recvPrefix(LocalStateQuery.MaxResultBytes)(
           LocalStateQuery.decodePrefix(State.Acquiring, Role.Server, _)
         )
         _ <- IO(assertEquals(acquired, Message.Acquired))
@@ -223,7 +223,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
           channel,
           LocalStateQuery.encode(State.Acquired, Role.Client, Message.Query(Bytes(Vector(0x01))))
         )
-        answer <- channel.recv(LocalStateQuery.MaxResultBytes)(
+        answer <- channel.recvPrefix(LocalStateQuery.MaxResultBytes)(
           LocalStateQuery.decodePrefix(State.Querying, Role.Server, _)
         )
       yield answer

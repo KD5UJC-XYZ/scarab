@@ -97,7 +97,7 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
                     _ <- IO(assertEquals(before, Vector(first)))
                     _ <- release.complete(())
                     observed <- expected.traverse { (state, _) =>
-                      c.recv(2500000) { bytes =>
+                      c.recvPrefix(2500000) { bytes =>
                         BlockFetch.decodePrefix(state, BlockFetch.Role.Server, bytes, codec) match
                           case DecodeResult.Decoded(message, consumed) =>
                             DecodeResult.Decoded((message, bytes.take(consumed)), consumed)

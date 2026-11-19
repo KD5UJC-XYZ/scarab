@@ -158,11 +158,11 @@ class LeiosQueryTableSuite extends FunSuite:
   test("a session's reader follows its table") {
     val removedQuery = inEra(QueryEra.Dijkstra, "8104")
     assertEquals(
-      NtcQuery.readerFor(QueryTable.of(StateLayout.Leios, NtcVersion.V23)).prefix(removedQuery),
+      NtcQuery.readerFor(QueryTable.of(StateLayout.Leios, NtcVersion.V23)).prefixOf(removedQuery),
       QueryPrefix.Refused(Refusal.Constructor(Level.Ledger, 1, 4))
     )
     assertEquals(
-      NtcQuery.readerFor(QueryTable.of(StateLayout.Leios, NtcVersion.V22)).prefix(removedQuery),
+      NtcQuery.readerFor(QueryTable.of(StateLayout.Leios, NtcVersion.V22)).prefixOf(removedQuery),
       QueryPrefix.Short
     )
   }

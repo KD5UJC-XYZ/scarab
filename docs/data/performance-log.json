@@ -4958,6 +4958,74 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-66",
+   "section": "60",
+   "heading": "60. The mini-protocol reader resumed: a persistent stack in its CBOR walk",
+   "subject": "The mini-protocol reader resumed: a persistent stack in its CBOR walk",
+   "date": "2026-11-18",
+   "dateSource": "text",
+   "issues": [],
+   "commits": [
+    "3cad1f045"
+   ],
+   "links": [],
+   "page": "peers-and-network",
+   "results": [
+    {
+     "id": "perf-66.t1",
+     "header": [
+      "Workload (`WireSkipBench`, median of 6 rounds)",
+      "Imperative ns/op, before",
+      "Imperative ns/op, after (two runs)",
+      "B/op, before",
+      "B/op, after",
+      "Functional / imperative time, before",
+      "Functional / imperative time, after"
+     ],
+     "separator": "|---|---:|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "preview blocks (648)",
+       "1,296,320",
+       "1,632,142 / 1,300,851",
+       "473,680",
+       "692,752",
+       "2.01",
+       "2.05 / 2.16"
+      ],
+      [
+       "preprod blocks (70)",
+       "252,608",
+       "229,701 / 237,796",
+       "95,088",
+       "139,824",
+       "1.51",
+       "1.72 / 2.39"
+      ],
+      [
+       "mainnet blocks (12)",
+       "121,090",
+       "125,833 / 133,842",
+       "71,456",
+       "87,320",
+       "1.12",
+       "1.36 / 2.06"
+      ],
+      [
+       "all blocks in one message (740,420 B)",
+       "1,671,531",
+       "1,646,908 / 1,876,088",
+       "447,728",
+       "657,440",
+       "1.75",
+       "1.96 / 2.43"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }

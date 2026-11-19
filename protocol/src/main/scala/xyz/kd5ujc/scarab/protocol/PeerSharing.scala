@@ -209,14 +209,22 @@ object PeerSharing:
     case Failed(error: Error)
     case Decoded(value: A, consumed: Int)
 
-  /** `decodePrefix` as the multiplexer takes it (`MuxChannel.recv`): the error is its message. */
+  /** `decodePrefix` with the error as its message: [[incremental]] started afresh. */
   def decoder(state: State, sender: Role, limits: Limits = Limits())(
       bytes: Bytes
   ): DecodeResult[Message] =
-    decodePrefix(state, sender, bytes, limits) match
-      case Decoding.NeedMore              => DecodeResult.NeedMore
-      case Decoding.Failed(error)         => DecodeResult.Failed(ProtocolError.PeerSharing(error))
-      case Decoding.Decoded(value, taken) => DecodeResult.Decoded(value, taken)
+    incremental(state, sender, limits).decodePrefix(bytes)
+
+  /** The decoder of one message as the multiplexer takes it (`MuxChannel.recv`), resumed on each
+    * longer prefix of it: the peers of a `MsgSharePeers` read whole are kept, so that each is read
+    * once. The error is its message.
+    */
+  def incremental(
+      state: State,
+      sender: Role,
+      limits: Limits = Limits()
+  ): IncrementalDecoder[Message] =
+    PeerSharingEngine.incremental(state, sender, addressCodec, limits).map(fromEngine)
 
   private def toEngine(message: Message): PeerSharingEngine.Message[Address] = message match
     case Message.ShareRequest(amount) => PeerSharingEngine.Message.ShareRequest(amount)

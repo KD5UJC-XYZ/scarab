@@ -177,10 +177,22 @@ object LocalTxMonitor:
       sender: Role,
       bytes: Bytes,
       txIds: TxIdReader = TxIdReader.whole
-  ): DecodeResult[Message] =
-    decoded(state, sender, bytes) match
-      case DecodeResult.NeedMore => waiting(state, sender, bytes, txIds)
-      case other                 => other
+  ): DecodeResult[Message] = incremental(state, sender, txIds).decodePrefix(bytes)
+
+  /** [[decodePrefix]], resumed on each longer prefix of a message: an id or a transaction it had
+    * not read whole goes on from the head it stopped at, and only the heads of a `HasTx` id are
+    * judged again ([[TxIdReader]]).
+    */
+  def incremental(
+      state: State,
+      sender: Role,
+      txIds: TxIdReader = TxIdReader.whole
+  ): IncrementalDecoder[Message] =
+    decoded(state, sender).mapResult((bytes, result) =>
+      result match
+        case DecodeResult.NeedMore => waiting(state, sender, bytes, txIds)
+        case other                 => other
+    )
 
   /** An incomplete message: a `HasTx` whose id `txIds` refuses ends here, anything else waits. */
   private def waiting(
@@ -190,7 +202,7 @@ object LocalTxMonitor:
       txIds: TxIdReader
   ): DecodeResult[Message] =
     ProtocolWire.prefix {
-      val r = new ProtocolWire.Reader(bytes, wire)
+      val r = ProtocolWire.Reader(bytes, wire)
       val arity = r.arrayLength()
       val tag = r.uint().value
       (state, sender, arity, tag.toInt) match
@@ -201,19 +213,40 @@ object LocalTxMonitor:
         case _ => DecodeResult.NeedMore
     }
 
-  private def decoded(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
-    ProtocolWire.prefix {
+  /** The entries of a `ReplyGetMeasures` read whole when the input ran out, the next one as far as
+    * it was read (its name, then its size), and where the reading goes on: a longer prefix of the
+    * message reads each name and integer once.
+    */
+  private[protocol] final case class Measuring(
+      start: ProtocolWire.Mark,
+      at: ProtocolWire.Mark,
+      entries: Vector[(String, Measure)],
+      next: MeasureRead
+  )
+
+  /** How far the entry being read had got: nothing, its name, its name and its array's head, or
+    * those and its size.
+    */
+  private[protocol] enum MeasureRead:
+    case Fresh
+    case Named(name: String)
+    case Opened(name: String)
+    case Sized(name: String, size: BigInt)
+
+  private def decoded(state: State, sender: Role): IncrementalDecoder[Message] =
+    ProtocolWire.incremental[Measuring, Message] { (bytes, from) =>
       if state == State.Done || clientTurn(state) != (sender == Role.Client) then
         bad(ProtocolError.WrongLocalTxMonitorAgency)
-      val r = new ProtocolWire.Reader(bytes, wire)
+      ProtocolWire.Reader(bytes, wire, from)
+    } { (_, kept, r) =>
       val arity = r.arrayLength()
       val tag = r.uint().value
-      def integer(): BigInt =
+      def integer()(using ProtocolWire.Scope): BigInt =
         if r.major == 6 then
           if r.tag() != 2 then bad(ProtocolError.ExpectedUint64)
           BigInt(1, r.bytes(MaxMessageBytes).toArray)
         else r.uint().value
-      def word32(name: ProtocolError.MonitorField): Long =
+      def word32(name: ProtocolError.MonitorField)(using ProtocolWire.Scope): Long =
         val v = r.uint().value
         if v > MaxWord32 then bad(ProtocolError.Word32Range(name, v))
         v.toLong
@@ -242,11 +275,34 @@ object LocalTxMonitor:
         case (State.Busy(Kind.GetMeasures), 3, 12) if tag == 12 =>
           val count = word32(ProtocolError.MonitorField.TxCount)
           val n = r.mapLength()
-          val entries = (0 until n).toVector.map { _ =>
-            val name = r.text(MaxMessageBytes)
-            if r.arrayLength() != 2 then bad(ProtocolError.MeasureArity)
-            name -> Measure(integer(), integer())
-          }
+          val start = r.mark
+          val resumed = kept.filter(_.start == start)
+          resumed.foreach(k => r.resumeAt(k.at))
+          // each entry is its name, its array's head, its size and its capacity, read in that
+          // order; the parts read whole are kept when the input runs out
+          @scala.annotation.tailrec
+          def loop(
+              entries: Vector[(String, Measure)],
+              next: MeasureRead
+          ): Vector[(String, Measure)] =
+            val at = r.mark
+            def read[A](part: ProtocolWire.Scope ?=> A): A =
+              ProtocolWire
+                .short(part)
+                .getOrElse(ProtocolWire.keep(Measuring(start, at, entries, next), r))
+            next match
+              case MeasureRead.Fresh =>
+                if entries.sizeIs == n then entries
+                else loop(entries, MeasureRead.Named(read(r.text(MaxMessageBytes))))
+              case MeasureRead.Named(name) =>
+                if read(r.arrayLength()) != 2 then bad(ProtocolError.MeasureArity)
+                loop(entries, MeasureRead.Opened(name))
+              case MeasureRead.Opened(name) =>
+                loop(entries, MeasureRead.Sized(name, read(integer())))
+              case MeasureRead.Sized(name, size) =>
+                loop(entries :+ (name -> Measure(size, read(integer()))), MeasureRead.Fresh)
+          val entries =
+            resumed.fold(loop(Vector.empty, MeasureRead.Fresh))(k => loop(k.entries, k.next))
           if entries.map(_._1).distinct.sizeIs != entries.size then
             bad(ProtocolError.DuplicateMeasureName)
           Message.ReplyGetMeasures(Measures(count, SortedMap.from(entries)))

@@ -46,7 +46,7 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
               input <- ours.channel(Protocols.PeerSharing, Mux.Role.Responder)
               output <- remote.channel(Protocols.PeerSharing, Mux.Role.Initiator)
               _ <- output.send(rawByte)
-              _ <- input.recv(10)(
+              _ <- input.recvPrefix(10)(
                 exactly(1)
               ) // Prove pre-install routing, even with a fast consumer.
               _ <- notActive(ours)
@@ -82,7 +82,7 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
             _ <- notActive(ours)
             _ <- ours.installApplication(noSharing, noSharing)
             _ <- ours.awaitResponderActivity
-            got <- input.recv(10)(exactly(1))
+            got <- input.recvPrefix(10)(exactly(1))
           yield assertEquals(got, rawByte)
         }
       })
@@ -97,7 +97,7 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
             input <- ours.channel(Protocols.ChainSync, Mux.Role.Initiator)
             output <- remote.channel(Protocols.ChainSync, Mux.Role.Responder)
             _ <- output.send(rawByte)
-            _ <- input.recv(10)(exactly(1))
+            _ <- input.recvPrefix(10)(exactly(1))
             _ <- ours.installApplication(noSharing, noSharing)
             _ <- notActive(ours)
           yield ()
@@ -135,7 +135,7 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
             responder <- ours.channel(Protocols.ChainSync, Mux.Role.Responder)
             _ <- ours.installApplication(noSharing, Set.empty)
             send <- typed(sharingChannel.send(rawByte))
-            receive <- typed(sharingChannel.recv(10)(exactly(1)))
+            receive <- typed(sharingChannel.recvPrefix(10)(exactly(1)))
             lookup <- typed(ours.channel(Protocols.PeerSharing))
             wrong <- typed(responder.send(rawByte))
           yield
@@ -162,7 +162,7 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
         duplex.use { (ours, _) =>
           for
             channel <- ours.channel(Protocols.PeerSharing, Mux.Role.Responder)
-            waiting <- typed(channel.recv(10)(exactly(1))).start
+            waiting <- typed(channel.recvPrefix(10)(exactly(1))).start
             _ <- IO.sleep(1.millis)
             _ <- ours.installApplication(noSharing, noSharing)
             result <- waiting.joinWithNever
@@ -183,7 +183,7 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
             output <- remote.channel(Protocols.ChainSync, Mux.Role.Initiator)
             input <- ours.channel(Protocols.ChainSync, Mux.Role.Responder)
             _ <- output.send(rawByte)
-            _ <- input.recv(10)(exactly(1))
+            _ <- input.recvPrefix(10)(exactly(1))
             _ <- ours.installApplication(noSharing, noSharing)
             _ <- ours.installApplication(noSharing, noSharing)
             _ <- ours.awaitResponderActivity
@@ -273,7 +273,7 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
               input <- ours.channel(Protocols.Handshake)
               output <- remote.channel(Protocols.Handshake)
               _ <- output.send(if trailing then Bytes(Vector(1.toByte, 2.toByte)) else rawByte)
-              _ <- input.recv(10)(exactly(1))
+              _ <- input.recvPrefix(10)(exactly(1))
               _ <-
                 if trailing then IO.unit
                 else output.send(rawByte) *> output.flush *> IO.sleep(1.millis)

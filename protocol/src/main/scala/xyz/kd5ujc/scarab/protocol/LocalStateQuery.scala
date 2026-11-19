@@ -52,23 +52,51 @@ object LocalStateQuery:
     * structure says where; the codec still reads the bytes as whole items.
     */
   trait QueryReader:
-    /** How the query at the start of `input` reads; `input` may hold less than it or more. */
-    def span(input: Bytes): QuerySpan
+    /** How far a reading of a query not all of which has arrived had got: a longer prefix of the
+      * same query is read on from it, so that what was read of the query is not read again, as the
+      * reference's decoder of queries reads it from the stream.
+      */
+    type Reading
+
+    /** The reading of a query nothing of which has been read. */
+    def unread: Reading
+
+    /** How the query at the start of `input` reads; `input` may hold less than it or more. The
+      * reading goes on from `reading`, that of a shorter prefix of the same query.
+      */
+    def span(reading: Reading, input: Bytes): (Reading, QuerySpan)
 
     /** What the query's decoder makes of `input`, the part of a query that has arrived, when the
       * message is not whole: the reference's codec reads the query from the stream (`decodeQuery`,
       * ouroboros-network c45735a5
       * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalStateQuery/Codec.hs:169-170`),
       * so a prefix its decoder fails on ends the connection before the rest arrives. A whole query
-      * is judged as before.
+      * is judged as before. The reading goes on from `reading`, as for [[span]].
       */
-    def prefix(input: Bytes): QueryPrefix
+    def prefix(reading: Reading, input: Bytes): (Reading, QueryPrefix)
+
+    /** [[span]] of `input` read from its start. */
+    final def spanOf(input: Bytes): QuerySpan = span(unread, input)._2
+
+    /** [[prefix]] of `input` read from its start. */
+    final def prefixOf(input: Bytes): QueryPrefix = prefix(unread, input)._2
 
   object QueryReader:
+    /** A reader that reads each input afresh: one whose answers read no more than the first heads
+      * of a query, whatever its size.
+      */
+    trait Restarting extends QueryReader:
+      type Reading = Unit
+      def unread: Reading = ()
+      def span(input: Bytes): QuerySpan
+      def prefix(input: Bytes): QueryPrefix
+      final def span(reading: Reading, input: Bytes): (Reading, QuerySpan) = ((), span(input))
+      final def prefix(reading: Reading, input: Bytes): (Reading, QueryPrefix) = ((), prefix(input))
+
     /** Each query one item of a tree: the queries of a profile that holds no `RecD` record. No
       * prefix is judged: the query is read whole before anything is said of it.
       */
-    val items: QueryReader = new QueryReader:
+    val items: QueryReader = new Restarting:
       def span(input: Bytes): QuerySpan = QuerySpan.Item
       def prefix(input: Bytes): QueryPrefix = QueryPrefix.Short
 

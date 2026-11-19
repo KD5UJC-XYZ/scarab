@@ -134,7 +134,7 @@ class HandshakeSuite extends FailsOnUncaught:
           c <- client.channel(0)
           s <- server.channel(0)
           _ <- typed(
-            s.recv(5760)(b =>
+            s.recvPrefix(5760)(b =>
               xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult.Decoded((), b.size)
             ) *> s.send(Bytes(Vector(-1)))
           ).start

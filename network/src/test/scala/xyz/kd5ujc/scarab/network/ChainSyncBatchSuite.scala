@@ -20,7 +20,7 @@ class ChainSyncBatchSuite extends FailsOnUncaught:
   private val limits = ChainSync.Limits()
 
   private def receive(channel: MuxChannel[IO])(using Raise[IO, NetworkError]): IO[Message[Bytes]] =
-    channel.recv(limits.maxMessageBytes)(
+    channel.recvPrefix(limits.maxMessageBytes)(
       ChainSync.decodePrefix(State.Idle, Role.Client, _, ChainSyncFixtures.rawItem, limits)
     )
 

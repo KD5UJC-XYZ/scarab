@@ -168,43 +168,67 @@ object BlockFetchEngine:
       payload: PayloadCodec[B],
       limits: Limits = Limits()
   ): DecodeResult[Message[P, B]] =
-    ProtocolWire.prefix {
+    incremental(state, sender, point, payload, limits).decodePrefix(bytes)
+
+  /** [[decodePrefix]], resumed on each longer prefix of a message: an item it had not read whole
+    * goes on from the head it stopped at.
+    */
+  def incremental[P, B](
+      state: State,
+      sender: Role,
+      point: PointCodec[P],
+      payload: PayloadCodec[B],
+      limits: Limits = Limits()
+  ): IncrementalDecoder[Message[P, B]] =
+    ProtocolWire.incremental[Nothing, Message[P, B]] { (bytes, from) =>
       val bounds = limits.wire(state)
       // Reject impossible agency even with empty input rather than waiting for bytes.
       if (state == State.Idle) != (sender == Role.Client) then
         bad(ProtocolError.WrongBlockFetchAgency)
-      val r = new ProtocolWire.Reader(bytes, bounds)
-      val arity = r.arrayLength()
-      val possibleArity = state match
-        case State.Idle      => arity == 1 || arity == 3
-        case State.Busy      => arity == 1
-        case State.Streaming => arity == 1 || arity == 2
-        case State.Done      => false
-      if !possibleArity then bad(ProtocolError.WrongBlockFetchOuterArityForState)
-      val tag = r.uint().value
-      val expected = tag match
-        case n if n == 0                               => 3
-        case n if n == 4                               => 2
-        case n if n == 1 || n == 2 || n == 3 || n == 5 => 1
-        case _                                         => bad(ProtocolError.UnknownBlockFetchTag)
-      if arity != expected then bad(ProtocolError.WrongExactBlockFetchOuterArity)
-      // Header-only state validation happens before any untrusted payload decode.
-      val legal = (state, tag.toInt) match
-        case (State.Idle, 0 | 1) | (State.Busy, 2 | 3) | (State.Streaming, 4 | 5) => true
-        case _                                                                    => false
-      if !legal then bad(ProtocolError.WrongBlockFetchState)
-      val message: Message[P, B] = tag.toInt match
-        case 0 => Message.RequestRange(point.readFrom(r), point.readFrom(r))
-        case 1 => Message.ClientDone
-        case 2 => Message.StartBatch
-        case 3 => Message.NoBlocks
-        case 4 => Message.Block(payload.readFrom(r))
-        case 5 => Message.BatchDone
-        case _ => bad(ProtocolError.UnknownBlockFetchTag)
-      get(transition(state, sender, message))
-      get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
-      DecodeResult.Decoded(message, r.position)
-    }
+      ProtocolWire.Reader(bytes, bounds, from)
+    }((bytes, _, r) => decoded(state, sender, point, payload, limits, bytes, r))
+
+  /** One message of `state` from `sender`, read by `r`. */
+  private def decoded[P, B](
+      state: State,
+      sender: Role,
+      point: PointCodec[P],
+      payload: PayloadCodec[B],
+      limits: Limits,
+      bytes: Bytes,
+      r: ProtocolWire.Reader
+  )(using ProtocolWire.Scope): DecodeResult[Message[P, B]] =
+    val bounds = limits.wire(state)
+    val arity = r.arrayLength()
+    val possibleArity = state match
+      case State.Idle      => arity == 1 || arity == 3
+      case State.Busy      => arity == 1
+      case State.Streaming => arity == 1 || arity == 2
+      case State.Done      => false
+    if !possibleArity then bad(ProtocolError.WrongBlockFetchOuterArityForState)
+    val tag = r.uint().value
+    val expected = tag match
+      case n if n == 0                               => 3
+      case n if n == 4                               => 2
+      case n if n == 1 || n == 2 || n == 3 || n == 5 => 1
+      case _                                         => bad(ProtocolError.UnknownBlockFetchTag)
+    if arity != expected then bad(ProtocolError.WrongExactBlockFetchOuterArity)
+    // Header-only state validation happens before any untrusted payload decode.
+    val legal = (state, tag.toInt) match
+      case (State.Idle, 0 | 1) | (State.Busy, 2 | 3) | (State.Streaming, 4 | 5) => true
+      case _                                                                    => false
+    if !legal then bad(ProtocolError.WrongBlockFetchState)
+    val message: Message[P, B] = tag.toInt match
+      case 0 => Message.RequestRange(point.readFrom(r), point.readFrom(r))
+      case 1 => Message.ClientDone
+      case 2 => Message.StartBatch
+      case 3 => Message.NoBlocks
+      case 4 => Message.Block(payload.readFrom(r))
+      case 5 => Message.BatchDone
+      case _ => bad(ProtocolError.UnknownBlockFetchTag)
+    get(transition(state, sender, message))
+    get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
+    DecodeResult.Decoded(message, r.position)
 
   /** End-of-input/exact-message boundary: incomplete input is an explicit failure, never success.
     */

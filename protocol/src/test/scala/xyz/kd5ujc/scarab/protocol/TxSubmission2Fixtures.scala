@@ -21,7 +21,7 @@ object TxSubmission2Fixtures:
 
   given structural: TxSubmission2.TransactionReader with
     def body(original: Bytes): Either[ProtocolError, Bytes] = attempt {
-      val r = new ProtocolWire.Reader(original, wire)
+      val r = ProtocolWire.Reader(original, wire)
       val indefinite = original.headOption.contains(0x9f.toByte)
       val declared = if indefinite then { r.read(); None }
       else Some(r.arrayLength())

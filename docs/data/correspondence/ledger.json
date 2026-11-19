@@ -20239,6 +20239,17 @@
    "definitions": [
     "enum ledger.LedgerDecodeError.OutOfBounds"
    ]
+  },
+  {
+   "reason": "the walk of a query's detached records and the search for 9f ff resumed on a longer prefix of the same query, so that the node-to-client codec reads each head of a query that arrives in parts once, as the reference's decoder of queries reads it from the stream; the walk answers as DetachedRecords.prefix does",
+   "definitions": [
+    "class ledger.DetachedRecords.Walking",
+    "enum ledger.DetachedRecords.Scan",
+    "val ledger.DetachedRecords.Walking#at",
+    "val ledger.DetachedRecords.Walking#found",
+    "val ledger.DetachedRecords.Walking#item",
+    "val ledger.DetachedRecords.Walking#stack"
+   ]
   }
  ]
 }

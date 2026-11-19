@@ -149,7 +149,7 @@ object LocalTxSubmission:
 
   private def decoded(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
     ProtocolWire.prefix {
-      val r = new ProtocolWire.Reader(bytes, wire)
+      val r = ProtocolWire.Reader(bytes, wire)
       val message = readTag(state, sender, r) match
         case Tag.Submit => Message.SubmitTx(r.item())
         case Tag.Accept => Message.AcceptTx
@@ -170,7 +170,7 @@ object LocalTxSubmission:
       txs: TxReader
   ): DecodeResult[Message] =
     ProtocolWire.prefix {
-      val r = new ProtocolWire.Reader(bytes, wire)
+      val r = ProtocolWire.Reader(bytes, wire)
       (state, sender, readTag(state, sender, r)) match
         case (State.Idle, Role.Client, Tag.Submit) =>
           txs.prefix(bytes.drop(r.position)) match
@@ -193,16 +193,11 @@ object LocalTxSubmission:
       txs: TxReader = TxReader.whole
   ): IncrementalDecoder[Message] =
     def prefix(bytes: Bytes): DecodeResult[Option[Int]] = ProtocolWire.prefix {
-      val r = new ProtocolWire.Reader(bytes, wire)
+      val r = ProtocolWire.Reader(bytes, wire)
       val payload = readTag(state, sender, r) match
         case Tag.Submit | Tag.Reject => Some(r.position)
         case _                       => None
       DecodeResult.Decoded(payload, r.position)
     }
-    val framed = CborMessageDecoder(prefix, decoded(state, sender, _))
-    new IncrementalDecoder[Message]:
-      type Cursor = framed.Cursor
-      val initial: Cursor = framed.initial
-      def resume(cursor: Cursor, input: Bytes): (Cursor, DecodeResult[Message]) =
-        val (next, result) = framed.resume(cursor, input)
-        (next, judged(state, sender, input, txs, result))
+    CborMessageDecoder(prefix, decoded(state, sender, _))
+      .mapResult((input, result) => judged(state, sender, input, txs, result))

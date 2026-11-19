@@ -131,11 +131,12 @@ class PeerSharingSuite extends FailsOnUncaught:
         sc <- Resource.eval(s.channel(Protocol))
         _ <- Fibers
           .scoped[IO, NetworkError, Unit](NetworkError.fromThrowable("test peer-sharing", _)) {
-            sc.recv(5760)(PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client))
-              .flatMap {
-                case PeerSharing.Message.ShareRequest(a) => sc.send(reply(a))
-                case _                                   => IO.unit
-              }
+            sc.recvPrefix(5760)(
+              PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client)
+            ).flatMap {
+              case PeerSharing.Message.ShareRequest(a) => sc.send(reply(a))
+              case _                                   => IO.unit
+            }
           }
           .flatMap(_.fold(s.abort, _ => IO.unit))
           .background

@@ -180,7 +180,7 @@ class UpstreamLocalTxMonitorBehaviorSuite extends FailsOnUncaught:
                 .use { fiber =>
                   for
                     _ <- clientSend(c, LocalTxMonitor.State.Idle, LocalTxMonitor.Message.Acquire)
-                    acquired <- c.recv(LocalTxMonitor.MaxMessageBytes)(
+                    acquired <- c.recvPrefix(LocalTxMonitor.MaxMessageBytes)(
                       LocalTxMonitor.decodePrefix(LocalTxMonitor.State.Acquiring, Role.Server, _)
                     )
                     _ <- IO(
@@ -193,7 +193,7 @@ class UpstreamLocalTxMonitorBehaviorSuite extends FailsOnUncaught:
                           LocalTxMonitor.State.Acquired,
                           LocalTxMonitor.Message.NextTx
                         )
-                        message <- c.recv(LocalTxMonitor.MaxMessageBytes)(
+                        message <- c.recvPrefix(LocalTxMonitor.MaxMessageBytes)(
                           LocalTxMonitor.decodePrefix(
                             LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.NextTx),
                             Role.Server,
@@ -210,7 +210,7 @@ class UpstreamLocalTxMonitorBehaviorSuite extends FailsOnUncaught:
                           LocalTxMonitor.State.Acquired,
                           LocalTxMonitor.Message.HasTx(expectedId)
                         )
-                        has <- c.recv(LocalTxMonitor.MaxMessageBytes)(
+                        has <- c.recvPrefix(LocalTxMonitor.MaxMessageBytes)(
                           LocalTxMonitor.decodePrefix(
                             LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.HasTx),
                             Role.Server,
@@ -221,7 +221,7 @@ class UpstreamLocalTxMonitorBehaviorSuite extends FailsOnUncaught:
                       yield actualTx
                     }
                     _ <- clientSend(c, LocalTxMonitor.State.Acquired, LocalTxMonitor.Message.NextTx)
-                    end <- c.recv(LocalTxMonitor.MaxMessageBytes)(
+                    end <- c.recvPrefix(LocalTxMonitor.MaxMessageBytes)(
                       LocalTxMonitor.decodePrefix(
                         LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.NextTx),
                         Role.Server,
@@ -234,7 +234,7 @@ class UpstreamLocalTxMonitorBehaviorSuite extends FailsOnUncaught:
                       LocalTxMonitor.State.Acquired,
                       LocalTxMonitor.Message.GetSizes
                     )
-                    sizes <- c.recv(LocalTxMonitor.MaxMessageBytes)(
+                    sizes <- c.recvPrefix(LocalTxMonitor.MaxMessageBytes)(
                       LocalTxMonitor.decodePrefix(
                         LocalTxMonitor.State.Busy(LocalTxMonitor.Kind.GetSizes),
                         Role.Server,

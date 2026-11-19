@@ -57,17 +57,42 @@ object NtcQueryPrefix:
       */
     case ConwayOnly(tag: Int)
 
+  /** How far the judge of a query that has not all arrived had read: nothing yet, or every envelope
+    * up to the ledger query's at `at`, after any number of `GetCBOR` (the era's Conway governance
+    * being `governance`), or every envelope the judge reads, after which only the whole query is
+    * judged. A longer prefix of the query is judged on from it, so that a query nested in many
+    * `GetCBOR` is not read again from its start.
+    */
+  enum Reading:
+    case Unread
+    case Ledger(at: Int, governance: Boolean)
+    case Judged
+
   /** What the reference's decoder of queries makes of `input`, the part of a query that has
     * arrived.
     */
   def prefix(input: Bytes)(using QueryTable): LocalStateQuery.QueryPrefix =
+    prefix(Reading.Unread, input)._2
+
+  /** [[prefix]] of `input`, judged on from `reading`, the judge's reading of a shorter prefix of
+    * the same query.
+    */
+  def prefix(reading: Reading, input: Bytes)(using
+      QueryTable
+  ): (Reading, LocalStateQuery.QueryPrefix) =
     val tokens = PrefixTokens(input, LocalStateQuery.QueryPrefix.Short)
-    sized(tokens, 0, Level.Query).flatMap {
-      case (2, 0, next) => block(tokens, next)
-      // a top-level query without arguments is whole once its tag has arrived
-      case (1, 1 | 2 | 3 | 4, _) => waits
-      case (size, tag, _)        => Left(refused(Refusal.Constructor(Level.Query, size, tag)))
-    }.merge
+    reading match
+      case Reading.Judged                 => (Reading.Judged, LocalStateQuery.QueryPrefix.Short)
+      case Reading.Ledger(at, governance) => ledger(tokens, at, governance)
+      case Reading.Unread =>
+        sized(tokens, 0, Level.Query).flatMap {
+          case (2, 0, next) => block(tokens, next)
+          // a top-level query without arguments is whole once its tag has arrived
+          case (1, 1 | 2 | 3 | 4, _) => Right((Reading.Judged, LocalStateQuery.QueryPrefix.Short))
+          case (size, tag, _)        => Left(refused(Refusal.Constructor(Level.Query, size, tag)))
+        } match
+          case Right(judged) => judged
+          case Left(verdict) => (Reading.Unread, verdict)
 
   private type Verdict = LocalStateQuery.QueryPrefix
   private type Step[A] = Either[Verdict, A]
@@ -112,26 +137,34 @@ object NtcQueryPrefix:
         QueryEra.fromIndex(index).toRight(refused(Refusal.UnknownEra(level, index))).map((_, next))
       )
 
-  private def block(tokens: Tokens, at: Int)(using QueryTable): Step[Verdict] =
+  /** A verdict reached without the ledger query's envelope: read again from the start. */
+  private def unread(step: Step[Verdict]): Step[(Reading, Verdict)] =
+    step.map((Reading.Unread, _))
+
+  private def block(tokens: Tokens, at: Int)(using QueryTable): Step[(Reading, Verdict)] =
     sized(tokens, at, Level.BlockQuery).flatMap {
       case (2, 0, next) => inEra(tokens, next)
       case (3, 1, next) =>
-        ofSize(tokens, 1, next, Level.Anytime)
-          .flatMap(tokens.word8(_, refused(Refusal.Word8(Level.Anytime))))
-          .flatMap((tag, after) =>
-            if tag == 0 then era(tokens, after, Level.AnytimeEra).flatMap(_ => waits)
-            else Left(refused(Refusal.UnknownTag(Level.Anytime, tag)))
-          )
+        unread(
+          ofSize(tokens, 1, next, Level.Anytime)
+            .flatMap(tokens.word8(_, refused(Refusal.Word8(Level.Anytime))))
+            .flatMap((tag, after) =>
+              if tag == 0 then era(tokens, after, Level.AnytimeEra).flatMap(_ => waits)
+              else Left(refused(Refusal.UnknownTag(Level.Anytime, tag)))
+            )
+        )
       case (2, 2, next) =>
-        ofSize(tokens, 1, next, Level.HardFork).flatMap(tagIn(tokens, _, Level.HardFork)(_ <= 1))
+        unread(
+          ofSize(tokens, 1, next, Level.HardFork).flatMap(tagIn(tokens, _, Level.HardFork)(_ <= 1))
+        )
       case (size, tag, _) => Left(refused(Refusal.Constructor(Level.BlockQuery, size, tag)))
     }
 
-  private def inEra(tokens: Tokens, at: Int)(using QueryTable): Step[Verdict] =
+  private def inEra(tokens: Tokens, at: Int)(using QueryTable): Step[(Reading, Verdict)] =
     ofSize(tokens, 2, at, Level.EraQuery)
       .flatMap(era(tokens, _, Level.EraQuery))
       .flatMap {
-        case (QueryEra.Byron, next) => tagIn(tokens, next, Level.Byron)(_ == 0)
+        case (QueryEra.Byron, next) => unread(tagIn(tokens, next, Level.Byron)(_ == 0))
         case (
               e @ (QueryEra.Shelley | QueryEra.Allegra | QueryEra.Mary | QueryEra.Alonzo |
               QueryEra.Babbage | QueryEra.Conway | QueryEra.Dijkstra),
@@ -139,20 +172,25 @@ object NtcQueryPrefix:
             ) =>
           // Conway's governance from Conway on (`getConwayEraGovDict`, `Shelley/Eras.hs:215`,
           // ouroboros-consensus 82ecba32)
-          ledger(tokens, next, e.index >= QueryEra.Conway.index)
+          Right(ledger(tokens, next, e.index >= QueryEra.Conway.index))
       }
 
-  /** `decodeShelleyQuery`'s size and tag, through any number of `GetCBOR` (`(2, 9)`). */
-  @tailrec private def ledger(tokens: Tokens, at: Int, governance: Boolean)(using
-      QueryTable
-  ): Step[Verdict] =
+  /** `decodeShelleyQuery` 's size and tag, through any number of `GetCBOR` (`(2, 9)`): the verdict,
+    * and where a longer prefix goes on from.
+    */
+  @tailrec private def ledger(
+      tokens: Tokens,
+      at: Int,
+      governance: Boolean
+  )(using QueryTable): (Reading, Verdict) =
     sized(tokens, at, Level.Ledger) match
       case Right((2, 9, next)) => ledger(tokens, next, governance)
       case Right((size, tag, next)) =>
         if !NtcQuery.ledgerQueryTakes(size, tag) then
-          Left(refused(Refusal.Constructor(Level.Ledger, size, tag)))
+          (Reading.Unread, refused(Refusal.Constructor(Level.Ledger, size, tag)))
         else if NtcQuery.governanceQueries(tag) && !governance then
-          Left(refused(Refusal.ConwayOnly(tag)))
-        else if size == 2 && tag == 34 then tagIn(tokens, next, Level.PeerKind)(_ <= 1)
-        else waits
-      case Left(stop) => Left(stop)
+          (Reading.Unread, refused(Refusal.ConwayOnly(tag)))
+        else if size == 2 && tag == 34 then
+          (Reading.Ledger(at, governance), tagIn(tokens, next, Level.PeerKind)(_ <= 1).merge)
+        else (Reading.Judged, LocalStateQuery.QueryPrefix.Short)
+      case Left(stop) => (Reading.Ledger(at, governance), stop)

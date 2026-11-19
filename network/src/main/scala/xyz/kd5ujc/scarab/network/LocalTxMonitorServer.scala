@@ -119,7 +119,7 @@ object LocalTxMonitorServer:
       LocalTxMonitor.encode(state, Role.Server, message).fold(illegal, channel.send)
     def receive(state: State): F[Message] =
       channel.recv(LocalTxMonitor.MaxMessageBytes)(
-        LocalTxMonitor.decodePrefix(state, Role.Client, _, source.txIds)
+        LocalTxMonitor.incremental(state, Role.Client, source.txIds)
       )
 
     /** Acquiring: tell the client the slot and serve the snapshot until it releases. */

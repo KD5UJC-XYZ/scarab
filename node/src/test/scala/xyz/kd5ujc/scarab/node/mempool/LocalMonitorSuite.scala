@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.network.recvPrefix
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
@@ -329,7 +330,9 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     ).flatMap(ch.send)
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
-    ch.recv(LocalTxMonitor.MaxMessageBytes)(LocalTxMonitor.decodePrefix(state, Role.Server, _))
+    ch.recvPrefix(LocalTxMonitor.MaxMessageBytes)(
+      LocalTxMonitor.decodePrefix(state, Role.Server, _)
+    )
 
   /** One node-to-client connection to the node's LocalTxMonitor server of `snapshot`, whose client
     * acquires it and then runs `client` with the channel and how the server ended. The server runs

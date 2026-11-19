@@ -404,7 +404,7 @@ class ServerSuite extends FailsOnUncaught:
               reply <- channel.send(init) *> IO
                 .race(
                   channel
-                    .recv(TxSubmission2.maxMessageBytes(TxSubmission2.State.Idle))(
+                    .recvPrefix(TxSubmission2.maxMessageBytes(TxSubmission2.State.Idle))(
                       TxSubmission2.decodePrefix(TxSubmission2.State.Idle, ChainSync.Role.Server, _)
                     )
                     .map(Some(_)),

@@ -120,10 +120,9 @@ object BlockFetchRuntime:
             Timed
               .within(limit, id, current.toString)(
                 channel.recv(settings.limits.messageBytes(current))(
-                  BlockFetchEngine.decodePrefix(
+                  BlockFetchEngine.incremental(
                     current,
                     Role.Server,
-                    _,
                     pointCodec,
                     payloadCodec,
                     settings.limits
@@ -313,10 +312,9 @@ object BlockFetchRuntime:
               )(_.streaming)
           Timed.within(limit, id, state.toString)(
             channel.recv(settings.limits.messageBytes(state))(
-              BlockFetchEngine.decodePrefix(
+              BlockFetchEngine.incremental(
                 state,
                 Role.Server,
-                _,
                 pointCodec,
                 payloadCodec,
                 settings.limits
@@ -508,10 +506,9 @@ object BlockFetchRuntime:
           "idle"
         )(
           channel.recv(settings.limits.messageBytes(State.Idle))(
-            BlockFetchEngine.decodePrefix(
+            BlockFetchEngine.incremental(
               State.Idle,
               Role.Client,
-              _,
               pointCodec,
               payloadCodec,
               settings.limits

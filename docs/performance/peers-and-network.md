@@ -597,3 +597,35 @@ On the nodes the project runs, the same day, from the Docker engine's cumulative
 a Scarab mainnet relay used 0.367 cores, and a cardano-node 11.1.3 on the same host 0.016 cores; a Scarab preprod pool
 (an older build) used 0.521 cores of a 2-CPU host. Measuring the relay again the same way once it runs this change shows
 its effect at mainnet scale.
+
+## 60. The mini-protocol reader resumed: a persistent stack in its CBOR walk
+
+`ProtocolWire.Reader.skip` now resumes: a reader given the progress of a reader of a shorter prefix of the same
+message goes on with the item it stopped in, so that a message the multiplexer decodes after every SDU has each head
+read once. Its loop records where each step began, and keeps the counts of its open containers on an immutable stack
+(`ProtocolWire.Levels`), which a step that runs out of input leaves as the progress in constant time; the mutable
+array it replaces would have to be copied there, a copy as deep as the item on every SDU. A container opened now
+allocates one stack cell; nothing else in the walk changed, and the chunks of an indefinite string are read one a
+step as the items are.
+
+**Harness and environment.** `tools/runMain xyz.kd5ujc.scarab.protocol.WireSkipBench imperative 6` (section 45's
+harness: every block of `WireCorpus` read with `item`, the functional walk of the same checks alongside as a yardstick)
+in the JDK image on cavendish, shared with other builds (load average 22 to 30), before the change (`main`
+3cad1f045) and twice after it, the first time with an earlier form of the stack (a `List[Int]`, the same allocation). Both variants gave the same item and end on all 731 inputs in each run. The spread
+between rounds of one run was up to twofold, so the times compare within a run, against the functional walk, more
+than across runs. Raw logs are not published.
+
+<!-- register:table perf-66.t1 -->
+| Workload (`WireSkipBench`, median of 6 rounds) | Imperative ns/op, before | Imperative ns/op, after (two runs) | B/op, before | B/op, after | Functional / imperative time, before | Functional / imperative time, after |
+|---|---:|---:|---:|---:|---:|---:|
+| preview blocks (648) | 1,296,320 | 1,632,142 / 1,300,851 | 473,680 | 692,752 | 2.01 | 2.05 / 2.16 |
+| preprod blocks (70) | 252,608 | 229,701 / 237,796 | 95,088 | 139,824 | 1.51 | 1.72 / 2.39 |
+| mainnet blocks (12) | 121,090 | 125,833 / 133,842 | 71,456 | 87,320 | 1.12 | 1.36 / 2.06 |
+| all blocks in one message (740,420 B) | 1,671,531 | 1,646,908 / 1,876,088 | 447,728 | 657,440 | 1.75 | 1.96 / 2.43 |
+<!-- /register -->
+
+The walk allocates 22 to 47% more, a cell per container, and its time is within the spread of the host: the
+functional walk stays 1.4 to 2.4 times slower and allocates 4 to 9 times as much, so the reader keeps its imperative
+form (FUN-2 (a)). Before, a message that arrived in many SDUs, with a decode attempt after each, was read from its
+start on every attempt; `PacedDecodingSuite` checks, for the shapes it paces, that no head read whole is read
+again, and where a part read whole was copied, that the bytes allocated grow with the message, not its square.

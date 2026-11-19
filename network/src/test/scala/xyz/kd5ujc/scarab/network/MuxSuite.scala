@@ -36,10 +36,10 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           s3 <- server.channel(3)
           _ <- c3.send(payload(5, 3))
           _ <- c2.send(payload(7, 2))
-          at2 <- s2.recv(1000)(exactly(7))
-          at3 <- s3.recv(1000)(exactly(5))
+          at2 <- s2.recvPrefix(1000)(exactly(7))
+          at3 <- s3.recvPrefix(1000)(exactly(5))
           _ <- s2.send(payload(4, 9))
-          back <- c2.recv(1000)(exactly(4))
+          back <- c2.recvPrefix(1000)(exactly(4))
         yield (at2, at3, back)
       }
     }.map(r => assertEquals(r, Right((payload(7, 2), payload(5, 3), payload(4, 9)))))
@@ -54,7 +54,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           c <- client.channel(2)
           s <- server.channel(2)
           _ <- c.send(payload(1050))
-          got <- s.recv(5000)(exactly(1050))
+          got <- s.recvPrefix(5000)(exactly(1050))
         yield got
       }
     }.map(r => assertEquals(r, Right(payload(1050))))
@@ -88,7 +88,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           c <- client.channel(2)
           s <- server.channel(2)
           _ <- c.send(payload(65535))
-          got <- s.recv(65535)(exactly(65535))
+          got <- s.recvPrefix(65535)(exactly(65535))
         yield got
       }
     }.map(r => assertEquals(r, Right(payload(65535))))
@@ -133,7 +133,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             sdu = WireMux.Sdu(5L, 2, WireMux.Direction.Responder, payload(6))
             encoded <- IO.fromEither(WireMux.encode(sdu).leftMap(e => new Exception(e.message)))
             _ <- raw.write(Chunk.array(encoded.toArray))
-            got <- c.recv(100)(exactly(6))
+            got <- c.recvPrefix(100)(exactly(6))
           yield (got, encoded.value(4) & 0x80)
         }
       }
@@ -151,7 +151,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             c <- client.channel(3)
             s <- server.channel(3)
             _ <- c.send(message)
-            got <- s.recv(10000)(exactly(size))
+            got <- s.recvPrefix(10000)(exactly(size))
           yield got
         }
       }.unsafeRunSync()
@@ -177,9 +177,9 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           reason <- server.closed.timeout(5.seconds)
           // what is queued is what the limit allowed, not what was sent
           readable <- (1 to 40).toList
-            .traverse(_ => s.recv(100)(exactly(10)).attempt)
+            .traverse(_ => s.recvPrefix(100)(exactly(10)).attempt)
             .map(_.count(_.isRight))
-          afterwards <- s.recv(100)(exactly(10)).attempt
+          afterwards <- s.recvPrefix(100)(exactly(10)).attempt
         yield (reason, readable, afterwards.isLeft)
       }
     }.map {
@@ -218,7 +218,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
                 .traverse_(_ => credit.acquire *> c.send(payload(10)) *> sent.update(_ + 1))
             ).start
             ahead <- (1 to messages).toList.traverse { read =>
-              s.recv(100)(exactly(10)) *> settle *> sent.get.map(_ - read) <* credit.release
+              s.recvPrefix(100)(exactly(10)) *> settle *> sent.get.map(_ - read) <* credit.release
             }
             _ <- producer.joinWithNever.flatMap(Fibers.land(_))
           yield ahead
@@ -268,7 +268,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             // the message is delivered to the server's queue
             _ <- settle
             _ <- server.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
-            first <- s.recv(100)(exactly(5)).attempt
+            first <- s.recvPrefix(100)(exactly(5)).attempt
           yield first.isRight
         }
       }
@@ -297,8 +297,8 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
               _ <- c.send(payload(5000, 1))
               _ <- c.send(payload(3000, 2))
               _ <- settle
-              first <- s.recv(10000)(exactly(5000))
-              second <- s.recv(10000)(exactly(3000))
+              first <- s.recvPrefix(10000)(exactly(5000))
+              second <- s.recvPrefix(10000)(exactly(3000))
             yield (first, second)
           }
         }
@@ -323,7 +323,9 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
               // join follows the fiber's end: its finalizer has run, and every fiber has then run
               // until it blocks.
               ended <- cats.effect.Deferred[IO, Unit]
-              pending <- typed(c.recv(100)(exactly(1))).guarantee(ended.complete(()).void).start
+              pending <- typed(c.recvPrefix(100)(exactly(1)))
+                .guarantee(ended.complete(()).void)
+                .start
               // the receive waits on its empty queue
               _ <- settle
               _ <- raw.close
@@ -456,7 +458,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           c <- client.channel(2)
           s <- server.channel(2)
           _ <- c.send(payload(400))
-          _ <- s.recv(100)(exactly(401))
+          _ <- s.recvPrefix(100)(exactly(401))
         yield ()
       }
     }.map(r => assert(r.left.exists(_.isInstanceOf[NetworkError.IngressLimit]), r.toString))
@@ -550,7 +552,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
               Mux.resource(ours, Set(2)).use { mux =>
                 for
                   channel <- mux.channel(2)
-                  waiting <- typed(channel.recv(10)(exactly(2))).start
+                  waiting <- typed(channel.recvPrefix(10)(exactly(2))).start
                   _ <- settle
                   _ <- raw.write(Chunk.array(frame.toArray)) *> raw.close
                   received <- waiting.joinWithNever
@@ -659,7 +661,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             for
               channel <- mux.channel(Protocols.Handshake)
               _ <- raw.write(Chunk.array(sdu(protocol, direction).toArray))
-              decoded <- channel.recv(3)(exactly(3))
+              decoded <- channel.recvPrefix(3)(exactly(3))
               _ <- mux.installApplication(Set(2), Set.empty)
               _ <- raw.write(Chunk.array(sdu(2, WireMux.Direction.Initiator).toArray))
               closed <- mux.closed

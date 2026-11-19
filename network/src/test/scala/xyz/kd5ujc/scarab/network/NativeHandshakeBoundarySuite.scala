@@ -148,7 +148,7 @@ class NativeHandshakeBoundarySuite extends FailsOnUncaught:
             _ <- install(mux)
             _ <- mux.awaitResponderActivity
             channel <- mux.channel(Protocols.BlockFetch, Mux.Role.Responder)
-            got <- channel.recv(10) { bytes =>
+            got <- channel.recvPrefix(10) { bytes =>
               if bytes.nonEmpty then
                 xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult.Decoded(bytes, bytes.size)
               else xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult.NeedMore

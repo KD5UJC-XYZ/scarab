@@ -109,9 +109,7 @@ class BackgroundFibersSuite extends FailsOnUncaught:
           IO.raiseError[Unit](cause)
         def flush = IO.unit
         def recv[A](maxBytes: Int)(
-            decode: xyz.kd5ujc.scarab.codec.Bytes => xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult[
-              A
-            ]
+            decoder: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A]
         )(using cats.mtl.Raise[IO, NetworkError]): IO[A] = IO.never
       for
         ended <- cats.effect.Deferred[IO, NetworkError]

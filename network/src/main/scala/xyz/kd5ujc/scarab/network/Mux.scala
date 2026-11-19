@@ -11,6 +11,7 @@ import fs2.{Chunk, Pull, Stream}
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
+import xyz.kd5ujc.scarab.protocol.IncrementalDecoder
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 import scala.concurrent.duration.*
 
@@ -35,21 +36,18 @@ trait MuxChannel[F[_]]:
     */
   def flush: F[Unit]
 
-  /** The next complete message. `decode` is a pure `decodePrefix` for the current protocol state;
-    * more SDUs are awaited while it answers `NeedMore`, and bytes beyond the message are kept for
-    * the next call. Fails with `IngressLimit` if the first message exceeds `maxBytes`, including
-    * when the decoder completes in one call.
+  /** The next complete message. `decoder` reads the message of the current protocol state from the
+    * bytes held: more SDUs are awaited while it answers `NeedMore`, and it is resumed from its
+    * cursor on each longer prefix, so that a decoder that keeps its progress there does not read
+    * again what it read, as the reference's driver feeds each chunk to its decoder's continuation
+    * (`runDecoderWithLimit`,
+    * `ouroboros-network/framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331`, c45735a5 and
+    * 4646039f). Bytes beyond the message are kept for the next call. Fails with `IngressLimit` if
+    * the first message exceeds `maxBytes`, including when the decoder completes in one call.
     */
-  def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+  def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
       Raise[F, NetworkError]
   ): F[A]
-
-  /** [[recv]] with progress retained between prefixes. The default uses the equivalent stateless
-    * decoder; the live mux retains its cursor while waiting for more SDUs.
-    */
-  def recvIncremental[A](maxBytes: Int)(decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A])(
-      using Raise[F, NetworkError]
-  ): F[A] = recv(maxBytes)(decode.decodePrefix)
 
 /** Multiplexer over one [[Bearer]]: a reader fiber routes SDUs into the ingress queue of their
   * mini-protocol and a writer fiber rotates complete SDUs between admitted outbound channels.
@@ -826,15 +824,10 @@ object Mux:
           F.race(closed.get, queued) *> F.cede *> nextPayload
       }
 
-    def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+    def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
         Raise[F, NetworkError]
     ): F[A] =
-      receive(maxBytes, ())((_, bytes) => ((), decode(bytes)))
-
-    override def recvIncremental[A](maxBytes: Int)(
-        decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A]
-    )(using Raise[F, NetworkError]): F[A] =
-      receive(maxBytes, decode.initial)(decode.resume)
+      receive(maxBytes, decoder.initial)(decoder.resume)
 
     private def receive[S, A](maxBytes: Int, initial: S)(
         decode: (S, Bytes) => (S, DecodeResult[A])
@@ -863,11 +856,9 @@ object Mux:
           }
 
         // Wait for an SDU, then take all that are already queued before decoding again, unless
-        // the buffer has doubled since the last attempt: a decoder that rereads the buffer from
-        // its start (a long array of items) is then run a logarithmic number of times for a
-        // message that arrives in many SDUs, and in time proportional to its size overall (when
-        // the queue runs dry after every SDU the decoder runs after each, so one that rescans its
-        // prefix is quadratic: the batching bounds only SDUs that are already queued).
+        // the buffer has doubled since the last attempt. The decoder resumes from its cursor, so
+        // an attempt reads only what arrived since the last; the batching saves the attempts of
+        // SDUs that are already queued.
         def await(cursor: S, attempted: Int): F[A] =
           pending.getAndSet(None).flatMap {
             case Some(payload) => append(payload) *> more(cursor, attempted)

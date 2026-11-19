@@ -17,7 +17,11 @@ private[protocol] object ChainSyncWire:
       limits.maxItems,
       limits.maxCandidates
     )
-  final class Reader(input: Bytes, limits: ChainSync.Limits)(using ProtocolWire.Scope)
-      extends ProtocolWire.Reader(input, checked(limits))
+  def reader(
+      input: Bytes,
+      limits: ChainSync.Limits,
+      from: ProtocolWire.Progress = ProtocolWire.Progress.none
+  )(using ProtocolWire.Scope): ProtocolWire.Reader =
+    ProtocolWire.Reader(input, checked(limits), from)
   final class Writer(limits: ChainSync.Limits)(using ProtocolWire.Scope)
       extends ProtocolWire.Writer(checked(limits))

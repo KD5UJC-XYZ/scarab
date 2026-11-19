@@ -177,10 +177,9 @@ object ChainSyncRuntime:
         limit.flatMap { wait =>
           Timed.within(wait, id, current.toString)(
             channel.recv(settings.limits.maxMessageBytes)(
-              ChainSyncEngine.decodePrefix(
+              ChainSyncEngine.incremental(
                 current,
                 Role.Server,
-                _,
                 point,
                 tip,
                 payload,
@@ -327,7 +326,7 @@ object ChainSyncRuntime:
         )(
           channel.recv(settings.limits.maxMessageBytes)(
             ChainSyncEngine
-              .decodePrefix(State.Idle, Role.Client, _, point, tip, payload, settings.limits)
+              .incremental(State.Idle, Role.Client, point, tip, payload, settings.limits)
           )
         )
         .flatMap {

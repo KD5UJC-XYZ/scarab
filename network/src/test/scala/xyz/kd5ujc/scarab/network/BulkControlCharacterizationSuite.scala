@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.IncrementalDecoder
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
@@ -40,9 +41,9 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
     def protocol = delegate.protocol
     def send(message: Bytes)(using Raise[IO, NetworkError]) = delegate.send(message) *> sent
     def flush = delegate.flush
-    def recv[A](maxBytes: Int)(decode: Bytes => ChainSync.DecodeResult[A])(using
+    def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
         Raise[IO, NetworkError]
-    ): IO[A] = delegate.recv(maxBytes)(decode).flatTap(_ => received)
+    ): IO[A] = delegate.recv(maxBytes)(decoder).flatTap(_ => received)
 
   private def run(load: Load, control: Boolean): IO[Observation] =
     for

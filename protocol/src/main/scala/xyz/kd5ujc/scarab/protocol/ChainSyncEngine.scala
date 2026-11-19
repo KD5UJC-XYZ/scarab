@@ -139,9 +139,49 @@ object ChainSyncEngine:
       tip: TipCodec[T],
       payload: PayloadCodec[P],
       limits: Limits = Limits()
-  ): DecodeResult[Message[Q, T, P]] = ProtocolWire.prefix {
+  ): DecodeResult[Message[Q, T, P]] =
+    incremental(state, sender, point, tip, payload, limits).decodePrefix(bytes)
+
+  /** What an attempt at a message on a prefix of it keeps for a longer one: the points of a
+    * `MsgFindIntersect` read whole, or the payload of a `MsgRollForward` read whole, so that each
+    * is read once, as the reference's codec reads the message from the stream (`codecChainSync` is
+    * `mkCodecCborLazyBS`,
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs:99`, c45735a5
+    * and 4646039f).
+    */
+  enum Kept[+Q, +P]:
+    case Points(listing: ProtocolWire.Listing[Q])
+    case Payload(settled: ProtocolWire.Settled[P])
+
+  /** The decoder of one message, resumed on each longer prefix of it ([[Kept]]); an item it had not
+    * read whole goes on from the head it stopped at.
+    */
+  def incremental[Q, T, P](
+      state: State,
+      sender: Role,
+      point: PointCodec[Q],
+      tip: TipCodec[T],
+      payload: PayloadCodec[P],
+      limits: Limits = Limits()
+  ): IncrementalDecoder[Message[Q, T, P]] =
+    ProtocolWire.incremental[Kept[Q, P], Message[Q, T, P]]((bytes, from) =>
+      ChainSyncWire.reader(bytes, limits, from)
+    )(decoded(state, sender, point, tip, payload, limits))
+
+  /** One attempt at a message of `state` from `sender`, read by `reader` on from what `kept` holds.
+    */
+  private def decoded[Q, T, P](
+      state: State,
+      sender: Role,
+      point: PointCodec[Q],
+      tip: TipCodec[T],
+      payload: PayloadCodec[P],
+      limits: Limits
+  )(bytes: Bytes, kept: Option[Kept[Q, P]], reader: ProtocolWire.Reader)(using
+      ProtocolWire.Keep[Kept[Q, P]],
+      ProtocolWire.Scope
+  ): DecodeResult[Message[Q, T, P]] =
     val bounds = ChainSyncWire.checked(limits)
-    val reader = new ChainSyncWire.Reader(bytes, limits)
     val arity = reader.arrayLength()
     val tag = reader.uint().value
     val expectedArity = tag match
@@ -155,9 +195,25 @@ object ChainSyncEngine:
     val message: Message[Q, T, P] = tagNumber match
       case 0 => Message.RequestNext
       case 1 => Message.AwaitReply
-      case 2 => Message.RollForward(payload.readFrom(reader), tip.readFrom(reader))
+      case 2 =>
+        val start = reader.mark
+        val value = kept.collect { case Kept.Payload(s) if s.start == start => s } match
+          case Some(settled) =>
+            reader.resumeAt(settled.end)
+            settled.value
+          case None => payload.readFrom(reader)
+        val read = ProtocolWire.Settled(start, reader.mark, value)
+        val serverTip = ProtocolWire
+          .short(tip.readFrom(reader))
+          .getOrElse(ProtocolWire.keep(Kept.Payload(read), reader))
+        Message.RollForward(value, serverTip)
       case 3 => Message.RollBackward(point.readFrom(reader), tip.readFrom(reader))
-      case 4 => Message.FindIntersect(reader.items(limits.maxCandidates)(point.readFrom))
+      case 4 =>
+        Message.FindIntersect(
+          reader.listing(limits.maxCandidates, kept.collect { case Kept.Points(l) => l })(r =>
+            point.readFrom(r)
+          )(listing => ProtocolWire.keep(Kept.Points(listing), reader))
+        )
       case 5 => Message.IntersectFound(point.readFrom(reader), tip.readFrom(reader))
       case 6 => Message.IntersectNotFound(tip.readFrom(reader))
       case 7 => Message.Done
@@ -165,7 +221,6 @@ object ChainSyncEngine:
     get(transition(state, sender, message))
     get(ProtocolWire.validateItem(bytes.take(reader.position), bounds))
     DecodeResult.Decoded(message, reader.position)
-  }
 
   private def legalAgency(state: State, sender: Role, tag: Int): Boolean =
     import State.*

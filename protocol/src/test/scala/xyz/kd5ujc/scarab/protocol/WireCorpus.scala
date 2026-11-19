@@ -32,7 +32,7 @@ object WireCorpus:
       .unfold(0) { offset =>
         Option.when(offset < chunk.size) {
           ProtocolWire.attempt {
-            val reader = new ProtocolWire.Reader(chunk.drop(offset), Streaming)
+            val reader = ProtocolWire.Reader(chunk.drop(offset), Streaming)
             reader.item()
           } match
             case Right(item) => (item, offset + item.size)

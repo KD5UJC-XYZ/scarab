@@ -119,14 +119,14 @@ class UpstreamPeerSharingBehaviorSuite extends FailsOnUncaught:
               ) =
                 send(c, state, PeerSharing.Message.ShareRequest(n))
               def receive(using Raise[IO, NetworkError]) =
-                c.recv(PeerSharing.UpstreamMessageBytes)(intReply)
+                c.recvPrefix(PeerSharing.UpstreamMessageBytes)(intReply)
               def peers(n: PeerSharing.Amount, values: Reply)(using Raise[IO, NetworkError]) =
                 IO.pure(values)
               def done(state: PeerSharing.State)(using Raise[IO, NetworkError]) =
                 send(c, state, PeerSharing.Message.Done) *> c.flush
             serverWire = new PeerSharingRuntime.ServerWire[IO, Int]:
               def command(using Raise[IO, NetworkError]) =
-                s.recv(PeerSharing.UpstreamMessageBytes)(
+                s.recvPrefix(PeerSharing.UpstreamMessageBytes)(
                   PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client)
                 ).flatMap {
                   case PeerSharing.Message.ShareRequest(n) =>

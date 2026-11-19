@@ -25,7 +25,9 @@ class ClientSuite extends FailsOnUncaught:
             c <- client.channel(Protocols.LeiosNotify)
             s <- server.channel(Protocols.LeiosNotify)
             result <- typed(
-              s.recv(LeiosNotify.SmallByteLimit)(b => ChainSync.DecodeResult.Decoded((), b.size)) *>
+              s.recvPrefix(LeiosNotify.SmallByteLimit)(b =>
+                ChainSync.DecodeResult.Decoded((), b.size)
+              ) *>
                 IO.sleep(11.minutes) *> s.send(Bytes(Vector(0x81.toByte, 0x02.toByte)))
             ).background.use(_ => LeiosNotifyClient[IO](c).requestNext)
           yield result.message
@@ -114,7 +116,7 @@ class ClientSuite extends FailsOnUncaught:
           c <- client.channel(2)
           s <- server.channel(2)
           _ <- typed(
-            s.recv(100)(b => ChainSync.DecodeResult.Decoded((), b.size)) *>
+            s.recvPrefix(100)(b => ChainSync.DecodeResult.Decoded((), b.size)) *>
               sendChainSync(s, ChainSync.State.NextCanAwait, List(Message.AwaitReply))
           ).start
           api <- ChainSyncClient(c, ChainSyncFixtures.rawItem)

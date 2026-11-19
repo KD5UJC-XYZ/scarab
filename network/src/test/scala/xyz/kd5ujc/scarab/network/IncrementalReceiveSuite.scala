@@ -39,8 +39,8 @@ class IncrementalReceiveSuite extends FailsOnUncaught:
               .background
               .use { _ =>
                 for
-                  first <- s.recvIncremental(LocalTxSubmission.MaxMessageBytes)(checked)
-                  second <- s.recvIncremental(LocalTxSubmission.MaxMessageBytes)(
+                  first <- s.recv(LocalTxSubmission.MaxMessageBytes)(checked)
+                  second <- s.recv(LocalTxSubmission.MaxMessageBytes)(
                     LocalTxSubmission.incremental(LocalTxSubmission.State.Idle, Role.Client)
                   )
                 yield (first, second)

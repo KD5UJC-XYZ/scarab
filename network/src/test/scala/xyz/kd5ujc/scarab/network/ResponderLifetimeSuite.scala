@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.IncrementalDecoder
 import cats.effect.{Deferred, Fiber, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -187,7 +188,7 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
   /** The peer's TxSubmission2 client, by hand: `MsgInit`, then the server's first request. */
   private def txInit(channel: MuxChannel[IO])(using Net): IO[TxSubmission2.Message] =
     channel.send(tx(TxSubmission2.State.Init, TxSubmission2.Message.Init)) *>
-      channel.recv(TxSubmission2.maxMessageBytes(TxSubmission2.State.Idle))(
+      channel.recvPrefix(TxSubmission2.maxMessageBytes(TxSubmission2.State.Idle))(
         TxSubmission2.decodePrefix(TxSubmission2.State.Idle, ChainSync.Role.Server, _)
       )
 
@@ -330,7 +331,7 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
             )
             reply <- IO.race(
               settle,
-              channel.recv(65535)(
+              channel.recvPrefix(65535)(
                 ChainSync.decodePrefix(ChainSync.State.Intersect, ChainSync.Role.Server, _, codec)
               )
             )
@@ -370,7 +371,7 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
             )
             reply <- IO.race(
               settle,
-              channel.recv(65535)(
+              channel.recvPrefix(65535)(
                 KeepAlive.decodePrefix(KeepAlive.State.Server, KeepAlive.Role.Server, _)
               )
             )
@@ -641,7 +642,7 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
                     .fold(e => fail(e.message), identity)
                 )
                 observed <- typed(
-                  chainSync.recv(65535)(
+                  chainSync.recvPrefix(65535)(
                     ChainSync
                       .decodePrefix(ChainSync.State.Intersect, ChainSync.Role.Server, _, codec)
                   )
@@ -752,7 +753,7 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
         def protocol = id
         def send(message: Bytes)(using Raise[IO, NetworkError]) = IO.unit
         def flush = IO.unit
-        def recv[A](maxBytes: Int)(decode: Bytes => ChainSync.DecodeResult[A])(using
+        def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
             Raise[IO, NetworkError]
         ) = probe.park[A](id))
     def closed = IO.never

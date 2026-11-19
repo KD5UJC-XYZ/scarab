@@ -71,6 +71,44 @@
    "note": "greatest common version, else VersionMismatch of the local versions in ascending order; decode its data, else HandshakeDecodeError; accept it, else Refused. Failures stay typed (SelectionError) and refusal renders their text. Offers are a Vector its callers keep distinct (proposal refuses duplicates); the branch for a common version missing from the offers cannot be taken",
    "digest": "9db19c30f0fdd2c7"
   },
+  "def protocol.Handshake.message": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "decodeMsg",
+     "lines": [
+      152,
+      195
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+   "note": "the message read from the term the parser read whole, as object protocol.Handshake's entry says (#796): the key and the items checked once the term is whole, where decodeMsg checks (key, length) before reading on. Visible in the package so that the test oracle of the parser before it resumed reads its terms with it; unchanged",
+   "digest": "03a1979b2b67bc2f"
+  },
+  "def protocol.Handshake.reason": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "decodeRefuseReason",
+     "lines": [
+      264,
+      288
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+   "note": "a refusal's reason read from its term, as object protocol.Handshake's entry says (#796); visible in the package for the same test oracle; unchanged",
+   "digest": "7f27d4cc52b78689"
+  },
   "def protocol.KeepAlive.transition": {
    "upstream": [
     {
@@ -114,8 +152,8 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "note": "the length of the message's array is read and ignored (a definite array whose length cborg's decodeListLen holds in an Int), then the key as a word; in StIdle 0 is MsgShareRequest with its Word8 amount and 2 is MsgDone, in StBusy 1 is MsgSharePeers with a definite or indefinite list of peers (decodeListWith), and any other key is refused. Agency, which the reference has in its state tokens, is the same table checked at run time; the byte limit its Cursor applies while reading is the driver's (runDecoderWithLimit, framework Driver/Limits.hs:295-331, with byteLimitsPeerSharing)",
-   "digest": "2ccdf6e799463953"
+   "note": "the length of the message's array is read and ignored (a definite array whose length cborg's decodeListLen holds in an Int), then the key as a word; in StIdle 0 is MsgShareRequest with its Word8 amount and 2 is MsgDone, in StBusy 1 is MsgSharePeers with a definite or indefinite list of peers (decodeListWith), and any other key is refused. Agency, which the reference has in its state tokens, is the same table checked at run time; the byte limit its Cursor applies while reading is the driver's (runDecoderWithLimit, framework Driver/Limits.hs:295-331, with byteLimitsPeerSharing); a MsgSharePeers that arrives in parts is read on after the peers read whole (attemptTyped), as decodeMsg runs from the stream through mkCodecCborLazyBS (Codec.hs:42)",
+   "digest": "3216641e4efa7f3a"
   },
   "enum protocol.ChainSync.Message": {
    "upstream": [
@@ -288,8 +326,8 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
-   "note": "its private parser reads a message as one generic term and checks it afterwards, where decodeMsg reads the list length and key and checks (key, length) before reading on, so a malformed message can be refused at another item and with other text (#796). As the reference since #1029: a refusal's reason is read as decodeRefuseReason reads it, its length read and ignored; generic terms and strings have no depth, count or size cap, only the message's 5760 bytes on receipt (runDecoderWithLimit); the encoder writes a message of any size, as encodeMsg does and the driver sends it (sendMessage, Driver/Limits.hs:109-117); a term keeps an indefinite string's chunks and writes them, an empty indefinite text and its simple values as cborg 0.2.10.0's encodeTerm writes them; and a simple value after 0xf8 is read whatever its value, as decodeTerm reads it. Still different, also #796: a float keeps its width and NaN payload when written, where cborg writes every NaN as f97e00 (Write.hs:580); and tags 2 and 3 are kept with any payload, where decodeTerm reads them as integers and refuses a payload that is not bytes",
-   "digest": "6081cc83eb8aecd1"
+   "note": "its private parser reads a message as one generic term and checks it afterwards, where decodeMsg reads the list length and key and checks (key, length) before reading on, so a malformed message can be refused at another item and with other text (#796). As the reference since #1029: a refusal's reason is read as decodeRefuseReason reads it, its length read and ignored; generic terms and strings have no depth, count or size cap, only the message's 5760 bytes on receipt (runDecoderWithLimit); the encoder writes a message of any size, as encodeMsg does and the driver sends it (sendMessage, Driver/Limits.hs:109-117); a term keeps an indefinite string's chunks and writes them, an empty indefinite text and its simple values as cborg 0.2.10.0's encodeTerm writes them; and a simple value after 0xf8 is read whatever its value, as decodeTerm reads it. Still different, also #796: a float keeps its width and NaN payload when written, where cborg writes every NaN as f97e00 (Write.hs:580); and tags 2 and 3 are kept with any payload, where decodeTerm reads them as integers and refuses a payload that is not bytes; the parser reads a message that arrives in parts on from the head it stopped at, with the terms it has read (incremental), as decodeMsg runs from the stream through mkCodecCborLazyBS (Codec.hs:117)",
+   "digest": "e6074156f996ce84"
   },
   "object protocol.KeepAlive.UpstreamTimeLimits": {
    "upstream": [
@@ -858,6 +896,68 @@
    "definitions": [
     "def protocol.LocalStateQuery.QueryReader#prefix",
     "enum protocol.LocalStateQuery.QueryPrefix"
+   ]
+  },
+  {
+   "reason": "how a decoder keeps its progress on a message not all of which has arrived, so that a longer prefix is read on from where it stopped and nothing read whole is read again: the reference keeps that progress in its decoder's continuation (cborg 0.2.10.0 deserialiseIncremental, src/Codec/CBOR/Read.hs:169-172 and 1254-1260; typed-protocols 1.2.2.0 convertCborDecoderLBS, cborg/Network/TypedProtocol/Codec/CBOR.hs:136-164), fed a chunk at a time by runDecoderWithLimit (ouroboros-network framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331 at c45735a5 and 4646039f); here a decoder's cursor holds it as a value. What each codec accepts and refuses, and where, is the codec's as before; each codec's incremental is its decodePrefix as the multiplexer takes it (decodePrefix is it started afresh), the reading itself in the codec's own definitions as before",
+   "definitions": [
+    "class protocol.LocalTxMonitor.Measuring",
+    "class protocol.PeerSharingEngine.Peers",
+    "class protocol.ProtocolWire.Listing",
+    "class protocol.ProtocolWire.Mark",
+    "class protocol.ProtocolWire.Progress",
+    "class protocol.ProtocolWire.Settled",
+    "class protocol.ProtocolWire.Skipping",
+    "class protocol.ProtocolWire.Spanning",
+    "def protocol.BlockFetchEngine.incremental",
+    "def protocol.ChainSyncEngine.incremental",
+    "def protocol.ChainSyncWire.reader",
+    "def protocol.Handshake.incremental",
+    "def protocol.IncrementalDecoder#map",
+    "def protocol.IncrementalDecoder#mapResult",
+    "def protocol.KeepAlive.incremental",
+    "def protocol.LocalStateQuery.QueryReader#prefixOf",
+    "def protocol.LocalStateQuery.QueryReader#spanOf",
+    "def protocol.LocalStateQuery.QueryReader#unread",
+    "def protocol.LocalStateQuery.QueryReader.Restarting#prefix",
+    "def protocol.LocalStateQuery.QueryReader.Restarting#span",
+    "def protocol.LocalStateQuery.QueryReader.Restarting#unread",
+    "def protocol.LocalStateQueryEngine.incremental",
+    "def protocol.LocalTxMonitor.incremental",
+    "def protocol.PeerSharing.incremental",
+    "def protocol.PeerSharingEngine.attemptTyped",
+    "def protocol.PeerSharingEngine.incremental",
+    "def protocol.ProtocolWire.Reader#listing",
+    "def protocol.ProtocolWire.Reader#mark",
+    "def protocol.ProtocolWire.Reader#progress",
+    "def protocol.ProtocolWire.Reader#resumeAt",
+    "def protocol.ProtocolWire.Reader#span",
+    "def protocol.ProtocolWire.Reader.apply",
+    "def protocol.ProtocolWire.incremental",
+    "def protocol.ProtocolWire.keep",
+    "def protocol.ProtocolWire.resumed",
+    "def protocol.ProtocolWire.short",
+    "def protocol.TxSubmission2Engine.Codec#incremental",
+    "def protocol.TxSubmission2Engine.incremental",
+    "enum protocol.ChainSyncEngine.Kept",
+    "enum protocol.LocalTxMonitor.MeasureRead",
+    "enum protocol.PeerSharingEngine.Attempted",
+    "enum protocol.ProtocolWire.Attempt",
+    "enum protocol.ProtocolWire.Levels",
+    "enum protocol.TxSubmission2Engine.Kept",
+    "object protocol.ProtocolWire.Progress",
+    "object protocol.ProtocolWire.Reader",
+    "trait protocol.LocalStateQuery.QueryReader.Restarting",
+    "type protocol.LocalStateQuery.QueryReader#Reading",
+    "type protocol.LocalStateQuery.QueryReader.Restarting#Reading",
+    "type protocol.ProtocolWire.Keep",
+    "val protocol.ProtocolWire.Progress.none"
+   ]
+  },
+  {
+   "reason": "the Leios clients of the hand-run probe (LeiosProbe) read each prefix from its start: the Leios decoders keep no progress on a message not all of which has arrived; no node path uses them",
+   "definitions": [
+    "def network.LeiosDecode.restarting"
    ]
   }
  ]

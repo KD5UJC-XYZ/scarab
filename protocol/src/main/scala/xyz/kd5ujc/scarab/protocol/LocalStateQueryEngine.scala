@@ -98,7 +98,7 @@ object LocalStateQueryEngine:
         )
       case Message.Query(q) =>
         // a query that `queries` reads as one item spanning several of a tree is written whole
-        queries.span(q) match
+        queries.spanOf(q) match
           case LocalStateQuery.QuerySpan.Prefix(size) if size == q.size =>
             get(ProtocolWire.validateItems(q, wire))
           case LocalStateQuery.QuerySpan.Refused => bad(ProtocolError.UndecodableQuery)
@@ -123,10 +123,26 @@ object LocalStateQueryEngine:
       bytes: Bytes,
       point: ChainSyncEngine.PointCodec[P],
       queries: LocalStateQuery.QueryReader
-  ): DecodeResult[Message[P]] =
-    decoded(state, sender, bytes, point, queries) match
-      case DecodeResult.NeedMore => waiting(state, sender, bytes, queries)
-      case other                 => other
+  ): DecodeResult[Message[P]] = incremental(state, sender, point, queries).decodePrefix(bytes)
+
+  /** [[decodePrefix]], resumed on each longer prefix of a message: the reader goes on with the item
+    * it stopped in, and `queries` with its reading of the query.
+    */
+  def incremental[P](
+      state: State,
+      sender: Role,
+      point: ChainSyncEngine.PointCodec[P],
+      queries: LocalStateQuery.QueryReader
+  ): IncrementalDecoder[Message[P]] = new IncrementalDecoder[Message[P]]:
+    type Cursor = (queries.Reading, ProtocolWire.Progress)
+    val initial: Cursor = (queries.unread, ProtocolWire.Progress.none)
+    def resume(cursor: Cursor, input: Bytes): (Cursor, DecodeResult[Message[P]]) =
+      decoded(state, sender, input, point, queries)(cursor._1, cursor._2) match
+        case ProtocolWire.Attempt.Done(result) => (initial, result)
+        case ProtocolWire.Attempt.Short(kept, progress) =>
+          waiting(state, sender, input, queries)(kept.getOrElse(cursor._1)) match
+            case (reading, DecodeResult.NeedMore) => ((reading, progress), DecodeResult.NeedMore)
+            case (_, verdict)                     => (initial, verdict)
 
   /** An incomplete message: a `Query` whose query `queries` refuses ends here, anything else waits.
     */
@@ -135,19 +151,22 @@ object LocalStateQueryEngine:
       sender: Role,
       bytes: Bytes,
       queries: LocalStateQuery.QueryReader
-  ): DecodeResult[Message[P]] =
-    ProtocolWire.prefix {
-      val r = new ProtocolWire.Reader(bytes, limits(sender))
+  )(reading: queries.Reading): (queries.Reading, DecodeResult[Message[P]]) =
+    ProtocolWire.attempt {
+      val r = ProtocolWire.Reader(bytes, limits(sender))
       val arity = r.arrayLength()
       val tag = r.uint().value
       (state, sender, arity, tag.toInt) match
         case (State.Acquired, Role.Client, 2, 3) if tag == 3 =>
-          queries.prefix(bytes.drop(r.position)) match
-            case LocalStateQuery.QueryPrefix.Short => DecodeResult.NeedMore
-            case LocalStateQuery.QueryPrefix.Refused(cause) =>
-              bad(ProtocolError.UndecodableQueryPrefix(cause))
-        case _ => DecodeResult.NeedMore
-    }
+          queries.prefix(reading, bytes.drop(r.position)) match
+            case (next, LocalStateQuery.QueryPrefix.Short) => (next, DecodeResult.NeedMore)
+            case (next, LocalStateQuery.QueryPrefix.Refused(cause)) =>
+              (next, DecodeResult.Failed(ProtocolError.UndecodableQueryPrefix(cause)))
+        case _ => (reading, DecodeResult.NeedMore)
+    } match
+      case Right(judged)                   => judged
+      case Left(error) if error.incomplete => (reading, DecodeResult.NeedMore)
+      case Left(error)                     => (reading, DecodeResult.Failed(error))
 
   private def decoded[P](
       state: State,
@@ -155,41 +174,57 @@ object LocalStateQueryEngine:
       bytes: Bytes,
       point: ChainSyncEngine.PointCodec[P],
       queries: LocalStateQuery.QueryReader
-  ): DecodeResult[Message[P]] =
-    ProtocolWire.prefix {
-      val clientTurn = state == State.Idle || state == State.Acquired
-      if state == State.Done || clientTurn != (sender == Role.Client) then
-        bad(ProtocolError.WrongLocalStateQueryAgency)
-      val wire = limits(sender)
-      val r = new ProtocolWire.Reader(bytes, wire)
-      val arity = r.arrayLength()
-      val tag = r.uint().value
-      val message = (arity, tag.toInt) match
-        case (2, 0) if tag == 0   => Message.Acquire(Target.Specific(point.readFrom(r)))
-        case (1, 8) if tag == 8   => Message.Acquire(Target.VolatileTip)
-        case (1, 10) if tag == 10 => Message.Acquire(Target.ImmutableTip)
-        case (1, 1) if tag == 1   => Message.Acquired
-        case (2, 2) if tag == 2 =>
-          r.uint().value.toInt match
-            case 0 => Message.Failed(Failure.PointTooOld)
-            case 1 => Message.Failed(Failure.PointNotOnChain)
-            case _ => bad(ProtocolError.UnknownLocalStateQueryFailure)
-        case (2, 3) if tag == 3 =>
-          Message.Query(queries.span(bytes.drop(r.position)) match
-            case LocalStateQuery.QuerySpan.Item         => r.item()
-            case LocalStateQuery.QuerySpan.Prefix(size) => r.spanning(size)
-            case LocalStateQuery.QuerySpan.Short        =>
-              // what has arrived still meets the reader's checks, its depth among them
-              r.spanning(bytes.size - r.position)
-              bad(ProtocolError.TruncatedCbor)
-            case LocalStateQuery.QuerySpan.Refused => bad(ProtocolError.UndecodableQuery))
-        case (2, 4) if tag == 4   => Message.Result(r.item())
-        case (1, 5) if tag == 5   => Message.Release
-        case (2, 6) if tag == 6   => Message.ReAcquire(Target.Specific(point.readFrom(r)))
-        case (1, 9) if tag == 9   => Message.ReAcquire(Target.VolatileTip)
-        case (1, 11) if tag == 11 => Message.ReAcquire(Target.ImmutableTip)
-        case (1, 7) if tag == 7   => Message.Done
-        case _                    => bad(ProtocolError.UnknownLocalStateQueryTagOrArity)
-      get(transition(state, sender, message))
-      DecodeResult.Decoded(message, r.position)
-    }
+  )(
+      reading: queries.Reading,
+      from: ProtocolWire.Progress
+  ): ProtocolWire.Attempt[queries.Reading, Message[P]] =
+    ProtocolWire
+      .attempt {
+        val clientTurn = state == State.Idle || state == State.Acquired
+        if state == State.Done || clientTurn != (sender == Role.Client) then
+          bad(ProtocolError.WrongLocalStateQueryAgency)
+        ProtocolWire.Reader(bytes, limits(sender), from)
+      }
+      .fold(
+        error =>
+          ProtocolWire.Attempt.Done(
+            if error.incomplete then DecodeResult.NeedMore else DecodeResult.Failed(error)
+          ),
+        r =>
+          ProtocolWire.resumed[queries.Reading, Message[P]](r) {
+            val arity = r.arrayLength()
+            val tag = r.uint().value
+            val message = (arity, tag.toInt) match
+              case (2, 0) if tag == 0   => Message.Acquire(Target.Specific(point.readFrom(r)))
+              case (1, 8) if tag == 8   => Message.Acquire(Target.VolatileTip)
+              case (1, 10) if tag == 10 => Message.Acquire(Target.ImmutableTip)
+              case (1, 1) if tag == 1   => Message.Acquired
+              case (2, 2) if tag == 2 =>
+                r.uint().value.toInt match
+                  case 0 => Message.Failed(Failure.PointTooOld)
+                  case 1 => Message.Failed(Failure.PointNotOnChain)
+                  case _ => bad(ProtocolError.UnknownLocalStateQueryFailure)
+              case (2, 3) if tag == 3 =>
+                val (read, span) = queries.span(reading, bytes.drop(r.position))
+                def held(query: ProtocolWire.Scope ?=> Bytes): Bytes =
+                  ProtocolWire.short(query).getOrElse(ProtocolWire.keep(read, r))
+                Message.Query(span match
+                  case LocalStateQuery.QuerySpan.Item         => held(r.item())
+                  case LocalStateQuery.QuerySpan.Prefix(size) => held(r.spanning(size))
+                  case LocalStateQuery.QuerySpan.Short        =>
+                    // what has arrived still meets the reader's checks, its depth among them; it is
+                    // read, not copied, as the query has not all arrived
+                    ProtocolWire.short(r.span(bytes.size - r.position))
+                    ProtocolWire.keep(read, r)
+                  case LocalStateQuery.QuerySpan.Refused => bad(ProtocolError.UndecodableQuery))
+              case (2, 4) if tag == 4   => Message.Result(r.item())
+              case (1, 5) if tag == 5   => Message.Release
+              case (2, 6) if tag == 6   => Message.ReAcquire(Target.Specific(point.readFrom(r)))
+              case (1, 9) if tag == 9   => Message.ReAcquire(Target.VolatileTip)
+              case (1, 11) if tag == 11 => Message.ReAcquire(Target.ImmutableTip)
+              case (1, 7) if tag == 7   => Message.Done
+              case _                    => bad(ProtocolError.UnknownLocalStateQueryTagOrArity)
+            get(transition(state, sender, message))
+            DecodeResult.Decoded(message, r.position)
+          }
+      )

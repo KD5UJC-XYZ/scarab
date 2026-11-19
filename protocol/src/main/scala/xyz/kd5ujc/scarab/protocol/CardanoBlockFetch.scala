@@ -26,7 +26,7 @@ object CardanoBlockFetch:
       }
 
       def decode(item: Bytes): Either[ProtocolError, Point] = attempt {
-        val reader = new ProtocolWire.Reader(item, bounds)
+        val reader = ProtocolWire.Reader(item, bounds)
         val point = reader.point()
         if reader.position != item.size then bad(ProtocolError.TrailingBlockFetchBytes)
         point
@@ -105,7 +105,7 @@ object CardanoBlockFetch:
         writer.result
       }
       def decode(bytes: Bytes): Either[ProtocolError, RawNtNBlock] = attempt {
-        val reader = new ProtocolWire.Reader(bytes, bounds)
+        val reader = ProtocolWire.Reader(bytes, bounds)
         val result = readFrom(reader)
         if reader.position != bytes.size then bad(ProtocolError.TrailingSerializedBlockBytes)
         result

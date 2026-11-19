@@ -143,19 +143,19 @@ class UpstreamMuxStarvationSuite extends FailsOnUncaught:
                 _ <- (
                   (for
                     _ <- c.send(sample.request)
-                    got <- c.recv(response.size)(exactly(response.size))
+                    got <- c.recvPrefix(response.size)(exactly(response.size))
                     _ <- IO(
                       assert(got == response, s"response bytes at seed ${sample.seed}/$protocol")
                     )
                     _ <- c.send(hex("8102")) *> c.flush
                   yield ()),
                   (for
-                    request <- s.recv(sample.request.size)(exactly(sample.request.size))
+                    request <- s.recvPrefix(sample.request.size)(exactly(sample.request.size))
                     _ <- IO(assertEquals(request, sample.request))
                     _ <- s.send(response)
                     n <- admitted.updateAndGet(_ + 1)
                     _ <- release.complete(()).void.whenA(n == 2)
-                    done <- s.recv(2)(exactly(2))
+                    done <- s.recvPrefix(2)(exactly(2))
                     _ <- IO(assertEquals(done, hex("8102")))
                   yield ())
                 ).parTupled

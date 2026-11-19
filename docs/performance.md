@@ -88,4 +88,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 57 | 2026-11-15 | A near-idle node's CPU: the HTTP servers' selector and the fetch decision's sets (#1024) | #1024 | [Peers, connections and the network path](performance/peers-and-network.md#57-a-near-idle-nodes-cpu-the-http-servers-selector-and-the-fetch-decisions-sets-1024) |
 | 58 | 2026-11-18 | Builtins whose time grew past their cost |  | [Rewards, parallel Plutus and script decoding](performance/rewards-and-evaluation.md#58-builtins-whose-time-grew-past-their-cost) |
 | 59 | 2026-11-18 | The program cache: what it saves, and the heap of a decoded program |  | [Rewards, parallel Plutus and script decoding](performance/rewards-and-evaluation.md#59-the-program-cache-what-it-saves-and-the-heap-of-a-decoded-program) |
+| 60 | 2026-11-18 | The mini-protocol reader resumed: a persistent stack in its CBOR walk |  | [Peers, connections and the network path](performance/peers-and-network.md#60-the-mini-protocol-reader-resumed-a-persistent-stack-in-its-cbor-walk) |
 <!-- /register -->

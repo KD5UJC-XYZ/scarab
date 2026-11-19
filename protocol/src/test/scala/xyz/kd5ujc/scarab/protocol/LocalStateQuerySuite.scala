@@ -201,7 +201,7 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
 
   test("a query's span is the reader's: whole items up to it, more to wait for, or a refusal") {
     def hex(s: String) = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
-    def reader(answer: QuerySpan): QueryReader = new QueryReader:
+    def reader(answer: QuerySpan): QueryReader = new QueryReader.Restarting:
       def span(input: Bytes): QuerySpan = answer
       def prefix(input: Bytes): QueryPrefix = QueryPrefix.Short
     // [3, 81 9fff] then 01 02: one query of five bytes to a reader of the ledger, three items as a
@@ -245,7 +245,7 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
     * or every one with `always`.
     */
   private val cause = ProtocolError.ExpectedUint64
-  private def judging(always: Boolean): QueryReader = new QueryReader:
+  private def judging(always: Boolean): QueryReader = new QueryReader.Restarting:
     def span(input: Bytes): QuerySpan = QuerySpan.Item
     def prefix(input: Bytes): QueryPrefix =
       if always || input.take(2) == bytesOf("820f") then QueryPrefix.Refused(cause)

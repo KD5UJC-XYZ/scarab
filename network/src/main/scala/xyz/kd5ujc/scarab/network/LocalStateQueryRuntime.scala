@@ -56,7 +56,7 @@ object LocalStateQueryRuntime:
         .fold(illegal, channel.send)
     def receive(state: State)(using Raise[F, NetworkError]): F[Message[P]] =
       channel.recv(LocalStateQuery.MaxQueryBytes)(
-        LocalStateQueryEngine.decodePrefix(state, Role.Client, _, point, source.queries)
+        LocalStateQueryEngine.incremental(state, Role.Client, point, source.queries)
       )
 
     enum Loop:

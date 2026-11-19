@@ -57,10 +57,9 @@ object KeepAliveClient:
             _ <- channel.send(bytes)
             response <- Timed.within(settings.responseTimeout, id, "server")(
               channel.recv(settings.limits.maxMessageBytes)(
-                KeepAlive.decodePrefix(
+                KeepAlive.incremental(
                   KeepAlive.State.Server,
                   KeepAlive.Role.Server,
-                  _,
                   settings.limits
                 )
               )

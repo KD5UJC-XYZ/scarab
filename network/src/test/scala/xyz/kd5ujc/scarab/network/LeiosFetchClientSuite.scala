@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.IncrementalDecoder
 import cats.effect.{IO, Ref}
 import cats.mtl.Raise
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -21,10 +22,10 @@ class LeiosFetchClientSuite extends FailsOnUncaught:
             def protocol = Protocols.LeiosFetch
             def send(message: Bytes)(using Raise[IO, NetworkError]) = sent.update(_ :+ message)
             def flush = IO.unit
-            def recv[A](maxBytes: Int)(decode: Bytes => ChainSync.DecodeResult[A])(using
+            def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
                 raise: Raise[IO, NetworkError]
             ): IO[A] =
-              limits.update(_ :+ maxBytes) *> (decode(raw) match
+              limits.update(_ :+ maxBytes) *> (decoder.decodePrefix(raw) match
                 case ChainSync.DecodeResult.Decoded(value, _) => IO.pure(value)
                 case ChainSync.DecodeResult.Failed(error) =>
                   raise.raise[NetworkError, A](NetworkError.IllegalTransition(protocol, error))

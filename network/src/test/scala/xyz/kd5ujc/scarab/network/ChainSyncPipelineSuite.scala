@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.IncrementalDecoder
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
@@ -41,14 +42,14 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
         val protocol = Protocols.ChainSync
         def send(bytes: Bytes)(using Raise[IO, NetworkError]): IO[Unit] = IO.unit
         def flush: IO[Unit] = IO.unit
-        def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+        def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
             Raise[IO, NetworkError]
         ): IO[A] =
           (reads.updateAndGet(_ + 1).flatMap(started.offer) *> input.take.flatMap { bytes =>
             if bytes.size > maxBytes then
               NetworkError.IngressLimit(protocol, bytes.size).raise[IO, A]
             else
-              decode(bytes) match
+              decoder.decodePrefix(bytes) match
                 case DecodeResult.Decoded(value, _) => IO.pure(value)
                 case DecodeResult.Failed(cause) => NetworkError.Decode(protocol, cause).raise[IO, A]
                 case DecodeResult.NeedMore =>
@@ -526,9 +527,9 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
             def send(bytes: Bytes)(using Raise[IO, NetworkError]): IO[Unit] =
               failSend.get.flatMap(if _ then senderError.raise[IO, Unit] else s.channel.send(bytes))
             def flush: IO[Unit] = s.channel.flush
-            def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
+            def recv[A](maxBytes: Int)(decoder: IncrementalDecoder[A])(using
                 Raise[IO, NetworkError]
-            ): IO[A] = s.channel.recv(maxBytes)(decode)
+            ): IO[A] = s.channel.recv(maxBytes)(decoder)
           _ <- ChainSyncClient
             .resource(channel, ChainSyncFixtures.rawItem, abort, settings)
             .use { client =>

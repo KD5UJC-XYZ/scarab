@@ -6,8 +6,6 @@ import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.{Handshake, NtnVersion}
 
 /** Node-to-node handshake, responder side: reads the client's proposal, answers through the pure
@@ -34,14 +32,6 @@ object HandshakeServer:
   def localOffers(magic: Long): Vector[(Int, Handshake.Data)] =
     Handshake.nodeToClientOffers(Handshake.Data(magic))
 
-  private def decodeProposal(suite: Handshake.Suite)(
-      bytes: Bytes
-  ): DecodeResult[Handshake.Message] =
-    Handshake.decodePrefix(suite, Handshake.State.Propose, bytes) match
-      case Right((message, rest))  => DecodeResult.Decoded(message, bytes.size - rest.size)
-      case Left(e) if e.incomplete => DecodeResult.NeedMore
-      case Left(e)                 => DecodeResult.Failed(e.cause)
-
   /** @param timeout
     *   The time the client has to propose: `shortWait`, 10 s, in node-to-node
     *   (`timeLimitsHandshake`, `Ouroboros/Network/Protocol/Handshake/Codec.hs:80-88`,
@@ -62,7 +52,9 @@ object HandshakeServer:
       .raise[F, A]
     for
       proposal <- Timed.within(timeout, Protocols.Handshake, "propose")(
-        channel.recv(Handshake.MaxMessageBytes)(decodeProposal(suite))
+        channel.recv(Handshake.MaxMessageBytes)(
+          Handshake.incremental(suite, Handshake.State.Propose)
+        )
       )
       answer <- Handshake
         .responder(suite, supported, proposal)

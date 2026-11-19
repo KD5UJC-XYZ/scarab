@@ -103,12 +103,29 @@ object DetachedRecords:
     */
   def mayHold(raw: Bytes): Boolean = holdsEmptyIndefiniteList(raw)
 
-  private def holdsEmptyIndefiniteList(raw: Bytes): Boolean =
-    @tailrec def from(i: Int): Boolean =
-      if i + 1 >= raw.size then false
-      else if raw.byteOr(i)(0)(_ & 0xff) == 0x9f && raw.byteOr(i + 1)(0)(_ & 0xff) == 0xff then true
+  private def holdsEmptyIndefiniteList(raw: Bytes): Boolean = scanned(raw, 0) == Scan.Seen
+
+  /** How far a search of a growing input for the bytes `9f ff` has got: they were seen, or no pair
+    * starts before `from`.
+    */
+  enum Scan:
+    case Unseen(from: Int)
+    case Seen
+
+  /** [[mayHold]] of `raw`, searched on from `scan`, the search of a shorter prefix of it: each byte
+    * is looked at once however many prefixes the input arrives as.
+    */
+  def mayHold(raw: Bytes, scan: Scan): Scan = scan match
+    case Scan.Seen         => Scan.Seen
+    case Scan.Unseen(from) => scanned(raw, from)
+
+  private def scanned(raw: Bytes, start: Int): Scan =
+    @tailrec def from(i: Int): Scan =
+      if i + 1 >= raw.size then Scan.Unseen(i)
+      else if raw.byteOr(i)(0)(_ & 0xff) == 0x9f && raw.byteOr(i + 1)(0)(_ & 0xff) == 0xff then
+        Scan.Seen
       else from(i + 1)
-    from(0)
+    from(start)
 
   /** The detached records of `raw` read as one item of `shape`, as the reference's decoders read
     * them; none when they would fail to read it (a record of the wrong length, a non-empty
@@ -142,6 +159,29 @@ object DetachedRecords:
       case Walked.Item(end, found) => Prefix.Item(end, records(found))
       case Walked.Short            => Prefix.Short
       case Walked.Refused          => Prefix.Refused
+
+  /** Where the walk of a prefix of an input stood when the prefix ran out, as [[prefix]] walks it:
+    * the head it stopped at, the items still to come at each open level, the records found, and,
+    * when it stopped inside an item read as [[Shape.Item]], where its skip of that item stood.
+    */
+  final class Walking private[DetachedRecords] (
+      private[DetachedRecords] val at: Int,
+      private[DetachedRecords] val stack: List[Frame],
+      private[DetachedRecords] val found: List[(Int, Int)],
+      private[DetachedRecords] val item: Option[Skip]
+  )
+
+  /** [[prefix]] of `raw`, walked on from `from` when it is the walk of a shorter prefix of `raw` as
+    * `shape` ([[Walking]]): each head is read once however many prefixes the input arrives as, and
+    * the answer is the one [[prefix]] gives.
+    */
+  def prefix(raw: Bytes, shape: Shape, from: Option[Walking]): (Option[Walking], Prefix) =
+    val walk = new Walk(raw)
+    from.fold(walk.start(shape))(walk.resume) match
+      case Left(paused)                   => (Some(paused), Prefix.Short)
+      case Right(Walked.Item(end, found)) => (None, Prefix.Item(end, records(found)))
+      case Right(Walked.Short)            => (None, Prefix.Short)
+      case Right(Walked.Refused)          => (None, Prefix.Refused)
 
   private def records(found: List[(Int, Int)]): Cbor.Detached =
     val inOrder = found.reverse.toVector
@@ -185,6 +225,17 @@ object DetachedRecords:
     * read as.
     */
   private final case class Frame(left: Long, children: Children)
+
+  /** Where a skip of an item that began at `from` stood at the head at `at`: the items still to
+    * come at each open level, innermost first (-1 until a break).
+    */
+  private final case class Skip(from: Int, at: Int, counts: List[Long])
+
+  /** How a resumable skip ended: the item's end, short of input where it stood, or refused. */
+  private enum Skipped:
+    case End(at: Int)
+    case Short(skip: Skip)
+    case Refused
 
   /** An item's head at a position: its token, the bytes of the head (with a definite string's
     * payload), and its items (-1 until a break).
@@ -329,6 +380,97 @@ object DetachedRecords:
                   case 6 => open(1L)
                   case _ => ()
       if whole then at else if short then -2 else -1
+
+    /** [[skip]] as a walk that stops at a head and goes on from it: the item at `from`, its end,
+      * where it stood when the input ran out, or a refusal where [[skip]] refuses. It reads the
+      * heads [[skip]] reads, in its order, and gives its answer.
+      */
+    @tailrec private def skipping(from: Int, at: Int, counts: List[Long]): Skipped =
+      counts match
+        case Nil         => Skipped.End(at)
+        case 0L :: outer => skipping(from, at, outer)
+        case top :: outer =>
+          def short = Skipped.Short(Skip(from, at, counts))
+          if at >= end then short
+          else
+            val b = byte(at)
+            if b == 0xff then if top < 0 then skipping(from, at + 1, outer) else Skipped.Refused
+            else
+              val rest = (if top > 0 then top - 1 else top) :: outer
+              val major = b >>> 5
+              val ai = b & 31
+              if ai == 31 then
+                if major >= 2 && major <= 5 then skipping(from, at + 1, -1L :: rest)
+                else Skipped.Refused
+              else if ai > 27 then Skipped.Refused
+              else
+                val size = if ai < 24 then 1 else 1 + (1 << (ai - 24))
+                val n =
+                  if ai < 24 then ai.toLong else raw.bigEndian(at + 1, size - 1).getOrElse(-1L)
+                val room = (end - at - size).toLong
+                if size > end - at then short
+                else if n < 0 && major >= 2 && major <= 5 then Skipped.Refused
+                else
+                  val next = at + size
+                  major match
+                    case 2 | 3 => if n > room then short else skipping(from, next + n.toInt, rest)
+                    case 4 =>
+                      if n > Long.MaxValue / 4 then short else skipping(from, next, n :: rest)
+                    case 5 =>
+                      if n > Long.MaxValue / 4 then short else skipping(from, next, 2 * n :: rest)
+                    case 6 => skipping(from, next, 1L :: rest)
+                    case _ => skipping(from, next, rest)
+
+    /** The walk of [[run]] from its start, which stops where the input ends ([[Walking]]). */
+    def start(shape: Shape): Either[Walking, Walked] =
+      walkOn(0, List(Frame(1, Children.Each(shape))), Nil, None)
+
+    /** The walk of a shorter prefix of this input, walked on. */
+    def resume(from: Walking): Either[Walking, Walked] =
+      walkOn(from.at, from.stack, from.found, from.item)
+
+    /** [[walk]], stopping where the input ends with where it stood: in an item read as
+      * [[Shape.Item]], the skip of it goes on from `item` when that began at this head.
+      */
+    @tailrec private def walkOn(
+        at: Int,
+        stack: List[Frame],
+        found: List[(Int, Int)],
+        item: Option[Skip]
+    ): Either[Walking, Walked] =
+      def paused(skip: Option[Skip]) = Left(new Walking(at, stack, found, skip))
+      stack match
+        case Nil                       => Right(Walked.Item(at, found))
+        case Frame(0L, _) :: enclosing => walkOn(at, enclosing, found, None)
+        case Frame(left, children) :: enclosing =>
+          head(at) match
+            case Left(Walked.Short)   => paused(None)
+            case Left(Walked.Refused) => Right(Walked.Refused)
+            case Right(Head(Token.Break, _, _)) =>
+              if left < 0 then walkOn(at + 1, enclosing, found, None) else Right(Walked.Refused)
+            case Right(h) =>
+              children.next(h.token) match
+                case None => Right(Walked.Refused)
+                case Some((shape, after)) =>
+                  val above = Frame(if left > 0 then left - 1 else left, after) :: enclosing
+                  resolve(shape, h.token) match
+                    case Item =>
+                      val skip = item.filter(_.from == at)
+                      skipping(at, skip.fold(at)(_.at), skip.fold(List(1L))(_.counts)) match
+                        case Skipped.End(after) => walkOn(after, above, found, None)
+                        case Skipped.Short(s)   => paused(Some(s))
+                        case Skipped.Refused    => Right(Walked.Refused)
+                    case other =>
+                      enter(other, h, at) match
+                        case Left(Walked.Short)   => paused(None)
+                        case Left(Walked.Refused) => Right(Walked.Refused)
+                        case Right(entered) =>
+                          walkOn(
+                            entered.at,
+                            entered.frame.toList ++ above,
+                            entered.record.fold(found)(_ :: found),
+                            None
+                          )
 
     @tailrec private def resolve(shape: Shape, token: Token): Shape = shape match
       case ByToken(pick) => resolve(pick(token), token)

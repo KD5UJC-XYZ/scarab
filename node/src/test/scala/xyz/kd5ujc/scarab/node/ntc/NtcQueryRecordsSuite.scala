@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.network.recvPrefix
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
@@ -145,7 +146,7 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
     def inDijkstra(ids: String): Bytes = hex("820082008207" + "82181f" + ids)
     // a detached id is not walked: the query is one item, and its id is refused
     val detached = inDijkstra("819fff" + txId + "00")
-    assertEquals(NtcQuery.reader.span(detached), LocalStateQuery.QuerySpan.Item)
+    assertEquals(NtcQuery.reader.spanOf(detached), LocalStateQuery.QuerySpan.Item)
     assert(NtcQuery.decode(detached).isLeft)
     decodeQuery(message(detached)) match
       case DecodeResult.Decoded(Message.Query(framed), _) => assert(NtcQuery.decode(framed).isLeft)
@@ -206,9 +207,9 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
             s <- server.channel(7, Mux.Role.Responder)
             answered <- LocalStateQueryServer.run(s, source).background.use { _ =>
               val acquire = hex("8108")
-              (c.send(acquire) *> c.recv(LocalStateQuery.MaxResultBytes)(
+              (c.send(acquire) *> c.recvPrefix(LocalStateQuery.MaxResultBytes)(
                 LocalStateQuery.decodePrefix(State.Acquiring, Role.Server, _)
-              ) *> c.send(message(query)) *> c.recv(LocalStateQuery.MaxResultBytes)(
+              ) *> c.send(message(query)) *> c.recvPrefix(LocalStateQuery.MaxResultBytes)(
                 LocalStateQuery.decodePrefix(State.Querying, Role.Server, _)
               )).timeout(10.seconds)
             }

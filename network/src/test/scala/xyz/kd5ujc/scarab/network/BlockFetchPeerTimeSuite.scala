@@ -29,7 +29,9 @@ class BlockFetchPeerTimeSuite extends FailsOnUncaught:
     )
   private def request(channel: MuxChannel[IO])(using Raise[IO, NetworkError]): IO[Unit] =
     channel
-      .recv(65535)(BlockFetch.decodePrefix(BlockFetch.State.Idle, BlockFetch.Role.Client, _, codec))
+      .recvPrefix(65535)(
+        BlockFetch.decodePrefix(BlockFetch.State.Idle, BlockFetch.Role.Client, _, codec)
+      )
       .void
   private val block =
     CardanoBlockFetch.RawNtNBlock.from(Peers.block(1)).fold(e => fail(e.message), identity)

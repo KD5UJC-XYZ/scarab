@@ -67,7 +67,8 @@ object PeerSharingServer:
       def command(using Raise[F, NetworkError]): F[PeerSharingRuntime.Command] =
         channel
           .recv(settings.limits.maxMessageBytes)(
-            PeerSharing.decoder(PeerSharing.State.Idle, PeerSharing.Role.Client, settings.limits)
+            PeerSharing
+              .incremental(PeerSharing.State.Idle, PeerSharing.Role.Client, settings.limits)
           )
           .flatMap {
             case PeerSharing.Message.ShareRequest(amount) =>

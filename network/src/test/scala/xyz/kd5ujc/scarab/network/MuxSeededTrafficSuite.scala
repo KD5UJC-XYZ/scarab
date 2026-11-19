@@ -152,7 +152,7 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
             readers.updateAndGet(_ + 1).flatMap { count =>
               ready.complete(()).void.whenA(count == all.size)
             } *> flow.messages.traverse_ { expected =>
-              flow.incoming.recv(maxMessage)(exactly(expected.size)).flatMap { actual =>
+              flow.incoming.recvPrefix(maxMessage)(exactly(expected.size)).flatMap { actual =>
                 IO(assertEquals(actual, expected, s"seed ${value.seed}, lane ${flow.lane}"))
               }
             }
