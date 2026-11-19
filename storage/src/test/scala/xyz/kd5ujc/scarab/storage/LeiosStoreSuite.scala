@@ -244,10 +244,39 @@ class LeiosStoreSuite extends CatsEffectSuite:
         kept <- s.scanEbPoints
         _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
         copied <- s.stored(hash(1))
+        // collected in the same session: the copied point is evicted, its body and
+        // transactions stay
+        _ <- s.garbageCollect(slot(50))
+        collected <- s.scanEbPoints
+        stored <- s.lookupEbBody(hash(1))
+        held <- s.batchRetrieveTxs(hash(1), Vector(0))
       yield
         assertEquals(pinned.points.map(_._3), Vector(EbStatus.Certified))
         assertEquals(kept, Vector(point(1, 1)))
-        assertEquals(copied.points.map(_._3), Vector(EbStatus.Immutable)))
+        assertEquals(copied.points.map(_._3), Vector(EbStatus.Immutable))
+        assertEquals(collected, Vector.empty)
+        assertEquals(stored, Some(body(2).encoded))
+        assertEquals(held, Vector(0 -> tx(0))))
+    }
+  }
+
+  dirs.test("a pinned point copied by a local fill is collected in the same session") { dir =>
+    store(dir / "leios").use { s =>
+      ok(for
+        _ <- s.writeEbPoint(point(1, 1), word32(1))
+        _ <- s.writeEbBody(point(1, 1), body(1), Vector.empty)
+        _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
+        _ <- s.writeEbPoint(point(2, 2), word32(1))
+        _ <- s.promoteToImmutable(Vector(point(2, 2)))
+        written <- s.writeEbBody(point(2, 2), body(1), Vector(LocalFill(0, TxLocation(hash(1), 0))))
+        _ <- s.garbageCollect(slot(10))
+        collected <- s.scanEbPoints
+        closure <- s.lookupEbClosure(hash(2))
+      yield
+        assertEquals(written.filled, Vector(0))
+        // hash 1's volatile point and hash 2's copied one both go from the volatile view
+        assertEquals(collected, Vector.empty)
+        assertEquals(closure.map(_.map(_._2)), Some(Vector(tx(0)))))
     }
   }
 
@@ -471,6 +500,40 @@ class LeiosStoreSuite extends CatsEffectSuite:
     yield
       assertEquals(prepared, Right(()))
       assertEquals(points, Vector(point(1, 1)))
+  }
+
+  dirs.test("a first open whose empty target goes while it looks stages its own store") { dir =>
+    val leios = dir / "leios"
+    for
+      _ <- IO.blocking(java.nio.file.Files.createDirectories(leios.toNioPath))
+      // another first open removes the empty target to publish there, between this one's check
+      // that it is a directory and its listing of it
+      prepared <- attempt(
+        RocksLeiosStore.prepareAround[IO](
+          leios,
+          IO.blocking(java.nio.file.Files.delete(leios.toNioPath))
+        )
+      )
+      points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
+    yield
+      assertEquals(prepared, Right(()))
+      assertEquals(points, Vector(point(1, 1)))
+  }
+
+  dirs.test("a first open whose empty target another publishes into while it looks opens it") {
+    dir =>
+      val leios = dir / "leios"
+      for
+        _ <- IO.blocking(java.nio.file.Files.createDirectories(leios.toNioPath))
+        prepared <- attempt(
+          RocksLeiosStore.prepareAround[IO](leios, ok(RocksLeiosStore.prepare[IO](leios)))
+        )
+        points <- store(leios).use(s =>
+          ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints)
+        )
+      yield
+        assertEquals(prepared, Right(()))
+        assertEquals(points, Vector(point(1, 1)))
   }
 
   dirs.test("a store opens though its staging directory cannot be read") { dir =>

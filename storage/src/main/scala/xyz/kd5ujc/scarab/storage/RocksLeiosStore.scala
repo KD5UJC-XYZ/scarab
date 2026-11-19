@@ -252,10 +252,14 @@ final class RocksLeiosStore[F[_]] private (
     */
   private def copied(p: Points, hash: EbHash, key: Array[Byte])(using
       ReadOptions
-  ): Either[LeiosStoreError, Vector[Op]] =
-    pointsOf(p, hash, key).map(_.collect { case (_, k, size, EbStatus.Certified) =>
-      Op.Put(Family.Points, k, pointValue(size, EbStatus.Immutable))
-    })
+  ): Either[LeiosStoreError, (Vector[Op], Points)] =
+    pointsOf(p, hash, key).map { rows =>
+      val pinned = rows.collect { case (slot, k, size, EbStatus.Certified) => (slot, k, size) }
+      (
+        pinned.map((_, k, size) => Op.Put(Family.Points, k, pointValue(size, EbStatus.Immutable))),
+        pinned.foldLeft(p)((q, r) => q.restated(hash, r._1, EbStatus.Immutable))
+      )
+    }
 
   // --- writes ---
 
@@ -308,8 +312,8 @@ final class RocksLeiosStore[F[_]] private (
               else filledFrom(p, eb, fill).fold(acc)(acc.updated(fill.offset, _))
             }
             val complete = filled.sizeIs == eb.size
-            (if filled.isEmpty then Right(Vector.empty) else copied(kept, point.hash, key)).map {
-              copy =>
+            (if filled.isEmpty then Right((Vector.empty, kept)) else copied(kept, point.hash, key))
+              .map { (copy, next) =>
                 commit(
                   retired
                     .map(r => Op.Put(Family.Points, r._2, pointValue(r._3, EbStatus.Immutable))) ++
@@ -329,8 +333,8 @@ final class RocksLeiosStore[F[_]] private (
                   if complete then
                     kept.pointsOf(point.hash).filterNot(c => retired.exists(_._1 == c.slot))
                   else Vector.empty
-                (BodyWritten(completed, filled.keys.toVector), kept)
-            }
+                (BodyWritten(completed, filled.keys.toVector), next)
+              }
       yield result
     }
 
@@ -373,15 +377,16 @@ final class RocksLeiosStore[F[_]] private (
             held <- heldOffsets(key)
             fresh = accepted.view.filterKeys(o => !held.contains(o)).toVector
             completes = !has(families.complete, key) && held.size + fresh.size == eb.size
-            copy <-
+            copying <-
               if held.isEmpty && fresh.nonEmpty then copied(p, point.hash, key)
-              else Right(Vector.empty)
+              else Right((Vector.empty, p))
+            (copy, next) = copying
           yield
             commit(
               fresh.map((o, tx) => Op.Put(Family.Txs, txKey(key, o), tx.toArray)) ++
                 Option.when(completes)(Op.Put(Family.Complete, key, Empty)) ++ copy
             )
-            (if completes then p.pointsOf(point.hash) else Vector.empty, p)
+            (if completes then p.pointsOf(point.hash) else Vector.empty, next)
         }
       yield result
     }
@@ -918,8 +923,9 @@ object RocksLeiosStore:
   private[storage] def prepare[F[_]: Async](dir: Path)(using Raise[F, LeiosStoreError]): F[Unit] =
     prepareAround(dir, Async[F].unit)
 
-  /** [[prepare]], running `between` after it found no store at `dir` and before it looks at what
-    * `dir` holds: where another first open may publish its store.
+  /** [[prepare]], running `between` after it found no store at `dir` and whether `dir` is a
+    * directory, and before it lists what `dir` holds: where another first open may remove an empty
+    * `dir` and publish its store there.
     */
   private[storage] def prepareAround[F[_]: Async](dir: Path, between: F[Unit])(using
       Raise[F, LeiosStoreError]
@@ -937,44 +943,52 @@ object RocksLeiosStore:
         .flatMap(found =>
           F.unlessA(found.toSet == FamilyNames.toSet)(fail(LeiosStoreError.ForeignDatabase(found)))
         )
-    val made: F[Unit] =
-      published.flatMap {
-        case true => validated
-        case false =>
-          between *> io(
-            Files.isDirectory(nio) && Using.resource(Files.list(nio))(_.findAny().isPresent)
-          )
+    val unpublished: F[Boolean] = published.map(!_)
+    // A new store, staged and published; a first open that loses the rename to another opens the
+    // other's store.
+    val staged: F[Unit] =
+      SecureRandom
+        .javaSecuritySecureRandom[F]
+        .flatMap(random => UUIDGen.fromSecureRandom[F](using F, random).randomUUID)
+        .flatMap { id =>
+          val stage = stagingRoot(nio).resolve(id.toString)
+          F.blocking {
+            build(stage)
+            publish(stage, nio)
+          }.attempt
             .flatMap {
-              // another first open may have published its store since: that is validated, and
-              // anything else in the directory is refused
-              case true =>
-                published.flatMap {
-                  case true  => validated
-                  case false => fail(LeiosStoreError.ForeignDatabase(Vector.empty))
-                }
-              case false =>
-                SecureRandom
-                  .javaSecuritySecureRandom[F]
-                  .flatMap { random =>
-                    UUIDGen.fromSecureRandom[F](using F, random).randomUUID
-                  }
-                  .flatMap { id =>
-                    val stage = stagingRoot(nio).resolve(id.toString)
-                    F.blocking {
-                      build(stage)
-                      publish(stage, nio)
-                    }.attempt
-                      .flatMap {
-                        case Right(_) => F.unit
-                        case Left(e) =>
-                          published.flatMap {
-                            case true  => bestEffort(RocksUtxoStore.deleteTree(stage))
-                            case false => fail[Unit](LeiosStoreError.Io(e))
-                          }
-                      }
-                  }
+              case Right(_) => F.unit
+              case Left(e) =>
+                unpublished.ifM(
+                  fail[Unit](LeiosStoreError.Io(e)),
+                  bestEffort(RocksUtxoStore.deleteTree(stage))
+                )
             }
+        }
+    // Whether `dir` holds anything, or why it could not be listed: it may have gone while it was
+    // looked at, as when another first open removes an empty `dir` to publish its store there.
+    val holds: F[Either[Throwable, Boolean]] =
+      io(Files.isDirectory(nio)).flatMap { directory =>
+        between *> F
+          .blocking(directory && Using.resource(Files.list(nio))(_.findAny().isPresent))
+          .attempt
       }
+    val made: F[Unit] =
+      unpublished.ifM(
+        holds.flatMap {
+          // another first open may have published its store since: that is validated, and
+          // anything else in the directory is refused
+          case Right(true) =>
+            unpublished.ifM(fail(LeiosStoreError.ForeignDatabase(Vector.empty)), validated)
+          case Left(e) =>
+            unpublished.ifM(
+              io(Files.exists(nio)).ifM(fail(LeiosStoreError.Io(e)), staged),
+              validated
+            )
+          case Right(false) => staged
+        },
+        validated
+      )
     // A first open still staging may be removing its own directory, or still writing into it,
     // while it is removed here: each removal is a best effort, and what is left goes next time.
     // Looking for them is a best effort too: another first open may have removed the root, or it
