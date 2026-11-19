@@ -52,6 +52,23 @@ object DijkstraPlutusPurpose:
       case DijkstraProposing(AsIx(i))   => i
       case DijkstraGuarding(AsIx(i))    => i
 
+  /** The redeemer key of tag `tag` and index `index`, none for a tag Dijkstra does not have
+    * (`DecCBORGroup (DijkstraPlutusPurpose f era)`, `Scripts.hs:166-182`, cardano-ledger 9df9f98c):
+    * the tags of [[tag]].
+    */
+  private[dijkstra] def asIx(
+      tag: Int,
+      index: Unsigned[Unsigned.Width.W32]
+  ): Option[DijkstraPlutusPurpose[AsIx]] = tag match
+    case 0 => Some(DijkstraSpending(AsIx(index)))
+    case 1 => Some(DijkstraMinting(AsIx(index)))
+    case 2 => Some(DijkstraCertifying(AsIx(index)))
+    case 3 => Some(DijkstraWithdrawing(AsIx(index)))
+    case 4 => Some(DijkstraVoting(AsIx(index)))
+    case 5 => Some(DijkstraProposing(AsIx(index)))
+    case 6 => Some(DijkstraGuarding(AsIx(index)))
+    case _ => None
+
   /** A Conway redeemer's key carried into Dijkstra (`upgradePlutusPurposeAsIx`,
     * `Scripts.hs:528-534`, cardano-ledger 9df9f98c): the same purpose and index.
     */

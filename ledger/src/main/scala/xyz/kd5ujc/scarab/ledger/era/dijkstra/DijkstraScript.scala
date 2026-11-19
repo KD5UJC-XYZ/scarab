@@ -52,6 +52,16 @@ enum DijkstraPlutusScript:
 object DijkstraPlutusScript:
   given CanEqual[DijkstraPlutusScript, DijkstraPlutusScript] = CanEqual.derived
 
+  /** The Plutus script the block decoder read, of its language and with its program's bytes. */
+  private[dijkstra] def ofFlat(
+      language: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraLanguage,
+      code: Bytes
+  ): DijkstraPlutusScript = language match
+    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraLanguage.PlutusV1 => V1(Plutus(code))
+    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraLanguage.PlutusV2 => V2(Plutus(code))
+    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraLanguage.PlutusV3 => V3(Plutus(code))
+    case xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraLanguage.PlutusV4 => V4(Plutus(code))
+
   /** A Conway Plutus script carried into Dijkstra (`upgradeScript`, `Scripts.hs:423-428`,
     * cardano-ledger 9df9f98c): the same program in the same language.
     */

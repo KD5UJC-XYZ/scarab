@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.BootstrapWitness
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
 
 /** The witnesses every era's witness set has (`EraTxWits`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:503-527`): key witnesses, bootstrap
@@ -55,3 +55,6 @@ object EraTxWits:
 
   given conway: AlonzoEraTxWits[Conway] =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxWits.instance
+
+  given dijkstra: AlonzoEraTxWits[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxWits.instance

@@ -11,7 +11,16 @@ import xyz.kd5ujc.scarab.ledger.{
   Voter,
   VotingProcedure
 }
-import xyz.kd5ujc.scarab.ledger.state.{ColdCommittee, Coin, Credential, EpochNo, EraTag, ScriptHash}
+import xyz.kd5ujc.scarab.ledger.state.{
+  ColdCommittee,
+  Coin,
+  Conway,
+  Credential,
+  Dijkstra,
+  EpochNo,
+  EraTag,
+  ScriptHash
+}
 
 // The governance procedures (cardano-ledger f649f975
 // `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs`): data types parameterised
@@ -82,18 +91,27 @@ enum GovAction[E <: EraTag]:
 object GovAction:
   given [E <: EraTag]: CanEqual[GovAction[E], GovAction[E]] = CanEqual.derived
 
+/** The proposal an era's flat decoder reads, which the flat rules and their failures carry:
+  * Conway's [[Proposal]], and Dijkstra's [[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraProposal]],
+  * whose update is Dijkstra's. A step toward #85's item 25, the proposals of the era types, which
+  * drops it with the flat failures.
+  */
+type ProposalRead[E <: EraTag] = E match
+  case Conway   => Proposal
+  case Dijkstra => xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraProposal
+
 /** A governance proposal of era `E` (`data ProposalProcedure era`, `Procedures.hs:498-504`,
-  * cardano-ledger f649f975), with the flat [[Proposal]] it was read as, which the flat rules and
-  * their failures carry. Two proposals are equal when they mean the same, as the reference's
-  * derived `Eq` compares them: by the deposit, the return account, the action and the anchor, not
-  * the proposal read. Made only by an era's decoder.
+  * cardano-ledger f649f975), with the flat proposal it was read as ([[ProposalRead]]), which the
+  * flat rules and their failures carry. Two proposals are equal when they mean the same, as the
+  * reference's derived `Eq` compares them: by the deposit, the return account, the action and the
+  * anchor, not the proposal read. Made only by an era's decoder.
   */
 final class ProposalProcedure[E <: EraTag] private[era] (
     val pProcDeposit: Coin,
     val pProcReturnAddr: RewardAccount,
     val pProcGovAction: GovAction[E],
     val pProcAnchor: Anchor,
-    val read: Proposal
+    val read: ProposalRead[E]
 ):
   private def fields: (Coin, RewardAccount, GovAction[E], Anchor) =
     (pProcDeposit, pProcReturnAddr, pProcGovAction, pProcAnchor)
