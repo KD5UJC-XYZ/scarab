@@ -753,8 +753,20 @@ object QueryAnswers:
       // `protoMaxMajorPV` of the era's protocol (Query.hs:515-519, 1046), the one maximum TPraos
       // and Praos are configured with in every era (`Cardano/Node.hs:644-645, 677, 690`,
       // ouroboros-consensus 82ecba32).
+      // Under the Leios build at version 23 its maximum (the node's protocol version, 12 with
+      // `ExperimentalHardForksEnabled`, `Cardano/Node.hs:548-549`, ouroboros-consensus 2416493b);
+      // at 16 to 22 as under the 11.1 build ([[QueryTable]], the approved Deviation of #826).
       case GetMaxMajorProtocolVersion =>
-        coin.answer(BigInt(env.forks.maxMajorProtVer))
+        QueryTable.of(env.layout, version) match
+          case QueryTable.Leios => coin.answer(BigInt(env.forks.maxMajorProtVer))
+          case QueryTable.Node11_1 =>
+            coin.answer(
+              BigInt(
+                env.forks.maxMajorProtVer.min(
+                  xyz.kd5ujc.scarab.consensus.HardForkConfig.MaxMajorProtVer
+                )
+              )
+            )
       case GetStakePoolState(pools, delegators) =>
         shelleyBased(f => LeiosQueryAnswers.stakePoolState(f.l, pools, delegators))
       case GetLeiosCommittee => shelleyBased(f => LeiosQueryAnswers.leiosCommittee(f.l))

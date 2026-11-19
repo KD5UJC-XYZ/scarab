@@ -261,3 +261,21 @@ class LeiosQueryAnswersSuite extends FunSuite:
       )
     }
   }
+
+  test("GetMaxMajorProtocolVersion: the Leios build's 12 at version 23, 11.1's 11 at 16 to 22") {
+    val experimental =
+      leios.copy(forks = leios.forks.copy(maxMajorProtVer = 12))
+    val c = captured.head
+    def asked(v: NtcVersion) =
+      QueryAnswers.answerOrWhy(
+        experimental,
+        QueryView(Point.Origin, None, c.state),
+        Map.empty,
+        NtcQuery.IfCurrent(c.era, LedgerQuery.GetMaxMajorProtocolVersion),
+        v
+      )
+    assertEquals(asked(NtcVersion.V23).map(_.hex), Right(result(Bytes(Vector(0x0c.toByte))).hex))
+    NtcVersion.All.filter(_ != NtcVersion.V23).foreach { v =>
+      assertEquals(asked(v).map(_.hex), Right(result(Bytes(Vector(0x0b.toByte))).hex), v.toString)
+    }
+  }
