@@ -105,6 +105,8 @@ fixtures/reference/dijkstra-state-translation holds what the unchanged cardano-l
 Leios testnet build computes from the throwaway local-cluster snapshot in fixtures/leios/state (provenance
 in fixtures/reference/dijkstra-state-translation/README.md), and fixtures/reference/leios-ntc-queries what it answers
 to two node-to-client queries on the state files there (provenance in fixtures/reference/leios-ntc-queries/README.md).
+fixtures/reference/dijkstra-epoch holds the ledger states the same cardano-ledger reaches when it ticks two of those state files across
+Dijkstra's epoch boundaries (provenance in fixtures/reference/dijkstra-epoch/README.md).
 The files in fixtures/licenses and the licence files of the
 individual fixture directories cover the upstream-derived test vectors.
 

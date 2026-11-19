@@ -62,7 +62,14 @@ trait ForgeFixture:
     activeSlotsCoeff = Leader.Fraction.checked(1, 2).toOption.get
   )
   val globals =
-    LedgerGlobals(TestLedger.Supply, 1000, Rational(1, 2), network = 0, updateQuorum = 2)
+    LedgerGlobals(
+      TestLedger.Supply,
+      1000,
+      Rational(1, 2),
+      network = 0,
+      updateQuorum = 2,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    )
   val epochNonce = Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(7))))
 
   def hex(b: Array[Byte]) = Bytes.fromArray(b)

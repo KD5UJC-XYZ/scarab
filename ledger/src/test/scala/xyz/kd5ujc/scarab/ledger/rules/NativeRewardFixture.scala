@@ -25,7 +25,13 @@ object NativeRewardFixture extends Assertions:
 
   def globals(slots: Int, active: Rational, security: Int = 1, network: Int = 0): Globals =
     Globals(
-      LedgerGlobals(Supply, slots, active, network),
+      LedgerGlobals(
+        Supply,
+        slots,
+        active,
+        network,
+        kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+      ),
       EpochGeometry(
         Instant.EPOCH,
         1000,

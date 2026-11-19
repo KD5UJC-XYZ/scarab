@@ -15,13 +15,6 @@ enum DijkstraNotYet extends DomainError:
     */
   case LedgerState
 
-  /** A chain started from its genesis in Dijkstra: the era's `injectIntoTestState` also seats the
-    * Leios committee (9df9f98c `Dijkstra/Transition.hs:59-62`, `seatInitialLeiosCommittee` 80-100),
-    * which needs the Leios fields of the mark snapshot (`State/SnapShots.hs:386-467`) and the
-    * pools' BLS keys that the stake snapshots do not hold yet. Ledger rules.
-    */
-  case Genesis
-
   /** A ledger rule of Dijkstra whose reference differs from Conway's: EPOCH, SNAP, POOL and
     * POOLREAP seat the Leios committee, and BBODY, LEDGER and UTXOW read Dijkstra's block body and
     * transactions (cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules`).
@@ -54,8 +47,7 @@ enum DijkstraNotYet extends DomainError:
   def message: String = this match
     case LedgerState =>
       "a Dijkstra ledger state of the 11.1 layout is not read or written by this build"
-    case Genesis => "a chain cannot start in Dijkstra from its genesis in this build"
-    case Rules   => "the ledger rules of Dijkstra are not implemented"
+    case Rules => "the ledger rules of Dijkstra are not implemented"
     case PoolParamsBlsKey =>
       "a pool's BLS key in a Dijkstra state's pool parameters is not read by this build"
     case ParameterUpdate =>

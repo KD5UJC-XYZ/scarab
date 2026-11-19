@@ -23,7 +23,14 @@ class ProtocolParamProposalTranslationGapSuite extends FunSuite:
   import TestLedger.*
 
   private val constants = NativeRules.globals(
-    LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
+    LedgerGlobals(
+      Supply,
+      10000,
+      Rational(1, 20),
+      0,
+      updateQuorum = 2,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    )
   )
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 

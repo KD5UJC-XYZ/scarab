@@ -7,8 +7,9 @@ import cats.syntax.all.*
 import monocle.Lens
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** EPOCH of the era `E` (`Shelley/Rules/Epoch.hs`, `Conway/Rules/Epoch.hs`): the Shelley rule
-  * before Conway, the Conway rule from it, chosen by the witness.
+/** EPOCH of the era `E` (`Shelley/Rules/Epoch.hs`, `Conway/Rules/Epoch.hs`, cardano-ledger 9df9f98c
+  * `Dijkstra/Rules/Epoch.hs`): the Shelley rule before Conway, Conway's in Conway and Dijkstra's
+  * own in Dijkstra, chosen by the witness as `EraRule "EPOCH" era` chooses it.
   */
 object Epoch:
   def sts[E <: EraTag](using
@@ -20,11 +21,8 @@ object Epoch:
           es: Stateful[F, EpochState[E]],
           failures: Raise[F, TickFailure]
       ): F[Unit] = era match
-        case ShelleyBasedEra.SConway => ConwayEpoch.sts.transition[F](env, epoch)
-        // Dijkstra's EPOCH seats the Leios committee (cardano-ledger 9df9f98c
-        // `Dijkstra/Rules/Epoch.hs`), which needs state the node does not hold yet
-        case ShelleyBasedEra.SDijkstra =>
-          failures.raise(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Rules))
+        case ShelleyBasedEra.SConway   => ConwayEpoch.sts.transition[F](env, epoch)
+        case ShelleyBasedEra.SDijkstra => DijkstraEpoch.sts.transition[F](env, epoch)
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
           shelley[E].transition[F](env, epoch)

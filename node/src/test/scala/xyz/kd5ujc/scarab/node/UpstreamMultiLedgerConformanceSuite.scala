@@ -36,7 +36,13 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
       TestGeometry.f("0.2")
     )
   private val globals = Globals(
-    LedgerGlobals(BigInt("45000000000000000"), 4320, Rational(1, 5), 0),
+    LedgerGlobals(
+      BigInt("45000000000000000"),
+      4320,
+      Rational(1, 5),
+      0,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    ),
     geometry
   )
 

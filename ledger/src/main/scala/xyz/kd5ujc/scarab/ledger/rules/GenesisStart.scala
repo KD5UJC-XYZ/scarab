@@ -293,7 +293,7 @@ object GenesisStart:
       translated <- translateTo(globals, era, EraNes.InEra(ShelleyBasedEra.SShelley, shelley))
       injected <- translated match
         case i: EraNes.InEra[e] =>
-          inject[e](injections, i.nes)(using i.era).map(EraNes.InEra(i.era, _))
+          inject[e](globals, injections, i.nes)(using i.era).map(EraNes.InEra(i.era, _))
     yield injected
 
   /** The translations from the state `from` up to `era` (each `translateLedgerStateWith`). */
@@ -315,23 +315,20 @@ object GenesisStart:
     * From Alonzo the current parameters' cost models are first overridden by the Alonzo genesis
     * ones ([[alonzoInjectCostModels]]).
     */
-  def inject[E <: EraTag](injections: GenesisInjections, nes: NewEpochState[E])(using
-      era: ShelleyBasedEra[E]
+  def inject[E <: EraTag](globals: Globals, injections: GenesisInjections, nes: NewEpochState[E])(
+      using era: ShelleyBasedEra[E]
   ): Either[GenesisStartError, NewEpochState[E]] =
     for
-      _ <- Either.cond(
-        era != ShelleyBasedEra.SDijkstra,
-        (),
-        GenesisStartError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Genesis)
-      )
       // Conway resolves its governance sources before the Shelley funds/staking guard
       // (Conway/Transition.hs:166-171); Shelley resolves pools/stake after it (252-260).
       drepsSource <- era match
-        case ShelleyBasedEra.SConway => resolve("initialDReps", injections.initialDReps)
-        case _                       => Right(InjectionData.NoInjection)
+        case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
+          resolve("initialDReps", injections.initialDReps)
+        case _ => Right(InjectionData.NoInjection)
       delegsSource <- era match
-        case ShelleyBasedEra.SConway => resolve("delegs", injections.delegs)
-        case _                       => Right(InjectionData.NoInjection)
+        case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
+          resolve("delegs", injections.delegs)
+        case _ => Right(InjectionData.NoInjection)
       _ <- Either.cond(!injections.mainnet, (), GenesisStartError.InjectionNotAllowedOnMainnet)
       poolsSource <- resolve("stakePools", injections.stakePools)
       stakeSource <- resolve("stakeCredentials", injections.stakeCredentials)
@@ -341,20 +338,88 @@ object GenesisStart:
       stake <- embedded("stakeCredentials", stakeSource)
       staked <- (era match
         case ShelleyBasedEra.SConway =>
-          for
-            registered <- conwayStakeCredentials(stake, pooled)
-            dreps <- embedded("initialDReps", drepsSource)
-            delegs <- embedded("delegs", delegsSource)
-          yield injectDRepsThenDelegs(dreps, delegs, registered)
+          conwayStaked[Conway](stake, pooled, drepsSource, delegsSource)
+        case ShelleyBasedEra.SDijkstra =>
+          conwayStaked[Dijkstra](stake, pooled, drepsSource, delegsSource)
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
           shelleyStakeCredentials[E](stake, pooled)
-        // refused at the start of the injection
-        case ShelleyBasedEra.SDijkstra =>
-          Left(GenesisStartError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Genesis))
       ): Either[GenesisStartError, NewEpochState[E]]
       reset <- resetStakeDistribution(staked)
-    yield reset
+      seated <- (era match
+        case ShelleyBasedEra.SDijkstra => seatInitialLeiosCommittee(globals, reset)
+        case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+            ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+          Right(reset)
+      ): Either[GenesisStartError, NewEpochState[E]]
+    yield seated
+
+  /** `conwayRegisterInitialFundsThenStaking` 's staking (`Conway/Transition.hs:157-171`): the stake
+    * credentials, then the genesis DReps and delegations; Dijkstra's injection runs it as Conway's
+    * (cardano-ledger 9df9f98c `Dijkstra/Transition.hs:59-62`).
+    */
+  private def conwayStaked[E <: EraTag](
+      stake: Vector[(KeyHash[Staking], KeyHash[StakePool])],
+      pooled: NewEpochState[E],
+      drepsSource: InjectionData[(Credential[DRepRole], DRepState)],
+      delegsSource: InjectionData[(Credential[Staking], Delegatee)]
+  )(using ShelleyBasedEra[E], ConwayShapes[E]): Either[GenesisStartError, NewEpochState[E]] =
+    for
+      registered <- conwayStakeCredentials(stake, pooled)
+      dreps <- embedded("initialDReps", drepsSource)
+      delegs <- embedded("delegs", delegsSource)
+    yield injectDRepsThenDelegs(dreps, delegs, registered)
+
+  /** Dijkstra's `injectIntoTestState` after Conway's (cardano-ledger 9df9f98c
+    * `Dijkstra/Transition.hs:59-62, 80-101`): the VRF key hashes counted again for the pools the
+    * genesis registered without POOL (`populateVRFKeyHashes`), and the Leios committee seated on
+    * the initial snapshots (`seatInitialLeiosCommittee`): the mark taken again at the state's epoch
+    * with the parameters' committee size and the key age the KES constants give, which selects its
+    * committee, and the set and go snapshots seeded from it. The state is of the Leios layout; a
+    * Dijkstra state of the 11.1 layout is not held.
+    */
+  private def seatInitialLeiosCommittee(
+      globals: Globals,
+      nes: NewEpochState[Dijkstra]
+  ): Either[GenesisStartError, NewEpochState[Dijkstra]] =
+    given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
+    val ls = nes.es.ls
+    // the counts recomputed from nothing, as 9df9f98c's `populateVRFKeyHashes` does
+    // (`State/CertState.hs:528-538`), the Leios build's (the only build with Dijkstra)
+    val counted = Translate
+      .populateVRFKeyHashes(EraLedger.pState(ls))
+      .map(EraLedger.withPState(ls, _))
+      .leftMap(GenesisStartError.Vocab(_))
+    val snapshots = nes.es.snapshots
+    snapshots.layout match
+      case SnapShots.Layout.Node11_1 =>
+        Left(GenesisStartError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState))
+      case _: SnapShots.Layout.Leios =>
+        for
+          counted <- counted
+          age <- globals.maxKeyAgeEpochs.leftMap(GenesisStartError.Vocab(_))
+          size <- LeiosCommitteeSize
+            .fromBigInt(EraLedger.curPParams(ls.utxo.gov).leiosCommitteeSize)
+            .leftMap(GenesisStartError.LeiosCommittee(_))
+          mark: SnapShots.Layout.Leios = SnapShots.Layout.Leios(
+            nes.epoch,
+            BigInt(size.toInt),
+            BigInt(age.toLong),
+            LeiosCommittee.empty
+          )
+          committee <- LeiosCommitteeSelection
+            .ofMark(snapshots.mark, mark)
+            .leftMap(GenesisStartError.LeiosCommittee(_))
+        yield nes.copy(es =
+          nes.es.copy(
+            ls = counted,
+            snapshots = snapshots.copy(
+              set = snapshots.mark,
+              go = snapshots.mark,
+              layout = mark.copy(setCommittee = committee)
+            )
+          )
+        )
 
   /** Source selection is distinct from consumption (`Shelley/Transition.hs:496-517`). */
   private def resolve[A](
@@ -532,14 +597,16 @@ object GenesisStart:
     * registered with the key deposit and delegates its stake to its pool (`registerConwayAccount
     * ... (Just (DelegStake pool))`), which must be registered.
     */
-  private def conwayStakeCredentials(
+  private def conwayStakeCredentials[E <: EraTag](
       stake: Vector[(KeyHash[Staking], KeyHash[StakePool])],
-      nes: NewEpochState[Conway]
-  ): Either[GenesisStartError, NewEpochState[Conway]] =
-    val pools = CertLens.pools.get(nes.es.ls.cert)
+      nes: NewEpochState[E]
+  )(using ShelleyBasedEra[E], ConwayShapes[E]): Either[GenesisStartError, NewEpochState[E]] =
+    val shapes = summon[ConwayShapes[E]]
+    val cert0 = shapes.cert(nes.es.ls.cert)
+    val pools = CertLens.pools.get(cert0)
     keyDeposit(nes).flatMap { deposit =>
       stake
-        .foldLeft[Either[GenesisStartError, ConwayCertState]](Right(nes.es.ls.cert)) {
+        .foldLeft[Either[GenesisStartError, ConwayCertState]](Right(cert0)) {
           case (acc, (key, pool)) =>
             acc.flatMap { cs =>
               val credential = Credential.KeyHashObj[Staking](key)
@@ -552,7 +619,7 @@ object GenesisStart:
               )
             }
         }
-        .map(c => withLedger(nes, nes.es.ls.copy[Conway](cert = c)))
+        .map(c => withLedger(nes, nes.es.ls.copy[E](cert = shapes.cert.flip(c))))
     }
 
   /** `injectDRepsThenDelegs` (`Conway/Transition.hs:95-119`): the DReps of the genesis in place of
@@ -560,12 +627,12 @@ object GenesisStart:
     * (`Conway/Rules/Deleg.hs:305-316`): the account's delegatee set where there is an account, and
     * the reverse delegation added to the pool or the DRep either way.
     */
-  private def injectDRepsThenDelegs(
+  private def injectDRepsThenDelegs[E <: EraTag](
       dreps: Vector[(Credential[DRepRole], DRepState)],
       delegs: Vector[(Credential[Staking], Delegatee)],
-      nes: NewEpochState[Conway]
-  ): NewEpochState[Conway] =
-    val withDReps = CertLens.dreps.replace(Sorted.map(dreps))(nes.es.ls.cert)
+      nes: NewEpochState[E]
+  )(using shapes: ConwayShapes[E]): NewEpochState[E] =
+    val withDReps = CertLens.dreps.replace(Sorted.map(dreps))(shapes.cert(nes.es.ls.cert))
     val delegated = delegs.foldLeft(withDReps) { case (cs, (credential, delegatee)) =>
       CertOps.delegate(
         cs,
@@ -575,7 +642,7 @@ object GenesisStart:
         preserveIncorrect = false
       )
     }
-    withLedger(nes, nes.es.ls.copy[Conway](cert = delegated))
+    withLedger(nes, nes.es.ls.copy[E](cert = shapes.cert.flip(delegated)))
 
   /** `resetStakeDistribution`: the snapshot of the instant stake and the registrations
     * (`snapShotFromInstantStake`) seeds the stake distribution, so that the injected pools lead

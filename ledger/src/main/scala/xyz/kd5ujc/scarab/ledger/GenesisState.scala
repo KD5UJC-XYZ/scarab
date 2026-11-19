@@ -74,7 +74,8 @@ object GenesisState:
         startRewards = genesis.geometry.randomnessStabilisationWindow.toBigInt,
         firstEpoch = genesis.geometry.firstShelleyEpoch,
         conway = Some(conwayParams),
-        alonzoCoinsPerUTxOWord = perWord
+        alonzoCoinsPerUTxOWord = perWord,
+        kes = genesis.kes
       )
     }
 

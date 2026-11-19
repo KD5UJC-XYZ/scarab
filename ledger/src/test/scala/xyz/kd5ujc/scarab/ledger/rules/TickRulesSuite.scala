@@ -268,19 +268,20 @@ class TickRulesSuite extends FunSuite:
   }
 
   test(
-    "a transition out of Conway translates into Dijkstra, whose EPOCH is refused; without a Dijkstra genesis it is refused"
+    "a transition out of Conway translates into Dijkstra, whose EPOCH refuses a state of the 11.1 layout; without a Dijkstra genesis it is refused"
   ) {
     val leaveConway: Hfc.Transition = p => Option.when(p.era == Era.Conway)(BigInt(7))
     val from = EraNes.InEra(ShelleyBasedEra.SConway, enterConway(babbage(conway(5, 10, 2))))
     val withGenesis =
       globals.copy(ledger = globals.ledger.copy(dijkstra = Some(DijkstraFixture.genesis)))
     // the state is of epoch 6: a slot of epoch 7 crosses its boundary in Dijkstra, one of epoch 8
-    // does not (NEWEPOCH moves only to the next epoch)
+    // does not (NEWEPOCH moves only to the next epoch); the state is of the 11.1 layout, whose
+    // Dijkstra state is not held, so Dijkstra's SNAP refuses it
     assertEquals(
       Hfc
         .tick(withGenesis, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(7) + 10)))
         .map(_.toEra),
-      Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Rules))
+      Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState))
     )
     assertEquals(
       Hfc

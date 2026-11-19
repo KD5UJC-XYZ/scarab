@@ -690,7 +690,13 @@ class ConwayRulesSuite extends FunSuite:
       0
     )
     def dormant(nes: Nes): BigInt = nes.es.ls.cert.vState.numDormantEpochs.toBigInt
-    val globals = LedgerGlobals(Supply, 100, Rational(1, 20), network = 0)
+    val globals = LedgerGlobals(
+      Supply,
+      100,
+      Rational(1, 20),
+      network = 0,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    )
     val idle = inConway(
       Iterator
         .iterate[EraNes](EraNes.InEra(ShelleyBasedEra.SConway, s))(NativeRules.boundary(_, globals))

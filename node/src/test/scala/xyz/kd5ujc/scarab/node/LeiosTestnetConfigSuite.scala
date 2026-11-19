@@ -127,7 +127,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
   }
 
   test(
-    "Dijkstra's epoch-0 trigger is carried, and the node starts in Conway: it does not enter it"
+    "Dijkstra's epoch-0 trigger is carried, and under the Leios build the node starts in Dijkstra"
   ) {
     val setup =
       NodeSetup
@@ -138,9 +138,14 @@ class LeiosTestnetConfigSuite extends FunSuite:
       forks.triggers.get(Era.Dijkstra),
       Some(xyz.kd5ujc.scarab.consensus.ForkTrigger.AtEpoch(0))
     )
-    assertEquals(forks.maxMajorProtVer, 11)
-    assertEquals(forks.trigger(Era.Dijkstra), None)
-    assertEquals(setup.mirrorStart.ext.ledgerState.era, Era.Conway)
+    // the maximum major protocol version is the node's own, 12 with ExperimentalHardForksEnabled
+    // (`Cardano/Node.hs:548-549`, ouroboros-consensus 2416493b)
+    assertEquals(forks.maxMajorProtVer, 12)
+    assertEquals(
+      forks.trigger(Era.Dijkstra),
+      Some(xyz.kd5ujc.scarab.consensus.ForkTrigger.AtEpoch(0))
+    )
+    assertEquals(setup.mirrorStart.ext.ledgerState.era, Era.Dijkstra)
   }
   test("the node setup reads the Dijkstra genesis the configuration names") {
     val setup =

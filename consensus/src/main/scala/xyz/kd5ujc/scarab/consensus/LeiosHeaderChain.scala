@@ -79,9 +79,17 @@ object LeiosHeaderChain:
   val GenesisEpochs: BigInt = 2
 
   /** The state before the first header: the protocol state of a chain that has applied no block
-    * (`ProtocolState.initial` in the protocol of Conway, whose rules the Leios headers follow).
+    * (`ProtocolState.initial` in the protocol of Conway, whose rules the Leios headers follow). A
+    * chain that starts in Dijkstra holds Praos2's state, which carries Praos's (Praos2.State's
+    * `praos`); these rules run over that.
     */
-  def initial(protocol: ProtocolState): State = State(None, protocol, Leadership(0, 0))
+  def initial(protocol: ProtocolState): State =
+    val praos = protocol.dep match
+      case state.ChainDepState.Praos2(s) => protocol.copy(dep = state.ChainDepState.Praos(s.praos))
+      case state.ChainDepState.PBft(_) | state.ChainDepState.TPraos(_) |
+          state.ChainDepState.Praos(_) =>
+        protocol
+    State(None, praos, Leadership(0, 0))
 
   /** Accept `header` on top of `state`. */
   def step(config: PraosConfig, stake: StakePolicy)(

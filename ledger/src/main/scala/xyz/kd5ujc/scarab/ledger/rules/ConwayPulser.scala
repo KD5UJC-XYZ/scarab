@@ -6,7 +6,9 @@ import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** `setFreshDRepPulsingState` (`Conway/Governance.hs:458`, cardano-ledger f649f975): the DRep
-  * pulser that starts at an epoch boundary, for the ratification that the next boundary applies.
+  * pulser that starts at an epoch boundary, for the ratification that the next boundary applies. It
+  * is the same in every era with Conway's governance and certificate state ([[ConwayShapes]]),
+  * Dijkstra too (cardano-ledger 9df9f98c `Dijkstra/Rules/Epoch.hs:233`).
   *
   * Haskell spreads the pulser over the epoch (it works through the accounts a few at a time, so the
   * DRep distribution is ready two stability windows before the end of the epoch) and keeps it
@@ -23,19 +25,22 @@ object ConwayPulser:
     * the accounts delegated to each DRep, with their proposal deposits; the pool distribution is
     * the new `mark` snapshot's, with the deposits of the accounts that delegate to those pools.
     */
-  def fresh(globals: Globals, es: EpochState[Conway], epoch: EpochNo): DRComplete =
+  def fresh[E <: EraTag](globals: Globals, es: EpochState[E], epoch: EpochNo)(using
+      shapes: ConwayShapes[E]
+  ): DRComplete =
     val ls = es.ls
-    val gov = ls.utxo.gov
-    val accounts = ls.cert.dState.accounts.states
+    val cert: ConwayCertState = shapes.cert(ls.cert)
+    val gov: ConwayGovState = shapes.gov(ls.utxo.gov)
+    val accounts = cert.dState.accounts.states
     // Ratification reads an account for one thing, the DRep that a pool's reward account
     // delegates to, so only those accounts are put in the node's form, not every account
     val flatAccounts: Map[node.Credential, node.Account] =
       (for
-        pool <- ls.cert.pState.stakePools.valuesIterator
+        pool <- cert.pState.stakePools.valuesIterator
         account <- accounts.get(pool.accountId)
       yield FlatView.credBack(pool.accountId) -> FlatView.conwayAccount(account)).toMap
     val flatDReps: Map[node.Credential, node.DRepState] =
-      FlatView.stakeMap(ls.cert.vState.dreps)(d =>
+      FlatView.stakeMap(cert.vState.dreps)(d =>
         node.DRepState(
           d.deposit.toBigInt,
           d.expiry.toBigInt,
@@ -44,7 +49,7 @@ object ConwayPulser:
         )
       )
     val deposits = gov.proposals.depositsByCredential
-    val instant = ls.utxo.instantStake.credentialStake
+    val instant = shapes.instantStake(ls.utxo.instantStake).credentialStake
     // the accounts in the order of the credential, and the instant stake walked beside them; the
     // sum for each DRep is built as `groupMapReduce` builds it
     val stakes = Sorted.Cursor(instant)
@@ -85,7 +90,7 @@ object ConwayPulser:
     val snapshot =
       node.PulsingSnapshot(gov.proposals.actions, drepDistr, flatDReps, poolAmounts)
     val committeeState: Map[node.Credential, node.CommitteeAuth] =
-      FlatView.stakeMap(ls.cert.vState.committeeState.creds) {
+      FlatView.stakeMap(cert.vState.committeeState.creds) {
         case CommitteeAuthorization.CommitteeHotCredential(h) =>
           node.CommitteeAuth.Hot(Convert.back(h))
         case CommitteeAuthorization.CommitteeMemberResigned(a) => node.CommitteeAuth.Resigned(a)
@@ -98,7 +103,7 @@ object ConwayPulser:
       epoch = epoch.toBigInt,
       committeeState = committeeState,
       accounts = flatAccounts,
-      pools = FlatView.pools(globals.networkId, ls.cert.pState.stakePools)
+      pools = FlatView.pools(globals.networkId, cert.pState.stakePools)
     )
     val enact = node.EnactState(
       committee = gov.committee,

@@ -1,0 +1,5145 @@
+{
+ "cases": [
+  {
+   "derivation": "none",
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 20186,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-boundaries-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "ee831f6d8261a159aeaf577b189577cf33210313f4b49326af03815502dcfd52",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 20155,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 3,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 3,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-boundaries-600.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 600,
+     "stateSha256": "002c602faf580d821a5776e347e65bf2e2b5e8bb81628cd3b783d35859e3e45c",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": "none",
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 24562,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "41948d9d77f84786a00e32e2af7fbbb787e3a7f400a6b0bf497e167d389770cc",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 20262,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 116994735000,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-rewards-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "2a40288747a7ad52a4e4a26f29aac35caa1a51772be19b5b8480a9e92e71ffd8",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 24086,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 116994735000,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-rewards-501.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 501,
+     "stateSha256": "dbcc8349b173f459907d923e50144793eed7ad76b3c67eb3f6e21ebfb3b116ea",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 20327,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7384168432,
+      "deposited": 1506000000,
+      "epoch": 3,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 3,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199863623094485,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 119992737083,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-rewards-600.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 600,
+     "stateSha256": "38d7a80212c75fb622ed153bcccd55daeab1d8acb98449c6ae03bd0155e4e20d",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20289,
+    "changes": [
+     {
+      "change": "retire",
+      "epoch": 2,
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 1,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-retire.cbor",
+    "name": "retire",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed"
+    },
+    "stateSha256": "abf2bfc8c897aebd7ff5a00afd4214a0e57bff893b0802670ea3990d653f03ad",
+    "vrfCounts": {
+     "P": {
+      "count": 1,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 19738,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1006000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 2,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 500000000,
+      "vrfKeyHashes": 2
+     },
+     "file": "dijkstra-203-retire-boundaries-400.cbor",
+     "poolsRetired": 1,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "ca9048d153102f39968327c2b5abd715b58515f478fd4f5e7860c39715157e47",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20289,
+    "changes": [
+     {
+      "change": "retire",
+      "epoch": 2,
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 1,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-retire.cbor",
+    "name": "retire",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed"
+    },
+    "stateSha256": "abf2bfc8c897aebd7ff5a00afd4214a0e57bff893b0802670ea3990d653f03ad",
+    "vrfCounts": {
+     "P": {
+      "count": 1,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 24593,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 1,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-retire-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "dc8b25a949963b687e37f5421ebd94b1fa8699c5e3c005b03b0eecf00f1ca26f",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      }
+     }
+    },
+    {
+     "bytes": 19762,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1006000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 2,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 117494735000,
+      "vrfKeyHashes": 2
+     },
+     "file": "dijkstra-203-retire-rewards-400.cbor",
+     "poolsRetired": 1,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "f821aba4e92e23dd17f1bc86671b97d7bfd65b97d2b660cc8f21673aebf73650",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20397,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-reregister-new-vrf.cbor",
+    "name": "reregister-new-vrf",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+     "Q": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321"
+    },
+    "stateSha256": "3b0591098c67fecebbf545a2e585bc4310475e80d156a8b1dda0d847bae4a692",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 20186,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-reregister-new-vrf-boundaries-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "2601a9f3737a1469804290fb9c7c68d5aa505fae115ddd278a7b3a552582bc6d",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20397,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-reregister-new-vrf.cbor",
+    "name": "reregister-new-vrf",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+     "Q": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321"
+    },
+    "stateSha256": "3b0591098c67fecebbf545a2e585bc4310475e80d156a8b1dda0d847bae4a692",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 24701,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 1,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-reregister-new-vrf-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "94c5ab75a3699f94ad320cf4f56a119c3559c590e49e153fb2f8d55d4ca23c13",
+     "vrfCounts": {
+      "P": {
+       "count": 2,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    },
+    {
+     "bytes": 20262,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 116994735000,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-reregister-new-vrf-rewards-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "da1766931670d4d9a21c69bcb9d72f0f3891e314179343bd7a98c084e232cc30",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20428,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 2,
+      "pool": "7ee3aab159a1a81f234897a8342b2b32d528bf41cd57ffc804dd502c"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 1,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-both.cbor",
+    "name": "both",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+     "Q": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+     "R": "7ee3aab159a1a81f234897a8342b2b32d528bf41cd57ffc804dd502c"
+    },
+    "stateSha256": "a6e01a12c8949ec6edfe73278e97182a02734306e95a93ee71252c452514ec8e",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+     },
+     "R": {
+      "count": 1,
+      "vrf": "7ea805c7140e76a0b03c072db722ddd62e3c47ddc965cd343d032b53ef698442"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 19738,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1006000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 2,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 500000000,
+      "vrfKeyHashes": 2
+     },
+     "file": "dijkstra-203-both-boundaries-400.cbor",
+     "poolsRetired": 1,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "bd1efa3c7003a1eac44854b35da119ea292c547c9c77e584d109bbed50392123",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "R": {
+       "count": 0,
+       "vrf": "7ea805c7140e76a0b03c072db722ddd62e3c47ddc965cd343d032b53ef698442"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20428,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 2,
+      "pool": "7ee3aab159a1a81f234897a8342b2b32d528bf41cd57ffc804dd502c"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 1,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-both.cbor",
+    "name": "both",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+     "Q": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+     "R": "7ee3aab159a1a81f234897a8342b2b32d528bf41cd57ffc804dd502c"
+    },
+    "stateSha256": "a6e01a12c8949ec6edfe73278e97182a02734306e95a93ee71252c452514ec8e",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+     },
+     "R": {
+      "count": 1,
+      "vrf": "7ea805c7140e76a0b03c072db722ddd62e3c47ddc965cd343d032b53ef698442"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 24732,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 1,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 1,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-both-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "21167aba5d35dea7c47e845a7c76f0aa4a8dd1159e2579acc981a2b2a104f904",
+     "vrfCounts": {
+      "P": {
+       "count": 2,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "R": {
+       "count": 1,
+       "vrf": "7ea805c7140e76a0b03c072db722ddd62e3c47ddc965cd343d032b53ef698442"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    },
+    {
+     "bytes": 19794,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1006000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 2,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 117494735000,
+      "vrfKeyHashes": 2
+     },
+     "file": "dijkstra-203-both-rewards-400.cbor",
+     "poolsRetired": 1,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "b70d475bcddc9b9420ec37eff8da0ede5d081ed408b35f990a38b4889390fda5",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "R": {
+       "count": 0,
+       "vrf": "7ea805c7140e76a0b03c072db722ddd62e3c47ddc965cd343d032b53ef698442"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20428,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 2,
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 1,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-both-sharer.cbor",
+    "name": "both-sharer",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+     "Q": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321"
+    },
+    "stateSha256": "6289dda14d2febea29662a2dbafaab859b8ed64de1f9a51048097e822511a72b",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 19738,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1006000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 2,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 500000000,
+      "vrfKeyHashes": 2
+     },
+     "file": "dijkstra-203-both-sharer-boundaries-400.cbor",
+     "poolsRetired": 1,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "f4f834feae8ce456acf0974804c6fb29b5eefb95446623f51b7d76d90c1b905e",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20428,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321",
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 2,
+      "pool": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321"
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 1,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-both-sharer.cbor",
+    "name": "both-sharer",
+    "pools": {
+     "P": "36d2429ec6dad00f7d09140f1993c0f73c543b955067ef7e4356beed",
+     "Q": "77ed883feca9630cfb69b78e9eb8182ee10c14acab5202b1e7770321"
+    },
+    "stateSha256": "6289dda14d2febea29662a2dbafaab859b8ed64de1f9a51048097e822511a72b",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 24732,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 1,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 1,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-both-sharer-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "05532564572ab8610ab0e2bfe8bec01808dc64d637a0c1a610ef4977c84daa33",
+     "vrfCounts": {
+      "P": {
+       "count": 2,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    },
+    {
+     "bytes": 19794,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1006000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 2,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 117494735000,
+      "vrfKeyHashes": 2
+     },
+     "file": "dijkstra-203-both-sharer-rewards-400.cbor",
+     "poolsRetired": 1,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "f8908afa66e57ee8a2976d7e5b1bff72f2597a8e77f5f4155ae1201ffde679c6",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "87514795ec7d12d4ff106c80d2482de74b08b040de6ecc8ec9fdfb22b0cb02c1"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "bdc1c9a742ff0b51418122b34055ce71bc360cd76ac76d6af2c58073c8f24c1d"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20266,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-pledge-cap.cbor",
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "129634e67f6aff844b94c6b45ddfadc7c923674445e208c4f035be5d98e88979",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 20202,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-pledge-cap-boundaries-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "5c32195afb55b1b7f72139bc7b2b2bc45cc396cadb8bcea4ceee1ea4d24774bf",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 20266,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-pledge-cap.cbor",
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "129634e67f6aff844b94c6b45ddfadc7c923674445e208c4f035be5d98e88979",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 24558,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-pledge-cap-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "c82e8b0f004ea9be7e9b6c2f519fd3ecc8cb54112d94b7cf15165ef6c35c1e4b",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 20218,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199874005265000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 116994735000,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-pledge-cap-rewards-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "d7166d12deb710786ff8cd921f281fe937ab9572bd7fe5c058025f755b0a0e7b",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 24025,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-committee-size.cbor",
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "68f1150cf2732fef243c659f0e6bae252d18502296d90da6c10110bb5919d138",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 20180,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-committee-size-boundaries-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 400,
+     "stateSha256": "cab4a4a79a78d3bfeb6853bb9745ad0cea8da745da0f218e30298db43f81a649",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 24025,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 0,
+     "deposited": 1506000000,
+     "epoch": 1,
+     "fees": 0,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 1,
+      "keyedSeats": 0,
+      "maxKeyAge": 40178,
+      "seats": 3
+     },
+     "maxPledgeLeverage": null,
+     "pools": 3,
+     "poolsRetiring": 0,
+     "reserves": 199991000000000,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 0,
+      "seats": 0
+     },
+     "treasury": 0,
+     "vrfKeyHashes": 3
+    },
+    "file": "dijkstra-203-committee-size.cbor",
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "68f1150cf2732fef243c659f0e6bae252d18502296d90da6c10110bb5919d138",
+    "vrfCounts": {}
+   },
+   "epoch": 1,
+   "genesis": "fixtures/leios/state/genesis/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 600,
+    "epochFirstSlot": 200,
+    "epochSize": 200,
+    "maxKESEvo": 62,
+    "maxKeyAge": 40178,
+    "nextEpochFirstSlot": 400,
+    "randomnessStabilisationWindow": 100,
+    "securityParameter": 5,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 75
+   },
+   "inputFacts": {
+    "accountBalances": 0,
+    "deposited": 1506000000,
+    "epoch": 1,
+    "fees": 0,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 1,
+     "keyedSeats": 0,
+     "maxKeyAge": 40178,
+     "seats": 3
+    },
+    "maxPledgeLeverage": null,
+    "pools": 3,
+    "poolsRetiring": 0,
+    "reserves": 199991000000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 0
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 3
+   },
+   "name": "dijkstra-203",
+   "newEpochStateSha256": "4fd50e35c84b0a9227ee347a16252639e4f65f8b64bd79d4e5e04eefb9f69023",
+   "newEpochStateSpan": [
+    148,
+    20406
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
+   "ticks": [
+    {
+     "bytes": 28330,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 0,
+      "deposited": 1506000000,
+      "epoch": 1,
+      "fees": 0,
+      "futurePParams": "definite",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 1,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 3
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199991000000000,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 0
+      },
+      "treasury": 0,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-committee-size-rewards-301.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 301,
+     "stateSha256": "840666fec8ab81cde85317d5bfd5ee2b216cdf9a269a02ad1bfc7516103ca8f8",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 20256,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 7199675998,
+      "deposited": 1506000000,
+      "epoch": 2,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 2,
+       "keyedSeats": 0,
+       "maxKeyAge": 40178,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 3,
+      "poolsRetiring": 0,
+      "reserves": 199866805589002,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 0,
+       "seats": 3
+      },
+      "treasury": 116994735000,
+      "vrfKeyHashes": 3
+     },
+     "file": "dijkstra-203-committee-size-rewards-400.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 400,
+     "stateSha256": "7da61d42a83b2b3d5377025617160fba26466d868fa05290fa4d75d845e74843",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 203,
+   "version": 12
+  },
+  {
+   "derivation": "none",
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 505632,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": "testnet-2168639-boundaries-2181600.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "d9eb7703bf049ac0f107382adc99d0935ce770fb43fdcc4b7a17988069a7ac9a",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 502155,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 102,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 102,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": "testnet-2168639-boundaries-2203200.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2203200,
+     "stateSha256": "01cd5008cc0fc5bc248a9e87149bef488a751e140d2b3d8bffca1077d10bf9c1",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": "none",
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 789606,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "e24d82ae4dba9a40f9419234faf0dcf29cae08fff90290b8063bf2379753a2f2",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 505624,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": "testnet-2168639-rewards-2181600.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "c48c52b10f2a90116f1173f76b253d11d826c458bf49c20f53791e2aba654604",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 772175,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2190241,
+     "stateSha256": "313ef12a7aa6b68cc265eb0a212688982bca2c879ea0a2e76a42eb7ba94a8dc1",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 502119,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14905257903441,
+      "deposited": 79756000000,
+      "epoch": 102,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 102,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14221533794266336,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 795800576787741,
+      "vrfKeyHashes": 154
+     },
+     "file": "testnet-2168639-rewards-2203200.cbor",
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 2203200,
+     "stateSha256": "699b003105ad91568fb12f201d49f9666a0c1bd4d45e8a6f00c7349e99647f0e",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510009,
+    "changes": [
+     {
+      "change": "retire",
+      "epoch": 101,
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 1,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "retire",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93"
+    },
+    "stateSha256": "e9030ed9f3af189edc5bae6614aa749afcc212911be1d4b68e4717d858007967",
+    "vrfCounts": {
+     "P": {
+      "count": 1,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 504535,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679976326893,
+      "deposited": 79256000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 153,
+       "maxKeyAge": 374,
+       "seats": 153
+      },
+      "maxPledgeLeverage": null,
+      "pools": 153,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 153
+     },
+     "file": null,
+     "poolsRetired": 1,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "d0a9581797aa0ce8dcf11a32624415a51f7893c87dcaa3c7c667beb4b114816b",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510009,
+    "changes": [
+     {
+      "change": "retire",
+      "epoch": 101,
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 1,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "retire",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93"
+    },
+    "stateSha256": "e9030ed9f3af189edc5bae6614aa749afcc212911be1d4b68e4717d858007967",
+    "vrfCounts": {
+     "P": {
+      "count": 1,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 789638,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 1,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "2f98d528095c0a784770019a56caa09c1c259704f2252f98e0974094a3d85fa8",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      }
+     }
+    },
+    {
+     "bytes": 504535,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844738231823,
+      "deposited": 79256000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 153,
+       "maxKeyAge": 374,
+       "seats": 153
+      },
+      "maxPledgeLeverage": null,
+      "pools": 153,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 153
+     },
+     "file": null,
+     "poolsRetired": 1,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "6c41899fcf72163a5fd910a2d1a81d9facc1d87053b453eb2b5332ac5e67a6ff",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510411,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "reregister-new-vrf",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+     "Q": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a"
+    },
+    "stateSha256": "5e93603dcadd86f61146562696334d498cfc3a1a25945318b7b98d2f89f0a39c",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 505632,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "27c750bd5d96b4e3e5bf35dc6773d865761e7c08b2f841445947b1db1430b850",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510411,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "reregister-new-vrf",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+     "Q": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a"
+    },
+    "stateSha256": "5e93603dcadd86f61146562696334d498cfc3a1a25945318b7b98d2f89f0a39c",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 790040,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 1,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "7c021580e3aaad2948a23166ec7079466b1739a87626b714a6da4feb7c79723c",
+     "vrfCounts": {
+      "P": {
+       "count": 2,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    },
+    {
+     "bytes": 505624,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "b41167d351c4650d8c09c70c64b5988b3ca438f53a528dd3bc2c6b329f01ee50",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510443,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 101,
+      "pool": "032e7fc334df5770ffd95fd580e05207507264bf0c379bec387394e2"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 1,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "both",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+     "Q": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+     "R": "032e7fc334df5770ffd95fd580e05207507264bf0c379bec387394e2"
+    },
+    "stateSha256": "69283ded19d1a5214051659d278d5b70d6aaac55152b39172dd665fd8a33c996",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+     },
+     "R": {
+      "count": 1,
+      "vrf": "ae19082ff1ac81964283177b73d1db5c20c8354bb8cf18ded8f80331034268af"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 504525,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679976326893,
+      "deposited": 79256000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 153,
+       "maxKeyAge": 374,
+       "seats": 153
+      },
+      "maxPledgeLeverage": null,
+      "pools": 153,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 153
+     },
+     "file": null,
+     "poolsRetired": 1,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "a7dd24bfe7ab124f1fdbd92000b8a2045458737bb065b4e024bae0f03017a146",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "R": {
+       "count": 0,
+       "vrf": "ae19082ff1ac81964283177b73d1db5c20c8354bb8cf18ded8f80331034268af"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510443,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 101,
+      "pool": "032e7fc334df5770ffd95fd580e05207507264bf0c379bec387394e2"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 1,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "both",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+     "Q": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+     "R": "032e7fc334df5770ffd95fd580e05207507264bf0c379bec387394e2"
+    },
+    "stateSha256": "69283ded19d1a5214051659d278d5b70d6aaac55152b39172dd665fd8a33c996",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+     },
+     "R": {
+      "count": 1,
+      "vrf": "ae19082ff1ac81964283177b73d1db5c20c8354bb8cf18ded8f80331034268af"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 790072,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 1,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 1,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "89744e67168f293959cd0da65ee634bca7727de701ac8d5da97a55213d035178",
+     "vrfCounts": {
+      "P": {
+       "count": 2,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "R": {
+       "count": 1,
+       "vrf": "ae19082ff1ac81964283177b73d1db5c20c8354bb8cf18ded8f80331034268af"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    },
+    {
+     "bytes": 504469,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844738231823,
+      "deposited": 79256000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 153,
+       "maxKeyAge": 374,
+       "seats": 153
+      },
+      "maxPledgeLeverage": null,
+      "pools": 153,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 153
+     },
+     "file": null,
+     "poolsRetired": 1,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "16b790c054f38e288cc885f0fb747c313c422efa99484761a1d9d0cda14b3d91",
+     "vrfCounts": {
+      "P": {
+       "count": 1,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "R": {
+       "count": 0,
+       "vrf": "ae19082ff1ac81964283177b73d1db5c20c8354bb8cf18ded8f80331034268af"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510443,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 101,
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 1,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "both-sharer",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+     "Q": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a"
+    },
+    "stateSha256": "7a7f9a663bac2b47b7beb6928de6c047a1eb79c0bbf5874230c8eba15b234886",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 504721,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79256000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 153,
+       "maxKeyAge": 374,
+       "seats": 153
+      },
+      "maxPledgeLeverage": null,
+      "pools": 153,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393858810844,
+      "vrfKeyHashes": 153
+     },
+     "file": null,
+     "poolsRetired": 1,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "ed4ec3a159c566a1e9a76f89fc31a5cdd8dae830e79f2d8fa7a228d147d4e3ac",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 510443,
+    "changes": [
+     {
+      "change": "setActiveVrf",
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a",
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     {
+      "change": "setFutureParams",
+      "network": "Testnet",
+      "pool": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     {
+      "change": "populateVRFKeyHashes"
+     },
+     {
+      "change": "retire",
+      "epoch": 101,
+      "pool": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a"
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 1,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 1,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "both-sharer",
+    "pools": {
+     "P": "006d4ac49b5cf2868582a1e421a61010e17ddddd7483c358ebae2d93",
+     "Q": "00ed161c10e082ed8e27da68088aa3dc0db417c5bfccf276f7caa59a"
+    },
+    "stateSha256": "7a7f9a663bac2b47b7beb6928de6c047a1eb79c0bbf5874230c8eba15b234886",
+    "vrfCounts": {
+     "P": {
+      "count": 2,
+      "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+     },
+     "Q": {
+      "count": 0,
+      "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+     },
+     "new": {
+      "count": 1,
+      "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 790072,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 1,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 1,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "9846615e7cfa2fe995af54aa76338e0e7147fc70fd6db49948d7c05f82a4c39f",
+     "vrfCounts": {
+      "P": {
+       "count": 2,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    },
+    {
+     "bytes": 504717,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 79256000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 153,
+       "maxKeyAge": 374,
+       "seats": 153
+      },
+      "maxPledgeLeverage": null,
+      "pools": 153,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998889973106,
+      "vrfKeyHashes": 153
+     },
+     "file": null,
+     "poolsRetired": 1,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "85bf1432f0fcf0a0a13eb48711736c2bf61ddb964bf16aa04f5efb08f41d2b26",
+     "vrfCounts": {
+      "P": {
+       "count": 0,
+       "vrf": "77cc85d763b5544afea33f903b05f10fa5a0b1033bde99d0d878826a13fea0ef"
+      },
+      "Q": {
+       "count": 0,
+       "vrf": "f73ced81152a0a84dfcc04e368dbfc5dd3510e5c1a1e3ccd943bd93ef1166428"
+      },
+      "new": {
+       "count": 1,
+       "vrf": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     }
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 509985,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "a870385e79b1eed9f20a3e60096e4c49a6ebbf93abf5349e1d9b87a40d64b4b8",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 505648,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "b4b69f764174cb9276044a59a0a6e2fa92758a5d4bcfd90d0c47325d783a0382",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 509985,
+    "changes": [
+     {
+      "change": "setMaxPledgeLeverage",
+      "denominator": 1,
+      "numerator": 1
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "potential",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": [
+      1,
+      1
+     ],
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "pledge-cap",
+    "pools": {},
+    "stateSha256": "a870385e79b1eed9f20a3e60096e4c49a6ebbf93abf5349e1d9b87a40d64b4b8",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 789248,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "52a2da771f6bdf178bbdc3de63f34566e32f87881e52e2ddf25237254f9dfcd5",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 505648,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14706870559916,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": [
+       1,
+       1
+      ],
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224431633188715,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "0ca20a1faa2773a4c536539532c284ef5f0fe4bc43fe64cf9aa65a33026c548c",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 513746,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "8f5afcb61cc652d969048de33a07d7b9fadc894646b0df44416a51f4b087407b",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "boundaries",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 505626,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 101,
+       "keyedSeats": 2,
+       "maxKeyAge": 374,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "2ec41a769e840605047b2b17089d91e1c24973734f879026f9bf8bb16bcfa6da",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  },
+  {
+   "derivation": {
+    "bytes": 513746,
+    "changes": [
+     {
+      "change": "setFutureLeiosCommitteeSize",
+      "leiosCommitteeSize": 2
+     }
+    ],
+    "facts": {
+     "accountBalances": 14679476326893,
+     "deposited": 79756000000,
+     "epoch": 100,
+     "fees": 271372435560,
+     "futurePParams": "definite",
+     "futurePools": 0,
+     "leiosCommitteeSize": 900,
+     "mark": {
+      "committeeSize": 900,
+      "epoch": 100,
+      "keyedSeats": 154,
+      "maxKeyAge": 374,
+      "seats": 154
+     },
+     "maxPledgeLeverage": null,
+     "pools": 154,
+     "poolsRetiring": 0,
+     "reserves": 14231792686148440,
+     "rewardUpdate": "absent",
+     "set": {
+      "keyedSeats": 154,
+      "seats": 154
+     },
+     "treasury": 785393358810844,
+     "vrfKeyHashes": 154
+    },
+    "file": null,
+    "name": "committee-size",
+    "pools": {},
+    "stateSha256": "8f5afcb61cc652d969048de33a07d7b9fadc894646b0df44416a51f4b087407b",
+    "vrfCounts": {}
+   },
+   "epoch": 100,
+   "genesis": "fixtures/leios/testnet/config/shelley-genesis.json",
+   "globals": {
+    "epochAfterFirstSlot": 2203200,
+    "epochFirstSlot": 2160000,
+    "epochSize": 21600,
+    "maxKESEvo": 62,
+    "maxKeyAge": 374,
+    "nextEpochFirstSlot": 2181600,
+    "randomnessStabilisationWindow": 8640,
+    "securityParameter": 108,
+    "slotsPerKESPeriod": 129600,
+    "stabilityWindow": 6480
+   },
+   "inputFacts": {
+    "accountBalances": 14679476326893,
+    "deposited": 79756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "name": "testnet-2168639",
+   "newEpochStateSha256": "e07b3470c0175af394fa18f2c8722e0c866da1af02c1f47ecb19f0da540a205a",
+   "newEpochStateSpan": [
+    136,
+    510113
+   ],
+   "path": "rewards",
+   "roundTrip": true,
+   "stateSha256": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+   "ticks": [
+    {
+     "bytes": 793376,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 79756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "definite",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "8ec3ef934d9383d13545e7728601313be0579905b970fe0e69dfced9474d6c4d",
+     "vrfCounts": {}
+    },
+    {
+     "bytes": 505618,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 79756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 2,
+      "mark": {
+       "committeeSize": 2,
+       "epoch": 101,
+       "keyedSeats": 2,
+       "maxKeyAge": 374,
+       "seats": 2
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "poolsRetired": 0,
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "88d5c55617109c5182e6173f2f92d628779a34e480de0edd4a43a8b809cba625",
+     "vrfCounts": {}
+    }
+   ],
+   "tipSlot": 2168639,
+   "version": 12
+  }
+ ],
+ "genesis": {
+  "byronUtxo": "empty",
+  "createInitialState": {
+   "bytes": 7689,
+   "facts": {
+    "accountBalances": 0,
+    "deposited": 0,
+    "epoch": 0,
+    "fees": 0,
+    "futurePParams": "none",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 0,
+     "keyedSeats": 0,
+     "maxKeyAge": 374,
+     "seats": 1
+    },
+    "maxPledgeLeverage": null,
+    "pools": 1,
+    "poolsRetiring": 0,
+    "reserves": 14999999100000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 1
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 1
+   },
+   "file": "genesis-testnet-create-initial-state.cbor",
+   "stateSha256": "2f5ba4767941ef6ba61af4e59cb4255b2cfaa418c6a95186f41d9f8b8f4812c3",
+   "utxo": "a282582028b1571a56a87be2a35689da84e650cdb4f67d4a5785008517f535123f171f800082581d60f405259e3b805556a2d27f88e3c2a0b4f345fe3db26f0ea5c13bc25b1b006a94d74f430000825820431b72256f17e542fc1b141e44905f4bacf0f3343d64ccfa295f24dc3c9d4fd800825839001c82bd289a68eadfcb0e6cb181aa84ea8eff7ab9155a2c4193f3906c229c1ef7ee70091be326d0ffc140d054a028864bd4a860aafd3a1b251a35a4e900"
+  },
+  "equal": false,
+  "fromByron": {
+   "bytes": 12051,
+   "facts": {
+    "accountBalances": 0,
+    "deposited": 0,
+    "epoch": 0,
+    "fees": 0,
+    "futurePParams": "none",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 0,
+     "keyedSeats": 0,
+     "maxKeyAge": 374,
+     "seats": 1
+    },
+    "maxPledgeLeverage": null,
+    "pools": 1,
+    "poolsRetiring": 0,
+    "reserves": 14999999100000000,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 0,
+     "seats": 1
+    },
+    "treasury": 0,
+    "vrfKeyHashes": 1
+   },
+   "file": "genesis-testnet.cbor",
+   "stateSha256": "d4c320cfdc71cb50fc24a40d19dd34d819ec77dca92cd61c7f4100aede91fc63",
+   "utxo": "a282582028b1571a56a87be2a35689da84e650cdb4f67d4a5785008517f535123f171f800082581d60f405259e3b805556a2d27f88e3c2a0b4f345fe3db26f0ea5c13bc25b1b006a94d74f430000825820431b72256f17e542fc1b141e44905f4bacf0f3343d64ccfa295f24dc3c9d4fd800825839001c82bd289a68eadfcb0e6cb181aa84ea8eff7ab9155a2c4193f3906c229c1ef7ee70091be326d0ffc140d054a028864bd4a860aafd3a1b251a35a4e900"
+  },
+  "genesis": [
+   "fixtures/leios/testnet/config/shelley-genesis.json",
+   "fixtures/leios/testnet/config/alonzo-genesis.json",
+   "fixtures/leios/testnet/config/conway-genesis.json",
+   "fixtures/leios/testnet/config/dijkstra-genesis.json"
+  ],
+  "name": "testnet",
+  "translated": {
+   "bytes": 9587,
+   "file": "genesis-testnet-translated.cbor",
+   "stateSha256": "4daa5c5352077e49b4f8784caa842bc9c5cc87046e9674b0d785cb9622e8ae4b"
+  },
+  "version": 12
+ }
+}

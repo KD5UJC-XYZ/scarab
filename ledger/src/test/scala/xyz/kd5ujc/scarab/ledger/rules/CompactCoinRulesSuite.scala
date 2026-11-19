@@ -101,7 +101,8 @@ class CompactCoinRulesSuite extends FunSuite:
           ls.utxo.copy(deposited = Coin(7)),
           initial.chainAccount,
           ls.cert
-        )
+        ),
+        PoolReap.shelleyRelease
       )
     )
     assertEquals(after.utxo.deposited.value, BigInt(7))

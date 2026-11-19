@@ -160,7 +160,14 @@ object NativeRules:
 
   /** The constants the boundary suites use by default: [[TestLedger.globals]]' ledger. */
   val ledgerGlobals: LedgerGlobals =
-    LedgerGlobals(TestLedger.Supply, 100, Rational(1, 2), network = 0, updateQuorum = 2)
+    LedgerGlobals(
+      TestLedger.Supply,
+      100,
+      Rational(1, 2),
+      network = 0,
+      updateQuorum = 2,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    )
 
   /** The state after the tick to `slot` (the boundaries and translations on the way). */
   def tick(e: EraNes, slot: BigInt, g: LedgerGlobals = ledgerGlobals): EraNes =

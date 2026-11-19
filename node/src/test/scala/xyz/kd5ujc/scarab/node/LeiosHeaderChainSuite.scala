@@ -42,6 +42,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
         },
       LeiosHeaderChain.GenesisEpochs
     )
+  // the chain starts in Dijkstra: the checker's own initialisation, as `LeiosCheckMain` runs it
   private val initial = LeiosHeaderChain.initial(setup.mirrorStart.protocol)
 
   private val headers: Vector[Header.Shelley] =

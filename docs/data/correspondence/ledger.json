@@ -5,6 +5,269 @@
   "ledger/src/main/scala"
  ],
  "entries": {
+  "class ledger.KesParameters": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Globals",
+     "lines": [
+      770,
+      782
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "60fcc796a39a89ae"
+  },
+  "def ledger.rules.ConwayEpoch.enact": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "symbol": "epochTransition",
+     "lines": [
+      248,
+      376
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "LeiosEpochReferenceSuite"
+   ],
+   "digest": "8d34ca2bd70a12af"
+  },
+  "def ledger.rules.ConwayEpoch.withFreshPulser": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "setFreshDRepPulsingState",
+     "lines": [
+      462,
+      520
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "LeiosEpochReferenceSuite"
+   ],
+   "digest": "fd567d5f5fd765ac"
+  },
+  "def ledger.rules.Globals#maxKeyAgeEpochs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
+     "symbol": "maxKeyAgeEpochs",
+     "lines": [
+      157,
+      165
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "a00234b00a94450c"
+  },
+  "def ledger.rules.PoolReap.removeOccurrences": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "symbol": "removeVRFKeyHashOccurrence",
+     "lines": [
+      515,
+      519
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "044607c72d119574"
+  },
+  "object ledger.rules.DijkstraEpoch": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs",
+     "symbol": "epochTransition",
+     "lines": [
+      128,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "214387b6c20232e0"
+  },
+  "object ledger.rules.DijkstraPoolReap": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "symbol": "poolReapTransition",
+     "lines": [
+      104,
+      212
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "79b94a4c72768d8e"
+  },
+  "object ledger.rules.DijkstraSnap": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
+     "symbol": "snapTransition",
+     "lines": [
+      105,
+      146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "960c9a58e08d8f69"
+  },
+  "val ledger.rules.DijkstraEpoch.sts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs",
+     "symbol": "epochTransition",
+     "lines": [
+      128,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "d77bcc16bec3b006"
+  },
+  "val ledger.rules.DijkstraPoolReap.release": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "symbol": "poolReapTransition",
+     "lines": [
+      104,
+      212
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "f821a7e0c4d5a802"
+  },
+  "val ledger.rules.DijkstraPoolReap.sts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "symbol": "poolReapTransition",
+     "lines": [
+      104,
+      212
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "4804eb58d59b0e31"
+  },
+  "val ledger.rules.DijkstraSnap.sts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
+     "symbol": "snapTransition",
+     "lines": [
+      105,
+      146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "digest": "cae8097f6a11a474"
+  },
+  "val ledger.rules.PoolReap.shelleyRelease": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/PoolReap.hs",
+     "symbol": "poolReapTransition",
+     "lines": [
+      118,
+      226
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosEpochReferenceSuite",
+    "CompactCoinRulesSuite"
+   ],
+   "digest": "a464216b351e9c26"
+  },
   "def ledger.dijkstra.DijkstraTx.balanceInterval": {
    "upstream": [
     {
@@ -22327,6 +22590,24 @@
   }
  },
  "glue": [
+  {
+   "reason": "the proof that an era from Conway holds Conway's certificate and governance records ([[ConwayShapes]]), given for Conway and Dijkstra, through which Conway's EPOCH helpers serve both eras; the reference shares them through its era classes and has no counterpart",
+   "definitions": [
+    "given ledger.state.ConwayShapes.conway",
+    "given ledger.state.ConwayShapes.dijkstra",
+    "object ledger.state.ConwayShapes",
+    "type ledger.rules.PoolReap.Release"
+   ]
+  },
+  {
+   "reason": "mainnet's KES constants for tests and tools whose state comes from no genesis file, and the genesis's KES constants as numbers for their existing readers; the reference reads them from the genesis record and has no counterpart",
+   "definitions": [
+    "def ledger.ShelleyGenesis#maxKesEvolutions",
+    "def ledger.ShelleyGenesis#slotsPerKesPeriod",
+    "object ledger.KesParameters",
+    "val ledger.KesParameters.Mainnet"
+   ]
+  },
   {
    "reason": "the companions of the runnable scripts, the scripts with their contexts, the cost model and the collection's failure, holding their equality and constructors, and the namespace of Alonzo's collection of a transaction's scripts",
    "definitions": [

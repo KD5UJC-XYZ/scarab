@@ -22,7 +22,8 @@ object RewardPulserFixture extends Assertions:
       network = 0,
       startRewards = 400,
       conway = None,
-      alonzoCoinsPerUTxOWord = 34482
+      alonzoCoinsPerUTxOWord = 34482,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     EpochGeometry(Instant.EPOCH, 1000, 10000, TestGeometry.k(5), TestGeometry.f("0.05"))
   )

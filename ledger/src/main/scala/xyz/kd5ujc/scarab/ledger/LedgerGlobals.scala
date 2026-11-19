@@ -2,7 +2,22 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+
+/** The KES constants of the network: `maxKESEvo` and `slotsPerKESPeriod` of `Globals`
+  * (`BaseTypes.hs:761-789`, cardano-ledger f649f975), which `mkShelleyGlobals` takes from the
+  * Shelley genesis (`sgMaxKESEvolutions`, `sgSlotsPerKESPeriod`, `Shelley/Genesis.hs:314-315`). The
+  * Leios build derives the age a voting key is honoured for from them (`maxKeyAgeEpochs`,
+  * cardano-ledger 9df9f98c `Dijkstra/Rules/Snap.hs:150-179`).
+  */
+final case class KesParameters(maxEvolutions: Word64, slotsPerPeriod: Word64)
+
+object KesParameters:
+  /** Mainnet's (its Shelley genesis: `maxKESEvolutions` 62, `slotsPerKESPeriod` 129600), for the
+    * tests and tools whose state comes from no genesis file.
+    */
+  val Mainnet: KesParameters = KesParameters(Word64.fromUnsigned(62L), Word64.fromUnsigned(129600L))
 
 /** Conway-only parameters taken from the Conway genesis when the chain crosses into Conway.
   *
@@ -39,6 +54,8 @@ final case class ConwayParams(
   *   takes `emptyDijkstraGenesis` (cardano-node b004fe0c `Protocol/Cardano.hs:137-144`), which
   *   nothing reads, as the Dijkstra trigger is read only with the same setting (`Configuration/
   *   POM.hs:713-715`).
+  * @param kes
+  *   The network's KES constants ([[KesParameters]]), from the Shelley genesis.
   * @param referenceBuild
   *   The build of `cardano-node` whose rules the ledger follows (`--reference-build`, #826): where
   *   two builds' rules differ, a rule matches on it. `NodeSetup` sets it to the build its
@@ -58,5 +75,6 @@ final case class LedgerGlobals(
     conway: Option[ConwayParams] = None,
     alonzoCoinsPerUTxOWord: BigInt = 0,
     dijkstra: Option[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis] = None,
-    referenceBuild: ReferenceBuild = ReferenceBuild.Default
+    referenceBuild: ReferenceBuild = ReferenceBuild.Default,
+    kes: KesParameters
 )

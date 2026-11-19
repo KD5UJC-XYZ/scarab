@@ -109,19 +109,21 @@ object HardFork:
           .fold(_ => counts, counts.updated(vrf, _))
 
   /** `hardforkTransition` (`HardFork.hs:68-80`, cardano-ledger f649f975; 65-77 at 29a7d656 and
-    * 9df9f98c), with the rule of `build` where the builds differ.
+    * 9df9f98c), with the rule of `build` where the builds differ, for every era with Conway's
+    * governance and certificate state ([[ConwayShapes]]): Dijkstra's HARDFORK is Conway's (`type
+    * instance EraRule "HARDFORK" DijkstraEra = Conway.HARDFORK DijkstraEra`, cardano-ledger
+    * 9df9f98c `Dijkstra/Era.hs:288`).
     */
-  def apply(
-      build: ReferenceBuild,
-      es: EpochState[Conway],
-      newVersion: Int
-  ): Either[VocabError, EpochState[Conway]] =
-    if newVersion == 10 then
-      Right(es.copy(ls = es.ls.copy[Conway](cert = updateDRepDelegations(es.ls.cert))))
+  def apply[E <: EraTag](build: ReferenceBuild, es: EpochState[E], newVersion: Int)(using
+      shapes: ConwayShapes[E]
+  ): Either[VocabError, EpochState[E]] =
+    def onCert(
+        f: ConwayCertState => Either[VocabError, ConwayCertState]
+    ): Either[VocabError, EpochState[E]] =
+      f(shapes.cert(es.ls.cert)).map(c => es.copy(ls = es.ls.copy[E](cert = shapes.cert.flip(c))))
+    if newVersion == 10 then onCert(c => Right(updateDRepDelegations(c)))
     else if newVersion == 11 then
-      populateVRFKeyHashes(build, es.ls.cert.pState).map(pools =>
-        es.copy(ls = es.ls.copy[Conway](cert = es.ls.cert.copy(pState = pools)))
-      )
+      onCert(c => populateVRFKeyHashes(build, c.pState).map(p => c.copy(pState = p)))
     else Right(es)
 
 /** EPOCH of Conway (`Conway/Rules/Epoch.hs:244,269`, cardano-ledger f649f975): the boundary of an
@@ -164,31 +166,38 @@ object ConwayEpoch:
           _ <- Epoch.within(Snap.sts[Conway], es0.ls, epoch, EpochState.snapshots[Conway])
           _ <- Epoch.within(PoolReap.sts[Conway], (), epoch, PoolreapState.lens[Conway])
           es1 <- es.get
-          next <- Sts.lift[F, TickFailure, EpochState[Conway]](
-            enact(globals, epoch, es0, es1).leftMap(TickFailure.Vocab(_))
+          enacted <- Sts.lift[F, TickFailure, EpochState[Conway]](
+            enact(globals.ledger.referenceBuild, epoch, es0, es1).leftMap(TickFailure.Vocab(_))
           )
-          _ <- es.set(next)
+          _ <- es.set(withFreshPulser(globals, enacted, epoch))
         yield ()
 
   /** The deposit pot implied by the complete certificate and proposal state. Snapshot interchange
     * uses the same obligation as the epoch rule when checking reconstructed state.
     */
-  def totalObligation(ls: LedgerState[Conway]): BigInt =
+  def totalObligation[E <: EraTag](ls: LedgerState[E])(using
+      era: ShelleyBasedEra[E],
+      shapes: ConwayShapes[E]
+  ): BigInt =
+    val cert = shapes.cert(ls.cert)
     EraLedger.keyDeposits(ls) +
-      CompactCoin.sum(ls.cert.pState.stakePools.valuesIterator.map(_.deposit)).toBigInt +
-      CompactCoin.sum(ls.cert.vState.dreps.valuesIterator.map(_.deposit)).toBigInt +
-      ls.utxo.gov.proposals.totalDeposits
+      CompactCoin.sum(cert.pState.stakePools.valuesIterator.map(_.deposit)).toBigInt +
+      CompactCoin.sum(cert.vState.dreps.valuesIterator.map(_.deposit)).toBigInt +
+      shapes.gov(ls.utxo.gov).proposals.totalDeposits
 
-  /** The rest of the rule once SNAP and POOLREAP have run: `es0` is the state the rule began with
-    * (its pulser, governance state and donations), `es1` the one after the two sub-rules.
+  /** The enactment of the ratification the DRep pulser reached, once POOLREAP has run, and the hard
+    * fork rule if the protocol version changed: `es0` is the state the rule began with (its pulser,
+    * governance state and donations), `es1` the one after the sub-rules. The same in every era with
+    * Conway's governance and certificate state ([[ConwayShapes]]): Dijkstra's EPOCH applies it as
+    * Conway's does (cardano-ledger 9df9f98c `Dijkstra/Rules/Epoch.hs:153-224`).
     */
-  private def enact(
-      globals: Globals,
+  private[rules] def enact[E <: EraTag](
+      build: ReferenceBuild,
       epoch: EpochNo,
-      es0: EpochState[Conway],
-      es1: EpochState[Conway]
-  ): Either[VocabError, EpochState[Conway]] =
-    val gov0 = es0.ls.utxo.gov
+      es0: EpochState[E],
+      es1: EpochState[E]
+  )(using era: ShelleyBasedEra[E], shapes: ConwayShapes[E]): Either[VocabError, EpochState[E]] =
+    val gov0 = shapes.gov(es0.ls.utxo.gov)
     val ratify = gov0.drepPulsing.ratify
     val enacted = ratify.enact
     val ls1 = es1.ls
@@ -228,38 +237,52 @@ object ConwayEpoch:
         afterWithdrawals,
         compactRefunds.groupMapReduce(_._1)(_._2)((a, b) => a.add(b))
       )
+      refundedCert = shapes.cert(refunded.cert)
       unclaimed = unclaimedRefunds.foldLeft(BigInt(0))(_ + _._2.value)
       dormant <- {
         val active = proposals.actions.exists(epoch.toBigInt <= _.expiresAfter)
-        if active then Right(refunded.cert.vState.numDormantEpochs)
-        else EpochNo.fromBigInt(refunded.cert.vState.numDormantEpochs.toBigInt + 1)
+        if active then Right(refundedCert.vState.numDormantEpochs)
+        else EpochNo.fromBigInt(refundedCert.vState.numDormantEpochs.toBigInt + 1)
       }
-      committeeState = refunded.cert.vState.committeeState.creds.filter((cold, _) =>
+      committeeState = refundedCert.vState.committeeState.creds.filter((cold, _) =>
         enacted.committee.exists(_.members.contains(Convert.back(cold)))
       )
       treasury = Coin(
         es1.chainAccount.treasury.value - withdrawnTotal + es0.ls.utxo.donation.value + unclaimed
       )
-      cert2 = refunded.cert.copy(vState =
-        refunded.cert.vState.copy(
+      cert2 = refundedCert.copy(vState =
+        refundedCert.vState.copy(
           committeeState = CommitteeState(committeeState),
           numDormantEpochs = dormant
         )
       )
-      ls2 = LedgerState[Conway](cert2, ls1.utxo.copy(gov = gov1))
+      ls2 = LedgerState[E](shapes.cert.flip(cert2), ls1.utxo.copy(gov = shapes.gov.flip(gov1)))
       deposited = Coin(totalObligation(ls2))
-      ls3 = ls2.copy[Conway](utxo = ls2.utxo.copy(deposited = deposited, donation = Coin.zero))
+      ls3 = ls2.copy[E](utxo = ls2.utxo.copy(deposited = deposited, donation = Coin.zero))
       es2 = es1.copy(chainAccount = es1.chainAccount.copy(treasury = treasury), ls = ls3)
       // the hard fork rule, if the protocol version changed
       forked <-
         if gov1.curPParams.version != gov1.prevPParams.version then
-          HardFork(globals.ledger.referenceBuild, es2, gov1.curPParams.protocolMajor.toInt)
+          HardFork(build, es2, gov1.curPParams.protocolMajor.toInt)
         else Right(es2)
-    yield
-      val pulser = ConwayPulser.fresh(globals, forked, epoch)
-      forked.copy(ls =
-        forked.ls.copy[Conway](utxo =
-          forked.ls.utxo
-            .copy(gov = predictFuturePParams(forked.ls.utxo.gov.copy(drepPulsing = pulser)))
-        )
+    yield forked
+
+  /** The fresh DRep pulser of the epoch the chain enters, over the state's mark snapshot, and the
+    * future parameters it predicts (`setFreshDRepPulsingState`, [[ConwayPulser.fresh]],
+    * [[predictFuturePParams]]): the last step of EPOCH, after SNAP in Dijkstra (cardano-ledger
+    * 9df9f98c `Dijkstra/Rules/Epoch.hs:225-233`).
+    */
+  private[rules] def withFreshPulser[E <: EraTag](
+      globals: Globals,
+      es: EpochState[E],
+      epoch: EpochNo
+  )(using
+      shapes: ConwayShapes[E]
+  ): EpochState[E] =
+    val pulser = ConwayPulser.fresh(globals, es, epoch)
+    val gov = shapes.gov(es.ls.utxo.gov)
+    es.copy(ls =
+      es.ls.copy[E](utxo =
+        es.ls.utxo.copy(gov = shapes.gov.flip(predictFuturePParams(gov.copy(drepPulsing = pulser))))
       )
+    )

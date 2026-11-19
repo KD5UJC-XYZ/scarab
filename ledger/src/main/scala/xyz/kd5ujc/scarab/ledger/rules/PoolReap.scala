@@ -45,7 +45,38 @@ object PoolReap:
           st: Stateful[F, PoolreapState[E]],
           failures: Raise[F, TickFailure]
       ): F[Unit] =
-        Sts.modifyE[F, PoolreapState[E], TickFailure](step(epoch, _).leftMap(TickFailure.Vocab(_)))
+        Sts.modifyE[F, PoolreapState[E], TickFailure](
+          step(epoch, _, shelleyRelease).leftMap(TickFailure.Vocab(_))
+        )
+
+  /** The VRF key hashes a reap stops using, and how the count of each is released: `superseded`,
+    * the active hash of each pool whose future parameters switch to another (once per pool), and
+    * `retired`, the hash of each pool retiring (once per pool).
+    */
+  type Release = (
+      SortedMap[VRFVerKeyHash, NonZero[Word64]],
+      Vector[VRFVerKeyHash],
+      Vector[VRFVerKeyHash]
+  ) => SortedMap[VRFVerKeyHash, NonZero[Word64]]
+
+  /** Shelley's (`Shelley/Rules/PoolReap.hs:211-223`, cardano-ledger 9df9f98c, the rule up to
+    * Conway): a superseded hash is removed whatever its count (`Map.withoutKeys`), then each
+    * retired pool's hash releases one occurrence.
+    */
+  val shelleyRelease: Release = (counts, superseded, retired) =>
+    removeOccurrences(counts -- superseded.toSet, retired)
+
+  /** `removeVRFKeyHashOccurrence` over `vrfs` (`State/CertState.hs:515-519`, cardano-ledger
+    * 9df9f98c): one decrement each, a count that reaches zero removed, a hash not counted
+    * unchanged.
+    */
+  def removeOccurrences(
+      counts: SortedMap[VRFVerKeyHash, NonZero[Word64]],
+      vrfs: Vector[VRFVerKeyHash]
+  ): SortedMap[VRFVerKeyHash, NonZero[Word64]] =
+    vrfs.foldLeft(counts)((m, vrf) =>
+      m.get(vrf).fold(m)(n => decrement(n).fold(m - vrf)(m.updated(vrf, _)))
+    )
 
   /** One decrement of a count; a count that reaches zero is removed (`Map.update` of `mapNonZero
     * (subtract 1)`).
@@ -53,18 +84,18 @@ object PoolReap:
   private def decrement(n: NonZero[Word64]): Option[NonZero[Word64]] =
     NonZero.from(Word64.fromUnsigned(n.value.bits - 1)).toOption
 
-  def step[E <: EraTag](epoch: EpochNo, st: PoolreapState[E])(using
+  def step[E <: EraTag](epoch: EpochNo, st: PoolreapState[E], release: Release)(using
       ShelleyBasedEra[E]
   ): Either[VocabError, PoolreapState[E]] =
     val ls0 = LedgerState[E](st.cert, st.utxo)
     val ps0 = EraLedger.pState(ls0)
-    // the VRF key hashes no longer relevant: a pool re-registered with another key
-    val dangling: Set[VRFVerKeyHash] =
+    // the active VRF key hash of each pool re-registered with another key, in pool order
+    val superseded: Vector[VRFVerKeyHash] =
       ps0.stakePools.iterator.flatMap { (id, sps) =>
         ps0.future.get(id).flatMap { f =>
           VRFVerKeyHash.fromBytes(f.vrfKeyHash).toOption.filter(_ != sps.vrf).as(sps.vrf)
         }
-      }.toSet
+      }.toVector
     // the future parameters take effect
     val activated: Either[VocabError, SortedMap[KeyHash[StakePool], StakePoolState]] =
       ps0.future.toList
@@ -91,12 +122,7 @@ object PoolReap:
       val refunded = CompactCoin.sum(refunds.values)
       val unclaimed = CompactCoin.sum(unclaimedDeposits.values)
       val clear = retiring.valuesIterator.flatMap(_.delegators).toVector
-      val vrfs: SortedMap[VRFVerKeyHash, NonZero[Word64]] =
-        retiring.valuesIterator
-          .map(_.vrf)
-          .foldLeft(ps0.vrfKeyHashes.filter((k, _) => !dangling(k)))((m, vrf) =>
-            m.get(vrf).fold(m)(n => decrement(n).fold(m - vrf)(m.updated(vrf, _)))
-          )
+      val vrfs = release(ps0.vrfKeyHashes, superseded, retiring.valuesIterator.map(_.vrf).toVector)
       val ps = ps0.copy(
         vrfKeyHashes = vrfs,
         stakePools = pools.filter((id, _) => !retired(id)),

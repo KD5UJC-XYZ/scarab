@@ -152,7 +152,8 @@ object LedgerRulesState:
         epochLength = era.epochSize,
         activeSlotsCoeff = ActiveSlotsCoeff,
         network = f.network,
-        stabilityWindow = window
+        stabilityWindow = window,
+        kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       ),
       EpochGeometry(
         Instant.EPOCH,

@@ -7,7 +7,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenesisState
 import xyz.kd5ujc.scarab.ledger.json.CanonicalJson
-import xyz.kd5ujc.scarab.ledger.rules.{GenesisInjections, GenesisStart}
+import xyz.kd5ujc.scarab.ledger.rules.{GenesisInjections, GenesisStart, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   LedgerState,
@@ -38,6 +38,27 @@ class LeiosGenesisReferenceSuite extends FunSuite:
   private val utxo = Wire.sortedMapOf(UtxoCodecs.txIn, UtxoCodecs.txOut)
 
   private val config = Path.of("fixtures/leios/testnet/config")
+
+  // the node's globals for the testnet's configuration (Conway's injection reads none of them)
+  private lazy val globals: Globals =
+    def right[E, A](e: Either[E, A]): A = e.fold(x => fail(x.toString), identity)
+    val parsed = right(
+      NodeConfig
+        .parse(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)(
+          Files.readString(config.resolve("config.json")),
+          true
+        )
+    )
+    val setup = right(
+      NodeSetup
+        .assemble(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)(
+          parsed,
+          name =>
+            Option
+              .when(Files.exists(config.resolve(name)))(Files.readAllBytes(config.resolve(name)))
+        )
+    )
+    Globals(setup.globals, setup.geometry)
   private def json(name: String): Json =
     parser.parse(Files.readString(config.resolve(name))).fold(e => fail(e.toString), identity)
 
@@ -120,7 +141,7 @@ class LeiosGenesisReferenceSuite extends FunSuite:
         .read(StateLayout.Leios)(files)
         .left
         .map(_.toString)
-        .flatMap(GenesisStart.inject[Conway](_, start).left.map(_.toString))
+        .flatMap(GenesisStart.inject[Conway](globals, _, start).left.map(_.toString))
       val reference = row.downField("reference")
       val accepted = right(reference.get[Boolean]("accepted"))
       assertEquals(injected.isRight, accepted, s"Scarab: $injected; native: ${reference.focus}")

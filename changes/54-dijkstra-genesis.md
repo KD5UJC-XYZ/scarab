@@ -1,3 +1,10 @@
-### Changed (Dijkstra genesis, #54)
+### Added (the Leios build, #54)
 
-- With `ExperimentalHardForksEnabled`, the node now reads the Dijkstra genesis file named by `DijkstraGenesisFile` at start-up, as the Leios testnet build of the reference does, and refuses to start when the file is one the reference refuses: a field missing, of another JSON type or out of its type's range, or a PlutusV4 cost model without exactly 251 parameters. The node still does not enter Dijkstra.
+- Dijkstra's genesis injection, at the ledger level, as the Leios build runs it. Conway's injection runs; then the VRF key hashes of the genesis pools are
+  counted and the Leios committee is seated on the initial snapshots (`seatInitialLeiosCommittee`),
+  with the parameters' committee size and the key age the KES constants give.
+  `DijkstraNotYet.Genesis` is gone.
+- Under the Leios build the node's maximum major protocol version is its own protocol version, 12
+  with `ExperimentalHardForksEnabled`, as the reference's; the public testnet's chain starts in
+  Dijkstra, with Praos2's chain-dependent state, and its start state equals the build's own. The
+  11.1 build stays at 11.

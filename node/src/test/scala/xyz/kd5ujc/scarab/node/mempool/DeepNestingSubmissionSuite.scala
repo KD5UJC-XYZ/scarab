@@ -31,7 +31,13 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
   private given TxSubmission2.TransactionReader = RelayedTransactions
   private val magic = 42L
 
-  private val globals = LedgerGlobals(TestLedger.Supply, 432000, Rational(1, 20), network = 0)
+  private val globals = LedgerGlobals(
+    TestLedger.Supply,
+    432000,
+    Rational(1, 20),
+    network = 0,
+    kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+  )
   private val geometry =
     EpochGeometry(
       Instant.EPOCH,

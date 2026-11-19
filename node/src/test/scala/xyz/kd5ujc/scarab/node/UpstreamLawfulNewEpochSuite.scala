@@ -20,7 +20,14 @@ class UpstreamLawfulNewEpochSuite extends FunSuite:
   private val base = Path.of("node/src/test/resources/upstream/conway-lawful-newepoch")
   private given ProtVer = ProtVer(Word64.fromUnsigned(10), Word64.zero)
   private val globals = Globals(
-    LedgerGlobals(BigInt("45000000000000000"), 100, Rational(9, 10), 0, updateQuorum = 5),
+    LedgerGlobals(
+      BigInt("45000000000000000"),
+      100,
+      Rational(9, 10),
+      0,
+      updateQuorum = 5,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
+    ),
     EpochGeometry(Instant.EPOCH, 1000L, 100L, TestGeometry.k(10), TestGeometry.f("0.9"))
   )
 

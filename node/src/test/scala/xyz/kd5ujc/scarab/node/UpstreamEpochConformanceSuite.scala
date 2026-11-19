@@ -28,7 +28,8 @@ class UpstreamEpochConformanceSuite extends FunSuite:
       BigInt(100),
       Rational(9, 10),
       network = 0,
-      updateQuorum = 5
+      updateQuorum = 5,
+      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     EpochGeometry(Instant.EPOCH, 1000L, 100L, TestGeometry.k(10), TestGeometry.f("0.9"))
   )
