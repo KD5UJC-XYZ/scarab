@@ -41,15 +41,13 @@ class LeiosGenesisReferenceSuite extends FunSuite:
 
   // the node's globals for the testnet's configuration (Conway's injection reads none of them)
   private lazy val globals: Globals =
-    def right[A](e: Either[String, A]): A = e.fold(fail(_), identity)
+    def right[E, A](e: Either[E, A]): A = e.fold(x => fail(x.toString), identity)
     val parsed = right(
       NodeConfig
         .parse(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)(
           Files.readString(config.resolve("config.json")),
           true
         )
-        .left
-        .map(_.message)
     )
     val setup = right(
       NodeSetup
@@ -59,8 +57,6 @@ class LeiosGenesisReferenceSuite extends FunSuite:
             Option
               .when(Files.exists(config.resolve(name)))(Files.readAllBytes(config.resolve(name)))
         )
-        .left
-        .map(_.toString)
     )
     Globals(setup.globals, setup.geometry)
   private def json(name: String): Json =

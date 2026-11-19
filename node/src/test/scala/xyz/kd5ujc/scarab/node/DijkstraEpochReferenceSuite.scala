@@ -8,8 +8,11 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{PoolParams, RewardAccount}
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, HardFork, Sts, Tick}
+import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.{
+  ConwayGovState,
   Dijkstra,
+  FuturePParams,
   EpochNo,
   KeyHash,
   NewEpochState,
@@ -150,6 +153,34 @@ class DijkstraEpochReferenceSuite extends FunSuite:
             case PoolBlsKey.Leios(None) | PoolBlsKey.Node11_1 => false)
       )
 
+  /** One of the oracle's changes to the state: of the parameters, or of the pool state. */
+  private def changeState(nes: NewEpochState[Dijkstra], c: ACursor): NewEpochState[Dijkstra] =
+    val ls = nes.es.ls
+    val gov: ConwayGovState = ls.utxo.gov
+    def withGov(g: ConwayGovState) =
+      nes.copy(es = nes.es.copy(ls = ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](gov = g))))
+    text(c, "change") match
+      case "setMaxPledgeLeverage" =>
+        // `ppMaxPledgeLeverageL` of the current and the previous parameters
+        val l = Some(Rational(number(c, "numerator"), number(c, "denominator")))
+        withGov(
+          gov.copy(
+            curPParams = gov.curPParams.copy(maxPledgeLeverage = l),
+            prevPParams = gov.prevPParams.copy(maxPledgeLeverage = l)
+          )
+        )
+      case "setFutureLeiosCommitteeSize" =>
+        // `cgsFuturePParamsL .~ DefinitePParamsUpdate (current & ppLeiosCommitteeSizeL .~ n)`
+        withGov(
+          gov.copy(futurePParams =
+            FuturePParams.DefinitePParamsUpdate(
+              gov.curPParams.copy(leiosCommitteeSize = number(c, "leiosCommitteeSize"))
+            )
+          )
+        )
+      case _ =>
+        nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, change(EraLedger.pState(ls), c))))
+
   /** The state the case starts from: the input, or the oracle's derivation of it. */
   private def startOf(c: HCursor, nes: NewEpochState[Dijkstra]): NewEpochState[Dijkstra] =
     val derivation = c.downField("derivation")
@@ -157,9 +188,7 @@ class DijkstraEpochReferenceSuite extends FunSuite:
       case None => nes
       case Some(name) =>
         val changes = right(derivation.downField("changes").values.toRight("no changes")).toVector
-        val ls = nes.es.ls
-        val derived = changes.foldLeft(EraLedger.pState(ls))((p, j) => change(p, j.hcursor))
-        val out = nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, derived)))
+        val out = changes.foldLeft(nes)((n, j) => changeState(n, j.hcursor))
         val encoded = right(state.write(out).left.map(_.toString))
         derivation.get[String]("file").toOption.foreach { file =>
           assertEquals(encoded.hex, Bytes.wrap(Files.readAllBytes(fixture.resolve(file))).hex, name)
@@ -178,7 +207,7 @@ class DijkstraEpochReferenceSuite extends FunSuite:
         path <- Set("boundaries", "rewards")
       yield (name, path)
     )
-    assertEquals(cases.size, 20)
+    assertEquals(cases.size, 28)
     cases.foreach { c =>
       val g = globalsOf(configOf(text(c, "genesis")))
       val native = c.downField("globals")
