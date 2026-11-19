@@ -17,7 +17,9 @@ enum ConnectionError extends DomainError:
     */
   case AddressLimit(remote: String, limit: Int)
 
-  /** The limit of connections we open is reached. */
+  /** The opt-in limit of connections we dial and still use is reached (`OutboundLimit` in the
+    * network module); the reference has none.
+    */
   case OutboundLimit(remote: String, limit: Int)
 
   /** The reference's `ConnectionExists`: the outbound side already holds a connection to this
@@ -65,8 +67,9 @@ enum ConnectionError extends DomainError:
       s"refused inbound connection from $r: $l connections accepted already"
     case AddressLimit(r, l) =>
       s"refused inbound connection from $r: $l connections from that address already"
-    case OutboundLimit(r, l)    => s"refused outbound connection to $r: $l connections open already"
-    case AlreadyConnected(r, s) => s"already connected to $r (${s.abstractName})"
+    case OutboundLimit(r, l) =>
+      s"refused outbound connection to $r: $l dialled connections in use already"
+    case AlreadyConnected(r, s)  => s"already connected to $r (${s.abstractName})"
     case IllegalTransition(r, p) => s"$r: ${p.message}"
     case ForbiddenOperation(r, s) =>
       s"$r: the operation is forbidden on a connection in state ${s.abstractName}"

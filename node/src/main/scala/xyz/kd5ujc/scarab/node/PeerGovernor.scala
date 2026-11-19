@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
-import xyz.kd5ujc.scarab.network.{PeerActionError, PeerOperation, PeerStatus}
+import xyz.kd5ujc.scarab.network.{OutboundLimit, PeerActionError, PeerOperation, PeerStatus}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
@@ -30,11 +30,15 @@ trait PeerStateActions[F[_], A]:
       provenance: Provenance
   ): F[Either[EstablishmentError, PeerStateActions.Connection[F]]]
 
-  /** Open a connection for one roots generation; stale completion cleanup can target that link. */
+  /** Open a connection for one roots generation; stale completion cleanup can target that link.
+    * `kind` is what the opt-in outbound limit makes of it, as the governor classifies the peer: a
+    * read-only view of the governor's state, which the dial reads when it reserves the connection.
+    */
   def establishAt(
       peer: A,
       mode: DiffusionMode,
       provenance: Provenance,
+      kind: F[OutboundLimit.Dial],
       generation: BigInt
   ): F[Either[EstablishmentError, PeerStateActions.Connection[F]]]
 
@@ -46,6 +50,12 @@ trait PeerStateActions[F[_], A]:
 
   /** End the hot protocols and keep the connection. */
   def deactivate(peer: A): F[PeerStateActions.Result[PeerStateActions.Deactivation]]
+
+  /** `peer` is now a local root: the opt-in outbound limit leaves its connection out, so the place
+    * the connection holds, if any, is given back (`Connection.exempt` of the connection manager).
+    * Nothing for a peer with no connection.
+    */
+  def exempt(peer: A): F[Unit]
 
   /** Close the connection and retain its graceful-completion and manager-release outcomes. */
   def close(peer: A): F[PeerStateActions.Result[PeerStateActions.CloseResult]]
@@ -83,14 +93,22 @@ object PeerStateActions:
 
   /** Reads and commands retain this connection after its bearer is gone or its address is reused.
     */
+  /** @param peerSharing
+    *   Whether the connection's handshake negotiated peer sharing.
+    * @param exempt
+    *   Leave this connection out of the opt-in outbound limit: the place it holds, if any, is given
+    *   back (`Connection.exempt` of the connection manager), and no other connection's.
+    */
   final case class Connection[F[_]](
       identity: BigInt,
       rootsGeneration: BigInt,
+      peerSharing: Boolean,
       read: F[Monitoring],
       activate: PeerTrust => F[Either[PeerActionError, Unit]],
       deactivate: F[Result[Deactivation]],
       close: F[Result[CloseResult]],
-      awaitCold: F[Unit]
+      awaitCold: F[Unit],
+      exempt: F[Unit]
   )
 
   trait Connections[F[_], A]:
@@ -414,23 +432,32 @@ object PeerGovernor:
             }
         }
       case Job.Connect(peer, mode, provenance, generation) =>
+        // the governor's classification of the peer for the outbound limit, read by the dial when
+        // it reserves the connection: the state then, not the state of this decision
+        val classification = state.get.map(_.dialOf(peer))
         supervisor
-          .supervise(actions.establishAt(peer, mode, provenance, generation).flatMap {
-            case Right(handle) =>
-              events.offer(
-                Event
-                  .ConnectionCompleted(peer, handle.identity, Outcome.Connected(peer, generation))
-              )
-            case Left(error) =>
-              val failure = error match
-                case EstablishmentError.Failed(cause) => FailurePolicy.classify(cause)
-                // an exception of our own while connecting: nothing against the peer (issue 567)
-                case EstablishmentError.Defect(cause) =>
-                  FailurePolicy.classify(PeerError.ConnectionDefect(cause))
-                case EstablishmentError.Superseded => FailureClass.Transient
-              out.tell(Output.EstablishmentFailed(peer, error)) *>
-                events.offer(Event.Completed(Outcome.ConnectFailed(peer, failure, generation)))
-          })
+          .supervise(
+            actions.establishAt(peer, mode, provenance, classification, generation).flatMap {
+              case Right(handle) =>
+                events.offer(
+                  Event
+                    .ConnectionCompleted(
+                      peer,
+                      handle.identity,
+                      Outcome.Connected(peer, generation, Some(handle.peerSharing))
+                    )
+                )
+              case Left(error) =>
+                val failure = error match
+                  case EstablishmentError.Failed(cause) => FailurePolicy.classify(cause)
+                  // an exception of our own while connecting: nothing against the peer (issue 567)
+                  case EstablishmentError.Defect(cause) =>
+                    FailurePolicy.classify(PeerError.ConnectionDefect(cause))
+                  case EstablishmentError.Superseded => FailureClass.Transient
+                out.tell(Output.EstablishmentFailed(peer, error)) *>
+                  events.offer(Event.Completed(Outcome.ConnectFailed(peer, failure, generation)))
+            }
+          )
           .void
       case Job.Activate(peer, trust) =>
         def outcome(result: Either[PeerActionError, Unit]): F[Outcome[A]] = result match
@@ -540,6 +567,17 @@ object PeerGovernor:
             },
           legacy
         )
+      // The connection to leave out is the one the peer has when the governor decides it, captured
+      // here in the governor fiber, as `connectionJob` captures the others: a later connection to
+      // the peer, which the decision did not see, keeps its place. No outcome: the governor's state
+      // already says the peer is a local root.
+      case Job.Exempt(peer) =>
+        connections match
+          case None => supervisor.supervise(actions.exempt(peer)).void
+          case Some(source) =>
+            source
+              .monitorPeerConnection(peer)
+              .flatMap(_.traverse_(handle => supervisor.supervise(handle.exempt).void))
       case Job.RequestRoots(max, bootstrap, generation) =>
         complete(
           roots

@@ -97,7 +97,7 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         peers <- InMemoryPeers.create(magic)
         all = (1 to 40).map(InMemoryPeers.address).toList
         _ <- all.traverse_(peers.serve(_, handlers))
-        manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxOutbound = 64))
+        manager <- ConnectionManager.create[IO](ConnectionManager.Limits())
         hot = OutboundPeers.Hot[IO](
           magic = magic,
           network = NodeToNode.Settings(),
@@ -209,7 +209,7 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         peers <- InMemoryPeers.create(magic)
         all = (1 to 6).map(InMemoryPeers.address).toList
         _ <- all.traverse_(peers.serve(_, handlers))
-        manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxOutbound = 64))
+        manager <- ConnectionManager.create[IO](ConnectionManager.Limits())
         hot = OutboundPeers.Hot[IO](
           magic = magic,
           network = NodeToNode.Settings(),

@@ -193,19 +193,30 @@ private[selection] object Events:
 
     outcome match
       case Outcome.Shared(batch, results) => PeerShare.completed(st0, batch, results, now, policy)
-      case Outcome.Connected(peer, generation)
-          if generation == st0.rootsGeneration && status(peer).contains(Status.Connecting) =>
-        val st = st0.updated(peer)(r =>
+      // the completion of a connect in progress is applied whatever the roots generation it was
+      // started under, as the reference applies `jobPromoteColdPeer`'s (ouroboros-network
+      // `c45735a5`, `Governor/EstablishedPeers.hs` 507-557, 563-631): a reload keeps the connect
+      // in progress, so it is the peer's only one
+      case Outcome.Connected(peer, _, negotiated) if status(peer).contains(Status.Connecting) =>
+        // the peer sharing the connection negotiated and its activation are set with the
+        // establishment, as the reference's completion sets them (`EstablishedPeers.hs` 574-614)
+        val st = st0.updated(peer) { r =>
+          val sharing = negotiated.orElse(r.sharing)
           r.copy(
             status = Status.Warm(now),
             everConnected = true,
             tepid = false,
-            shareAt = Option.when(r.sharing.contains(true))(now + policy.peerShareActivationDelay)
+            sharing = sharing,
+            shareAt = Option.when(sharing.contains(true))(now + policy.peerShareActivationDelay)
           )
-        )
+        }
+        // a local root's connection is left out of the outbound limit, also one dialled before the
+        // peer became a local root (`Job.Exempt` gives back nothing for one it never counted)
         Decision(
           st,
-          Nil,
+          Option
+            .when(st0.peers.get(peer).exists(_.origin == Origin.Local))(Job.Exempt(peer))
+            .toList,
           List(
             Trace.PromoteDone(
               Temperature.Warm,
@@ -216,8 +227,7 @@ private[selection] object Events:
           )
         )
 
-      case Outcome.ConnectFailed(peer, failure, generation)
-          if generation == st0.rootsGeneration && status(peer).contains(Status.Connecting) =>
+      case Outcome.ConnectFailed(peer, failure, _) if status(peer).contains(Status.Connecting) =>
         val (extra, st) = fuzz(st0, (-2).seconds, 2.seconds)
         val backoff = (count: Int) =>
           extra + policy.baseColdRetry * (1L << (count - 1).min(policy.maxColdRetryBackoff).toLong)
@@ -381,7 +391,7 @@ private[selection] object Events:
 
       // A late rejection can forget a connecting source before its bearer is registered. Close
       // its subsequently successful job too; the earlier Close may have found nothing yet.
-      case connected @ Outcome.Connected(peer, generation) if status(peer).forall {
+      case connected @ Outcome.Connected(peer, generation, _) if status(peer).forall {
             case Status.Cold(_) => true
             case _              => false
           } =>
@@ -392,7 +402,7 @@ private[selection] object Events:
 
   private def aborted[A](outcome: Outcome[A]): List[Trace[A]] =
     outcome match
-      case Outcome.Connected(p, _)        => List(Trace.PromoteAborted(Temperature.Cold, p))
+      case Outcome.Connected(p, _, _)     => List(Trace.PromoteAborted(Temperature.Cold, p))
       case Outcome.ConnectFailed(p, _, _) => List(Trace.PromoteAborted(Temperature.Cold, p))
       case Outcome.Activated(p)           => List(Trace.PromoteAborted(Temperature.Warm, p))
       case Outcome.ActivateFailed(p, _)   => List(Trace.PromoteAborted(Temperature.Warm, p))

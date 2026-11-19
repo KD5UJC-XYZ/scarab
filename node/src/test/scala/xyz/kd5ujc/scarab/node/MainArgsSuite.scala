@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.ConfigProblem
+import xyz.kd5ujc.scarab.network.OutboundLimit
+
 class MainArgsSuite extends munit.FunSuite:
   private val base = List("follow", "--genesis-dir", "/g", "--peer", "127.0.0.1:3001")
 
@@ -152,6 +155,30 @@ class MainArgsSuite extends munit.FunSuite:
     )
     assert(Main.parse(base ++ List("--header-first", "maybe")).isLeft)
     assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
+  }
+
+  test(
+    "--max-outbound is off by default, takes a positive number and wins over the configuration"
+  ) {
+    val defaults = Main.parse(base).toOption.get
+    assertEquals(defaults.maxOutbound, None)
+    assertEquals(defaults.outboundLimit(ConfigSettings()), OutboundLimit.Unlimited)
+    val flagged = Main.parse(base ++ List("--max-outbound", "50")).toOption.get
+    assertEquals(flagged.maxOutbound.map(_.value), Some(50))
+    val fifty = OutboundLimit.AtMost(OutboundLimit.Connections.from(50).toOption.get)
+    val sixty = OutboundLimit.Connections.from(60).toOption.get
+    assertEquals(flagged.outboundLimit(ConfigSettings()), fifty)
+    assertEquals(flagged.outboundLimit(ConfigSettings(maxOutboundConnections = Some(sixty))), fifty)
+    assertEquals(
+      defaults.outboundLimit(ConfigSettings(maxOutboundConnections = Some(sixty))),
+      OutboundLimit.AtMost(sixty)
+    )
+    List("0", "-1", "fifty", "1.5", "4294967296").foreach(v =>
+      Main.parse(base ++ List("--max-outbound", v)).left.map(_.problem) match
+        case Left(ConfigProblem.WithUsage(ConfigProblem.FlagValue(flag, value), _)) =>
+          assertEquals((flag, value), ("max-outbound", v))
+        case other => fail(s"--max-outbound $v was not refused: $other")
+    )
   }
 
   test("the flags of the removed rules modes are refused with a typed error that says what to do") {

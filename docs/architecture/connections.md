@@ -35,8 +35,10 @@ reported (`ConnectionEvent`, logged as `connection` lines).
   handshake (and settles as `Disconnected` if it ends) and for a terminating one to leave the table; refuses
   a unidirectional one (`ForbiddenConnection`), an `OutboundIdle` one (`ForbiddenOperation`) and one the
   outbound side holds already (`AlreadyConnected`, the reference's `ConnectionExists`); never dials a peer
-  of inbound provenance (`InboundConnectionNotFound`); and otherwise reserves the address to dial
-  (`maxOutbound` limits the reservations).
+  of inbound provenance (`InboundConnectionNotFound`); and otherwise reserves the address to dial. An
+  opt-in limit, off by default as the reference has none, refuses a reservation once the connections we
+  dial and still use reach it, local roots left out
+  ([`MaxOutboundConnections`](../running/configuration.md#configuration-and-topology-files)).
 - The owner of a connection's transport (the accept loop's handler, or the fiber that dialled it) holds its
   resource; releasing it ends the connection through time-wait when it was left `Terminating`, at once
   otherwise. A handshake that agreed no version takes the entry out of the table at once.

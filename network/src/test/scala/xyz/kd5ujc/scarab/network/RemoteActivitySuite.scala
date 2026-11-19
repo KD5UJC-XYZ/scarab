@@ -41,14 +41,14 @@ class RemoteActivitySuite extends FailsOnUncaught:
     for
       connection <- cm.include(remote, None)
       _ <- Resource.eval(connection.negotiated(agreed(mux)))
-      _ <- cm.acquire(remote, Provenance.Outbound)
+      _ <- cm.acquire(remote, Provenance.Outbound, IO.pure(OutboundLimit.Dial.Counted))
     yield connection
 
   /** A duplex connection we dialled and still use. */
   private def dialled(cm: ConnectionManager[IO], mux: Mux[IO])(using
       Raise[IO, ConnectionError]
   ): Resource[IO, Connection[IO]] =
-    cm.acquire(remote, Provenance.Outbound).evalMap {
+    cm.acquire(remote, Provenance.Outbound, IO.pure(OutboundLimit.Dial.Counted)).evalMap {
       case Acquired.Reserved(connection) =>
         connection.connected(None) *> connection.negotiated(agreed(mux)).as(connection)
       case other => IO.raiseError(new AssertionError(s"not a reservation: $other"))

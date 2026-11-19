@@ -11,7 +11,7 @@ import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.GovernorFault
 import xyz.kd5ujc.scarab.network.selection.*
-import xyz.kd5ujc.scarab.network.{PeerActionError, PeerOperation, PeerStatus}
+import xyz.kd5ujc.scarab.network.{OutboundLimit, PeerActionError, PeerOperation, PeerStatus}
 import xyz.kd5ujc.scarab.node.{GovernorConfig, Output, PeerGovernor, PeerStateActions, RootProvider}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
@@ -259,9 +259,10 @@ object MockEnvironment:
               peer: Peer,
               mode: DiffusionMode,
               provenance: Provenance,
+              kind: IO[OutboundLimit.Dial],
               generation: BigInt
           ) =
-            generation match
+            (kind, generation) match
               case _ => establish(peer, mode, provenance)
 
           def activate(peer: Peer, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
@@ -307,6 +308,7 @@ object MockEnvironment:
                 )
             }
 
+          def exempt(peer: Peer) = IO.unit
           def closeIfGeneration(peer: Peer, generation: BigInt) =
             close(peer).map(Some(_))
 

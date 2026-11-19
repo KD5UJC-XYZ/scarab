@@ -170,15 +170,17 @@ class InboundGovernorSuite extends FailsOnUncaught:
         intersections <- Ref.of[IO, Int](0)
         outcome <- Handle
           .allow[ConnectionError](
-            us.manager.acquire(remote, Provenance.Outbound).use { _ =>
-              connect(us, duplex = false, intersections) { _ =>
-                Settled
-                  .observed(settle, "the inbound connection is established")(us.manager.snapshot)(
-                    _.counters.inbound == 1
-                  )
-                  .map(_.counters)
+            us.manager
+              .acquire(remote, Provenance.Outbound, IO.pure(OutboundLimit.Dial.Counted))
+              .use { _ =>
+                connect(us, duplex = false, intersections) { _ =>
+                  Settled
+                    .observed(settle, "the inbound connection is established")(us.manager.snapshot)(
+                      _.counters.inbound == 1
+                    )
+                    .map(_.counters)
+                }
               }
-            }
           )
           .rescue(e => IO(fail(e.message)))
       // a reservation counts in no direction (`connectionStateToCounters`)
@@ -190,7 +192,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
     val json = InboundGovernor.json(
       ConnectionManager.Snapshot(
         ConnectionState.Counters.zero.copy(duplex = 1, inbound = 1),
-        Vector(ConnectionManager.Listed(remote, ConnectionState.InboundIdle(DataFlow.Duplex), 7L))
+        Vector(ConnectionManager.Listed(remote, ConnectionState.InboundIdle(DataFlow.Duplex), 7L)),
+        0
       )
     )
     assertEquals(json.hcursor.downField("counters").get[Int]("inbound"), Right(1))

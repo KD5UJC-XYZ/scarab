@@ -147,10 +147,14 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   private def reuse(manager: ConnectionManager[IO]): IO[Connection[IO]] =
     Handle
       .allow[ConnectionError](
-        manager.acquire(Served.remote, Provenance.Outbound).allocated.map(_._1).flatMap {
-          case Acquired.Reused(connection, _) => IO.pure(connection)
-          case Acquired.Reserved(_)           => IO.raiseError(new AssertionError("not reused"))
-        }
+        manager
+          .acquire(Served.remote, Provenance.Outbound, IO.pure(OutboundLimit.Dial.Counted))
+          .allocated
+          .map(_._1)
+          .flatMap {
+            case Acquired.Reused(connection, _) => IO.pure(connection)
+            case Acquired.Reserved(_)           => IO.raiseError(new AssertionError("not reused"))
+          }
       )
       .rescue(e => IO.raiseError(new AssertionError(e.message)))
 
@@ -511,39 +515,42 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
             ).start
             result <- Handle
               .allow[ConnectionError](
-                manager.acquire(Served.remote, Provenance.Outbound).use {
-                  case Acquired.Reserved(connection) =>
-                    connection.connected(None) *>
-                      NodeToNode
-                        .negotiate[IO, Bytes](
-                          ours,
-                          magic,
-                          connection,
-                          NodeToNode.Settings(),
-                          serve = Some(handlers)
-                        )
-                        // our KeepAlive client keeps the peer's side of the connection busy
-                        .flatMap(handle =>
-                          NodeToNode.attach[IO, Bytes, Unit](handle, ChainSyncFixtures.rawItem, ())
-                        )
-                        .use { _ =>
-                          val conversation =
-                            if simultaneous then
-                              // the tracker armed its timer as the connection was negotiated
-                              IO.sleep(5.seconds) *> talk.complete(()).void
-                            else
-                              held.entered.get *> talk.complete(()) *> IO.sleep(1.second) *>
-                                held.release.complete(()).void
-                          for
-                            _ <- conversation
-                            _ <- talked.get
-                            _ <- IO.sleep(100.millis)
-                            now <- state(manager)
-                            changes <- log.get
-                          yield (now, changes)
-                        }
-                  case other => IO.raiseError(new AssertionError(s"not reserved: $other"))
-                }
+                manager
+                  .acquire(Served.remote, Provenance.Outbound, IO.pure(OutboundLimit.Dial.Counted))
+                  .use {
+                    case Acquired.Reserved(connection) =>
+                      connection.connected(None) *>
+                        NodeToNode
+                          .negotiate[IO, Bytes](
+                            ours,
+                            magic,
+                            connection,
+                            NodeToNode.Settings(),
+                            serve = Some(handlers)
+                          )
+                          // our KeepAlive client keeps the peer's side of the connection busy
+                          .flatMap(handle =>
+                            NodeToNode
+                              .attach[IO, Bytes, Unit](handle, ChainSyncFixtures.rawItem, ())
+                          )
+                          .use { _ =>
+                            val conversation =
+                              if simultaneous then
+                                // the tracker armed its timer as the connection was negotiated
+                                IO.sleep(5.seconds) *> talk.complete(()).void
+                              else
+                                held.entered.get *> talk.complete(()) *> IO.sleep(1.second) *>
+                                  held.release.complete(()).void
+                            for
+                              _ <- conversation
+                              _ <- talked.get
+                              _ <- IO.sleep(100.millis)
+                              now <- state(manager)
+                              changes <- log.get
+                            yield (now, changes)
+                          }
+                    case other => IO.raiseError(new AssertionError(s"not reserved: $other"))
+                  }
               )
               .rescue(e => IO.raiseError(new AssertionError(e.message)))
           yield result

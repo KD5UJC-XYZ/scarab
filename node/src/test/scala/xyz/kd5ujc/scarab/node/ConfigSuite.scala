@@ -503,6 +503,32 @@ class ConfigSuite extends FunSuite:
         .toOption,
       Some(ConfigError(ConfigProblem.Negative("MaxConcurrencyBulkSync", BigDecimal(-1))))
     )
+    // `MaxOutboundConnections`, not a key of the reference: the opt-in outbound limit, a positive
+    // number of connections; absent or null, none
+    def maxOutbound(value: Json) =
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("MaxOutboundConnections", value))
+        .map(_.settings.maxOutboundConnections.map(_.value))
+    assertEquals(maxOutbound(Json.fromInt(50)), Right(Some(50)))
+    assertEquals(maxOutbound(Json.fromInt(1)), Right(Some(1)))
+    assertEquals(maxOutbound(Json.Null), Right(None))
+    assertEquals(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(base.noSpaces)
+        .map(_.settings.maxOutboundConnections),
+      Right(None)
+    )
+    List(0, -5).foreach(n =>
+      assertEquals(
+        maxOutbound(Json.fromInt(n)).left.map(_.problem),
+        Left(ConfigProblem.NonPositive("MaxOutboundConnections", BigDecimal(n)))
+      )
+    )
+    List(Json.fromString("50"), Json.fromDoubleOrNull(1.5), Json.fromLong(1L << 32)).foreach(v =>
+      maxOutbound(v).left.map(_.problem) match
+        case Left(ConfigProblem.JsonField("configuration", "MaxOutboundConnections", _)) => ()
+        case other => fail(s"$v was not refused as a number of connections: $other")
+    )
     // `StartAsNonProducingNode` (POM.hs 325): a Boolean, absent or null is the default
     def nonProducing(value: Json) =
       NodeConfig

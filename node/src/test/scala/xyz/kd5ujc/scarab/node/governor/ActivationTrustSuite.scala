@@ -59,6 +59,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
               peer: Int,
               mode: DiffusionMode,
               provenance: Provenance,
+              kind: IO[xyz.kd5ujc.scarab.network.OutboundLimit.Dial],
               generation: BigInt
           ) = establish(peer, mode, provenance)
           def activate(peer: Int, trust: PeerTrust) =
@@ -68,6 +69,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
           def deactivate(peer: Int) = IO.pure(Right(PeerStateActions.Deactivation.Warm))
           def close(peer: Int) =
             IO.pure(Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released)))
+          def exempt(peer: Int) = IO.unit
           def closeIfGeneration(peer: Int, generation: BigInt) =
             IO.pure(Some(Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released))))
         provider = new RootProvider[IO, Int]:

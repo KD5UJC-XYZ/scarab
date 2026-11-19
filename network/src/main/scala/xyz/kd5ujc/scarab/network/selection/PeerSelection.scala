@@ -176,9 +176,13 @@ object PeerSelection:
     val nextPeers = toDemote.foldLeft(peers) { (m, p) =>
       m.updated(p, m(p).copy(status = Status.Deactivating))
     }
+    // a peer that becomes a local root with a connection already open: the outbound limit leaves
+    // that connection out from now on (one still connecting is left out when it completes,
+    // `Events.completed`)
+    val exempted = added.filter(p => st.peers.get(p).exists(_.status.established))
     Decision(
       st.copy(localRoots = wanted, peers = nextPeers, sensitivity = sensitivity),
-      toDemote.toList.map(Job.Deactivate(_)),
+      toDemote.toList.map(Job.Deactivate(_)) ++ exempted.toList.map(Job.Exempt(_)),
       List(Trace.LocalRootsChanged(st.localRoots.size, wanted.size))
     )
 
@@ -454,7 +458,12 @@ object PeerSelection:
           withStatus(picked, Status.Connecting).copy(rng = next),
           picked.map { p =>
             val c = settings(p)
-            Job.Connect(p, c.diffusionMode, c.provenance, st.rootsGeneration)
+            Job.Connect(
+              p,
+              c.diffusionMode,
+              c.provenance,
+              st.rootsGeneration
+            )
           },
           List(
             Trace.Promote(
@@ -696,14 +705,15 @@ object PeerSelection:
         if generation <= st.rootsGeneration then Decision(st, Nil, Nil)
         else
           val stillConfigured = roots.keys ++ configuredPublic
+          // a connect in progress is left to complete: the reference's reconfiguration of the
+          // roots does not touch `inProgressPromoteCold` (cardano-diffusion `c5117705`,
+          // `Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353), and its completion is
+          // applied whatever changed meanwhile (`Events.completed`)
           val peers = st.peers.map { (peer, record) =>
-            val statusCleared =
-              if record.status == Status.Connecting then record.copy(status = Status.Cold(None))
-              else record
             val current =
-              if statusCleared.origin.root && !stillConfigured(peer) then
-                statusCleared.copy(origin = Origin.Other)
-              else statusCleared
+              if record.origin.root && !stillConfigured(peer) then
+                record.copy(origin = Origin.Other)
+              else record
             peer -> current
           }
           val sensitivity = st.sensitivity.copy(useBootstrapPeers = bootstrap)
@@ -724,9 +734,8 @@ object PeerSelection:
           )
           if effective == st.localRoots then Decision(base, Nil, Nil)
           else configureLocalRoots(base, effective, now)
-      case Event.SharingNegotiated(peer, enabled, generation)
-          if generation.exists(_ != st.rootsGeneration) =>
-        Decision(st, Nil, Nil)
+      // only the connection the governor keeps reports it, whatever roots generation its connect
+      // was started under: a reload keeps the connect in progress
       case Event.SharingNegotiated(peer, enabled, _) =>
         Decision(
           st.updated(peer)(
@@ -737,11 +746,10 @@ object PeerSelection:
         )
       case Event.Wake(_) => Decision(st, Nil, Nil)
       // What the monitor of a connection observes is applied whatever the roots generation it was
-      // made under: a root reload keeps an established connection (it clears only `Connecting`,
-      // above), and the reference's peer monitoring reports to its governor unconditionally
+      // made under: a root reload keeps an established connection and a connect in progress
+      // (above), and the reference's peer monitoring reports to its governor unconditionally
       // (`PeerStateActions.hs` 662-776). A report of a connection that a newer one replaced is
-      // refused by the effect interpreter, which checks the connection's identity (`PeerGovernor`);
-      // only a dial started under old roots is discarded here (`Events.completed`).
+      // refused by the effect interpreter, which checks the connection's identity (`PeerGovernor`).
       case Event.Observed(peer, observation, _, _) =>
         Events.observed(st, peer, observation, now, policy)
       case Event.Completed(outcome) => Events.completed(st, outcome, now, policy)

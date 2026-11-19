@@ -58,6 +58,7 @@ import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.network.{
   AcceptedConnectionsLimit,
+  OutboundLimit,
   Word32,
   BearerServer,
   ConnectionEvents,
@@ -137,9 +138,10 @@ import scala.concurrent.duration.*
   * [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full]
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
   * N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N]
-  * [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state
-  * <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]]
-  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers
+  * N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>]
+  * [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file>
+  * --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -449,6 +451,10 @@ object Main extends IOApp:
     *   `--max-inbound`: overrides the hard limit of accepted connections (G2), the `hardLimit` of
     *   the configuration's `AcceptedConnectionsLimit` (default 512, with soft 384 and delay 5 s:
     *   see [[AcceptedConnectionsLimit]] and [[ConfigSettings]]).
+    * @param maxOutbound
+    *   `--max-outbound`: the opt-in limit on the connections the node dials and still uses
+    *   ([[OutboundLimit]]); it wins over the configuration's `MaxOutboundConnections`, and without
+    *   either there is none, as in the reference.
     * @param log
     *   `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]).
     * @param roots
@@ -506,7 +512,8 @@ object Main extends IOApp:
       keyLock: Boolean = true,
       referenceBuild: ReferenceBuild = ReferenceBuild.Default,
       startAsNonProducingNode: Boolean = false,
-      assertionsFile: Option[Path] = None
+      assertionsFile: Option[Path] = None,
+      maxOutbound: Option[OutboundLimit.Connections] = None
   ):
     /** `ncStartAsNonProducingNode` of the reference: the flags give `Just True` or nothing
       * (`Parsers.hs` 70-72), the configuration file's `StartAsNonProducingNode` a value or nothing
@@ -522,6 +529,14 @@ object Main extends IOApp:
       maxInbound.fold(settings.acceptedConnectionsLimit)(hard =>
         settings.acceptedConnectionsLimit.copy(acceptedConnectionsHardLimit = hard)
       )
+
+    /** The outbound limit: `--max-outbound`, else the configuration's `MaxOutboundConnections`,
+      * else none.
+      */
+    def outboundLimit(settings: ConfigSettings): OutboundLimit =
+      maxOutbound
+        .orElse(settings.maxOutboundConnections)
+        .fold(OutboundLimit.Unlimited)(OutboundLimit.AtMost(_))
 
   /** What the chain database (or its absence) hands the node at start. */
   private final case class Storage[S](
@@ -781,6 +796,7 @@ object Main extends IOApp:
       topology: Option[Topology]
   ): Either[ConfigError, (Options, NodeSetup, Option[Topology])] =
     for
+      _ <- outboundLimitFits(options, setup)
       (roots, snapshot) <- topologyRoots(options, setup, topology)
       settings = setup.config.settings
       fromFile = options.configFile.isDefined
@@ -994,6 +1010,46 @@ object Main extends IOApp:
       .catchOnly[InvalidPathException](file.resolveSibling(name))
       .leftMap(e => ConfigError(ConfigProblem.InvalidPath(name, e)))).sequence
       .map(file => PeerNetwork.roots(options.peers, topology).copy(snapshotFile = file))
+
+  /** The governor's targets: the deadline ones (the defaults of the node's role with the
+    * configuration's `TargetNumberOf...`) and the sync ones (`SyncTargetNumberOf...`), or why they
+    * are not sane.
+    */
+  private[node] def governorTargets(
+      options: Options,
+      setup: NodeSetup
+  ): Either[ConfigError, (Targets, Targets)] =
+    val defaults = if options.forge.isDefined then Targets.blockProducer else Targets.relay
+    (
+      setup.config.settings.peerTargets(defaults),
+      setup.config.settings.syncTargets(Targets.sync)
+    ).tupled
+
+  /** The outbound limit in force, refused below the counted dials the governor uses at once
+    * ([[OutboundLimit.Needed]]): its largest established target and its largest established target
+    * of big ledger peers. Local roots are left out of the limit, so the topology does not enter it,
+    * and a topology reload is never refused for it. Without a limit nothing is checked.
+    */
+  private[node] def outboundLimitFits(
+      options: Options,
+      setup: NodeSetup
+  ): Either[ConfigError, OutboundLimit] =
+    options.outboundLimit(setup.config.settings) match
+      case OutboundLimit.Unlimited => Right(OutboundLimit.Unlimited)
+      case limit @ OutboundLimit.AtMost(_) =>
+        governorTargets(options, setup).flatMap { (deadline, sync) =>
+          limit
+            .fits(OutboundLimit.Needed.of(deadline, sync, setup.config.settings.consensusMode))
+            .leftMap(below =>
+              ConfigError(
+                ConfigProblem.OutboundLimitBelowTargets(
+                  below.limit.value,
+                  below.needed.established,
+                  below.needed.establishedBig
+                )
+              )
+            )
+        }
 
   /** The peer snapshot of the file `roots` name, as the reference's `updateLedgerPeerSnapshot`
     * reads it in `phase` (`Run.hs` 705-757; [[PeerSnapshot.use]]), or why it is refused: the
@@ -1987,7 +2043,11 @@ object Main extends IOApp:
         peerSharing = Some(sharing.source)
       )
       manager <- ConnectionManager.create[IO](
-        ConnectionManager.Limits(accepted = accepted, seed = seed),
+        ConnectionManager.Limits(
+          accepted = accepted,
+          outbound = options.outboundLimit(setup.config.settings),
+          seed = seed
+        ),
         Some(connectionEvents)
       )
       _ <- collectors.add(Collectors.connections(manager))
@@ -2024,13 +2084,8 @@ object Main extends IOApp:
       // The outbound peer network (G1): the governor chooses the peers, moves them between
       // temperatures and replaces the ones that fail; the Genesis State Machine tells it
       // whether the ledger is too old.
-      defaults = if options.forge.isDefined then Targets.blockProducer else Targets.relay
-      targets <- setup.config.settings
-        .peerTargets(defaults)
-        .fold(e => fail[Targets](e), IO.pure)
-      syncTargets <- setup.config.settings
-        .syncTargets(Targets.sync)
-        .fold(e => fail[Targets](e), IO.pure)
+      (targets, syncTargets) <- governorTargets(options, setup)
+        .fold(e => fail[(Targets, Targets)](e), IO.pure)
       lost <- Reconnects.create[IO](instruments.followerEvents)
     yield
       val chainView = new PeerNetwork.ChainView[IO]:
@@ -2544,7 +2599,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -2578,6 +2633,7 @@ object Main extends IOApp:
     "chain-sync-high",
     "header-first",
     "max-inbound",
+    "max-outbound",
     "cpu-threads",
     "plutus-workers",
     "dump-state",
@@ -2765,6 +2821,13 @@ object Main extends IOApp:
                 .filter(_.toLong > 0)
                 .toRight(invalid("max-inbound"))
             )
+          maxOutbound <- flags
+            .get("max-outbound")
+            .traverse(
+              _.toIntOption
+                .flatMap(OutboundLimit.Connections.from(_).toOption)
+                .toRight(invalid("max-outbound"))
+            )
           cpuThreads <- flags
             .get("cpu-threads")
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
@@ -2833,6 +2896,7 @@ object Main extends IOApp:
           referenceBuild = referenceBuild,
           startAsNonProducingNode =
             flags.contains("start-as-non-producing-node") || flags.contains("non-producing-node"),
-          assertionsFile = flags.get("assertions-file").map(Path.of(_))
+          assertionsFile = flags.get("assertions-file").map(Path.of(_)),
+          maxOutbound = maxOutbound
         )
       case _ => Left(usage)

@@ -959,6 +959,32 @@
    "definitions": [
     "def network.LeiosDecode.restarting"
    ]
+  },
+  {
+   "reason": "the opt-in outbound limit, a Deviation the owner approved (docs/decisions.md, networking, 2026-11-18): the reference's connection manager reserves a connection without any limit (acquireOutboundConnectionImpl, ConnectionManager/Core.hs:1390-1418 at ouroboros-network c45735a5), so the limit, its positive count, the kind of dial it counts or leaves out (local roots) and the check of a limit against what the governor dials at once have no counterpart",
+   "definitions": [
+    "enum network.OutboundLimit",
+    "object network.OutboundLimit",
+    "type network.OutboundLimit.Connections",
+    "object network.OutboundLimit.Connections",
+    "def network.OutboundLimit.Connections.from",
+    "def network.OutboundLimit.Connections.value",
+    "class network.OutboundLimit.NotPositive",
+    "enum network.OutboundLimit.Dial",
+    "class network.OutboundLimit.Needed",
+    "def network.OutboundLimit.Needed#total",
+    "object network.OutboundLimit.Needed",
+    "def network.OutboundLimit.Needed.of",
+    "class network.OutboundLimit.BelowTargets",
+    "def network.OutboundLimit.fits"
+   ]
+  },
+  {
+   "reason": "the governor's classification of a peer for the opt-in outbound limit, read by a dial when it reserves its connection, and the step by which a connection of a peer that became a local root is left out of the limit, a Deviation the owner approved (docs/decisions.md, networking, 2026-11-18): the reference has no outbound limit, so it classifies no dial for one and a connection holds no place there to give back",
+   "definitions": [
+    "def network.Connection#exempt",
+    "def network.selection.GovernorState#dialOf"
+   ]
   }
  ]
 }

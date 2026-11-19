@@ -507,7 +507,11 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
     Handle
       .allow[ConnectionError](
         manager
-          .acquire(SocketAddress(ip"192.0.2.2", port"3001"), Provenance.Outbound)
+          .acquire(
+            SocketAddress(ip"192.0.2.2", port"3001"),
+            Provenance.Outbound,
+            IO.pure(OutboundLimit.Dial.Counted)
+          )
           .allocated
           .flatMap {
             case (Acquired.Reserved(other), _) =>
@@ -697,28 +701,34 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
               ConnectionManager.create[IO](ConnectionManager.Limits()).flatMap { manager =>
                 Handle
                   .allow[ConnectionError](
-                    manager.acquire(Served.remote, Provenance.Outbound).use {
-                      case Acquired.Reserved(connection) =>
-                        connection.connected(None) *>
-                          NodeToNode
-                            .negotiate[IO, Bytes](
-                              ours,
-                              magic,
-                              connection,
-                              NodeToNode.Settings(offerPeerSharing = true),
-                              serve = Some(probe.handlers(parking = true))
-                            )
-                            .use(_ =>
-                              Settled.observed(settle, "every responder parked")(probe.seen)(
-                                allParked
-                              ) *> manager.remoteStates.map(_.values.toList)
-                            )
-                            .flatMap(busy =>
-                              (settle *> probe.seen, manager.remoteStates, sharing.get).tupled
-                                .map((seen, tracked, agreed) => (busy, seen, tracked, agreed))
-                            )
-                      case other => IO.raiseError(new AssertionError(s"not reserved: $other"))
-                    }
+                    manager
+                      .acquire(
+                        Served.remote,
+                        Provenance.Outbound,
+                        IO.pure(OutboundLimit.Dial.Counted)
+                      )
+                      .use {
+                        case Acquired.Reserved(connection) =>
+                          connection.connected(None) *>
+                            NodeToNode
+                              .negotiate[IO, Bytes](
+                                ours,
+                                magic,
+                                connection,
+                                NodeToNode.Settings(offerPeerSharing = true),
+                                serve = Some(probe.handlers(parking = true))
+                              )
+                              .use(_ =>
+                                Settled.observed(settle, "every responder parked")(probe.seen)(
+                                  allParked
+                                ) *> manager.remoteStates.map(_.values.toList)
+                              )
+                              .flatMap(busy =>
+                                (settle *> probe.seen, manager.remoteStates, sharing.get).tupled
+                                  .map((seen, tracked, agreed) => (busy, seen, tracked, agreed))
+                              )
+                        case other => IO.raiseError(new AssertionError(s"not reserved: $other"))
+                      }
                   )
                   .rescue(e => IO.raiseError(new AssertionError(e.message)))
               }

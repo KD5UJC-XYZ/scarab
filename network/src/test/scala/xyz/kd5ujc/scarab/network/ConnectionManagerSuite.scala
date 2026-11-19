@@ -130,7 +130,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   )(using
       Raise[IO, ConnectionError]
   ): IO[(Acquired[IO], IO[Unit])] =
-    cm.acquire(peer(n), provenance).allocated
+    cm.acquire(peer(n), provenance, IO.pure(OutboundLimit.Dial.Counted)).allocated
 
   /** A connection we dial to `peer(n)`, negotiated `flow`; its release ends it. */
   private def dialled(cm: ConnectionManager[IO], n: Int, flow: DataFlow)(using
@@ -758,7 +758,10 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
             .allow[ConnectionError] {
               for
                 _ <- accepted(cm, 1, DataFlow.Duplex)
-                using <- cm.acquire(peer(1), Provenance.Outbound).use(_ => IO.never[Unit]).start
+                using <- cm
+                  .acquire(peer(1), Provenance.Outbound, IO.pure(OutboundLimit.Dial.Counted))
+                  .use(_ => IO.never[Unit])
+                  .start
                 _ <- entered.get
                 cancelling <- using.cancel.start
                 _ <- IO.sleep(1.second)
@@ -1014,7 +1017,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
 
   private enum Op:
     case Accept(peer: Int, local: Int)
-    case Acquire(peer: Int, inbound: Boolean)
+    case Acquire(peer: Int, inbound: Boolean, kind: OutboundLimit.Dial)
     case Negotiate(peer: Int, duplex: Boolean)
     case AwakeRemote(peer: Int)
     case IdleRemote(peer: Int)
@@ -1028,7 +1031,9 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     Gen.listOf(
       Gen.oneOf(
         Gen.zip(p, Gen.choose(1, 2)).map(Op.Accept(_, _)),
-        Gen.zip(p, Gen.oneOf(true, false)).map(Op.Acquire(_, _)),
+        Gen
+          .zip(p, Gen.oneOf(true, false), Gen.oneOf(OutboundLimit.Dial.values.toSeq))
+          .map(Op.Acquire(_, _, _)),
         Gen.zip(p, Gen.oneOf(true, false)).map(Op.Negotiate(_, _)),
         p.map(Op.AwakeRemote(_)),
         p.map(Op.IdleRemote(_)),
@@ -1040,80 +1045,126 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     )
 
   property(
-    "every change is one the reference accepts or its runtime makes, the counters follow the table within the hard limit, and nothing leaks"
+    "every change is one the reference accepts or its runtime makes, the counters follow the table within the hard limit, the outbound limit counts the dials in outbound use, and nothing leaks"
   ) {
+    val most = 3
     val limits = ConnectionManager.Limits(
       hard(3),
-      maxOutbound = 3,
+      outbound = OutboundLimit.AtMost(OutboundLimit.Connections.from(most).toOption.get),
       timeWait = 2.seconds,
       outboundIdle = 1.second
     )
     forAll(ops) { script =>
-      TestControl
-        .executeEmbed(managed(limits, runtimeMoves) { m =>
-          // the owners of transports (with their release), and the outbound uses
-          (
-            Ref.of[IO, Map[Int, Vector[(Connection[IO], IO[Unit])]]](Map.empty),
-            Ref.of[IO, Map[Int, Connection[IO]]](Map.empty)
-          ).tupled.flatMap { (owners, uses) =>
-            def owned(n: Int): IO[Vector[(Connection[IO], IO[Unit])]] =
-              owners.get.map(_.getOrElse(n, Vector.empty))
-            def quietly(program: Handle[IO, ConnectionError] ?=> IO[Unit]): IO[Unit] =
-              Handle.allow[ConnectionError](program).rescue(_ => IO.unit)
-            def step(op: Op): IO[Unit] = op match
-              case Op.Accept(n, l) =>
-                quietly(
-                  m.cm
-                    .include(peer(n), Some(local(l)))
-                    .allocated
-                    .flatMap(o =>
-                      owners.update(m => m.updated(n, m.getOrElse(n, Vector.empty) :+ o))
+      Settled
+        .timed(settle =>
+          managed(limits, runtimeMoves) { m =>
+            // the owners of transports (with their release, and whether they dialled), the outbound
+            // uses (and whether each is a dial's), and the model of the dials in outbound use: from
+            // the reservation until its use is released or its owner lets go, whichever is first
+            (
+              Ref.of[IO, Map[Int, Vector[(Connection[IO], IO[Unit], Boolean)]]](Map.empty),
+              Ref.of[IO, Map[Int, (Connection[IO], Boolean)]](Map.empty),
+              Ref.of[IO, Set[Long]](Set.empty)
+            ).tupled.flatMap { (owners, uses, dials) =>
+              def owned(n: Int): IO[Vector[(Connection[IO], IO[Unit], Boolean)]] =
+                owners.get.map(_.getOrElse(n, Vector.empty))
+              def own(n: Int, owner: (Connection[IO], IO[Unit], Boolean)): IO[Unit] =
+                owners.update(m => m.updated(n, m.getOrElse(n, Vector.empty) :+ owner))
+              def quietly(program: Handle[IO, ConnectionError] ?=> IO[Unit]): IO[Unit] =
+                Handle.allow[ConnectionError](program).rescue(_ => IO.unit)
+              // a counted dial is refused at the limit only when the model's dials reached it, and
+              // taken only when they had not; a local root's is never refused by the limit
+              def limited(kind: OutboundLimit.Dial)(
+                  program: Handle[IO, ConnectionError] ?=> IO[Unit]
+              ): IO[Unit] =
+                Handle.allow[ConnectionError](program).rescue {
+                  case ConnectionError.OutboundLimit(_, limit) =>
+                    dials.get.flatMap(d =>
+                      IO.raiseUnless(
+                        kind == OutboundLimit.Dial.Counted && limit == most && d.sizeIs >= most
+                      )(
+                        new IllegalStateException(
+                          s"$kind refused at $limit with ${d.size} dials in use"
+                        )
+                      )
                     )
-                )
-              case Op.Acquire(n, inbound) =>
-                quietly(
-                  IO.race(
-                    m.cm
-                      .acquire(peer(n), if inbound then Provenance.Inbound else Provenance.Outbound)
-                      .allocated,
-                    IO.sleep(3.seconds)
-                  ).flatMap {
-                    case Left((Acquired.Reserved(c), release)) =>
-                      owners.update(m =>
-                        m.updated(n, m.getOrElse(n, Vector.empty) :+ (c -> release))
-                      ) *> uses.update(_.updated(n, c))
-                    case Left((Acquired.Reused(c, _), _)) => uses.update(_.updated(n, c))
-                    case Right(_)                         => IO.unit
-                  }
-                )
-              case Op.Negotiate(n, duplex) =>
-                owned(n).flatMap(_.traverse_ { (c, _) =>
+                  case _ => IO.unit
+                }
+              def step(op: Op): IO[Unit] = op match
+                case Op.Accept(n, l) =>
                   quietly(
-                    c.state.flatMap(s =>
-                      c.connected(None).whenA(s == ConnectionState.ReservedOutbound)
-                    ) *>
-                      handle(if duplex then DataFlow.Duplex else DataFlow.Unidirectional)
-                        .flatMap(c.negotiated)
+                    m.cm
+                      .include(peer(n), Some(local(l)))
+                      .allocated
+                      .flatMap((c, release) => own(n, (c, release, false)))
                   )
-                })
-              case Op.AwakeRemote(n)    => owned(n).flatMap(_.traverse_(_._1.promotedToWarmRemote))
-              case Op.IdleRemote(n)     => owned(n).flatMap(_.traverse_(_._1.demotedToColdRemote))
-              case Op.ReleaseInbound(n) => owned(n).flatMap(_.traverse_(_._1.releaseInbound))
-              case Op.ReleaseOutbound(n) =>
-                uses
-                  .modify(m => (m - n, m.get(n)))
-                  .flatMap(_.traverse_(_.releaseOutbound.start.void))
-              case Op.Close(n) =>
-                owners.modify(m => (m - n, m.getOrElse(n, Vector.empty))).flatMap(_.traverse_(_._2))
-              case Op.Wait => IO.sleep(1500.millis)
-            for
-              _ <- script.traverse_(op => step(op) *> IO.sleep(10.millis) *> check(m.cm, 3))
-              _ <- owners.get.flatMap(_.values.flatten.toList.traverse_(_._2))
-              _ <- IO.sleep(5.seconds)
-              last <- m.cm.snapshot
-            yield last.connections.isEmpty && last.counters == Counters.zero
+                case Op.Acquire(n, inbound, kind) =>
+                  val counted = kind == OutboundLimit.Dial.Counted
+                  limited(kind)(
+                    IO.race(
+                      m.cm
+                        .acquire(
+                          peer(n),
+                          if inbound then Provenance.Inbound else Provenance.Outbound,
+                          IO.pure(kind)
+                        )
+                        .allocated,
+                      IO.sleep(3.seconds)
+                    ).flatMap {
+                      case Left((Acquired.Reserved(c), release)) =>
+                        dials.get.flatMap(d =>
+                          IO.raiseUnless(!counted || d.sizeIs < most)(
+                            new IllegalStateException(s"reserved with ${d.size} dials in use")
+                          )
+                        ) *> own(n, (c, release, counted)) *>
+                          uses.update(_.updated(n, (c, counted))) *>
+                          dials.update(_ + c.id).whenA(counted)
+                      case Left((Acquired.Reused(c, _), _)) => uses.update(_.updated(n, (c, false)))
+                      case Right(_)                         => IO.unit
+                    }
+                  )
+                case Op.Negotiate(n, duplex) =>
+                  owned(n).flatMap(_.traverse_ { (c, _, _) =>
+                    quietly(
+                      c.state.flatMap(s =>
+                        c.connected(None).whenA(s == ConnectionState.ReservedOutbound)
+                      ) *>
+                        handle(if duplex then DataFlow.Duplex else DataFlow.Unidirectional)
+                          .flatMap(c.negotiated)
+                    )
+                  })
+                case Op.AwakeRemote(n) =>
+                  owned(n).flatMap(_.traverse_((c, _, _) => c.promotedToWarmRemote))
+                case Op.IdleRemote(n) =>
+                  owned(n).flatMap(_.traverse_((c, _, _) => c.demotedToColdRemote))
+                case Op.ReleaseInbound(n) =>
+                  owned(n).flatMap(_.traverse_((c, _, _) => c.releaseInbound))
+                case Op.ReleaseOutbound(n) =>
+                  uses
+                    .modify(m => (m - n, m.get(n)))
+                    .flatMap(_.traverse_ { (c, dial) =>
+                      dials.update(_ - c.id).whenA(dial) *> c.releaseOutbound.start.void
+                    })
+                case Op.Close(n) =>
+                  owners
+                    .modify(m => (m - n, m.getOrElse(n, Vector.empty)))
+                    .flatMap(_.traverse_ { (c, release, dial) =>
+                      dials.update(_ - c.id).whenA(dial) *> release
+                    })
+                case Op.Wait => IO.sleep(1500.millis)
+              // each step settles before the checks: every fiber it started (a release, which
+              // gives its dial's place back in its first step) has done all it can
+              for
+                _ <- script.traverse_(op =>
+                  step(op) *> settle *> check(m.cm, 3) *> dialsAre(m.cm, dials)
+                )
+                _ <- owners.get.flatMap(_.values.flatten.toList.traverse_(_._2))
+                _ <- IO.sleep(5.seconds)
+                last <- m.cm.snapshot
+              yield last.connections.isEmpty && last.counters == Counters.zero && last.dials == 0
+            }
           }
-        })
+        )
         .map(result)
         .unsafeRunSync()
     }
@@ -1127,3 +1178,11 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         new IllegalStateException(s"$c vs ${s.counters}")
       )
     }
+
+  /** After every step: the manager counts the dials the model says are in outbound use. */
+  private def dialsAre(cm: ConnectionManager[IO], model: Ref[IO, Set[Long]]): IO[Unit] =
+    (cm.snapshot, model.get).flatMapN((s, d) =>
+      IO.raiseUnless(s.dials == d.size)(
+        new IllegalStateException(s"${s.dials} dials counted, ${d.size} in outbound use")
+      )
+    )

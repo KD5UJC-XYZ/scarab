@@ -891,3 +891,135 @@ class NetworkConfigSuite extends FailsOnUncaught:
         assertEquals(verdict, Vector(false, true), "each verdict once: 100's, then 200's")
     }
   }
+
+  // -------------------------------------------------------------------------- the outbound limit
+
+  /** A relay's topology with two local root groups, one it dials (hot valency 1, warm `warm`) and
+    * one behind a firewall (valency 3), which it never dials, a public root and no ledger peers.
+    */
+  private def rooted(warm: Int): String =
+    def points(from: Int) =
+      (from until from + 3).map(n => s"""{"address": "127.0.0.$n", "port": 3001}""").mkString(", ")
+    s"""{"localRoots": [
+       |  {"accessPoints": [${points(
+        1
+      )}], "advertise": false, "hotValency": 1, "warmValency": $warm},
+       |  {"accessPoints": [${points(
+        4
+      )}], "advertise": false, "valency": 3, "behindFirewall": true}],
+       | "publicRoots": [{"accessPoints": [{"address": "127.0.0.7", "port": 3001}]}]}""".stripMargin
+
+  /** The start of a relay in a directory of its own under `root`, in `mode`, with that topology,
+    * the configuration's `keys` and the flags `args`.
+    */
+  private def startLimited(
+      root: Path,
+      name: String,
+      mode: String,
+      warm: Int,
+      args: List[String],
+      keys: Json = Json.obj()
+  ): IO[Either[ConfigError, (Main.Options, NodeSetup, Option[Topology])]] =
+    IO.blocking {
+      val dir = Files.createDirectory(root.resolve(name))
+      val config = configured(dir, mode, peerSharing = None)
+      val written = parser.parse(Files.readString(config)).fold(e => fail(e.toString), identity)
+      Files.writeString(config, written.deepMerge(keys).noSpaces)
+      Files.writeString(dir.resolve("topology.json"), rooted(warm))
+      Main.configured(
+        options(
+          List("--config", config.toString, "--topology", dir.resolve("topology.json").toString) ++
+            args
+        )
+      )
+    }
+
+  private def below(
+      limit: Int,
+      established: Int,
+      establishedBig: Int
+  ): Either[ConfigProblem, Unit] =
+    Left(ConfigProblem.OutboundLimitBelowTargets(limit, established, establishedBig))
+
+  test(
+    "an outbound limit below the governor's established targets is refused at start-up, naming both numbers"
+  ) {
+    temporary.use { root =>
+      def start(
+          name: String,
+          mode: String = "PraosMode",
+          args: List[String] = Nil,
+          keys: Json = Json.obj(),
+          warm: Int = 2
+      ) =
+        startLimited(root, name, mode, warm, args, keys).map(_.void.left.map(_.problem))
+      def limit(n: Int) = List("--max-outbound", n.toString)
+      for
+        unlimited <- start("unlimited")
+        // Praos: the relay's established targets, 30 and 10; local roots are left out
+        praosBelow <- start("praos-below", args = limit(39))
+        praosEqual <- start("praos-equal", args = limit(40))
+        manyRoots <- start("many-roots", args = limit(40), warm = 100)
+        withPeer <- start("with-peer", args = limit(40) ++ List("--peer", "127.0.0.9:3001"))
+        // the configuration's key, which the flag wins over, and its targets
+        fromFile <- start(
+          "from-file",
+          keys = Json.obj("MaxOutboundConnections" -> Json.fromInt(39))
+        )
+        flagWins <- start(
+          "flag-wins",
+          args = limit(40),
+          keys = Json.obj("MaxOutboundConnections" -> Json.fromInt(39))
+        )
+        targets <- start(
+          "targets",
+          args = limit(59),
+          keys = Json.obj("TargetNumberOfEstablishedPeers" -> Json.fromInt(50))
+        )
+        // Genesis: the larger of the deadline and the sync targets of each kind, 30 and 40
+        genesisBelow <- start("genesis-below", "GenesisMode", limit(69))
+        genesisEqual <- start("genesis-equal", "GenesisMode", limit(70))
+      yield
+        assertEquals(unlimited, Right(()), "without a limit nothing is checked")
+        assertEquals(praosBelow, below(39, 30, 10))
+        assertEquals(praosEqual, Right(()))
+        assertEquals(manyRoots, Right(()), "the local roots' valencies do not enter the check")
+        assertEquals(withPeer, Right(()), "nor does `--peer`")
+        assertEquals(fromFile, below(39, 30, 10))
+        assertEquals(flagWins, Right(()))
+        assertEquals(targets, below(59, 50, 10))
+        assertEquals(genesisBelow, below(69, 30, 40))
+        assertEquals(genesisEqual, Right(()))
+    }
+  }
+
+  test("a topology reload is never refused because of the outbound limit") {
+    import SnapshotPhase.Runtime
+    temporary.use { root =>
+      for
+        node <- startLimited(root, "node", "PraosMode", warm = 2, List("--max-outbound", "40"))
+          .map(_.fold(e => fail(e.message), identity))
+          .map { (completed, setup, _) =>
+            val roots = completed.roots.getOrElse(fail("no roots"))
+            Started(
+              root.resolve("node"),
+              completed,
+              setup,
+              Main.NetworkConfig(roots, completed.snapshot.snapshot)
+            )
+          }
+        _ <- node.write("topology.json", rooted(warm = 100))
+        more <- reload(node, Runtime)
+        _ <- node.write("topology.json", rooted(warm = 1))
+        fewer <- reload(node, Runtime)
+      yield List(more, fewer).foreach { reloaded =>
+        assertEquals(reloaded.outcome, Main.NetworkReload.Completed)
+        assertEquals(
+          reloaded.installed,
+          Vector(reloaded.inForce.roots),
+          "the topology installed, once"
+        )
+        assertEquals(reloaded.lines, Vector.empty, "nothing refused")
+      }
+    }
+  }

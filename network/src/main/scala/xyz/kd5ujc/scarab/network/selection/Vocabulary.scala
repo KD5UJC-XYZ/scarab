@@ -126,7 +126,11 @@ object BigLedgerRoots:
   * traced as aborted (the reference's `Completion`, `Types.hs` 1613-1644, as a closed value).
   */
 enum Outcome[A]:
-  case Connected(peer: A, generation: BigInt = BigInt(0))
+  /** `peer` is connected; `sharing` is what its handshake negotiated for peer sharing, which the
+    * completion carries as the reference's does (`peerConnToPeerSharing`, ouroboros-network
+    * `c45735a5`, `Governor/EstablishedPeers.hs` 563-614), when it is known.
+    */
+  case Connected(peer: A, generation: BigInt = BigInt(0), sharing: Option[Boolean] = None)
   case ConnectFailed(peer: A, failure: FailureClass, generation: BigInt = BigInt(0))
   case Activated(peer: A)
   case ActivateFailed(peer: A, failure: FailureClass)
@@ -152,10 +156,19 @@ enum Outcome[A]:
 
 /** A piece of work for the effect layer (a job of the reference's `JobPool`). */
 enum Job[A]:
+  /** Dial `peer`. What the opt-in outbound limit makes of the dial is read from the governor's
+    * state when the connection is reserved ([[GovernorState.dialOf]]), not fixed here.
+    */
   case Connect(peer: A, mode: DiffusionMode, provenance: Provenance, generation: BigInt = BigInt(0))
   case Activate(peer: A, trust: PeerTrust = PeerTrust.Untrustable)
   case Deactivate(peer: A)
   case Close(peer: A, generation: Option[BigInt] = None)
+
+  /** `peer` is a local root with a connection: the opt-in outbound limit leaves that connection
+    * out, so the place its dial holds, if it holds one (a peer dialled before it became a local
+    * root), is given back. Scarab's own: the reference has no outbound limit.
+    */
+  case Exempt(peer: A)
 
   /** Ask for up to `max` public roots; bootstrap peers when `bootstrap` (the sensitive state). */
   case RequestRoots(max: Int, bootstrap: Boolean, generation: BigInt = BigInt(0))

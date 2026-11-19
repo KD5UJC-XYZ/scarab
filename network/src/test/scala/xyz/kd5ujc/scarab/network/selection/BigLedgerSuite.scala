@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network.selection
 
 import munit.FunSuite
+import xyz.kd5ujc.scarab.network.OutboundLimit
 import scala.concurrent.duration.*
 
 /** The big ledger peers in the decision function, by example: the six families of the reference
@@ -180,6 +181,11 @@ class BigLedgerSuite extends FunSuite:
     assertEquals(
       count(jobs) { case Job.Connect(_, DiffusionMode.InitiatorAndResponder, _, _) => () },
       2
+    )
+    // dials the outbound limit counts
+    assertEquals(
+      jobs.collect { case Job.Connect(p, _, _, _) => after.dialOf(p) }.distinct,
+      List(OutboundLimit.Dial.Counted)
     )
     assertEquals(after.view(t0).counters.coldBigLedgerPromotions, 2)
   }

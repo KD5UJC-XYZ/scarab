@@ -118,7 +118,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
           // are ConnectionManagerSuite's subject
           manager <- ConnectionManager.create[IO](
             ConnectionManager.Limits(
-              maxOutbound = 4,
+              outbound = OutboundLimit.AtMost(OutboundLimit.Connections.from(4).toOption.get),
               timeWait = Duration.Zero,
               outboundIdle = Duration.Zero
             )

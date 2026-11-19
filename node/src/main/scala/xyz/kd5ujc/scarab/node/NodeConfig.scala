@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
-import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, Word32}
+import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, OutboundLimit, Word32}
 import xyz.kd5ujc.scarab.network.selection.{ConsensusMode, Targets}
 
 /** The genesis files a configuration names (`ByronGenesisFile` or the older `GenesisFile`,
@@ -107,6 +107,10 @@ final case class PeerTargetOverrides(
   *   `StartAsNonProducingNode` (`POM.hs` 325, cardano-node 11.1.3): start with forging disabled;
   *   absent is the reference's default, false (`POM.hs` 738), and the command line's flag wins
   *   (`Main.Options.startsNonProducing`).
+  * @param maxOutboundConnections
+  *   `MaxOutboundConnections`: the opt-in outbound limit, a positive number of connections
+  *   ([[OutboundLimit]]); `--max-outbound` wins over it. Not a key of the reference, which has no
+  *   outbound limit; absent, the node has none either.
   */
 final case class ConfigSettings(
     protocol: String = "Cardano",
@@ -132,7 +136,8 @@ final case class ConfigSettings(
     dijkstraHardForkVersion: Option[BigInt] = None,
     leios: LeiosSettings = LeiosSettings(),
     ledgerDb: LedgerDbSettings = LedgerDbSettings(),
-    startAsNonProducingNode: Option[Boolean] = None
+    startAsNonProducingNode: Option[Boolean] = None,
+    maxOutboundConnections: Option[OutboundLimit.Connections] = None
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless
     * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
@@ -210,6 +215,13 @@ object NodeConfig:
       .flatMap(_.toLong)
       .flatMap(Word32.fromLong)
       .toRight("a Word32: an integral number from 0 to 4294967295")
+  )
+
+  /** A JSON number (not a string) with a whole value that an `Int` holds, in any notation (`50`,
+    * `50.0`, `5e1`): the values of the node's own keys, which no reference parser defines.
+    */
+  private val wholeDecoder: Decoder[Int] = Decoder.decodeJson.emap(json =>
+    json.asNumber.flatMap(_.toInt).toRight("a whole number from -2147483648 to 2147483647")
   )
 
   /** A JSON number as aeson's `Scientific` holds it: the coefficient of its digits and the base-10
@@ -462,6 +474,17 @@ object NodeConfig:
       ).mapN(PeerTargetOverrides.apply)
       genesisOptions <- k.opt[Json]("LowLevelGenesisOptions").flatMap(GenesisSettings.parse)
       accepted <- k.opt[AcceptedConnectionsLimit]("AcceptedConnectionsLimit")(using acceptedDecoder)
+      maxOutbound <- k
+        .opt[Int]("MaxOutboundConnections")(using wholeDecoder)
+        .flatMap(
+          _.traverse(n =>
+            OutboundLimit.Connections
+              .from(n)
+              .leftMap(_ =>
+                ConfigError(ConfigProblem.NonPositive("MaxOutboundConnections", BigDecimal(n)))
+              )
+          )
+        )
       deadlineConcurrency <- k
         .opt[Int]("MaxConcurrencyDeadline")
         .flatMap(n =>
@@ -555,6 +578,7 @@ object NodeConfig:
           dijkstraVersion,
           leios,
           ledgerDb,
-          nonProducing
+          nonProducing,
+          maxOutbound
         )
       )

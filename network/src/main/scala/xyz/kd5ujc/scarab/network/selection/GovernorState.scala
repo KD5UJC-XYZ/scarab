@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network.selection
 
 import xyz.kd5ujc.scarab.codec.DomainError
+import xyz.kd5ujc.scarab.network.OutboundLimit
 import scala.collection.immutable.{SortedMap, SortedSet}
 
 /** The state of the governor (`PeerSelectionState`, `Governor/Types.hs` 609-705 with the Cardano
@@ -59,6 +60,13 @@ final case class GovernorState[A](
     peers.get(peer).fold(this)(r => copy(peers = peers.updated(peer, f(r))))
 
   def withStatus(peer: A, status: Status): GovernorState[A] = updated(peer)(_.copy(status = status))
+
+  /** What the opt-in outbound limit makes of a dial of `peer` in this state: a local root's is left
+    * out, any other peer's counted. The dial reads it when it reserves its connection, so a peer
+    * that became a local root while its connect was pending is not counted.
+    */
+  def dialOf(peer: A): OutboundLimit.Dial =
+    if localRoots.contains(peer) then OutboundLimit.Dial.LocalRoot else OutboundLimit.Dial.Counted
 
 object GovernorState:
   def initial[A: Ordering](

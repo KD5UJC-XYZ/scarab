@@ -79,17 +79,19 @@ final class OutboundPeers[F[_]: Async, A] private (
 
   // ------------------------------------------------------------------ warm
 
+  /** The dial of an ordinary peer, counted by the outbound limit, in no roots generation. */
   def establish(
       peer: A,
       mode: DiffusionMode,
       provenance: Provenance
   ): F[Either[EstablishmentError, PeerStateActions.Connection[F]]] =
-    establishAt(peer, mode, provenance, BigInt(0))
+    establishAt(peer, mode, provenance, F.pure(OutboundLimit.Dial.Counted), BigInt(0))
 
   override def establishAt(
       peer: A,
       mode: DiffusionMode,
       provenance: Provenance,
+      kind: F[OutboundLimit.Dial],
       generation: BigInt
   ): F[Either[EstablishmentError, PeerStateActions.Connection[F]]] =
     transport
@@ -103,7 +105,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             for
               ready <- Deferred[F, Either[EstablishmentError, PeerStateActions.Connection[F]]]
               acquiring <- supervisor.supervise(
-                connection(peer, remote, mode, provenance, generation, ready)
+                connection(peer, remote, mode, provenance, kind, generation, ready)
               )
               result <- poll(ready.get).onCancel(acquiring.cancel)
             yield result
@@ -126,12 +128,13 @@ final class OutboundPeers[F[_]: Async, A] private (
       remote: SocketAddress[IpAddress],
       mode: DiffusionMode,
       provenance: Provenance,
+      kind: F[OutboundLimit.Dial],
       demoted: Ref[F, Boolean]
   )(using Raise[F, PeerError]): Resource[F, (Connection[F], Negotiated[F])] =
     Resource.makeFull[F, (Connection[F], Negotiated[F])] { poll =>
       Deferred[F, Either[Fault, (Connection[F], Negotiated[F])]].flatMap { ready =>
         supervisor
-          .supervise(dial(peer, remote, mode, provenance, ready))
+          .supervise(dial(peer, remote, mode, provenance, kind, ready))
           // waiting for the dial, we own it: a cancelled establishment leaves no connection
           .flatMap(thread =>
             // a use handed over just before the cancellation is given back: the outbound side
@@ -162,6 +165,7 @@ final class OutboundPeers[F[_]: Async, A] private (
       remote: SocketAddress[IpAddress],
       mode: DiffusionMode,
       provenance: Provenance,
+      kind: F[OutboundLimit.Dial],
       ready: Deferred[F, Either[Fault, (Connection[F], Negotiated[F])]]
   ): F[Unit] =
     Fault
@@ -170,7 +174,7 @@ final class OutboundPeers[F[_]: Async, A] private (
           Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
             PeerError.Unavailable(PeerError.Unavailability.Connection(e))
           )
-        manager.acquire(remote, provenance).use {
+        manager.acquire(remote, provenance, kind).use {
           case Acquired.Reused(connection, handle) =>
             ready.complete(Right((connection, handle))).void
           case Acquired.Reserved(connection) =>
@@ -218,6 +222,7 @@ final class OutboundPeers[F[_]: Async, A] private (
       remote: SocketAddress[IpAddress],
       mode: DiffusionMode,
       provenance: Provenance,
+      kind: F[OutboundLimit.Dial],
       generation: BigInt,
       ready: Deferred[F, Either[EstablishmentError, PeerStateActions.Connection[F]]]
   ): F[Unit] =
@@ -270,7 +275,7 @@ final class OutboundPeers[F[_]: Async, A] private (
           (Connection[F], WarmConnection[F, NtNHeader, SessionEnd], Supervisor[F])
         ] =
           for
-            used <- outboundUse(peer, remote, mode, provenance, demoted)
+            used <- outboundUse(peer, remote, mode, provenance, kind, demoted)
             (slot, handle) = used
             _ <- Resource.eval(demotion.set(slot.awaitOutboundDemotion))
             warm <- NodeToNode.attach[F, NtNHeader, SessionEnd](
@@ -306,11 +311,13 @@ final class OutboundPeers[F[_]: Async, A] private (
               handle = PeerStateActions.Connection(
                 identity,
                 generation,
+                warm.peerSharing.isDefined,
                 readConnection(link),
                 trust => activate(peer, link, trust),
                 deactivate(link),
                 close(link),
-                awaitCold(link)
+                awaitCold(link),
+                link.connection.exempt
               )
               installed <- table.modify { current =>
                 if current.contains(peer) then (current, false)
@@ -992,6 +999,9 @@ final class OutboundPeers[F[_]: Async, A] private (
           )
         )(close)
       )
+
+  def exempt(peer: A): F[Unit] =
+    table.get.flatMap(_.get(peer).traverse_(_.connection.exempt))
 
   override def closeIfGeneration(
       peer: A,

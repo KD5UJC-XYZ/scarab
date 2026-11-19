@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.network.selection
 
 import munit.FunSuite
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.OutboundLimit
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** The decision function by example, one reference rule per test. */
@@ -55,16 +56,18 @@ class PeerSelectionSuite extends FunSuite:
       if jobs.isEmpty then (settled, traces ++ more)
       else
         val done = jobs.foldLeft(settled) { (s, job) =>
-          val outcome: Outcome[Int] = job match
-            case Job.Connect(p, _, _, generation)    => Outcome.Connected(p, generation)
-            case Job.Activate(p, _)                  => Outcome.Activated(p)
-            case Job.Deactivate(p)                   => Outcome.Deactivated(p)
-            case Job.Close(p, _)                     => Outcome.Closed(p)
-            case Job.RequestRoots(_, _, generation)  => Outcome.RootsFailed(generation)
-            case Job.RequestBigLedger(_, generation) => Outcome.BigLedgerFailed(generation)
+          val outcome: Option[Outcome[Int]] = job match
+            case Job.Connect(p, _, _, generation)    => Some(Outcome.Connected(p, generation))
+            case Job.Activate(p, _)                  => Some(Outcome.Activated(p))
+            case Job.Deactivate(p)                   => Some(Outcome.Deactivated(p))
+            case Job.Close(p, _)                     => Some(Outcome.Closed(p))
+            case Job.RequestRoots(_, _, generation)  => Some(Outcome.RootsFailed(generation))
+            case Job.RequestBigLedger(_, generation) => Some(Outcome.BigLedgerFailed(generation))
             case Job.Share(id, _, peers) =>
-              Outcome.Shared(id, peers.map(_ -> PeerShare.Result.NotRegistered()))
-          complete(s, outcome, now)
+              Some(Outcome.Shared(id, peers.map(_ -> PeerShare.Result.NotRegistered())))
+            // the connection manager's business: nothing comes back to the governor
+            case Job.Exempt(_) => None
+          outcome.fold(s)(complete(s, _, now))
         }
         go(done, traces ++ more, fuel - 1)
     go(st0, Nil, 50)
@@ -86,6 +89,42 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals((counters.hot, counters.warm, counters.cold), (2, 1, 1))
     // everything is at target: nothing more to do
     assertEquals(settle(st4, t0)._2, Nil)
+  }
+
+  test(
+    "the governor's dials of its local roots are left out of the outbound limit, the others counted"
+  ) {
+    val targets = Targets.validated(4, 20, 4, 0, 0, 0, 0).toOption.get
+    val (st1, jobs1, _) = settle(start(List(group(1, 2, 1, 2)), targets), t0)
+    val st2 =
+      complete(st1, Outcome.RootsFound(PublicRoots(Set(11, 12), Set.empty[Int]), 3.minutes), t0)
+    val (st3, jobs2, _) = settle(st2, t0)
+    val dialled = (jobs1 ++ jobs2).collect { case Job.Connect(p, _, _, _) => p }.toSet
+    assertEquals(dialled, Set(1, 2, 11, 12))
+    assertEquals(
+      dialled.toList.sorted.map(p => p -> st3.dialOf(p)),
+      List(
+        1 -> OutboundLimit.Dial.LocalRoot,
+        2 -> OutboundLimit.Dial.LocalRoot,
+        11 -> OutboundLimit.Dial.Counted,
+        12 -> OutboundLimit.Dial.Counted
+      )
+    )
+    // the classification follows the state: a public root made a local root is left out from then
+    val reloaded = PeerSelection
+      .apply(
+        st3,
+        Event.RootsConfigured(
+          LocalRoots.fromGroups(List(group(1, 3, 1, 2, 11))),
+          false,
+          Set.empty,
+          Some(BigInt(1))
+        ),
+        t0
+      )
+      .state
+    assertEquals(reloaded.dialOf(11), OutboundLimit.Dial.LocalRoot)
+    assertEquals(reloaded.dialOf(12), OutboundLimit.Dial.Counted)
   }
 
   test("local roots are promoted above the established target, and never demoted") {
@@ -890,7 +929,14 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(delayed.configuredRoots, newerRoots)
   }
 
-  test("roots generation changes release pending connects and close late successes") {
+  // The reference's reconfiguration of the roots leaves `inProgressPromoteCold` alone
+  // (cardano-diffusion `c5117705`, `Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353),
+  // and it applies a connect's completion whatever changed meanwhile (ouroboros-network
+  // `c45735a5`, `Governor/EstablishedPeers.hs` 507-557, 563-631): no second connect is started
+  // while the first runs, and the connection the first one opened is the governor's.
+  test(
+    "a root reload keeps a connect in progress, and applies its completion, success or failure"
+  ) {
     val (connecting, _, _) = settle(start(List(group(1, 1, 7))), t0)
     assertEquals(statusOf(connecting, 7), Status.Connecting)
 
@@ -901,15 +947,64 @@ class PeerSelectionSuite extends FunSuite:
         t0
       )
       .state
-    assertEquals(statusOf(reloaded, 7), Status.Cold(None))
+    assertEquals(statusOf(reloaded, 7), Status.Connecting, "the connect is still in progress")
+    assertEquals(reloaded.peers(7).origin, Origin.Other, "no longer a local root")
+    val (_, again, _) = settle(reloaded, t0)
+    assertEquals(again.collect { case Job.Connect(p, _, _, _) => p }, Nil, "no second connect")
 
-    val late = PeerSelection.apply(
+    val succeeded = PeerSelection.apply(
       reloaded,
       Event.Completed(Outcome.Connected(7, BigInt(0))),
       t0
     )
-    assertEquals(late.jobs, List(Job.Close(7, Some(BigInt(0)))))
-    assertEquals(statusOf(late.state, 7), Status.Cold(None))
+    assert(
+      succeeded.state.peers(7).status.established,
+      s"the connection is the governor's: ${statusOf(succeeded.state, 7)}"
+    )
+    assertEquals(succeeded.jobs.collect { case c: Job.Close[Int] => c }, Nil, "nothing to close")
+
+    val failed = PeerSelection.apply(
+      reloaded,
+      Event.Completed(Outcome.ConnectFailed(7, FailureClass.Transient, BigInt(0))),
+      t0
+    )
+    statusOf(failed.state, 7) match
+      case Status.Cold(Some(_)) => ()
+      case other                => fail(s"the failure is applied, with its backoff: $other")
+    assertEquals(failed.state.peers(7).failCount, 1)
+  }
+
+  // The reference's completion carries the negotiated peer sharing and sets its activation with
+  // the establishment (ouroboros-network `c45735a5`, `Governor/EstablishedPeers.hs` 574-614): a
+  // connect kept across a reload keeps them too, and the peer becomes one to ask for peers.
+  test("a connect completed after a root reload keeps its negotiated peer sharing") {
+    val policy = Policy()
+    val (connecting, _, _) = settle(start(List(group(1, 1, 7))), t0)
+    val reloaded = PeerSelection
+      .apply(
+        connecting,
+        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1))),
+        t0
+      )
+      .state
+    // the report of the negotiation, from the connect started under the old roots, is applied
+    val negotiated = PeerSelection
+      .apply(reloaded, Event.SharingNegotiated(7, true, Some(BigInt(0))), t0)
+      .state
+    assertEquals(negotiated.peers(7).sharing, Some(true))
+    // the completion carries it as well, whatever the report did
+    val connected = PeerSelection
+      .apply(reloaded, Event.Completed(Outcome.Connected(7, BigInt(0), Some(true))), t0)
+      .state
+    assertEquals(connected.peers(7).sharing, Some(true))
+    assertEquals(connected.peers(7).shareAt, Some(t0 + policy.peerShareActivationDelay))
+    // once its activation delay is over, the established peer is one the governor asks for peers
+    val shareable = connected.copy(sharing = PeerShare.Governor[Int](enabled = true))
+    val (_, jobs, _) = settle(shareable, t0 + policy.peerShareActivationDelay)
+    assert(
+      jobs.exists { case Job.Share(_, _, peers) => peers.contains(7); case _ => false },
+      jobs.toString
+    )
   }
 
   // a connection kept across a root reload still reports to the governor (`PeerStateActions.hs`

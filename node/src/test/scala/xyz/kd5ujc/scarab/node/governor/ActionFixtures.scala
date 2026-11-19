@@ -15,11 +15,13 @@ private[governor] object ActionFixtures:
       PeerStateActions.Connection(
         BigInt(peer.hashCode),
         BigInt(0),
+        false,
         IO.pure(PeerStateActions.Monitoring(PeerStateActions.Status.Warm, None)),
         trust => actions.activate(peer, trust),
         actions.deactivate(peer),
         actions.close(peer),
-        IO.unit
+        IO.unit,
+        actions.exempt(peer)
       )
     )
 

@@ -133,6 +133,13 @@ trait Connection[F[_]]:
     */
   def awaitOutboundDemotion: F[Unit]
 
+  /** The opt-in outbound limit leaves this connection out from now on: the place its reservation
+    * holds, if this handle holds one, is given back, in a table step of its own, once (a later
+    * call, the outbound release and the resource's release give back nothing more). The reference
+    * has no outbound limit.
+    */
+  def exempt: F[Unit]
+
   /** Completes when the manager ends the connection (a commit, the outbound idle timeout or a
     * prune): its owner then lets go of the transport, as the reference cancels the connection's
     * thread.
@@ -191,9 +198,16 @@ trait ConnectionManager[F[_]]:
     * reuse the peer's duplex connection, wait while a connection to it negotiates or terminates, or
     * reserve one to dial. A peer of inbound provenance is never dialled. The resource of a
     * reservation is the dialled connection's; that of a reused one holds nothing (its outbound use
-    * ends with [[Connection.releaseOutbound]]).
+    * ends with [[Connection.releaseOutbound]]). `kind` is what the opt-in outbound limit makes of a
+    * reservation ([[OutboundLimit.Dial]]), as the governor classifies the peer: a read-only view
+    * the acquisition reads when it reserves, and again before it refuses at the limit. The
+    * reference has no such limit.
     */
-  def acquire(remote: SocketAddress[IpAddress], provenance: Provenance)(using
+  def acquire(
+      remote: SocketAddress[IpAddress],
+      provenance: Provenance,
+      kind: F[OutboundLimit.Dial]
+  )(using
       Raise[F, ConnectionError]
   ): Resource[F, Acquired[F]]
 
@@ -240,9 +254,10 @@ object ConnectionManager:
     *   The reference's accepted-connection limits; the hard limit refuses the connection that would
     *   exceed it, the soft limit and the delay rate limit the accept loop
     *   ([[AcceptedConnectionsLimit]]), and pruning keeps the inbound connections within it.
-    * @param maxOutbound
-    *   The most live connections we reserved or dialled; reusing a peer's connection opens none.
-    *   The reference has no such limit (its outbound governor's targets bound it).
+    * @param outbound
+    *   The opt-in limit on the connections we dial and still use ([[OutboundLimit]]), local roots
+    *   left out; unlimited by default, as in the reference, whose outbound governor's targets bound
+    *   them. Reusing a peer's connection dials none.
     * @param maxInboundPerAddress
     *   The most live accepted connections from one IP address. The reference has no such limit.
     *   Deviation approved by the owner on 2026-10-25: a per-address inbound limit (default 64) on
@@ -262,7 +277,7 @@ object ConnectionManager:
     */
   final case class Limits(
       accepted: AcceptedConnectionsLimit = AcceptedConnectionsLimit.default,
-      maxOutbound: Int = 64,
+      outbound: OutboundLimit = OutboundLimit.Unlimited,
       maxInboundPerAddress: Int = 64,
       timeWait: FiniteDuration = 60.seconds,
       outboundIdle: FiniteDuration = 5.seconds,
@@ -278,7 +293,10 @@ object ConnectionManager:
   /** One entry of the table: its remote, its state and its generation ([[Connection.id]]). */
   final case class Listed(remote: SocketAddress[IpAddress], state: ConnectionState, id: Long)
 
-  final case class Snapshot(counters: Counters, listed: Vector[Listed]):
+  /** The table: its counters, its entries, and the counted dials in outbound use, which the
+    * outbound limit counts ([[OutboundLimit]]); the dials of local roots are not among them.
+    */
+  final case class Snapshot(counters: Counters, listed: Vector[Listed], dials: Int):
     def connections: Vector[(SocketAddress[IpAddress], ConnectionState)] =
       listed.map(l => l.remote -> l.state)
 
@@ -302,9 +320,25 @@ object ConnectionManager:
             outer.raise[NetworkError, A](e)
         case _ => outer.raise[NetworkError, A](e)
 
-  /** Which side's handler holds a connection handle. */
+  /** The place a counted reservation takes under the outbound limit ([[OutboundLimit.Dial]]), from
+    * the reservation that dials a connection until the outbound side lets the connection go
+    * ([[Connection.releaseOutbound]]) or the reservation's resource is released, whichever comes
+    * first. Only the reservation's handle and its release hold it, whatever becomes of the entry.
+    */
+  private final case class Place(id: Long)
+
+  /** Which side's handler holds a connection handle. The outbound side's handle of a counted
+    * reservation holds its place; that of a local root's reservation or of a reused connection
+    * holds none.
+    */
   private enum Side:
-    case Inbound, Outbound
+    case Inbound
+    case Outbound(place: Option[Place])
+
+    /** `t` with the place this side holds, if any, free. */
+    def letGo[F[_]](t: Table[F]): Table[F] = this match
+      case Inbound         => t
+      case Outbound(place) => place.fold(t)(t.free)
 
   /** How a generation ended, kept apart from the table as the reference keeps a connection's state
     * variable after it leaves the map: a waiter learns it even after the entry is gone.
@@ -326,9 +360,18 @@ object ConnectionManager:
     def waiting(now: FiniteDuration, timeWait: FiniteDuration): Boolean =
       releasedAt.exists(now - _ < timeWait)
 
-  private final case class Table[F[_]](entries: Map[Key, Entry[F]], version: Long, rng: Rng):
+  /** The entries, and the places of the counted dials in outbound use ([[Place]]), which the
+    * outbound limit counts and no connection state decides.
+    */
+  private final case class Table[F[_]](
+      entries: Map[Key, Entry[F]],
+      version: Long,
+      rng: Rng,
+      dials: Set[Place]
+  ):
     def locate(id: Long): Option[(Key, Entry[F])] = entries.find(_._2.id == id)
     def put(key: Key, entry: Entry[F]): Table[F] = copy(entries = entries.updated(key, entry))
+    def free(place: Place): Table[F] = copy(dials = dials - place)
 
   /** What a change of the table asks to be done after it: the log, and the connections to end with
     * the reason kept for the log and the cause their mux is stopped with.
@@ -401,7 +444,7 @@ object ConnectionManager:
       events: Option[ConnectionEvents[F]] = None
   ): F[ConnectionManager[F]] =
     (
-      SignallingRef.of[F, Table[F]](Table(Map.empty, 0L, Rng(limits.seed))),
+      SignallingRef.of[F, Table[F]](Table(Map.empty, 0L, Rng(limits.seed), Set.empty)),
       Ref.of[F, Long](0L),
       SignallingRef.of[F, Map[Long, RemoteSt]](Map.empty)
     ).mapN((table, ids, remotes) => new Impl(table, ids, remotes, limits, events))
@@ -557,8 +600,8 @@ object ConnectionManager:
       val id = entry.id
       def remote = at
       def provenance = side match
-        case Side.Inbound  => Provenance.Inbound
-        case Side.Outbound => Provenance.Outbound
+        case Side.Inbound     => Provenance.Inbound
+        case Side.Outbound(_) => Provenance.Outbound
       def state =
         table.get.map(
           _.locate(id)
@@ -626,7 +669,7 @@ object ConnectionManager:
                   // the common cases, `Core.hs` 913-930 and 1588-1622
                   case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
                     Right((Vector(Event.Negotiated(flow, Provenance.Inbound)), true))
-                  case (Side.Outbound, ConnectionState.Unnegotiated(Provenance.Outbound)) =>
+                  case (Side.Outbound(_), ConnectionState.Unnegotiated(Provenance.Outbound)) =>
                     Right((Vector(Event.Negotiated(flow, Provenance.Outbound)), true))
                   // a connection to ourselves. The inbound side: `SelfConnNegotiated` (913-930);
                   // the outbound side that won the race keeps it (932-934); an outbound idle one
@@ -643,11 +686,11 @@ object ConnectionManager:
                   // the outbound side writes its negotiated state whatever the provenance the
                   // accept left, in one move (1600-1622); `SelfConn'⁻¹` keeps the inbound side's
                   // handle (1624-1652)
-                  case (Side.Outbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
+                  case (Side.Outbound(_), ConnectionState.Unnegotiated(Provenance.Inbound)) =>
                     Right((Vector(Event.Negotiated(flow, Provenance.Outbound)), true))
-                  case (Side.Outbound, ConnectionState.InboundIdle(_)) =>
+                  case (Side.Outbound(_), ConnectionState.InboundIdle(_)) =>
                     Right((Vector(Event.SelfConnReversed), false))
-                  case (Side.Outbound, other) =>
+                  case (Side.Outbound(_), other) =>
                     Left(ConnectionError.ForbiddenOperation(at.toString, other))
                   case (Side.Inbound, other) =>
                     Left(ConnectionError.ImpossibleState(at.toString, other))
@@ -788,7 +831,9 @@ object ConnectionManager:
         }
 
       def releaseOutbound =
-        changing { (t, _) =>
+        def demoted(
+            t: Table[F]
+        ): (Table[F], Effects[F], Either[OperationResult[ConnectionState], Unit]) =
           t.locate(id) match
             // a connection that failed removed itself; nothing to do (1896-1899)
             case None =>
@@ -833,7 +878,9 @@ object ConnectionManager:
                     ConnectionState.Inbound(_) =>
                   (t, Effects.none[F], Left(unsupported[ConnectionState](entry)))
                 case other => (t, Effects.none[F], Left(OperationResult.Success(other)))
-        }.flatMap {
+        // the outbound side lets the connection go, so the place of its dial is free in the same
+        // step, whatever the state does: a prune that spares the connection leaves it outbound
+        changing((t, _) => demoted(side.letGo(t))).flatMap {
           case Left(result) => F.pure(result)
           case Right(())    => idle
         }
@@ -887,6 +934,8 @@ object ConnectionManager:
           }
         }
 
+      def exempt = changing((t, _) => (side.letGo(t), Effects.none[F], ()))
+
       def stopped = entry.stop.get
 
       def close(reason: ConnectionEnd) =
@@ -903,14 +952,17 @@ object ConnectionManager:
       def unregisterRemote = remotes.update(_ - id)
 
     /** The connection thread's cleanup (`Core.hs` 590-702): a connection left in `Terminating` is
-      * held for the time-wait; any other is `Terminated` and removed at once.
+      * held for the time-wait; any other is `Terminated` and removed at once. The owner on `side`
+      * lets go of it, so the place of the dial it holds is free in the same step.
       */
     private def release(
         id: Long,
         at: SocketAddress[IpAddress],
-        closed: Deferred[F, Unit]
+        closed: Deferred[F, Unit],
+        side: Side
     ): F[Unit] =
-      changing { (t, now) =>
+      changing { (held, now) =>
+        val t = side.letGo(held)
         t.locate(id) match
           case None => (t, Effects.none[F], ())
           case Some((key, entry)) =>
@@ -1013,7 +1065,7 @@ object ConnectionManager:
         }.flatMap(_.fold(refuse[Entry[F]](_), F.pure))
       }
       Resource
-        .make(admit)(entry => release(entry.id, remote, entry.closed))
+        .make(admit)(entry => release(entry.id, remote, entry.closed, Side.Inbound))
         .map(entry => Handle(entry, remote, Side.Inbound))
 
     /** `lookupByRemoteAddr` (`ConnMap.hs:177-208`): the reservation if there is one, else one of
@@ -1071,7 +1123,9 @@ object ConnectionManager:
               (
                 t.put(key, next),
                 Effects.log[F](log),
-                Dispatch.Done[F](Acquired.Reused(Handle(entry, remote, Side.Outbound), negotiated))
+                Dispatch.Done[F](
+                  Acquired.Reused(Handle(entry, remote, Side.Outbound(None)), negotiated)
+                )
               )
             case _ => refused(ConnectionError.ImpossibleState(at, entry.state))
         case ConnectionState.Terminating | ConnectionState.Terminated if waited =>
@@ -1079,10 +1133,22 @@ object ConnectionManager:
         case ConnectionState.Terminating | ConnectionState.Terminated =>
           (t, Effects.none[F], Dispatch.Retry[F]())
 
+    /** The opt-in outbound limit, if the counted dials in outbound use have reached it
+      * ([[OutboundLimit]]). The reference reserves without a limit (1400-1418).
+      */
+    private def full(t: Table[F]): Option[OutboundLimit.Connections] = limits.outbound match
+      case OutboundLimit.Unlimited       => None
+      case OutboundLimit.AtMost(dialled) => Option.when(t.dials.sizeIs >= dialled.value)(dialled)
+
+    /** One look at the table for an acquisition of `remote`. A counted reservation is refused at
+      * the limit, and takes its `place` in the same step, which it hands to the reservation's
+      * handle; one with no place (a local root's) is neither refused by the limit nor counted.
+      */
     private def dispatch(
         remote: SocketAddress[IpAddress],
         provenance: Provenance,
-        created: Entry[F]
+        created: Entry[F],
+        place: Option[Place]
     ): (Table[F], FiniteDuration) => (Table[F], Effects[F], (Dispatch[F], Long)) = (t, _) =>
       val (found, rng) = byRemote(t, remote)
       val drawn = t.copy(rng = rng)
@@ -1096,20 +1162,25 @@ object ConnectionManager:
             Dispatch.Refuse[F](ConnectionError.InboundConnectionNotFound(remote.toString))
           )
         case None =>
-          val dialled =
-            t.entries.count((_, e) => e.origin == Provenance.Outbound && e.state.isLive)
-          if dialled >= limits.maxOutbound then
-            (
-              drawn,
-              Effects.none[F],
-              Dispatch.Refuse[F](ConnectionError.OutboundLimit(remote.toString, limits.maxOutbound))
-            )
-          else
-            (
-              drawn.put((remote, LocalAddress.Unknown), created),
-              Effects.log[F](Vector(ConnectionEvent.Opened(remote.toString, Provenance.Outbound))),
-              Dispatch.Done[F](Acquired.Reserved(Handle(created, remote, Side.Outbound)))
-            )
+          place.flatMap(_ => full(t)) match
+            case Some(dialled) =>
+              (
+                drawn,
+                Effects.none[F],
+                Dispatch.Refuse[F](ConnectionError.OutboundLimit(remote.toString, dialled.value))
+              )
+            case None =>
+              (
+                drawn
+                  .put((remote, LocalAddress.Unknown), created)
+                  .copy(dials = drawn.dials ++ place),
+                Effects.log[F](
+                  Vector(ConnectionEvent.Opened(remote.toString, Provenance.Outbound))
+                ),
+                Dispatch.Done[F](
+                  Acquired.Reserved(Handle(created, remote, Side.Outbound(place)))
+                )
+              )
       // `retry` rolls the reference's transaction back, the split of its generator with it
       decision match
         case Dispatch.Retry() => (t, effects, (decision, t.version))
@@ -1151,23 +1222,50 @@ object ConnectionManager:
         }
       }
 
-    def acquire(remote: SocketAddress[IpAddress], provenance: Provenance)(using
+    def acquire(
+        remote: SocketAddress[IpAddress],
+        provenance: Provenance,
+        kind: F[OutboundLimit.Dial]
+    )(using
         Raise[F, ConnectionError]
     ) =
       Resource.eval(fresh(Provenance.Outbound)).flatMap { created =>
+        // the place a counted reservation takes, whichever look at the table takes it; a local
+        // root's takes none, so its handle holds none
+        val counted = Place(created.id)
+        def placeOf(dial: OutboundLimit.Dial): Option[Place] = dial match
+          case OutboundLimit.Dial.Counted   => Some(counted)
+          case OutboundLimit.Dial.LocalRoot => None
+        // the reservation's release gives back its place if it took one, and nothing otherwise
+        val dialling = Side.Outbound(Some(counted))
         // the claims (a reservation, a reuse) and their handoff are not cancelable; only the waits
         // are (`poll`), so a cancelled acquisition holds nothing it has not handed over
         def settle(poll: Poll[F]): F[Dispatch[F]] = F.tailRecM(()) { _ =>
-          changing(dispatch(remote, provenance, created)).flatMap {
-            case (Dispatch.There(entry), _)  => there(entry, remote, poll).map(Right(_))
-            case (Dispatch.Retry(), version) => poll(changedFrom(version)).as(Left(()))
-            case (decision, _)               => F.pure(Right(decision))
-          }
+          kind
+            .flatMap(dial => changing(dispatch(remote, provenance, created, placeOf(dial))))
+            .flatMap {
+              case (Dispatch.There(entry), _)  => there(entry, remote, poll).map(Right(_))
+              case (Dispatch.Retry(), version) => poll(changedFrom(version)).as(Left(()))
+              // refused at the limit: the governor may have made the peer a local root since the
+              // classification was read, so it is read again, and only a dial still counted is
+              // refused; a local root's looks again, and takes no place
+              case (refused @ Dispatch.Refuse(ConnectionError.OutboundLimit(_, _)), _) =>
+                kind.map {
+                  case OutboundLimit.Dial.LocalRoot => Left(())
+                  case OutboundLimit.Dial.Counted   => Right(refused)
+                }
+              case (decision, _) => F.pure(Right(decision))
+            }
         }
-        val unreserve = release(created.id, remote, created.closed)
+        val unreserve = release(created.id, remote, created.closed, dialling)
+        // a reservation is committed before its report is written, so if the report raises the
+        // caller gets the error and no resource. The reference leaves the reservation in its table
+        // then (`Core.hs` 1409-1423), and so does this; only its place, if it took one, is given
+        // back, since no one dials through it
+        val unclaimed = changing((t, _) => (dialling.letGo(t), Effects.none[F], ()))
         Resource
           .makeCaseFull[F, Acquired[F]](poll =>
-            settle(poll).flatMap {
+            settle(poll).onError { case _ => unclaimed }.flatMap {
               case Dispatch.Done(acquired) => F.pure(acquired)
               case Dispatch.Refuse(error)  => refuse[Acquired[F]](error)
               case Dispatch.There(_) | Dispatch.Retry() =>
@@ -1208,7 +1306,8 @@ object ConnectionManager:
             counters(t),
             t.entries.toVector
               .map((k, e) => Listed(k._1, e.state, e.id))
-              .sortBy(l => (l.remote.toString, l.id))
+              .sortBy(l => (l.remote.toString, l.id)),
+            t.dials.size
           )
         )
       }

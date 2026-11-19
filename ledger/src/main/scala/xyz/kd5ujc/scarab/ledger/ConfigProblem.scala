@@ -86,6 +86,13 @@ enum ConfigProblem:
     */
   case MempoolCapacity(actual: io.circe.Json)
   case PeerTargets[E <: DomainError](cause: E)
+
+  /** The outbound limit (`MaxOutboundConnections`, `--max-outbound`) is below the counted dials the
+    * governor uses at once: its largest established target and its largest established target of
+    * big ledger peers (local roots are left out of the limit). The limit would refuse the
+    * governor's own dials, so the node refuses it.
+    */
+  case OutboundLimitBelowTargets(limit: Int, established: Int, establishedBig: Int)
   case PeerAddress[E <: DomainError](cause: E)
 
   /** `--listen` names an address the node cannot listen on: a name that does not resolve, or an
@@ -175,8 +182,12 @@ enum ConfigProblem:
     case MempoolCapacity(actual) =>
       s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
     case ListenAddress(address, cause) => s"--listen $address: ${cause.show}"
-    case WithUsage(cause, usage)       => s"${cause.message}\n$usage"
-    case _                             => toString
+    case OutboundLimitBelowTargets(limit, established, establishedBig) =>
+      s"the outbound connection limit $limit is below ${established + establishedBig}, the " +
+        s"connections the peer governor dials and uses at once ($established established, " +
+        s"$establishedBig established big ledger; local roots are not counted)"
+    case WithUsage(cause, usage) => s"${cause.message}\n$usage"
+    case _                       => toString
 
 /** Why `fromAvvmVK` refuses an AVVM key (`AvvmVKError`,
   * `Cardano/Crypto/Signing/Redeem/VerificationKey.hs:94-98`, cardano-crypto-wrapper 1.7.0.0).

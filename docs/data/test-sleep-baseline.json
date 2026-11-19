@@ -26,7 +26,7 @@
    "sleep": 2
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/ConnectionManagerSuite.scala": {
-   "sleep": 12
+   "sleep": 11
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/IncrementalReceiveSuite.scala": {
    "sleep": 1
