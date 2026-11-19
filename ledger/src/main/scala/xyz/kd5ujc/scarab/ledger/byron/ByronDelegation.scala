@@ -92,12 +92,16 @@ final case class ByronCert(
     )
 
 object ByronCert:
+  /** `Delegation/Certificate.hs:209-218`, cardano-ledger f649f975: the issuer's and the delegate's
+    * `VerificationKey` read with `decodeBytesCanonical` ([[ByronTransport.verificationKey]]), the
+    * `Signature` with plain `decodeBytes` (`Signing/Signature.hs:129-130`).
+    */
   def decode(n: Node): Either[LedgerDecodeError, ByronCert] =
     CborRead.arrayN(n, 4, DecodeField.DelegationCertificate).flatMap { xs =>
       (
         CborRead.uint(xs(0), DecodeField.CertificateEpoch),
-        CborRead.bytesN(xs(1), 64, DecodeField.CertificateIssuer),
-        CborRead.bytesN(xs(2), 64, DecodeField.CertificateDelegate),
+        ByronTransport.verificationKey(xs(1), DecodeField.CertificateIssuer),
+        ByronTransport.verificationKey(xs(2), DecodeField.CertificateDelegate),
         CborRead.bytesN(xs(3), 64, DecodeField.CertificateSignature)
       ).mapN(ByronCert(n.original, _, xs(0).original, _, _, _))
     }

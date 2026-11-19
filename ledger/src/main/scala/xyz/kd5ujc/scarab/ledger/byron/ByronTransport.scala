@@ -83,10 +83,14 @@ object ByronTransport:
     * `eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs:96-97`, cardano-ledger
     * f649f975): a definite byte string read with `decodeBytesCanonical`, its length in its shortest
     * form, then 64 bytes (`CC.xpub`). A transaction witness's key, a delegation certificate's
-    * issuer and delegate, a proposal's issuer and a vote's voter are read so.
+    * issuer and delegate, a proposal's issuer and a vote's voter are read so, by this checker and
+    * by the decoders of the values a stored or imported body is replayed with ([[ByronTx]],
+    * [[ByronCert]], [[UpdatePayload]]), as the reference reads its own disk blocks with the same
+    * block decoder (`decodeDisk = decodeByronBlock`, ouroboros-consensus 82ecba32
+    * `ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Node/Serialisation.hs:53-54`).
     */
-  private def verificationKey(node: Node, context: DecodeSite): Result[Unit] =
-    canonicalBytes(node, context) *> fixedBytes(node, 64, context)
+  private[ledger] def verificationKey(node: Node, context: DecodeSite): Result[Bytes] =
+    canonicalBytes(node, context) *> CborRead.bytesN(node, 64, context)
 
   // Ordinary Byron values use their actual DecCBOR instances, not the permissive SSC droppers:
   // UTxO/Tx.hs:110–113,171–177,214–217; TxAux.hs:108–115; TxWitness.hs:118–128.
@@ -123,7 +127,7 @@ object ByronTransport:
       fields <- tuple(node, 2, DecodeField.Witness)
       tag <- word(fields(0), 8, DecodeField.WitnessTag)
       key <- tag match
-        case n if n == 0 => Right(verificationKey(_, DecodeField.WitnessKey))
+        case n if n == 0 => Right((k: Node) => verificationKey(k, DecodeField.WitnessKey).void)
         case n if n == 2 => Right(fixedBytes(_, 32, DecodeField.WitnessKey))
         case n           => Left(LedgerDecodeError.UnknownTag(DecodeField.Witness, n))
       inner <- nested(fields(1), DecodeField.Witness)

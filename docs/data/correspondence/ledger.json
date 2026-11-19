@@ -5504,6 +5504,21 @@
    "evidence": ["ByronSubmissionSuite"],
    "digest": "23dcdeaaaf1268f1"
   },
+  "def ledger.byron.ByronTransport.verificationKey": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs",
+     "symbol": "decCBORXPub",
+     "lines": [88, 97]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["ByronBodyKeysSuite", "ByronStoredKeysSuite", "ByronSubmissionSuite"],
+   "digest": "74fc220cc22a5e90"
+  },
   "given ledger.byron.ByronAddress.given_Ordering_ByronAddress": {
    "upstream": [
     {
