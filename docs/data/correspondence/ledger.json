@@ -13799,6 +13799,81 @@
    ],
    "digest": "3bf795d99dd245f6"
   },
+  "def ledger.era.AlonzoEraTxBodyToConway#reqSignerHashes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "symbol": "reqSignerHashesTxBodyG",
+     "lines": [
+      132,
+      136
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraTxSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the default of `reqSignerHashesTxBodyG` for the eras up to Conway, the body's field",
+   "digest": "5aa3731d47a81b2a"
+  },
+  "def ledger.era.AlonzoEraTxBodyToConway#reqSignerHashesField": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "symbol": "reqSignerHashesTxBodyL",
+     "lines": [
+      130,
+      130
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraTxSuite",
+    "EraConwaySuite"
+   ],
+   "digest": "6f05cf52c076c8e8"
+  },
+  "trait ledger.era.AlonzoEraTxBodyToConway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "symbol": "reqSignerHashesTxBodyL",
+     "lines": [
+      130,
+      130
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "symbol": "reqSignerHashesTxBodyL",
+     "lines": [
+      134,
+      134
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
+   "evidence": [
+    "EraTxSuite"
+   ],
+   "note": "the reference's `reqSignerHashesTxBodyL`, a member of `AlonzoEraTxBody` constrained by `AtMostEra \"Conway\"` and filled with `notSupportedInThisEraL` in Dijkstra (`Dijkstra/TxBody.hs:1416`, 9df9f98c), is a class of its own with instances at the eras up to Conway (Conway's alone among the era types), so Dijkstra's body has none; the getter of every era stays on `AlonzoEraTxBody`",
+   "digest": "1dd21f303b866b5d"
+  },
   "def ledger.era.conway.ConwayTxBody.conwayRedeemerPointerInverse": {
    "upstream": [
     {

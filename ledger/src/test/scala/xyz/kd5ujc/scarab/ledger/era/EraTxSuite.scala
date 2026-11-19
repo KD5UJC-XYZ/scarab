@@ -96,3 +96,45 @@ class EraTxSuite extends munit.FunSuite:
     assert(wrongEra.contains("BabbageTxOut"), wrongEra)
     assertEquals(compileErrors("def f(c: ConwayTxOut): ConwayTxOut = c"), "")
   }
+
+  test("the required signers' field is of the eras up to Conway; Dijkstra's has none") {
+    // `reqSignerHashesTxBodyL` is `AtMostEra "Conway"` (`Alonzo/TxBody.hs:130`, cardano-ledger
+    // f649f975; `:134`, 9df9f98c): Conway has the ranged class, and its getter is the field
+    assertEquals(
+      compileErrors("summon[AlonzoEraTxBodyToConway[xyz.kd5ujc.scarab.ledger.state.Conway]]"),
+      ""
+    )
+    // no instance at Dijkstra: the compiler finds no given, not an ambiguous one
+    val dijkstra =
+      compileErrors("summon[AlonzoEraTxBodyToConway[xyz.kd5ujc.scarab.ledger.state.Dijkstra]]")
+    val missing = dijkstra.replaceAll("\\s+", " ")
+    assert(
+      missing.contains(
+        "No given instance of type xyz.kd5ujc.scarab.ledger.era.AlonzoEraTxBodyToConway[ xyz.kd5ujc.scarab.ledger.state.Dijkstra]"
+      ) || missing.contains(
+        "No given instance of type xyz.kd5ujc.scarab.ledger.era.AlonzoEraTxBodyToConway[xyz.kd5ujc.scarab.ledger.state.Dijkstra]"
+      ),
+      dijkstra
+    )
+    assert(!missing.contains("Ambiguous"), dijkstra)
+    // the getter is a member of every era's AlonzoEraTxBody; only the field is ranged
+    assertEquals(
+      compileErrors(
+        "def f(b: TxBody[TxLevel.Top, Conway]) = summon[AlonzoEraTxBody[Conway]].reqSignerHashes[TxLevel.Top](b)(using EraTxBody.conway.top)"
+      ),
+      ""
+    )
+    // the getter and the field are the flat decoder's required signers, on every recorded Conway
+    // body, of which some have required signers
+    val conway = bodiesOf(Era.Conway)
+    val withSigners = conway.count { raw =>
+      val flat = FlatTxBody.decode(raw, Era.Conway).fold(e => fail(e.toString), identity)
+      val c = ConwayTxBody.decode(raw).fold(e => fail(e.toString), identity)
+      val b = EraTxBody.conway
+      val expected = flat.requiredSigners.sorted
+      assertEquals(b.reqSignerHashes[TxLevel.Top](c)(using b.top).toVector, expected)
+      assertEquals(b.reqSignerHashesField[TxLevel.Top](c)(using b.top).toVector, expected)
+      expected.nonEmpty
+    }
+    assert(withSigners > 0, s"no recorded Conway body of ${conway.size} has required signers")
+  }
