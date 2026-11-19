@@ -16,7 +16,15 @@ import xyz.kd5ujc.scarab.ledger.state.{Babbage, Build, Conway, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.network.{DiffTime, LocalTxSubmissionServer, NetworkError}
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
-import xyz.kd5ujc.scarab.plutus.{EvalRequest, ExUnits, ScarabEvaluator, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{
+  BackendFailure,
+  EvalFailure,
+  EvalRequest,
+  EvalResult,
+  ExUnits,
+  ScarabEvaluator,
+  ScriptEvaluator
+}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, TxSubmission2}
 
 import TestLedger.{out, txIn}
@@ -483,6 +491,60 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       Tx.envelope(Block.Transaction(hex("body"), hex("witnesses"), None, c.tx.isValid)),
       c.slot
     )
+
+  test(
+    "past the soft limit a validation with no verdict keeps its cause, and a peer's connection ends"
+  ) {
+    // the reference's evaluation throws, and the exception escapes its `timeout`: no soft check
+    val unavailable: ScriptEvaluator[cats.Id] = _ =>
+      EvalResult.Failure(
+        EvalFailure.Unsupported(BackendFailure.StackExhausted),
+        ExUnits.zero,
+        Vector.empty
+      )
+    val throwing: ScriptEvaluator[cats.Id] = _ => throw RuntimeException("an evaluator defect")
+    def pool(evaluator: ScriptEvaluator[cats.Id], timing: Timing[IO]) =
+      Mempool.create[IO](
+        Right(plutusLedger),
+        plutusSlot - 1,
+        TxKit.env.copy(evaluator = evaluator),
+        None,
+        MempoolEvents.none[IO],
+        timeouts = Some(MempoolTimeouts.default),
+        timing = Some(timing)
+      )
+    for
+      timing <- scripted(Step.Took(2.seconds), Step.Took(2.seconds), Step.Took(2.seconds))
+      none <- pool(unavailable, timing)
+      local <- none.add(plutusTx, Source.Local)
+      ended <- Handle
+        .allow[NetworkError](
+          none
+            .sink(f => IO(fail(s"fatal: $f")))
+            .submit(Vector(TxSubmission2.EraTx(Era.Conway, plutusTx)))
+            .as(Option.empty[NetworkError])
+        )
+        .rescue(e => IO.pure(Some(e)))
+      defective <- pool(throwing, timing)
+      threw <- defective.add(plutusTx, Source.Local)
+      held <- (none.snapshot, defective.snapshot).tupled
+    yield
+      local match
+        case Left(Rejection.Ledger(_: LedgerFailure.Unavailable)) => ()
+        case other => fail(s"no verdict refused as too slow, or otherwise: $other")
+      ended match
+        case Some(
+              NetworkError.BearerClosed(
+                NetworkError.Closure.AbortedBy(_: LedgerFailure.Unavailable)
+              )
+            ) =>
+          ()
+        case other => fail(s"the peer's connection did not end with the cause: $other")
+      threw match
+        case Left(Rejection.RulesDefect(_)) => ()
+        case other => fail(s"a defect refused as too slow, or otherwise: $other")
+      assertEquals((held._1.entries, held._2.entries), (Vector.empty, Vector.empty))
+  }
 
   test("the node's timing stops a real heavy script at the hard limit, and the pool goes on") {
     // the transaction's own script replaced by the audit's loop of G2 hashToGroup with a budget

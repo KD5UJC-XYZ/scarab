@@ -431,6 +431,19 @@ object Mempool:
                 measured.id,
                 refusal.getOrElse(Rejection.TimedOut(MempoolTimeout(measured.id, took)))
               )
+            // no verdict: in the reference the exception of the evaluation escapes its `timeout`
+            // and never meets the soft limit (`Mempool/Update.hs` 243-245), so the failure keeps
+            // its cause and its handling
+            case Timed.Done(
+                  MempoolState.Tried.Done(
+                    Left(
+                      failure @ (Rejection.RulesDefect(_) | Rejection.InputDefect(_) | Rejection
+                        .Ledger(_: LedgerFailure.Unavailable | _: LedgerFailure.Unverifiable))
+                    )
+                  ),
+                  _
+                ) =>
+              answer(current, measured.id, failure)
             case Timed.Done(tried, took) =>
               val late =
                 timeouts.exists(t => DiffTime.of(took).toPicoseconds > t.soft.toPicoseconds)
