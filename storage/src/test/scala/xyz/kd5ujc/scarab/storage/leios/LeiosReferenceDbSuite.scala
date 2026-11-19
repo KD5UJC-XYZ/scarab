@@ -139,10 +139,8 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
         assertEquals(closure1, None)
         assertEquals(some1, Vector(0 -> tx(0), 1 -> zeroes(tx(1).size), 2 -> tx(2)))
         assertEquals(closure3, Some(Vector(0, 1).map(i => LeiosEb.hashTx(tx(i)) -> tx(i))))
-        // 3 is complete but copied: the store lists only what is not immutable (LeiosStore's
-        // scanCompleteEbClosuresNotOlderThanSlot), where the reference, before its collection,
-        // would still list it from its volatile file
-        assertEquals(complete, Vector.empty)
+        // 3 is complete and copied, and still in the volatile file: the reference lists it
+        assertEquals(complete, Vector(point(7, 3)))
         assertEquals(
           statuses,
           Vector(
