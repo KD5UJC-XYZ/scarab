@@ -319,9 +319,11 @@ class DijkstraTranslationSuite extends FunSuite:
     Map.empty
   )
 
-  test("a chain still cannot start in Dijkstra: its injection is refused") {
+  test(
+    "Dijkstra's injection of a state of the 11.1 layout is refused: that layout's Dijkstra is not held"
+  ) {
     assertEquals(
-      GenesisStart.inject(none, translated)(using ShelleyBasedEra.SDijkstra),
-      Left(GenesisStartError.NotYet(DijkstraNotYet.Genesis))
+      GenesisStart.inject(withGenesis, none, translated)(using ShelleyBasedEra.SDijkstra),
+      Left(GenesisStartError.NotYet(DijkstraNotYet.LedgerState))
     )
   }
