@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, LeiosNotify}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, KeepAlive, LeiosNotify}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Message
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
@@ -231,7 +231,7 @@ class ClientSuite extends FailsOnUncaught:
       .map(r => assertEquals(r, Right(2)))
 
   test("KeepAlive: a mismatched cookie is a protocol violation"):
-    typed(keepAlive(c => Some(c + 1))((api, _, _) => api.ping))
+    typed(keepAlive(c => Some((c + 1) % (KeepAlive.Cookie.Max + 1)))((api, _, _) => api.ping))
       .map(r => assert(r.left.exists(_.isInstanceOf[NetworkError.IllegalTransition]), r.toString))
 
   test("KeepAlive: a missing response times out"):
@@ -250,11 +250,12 @@ class ClientSuite extends FailsOnUncaught:
             _ <- typed(serveKeepAlive(s, pings)).start
             count <- KeepAliveClient
               .background(c, client)
-              .surround(IO.sleep(100.seconds) *> pings.get)
+              .surround(IO.sleep(95.seconds) *> pings.get)
           yield count
         }
       })
-      .map(r => assertEquals(r, Right(4)))
+      // at 0, 10, ..., 90 seconds
+      .map(r => assertEquals(r, Right(10)))
 
   test("KeepAlive: a dead peer aborts the multiplexer so pending operations fail"):
     TestControl

@@ -155,6 +155,48 @@
    "note": "the length of the message's array is read and ignored (a definite array whose length cborg's decodeListLen holds in an Int), then the key as a word; in StIdle 0 is MsgShareRequest with its Word8 amount and 2 is MsgDone, in StBusy 1 is MsgSharePeers with a definite or indefinite list of peers (decodeListWith), and any other key is refused. Agency, which the reference has in its state tokens, is the same table checked at run time; the byte limit its Cursor applies while reading is the driver's (runDecoderWithLimit, framework Driver/Limits.hs:295-331, with byteLimitsPeerSharing); a MsgSharePeers that arrives in parts is read on after the peers read whole (attemptTyped), as decodeMsg runs from the stream through mkCodecCborLazyBS (Codec.hs:42)",
    "digest": "3216641e4efa7f3a"
   },
+  "enum network.KeepAliveClient.Cookies": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/KeepAlive.hs",
+     "symbol": "inRng",
+     "lines": [
+      55,
+      56
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node.hs",
+     "symbol": "keepAliveRng",
+     "lines": [
+      661,
+      664
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "keepAliveRng",
+     "lines": [
+      409,
+      409
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "record": "docs/decisions.md#networking-and-local-clients",
+   "evidence": [
+    "KeepAliveCookieSuite"
+   ],
+   "note": "Fresh, the default, seeds each client's generator from the platform's secure generator when the client is made, an approved deviation: the reference gives the client of every connection the node's one keepAliveRng. Shared starts every client from one generator, as the reference does, for tests and tools. The generator is Scarab's Rng (SplitMix64 with a fixed gamma), not splitmix's SMGen; no peer can observe which uniform generator drew the cookies, since only the node's own client compares them, the seed is random and each cookie is a uniform Word16 (the low 16 bits of the next 64, as random's Word16 draw truncates)",
+   "digest": "c8b719993d68de53"
+  },
   "enum protocol.ChainSync.Message": {
    "upstream": [
     {
