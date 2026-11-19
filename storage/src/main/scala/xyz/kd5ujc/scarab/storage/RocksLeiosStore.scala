@@ -66,6 +66,13 @@ final case class StoredEb(
   * ([[RocksLeiosStore.View]]), as the reference reads inside one SQLite transaction. Every call
   * holds a permit of `gate` while it runs and the release takes all of them, so the database is
   * never closed under a call.
+  *
+  * One store holds what the reference splits between its volatile and immutable files, so its
+  * completed-point scan (`scanCompleteEbClosuresNotOlderThanSlot`) is the reference's from a slot
+  * at or after the last collection's, the only slot the reference's one caller asks from (the
+  * immutable tip); from an earlier slot it still lists the points of a hash the reference's
+  * collection evicted from its volatile file. The last collection's slot is not kept on disk, which
+  * would be a change of the format.
   */
 final class RocksLeiosStore[F[_]] private (
     db: RocksDB,
