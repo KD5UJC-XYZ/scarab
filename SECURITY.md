@@ -46,9 +46,10 @@ While Scarab is pre-release, two kinds of problem are reported privately:
   transaction's verdict counts when block validation depends on it, for example when Scarab would forge
   or accept a block holding a transaction the reference refuses; a difference in mempool admission alone
   does not.
-- **A critical or high exploit against running nodes.** Something a remote party can use against nodes
-  other people run, such as a remote crash, hang or memory exhaustion, or exposed key material. This is
-  the problem's severity, judged by its impact, not the work priority of the issue that tracks it.
+- **A critical or high exploit against running nodes.** Something that can be used, remotely or locally,
+  against nodes other people run, such as a remote crash, hang or memory exhaustion, or a way to obtain
+  their key material. This is the problem's severity, judged by its impact, not the work priority of the
+  issue that tracks it.
 
 Report these through GitHub: on the repository, **Security -> Report a vulnerability** (a private
 security advisory), and do not open a public issue for them.

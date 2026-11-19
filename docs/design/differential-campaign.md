@@ -425,10 +425,12 @@ stop and ask: that is a storage format change.**
 
 ## 8. Disclosure
 
-The repository, its workflow logs and its artifacts are public. A disagreement in either direction, Scarab accepting
-what the reference refuses or refusing what it accepts, can split a node from the network, so every disagreement the
-campaign finds is reported privately first, as [SECURITY.md](../../SECURITY.md#reporting) says of a chain split
-(§10, Q2). Its triage has three outcomes, all private until disclosed:
+The repository, its workflow logs and its artifacts are public. A disagreement about a block's verdict in either
+direction, Scarab accepting what the reference refuses or refusing what it accepts, can split a node from the network,
+and so can one about a transaction's verdict that block validation depends on: such a disagreement is reported
+privately first, as [SECURITY.md](../../SECURITY.md#reporting) says of a chain split (§10, Q2). A disagreement that
+cannot split the chain, such as mempool admission alone or a refusal's reason or bytes, is a public issue and is fixed
+in public. The triage of a private disagreement has three outcomes, all private until disclosed:
 
 - **Scarab is wrong**: a Gap; it is fixed through the private advisory's process, and its kept input lands only once
   the fix is disclosed and its disclosure authorized (§7.4).
@@ -593,8 +595,10 @@ runs; the seeds. Raw run artifacts are not published.
 - **Q1. Which reference build does the campaign judge against?** Recommendation: the build `--reference-build` selects
   by default (on 2026-11-16, `11.1`, cardano-node 11.1.3); a second reference node of the `11.2` build once its stages
   land and Scarab starts with it, with §3 read again at its pins (N8).
-- **Q2. Is every disagreement reported privately first?** Recommendation: yes; SECURITY.md treats a verdict
-  disagreement as a possible chain split, and any exception is the owner's, case by case.
+- **Q2. Which disagreements are reported privately first?** Recommendation: those
+  [SECURITY.md](../../SECURITY.md#reporting) routes privately, a possible chain split (a block's verdict, or a
+  transaction's verdict that block validation depends on); the others, such as mempool admission alone or a refusal's
+  reason, are public issues. Any exception is the owner's, case by case.
 - **Q3. Where does the private runner live?** Discovery never runs in the public repository's Actions (§8).
   Recommendation: a scheduled job on a machine the maintainers control, which checks out a commit of `main`, writes
   only to its run directory and the private store, and publishes nothing itself; a maintainer publishes each period's
