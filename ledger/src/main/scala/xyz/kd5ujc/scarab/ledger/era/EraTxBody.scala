@@ -124,7 +124,11 @@ trait AlonzoEraTxBody[E <: EraTag] extends MaryEraTxBody[E]:
   /** `collateralInputsTxBodyL`, of a top-level body only. */
   def collateralInputs(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn]
 
-  /** `reqSignerHashesTxBodyL` (`AtMostEra "Conway"`). */
+  /** `reqSignerHashesTxBodyG` (`Alonzo/TxBody.hs:132-136`, cardano-ledger f649f975): the keys a
+    * body requires to sign it, in every era from Alonzo. Up to Conway it is the body's field
+    * ([[AlonzoEraTxBodyToConway]]); Dijkstra's, in the reference, is its guards' keys
+    * (`Dijkstra/TxBody.hs:1419`, cardano-ledger 9df9f98c).
+    */
   def reqSignerHashes[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[Bytes]
   def scriptIntegrityHash[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Bytes]
   def networkId[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Network]
@@ -135,6 +139,23 @@ trait AlonzoEraTxBody[E <: EraTag] extends MaryEraTxBody[E]:
   def redeemerPointerInverse[L <: TxLevel](body: TxBody[L, E], ptr: PlutusPurpose[AsIx, E])(using
       Level[L]
   ): Option[PlutusPurpose[AsIxItem, E]]
+
+/** The body's own field of required signers, of the eras up to Conway (`reqSignerHashesTxBodyL`,
+  * `AtMostEra "Conway"`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs:130`, cardano-ledger
+  * f649f975, and `:134`, 9df9f98c): a member the reference confines to a range of eras is a class
+  * of its own with instances at exactly those eras (#85, 2026-11-15), so Dijkstra, whose body has
+  * no such field (`notSupportedInThisEraL`, `Dijkstra/TxBody.hs:1416`, cardano-ledger 9df9f98c),
+  * has no instance. The getter of every era ([[AlonzoEraTxBody.reqSignerHashes]]) is this field
+  * here, as the reference's default of `reqSignerHashesTxBodyG` is (`Alonzo/TxBody.hs:134-136`,
+  * cardano-ledger f649f975).
+  */
+trait AlonzoEraTxBodyToConway[E <: EraTag] extends AlonzoEraTxBody[E]:
+  /** `reqSignerHashesTxBodyL`. */
+  def reqSignerHashesField[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[Bytes]
+
+  final override def reqSignerHashes[L <: TxLevel](body: TxBody[L, E])(using
+      Level[L]
+  ): SortedSet[Bytes] = reqSignerHashesField(body)
 
 /** The reference inputs and the collateral return, from Babbage (`BabbageEraTxBody`,
   * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs:110-121`, cardano-ledger f649f975).
@@ -255,5 +276,7 @@ enum EraField:
 
 /** The instances of each era, the one place that lists the eras having each body class. */
 object EraTxBody:
-  given conway: (ConwayEraTxBody[Conway] { type Level[L <: TxLevel] = TopOnly[L] }) =
+  given conway: ((ConwayEraTxBody[Conway] & AlonzoEraTxBodyToConway[Conway]) {
+    type Level[L <: TxLevel] = TopOnly[L]
+  }) =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody.instance

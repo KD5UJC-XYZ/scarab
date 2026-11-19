@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraTxBodyToConway,
   AlonzoScriptRep,
   AsIx,
   AsIxItem,
@@ -455,8 +456,10 @@ object ConwayTxBody:
       case ConwayProposing(idx) =>
         Indexable.fromIndexOSet(idx, txBody.proposalProcedures).map(ConwayProposing(_))
 
-  val instance: ConwayEraTxBody[Conway] { type Level[L <: TxLevel] = TopOnly[L] } =
-    new ConwayEraTxBody[Conway]:
+  val instance: (ConwayEraTxBody[Conway] & AlonzoEraTxBodyToConway[Conway]) {
+    type Level[L <: TxLevel] = TopOnly[L]
+  } =
+    new ConwayEraTxBody[Conway] with AlonzoEraTxBodyToConway[Conway]:
       type Level[L <: TxLevel] = TopOnly[L]
       override def top: TopOnly[TxLevel.Top] = TopOnly.Top
       override def outputsOf: BabbageEraTxOut[Conway] = ConwayTxOut.instance
@@ -507,7 +510,7 @@ object ConwayTxBody:
         l match
           case TopOnly.Top => body.mint
       override def collateralInputs(body: ConwayTxBody): SortedSet[TxIn] = body.collateralInputs
-      override def reqSignerHashes[L <: TxLevel](body: TxBody[L, Conway])(using
+      override def reqSignerHashesField[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
       ): SortedSet[Bytes] =
         l match
