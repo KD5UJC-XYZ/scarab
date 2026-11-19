@@ -59,16 +59,20 @@ block rules) check these cases in simulated time:
 - a forged block of the tip's height within the LoE is still decided by chain selection's tie-break.
 
 A forged block the LoE holds back is kept, and chain selection takes it later if it is then still valid, joins the
-chain and is preferred. The reference's ChainDB puts every block it is given in its VolatileDB before chain selection
-runs for it (`VolatileDB.putBlock`, `ChainSel.hs:450`; 455 at 808e40054, 489 at 2416493bf), and considers the
-blocks the LoE postponed again when the GDD governor moves the LoE tip in Syncing or the node is caught up
-(`ChainSelReprocessLoEBlocks`, `ChainSel.hs:358-413`, 363-418 at 808e40054, 693-761 at 2416493bf; triggered at
-`Genesis/Governor.hs:172-184`, the same at all three). Scarab puts the held-back block in the received log and in
-the selection worker's processed forest, as a block of no session (a refusal of it blames nobody, as the forging
-loop's `noPunishment`, `NodeKernel.hs:747`), and the worker's selection on the governor's signal reads that forest.
-The forger's trace is the one of the submission, `didntAdoptBlock`; a later selection of the block is logged as the
-chain's (`extended`), as the reference traces it in the ChainDB (`switchTo`, `AddedToCurrentChain`,
-`ChainSel.hs:964`), not in the forging loop.
+chain and is preferred. The reference's ChainDB puts a block it is given in its VolatileDB before chain selection
+runs for it, unless the block is there already, known invalid or no higher than the immutable tip
+(`VolatileDB.putBlock`, `ChainSel.hs:428-450`; 433-455 at 808e40054, 467-489 at 2416493bf). When the GDD governor
+moves the LoE tip in Syncing or the node is caught up, it considers again the successors of the current chain's
+blocks that the VolatileDB holds, are not on that chain and are not known invalid, the blocks the LoE postponed
+among them (`ChainSelReprocessLoEBlocks`, `ChainSel.hs:358-413`, 363-418 at 808e40054, 693-761 at 2416493bf;
+triggered at `Genesis/Governor.hs:172-184`, the same at all three). Scarab puts the held-back block in the received
+log and in the selection worker's processed forest, as a block of no session (a refusal of it blames nobody, as the
+forging loop's `noPunishment`, `NodeKernel.hs:747`), and the worker's selection on the governor's signal reads that
+forest. The forger's trace is the one of the submission, `didntAdoptBlock`; a later selection of the block is logged
+as the chain's (`extended`), as the reference traces it in the ChainDB (`switchTo`, `AddedToCurrentChain`,
+`ChainSel.hs:964`), not in the forging loop. Keeping the block is the node's work, not the forger's: if it fails
+other than in storage, the block is not kept and the forger's outcome is `didntAdoptBlock` all the same, its `lost`
+line saying why; a storage failure stops the node, as a failed write of a peer's block to the received log does.
 
 `HeldBackForgedBlockSuite` (the follower with its selection worker and GDD governor) and `ForgeLimitOnEagernessSuite`
 (the forging loop with the worker and the real block rules) check these cases in simulated time:
@@ -79,12 +83,14 @@ chain's (`extended`), as the reference traces it in the ChainDB (`switchTo`, `Ad
   stay `didntAdoptBlock`;
 - held back in Syncing with the LoE fragment at the immutable tip, it is adopted once the GDD moves the LoE tip;
 - a longer chain a peer delivered meanwhile, held back too, is selected over it once the node is caught up;
-- refused by the rules when selection reaches it, it is recorded invalid, no session is blamed and the node goes on.
+- refused by the rules when selection reaches it, it is recorded invalid, no session is blamed and the node goes on;
+- when keeping it fails with a typed failure other than storage, or throws, the block is not kept, the forger is told
+  it was held back and why, and the loop goes on with `didntAdoptBlock` for each such block; a storage failure is
+  raised to the forger, typed.
 
 With the keep taken out of `Follower.adoptForged`, the four cases that wait for the block to be adopted or refused
 fail, and the longer chain's case and the earlier cases pass.
 
 Not shown: no run against a reference node, and no devnet scenario forges in Genesis mode. A forged block chain
-selection does not take for another reason (a slot battle lost, a tip that moved) is still not kept, where the
-reference's VolatileDB keeps every block it is given; such a block was never on the node's chain, so no peer has it
-to build on.
+selection does not take for another reason (a slot battle lost, a tip that moved) is still not kept, nor is a
+forged block that was adopted and then rolled back, where the reference's VolatileDB keeps them.
