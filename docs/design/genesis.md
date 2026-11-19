@@ -154,17 +154,19 @@ carry no new adding client. Peer cancellation cannot remove a queued admission o
 selection. Worker shutdown and infrastructure failure settle current and queued work, following
 `Background.hs:658–708` and `Types.hs:740–755`; they never masquerade as a peer refusal.
 
-As built, a block the node forges does not enter the add queue: `Follower.adoptForged` judges it under the selection
-lock, projected through LoE and eligibility by the same `CandidateSelection.project` the worker applies to every
-candidate, so before the node is caught up a forged block past the LoE plus `k` is not adopted, as the reference's
-chain selection trims it (ouroboros-consensus 82ecba329 `ChainSel.hs:767-777`; the
+As built, a block the node forges does not enter the add queue: `Follower.submitForged` judges it under the
+selection lock, projected through LoE and eligibility by the same `CandidateSelection.project` the worker applies to
+every candidate, so before the node is caught up a forged block past the LoE plus `k` is not adopted, as the
+reference's chain selection trims it (ouroboros-consensus 82ecba329 `ChainSel.hs:767-777`; the
 [compatibility page](../compatibility/ouroboros-genesis.md#a-forged-block-and-the-limit-on-eagerness) lists what is
-checked). Such a block is retained: it is put in the received log and joins the processed forest as a block of no
-session (`BlockPool.Source.Forged`, whose refusal blames nobody), as the reference's ChainDB puts it in the VolatileDB
-before chain selection (`ChainSel.hs:428-450`). LoE reconsideration then sees it with the other processed blocks, and
-adopts it if it is still valid and preferred once the LoE allows it. A failure to keep it, other than a storage
-failure, leaves it unkept and the forger's outcome as it was (`Follower.Retention`); a storage failure stops the
-node, as for a peer's block.
+checked). Whatever selection makes of it, the block is kept as the reference's ChainDB keeps a block it is given
+(`ChainSel.hs:428-450`): unless it is in the processed forest already, known invalid or no younger than the immutable
+tip, it is written to the received log and joins the forest as a block of no session (`BlockPool.Source.Forged`,
+whose refusal blames nobody), an adopted one before the chain that holds it is published, a refused one recorded
+invalid. Rollback, LoE reconsideration, a delivery that makes its branch preferred and a restart's startup selection
+then see it with the other processed blocks. A failure to keep it, other than a storage failure, leaves it unkept and
+the forger's outcome as it was (`Follower.Retention`, logged `notKept`); a storage failure stops the node, as for a
+peer's block.
 
 Startup resets selection to the immutable anchor and considers the complete recovered forest,
 including originals beyond the ordinary delivery-cache capacity. Opening network clients and servers
