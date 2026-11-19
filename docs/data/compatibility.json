@@ -570,7 +570,8 @@
           "ByronMainnetSuite",
           "ByronPreprodSuite",
           "ByronSoftwareRegistrationReferenceSuite",
-          "ByronBodyKeysSuite"
+          "ByronBodyKeysSuite",
+          "ByronStoredKeysSuite"
         ],
         "paths": [
           "fixtures/reference/byron-software-registration/cases.jsonl",
