@@ -12,7 +12,7 @@ import org.scalacheck.Prop.*
   */
 class RewardsSuite extends ScalaCheckSuite:
   private def maxPool(a0: Rational, nOpt: BigInt, r: BigInt, sigma: Rational, pledge: Rational) =
-    xyz.kd5ujc.scarab.ledger.rules.Rewards.maxPool(a0, nOpt, r, sigma, pledge)
+    xyz.kd5ujc.scarab.ledger.rules.Rewards.maxPool(a0, nOpt, r, sigma, pledge, None)
 
   private def leaderReward(poolR: BigInt, p: PoolParams, s: Rational, sigma: Rational) =
     xyz.kd5ujc.scarab.ledger.rules.Rewards.operatorReward(poolR, p.cost, p.margin, s, sigma)

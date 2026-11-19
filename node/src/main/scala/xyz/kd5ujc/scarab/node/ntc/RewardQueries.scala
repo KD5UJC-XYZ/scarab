@@ -209,7 +209,8 @@ private[ntc] object RewardQueries:
                     params.nOpt.max(1),
                     history.rewardPot.value,
                     nm,
-                    pledge
+                    pledge,
+                    params.maxPledgeLeverage
                   )
                 val predicted = estimate * maximum.toDouble
                 if !java.lang.Double.isFinite(predicted) || predicted < 0 then

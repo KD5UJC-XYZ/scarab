@@ -117,14 +117,24 @@ object Rewards:
       sum + delivered(major, entry._2).foldLeft(BigInt(0))(_ + _.rewardAmount.value)
     )
 
-  /** `maxPool'` (`State/SnapShots.hs:119`, cardano-ledger f649f975): the most a pool of relative
-    * stake `sigma` and relative pledge `pledge` can earn of the pot `r`.
+  /** `maxPool'` (`State/SnapShots.hs:141-163`, cardano-ledger 9df9f98c): the most a pool of
+    * relative stake `sigma` and relative pledge `pledge` can earn of the pot `r`. Its relative
+    * stake is capped at the saturation point and, where the parameters set a pledge leverage
+    * (Dijkstra's `ppMaxPledgeLeverage`, CIP-50; none before Dijkstra, `ppMaxPledgeLeverageG` 's
+    * default, `Core/PParams.hs:511-514`), at `leverage * pledge`.
     */
-  def maxPool(a0: Rational, nOpt: BigInt, r: BigInt, sigma: Rational, pledge: Rational): BigInt =
+  def maxPool(
+      a0: Rational,
+      nOpt: BigInt,
+      r: BigInt,
+      sigma: Rational,
+      pledge: Rational,
+      leverage: Option[Rational]
+  ): BigInt =
     if nOpt <= 0 then BigInt(0)
     else
       val z0 = Rational(1, nOpt)
-      val sigma1 = sigma.min(z0)
+      val sigma1 = leverage.fold(sigma.min(z0))(l => sigma.min(z0).min(l * pledge))
       val p1 = pledge.min(z0)
       val factor1 = Rational(r) / (Rational.one + a0)
       val factor4 = (z0 - sigma1) / z0
@@ -200,7 +210,14 @@ object Rewards:
         val ownersStake = spss.selfDelegatedOwnersStake.value
         val maxP =
           if spss.pledge.value <= ownersStake then
-            maxPool(pr.a0, pr.nOpt, pot, sigma, ratio(spss.pledge.value, totalStake))
+            maxPool(
+              pr.a0,
+              pr.nOpt,
+              pot,
+              sigma,
+              ratio(spss.pledge.value, totalStake),
+              pr.maxPledgeLeverage
+            )
           else BigInt(0)
         val performance =
           if sigmaA.isZero then Rational.zero
