@@ -594,8 +594,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     transaction, in order and with each purpose's index; the scripts provided equal the flat path's on
     every case of the refusal corpus, which has the UTxO set their reference scripts come from. A crafted
     case puts a script input after another, writes two policies out of their order and a script
-    certificate second, where a wrong order or index would show. Alonzo's spending, withdrawing and minting needs take the evidence that the era's purpose is
-    Conway's, as `AlonzoEraScript`'s purpose builders are not members yet (#85).
+    certificate second, where a wrong order or index would show. Alonzo's spending, withdrawing and minting
+    needs build their purposes through the script class (below, the UTxO functions for any era).
   - The keys that must sign are `EraUTxO`'s `getWitsVKeyNeeded` (`getConwayWitsVKeyNeeded`: Shelley's keys
     without the governance ones, of the spendable inputs, certificates, pool owners and withdrawals, then
     the required signers and the voters), which `validateNeededWitnesses` reads against the witnesses' keys
@@ -643,8 +643,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     clock.
   - Two members the context needs: `redeemerPointerInverse` on `AlonzoEraTxBody` (Conway's
     `conwayRedeemerPointerInverse`, through `Indexable`'s `fromIndex`) and `getSpendingDatum` on
-    `AlonzoEraUTxO` (`getBabbageSpendingDatum`), its spending purpose read through the evidence that the era's
-    purpose is Conway's; its datum is `Data`, an inline datum read as data where it is asked for, as the
+    `AlonzoEraUTxO` (`getBabbageSpendingDatum`), its spending purpose read through the script class's
+    `toSpendingPurpose`; its datum is `Data`, an inline datum read as data where it is asked for, as the
     reference's strict `SJust` forces it, and its failure returned where the reference raises `error`.
   - `EraPlutusContextSuite`: on every Conway row of the reference's recorded contexts, context matrix,
     context errors and script results (432 transactions), the typed V3 `TxInfo` equals the flat one, or both
@@ -878,8 +878,35 @@ Conway's rules on the classes follow as the rest of stage 2.
   - A pool registration's parameters are the state's (above), with the voting key the Leios build's
     `StakePoolParams` holds; the flat decoder keeps its relays and metadata decoded, so they are read again
     from the body's bytes, as the datums and redeemers are. The transaction class
-    instances (`EraTx`, `AlonzoEraTx`), with Dijkstra's annotated transaction and `getTotalExUnits` as a member that
-    adds the sub-transactions' units, come with the script contexts and `EraUTxO`.
+    instances (`EraTx`, `AlonzoEraTx`), with Dijkstra's annotated transaction and its override of
+    `getTotalExUnits` that adds the sub-transactions' units, come with `EraUTxO`.
+- **Conway's UTxO functions for any era with Conway's classes** (`era/EraUTxO.scala`, `era/conway/ConwayUTxO.scala`,
+  `era/EraScript.scala`, `era/EraTx.scala`), the first part of Dijkstra's UTxO instances (#85):
+  - `getConwayScriptsNeeded`, `getConwayWitsVKeyNeeded`, `voterWitnesses`, `txNonDistinctRefScriptsSize` and
+    `getConwayMinFeeTxUtxo` (`Conway/UTxO.hs:62-194`) are generic in their era over `ConwayEraTxBody`,
+    `ConwayEraScript`, `EraTx` and `BabbageEraTxBody`, as the reference's are. These functions, and Alonzo's, Babbage's,
+    Mary's and Shelley's of the UTxO set, are the same at f649f975 and 9df9f98c, where Dijkstra's instance calls them.
+  - Each purpose is built and read through the script class: Alonzo's builders and readers of the spending,
+    minting, certifying and withdrawing purposes (`mkSpendingPurpose` to `toWithdrawingPurpose`,
+    `Alonzo/Scripts.hs:205-219` at f649f975, `:207-221` at 9df9f98c) are members of `ConwayEraScript`, where
+    `hoistPlutusPurpose` is: the reference has them on `AlonzoEraScript`, whose Babbage instance waits for Babbage's
+    purposes ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792)). Conway's and
+    Dijkstra's instances are the reference's. Two items differ in representation, as the purposes they build hold
+    them: a minting purpose's policy is its script hash's `Bytes` where the reference's is a `PolicyID`, and a
+    withdrawing purpose's account the node's `RewardAccount` where the reference's is an `AccountAddress`
+    ([#85's item on the reference's nominal types](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)).
+    Alonzo's spending, withdrawing and minting needs and `getBabbageSpendingDatum` read them, no longer the
+    evidence that the era's purpose is Conway's.
+  - `getTotalExUnits` is a member of `AlonzoEraTx`, as at 9df9f98c (`Alonzo/Tx.hs:330-331`), with the
+    reference's default, the witnesses' redeemers' units added up, which is f649f975's `totExUnits`; `totExUnits`
+    is its name kept (`:510-514`), and `alonzoMinFeeTx` and `validateExUnitsTooBigUTxO` read the member, as at
+    9df9f98c. Conway's minimum fee and units check are therefore unchanged: `ConwayUtxoChecksSuite`, which compares
+    them with the flat rules on every Conway case of the refusal corpora, passes as before. Dijkstra's instance in the
+    reference overrides the member to add its sub-transactions' units (`Dijkstra/Tx.hs:417-422`); the typed
+    override comes with Dijkstra's transaction class instance.
+  - `EraConwaySuite` and `DijkstraPlutusPurposeSuite` build each purpose and read it back by its own reader only;
+    `DijkstraTxSuite` reads every purpose that a redeemer key of each corpus body resolves to (both levels) with each
+    reader, and only its own reader reads it, its builder giving it back.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
