@@ -248,8 +248,17 @@ alignment needs its own owner authorization.
 The adopted preprod block remains the final v0.2 gate (not available before October 23 per the
 2026-10-21 owner update). Release preparation proceeds without asserting that gate passed.
 Dedicated public genesis-sync and observation campaigns remain v0.3 work; per-change and nightly
-gates remain required. Rebase validation follows the change-level gates; do not reuse receipts
-from a different source revision as if they tested the rebased code.
+gates remain required.
+
+<a id="rebase-validation"></a>
+**Rebase validation** follows the change-level gates, with one exception. When every conflict the rebase
+met is confined to the correspondence map (`docs/data/correspondence/`), the performance register
+(`docs/data/performance-log.json` and the pages rendered from it), or both, and the code applies without
+conflict resolution, run `scripts/preflight` without `--check` plus every test suite of each module that
+the pull request's whole diff touches. Run these checks on the rebased head, say plainly in the pull
+request that this exception was used, and let `main`'s CI check the merged code. Never present receipts
+from another revision as checks of the rebased head. The owner's decision of 2026-11-18 is in the
+[decisions register](docs/decisions.md#process).
 
 ### Changelog fragments
 

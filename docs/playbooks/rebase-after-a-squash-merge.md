@@ -35,6 +35,8 @@ commit with its changes, and your branch still holds the original commits. This 
    `git push --force-with-lease=<your-branch>:<old-head>`.
 7. Run the gates again from step 2 of [run-the-gates-to-ready.md](run-the-gates-to-ready.md) (the level's
    gates and scenarios, then preflight), and re-check the change's factual claims against the new base.
+   When the conflicts were confined to the correspondence map or the performance register, run the lighter
+   gate of [CONTRIBUTING.md](../../CONTRIBUTING.md#rebase-validation) instead.
 
 ## A stack of pull requests
 

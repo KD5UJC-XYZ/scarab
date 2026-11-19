@@ -162,7 +162,8 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   state ([FMT-2](docs/design-rules.md#fmt-2)); regenerating a fixture is a storage format change (FMT-1).
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
   never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
-- Before reporting a change ready, and again after every rebase or merge of its base,
+- Before reporting a change ready, and again after every rebase or merge of its base (with the one
+  exception in [CONTRIBUTING.md](CONTRIBUTING.md#rebase-validation)),
   run `scripts/preflight` for documentation-only changes (level 0), or `scripts/preflight --check` for
   level 1 and above, and report its result. Plain preflight runs the non-sbt checks; `--check` also runs
   the Scala build and tests. Do not add `--check` for a documentation-only change. A mixed change follows

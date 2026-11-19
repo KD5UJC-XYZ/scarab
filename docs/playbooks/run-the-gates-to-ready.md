@@ -38,4 +38,6 @@
 6. Wait for CI on that same head. Then `gh pr ready <number>`.
 7. After any later rebase or merge of the base, go back to step 2: the level's gates, including its
    scenarios, and preflight run again on the new head, every factual claim the change makes is
-   re-checked against the new base, and the review covers the new head.
+   re-checked against the new base, and the review covers the new head. A rebase whose conflicts are
+   confined to the correspondence map or the performance register runs the lighter gate of
+   [CONTRIBUTING.md](../../CONTRIBUTING.md#rebase-validation) instead of the level's gates.
