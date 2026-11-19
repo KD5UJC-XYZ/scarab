@@ -819,21 +819,25 @@ object RocksLeiosStore:
       _.force(true)
     )
 
-  /** Remove the staging directories of `dir` that first opens left, those that hold the marker.
-    * Called once `dir` holds a store: no staging directory can be published any more, and a first
+  /** The staging directories of `dir` that first opens left, those that hold the marker. They are
+    * removed once `dir` holds a store: no staging directory can be published any more, and a first
     * open still making one finds its staging gone and opens the published store.
     */
-  private def discardStaging(dir: java.nio.file.Path): Unit =
+  private def stagedLeftovers(dir: java.nio.file.Path): Vector[java.nio.file.Path] =
     val root = stagingRoot(dir)
-    if Files.isDirectory(root) then
-      Using
-        .resource(Files.list(root))(
-          _.iterator.asScala
-            .filter(p => Files.isDirectory(p) && Files.isRegularFile(p.resolve(StagingMarker)))
-            .toVector
-        )
-        .foreach(RocksUtxoStore.deleteTree)
-      if Using.resource(Files.list(root))(_.findAny().isEmpty) then Files.delete(root)
+    if !Files.isDirectory(root) then Vector.empty
+    else
+      Using.resource(Files.list(root))(
+        _.iterator.asScala
+          .filter(p => Files.isDirectory(p) && Files.isRegularFile(p.resolve(StagingMarker)))
+          .toVector
+      )
+
+  /** Remove the staging root of `dir` if nothing is left in it. */
+  private def discardRoot(dir: java.nio.file.Path): Unit =
+    val root = stagingRoot(dir)
+    if Files.isDirectory(root) && Using.resource(Files.list(root))(_.findAny().isEmpty) then
+      Files.delete(root)
 
   /** Make `dir` hold a store, or check that it holds one of this build's families. A new store is
     * made in a staging directory of its own (`<dir>.staging/<random UUID>`), marked, its families
@@ -849,6 +853,7 @@ object RocksLeiosStore:
     def io[A](body: => A): F[A] =
       F.blocking(body).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
     val published: F[Boolean] = io(Files.exists(nio.resolve("CURRENT")))
+    def bestEffort(body: => Unit): F[Unit] = F.blocking(body).attempt.void
     val made: F[Unit] =
       published.flatMap {
         case true =>
@@ -879,14 +884,18 @@ object RocksLeiosStore:
                         case Right(_) => F.unit
                         case Left(e) =>
                           published.flatMap {
-                            case true  => io(RocksUtxoStore.deleteTree(stage))
+                            case true  => bestEffort(RocksUtxoStore.deleteTree(stage))
                             case false => fail[Unit](LeiosStoreError.Io(e))
                           }
                       }
                   }
             }
       }
-    made *> io(discardStaging(nio))
+    // A first open still staging may be removing its own directory, or still writing into it,
+    // while it is removed here: each removal is a best effort, and what is left goes next time.
+    made *> io(stagedLeftovers(nio))
+      .flatMap(_.traverse_(stage => bestEffort(RocksUtxoStore.deleteTree(stage))))
+      *> bestEffort(discardRoot(nio))
 
   // Permits of `gate`: one for each call, all of them for the release.
   private val Permits = 1L << 40
