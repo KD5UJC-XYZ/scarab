@@ -191,13 +191,22 @@ private[node] object BlockSelection:
   enum Phase:
     case Startup, Admission
 
+  /** What is done with a block before it joins the processed forest: a delivered block is written
+    * to the received log and its verification cache warmed (`prepare`); a block this node forged is
+    * written to the received log only (`store`), since its rules ran or run when selection reaches
+    * it ([[Follower.submitForged]]).
+    */
   trait Before[F[_]]:
     def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
+    def store(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
 
   object Before:
     def noop[F[_]: cats.Applicative]: Before[F] = new Before[F]:
       def prepare(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(
           using Raise[F, NodeError]
+      ): F[Unit] = cats.Applicative[F].unit
+      def store(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(using
+          Raise[F, NodeError]
       ): F[Unit] = cats.Applicative[F].unit
 
   /** What the worker applies a candidate from: the bodies the pool admitted, and where a refusal of

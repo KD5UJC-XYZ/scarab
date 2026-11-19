@@ -130,9 +130,12 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
               heldBack = forged.drop(k).map(_.hash).toSet
               before <- h.chain
               forest <- pool.processedSnapshot
-              kept = forest.values.toVector.collect {
-                case kept if kept.origin == BlockPool.Source.Forged => kept.delivered.header
-              }
+              kept = forest.values.toVector
+                .collect {
+                  case kept if kept.origin == BlockPool.Source.Forged => kept.delivered.header
+                }
+                .filter(h => heldBack(h.hash))
+              keptAll = forest.values.count(_.origin == BlockPool.Source.Forged)
               _ <- governor.setPhase(Gsm.Phase.CaughtUp)
               after <- h.ref.discrete
                 .find(_.tipRef.exists(tip => heldBack(tip.hash)))
@@ -140,14 +143,15 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
                 .lastOrError
                 .timeoutTo(1.minute, IO(fail("no held-back block was selected")))
               traces <- tracesIn(h)
-            yield (forged, traces, before, kept, after)
+            yield (forged, traces, before, kept, keptAll, after)
           }
         yield outcome
       })
-      .map { (forged, traces, before, kept, after) =>
+      .map { (forged, traces, before, kept, keptAll, after) =>
         assert(forged.size > k + 1, s"more than ${k + 1} of 40 slots won, got ${forged.size}")
         assertEquals(before.tipRef.map(_.hash), forged.lift(k - 1).map(_.hash), "held back")
         assertEquals(kept.map(_.hash).toSet, forged.drop(k).map(_.hash).toSet, "and kept")
+        assertEquals(keptAll, forged.size, "the adopted blocks are kept as well")
         val selected = kept.filter(h => after.tipRef.exists(_.hash == h.hash))
         assertEquals(selected.map(_.hash), after.tipRef.map(_.hash).toVector, "one of them")
         assertEquals(
@@ -163,13 +167,17 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
       }
   }
 
-  /** The worker's preparation of a block fails, with a typed failure that is not a storage failure:
-    * the held-back blocks are not kept, and the forger's outcome for each is still the one of a
-    * block selection did not take (`TraceDidntAdoptBlock`); the loop goes on to its last slot.
+  /** Writing a forged block to the received log fails, with a typed failure that is not a storage
+    * failure: no forged block is kept, each gets a `notKept` line, and the forger's outcomes are
+    * those of a run that keeps them: the first `k` adopted, each later one `TraceDidntAdoptBlock`;
+    * the loop goes on to its last slot.
     */
-  test("PreSyncing, keeping fails: each held-back block is DidntAdoptBlock, and the loop goes on") {
+  test("PreSyncing, keeping fails: the forger's outcomes are as they were, and the loop goes on") {
     val failing = new BlockSelection.Before[IO]:
-      def prepare(header: Header, @scala.annotation.unused raw: Bytes)(using
+      def prepare(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(
+          using Raise[IO, NodeError]
+      ): IO[Unit] = IO.unit
+      def store(header: Header, @scala.annotation.unused raw: Bytes)(using
           Raise[IO, NodeError]
       ): IO[Unit] = BlockPoolProblem.MissingDeliveredHeader(header.point).raise[IO, Unit]
     TestControl
@@ -189,17 +197,19 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
               forged <- forgedIn(h)
               traces <- tracesIn(h)
               lost <- h.seen.map(_.collect { case l: ForgeEvent.Lost => l.hash })
+              unkept <- h.seen.map(_.collect { case n: ForgeEvent.NotKept => n.hash })
               forest <- pool.processedSnapshot
               chain <- h.chain
-            yield (forged, traces, lost, forest.keySet, chain)
+            yield (forged, traces, lost, unkept, forest.keySet, chain)
           }
         yield outcome
       })
-      .map { (forged, traces, lost, forest, chain) =>
+      .map { (forged, traces, lost, unkept, forest, chain) =>
         assert(forged.size > k, s"more than $k of 40 slots won, got ${forged.size}")
         assertEquals(adoptedIn(traces), forged.take(k).map(_.hash), "adopted at submission")
         assertEquals(lostIn(traces), forged.drop(k).map(_.hash), "the rest DidntAdoptBlock")
         assertEquals(lost, forged.drop(k).map(_.hash), "each logged lost")
+        assertEquals(unkept, forged.map(_.hash), "each logged notKept")
         assertEquals(forest, Set.empty, "none is kept")
         assertEquals(chain.tipRef.map(_.hash), forged.lift(k - 1).map(_.hash), "the tip stays")
       }

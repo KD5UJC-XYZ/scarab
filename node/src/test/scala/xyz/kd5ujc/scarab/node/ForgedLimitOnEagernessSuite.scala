@@ -106,11 +106,10 @@ class ForgedLimitOnEagernessSuite extends FailsOnUncaught:
 
   private def heldBack(phase: Gsm.Phase): IO[Unit] =
     offer(headers.take(k + 1), Some(phase)).map { offered =>
-      // no selection worker runs here to keep the held-back block for
       assertEquals(
         offered.adoptions,
         headers.take(k).map(adopted) :+ Follower.Adoption.Lost(
-          Follower.AdoptionLoss.LimitOnEagerness(headers(k - 1).point, Follower.Retention.NoWorker)
+          Follower.AdoptionLoss.LimitOnEagerness(headers(k - 1).point)
         ),
         s"$phase: the first $k blocks fill the volatile chain; the next is past the LoE plus k"
       )
