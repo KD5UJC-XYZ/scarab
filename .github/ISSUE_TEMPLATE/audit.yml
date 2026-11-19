@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Exploitable security problems: do not file here, see SECURITY.md. A public ticket states the missing property and what the reference does, never how to trigger it. Title: the audit ID, then a short imperative title (for example `[AUD3-22] ...`). Pick the area and priority below; triage applies them as labels and sets the milestone.
+        A chain split, or a critical or high exploit against running nodes: do not file here, report it privately as SECURITY.md says. A public ticket states the missing property and what the reference does. Title: the audit ID, then a short imperative title (for example `[AUD3-22] ...`). Pick the area and priority below; triage applies them as labels and sets the milestone.
   - type: dropdown
     id: area
     attributes:

@@ -41,17 +41,22 @@ unsupported.
 
 While Scarab is pre-release, two kinds of problem are reported privately:
 
-- one that could split a Scarab node from the chain: make it accept a block, or a transaction a block
-  can carry, that the reference refuses, refuse one the reference accepts, or select a different chain;
-- an exploitable problem against running nodes that is critical or high (priority P0 or P1), such as a
-  remote crash, hang or memory exhaustion, or exposed key material.
+- **A chain split.** Given the same blocks and the same rules, Scarab would judge a block differently
+  from the reference (accept one it refuses, or refuse one it accepts), or select a different chain. A
+  transaction's verdict counts when block validation depends on it, for example when Scarab would forge
+  or accept a block holding a transaction the reference refuses; a difference in mempool admission alone
+  does not.
+- **A critical or high exploit against running nodes.** Something a remote party can use against nodes
+  other people run, such as a remote crash, hang or memory exhaustion, or exposed key material. This is
+  the problem's severity, judged by its impact, not the work priority of the issue that tracks it.
 
 Report these through GitHub: on the repository, **Security -> Report a vulnerability** (a private
 security advisory), and do not open a public issue for them.
 
-Everything else is reported publicly with the issue templates ("bug", or the audit form for a review
-finding): lower-severity problems, configuration and local files, node-to-client answers, and differences
-from the reference that cannot split the chain. Describe the problem and the reference's behaviour.
+Every other problem, when neither condition above applies, is reported publicly with the issue templates
+("bug", or the audit form for a review finding) and fixed in public: lower-severity problems, and
+usually configuration, local files, node-to-client answers and differences from the reference that cannot
+split the chain. Describe the problem and the reference's behaviour.
 
 You will get an acknowledgement as soon as a maintainer reads a report; this is a research project run by
 a small team, so there is no response-time guarantee.

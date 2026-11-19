@@ -427,8 +427,8 @@ stop and ask: that is a storage format change.**
 
 The repository, its workflow logs and its artifacts are public. A disagreement in either direction, Scarab accepting
 what the reference refuses or refusing what it accepts, can split a node from the network, so every disagreement the
-campaign finds is reported privately first, as [SECURITY.md](../../SECURITY.md#reporting) says, including one that
-SECURITY.md would let go to a public issue (§10, Q2). Its triage has three outcomes, all private until disclosed:
+campaign finds is reported privately first, as [SECURITY.md](../../SECURITY.md#reporting) says of a chain split
+(§10, Q2). Its triage has three outcomes, all private until disclosed:
 
 - **Scarab is wrong**: a Gap; it is fixed through the private advisory's process, and its kept input lands only once
   the fix is disclosed and its disclosure authorized (§7.4).
@@ -593,8 +593,8 @@ runs; the seeds. Raw run artifacts are not published.
 - **Q1. Which reference build does the campaign judge against?** Recommendation: the build `--reference-build` selects
   by default (on 2026-11-16, `11.1`, cardano-node 11.1.3); a second reference node of the `11.2` build once its stages
   land and Scarab starts with it, with §3 read again at its pins (N8).
-- **Q2. Is every disagreement reported privately first, including one that SECURITY.md would let go to a public
-  issue?** Recommendation: yes; any exception is the owner's, case by case.
+- **Q2. Is every disagreement reported privately first?** Recommendation: yes; SECURITY.md treats a verdict
+  disagreement as a possible chain split, and any exception is the owner's, case by case.
 - **Q3. Where does the private runner live?** Discovery never runs in the public repository's Actions (§8).
   Recommendation: a scheduled job on a machine the maintainers control, which checks out a commit of `main`, writes
   only to its run directory and the private store, and publishes nothing itself; a maintainer publishes each period's

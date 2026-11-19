@@ -180,9 +180,8 @@ that must hold, the **acceptance criteria** and the **evidence** required (the
 [audit finding template](../.github/ISSUE_TEMPLATE/audit.yml) has these fields; the registered upstream
 revisions to cite are in `docs/data/reference-pins.json`). The fix keeps the
 reproduction as a regression test, and the relevant row of [compatibility.md](compatibility.md)
-is updated. A finding that could split a Scarab node from the chain, or an exploitable one against running nodes
-at P0 or P1, goes to a private security advisory ([SECURITY.md](../SECURITY.md#reporting)); every other
-finding is a public ticket, which describes the missing property and the reference's behaviour. Findings that strengthen an existing item go into
+is updated. [SECURITY.md](../SECURITY.md#reporting) decides whether a finding goes to a private security advisory
+or to a public ticket; a public ticket describes the missing property and the reference's behaviour. Findings that strengthen an existing item go into
 that item as a comment, not as a duplicate. Changes to repository settings (branch protection, reviews)
 are the maintainer's, never an agent's.
 

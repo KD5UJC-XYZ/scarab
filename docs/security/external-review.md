@@ -86,21 +86,21 @@ node-local signing and a secret-memory boundary that require review.
    review checklist mapped to B1–B10 and a named reviewer plan or schedule with estimated effort.
    If substantive crypto review cannot yet be commissioned, record this checkpoint and its unresolved
    review requirements under #230; it must not be described as completed specialist review.
-2. **Focused crypto/native assessment.** Prioritize packages 1 and 2, escalate exploitable findings
-   privately as they are found, and return the secret-flow/constant-time posture and library-replacement
+2. **Focused crypto/native assessment.** Prioritize packages 1 and 2, escalate privately, as they are found, the
+   findings [SECURITY.md](../../SECURITY.md#reporting) routes privately, and return the secret-flow/constant-time posture and library-replacement
    decision record. State which properties remain untested and which need a different specialist.
 3. **Node integration assessment.** Review packages 3–5 against the agreed candidate, adding failure,
    parser and adversarial-schedule controls. Provide a coverage matrix with reviewed code paths,
    assumptions, methods, findings and explicit unreviewed areas.
 4. **Fix verification and closeout.** Retest agreed fixes on named revisions; classify each finding
-   as fixed, mitigated, accepted risk or unresolved. Deliver private reproductions, regression tests,
+   as fixed, mitigated, accepted risk or unresolved. Deliver reproductions (private for the findings SECURITY.md routes privately), regression tests,
    an executive summary and a technically reproducible report suitable for eventual redacted publication.
 
 Each finding should name its boundary, attacker capability, trusted assumptions, violated invariant,
 impact/severity reasoning, affected revisions/platforms, source locations, reproduction and acceptance
 criteria. Distinguish a source hypothesis from an executed reproduction. Follow the
-[audit issue process](../process.md#findings-from-an-independent-audit); keep exploit details private
-under [SECURITY.md](../../SECURITY.md) and agree on disclosure and retesting before starting.
+[audit issue process](../process.md#findings-from-an-independent-audit); keep private the exploit details of
+the findings [SECURITY.md](../../SECURITY.md#reporting) routes privately, and agree on disclosure and retesting before starting.
 
 ## Quote and budget questions for reviewers
 
