@@ -14,9 +14,10 @@ partial: the era is named and the node refuses to enter it. Its maximum major pr
 - the translation of a Conway ledger state into Dijkstra (#816);
 - its transactions on the era types, of both levels, read from what the block decoder reads and equal to it on every Dijkstra transaction the repository holds, each pool registration with its parameters at the state's types and its voting key (`sppBlsKey`; #85);
 - the upgrade of stored outputs with native reference scripts after a validated crossing block, preserving outputs created in Dijkstra (#815);
-- the other parts of the crossing (#823): the mempool's transaction translation and rematch, the ledger-view forecast across the boundary, and the Praos to Praos2 chain-dependent state.
+- the other parts of the crossing (#823): the mempool's transaction translation and rematch, the ledger-view forecast across the boundary, and the Praos to Praos2 chain-dependent state;
+- the header gate's rules for a Dijkstra header under `--reference-build leios-b004fe0c` (#54): Dijkstra's own ledger-view forecast or the one across the boundary, the chain-dependent state translated into Praos2's, and Praos2's envelope and protocol rules, as the build's ChainSync client runs them; the release builds keep refusing a Dijkstra header as of the wrong era.
 
-None of these is reachable from the node's own chain yet.
+None of these is reachable from the node's own chain yet: with the node's maximum major version of 11 the era history never enters Dijkstra.
 
 The continuation is tracked in [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826) for the
 reference-build behavior, committee and state lifecycle, and Dijkstra persistence, and in
@@ -27,7 +28,7 @@ the reference-only devnet evidence below does not satisfy that condition.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite` and `DijkstraNativeScriptEvalSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite`, `DijkstraNativeScriptEvalSuite` and `DijkstraHeaderRulesSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
@@ -38,7 +39,9 @@ the reference-only devnet evidence below does not satisfy that condition.
 - **The Leios devnet chain `fixtures/dijkstra-devnet`** (Conway to Dijkstra, from the reference-only cluster of #791):
   - its blocks and headers decode;
   - its Conway blocks replay through the node's rules;
-  - every Dijkstra header the reference adopted passes `Praos2.validate` against the translated chain-dependent state and the forecast view.
+  - every Dijkstra header the reference adopted passes `Praos2.validate` against the translated chain-dependent state and the forecast view;
+  - and the node's header rules accept them, each read from its ChainSync envelope, with the replayed Conway state as the anchor (`DijkstraHeaderRulesSuite`; a changed KES signature is refused as `InvalidKesSignatureOCERT`).
+- **The public Leios testnet:** from its ledger state at slot 2,168,639 (`fixtures/leios/state/testnet-2168639`), the node's header rules accept the eight headers that follow it (`fixtures/leios/testnet/headers-after-2168639.tsv`), the leader check on the stake of that state's 154 pools; a certificate flag set too soon after the announcement is refused as `LeiosCertTooYoung`, before the signatures (`DijkstraHeaderRulesSuite`). A local run on a copy of a reference node's database of that chain (2026-11-18, not published) accepted the 275 headers within the forecast range of its ledger snapshot at slot 2,570,380 and stopped at the range, and Praos2's tick and reupdate over the 6,500 headers from there to slot 2,721,550 gave the Praos2 state of the reference's snapshot at that slot, field for field.
 
 ## Explicitly unchecked or unconfirmed
 

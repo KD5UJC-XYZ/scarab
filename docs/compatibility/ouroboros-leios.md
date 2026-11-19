@@ -20,7 +20,7 @@ evidence with an explicit forecast; it does not establish any of the integration
 
 ## Explicitly unchecked or unconfirmed
 
-the node itself cannot follow the chain: on the network before its restart of 2026-10-18 it stopped at block 0 (a 12-element header in a Conway block), and on the restarted one every header is of era index 7, which it does not follow (leios.md 12.4); no stake-dependent leader check after epoch 1 (152,586 headers unchecked); no Leios certificate verified (no committee); no real vote, announcement message, endorser block or LeiosNotify/LeiosFetch message seen; protocols 18 and 19 never served; no Dijkstra era, ledger, transaction or Plutus V4 rule; EB storage, mempool sizing, forging
+the node itself cannot follow the chain: on the network before its restart of 2026-10-18 it stopped at block 0 (a 12-element header in a Conway block), and on the restarted one every header is of era index 7, which its header gate validates with Praos2 under the Leios build but its maximum major version of 11 keeps out of Dijkstra (leios.md 12.4, X1); the stake-dependent leader check after epoch 1 runs only from a captured ledger state of the chain (`DijkstraHeaderRulesSuite`), not along it (152,586 headers of the from-genesis run unchecked); no Leios certificate verified (no committee); no real vote, announcement message, endorser block or LeiosNotify/LeiosFetch message seen; protocols 18 and 19 never served; no Dijkstra era, ledger, transaction or Plutus V4 rule; EB storage, mempool sizing, forging
 
 ## Open items
 
