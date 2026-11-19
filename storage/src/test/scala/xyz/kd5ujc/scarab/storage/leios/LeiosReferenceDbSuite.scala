@@ -11,7 +11,6 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.storage.{EbStatus, LeiosEb, RocksLeiosStore, StoredEb}
-
 import xyz.kd5ujc.scarab.storage.LeiosStoreSuite.*
 
 /** The import and export of the reference's Leios database (`leios.vol.db`, `leios.imm.db`;
