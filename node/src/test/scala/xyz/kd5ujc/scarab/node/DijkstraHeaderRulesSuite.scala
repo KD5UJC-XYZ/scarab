@@ -4,7 +4,15 @@ package xyz.kd5ujc.scarab.node
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, DijkstraCrossing, Praos2, PraosConfig}
+import xyz.kd5ujc.scarab.consensus.{
+  BlockRef,
+  ByronTip,
+  ChainSelection,
+  DijkstraCrossing,
+  HardForkConfig,
+  Praos2,
+  PraosConfig
+}
 import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome, TimeForecast}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{
@@ -176,6 +184,81 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
         HeaderError.Praos2(Praos2Error.Certificate(OCertError.KesSignatureRejected))
       )
     )
+  }
+
+  // --- from a Byron anchor: the era-walking capture's genesis -----------------------------------
+
+  /** The node's setup for `fixtures/eras` (Byron epochs of 50 slots, k = 5, Shelley's stability
+    * window 75), whose genesis state is Byron's.
+    */
+  private lazy val erasSetup = NodeSetup
+    .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures", "eras", "genesis"))
+    .fold(e => fail(e.message), identity)
+
+  /** The Byron header state whose last header is the devnet's block 32, which the first Dijkstra
+    * header extends: the envelope checks of every era hold, so the era match decides.
+    */
+  private def byronParent(r: NodeHeaderRules[MirrorState]): NodeHeaderState =
+    r.at(erasSetup.mirrorStart) match
+      case b: NodeHeaderState.Byron =>
+        b.copy(
+          previous = Some(ByronTip(lastConway.hash, 3, lastConway.slot, false)),
+          previousBlockNo = Some(lastConway.blockNo)
+        )
+      case other => fail(s"not a Byron header state: $other")
+
+  /** The capture's rules with the Shelley boundary `shelley` (configured, which also fixes the
+    * Byron span of the era history, or derived from the Byron ledger when none) and the hard forks
+    * `forks`.
+    */
+  private def byronRules(shelley: Option[BigInt], forks: Map[Era, BigInt]) =
+    val praos = erasSetup.praos
+    val span = praos.geometry.byron
+    NodeHeaderRules[MirrorState](
+      withMax(
+        praos.copy(
+          geometry = praos.geometry.copy(byron =
+            span.copy(epochs = shelley.getOrElse(span.epochs), derived = shelley.isEmpty)
+          ),
+          forks = HardForkConfig.fromEpochs(forks)
+        ),
+        12
+      ),
+      erasSetup.globals.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c),
+      erasSetup.byronRules.map(_.copy(configuredShelleyEpoch = shelley)),
+      erasSetup.handOver
+    )
+
+  test("from a Byron anchor with no Shelley boundary yet, a Dijkstra header meets the Byron view") {
+    assertEquals(erasSetup.mirrorStart.era, Era.Byron)
+    val r = byronRules(None, Map.empty)
+    val first = dijkstraHeaders.head
+    // past the Byron forecast of 2k slots from the origin: no verdict yet
+    assertEquals(
+      r.validate(erasSetup.mirrorStart, None, byronParent(r), first),
+      Outcome.Later(ForecastReason.Horizon(first.slot, -1))
+    )
+    // within it (the anchor said to be at slot 199, a synthetic tip): the era match refuses it,
+    // its epoch Byron's (50 slots)
+    r.validate(erasSetup.mirrorStart, Some(ref(lastConway)), byronParent(r), first) match
+      case Outcome.Invalid(
+            HeaderError.Envelope(EnvelopeError.WrongEra(Era.Dijkstra, Era.Byron, epoch, _))
+          ) =>
+        assertEquals(epoch, first.slot / 50)
+      case other => fail(s"expected the era mismatch with Byron, got $other")
+  }
+
+  test("from a Byron anchor whose Shelley boundary is Allegra's too, the view stops at Shelley") {
+    // Shelley and Allegra both at epoch 4 (slot 200): the forecast crosses into Shelley only, and
+    // reaches 75 slots past the boundary
+    val r = byronRules(Some(4), Map(Era.Shelley -> 4, Era.Allegra -> 4))
+    val first = dijkstraHeaders.head
+    r.validate(erasSetup.mirrorStart, None, byronParent(r), first) match
+      case Outcome.Invalid(
+            HeaderError.Envelope(EnvelopeError.WrongEra(Era.Dijkstra, Era.Shelley, epoch, _))
+          ) =>
+        assertEquals(epoch, BigInt(4))
+      case other => fail(s"expected the era mismatch with Shelley, got $other")
   }
 
   test("a Dijkstra header past the forecast range of its anchor waits for the node's chain") {

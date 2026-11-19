@@ -105,32 +105,33 @@ final class NodeHeaderRules[S](
             None
           )
         case Right(None) =>
-          old.translated match
-            case Some(InEra.Of(_, ledger)) =>
-              val cfg = old.firstEpoch.fold(config)(first =>
-                config.copy(geometry = config.geometry.resolved(first))
-              )
-              val glob = old.firstEpoch.fold(globals)(first => globals.copy(firstEpoch = first))
-              wrap(
-                ShelleyHeaderForecast[S](cfg, glob)
-                  .prepareShelley(
-                    anchor,
-                    ledger,
-                    0L,
-                    tip,
-                    ledgerTip,
-                    old.state,
-                    h,
-                    forecastLimit = old.firstEpoch.map(first =>
-                      cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow.toBigInt
+          fromByron(anchor, tip, h, envelope(ledgerTip, h, previousBoundary = false))
+            .getOrElse(old.translated match
+              case Some(InEra.Of(_, ledger)) =>
+                val cfg = old.firstEpoch.fold(config)(first =>
+                  config.copy(geometry = config.geometry.resolved(first))
+                )
+                val glob = old.firstEpoch.fold(globals)(first => globals.copy(firstEpoch = first))
+                wrap(
+                  ShelleyHeaderForecast[S](cfg, glob)
+                    .prepareShelley(
+                      anchor,
+                      ledger,
+                      0L,
+                      tip,
+                      ledgerTip,
+                      old.state,
+                      h,
+                      forecastLimit = old.firstEpoch.map(first =>
+                        cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow.toBigInt
+                      ),
+                      genericEnvelope = envelope(ledgerTip, h, previousBoundary = false)
                     ),
-                    genericEnvelope = envelope(ledgerTip, h, previousBoundary = false)
-                  ),
-                h,
-                old.firstEpoch,
-                old.translated
-              )
-            case None => Prepared.Unknown(ForecastReason.ShelleyLedgerNotReady)
+                  h,
+                  old.firstEpoch,
+                  old.translated
+                )
+              case None => Prepared.Unknown(ForecastReason.ShelleyLedgerNotReady))
 
   private def wrap(
       outcome: Prepared[ProtocolState],
@@ -247,6 +248,47 @@ final class NodeHeaderRules[S](
       previous: NodeHeaderState.Byron,
       header: Header.Shelley
   ): Prepared[NodeHeaderState] =
+    val parent = previous.previous.map(p =>
+      BlockRef(p.slot, p.hash, previous.previousBlockNo.orElse(tip.map(_.blockNo)).getOrElse(0))
+    )
+    fromByron(
+      anchor,
+      tip,
+      header,
+      envelope(parent, header, previous.previous.exists(_.boundary))
+    ).getOrElse(enterShelleyEra(anchor, tip, previous, header, parent))
+
+  /** A Dijkstra header of the Leios build from an anchor still in Byron
+    * ([[Praos2Headers.fromByron]]); none for any other header, or without the Byron rules and
+    * ledger.
+    */
+  private def fromByron(
+      anchor: S,
+      tip: Option[BlockRef],
+      header: Header.Shelley,
+      genericEnvelope: Either[HeaderError, Unit]
+  ): Option[Prepared[NodeHeaderState]] =
+    for
+      rules <- Praos2Headers.of(globals.referenceBuild)
+      byronRules <- byron
+      ledger <- anchor.consensus.byron.ledger
+      prepared <- rules.fromByron(config, byronRules, ledger, tip, header, genericEnvelope)
+    yield prepared.map(next =>
+      NodeHeaderState.Shelley(
+        next,
+        Some(BlockRef(header.slot, header.hash, header.blockNo)),
+        None,
+        None
+      )
+    )
+
+  private def enterShelleyEra(
+      anchor: S,
+      tip: Option[BlockRef],
+      previous: NodeHeaderState.Byron,
+      header: Header.Shelley,
+      parent: Option[BlockRef]
+  ): Prepared[NodeHeaderState] =
     val current = anchor.consensus.byron
     val entry = NodeRules.entry(current, header, config, globals, byron)
     val translated = for
@@ -284,9 +326,6 @@ final class NodeHeaderRules[S](
       case Left(error) =>
         Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.Transition(error)))
       case Right((first, cfg, glob, ledger @ InEra.Of(_, view))) =>
-        val parent = previous.previous.map(p =>
-          BlockRef(p.slot, p.hash, previous.previousBlockNo.orElse(tip.map(_.blockNo)).getOrElse(0))
-        )
         val pending = previous.pendingShelley.dep match
           case ChainDepState.TPraos(state) =>
             previous.pendingShelley.copy(dep =

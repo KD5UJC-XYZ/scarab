@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.consensus.HeaderRules.{ForecastReason, Outcome, Prepared}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
@@ -262,6 +263,58 @@ private[node] final class Praos2Headers private ():
             wrongEra(globals, ledger, tip, h, epoch, viewEra, end, forecastLimit, genericEnvelope)
           )
       view.fold(identity, check(cfg, _, parent, prev, h, epoch, tipSlot, genericEnvelope))
+    }
+
+  /** The prepared check of `h` from an anchor still in Byron, or none where it is not a Dijkstra
+    * header. The forecast's era and range are the Byron anchor's, as the hard-fork combinator's
+    * (`oneForecast`, `HardFork/Combinator/Ledger.hs:555-620`, ouroboros-consensus 2416493b): before
+    * a known Shelley boundary (configured, or decided by the Byron ledger's update) the Byron view,
+    * up to the stability window of `2k` slots past the anchor's tip (`ledgerViewForecastAt` of
+    * Byron, `Byron/Ledger/Ledger.hs:300-323`); from the boundary on the initial Shelley view, up to
+    * Shelley's stability window past the boundary (`crossEraForecastByronToShelleyWrapper`,
+    * `Cardano/CanHardFork.hs:433-487`), and never an era beyond Shelley. Neither is Dijkstra's:
+    * past the range no verdict yet, within it the envelope checks of every era and the era match,
+    * which refuses the header.
+    *
+    * @param tip
+    *   the anchor's tip, none at the origin
+    */
+  def fromByron(
+      cfg: PraosConfig,
+      byron: ByronRules.Config,
+      ledger: ByronLedgerState,
+      tip: Option[BlockRef],
+      h: Header.Shelley,
+      genericEnvelope: Either[HeaderError, Unit]
+  ): Option[Prepared[ProtocolState]] =
+    Option.when(h.era == Era.Dijkstra) {
+      val k = byron.ledger.genesis.securityParam
+      val boundary = byron.configuredShelleyEpoch
+        .orElse(ByronLedger.transition(byron.ledger, ledger))
+        .map(first => (first, cfg.geometry.resolved(first)))
+        .filter((first, geometry) => h.slot >= geometry.firstSlot(first))
+      val (viewEra, maxFor, epoch) = boundary match
+        case Some((first, geometry)) =>
+          (
+            Era.Shelley,
+            geometry.firstSlot(first) + geometry.stabilityWindow.toBigInt,
+            geometry.epochOf(h.slot)
+          )
+        case None =>
+          (Era.Byron, tip.fold(2 * k)(_.slot + 1 + 2 * k), h.slot / byron.ledger.epochSlots)
+      if h.slot >= maxFor then
+        Prepared.Unknown(ForecastReason.Horizon(h.slot, tip.fold(BigInt(-1))(_.slot)))
+      else
+        genericEnvelope.fold(
+          Prepared.Invalid(_),
+          _ =>
+            Prepared.Invalid(
+              HeaderError.Envelope(
+                EnvelopeError
+                  .WrongEra(h.era, viewEra, epoch, BigInt(ledger.update.adoptedVersion.major))
+              )
+            )
+        )
     }
 
   private def vocab[A](
