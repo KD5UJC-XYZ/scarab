@@ -407,8 +407,8 @@ have judged no earlier candidate.
 
 ### 7.4 Kept inputs
 
-A disagreement, once fixed and disclosed (its advisory published), and with the owner's explicit authorization to
-disclose it (§8), is kept as a regression input in a new directory of the campaign's own under
+A disagreement, once fixed and disclosed (its advisory published, or, for one reported publicly, its fix merged),
+and with the owner's explicit authorization to disclose it (§8), is kept as a regression input in a new directory of the campaign's own under
 [`fixtures/reference/`](../../fixtures/reference/), one subdirectory per input:
 
 - the input's bytes, the reference's verdict as recorded, and the context in the reference's own encoding (state and
@@ -429,7 +429,8 @@ The repository, its workflow logs and its artifacts are public. A disagreement a
 direction, Scarab accepting what the reference refuses or refusing what it accepts, can split a node from the network,
 and so can one about a transaction's verdict that block validation depends on: such a disagreement is reported
 privately first, as [SECURITY.md](../../SECURITY.md#reporting) says of a chain split (§10, Q2). A disagreement that
-cannot split the chain, such as mempool admission alone or a refusal's reason or bytes, is a public issue and is fixed
+meets neither of SECURITY.md's private conditions (it cannot split the chain, and it is not a critical or high exploit
+against running nodes), such as mempool admission alone or a refusal's reason or bytes, is a public issue and is fixed
 in public. The triage of a private disagreement has three outcomes, all private until disclosed:
 
 - **Scarab is wrong**: a Gap; it is fixed through the private advisory's process, and its kept input lands only once
@@ -448,8 +449,9 @@ store. Public CI runs no discovery: it replays kept inputs, each one fixed and d
 authorized (§7.4).
 
 **Nothing that depends on outcomes is published while a finding of its period is private**, and that includes the fact
-that a finding exists. A finding is cleared when its advisory is published, when upstream has disclosed it for a
-defect of the reference, or when it is closed as no defect. Publication has two stages.
+that a finding exists. A finding is cleared when its advisory is published, when it is reported publicly (a
+finding SECURITY.md does not route privately is never private), when upstream has disclosed it for a defect of the
+reference, or when it is closed as no defect. Publication has two stages.
 
 **Before clearance: the announcement.** On a fixed date after each period, whatever its runs found, one announcement
 is published, written from a closed type whose only inputs are the period's configuration, fixed before the period
@@ -597,8 +599,8 @@ runs; the seeds. Raw run artifacts are not published.
   land and Scarab starts with it, with §3 read again at its pins (N8).
 - **Q2. Which disagreements are reported privately first?** Recommendation: those
   [SECURITY.md](../../SECURITY.md#reporting) routes privately, a possible chain split (a block's verdict, or a
-  transaction's verdict that block validation depends on); the others, such as mempool admission alone or a refusal's
-  reason, are public issues. Any exception is the owner's, case by case.
+  transaction's verdict that block validation depends on); the others that are not a critical or high exploit against
+  running nodes either, such as mempool admission alone or a refusal's reason, are public issues. Any exception is the owner's, case by case.
 - **Q3. Where does the private runner live?** Discovery never runs in the public repository's Actions (§8).
   Recommendation: a scheduled job on a machine the maintainers control, which checks out a commit of `main`, writes
   only to its run directory and the private store, and publishes nothing itself; a maintainer publishes each period's
