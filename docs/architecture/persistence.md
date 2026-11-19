@@ -216,7 +216,8 @@ keeps apart in memory, so a collection costs nothing for the immutable points. A
 lookups find them, but what the reference reads from its volatile file alone does not see the hash,
 from any slot (`scanEbPoints`, `scanCompleteEbClosuresNotOlderThanSlot`, a novel point's completion,
 `writeTxs`) until its body is written again, which empties its closure until its transactions are
-written again, as the reference's volatile file holds it then. The points of each hash are held in memory, read when the store opens.
+written again, as the reference's volatile file holds it then, and makes its evicted points immutable
+again, so that a later collection evicts them again and keeps the endorser block. The points of each hash are held in memory, read when the store opens.
 
 **Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
 `--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest

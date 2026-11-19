@@ -423,9 +423,69 @@ class LeiosStoreSuite extends CatsEffectSuite:
       assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
       assertEquals(emptied, Vector(0 -> zeroes(tx(0).size), 1 -> zeroes(tx(1).size)))
       assertEquals(refetching, None)
-      assertEquals(completed, Vector(point(10, h)))
+      // the evicted point is immutable again once the body is written again, so that the store
+      // keeps the endorser block; the reference holds it in its immutable file only, and lists and
+      // completes the point at 10 alone
+      assertEquals(completed, Vector(point(5, h), point(10, h)))
       assertEquals(rescanned, Vector(point(10, h)))
-      assertEquals(repointed, Vector(point(10, h)))
+      assertEquals(repointed, Vector(point(5, h), point(10, h)))
+  }
+
+  dirs.test("an endorser block fetched again after its eviction survives a later collection") {
+    dir =>
+      val h = 4
+      for
+        _ <- store(dir / "leios").use { s =>
+          ok(for
+            _ <- s.writeEbPoint(point(5, h), word32(1))
+            _ <- s.writeEbBody(point(5, h), body(2), Vector.empty)
+            _ <- s.writeTxs(point(5, h), Vector(0 -> tx(0), 1 -> tx(1)))
+            _ <- s.promoteToImmutable(Vector(point(5, h)))
+            _ <- s.garbageCollect(slot(8))
+            // announced again at a new slot, fetched again whole, then collected with no promotion
+            _ <- s.writeEbPoint(point(10, h), word32(1))
+            _ <- s.writeEbBody(point(10, h), body(2), Vector.empty)
+            _ <- s.writeTxs(point(10, h), Vector(0 -> tx(0), 1 -> tx(1)))
+            _ <- s.garbageCollect(slot(20))
+          yield ())
+        }
+        found <- store(dir / "leios").use(s =>
+          ok((s.lookupEbBody(hash(h)), s.lookupEbClosure(hash(h)), s.scanEbPoints).tupled)
+        )
+      yield
+        val (stored, closure, points) = found
+        assertEquals(stored, Some(body(2).encoded))
+        assertEquals(closure.map(_.map(_._2)), Some(Vector(tx(0), tx(1))))
+        // the volatile point went; the immutable one is evicted again
+        assertEquals(points, Vector.empty)
+  }
+
+  dirs.test("a first open that finds a store published since it looked opens it") { dir =>
+    val leios = dir / "leios"
+    for
+      // another first open publishes between this one's check and its look at the directory
+      prepared <- attempt(
+        RocksLeiosStore.prepareAround[IO](leios, ok(RocksLeiosStore.prepare[IO](leios)))
+      )
+      points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
+    yield
+      assertEquals(prepared, Right(()))
+      assertEquals(points, Vector(point(1, 1)))
+  }
+
+  dirs.test("a store opens though its staging directory cannot be read") { dir =>
+    val leios = dir / "leios"
+    val root = RocksLeiosStore.stagingRoot(leios.toNioPath)
+    for
+      _ <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1))))
+      _ <- IO.blocking {
+        java.nio.file.Files.createDirectories(root)
+        root.toFile.setReadable(false)
+      }
+      points <- store(leios)
+        .use(s => ok(s.scanEbPoints))
+        .guarantee(IO.blocking(root.toFile.setReadable(true)).void)
+    yield assertEquals(points, Vector(point(1, 1)))
   }
 
   dirs.test(

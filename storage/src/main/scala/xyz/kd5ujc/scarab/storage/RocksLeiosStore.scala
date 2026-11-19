@@ -72,9 +72,10 @@ final case class StoredEb(
   * body and transactions stay, as the immutable file keeps them, and what the reference reads from
   * its volatile file alone (the point scans, a novel point's completion, a write of transactions)
   * does not see it, until its body is written again, which empties its closure for its transactions
-  * to be written again, as the reference's volatile file has it then. A hash evicted again before
-  * they are holds only what was written again, less than the reference's immutable file holds (an
-  * approved Deviation, `LeiosStore.writeEbBody`).
+  * to be written again, as the reference's volatile file has it then, and makes its evicted points
+  * immutable again, so that a later collection evicts them again and keeps the body and
+  * transactions. A hash evicted again before they are holds only what was written again, less than
+  * the reference's immutable file holds (an approved Deviation, `LeiosStore.writeEbBody`).
   */
 final class RocksLeiosStore[F[_]] private (
     db: RocksDB,
@@ -296,9 +297,12 @@ final class RocksLeiosStore[F[_]] private (
             Right((BodyWritten(Vector.empty, Vector.empty), p))
           else
             // a body written again after its hash was evicted: the reference's volatile file takes
-            // it with an empty closure, and its evicted points stay in its immutable file only
+            // it with an empty closure, and its immutable file still holds the evicted points, which
+            // become immutable again (present in the volatile file once more), so that a later
+            // collection evicts them again and keeps the body and transactions
             val retired = rows.filter(_._4 == EbStatus.Evicted)
-            val kept = retired.foldLeft(p)((q, r) => q.removed(point.hash, r._1))
+            val kept =
+              retired.foldLeft(p)((q, r) => q.restated(point.hash, r._1, EbStatus.Immutable))
             val filled = fills.foldLeft(SortedMap.empty[Int, Bytes]) { (acc, fill) =>
               if acc.contains(fill.offset) then acc
               else filledFrom(p, eb, fill).fold(acc)(acc.updated(fill.offset, _))
@@ -307,7 +311,8 @@ final class RocksLeiosStore[F[_]] private (
             (if filled.isEmpty then Right(Vector.empty) else copied(kept, point.hash, key)).map {
               copy =>
                 commit(
-                  retired.map(r => Op.Delete(Family.Points, r._2)) ++
+                  retired
+                    .map(r => Op.Put(Family.Points, r._2, pointValue(r._3, EbStatus.Immutable))) ++
                     Option
                       .when(gone)(
                         Vector(
@@ -320,7 +325,10 @@ final class RocksLeiosStore[F[_]] private (
                     filled.toVector.map((o, tx) => Op.Put(Family.Txs, txKey(key, o), tx.toArray)) ++
                     Option.when(complete)(Op.Put(Family.Complete, key, Empty)) ++ copy
                 )
-                val completed = if complete then kept.pointsOf(point.hash) else Vector.empty
+                val completed =
+                  if complete then
+                    kept.pointsOf(point.hash).filterNot(c => retired.exists(_._1 == c.slot))
+                  else Vector.empty
                 (BodyWritten(completed, filled.keys.toVector), kept)
             }
       yield result
@@ -908,6 +916,14 @@ object RocksLeiosStore:
     * that holds anything but a store is refused.
     */
   private[storage] def prepare[F[_]: Async](dir: Path)(using Raise[F, LeiosStoreError]): F[Unit] =
+    prepareAround(dir, Async[F].unit)
+
+  /** [[prepare]], running `between` after it found no store at `dir` and before it looks at what
+    * `dir` holds: where another first open may publish its store.
+    */
+  private[storage] def prepareAround[F[_]: Async](dir: Path, between: F[Unit])(using
+      Raise[F, LeiosStoreError]
+  ): F[Unit] =
     val F = Async[F]
     val nio = dir.toNioPath
     def fail[A](e: LeiosStoreError): F[A] = e.raise[F, A]
@@ -915,20 +931,27 @@ object RocksLeiosStore:
       F.blocking(body).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
     val published: F[Boolean] = io(Files.exists(nio.resolve("CURRENT")))
     def bestEffort(body: => Unit): F[Unit] = F.blocking(body).attempt.void
+    val validated: F[Unit] =
+      io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
+        .map(_.asScala.toVector.map(Bytes.wrap))
+        .flatMap(found =>
+          F.unlessA(found.toSet == FamilyNames.toSet)(fail(LeiosStoreError.ForeignDatabase(found)))
+        )
     val made: F[Unit] =
       published.flatMap {
-        case true =>
-          io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
-            .map(_.asScala.toVector.map(Bytes.wrap))
-            .flatMap(found =>
-              F.unlessA(found.toSet == FamilyNames.toSet)(
-                fail(LeiosStoreError.ForeignDatabase(found))
-              )
-            )
+        case true => validated
         case false =>
-          io(Files.isDirectory(nio) && Using.resource(Files.list(nio))(_.findAny().isPresent))
+          between *> io(
+            Files.isDirectory(nio) && Using.resource(Files.list(nio))(_.findAny().isPresent)
+          )
             .flatMap {
-              case true => fail(LeiosStoreError.ForeignDatabase(Vector.empty))
+              // another first open may have published its store since: that is validated, and
+              // anything else in the directory is refused
+              case true =>
+                published.flatMap {
+                  case true  => validated
+                  case false => fail(LeiosStoreError.ForeignDatabase(Vector.empty))
+                }
               case false =>
                 SecureRandom
                   .javaSecuritySecureRandom[F]
@@ -954,7 +977,12 @@ object RocksLeiosStore:
       }
     // A first open still staging may be removing its own directory, or still writing into it,
     // while it is removed here: each removal is a best effort, and what is left goes next time.
-    made *> io(stagedLeftovers(nio))
+    // Looking for them is a best effort too: another first open may have removed the root, or it
+    // may not be readable, and neither keeps a valid store from opening.
+    made *> F
+      .blocking(stagedLeftovers(nio))
+      .attempt
+      .map(_.getOrElse(Vector.empty))
       .flatMap(_.traverse_(stage => bestEffort(RocksUtxoStore.deleteTree(stage))))
       *> bestEffort(discardRoot(nio))
 
