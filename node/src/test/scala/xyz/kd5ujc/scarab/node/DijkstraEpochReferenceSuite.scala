@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{PoolParams, RewardAccount}
-import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, HardFork, Sts, Tick}
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, Sts, Tick, Translate}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.{
   ConwayGovState,
@@ -130,7 +130,8 @@ class DijkstraEpochReferenceSuite extends FunSuite:
           s.metadata
         )
         p.copy(future = p.future.updated(id, params))
-      case "populateVRFKeyHashes" => HardFork.populateVRFKeyHashes(p)
+      case "populateVRFKeyHashes" =>
+        Translate.populateVRFKeyHashes(p).fold(e => fail(e.toString), identity)
       case "retire" =>
         p.copy(retiring =
           p.retiring

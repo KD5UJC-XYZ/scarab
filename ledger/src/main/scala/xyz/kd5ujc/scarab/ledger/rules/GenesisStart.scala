@@ -384,13 +384,19 @@ object GenesisStart:
   ): Either[GenesisStartError, NewEpochState[Dijkstra]] =
     given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
     val ls = nes.es.ls
-    val counted = EraLedger.withPState(ls, HardFork.populateVRFKeyHashes(EraLedger.pState(ls)))
+    // the counts recomputed from nothing, as 9df9f98c's `populateVRFKeyHashes` does
+    // (`State/CertState.hs:528-538`), the Leios build's (the only build with Dijkstra)
+    val counted = Translate
+      .populateVRFKeyHashes(EraLedger.pState(ls))
+      .map(EraLedger.withPState(ls, _))
+      .leftMap(GenesisStartError.Vocab(_))
     val snapshots = nes.es.snapshots
     snapshots.layout match
       case SnapShots.Layout.Node11_1 =>
         Left(GenesisStartError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState))
       case _: SnapShots.Layout.Leios =>
         for
+          counted <- counted
           age <- globals.maxKeyAgeEpochs.leftMap(GenesisStartError.Vocab(_))
           size <- LeiosCommitteeSize
             .fromBigInt(EraLedger.curPParams(ls.utxo.gov).leiosCommitteeSize)

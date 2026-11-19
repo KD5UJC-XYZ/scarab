@@ -111,8 +111,8 @@ object HardFork:
   /** `hardforkTransition` (`HardFork.hs:68-80`, cardano-ledger f649f975; 65-77 at 29a7d656 and
     * 9df9f98c), with the rule of `build` where the builds differ, for every era with Conway's
     * governance and certificate state ([[ConwayShapes]]): Dijkstra's HARDFORK is Conway's (`type
-    * instance EraRule "HARDFORK" DijkstraEra = Conway.HARDFORK DijkstraEra`, cardano-ledger 9df9f98c
-    * `Dijkstra/Era.hs:288`).
+    * instance EraRule "HARDFORK" DijkstraEra = Conway.HARDFORK DijkstraEra`, cardano-ledger
+    * 9df9f98c `Dijkstra/Era.hs:288`).
     */
   def apply[E <: EraTag](build: ReferenceBuild, es: EpochState[E], newVersion: Int)(using
       shapes: ConwayShapes[E]

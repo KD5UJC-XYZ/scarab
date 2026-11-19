@@ -30,7 +30,9 @@ object DijkstraEpoch:
           _ <- Epoch.within(DijkstraPoolReap.sts, (), epoch, PoolreapState.lens[Dijkstra])
           es1 <- es.get
           es2 <- Sts.lift[F, TickFailure, EpochState[Dijkstra]](
-            ConwayEpoch.enact(globals.ledger.referenceBuild, epoch, es0, es1).leftMap(TickFailure.Vocab(_))
+            ConwayEpoch
+              .enact(globals.ledger.referenceBuild, epoch, es0, es1)
+              .leftMap(TickFailure.Vocab(_))
           )
           _ <- es.set(es2)
           params = EraLedger.curPParams(es2.ls.utxo.gov)
