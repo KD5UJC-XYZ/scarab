@@ -462,7 +462,15 @@ Conway's rules on the classes follow as the rest of stage 2.
   - A member the reference confines to a range of eras (`AtMostEra`, `ExactEra`) is a class of its own per
     range, with instances at exactly those eras (decided 2026-11-15, #85). None of those eras has its record
     yet, so `EraPParams` lands without its five ranged members, and `AlonzoEraPParams` without
-    `hkdCoinsPerUTxOWordL`.
+    `hkdCoinsPerUTxOWordL`. Of the bodies' ranged members, the required signers' field
+    (`reqSignerHashesTxBodyL`, of the eras Alonzo to Conway) is `AlonzoEraTxBodyToConway`. Its only
+    instance yet is Conway's, as Conway is the only era with a typed body; Alonzo's and Babbage's come
+    with their bodies. Dijkstra's body, whose field the reference fills with `notSupportedInThisEraL`,
+    will have none. The getter of every era (`reqSignerHashesTxBodyG`) stays on `AlonzoEraTxBody`: the
+    field up to Conway, and in the reference the guards' key hashes in Dijkstra
+    (`Dijkstra/TxBody.hs:1419`, cardano-ledger 9df9f98c), of which there is no typed instance yet.
+    Shelley's `ttlTxBodyL` comes as a class with Shelley's body. This is a Deviation, recorded in the
+    [decisions register](../decisions.md#reference-fidelity).
   - The parameters' descriptions (`eraPParams`, `PParam`) are the reference's, Conway's and Dijkstra's, each
     with its name, its lens, its update's tag and lens, and how its value shows as Plutus data. An update
     shows as Plutus data through them (`ToPlutusData (PParamsUpdate era)`), in the order of the tags. It is
