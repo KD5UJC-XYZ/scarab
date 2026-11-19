@@ -1678,7 +1678,7 @@
       "id": "persistence-leios-state-layout",
       "component": "Persistence: the Leios build's `state` layout",
       "status": "partial",
-      "summary": "The `state` file of the Leios build (`--reference-build leios-b004fe0c`: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read and written in every Shelley-based era, Dijkstra among them, byte for byte on captured states, and imported and exported; each record it writes differently from 11.1 holds a part per layout that the other layout's codec does not write. A pool's BLS key in its parameters, a proposal's Dijkstra parameter update and a Peras epoch context are not read yet, and the rules of the build are not implemented",
+      "summary": "The `state` file of the Leios build (`--reference-build leios-b004fe0c`: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read and written in every Shelley-based era, Dijkstra among them, byte for byte on captured states, and imported and exported; each record that differs from 11.1 holds a part per layout. Future pool parameters are read as the reference reads them; a pool's BLS key in them, a proposal's Dijkstra parameter update and a Peras epoch context are not read yet, and the build's rules are not implemented",
       "evidence": {
         "suites": [
           "LeiosLayoutSuite",
@@ -1692,7 +1692,8 @@
           "LeiosGenesisReferenceSuite",
           "LeiosEpochReferenceSuite",
           "LeiosTxBytesSuite",
-          "DijkstraEpochStateSuite"
+          "DijkstraEpochStateSuite",
+          "FuturePoolParamsCodecSuite"
         ],
         "issues": [
           826
@@ -1817,7 +1818,8 @@
       "evidence": {
         "suites": [
           "SnapshotTablesSuite",
-          "SnapshotTableStreamSuite"
+          "SnapshotTableStreamSuite",
+          "FuturePoolParamsCodecSuite"
         ],
         "paths": [
           "fixtures/haskell-state"
@@ -1923,7 +1925,7 @@
       "id": "dijkstra",
       "component": "Dijkstra (next era)",
       "status": "partial",
-      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades; ledger rules as test-only entry points",
+      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades; transactions on the era types, pool registrations with their voting key; ledger rules as test-only entry points",
       "evidence": {
         "suites": [
           "DijkstraNotYetSuite",
@@ -1936,7 +1938,9 @@
           "DijkstraStateTranslationSuite",
           "DijkstraRulesSuite",
           "DijkstraRulesOracleSuite",
-          "DijkstraNativeScriptEvalSuite"
+          "DijkstraNativeScriptEvalSuite",
+          "DijkstraTxSuite",
+          "DijkstraTxCertSuite"
         ],
         "paths": [
           "fixtures/reference/dijkstra-genesis",

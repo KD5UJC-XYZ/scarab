@@ -789,6 +789,30 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
    "note": "the ledger state of the era at a telescope's index: a Shelley-based era's [2, [tip, NewEpochState, transition, fourth field]] read into the mirror, Byron's ChainValidationState kept as the original item (not modelled, so written as read). Dijkstra's is read and written in the Leios build's layout, at version 12 (LeiosLayoutSuite, the captured Dijkstra states byte for byte), and refused both ways in the 11.1 layout (DijkstraNotYet.LedgerState), which the reference decodes",
    "digest": "964876440d66e35c"
+  },
+  "given storage.haskell.state.CertStateCodecs#stakePoolParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "EncCBOR StakePoolParams",
+     "lines": [540, 589]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "EncCBOR (StakePoolParams era)",
+     "lines": [701, 772]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "evidence": ["FuturePoolParamsCodecSuite", "HaskellStateCodecSuite", "LeiosLayoutSuite"],
+   "note": "written by the node's parameters' codec (poolParams), so the bytes written are those written before (FuturePoolParamsCodecSuite, both layouts). Read by that codec, then as the reference reads the two fields it keeps unread: the metadata as DecCBOR PoolMetadata at the state's version (PoolMetadata.read: a [url, hash] record, the url bounded by the version and its text chunked only in the Leios layout from version 12, the hash chunked from 12 in both) and the account's network 0 or 1 (decodeAccountAddressT, Address.hs:930-948 at f649f975), each refused with a typed error; this narrows the earlier reader, which kept any metadata term and any network nibble: the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here. A Gap remains: keyed input of the Leios layout from version 12 is refused on reading (DijkstraNotYet.PoolParamsBlsKey) and parameters holding a key are not written, where the Leios build reads and writes them; the Leios session lifts the refusal (noBlsKey, #826)",
+   "digest": "979818d37936dfbe",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826"
   }
  },
  "glue": [
