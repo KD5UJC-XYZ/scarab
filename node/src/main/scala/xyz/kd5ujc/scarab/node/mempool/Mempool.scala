@@ -80,8 +80,9 @@ object MempoolEvents:
   * chain tip.
   *
   *   - `add` validates against the pool's current state, so what is held is always applicable;
-  *   - `sync` is called with the ledger state of every new tip (a block, a rollback, a fork switch)
-  *     and drops what no longer applies;
+  *   - `synchronise` is called by the pool's watcher on the tip ([[MempoolSync]]), from a fiber of
+  *     its own, whenever the tip changed (a block, a rollback, a fork switch), and revalidates at
+  *     the chain's tip as it is once the state lock is held, dropping what no longer applies;
   *   - `forBlock` is the block builder's view;
   *   - `source` and `sink` plug it into TxSubmission2 in both directions.
   *
@@ -150,6 +151,17 @@ trait Mempool[F[_]]:
       tipHash: Option[Bytes] = None
   )(using Raise[F, StorageError]): F[Vector[(Entry, Rejection)]]
 
+  /** [[sync]] at the target `next` chooses once the pool's lock is held, from the pool's state:
+    * none when the pool is where it should be already. The reference reads the ledger it
+    * revalidates against in the same step that takes the pool's state, so that a revalidation
+    * waiting behind an admission never applies a tip the chain has left meanwhile
+    * (`implSyncWithLedger`, ouroboros-consensus 82ecba32 `Mempool/Update.hs` 558-625, with the
+    * interleaving it prevents at 561-586); `next` reads the chain then, never before.
+    */
+  def synchronise(next: MempoolState => F[Option[Mempool.Target]])(using
+      Raise[F, StorageError]
+  ): F[Vector[(Entry, Rejection)]]
+
   /** Remove the held transactions among `ids` even though they still apply, then revalidate the
     * rest in order and return the ones that depended on them (`implRemoveTxsEvenIfValid`). Ids that
     * are not held change nothing. Unlike `sync` it does not move the pool's tip. A transaction the
@@ -208,6 +220,14 @@ object Mempool:
     * the remote line, `common` behind the one that holds the common line.
     */
   final case class Lines(remote: Int, common: Int)
+
+  /** Where a revalidation brings the pool, as [[Mempool.sync]] takes it. */
+  final case class Target(
+      ledger: Either[ConwayView.Unavailable, PoolLedger],
+      tipSlot: BigInt,
+      adopted: Set[Bytes],
+      tipHash: Option[Bytes]
+  )
 
   /** One validation step of an add: its answer, or the room to wait for. `seen` is the version of
     * the pool that the step looked at.
@@ -374,28 +394,41 @@ object Mempool:
           tipSlot: BigInt,
           adopted: Set[Bytes],
           tipHash: Option[Bytes]
-      )(using Raise[F, StorageError]) = lock.lock.surround {
+      )(using Raise[F, StorageError]) =
+        lock.lock.surround(revalidated(Mempool.Target(ledger, tipSlot, adopted, tipHash)))
+
+      def synchronise(next: MempoolState => F[Option[Mempool.Target]])(using
+          Raise[F, StorageError]
+      ) = lock.lock.surround(
+        state.get
+          .flatMap(next)
+          .flatMap(_.fold(F.pure(Vector.empty[(Entry, Rejection)]))(revalidated))
+      )
+
+      /** The pool revalidated at `target`, under the state lock its caller holds. */
+      private def revalidated(target: Mempool.Target)(using
+          Raise[F, StorageError]
+      ): F[Vector[(Entry, Rejection)]] =
         for
           current <- state.get
-          completed <- ledger.traverse(l =>
+          completed <- target.ledger.traverse(l =>
             UtxoStore
               .complete(utxoStore, l.utxo, UtxoStore.readSet(current.entries.map(_.tx)))
               .map(l.withUtxo)
           )
           activeEnv <- readEnv
-          synced <- F.blocking(current.sync(completed, tipSlot, activeEnv))
-          next = synced._1.copy(tipHash = tipHash)
+          synced <- F.blocking(current.sync(completed, target.tipSlot, activeEnv))
+          next = synced._1.copy(tipHash = target.tipHash)
           dropped = synced._2
           _ <- state.set(next)
           _ <- version.update(_ + 1)
-          (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))
+          (inBlock, invalid) = dropped.partition((entry, _) => target.adopted(entry.id))
           _ <- inBlock.traverse_ { (entry, _) =>
             events.emit(MempoolEvent.Adopted(entry.id))
           }
           _ <- invalid.traverse_((entry, reason) => leaves(entry, reason, DropCause.Revalidation))
           _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, invalid.size))
         yield invalid
-      }
 
       def removeTxsEvenIfValid(ids: Set[Bytes])(using Raise[F, StorageError]) =
         removing(ids, entry => events.emit(MempoolEvent.Removed(entry.id)), droppedNamed = false)

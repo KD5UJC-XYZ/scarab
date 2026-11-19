@@ -365,34 +365,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
               def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
                   cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
                   cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
-              ) = IO.unit),
-            onTip = Some(
-              Follower.OnTip((c, _) =>
-                c.tipRef.traverse_(tip =>
-                  cats.mtl
-                    .Raise[IO, xyz.kd5ujc.scarab.ledger.NodeError]
-                    .fromEither(
-                      MempoolLedger
-                        .at(
-                          c.state,
-                          Some(tip),
-                          MempoolEnv(
-                            globals,
-                            geometry,
-                            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-                            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
-                          )
-                        )
-                        .left
-                        .map(xyz.kd5ujc.scarab.ledger.ChainError.MempoolTick(tip.slot + 1, _))
-                    )
-                    .flatMap(
-                      mempool.sync(_, tip.slot, Set.empty, Some(tip.hash))
-                    )
-                    .void
-                )
-              )
-            )
+              ) = IO.unit)
           )
           forger <- Forger.create[IO, MirrorState](
             config,

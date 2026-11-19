@@ -1721,7 +1721,8 @@
           "TxSubmission2Suite",
           "EraMempoolSuite",
           "MempoolInterventionSuite",
-          "TxSubmissionLimitsSuite"
+          "TxSubmissionLimitsSuite",
+          "MempoolSyncSuite"
         ]
       },
       "page": "docs/compatibility/relay-and-mempool.md"

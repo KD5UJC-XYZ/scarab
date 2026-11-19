@@ -140,7 +140,8 @@ step by step and trace by trace, with the reference's trace names, severities an
    previous hash, cold key, VRF key, VRF result, body size and hash, operational certificate, the ledger's
    protocol version) is signed with the KES key at the slot's period (`forgedBlock`, then Scarab's `forged`).
 8. At the onset, `Follower.adoptForged` runs the block through the node's own `MirrorRules` and commits it through the same
-   path as any block (persistence, the chain server, mempool synchronisation): `adoptedBlock` (then `adopted`
+   path as any block (persistence, the chain server; the mempool's watcher then validates the pool again from a fiber of
+   its own, not in the commit): `adoptedBlock` (then `adopted`
    with the latency). A valid block that does not become the tip, because the tip has moved or chain selection
    prefers it, is `didntAdoptBlock` (then `lost`). A block our rules refuse is `forgedInvalidBlock`: its
    transactions leave the mempool, valid or not, and the slot ends.

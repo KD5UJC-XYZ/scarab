@@ -152,11 +152,15 @@ peer(s) --ChainSync headers--> candidate chain (per session)
               VolatileChain (last k states)  --block older than k-->  ImmutableStore
                     |        |                                         LedgerSnapshots + UtxoStore checkpoint
                     |        +--> ChainServer / ServedChain --> ChainSync, BlockFetch servers --> downstream peers
-                    +--> Mempool.sync (keep, drop, mark adopted) <--> TxSubmission2, LocalTxSubmission
+                    +~~> MempoolSync (own fiber, the tip as fingerprint) --> Mempool.synchronise (the chain read
+                                under the pool's lock; keep, drop, mark adopted) <--> TxSubmission2, LocalTxSubmission
 Forger (slot clock, leader check) --> BlockBuilder (from mempool) --> Follower.adoptForged --> same path as any block
 ```
 
 Concurrency: one producer fiber per peer keeps up to three batches in flight; one consumer applies
 blocks sequentially; snapshots are written by a background fiber from the immutable (structurally
 shared) anchor state; the forger, the servers and the query server run as resources next to the
-sync.
+sync. The commit only publishes the chain (`~~>`: the watcher reads it, the commit calls nothing);
+the mempool's watcher (`MempoolSync`) validates the pool again from a fiber of its own, reading the
+chain once the pool's lock is held, as the reference's mempool does from the watcher `openMempool`
+forks, so chain selection never waits for the pool's lock.

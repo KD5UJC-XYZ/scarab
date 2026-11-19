@@ -60,6 +60,13 @@ final case class ServedChain(
   /** The point is the anchor or in the volatile chain (the immutable part is the store's). */
   def containsVolatile(point: Point): Boolean = point == anchorPoint || position(point).isDefined
 
+  /** The bytes of the volatile block `hash`, when the chain holds it. */
+  def raw(hash: Bytes): Option[Bytes] =
+    seqs
+      .get(hash)
+      .flatMap(s => blocks.lift((s - first).toInt))
+      .collect { case served if served.ref.hash == hash => served.raw }
+
   /** Append a block; `dropped` oldest blocks became immutable and `newAnchor` is the new boundary.
     */
   def extend(block: Served, dropped: Int, newAnchor: Option[BlockRef]): ServedChain =

@@ -72,9 +72,6 @@ object SelectViews:
   *   Extra events derived from a state transition (era changes, epoch summaries).
   * @param persistence
   *   Receives every applied block and rollback so the immutable part can be stored.
-  * @param onTip
-  *   Called with the chain after every change of the tip and the raw blocks that were added
-  *   (mempool revalidation, for one).
   * @param cpu
   *   Where the block rules run (the CPU pool, see [[Compute]]): for a peer's block on the selection
   *   worker, and for a block forged by this node.
@@ -90,7 +87,6 @@ final class Follower[F[_]: Async, S] private (
     epochOf: (S, BigInt) => BigInt,
     observe: (S, S, BlockRef) => List[FollowerEvent],
     persistence: Option[ChainPersistence[F, S]],
-    onTip: Option[Follower.OnTip[F, S]],
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
     lock: Mutex[F],
@@ -543,17 +539,25 @@ final class Follower[F[_]: Async, S] private (
           }
     yield ()
 
-  /** Everything applied: persist, replace the chain, announce and tell the mempool.
+  /** Everything applied: persist, replace the chain and announce it.
     *
     * The order is the point. The blocks are persisted before the new chain is published, as the
     * reference's ChainDB writes a block to its VolatileDB before chain selection moves the tip
     * (`Storage/ChainDB/Impl/ChainSel.hs` of ouroboros-consensus main, line 455
     * `VolatileDB.putBlock`, line 932 `writeTVar cdbChain`): a failure of the storage leaves the
     * chain that was published as it was, and what is on disk is a prefix of the new chain, which
-    * the next start reads. A failure after the chain is published (announcing it, telling the
-    * mempool) finds the chain and the disk in step. In neither case does a published tip outrun
-    * what is stored; the node stops on a storage failure (issue 154: `FailurePolicy.disposition`,
-    * as the reference's `consensusRethrowPolicy` does) and recovers from disk.
+    * the next start reads. A failure after the chain is published (announcing it) finds the chain
+    * and the disk in step. In neither case does a published tip outrun what is stored; the node
+    * stops on a storage failure (issue 154: `FailurePolicy.disposition`, as the reference's
+    * `consensusRethrowPolicy` does) and recovers from disk.
+    *
+    * The mempool is not called here: its watcher ([[mempool.MempoolSync]]) reads the published
+    * chain ([[committedChain]]) from a fiber of its own, as the reference's chain selection leaves
+    * its mempool to the watcher that `openMempool` forks on the ledger tip (ouroboros-consensus
+    * 82ecba32 `Mempool/Init.hs` 47-82; no module of `Storage/ChainDB/Impl` names the mempool). A
+    * transaction being judged under the pool's lock therefore never holds back a commit, nor the
+    * adoption of a forged block, the GSM's comparison or a state query's acquire, which take the
+    * same chain lock.
     */
   private def commit(
       original: VolatileChain[S],
@@ -629,7 +633,6 @@ final class Follower[F[_]: Async, S] private (
       _ <- views.retain(
         steps.last.after.blocks.map(_._1.hash).toSet ++ steps.last.after.anchor.block.map(_.hash)
       )
-      _ <- onTip.traverse_(_(steps.last.after, steps.map(_.raw).toVector))
     yield ()
 
   /** A commit, asserted: whether it switched to a fork (it rolled back), rolled back more than one
@@ -765,19 +768,6 @@ object Follower:
       )
     )
 
-  trait OnTip[F[_], S]:
-    def apply(chain: VolatileChain[S], raws: Vector[Bytes])(using Raise[F, NodeError]): F[Unit]
-
-  object OnTip:
-    def apply[F[_], S](
-        run: (VolatileChain[S], Vector[Bytes]) => Raise[F, NodeError] ?=> F[Unit]
-    ): OnTip[F, S] =
-      new OnTip[F, S]:
-        def apply(chain: VolatileChain[S], raws: Vector[Bytes])(using
-            Raise[F, NodeError]
-        ): F[Unit] =
-          run(chain, raws)
-
   /** Publish chain state and its selection window atomically for GDD readers. Capturing the
     * immutable ledger and fragment never waits for a block fetch or a running ledger check.
     */
@@ -866,7 +856,6 @@ object Follower:
       geometry: EpochGeometry,
       observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
       persistence: Option[ChainPersistence[F, S]] = None,
-      onTip: Option[OnTip[F, S]] = None,
       tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
       epochOf: Option[(S, BigInt) => BigInt] = None,
       initialViews: Map[Bytes, SelectView] = Map.empty,
@@ -900,7 +889,6 @@ object Follower:
           epochOf.getOrElse((_: S, slot: BigInt) => geometry.epochOf(slot)),
           observe,
           persistence,
-          onTip,
           tiebreaker,
           views,
           lock,

@@ -176,18 +176,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
   def run(fatal: Fatal => F[Unit], ready: Deferred[F, Either[Fatal, Unit]]): F[Unit] =
     Fibers
       .scoped[F, Fatal, Unit](Fatal.Defect(_)) {
-        val scope = summon[Handle[F, Fatal]]
-        given Raise[F, NodeError] = Peer.contramapped(scope)(error =>
-          SessionEnd.of(error) match
-            case SessionEnd.Storage(cause)     => Fatal.Storage(cause)
-            case SessionEnd.Unavailable(cause) => Fatal.Unavailable(cause)
-            // a crypto provider that fails on a block stops the node, as the exception ends the
-            // reference's linked addBlockRunner thread (consensus 82ecba32
-            // Storage/ChainDB/Impl/Background.hs:107-108,142)
-            case SessionEnd.Unverifiable(cause) => Fatal.Unverifiable(cause)
-            case SessionEnd.Defect(cause)       => Fatal.Defect(cause)
-            case _                              => Fatal.Internal(error)
-        )
+        given Raise[F, NodeError] = Peer.contramapped(summon[Handle[F, Fatal]])(Fatal.of)
         application
           .locked(selectLocked(None, Phase.Startup)) *> ready.complete(Right(())).void *>
           F.both(consume, F.both(reselect, retries)).void

@@ -109,6 +109,8 @@ import xyz.kd5ujc.scarab.node.mempool.{
   LocalSubmission,
   Mempool,
   MempoolEnv,
+  MempoolState,
+  MempoolSync,
   PoolLedger
 }
 import xyz.kd5ujc.scarab.ledger.rules.Hfc
@@ -214,45 +216,65 @@ object Main extends IOApp:
       }
       .evalTap(_ => logged(NodeEvent.Listening(path)))
 
-  private[node] def synchronizeMempool(
-      mempool: Mempool[IO],
+  /** Where the mempool's watcher revalidates the pool ([[MempoolSync]]), decided once the pool's
+    * lock is held from the chain as it is then ([[Mempool.synchronise]]). Nowhere when the pool is
+    * at the chain's tip and its slot (the reference's `TraceMempoolSyncNotNeeded`,
+    * ouroboros-consensus 82ecba32 `Mempool/Update.hs` 589-594); otherwise the chain's state ticked
+    * to the slot after its tip, with the ids of the transactions in the blocks the pool has not
+    * been revalidated past ([[MempoolSync.unseen]]), which leave it as adopted. Those blocks are
+    * read from the chain's volatile window, whose bytes `bytesOf` gives (the chain server holds
+    * them), so nothing is kept for the pool but `synced`: the chain it was last revalidated at, as
+    * the hashes of its anchor and blocks. A transaction in a block that is no longer volatile when
+    * the pool catches up leaves it with its reason, as the reference reports every transaction it
+    * removes (`TraceMempoolRemoveTxs`).
+    */
+  private[node] def mempoolTarget(
       scheduling: Scheduling[IO],
       epochSlots: BigInt,
-      transition: Hfc.Transition
-  )(
-      chain: VolatileChain[MirrorState],
-      raws: Vector[xyz.kd5ujc.scarab.codec.Bytes]
-  )(using Ask[IO, MempoolEnv], Raise[IO, NodeError]): IO[Unit] =
-    for
-      decoded <- scheduling.compute.within(IO.delay(raws.traverse(Block.decode(_, epochSlots))))
-      blocks <- decoded.fold(error => summon[Raise[IO, NodeError]].raise(error), IO.pure)
-      adopted = blocks.flatMap {
-        case block: Block.Shelley => block.transactions.map(_.id)
-        case _                    => Vector.empty
-      }.toSet
-      environment <- Ask[IO, MempoolEnv].ask
-      ledger <- scheduling.compute
-        .within(
-          IO.delay(
-            PoolLedger
-              .at(
-                chain.state,
-                chain.tipRef,
-                environment.copy(geometry = chain.state.geometry(environment.geometry)),
-                transition
+      transition: Hfc.Transition,
+      bytesOf: xyz.kd5ujc.scarab.codec.Bytes => IO[Option[xyz.kd5ujc.scarab.codec.Bytes]],
+      synced: Ref[IO, Vector[Option[xyz.kd5ujc.scarab.codec.Bytes]]]
+  )(using Ask[IO, MempoolEnv]): MempoolSync.Target[IO, VolatileChain[MirrorState]] =
+    new MempoolSync.Target[IO, VolatileChain[MirrorState]]:
+      def apply(pool: MempoolState, chain: VolatileChain[MirrorState])(using
+          Raise[IO, NodeError]
+      ): IO[Option[Mempool.Target]] =
+        val identities = chain.anchor.block.map(_.hash) +: chain.blocks.map(b => Some(b._1.hash))
+        val tipHash = chain.tipRef.map(_.hash)
+        val tipSlot = chain.tipRef.fold(BigInt(-1))(_.slot)
+        synced.getAndSet(identities).flatMap { previous =>
+          if pool.tipHash == tipHash && pool.tipSlot == tipSlot then IO.pure(None)
+          else
+            val fresh =
+              chain.blocks.takeRight(MempoolSync.unseen(previous, pool.tipHash, identities))
+            for
+              raws <- fresh.traverse(b => bytesOf(b._1.hash)).map(_.flatten)
+              decoded <- scheduling.compute.within(
+                IO.delay(raws.traverse(Block.decode(_, epochSlots)))
               )
-              .leftMap(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
-          )
-        )
-        .flatMap(Raise[IO, NodeError].fromEither(_))
-      // a transaction revalidation has no verdict on leaves the pool with its reason (issue 567)
-      _ <- mempool.sync(
-        ledger,
-        chain.tipRef.fold(BigInt(-1))(_.slot),
-        adopted,
-        chain.tipRef.map(_.hash)
-      )
-    yield ()
+              blocks <- decoded.fold(error => summon[Raise[IO, NodeError]].raise(error), IO.pure)
+              adopted = blocks.flatMap {
+                case block: Block.Shelley => block.transactions.map(_.id)
+                case _                    => Vector.empty
+              }.toSet
+              environment <- Ask[IO, MempoolEnv].ask
+              ledger <- scheduling.compute
+                .within(
+                  IO.delay(
+                    PoolLedger
+                      .at(
+                        chain.state,
+                        chain.tipRef,
+                        environment.copy(geometry = chain.state.geometry(environment.geometry)),
+                        transition
+                      )
+                      .leftMap(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
+                  )
+                )
+                .flatMap(Raise[IO, NodeError].fromEither(_))
+            // a transaction revalidation has no verdict on leaves the pool with its reason (#567)
+            yield Some(Mempool.Target(ledger, tipSlot, adopted, tipHash))
+        }
 
   private def seedReceived(
       pool: BlockPool[IO],
@@ -1282,13 +1304,16 @@ object Main extends IOApp:
       rules: MirrorRules[IO]
   )
 
-  /** The selected chain once the stores are open, with what serves and extends it. */
+  /** The selected chain once the stores are open, with what serves and extends it, and the
+    * mempool's watcher on its tip (`synchronization`), run beside the selection worker.
+    */
   private final case class Chain(
       ref: Ref[IO, VolatileChain[MirrorState]],
       server: ChainServer[IO],
       txClock: TxClock[MirrorState],
       mempoolEnvironment: Ask[IO, MempoolEnv],
       mempool: Mempool[IO],
+      synchronization: Resource[IO, Unit],
       chainGate: Mutex[IO],
       follower: Follower[IO, MirrorState],
       stateful: Stateful[IO, VolatileChain[MirrorState]]
@@ -1724,29 +1749,29 @@ object Main extends IOApp:
         genesis.geometry,
         NodeRules.observe(genesis.geometry),
         Some(persistence.fold(served)(Persistence.both(_, served))),
-        Some(
-          new Follower.OnTip[IO, MirrorState]:
-            def apply(
-                chain: VolatileChain[MirrorState],
-                added: Vector[xyz.kd5ujc.scarab.codec.Bytes]
-            )(using
-                Raise[IO, NodeError]
-            ): IO[Unit] =
-              given Ask[IO, MempoolEnv] = mempoolEnvironment
-              synchronizeMempool(
-                mempool,
-                scheduling,
-                genesis.geometry.byron.epochSlots,
-                setup.praos.forks.transition(genesis.geometry.k)
-              )(
-                chain,
-                added
-              )
-        ),
         epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
         initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
         compute = Some(scheduling.compute),
         chainGate = Some(chainGate)
+      )
+      // the pool was made at this chain's tip: the chain it was last revalidated at
+      synced <- ref.get.flatMap(c =>
+        Ref.of[IO, Vector[Option[xyz.kd5ujc.scarab.codec.Bytes]]](
+          c.anchor.block.map(_.hash) +: c.blocks.map(b => Some(b._1.hash))
+        )
+      )
+      synchronization = MempoolSync.resource[IO, VolatileChain[MirrorState]](
+        mempool,
+        follower.committedChain,
+        _.tip,
+        mempoolTarget(
+          scheduling,
+          genesis.geometry.byron.epochSlots,
+          setup.praos.forks.transition(genesis.geometry.k),
+          server.volatileBlock,
+          synced
+        )(using mempoolEnvironment),
+        fatalSink
       )
     yield Chain(
       ref,
@@ -1754,6 +1779,7 @@ object Main extends IOApp:
       txClock,
       mempoolEnvironment,
       mempool,
+      synchronization,
       chainGate,
       follower,
       summon[Stateful[IO, VolatileChain[MirrorState]]]
@@ -2279,6 +2305,8 @@ object Main extends IOApp:
     val running = (raise: Raise[IO, DiffusionFailure]) =>
       decisionMaintenance
         .flatMap(_ => blockPool.maintenance)
+        // the mempool's watcher, forked before anything adopts, as `openMempool` forks it
+        .flatMap(_ => chain.synchronization)
         .flatMap(_ =>
           selectionWorker(
             follower,

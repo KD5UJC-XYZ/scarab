@@ -55,7 +55,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       k: Int = 5,
       pulsed: Boolean = false,
       beforeRule: Header => IO[Unit] = _ => IO.unit,
-      onTip: Option[Follower.OnTip[IO, BigInt]] = None,
+      persistence: Option[xyz.kd5ujc.scarab.storage.ChainPersistence[IO, BigInt]] = None,
       preparation: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO],
       fatalAction: Fatal => IO[Unit] = _ => IO.unit,
       initial: Option[VolatileChain[BigInt]] = None,
@@ -90,7 +90,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         ),
         event => events.update(_ :+ event),
         ForgedChain.geometry,
-        onTip = onTip
+        persistence = persistence
       )
       _ <- follower.installInvalidBlocks(pool.invalidBlocks)
       governor <-
@@ -464,9 +464,23 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   }
 
   test(
-    "onTip storage errors use the applying worker scope and close admissions before a stalled fatal sink"
+    "commit storage errors use the applying worker scope and close admissions before a stalled fatal sink"
   ) {
-    val failure = StorageError.Io("worker-on-tip", new java.io.IOException("onTip test fault"))
+    val failure = StorageError.Io("worker-commit", new java.io.IOException("commit test fault"))
+    val failing = new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, BigInt]:
+      def extended(
+          @scala.annotation.unused block: xyz.kd5ujc.scarab.consensus.BlockRef,
+          @scala.annotation.unused raw: Bytes,
+          @scala.annotation.unused immutable: Vector[xyz.kd5ujc.scarab.consensus.BlockRef],
+          @scala.annotation.unused anchor: xyz.kd5ujc.scarab.consensus.Anchor[BigInt]
+      )(using
+          Raise[IO, StorageError],
+          Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+      ) = Raise[IO, StorageError].raise[StorageError, Unit](failure)
+      def rolledBack(@scala.annotation.unused to: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
+          Raise[IO, StorageError],
+          Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+      ) = IO.unit
     for
       chain <- ForgedChain.forge(5000 until 5060)
       bodies <- checked(chain, 1)
@@ -474,7 +488,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       release <- Deferred[IO, Unit]
       _ <- node(
         Set.empty,
-        onTip = Some(Follower.OnTip[IO, BigInt]((_, _) => Raise[IO, StorageError].raise(failure))),
+        persistence = Some(failing),
         fatalAction = fatal => reported.complete(fatal).void *> release.get
       ) { n =>
         n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
@@ -557,23 +571,17 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         .extend(previous, 99)
         .fold(e => fail(e.message), _._1)
       validations <- Ref.of[IO, Int](0)
-      published <- Ref
-        .of[IO, Vector[(xyz.kd5ujc.scarab.protocol.ChainSync.Point, BigInt, Int)]](Vector.empty)
       _ <- node(
         Set.empty,
         initial = Some(resumed),
         recovered = originals,
-        beforeRule = _ => validations.update(_ + 1),
-        onTip = Some(
-          Follower.OnTip[IO, BigInt]((chain, raws) =>
-            published.update(_ :+ ((chain.tip, chain.state, raws.size)))
-          )
-        )
+        beforeRule = _ => validations.update(_ + 1)
       ) { n =>
         for
           _ <- n.pool.admissions.reprocess
           selected <- n.state.get
-          tips <- published.get
+          published <- n.follower.committedChain.get
+          events <- n.events.get
           applied <- validations.get
           fatals <- n.fatals.get
           _ <- IO {
@@ -581,7 +589,11 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
             assertEquals(selected.anchor.state, BigInt(42))
             assertEquals(selected, resumed)
             assertEquals(applied, 0)
-            assertEquals(tips, Vector.empty)
+            assertEquals(published, resumed, "nothing was committed")
+            assertEquals(
+              events.collect { case e: FollowerEvent.Extended => e.block.point },
+              Vector.empty
+            )
             assertEquals(fatals, Vector.empty)
           }
         yield ()
@@ -602,22 +614,26 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         .extend(ranked.last.header, 99)
         .fold(e => fail(e.message), _._1)
       validations <- Ref.of[IO, Vector[Bytes]](Vector.empty)
-      tips <- Ref.of[IO, Vector[xyz.kd5ujc.scarab.protocol.ChainSync.Point]](Vector.empty)
       _ <- node(
         Set.empty,
         initial = Some(resumed),
         recovered = left ++ right,
-        beforeRule = h => validations.update(_ :+ h.hash),
-        onTip = Some(Follower.OnTip[IO, BigInt]((chain, _) => tips.update(_ :+ chain.tip)))
+        beforeRule = h => validations.update(_ :+ h.hash)
       ) { n =>
         for
           selected <- n.state.get
           applied <- validations.get
-          published <- tips.get
+          published <- n.follower.committedChain.get
+          events <- n.events.get
         yield
           assertEquals(selected.tip, ranked.head.header.point)
           assertEquals(applied, Vector(ranked.head.header.hash))
-          assertEquals(published, Vector(ranked.head.header.point))
+          assertEquals(published.tip, ranked.head.header.point, "the commit was published")
+          assertEquals(
+            events.collect { case e: FollowerEvent.Extended => e.block.point },
+            Vector(ranked.head.header.point),
+            "one block was committed"
+          )
       }
     yield ()
   }

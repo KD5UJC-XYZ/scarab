@@ -37,6 +37,11 @@ final class ChainServer[F[_]: Async] private (
 
   def tip: F[Tip] = state.get.map(_.tip)
 
+  /** The bytes of the volatile block `hash`, which this server holds until the block is immutable:
+    * the mempool's watcher reads the blocks the pool has not seen from here.
+    */
+  def volatileBlock(hash: Bytes): F[Option[Bytes]] = state.get.map(_.raw(hash))
+
   private[relay] def activeFollowers: F[Int] = state.get.map(_.followers.size)
 
   /** The node's chain updates, to be composed with the storage persistence. The block must be

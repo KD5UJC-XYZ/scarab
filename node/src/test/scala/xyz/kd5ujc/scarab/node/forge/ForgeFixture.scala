@@ -248,39 +248,46 @@ trait ForgeFixture:
           def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
               Raise[IO, StorageError],
               Raise[IO, ChainError]
-          ) = IO.unit),
-        onTip = Some(
-          Follower.OnTip((c, _) =>
-            cats.mtl
-              .Raise[IO, NodeError]
-              .fromEither(
-                MempoolLedger
-                  .at(
-                    c.state,
-                    c.tipRef,
-                    MempoolEnv(
-                      rulesGlobals,
-                      geometry,
-                      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-                      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
-                    )
-                  )
-                  .left
-                  .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
+          ) = IO.unit)
+      )
+      // The pool is synchronised with the chain once an adoption is reported, before the step
+      // that adopted returns: the node's watcher (`MempoolSync`) does it from a fiber of its own,
+      // and these tests read the pool after their steps as if it had caught up.
+      synced = ref.get.flatMap(c =>
+        cats.mtl
+          .Raise[IO, NodeError]
+          .fromEither(
+            MempoolLedger
+              .at(
+                c.state,
+                c.tipRef,
+                MempoolEnv(
+                  rulesGlobals,
+                  geometry,
+                  xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+                  xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+                )
               )
-              .flatMap(
-                mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty, c.tipRef.map(_.hash))
-              )
-              .void
+              .left
+              .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
           )
-        )
+          .flatMap(
+            mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty, c.tipRef.map(_.hash))
+          )
+          .void
       )
       seen <- SignallingRef.of[IO, Vector[ForgeEvent]](Vector.empty)
       stamped <- Ref.of[IO, Vector[(Instant, ForgeEvent)]](Vector.empty)
+      // synchronised before the event is seen: a test that waits for it reads the pool caught up
+      reported = (e: ForgeEvent) =>
+        (e match
+          case ForgeEvent.Adopted(_, _) => synced
+          case _                        => IO.unit
+        ) *> seen.update(_ :+ e)
       sink = new ForgeEvents[IO]:
-        def emit(e: ForgeEvent) = seen.update(_ :+ e)
+        def emit(e: ForgeEvent) = reported(e)
         override def emitAt(at: Instant, e: ForgeEvent) =
-          stamped.update(_ :+ (at -> e)) *> seen.update(_ :+ e)
+          stamped.update(_ :+ (at -> e)) *> reported(e)
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       // horizon: a live loop over a chain left at genesis while the clock is thousands of slots on:
       // the era history at that tip would not translate the slot, so such tests lift the horizon

@@ -118,6 +118,23 @@ cancelable (a closed client or a lost peer leaves the line) and the `mempoolWait
 wait stalls that peer's TxSubmission2 replies, as in the reference, outside every protocol deadline. A transaction is validated in the slot after the tip, on the ledger ticked to that slot, over an epoch boundary
 and into the next era when the slot is past them (`PoolLedger.at`). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
 state changes (one state lock, held for one validation or one revalidation, never while an add waits) and offers `source`/`sink` for TxSubmission2.
+The pool is validated again at a new tip by its watcher, `MempoolSync`, a fiber of its own beside the selection
+worker, as the reference's mempool is by the watcher `openMempool` forks (`forkSyncStateOnTipPointChange`,
+ouroboros-consensus `82ecba32` and `808e4005`, `Mempool/Init.hs` 47-82). The follower's commit, of a peer's block or
+our own, only publishes the chain (`Follower.committedChain`); the watcher reads its tip as a fingerprint, once at
+start and then whenever it is not the one it saw last, taking the latest (`blockUntilChanged`), and each time the pool
+reads the chain again once its state lock is held and decides there where to revalidate (`Mempool.synchronise`), as
+the reference's `implSyncWithLedger` reads the ledger in the step that takes the pool's state (`Mempool/Update.hs`
+558-625 at `82ecba32`): a revalidation that waited behind an admission applies the chain as it is then, never a tip
+the chain has left meanwhile, and does nothing when the pool is at the tip already. The transactions of the blocks the
+pool was not revalidated past leave it as adopted; those blocks are read from the chain's volatile window, whose bytes
+the chain server holds, and a transaction in a block that is no longer volatile when the pool catches up leaves it
+with its reason, as the reference reports every transaction it removes. Chain selection, the adoption of a forged
+block, the GSM's comparison and a state query's acquire therefore never wait for the state lock, and the pool may lag
+the chain for as long as a revalidation waits, as the reference's does; the forger validates the held transactions
+again at its slot, so it does not depend on the pool having caught up. A failure of the revalidation stops the node,
+as the reference's watcher thread is linked to the node. Admissions stay serial under the state lock, as in the
+reference.
 The sink knows an id only while the pool holds its transaction, as the reference's `mempoolHasTx` reads the current
 snapshot (ouroboros-consensus `82ecba32`, `NodeKernel.hs` 929): a transaction refused or adopted earlier and offered
 again is asked for again.

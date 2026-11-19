@@ -286,6 +286,20 @@ enum Fatal extends DomainError:
     case Internal(e)     => s"internal: ${e.message}"
     case Defect(t)       => s"defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
 
+object Fatal:
+  /** A failure of work the node does on its own behalf, in a fiber no peer owns (the selection
+    * worker, the mempool's synchronisation): every one stops the node, with its typed cause.
+    */
+  def of(error: NodeError): Fatal = SessionEnd.of(error) match
+    case SessionEnd.Storage(cause)     => Fatal.Storage(cause)
+    case SessionEnd.Unavailable(cause) => Fatal.Unavailable(cause)
+    // a crypto provider that fails on a block stops the node, as the exception ends the
+    // reference's linked addBlockRunner thread (consensus 82ecba32
+    // Storage/ChainDB/Impl/Background.hs:107-108,142)
+    case SessionEnd.Unverifiable(cause) => Fatal.Unverifiable(cause)
+    case SessionEnd.Defect(cause)       => Fatal.Defect(cause)
+    case _                              => Fatal.Internal(error)
+
 /** What the node does with a peer after its session ended: the one place the outcomes are given a
   * policy (owner decision 8 for peers; the reference's `consensusRethrowPolicy` for the rest).
   */

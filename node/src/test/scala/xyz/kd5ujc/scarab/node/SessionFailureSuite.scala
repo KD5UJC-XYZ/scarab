@@ -22,7 +22,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Header,
   HeaderError,
   HeaderStructureProblem,
-  NodeError,
   PeerError,
   ProviderDefect,
   StorageError,
@@ -72,7 +71,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       end: SessionEnd,
       chain: VolatileChain[BigInt],
       stored: Vector[BlockRef],
-      published: Vector[Header],
       events: Vector[FollowerEvent] = Vector.empty,
       invalid: Set[Bytes] = Set.empty,
       fatal: Option[Fatal] = None
@@ -80,18 +78,16 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
     * `refuse` is the header the rules reject, `breakStorage` the number of the block whose
-    * persistence fails, `breakTip` the number of the block after which telling the mempool fails,
-    * `explode` the number of the block whose rules throw (`throwEagerly`: while they build their
-    * effect), `throwTip` the number of the block after which telling the mempool throws,
-    * `fetchThrows` the number of the block whose fetch throws, `unverifiable` the number of the
-    * block on which a crypto provider fails and the failure the rules report for it.
+    * persistence fails, `explode` the number of the block whose rules throw (`throwEagerly`: while
+    * they build their effect), `throwTip` the number of the block whose announcement throws, after
+    * its publication, `fetchThrows` the number of the block whose fetch throws, `unverifiable` the
+    * number of the block on which a crypto provider fails and the failure the rules report for it.
     */
   private def session(
       script: List[Either[PeerError, SyncEvent]] =
         headers.toList.map(h => Right(SyncEvent.RollForward(h, tip))),
       refuse: Option[Int] = None,
       breakStorage: Option[Int] = None,
-      breakTip: Option[Int] = None,
       explode: Option[Int] = None,
       throwEagerly: Option[Int] = None,
       throwTip: Option[Int] = None,
@@ -108,7 +104,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
         stored <- Ref.of[IO, Vector[BlockRef]](Vector.empty)
-        published <- Ref.of[IO, Vector[Header]](Vector.empty)
         emitted <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
         persistence = new ChainPersistence[IO, BigInt]:
           def extended(
@@ -174,25 +169,17 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             )
           else IO.pure(header.blockNo)
         }
+        // announcing a block follows its publication: a bug there is one after the commit
+        announced = (event: FollowerEvent) =>
+          emitted.update(_ :+ event) *> (event match
+            case FollowerEvent.Extended(ref, _, _, _) if throwTip.contains(ref.blockNo.toInt) =>
+              IO.raiseError(new IllegalStateException("a bug after the commit"))
+            case _ => IO.unit)
         follower <- Follower.create[IO, BigInt](
           rules,
-          event => emitted.update(_ :+ event),
+          announced(_),
           geometry,
-          persistence = Some(persistence),
-          onTip = Some(
-            Follower.OnTip((chain, _) =>
-              chain.tipRef.fold(IO.unit)(tipRef =>
-                published.update(_ :+ headers.find(_.hash == tipRef.hash).get) *>
-                  Raise[IO, NodeError]
-                    .raise[NodeError, Unit](ChainError.NoIntersection)
-                    .whenA(
-                      breakTip.contains(tipRef.blockNo.toInt)
-                    ) *>
-                  IO.raiseError(new IllegalStateException("a bug after the commit"))
-                    .whenA(throwTip.contains(tipRef.blockNo.toInt))
-              )
-            )
-          )
+          persistence = Some(persistence)
         )
         pool <- WorkerTesting.pool(follower)
         queue <- Queue.unbounded[IO, Either[PeerError, SyncEvent]]
@@ -223,8 +210,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           .timeout(20.seconds)
         fatal <- stopped.get
         chain <- ref.get
-        left <- (stored.get, published.get, emitted.get, pool.invalidBlocks.snapshot).mapN(
-          (s, p, e, invalid) => Result(end, chain, s, p, e, invalid.entries.keySet, fatal)
+        left <- (stored.get, emitted.get, pool.invalidBlocks.snapshot).mapN((s, e, invalid) =>
+          Result(end, chain, s, e, invalid.entries.keySet, fatal)
         )
       yield left
     }
@@ -293,16 +280,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       // the block that could not be stored is not on the published chain
       assertEquals(left.chain.tip, headers(1).point)
       assertEquals(blockNos(left.stored), Vector(0, 1))
-    }
-  }
-
-  test("during publication: the chain is published and stored when telling the mempool fails") {
-    session(breakTip = Some(2)).map { left =>
-      assertEquals(left.fatal, Some(Fatal.Internal(ChainError.NoIntersection)))
-      assertEquals(left.end, SessionEnd.Stopped(false))
-      // the block is on the chain and on disk: nothing published outruns what is stored
-      assertEquals(left.chain.tip, headers(2).point)
-      assertEquals(blockNos(left.stored), Vector(0, 1, 2))
     }
   }
 

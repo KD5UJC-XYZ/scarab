@@ -1238,10 +1238,11 @@
     {
       "module": "node",
       "path": "node/mempool",
-      "responsibility": "Mempool state, capacity, local submission and monitor",
+      "responsibility": "Mempool state, capacity, its watcher on the chain's tip, local submission and monitor",
       "entryPoints": [
         "Mempool",
         "MempoolState",
+        "MempoolSync",
         "LocalSubmission",
         "LocalMonitor",
         "Capacity"
@@ -1251,6 +1252,7 @@
         "LocalSubmissionSuite",
         "LocalMonitorSuite",
         "MempoolBackpressureSuite",
+        "MempoolSyncSuite",
         "PlutusBackendProbeSuite"
       ],
       "docs": [
