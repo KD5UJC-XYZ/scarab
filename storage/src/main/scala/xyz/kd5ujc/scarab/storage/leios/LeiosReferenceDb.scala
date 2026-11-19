@@ -202,11 +202,14 @@ object LeiosReferenceDb:
         .flatMap(access => connection[F](dir / partition.file, partition, access).use(use))
     // the hashes whose body the volatile file holds: the others the collection evicted
     opened(Partition.Volatile)(c =>
-      rows(c, Partition.Volatile, "SELECT ebHashBytes FROM ebBodies")(r => Bytes.wrap(blob(r, 1))).compile
+      rows(c, Partition.Volatile, "SELECT ebHashBytes FROM ebBodies")(r =>
+        Bytes.wrap(blob(r, 1))
+      ).compile
         .to(Set)
     ).flatMap { held =>
-      Vector(Partition.Immutable, Partition.Volatile).foldLeftM(Counts.zero) { (counts, partition) =>
-        opened(partition)(importPartition(_, partition, held, store)).map(counts + _)
+      Vector(Partition.Immutable, Partition.Volatile).foldLeftM(Counts.zero) {
+        (counts, partition) =>
+          opened(partition)(importPartition(_, partition, held, store)).map(counts + _)
       }
     }
 

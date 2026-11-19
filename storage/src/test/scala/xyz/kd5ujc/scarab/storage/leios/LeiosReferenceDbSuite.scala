@@ -35,6 +35,12 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
     for
       written <- store(dir / "a").use { s =>
         ok(for
+          // 6: promoted, then collected: evicted
+          _ <- s.writeEbPoint(point(1, 6), word32(1))
+          _ <- s.writeEbBody(point(1, 6), body(1), Vector.empty)
+          _ <- s.writeTxs(point(1, 6), Vector(0 -> tx(0)))
+          _ <- s.promoteToImmutable(Vector(point(1, 6)))
+          _ <- s.garbageCollect(slot(2))
           // 1: complete, at two slots; 2: one of two transactions; 3: a point without a body
           _ <- Vector(
             point(10, 1),
@@ -73,11 +79,12 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
       pageSize <- IO.blocking(query(reference / "leios.imm.db", "PRAGMA page_size"))
     yield
       assertEquals(after, before)
-      assertEquals(counts, LeiosReferenceDb.Counts(points = 9, bodies = 5, transactions = 7))
-      // hash 4's points, promoted and announced again, are all still in the volatile file, the
-      // promoted ones copied (2); the immutable file has the newest promoted one, and hash 5's one
-      assertEquals(volStatuses, Vector("0", "0", "0", "0", "2", "2", "0"))
-      assertEquals(immSlots, Vector("21", "40"))
+      assertEquals(before.flatMap(_.points).count(_._3 == EbStatus.Evicted), 1)
+      assertEquals(counts, LeiosReferenceDb.Counts(points = 11, bodies = 7, transactions = 8))
+      // the volatile file has every point that is not evicted, the promoted ones copied (2); the
+      // immutable file has the newest promoted or evicted point of each hash: 6's, 4's and 5's
+      assertEquals(volStatuses, Vector("0", "0", "0", "0", "2", "2", "0", "2"))
+      assertEquals(immSlots, Vector("1", "21", "40"))
       assertEquals(journal, Vector("wal"))
       assertEquals(pageSize, Vector("4096"))
   }
@@ -115,25 +122,46 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
             100L
           )
           insertBody(c, 3, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+          // 5 is in the immutable file only: the reference's collection evicted it
+          update(c, "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize) VALUES (?, ?, ?)")(
+            6L,
+            hash(5).bytes.toArray,
+            100L
+          )
+          insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
         })
         result <- store(dir / "store").use { s =>
           imported(reference, s).flatMap(counts =>
-            ok(for
-              body1 <- s.lookupEbBody(hash(1))
-              closure1 <- s.lookupEbClosure(hash(1))
-              some1 <- s.batchRetrieveTxs(hash(1), Vector(0, 1, 2))
-              closure3 <- s.lookupEbClosure(hash(3))
-              complete <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(0))
-              statuses <- Vector(1, 2, 3, 4).traverse(i =>
-                s.stored(hash(i)).map(_.points.map(_._3))
+            ok(
+              for
+                body1 <- s.lookupEbBody(hash(1))
+                closure1 <- s.lookupEbClosure(hash(1))
+                some1 <- s.batchRetrieveTxs(hash(1), Vector(0, 1, 2))
+                closure3 <- s.lookupEbClosure(hash(3))
+                complete <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(0))
+                closure5 <- s.lookupEbClosure(hash(5))
+                statuses <- Vector(1, 2, 3, 4, 5).traverse(i =>
+                  s.stored(hash(i)).map(_.points.map(_._3))
+                )
+                withBody2 <- s.stored(hash(2))
+              yield (
+                counts,
+                body1,
+                closure1,
+                some1,
+                closure3,
+                complete,
+                statuses,
+                withBody2,
+                closure5
               )
-              withBody2 <- s.stored(hash(2))
-            yield (counts, body1, closure1, some1, closure3, complete, statuses, withBody2))
+            )
           )
         }
-        (counts, body1, closure1, some1, closure3, complete, statuses, withBody2) = result
+        (counts, body1, closure1, some1, closure3, complete, statuses, withBody2, closure5) = result
       yield
-        assertEquals(counts, LeiosReferenceDb.Counts(points = 5, bodies = 4, transactions = 6))
+        // 3's body and closure come from the volatile file, 5's from the immutable one
+        assertEquals(counts, LeiosReferenceDb.Counts(points = 6, bodies = 4, transactions = 6))
         assertEquals(body1, Some(partly.encoded))
         assertEquals(closure1, None)
         assertEquals(some1, Vector(0 -> tx(0), 1 -> zeroes(tx(1).size), 2 -> tx(2)))
@@ -146,9 +174,11 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
             Vector(EbStatus.Volatile),
             Vector(EbStatus.Certified),
             Vector(EbStatus.Immutable),
-            Vector(EbStatus.Volatile)
+            Vector(EbStatus.Volatile),
+            Vector(EbStatus.Evicted)
           )
         )
+        assertEquals(closure5.map(_.size), Some(2))
         assertEquals(withBody2.txs.size, 0)
   }
 

@@ -253,10 +253,11 @@ them, into this store before it imports the blocks (`leiosPoints`, `leiosBodies`
 `leiosTransactions` on its `done` line). The files are opened as immutable, so nothing is written
 beside them, unless a write-ahead log beside one holds frames, which are then read through SQLite's
 shared memory file. `LeiosReferenceDb.exportFrom` writes a store as new files with the reference's
-pragmas and schema, as the reference would hold it: the newest immutable point of each hash in
-`leios.imm.db`, and every point of a hash in `leios.vol.db`, the immutable ones with the copier's
-status, unless the hash's one point is immutable. Both use `sqlite-jdbc`, only offline: the node
-never opens SQLite.
+pragmas and schema, as the reference would hold it: the newest immutable or evicted point of each
+hash in `leios.imm.db`, and every point that is not evicted in `leios.vol.db`, the immutable ones
+with the copier's status, with the body and closure of a hash none of whose points is evicted. An
+import reads a point of `leios.imm.db` whose body `leios.vol.db` does not hold as evicted. Both use
+`sqlite-jdbc`, only offline: the node never opens SQLite.
 
 **Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
 `--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest
