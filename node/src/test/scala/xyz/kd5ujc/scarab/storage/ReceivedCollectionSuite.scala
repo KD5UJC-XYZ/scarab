@@ -13,7 +13,14 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode, Value}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules}
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  BlockTransport,
+  BlockTransportError,
+  ChainError,
+  NodeError,
+  StorageError
+}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.{NodeSetup, ReceivedBlockRecovery}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
@@ -337,6 +344,11 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         reported <- Ref.of[IO, Option[ChainStorage.CollectionStopped]](None)
         _ <- n.act(put(1, 2, 3))
         _ <- n.act(copied(1, 2))
+        // the wait for the report is started before the failure, in a fiber of its own, so it never
+        // holds up the steps, the stop among them (TST-5)
+        _ <- n.act(recovered =>
+          recovered.collectionsStopped.flatMap(stopped => reported.set(Some(stopped))).start.void
+        )
         // the received log's directory goes: the collection at 60 s cannot sync it
         _ <- IO.blocking {
           val received = (dir / "received").toNioPath
@@ -344,7 +356,6 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
           JFiles.delete(received)
         }
         _ <- n.advance(60.seconds)
-        _ <- n.act(_.collectionsStopped.flatMap(stopped => reported.set(Some(stopped))))
         _ <- n.act { recovered =>
           Handle
             .allow[NodeError] {
@@ -355,7 +366,15 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         }
         error <- failed.get
         stopped <- reported.get
+        traced <- n.collections
       yield
+        assert(
+          !traced.exists {
+            case StorageEvent.PerformedGC(_) => true
+            case _                           => false
+          },
+          s"no collection is reported done when it fails, got $traced"
+        )
         stopped match
           case Some(
                 ChainStorage.CollectionStopped.Failed(StorageError.Io(_, _: NoSuchFileException))
@@ -413,6 +432,13 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         }
       for
         _ <- IO(assert(blocks.size >= 8, s"eight blocks, found ${blocks.size}"))
+        // W fails the transport check for its body, not for another reason
+        _ <- IO {
+          val header = Block.decode(wrongBody._2, epochSlots).fold(e => fail(e.message), _.header)
+          BlockTransport.check(header, wrongBody._2) match
+            case Left(BlockTransportError.WrongBodyHash(_, _)) => ()
+            case other => fail(s"W's body does not match its header, got $other")
+        }
         _ <- StorageTestKit.ok(
           VolatileStore
             .open[IO](dir / "received", 3)

@@ -642,18 +642,22 @@ object VolatileStore:
     */
   private final case class Listing(numbered: Vector[(Int, String)], ignored: Vector[String])
   private object Listing:
-    /** The listing of `names`, each with its number when it has one; refused when two names have
-      * one number.
+    /** The listing of `names`, each with its number when it has one; refused at the first name, in
+      * order of name, that reads as a number but is not the name the log writes for it
+      * ([[nameOf]]), so no two names have one number.
       */
     def of(names: Vector[(String, Option[Int])]): Either[FileNameProblem, Listing] =
-      val numbered = names.collect { case (name, Some(n)) => n -> name }.sortBy(_._1)
-      numbered
-        .groupBy(_._1)
-        .filter((_, files) => files.sizeIs > 1)
-        .minByOption(_._1)
-        .fold[Either[FileNameProblem, Listing]](
-          Right(Listing(numbered, names.collect { case (name, None) => name }.sorted))
-        )((n, files) => Left(FileNameProblem.SameNumber(n, files.map(_._2).sorted)))
+      names
+        .sortBy(_._1)
+        .collectFirst {
+          case (name, Some(n)) if name != nameOf(n) => FileNameProblem.NotCanonical(name, nameOf(n))
+        }
+        .toLeft(
+          Listing(
+            names.collect { case (name, Some(n)) => n -> name }.sortBy(_._1),
+            names.collect { case (name, None) => name }.sorted
+          )
+        )
 
   /** The open: the files recovered by `recover`, and a store that appends after the newest. */
   private def opening[F[_]: Async, A](dir: Path, blocksPerFile: Int)(
@@ -669,8 +673,8 @@ object VolatileStore:
 
     /** The log's files and their numbers, in order of number, and the names of the other files of
       * its directory, read before any file is changed. A name that holds a locale's digits
-      * ([[FileNameProblem.LocaleDigits]]), or two names of one number
-      * ([[FileNameProblem.SameNumber]]), refuses the log as it is.
+      * ([[FileNameProblem.LocaleDigits]]), or that reads as a number but is not the name the log
+      * writes for it ([[FileNameProblem.NotCanonical]]), refuses the log as it is.
       */
     val listed: F[Listing] =
       guard(root.toString) {

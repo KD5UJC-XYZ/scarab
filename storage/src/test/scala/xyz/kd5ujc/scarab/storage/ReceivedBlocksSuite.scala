@@ -848,36 +848,43 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
-  test("two listed names of one file number refuse the log before any file changes") {
-    // `1.log` and `00000001.log` are both file number 1: the log finds a block's file by its
-    // number, so it could not tell them apart, and the open refuses the log as it is, as it refuses
-    // a name in a locale's digits (FileNameProblem)
+  test("a log file name that is not the one the log writes refuses the log, which is unchanged") {
+    // `1.log` reads as file number 1, but the log writes `00000001.log` for it and finds a block's
+    // file by that name: the open refuses the log as it is, before any file changes, as it refuses
+    // a name in a locale's digits (FileNameProblem). Both logs open their files the same way
     tempDir.use { dir =>
-      val (a, b) = (block(1), block(2))
-      def record(x: (BlockRef, Bytes)) = VolatileStore.encode(VolatileRecord.Block(x._1, x._2))
+      val a = block(1)
+      def contents: Map[String, Vector[Byte]] =
+        scala.util.Using.resource(JFiles.list(dir.toNioPath))(
+          _.iterator.asScala
+            .map(f => f.getFileName.toString -> JFiles.readAllBytes(f).toVector)
+            .toMap
+        )
       for
         _ <- IO {
-          JFiles.write(dir.toNioPath.resolve("1.log"), record(a))
-          JFiles.write(dir.toNioPath.resolve("00000001.log"), record(b) ++ record(b))
+          JFiles.write(
+            dir.toNioPath.resolve("1.log"),
+            VolatileStore.encode(VolatileRecord.Block(a._1, a._2))
+          )
+          JFiles.write(dir.toNioPath.resolve("notes.txt"), Array[Byte](1, 2, 3))
         }
-        result <- attempt(ReceivedBlocks.open[IO](dir, 4)(unread, decodes).use_)
-        sizes <- IO(Vector("1.log", "00000001.log").map(n => JFiles.size(dir.toNioPath.resolve(n))))
+        before <- IO(contents)
+        received <- attempt(ReceivedBlocks.open[IO](dir, 4)(unread, decodes).use_)
+        selected <- attempt(VolatileStore.open[IO](dir, 4).use_)
+        after <- IO(contents)
       yield
-        result match
-          case Left(StorageError.Corrupt(what, FileNameProblem.SameNumber(1, names))) =>
+        List(received, selected).foreach {
+          case Left(StorageError.Corrupt(what, FileNameProblem.NotCanonical(name, canonical))) =>
             assertEquals(what, dir.toNioPath.toString, "the log's directory")
-            assertEquals(names, Vector("00000001.log", "1.log"), "both names")
-          case other => fail(s"the log is refused for the two names, got $other")
-        assertEquals(
-          sizes,
-          Vector(record(a).length.toLong, 2L * record(b).length),
-          "no file is changed"
-        )
+            assertEquals((name, canonical), ("1.log", "00000001.log"), "the name and the log's own")
+          case other => fail(s"the log is refused for the name, got $other")
+        }
+        assertEquals(after, before, "the directory is unchanged, byte for byte")
     }
   }
 
-  test("the names the open does not read are traced first, and a held block put again too") {
-    // `notes.txt` and `x.log` are not log files: the reference traces such names
+  test("the names the open does not read are traced before a cut, and a held block put again") {
+    // [A ~]: `notes.txt` and `x.log` are not log files: the reference traces such names
     // (`InvalidFileNames`, `mkOpenState`, `Storage/VolatileDB/Impl/State.hs` 319-339) and a block
     // put that it holds (`BlockAlreadyHere`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399,
     // ouroboros-consensus 82ecba329)
@@ -885,9 +892,15 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
       ok {
         val (a, c) = (block(1), block(3))
         for
+          _ <- VolatileStore.open[IO](dir, 4).use((log, _) => log.append(a._1, a._2))
           _ <- IO {
             JFiles.write(dir.toNioPath.resolve("notes.txt"), Array[Byte](1))
             JFiles.write(dir.toNioPath.resolve("x.log"), Array[Byte](1))
+            JFiles.write(
+              dir.toNioPath.resolve("00000000.log"),
+              Array.fill[Byte](10)(7),
+              StandardOpenOption.APPEND
+            )
           }
           traced <- cats.effect.Ref.of[IO, Vector[VolatileStore.Trace]](Vector.empty)
           _ <- ReceivedBlocks
@@ -903,10 +916,18 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
             seen,
             Vector(
               VolatileStore.Trace.InvalidFileNames(Vector("notes.txt", "x.log")),
+              VolatileStore.Trace.Truncated(
+                VolatileStore.Cut(
+                  "00000000.log",
+                  VolatileStore.encode(VolatileRecord.Block(a._1, a._2)).length.toLong,
+                  VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Unreadable)
+                )
+              ),
+              VolatileStore.Trace.BlockAlreadyHere(a._1.hash),
               VolatileStore.Trace.BlockAlreadyHere(a._1.hash),
               VolatileStore.Trace.BlockAlreadyHere(a._1.hash)
             ),
-            "the names first, then each put of the held block"
+            "the names first, then the cut, then each put of the held block"
           )
           assert(left, "a file the open does not read is left alone")
       }
