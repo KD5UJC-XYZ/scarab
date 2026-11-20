@@ -63,7 +63,7 @@
  },
  "harness": {
   "source": "scripts/oracle/leios-testnet/chain/Main.hs",
-  "sha256": "3802eeecf8a60b679048da94bf995abdbe87187e9ead2eda1a3b7e91304b902a"
+  "sha256": "203424843a15c4ff6ff61e876aaf1a111d4ae4a795cc21f894ec6576376d2f8d"
  },
  "compiler": "GHC 9.10.3 (the release builds with 9.6)",
  "cases": {
@@ -78,15 +78,15 @@
   "refused": 0
  },
  "oracle": {
-  "imageId": "sha256:d577dbf1b7c28514384896540f192599b2f3a99b7305fcbe006ceda545d77203",
+  "imageId": "sha256:6eda2408a174059641319ab7c2475092c5daf83437daf62d89b80fbc7e24bba0",
   "imageFilesSha256": {
-   "/oracle/leios-testnet/chain/Main.hs": "3802eeecf8a60b679048da94bf995abdbe87187e9ead2eda1a3b7e91304b902a",
+   "/oracle/leios-testnet/chain/Main.hs": "203424843a15c4ff6ff61e876aaf1a111d4ae4a795cc21f894ec6576376d2f8d",
    "/oracle/leios-testnet/chain/scarab-leios-testnet-chain.cabal": "6eac84f5898c1da90eb3b08895e1a13b669ed68b8cc8cb851c7d8c7edcdc0ea4",
    "/oracle/leios-testnet/cabal.project": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
    "/oracle/leios-testnet/cabal.project.local": "211f4820919eb9a086db3cef543758dd8e7f870fbf722920b27b31467f0df549",
-   "/usr/local/bin/scarab-leios-testnet-chain": "7e6091a46c49f369afb89f709b4080bd5e298e4b9ec8fb9f57f996260b88a863"
+   "/usr/local/bin/scarab-leios-testnet-chain": "110c44b84cb8c3b24c69c7acd1633bf53684eb8fb1556981b03c931b1878214a"
   },
-  "oracleBinarySha256": "7e6091a46c49f369afb89f709b4080bd5e298e4b9ec8fb9f57f996260b88a863",
+  "oracleBinarySha256": "110c44b84cb8c3b24c69c7acd1633bf53684eb8fb1556981b03c931b1878214a",
   "pinnedSources": {
    "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c": "unchanged",
    "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
@@ -96,5 +96,13 @@
    "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a"
   },
   "network": "none"
+ },
+ "buildAccepted": {
+  "date": "2026-11-20",
+  "reason": "chain/Main.hs writes each sub-transaction's collection failure as the ledger shows it, as the top level's already was (#85); a collected level is written as before. The rebuilt image answered the 200 cases with cases.json and results.json byte for byte the ones recorded, so only the image's and the harness's digests changed, accepted with --accept-build.",
+  "previousImageId": "sha256:d577dbf1b7c28514384896540f192599b2f3a99b7305fcbe006ceda545d77203",
+  "previousHarnessSha256": "3802eeecf8a60b679048da94bf995abdbe87187e9ead2eda1a3b7e91304b902a",
+  "previousOracleBinarySha256": "7e6091a46c49f369afb89f709b4080bd5e298e4b9ec8fb9f57f996260b88a863",
+  "resultsSha256": "949533993581c7074252aad5cf1dd1618efc02c5c8115a882bb56d234c7cd3a6"
  }
 }
