@@ -73,12 +73,12 @@ object PoolReap:
   type Adopt = (StakePoolState, StakePoolParams, EpochNo) => Either[TickFailure, PoolBlsKey]
 
   /** Shelley's (`mkStakePoolState e SNothing`, 9df9f98c `Shelley/Rules/PoolReap.hs:137-155`, the
-    * rule up to Conway), in the layout of the pool's state: in the Leios layout a re-registered
-    * pool holds no key, the parameters a certificate before Dijkstra registers carrying none
-    * ([[PoolParamsBlsKey.certified]]).
+    * rule up to Conway): the parameters' key, registered at `e` whatever key the pool holds
+    * ([[PoolParamsBlsKey.registered]]). POOL makes the parameters in the layout of the pool's state
+    * ([[PoolParamsBlsKey.certified]]), so the pool keeps its layout; in the Leios layout a
+    * certificate before Dijkstra registers parameters without a key, and the pool then holds none.
     */
-  val shelleyAdopt: Adopt = (current, _, _) =>
-    Right(PoolBlsKey.certified(current.blsKey.stateLayout))
+  val shelleyAdopt: Adopt = (_, params, epoch) => Right(params.blsKey.registered(epoch))
 
   /** `removeVRFKeyHashOccurrence` over `vrfs` (`State/CertState.hs:515-519`, cardano-ledger
     * 9df9f98c): one decrement each, a count that reaches zero removed, a hash not counted

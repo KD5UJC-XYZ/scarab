@@ -12,7 +12,8 @@ import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
   * `Dijkstra/Rules/PoolReap.hs:122-141`), whose `registerBlsKey <$> sppBlsKey`
   * (`State/StakePool.hs:299-320`) keeps the registration epoch of the key the pool holds, starts a
   * new key's at the epoch reaped into, and leaves a pool whose parameters carry none without one.
-  * The same re-registration of the testnet's keyed pools is compared with the native tick in
+  * Shelley's rule passes `SNothing` (`Shelley/Rules/PoolReap.hs:144-152`): every key is new. The
+  * same re-registration of the testnet's keyed pools is compared with the native tick in
   * `DijkstraEpochReferenceSuite`.
   */
 class DijkstraPoolReapSuite extends FunSuite:
@@ -93,6 +94,27 @@ class DijkstraPoolReapSuite extends FunSuite:
 
   test("a pool with a key re-registered without one holds none") {
     assertEquals(reap(held(1), PoolParamsBlsKey.Leios(None)), Right(PoolBlsKey.Leios(None)))
+  }
+
+  test(
+    "Shelley's adoption registers the parameters' key afresh, as `mkStakePoolState e SNothing`"
+  ) {
+    val pool = right(
+      Convert.poolState(
+        params,
+        held(1),
+        CompactCoin.fromUnsigned(5L),
+        Sorted.emptySet[Credential[Staking]]
+      )
+    )
+    def adopted(future: PoolParamsBlsKey) =
+      PoolReap.shelleyAdopt(pool, Build.stakePoolParams(params, future), reaped)
+    assertEquals(
+      adopted(PoolParamsBlsKey.Leios(Some(key(1)))),
+      Right(PoolBlsKey.Leios(Some(BlsKeyState(key(1), reaped))))
+    )
+    assertEquals(adopted(PoolParamsBlsKey.Leios(None)), Right(PoolBlsKey.Leios(None)))
+    assertEquals(adopted(PoolParamsBlsKey.Node11_1), Right(PoolBlsKey.Node11_1))
   }
 
   test("a pool or parameters of the 11.1 layout are not held in Dijkstra") {

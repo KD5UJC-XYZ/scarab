@@ -283,13 +283,13 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "LeiosEpochReferenceSuite",
     "TickRulesSuite"
    ],
-   "note": "mkStakePoolState e SNothing gives the parameters' key; here the pool's layout's no key, which is the same: a certificate before Dijkstra registers parameters without one (PoolParamsBlsKey.certified)",
-   "digest": "eb74a3f0cdbb0bdb"
+   "note": "the voting key of mkStakePoolState e SNothing futureParams: the parameters' key registered at e (PoolParamsBlsKey.registered)",
+   "digest": "844e45394d2cf1fa"
   },
   "val ledger.rules.PoolReap.shelleyRelease": {
    "upstream": [
