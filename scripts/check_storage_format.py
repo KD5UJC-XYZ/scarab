@@ -44,12 +44,12 @@ points to FMT-1 (docs/design-rules.md). The surface is:
 - `fixtures`: the SHA-256 of every file under `fixtures/snapshot-*` and `fixtures/network-identity-*` but their
   Markdown (the READMEs that record provenance).
 
-A code digest is of the source without its comments, with trailing white space and empty lines dropped outside
-string literals; literals and indentation are kept as written, so a comment edit does not fire and a change of
-meaning does. A
-missing anchor (a file, a definition, a parse that finds nothing) is a STORAGE FORMAT CHANGE too, never a smaller
-surface. Whatever the surface is, the snapshot kind must stay readable from V8 with a registered migration path
-from V8 to its current version: deployed stores are V8 (FMT-1).
+A code digest is of the source without its comments, each removed at the token boundary it stands on (`lex`), with
+trailing white space and empty lines dropped outside string literals; literals, indentation and the separation of
+tokens are kept as written, so a comment edit, inline or on a line of its own, does not fire and a change of meaning
+does. A missing anchor (a file, a definition, a parse that finds nothing) is a STORAGE FORMAT CHANGE too, never a
+smaller surface. Whatever the surface is, the snapshot kind must stay readable from V8 with a registered migration
+path from V8 to its current version: deployed stores are V8 (FMT-1).
 
 The guard does not see a persisted byte that none of these pins: a layout written inline in the rest of a file it
 reads in part (the immutable store's chunk and index file names in its `open` and preflight code, the RocksDB
@@ -446,9 +446,20 @@ def expression_end(source: str, i: int) -> int:
     return n
 
 
+SPACE = ' \t'
+# Characters next to which a removed comment leaves no space: white space and the delimiters, beside which no two
+# tokens fuse.
+DELIMITERS = SPACE + '\n()[]{},;.'
+
+
 def lex(source: str) -> list[tuple[str, str]]:
-    """`source` as code and literal pieces, comments removed (a comment becomes a space, and keeps its line breaks):
-    (`code`, text) and (`literal`, the string or character literal as written, quotes included)."""
+    """`source` as code and literal pieces, comments removed: (`code`, text) and (`literal`, the string or character
+    literal as written, quotes included). A comment is removed at the token boundary it stands on, so that the code
+    reads as it would without it: it leaves a space only between two tokens that would otherwise fuse (`a/**/b` is
+    `a b`); the white space after it goes when white space, an opening bracket or the start of a line comes before
+    it, and the white space before it when a delimiter follows it, so that a comment between two tokens, or before
+    the first token of a line, leaves the spacing and the indentation the line has without it. Its line breaks go
+    with it."""
     out: list[tuple[str, str]] = []
     i, n, start = 0, len(source), 0
 
@@ -456,18 +467,44 @@ def lex(source: str) -> list[tuple[str, str]]:
         if j > start:
             out.append(('code', source[start:j]))
 
+    def line_so_far() -> str:
+        """The text of the line the output is on, up to here."""
+        parts = []
+        for _, text in reversed(out):
+            parts.append(text)
+            if '\n' in text:
+                break
+        return ''.join(reversed(parts)).rpartition('\n')[2]
+
+    def removed(end: int) -> int:
+        """Replace the comment that ends at `end` and return where the code goes on."""
+        line = line_so_far()
+        before = line[-1] if line else '\n'
+        after = source[end] if end < n else '\n'
+        if before in SPACE + '\n' or before in '([{':
+            if not line.strip(SPACE) or after in SPACE or before in '([{':
+                # indentation, white space on both sides or an opening bracket before: the white space after the
+                # comment goes
+                while end < n and source[end] in SPACE:
+                    end += 1
+            elif after in DELIMITERS:
+                # white space between a token and a delimiter: the white space before the comment goes
+                kind, text = out[-1]
+                out[-1] = (kind, text.rstrip(SPACE))
+        elif before not in DELIMITERS and after not in DELIMITERS:
+            out.append(('code', ' '))
+        return end
+
     while i < n:
         if source.startswith('/*', i):
             end = comment_end(source, i)
             code_to(i)
-            out.append(('code', ' ' + '\n' * source.count('\n', i, end)))
-            i = start = end
+            i = start = removed(end)
         elif source.startswith('//', i):
             end = source.find('\n', i)
             end = n if end < 0 else end
             code_to(i)
-            out.append(('code', ' '))
-            i = start = end
+            i = start = removed(end)
         elif source[i] == '"':
             interpolated = i > 0 and (source[i - 1].isalnum() or source[i - 1] == '_')
             triple = source.startswith('"""', i)

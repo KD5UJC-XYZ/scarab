@@ -146,6 +146,10 @@ class SurfaceTest(TreeTest):
         self.setUp()
         self.edit(ledger_file, '  /** `AnnTip` of the Cardano chain', '  /** The `AnnTip` of the Cardano chain')
         self.assertEqual(self.check(), [])
+        # an inline comment is no change either
+        self.setUp()
+        self.edit(ledger_file, '      out.arrayHead(2)', '      out.arrayHead(/* the era and its tip */ 2)')
+        self.assertEqual(self.check(), [])
         self.setUp()
         (self.root / conway).unlink()
         self.assertLoud(self.check(), 'cannot be read', conway)
@@ -319,6 +323,23 @@ class DigestTest(unittest.TestCase):
     def test_comments_trailing_space_and_empty_lines_do_not_count(self):
         self.assertEqual(fmt.code_digest('val a = 1\n\n// note\nval b = 2   \n'),
                          fmt.code_digest('/** doc */\nval a = 1 // why\nval b = 2\n'))
+
+    def test_a_comment_is_read_as_absent_at_the_token_boundary_it_stands_on(self):
+        for with_comment, without in [
+            ('f(a, /*c*/ b)', 'f(a, b)'), ('f(a,/*c*/b)', 'f(a,b)'), ('out.arrayHead(/* x */2)', 'out.arrayHead(2)'),
+            ('out.arrayHead(2 /* x */)', 'out.arrayHead(2)'), ('a /* x */ + b', 'a + b'), ('a/*x*/ b', 'a b'),
+            ('foo /* a\n b */ bar', 'foo bar'), ('x(1, /* a */ /* b */ 2)', 'x(1, 2)'),
+            ('  /** doc */\n  def x = 1', '  def x = 1'), ('  /* a */  def x = 1', '  def x = 1'),
+            ('if c then\n  /* x */ f()\ng()', 'if c then\n  f()\ng()'), ('val a = 1 // why\nval b = 2', 'val a = 1\nval b = 2'),
+        ]:
+            with self.subTest(code=with_comment):
+                self.assertEqual(fmt.code_digest(with_comment), fmt.code_digest(without))
+        # a comment that separates two tokens still does: removing it would fuse them
+        for with_comment, fused in [('a/**/b', 'ab'), ('s/**/"x"', 's"x"'), ('+/**/-', '+-'), ('1/**/2', '12')]:
+            with self.subTest(code=with_comment):
+                self.assertNotEqual(fmt.code_digest(with_comment), fmt.code_digest(fused))
+        # and indentation still counts
+        self.assertNotEqual(fmt.code_digest('if c then\n  f()\n/* x */  g()'), fmt.code_digest('if c then\n  f()\n  g()'))
 
     def test_literals_and_indentation_count(self):
         self.assertNotEqual(fmt.code_digest('val a = "x y"'), fmt.code_digest('val a = "x  y"'))
