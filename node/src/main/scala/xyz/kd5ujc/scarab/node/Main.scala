@@ -290,16 +290,18 @@ object Main extends IOApp:
       cache.refs.flatMap { refs =>
         refs
           .traverse { ref =>
-            // each body is checked and dropped at once: the forest keeps the metadata and reads
-            // the body back from the log, so the start does not hold every recovered body
+            // each body is read and dropped at once: the forest keeps the metadata and reads the
+            // body back from the log, so the start does not hold every recovered body. The open
+            // has cut every record that fails this check (ReceivedBlockRecovery.startUp), and the
+            // start added only resumed blocks of the selected chain, so a refusal here is of a
+            // block the log keeps but the pool is not seeded with
             cache.get(ref.hash).flatMap {
               case None => IO.pure(None)
               case Some((_, raw)) =>
                 ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
                   case Right(delivered) => IO.pure(Some(delivered.metadata))
                   case Left(error) =>
-                    Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)) *>
-                      cache.discardRecovered(ref.hash).as(None)
+                    Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)).as(None)
             }
           }
           .flatMap(items => pool.seedRecoveredMetadata(items.flatten))
@@ -1679,7 +1681,7 @@ object Main extends IOApp:
           Some(scheduling.compute),
           Some(SnapshotMigration.toCurrent[IO]),
           Some(TransitionRecount.reopen[IO](genesis.geometry))
-        )
+        )(ReceivedBlockRecovery.startUp(genesis.geometry.byron.epochSlots))
         // a failed collection of the received log stops the node, as the failure of the
         // reference's collection ends the thread it is linked to (consensus 82ecba329
         // Storage/ChainDB/Impl/Background.hs:116-121,140-141)

@@ -28,7 +28,7 @@ import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.{ChainError, PeerError, StorageError}
-import xyz.kd5ujc.scarab.node.{Fatal, Follower, Main}
+import xyz.kd5ujc.scarab.node.{Fatal, Follower, Main, ReceivedBlockRecovery}
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.consensus.BlockRules
 import xyz.kd5ujc.scarab.ledger.{
@@ -192,7 +192,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 backing,
                 _ => IO.unit,
                 snapshotMigration = Option.when(migrate)(SnapshotMigration.toCurrent[IO])
-              )
+              )(ReceivedBlockRecovery.startUp(geometry.byron.epochSlots))
               .use { recovered =>
                 for
                   chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -354,7 +354,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   storageEvents(log),
                   StateBacking.none[IO, MirrorState],
                   _ => IO.unit
-                )
+                )(ReceivedBlockRecovery.startUp(geometry.byron.epochSlots))
                 .use(_ => IO[Unit](fail("replay must stop without an evaluator verdict")))
             }
             .rescue { error =>
@@ -568,7 +568,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 storageEvents(log),
                 new UtxoBacking[IO, MirrorState](store, dir / "utxo" / "checkpoints"),
                 _ => IO.unit
-              )
+              )(ReceivedBlockRecovery.startUp(geometry.byron.epochSlots))
               .use(_ => inside)
           }
           .map(_.asRight[NodeError])
@@ -744,7 +744,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               events,
               backing,
               _ => IO.unit
-            )
+            )(ReceivedBlockRecovery.startUp(geometry.byron.epochSlots))
             .use { recovered =>
               for
                 resumed <- ChainStorage.resume[IO, MirrorState](

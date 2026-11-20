@@ -831,7 +831,6 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       received.put(ref, raw)
     def restoreSelected(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[IO, StorageError]) =
       received.restoreSelected(ref, raw)
-    def discardRecovered(hash: Bytes) = received.discardRecovered(hash)
     def get(hash: Bytes)(using cats.mtl.Raise[IO, StorageError]) = received.get(hash)
     def original(hash: Bytes)(using cats.mtl.Raise[IO, StorageError]) = received.original(hash)
     def links = hook.getAndSet(IO.unit).flatten *> received.links
@@ -876,22 +875,24 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val predecessorOf = (raw: Bytes) => linked.get(raw).orElse(predecessors(forks)(raw))
     ok {
       FileImmutableStore.open[IO](dir / "immutable", 30L).use { (store, _) =>
-        ReceivedBlocks.open[IO](dir / "received", blocksPerFile)(predecessorOf).use { log =>
-          val received = hook.fold(log)(Hooked(log, _))
-          for
-            server <- ChainServer.open[IO](
-              Some(store),
-              None,
-              headerOf,
-              fatal,
-              ChainServer.Held(Some(received), None)
-            )
-            node = Node(server, store, received)
-            _ <- (1 to 10).toList.traverse_(node.adopt(_))
-            _ <- node.receive(9, 1) *> node.receive(10, 1)
-            result <- body(node)
-          yield result
-        }
+        ReceivedBlocks
+          .open[IO](dir / "received", blocksPerFile)(predecessorOf, StorageTestKit.decodes)
+          .use { log =>
+            val received = hook.fold(log)(Hooked(log, _))
+            for
+              server <- ChainServer.open[IO](
+                Some(store),
+                None,
+                headerOf,
+                fatal,
+                ChainServer.Held(Some(received), None)
+              )
+              node = Node(server, store, received)
+              _ <- (1 to 10).toList.traverse_(node.adopt(_))
+              _ <- node.receive(9, 1) *> node.receive(10, 1)
+              result <- body(node)
+            yield result
+          }
       }
     }
 
@@ -1188,20 +1189,22 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         _ <- node(dir)(_ => IO.unit)
         restarted <- ok {
           FileImmutableStore.open[IO](dir / "immutable", 30L).use { (store, _) =>
-            ReceivedBlocks.open[IO](dir / "received")(predecessors(forks)).use { received =>
-              for
-                anchor <- store.tip
-                server <- ChainServer.open[IO](
-                  Some(store),
-                  anchor,
-                  headerOf,
-                  fatal,
-                  ChainServer.Held(Some(received), None)
-                )
-                alone <- overWire(server, ref(9, 1).point, ref(10, 1).point)
-                fromStored <- overWire(server, ref(5).point, ref(10, 1).point)
-              yield (alone, fromStored)
-            }
+            ReceivedBlocks
+              .open[IO](dir / "received")(predecessors(forks), StorageTestKit.decodes)
+              .use { received =>
+                for
+                  anchor <- store.tip
+                  server <- ChainServer.open[IO](
+                    Some(store),
+                    anchor,
+                    headerOf,
+                    fatal,
+                    ChainServer.Held(Some(received), None)
+                  )
+                  alone <- overWire(server, ref(9, 1).point, ref(10, 1).point)
+                  fromStored <- overWire(server, ref(5).point, ref(10, 1).point)
+                yield (alone, fromStored)
+              }
           }
         }
       yield

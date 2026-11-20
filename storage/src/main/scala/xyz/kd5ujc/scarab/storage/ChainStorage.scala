@@ -205,7 +205,8 @@ object ChainStorage:
   private val AdvanceEvery = 128
 
   /** The predecessor a received block's header names, its contents not decoded; none when the
-    * header cannot be read (the start discards such a record, `ReceivedBlocks.discardRecovered`).
+    * header cannot be read (the open of the received log cuts a record whose block does not decode,
+    * [[ReceivedBlocks.Check]]).
     */
   def predecessorOf(byronEpochSlots: BigInt)(raw: Bytes): Option[ReceivedBlocks.Predecessor] =
     Block
@@ -339,6 +340,9 @@ object ChainStorage:
     * @param snapshotMigration
     *   Brings the snapshot files of an older format to the current one, before they are opened
     *   (once the identity of the database is checked): [[SnapshotMigration.toCurrent]].
+    * @param receivedCheck
+    *   The start-up check of each record of the received log as it is opened: its file is cut at
+    *   the first one refused ([[ReceivedBlocks.Check]]).
     */
   def open[F[_]: Async, S](
       dir: Path,
@@ -351,7 +355,7 @@ object ChainStorage:
       compute: Option[Compute[F]] = None,
       snapshotMigration: Option[SnapshotMigration[F]] = None,
       reopen: Option[Reopen[F, S]] = None
-  )(using
+  )(receivedCheck: ReceivedBlocks.Check)(using
       SnapshotFormat[F, S],
       Raise[F, StorageError],
       Raise[F, ChainError],
@@ -413,7 +417,7 @@ object ChainStorage:
         dir / "received",
         config.receivedFileBlocks,
         config.receivedCacheBytes
-      )(ChainStorage.predecessorOf(config.byronEpochSlots))
+      )(ChainStorage.predecessorOf(config.byronEpochSlots), receivedCheck)
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
       migratedSnapshots <- Resource.eval(
         snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))

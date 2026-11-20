@@ -5,11 +5,18 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.{Block, PeerError, StorageError}
+import xyz.kd5ujc.scarab.storage.ReceivedBlocks
 
 /** Recover actual checked originals, without manufacturing a live adding client. */
-private[node] object ReceivedBlockRecovery:
+private[scarab] object ReceivedBlockRecovery:
   enum Problem extends DomainError:
     case MetadataMismatch(expected: BlockRef, actual: BlockRef)
+
+  /** The start-up check of the received log, run on each record as the log is opened: [[checked]]
+    * (the block decodes, its header names the record's point and its body is the header's).
+    */
+  def startUp(byronEpochSlots: BigInt): ReceivedBlocks.Check =
+    (expected, raw) => checked(expected, raw, byronEpochSlots).void
 
   def checked(
       expected: BlockRef,

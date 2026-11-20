@@ -14,7 +14,7 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, NodeError, StorageError}
-import xyz.kd5ujc.scarab.node.{Main, MirrorRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{Main, MirrorRules, NodeSetup, ReceivedBlockRecovery}
 
 import StorageTestKit.*
 
@@ -117,7 +117,7 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
             backing,
             _ => IO.unit,
             snapshotMigration = Some(SnapshotMigration.toCurrent[IO])
-          )
+          )(ReceivedBlockRecovery.startUp(setup.geometry.byron.epochSlots))
           .use(_ => IO.unit)
       }
       resetCount <- resets.get

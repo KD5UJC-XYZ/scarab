@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules}
 import xyz.kd5ujc.scarab.ledger.{Block, NodeError, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
-import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.{NodeSetup, ReceivedBlockRecovery}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The received log is collected on the reference's schedule: 60 s after each copy of blocks to the
@@ -130,7 +130,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
               _ => IO.unit,
               StateBacking.none[IO, Int],
               _ => IO.unit
-            )
+            )(ReceivedBlockRecovery.startUp(epochSlots))
             .use(recovered => held.set(Some(recovered.received)) *> run(steps, recovered))
         ).flatTap(again => IO.blocking(snapshotsDropped(dir)).whenA(again))
         _ <- IO(assert(blocks.size >= 4, s"four blocks to copy, found ${blocks.size}"))

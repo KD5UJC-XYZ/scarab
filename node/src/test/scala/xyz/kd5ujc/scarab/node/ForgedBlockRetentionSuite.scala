@@ -42,7 +42,8 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
       .allow[StorageError](
         ReceivedBlocks
           .open[IO](dir, cacheBytes = cacheBytes)(
-            ChainStorage.predecessorOf(ForgedChain.geometry.byron.epochSlots)
+            ChainStorage.predecessorOf(ForgedChain.geometry.byron.epochSlots),
+            ReceivedBlockRecovery.startUp(ForgedChain.geometry.byron.epochSlots)
           )
           .use(use)
       )

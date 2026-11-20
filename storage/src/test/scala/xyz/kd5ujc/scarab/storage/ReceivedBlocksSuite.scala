@@ -5,15 +5,15 @@ import cats.effect.IO
 import cats.mtl.Raise
 import cats.syntax.all.*
 import java.nio.file.{Files as JFiles, StandardOpenOption}
-import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 import StorageTestKit.*
 
-class ReceivedBlocksSuite extends CatsEffectSuite:
+class ReceivedBlocksSuite extends FailsOnUncaught:
   /** For a test that reads no predecessor: no header is read. */
   private val unread: Bytes => Option[ReceivedBlocks.Predecessor] = _ => None
 
@@ -47,7 +47,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val (ref, raw) = block(1)
         VolatileStore.open[IO](dir).use { case (store, _) => store.append(ref, raw) } *>
           ReceivedBlocks
-            .open[IO](dir)(unread)
+            .open[IO](dir)(unread, decodes)
             .use(_.get(ref.hash).map(found => assertEquals(found, Some(ref -> raw))))
       }
     }
@@ -59,7 +59,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val first = block(1)
         val fork = first._1.copy(hash = hash(100)) -> block(100)._2
         for
-          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread, decodes).use { store =>
             for
               _ <- store.put(first._1, first._2)
               _ <- store.put(fork._1, fork._2)
@@ -73,7 +73,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
             yield ()
           }
           // Restart clears process-local validation verdicts; originals must be revalidated.
-          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread, decodes).use { store =>
             store.get(first._1.hash).map(found => assertEquals(found, Some(first)))
           }
         yield ()
@@ -87,7 +87,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val first = block(1)
         val fork = first._1.copy(hash = hash(100)) -> block(100)._2
         val later = block(2)
-        ReceivedBlocks.open[IO](dir)(unread).use { store =>
+        ReceivedBlocks.open[IO](dir)(unread, decodes).use { store =>
           for
             _ <- store.put(first._1, first._2)
             _ <- store.put(fork._1, fork._2)
@@ -128,11 +128,11 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val next = block(2)
         val original = Vector(first, fork, next)
         for
-          _ <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use { store =>
             original.traverse_((ref, raw) => store.put(ref, raw)) *>
               store.put(first._1, first._2)
           }
-          _ <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use { store =>
             for
               recovered <- entries(store)
               _ <- IO(assertEquals(recovered.toSet, original.toSet))
@@ -156,11 +156,11 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val boundary = original(3)._1.slot
         val kept = original.drop(2).toSet
         for
-          collected <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+          collected <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use { store =>
             original.traverse_((ref, raw) => store.put(ref, raw)) *> store.collect(boundary) *>
               entries(store)
           }
-          reopened <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+          reopened <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use { store =>
             store.collect(boundary) *> entries(store)
           }
         yield
@@ -181,11 +181,11 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val boundary = block(5)._1.slot
         val kept = Vector(1, 9, 10, 11, 12).map(block(_)).toSet
         for
-          collected <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+          collected <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use { store =>
             order.traverse_((ref, raw) => store.put(ref, raw)) *> store.collect(boundary) *>
               entries(store)
           }
-          reopened <- ReceivedBlocks.open[IO](dir, 2)(unread).use(entries)
+          reopened <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use(entries)
         yield
           assertEquals(collected.toSet, kept, "the index after collection")
           assertEquals(reopened.toSet, kept, "the index the files give after a restart")
@@ -215,7 +215,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
           None
         )
         for
-          before <- ReceivedBlocks.open[IO](dir, 2)(predecessors.get).use { store =>
+          before <- ReceivedBlocks.open[IO](dir, 2)(predecessors.get, decodes).use { store =>
             for
               _ <- held.traverse_((ref, raw) => store.put(ref, raw))
               _ <- store.invalidate(fork._1.hash)
@@ -225,7 +225,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
             yield (listed, links, original)
           }
           (listed, links, original) = before
-          reopened <- ReceivedBlocks.open[IO](dir, 2)(predecessors.get).use(linked)
+          reopened <- ReceivedBlocks.open[IO](dir, 2)(predecessors.get, decodes).use(linked)
         yield
           assert(!listed.contains(fork._1.hash), "the refused block is not listed")
           assertEquals(links, expected, "held blocks, the refused one too")
@@ -247,12 +247,12 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val expected = Vector(ebb, regular, later).toSet
         // one block to a file: the first file is wholly below the cutoff, the boundary block's is not
         for
-          _ <- ReceivedBlocks.open[IO](dir, 1)(unread).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 1)(unread, decodes).use { store =>
             Vector(before, ebb, regular, later).traverse_((ref, raw) => store.put(ref, raw)) *>
               store.collect(ebb._1.slot) *> entries(store)
                 .map(found => assertEquals(found.toSet, expected))
           }
-          _ <- ReceivedBlocks.open[IO](dir, 1)(unread).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 1)(unread, decodes).use { store =>
             store.collect(ebb._1.slot) *> entries(store)
               .map(found => assertEquals(found.toSet, expected))
           }
@@ -261,52 +261,42 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
     }
   }
 
-  test("validated selected originals repair an inconsistent cache across reopen") {
+  test("a repair writes only a block the log lacks, and never a second record of a held one") {
+    // block 1 is held over another body (c); restoreSelected of block 1's original s writes
+    // nothing, so the log holds one record of block 1, its first, as the reference's VolatileDB
+    // skips a block whose hash it holds (`putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399,
+    // ouroboros-consensus 82ecba329). Block 2, which the log lacks, is written, and a refusal of a
+    // held block is lifted
     tempDir.use { dir =>
       ok {
         val selected = block(1)
         val corrupt = selected._1 -> block(100)._2
-        val fork = block(2)
+        val (fork, lacked) = (block(3), block(2))
+        def recordsOfHash(h: Bytes): Int =
+          logFiles(dir).flatMap(recordsOf).count {
+            case VolatileRecord.Block(ref, _) => ref.hash == h
+            case _                            => false
+          }
         for
-          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
+          repaired <- ReceivedBlocks.open[IO](dir)(unread, decodes).use { store =>
             for
               _ <- store.put(corrupt._1, corrupt._2)
               _ <- store.put(fork._1, fork._2)
-              _ <- store.put(selected._1, selected._2)
-              firstReceipt <- store.get(selected._1.hash)
-              _ <- IO(assertEquals(firstReceipt, Some(corrupt)))
+              _ <- store.invalidate(fork._1.hash)
               _ <- store.restoreSelected(selected._1, selected._2)
-              repaired <- store.get(selected._1.hash)
-              _ <- IO(assertEquals(repaired, Some(selected)))
-            yield ()
+              _ <- store.restoreSelected(lacked._1, lacked._2)
+              _ <- store.restoreSelected(fork._1, fork._2)
+              held <- entries(store)
+            yield held
           }
-          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
-            entries(store).map(found => assertEquals(found.toSet, Set(selected, fork)))
-          }
-        yield ()
-      }
-    }
-  }
-
-  test("discarding a malformed recovered extra permits a later valid receipt of that hash") {
-    tempDir.use { dir =>
-      ok {
-        val selected = block(1)
-        val corrupt = selected._1 -> block(100)._2
-        for
-          _ <- ReceivedBlocks.open[IO](dir)(unread).use(_.put(corrupt._1, corrupt._2))
-          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
-            for
-              _ <- store.discardRecovered(selected._1.hash)
-              excluded <- store.get(selected._1.hash)
-              _ <- IO(assertEquals(excluded, None))
-              _ <- store.put(selected._1, selected._2)
-            yield ()
-          }
-          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
-            entries(store).map(found => assertEquals(found, Vector(selected)))
-          }
-        yield ()
+          records <- IO((recordsOfHash(selected._1.hash), recordsOfHash(lacked._1.hash)))
+          files <- IO(logFiles(dir).map(recordsOf(_).size))
+          reopened <- ReceivedBlocks.open[IO](dir)(unread, decodes).use(entries)
+        yield
+          assertEquals(records, (1, 1), "one record of the held block, one of the lacked block")
+          assertEquals(files, Vector(3), "three records: c, the fork and block 2")
+          assertEquals(repaired.toSet, Set(corrupt, fork, lacked), "the held record is kept")
+          assertEquals(reopened.toSet, Set(corrupt, fork, lacked), "and the restart reads the same")
       }
     }
   }
@@ -316,7 +306,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
       ok {
         val original = (1 to 40).toVector.map(block(_))
         val limit = 1000L
-        ReceivedBlocks.open[IO](dir, 4, limit)(unread).use { store =>
+        ReceivedBlocks.open[IO](dir, 4, limit)(unread, decodes).use { store =>
           for
             _ <- original.traverse_((ref, raw) => store.put(ref, raw))
             held <- store.residency
@@ -341,12 +331,12 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val limit = 1000L
         for
           _ <- ReceivedBlocks
-            .open[IO](dir, 4, limit)(unread)
+            .open[IO](dir, 4, limit)(unread, decodes)
             .use(store => original.traverse_((ref, raw) => store.put(ref, raw)))
           _ <- IO(
             assert(original.map(_._2.size.toLong).sum > 4 * limit, "the log exceeds the bound")
           )
-          _ <- ReceivedBlocks.open[IO](dir, 4, limit)(unread).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 4, limit)(unread, decodes).use { store =>
             for
               opened <- store.residency
               _ <- IO(assertEquals(opened.blocks, original.size))
@@ -368,7 +358,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
       ok {
         val original = (1 to 20).toVector.map(block(_))
         val boundary = original(9)._1.slot
-        ReceivedBlocks.open[IO](dir, 2, 0L)(unread).use { store =>
+        ReceivedBlocks.open[IO](dir, 2, 0L)(unread, decodes).use { store =>
           for
             _ <- original.traverse_((ref, raw) => store.put(ref, raw))
             _ <- store.collect(boundary)
@@ -389,7 +379,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
       ok {
         val (ref, raw) = block(1)
         val other = block(2)
-        ReceivedBlocks.open[IO](dir, 512, 0L)(unread).use { store =>
+        ReceivedBlocks.open[IO](dir, 512, 0L)(unread, decodes).use { store =>
           for
             _ <- store.put(ref, raw)
             _ <- store.put(other._1, other._2)
@@ -430,10 +420,10 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val original = (1 to 1000).toVector.map(block(_))
         for
           _ <- ReceivedBlocks
-            .open[IO](dir)(unread)
+            .open[IO](dir)(unread, decodes)
             .use(store => original.traverse_((ref, raw) => store.put(ref, raw)))
           files <- IO(logFiles(dir).map(recordsOf(_).size))
-          held <- ReceivedBlocks.open[IO](dir)(unread).use(_.residency)
+          held <- ReceivedBlocks.open[IO](dir)(unread, decodes).use(_.residency)
         yield
           assertEquals(files, Vector(1000, 0), "a full file of 1,000 blocks, and an empty one")
           assertEquals(held.blocks, original.size, "every block is held after a reopen")
@@ -447,7 +437,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
     tempDir.use { dir =>
       ok {
         val original = Vector(block(1), block(2))
-        ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+        ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use { store =>
           for
             _ <- original.traverse_((ref, raw) => store.put(ref, raw))
             _ <- store.collect(block(3)._1.slot)
@@ -472,18 +462,18 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val kept = original.filterNot(b => b == original(4) || b == original(5))
         for
           _ <- ReceivedBlocks
-            .open[IO](dir, 3)(unread)
+            .open[IO](dir, 3)(unread, decodes)
             .use(store => original.traverse_((ref, raw) => store.put(ref, raw)))
           before <- IO(logFiles(dir))
           _ <- IO(damage(before(1), 1))
-          recovered <- ReceivedBlocks.open[IO](dir, 3)(unread).use(entries)
+          recovered <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use(entries)
           after <- IO(logFiles(dir).map(recordsOf))
           // the repair holds, and the log is written to as before
           later = block(9)
-          again <- ReceivedBlocks.open[IO](dir, 3)(unread).use { store =>
+          again <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use { store =>
             store.put(later._1, later._2) *> entries(store)
           }
-          reopened <- ReceivedBlocks.open[IO](dir, 3)(unread).use(entries)
+          reopened <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use(entries)
         yield
           assertEquals(before.size, 3, "two full files and the one being written")
           assertEquals(recovered.toSet, kept.toSet, "every block but the damaged one's and after")
@@ -511,16 +501,16 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val (b1, b2, b3, b4, b5, b6) = (bs(0), bs(1), bs(2), bs(3), bs(4), bs(5))
         for
           _ <- ReceivedBlocks
-            .open[IO](dir, 2)(unread)
+            .open[IO](dir, 2)(unread, decodes)
             .use(store => Vector(b1, b2, b3).traverse_((ref, raw) => store.put(ref, raw)))
           // the log's own appends, three to a file, write the copy into the second file
           _ <- VolatileStore
             .open[IO](dir, 3)
             .use((log, _) => log.append(b1._1, b1._2) *> log.append(b4._1, b4._2))
           _ <- ReceivedBlocks
-            .open[IO](dir, 2)(unread)
+            .open[IO](dir, 2)(unread, decodes)
             .use(store => Vector(b5, b6).traverse_((ref, raw) => store.put(ref, raw)))
-          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread).use(entries)
+          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use(entries)
           files <- IO(logFiles(dir).map(recordsOf))
         yield
           assertEquals(recovered.toSet, Set(b1, b2, b3, b5, b6), "block 4 is lost with the copy")
@@ -531,29 +521,105 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
     }
   }
 
-  test("a replacement in a later file survives reopen, with the blocks after it") {
-    // two blocks to a file: [c 2] [3 s] [4 5] []: c holds block 1's reference over another body,
-    // and restoreSelected writes the selected original s two files later. Its bytes differ from
-    // c's: s takes c's place in the index, and nothing after it is cut
+  test("a later record of an indexed block cuts its file there, whatever its bytes") {
+    // two blocks to a file: [A 2] [A' B] [] where A' holds A's reference over another body. The
+    // reference cuts the later file at A' without comparing bytes (`addToReverseIndex`,
+    // `DuplicatedBlock`, `Storage/VolatileDB/Impl/State.hs` 464-492, ouroboros-consensus 82ecba329):
+    // A is held as first written, and B after A' is lost
     tempDir.use { dir =>
       ok {
-        val selected = block(1)
-        val corrupt = selected._1 -> block(100)._2
-        val others = Vector(block(2), block(3), block(4), block(5))
+        val a = block(1)
+        val other = a._1 -> block(100)._2
+        val (two, b) = (block(2), block(3))
         for
-          _ <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
-            for
-              _ <- store.put(corrupt._1, corrupt._2)
-              _ <- others.take(2).traverse_((ref, raw) => store.put(ref, raw))
-              _ <- store.restoreSelected(selected._1, selected._2)
-              _ <- others.drop(2).traverse_((ref, raw) => store.put(ref, raw))
-            yield ()
+          _ <- ReceivedBlocks
+            .open[IO](dir, 2)(unread, decodes)
+            .use(store => Vector(a, two).traverse_((ref, raw) => store.put(ref, raw)))
+          _ <- VolatileStore
+            .open[IO](dir, 2)
+            .use((log, _) => log.append(other._1, other._2) *> log.append(b._1, b._2))
+          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use(entries)
+          files <- IO(logFiles(dir).map(recordsOf))
+          // a restart: the cut holds, and the log is written to as before
+          again <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use { store =>
+            store.put(b._1, b._2) *> entries(store)
           }
-          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread).use(entries)
-          files <- IO(logFiles(dir).map(recordsOf(_).size))
+          reopened <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use(entries)
         yield
-          assertEquals(recovered.toSet, others.toSet + selected, "the selected original is held")
-          assertEquals(files, Vector(2, 2, 2, 0), "no file is cut")
+          assertEquals(recovered.toSet, Set(a, two), "A as first written, and B lost with A'")
+          assertEquals(files.take(2).map(_.size), Vector(2, 0), "the later file cut at A'")
+          assertEquals(again.toSet, Set(a, two, b), "B is received again")
+          assertEquals(reopened.toSet, Set(a, two, b), "and the restart reads the same")
+      }
+    }
+  }
+
+  test("a repeat in the same file or a later one cuts its file, byte for byte or not") {
+    // three blocks to a file: [A B A'] [C A D] [] where A' holds A's reference over another body.
+    // The first file is cut at A', a repeat in the same file with other bytes; the second at A, a
+    // repeat in a later file byte for byte; D after it is lost (`addToReverseIndex`,
+    // `Storage/VolatileDB/Impl/State.hs` 464-492, ouroboros-consensus 82ecba329)
+    tempDir.use { dir =>
+      ok {
+        val a = block(1)
+        val other = a._1 -> block(100)._2
+        val (b, c, d) = (block(2), block(3), block(4))
+        for
+          _ <- VolatileStore
+            .open[IO](dir, 3)
+            .use((log, _) => Vector(a, b, other, c, a, d).traverse_((r, raw) => log.append(r, raw)))
+          recovered <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use(entries)
+          files <- IO(logFiles(dir).map(recordsOf))
+          reopened <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use(entries)
+          after <- IO(logFiles(dir).map(recordsOf))
+        yield
+          assertEquals(recovered.toSet, Set(a, b, c), "A as first written; D is lost")
+          assertEquals(
+            files.take(2),
+            Vector(
+              Vector(VolatileRecord.Block(a._1, a._2), VolatileRecord.Block(b._1, b._2)),
+              Vector(VolatileRecord.Block(c._1, c._2))
+            ),
+            "each file cut at its repeat"
+          )
+          assertEquals(reopened.toSet, Set(a, b, c), "a restart reads the same")
+          assertEquals(after, files, "and cuts nothing more")
+      }
+    }
+  }
+
+  test("a record whose block does not decode cuts its file there, and later files are kept") {
+    // three blocks to a file: [1 2 3] [4 U 6] [7 8] where U holds block 5's reference over a body
+    // that does not decode. The second file is cut after block 4, as the reference cuts a file at
+    // the first block it cannot read (`BlockReadErr`, `parseBlockFile`,
+    // `Storage/VolatileDB/Impl/Parser.hs` 70-107, ouroboros-consensus 82ecba329); the third is read
+    // all the same
+    tempDir.use { dir =>
+      ok {
+        val original = (1 to 8).toVector.map(block(_))
+        val written = original.updated(4, original(4)._1 -> undecodable)
+        val kept = original.filterNot(b => b == original(4) || b == original(5))
+        for
+          _ <- VolatileStore
+            .open[IO](dir, 3)
+            .use((log, _) => written.traverse_((ref, raw) => log.append(ref, raw)))
+          recovered <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use(entries)
+          files <- IO(logFiles(dir).map(recordsOf))
+          // a restart: block 5 is received again, after the cut
+          again <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use { store =>
+            store.put(original(4)._1, original(4)._2) *> entries(store)
+          }
+          reopened <- ReceivedBlocks.open[IO](dir, 3)(unread, decodes).use(entries)
+        yield
+          assertEquals(recovered.toSet, kept.toSet, "every block but U's and the one after it")
+          assertEquals(
+            files(1),
+            Vector(VolatileRecord.Block(original(3)._1, original(3)._2)),
+            "the second file is cut after block 4"
+          )
+          assertEquals(files(2).size, 2, "the third file is whole")
+          assertEquals(again.toSet, kept.toSet + original(4), "block 5 is received again")
+          assertEquals(reopened.toSet, kept.toSet + original(4), "and the restart reads the same")
       }
     }
   }

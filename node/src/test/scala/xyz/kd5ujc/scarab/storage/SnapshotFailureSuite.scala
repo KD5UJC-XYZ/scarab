@@ -11,6 +11,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules}
 import xyz.kd5ujc.scarab.ledger.{NodeError, StorageError, StorageStructureError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.node.ReceivedBlockRecovery
 
 class SnapshotFailureSuite extends FailsOnUncaught:
   private def point(n: Int): BlockRef = StorageTestKit.block(n)._1
@@ -44,7 +45,7 @@ class SnapshotFailureSuite extends FailsOnUncaught:
       events,
       backing,
       _ => IO.unit
-    )
+    )(ReceivedBlockRecovery.startUp(BigInt(21600)))
 
   private def extend(recovered: ChainStorage.Recovered[IO, Int], n: Int)(using
       Handle[IO, NodeError]

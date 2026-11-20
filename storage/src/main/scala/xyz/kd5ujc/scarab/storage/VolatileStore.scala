@@ -265,21 +265,6 @@ object VolatileStore:
               case _ => (acc, at)
     go(0L, z)
 
-  /** The record at `at`, none when the bytes there are not one whole record (they do not pass the
-    * checksum, or the file ends first).
-    */
-  private def recordAt(root: java.nio.file.Path, at: Location): Option[VolatileRecord] =
-    Using.resource(FileChannel.open(root.resolve(nameOf(at.seq)), StandardOpenOption.READ)) { ch =>
-      val bytes = ByteBuffer.allocate(at.length)
-      Option
-        .when(fill(ch, bytes, at.offset))(bytes.array())
-        .flatMap(read =>
-          decodeAll(read) match
-            case Vector((record, end)) if end == read.length => Some(record)
-            case _                                           => None
-        )
-    }
-
   /** Force the directory's entries (a file created, cut or removed) to disk. */
   private def syncDir(root: java.nio.file.Path): Unit =
     Using.resource(FileChannel.open(root, StandardOpenOption.READ))(_.force(true))
@@ -323,18 +308,20 @@ object VolatileStore:
     opening[F, Location](dir, blocksPerFile)(inOrder((_, at) => at))
 
   /** The open of a log of blocks only (for [[ReceivedBlocks]]): an index of its blocks, each with
-    * where its record is and `note(body)`, read from the body while its record is read and the body
-    * dropped after (the predecessor its header names, as the reference's VolatileDB keeps each
-    * block's `BlockInfo` in its index, `Storage/VolatileDB/Impl/Types.hs` 127-133,
-    * ouroboros-consensus 82ecba32). Each file is validated on its own ([[eachFile]]), as the
-    * reference's VolatileDB opens its files (`mkOpenStateHelper`,
+    * where its record is and what `read(ref, body)` makes of the record, read while the record is
+    * read and the body dropped after, as the reference's VolatileDB decodes each block of a file as
+    * it parses it and keeps its `BlockInfo` in its index (`parseBlockFile` and `extractBlockInfo`,
+    * `Storage/VolatileDB/Impl/Parser.hs` 52-128; `Storage/VolatileDB/Impl/Types.hs` 127-133,
+    * ouroboros-consensus 82ecba329). A record `read` answers none for is one whose block the
+    * reference could not read, and its file is cut there. Each file is validated on its own
+    * ([[eachFile]]), as the reference's VolatileDB opens its files (`mkOpenStateHelper`,
     * `Storage/VolatileDB/Impl/State.hs` 372-436, ouroboros-consensus 82ecba329, the same at
     * 808e40054). The recovered chain is the index, a block once, in the order of its records.
     */
-  def openIndexWith[F[_]: Async, N](dir: Path, blocksPerFile: Int = 512)(note: Bytes => N)(using
-      Raise[F, StorageError]
-  ): Resource[F, (VolatileStore[F], Opened[(Location, N)])] =
-    opening[F, (Location, N)](dir, blocksPerFile)(eachFile(note))
+  def openIndexWith[F[_]: Async, N](dir: Path, blocksPerFile: Int = 512)(
+      read: (BlockRef, Bytes) => Option[N]
+  )(using Raise[F, StorageError]): Resource[F, (VolatileStore[F], Opened[(Location, N)])] =
+    opening[F, (Location, N)](dir, blocksPerFile)(eachFile(read))
 
   /** The recovery of a log with rollbacks: the files are read in order of number, the first damaged
     * file is cut at its last good record and every file after it is removed. The chain keeps
@@ -395,50 +382,50 @@ object VolatileStore:
 
   /** The recovery of a log of blocks only, as the reference's VolatileDB validates its files
     * (`mkOpenStateHelper`, `validateFile` and `addToReverseIndex`,
-    * `Storage/VolatileDB/Impl/State.hs` 372-436 and 464-492, ouroboros-consensus 82ecba329, the
-    * same at 808e40054). Each file, in order of number, is read up to its first record that is
-    * incomplete, fails its checksum or is not understood, and cut there; the files after it are
-    * read all the same. A record of a block already indexed whose bytes are those of the indexed
-    * record, from an earlier file or earlier in the same one, cuts its file there too (the
-    * reference's `DuplicatedBlock`). A record of a block already indexed whose bytes differ takes
-    * the earlier record's place in the index: the log writes one only to replace a record found
-    * inconsistent ([[ReceivedBlocks.restoreSelected]], or a receipt after
-    * [[ReceivedBlocks.discardRecovered]]), where the reference's writer never logs a block twice
-    * (`putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399). A rollback record, which such a log
-    * does not hold, indexes nothing.
+    * `Storage/VolatileDB/Impl/State.hs` 372-436 and 464-492; `parseBlockFile`,
+    * `Storage/VolatileDB/Impl/Parser.hs` 52-107, ouroboros-consensus 82ecba329, the same at
+    * 808e40054). Each file, in order of number, is read up to its first record that is incomplete,
+    * fails its checksum or is not understood, whose block `read` refuses (the reference's
+    * `BlockReadErr`), or that is not a block, and cut there; the files after it are read all the
+    * same. A record of a block already indexed, from an earlier file or earlier in the same one,
+    * cuts its file there too, whatever its bytes (the reference's `DuplicatedBlock`): the index
+    * keeps the first record of each block, as the reference's writer never logs a block twice
+    * (`putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399). Only a block that is indexed is read.
     */
-  private def eachFile[N](note: Bytes => N)(
+  private def eachFile[N](read: (BlockRef, Bytes) => Option[N])(
       root: java.nio.file.Path,
       names: Vector[(Int, String)]
   ): Found[(Location, N)] =
-    def copied(earlier: Location, ref: BlockRef, raw: Bytes): Boolean =
-      recordAt(root, earlier).contains(VolatileRecord.Block(ref, raw))
     val indexed = names.foldLeft(Indexed[N](Vector.empty, Map.empty, Vector.empty, 0L)) {
       case (acc, (seq, name)) =>
         val path = root.resolve(name)
-        val (read, good, size) =
+        val (found, good, size) =
           Using.resource(FileChannel.open(path, StandardOpenOption.READ)) { ch =>
-            val (read, good) =
+            val (found, good) =
               foldRecords(ch, seq, (acc, FileInfo(seq, 0, BigInt(-1)))) {
                 case ((found, info), VolatileRecord.Block(ref, raw), at) =>
-                  Option.unless(
-                    found.index.get(ref.hash).exists((_, earlier, _) => copied(earlier, ref, raw))
-                  )(
-                    (
-                      found.copy(
-                        index = found.index.updated(ref.hash, (ref, at, note(raw))),
-                        located = found.located :+ (ref -> at)
-                      ),
-                      info.copy(blocks = info.blocks + 1, maxSlot = info.maxSlot.max(ref.slot))
+                  Option
+                    .unless(found.index.contains(ref.hash))(())
+                    .flatMap(_ => read(ref, raw))
+                    .map(n =>
+                      (
+                        found.copy(
+                          index = found.index.updated(ref.hash, (ref, at, n)),
+                          located = found.located :+ (ref -> at)
+                        ),
+                        info.copy(blocks = info.blocks + 1, maxSlot = info.maxSlot.max(ref.slot))
+                      )
                     )
-                  )
-                case (scanned, VolatileRecord.Rollback(_), _) => Some(scanned)
+                case (_, VolatileRecord.Rollback(_), _) => None
               }
-            (read, good, ch.size())
+            (found, good, ch.size())
           }
         if good < size then truncate(path, good)
-        val (found, info) = read
-        found.copy(infos = found.infos :+ info, cut = found.cut + (size - good))
+        val (indexedSoFar, info) = found
+        indexedSoFar.copy(
+          infos = indexedSoFar.infos :+ info,
+          cut = indexedSoFar.cut + (size - good)
+        )
     }
     if indexed.cut > 0 then syncDir(root)
     val chain = indexed.index.valuesIterator.toVector

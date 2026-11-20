@@ -467,7 +467,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     StateBacking.none[IO, MirrorState],
                     _ => IO.unit,
                     reopen = Some(TransitionRecount.reopen[IO](geometry))
-                  )
+                  )(ReceivedBlockRecovery.startUp(geometry.byron.epochSlots))
                   .use(recovered => IO.pure(recovered.state))
               yield state
             }

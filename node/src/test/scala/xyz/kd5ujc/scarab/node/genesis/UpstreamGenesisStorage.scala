@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 import xyz.kd5ujc.scarab.protocol.ChainSync
-import xyz.kd5ujc.scarab.storage.{ChainPersistence, ReceivedBlocks, VolatileStore}
+import xyz.kd5ujc.scarab.storage.{ChainPersistence, ReceivedBlocks, StorageTestKit, VolatileStore}
 
 import UpstreamGenesisReplay.Ledger
 
@@ -33,7 +33,7 @@ object UpstreamGenesisStorage:
   ): Resource[IO, Opened] =
     for
       // these tests serve nothing: no predecessor is read
-      received <- ReceivedBlocks.open[IO](dir / "received")(_ => None)
+      received <- ReceivedBlocks.open[IO](dir / "received")(_ => None, StorageTestKit.decodes)
       selected <- VolatileStore.open[IO](dir / "selected")
       (log, recovered) = selected
       chain <- Resource.eval(

@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import java.util.Locale
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.{StorageError, UtxoKeyLayout}
 
@@ -54,6 +54,19 @@ object StorageTestKit:
       .void
 
   def hash(i: Int): Bytes = Blake2b.hash256.hash(Bytes(s"block-$i".getBytes.toVector))
+
+  /** Why a synthetic block's body does not decode. */
+  enum Undecodable extends DomainError:
+    case Body
+
+  /** The body of a synthetic block that does not decode: [[decodes]] refuses it. */
+  val undecodable: Bytes = Bytes("undecodable".getBytes.toVector)
+
+  /** The start-up check of a log of synthetic blocks ([[ReceivedBlocks.Check]]): every body decodes
+    * but [[undecodable]].
+    */
+  val decodes: ReceivedBlocks.Check = (_, raw) =>
+    Either.cond(raw != undecodable, (), StorageError.Corrupt("synthetic block", Undecodable.Body))
 
   /** A synthetic block `i`: slot `i * gap`, number `i`, payload of varying size. */
   def block(i: Int, gap: Int = 3): (BlockRef, Bytes) =

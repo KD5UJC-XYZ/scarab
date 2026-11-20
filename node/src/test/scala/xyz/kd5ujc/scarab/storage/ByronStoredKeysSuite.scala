@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
-import xyz.kd5ujc.scarab.node.{Main, MirrorRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{Main, MirrorRules, NodeSetup, ReceivedBlockRecovery}
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.node.mempool.ByronPayloads
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
@@ -158,7 +158,7 @@ class ByronStoredKeysSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               e => log.update(_ :+ e),
               StateBacking.none[IO, MirrorState],
               _ => IO.unit
-            )
+            )(ReceivedBlockRecovery.startUp(epochSlots))
             .use { recovered =>
               ChainStorage
                 .resume[IO, MirrorState](
