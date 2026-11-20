@@ -45,7 +45,7 @@ are private working details; reproduce the review from these upstream identities
 by.** At ouroboros-consensus `2416493b` it is `hashTxBytes`, the Blake2b-256 of the transaction's
 raw CBOR (`Leios/Types.hs:162-163`, ouroboros-consensus 2416493b), which the LeiosDB checks on
 insert (`LeiosDB/Impl/SQLite/Insert.hs:231`, ouroboros-consensus 2416493b); the endorser-block
-store (`RocksLeiosStore`, #830) does the same. The Dijkstra ledger's `hashTx` is another hash: the
+store (`RocksLeiosStore`, #830) does the same (`LeiosEb.hashTx`). The Dijkstra ledger's `hashTx` is another hash: the
 Blake2b-256 of the body, witness and auxiliary-data hashes and the validity flag
 (`Dijkstra/Tx.hs:440-470`, cardano-ledger 9df9f98c), which consensus does not call at that pin. If a
 later pin names transactions by the ledger's `hashTx`, the store, LeiosFetch and the closure checks
