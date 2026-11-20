@@ -185,7 +185,8 @@ final class Follower[F[_]: Async, S] private (
           bodies: BlockSelection.Bodies[F],
           candidate: ChainSelection.Candidate,
           validation: Peer.Validation[F],
-          phase: BlockSelection.Phase
+          phase: BlockSelection.Phase,
+          cause: BlockSelection.Cause
       )(using
           Raise[F, NodeError]
       ): F[Unit] =
@@ -215,7 +216,7 @@ final class Follower[F[_]: Async, S] private (
                   validation
                 else Peer.Validation.none[F]
               announced.get.flatMap(
-                switchTo(bodies, to, depth, take, _, pool.noVerdictBlocks, causal)
+                switchTo(bodies, to, depth, take, _, pool.noVerdictBlocks, causal, cause)
               )
             case ChainSelection.Decision.Keep if phase == BlockSelection.Phase.Startup => F.unit
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
@@ -530,7 +531,8 @@ final class Follower[F[_]: Async, S] private (
       take: Vector[Header],
       peerTip: Option[ChainSync.Tip],
       withheldBlocks: NoVerdictBlocks[F],
-      validation: Peer.Validation[F]
+      validation: Peer.Validation[F],
+      cause: BlockSelection.Cause
   )(using Raise[F, NodeError]): F[Unit] =
     for
       original <- chain.get
@@ -602,9 +604,17 @@ final class Follower[F[_]: Async, S] private (
         // its schedule says (issue 693), and reported; nothing is recorded as invalid and nobody
         // is punished (issue 567). The worker reconsiders the valid prefix before it, as for a
         // refusal.
+        // A block this node forged, in the selection its submission runs, is not judged again:
+        // the forger handles it as a refusal (R3, issue 567), as on the direct path.
         case Left(withheld: Withheld) =>
+          val record = cause match
+            case BlockSelection.Cause.Forged(hash) if hash == withheld.header.hash =>
+              withheldBlocks.recordOwn
+            case BlockSelection.Cause.Forged(_) | BlockSelection.Cause.Reselection |
+                BlockSelection.Cause.Admitted(_) =>
+              withheldBlocks.record
           F.uncancelable { _ =>
-            withheldBlocks.record(withheld.header, withheld.cause).flatMap { (attempt, retry) =>
+            record(withheld.header, withheld.cause).flatMap { (attempt, retry) =>
               events.emit(
                 FollowerEvent.NoVerdict(withheld.header.point, withheld.cause, attempt, retry)
               ) *> unjudged(withheld.header.point, withheld.cause, attempt)
@@ -777,8 +787,10 @@ final class Follower[F[_]: Async, S] private (
     * (ChainSel.hs 358-413, which `gddWatcher` triggers, Genesis/Governor.hs:172-184;
     * ChainSel.hs:363-418 at 808e40054). The block is adopted then if it is still valid, joins our
     * chain and is preferred; the forger's trace of it stays the one of its submission. A block our
-    * implementation has no verdict on is not kept: it is never judged again
-    * (`NoVerdictRetry.Never`).
+    * implementation has no verdict on is never judged again in this run (`NoVerdictRetry.Never`),
+    * as the forger handles it as a refusal (R3, issue 567): when the direct selection finds so it
+    * is not kept, and when the selection its submission runs does, it stays in the forest withheld
+    * for good, while the other blocks of that candidate keep the worker's retry schedule.
     *
     * What became of the block is the submission's [[Follower.Retention]]: a failure to keep it does
     * not change the adoption ([[retain]]).

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.Handle
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.VolatileChain
+import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.consensus.{FollowerEvent, NoVerdictRetry, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Header, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.ForgedRetention.{adopted, delivered, lost, node, resumed}
@@ -152,6 +153,54 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
           assertEquals(after.blocks.map(_._1.hash), hashes(l.take(3)), "and is our chain at once")
       })
     yield ()
+  }
+
+  test("a block forged on a kept block, with no verdict at its submission, is never judged again") {
+    for
+      (left, right) <- forks
+      l = left.headers
+      r = right.headers
+      peerTip <- delivered(right, 0, 1)
+      seen <- Ref.of[IO, Option[(Follower.Submission, ForgedRetention.Node)]](None)
+      // the child's first judgement has no verdict, for a cause that may pass; later ones are valid
+      control <- TestControl.execute(node(None, k = k, withheldOnce = Set(l(1).hash)) { n =>
+        n.deliver(peerTip) *> n.offer(l(0), left.raws(0)) *>
+          n.offer(l(1), left.raws(1)).flatMap(child => seen.set(Some(child -> n))) *>
+          IO.never[Unit]
+      })
+      _ <- control.tick
+      submitted <- seen.get
+      // a peer's block withheld so would be judged again after 1 s, then 2, 4, 8, 16 s
+      _ <- control.advanceAndTick(50.seconds)
+      (child, n) = submitted.getOrElse(fail("the submission did not end"))
+      withheld <- n.pool.noVerdictBlocks.lookup(l(1).hash)
+      after <- n.follower.committedChain.get
+      events <- n.events.get
+      running <- control.results
+    yield
+      assert(
+        child.adoption.isInstanceOf[Follower.Adoption.NoVerdict],
+        s"the submission's selection had no verdict on it: ${child.adoption}"
+      )
+      assertEquals(child.retention, Follower.Retention.Kept)
+      assertEquals(after.tip, r(0).point, "never adopted later without being delivered")
+      assert(
+        !ForgedRetention.Node.extended(events).exists(_.hash == l(1).hash),
+        "nor reported adopted"
+      )
+      assertEquals(
+        withheld.map(_.schedule),
+        Some(NoVerdictBlocks.Schedule.Once),
+        "withheld, and not judged again, as our own block on the direct path"
+      )
+      assertEquals(
+        events.collect {
+          case FollowerEvent.NoVerdict(point, _, _, retry) if point == l(1).point =>
+            retry
+        },
+        Vector(NoVerdictRetry.Never)
+      )
+      assertEquals(running, None, "the node goes on")
   }
 
   /** Our forged `left(0)` is adopted, a peer's longer `right` takes the chain from it, and a peer

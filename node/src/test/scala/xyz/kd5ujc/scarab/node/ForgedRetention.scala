@@ -73,6 +73,23 @@ private[node] object ForgedRetention extends munit.Assertions:
     def extended(events: Vector[FollowerEvent]): Vector[BlockRef] =
       events.collect { case FollowerEvent.Extended(ref, _, _, _) => ref }
 
+  /** The rules have no verdict on `header` 's block: the evaluator failed with a defect, a cause
+    * that may pass (`BlockNoVerdict.Recovery.Passing`), on one of its scripts.
+    */
+  def noVerdict(header: Header): ValidationError =
+    ValidationError(
+      header.point,
+      BlockFailure.Tx(
+        xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
+          header.hash,
+          xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(header.hash),
+          xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(
+            xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new IllegalStateException("evaluator"))
+          )
+        )
+      )
+    )
+
   def ref(header: Header): BlockRef =
     BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
 
@@ -135,14 +152,16 @@ private[node] object ForgedRetention extends munit.Assertions:
 
   /** A node with its worker started: in Genesis mode with its governor in `phase`, or in Praos mode
     * (`None`); keeping `k` volatile blocks from `initial`; `refused` are the blocks its rules
-    * refuse, `preparation` what writing a forged block does, and `received` the log the pool reads
-    * bodies back from (whose recovered blocks `Main.seedReceived` seeds first). `use` runs once the
-    * worker's startup selection is done.
+    * refuse, `withheldOnce` those whose first judgement has no verdict for a cause that may pass
+    * (`noVerdict`) and whose later ones are valid, `preparation` what writing a forged block does,
+    * and `received` the log the pool reads bodies back from (whose recovered blocks
+    * `Main.seedReceived` seeds first). `use` runs once the worker's startup selection is done.
     */
   def node[A](
       phase: Option[Gsm.Phase],
       k: Int = 2,
       refused: Set[Bytes] = Set.empty,
+      withheldOnce: Set[Bytes] = Set.empty,
       preparation: Preparation = Preparation.Records,
       received: Option[ReceivedBlocks[IO]] = None,
       initial: Option[VolatileChain[BigInt]] = None
@@ -156,12 +175,17 @@ private[node] object ForgedRetention extends munit.Assertions:
       prepared <- Ref.of[IO, Vector[Bytes]](Vector.empty)
       stored <- Ref.of[IO, Vector[Bytes]](Vector.empty)
       fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+      judged <- Ref.of[IO, Set[Bytes]](Set.empty)
       follower <- Follower.create[IO, BigInt](
         BlockRules.from((_, h, _) =>
           if refused(h.hash) then
             Raise[IO, ValidationError]
               .raise(ValidationError(h.point, BlockFailure.EpochPrecedesLedger(0)))
-          else IO.pure(h.blockNo)
+          else
+            judged.modify(seen => (seen + h.hash, seen(h.hash))).flatMap { before =>
+              if withheldOnce(h.hash) && !before then Raise[IO, ValidationError].raise(noVerdict(h))
+              else IO.pure(h.blockNo)
+            }
         ),
         event => events.update(_ :+ event),
         ForgedChain.geometry

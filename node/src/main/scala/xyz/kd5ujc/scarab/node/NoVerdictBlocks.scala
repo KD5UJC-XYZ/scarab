@@ -38,6 +38,14 @@ final class NoVerdictBlocks[F[_]: Async] private (
   def record(header: Header, cause: BlockNoVerdict): F[(Int, NoVerdictRetry)] =
     F.monotonic.flatMap(end => state.modify(_.recorded(header.hash, header.slot, cause, end)))
 
+  /** Record an attempt on a block this node forged that ended without a verdict: it is not judged
+    * again in this run, whatever its cause, as the forger handles our own block without a verdict
+    * as a refusal (R3 of the #567 decision; the retry schedule of #693 amends R1, a peer's block,
+    * only).
+    */
+  def recordOwn(header: Header, cause: BlockNoVerdict): F[(Int, NoVerdictRetry)] =
+    state.modify(_.recordedOnce(header.hash, header.slot, cause))
+
   /** A verdict on these blocks (judged valid, or refused by the rules): their schedules end. */
   def verdict(hashes: Iterable[Bytes]): F[Unit] =
     state.update(_.removed(hashes))
@@ -159,6 +167,18 @@ object NoVerdictBlocks:
           (Schedule.At(end + wait), NoVerdictRetry.After(wait))
         case BlockNoVerdict.Recovery.Deterministic => (Schedule.Once, NoVerdictRetry.Never)
       (changed(byHash.updated(hash, Withheld(slot, cause, attempts, schedule))), (attempts, retry))
+
+    /** An attempt that ended without a verdict on a block that is not judged again in this run. */
+    def recordedOnce(
+        hash: Bytes,
+        slot: BigInt,
+        cause: BlockNoVerdict
+    ): (Entries, (Int, NoVerdictRetry)) =
+      val attempts = byHash.get(hash).fold(1)(_.attempts + 1)
+      (
+        changed(byHash.updated(hash, Withheld(slot, cause, attempts, Schedule.Once))),
+        (attempts, NoVerdictRetry.Never)
+      )
 
     def removed(hashes: Iterable[Bytes]): Entries =
       val present = hashes.filter(byHash.contains)

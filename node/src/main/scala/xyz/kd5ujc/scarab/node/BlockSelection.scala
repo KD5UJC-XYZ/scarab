@@ -125,7 +125,8 @@ private[node] final class BlockSelection[F[_]: Async] private (
               reader(bodies, last),
               candidate,
               validation(cause),
-              phase
+              phase,
+              cause
             )
           )
           after <- pool.invalidBlocks.snapshot
@@ -275,7 +276,8 @@ private[node] object BlockSelection:
         bodies: Bodies[F],
         candidate: ChainSelection.Candidate,
         validation: Peer.Validation[F],
-        phase: Phase
+        phase: Phase,
+        cause: Cause
     )(using
         Raise[F, NodeError]
     ): F[Unit]
