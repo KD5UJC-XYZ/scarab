@@ -73,7 +73,10 @@ collection covers it (`cdbsGcDelay`, `cdbsGcInterval`, `Storage/ChainDB/Impl/Arg
 at a time, so one an interval is a goal, as the reference calls it (`Background.hs` 486-492): a
 collection that runs past the next entry's time leaves the entries due meanwhile queued, one to a 10 s
 mark, and they run back to back after it. Scarab forces its immutable store to disk before each
-collection; a collection that fails, or an exception in the fiber that runs them, stops the node. A file
+collection, an approved Deviation ([decisions register](../decisions.md#genesis-storage-and-keys),
+2026-11-20): the reference forces nothing and relies on the 60 s delay to let the copy reach the disk
+(`Storage/ChainDB/Impl/Args.hs` 80-82; `garbageCollectBlocks`, `Background.hs` 431-448). A collection
+that fails, the force included, or an exception in the fiber that runs them, stops the node. A file
 holds 1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected
 before another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
 387-399). When the log is opened, each file is validated on its own (`mkOpenStateHelper`,

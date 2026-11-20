@@ -2269,7 +2269,7 @@
     "GcScheduleSuite",
     "ReceivedCollectionSuite"
    ],
-   "note": "waits for the time of the oldest entry, takes it off the queue and collects its slot, one at a time, as the reference's runner; a collection that fails ends the runner with the failure as its value, and an exception anywhere in it, its waits included, with the value it is given for one (ADR 0017), which ChainStorage hands to the node to stop on, where the reference's runner throws in its linked thread",
+   "note": "waits for the time of the oldest entry, takes it off the queue and collects its slot, one at a time, as the reference's runner; a collection that fails ends the runner with the failure as its value, and an exception anywhere in it, its waits included, with the value it is given for one (ADR 0017), which ChainStorage hands to the node to stop on, where the reference's runner throws in its linked thread. The collection ChainStorage runs with it (collected) forces the immutable store to disk before it deletes any file, where the reference's garbageCollectBlocks forces nothing: an approved Deviation, docs/decisions.md \"Genesis, storage and keys\", 2026-11-20 (#1247)",
    "digest": "ca238d24ec8b8bfa"
   },
   "val storage.ReceivedBlocks.DefaultBlocksPerFile": {
@@ -2524,7 +2524,7 @@
    ]
   },
   {
-   "reason": "why the received log's collections stopped, carried as a value across the runner fiber's boundary (ADR 0017) for the node to stop on; the reference's runner throws in a thread linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-121 and 140-141 at ouroboros-consensus 82ecba329)",
+   "reason": "why the received log's collections stopped, carried as a value across the runner fiber's boundary (ADR 0017) for the node to stop on; the reference's runner throws in a thread linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-121 and 140-142 at ouroboros-consensus 82ecba329)",
    "definitions": [
     "enum storage.ChainStorage.CollectionStopped"
    ]

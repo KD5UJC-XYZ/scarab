@@ -655,9 +655,12 @@ object ChainStorage:
 
   /** One scheduled collection of the received log, in an error scope of its own: the immutable
     * store is forced to disk first, so that every block below `slot` it holds is durable, then the
-    * files wholly below `slot` are deleted. The reference collects its VolatileDB without forcing
-    * its ImmutableDB, after a delay meant to let the writes reach the disk (`garbageCollectBlocks`,
-    * `Storage/ChainDB/Impl/Background.hs` 430-449, ouroboros-consensus 82ecba329).
+    * files wholly below `slot` are deleted. The force is an approved Deviation (the decisions
+    * register, docs/decisions.md, "Genesis, storage and keys", 2026-11-20, #1247): the reference
+    * collects its VolatileDB without forcing its ImmutableDB, after a delay meant to let the writes
+    * reach the disk (`cdbsGcDelay`, `Storage/ChainDB/Impl/Args.hs` 80-82; `garbageCollectBlocks`,
+    * `Storage/ChainDB/Impl/Background.hs` 431-448, ouroboros-consensus 82ecba329; 441-458 at
+    * 808e40054).
     */
   private def collected[F[_]: Async](store: ImmutableStore[F], received: ReceivedBlocks[F])(
       slot: BigInt
