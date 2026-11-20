@@ -86,11 +86,13 @@ our chain no longer holds is adopted there when its branch is preferred, and the
 forger traces, is what that selection decided, read as the reference's forging loop reads it (the block is the tip:
 adopted; recorded invalid: invalid; else not adopted, `NodeKernel.hs:758-769`). A block stored already is neither
 stored nor selected again (`IgnoreBlockAlreadyInVolatileDB`, `ChainSel.hs:431-433`). A rollback leaves the block in
-the forest, and a restart seeds the forest from the received log before startup selection. A block the node's own
-implementation has no verdict on is never judged again in this run, as the forger handles it as a refusal (R3 of
-the decision of issue 567): when the direct selection finds so, the block is not kept; when the selection its
-submission runs does, the block stays in the forest withheld for good (`NoVerdictRetry.Never`), and the other blocks
-of that candidate keep the retry schedule of a peer's block. A restart judges a withheld block again, as it does any.
+the forest, and a restart seeds the forest from the received log before startup selection. A forged block the
+node's own implementation has no verdict on is never judged again in this run, as the forger handles our own block
+without a verdict as a refusal (R3 of the decision of issue 567): when the direct selection finds so, the block is
+not kept; when any selection of the worker finds so of a kept one (the one its submission runs, a reselection when
+the LoE moves or the node is caught up, an admission whose candidate goes through it), the block stays in the forest
+withheld for good (`NoVerdictRetry.Never`), and every other block keeps the retry schedule of a peer's block. A
+restart reads the kept block back as a recovered one, and judges it again as it does every withheld block.
 The forger's trace is the one of the submission (`adoptedBlock`,
 `didntAdoptBlock` or `forgedInvalidBlock`); a later selection of the block is logged as the chain's (`extended`), as
 the reference traces it in the ChainDB (`switchTo`, `AddedToCurrentChain`, `ChainSel.hs:964`), not in the forging
@@ -121,7 +123,9 @@ forging loop with the worker and the real block rules) check these cases in simu
 - a forged block no younger than the immutable tip is not kept, and the rule's epoch boundary exception holds; the
   same block offered again is neither stored nor selected again, and, delivered by a peer, not processed;
 - refused by the rules, at its submission or when selection reaches it, it is recorded invalid and never selected,
-  no session is blamed, and offered again it is known invalid;
+  no session is blamed, and offered again it is not stored again;
+- held back, and with no verdict when the reselection once caught up reaches it, for a cause that may pass, it is
+  withheld for good (`NoVerdictRetry.Never`) and neither judged again nor adopted in the 50 simulated seconds after;
 - when keeping fails with a typed failure other than storage, or throws, no block is kept, the forger's outcomes are
   the same and each block gets a `notKept` line; a storage failure is raised to the forger, typed, before the chain
   that would hold the block is published.
@@ -130,7 +134,8 @@ With only a block the LoE holds back kept, as before this behaviour was built, e
 to be selected does not end, and the cases of duplicates, refusals and the forest's contents fail; the longer chain's
 case, the fetched block's and the earlier cases pass. Without the selection at submission, a block forged on a kept
 block off our chain is `Lost(DetachedPredecessor)` and our chain stays where it was; with a peer's retry schedule
-for the block that selection has no verdict on, it is judged again a second later and adopted.
+for the block that selection has no verdict on, it is judged again a second later and adopted, and so is a
+held-back block the reselection had no verdict on.
 
 Not shown: no run against a reference node, and no devnet scenario forges in Genesis mode. The reference also serves
 the blocks of its VolatileDB over BlockFetch, recent forks included; Scarab serves its selected chain and the
