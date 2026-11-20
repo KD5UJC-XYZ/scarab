@@ -12,9 +12,26 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.state.{EraHistory, MirrorClock, Past, Placement}
 import xyz.kd5ujc.scarab.consensus.ForkTrigger
 import xyz.kd5ujc.scarab.ledger.{PlutusStats, PosixClock, Tx, TxEnv, TxIn, TxOut, Utxo}
-import xyz.kd5ujc.scarab.ledger.era.{EraTx, TxLevel}
-import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
-import xyz.kd5ujc.scarab.ledger.era.rules.AlonzoUtxo
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoContextError,
+  AlonzoStAnnTx,
+  BabbageContextError,
+  CollectError,
+  EraTx,
+  EraUtxoRun,
+  Network,
+  PParams,
+  TxLevel
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayPParams, ConwayTx, ConwayUTxO}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  AlonzoUtxo,
+  ConwayUtxo,
+  ConwayUtxoPredFailure,
+  ConwayUtxosPredFailure,
+  UtxoContext,
+  UtxoEnv
+}
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Judgment,
@@ -28,6 +45,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Alonzo,
   Babbage,
   Conway,
+  ConwayLedgerState,
+  ConwayNewEpochState,
+  LedgerState,
   EraTag,
   NewEpochState,
   ShelleyBasedEra,
@@ -360,5 +380,76 @@ class PastHorizonReferenceSuite extends FunSuite:
         case e: PosixClock.Extended => e.base.horizon
         case other                  => fail(s"$other")
       assertEquals(horizon(ours), horizon(expected))
+    }
+  }
+
+  // the era-typed UTXO whole, on what the reference judged: its refusal is UTXOS's, the collection's
+  // failure to translate a time past the horizon (`TimeTranslationPastHorizon`), and nothing else
+  test(
+    "Conway's conwayUtxoTransition refuses each recorded end past the horizon as the reference"
+  ) {
+    recorded.filter(_.era == Era.Conway).foreach { r =>
+      val setup = setupOf(r)
+      val nes = stateOf[Conway](r)(using ShelleyBasedEra.SConway)
+      val clock = clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip)
+      val (sysSt, ei) = clock match
+        case PosixClock.Forecast(start, horizon) => (start, horizon)
+        case other                               => fail(s"${r.label}: $other")
+      val stored = UtxoCodecs.utxo.decodeBytes(r.utxo).fold(e => fail(e.render), identity)
+      val ls = ConwayNewEpochState.ls.get(nes)
+      val pp = PParams[Conway](
+        ConwayPParams
+          .fromStored(ConwayNewEpochState.gov.get(nes).curPParams)
+          .fold(e => fail(s"${r.label}: $e"), identity)
+      )
+      val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity).raw
+      val tx = ConwayTx
+        .fromEnvelope(raw, StateLayout.Node11_1)
+        .fold(e => fail(s"${r.label}: $e"), identity)
+      val utxo = ConwayUTxO.fromStored(stored).fold(e => fail(s"${r.label}: $e"), identity)
+      val network = Network
+        .of(BigInt(setup.globals.network))
+        .getOrElse(fail(s"${r.label}: network ${setup.globals.network}"))
+      val result = EraUtxoRun.run(
+        UtxoEnv(r.tip + 1, pp, ConwayLedgerState.cert.get(ls)),
+        AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
+        UtxoContext(
+          network,
+          sysSt,
+          ei,
+          TxEnv.Validation.All,
+          ConwayUtxo.injectShelleyFailure(ReferenceBuild.Release11_1)
+        ),
+        LedgerState.utxo[Conway].get(ls),
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+        asSubRule = true
+      )
+      // the end of the validity interval past the horizon, as the clock refuses it, once: the
+      // collection stops translating at its first failure (`merge`,
+      // `Alonzo/Plutus/Evaluate.hs:172-185`, cardano-ledger f649f975)
+      val tx0 = EraTx.conway
+      val end = tx0.bodyOf
+        .vldt(tx0.body[TxLevel.Top](tx)(using tx0.bodyOf.top))(using tx0.bodyOf.top)
+        .invalidHereafter
+        .getOrElse(fail(s"${r.label}: no upper bound"))
+      val pastHorizon = clock.posix(end).swap.getOrElse(fail(s"${r.label}: the end translates"))
+      val expected = List(
+        CollectError.BadTranslation[Conway](
+          ConwayContextError.BabbageContextError(
+            BabbageContextError.AlonzoContextError(
+              AlonzoContextError.TimeTranslationPastHorizon(pastHorizon)
+            )
+          )
+        )
+      )
+      result match
+        case Right(Left(failures)) =>
+          failures.toChain.toList match
+            case ConwayUtxoPredFailure.UtxosFailure(
+                  ConwayUtxosPredFailure.CollectErrors(errors)
+                ) :: Nil =>
+              assertEquals(errors.toList, expected, r.label)
+            case other => fail(s"${r.label}: $other")
+        case other => fail(s"${r.label}: $other")
     }
   }

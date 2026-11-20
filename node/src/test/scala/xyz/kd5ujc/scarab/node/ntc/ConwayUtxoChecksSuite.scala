@@ -31,18 +31,39 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   AllegraUtxo,
+  AllegraUtxoPredFailure,
   AlonzoUtxo,
+  AlonzoUtxoPredFailure,
   BabbageUtxo,
+  BabbageUtxoPredFailure,
   ConwayUtxo,
+  ConwayUtxoPredFailure,
+  InjectUtxoFailure,
   ShelleyUtxo,
+  ShelleyUtxoPredFailure,
   UtxoContext,
   UtxoEnv
 }
 import xyz.kd5ujc.scarab.ledger.{RefScripts, testByteStrings}
-import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Deposits, StAnnTx, Test as Verdict, UtxoTests}
+import xyz.kd5ujc.scarab.ledger.era.EraUtxoRun
+import xyz.kd5ujc.scarab.ledger.rules.{
+  CertLens,
+  Counted,
+  Deposits,
+  Judgment,
+  RuleT,
+  StAnnTx,
+  Test as Verdict,
+  Utxo as FlatUtxoRule,
+  UtxoEnv as FlatUtxoEnv,
+  UtxoTests
+}
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
+  LedgerState,
+  UTxOState,
+  UtxoTables,
   ConwayCertState,
   ConwayLedgerState,
   ConwayNewEpochState,
@@ -83,6 +104,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
       flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
       pp: PParams[Conway],
       cert: ConwayCertState,
+      utxoState: UTxOState[Conway],
       build: ReferenceBuild,
       families: Vector[Family],
       reason: Bytes
@@ -120,12 +142,49 @@ class ConwayUtxoChecksSuite extends FunSuite:
           flatPp,
           PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp))),
           ConwayNewEpochState.ls.andThen(ConwayLedgerState.cert).get(nes),
+          ConwayNewEpochState.ls
+            .andThen(LedgerState.utxo[Conway])
+            .get(nes)
+            .copy(utxo = UtxoTables(Utxo.fromMap(stored))),
           c.build,
           rc.families,
           rc.reason
         )
       }
     }
+
+  /** A failure of the era types in the node's flat form; none of UTXO's predicates reports UTXOS's
+    * collection errors, the projection's one lossy case.
+    */
+  private def stored(f: ConwayUtxoPredFailure[Conway]): PredicateFailure =
+    ConwayUtxoPredFailure.toStored(f).fold(e => fail(s"collection errors: $e"), identity)
+
+  /** A typed predicate's verdict with its failures injected into Conway's (`inject`) and in the
+    * flat form, so it compares with the flat predicate's.
+    */
+  private def asConway[A](test: Verdict[A])(
+      inject: A => ConwayUtxoPredFailure[Conway]
+  ): Verdict[PredicateFailure] =
+    test.leftMap(_.map(a => stored(inject(a))))
+
+  /** A Shelley predicate's failures through the 11.2 injection, which keeps each failure a Conway
+    * transaction gives Shelley's predicates as it is: the predicates are compared, not the
+    * injection, which `assembled` compares under each build.
+    */
+  private def shelley(test: Verdict[ShelleyUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
+    asConway(test)(ConwayUtxo.injectShelleyFailure11_2.injectFailure)
+
+  private def allegra(test: Verdict[AllegraUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
+    asConway(test)(InjectUtxoFailure.conwayAllegra.injectFailure)
+
+  private def alonzo(test: Verdict[AlonzoUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
+    asConway(test)(InjectUtxoFailure.conwayAlonzo.injectFailure)
+
+  private def babbage(test: Verdict[BabbageUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
+    asConway(test)(InjectUtxoFailure.conwayBabbage.injectFailure)
+
+  private def conway(test: Verdict[ConwayUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
+    asConway(test)(identity)
 
   /** Each predicate: its name, the flat verdict and the typed one. */
   private def pairs(
@@ -139,110 +198,133 @@ class ConwayUtxoChecksSuite extends FunSuite:
       (
         "disjointRefInputs",
         UtxoTests.disjointRefInputs(s.flatPp, fb),
-        BabbageUtxo
-          .disjointRefInputs[Conway](
-            s.pp,
-            body.inputs[TxLevel.Top](tb)(using top),
-            body.referenceInputs[TxLevel.Top](tb)(using top)
-          )
+        babbage(
+          BabbageUtxo
+            .disjointRefInputs[Conway](
+              s.pp,
+              body.inputs[TxLevel.Top](tb)(using top),
+              body.referenceInputs[TxLevel.Top](tb)(using top)
+            )
+        )
       ),
       (
         "validateOutsideValidityIntervalUTxO",
         UtxoTests.validityInterval(fb, s.slot),
-        AllegraUtxo.validateOutsideValidityIntervalUTxO[Conway, TxLevel.Top](s.slot, tb)(using
-          body,
-          top
+        allegra(
+          AllegraUtxo.validateOutsideValidityIntervalUTxO[Conway, TxLevel.Top](s.slot, tb)(using
+            body,
+            top
+          )
         )
       ),
       (
         "validateInputSetEmptyUTxO",
         UtxoTests.inputSetEmpty(fb),
-        ShelleyUtxo.validateInputSetEmptyUTxO[Conway, TxLevel.Top](tb)(using body, top)
+        shelley(ShelleyUtxo.validateInputSetEmptyUTxO[Conway, TxLevel.Top](tb)(using body, top))
       ),
       (
         "validateBadInputsUTxO",
         UtxoTests
           .badInputs(Utxo.fromMap(s.stored), fb.inputs ++ fb.collateral ++ fb.referenceInputs),
-        ShelleyUtxo.validateBadInputsUTxO[Conway](s.utxo, body.allInputs(tb))
+        shelley(ShelleyUtxo.validateBadInputsUTxO[Conway](s.utxo, body.allInputs(tb)))
       ),
       (
         "validateWrongNetwork",
         UtxoTests.wrongNetwork(s.network, outs),
-        ShelleyUtxo
-          .validateWrongNetwork[Conway](
-            s.netId,
-            body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
-          )(using
-            body.outputsOf
-          )
+        shelley(
+          ShelleyUtxo
+            .validateWrongNetwork[Conway](
+              s.netId,
+              body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+            )(using
+              body.outputsOf
+            )
+        )
       ),
       (
         "validateWrongNetworkWithdrawal",
         UtxoTests.wrongNetworkWithdrawal(s.network, fb),
-        ShelleyUtxo.validateWrongNetworkWithdrawal[Conway, TxLevel.Top](s.netId, tb)(using
-          body,
-          top
+        shelley(
+          ShelleyUtxo.validateWrongNetworkWithdrawal[Conway, TxLevel.Top](s.netId, tb)(using
+            body,
+            top
+          )
         )
       ),
       (
         "validateWrongNetworkInTxBody",
         UtxoTests.wrongNetworkInTxBody(s.network, fb),
-        AlonzoUtxo.validateWrongNetworkInTxBody[Conway, TxLevel.Top](s.netId, tb)(using body, top)
+        alonzo(
+          AlonzoUtxo.validateWrongNetworkInTxBody[Conway, TxLevel.Top](s.netId, tb)(using
+            body,
+            top
+          )
+        )
       ),
       (
         "validateTooManyCollateralInputs",
         UtxoTests.tooManyCollateralInputs(s.flatPp, fb),
-        AlonzoUtxo.validateTooManyCollateralInputs[Conway](s.pp, tb)
+        alonzo(AlonzoUtxo.validateTooManyCollateralInputs[Conway](s.pp, tb))
       ),
       (
         "validateOutputTooSmallUTxO",
         UtxoTests.outputTooSmall[Conway](s.flatPp, outs),
-        BabbageUtxo.validateOutputTooSmallUTxO[Conway](
-          s.pp,
-          body.allSizedOutputs[TxLevel.Top](tb)(using top)
-        )(using body.outputsOf)
+        babbage(
+          BabbageUtxo.validateOutputTooSmallUTxO[Conway](
+            s.pp,
+            body.allSizedOutputs[TxLevel.Top](tb)(using top)
+          )(using body.outputsOf)
+        )
       ),
       (
         "validateOutputTooBigUTxO",
         UtxoTests.outputTooBig[Conway](s.flatPp, outs),
-        AlonzoUtxo.validateOutputTooBigUTxO[Conway](
-          s.pp,
-          body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
-        )(using body.outputsOf)
+        alonzo(
+          AlonzoUtxo.validateOutputTooBigUTxO[Conway](
+            s.pp,
+            body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+          )(using body.outputsOf)
+        )
       ),
       (
         "validateOutputBootAddrAttrsTooBig",
         UtxoTests.bootAddrAttrsTooBig(outs),
-        ShelleyUtxo.validateOutputBootAddrAttrsTooBig[Conway](
-          body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
-        )(using body.outputsOf)
+        shelley(
+          ShelleyUtxo.validateOutputBootAddrAttrsTooBig[Conway](
+            body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+          )(using body.outputsOf)
+        )
       ),
       (
         "validateValueNotConservedUTxO", {
           val (consumed, produced) = flatBalance(s)
           UtxoTests.valueNotConserved(consumed, produced)
         },
-        ShelleyUtxo.validateValueNotConservedUTxO[Conway](s.pp, s.utxo, s.cert, tb)
+        shelley(ShelleyUtxo.validateValueNotConservedUTxO[Conway](s.pp, s.utxo, s.cert, tb))
       ),
       (
         "feesOK",
         UtxoTests.feesOK[Conway](s.flatPp, Utxo.fromMap(s.stored), s.flat, flatMinFee(s)),
-        BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo)
+        conway(BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo))
       ),
       (
         "validateMaxTxSizeUTxO",
         UtxoTests.maxTxSize(s.flatPp, s.flat),
-        ShelleyUtxo.validateMaxTxSizeUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
-          tx,
-          tx.bodyOf.top
+        shelley(
+          ShelleyUtxo.validateMaxTxSizeUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+            tx,
+            tx.bodyOf.top
+          )
         )
       ),
       (
         "validateExUnitsTooBigUTxO",
         UtxoTests.exUnitsTooBig(s.flatPp, s.flat),
-        AlonzoUtxo.validateExUnitsTooBigUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
-          tx,
-          tx.bodyOf.top
+        alonzo(
+          AlonzoUtxo.validateExUnitsTooBigUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+            tx,
+            tx.bodyOf.top
+          )
         )
       )
     )
@@ -666,9 +748,11 @@ class ConwayUtxoChecksSuite extends FunSuite:
     )
 
   private def outsideForecast(s: Seen, ei: Horizon, slot: BigInt): Verdict[PredicateFailure] =
-    AlonzoUtxo.validateOutsideForecast[Conway, TxLevel.Top](ei, slot, 0, s.typed)(using
-      EraTx.conway,
-      EraTx.conway.bodyOf.top
+    alonzo(
+      AlonzoUtxo.validateOutsideForecast[Conway, TxLevel.Top](ei, slot, 0, s.typed)(using
+        EraTx.conway,
+        EraTx.conway.bodyOf.top
+      )
     )
 
   test("validateOutsideForecast in each of the reference's branches"):
@@ -738,7 +822,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
       s.typed,
       UtxoContext(s.netId, 0, ei, validation, ConwayUtxo.injectShelleyFailure(build))
     )
-    (flat, typed)
+    (flat, conway(typed))
 
   test(
     "babbageUtxoValidation gives the flat UTXO's verdict on every Conway case, build and policy"
@@ -836,3 +920,137 @@ class ConwayUtxoChecksSuite extends FunSuite:
       "validateInputSetEmptyUTxO",
       "validateOutputTooBigUTxO"
     )
+
+  // ---- UTXO whole: the transition with UTXOS and the change of the state -------------------------
+
+  /** One clock for both paths' script contexts: the corpus records no era history, and the
+    * comparison is of the two rules, not of the scripts' time.
+    */
+  private val clock = xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => slot * 1000)
+
+  /** What a whole rule made of a case: its failures in the reference's order, in the comparison's
+    * form, or the state after. A defect fails the suite: the corpus holds none.
+    */
+  private enum Whole:
+    case Refused(failures: List[EraUtxoRun.Failure])
+    case Admitted(state: UTxOState[Conway])
+
+  /** The era-typed `conwayUtxoTransition` and the flat UTXO (`rules.Utxo`) on `s` from its state,
+    * under `build` and `validation`.
+    */
+  private def wholeRule(
+      s: Seen,
+      build: ReferenceBuild,
+      validation: TxEnv.Validation
+  ): (Whole, Whole) =
+    val what = s"${s.label} under ${build.name}, $validation"
+    val evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
+    val stAnnTx = xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
+      .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed)
+    val context =
+      UtxoContext(s.netId, 0, historyAt(s.slot), validation, ConwayUtxo.injectShelleyFailure(build))
+    val era =
+      EraUtxoRun.run(UtxoEnv(s.slot, s.pp, s.cert), stAnnTx, context, s.utxoState, evaluator) match
+        case Left(defect) => fail(s"$what: era defect $defect")
+        case Right(Left(fs)) =>
+          Whole.Refused(
+            fs.toChain.toList.map(f => EraUtxoRun.eraForm(f).getOrElse(fail(s"$what: $f")))
+          )
+        case Right(Right((after, _))) => Whole.Admitted(after)
+    val env = TxEnv(
+      slot = s.slot,
+      epoch = 0,
+      network = s.network,
+      evaluator = evaluator,
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      validation = validation,
+      referenceBuild = build,
+      clock = Some(clock)
+    )
+    val flat = Judgment.run(FlatUtxoRule, RuleT.Policy.Accumulate)(
+      xyz.kd5ujc.scarab.ledger.TestLedger.globals,
+      FlatUtxoEnv(env, s.flatPp, s.cert),
+      Counted(s.utxoState, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
+      StAnnTx(s.flat, Utxo.fromMap(s.stored))
+    ) match
+      case Left(defect) => fail(s"$what: flat defect $defect")
+      case Right(Left(fs)) =>
+        Whole.Refused(fs.toChain.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
+      case Right(Right(counted)) => Whole.Admitted(counted.state)
+    (era, flat)
+
+  test("conwayUtxoTransition gives the flat UTXO's failures, in order, on every Conway case"):
+    val outcomes = for
+      s <- seen
+      build <- ReferenceBuild.values.toVector
+      validation <- TxEnv.Validation.values.toVector
+    yield
+      val what = s"${s.label} under ${build.name}, $validation"
+      wholeRule(s, build, validation) match
+        case (Whole.Admitted(ours), Whole.Admitted(theirs)) =>
+          assert(summon[cats.Eq[UTxOState[Conway]]].eqv(ours, theirs), what)
+          Whole.Admitted(ours)
+        case (era, flat) =>
+          assertEquals(era, flat, what)
+          era
+    assert(
+      outcomes.exists {
+        case Whole.Refused(fs) => fs.size >= 2
+        case _                 => false
+      },
+      "no case with several failures"
+    )
+    assert(
+      outcomes.exists {
+        case Whole.Admitted(_) => true
+        case _                 => false
+      },
+      "no admitted case: the states were never compared"
+    )
+    assert(
+      outcomes.exists {
+        case Whole.Refused(fs) =>
+          fs.exists {
+            case EraUtxoRun.Failure.Utxo(_) => false
+            case _                          => true
+          }
+        case _ => false
+      },
+      "no case UTXOS refuses"
+    )
+
+  test("conwayUtxoTransition's refusal is the reference's, byte for byte, where only UTXO failed"):
+    // UTXO one level down, an odd depth as under MEMPOOL, LEDGER and UTXOW, where the reference
+    // reports its failures in their order (`EraUtxoRun.run`). The mempool's measure refuses three of
+    // the cases only UTXO refuses before the ledger (`tx-too-large`, `tx-too-large-spent-inputs`,
+    // `utxo-mint-units-too-big`), so their recorded refusal is the measure's and they are left out
+    val utxoOnly = seen.filter(s =>
+      s.families.nonEmpty && s.families.forall(_ == Family.UTXO) &&
+        xyz.kd5ujc.scarab.node.mempool.Capacity.phase1(s.flat, s.flatPp).isRight
+    )
+    assert(utxoOnly.nonEmpty, "no case that only UTXO refuses")
+    utxoOnly.foreach { s =>
+      val failures = EraUtxoRun
+        .run(
+          UtxoEnv(s.slot, s.pp, s.cert),
+          xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
+            .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed),
+          UtxoContext(
+            s.netId,
+            0,
+            historyAt(s.slot),
+            TxEnv.Validation.All,
+            ConwayUtxo.injectShelleyFailure(s.build)
+          ),
+          s.utxoState,
+          xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+          asSubRule = true
+        ) match
+        case Right(Left(fs)) => fs.toChain.toVector.map(stored)
+        case other           => fail(s"${s.label}: $other")
+      assertEquals(
+        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
+        s.reason.hex,
+        s.label
+      )
+    }
