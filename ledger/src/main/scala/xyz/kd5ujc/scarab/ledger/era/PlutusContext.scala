@@ -75,42 +75,42 @@ type ContextError[E <: EraTag] = E match
   case Conway   => conway.ConwayContextError[Conway]
   case Dijkstra => dijkstra.DijkstraContextError[Dijkstra]
 
-/** The certificate of a language's context (`type family PlutusTxCert`, `Context.hs:232-236`,
-  * cardano-ledger f649f975).
+/** The certificate of a language's context (`type family PlutusTxCert`, `Context.hs:264-268`,
+  * cardano-ledger 9df9f98c).
   */
 type PlutusTxCert[L <: Language] = L match
   case Language.PlutusV1 => PV1.DCert
   case Language.PlutusV2 => PV1.DCert
   case Language.PlutusV3 => PV3.TxCert
-  case Language.PlutusV4 => PV3.TxCert
+  case Language.PlutusV4 => PV4.TxCert
 
 /** The script purpose of a language's context (`type family PlutusScriptPurpose`,
-  * `Context.hs:238-242`, cardano-ledger f649f975).
+  * `Context.hs:270-274`, cardano-ledger 9df9f98c).
   */
 type PlutusScriptPurpose[L <: Language] = L match
   case Language.PlutusV1 => PV1.ScriptPurpose
   case Language.PlutusV2 => PV1.ScriptPurpose
   case Language.PlutusV3 => PV3.ScriptPurpose
-  case Language.PlutusV4 => PV3.ScriptPurpose
+  case Language.PlutusV4 => PV4.ScriptPurpose
 
 /** The transaction information of a language's context (`type family PlutusTxInfo`,
-  * `Context.hs:244-248`, cardano-ledger f649f975).
+  * `Context.hs:276-280`, cardano-ledger 9df9f98c).
   */
 type PlutusTxInfo[L <: Language] = L match
   case Language.PlutusV1 => PV1.TxInfo
   case Language.PlutusV2 => PV2.TxInfo
   case Language.PlutusV3 => PV3.TxInfo
-  case Language.PlutusV4 => PV3.TxInfo
+  case Language.PlutusV4 => PV4.TxInfo
 
-/** An input of a language's context (`type family PlutusTxInInfo era l`, `Context.hs:250-257`,
-  * cardano-ledger f649f975), without Alonzo's own case for Plutus V1 (`Maybe PV1.TxInInfo`): Alonzo
+/** An input of a language's context (`type family PlutusTxInInfo era l`, `Context.hs:282-289`,
+  * cardano-ledger 9df9f98c), without Alonzo's own case for Plutus V1 (`Maybe PV1.TxInInfo`): Alonzo
   * is not among the era types yet, and no later era has the case.
   */
 type PlutusTxInInfo[E <: EraTag, L <: Language] = L match
   case Language.PlutusV1 => PV1.TxInInfo
   case Language.PlutusV2 => PV2.TxInInfo
   case Language.PlutusV3 => PV3.TxInInfo
-  case Language.PlutusV4 => PV3.TxInInfo
+  case Language.PlutusV4 => PV4.TxInInfo
 
 /** The script context of a language (`type family PlutusScriptContext`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs:364-367`, cardano-ledger
@@ -161,10 +161,11 @@ final case class PlutusV2Args(unPlutusV2Args: LegacyPlutusArgs[Language.PlutusV2
   */
 final case class PlutusV3Args(unPlutusV3Args: PV3.ScriptContext)
 
-/** `PlutusArgs 'PlutusV4` (`newtype PlutusArgs 'PlutusV4 = PlutusV4Args`, `Plutus/Language.hs:579`,
-  * cardano-ledger f649f975): the V3 script context.
+/** `PlutusArgs 'PlutusV4` (`newtype PlutusArgs 'PlutusV4 = PlutusV4Args`,
+  * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs:583`, cardano-ledger 9df9f98c):
+  * the V4 script context, the one argument of a Plutus V4 script.
   */
-final case class PlutusV4Args(unPlutusV4Args: PV3.ScriptContext)
+final case class PlutusV4Args(unPlutusV4Args: PV4.ScriptContext)
 
 /** The arguments of a language's script (`data PlutusArgs l`, `Plutus/Language.hs:463`,
   * cardano-ledger f649f975).

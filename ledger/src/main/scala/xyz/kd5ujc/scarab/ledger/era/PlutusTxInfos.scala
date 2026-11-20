@@ -81,11 +81,12 @@ object PlutusTxInfos:
   /** `transEpochNo` (`Plutus/TxInfo.hs:206-207`, cardano-ledger f649f975). */
   def transEpochNo(e: EpochNo): BigInt = e.toBigInt
 
-  /** `transBoundedRational` (`Plutus/TxInfo.hs:118-119`, cardano-ledger f649f975): the reduced
-    * ratio.
+  /** `transBoundedRational` (`Plutus/TxInfo.hs:118-119`, cardano-ledger f649f975): the ratio
+    * through `fromHaskellRatio`, as the reference's (`PV3.fromHaskellRatio . unboundRational`,
+    * `Plutus/TxInfo.hs:119-120`, cardano-ledger 9df9f98c).
     */
   def transBoundedRational(r: UnitInterval): PV3.Rational =
-    PV3.Rational(r.rational.numerator, r.rational.denominator)
+    PV3.Rational.fromHaskellRatio(r.rational)
 
   /** `transDatum` (`Plutus/TxInfo.hs:212-213`, cardano-ledger f649f975). */
   def transDatum(data: PlutusData): PV1.Datum = PV1.Datum(data)
