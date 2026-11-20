@@ -31,7 +31,11 @@ adds a block to its VolatileDB (`Storage/ChainDB/Impl/ChainSel.hs` 425-451). It 
 by validation later or not, until their file is collected. A block need not be on the selected chain to be
 served (`relay/HeldRange.scala`): the walk follows each held block's predecessor by its hash, whatever
 its slot, and reads the selected chain and the received log as they were at one instant, as the
-reference walks one snapshot of its VolatileDB's index. ChainSync still follows the selected chain
+reference walks one snapshot of its VolatileDB's index (read under the lock the chain's changes are
+published under when the chain keeps changing). A walk that comes back to a block already on its path
+before it meets the lower bound, which only a collision of block hashes could make, is answered
+`NoBlocks`, where the reference's walk would not end (`Paths.hs` 188-218 and 336-342): an Improvement
+of class (a) ([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076)). ChainSync still follows the selected chain
 alone, as the reference's follower does.
 
 | The range asked for | Reference | Scarab |

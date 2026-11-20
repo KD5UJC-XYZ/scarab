@@ -54,10 +54,10 @@ outbound governor promotes the peer and reuses the connection (see "Connections"
 **Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
 clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
 a `Source` that holds one client's cursor. `BlockFetchServer` streams an inclusive range from a
-`Blocks` source, which answers NoBlocks, a batch, or a refusal (`BlockFetchServer.Answer`): a refusal,
-before the batch or in it, ends the connection, where the reference's server throws (an Origin end,
-bounds that are not a range, a block collected during the batch), and the batch ends without
-BatchDone; the length of a range is not bounded, as the reference's server streams any range it
+`Blocks` source, which answers as the reference's ChainDB `stream` does: an `UnknownRange`, answered
+NoBlocks, or the range's iterator, its `IteratorResult`s sent as they come (`Exhausted` is BatchDone);
+what the reference throws (an Origin end, bounds that are not a range, `BlockGCed`) is raised as
+`NetworkError.RangeRefused` and ends the connection, a batch without BatchDone; the length of a range is not bounded, as the reference's server streams any range it
 holds. `KeepAliveServer` echoes cookies. `TxSubmissionClient` and
 `TxSubmissionServer` are the two roles of TxSubmission2: the client offers a `Source` of
 transactions (each once per connection, by ticket number) and hands out bodies on request; the

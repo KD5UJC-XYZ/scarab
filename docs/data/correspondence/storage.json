@@ -928,16 +928,25 @@
       113,
       128
      ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
+     "symbol": "mkOpenStateHelper",
+     "lines": [
+      372,
+      436
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
     "ReceivedBlocksSuite",
-    "VolatileStoreSuite",
-    "ChainServerSuite"
+    "VolatileStoreSuite"
    ],
-   "note": "the index is rebuilt a record at a time, keeping a note of each block read from its body, as the reference keeps each block's BlockInfo; the note is the caller's. Evidence: ReceivedBlocksSuite reopens a log and reads the same predecessors back, and ChainServerSuite serves a held fork after a restart, as the reference's iterator would over its reopened VolatileDB; no running reference node is asked",
+   "note": "as parseBlockFile and extractBlockInfo, each block is read in turn and its location kept with what is read from its body (here the predecessor). It differs in the recovery it shares with openIndex: the first damaged file is cut and every file after it removed, where the reference's open (mkOpenStateHelper) truncates each damaged file and keeps the others, and truncates a later file at a block already indexed. No differential suite covers this; its classification awaits the owner",
    "digest": "666577b18901c140"
   },
   "def storage.ChainStorage.predecessorOf": {

@@ -1136,27 +1136,49 @@
    "note": "one case for each exception the reference raises for a range, named as it is: NoGenesisBlock and BlockGCed (BlockFetchServerException), InvalidIteratorRange (ChainDbError), InvalidIteratorRangeError (the ImmutableDB's ApiMisuse); as a closed type, each ends the connection",
    "digest": "cfc6c4925b5e93d2"
   },
-  "enum network.BlockFetchServer.Answer": {
+  "enum network.BlockFetchServer.UnknownRange": {
    "upstream": [
     {
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/Server.hs",
-     "symbol": "blockFetchServer'",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "symbol": "UnknownRange",
      "lines": [
-      87,
-      146
+      793,
+      799
      ]
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "ChainServerSuite",
     "ServerSuite"
    ],
-   "note": "the ChainDB stream's Either UnknownRange Iterator and the exceptions its opening and its iterator raise, as one answer; IteratorBlockGCed is a refusal at the end of the batch's stream. Evidence: the wire cases of ChainServerSuite assert each outcome of the reference's ChainDB iterator and BlockFetch server, as their source at the pins gives it, over a connection Scarab serves; no running reference node is asked",
-   "digest": "f9f28ddee61ec2ca"
+   "note": "MissingBlock and ForkTooOld, each with its point; the server answers either with NoBlocks",
+   "digest": "5e0720d52273ea1e"
+  },
+  "enum network.BlockFetchServer.IteratorResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "symbol": "IteratorResult",
+     "lines": [
+      744,
+      783
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ChainServerSuite",
+    "ServerSuite"
+   ],
+   "note": "IteratorExhausted, IteratorResult and IteratorBlockGCed as Exhausted, Block and BlockGCed; a range's stream is the results of its iteratorNext calls up to the first Exhausted or BlockGCed",
+   "digest": "92f1ddb1ec343c6d"
   }
  },
  "glue": [
