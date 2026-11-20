@@ -75,9 +75,9 @@ that ages blocks past `k`, where the reference's copy runner copies the whole pr
 schedules once, so under a backlog the two can schedule other cutoffs at other times, a Gap
 ([#1262](https://github.com/KD5UJC-XYZ/scarab/issues/1262)). The same Gap covers when known-invalid
 blocks are forgotten: Scarab prunes them as the selected chain's anchor passes their slots
-(`InvalidBlocks.pruneBefore`), where the reference prunes them at each collection, below its slot
-(`garbageCollectBlocks`, `Background.hs` 446-447 at `82ecba329`, 456-457 at `808e40054`), 60 s or more
-later. Each schedule and each collection is logged
+(`InvalidBlocks.pruneBefore`), where the reference prunes them at each collection, 60 s or more after
+the copy that schedules it, below its slot (`garbageCollectBlocks`, `Background.hs` 446-447 at
+`82ecba329`, 456-457 at `808e40054`). Each schedule and each collection is logged
 (`scheduledGC`, `performedGC`), at Debug, as the reference traces `ScheduledGC` and `PerformedGC`
 (`Storage/ChainDB/Impl/Types.hs` 1049-1054 at `82ecba329`, 1082-1087 at `808e40054`; cardano-node 11.1.3
 `Cardano/Node/Tracing/Tracers/ChainDB.hs` 1183-1184). Collections run one
@@ -133,9 +133,12 @@ shutdown or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB
 `Ouroboros/Consensus/Node.hs` 515-521 and 1118-1128 in ouroboros-consensus-diffusion; `Args.hs` 162-175,
 `Node.hs` 517-523 and 1151-1161 at `808e40054`). Scarab keeps no clean-shutdown marker, so it checks at
 every open; it does not check a header's own integrity again, which was checked when the header
-arrived. The start seeds the block pool from the log with each block's header, read without checking
-its body a second time (`ProcessedBodiesSuite`: a block the open accepted is seeded though its body is
-not its header's, and a record whose header does not decode is logged and skipped).
+arrived. The start seeds the block pool from the log by decoding each block's header, without checking
+its body a second time, and adds a block of the selected chain that the log lacks only once it passes
+the start-up check, which a resume does not run in full (a Byron boundary block's body is not decoded)
+(`ProcessedBodiesSuite`: after an open whose check accepts every record, a block whose body is not its
+header's is seeded and a record whose header does not decode is logged and skipped; such a block is
+not added by the start, and is logged).
 
 Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule and its traces, the storage's
 collections, a copy whose backing-store work moves the clock, a restart, under TestControl; the start-up

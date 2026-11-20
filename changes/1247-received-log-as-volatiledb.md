@@ -31,8 +31,10 @@
   file changes. The selected-chain log still recovers its files in order.
 - The start-up check runs at every open, where the reference checks a block's integrity only after an
   unclean shutdown or on request, and it does not check a header's signature again: an approved
-  Deviation (decisions register, 2026-11-20). The start seeds the block pool from the log with each
-  block's header alone, where it ran the whole check a second time on every block the open had checked.
+  Deviation (decisions register, 2026-11-20). The start seeds the block pool from the log by decoding
+  each block's header alone, where it ran the whole check a second time on every block the open had
+  checked, and adds a block of the selected chain that the log lacks only once it passes the start-up
+  check (`receivedBlockDiscarded` when it does not).
 - In either log, a record header whose length runs past the file's end or what an Int holds, or
   whose record fails its checksum, ends the file's readable part without the record being read
   whole, where a damaged length near the largest an Int holds failed the open or asked for an array
