@@ -1684,7 +1684,7 @@ object Main extends IOApp:
         )(ReceivedBlockRecovery.startUp(genesis.geometry.byron.epochSlots))
         // a failed collection of the received log stops the node, as the failure of the
         // reference's collection ends the thread it is linked to (consensus 82ecba329
-        // Storage/ChainDB/Impl/Background.hs:116-121,140-141)
+        // Storage/ChainDB/Impl/Background.hs:116-121,140-142)
         .flatTap(r =>
           r.collectionsStopped.flatMap {
             case ChainStorage.CollectionStopped.Failed(error) =>

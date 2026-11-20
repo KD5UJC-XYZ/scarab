@@ -197,8 +197,10 @@ and the predecessor its header names) and a cache of recent bodies; a body is re
   given by the node: the block decodes, its header names the record's point and its body is the
   header's), its blocks are indexed up to the first one already indexed, whatever the bytes of its
   record, and it is cut at the earlier of the two; the files after it are read all the same. A block
-  is logged once: a receipt and the start's repair of the selected chain's blocks (`restoreSelected`)
-  write only a block the log lacks.
+  the index holds is not written again: a receipt and the start's repair of the selected chain's
+  blocks (`restoreSelected`) write only a block the log lacks. A record that fails its checksum when
+  it is read back leaves the index, so the block can be written again; the next open settles it, as
+  for any repeat.
 - Collection runs on the reference's schedule (`GcSchedule`): each copy of blocks to the immutable
   store schedules a collection below the new immutable tip's slot, timed from the end of the copy,
   60 s later rounded up to a 10 s mark, at most one entry to a mark, run one at a time by a fiber of

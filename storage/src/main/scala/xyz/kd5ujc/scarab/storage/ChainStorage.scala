@@ -762,7 +762,7 @@ object ChainStorage:
 
     /** A failed collection of the received log, raised here, in the caller's fiber: the storage
       * stops at the next block, as the failure of the reference's collection ends the thread it is
-      * linked to (`launch`, `Storage/ChainDB/Impl/Background.hs` 116-121 and 140-141,
+      * linked to (`launch`, `Storage/ChainDB/Impl/Background.hs` 116-121 and 140-142,
       * ouroboros-consensus 82ecba329).
       */
     private def collectionsGoing(using cats.mtl.Raise[F, StorageError]): F[Unit] =

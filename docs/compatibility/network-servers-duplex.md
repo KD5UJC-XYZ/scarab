@@ -94,9 +94,9 @@ The start-up check differs from the reference's validation policy. It decodes th
 its header names the point the record stores and checks the body against the header, at every open.
 The reference only decodes by default (`NoValidation`, `Storage/VolatileDB/Impl.hs` 188) and checks a
 block's integrity, its header's own and its body against its header, only after an unclean shutdown
-(`ensureValidateAll`, `Storage/ChainDB/Impl/Args.hs` 154-167; `Ouroboros/Consensus/Node.hs` 515-521 in
-ouroboros-consensus-diffusion). Scarab keeps no clean-shutdown marker, and its open does not check a
-header's own integrity.
+or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB/Impl/Args.hs` 154-167;
+`Ouroboros/Consensus/Node.hs` 515-521 and 1118-1128 in ouroboros-consensus-diffusion). Scarab keeps no
+clean-shutdown marker, and its open does not check a header's own integrity.
 
 Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule, the storage's collections, a
 copy whose backing-store work moves the clock, a restart, under TestControl), `ReceivedBlocksSuite` (the

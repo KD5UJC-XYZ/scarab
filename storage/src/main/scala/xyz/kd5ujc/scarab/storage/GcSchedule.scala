@@ -17,12 +17,13 @@ import scala.util.control.NonFatal
   * ([[run]]) waits for the time of the oldest entry, takes it off the queue and collects its slot,
   * one collection at a time. The aim, in the reference's words a goal "when possible", is at most
   * one collection an interval (`Background.hs` 486-492): while each collection ends before the next
-  * entry's time, the queue holds at most ⌈delay / interval⌉ + 1 entries and the collections are an
-  * interval apart or more. A collection that runs longer delays the ones after it: the entries that
-  * fall due meanwhile stay queued, one to an interval, and run back to back once it ends. Nothing
-  * of the schedule is kept on disk: after a restart, the collection the next copy schedules covers
-  * the earlier ones, since a collection takes every file below its slot
-  * (`copyToImmutableDBRunner`'s comment, `Background.hs` 253-256; 254-257 at 808e40054).
+  * entry's time, each starts at its own entry's time, so the starts are an interval apart or more,
+  * and the queue holds at most ⌈delay / interval⌉ + 1 entries. A collection that runs longer delays
+  * the ones after it: the entries that fall due meanwhile stay queued, one to an interval, and run
+  * back to back once it ends, so two may start less than an interval apart. Nothing of the schedule
+  * is kept on disk: after a restart, the collection the next copy schedules covers the earlier
+  * ones, since a collection takes every file below its slot (`copyToImmutableDBRunner`'s comment,
+  * `Background.hs` 253-256; 254-257 at 808e40054).
   */
 trait GcSchedule[F[_]]:
   /** Schedule a collection for `slot`, the immutable tip's after a copy. */
