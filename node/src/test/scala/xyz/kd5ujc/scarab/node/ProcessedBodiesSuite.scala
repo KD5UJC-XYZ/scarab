@@ -333,7 +333,7 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
     )
 
   test(
-    "seeding from the received log decodes each block and does not check its body against its header again"
+    "seeding from the received log reads each block's header and does not check its body again"
   ) {
     // the log holds what the start-up check refuses (acceptAll): a block whose body is not its
     // header's, and bytes that are no block. Seeding checks neither body again.
@@ -387,7 +387,7 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
             assertEquals(
               logged.map(line => line.kind -> line.fields.toMap.get("hash").flatMap(_.asString)),
               Vector(EventKind.ReceivedBlockDiscarded -> Some(noBlock.hash.hex)),
-              "only the record that does not decode is discarded, and logged"
+              "only the record whose header does not decode is discarded, and logged"
             )
         }
         .rescue(error => IO(fail(error.message)))

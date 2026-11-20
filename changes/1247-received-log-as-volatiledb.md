@@ -32,7 +32,7 @@
 - The start-up check runs at every open, where the reference checks a block's integrity only after an
   unclean shutdown or on request, and it does not check a header's signature again: an approved
   Deviation (decisions register, 2026-11-20). The start seeds the block pool from the log by decoding
-  each block, without checking its body against its header again, where it ran the whole check a second time on every block the open had
+  each block's header (and a Dijkstra block's body, for its Leios fields), where it ran the whole check a second time on every block the open had
   checked, and adds a block of the selected chain that the log lacks only once it passes the start-up
   check (`receivedBlockDiscarded` when it does not).
 - In either log, a record header whose length runs past the file's end or what an Int holds, or

@@ -7,7 +7,6 @@ import cats.Functor
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
-  Block,
   BlockPoolProblem,
   Header,
   PeerError,
@@ -767,19 +766,20 @@ object BlockPool:
       admission: BigInt = 0
   )
   object DeliveredHeader:
-    /** The metadata of a block the received log holds at the node's start, decoded as the
-      * reference's VolatileDB decodes each block it opens, its body not checked against its header
-      * again: each block has passed the log's start-up check ([[ReceivedBlockRecovery.startUp]]: the
-      * block decodes, its header names the record's point and its body is its header's, as
-      * [[Delivered.checked]] checks it), the open's of each record it indexed and the start's of
-      * each block of the selected chain it adds to the log after it
+    /** The metadata of a block the received log holds at the node's start, its body not checked
+      * against its header again: each block has passed the log's start-up check
+      * ([[ReceivedBlockRecovery.startUp]]: the block decodes, its header names the record's point
+      * and its body is its header's, as [[Delivered.checked]] checks it), the open's of each record
+      * it indexed and the start's of each block of the selected chain it adds to the log after it
       * ([[xyz.kd5ujc.scarab.storage.ReceivedBlocks.restoreSelected]]). The header's punishment view
-      * and the block's Leios fields are built again, as that check built them.
+      * is built again, as that check built it, with the block's Leios fields as
+      * [[ReceivedBlockRecovery.seeded]] reads them.
       */
-    def checkedAtOpen(block: Block): Either[TentativeHeaderError, DeliveredHeader] =
-      DiffusionPunishment
-        .view(block.header)
-        .map(DeliveredHeader(block.header, _, LeiosBlockInfo.of(block)))
+    def checkedAtOpen(
+        header: Header,
+        leios: LeiosBlockInfo
+    ): Either[TentativeHeaderError, DeliveredHeader] =
+      DiffusionPunishment.view(header).map(DeliveredHeader(header, _, leios))
 
   private[node] final case class Admission private[BlockPool] (
       taken: Taken,

@@ -2,12 +2,13 @@
 package xyz.kd5ujc.scarab.node
 
 import java.nio.file.{Files, Path}
+import scala.jdk.CollectionConverters.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Block, BlockTransport, BlockTransportError, Header}
 import xyz.kd5ujc.scarab.ledger.byron.ByronError
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.consensus.{BlockRef, LeiosBlockInfo}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 
 class FetchedBlockIntegritySuite extends FunSuite:
@@ -58,6 +59,45 @@ class FetchedBlockIntegritySuite extends FunSuite:
       val raw = Bytes.fromHex(hex).fold(e => fail(e.message), identity)
       val block = Block.decode(raw, BigInt(21600)).fold(e => fail(e.message), identity)
       assertEquals(BlockTransport.check(block.header, raw), Right(block))
+    }
+  }
+
+  test(
+    "seeding gives the check's metadata for every reference block, decoding a body only in Dijkstra"
+  ) {
+    originals.foreach { (block, raw) =>
+      val header = block.header
+      val ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+      val recovered = ReceivedBlockRecovery
+        .checked(ref, raw, epochSlots)
+        .fold(error => fail(error.message), identity)
+      assertEquals(
+        ReceivedBlockRecovery.seeded(raw, epochSlots),
+        Right(recovered.metadata),
+        s"a ${header.era} block is seeded from its header with what the check builds"
+      )
+    }
+    val devnet = Files
+      .readAllLines(Path.of("fixtures/dijkstra-devnet/blocks.tsv"))
+      .asScala
+      .toVector
+      .drop(1)
+      .filter(_.trim.nonEmpty)
+      .map(_.split('\t'))
+    val dijkstra = devnet
+      .filter(_(0) == "8")
+      .map(row => Bytes.fromHex(row(4)).fold(e => fail(e.message), identity))
+    assert(dijkstra.nonEmpty, "the devnet chain reaches Dijkstra")
+    dijkstra.foreach { raw =>
+      val block = Block.decode(raw, epochSlots).fold(e => fail(e.message), identity)
+      val seeded =
+        ReceivedBlockRecovery.seeded(raw, epochSlots).fold(e => fail(e.message), identity)
+      assertEquals(seeded.header, block.header)
+      assertEquals(
+        seeded.leios,
+        LeiosBlockInfo.of(block),
+        "a Dijkstra block's Leios fields are read from its decoded body"
+      )
     }
   }
 

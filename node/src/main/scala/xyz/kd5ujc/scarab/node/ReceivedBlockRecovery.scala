@@ -3,8 +3,16 @@ package xyz.kd5ujc.scarab.node
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.{Block, BlockTransportError, PeerError, StorageError}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, LeiosBlockInfo}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  BlockTransportError,
+  ChainError,
+  Header,
+  PeerError,
+  StorageError
+}
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.{ReceivedBlocks, VolatileStore}
 
 /** Recover actual checked originals, without manufacturing a live adding client. */
@@ -30,20 +38,38 @@ private[scarab] object ReceivedBlockRecovery:
     }
 
   /** The metadata the block pool is seeded with from a block the received log holds at the node's
-    * start ([[BlockPool.DeliveredHeader.checkedAtOpen]]): the block decoded, as the reference's
-    * VolatileDB decodes each block it opens, and its body not checked against its header again,
-    * which the open has done ([[startUp]]). A block that does not decode, or whose header's fields
-    * are not the punishment view's, is refused, as that check refuses it.
+    * start ([[BlockPool.DeliveredHeader.checkedAtOpen]]): its header decoded, and its body checked
+    * against the header neither here nor again, which the open has done ([[startUp]]). Only a
+    * Dijkstra block's body is decoded, for its Leios fields ([[leiosOf]]). A block whose header, or
+    * a Dijkstra block whose body, does not decode, or whose header's fields are not the punishment
+    * view's, is refused, as that check refuses it.
     */
   def seeded(raw: Bytes, byronEpochSlots: BigInt): Either[StorageError, BlockPool.DeliveredHeader] =
     for
-      block <- Block
-        .decode(raw, byronEpochSlots)
+      header <- Block
+        .decodeHeader(raw, byronEpochSlots)
+        .leftMap(StorageError.Corrupt("received block", _))
+      leios <- leiosOf(header, raw, byronEpochSlots)
         .leftMap(StorageError.Corrupt("received block", _))
       metadata <- BlockPool.DeliveredHeader
-        .checkedAtOpen(block)
+        .checkedAtOpen(header, leios)
         .leftMap(StorageError.Corrupt("received block header", _))
     yield metadata
+
+  /** The block's Leios fields, as [[LeiosBlockInfo.of]] reads them: a Dijkstra block's body is
+    * decoded for them (whether it carries a certificate); a block of an earlier era has none, and
+    * its body is not decoded.
+    */
+  private def leiosOf(
+      header: Header,
+      raw: Bytes,
+      byronEpochSlots: BigInt
+  ): Either[ChainError, LeiosBlockInfo] =
+    header.era match
+      case Era.Dijkstra => Block.decode(raw, byronEpochSlots).map(LeiosBlockInfo.of)
+      case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
+          Era.Conway =>
+        Right(LeiosBlockInfo.Absent)
 
   /** [[checked]], with why it refuses a block: the block, or a transaction or Byron body in it,
     * does not decode; or it decodes, and its header is not the record's, its body does not match

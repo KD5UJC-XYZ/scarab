@@ -135,11 +135,11 @@ shutdown or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB
 every open; it does not check a header's own integrity again. With header-first validation, the default,
 that was checked when the header arrived; with `--header-first off` in Praos mode a block is fetched
 before its header is checked, and an epoch boundary block carries no signature. The start seeds the block
-pool from the log by decoding each block, as the reference decodes each block it opens, without checking
-its body against its header a second time, and adds a block of the selected chain that the log lacks only once it passes
+pool from the log by decoding each block's header, and a Dijkstra block's body for its Leios fields,
+without checking its body against its header a second time, and adds a block of the selected chain that the log lacks only once it passes
 the start-up check, which a resume does not run in full (a Byron boundary block's body is not decoded)
 (`ProcessedBodiesSuite`: after an open whose check accepts every record, a block whose body is not its
-header's is seeded and a record that does not decode is logged and skipped; such a block is
+header's is seeded and a record whose header does not decode is logged and skipped; such a block is
 not added by the start, and is logged).
 
 Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule and its traces, the storage's
