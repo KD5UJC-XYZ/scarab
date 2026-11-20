@@ -226,7 +226,8 @@ final class Follower[F[_]: Async, S] private (
     // the rules would refuse it when selection reached it.
     val before = summon[BlockSelection.Before[F]]
     def forged(selecting: BlockSelection.Selecting[F]) = new Follower.Keeping[F]:
-      // the reference's order (ChainSel.hs:428-440): too old, already stored, known invalid
+      // the reference's order (ChainSel.hs:428-440, ouroboros-consensus 82ecba329): too old,
+      // already stored, known invalid
       private def admitted(
           header: Header,
           raw: Bytes
@@ -811,7 +812,7 @@ final class Follower[F[_]: Async, S] private (
         result <- plan match
           // kept, the block goes to the worker's selection, which may take it through blocks the
           // forest has and our chain does not, as the reference's `chainSelectionForBlock` follows
-          // the VolatileDB's predecessors (ChainSel.hs:452, 735-777)
+          // the VolatileDB's predecessors (ChainSel.hs:452, 735-777, ouroboros-consensus 82ecba329)
           case Left(reason) =>
             retain(_.keep(header, raw)).flatMap(kept =>
               keeping.get
@@ -1063,8 +1064,8 @@ object Follower:
       */
     def select(header: Header, loss: AdoptionLoss)(using Raise[F, NodeError]): F[Adoption]
 
-    /** What the reference's forging loop reads of a block it added (NodeKernel.hs:758-769): as
-      * [[select]] says, without running a selection.
+    /** What the reference's forging loop reads of a block it added (NodeKernel.hs:758-769,
+      * ouroboros-consensus 82ecba329): as [[select]] says, without running a selection.
       */
     def outcome(header: Header, loss: AdoptionLoss): F[Adoption]
 
