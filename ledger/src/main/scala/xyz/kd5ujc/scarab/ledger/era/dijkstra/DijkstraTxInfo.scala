@@ -41,9 +41,8 @@ enum DijkstraContextError[E <: EraTag]:
 /** Dijkstra's memoised transaction information (`data TxInfoResult DijkstraEra =
   * DijkstraTxInfoResult`, `TxInfo.hs:302-307`, cardano-ledger 9df9f98c): Plutus V1's to V4's, each
   * computed when first looked up, as the reference keeps its fields lazy. Each slot is the shared
-  * [[PlutusTxInfoResult]] (`Alonzo/Plutus/Context.hs:193-196`, cardano-ledger 9df9f98c); V4's holds
-  * V3's `TxInfo` where 9df9f98c's holds `PV4.TxInfo` (`Context.hs:280`) until the Plutus V4 types
-  * come with Dijkstra's script contexts (#85).
+  * [[PlutusTxInfoResult]] (`Alonzo/Plutus/Context.hs:193-196`, cardano-ledger 9df9f98c), V4's of
+  * the V4 `TxInfo` (`Context.hs:280`).
   */
 final class DijkstraTxInfoResult(
     plutusV1: => PlutusTxInfoResult[Language.PlutusV1, Dijkstra],

@@ -723,7 +723,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
           Vector(("script", 1), ("script", 2), ("key", 0), ("key", 1))
         )
         assertEquals(added.toList.map(_._2), Vector(BigInt(8), BigInt(7), BigInt(9)))
-        assertEquals(quorum, PV3.Rational(2, 3))
+        assertEquals(Some(quorum), PV3.Rational.ratio(2, 3))
       case other => fail(s"not an update of the committee: $other")
   }
 

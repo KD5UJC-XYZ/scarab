@@ -427,9 +427,34 @@ object PV3:
   )
 
   /** `data Rational` (plutus 507cab8c `plutus-tx/src/PlutusTx/Ratio.hs:74,156-158`): the pair of
-    * the numerator and the denominator.
+    * the numerator and the denominator, coprime and the denominator positive, the invariants the
+    * reference keeps (`Ratio.hs:68-73`, plutus 261766ad); so it is made only by [[Rational.ratio]]
+    * and [[Rational.fromHaskellRatio]] (TYP-1). Not a case class, whose product mirror would make
+    * one past them; equal as the pair is, as the reference's derived `Eq`.
     */
-  final case class Rational(numerator: BigInt, denominator: BigInt)
+  final class Rational private (val numerator: BigInt, val denominator: BigInt):
+    override def equals(that: Any): Boolean = that match
+      case r: Rational => numerator == r.numerator && denominator == r.denominator
+      case _           => false
+    override def hashCode: Int = (numerator, denominator).hashCode
+    override def toString: String = s"Rational($numerator, $denominator)"
+
+  object Rational:
+    /** `ratio` (`plutus-tx/src/PlutusTx/Ratio.hs:216-225`, plutus 261766ad): the ratio reduced, its
+      * denominator positive, none for a zero denominator.
+      */
+    def ratio(n: BigInt, d: BigInt): Option[Rational] =
+      Option.when(d != 0) {
+        val g = n.gcd(d) * d.signum
+        new Rational(n / g, d / g)
+      }
+
+    /** `fromHaskellRatio` (`plutus-tx/src/PlutusTx/Ratio.hs:389-390`, plutus 261766ad): the node's
+      * exact ratio, which is reduced with a positive denominator already, as `unsafeRatio` of its
+      * numerator and denominator leaves it.
+      */
+    def fromHaskellRatio(r: xyz.kd5ujc.scarab.codec.Rational): Rational =
+      new Rational(r.numerator, r.denominator)
 
   /** `newtype ColdCommitteeCredential` (`V3/Contexts.hs:86`, plutus 507cab8c), the credential's. */
   final case class ColdCommitteeCredential(credential: PV1.Credential)

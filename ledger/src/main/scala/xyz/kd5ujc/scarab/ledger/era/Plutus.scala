@@ -35,8 +35,9 @@ sealed trait PlutusLanguage[L <: Language]:
   /** The data a script of the language is applied to, in order: what each instance's
     * `evaluatePlutusRunnable` gives the evaluator (`Plutus/Language.hs:524-596`, cardano-ledger
     * f649f975), the datum, the redeemer and the context of Plutus V1 and V2
-    * (`legacyPlutusArgsToData`) and the context alone from Plutus V3. The evaluator itself is a
-    * capability of the `plutus` module ([[xyz.kd5ujc.scarab.plutus.ScriptEvaluator]]).
+    * (`legacyPlutusArgsToData`) and the context alone from Plutus V3, Plutus V4's its V4 context
+    * (`Plutus/Language.hs:582-601`, cardano-ledger 9df9f98c, the same at 29a7d656). The evaluator
+    * itself is a capability of the `plutus` module ([[xyz.kd5ujc.scarab.plutus.ScriptEvaluator]]).
     */
   def plutusArgsToData(args: PlutusArgs[L]): Vector[PlutusData]
 
@@ -60,7 +61,7 @@ object PlutusLanguage:
     def language: xyz.kd5ujc.scarab.plutus.PlutusLanguage =
       xyz.kd5ujc.scarab.plutus.PlutusLanguage.V4
     def plutusArgsToData(args: PlutusV4Args): Vector[PlutusData] =
-      Vector(PV3.scriptContext.toBuiltinData(args.unPlutusV4Args))
+      Vector(PV4.scriptContext.toBuiltinData(args.unPlutusV4Args))
 
 /** A Plutus script of language `L`: its bytes (`newtype Plutus (l :: Language)`,
   * `Plutus/Language.hs:180-183`, cardano-ledger f649f975). The language is shared by the eras that

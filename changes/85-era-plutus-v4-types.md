@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- The types of the Plutus V4 script context, as plutus-ledger-api 1.71.0.0 (the Leios testnet's build) defines them, with their data encodings, for the era types' Plutus V4 cases, which held Plutus V3's types until now. Each of the 49 Plutus V4 arguments recorded by the Leios testnet build reads into them and writes back to the same bytes. The script context's ratios now keep plutus-tx's invariants (reduced, with a positive denominator) by construction. No era builds a Plutus V4 context on the era types yet, and the node still builds contexts with the existing path.
