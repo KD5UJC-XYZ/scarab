@@ -621,6 +621,38 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
+  test("a record of the largest length a record can have, that fails its checksum, is not read") {
+    // two blocks to a file: [A B X] [C], X a record header whose length is the largest a record
+    // can have, in a file made long enough to hold it (sparse). Its checksum is checked a chunk at
+    // a time and fails: the record is never allocated, the first file is cut after B and the
+    // second is read
+    tempDir.use { dir =>
+      ok {
+        val (a, b, c) = (block(1), block(2), block(3))
+        for
+          _ <- VolatileStore
+            .open[IO](dir, 2)
+            .use((log, _) => Vector(a, b, c).traverse_((r, raw) => log.append(r, raw)))
+          _ <- IO {
+            val first = logFiles(dir).head
+            val length = Int.MaxValue - 8 - VolatileStore.HeaderSize
+            val header = java.nio.ByteBuffer.allocate(VolatileStore.HeaderSize)
+            header.putInt(0).put(1.toByte).put(0.toByte).putInt(length)
+            JFiles.write(first, header.array(), StandardOpenOption.APPEND)
+            val written = JFiles.size(first)
+            scala.util.Using.resource(new java.io.RandomAccessFile(first.toFile, "rw"))(
+              _.setLength(written + length.toLong)
+            )
+          }
+          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use(entries)
+          files <- IO(logFiles(dir).map(recordsOf))
+        yield
+          assertEquals(recovered.toSet, Set(a, b, c), "A and B, and C in the second file")
+          assertEquals(files.head.size, 2, "the first file cut after B")
+      }
+    }
+  }
+
   test("a record whose block does not decode cuts its file there, and later files are kept") {
     // three blocks to a file: [1 2 3] [4 U 6] [7 8] where U holds block 5's reference over a body
     // that does not decode. The second file is cut after block 4, as the reference cuts a file at

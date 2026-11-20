@@ -14,4 +14,7 @@
   removed and a malformed block was dropped by itself after the open. A later record of a block
   already indexed, in the same file or a later one, cuts its file there whatever its bytes. A block
   the log's index holds is not written again: the start's repair of the selected chain's blocks
-  writes only those the log lacks. The selected-chain log's recovery is unchanged.
+  writes only those the log lacks. The selected-chain log still recovers its files in order.
+- In either log, a record header whose length no record can have, or whose record fails its
+  checksum, ends the file's readable part without the record being read whole, where a length near
+  the largest a record can have failed the open.

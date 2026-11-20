@@ -235,6 +235,32 @@ object VolatileStore:
     else if channel.read(buffer, at + buffer.position()) < 0 then false
     else fill(channel, buffer, at)
 
+  /** The most bytes a record takes: the largest array the JVM allocates, since a record is encoded
+    * into one ([[encode]]).
+    */
+  private val MaxRecordBytes = Int.MaxValue - 8
+
+  /** The bytes a record's checksum is checked a chunk of at a time. */
+  private val ChecksumChunk = 1 << 20
+
+  /** Whether the bytes of the file open on `channel` from `from` up to `end` have the CRC-32 `crc`,
+    * read a chunk at a time: a record's checksum checked before the record is read whole, so a
+    * damaged length is never allocated.
+    */
+  private def checksummed(channel: FileChannel, from: Long, end: Long, crc: Int): Boolean =
+    val check = new CRC32()
+    val chunk = ByteBuffer.allocate(math.min(ChecksumChunk.toLong, end - from).toInt)
+    @tailrec def go(at: Long): Boolean =
+      if at >= end then check.getValue.toInt == crc
+      else
+        chunk.clear()
+        chunk.limit(math.min(chunk.capacity.toLong, end - at).toInt)
+        if !fill(channel, chunk, at) then false
+        else
+          check.update(chunk.array(), 0, chunk.limit())
+          go(at + chunk.limit())
+    go(from)
+
   /** The valid prefix of the log file open on `channel`, as [[decodeAll]] finds it, folded record
     * by record into `z`, and the offset where the prefix ends. One record is read at a time and
     * only what `step` keeps outlives it, as the reference's VolatileDB parses a file incrementally
@@ -251,8 +277,11 @@ object VolatileStore:
       if size - at < HeaderSize || !fill(channel, header, at) then (acc, at)
       else
         val length = header.getInt(6)
-        // a length past the file's end, or past what one record can hold, is not a record
-        if length < 0 || length > Int.MaxValue - HeaderSize || length > size - at - HeaderSize then
+        // a length past the file's end, or past what one record can hold, is not a record, and one
+        // whose bytes fail the checksum is not read whole
+        if length < 0 || length > MaxRecordBytes - HeaderSize || length > size - at - HeaderSize
+        then (acc, at)
+        else if !checksummed(channel, at + 4, at + HeaderSize + length, header.getInt(0)) then
           (acc, at)
         else
           val record = new Array[Byte](HeaderSize + length)
