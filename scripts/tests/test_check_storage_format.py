@@ -152,6 +152,22 @@ class SurfaceTest(TreeTest):
         # the codecs no V10 snapshot reaches are not on the surface
         self.assertNotIn(f'{fmt.HASKELL_STATE}/UtxoCodecs.scala', fmt.surface_paths(ROOT))
 
+    def test_the_writer_and_the_relay_encoding_the_haskell_state_writes_with_are_pinned(self):
+        writer = f'{fmt.MODELS_RUNTIME}/Writer.scala'
+        self.edit(writer, 'put(if b then 0xf5 else 0xf4)', 'put(if b then 0xf4 else 0xf5)')
+        self.assertLoud(self.check(), 'format_sources.' + writer)
+        self.setUp()
+        self.edit(fmt.POOL_RELAYS, 'private inline val LengthThreshold = 23', 'private inline val LengthThreshold = 24')
+        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#PoolRelays.LengthThreshold')
+        self.setUp()
+        self.edit(fmt.POOL_RELAYS, 'def wire: Bytes = Bytes.fromArray(Ipv6.swapWords(octets.toArray))',
+                  'def wire: Bytes = octets')
+        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#Ipv6.wire')
+        # the relays' reading is not their encoding
+        self.setUp()
+        self.edit(fmt.POOL_RELAYS, 'val MaxDnsNameBytes: Int = 128', 'val MaxDnsNameBytes: Int = 64')
+        self.assertEqual(self.check(), [])
+
     def test_a_format_definition_in_a_mixed_file_is_pinned_and_the_rest_of_the_file_is_not(self):
         self.edit(UTXO, 'a(0) = 1', 'a(0) = 2')
         self.assertLoud(self.check(), 'format_members.' + UTXO + '#UtxoStore.Coding')

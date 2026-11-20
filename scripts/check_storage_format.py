@@ -23,16 +23,19 @@ points to FMT-1 (docs/design-rules.md). The surface is:
   (`HASKELL_STATE_SOURCES`, in `haskell/state`: the codec traits from `VocabularyCodecs` to `LedgerFileCodecs`, the
   objects they write with, `Envelope`, `Wire`, `Record`, `Params`, `ConwayCodecs` and `NodeOrders`, and the choice of
   those codecs by layout, `HaskellStateCodecs`, `HaskellLedgerFile`, `HaskellState`, `ReferenceLayout` and
-  `ProposalsReading`). The state codecs also write node-to-client answers and a Haskell node's `state` file for
-  import and export; an edit made for those is a storage format change too;
+  `ProposalsReading`), with the CBOR writer and the codec base they write through (`RUNTIME_SOURCES`,
+  `models.runtime`'s `Writer` and `Codec`). The state codecs also write node-to-client answers and a Haskell node's
+  `state` file for import and export, and the writer and the codec base write every codec of the models runtime; an
+  edit made for those is a storage format change too;
 - `format_members`: a code digest of each persisted-format definition in a file that also holds other code: the
   UTxO store's key and value coding (`UtxoStore.Coding`), the memory store's `utxo.bin` (`MemoryUtxoStore`'s
   `checkpoint` and `restore`), the RocksDB store's stamp key, its writes and stamp read and its companion (key
   layouts and their conversion), the immutable store's index and `format` file (`FileImmutableStore`'s magic,
   sizes, entry codec and migrations), the volatile log's records (`VolatileRecord`, `VolatileStore`'s sizes,
   kinds, flags, codec and file names), the snapshot file's checksum and name (`FileLedgerSnapshots`) and the
-  checkpoint directory's name (`StateBacking.stem`). A definition is its header line and what follows while a
-  bracket it opened is open or the lines are indented under it;
+  checkpoint directory's name (`StateBacking.stem`), and the pool relays' encoding that the state codecs write
+  (`PoolRelays.encode` and its helpers, and the octets of a relay's addresses). A definition is its header line and
+  what follows while a bracket it opened is open or the lines are indented under it;
 - `frozen_schemas`: a code digest of each frozen schema (`SnapshotSidecarV<n>.scala`, `Frozen*.scala`);
 - `goldens`: for `CodecSuite`, `FormatGoldenSuite` and `SnapshotGoldenSuite`, every string literal (the golden
   bytes, fingerprints, magics and file hashes, and the test names) and a code digest;
@@ -53,10 +56,10 @@ reads in part (the immutable store's chunk and index file names in its `open` an
 options in the store's class), or an encoding defined in a file not listed here. Of the Haskell state, it does not
 see the codecs no V10 snapshot reaches (`UtxoCodecs`, `DijkstraCodecs`, the tables, `meta` file and checksum of a
 Haskell node's snapshot directory, the ancillary manifest), the decoders of other packages the state codecs call (a
-certificate's, a proposal's, a block's), the CBOR decoder, the values they write as they hold them (an era's index,
-a script's tag, bytes kept as they were read), the ledger's conversions and orders they write in (`Convert`,
-`Sorted`, the orders of the ledger's types) and the choice of a layout by build (`StateLayout.of`). Its docstring
-is the list of what it sees.
+certificate's, a proposal's, a block's, the pool relays'), the CBOR decoder (`codec`'s `Cbor`), the values they
+write as they hold them (an era's index, a script's tag, bytes kept as they were read), the ledger's conversions and
+orders they write in (`Convert`, `Sorted`, the orders of the ledger's types) and the choice of a layout by build
+(`StateLayout.of`). Its docstring is the list of what it sees.
 
 The manifest holds the surface and the record of the approval that admitted it. Its `approval` entry holds
 `question`, `asked_at`, `decision` and `decided_at` (UTC ISO 8601 with seconds and `Z`, decided after asked, not
@@ -130,6 +133,11 @@ HASKELL_STATE_SOURCES = tuple(f'{HASKELL_STATE}/{name}.scala' for name in (
     'CertStateCodecs', 'NodeTypeCodecs', 'VocabularyCodecs',
     'Envelope', 'Wire', 'Record', 'Params', 'ConwayCodecs', 'NodeOrders',
 ))
+# The CBOR writer and the codec base of the models runtime, which every one of those codecs writes through (the same
+# approval).
+MODELS_RUNTIME = 'models/src/main/scala/xyz/kd5ujc/scarab/models/runtime'
+RUNTIME_SOURCES = (f'{MODELS_RUNTIME}/Writer.scala', f'{MODELS_RUNTIME}/Codec.scala')
+POOL_RELAYS = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala'
 # The persisted-format definitions in files that also hold other code: (name, file, enclosing definition or None,
 # the definition), each a header the code holds once; a definition is its header line and the lines indented under it.
 FORMAT_MEMBERS = (
@@ -164,6 +172,16 @@ FORMAT_MEMBERS = (
     ('StateBacking.stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def stem\('),
     ('StateBacking.Stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'private val Stem\b'),
     ('StateBacking.isStem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def isStem\('),
+    # the relays of a pool registration, which `ConwayCodecs.poolRelays` writes into the Haskell state (2026-11-20)
+    *(('PoolRelays.' + name, POOL_RELAYS, r'object PoolRelays:', header)
+      for name, header in (('encode', r'def encode\('), ('LengthThreshold', r'private inline val LengthThreshold\b'),
+                           ('optional', r'private def optional\['), ('octets', r'private def octets\('),
+                           ('text', r'private def text\('), ('head', r'private def head\('))),
+    ('Ipv4.octets', POOL_RELAYS, r'final case class Ipv4\b', r'def octets\b'),
+    ('Ipv6.octets', POOL_RELAYS, r'final case class Ipv6\b', r'def octets\b'),
+    ('Ipv6.wire', POOL_RELAYS, r'final case class Ipv6\b', r'def wire\b'),
+    ('Ipv6.swapWords', POOL_RELAYS, r'object Ipv6:', r'private\[ledger\] def swapWords\('),
+    ('RelayIp.be', POOL_RELAYS, r'object RelayIp:', r'private\[ledger\] def be\('),
 )
 FIXTURE_DIRS = ('fixtures/snapshot-*', 'fixtures/network-identity-*')
 MAGIC = re.compile(r'(?:SCRB|CSL)[A-Z0-9]{4,5}')
@@ -183,6 +201,8 @@ OWNER_NAMED_PATHS = (
     'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala',
     f'{STORAGE_MAIN}/*.scala',
     *HASKELL_STATE_SOURCES,
+    *RUNTIME_SOURCES,
+    POOL_RELAYS,
     'storage/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/node/NativeSnapshots.scala',
@@ -688,7 +708,7 @@ def digests_of(root: Path, directories, name: re.Pattern[str], what: str) -> dic
 
 
 def format_sources(root: Path) -> dict:
-    paths = [*FORMAT_SOURCES, *HASKELL_STATE_SOURCES,
+    paths = [*FORMAT_SOURCES, *HASKELL_STATE_SOURCES, *RUNTIME_SOURCES,
              *(p.relative_to(root).as_posix() for p in snapshot_readers(root).values())]
     return {path: code_digest(read(root, path)) for path in sorted(set(paths))}
 

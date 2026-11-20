@@ -9,7 +9,7 @@
   "asked_at": "2026-11-20T03:23:52Z",
   "decision": "Approved: the guard watches every codec file that writes the bytes of a V10 snapshot, in a pull request of its own at level 3; no persisted byte changes.",
   "decided_at": "2026-11-20T03:23:56Z",
-  "surface_sha256": "ca955baf626c645cf1f7f7e0eedd5882d1fbdf129300e66107a34fcde8ddf2c8"
+  "surface_sha256": "c9edbdea4f1489615ac509062265f44a27f50b8365db001dc420cbf78048f541"
  },
  "surface": {
   "registry": {
@@ -249,6 +249,8 @@
   },
   "format_sources": {
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala": "5f633327263ec029ef8889c0d5c4d93061dcde43e536507433433e9af5b97825",
+   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Codec.scala": "bb7755ab7638eb0258ef648a5f7102953479f85781e8d6a137998cd6849404c5",
+   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Writer.scala": "c1ea0b6d41cdadc177033812cb3586478ce7a9ccd8895ea82b7d7e811be7dd0d",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala": "6715cb7b26e20a9a55d6641f1df28cdfd54b58bc359d07eb4cd7c0cd9c143914",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Codec.scala": "4609832427c5a9a6a51a10af9dc39468c82fcfb2edcf2fe205f4027bf8dbe547",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala": "df1ac6aa1c643ba755072cb43b0efd1b35d452ec74789a50b0ddc40c5908a150",
@@ -316,7 +318,18 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "3e02c1f07fcabd295641b04b18ea0839463922c35b6c5c3dc8e900d346b63d2f",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "67592a136e8c67596733bdaa48a11245fb6d121f38057d4e1f2a7543b03bd14d",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.Stem": "ebc2ae76bf4aab10145b5e249e2eb46ca5bba8540d2f3dd632bc058e335cc82f",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c"
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#PoolRelays.encode": "5fd6fb1b84baa6b3ef1eacd49892b22727eb1420616a039efd651b09b926cd42",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#PoolRelays.LengthThreshold": "dae7025ffa66519d35194045897c4ab58e29eabb27621ef5479a77b6d8d55014",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#PoolRelays.optional": "3c4c7d3e5258d2bf79ac526bb32ae0ad3f8f827e60fd79c8e769e681a9384d30",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#PoolRelays.octets": "33cffe90d69ca3704f7563667a4e204b3a1d097965e4dd1fe5c988894c47f005",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#PoolRelays.text": "302d9baea329e621ea7c2dc597e3bb666f86a8c24d5c3946fe15276f6e51d04f",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#PoolRelays.head": "27d5739eb91326abdf331f95b2373cb3253f8b7ec25a604ef37819486b3a2c7b",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv4.octets": "4bdd4cc661ead4337979e4b15af519cf6b80657f3743331969f45f569bf65c2b",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv6.octets": "8d83f27842f262c935d76fbb52ca9e82ada8a697eb64117b92415d37a71f37bc",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv6.wire": "95c75202b778d2d08ccff80778e247dfe64f666957157c618bc68dfc74e421dd",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv6.swapWords": "dd2f13c71621141928d5d3d6b1ce47a552bd9badf73087f34f202ff6f046fea1",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayIp.be": "e51c21a686e213b8033a7a71cd4f24db1bf297c43257eebac1222a075fa21798"
   },
   "frozen_schemas": {
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenChainDepState.scala": "6afa78dcaf92286304f7c1addc8cff6d12936191555ffd99f06511300ff846c2",
