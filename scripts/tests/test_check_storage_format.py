@@ -364,18 +364,23 @@ class DigestTest(unittest.TestCase):
         for with_comment, without in [
             ('f(a, /*c*/ b)', 'f(a, b)'), ('f(a,/*c*/b)', 'f(a,b)'), ('out.arrayHead(/* x */2)', 'out.arrayHead(2)'),
             ('out.arrayHead(2 /* x */)', 'out.arrayHead(2)'), ('a /* x */ + b', 'a + b'), ('a/*x*/ b', 'a b'),
-            ('foo /* a\n b */ bar', 'foo bar'), ('x(1, /* a */ /* b */ 2)', 'x(1, 2)'),
+            ('x(1, /* a */ /* b */ 2)', 'x(1, 2)'), ('  /** a\n    * b\n    */\n  def x = 1', '  def x = 1'),
+            ('val a = 1 /* a\n b */\nval b = 2', 'val a = 1\nval b = 2'),
             ('  /** doc */\n  def x = 1', '  def x = 1'), ('  /* a */  def x = 1', '  def x = 1'),
-            ('if c then\n  /* x */ f()\ng()', 'if c then\n  f()\ng()'), ('val a = 1 // why\nval b = 2', 'val a = 1\nval b = 2'),
+            ('if c then\n  /* x */ f()\ng()', 'if c then\n  f()\ng()'),
+            ('val a = 1 // why\nval b = 2', 'val a = 1\nval b = 2'),
         ]:
             with self.subTest(code=with_comment):
                 self.assertEqual(fmt.code_digest(with_comment), fmt.code_digest(without))
         # a comment that separates two tokens still does: removing it would fuse them
-        for with_comment, fused in [('a/**/b', 'ab'), ('s/**/"x"', 's"x"'), ('+/**/-', '+-'), ('1/**/2', '12')]:
+        for with_comment, fused in [('a/**/b', 'ab'), ('s/**/"x"', 's"x"'), ('+/**/-', '+-'), ('1/**/2', '12'),
+                                    # a line break inside a comment still ends the line: `g` is no longer applied
+                                    ('g /* c\n */ (1)', 'g (1)'), ('foo /* a\n b */ bar', 'foo bar')]:
             with self.subTest(code=with_comment):
                 self.assertNotEqual(fmt.code_digest(with_comment), fmt.code_digest(fused))
         # and indentation still counts
-        self.assertNotEqual(fmt.code_digest('if c then\n  f()\n/* x */  g()'), fmt.code_digest('if c then\n  f()\n  g()'))
+        self.assertNotEqual(fmt.code_digest('if c then\n  f()\n/* x */  g()'),
+                            fmt.code_digest('if c then\n  f()\n  g()'))
 
     def test_literals_and_indentation_count(self):
         self.assertNotEqual(fmt.code_digest('val a = "x y"'), fmt.code_digest('val a = "x  y"'))

@@ -525,8 +525,8 @@ def lex(source: str) -> list[tuple[str, str]]:
     reads as it would without it: it leaves a space only between two tokens that would otherwise fuse (`a/**/b` is
     `a b`); the white space after it goes when white space, an opening bracket or the start of a line comes before
     it, and the white space before it when a delimiter follows it, so that a comment between two tokens, or before
-    the first token of a line, leaves the spacing and the indentation the line has without it. Its line breaks go
-    with it."""
+    the first token of a line, leaves the spacing and the indentation the line has without it. A comment that spans
+    lines is a line break, as Scala reads it: the code after it keeps its own indentation."""
     out: list[tuple[str, str]] = []
     i, n, start = 0, len(source), 0
 
@@ -543,8 +543,12 @@ def lex(source: str) -> list[tuple[str, str]]:
                 break
         return ''.join(reversed(parts)).rpartition('\n')[2]
 
-    def removed(end: int) -> int:
-        """Replace the comment that ends at `end` and return where the code goes on."""
+    def removed(begin: int, end: int) -> int:
+        """Replace the comment from `begin` to `end` and return where the code goes on."""
+        if '\n' in source[begin:end]:
+            # a line break in a comment still ends the line: the comment is one, and what follows keeps its indentation
+            out.append(('code', '\n'))
+            return end
         line = line_so_far()
         before = line[-1] if line else '\n'
         after = source[end] if end < n else '\n'
@@ -566,12 +570,12 @@ def lex(source: str) -> list[tuple[str, str]]:
         if source.startswith('/*', i):
             end = comment_end(source, i)
             code_to(i)
-            i = start = removed(end)
+            i = start = removed(i, end)
         elif source.startswith('//', i):
             end = source.find('\n', i)
             end = n if end < 0 else end
             code_to(i)
-            i = start = removed(end)
+            i = start = removed(i, end)
         elif source[i] == '"':
             interpolated = i > 0 and (source[i - 1].isalnum() or source[i - 1] == '_')
             triple = source.startswith('"""', i)
