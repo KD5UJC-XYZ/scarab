@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Conway's UTXO rule runs whole on the era types: its checks, the script-evaluation rule (UTXOS) as its sub-rule, and the change of the UTxO state. Its failures are the reference's own types for each era, with the reference's injections between them, including the one that differs between the 11.1 and 11.2 builds. On the Conway transactions the reference node was given, and on every Conway case of the refusal corpora, under each build and validation policy, it gives the existing rule's failures in the same order and leaves the same state. Where the reference refused a transaction for UTXO alone, its failures encode to the reference's refusal byte for byte. The node still judges with the existing rule, so nothing changes in behaviour.
