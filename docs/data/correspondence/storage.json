@@ -1959,13 +1959,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ReceivedBlocksSuite",
-    "VolatileStoreSuite"
-   ],
-   "note": "as mkOpenStateHelper and its validateFile, each file in order of number is parsed (parsedBlocks, as parseBlockFile: each block read in turn with its location and what is read from it, here the predecessor, as extractBlockInfo; the parse stops at the first record it cannot read, BlockReadErr), then its blocks are added to the index up to the first one already held, in an earlier file or earlier in the same one, whatever its bytes (addedToIndex, as addToReverseIndex, DuplicatedBlock); the file is cut at the earlier of the two, the files after it are read all the same, and the file being written is chosen as mkOpenStateHelper chooses it. What reading a record means is the format's: a record that is incomplete, fails its checksum, is not understood or is not a block (the received log writes no rollback record) cannot be read, and neither can one whose block the given check refuses (ReceivedBlocks.Check: the block decodes and its header names the point the record stores, which the reference reads from the block itself). Where the reference builds a successor index during the open, Scarab's index keeps each block's predecessor, from which ReceivedBlocks.links answers. The selected-chain journal's open (open, openIndex) keeps its in-order recovery, which replays rollback records in order (#1247)",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "as mkOpenStateHelper and its validateFile, each file in order of number is parsed (parsedBlocks, as parseBlockFile: each block read in turn with its location and what is read from it, here the predecessor, as extractBlockInfo; the parse stops at the first record it cannot read, BlockReadErr), then its blocks are added to the index up to the first one already held, in an earlier file or earlier in the same one, whatever its bytes (addedToIndex, as addToReverseIndex, DuplicatedBlock); the file is cut at the earlier of the two, the files after it are read all the same, and the file being written is chosen as mkOpenStateHelper chooses it. What reading a record means is the format's: a record that is incomplete, fails its checksum, is not understood or is not a block (the received log writes no rollback record) cannot be read, and neither can one whose block the given check refuses (ReceivedBlocks.Check: the block decodes and its header names the point the record stores, which the reference reads from the block itself). Where the reference builds a successor index during the open, Scarab's index keeps each block's predecessor, from which ReceivedBlocks.links answers. The selected-chain journal's open (open, openIndex) keeps its in-order recovery, which replays rollback records in order (#1247) Where it differs: it also traces the names the open does not read, and indexes each block's predecessor where the reference builds a successor index; no differential comparison covers it (#1261).",
    "digest": "5620fad80a18589a"
   },
   "def storage.VolatileStore.parsedBlocks": {
@@ -1991,12 +1988,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ReceivedBlocksSuite"
-   ],
-   "note": "the blocks of a file read in turn, each with where its record is and what is read from it, up to the first record that cannot be read (BlockReadErr, here also a record that is not a block, which the received log never writes) or whose block the given check refuses as undecodable (BlockReadErr) or corrupt (BlockCorruptedErr), and the offset where they end (#1247)",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "the blocks of a file read in turn, each with where its record is and what is read from it, up to the first record that cannot be read (BlockReadErr, here also a record that is not a block, which the received log never writes) or whose block the given check refuses as undecodable (BlockReadErr) or corrupt (BlockCorruptedErr), and the offset where they end (#1247) Where it differs: one pass reads Scarab's framed records, decodes and applies the given check, and keeps no header context (the reference's pbiNestedCtxt); no differential comparison covers it (#1261).",
    "digest": "defc539b8da2355c"
   },
   "def storage.VolatileStore.addedToIndex": {
@@ -2012,12 +2007,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ReceivedBlocksSuite"
-   ],
-   "note": "the parsed blocks added to the index in order up to the first one it holds, from an earlier file or earlier in the same one, whatever its bytes: the index after, the blocks added, and where the first such block is with its hash (DuplicatedBlock), the file that holds it filled in by the caller from the files the index's blocks were read from (#1247)",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "the parsed blocks added to the index in order up to the first one it holds, from an earlier file or earlier in the same one, whatever its bytes: the index after, the blocks added, and where the first such block is with its hash (DuplicatedBlock), the file that holds it filled in by the caller from the files the index's blocks were read from (#1247) Where it differs: it answers the repeat's offset and hash, and its caller names the file that holds the block, where the reference returns the DuplicatedBlock error with both files; no differential comparison covers it (#1261).",
    "digest": "d8e51a9732249952"
   },
   "enum storage.VolatileStore.Trace": {
@@ -2036,7 +2029,7 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
-   "note": "three of TraceEvent's constructors, Truncate, InvalidFileNames and BlockAlreadyHere, with their fields; the reference's DBAlreadyClosed and DBClosed trace closing its handle, which Scarab's store closes through its Resource without a trace (#1247)",
+   "note": "three of TraceEvent's constructors, Truncate, InvalidFileNames and BlockAlreadyHere, with their fields; the reference's DBAlreadyClosed and DBClosed trace closing its handle, which Scarab's store closes through its Resource without a trace (#1247); each is emitted where the reference emits it, BlockAlreadyHere inside the put (putBlockImpl, Impl.hs 394), so a tracer that fails fails the put in both: a Mirror",
    "digest": "0be3440d5789bb78"
   },
   "type storage.ReceivedBlocks.Check": {
@@ -2138,13 +2131,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ReceivedBlocksSuite",
-    "ReceivedCollectionSuite"
-   ],
-   "note": "the open of the received log, as openDB opens the VolatileDB from its files (VolatileStore.openIndexWith): the names it does not read traced, each file validated in order and each cut traced just before it is made, the index built; the store answers a put of a held block with BlockAlreadyHere. Beside the reference's state it keeps Scarab-only state, a cache of recent bodies and the set of blocks refused since the open, and hands back the open's report (#1247)",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "the open of the received log, as openDB opens the VolatileDB from its files (VolatileStore.openIndexWith): the names it does not read traced, each file validated in order and each cut traced just before it is made, the index built; the store answers a put of a held block with BlockAlreadyHere. Beside the reference's state it keeps Scarab-only state, a cache of recent bodies and the set of blocks refused since the open, and hands back the open's report (#1247) Where it differs: besides openDB's work it keeps a cache and the set of blocks refused since the open, and hands back the open's report; no differential comparison covers it (#1261).",
    "digest": "2bd1d2d54713a70b"
   },
   "def storage.ChainStorage.predecessorOf": {
@@ -2301,7 +2291,8 @@
     "GcScheduleSuite",
     "ReceivedCollectionSuite"
    ],
-   "digest": "68241cf5c149e621"
+   "digest": "68241cf5c149e621",
+   "note": "the queue's allocation only, as newGcSchedule allocates its queue; the schedule's methods are mapped on their own (#schedule, #pending, #run)"
   },
   "def storage.GcSchedule#schedule": {
    "upstream": [
@@ -2316,14 +2307,11 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "GcScheduleSuite",
-    "ReceivedCollectionSuite"
-   ],
-   "digest": "81173512dc7f0c7d",
-   "note": "as scheduleGC: the entry at the time now plus the delay rounded up to the interval, in place of the last entry for the same time, else after it, and handed back for the ScheduledGC trace. It is called once for each persisted extension that copies blocks to the immutable store, where the reference's copy runner copies the whole prefix then eligible and schedules once: a Gap, #1262"
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "as scheduleGC: the entry at the time now plus the delay rounded up to the interval, in place of the last entry for the same time, else after it. Where it differs: it hands the entry back and its caller emits the ScheduledGC trace, where scheduleGC traces it itself; no differential comparison covers it (#1261). The trace is emitted inside the copy's transition, as scheduleGC traces after its enqueue (Background.hs 576, ouroboros-consensus 82ecba329), so a tracer that fails fails the transition in both: a Mirror. It is called once for each persisted extension that copies blocks to the immutable store, where the reference's copy runner copies the whole prefix then eligible and schedules once: a Gap, #1262",
+   "digest": "81173512dc7f0c7d"
   },
   "def storage.GcSchedule.scheduled": {
    "upstream": [
@@ -2411,13 +2399,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "GcScheduleSuite",
-    "ReceivedCollectionSuite"
-   ],
-   "note": "waits for the time of the oldest entry, reads its slot after the wait, takes it off the queue and collects it, one at a time, as gcScheduleRunner; where the reference's runner throws in its linked thread, a collection that fails, or an exception anywhere in the runner, ends it with a value (ADR 0017), which ChainStorage hands to the node to stop on (#1247)",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "waits for the time of the oldest entry, reads its slot after the wait, takes it off the queue and collects it, one at a time, as gcScheduleRunner; where the reference's runner throws in its linked thread, a collection that fails, or an exception anywhere in the runner, ends it with a value (ADR 0017), which ChainStorage hands to the node to stop on (#1247) Where it differs: it ends with a value where the reference's runner throws, and waits again when the queue is empty after its wait; no differential comparison covers it (#1261). The PerformedGC trace is emitted inside the collection it runs, after the collection, as garbageCollectBlocks traces it (Background.hs 448), so a tracer that fails fails the collection in both: a Mirror.",
    "digest": "ca238d24ec8b8bfa"
   },
   "val storage.ReceivedBlocks.DefaultBlocksPerFile": {
@@ -2456,7 +2441,7 @@
    ]
   },
   {
-   "reason": "the numbers of Scarab's own storage file names read back from ASCII digits only, and a name in a locale's digits, or two names a volatile log reads as one number, refused as a typed error; the reference reads the numbers of its own file names with readMaybe, which takes ASCII digits only, and passes over a name it cannot read, which its VolatileDB traces (InvalidFileNames) and Scarab's received log logs too",
+   "reason": "the numbers of Scarab's own storage file names read back from ASCII digits only, and a name in a locale's digits, or a volatile log's name that reads as a number but is not the name the log writes for it, refused as a typed error; the reference reads the numbers of its own file names with readMaybe, which takes ASCII digits only, and passes over a name it cannot read, which its VolatileDB traces (InvalidFileNames) and Scarab's received log logs too",
    "definitions": [
     "def storage.FileNumber.numberOf",
     "enum storage.FileNameProblem"

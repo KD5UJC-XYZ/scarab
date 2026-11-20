@@ -8,7 +8,7 @@
   and collection is logged at Debug (`scheduledGC`, `performedGC`), as the reference traces them.
 - The received log's files hold 1,000 blocks, and the next one is started as soon as one fills, so a
   full file can be collected before another block arrives; files an earlier build wrote keep their
-  512-block boundaries. The selected-chain log shares the writer: its 512-block files are now rolled
+  512-block boundaries, and the last of them, the one being written, is filled to 1,000. The selected-chain log shares the writer: its 512-block files are now rolled
   at the block that fills them, so a full one can be collected at the next 4,096-block trigger before
   another record is written.
 - The collection is timed from the end of the copy, before the backing store is brought forward, and
@@ -25,8 +25,9 @@
   as the reference's `ParseError` splits it: a record that cannot be read or a block that does not
   decode, a block that decodes and is corrupt, or a block already held in a named file; the open's
   totals are logged as `receivedOpened`. The names of the directory's files the open does not read are
-  logged at Debug (`receivedInvalidFileNames`), and in either log two names that read as one file
-  number refuse the log before any file changes. The selected-chain log still recovers its files in order.
+  logged at Debug (`receivedInvalidFileNames`), and in either log a name that reads as a file number
+  but is not the name the log writes for it (`1.log` for `00000001.log`) refuses the log before any
+  file changes. The selected-chain log still recovers its files in order.
 - In either log, a record header whose length runs past the file's end or what an Int holds, or
   whose record fails its checksum, ends the file's readable part without the record being read
   whole, where a damaged length near the largest an Int holds failed the open or asked for an array

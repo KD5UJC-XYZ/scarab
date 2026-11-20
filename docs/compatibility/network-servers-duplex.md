@@ -86,14 +86,16 @@ collection, an approved Deviation ([decisions register](../decisions.md#genesis-
 that fails, the force included, or an exception in the fiber that runs them, stops the node. A file
 holds 1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected
 before another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
-387-399); files an earlier build wrote keep their 512-block boundaries. The selected-chain log shares the
+387-399); files an earlier build wrote keep their 512-block boundaries, and the last of them, the one
+being written, is reopened under the 1,000-block limit and filled to 1,000. The selected-chain log shares the
 writer: its files of 512 blocks are now rolled at the block that fills them too, so a full one can be
 collected at the next 4,096-block trigger before another record is written. When the log is opened, the
 files of its directory whose names it does not read are logged and left alone, as the reference traces
-`InvalidFileNames` (`receivedInvalidFileNames`; `mkOpenState`, `State.hs` 319-339), and two names that
-read as one file number (`1.log` and `00000001.log`) refuse the log before any file changes, since a
-block's file is found by its number: a simple rule for an operational edge, as a name in a locale's
-digits is refused (`FileNameProblem`). Then each file is validated on its own (`mkOpenStateHelper`,
+`InvalidFileNames` (`receivedInvalidFileNames`; `mkOpenState`, `State.hs` 319-339), and a name that
+reads as a file number but is not the name the log writes for it (`1.log` for `00000001.log`) refuses
+the log before any file changes, in either log, since a block's file is found by the name written for
+its number: a simple rule for an operational edge, as a name in a locale's digits is refused
+(`FileNameProblem`). Then each file is validated on its own (`mkOpenStateHelper`,
 `validateFile`, `Storage/VolatileDB/Impl/State.hs` 372-436): it is read up to its first record that is
 damaged or whose block the start-up check refuses, as the reference stops at the first block it cannot
 read (`BlockReadErr`: here a damaged record or a block that does not decode) or, validating, finds
@@ -130,7 +132,7 @@ collections, a copy whose backing-store work moves the clock, a restart, under T
 check through the storage's open, on a block whose header is not its record's, bytes that do not decode
 and a block whose body does not match its header), `ReceivedBlocksSuite` (the files, a damaged file, a
 block that does not decode or is corrupt, repeats in the same and a later file with the same and other
-bytes, the cuts and other traces, two names of one number, the repair, and the scan on a small stack) and
+bytes, the cuts and other traces, a name that is not the log's own, the repair, and the scan on a small stack) and
 `VolatileStoreSuite` (the selected-chain log's recovery), asserting the reference's outcomes as its source
 at the pins gives them; none compares with a running reference node's VolatileDB
 ([#1261](https://github.com/KD5UJC-XYZ/scarab/issues/1261)).
