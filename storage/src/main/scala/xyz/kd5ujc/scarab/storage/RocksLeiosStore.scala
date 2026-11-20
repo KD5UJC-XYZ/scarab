@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{Async, Ref, Resource}
+import cats.effect.{Async, Poll, Ref, Resource}
 import cats.effect.std.{Mutex, SecureRandom, Semaphore, UUIDGen}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -941,14 +941,17 @@ object RocksLeiosStore:
     * Ancestors of `dir` that do not exist are made, and each made directory's entry in its parent
     * synced with `sync`, walking up to the first that existed, so that the store's path is durable.
     * The lock is waited for with `attemptLock` (a `tryLock` that finds the lock held gives
-    * nothing), pausing between attempts, so that cancelling an open that waits closes its lock file
-    * and gives back its permit.
+    * nothing), pausing between attempts. The open runs where it cannot be cancelled, as a
+    * resource's acquisition does, and `poll` is that region's: only the pauses are cancellable
+    * through it, so that cancelling an open that waits closes its lock file and gives back its
+    * permit, while an open that has made or opened the store always returns it.
     */
   private[storage] def firstOpen[F[_]: Async, A](
       dir: Path,
       locks: LeiosStoreLocks[F],
       sync: java.nio.file.Path => F[Unit],
-      attemptLock: FileChannel => F[Option[FileLock]]
+      attemptLock: FileChannel => F[Option[FileLock]],
+      poll: Poll[F]
   )(open: F[A])(using Raise[F, LeiosStoreError]): F[A] =
     val F = Async[F]
     val nio = dir.toNioPath
@@ -979,7 +982,7 @@ object RocksLeiosStore:
       attemptLock(channel).attempt.flatMap {
         case Left(e)           => fail(LeiosStoreError.Io(e))
         case Right(Some(lock)) => F.pure(lock)
-        case Right(None)       => F.sleep(pause) *> waited(channel, (pause * 2).min(LockPauseMax))
+        case Right(None) => poll(F.sleep(pause)) *> waited(channel, (pause * 2).min(LockPauseMax))
       }
     // The ancestors are made first, since the lock file lives in the parent. The permit is taken
     // before the lock file is opened and given back after it is closed.
@@ -1056,6 +1059,14 @@ object RocksLeiosStore:
   def resource[F[_]: Async](dir: Path, locks: LeiosStoreLocks[F])(using
       Raise[F, LeiosStoreError]
   ): Resource[F, RocksLeiosStore[F]] =
+    resourceWith(dir, locks, channel => Async[F].blocking(Option(channel.tryLock())))
+
+  /** [[resource]], attempting the first open's lock with `attemptLock`. */
+  private[storage] def resourceWith[F[_]: Async](
+      dir: Path,
+      locks: LeiosStoreLocks[F],
+      attemptLock: FileChannel => F[Option[FileLock]]
+  )(using Raise[F, LeiosStoreError]): Resource[F, RocksLeiosStore[F]] =
     val F = Async[F]
     val nio = dir.toNioPath
     def fail[A](e: LeiosStoreError): F[A] = e.raise[F, A]
@@ -1064,12 +1075,14 @@ object RocksLeiosStore:
 
     for
       natives <- Resource.make(F.delay(new Natives(create = false)))(n => F.blocking(n.close()))
-      opened <- Resource.make(
+      // cancellable only while it waits for the lock ([[firstOpen]])
+      opened <- Resource.makeFull[F, Opened](poll =>
         firstOpen[F, Opened](
           dir,
           locks,
           target => F.blocking(syncParent(target)),
-          channel => F.blocking(Option(channel.tryLock()))
+          attemptLock,
+          poll
         )(
           io(openAt(nio, natives))
         )

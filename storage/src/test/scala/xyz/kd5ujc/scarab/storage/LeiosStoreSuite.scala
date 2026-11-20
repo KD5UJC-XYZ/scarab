@@ -542,13 +542,15 @@ class LeiosStoreSuite extends CatsEffectSuite:
       tried <- IO.deferred[java.nio.channels.FileChannel]
       // a holder in another process: every attempt finds the lock held
       fiber <- attempt(
-        firstOpenWith(leios, locks, _ => IO.unit, channel => tried.complete(channel).as(None))
+        RocksLeiosStore
+          .resourceWith[IO](leios, locks, channel => tried.complete(channel).as(None))
+          .use_
       ).start
       channel <- tried.get
       _ <- fiber.cancel
       outcome <- fiber.join
       closed <- IO(!channel.isOpen)
-      later <- attempt(firstOpen(leios, locks, _ => IO.unit))
+      later <- attempt(RocksLeiosStore.resource[IO](leios, locks).use_)
     yield
       assert(outcome.isCanceled, outcome.toString)
       assert(closed, "the cancelled open closed its lock file")
@@ -827,7 +829,9 @@ object LeiosStoreSuite:
       sync: java.nio.file.Path => IO[Unit],
       attemptLock: java.nio.channels.FileChannel => IO[Option[java.nio.channels.FileLock]]
   )(using Handle[IO, LeiosStoreError]): IO[Unit] =
-    RocksLeiosStore.firstOpen[IO, Unit](dir, locks, sync, attemptLock)(IO.unit)
+    IO.uncancelable(poll =>
+      RocksLeiosStore.firstOpen[IO, Unit](dir, locks, sync, attemptLock, poll)(IO.unit)
+    )
 
   /** Hash `i` of many: distinct for every `i` below 2^31. */
   def wide(i: Int): EbHash =

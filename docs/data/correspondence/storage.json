@@ -1983,6 +1983,7 @@
     "enum storage.RocksLeiosStore.Family",
     "def storage.RocksLeiosStore.be",
     "def storage.RocksLeiosStore.resource",
+    "def storage.RocksLeiosStore.resourceWith",
     "val storage.RocksLeiosStore.FormatRecord",
     "val storage.RocksLeiosStore.Magic",
     "val storage.RocksLeiosStore.Version"
