@@ -53,7 +53,9 @@ object UpdatePayload:
         // transport check does (`ByronTransport`): the keys are decoded, not only counted
         metadata <- ByronTransport.installerMetadata(xs(3))
         _ <- ByronTransport.emptyAttributes(xs(4), DecodeField.ProposalAttributes)
-        issuer <- CborRead.bytesN(xs(5), 64, DecodeField.ProposalIssuer)
+        // a `VerificationKey` with `decodeBytesCanonical`, a `Signature` with plain `decodeBytes`
+        // (`Update/Proposal.hs:157-173`, cardano-ledger f649f975)
+        issuer <- ByronTransport.verificationKey(xs(5), DecodeField.ProposalIssuer)
         signature <- CborRead.bytesN(xs(6), 64, DecodeField.ProposalSignature)
       yield ByronProposal(
         n.original,
@@ -69,10 +71,12 @@ object UpdatePayload:
       )
     }
 
+  // `Update/Vote.hs:199-209`, cardano-ledger f649f975: the voter's `VerificationKey` with
+  // `decodeBytesCanonical`, the proposal id and the `Signature` with plain `decodeBytes`
   private def vote(n: Node): Either[LedgerDecodeError, ByronVote] =
     CborRead.arrayN(n, 4, DecodeField.UpdateVote).flatMap { xs =>
       (
-        CborRead.bytesN(xs(0), 64, DecodeField.Voter),
+        ByronTransport.verificationKey(xs(0), DecodeField.Voter),
         CborRead.bytesN(xs(1), 32, DecodeField.VotedProposal),
         CborRead.bool(xs(2), DecodeField.VoteDecision),
         CborRead.bytesN(xs(3), 64, DecodeField.VoteSignature)

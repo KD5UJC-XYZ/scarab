@@ -95,12 +95,18 @@ object ByronTx:
       attrs <- ByronAddress.attributesLength(xs(2), DecodeField.ByronTxAttributes)
     yield ByronTx(n.original, Blake2b.hash256.hash(n.original), inputs, outputs, attrs)
 
+  // `UTxO/TxWitness.hs:118-128`, cardano-ledger f649f975: a `VerificationKey` (0) is read with
+  // `decodeBytesCanonical` ([[ByronTransport.verificationKey]]), a redeem key (2), 32 bytes, and
+  // either signature with plain `decodeBytes` (`Crypto/Orphans.hs:89-92`,
+  // `Signing/Signature.hs:129-130`)
   private def witness(n: Node): Either[LedgerDecodeError, ByronWitness] =
     knownItem(n, DecodeField.ByronWitness).flatMap { (tag, inner) =>
       CborRead.arrayN(inner, 2, DecodeField.ByronWitness).flatMap { xs =>
-        val keySize = if tag == 0 then 64 else 32
+        val key = tag match
+          case 0 => ByronTransport.verificationKey(xs(0), DecodeField.ByronWitnessKey)
+          case _ => CborRead.bytesN(xs(0), 32, DecodeField.ByronWitnessKey)
         (
-          CborRead.bytesN(xs(0), keySize, DecodeField.ByronWitnessKey),
+          key,
           CborRead.bytesN(xs(1), 64, DecodeField.ByronWitnessSignature)
         ).tupled.flatMap { (k, s) =>
           tag match

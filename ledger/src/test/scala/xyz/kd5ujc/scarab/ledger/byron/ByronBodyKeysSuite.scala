@@ -33,6 +33,13 @@ import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
   * votes. No Byron body in the fixtures holds a delegation certificate, so the certificate in the
   * header of preprod's first main block is put in that block's body: its body proof then differs,
   * and the block is refused by the proof alone while its keys are in their shortest form.
+  *
+  * A block the node stored, or imported from a reference node's ImmutableDB, is not put through
+  * that checker again: replay and resume read its body with the value decoders ([[ByronBody]]). The
+  * reference reads its own disk blocks with the block decoder it reads a fetched block with
+  * (`decodeDisk = decodeByronBlock`,
+  * `ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Node/Serialisation.hs:53-54`),
+  * so the same bodies, read by [[ByronBody.decode]], do not decode either.
   */
 class ByronBodyKeysSuite extends FunSuite:
   private val epochSlots = BigInt(21600)
@@ -143,12 +150,16 @@ class ByronBodyKeysSuite extends FunSuite:
     )
   }
 
-  private val wideKeys: Vector[(String, Bytes, Bytes, DecodeField, Node)] = Vector(
+  /** Each key written wide: the block it is in, the block so written, the site the transport
+    * checker names, the site the value decoders name, and the key.
+    */
+  private val wideKeys: Vector[(String, Bytes, Bytes, DecodeField, DecodeField, Node)] = Vector(
     (
       "a transaction witness's key",
       keyBlock,
       rewitnessed(wide, _.original),
       DecodeField.WitnessKey,
+      DecodeField.ByronWitnessKey,
       witnessKey
     ),
     (
@@ -156,6 +167,7 @@ class ByronBodyKeysSuite extends FunSuite:
       firstMain,
       certified((n, i) => if i == 1 then wide(n) else n.original),
       DecodeField.DelegationKeySignature,
+      DecodeField.CertificateIssuer,
       certificate(1)
     ),
     (
@@ -163,12 +175,14 @@ class ByronBodyKeysSuite extends FunSuite:
       firstMain,
       certified((n, i) => if i == 2 then wide(n) else n.original),
       DecodeField.DelegationKeySignature,
+      DecodeField.CertificateDelegate,
       certificate(2)
     ),
     (
       "an update proposal's issuer",
       updateBlock,
       splice(updateBlock, items(proposal)(5), wide(items(proposal)(5))),
+      DecodeField.ProposalIssuer,
       DecodeField.ProposalIssuer,
       items(proposal)(5)
     ),
@@ -177,20 +191,59 @@ class ByronBodyKeysSuite extends FunSuite:
       updateBlock,
       splice(updateBlock, items(vote)(0), wide(items(vote)(0))),
       DecodeField.Voter,
+      DecodeField.Voter,
       items(vote)(0)
     )
   )
 
-  wideKeys.foreach { (name, original, raw, field, key) =>
+  wideKeys.foreach { (name, original, raw, field, _, key) =>
     test(s"a fetched block whose key is not in its shortest form does not decode: $name") {
       assertEquals(BlockTransport.check(header(original), raw), refusedKey(field, key))
+    }
+  }
+
+  test("a stored body with its keys in their shortest form decodes, each key read as recorded") {
+    def decoded(raw: Bytes): ByronBody =
+      ByronBody.decode(body(raw)._1).fold(e => fail(e.toString), identity)
+    val witnessed = decoded(keyBlock)
+    assertEquals(
+      witnessed.txs.flatMap(_.witnesses).headOption,
+      Some(ByronWitness.VerKey(content(witnessKey), content(witnessSignature)))
+    )
+    val delegated = decoded(certified((n, _) => n.original))
+    assertEquals(
+      delegated.delegation.map(c => (c.issuer, c.delegate)),
+      Vector((content(certificate(1)), content(certificate(2))))
+    )
+    val updated = decoded(updateBlock)
+    assertEquals(updated.update.proposal.map(_.issuer), Some(content(items(proposal)(5))))
+    assertEquals(updated.update.votes.headOption.map(_.voter), Some(content(items(vote)(0))))
+    assertEquals(updated.update.votes.size, 7)
+  }
+
+  wideKeys.foreach { (name, _, raw, _, field, key) =>
+    test(
+      s"a stored or imported body whose key is not in its shortest form does not decode: $name"
+    ) {
+      assertEquals(
+        ByronBody.decode(body(raw)._1),
+        Left(
+          LedgerDecodeError.Expected(
+            field / Qualifier.Canonical,
+            LedgerDecodeError.Shape.Bytes,
+            key.value
+          )
+        )
+      )
     }
   }
 
   // a `Signature`, a redeem key and a hash are read with plain `decodeBytes`
   // (`Signing/Signature.hs:129-130`, `Crypto/Orphans.hs:89-92`, `Hashing.hs:157-165`,
   // cardano-ledger f649f975): any width of length
-  test("a body whose signatures or proposal id are not in their shortest form decodes") {
+  test(
+    "a body whose signatures or proposal id are not in their shortest form decodes, by both readers"
+  ) {
     val redeemBlock = line("fixtures/mainnet/byron-tx-blocks.hex", 0)
     val redeemWitness = items(items(items(items(parts(redeemBlock)(1))(0))(0))(1))(0)
     val redeemPair = items(redeemWitness)(1).value match
@@ -214,5 +267,6 @@ class ByronBodyKeysSuite extends FunSuite:
     ).foreach { (name, raw) =>
       val (b, extra) = body(raw)
       assertEquals(ByronTransport.check(b, extra, boundary = false), Right(()), name)
+      assertEquals(ByronBody.decode(b).map(_ => ()), Right(()), name)
     }
   }
