@@ -621,21 +621,22 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
-  test("a record of the largest length a record can have, that fails its checksum, is not read") {
-    // two blocks to a file: [A B X] [C], X a record header whose length is the largest a record
-    // can have, in a file made long enough to hold it (sparse). Its checksum is checked a chunk at
-    // a time and fails: the record is never allocated, the first file is cut after B and the
-    // second is read
+  test("a record of the largest length a header can give, that fails its checksum, is not read") {
+    // two blocks to a file: [A B X] [C], X a block record's header whose length is the largest the
+    // open takes, in a file made long enough to hold it (sparse). Its checksum is checked a chunk at
+    // a time and fails: the first file is cut after B and the second is read
     tempDir.use { dir =>
       ok {
         val (a, b, c) = (block(1), block(2), block(3))
+        val kept =
+          Vector(a, b).map((ref, raw) => VolatileStore.encode(VolatileRecord.Block(ref, raw)))
         for
           _ <- VolatileStore
             .open[IO](dir, 2)
             .use((log, _) => Vector(a, b, c).traverse_((r, raw) => log.append(r, raw)))
           _ <- IO {
             val first = logFiles(dir).head
-            val length = Int.MaxValue - 8 - VolatileStore.HeaderSize
+            val length = Int.MaxValue - VolatileStore.HeaderSize
             val header = java.nio.ByteBuffer.allocate(VolatileStore.HeaderSize)
             header.putInt(0).put(1.toByte).put(0.toByte).putInt(length)
             JFiles.write(first, header.array(), StandardOpenOption.APPEND)
@@ -645,10 +646,28 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
             )
           }
           recovered <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use(entries)
+          first <- IO(JFiles.size(logFiles(dir).head))
+          _ <- IO(assertEquals(first, kept.map(_.length.toLong).sum, "the first file cut after B"))
           files <- IO(logFiles(dir).map(recordsOf))
         yield
           assertEquals(recovered.toSet, Set(a, b, c), "A and B, and C in the second file")
-          assertEquals(files.head.size, 2, "the first file cut after B")
+          assertEquals(files.head.size, 2, "A and B are what the first file holds")
+      }
+    }
+  }
+
+  test("a record longer than a checksum chunk is read whole, and so are the records after it") {
+    // a body of 1.5 MiB: its checksum is checked in two chunks before it is read
+    tempDir.use { dir =>
+      ok {
+        val large = block(1)._1 -> Bytes(Vector.tabulate(3 << 19)(i => (i * 7).toByte))
+        val after = block(2)
+        for
+          _ <- ReceivedBlocks
+            .open[IO](dir, 1000, 0L)(unread, decodes)
+            .use(store => store.put(large._1, large._2) *> store.put(after._1, after._2))
+          recovered <- ReceivedBlocks.open[IO](dir, 1000, 0L)(unread, decodes).use(entries)
+        yield assertEquals(recovered.toSet, Set(large, after), "both blocks read back")
       }
     }
   }

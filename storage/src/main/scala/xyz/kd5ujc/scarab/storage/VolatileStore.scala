@@ -235,17 +235,12 @@ object VolatileStore:
     else if channel.read(buffer, at + buffer.position()) < 0 then false
     else fill(channel, buffer, at)
 
-  /** The most bytes a record takes: the largest array the JVM allocates, since a record is encoded
-    * into one ([[encode]]).
-    */
-  private val MaxRecordBytes = Int.MaxValue - 8
-
   /** The bytes a record's checksum is checked a chunk of at a time. */
   private val ChecksumChunk = 1 << 20
 
   /** Whether the bytes of the file open on `channel` from `from` up to `end` have the CRC-32 `crc`,
     * read a chunk at a time: a record's checksum checked before the record is read whole, so a
-    * damaged length is never allocated.
+    * record whose checksum fails is never allocated.
     */
   private def checksummed(channel: FileChannel, from: Long, end: Long, crc: Int): Boolean =
     val check = new CRC32()
@@ -277,9 +272,14 @@ object VolatileStore:
       if size - at < HeaderSize || !fill(channel, header, at) then (acc, at)
       else
         val length = header.getInt(6)
-        // a length past the file's end, or past what one record can hold, is not a record, and one
-        // whose bytes fail the checksum is not read whole
-        if length < 0 || length > MaxRecordBytes - HeaderSize || length > size - at - HeaderSize
+        val kind = header.get(4) & 0xff
+        // a length past the file's end or past what an Int holds, or a header [[decodeAll]] does
+        // not understand, is not a record, and one whose bytes fail the checksum is not read whole
+        val understood =
+          header.getLong(10) >= 0 && header.getLong(18) >= 0 &&
+            (kind == KindBlock || (kind == KindRollback && length == 0))
+        if length < 0 || length > Int.MaxValue - HeaderSize || length > size - at - HeaderSize ||
+          !understood
         then (acc, at)
         else if !checksummed(channel, at + 4, at + HeaderSize + length, header.getInt(0)) then
           (acc, at)
