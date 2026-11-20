@@ -37,15 +37,12 @@ class LeiosChainSelSuite extends munit.FunSuite:
     assertEquals(younger.pruned(None), None)
   }
 
-  test("the set from the open's scan holds each hash once; a missing closure leaves it") {
+  test("the set from the open's scan holds each hash once") {
     val acquired = AcquiredLeiosEbs.of(Vector(point(3, 1), point(4, 2), point(9, 1)))
     assert(acquired.contains(ebHash(1)) && acquired.contains(ebHash(2)))
     // pruning at 5 drops hash 2 (youngest 4) and keeps hash 1 (youngest 9)
     val pruned = acquired.pruned(Some(BigInt(5))).getOrElse(fail("nothing pruned"))
     assertEquals((pruned.contains(ebHash(1)), pruned.contains(ebHash(2))), (true, false))
-    val without = acquired.without(ebHash(1))
-    assertEquals((without.contains(ebHash(1)), without.contains(ebHash(2))), (false, true))
-    assertEquals(without.pruned(Some(BigInt(5))).map(_.contains(ebHash(2))), Some(false))
   }
 
   private val announcing =

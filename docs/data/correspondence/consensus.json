@@ -710,14 +710,12 @@
    ]
   },
   {
-   "reason": "the acquired-endorser-block gate's Scala plumbing with no counterpart of its own: the companions, the certificate's presence as an enum (biHasLeiosCert), a block of the forest as the gate reads it, and the closure outcome the era session's Dijkstra rules will supply (#54's D8): at 2416493b a closure missing at application stops the node (resolveLeiosBlock, Storage/LedgerDB/Forker.hs:1037-1053); Scarab's store can lose a closure the reference keeps after an eviction (#1223's approved Deviation), and the gate then drops the endorser block from the set, which parks its certifying blocks again (#54)",
+   "reason": "the acquired-endorser-block gate's Scala plumbing with no counterpart of its own: the companions, the certificate's presence as an enum (biHasLeiosCert) and a block of the forest as the gate reads it (#54)",
    "definitions": [
     "object consensus.AcquiredLeiosEbs",
-    "def consensus.AcquiredLeiosEbs#without",
     "object consensus.LeiosBlockInfo",
     "val consensus.LeiosBlockInfo.Absent",
     "enum consensus.LeiosCert",
-    "enum consensus.LeiosClosureOutcome",
     "class consensus.LeiosForestBlock",
     "object consensus.LeiosCertGate"
    ]

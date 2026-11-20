@@ -6,7 +6,7 @@ import cats.effect.std.Queue
 import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{AcquiredLeiosEbs, LeiosClosureOutcome}
+import xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosTxHash}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
@@ -62,10 +62,6 @@ private[node] final class LeiosAcquired[F[_]] private (
   /** `pruneAcquiredLeiosEbs` at the immutable tip's slot. */
   def pruned(immutableSlot: BigInt): F[Unit] =
     state.update(held => held.pruned(Some(immutableSlot)).getOrElse(held))
-
-  /** What the gate does with an application's finding on a closure ([[LeiosClosureOutcome]]). */
-  def closure(outcome: LeiosClosureOutcome): F[Unit] = outcome match
-    case LeiosClosureOutcome.Missing(hash) => state.update(_.without(hash))
 
   /** `store`, its completions offered to [[next]]. Each write and the offer of what it completed
     * are one uncancelable step, so that no completion is lost to a cancelled writer.

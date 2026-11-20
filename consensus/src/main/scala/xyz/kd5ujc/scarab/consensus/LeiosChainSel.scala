@@ -77,14 +77,6 @@ final case class AcquiredLeiosEbs private (
       )
     }
 
-  /** Without `hash`, wherever it is held: what the gate does when the application finds the closure
-    * of an endorser block it held missing ([[LeiosClosureOutcome.Missing]]).
-    */
-  def without(hash: EbHash): AcquiredLeiosEbs =
-    youngest
-      .get(hash)
-      .fold(this)(slot => AcquiredLeiosEbs(youngest - hash, removed(bySlot, slot, hash)))
-
   private def added(
       index: SortedMap[BigInt, Set[EbHash]],
       slot: BigInt,
@@ -108,19 +100,6 @@ object AcquiredLeiosEbs:
   def of(points: Vector[EbPoint]): AcquiredLeiosEbs =
     points.foldLeft(empty)((acquired, p) => acquired.inserted(p).fold(acquired)(_._2))
 
-/** What the application of a certifying block found of the closure of the endorser block it
-  * certifies, which the gate acts on ([[AcquiredLeiosEbs.without]]). Supplied by the Dijkstra
-  * rules' resolution of a certifying block (the era session's D8, #54), which is not merged:
-  * nothing produces it yet. At ouroboros-consensus 2416493b a closure missing there stops the node
-  * (`resolveLeiosBlock`, `Storage/LedgerDB/Forker.hs:1037-1053`); Scarab can find it missing where
-  * the reference does not, after the store empties an evicted closure that its body was written for
-  * again (#1223's approved Deviation), and then drops the endorser block from the acquired set,
-  * which parks the certifying block again until the closure completes once more.
-  */
-enum LeiosClosureOutcome derives CanEqual:
-  /** The store holds no complete closure for the endorser block. */
-  case Missing(hash: EbHash)
-
 /** What the gate reads of a block of the forest: its predecessor's hash (none: genesis) and its
   * Leios fields.
   */
@@ -132,8 +111,8 @@ final case class LeiosForestBlock(prevHash: Option[Bytes], info: LeiosBlockInfo)
   * tip and as a successor, as invalid blocks are, but only until the closure is acquired.
   */
 object LeiosCertGate:
-  /** `isUnacquiredCertRB` (`ChainSel.hs:1797-1821`): `lookup` is the raw forest, so that the
-    * predecessor's announcement is read whatever else hides it.
+  /** `isUnacquiredCertRB` (`ChainSel.hs:1796-1821` at ouroboros-consensus 2416493b): `lookup` is
+    * the raw forest, so that the predecessor's announcement is read whatever else hides it.
     *
     *   - a block not in the forest, or without a certificate, is not hidden;
     *   - a certifying block on genesis certifies nothing, and is hidden;
@@ -151,14 +130,14 @@ object LeiosCertGate:
         lookup(previous).flatMap(_.info.announced).forall(eb => !acquired.contains(eb))
 
   /** The hashes of `forest` the gate hides (`ignoreUnacquiredCertRB`, `ignoreUnacquiredCertRBSuc`,
-    * `ChainSel.hs:1823-1844`).
+    * `ChainSel.hs:1828-1844` at ouroboros-consensus 2416493b).
     */
   def hidden(acquired: AcquiredLeiosEbs, forest: Map[Bytes, LeiosForestBlock]): Set[Bytes] =
     forest.keysIterator.filter(unacquired(acquired, forest.get)).toSet
 
   /** The ranking blocks parked on `eb`: the certifying successors, not known invalid, of the blocks
     * of `forest` that announce it (`reprocessPoints` of `chainSelReprocessLeiosEb`,
-    * `ChainSel.hs:654-673`).
+    * `ChainSel.hs:654-673` at ouroboros-consensus 2416493b).
     */
   def parkedOn(
       eb: EbHash,

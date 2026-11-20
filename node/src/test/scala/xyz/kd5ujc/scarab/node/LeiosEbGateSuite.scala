@@ -7,13 +7,7 @@ import cats.syntax.all.*
 import fs2.io.file.Files
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{
-  BlockRules,
-  LeiosBlockInfo,
-  LeiosCert,
-  LeiosClosureOutcome,
-  VolatileChain
-}
+import xyz.kd5ujc.scarab.consensus.{BlockRules, LeiosBlockInfo, LeiosCert, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{NodeError, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.assertions.Assertions
@@ -165,18 +159,6 @@ class LeiosEbGateSuite extends FailsOnUncaught:
       node(Vector(announcing, certifying), _ => IO.unit) { n =>
         tip(n).map(selected => assertEquals(selected, Some(announcing.header.hash)))
       }
-    }
-  }
-
-  test("a closure the application finds missing leaves the acquired set") {
-    LeiosAcquired.create[IO].flatMap { acquired =>
-      for
-        novel <- acquired.acquired(EbPoint(LeiosStoreSuite.slot(3), eb))
-        again <- acquired.acquired(EbPoint(LeiosStoreSuite.slot(3), eb))
-        held <- acquired.snapshot.map(_.contains(eb))
-        _ <- acquired.closure(LeiosClosureOutcome.Missing(eb))
-        dropped <- acquired.snapshot.map(_.contains(eb))
-      yield assertEquals((novel, again, held, dropped), (true, false, true, false))
     }
   }
 
