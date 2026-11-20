@@ -101,7 +101,9 @@ final class UpstreamGenesisServer private (
   }
 
   val blocks: BlockFetchServer.Blocks[IO] = new BlockFetchServer.Blocks[IO]:
-    def range(from: Point, to: Point) =
+    def range(from: Point, to: Point)(using
+        cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+    ) =
       online.get *> IO.pure {
         xyz.kd5ujc.scarab.network.Peers.answer(
           for

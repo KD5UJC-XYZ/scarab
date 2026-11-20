@@ -3,12 +3,14 @@ package xyz.kd5ujc.scarab.node.relay
 
 import cats.Monad
 import cats.data.NonEmptyVector
+import cats.mtl.Raise
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.{Pull, Stream}
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.network.BlockFetchServer
+import xyz.kd5ujc.scarab.network.BlockFetchServer.{IteratorResult, UnknownRange}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.NetworkError
 import xyz.kd5ujc.scarab.storage.ImmutableStore
@@ -50,6 +52,14 @@ private[relay] object HeldRange:
       */
     case Partial(predecessor: Bytes, points: NonEmptyVector[BlockRef])
 
+    /** The walk came back to a block already on the path before it met the lower bound. The
+      * reference's walk would not end (`computePath`, `Paths.hs` 188-218, over
+      * `computeReversePath`, 336-342, which follows the predecessors with no such check): an
+      * Improvement, of a defect of class (a) of REF-2 (#474), that only a collision of block hashes
+      * could reach. The range is not one the node holds.
+      */
+    case Cycle
+
   /** What a range reads: the immutable chain and the held blocks' bodies. */
   trait Source[F[_]]:
     /** The immutable chain's newest block, none while it is empty. */
@@ -86,9 +96,7 @@ private[relay] object HeldRange:
 
   /** The walk follows each held block's predecessor by its hash whatever its slot, as the
     * reference's index does: a block is held before selection judges it. `seen` are the hashes on
-    * the path. A predecessor already on it closes a cycle, which only a collision of block hashes
-    * could make: the reference's walk would not end (`computeReversePath` has no such check), and
-    * this one ends there, the predecessor taken as one it does not hold.
+    * the path; a predecessor already on it closes a cycle ([[Path.Cycle]]).
     */
   @tailrec private def walk(
       held: Bytes => Option[Held],
@@ -103,71 +111,75 @@ private[relay] object HeldRange:
       current.predecessor match
         case None => None
         case Some(hash) =>
-          held(hash).filterNot(_ => seen(hash)) match
-            case None           => Some(Path.Partial(hash, points))
-            case Some(previous) => walk(held, from, previous, points.toVector, seen + hash)
+          if seen(hash) then Some(Path.Cycle)
+          else
+            held(hash) match
+              case None           => Some(Path.Partial(hash, points))
+              case Some(previous) => walk(held, from, previous, points.toVector, seen + hash)
 
-  /** Where the immutable chain stands for a stream from `from` through `to`: the reference's
-    * ImmutableDB `stream` (`Storage/ImmutableDB/Impl/Iterator.hs` 134-159), which raises for bounds
-    * that are not a range (`InvalidIteratorRangeError`, by their slots first and, both found, by
-    * the order of a boundary block and the block of its slot) and answers `MissingBlock` when an
-    * end is not stored, the upper first.
+  /** The immutable chain's blocks from `from` through `to`: the reference's ImmutableDB `stream`
+    * (`Storage/ImmutableDB/Impl/Iterator.hs` 134-159), which raises for bounds that are not a range
+    * (`InvalidIteratorRangeError`, by their slots first and, both found, by the order of a boundary
+    * block and the block of its slot) and answers `MissingBlock` with the end that is not stored,
+    * the upper first.
     */
-  private enum Immutable[F[_]]:
-    case Refused(refusal: NetworkError.RangeRefusal)
-    case Missing()
-    case Opened(blocks: Stream[F, ImmutableStore.Stored])
-
   private def immutable[F[_]: Monad](
       source: Source[F],
       from: Lower,
       to: Point.Block
-  ): F[Immutable[F]] =
-    val invalid =
-      Immutable.Refused[F](NetworkError.RangeRefusal.InvalidIteratorRangeError(from.point, to))
-    if !validBounds(from, to) then invalid.pure[F]
+  )(using Raise[F, NetworkError]): F[Either[Point.Block, Stream[F, ImmutableStore.Stored]]] =
+    def invalid[A]: F[A] =
+      NetworkError
+        .RangeRefused(NetworkError.RangeRefusal.InvalidIteratorRangeError(from.point, to))
+        .raise[F, A]
+    if !validBounds(from, to) then invalid
     else
       source.refOf(to).flatMap {
-        case None => Immutable.Missing[F]().pure[F]
+        case None => to.asLeft[Stream[F, ImmutableStore.Stored]].pure[F]
         case Some(last) =>
-          source.refOf(from.point).map {
-            case None                                             => Immutable.Missing[F]()
+          source.refOf(from.point).flatMap {
+            case None => from.point.asLeft[Stream[F, ImmutableStore.Stored]].pure[F]
             case Some(first) if !ChainServer.ordered(first, last) => invalid
-            case Some(first) => Immutable.Opened(source.stored(from, first, last))
+            case Some(first) => source.stored(from, first, last).asRight[Point.Block].pure[F]
           }
       }
 
-  /** The answer for the range `from` to `to`: the reference's `newIterator` for inclusive bounds
-    * (`Iterator.hs` 254-451). `held` reads the held blocks as they are, after the immutable tip, as
-    * the reference reads the VolatileDB's index after the ImmutableDB's tip.
+  /** The range `from` to `to`: the reference's `newIterator` for inclusive bounds (`Iterator.hs`
+    * 254-451). `held` reads the held blocks as they are, after the immutable tip, as the reference
+    * reads the VolatileDB's index after the ImmutableDB's tip.
     */
   def answer[F[_]: Monad](
       source: Source[F],
       held: F[Bytes => Option[Held]],
       from: Point.Block,
       to: Point.Block
-  ): F[BlockFetchServer.Answer[F]] =
-    type Answer = BlockFetchServer.Answer[F]
+  )(using Raise[F, NetworkError]): F[Either[UnknownRange, Stream[F, IteratorResult]]] =
+    type Range = Either[UnknownRange, Stream[F, IteratorResult]]
     val lower = Lower.Inclusive(from)
-    val invalid: Answer =
-      BlockFetchServer.Answer.Refused(NetworkError.RangeRefusal.InvalidIteratorRange(from, to))
-    def opened(state: Immutable[F], next: Option[NonEmptyVector[BlockRef]]): Answer = state match
-      case Immutable.Refused(refusal) => BlockFetchServer.Answer.Refused(refusal)
-      case Immutable.Missing()        => BlockFetchServer.Answer.NoBlocks()
-      case Immutable.Opened(blocks)   => batch(source, State.FromImmutable(lower, blocks, next))
+    val tooOld: Range = UnknownRange.ForkTooOld(from).asLeft
+    def invalid: F[Range] =
+      NetworkError.RangeRefused(NetworkError.RangeRefusal.InvalidIteratorRange(from, to)).raise
+    def opened(
+        state: Either[Point.Block, Stream[F, ImmutableStore.Stored]],
+        next: Option[NonEmptyVector[BlockRef]]
+    ): Range =
+      state.bimap(
+        UnknownRange.MissingBlock(_),
+        blocks => iterator(source, State.FromImmutable(lower, blocks, next))
+      )
     // the range is the immutable chain's (`streamFromImmutableDB`)
-    def fromImmutable(last: Point.Block): F[Answer] =
+    def fromImmutable(last: Point.Block): F[Range] =
       immutable(source, lower, last).map(opened(_, None))
     // the path's oldest blocks are the immutable chain's, through its tip (`streamFromBoth`)
-    def fromBoth(predecessor: Bytes, points: NonEmptyVector[BlockRef]): F[Answer] =
+    def fromBoth(predecessor: Bytes, points: NonEmptyVector[BlockRef]): F[Range] =
       source.tip.flatMap {
-        case None => BlockFetchServer.Answer.NoBlocks[F]().pure[F]
+        case None => tooOld.pure[F]
         case Some(tip) if tip.hash == predecessor =>
           immutable(source, lower, block(tip)).map(opened(_, Some(points)))
         case Some(tip) =>
           // blocks of the path may have reached the immutable chain since it was walked
           NonEmptyVector.fromVector(points.toVector.dropWhile(_.point != tip.point)) match
-            case None => BlockFetchServer.Answer.NoBlocks[F]().pure[F]
+            case None => tooOld.pure[F]
             case Some(fromTip) =>
               NonEmptyVector
                 .fromVector(fromTip.tail)
@@ -175,12 +187,14 @@ private[relay] object HeldRange:
                   immutable(source, lower, block(tip)).map(opened(_, Some(rest)))
                 )
       }
-    def fromHeld: F[Answer] = held.flatMap(path(_, from, to) match
-      case None                        => invalid.pure[F]
-      case Some(Path.NotHeld)          => BlockFetchServer.Answer.NoBlocks[F]().pure[F]
-      case Some(Path.Complete(points)) => batch(source, State.FromHeld(lower, points)).pure[F]
+    def fromHeld: F[Range] = held.flatMap(path(_, from, to) match
+      case None               => invalid
+      case Some(Path.NotHeld) => tooOld.pure[F]
+      case Some(Path.Cycle)   => tooOld.pure[F]
+      case Some(Path.Complete(points)) =>
+        iterator(source, State.FromHeld(lower, points)).asRight.pure[F]
       case Some(Path.Partial(predecessor, points)) => fromBoth(predecessor, points))
-    if !validBounds(lower, to) then invalid.pure[F]
+    if !validBounds(lower, to) then invalid
     else
       source.tip.flatMap {
         case None => fromHeld
@@ -190,7 +204,8 @@ private[relay] object HeldRange:
             fromImmutable(to)
           // the boundary block of the tip's slot is older than the tip: an upper bound in that slot
           // is the immutable chain's, or a fork too old (cases 1-3, `Iterator.hs` 287-333)
-          else if endSlot == tip.slot && !tip.boundary then fromImmutable(to)
+          else if endSlot == tip.slot && !tip.boundary then
+            fromImmutable(to).map(_.leftMap(_ => UnknownRange.ForkTooOld(from)))
           else fromHeld
       }
 
@@ -220,46 +235,51 @@ private[relay] object HeldRange:
         points: NonEmptyVector[BlockRef]
     )
 
-  private type Sent = Either[NetworkError.RangeRefusal, Bytes]
+  private def iterator[F[_]: Monad](source: Source[F], start: State[F])(using
+      Raise[F, NetworkError]
+  ): Stream[F, IteratorResult] =
+    results(source, start).stream
 
-  private def batch[F[_]: Monad](source: Source[F], start: State[F]): BlockFetchServer.Answer[F] =
-    BlockFetchServer.Answer.Batch(stream(source, start).stream)
+  private def result[F[_]](next: IteratorResult): Pull[F, IteratorResult, Unit] =
+    Pull.output1(next)
 
-  private def refuse[F[_]](refusal: NetworkError.RangeRefusal): Pull[F, Sent, Unit] =
-    Pull.output1(Left(refusal))
-
-  /** The blocks of a range from `state` on (`implIteratorNext`, `Iterator.hs` 624-792). */
-  private def stream[F[_]: Monad](source: Source[F], state: State[F]): Pull[F, Sent, Unit] =
+  /** The results of a range from `state` on (`implIteratorNext`, `Iterator.hs` 624-792), up to the
+    * first `Exhausted` or `BlockGCed`.
+    */
+  private def results[F[_]: Monad](source: Source[F], state: State[F])(using
+      Raise[F, NetworkError]
+  ): Pull[F, IteratorResult, Unit] =
+    val exhausted = result[F](IteratorResult.Exhausted)
     state match
       case State.FromImmutable(from, blocks, next) =>
         blocks.pull.uncons1.flatMap {
           case Some((stored, rest)) =>
             val after = Lower.Exclusive(block(stored.ref))
-            Pull.output1(Right(stored.raw)) >>
-              stream(source, State.FromImmutable(after, rest, next))
-          case None => next.fold(Pull.done)(points => stream(source, State.FromHeld(from, points)))
+            result(IteratorResult.Block(stored.raw)) >>
+              results(source, State.FromImmutable(after, rest, next))
+          case None =>
+            next.fold(exhausted)(points => results(source, State.FromHeld(from, points)))
         }
       case State.FromHeld(from, points) =>
         val expected = points.head
         Pull.eval(source.body(expected.hash)).flatMap {
           case Some(raw) =>
-            Pull.output1(Right(raw)) >> NonEmptyVector
+            result(IteratorResult.Block(raw)) >> NonEmptyVector
               .fromVector(points.tail)
-              .fold(Pull.done)(rest =>
-                stream(source, State.FromHeld(Lower.Exclusive(block(expected)), rest))
+              .fold(exhausted)(rest =>
+                results(source, State.FromHeld(Lower.Exclusive(block(expected)), rest))
               )
           // no longer held: collected, and in the immutable chain if it was on the selected chain
-          // (`nextInVolatileDB`, 654-695)
+          // (`nextInVolatileDB`, 654-695); with no immutable chain, which the reference holds
+          // impossible, the block is gone
           case None =>
             Pull.eval(source.tip).flatMap {
-              case None => refuse(NetworkError.RangeRefusal.BlockGCed(block(expected)))
+              case None => result(IteratorResult.BlockGCed(block(expected)))
               case Some(tip) =>
                 Pull.eval(immutable(source, from, block(tip))).flatMap {
-                  case Immutable.Refused(refusal) => refuse(refusal)
-                  case Immutable.Missing() =>
-                    refuse(NetworkError.RangeRefusal.BlockGCed(block(expected)))
-                  case Immutable.Opened(blocks) =>
-                    stream(source, State.Recovering(None, blocks, points))
+                  case Left(_) => result(IteratorResult.BlockGCed(block(expected)))
+                  case Right(blocks) =>
+                    results(source, State.Recovering(None, blocks, points))
                 }
             }
         }
@@ -268,13 +288,13 @@ private[relay] object HeldRange:
         blocks.pull.uncons1.flatMap {
           case Some((stored, rest)) if stored.ref.point == expected.point =>
             val after = Lower.Exclusive(block(expected))
-            Pull.output1(Right(stored.raw)) >> NonEmptyVector
+            result(IteratorResult.Block(stored.raw)) >> NonEmptyVector
               .fromVector(points.tail)
-              .fold(Pull.done)(next => stream(source, State.Recovering(Some(after), rest, next)))
+              .fold(exhausted)(next => results(source, State.Recovering(Some(after), rest, next)))
           // another block, or none: before any was found the block is gone; after, the rest of
           // the path may still be held (`nextInImmutableDBRetry`, 740-792)
           case _ =>
-            from.fold(refuse(NetworkError.RangeRefusal.BlockGCed(block(expected))))(continue =>
-              stream(source, State.FromHeld(continue, points))
+            from.fold(result(IteratorResult.BlockGCed(block(expected))))(continue =>
+              results(source, State.FromHeld(continue, points))
             )
         }

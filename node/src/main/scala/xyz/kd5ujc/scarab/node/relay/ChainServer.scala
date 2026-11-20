@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.relay
 
 import cats.effect.{Async, Ref, Resource}
+import cats.effect.std.Semaphore
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -31,6 +32,7 @@ import xyz.kd5ujc.scarab.storage.{ChainPersistence, ImmutableStore, ReceivedBloc
 final class ChainServer[F[_]: Async] private (
     state: Ref[F, ServedChain],
     version: SignallingRef[F, Long],
+    publishing: Semaphore[F],
     store: Option[ImmutableStore[F]],
     held: ChainServer.Held[F],
     headerOf: ChainServer.HeaderOf,
@@ -47,6 +49,11 @@ final class ChainServer[F[_]: Async] private (
 
   private[relay] def activeFollowers: F[Int] = state.get.map(_.followers.size)
 
+  /** Whether a change of the chain can be published now, no read holding the lock it is published
+    * under (for the tests of [[heldNow]]).
+    */
+  private[relay] def publishable: F[Boolean] = publishing.available.map(_ > 0)
+
   /** The node's chain updates, to be composed with the storage persistence. The block must be
     * stored (by the persistence that runs before this one) before it leaves the volatile chain.
     */
@@ -58,15 +65,17 @@ final class ChainServer[F[_]: Async] private (
       ) =
         for
           header <- headerOf(raw).fold(_.raise[F, NtNHeader], F.pure)
-          _ <- state.update(_.extend(Served(ref, header, raw), immutable.size, anchor.block))
+          _ <- publishing.permit.surround(
+            state.update(_.extend(Served(ref, header, raw), immutable.size, anchor.block))
+          )
           _ <- version.update(_ + 1)
         yield ()
 
       def rolledBack(to: Point)(using Raise[F, StorageError], Raise[F, ChainError]) =
-        state
-          .modify { chain =>
+        publishing.permit
+          .surround(state.modify { chain =>
             chain.rollback(to).fold((chain, false))(c => (c, true))
-          }
+          })
           .flatMap(changed => version.update(_ + 1).whenA(changed))
 
   /** Whether `point` is on our chain, and if it is, follower `id` moved to roll back to it: the
@@ -193,42 +202,48 @@ final class ChainServer[F[_]: Async] private (
     * VolatileDB's index and the ImmutableDB's (`checkUpperBound` and `checkLowerBound`,
     * `ImmutableDB/Impl/Iterator.hs` 141-148 and 203-243); each block is read when it is sent.
     */
-  def blocks: BlockFetchServer.Blocks[F] = (from, to) =>
-    (from, to) match
-      case (first: Point.Block, last: Point.Block) =>
-        HeldRange.answer(reads, heldNow, first, last)
-      // the server refuses an Origin end before it asks (`BlockFetchServer.run`)
-      case _ =>
-        F.pure(BlockFetchServer.Answer.Refused(NetworkError.RangeRefusal.NoGenesisBlock))
+  def blocks: BlockFetchServer.Blocks[F] = new BlockFetchServer.Blocks[F]:
+    def range(from: Point, to: Point)(using
+        Raise[F, NetworkError]
+    ): F[Either[BlockFetchServer.UnknownRange, Stream[F, BlockFetchServer.IteratorResult]]] =
+      (from, to) match
+        case (first: Point.Block, last: Point.Block) =>
+          HeldRange.answer(reads, heldNow, first, last)
+        // the server refuses an Origin end before it asks (`BlockFetchServer.run`)
+        case _ =>
+          NetworkError.RangeRefused(NetworkError.RangeRefusal.NoGenesisBlock).raise
 
   /** The blocks held at one instant, by hash: the selected volatile chain's, each after the block
     * before it, and the received log's, each after the predecessor its header names, a Byron
     * chain's first block after Origin. The reference walks one snapshot of its VolatileDB's index
-    * (`computePathVolatileDB`, `Storage/ChainDB/Impl/Iterator.hs` 494-504): the volatile chain is
-    * read on both sides of the read of the received log's index and the reads are taken again until
-    * its blocks did not change between them, so the two are as they were when the index was read.
+    * (`computePathVolatileDB`, `Storage/ChainDB/Impl/Iterator.hs` 494-504). The volatile chain is
+    * read on both sides of the read of the received log's index, and the two are taken when its
+    * blocks did not change in between; after [[ChainServer.SnapshotAttempts]] reads that met a
+    * change, both are read under the lock the chain's changes are published under, so a request is
+    * answered however often the chain changes.
     */
   private def heldNow: F[Bytes => Option[HeldRange.Held]] =
     def selected(chain: ServedChain)(hash: Bytes) =
       chain.predecessorOf(hash).map(HeldRange.Held(_, _))
     held.received.fold(state.get.map(selected)) { received =>
-      F.tailRecM(()) { _ =>
-        (state.get, received.links, state.get).mapN { (before, links, after) =>
-          def logged(hash: Bytes) = links(hash).map { linked =>
-            HeldRange.Held(
-              linked.ref,
-              linked.predecessor match
-                case ReceivedBlocks.Predecessor.Genesis => None
-                case ReceivedBlocks.Predecessor.Block(previous) =>
-                  Option.unless(held.origin.contains(previous))(previous)
-            )
-          }
-          Either.cond(
-            before.generation == after.generation,
-            (hash: Bytes) => selected(before)(hash).orElse(logged(hash)),
-            ()
+      def joined(chain: ServedChain, links: Bytes => Option[ReceivedBlocks.Linked]) =
+        def logged(hash: Bytes) = links(hash).map { linked =>
+          HeldRange.Held(
+            linked.ref,
+            linked.predecessor match
+              case ReceivedBlocks.Predecessor.Genesis => None
+              case ReceivedBlocks.Predecessor.Block(previous) =>
+                Option.unless(held.origin.contains(previous))(previous)
           )
         }
+        (hash: Bytes) => selected(chain)(hash).orElse(logged(hash))
+      val locked = publishing.permit.surround((state.get, received.links).mapN(joined))
+      F.tailRecM(ChainServer.SnapshotAttempts) { left =>
+        if left <= 0 then locked.map(_.asRight[Int])
+        else
+          (state.get, received.links, state.get).mapN { (before, links, after) =>
+            Either.cond(before.generation == after.generation, joined(before, links), left - 1)
+          }
       }
     }
 
@@ -310,6 +325,11 @@ object ChainServer:
     */
   final case class Held[F[_]](received: Option[ReceivedBlocks[F]], origin: Option[Bytes])
 
+  /** The reads of the held blocks a request makes before it reads them under the lock the chain's
+    * changes are published under: a few, as a change between two reads of a Ref is rare.
+    */
+  private[relay] val SnapshotAttempts = 3
+
   object Held:
     /** The selected chain alone. */
     def none[F[_]]: Held[F] = Held(None, None)
@@ -359,4 +379,5 @@ object ChainServer:
     for
       state <- Ref.of[F, ServedChain](ServedChain.empty(anchor))
       version <- SignallingRef.of[F, Long](0L)
-    yield new ChainServer[F](state, version, store, held, headerOf, fatal)
+      publishing <- Semaphore[F](1)
+    yield new ChainServer[F](state, version, publishing, store, held, headerOf, fatal)

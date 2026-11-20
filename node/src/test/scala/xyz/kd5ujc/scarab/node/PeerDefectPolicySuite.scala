@@ -231,7 +231,9 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
           def poll = IO.pure(None)
           def await = IO.never
       ),
-      (_, _) => IO.pure(xyz.kd5ujc.scarab.network.BlockFetchServer.Answer.NoBlocks()),
+      xyz.kd5ujc.scarab.network.Peers.blocksOf((_, _) =>
+        IO.pure(xyz.kd5ujc.scarab.network.Peers.unknown)
+      ),
       new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)

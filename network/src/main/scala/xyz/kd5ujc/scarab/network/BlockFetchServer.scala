@@ -16,24 +16,42 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
   */
 object BlockFetchServer:
   trait Blocks[F[_]]:
-    /** What the source answers for the inclusive range `from` to `to`, two blocks: the reference's
-      * ChainDB `stream` (`Storage/ChainDB/Impl/Iterator.hs` `newIterator`). The length of a range
-      * is not bounded: the reference server streams any range it holds.
+    /** The blocks of the inclusive range `from` to `to`, two blocks, as the reference's ChainDB
+      * `stream` answers its server (`Storage/ChainDB/Impl/Iterator.hs` `newIterator`, 254-451): the
+      * range's `UnknownRange`, answered `NoBlocks`, or its iterator, each result read when it is
+      * pulled. What the reference throws, opening the iterator or in it, is raised
+      * ([[NetworkError.RangeRefused]]), which ends the connection. The length of a range is not
+      * bounded: the reference server streams any range it holds.
       */
-    def range(from: Point, to: Point): F[Answer[F]]
+    def range(from: Point, to: Point)(using
+        Raise[F, NetworkError]
+    ): F[Either[UnknownRange, Stream[F, IteratorResult]]]
 
-  /** A source's answer for a range. */
-  enum Answer[F[_]]:
-    /** The range is not one the node holds (`UnknownRange`): the client gets `NoBlocks`. */
-    case NoBlocks()
+  /** Why a range is not one the node holds: the ChainDB's `UnknownRange` (`Storage/ChainDB/API.hs`
+    * 793-799, ouroboros-consensus 82ecba32), which the server answers with `NoBlocks`.
+    */
+  enum UnknownRange:
+    /** The block at `point` is not held (`MissingBlock`). */
+    case MissingBlock(point: Point)
 
-    /** The blocks of the range, oldest first, each read when it is pulled. A refusal ends the batch
-      * where it stands, before `BatchDone` (`IteratorBlockGCed`, `Server.hs` 144-146).
+    /** The range does not reach the immutable chain's tip from `from` (`ForkTooOld`). */
+    case ForkTooOld(from: Point)
+
+  /** What a range's iterator gives next: the ChainDB's `IteratorResult` (`Storage/ChainDB/API.hs`
+    * 744-783). The stream of a range is the results of the reference's `iteratorNext` calls, up to
+    * the first `Exhausted` or `BlockGCed`.
+    */
+  enum IteratorResult:
+    /** The range is streamed whole (`IteratorExhausted`). */
+    case Exhausted
+
+    /** The next block of the range, its original bytes (`IteratorResult`). */
+    case Block(raw: Bytes)
+
+    /** The next block of the range, at `point`, was collected and is not in the immutable chain
+      * (`IteratorBlockGCed`).
       */
-    case Batch(blocks: Stream[F, Either[NetworkError.RangeRefusal, Bytes]])
-
-    /** The bounds are refused before anything is sent (`InvalidIteratorRange`). */
-    case Refused(refusal: NetworkError.RangeRefusal)
+    case BlockGCed(point: Point)
 
   /** @param idle
     *   The wait for the client's next request: BFIdle is waitForever in timeLimitsBlockFetch
@@ -54,38 +72,37 @@ object BlockFetchServer:
     val codec = CardanoBlockFetch.payloadCodec()
     def refused[A](refusal: NetworkError.RangeRefusal): F[A] =
       NetworkError.RangeRefused(refusal).raise[F, A]
+    def sent(raw: Bytes): F[CardanoBlockFetch.RawNtNBlock] =
+      CardanoBlockFetch.RawNtNBlock
+        .from(raw)
+        .fold(
+          error =>
+            NetworkError.IllegalTransition(id, error).raise[F, CardanoBlockFetch.RawNtNBlock],
+          F.pure
+        )
     val genericBlocks = new BlockFetchRuntime.Blocks[F, Point, CardanoBlockFetch.RawNtNBlock]:
-      // an Origin end ends the connection before the source is asked (`NoGenesisBlock`,
-      // `Server.hs` 107-112); a refusal of the source ends it before `StartBatch`, or in the
-      // batch before `BatchDone`, and `UnknownRange` is `NoBlocks` (118-146)
+      // `blockFetchServer'` (`Server.hs` 104-146): an Origin end throws `NoGenesisBlock` before
+      // the ChainDB is asked; `UnknownRange` is `NoBlocks`; an iterator is a batch, each result
+      // sent as it comes, `IteratorExhausted` its `BatchDone` and `IteratorBlockGCed` thrown as
+      // `BlockGCed`, with no `BatchDone`; what the ChainDB throws ends the connection as well
       def range(
           from: Point,
           to: Point
       ): F[Option[Stream[F, CardanoBlockFetch.RawNtNBlock]]] =
         (from, to) match
           case (_: Point.Block, _: Point.Block) =>
-            blocks.range(from, to).flatMap {
-              case Answer.NoBlocks()       => F.pure(None)
-              case Answer.Refused(refusal) => refused(refusal)
-              case Answer.Batch(stream) =>
-                F.pure(
-                  Some(
-                    stream.evalMap(
-                      _.fold(
-                        refused,
-                        raw =>
-                          CardanoBlockFetch.RawNtNBlock
-                            .from(raw)
-                            .fold(
-                              error =>
-                                NetworkError
-                                  .IllegalTransition(id, error)
-                                  .raise[F, CardanoBlockFetch.RawNtNBlock],
-                              F.pure
-                            )
+            blocks.range(from, to).map {
+              case Left(_) => None
+              case Right(results) =>
+                Some(
+                  results.evalMap {
+                    case IteratorResult.Exhausted  => F.pure(None)
+                    case IteratorResult.Block(raw) => sent(raw).map(Some(_))
+                    case IteratorResult.BlockGCed(point) =>
+                      refused[Option[CardanoBlockFetch.RawNtNBlock]](
+                        NetworkError.RangeRefusal.BlockGCed(point)
                       )
-                    )
-                  )
+                  }.unNoneTerminate
                 )
             }
           case _ => refused(NetworkError.RangeRefusal.NoGenesisBlock)

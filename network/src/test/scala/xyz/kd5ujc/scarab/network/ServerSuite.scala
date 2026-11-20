@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.protocol.{
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
+import cats.mtl.syntax.all.*
 
 import Peers.*
 
@@ -89,7 +90,7 @@ class ServerSuite extends FailsOnUncaught:
             changed.get.flatMap(change => poll.flatMap(_.fold(change.get *> await)(IO.pure)))
       }
 
-    def blockSource: BlockFetchServer.Blocks[IO] = (from, to) =>
+    def blockSource: BlockFetchServer.Blocks[IO] = Peers.blocksOf((from, to) =>
       blocks.get.map { chain =>
         val i = chain.indexWhere(n => Peers.point(n) == from)
         val j = chain.indexWhere(n => Peers.point(n) == to)
@@ -99,6 +100,7 @@ class ServerSuite extends FailsOnUncaught:
           )
         )
       }
+    )
 
   private val noTxs: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
     def reader = TxSubmission2Fixtures.structural
@@ -284,12 +286,25 @@ class ServerSuite extends FailsOnUncaught:
       for
         asked <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
         source = new BlockFetchServer.Blocks[IO]:
-          def range(from: Point, to: Point) =
-            asked.update(_ :+ (from -> to)).as {
-              if from == Peers.point(3) then BlockFetchServer.Answer.Refused(invalid)
+          def range(from: Point, to: Point)(using
+              Net
+          ): IO[
+            Either[BlockFetchServer.UnknownRange, Stream[IO, BlockFetchServer.IteratorResult]]
+          ] =
+            asked.update(_ :+ (from -> to)) *> {
+              if from == Peers.point(3) then NetworkError.RangeRefused(invalid).raise
               else
-                BlockFetchServer.Answer.Batch(
-                  Stream.emits(Vector(Right(Peers.block(1)), Left(collected))).covary[IO]
+                IO.pure(
+                  Right(
+                    Stream
+                      .emits(
+                        Vector(
+                          BlockFetchServer.IteratorResult.Block(Peers.block(1)),
+                          BlockFetchServer.IteratorResult.BlockGCed(Peers.point(2))
+                        )
+                      )
+                      .covary[IO]
+                  )
                 )
             }
         outcome <- typed {

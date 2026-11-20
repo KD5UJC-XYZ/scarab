@@ -84,11 +84,20 @@ class SourceScopeSuite extends FailsOnUncaught:
         failure => reported.complete(failure).void,
         ChainServer.Held.none
       )
-      range <- server.blocks.range(ref(1).point, ref(3).point)
+      range <- xyz.kd5ujc.scarab.network.Peers.typed(
+        server.blocks.range(ref(1).point, ref(3).point)
+      )
       _ <- range match
-        case BlockFetchServer.Answer.Batch(blocks) =>
-          blocks.evalMap(value => seen.update(_ ++ value.toOption)).compile.drain.background.use {
-            _ =>
+        case Right(Right(blocks)) =>
+          blocks
+            .evalMap {
+              case BlockFetchServer.IteratorResult.Block(raw) => seen.update(_ :+ raw)
+              case _                                          => IO.unit
+            }
+            .compile
+            .drain
+            .background
+            .use { _ =>
               for
                 failure <- reported.get.timeout(3.seconds)
                 closed <- released.get
@@ -97,7 +106,7 @@ class SourceScopeSuite extends FailsOnUncaught:
                 assertEquals(failure, Fatal.Storage(error))
                 assert(closed)
                 assertEquals(values, Vector(raw(1), raw(2)))
-          }
+            }
         case other => IO(fail(s"expected a batch, got $other"))
     yield ()
   }

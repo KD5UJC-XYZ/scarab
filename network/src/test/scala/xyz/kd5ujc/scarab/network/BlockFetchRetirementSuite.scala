@@ -20,7 +20,7 @@ class BlockFetchRetirementSuite extends FailsOnUncaught:
       def intersect(points: Vector[Point]) = IO.pure(Right(Point.Origin -> Tip.Origin))
       def poll = IO.pure(None)
       def await = IO.never
-    val blocks: BlockFetchServer.Blocks[IO] = (_, _) => IO.pure(BlockFetchServer.Answer.NoBlocks())
+    val blocks: BlockFetchServer.Blocks[IO] = Peers.blocksOf((_, _) => IO.pure(Peers.unknown))
     val sink = new TxSubmissionServer.Sink[IO]:
       def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)

@@ -132,7 +132,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       },
       new BlockFetchServer.Blocks[IO]:
         // counted across connections: only the very first range is answered
-        def range(from: Point, to: Point) =
+        def range(from: Point, to: Point)(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ) =
           answered.getAndUpdate(_ + 1).flatMap { n =>
             if n == 0 then honest.blocks.range(from, to) else IO.never
           }
@@ -185,16 +187,20 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         honest.codec,
         honest.chainSync,
         new BlockFetchServer.Blocks[IO]:
-          def range(from: Point, to: Point) =
+          def range(from: Point, to: Point)(using
+              cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+          ): IO[
+            Either[BlockFetchServer.UnknownRange, fs2.Stream[IO, BlockFetchServer.IteratorResult]]
+          ] =
             answered.getAndUpdate(_ + 1).flatMap { n =>
               honest.blocks.range(from, to).map {
-                case BlockFetchServer.Answer.Batch(found) if n == 0 =>
-                  BlockFetchServer.Answer.Batch(
-                    found.map(_.map(_ => Bytes(Vector(0xff.toByte)))).evalTap {
-                      case Right(raw) => malformed.complete(raw).void
-                      case Left(_)    => IO.unit
-                    }
-                  )
+                case Right(found) if n == 0 =>
+                  Right(found.evalMap {
+                    case BlockFetchServer.IteratorResult.Block(_) =>
+                      val raw = Bytes(Vector(0xff.toByte))
+                      malformed.complete(raw).as(BlockFetchServer.IteratorResult.Block(raw))
+                    case other => IO.pure(other)
+                  })
                 case other => other
               }
             }

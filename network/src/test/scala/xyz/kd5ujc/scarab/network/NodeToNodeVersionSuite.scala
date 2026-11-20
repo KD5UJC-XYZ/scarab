@@ -23,7 +23,7 @@ class NodeToNodeVersionSuite extends CatsEffectSuite:
       def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(Peers.tip(1)))
       def poll = IO.pure(None)
       def await = IO.never),
-    (_, _) => IO.pure(BlockFetchServer.Answer.NoBlocks()),
+    Peers.blocksOf((_, _) => IO.pure(Peers.unknown)),
     new TxSubmissionServer.Sink[IO]:
       def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)

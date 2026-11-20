@@ -28,11 +28,31 @@ object Peers:
   def header(n: Int): Bytes = Bytes(Vector(n.toByte))
   def block(n: Int): Bytes = Bytes(Vector.fill(100 + n)(n.toByte))
 
-  /** A BlockFetch source's answer from the blocks it found: `NoBlocks` for none. */
-  def answer[F[_]](found: Option[fs2.Stream[F, Bytes]]): BlockFetchServer.Answer[F] =
-    found.fold(BlockFetchServer.Answer.NoBlocks[F]())(blocks =>
-      BlockFetchServer.Answer.Batch(blocks.map(Right(_)))
+  /** A BlockFetch source's answer from the blocks it found: none is an unknown range (`NoBlocks`),
+    * and the blocks found are the range's iterator, `Exhausted` after the last.
+    */
+  def answer[F[_]](
+      found: Option[fs2.Stream[F, Bytes]]
+  ): Either[BlockFetchServer.UnknownRange, fs2.Stream[F, BlockFetchServer.IteratorResult]] =
+    found.fold(unknown)(blocks =>
+      Right(
+        blocks.map(BlockFetchServer.IteratorResult.Block(_)) ++
+          fs2.Stream.emit(BlockFetchServer.IteratorResult.Exhausted)
+      )
     )
+
+  /** A BlockFetch source that answers by `answer`, and never refuses. */
+  def blocksOf[F[_]](
+      answer: (
+          Point,
+          Point
+      ) => F[Either[BlockFetchServer.UnknownRange, fs2.Stream[F, BlockFetchServer.IteratorResult]]]
+  ): BlockFetchServer.Blocks[F] = new BlockFetchServer.Blocks[F]:
+    def range(from: Point, to: Point)(using Raise[F, NetworkError]) = answer(from, to)
+
+  /** A BlockFetch source's answer for a range it does not hold. */
+  def unknown: Either[BlockFetchServer.UnknownRange, Nothing] =
+    Left(BlockFetchServer.UnknownRange.MissingBlock(Point.Origin))
 
   private def fail[A](reason: String): IO[A] = IO.raiseError(new IllegalStateException(reason))
   private def lift[A](either: Either[ProtocolError, A]): IO[A] =

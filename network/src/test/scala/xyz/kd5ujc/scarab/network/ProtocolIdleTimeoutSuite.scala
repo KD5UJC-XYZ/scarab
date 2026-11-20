@@ -30,7 +30,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   private val handlers = ServerHandlers[IO, Bytes](
     ChainSyncFixtures.rawItem,
     Resource.pure(source),
-    (_, _) => IO.pure(BlockFetchServer.Answer.NoBlocks()),
+    Peers.blocksOf((_, _) => IO.pure(Peers.unknown)),
     new TxSubmissionServer.Sink[IO]:
       def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)
