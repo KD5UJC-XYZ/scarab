@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
+import cats.Monad
+import cats.data.Chain
+import cats.mtl.{Raise, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Credential,
@@ -17,7 +20,15 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.Test
-import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{
+  CertState,
+  Coin,
+  Conway,
+  EraTag,
+  UTxOState,
+  UtxoTables,
+  VocabError
+}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 // The predicates of UTXO as the reference writes them, each generic in its era and asking for the
@@ -81,6 +92,27 @@ final case class UtxoContext[E <: EraTag](
     */
   private[rules] def shelley(test: Test[PredicateFailure]): Test[PredicateFailure] =
     test.leftMap(_.map(injectShelley.injectFailure))
+
+/** `data AlonzoUtxoEvent era` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:218-227`,
+  * cardano-ledger f649f975): UTXO's events, Babbage's and Conway's too: UTXOS's, the change of the
+  * deposits a valid transaction makes, by the hash of its body (`hashAnnotated`, its id), and the
+  * outputs it spends and creates.
+  */
+enum AlonzoUtxoEvent[E <: EraTag]:
+  case UtxosEvent(event: xyz.kd5ujc.scarab.ledger.era.rules.UtxosEvent[E])
+  case TotalDeposits(txBodyHash: Bytes, depositChange: Coin)
+  case TxUTxODiff(consumed: UTxO[E], created: UTxO[E])
+
+/** Why the UTxO state could not be changed: what only a damaged store or an output the state's
+  * vocabulary cannot hold gives, where the reference reads its own state with no refusal. Neither
+  * is a verdict of the rules.
+  */
+enum UtxoStateDefect:
+  /** A stored output the era does not read (design §3.6). */
+  case StoredOutput(input: TxIn, error: EraTxError)
+
+  /** An output's stake credential or lovelace outside the state's vocabulary ([[EraStake]]). */
+  case Vocab(error: VocabError)
 
 /** Shelley's predicates of UTXO (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs`,
   * cardano-ledger f649f975).
@@ -206,6 +238,133 @@ object ShelleyUtxo:
     Test.failureOnNonEmpty(outputsAttrsTooBig)(_.isEmpty)(big =>
       failure(UtxoFailure.OutputBootAddrAttrsTooBig(big.map(s.toStored)))
     )
+
+  /** `updateUTxOState` (`Shelley/Rules/Utxo.hs:584-600`, cardano-ledger f649f975): the deposits,
+    * then the outputs and the instant stake, then the fee. `depositChangeEvent` and `utxoDiffEvent`
+    * are told the change of the deposits and the outputs spent and created.
+    */
+  def updateUTxOState[F[_]: Monad, E <: EraTag](
+      pp: PParams[E],
+      txBody: TxBody[TxLevel.Top, E],
+      certState: CertState[E],
+      depositChangeEvent: Coin => F[Unit],
+      utxoDiffEvent: (UTxO[E], UTxO[E]) => F[Unit],
+      utxoState: UTxOState[E]
+  )(using
+      b: EraTxBody[E],
+      c: EraCertState[E],
+      k: EraStake[E],
+      s: StoredTxOut[E],
+      raise: Raise[F, UtxoStateDefect]
+  ): F[UTxOState[E]] =
+    for
+      withDeposits <- updateUTxOStateDeposits[F, E](
+        pp,
+        certState,
+        txBody,
+        depositChangeEvent,
+        utxoState
+      )
+      withUtxo <- updateUTxOAndInstantStake[F, E, TxLevel.Top](txBody, utxoDiffEvent, withDeposits)(
+        using
+        summon[Monad[F]],
+        b,
+        b.top
+      )
+    yield withUtxo.copy(fees = Coin(withUtxo.fees.value + b.fee(txBody).value))
+
+  /** `updateUTxOAndInstantStake` (`Shelley/Rules/Utxo.hs:602-628`, cardano-ledger f649f975): the
+    * body's inputs taken out of the UTxO set and its outputs (`txouts`) put in, the set's own entry
+    * kept where both have one (`Map.union` is left-biased), and the instant stake with the outputs
+    * created added and then the outputs spent deleted. Each output spent is read from the store
+    * into the era.
+    */
+  def updateUTxOAndInstantStake[F[_]: Monad, E <: EraTag, L <: TxLevel](
+      txBody: TxBody[L, E],
+      utxoDiffEvent: (UTxO[E], UTxO[E]) => F[Unit],
+      utxoState: UTxOState[E]
+  )(using
+      b: EraTxBody[E],
+      l: b.Level[L],
+      k: EraStake[E],
+      s: StoredTxOut[E],
+      raise: Raise[F, UtxoStateDefect]
+  ): F[UTxOState[E]] =
+    val utxoAdd = UTxOs.txouts[E, L](txBody)
+    val (utxoWithout, utxoDel) = extractKeys(utxoState.utxo.utxo, b.inputs[L](txBody))
+    for
+      deletedUtxo <- readStored[F, E](utxoDel)
+      newInstantStake <- vocab[F, xyz.kd5ujc.scarab.ledger.state.InstantStake[E]](
+        k.addInstantStake(utxoAdd, utxoState.instantStake)
+          .flatMap(k.deleteInstantStake(deletedUtxo, _))
+      )
+      _ <- utxoDiffEvent(deletedUtxo, utxoAdd)
+    yield utxoState.copy(
+      utxo = UtxoTables(union(utxoWithout, utxoAdd)),
+      instantStake = newInstantStake
+    )
+
+  /** `updateUTxOStateDeposits` (`Shelley/Rules/Utxo.hs:630-647`, cardano-ledger f649f975): the
+    * deposits the body pays less the refunds it collects, told and added to the deposit pot.
+    */
+  def updateUTxOStateDeposits[F[_]: Monad, E <: EraTag](
+      pp: PParams[E],
+      certState: CertState[E],
+      txBody: TxBody[TxLevel.Top, E],
+      depositChangeEvent: Coin => F[Unit],
+      utxoState: UTxOState[E]
+  )(using b: EraTxBody[E], c: EraCertState[E]): F[UTxOState[E]] =
+    val totalDeposits = c.certsTotalDepositsTxBody(pp, certState, txBody)
+    val totalRefunds = c.certsTotalRefundsTxBody[TxLevel.Top](
+      pp,
+      c.certDStateL.get(certState).accounts,
+      txBody
+    )(using b, b.top)
+    val depositChange = Coin(totalDeposits.value - totalRefunds.value)
+    depositChangeEvent(depositChange).as(
+      utxoState.copy(deposited = Coin(utxoState.deposited.value + depositChange.value))
+    )
+
+  /** `extractKeys` (`Data.Map`): the stored set without `keys`, and its entries at `keys`. */
+  private[rules] def extractKeys(
+      utxo: xyz.kd5ujc.scarab.ledger.Utxo,
+      keys: Iterable[TxIn]
+  ): (xyz.kd5ujc.scarab.ledger.Utxo, Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]) =
+    (utxo -- keys, keys.iterator.flatMap(in => utxo.get(in).map(in -> _)).toMap)
+
+  /** `Map.union` of the stored set and `added`, which is left-biased: the stored set's entry is
+    * kept where both have one.
+    */
+  private[rules] def union[E <: EraTag](
+      utxo: xyz.kd5ujc.scarab.ledger.Utxo,
+      added: UTxO[E]
+  )(using s: StoredTxOut[E]): xyz.kd5ujc.scarab.ledger.Utxo =
+    utxo ++ added.unUTxO.toVector.sortBy(_._1).collect {
+      case (in, out) if !utxo.contains(in) => in -> s.toStored(out)
+    }
+
+  /** The stored outputs `stored`, read into the era. */
+  private[rules] def readStored[F[_], E <: EraTag](
+      stored: Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
+  )(using F: Monad[F], s: StoredTxOut[E], raise: Raise[F, UtxoStateDefect]): F[UTxO[E]] =
+    stored.toVector
+      .sortBy(_._1)
+      .traverse((in, out) =>
+        s.fromStored(out)
+          .fold(
+            e =>
+              raise.raise[UtxoStateDefect, (TxIn, TxOut[E])](UtxoStateDefect.StoredOutput(in, e)),
+            o => F.pure(in -> o)
+          )
+      )
+      .map(outs => UTxO[E](outs.toMap))
+
+  /** A change of the instant stake, or its refusal raised. */
+  private[rules] def vocab[F[_], A](result: Either[VocabError, A])(using
+      F: Monad[F],
+      raise: Raise[F, UtxoStateDefect]
+  ): F[A] =
+    result.fold(e => raise.raise[UtxoStateDefect, A](UtxoStateDefect.Vocab(e)), F.pure)
 
 /** Allegra's predicates of UTXO (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs`,
   * cardano-ledger f649f975).
@@ -602,6 +761,87 @@ object BabbageUtxo:
       )
     )
 
+  /** `collOuts` (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs:43-50`, cardano-ledger
+    * f649f975): the collateral return, if the body has one, at [[mkCollateralTxIn]], as
+    * [[xyz.kd5ujc.scarab.ledger.TxIn.collOuts]] places it.
+    */
+  def collOuts[E <: EraTag](txBody: TxBody[TxLevel.Top, E])(using
+      b: BabbageEraTxBody[E]
+  ): UTxO[E] =
+    UTxO(
+      TxIn
+        .collOuts(
+          b.id[TxLevel.Top](txBody)(using b.top),
+          b.outputs[TxLevel.Top](txBody)(using b.top).length,
+          b.sizedCollateralReturn(txBody).map(_.value)
+        )
+        .toMap
+    )
+
+  /** `mkCollateralTxIn` (`Babbage/Collateral.hs:52-60`, cardano-ledger f649f975): the body's id at
+    * the index after its outputs, `maxBound` (65,535) where that index is not a `TxIx`
+    * ([[xyz.kd5ujc.scarab.ledger.TxIn.mkCollateralTxIn]]).
+    */
+  def mkCollateralTxIn[E <: EraTag, L <: TxLevel](txBody: TxBody[L, E])(using
+      b: EraTxBody[E],
+      l: b.Level[L]
+  ): TxIn =
+    TxIn.mkCollateralTxIn(b.id[L](txBody), b.outputs[L](txBody).length)
+
+  /** `updateUTxOState` (`Babbage/Rules/Utxo.hs:449-486`, cardano-ledger f649f975): a transaction
+    * flagged valid changes the state as Shelley's does, its deposits and outputs told as UTXO's
+    * events; one flagged invalid spends its collateral inputs the set holds, creates its collateral
+    * return ([[collOuts]]), pays their lovelace less the return's as fees ([[collAdaBalance]]), and
+    * changes the instant stake by the return added and then the collateral deleted.
+    */
+  def updateUTxOState[F[_]: Monad, E <: EraTag](
+      pp: PParams[E],
+      certState: CertState[E],
+      tx: Tx[TxLevel.Top, E],
+      utxoState: UTxOState[E]
+  )(using
+      t: AlonzoEraTx[E],
+      b: BabbageEraTxBody[E],
+      c: EraCertState[E],
+      k: EraStake[E],
+      s: StoredTxOut[E],
+      events: Tell[F, Chain[AlonzoUtxoEvent[E]]],
+      raise: Raise[F, UtxoStateDefect]
+  ): F[UTxOState[E]] =
+    val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+    t.isValid(tx) match
+      case IsPhase2Valid.Phase2Valid =>
+        ShelleyUtxo.updateUTxOState[F, E](
+          pp,
+          txBody,
+          certState,
+          depositChange =>
+            events.tell(
+              Chain.one(
+                AlonzoUtxoEvent.TotalDeposits(b.id[TxLevel.Top](txBody)(using b.top), depositChange)
+              )
+            ),
+          (consumed, created) =>
+            events.tell(Chain.one(AlonzoUtxoEvent.TxUTxODiff(consumed, created))),
+          utxoState
+        )
+      case IsPhase2Valid.Phase2Invalid =>
+        val (utxoKeep, utxoDel) =
+          ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.collateralInputs(txBody))
+        val collouts = collOuts(txBody)
+        for
+          deleted <- ShelleyUtxo.readStored[F, E](utxoDel)
+          collateralFees = collAdaBalance(txBody, deleted.unUTxO)
+          instantStake <- ShelleyUtxo.vocab[F, xyz.kd5ujc.scarab.ledger.state.InstantStake[E]](
+            k.addInstantStake(collouts, utxoState.instantStake)
+              .flatMap(k.deleteInstantStake(deleted, _))
+          )
+        yield utxoState.copy(
+          utxo = UtxoTables(ShelleyUtxo.union(utxoKeep, collouts)),
+          fees = Coin(utxoState.fees.value + collateralFees),
+          instantStake = instantStake
+        )
+
 /** Conway's functions of UTXO (`eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs`). */
 object ConwayUtxo:
   /** `injectFailure` of `InjectRuleFailure "UTXO" ShelleyUtxoPredFailure ConwayEra`
@@ -635,3 +875,23 @@ object ConwayUtxo:
     build match
       case ReferenceBuild.Release11_1                                => injectShelleyFailure11_1
       case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => injectShelleyFailure11_2
+
+  /** `updateTreasuryDonation` (`Conway/Rules/Utxo.hs:200-209`, cardano-ledger f649f975): the
+    * donation of a transaction flagged valid added to the state's.
+    */
+  def updateTreasuryDonation[E <: EraTag](tx: Tx[TxLevel.Top, E], utxos: UTxOState[E])(using
+      t: AlonzoEraTx[E],
+      b: ConwayEraTxBody[E]
+  ): UTxOState[E] =
+    t.isValid(tx) match
+      case IsPhase2Valid.Phase2Valid =>
+        utxos.copy(donation =
+          Coin(
+            utxos.donation.value + b
+              .treasuryDonation[TxLevel.Top](t.body[TxLevel.Top](tx)(using t.bodyOf.top))(using
+                b.top
+              )
+              .value
+          )
+        )
+      case IsPhase2Valid.Phase2Invalid => utxos
