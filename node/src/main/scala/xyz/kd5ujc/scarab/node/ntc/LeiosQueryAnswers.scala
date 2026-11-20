@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.node.ntc
 import cats.syntax.all.*
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.PoolParams
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.node.read.{EraRead, EraViews}
@@ -27,7 +26,7 @@ private[ntc] final case class StakePoolStateResult(
     numDelegators: BigInt,
     delegators: Option[SortedSet[Credential[Staking]]],
     retiring: Option[EpochNo],
-    future: Option[PoolParams]
+    future: Option[StakePoolParams]
 )
 
 /** `QueryResultLeiosCommittee` (cardano-ledger 9df9f98c `Api/State/Query.hs:989-997`): the Leios
@@ -63,11 +62,7 @@ object LeiosQueryAnswers:
       val asked = pools.fold(p.stakePools)(keep => p.stakePools.filter((id, _) => keep(id.bytes)))
       asked.toVector
         .traverse((id, s) =>
-          p.future
-            .get(id)
-            .traverse(CertStateAnswers.futureParams)
-            .flatMap(result(s, p.retiring.get(id), _, delegators))
-            .map(id -> _)
+          result(s, p.retiring.get(id), p.future.get(id), delegators).map(id -> _)
         )
         .flatMap(rs => stakePoolStates.write(Sorted.map(rs)).leftMap(_ => Unanswered.Unwritable))
     }
@@ -98,7 +93,7 @@ object LeiosQueryAnswers:
   private def result(
       s: StakePoolState,
       retiring: Option[EpochNo],
-      future: Option[PoolParams],
+      future: Option[StakePoolParams],
       delegators: PoolDelegators
   ): Either[Unanswered, StakePoolStateResult] =
     s.blsKey match
@@ -152,7 +147,7 @@ object LeiosQueryAnswers:
           Wire.word(63),
           Wire.nullable(Wire.setOf(summon[Codec[Credential[Staking]]])),
           Wire.nullable(summon[Codec[EpochNo]]),
-          Wire.nullable(summon[Codec[PoolParams]])
+          Wire.nullable(LeiosStateCodecs.stakePoolParams)
         )
       )
     )
