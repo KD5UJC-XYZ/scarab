@@ -136,7 +136,8 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
             None,
             None,
             ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
-            fatalSink(fatals)
+            fatalSink(fatals),
+            ChainServer.Held.none
           )
       )
       _ <- Resource.eval(

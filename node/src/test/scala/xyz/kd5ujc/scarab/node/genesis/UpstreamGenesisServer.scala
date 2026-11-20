@@ -101,18 +101,22 @@ final class UpstreamGenesisServer private (
   }
 
   val blocks: BlockFetchServer.Blocks[IO] = new BlockFetchServer.Blocks[IO]:
-    def range(from: Point, to: Point) =
+    def range(from: Point, to: Point)(using
+        cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+    ) =
       online.get *> IO.pure {
-        for
-          nativeTo <- universe.decode(to).toOption
-          source = universe.chain(nativeTo)
-          first = source.indexWhere(_.header.point == from)
-          last = source.indexWhere(_.header.point == to)
-          if first >= 0 && last >= first
-        yield Stream
-          .emits(source.slice(first, last + 1))
-          .covary[IO]
-          .evalMap(b => waitBlock(b).as(b.body))
+        xyz.kd5ujc.scarab.network.Peers.answer(
+          for
+            nativeTo <- universe.decode(to).toOption
+            source = universe.chain(nativeTo)
+            first = source.indexWhere(_.header.point == from)
+            last = source.indexWhere(_.header.point == to)
+            if first >= 0 && last >= first
+          yield Stream
+            .emits(source.slice(first, last + 1))
+            .covary[IO]
+            .evalMap(b => waitBlock(b).as(b.body))
+        )
       }
 
   def restart: IO[UpstreamGenesisServer] =

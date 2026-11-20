@@ -60,6 +60,16 @@ trait VolatileStore[F[_]]:
     */
   def gc(durableSlot: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
+  /** Delete every log file but the newest whose blocks all have a slot below `slot`, wherever it is
+    * in the log, and answer the numbers of the files deleted: the reference's VolatileDB collection
+    * (`garbageCollectImpl` and `getFilesToGC`, `Storage/VolatileDB/Impl.hs` 453-516, and
+    * `FileInfo.canGC`, `Impl/FileInfo.hs` 88-97, ouroboros-consensus 82ecba32), which takes any
+    * file but the one being written whose newest slot is below the slot, empty files too. For a log
+    * of blocks only: a log with rollback records is collected from its oldest file ([[gc]]), since
+    * its rollbacks are replayed in order.
+    */
+  def collect(slot: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Set[Int]]
+
   /** Force the log to disk. */
   def sync(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
@@ -275,6 +285,18 @@ object VolatileStore:
       Raise[F, StorageError]
   ): Resource[F, (VolatileStore[F], Opened[Location])] =
     opening[F, Location](dir, blocksPerFile)((_, at) => at)
+
+  /** As [[openIndex]], keeping also `note(body)` of each block, read from the body while its record
+    * is read and the body dropped after: what the index of a log of blocks only keeps beside each
+    * location (for [[ReceivedBlocks]], the predecessor its header names, as the reference's
+    * VolatileDB keeps each block's `BlockInfo` in its index, `Storage/VolatileDB/Impl/Types.hs`
+    * 127-133, ouroboros-consensus 82ecba32). The recovered chain of a log with no rollback record
+    * is every block record, in log order.
+    */
+  def openIndexWith[F[_]: Async, N](dir: Path, blocksPerFile: Int = 512)(note: Bytes => N)(using
+      Raise[F, StorageError]
+  ): Resource[F, (VolatileStore[F], Opened[(Location, N)])] =
+    opening[F, (Location, N)](dir, blocksPerFile)((raw, at) => (at, note(raw)))
 
   /** The open, keeping `keep(body, location)` of each block of the recovered chain. */
   private def opening[F[_]: Async, A](dir: Path, blocksPerFile: Int)(keep: (Bytes, Location) => A)(
@@ -499,6 +521,25 @@ object VolatileStore:
                   } *> files.update(fs =>
                     NonEmptyVector.one(fs.last).prependVector(fs.init.drop(doomed.size))
                   )
+              }
+            }
+
+          def collect(slot: BigInt)(using cats.mtl.Raise[F, StorageError]): F[Set[Int]] =
+            mutex.lock.surround {
+              files.get.flatMap { fs =>
+                // the newest file is the one being written, which is never collected
+                val doomed = fs.init.filter(_.maxSlot < slot)
+                val gone = doomed.map(_.seq).toSet
+                if gone.isEmpty then F.pure(gone)
+                else
+                  guard(root.toString) {
+                    doomed.foreach(f => Files.deleteIfExists(root.resolve(nameOf(f.seq))))
+                    syncDir()
+                  } *> files
+                    .update(fs =>
+                      NonEmptyVector.one(fs.last).prependVector(fs.init.filterNot(f => gone(f.seq)))
+                    )
+                    .as(gone)
               }
             }
         (store: VolatileStore[F], opened)

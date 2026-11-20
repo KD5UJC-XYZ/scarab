@@ -9,7 +9,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
-import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.network.{BlockFetchServer, FailsOnUncaught}
 import xyz.kd5ujc.scarab.node.{Fatal, NodeScope, StorageBoundary}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.storage.ImmutableStore
@@ -19,11 +19,12 @@ class SourceScopeSuite extends FailsOnUncaught:
 
   private def store(
       getBody: Point => Raise[IO, StorageError] ?=> IO[Option[Bytes]],
-      streamBody: Raise[IO, StorageError] ?=> Stream[IO, ImmutableStore.Stored]
+      streamBody: Raise[IO, StorageError] ?=> Stream[IO, ImmutableStore.Stored],
+      newest: Option[BlockRef] = None
   ): ImmutableStore[IO] = new ImmutableStore[IO]:
     def append(ref: BlockRef, raw: Bytes)(using Raise[IO, StorageError]) = IO.unit
     def sync(using Raise[IO, StorageError]) = IO.unit
-    def tip(using Raise[IO, StorageError]) = IO.pure(None)
+    def tip(using Raise[IO, StorageError]) = IO.pure(newest)
     def get(point: Point)(using Raise[IO, StorageError]) = getBody(point)
     // the index entry of the block `getBody` gives, numbered as RelayKit numbers it
     def refOf(point: Point.Block)(using Raise[IO, StorageError]) =
@@ -43,7 +44,8 @@ class SourceScopeSuite extends FailsOnUncaught:
           Some(store(_ => error.raise[IO, Option[Bytes]], Stream.empty)),
           None,
           headerOf,
-          failure => reported.complete(failure).void
+          failure => reported.complete(failure).void,
+          ChainServer.Held.none
         )
       }
       _ <- server.source.use { source =>
@@ -73,25 +75,38 @@ class SourceScopeSuite extends FailsOnUncaught:
             Stream.resource(Resource.make(IO.unit)(_ => released.set(true))).flatMap { _ =>
               Stream.emit(ImmutableStore.Stored(ref(2), raw(2))) ++
                 Stream.eval(error.raise[IO, ImmutableStore.Stored])
-            }
+            },
+            Some(ref(3))
           )
         ),
         None,
         headerOf,
-        failure => reported.complete(failure).void
+        failure => reported.complete(failure).void,
+        ChainServer.Held.none
       )
-      range <- server.blocks.range(ref(1).point, ref(3).point)
-      _ <- range.fold(IO(fail("expected range"))) { blocks =>
-        blocks.evalMap(value => seen.update(_ :+ value)).compile.drain.background.use { _ =>
-          for
-            failure <- reported.get.timeout(3.seconds)
-            closed <- released.get
-            values <- seen.get
-          yield
-            assertEquals(failure, Fatal.Storage(error))
-            assert(closed)
-            assertEquals(values, Vector(raw(1), raw(2)))
+      // the range is made and pulled in one scope of the network capability, in the background
+      pulled = xyz.kd5ujc.scarab.network.Peers.typed(
+        server.blocks.range(ref(1).point, ref(3).point).flatMap {
+          case Right(blocks) =>
+            blocks
+              .evalMap {
+                case BlockFetchServer.IteratorResult.Block(raw) => seen.update(_ :+ raw)
+                case _                                          => IO.unit
+              }
+              .compile
+              .drain
+          case Left(unknown) => IO(fail(s"expected a batch, got $unknown"))
         }
+      )
+      _ <- pulled.background.use { _ =>
+        for
+          failure <- reported.get.timeout(3.seconds)
+          closed <- released.get
+          values <- seen.get
+        yield
+          assertEquals(failure, Fatal.Storage(error))
+          assert(closed)
+          assertEquals(values, Vector(raw(1), raw(2)))
       }
     yield ()
   }

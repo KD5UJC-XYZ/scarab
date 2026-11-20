@@ -28,7 +28,10 @@ class OutboundLossReportSuite extends FailsOnUncaught:
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     val blocks = new BlockFetchServer.Blocks[IO]:
-      def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
+      def range(from: ChainSync.Point, to: ChainSync.Point)(using
+          cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+      ) =
+        IO.pure(Peers.unknown)
     val transactions = new TxSubmissionServer.Sink[IO]:
       def reader = RelayedTransactions
       def known(id: xyz.kd5ujc.scarab.codec.Bytes) = IO.pure(false)

@@ -54,9 +54,11 @@ outbound governor promotes the peer and reuses the connection (see "Connections"
 **Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
 clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
 a `Source` that holds one client's cursor. `BlockFetchServer` streams an inclusive range from a
-`Blocks` source and answers NoBlocks for anything that is not a contiguous stretch of our chain, in
-order by slot (a Byron boundary block first in its slot); the
-length of a range is not bounded, as the reference's server streams any range it holds. `KeepAliveServer` echoes cookies. `TxSubmissionClient` and
+`Blocks` source, which answers as the reference's ChainDB `stream` does: an `UnknownRange`, answered
+NoBlocks, or the range's iterator, its `IteratorResult`s sent as they come (`Exhausted` is BatchDone);
+what the reference throws (an Origin end, bounds that are not a range, `BlockGCed`) is raised as
+`NetworkError.RangeRefused` and ends the connection, a batch without BatchDone; the length of a range is not bounded, as the reference's server streams any range it
+holds. `KeepAliveServer` echoes cookies. `TxSubmissionClient` and
 `TxSubmissionServer` are the two roles of TxSubmission2: the client offers a `Source` of
 transactions (each once per connection, by ticket number) and hands out bodies on request; the
 server asks for ids with a blocking request, fetches the bodies it does not know (verifying the id
@@ -74,8 +76,12 @@ FindIntersect checks each offered point against the chain as it is and moves the
 the same update, as the reference's follower does (`checkIfPointOnChain`); a point older than the
 volatile chain is looked up in the store's index, which never drops a block, before the pointer moves to
 it; the block is not read. A client behind the volatile chain is served from the `ImmutableStore`, one read
-of each block, whose header is decoded without decoding the contents of its body. A BlockFetch range finds its ends in the
-volatile chain or the store's index and reads each stored block of the range once, none after it. `ChainServer` is a
+of each block, whose header is decoded without decoding the contents of its body. ChainSync follows the selected chain
+alone; BlockFetch serves any fork the node holds (`relay/HeldRange.scala`), as the reference's ChainDB iterator does: a
+range newer than the immutable tip is a path walked back from its upper bound through the held blocks (the volatile
+chain and the received log, whose index names each block's predecessor), joined to the store only at its tip, and an
+older range is the store's; its ends are found in those indexes, no block read, and each block is read once, when it
+is sent, a held block collected meanwhile from the store if it is there. `ChainServer` is a
 `ChainPersistence`, composed after the storage persistence so a block is stored before it leaves the
 volatile chain. Without `--db` only the volatile chain can be served.
 

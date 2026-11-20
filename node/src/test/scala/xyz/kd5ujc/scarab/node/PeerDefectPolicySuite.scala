@@ -74,6 +74,27 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
       case other => fail(s"unexpected $other")
   }
 
+  test("a range our BlockFetch server refuses ends the connection, the peer tried again later") {
+    // the reference's rethrow policy makes NoGenesisBlock, BlockGCed and both InvalidIteratorRange
+    // exceptions `ShutdownPeer` (consensus 82ecba329 Node/RethrowPolicy.hs:72-100): the peer is
+    // neither forgotten nor exempt from the error delay
+    val point = ChainSync.Point.Block(ChainSync.UInt64.saturating(BigInt(3)), Bytes(Vector(1)))
+    Vector(
+      NetworkError.RangeRefusal.NoGenesisBlock,
+      NetworkError.RangeRefusal.InvalidIteratorRange(point, ChainSync.Point.Origin),
+      NetworkError.RangeRefusal.InvalidIteratorRangeError(point, ChainSync.Point.Origin),
+      NetworkError.RangeRefusal.BlockGCed(point)
+    ).foreach { refusal =>
+      val refused = NetworkError.RangeRefused(refusal)
+      Peer.networkFault(refused) match
+        case Fault.Failed(error @ PeerError.RangeRefused(seen)) =>
+          assertEquals(seen, refused)
+          assertEquals(FailurePolicy.classify(error), FailureClass.Transient, refusal.toString)
+          assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+        case other => fail(s"unexpected $other")
+    }
+  }
+
   // issue 567: of unknown origin on a connection, the connection's: it ends, uncharged
   test("a defect of unknown origin on a connection ends that connection, not the node") {
     Peer.networkFault(NetworkError.Defect(cause)) match
@@ -210,7 +231,9 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
           def poll = IO.pure(None)
           def await = IO.never
       ),
-      (_, _) => IO.pure(None),
+      xyz.kd5ujc.scarab.network.Peers.blocksOf((_, _) =>
+        IO.pure(xyz.kd5ujc.scarab.network.Peers.unknown)
+      ),
       new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)

@@ -59,15 +59,21 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
           release <- Deferred[IO, Unit]
           requests <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
           source = new BlockFetchServer.Blocks[IO]:
-            def range(from: Point, to: Point): IO[Option[Stream[IO, Bytes]]] =
+            def range(from: Point, to: Point)(using
+                cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+            ): IO[
+              Either[BlockFetchServer.UnknownRange, fs2.Stream[IO, BlockFetchServer.IteratorResult]]
+            ] =
               requests.update(_ :+ (from -> to)).as {
-                if (from -> to) == first then
-                  Some(
-                    Stream.exec(streaming.complete(()).void *> release.get) ++
-                      Stream.emits(Vector(Peers.block(1), Peers.block(2)))
-                  )
-                else if (from -> to) == last then Some(Stream.emit(Peers.block(5)))
-                else None
+                Peers.answer(
+                  if (from -> to) == first then
+                    Some(
+                      Stream.exec(streaming.complete(()).void *> release.get) ++
+                        Stream.emits(Vector(Peers.block(1), Peers.block(2)))
+                    )
+                  else if (from -> to) == last then Some(Stream.emit(Peers.block(5)))
+                  else None
+                )
               }
           result <- Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (client, server) =>
             for

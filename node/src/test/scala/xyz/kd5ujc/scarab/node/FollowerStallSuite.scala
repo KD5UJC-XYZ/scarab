@@ -78,7 +78,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         None,
         None,
         ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
-        failure => IO.raiseError(new AssertionError(failure.message))
+        failure => IO.raiseError(new AssertionError(failure.message)),
+        ChainServer.Held.none
       )
       _ <- Handle
         .allow[xyz.kd5ujc.scarab.ledger.NodeError] {
@@ -131,7 +132,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       },
       new BlockFetchServer.Blocks[IO]:
         // counted across connections: only the very first range is answered
-        def range(from: Point, to: Point) =
+        def range(from: Point, to: Point)(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ) =
           answered.getAndUpdate(_ + 1).flatMap { n =>
             if n == 0 then honest.blocks.range(from, to) else IO.never
           }
@@ -184,14 +187,21 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         honest.codec,
         honest.chainSync,
         new BlockFetchServer.Blocks[IO]:
-          def range(from: Point, to: Point) =
+          def range(from: Point, to: Point)(using
+              cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+          ): IO[
+            Either[BlockFetchServer.UnknownRange, fs2.Stream[IO, BlockFetchServer.IteratorResult]]
+          ] =
             answered.getAndUpdate(_ + 1).flatMap { n =>
-              honest.blocks.range(from, to).map { found =>
-                if n == 0 then
-                  found.map(_.map(_ => Bytes(Vector(0xff.toByte))).evalTap { raw =>
-                    malformed.complete(raw).void
+              honest.blocks.range(from, to).map {
+                case Right(found) if n == 0 =>
+                  Right(found.evalMap {
+                    case BlockFetchServer.IteratorResult.Block(_) =>
+                      val raw = Bytes(Vector(0xff.toByte))
+                      malformed.complete(raw).as(BlockFetchServer.IteratorResult.Block(raw))
+                    case other => IO.pure(other)
                   })
-                else found
+                case other => other
               }
             }
         ,

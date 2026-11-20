@@ -10,6 +10,8 @@ import fs2.Stream
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{
+  BlockFetch,
+  CardanoBlockFetch,
   ChainSync,
   ChainSyncFixtures,
   Handshake,
@@ -19,6 +21,7 @@ import xyz.kd5ujc.scarab.protocol.{
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
+import cats.mtl.syntax.all.*
 
 import Peers.*
 
@@ -87,14 +90,17 @@ class ServerSuite extends FailsOnUncaught:
             changed.get.flatMap(change => poll.flatMap(_.fold(change.get *> await)(IO.pure)))
       }
 
-    def blockSource: BlockFetchServer.Blocks[IO] = (from, to) =>
+    def blockSource: BlockFetchServer.Blocks[IO] = Peers.blocksOf((from, to) =>
       blocks.get.map { chain =>
         val i = chain.indexWhere(n => Peers.point(n) == from)
         val j = chain.indexWhere(n => Peers.point(n) == to)
-        Option.when(i >= 0 && j >= i)(
-          Stream.emits(chain.slice(i, j + 1).map(Peers.block).toList).covary[IO]
+        Peers.answer(
+          Option.when(i >= 0 && j >= i)(
+            Stream.emits(chain.slice(i, j + 1).map(Peers.block).toList).covary[IO]
+          )
         )
       }
+    )
 
   private val noTxs: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
     def reader = TxSubmission2Fixtures.structural
@@ -269,6 +275,82 @@ class ServerSuite extends FailsOnUncaught:
         )
       )
     )
+
+  test("BlockFetch server: a refused range ends the server, before the batch or in it"):
+    // `MiniProtocol/BlockFetch/Server.hs` 107-146 (ouroboros-consensus 82ecba32): an Origin end
+    // throws `NoGenesisBlock` before the ChainDB is asked, `InvalidIteratorRange` comes from
+    // opening the iterator, before `StartBatch`, and `BlockGCed` from the batch, with no `BatchDone`
+    val collected = NetworkError.RangeRefusal.BlockGCed(Peers.point(2))
+    val invalid = NetworkError.RangeRefusal.InvalidIteratorRange(Peers.point(3), Peers.point(1))
+    def exchange(from: Point, to: Point) =
+      for
+        asked <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
+        source = new BlockFetchServer.Blocks[IO]:
+          def range(from: Point, to: Point)(using
+              Net
+          ): IO[
+            Either[BlockFetchServer.UnknownRange, Stream[IO, BlockFetchServer.IteratorResult]]
+          ] =
+            asked.update(_ :+ (from -> to)) *> {
+              if from == Peers.point(3) then NetworkError.RangeRefused(invalid).raise
+              else
+                IO.pure(
+                  Right(
+                    Stream
+                      .emits(
+                        Vector(
+                          BlockFetchServer.IteratorResult.Block(Peers.block(1)),
+                          BlockFetchServer.IteratorResult.BlockGCed(Peers.point(2))
+                        )
+                      )
+                      .covary[IO]
+                  )
+                )
+            }
+        outcome <- typed {
+          linked(protocols = Set(3)).use { (client, server) =>
+            for
+              c <- client.channel(3)
+              s <- server.channel(3, Mux.Role.Responder)
+              serving <- typed(BlockFetchServer.run(s, source)).start
+              request <- BlockFetch
+                .encode(
+                  BlockFetch.State.Idle,
+                  BlockFetch.Role.Client,
+                  BlockFetch.Message.RequestRange(from, to),
+                  CardanoBlockFetch.payloadCodec()
+                )
+                .fold(e => IO.raiseError(RuntimeException(e.message)), IO.pure)
+              _ <- c.send(request)
+              ended <- serving.joinWithNever
+            yield ended
+          }
+        }
+        seen <- asked.get
+      yield (outcome, seen)
+    for
+      origin <- exchange(Point.Origin, Peers.point(2))
+      refused <- exchange(Peers.point(3), Peers.point(1))
+      inBatch <- exchange(Peers.point(1), Peers.point(2))
+    yield
+      assertEquals(
+        origin,
+        (Right(Left(NetworkError.RangeRefused(NetworkError.RangeRefusal.NoGenesisBlock))), Vector())
+      )
+      assertEquals(
+        refused,
+        (
+          Right(Left(NetworkError.RangeRefused(invalid))),
+          Vector(Peers.point(3) -> Peers.point(1))
+        )
+      )
+      assertEquals(
+        inBatch,
+        (
+          Right(Left(NetworkError.RangeRefused(collected))),
+          Vector(Peers.point(1) -> Peers.point(2))
+        )
+      )
 
   test("KeepAlive server echoes cookies and stops on Done"):
     typed {

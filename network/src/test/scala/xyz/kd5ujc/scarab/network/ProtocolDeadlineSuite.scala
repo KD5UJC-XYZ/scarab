@@ -88,9 +88,13 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
                 c <- clientMux.channel(Protocols.BlockFetch)
                 s <- serverMux.channel(Protocols.BlockFetch)
                 blocks = new BlockFetchServer.Blocks[IO]:
-                  def range(from: ChainSync.Point, to: ChainSync.Point) =
+                  def range(from: ChainSync.Point, to: ChainSync.Point)(using
+                      cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+                  ) =
                     IO.pure(
-                      Some(Stream.sleep_[IO](2.seconds) ++ Stream.emit(Bytes(Vector(1.toByte))))
+                      Peers.answer(
+                        Some(Stream.sleep_[IO](2.seconds) ++ Stream.emit(Bytes(Vector(1.toByte))))
+                      )
                     )
                 timeouts = BlockFetchRuntime.Timeouts(
                   ProtocolDeadline.Unbounded,

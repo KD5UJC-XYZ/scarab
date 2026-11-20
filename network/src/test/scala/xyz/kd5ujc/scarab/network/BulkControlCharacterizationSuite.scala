@@ -76,11 +76,15 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
         def range(
             from: ChainSync.Point,
             to: ChainSync.Point
-        ): IO[Option[Stream[IO, Bytes]]] =
+        )(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ): IO[
+          Either[BlockFetchServer.UnknownRange, fs2.Stream[IO, BlockFetchServer.IteratorResult]]
+        ] =
           IO {
             assertEquals(from, Peers.point(1))
             assertEquals(to, Peers.point(load.blocks))
-            Some(Stream.emits(Vector.fill(load.blocks)(payload)))
+            Peers.answer(Some(Stream.emits(Vector.fill(load.blocks)(payload))))
           }
       outcome <- Peers.typed {
         (

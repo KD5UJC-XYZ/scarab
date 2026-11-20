@@ -38,7 +38,10 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     val blocks = new BlockFetchServer.Blocks[IO]:
-      def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
+      def range(from: ChainSync.Point, to: ChainSync.Point)(using
+          cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+      ) =
+        IO.pure(Peers.unknown)
     val transactions = new TxSubmissionServer.Sink[IO]:
       def reader = RelayedTransactions
       def known(id: Bytes) = IO.pure(false)
@@ -277,13 +280,19 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               // A peer serves any range of its chain: BlockFetch requests the candidate's blocks
               // in the ranges its decisions choose, not one per published header.
               blocks = new BlockFetchServer.Blocks[IO]:
-                def range(from: Point, to: Point) =
+                def range(from: Point, to: Point)(using
+                    cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+                ) =
                   val start = chain.headers.indexWhere(_.point == from)
                   val end = chain.headers.indexWhere(_.point == to)
                   val raw = Option.when(start >= 0 && end >= start)(
                     fs2.Stream.emits(chain.raws.slice(start, end + 1)).covary[IO]
                   )
-                  filled.complete(()).void.whenA(to == chain.headers(Peer.Depth).point).as(raw)
+                  filled
+                    .complete(())
+                    .void
+                    .whenA(to == chain.headers(Peer.Depth).point)
+                    .as(xyz.kd5ujc.scarab.network.Peers.answer(raw))
               servers = ServerHandlers(NtNHeader.codec, cursor, blocks, handlers.transactions)
               transport <- InMemoryPeers.create(magic)
               peer = InMemoryPeers.address(1)

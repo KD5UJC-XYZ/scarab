@@ -37,6 +37,9 @@ enum Read:
   *
   * @param first
   *   Sequence number of `blocks.head`; sequence numbers only grow, so positions are `seq - first`.
+  * @param generation
+  *   How many times the blocks changed (an extension or a rollback): equal in two reads, the blocks
+  *   did not change between them.
   */
 final case class ServedChain(
     anchor: Option[BlockRef],
@@ -44,7 +47,8 @@ final case class ServedChain(
     first: Long,
     seqs: Map[Bytes, Long],
     followers: Map[Long, Cursor],
-    nextFollower: Long
+    nextFollower: Long,
+    generation: Long
 ):
   def anchorPoint: Point = anchor.fold[Point](Point.Origin)(_.point)
 
@@ -67,6 +71,16 @@ final case class ServedChain(
       .flatMap(s => blocks.lift((s - first).toInt))
       .collect { case served if served.ref.hash == hash => served.raw }
 
+  /** The volatile block `hash` and the hash of the block before it: the anchor's before the first
+    * block, none when the whole chain is volatile.
+    */
+  def predecessorOf(hash: Bytes): Option[(BlockRef, Option[Bytes])] =
+    seqs.get(hash).map(s => (s - first).toInt).flatMap { i =>
+      blocks.lift(i).filter(_.ref.hash == hash).map { served =>
+        served.ref -> (if i == 0 then anchor else blocks.lift(i - 1).map(_.ref)).map(_.hash)
+      }
+    }
+
   /** Append a block; `dropped` oldest blocks became immutable and `newAnchor` is the new boundary.
     */
   def extend(block: Served, dropped: Int, newAnchor: Option[BlockRef]): ServedChain =
@@ -76,7 +90,8 @@ final case class ServedChain(
       anchor = newAnchor.orElse(anchor),
       blocks = kept :+ block,
       first = first + dropped,
-      seqs = (seqs -- removed) + (block.ref.hash -> (first + dropped + kept.size))
+      seqs = (seqs -- removed) + (block.ref.hash -> (first + dropped + kept.size)),
+      generation = generation + 1
     )
 
   /** Roll the chain back to `to` (the anchor or a retained block). */
@@ -85,7 +100,8 @@ final case class ServedChain(
       if to == anchorPoint then Some(0) else position(to).map(_ + 1)
     keep.map { n =>
       val removed = blocks.drop(n).map(_.ref.hash)
-      val after = copy(blocks = blocks.take(n), seqs = seqs -- removed)
+      val after =
+        copy(blocks = blocks.take(n), seqs = seqs -- removed, generation = generation + 1)
       val moved = followers.map { (id, cursor) =>
         val valid = (point: Point) => point == after.anchorPoint || after.position(point).isDefined
         val stale =
@@ -134,7 +150,7 @@ final case class ServedChain(
 
 object ServedChain:
   def empty(anchor: Option[BlockRef]): ServedChain =
-    ServedChain(anchor, Vector.empty, 0L, Map.empty, Map.empty, 0L)
+    ServedChain(anchor, Vector.empty, 0L, Map.empty, Map.empty, 0L, 0L)
 
   /** The sequence index agrees with the block vector (an invariant, used by the tests). */
   def isConsistent(chain: ServedChain): Boolean =

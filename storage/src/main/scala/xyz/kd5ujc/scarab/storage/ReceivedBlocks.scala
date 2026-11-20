@@ -56,6 +56,15 @@ trait ReceivedBlocks[F[_]]:
     */
   def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]]
 
+  /** The blocks held, as the index stands now, each with the predecessor its header names: blocks
+    * held invalid included, as the reference's VolatileDB answers `getBlockInfo` from its index of
+    * every block it holds, without consulting the ChainDB's invalid-block set (`getBlockInfoImpl`,
+    * `Storage/VolatileDB/Impl.hs` 553-559; `cdbInvalid`, `Storage/ChainDB/Impl/Types.hs` 354,
+    * ouroboros-consensus 82ecba32). A block whose header could not be read is not in it. The lookup
+    * is of one state, read once, and holds no body.
+    */
+  def links: F[Bytes => Option[ReceivedBlocks.Linked]]
+
   /** The blocks held, oldest slot first. */
   def refs: F[Vector[BlockRef]]
   def hashes: F[Set[Bytes]]
@@ -73,7 +82,11 @@ trait ReceivedBlocks[F[_]]:
 
   /** Only call after the immutable store has made this boundary durable. Keep the cutoff slot:
     * Byron EBBs and regular blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97,
-    * ouroboros-consensus 82ecba32).
+    * ouroboros-consensus 82ecba32). The log's files whose blocks are all below it are deleted, but
+    * the one being written ([[VolatileStore.collect]]), and the blocks of those files leave the
+    * index with them: a block below the cutoff in a file that is kept stays held, as the
+    * reference's VolatileDB removes the index entries of the files it deletes and no other
+    * (`garbageCollectFile`, `Storage/VolatileDB/Impl.hs` 518-543).
     */
   def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit]
 
@@ -92,6 +105,27 @@ object ReceivedBlocks:
     * 2,000,000 = 20,000,000.
     */
   val DefaultCacheBytes: Long = 10L * 2_000_000L
+
+  /** The block a header names as its predecessor: none for the first block of a chain, as the
+    * reference's `ChainHash` (`GenesisHash` or `BlockHash`) in a block's `BlockInfo` (`biPrevHash`,
+    * `Storage/VolatileDB/API.hs` 152-160, ouroboros-consensus 82ecba32). A Byron chain's first
+    * block names the genesis data's hash, which the reader of the topology knows.
+    */
+  enum Predecessor:
+    case Genesis
+    case Block(hash: Bytes)
+
+  /** A held block and the predecessor its header names. */
+  final case class Linked(ref: BlockRef, predecessor: Predecessor)
+
+  /** An index entry: the block, where its record is, and its predecessor, none when the header
+    * could not be read.
+    */
+  private final case class Entry(
+      ref: BlockRef,
+      at: VolatileStore.Location,
+      predecessor: Option[Predecessor]
+  )
 
   /** @param blocks
     *   blocks in the index
@@ -162,19 +196,30 @@ object ReceivedBlocks:
 
   private final case class Counters(reads: Long, unreadable: Long)
 
+  /** @param predecessorOf
+    *   The predecessor a block's header names, none when the header cannot be read: applied to each
+    *   body as it is logged, and to each record as the open reads it.
+    */
   def open[F[_]: Async](
       dir: Path,
       blocksPerFile: Int = 512,
       cacheBytes: Long = DefaultCacheBytes
-  )(using Raise[F, StorageError]): Resource[F, ReceivedBlocks[F]] =
+  )(predecessorOf: Bytes => Option[Predecessor])(using
+      Raise[F, StorageError]
+  ): Resource[F, ReceivedBlocks[F]] =
     for
-      // the open rebuilds the index and keeps no body; the cache fills with the bodies received
-      // after it
-      opened <- VolatileStore.openIndex[F](dir, blocksPerFile)
+      // the open rebuilds the index and keeps no body, but the predecessor each header names; the
+      // cache fills with the bodies received after it. The log holds no rollback record, so its
+      // recovered chain is every block record in log order.
+      opened <- VolatileStore.openIndexWith[F, Option[Predecessor]](dir, blocksPerFile)(
+        predecessorOf
+      )
       (log, recovered) = opened
       index <- Resource.eval(
-        Ref.of[F, Map[Bytes, (BlockRef, VolatileStore.Location)]](
-          recovered.located.map(block => block._1.hash -> block).toMap
+        Ref.of[F, Map[Bytes, Entry]](
+          recovered.chain.map { case (ref, (at, predecessor)) =>
+            ref.hash -> Entry(ref, at, predecessor)
+          }.toMap
         )
       )
       cache <- Resource.eval(Ref.of[F, Cache](Cache.empty))
@@ -188,7 +233,7 @@ object ReceivedBlocks:
         log
           .append(ref, raw)
           .flatMap(at =>
-            index.update(_.updated(ref.hash, ref -> at)) *>
+            index.update(_.updated(ref.hash, Entry(ref, at, predecessorOf(raw)))) *>
               cache.update(_.added(ref.hash, raw, cacheBytes))
           )
 
@@ -200,7 +245,7 @@ object ReceivedBlocks:
       ): F[Option[(BlockRef, Bytes)]] =
         index.get.map(_.get(hash)).flatMap {
           case None => F.pure(None)
-          case Some((ref, at)) =>
+          case Some(Entry(ref, at, _)) =>
             cache.get.map(_.bodies.get(hash)).flatMap {
               case Some(raw) => F.pure(Some(ref -> raw))
               case None =>
@@ -250,10 +295,15 @@ object ReceivedBlocks:
       def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
         lock.lock.surround(body(hash))
 
+      def links: F[Bytes => Option[Linked]] =
+        index.get.map(known =>
+          hash => known.get(hash).flatMap(entry => entry.predecessor.map(Linked(entry.ref, _)))
+        )
+
       def refs: F[Vector[BlockRef]] =
         (index.get, invalid.get).mapN { (known, refused) =>
           known.valuesIterator
-            .map(_._1)
+            .map(_.ref)
             .filterNot(ref => refused(ref.hash))
             .toVector
             .sortBy(ref => (ref.slot, ref.hash.hex))
@@ -272,11 +322,15 @@ object ReceivedBlocks:
       def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit] =
         lock.lock.surround {
           F.uncancelable(_ =>
-            log.gc(durableSlot - 1) *> index
-              .updateAndGet(_.filter(_._2._1.slot >= durableSlot))
-              .flatMap(remaining =>
-                cache.update(_.without(hash => !remaining.contains(hash))) *>
-                  invalid.update(_ intersect remaining.keySet)
+            log
+              .collect(durableSlot)
+              .flatMap(gone =>
+                index
+                  .updateAndGet(_.filter((_, entry) => !gone(entry.at.seq)))
+                  .flatMap(remaining =>
+                    cache.update(_.without(hash => !remaining.contains(hash))) *>
+                      invalid.update(_ intersect remaining.keySet)
+                  )
               )
           )
         }

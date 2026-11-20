@@ -89,7 +89,8 @@ class IntersectForkSuite extends FailsOnUncaught:
               Some(gated(store, entered, gate)),
               None,
               headerOf,
-              failure => fatals.update(_ :+ failure)
+              failure => fatals.update(_ :+ failure),
+              ChainServer.Held.none
             )
             persistence = server.persistence[Unit]
             _ <- (1 to 5).toList.traverse_(i =>
@@ -182,7 +183,8 @@ class IntersectForkSuite extends FailsOnUncaught:
         Some(failing),
         None,
         headerOf,
-        failure => fatals.update(_ :+ failure)
+        failure => fatals.update(_ :+ failure),
+        ChainServer.Held.none
       )
       observed <- server.source.use { source =>
         for

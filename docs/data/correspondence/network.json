@@ -1092,6 +1092,93 @@
    "structure": "same",
    "note": "emptyState's matureDuplexPeers = Map.empty and freshDuplexPeers = OrdPSQ.empty",
    "digest": "6bd7c1567756c0df"
+  },
+  "enum protocol.NetworkError.RangeRefusal": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/Server.hs",
+     "symbol": "BlockFetchServerException",
+     "lines": [
+      42,
+      67
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "symbol": "InvalidIteratorRange",
+     "lines": [
+      981,
+      999
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/API.hs",
+     "symbol": "InvalidIteratorRangeError",
+     "lines": [
+      370,
+      379
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ServerSuite",
+    "ChainServerSuite",
+    "PeerDefectPolicySuite"
+   ],
+   "note": "one case for each exception the reference raises for a range, named as it is: NoGenesisBlock and BlockGCed (BlockFetchServerException), InvalidIteratorRange (ChainDbError), InvalidIteratorRangeError (the ImmutableDB's ApiMisuse); as a closed type, each ends the connection",
+   "digest": "cfc6c4925b5e93d2"
+  },
+  "enum network.BlockFetchServer.UnknownRange": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "symbol": "UnknownRange",
+     "lines": [
+      793,
+      799
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ChainServerSuite",
+    "ServerSuite"
+   ],
+   "note": "MissingBlock and ForkTooOld, each with its point; the server answers either with NoBlocks",
+   "digest": "5e0720d52273ea1e"
+  },
+  "enum network.BlockFetchServer.IteratorResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "symbol": "IteratorResult",
+     "lines": [
+      744,
+      783
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ChainServerSuite",
+    "ServerSuite"
+   ],
+   "note": "IteratorExhausted, IteratorResult and IteratorBlockGCed as Exhausted, Block and BlockGCed; a range's stream is the results of its iteratorNext calls up to the first Exhausted or BlockGCed",
+   "digest": "92f1ddb1ec343c6d"
   }
  },
  "glue": [
@@ -1378,6 +1465,12 @@
    "definitions": [
     "def network.Connection#exempt",
     "def network.selection.GovernorState#dialOf"
+   ]
+  },
+  {
+   "reason": "the text of a BlockFetch range refusal, for presentation only; the reference shows its exceptions with derived Show instances",
+   "definitions": [
+    "def protocol.NetworkError.RangeRefusal#message"
    ]
   }
  ]

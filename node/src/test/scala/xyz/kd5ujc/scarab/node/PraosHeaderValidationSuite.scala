@@ -109,8 +109,15 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
           def await = IO.never[ChainSyncServer.Update[NtNHeader]]
       }
       blocks = new BlockFetchServer.Blocks[IO]:
-        def range(from: ChainSync.Point, to: ChainSync.Point) =
-          fetched.update(_ + 1).as(Some(fs2.Stream.emit(c.raws(index)).covary[IO]))
+        def range(from: ChainSync.Point, to: ChainSync.Point)(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ) =
+          fetched
+            .update(_ + 1)
+            .as(
+              xyz.kd5ujc.scarab.network.Peers
+                .answer(Some(fs2.Stream.emit(c.raws(index)).covary[IO]))
+            )
       sink = new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
