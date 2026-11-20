@@ -193,6 +193,17 @@ object ChainStorage:
     */
   private val AdvanceEvery = 128
 
+  /** The predecessor a received block's header names, its contents not decoded; none when the
+    * header cannot be read (the start discards such a record, `ReceivedBlocks.discardRecovered`).
+    */
+  def predecessorOf(byronEpochSlots: BigInt)(raw: Bytes): Option[ReceivedBlocks.Predecessor] =
+    Block
+      .decodeHeader(raw, byronEpochSlots)
+      .toOption
+      .map(
+        _.prevHash.fold(ReceivedBlocks.Predecessor.Genesis)(ReceivedBlocks.Predecessor.Block(_))
+      )
+
   /** @param snapshotPolicy
     *   When a snapshot is taken (the immutable tip also gets one on a graceful stop).
     * @param byronEpochSlots
@@ -380,7 +391,7 @@ object ChainStorage:
         dir / "received",
         config.volatileFileBlocks,
         config.receivedCacheBytes
-      )
+      )(ChainStorage.predecessorOf(config.byronEpochSlots))
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
       migratedSnapshots <- Resource.eval(
         snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))

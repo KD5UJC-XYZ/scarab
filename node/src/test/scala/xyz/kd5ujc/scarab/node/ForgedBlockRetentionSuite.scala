@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{Header, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.ForgedRetention.{adopted, delivered, lost, node, resumed}
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
-import xyz.kd5ujc.scarab.storage.ReceivedBlocks
+import xyz.kd5ujc.scarab.storage.{ChainStorage, ReceivedBlocks}
 
 /** A block this node forged is kept whatever chain selection makes of it, as the reference's
   * ChainDB puts a block it is given in its VolatileDB before chain selection runs for it, unless
@@ -39,7 +39,13 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
       use: ReceivedBlocks[IO] => IO[A]
   ): IO[A] =
     Handle
-      .allow[StorageError](ReceivedBlocks.open[IO](dir, cacheBytes = cacheBytes).use(use))
+      .allow[StorageError](
+        ReceivedBlocks
+          .open[IO](dir, cacheBytes = cacheBytes)(
+            ChainStorage.predecessorOf(ForgedChain.geometry.byron.epochSlots)
+          )
+          .use(use)
+      )
       .rescue(error => IO(fail(s"the received log failed: ${error.message}")))
 
   private def hashes(headers: Vector[Header]): Vector[Bytes] = headers.map(_.hash)

@@ -14,6 +14,9 @@ import xyz.kd5ujc.scarab.ledger.StorageError
 import StorageTestKit.*
 
 class ReceivedBlocksSuite extends CatsEffectSuite:
+  /** For a test that reads no predecessor: no header is read. */
+  private val unread: Bytes => Option[ReceivedBlocks.Predecessor] = _ => None
+
   /** Every block held, each read through `get` (from the cache or the log). */
   private def entries(store: ReceivedBlocks[IO])(using
       Raise[IO, StorageError]
@@ -26,7 +29,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val (ref, raw) = block(1)
         VolatileStore.open[IO](dir).use { case (store, _) => store.append(ref, raw) } *>
           ReceivedBlocks
-            .open[IO](dir)
+            .open[IO](dir)(unread)
             .use(_.get(ref.hash).map(found => assertEquals(found, Some(ref -> raw))))
       }
     }
@@ -38,7 +41,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val first = block(1)
         val fork = first._1.copy(hash = hash(100)) -> block(100)._2
         for
-          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
             for
               _ <- store.put(first._1, first._2)
               _ <- store.put(fork._1, fork._2)
@@ -52,7 +55,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
             yield ()
           }
           // Restart clears process-local validation verdicts; originals must be revalidated.
-          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
             store.get(first._1.hash).map(found => assertEquals(found, Some(first)))
           }
         yield ()
@@ -66,7 +69,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val first = block(1)
         val fork = first._1.copy(hash = hash(100)) -> block(100)._2
         val later = block(2)
-        ReceivedBlocks.open[IO](dir).use { store =>
+        ReceivedBlocks.open[IO](dir)(unread).use { store =>
           for
             _ <- store.put(first._1, first._2)
             _ <- store.put(fork._1, fork._2)
@@ -107,11 +110,11 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val next = block(2)
         val original = Vector(first, fork, next)
         for
-          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
             original.traverse_((ref, raw) => store.put(ref, raw)) *>
               store.put(first._1, first._2)
           }
-          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
             for
               recovered <- entries(store)
               _ <- IO(assertEquals(recovered.toSet, original.toSet))
@@ -125,21 +128,91 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
     }
   }
 
-  test("collection retains the native cutoff slot and every later received block") {
+  test("collection deletes the files wholly below the cutoff, and only their blocks leave") {
+    // two blocks to a file: [1 2] [3 4] [5 6] [7]. The cutoff is block 4's slot: the first file is
+    // wholly below it and goes; block 3 is below it but in a file that is kept, and stays held, as
+    // the reference's VolatileDB removes the index entries of the files it deletes and no other
     tempDir.use { dir =>
       ok {
         val original = (1 to 7).toVector.map(block(_))
         val boundary = original(3)._1.slot
+        val kept = original.drop(2).toSet
         for
-          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
-            original.traverse_((ref, raw) => store.put(ref, raw)) *> store.collect(boundary)
+          collected <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+            original.traverse_((ref, raw) => store.put(ref, raw)) *> store.collect(boundary) *>
+              entries(store)
           }
-          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
-            store.collect(boundary) *> entries(store).map { recovered =>
-              assertEquals(recovered.toSet, original.filter(_._1.slot >= boundary).toSet)
-            }
+          reopened <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+            store.collect(boundary) *> entries(store)
           }
-        yield ()
+        yield
+          assertEquals(collected.toSet, kept, "the index after collection")
+          assertEquals(reopened.toSet, kept, "the index the files give after a restart")
+      }
+    }
+  }
+
+  test("collection takes a file wholly below the cutoff wherever it is in the log") {
+    // two blocks to a file: [1 9] [2 3] [10 11] [12]. Below block 5's slot are blocks 1, 2 and 3;
+    // only the second file holds nothing else, and it goes though an older file is kept, as the
+    // reference's VolatileDB takes any file but the current one whose newest slot is below the
+    // cutoff (`getFilesToGC`)
+    tempDir.use { dir =>
+      ok {
+        val order = Vector(1, 9, 2, 3, 10, 11, 12).map(block(_))
+        val boundary = block(5)._1.slot
+        val kept = Vector(1, 9, 10, 11, 12).map(block(_)).toSet
+        for
+          collected <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+            order.traverse_((ref, raw) => store.put(ref, raw)) *> store.collect(boundary) *>
+              entries(store)
+          }
+          reopened <- ReceivedBlocks.open[IO](dir, 2)(unread).use(entries)
+        yield
+          assertEquals(collected.toSet, kept, "the index after collection")
+          assertEquals(reopened.toSet, kept, "the index the files give after a restart")
+      }
+    }
+  }
+
+  test("links answer every held block with its predecessor, held invalid too, and after reopen") {
+    tempDir.use { dir =>
+      ok {
+        val first = block(1)
+        val second = block(2)
+        val fork = block(3)._1.copy(hash = hash(300)) -> block(300)._2
+        val unreadable = block(4)
+        val predecessors: Map[Bytes, ReceivedBlocks.Predecessor] = Map(
+          first._2 -> ReceivedBlocks.Predecessor.Genesis,
+          second._2 -> ReceivedBlocks.Predecessor.Block(first._1.hash),
+          fork._2 -> ReceivedBlocks.Predecessor.Block(first._1.hash)
+        )
+        val held = Vector(first, second, fork, unreadable)
+        def linked(store: ReceivedBlocks[IO]) =
+          store.links.map(lookup => held.map((ref, _) => lookup(ref.hash)))
+        val expected = Vector(
+          Some(ReceivedBlocks.Linked(first._1, ReceivedBlocks.Predecessor.Genesis)),
+          Some(ReceivedBlocks.Linked(second._1, ReceivedBlocks.Predecessor.Block(first._1.hash))),
+          Some(ReceivedBlocks.Linked(fork._1, ReceivedBlocks.Predecessor.Block(first._1.hash))),
+          None
+        )
+        for
+          before <- ReceivedBlocks.open[IO](dir, 2)(predecessors.get).use { store =>
+            for
+              _ <- held.traverse_((ref, raw) => store.put(ref, raw))
+              _ <- store.invalidate(fork._1.hash)
+              listed <- store.hashes
+              links <- linked(store)
+              original <- store.original(fork._1.hash)
+            yield (listed, links, original)
+          }
+          (listed, links, original) = before
+          reopened <- ReceivedBlocks.open[IO](dir, 2)(predecessors.get).use(linked)
+        yield
+          assert(!listed.contains(fork._1.hash), "the refused block is not listed")
+          assertEquals(links, expected, "held blocks, the refused one too")
+          assertEquals(original, Some(fork), "the refused block's original reads back")
+          assertEquals(reopened, expected, "the predecessors read again from the records")
       }
     }
   }
@@ -154,13 +227,14 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
           boundary._1.copy(hash = hash(100), blockNo = boundary._1.blockNo + 1) -> block(100)._2
         val later = block(3)
         val expected = Vector(ebb, regular, later).toSet
+        // one block to a file: the first file is wholly below the cutoff, the boundary block's is not
         for
-          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 1)(unread).use { store =>
             Vector(before, ebb, regular, later).traverse_((ref, raw) => store.put(ref, raw)) *>
               store.collect(ebb._1.slot) *> entries(store)
                 .map(found => assertEquals(found.toSet, expected))
           }
-          _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 1)(unread).use { store =>
             store.collect(ebb._1.slot) *> entries(store)
               .map(found => assertEquals(found.toSet, expected))
           }
@@ -176,7 +250,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val corrupt = selected._1 -> block(100)._2
         val fork = block(2)
         for
-          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
             for
               _ <- store.put(corrupt._1, corrupt._2)
               _ <- store.put(fork._1, fork._2)
@@ -188,7 +262,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
               _ <- IO(assertEquals(repaired, Some(selected)))
             yield ()
           }
-          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
             entries(store).map(found => assertEquals(found.toSet, Set(selected, fork)))
           }
         yield ()
@@ -202,8 +276,8 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val selected = block(1)
         val corrupt = selected._1 -> block(100)._2
         for
-          _ <- ReceivedBlocks.open[IO](dir).use(_.put(corrupt._1, corrupt._2))
-          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread).use(_.put(corrupt._1, corrupt._2))
+          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
             for
               _ <- store.discardRecovered(selected._1.hash)
               excluded <- store.get(selected._1.hash)
@@ -211,7 +285,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
               _ <- store.put(selected._1, selected._2)
             yield ()
           }
-          _ <- ReceivedBlocks.open[IO](dir).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir)(unread).use { store =>
             entries(store).map(found => assertEquals(found, Vector(selected)))
           }
         yield ()
@@ -224,7 +298,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
       ok {
         val original = (1 to 40).toVector.map(block(_))
         val limit = 1000L
-        ReceivedBlocks.open[IO](dir, 4, limit).use { store =>
+        ReceivedBlocks.open[IO](dir, 4, limit)(unread).use { store =>
           for
             _ <- original.traverse_((ref, raw) => store.put(ref, raw))
             held <- store.residency
@@ -249,12 +323,12 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         val limit = 1000L
         for
           _ <- ReceivedBlocks
-            .open[IO](dir, 4, limit)
+            .open[IO](dir, 4, limit)(unread)
             .use(store => original.traverse_((ref, raw) => store.put(ref, raw)))
           _ <- IO(
             assert(original.map(_._2.size.toLong).sum > 4 * limit, "the log exceeds the bound")
           )
-          _ <- ReceivedBlocks.open[IO](dir, 4, limit).use { store =>
+          _ <- ReceivedBlocks.open[IO](dir, 4, limit)(unread).use { store =>
             for
               opened <- store.residency
               _ <- IO(assertEquals(opened.blocks, original.size))
@@ -276,12 +350,13 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
       ok {
         val original = (1 to 20).toVector.map(block(_))
         val boundary = original(9)._1.slot
-        ReceivedBlocks.open[IO](dir, 2, 0L).use { store =>
+        ReceivedBlocks.open[IO](dir, 2, 0L)(unread).use { store =>
           for
             _ <- original.traverse_((ref, raw) => store.put(ref, raw))
             _ <- store.collect(boundary)
             kept <- entries(store)
-            _ <- IO(assertEquals(kept, original.filter(_._1.slot >= boundary)))
+            // two to a file: block 9 shares its file with block 10, at the cutoff, and stays
+            _ <- IO(assertEquals(kept, original.drop(8)))
             held <- store.residency
             _ <- IO(assertEquals(held.unreadable, 0L))
             _ <- IO(assertEquals(held.cachedBytes, 0L))
@@ -296,7 +371,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
       ok {
         val (ref, raw) = block(1)
         val other = block(2)
-        ReceivedBlocks.open[IO](dir, 512, 0L).use { store =>
+        ReceivedBlocks.open[IO](dir, 512, 0L)(unread).use { store =>
           for
             _ <- store.put(ref, raw)
             _ <- store.put(other._1, other._2)

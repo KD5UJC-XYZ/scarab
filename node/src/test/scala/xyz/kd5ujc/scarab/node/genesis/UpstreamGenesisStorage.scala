@@ -32,7 +32,8 @@ object UpstreamGenesisStorage:
       Raise[IO, Problem]
   ): Resource[IO, Opened] =
     for
-      received <- ReceivedBlocks.open[IO](dir / "received")
+      // these tests serve nothing: no predecessor is read
+      received <- ReceivedBlocks.open[IO](dir / "received")(_ => None)
       selected <- VolatileStore.open[IO](dir / "selected")
       (log, recovered) = selected
       chain <- Resource.eval(
