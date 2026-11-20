@@ -1781,7 +1781,7 @@
     "LeiosReferenceDbSuite",
     "HaskellImportSuite"
    ],
-   "digest": "a2950f0eb095be5e"
+   "digest": "f4a8e97f26594dfd"
   },
   "def storage.leios.LeiosReferenceDb.exportFrom": {
    "upstream": [
@@ -1821,7 +1821,7 @@
    "evidence": [
     "LeiosReferenceDbSuite"
    ],
-   "digest": "308e0a31c7d2673a"
+   "digest": "dbae726f6b1c7ae2"
   },
   "def storage.VolatileStore#collect": {
    "upstream": [

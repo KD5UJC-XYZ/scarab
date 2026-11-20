@@ -14,7 +14,7 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
-import xyz.kd5ujc.scarab.storage.{EbStatus, LeiosEb, LeiosStoreError, RocksLeiosStore, StoredEb}
+import xyz.kd5ujc.scarab.storage.{EbStatus, Held, LeiosEb, LeiosStoreError, RocksLeiosStore}
 
 /** The reference node's Leios database: the SQLite files `leios.vol.db` and `leios.imm.db` in its
   * database directory (ouroboros-consensus 2416493b `Cardano/Tools/DBAnalyser/Run.hs:294-295` of
@@ -29,23 +29,18 @@ import xyz.kd5ujc.scarab.storage.{EbStatus, LeiosEb, LeiosStoreError, RocksLeios
   * has the `status` column; the immutable file holds the endorser blocks the copier copied there,
   * without it (`Impl/SQLite/Maintenance.hs:112-168`).
   *
-  * Import reads the immutable file, then the volatile one, without writing either or beside them
-  * while neither has a write-ahead log with frames (see `Access`). A point of the immutable file is
-  * [[EbStatus.Immutable]] if the volatile file holds its body, and [[EbStatus.Evicted]] if the
-  * reference's collection took that; a point of the volatile file has its status there, the status
-  * the reference's collection marked (3) read as [[EbStatus.Volatile]], since the next collection
-  * takes the point again; a point in both keeps the later status. A closure's written transactions
-  * are stored, the volatile file's where it holds the body, and completion is what the reference's
-  * `scanMissing` reads from the bytes (`Impl/SQLite/Completion.hs:53-72`).
+  * Import reads each file into the same partition of the store, as the reference holds it: every
+  * row of `ebs` (with its status in the volatile file), every body, and every closure row with the
+  * transactions written in it, a closure of zeroes included. It writes neither file nor anything
+  * beside them while neither has a write-ahead log with frames (see `Access`). Completion is what
+  * the reference's `scanMissing` reads from the volatile closures
+  * (`Impl/SQLite/Completion.hs:53-72`).
   *
   * Export writes two new files with the reference's pragmas and schema (`initialiseLeiosDbFiles`,
-  * `Impl/SQLite/Connection.hs:62-73`), as the reference would hold the store, each file with the
-  * bodies and closures of the points it holds. The immutable file has the newest immutable or
-  * evicted point of each hash, the one point the reference's copier copies (`sql_copy_insert_eb`,
-  * `Impl/SQLite/Queries.hs:142-148`). The volatile file has every point that is not evicted, the
-  * immutable ones with the copier's status 2, and the body and closure of a hash none of whose
-  * points is evicted. An import gives back every point, but of a hash's evicted points the newest
-  * only, as the reference keeps them.
+  * `Impl/SQLite/Connection.hs:62-73`), each with the rows, bodies and closures of the store's same
+  * partition, a closure as the reference holds it, its transactions at their bounds and zeroes for
+  * those not written (`allocateClosure`, `Impl/SQLite/Insert.hs:337-343`). An export imported again
+  * is the same store, and an import exported again the same database.
   */
 object LeiosReferenceDb:
   /** The two files of the reference's Leios database. */
@@ -187,6 +182,11 @@ object LeiosReferenceDb:
 
   // --- import ---
 
+  /** The store's partition of the file's. */
+  private def held(partition: Partition): RocksLeiosStore.Partition = partition match
+    case Partition.Volatile  => RocksLeiosStore.Partition.Volatile
+    case Partition.Immutable => RocksLeiosStore.Partition.Immutable
+
   /** Read the reference's database in `dir` into `store`. */
   def importInto[F[_]: Async](dir: Path, store: RocksLeiosStore[F])(using
       outer: Raise[F, Error]
@@ -200,17 +200,8 @@ object LeiosReferenceDb:
         .ifM(files.size(wal).map(_ > 0), Async[F].pure(false))
         .map(if _ then Access.ReadOnly else Access.Immutable)
         .flatMap(access => connection[F](dir / partition.file, partition, access).use(use))
-    // the hashes whose body the volatile file holds: the others the collection evicted
-    opened(Partition.Volatile)(c =>
-      rows(c, Partition.Volatile, "SELECT ebHashBytes FROM ebBodies")(r =>
-        Bytes.wrap(blob(r, 1))
-      ).compile
-        .to(Set)
-    ).flatMap { held =>
-      Vector(Partition.Immutable, Partition.Volatile).foldLeftM(Counts.zero) {
-        (counts, partition) =>
-          opened(partition)(importPartition(_, partition, held, store)).map(counts + _)
-      }
+    Partition.values.toVector.foldLeftM(Counts.zero) { (counts, partition) =>
+      opened(partition)(importPartition(_, partition, store)).map(counts + _)
     }
 
   private final case class PointRow(slot: Long, hash: Array[Byte], size: Long, status: Long)
@@ -224,34 +215,31 @@ object LeiosReferenceDb:
   private def importPartition[F[_]: Async](
       c: Connection,
       partition: Partition,
-      held: Set[Bytes],
       store: RocksLeiosStore[F]
   )(using Raise[F, Error], Raise[F, LeiosStoreError]): F[Counts] =
-    // a hash of the immutable file the volatile file holds no body of was evicted from it
-    val immutableOnly = (hash: Array[Byte]) =>
-      partition == Partition.Immutable && !held.contains(Bytes.wrap(hash))
     val pointQuery = partition match
       case Partition.Volatile  => "SELECT ebSlot, ebHashBytes, ebBytesSize, status FROM ebs"
-      case Partition.Immutable => "SELECT ebSlot, ebHashBytes, ebBytesSize, 2 FROM ebs"
+      case Partition.Immutable => "SELECT ebSlot, ebHashBytes, ebBytesSize, 0 FROM ebs"
     val bodyQuery =
       "SELECT b.ebHashBytes, b.txBounds, b.body, c.txs\n" +
         "FROM ebBodies b LEFT JOIN ebClosures c ON c.ebHashBytes = b.ebHashBytes"
-    val points = rows(c, partition, pointQuery)(r =>
+    val read = rows(c, partition, pointQuery)(r =>
       PointRow(r.getLong(1), blob(r, 2), r.getLong(3), r.getLong(4))
-    ).evalMap(row => checked(point(partition, row, evicted = immutableOnly(row.hash))))
-      .chunkN(4096)
-      .evalMap(chunk => store.importPoints(chunk.toVector).as(chunk.size.toLong))
-      .compile
-      .fold(0L)(_ + _)
+    ).evalMap(row => checked(point(partition, row))).chunkN(4096).map(_.toVector)
+    val points = (partition match
+      case Partition.Volatile => read.evalMap(chunk => store.importVolatile(chunk).as(chunk.size))
+      case Partition.Immutable =>
+        read.evalMap(chunk =>
+          store.importImmutable(chunk.map((p, size, _) => (p, size))).as(chunk.size)
+        )
+    ).compile.fold(0L)(_ + _)
     val bodies = rows(c, partition, bodyQuery)(r =>
       BodyRow(blob(r, 1), blob(r, 2), blob(r, 3), Option(r.getBytes(4)))
-    ).filter(row => partition == Partition.Volatile || immutableOnly(row.hash))
-      .evalMap { row =>
-        checked(closure(partition, row)).flatMap { (hash, raw, eb, txs) =>
-          store.importBody(hash, raw, eb, txs).as(txs.size.toLong)
-        }
+    ).evalMap { row =>
+      checked(closure(partition, row)).flatMap { (hash, eb, txs) =>
+        store.importBody(held(partition), hash, eb, txs).as(txs.fold(0L)(_.size.toLong))
       }
-      .compile
+    }.compile
       .fold((0L, 0L))((acc, txs) => (acc._1 + 1, acc._2 + txs))
     (points, bodies).mapN((p, b) => Counts(p, b._1, b._2))
 
@@ -262,25 +250,20 @@ object LeiosReferenceDb:
   private def blob(r: ResultSet, column: Int): Array[Byte] =
     Option(r.getBytes(column)).getOrElse(Array.emptyByteArray)
 
-  private def point(
-      partition: Partition,
-      row: PointRow,
-      evicted: Boolean
-  ): Either[Error, (EbPoint, Word32, EbStatus)] =
+  /** A row of `ebs`, its status the volatile file's, or `Volatile` for the immutable file's. */
+  private def point(partition: Partition, row: PointRow): Either[Error, (EbPoint, Long, EbStatus)] =
     // the reference binds the slot's 64 bits as SQLite's signed integer
     // (`Insert.hs:86` at 2416493b)
     val unsigned = BigInt(row.slot) & ((BigInt(1) << 64) - 1)
     for
       hash <- hashOf(partition, row.hash)
       slot <- Word64.from(unsigned).leftMap(_ => Error.BadSlot(partition, hash, unsigned))
-      size <- Word32.from(BigInt(row.size)).leftMap(_ => Error.BadSize(partition, hash, row.size))
-      status <- row.status match
-        case _ if evicted => Right(EbStatus.Evicted)
-        case 0 | 3        => Right(EbStatus.Volatile)
-        case 1            => Right(EbStatus.Certified)
-        case 2            => Right(EbStatus.Immutable)
-        case other        => Left(Error.BadStatus(hash, other))
-    yield (EbPoint(slot, hash), size, status)
+      _ <- Word32.from(BigInt(row.size)).leftMap(_ => Error.BadSize(partition, hash, row.size))
+      status <- Option
+        .when(row.status >= 0 && row.status <= Byte.MaxValue)(row.status.toByte)
+        .flatMap(EbStatus.fromCode)
+        .toRight(Error.BadStatus(hash, row.status))
+    yield (EbPoint(slot, hash), row.size, status)
 
   private def hashOf(partition: Partition, raw: Array[Byte]): Either[Error, EbHash] =
     Either.cond(
@@ -289,21 +272,22 @@ object LeiosReferenceDb:
       Error.BadHash(partition, raw.length)
     )
 
-  /** A body and the written transactions of its closure, checked against its bounds. */
+  /** A body and, if its closure row is allocated, the transactions written in it, checked against
+    * its bounds.
+    */
   private def closure(
       partition: Partition,
       row: BodyRow
-  ): Either[Error, (EbHash, Bytes, LeiosEb, SortedMap[Int, Bytes])] =
+  ): Either[Error, (EbHash, LeiosEb, Option[SortedMap[Int, Bytes]])] =
     for
       hash <- hashOf(partition, row.hash)
-      raw = Bytes.wrap(row.body)
-      eb <- LeiosEb.decode(raw).leftMap(Error.BadBody(partition, hash, _))
+      eb <- LeiosEb.decode(Bytes.wrap(row.body)).leftMap(Error.BadBody(partition, hash, _))
       bounds <- eb.txBounds.toRight(
         Error.ClosureTooLarge(hash, eb.bounds.lastOption.getOrElse(0L))
       )
       _ <- Either.cond(bounds == Bytes.wrap(row.bounds), (), Error.BoundsDisagree(partition, hash))
       total = eb.bounds.lastOption.getOrElse(0L)
-      txs <- row.closure.fold(Right(SortedMap.empty[Int, Bytes])) { blob =>
+      txs <- row.closure.traverse { blob =>
         Either.cond(
           blob.length.toLong == total,
           SortedMap.from(
@@ -318,7 +302,7 @@ object LeiosReferenceDb:
           Error.ClosureSize(partition, hash, total, blob.length)
         )
       }
-    yield (hash, raw, eb, txs)
+    yield (hash, eb, txs)
 
   // --- export ---
 
@@ -350,7 +334,22 @@ object LeiosReferenceDb:
                 Stream
                   .emits(hashes)
                   .evalMap(stored)
-                  .evalMap(eb => write(eb, volW, immW))
+                  .evalMap(eb =>
+                    (
+                      write(
+                        volW,
+                        eb.hash,
+                        eb.volatile.points.map((s, n, st) => (s, n, Some(st))),
+                        eb.volatile
+                      ),
+                      write(
+                        immW,
+                        eb.hash,
+                        eb.immutable.points.map((s, n) => (s, n, None)),
+                        eb.immutable
+                      )
+                    ).mapN(_ + _)
+                  )
                   .chunkN(256)
                   .evalMap(chunk => commit(vol, imm).as(chunk.foldLeft(Counts.zero)(_ + _)))
                   .compile
@@ -389,64 +388,56 @@ object LeiosReferenceDb:
         prepared("INSERT INTO ebClosures (ebHashBytes, txs) VALUES (?1, ?2)")
       ).mapN(new Writer(partition, _, _, _))
 
-  private def write[F[_]: Async](eb: StoredEb, vol: Writer, imm: Writer)(using
-      Raise[F, Error]
-  ): F[Counts] =
-    val gone = eb.points.exists(_._3 == EbStatus.Evicted)
-    val newest = eb.points
-      .filter(p => p._3 == EbStatus.Immutable || p._3 == EbStatus.Evicted)
-      .maxByOption(_._1.toBigInt)
-    val immutable = newest.toVector
-    val volatile = eb.points.filter(_._3 != EbStatus.Evicted)
-    val hash = eb.hash.bytes.toArray
-    val withBody: F[Option[(LeiosEb, Bytes, Bytes)]] = eb.body.traverse { raw =>
+  /** What one partition of the store holds of `hash`, written to the file of that partition: its
+    * rows (a status for the volatile file's), its body and its closure row, if it holds them.
+    */
+  private def write[F[_]: Async, P](
+      w: Writer,
+      hash: EbHash,
+      points: Vector[(Word64, Long, Option[EbStatus])],
+      held: Held[P]
+  )(using Raise[F, Error]): F[Counts] =
+    val key = hash.bytes.toArray
+    val withBody: F[Option[(LeiosEb, Bytes, Bytes)]] = held.body.traverse { raw =>
       LeiosEb.decode(raw) match
         case Left(e) =>
-          Error.Store(LeiosStoreError.CorruptBody(eb.hash, e)).raise[F, (LeiosEb, Bytes, Bytes)]
+          Error.Store(LeiosStoreError.CorruptBody(hash, e)).raise[F, (LeiosEb, Bytes, Bytes)]
         case Right(decoded) =>
           val total = decoded.bounds.lastOption.getOrElse(0L)
           decoded.txBounds.filter(_ => total <= Int.MaxValue) match
-            case None => Error.ClosureTooLarge(eb.hash, total).raise[F, (LeiosEb, Bytes, Bytes)]
+            case None => Error.ClosureTooLarge(hash, total).raise[F, (LeiosEb, Bytes, Bytes)]
             case Some(bounds) => Async[F].pure((decoded, raw, bounds))
     }
-    def into(
-        w: Writer,
-        points: Vector[(Word64, Long, EbStatus)],
-        body: Option[(LeiosEb, Bytes, Bytes)]
-    ) =
+    withBody.flatMap { body =>
       blocking(w.partition) {
         points.foreach { (slot, size, status) =>
           w.point.setLong(1, slot.toBigInt.longValue)
-          w.point.setBytes(2, hash)
+          w.point.setBytes(2, key)
           w.point.setLong(3, size)
-          if w.partition == Partition.Volatile then w.point.setLong(4, status.code.toLong)
+          status.foreach(st => w.point.setLong(4, st.code.toLong))
           w.point.executeUpdate()
         }
         body.foreach { (decoded, raw, bounds) =>
-          w.body.setBytes(1, hash)
+          w.body.setBytes(1, key)
           w.body.setBytes(2, bounds.toArray)
           w.body.setBytes(3, raw.toArray)
           w.body.executeUpdate()
-          if eb.txs.nonEmpty then
-            w.closure.setBytes(1, hash)
-            w.closure.setBytes(2, closureOf(decoded, eb.txs))
+          held.closure.foreach { txs =>
+            w.closure.setBytes(1, key)
+            w.closure.setBytes(2, closureOf(decoded, txs))
             w.closure.executeUpdate()
+          }
         }
-      }
-    withBody.flatMap { body =>
-      val volBody = body.filter(_ => !gone && (volatile.nonEmpty || immutable.isEmpty))
-      val immBody = body.filter(_ => immutable.nonEmpty)
-      into(vol, volatile, volBody) *> into(imm, immutable, immBody).as(
         Counts(
-          (volatile.size + immutable.size).toLong,
-          volBody.fold(0L)(_ => 1L) + immBody.fold(0L)(_ => 1L),
-          eb.txs.size.toLong
+          points.size.toLong,
+          body.fold(0L)(_ => 1L),
+          body.flatMap(_ => held.closure).fold(0L)(_.size.toLong)
         )
-      )
+      }
     }
 
   /** A closure as the reference holds it: every transaction at its bound, zeroes where none is
-    * stored (`allocateClosure`, `Impl/SQLite/Insert.hs:337-343` at 2416493b).
+    * written (`allocateClosure`, `Impl/SQLite/Insert.hs:337-343` at 2416493b).
     */
   private def closureOf(eb: LeiosEb, txs: SortedMap[Int, Bytes]): Array[Byte] =
     val bounds = eb.bounds

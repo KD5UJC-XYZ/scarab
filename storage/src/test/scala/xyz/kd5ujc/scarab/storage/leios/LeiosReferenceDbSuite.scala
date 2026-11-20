@@ -10,7 +10,14 @@ import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.storage.{EbStatus, LeiosEb, LeiosStoreLocks, RocksLeiosStore, StoredEb}
+import xyz.kd5ujc.scarab.storage.{
+  EbStatus,
+  LeiosEb,
+  LeiosStoreError,
+  LeiosStoreLocks,
+  RocksLeiosStore,
+  StoredEb
+}
 import xyz.kd5ujc.scarab.storage.LeiosStoreSuite.*
 
 /** The import and export of the reference's Leios database (`leios.vol.db`, `leios.imm.db`;
@@ -81,10 +88,14 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
       pageSize <- IO.blocking(query(reference / "leios.imm.db", "PRAGMA page_size"))
     yield
       assertEquals(after, before)
-      assertEquals(before.flatMap(_.points).count(_._3 == EbStatus.Evicted), 1)
-      assertEquals(counts, LeiosReferenceDb.Counts(points = 11, bodies = 7, transactions = 8))
-      // the volatile file has every point that is not evicted, the promoted ones copied (2); the
-      // immutable file has the newest promoted or evicted point of each hash: 6's, 4's and 5's
+      // 6 is in the immutable partition only once collected
+      assertEquals(
+        before.filter(_.volatile.points.isEmpty).map(_.immutable.points),
+        Vector(Vector(slot(1) -> 1L))
+      )
+      assertEquals(counts, LeiosReferenceDb.Counts(points = 11, bodies = 7, transactions = 12))
+      // the volatile file has every volatile row, the promoted ones copied (2); the immutable file
+      // has the row each promotion copied, the newest of its hash then: 6's, 4's and 5's
       assertEquals(volStatuses, Vector("0", "0", "0", "0", "2", "2", "0", "2"))
       assertEquals(immSlots, Vector("1", "21", "40"))
       assertEquals(journal, Vector("wal"))
@@ -143,7 +154,7 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
                 complete <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(0))
                 closure5 <- s.lookupEbClosure(hash(5))
                 statuses <- Vector(1, 2, 3, 4, 5).traverse(i =>
-                  s.stored(hash(i)).map(_.points.map(_._3))
+                  s.stored(hash(i)).map(_.volatile.points.map(_._3))
                 )
                 withBody2 <- s.stored(hash(2))
               yield (
@@ -162,8 +173,8 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
         }
         (counts, body1, closure1, some1, closure3, complete, statuses, withBody2, closure5) = result
       yield
-        // 3's body and closure come from the volatile file, 5's from the immutable one
-        assertEquals(counts, LeiosReferenceDb.Counts(points = 6, bodies = 4, transactions = 6))
+        // each file's rows, bodies and closures go into the same partition of the store
+        assertEquals(counts, LeiosReferenceDb.Counts(points = 6, bodies = 5, transactions = 8))
         assertEquals(body1, Some(partly.encoded))
         assertEquals(closure1, None)
         assertEquals(some1, Vector(0 -> tx(0), 1 -> zeroes(tx(1).size), 2 -> tx(2)))
@@ -175,13 +186,14 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
           Vector(
             Vector(EbStatus.Volatile),
             Vector(EbStatus.Certified),
-            Vector(EbStatus.Immutable),
-            Vector(EbStatus.Volatile),
-            Vector(EbStatus.Evicted)
+            Vector(EbStatus.Copied),
+            Vector(EbStatus.Marked),
+            Vector.empty
           )
         )
+        // 5 is in the immutable file only: the reference's collection swept it
         assertEquals(closure5.map(_.size), Some(2))
-        assertEquals(withBody2.txs.size, 0)
+        assertEquals(withBody2.volatile.closure, None)
   }
 
   dirs.test(
@@ -277,6 +289,113 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
         ) *> store(dir / "b").use(s => imported(reference, s) *> ok(s.scanEbPoints))
       }
     yield assertEquals(points, Vector(point(1, 1), point(9, 9)))
+  }
+
+  dirs.test("the four states of a reference database round-trip, row for row") { dir =>
+    val source = dir / "source"
+    val again = dir / "again"
+    val whole = body(2)
+    for
+      _ <- IO.blocking(Using.resource(open(source / "leios.vol.db")) { c =>
+        referenceSchema(c, volatile = true)
+        def row(slot: Long, h: Int, status: Long) =
+          update(
+            c,
+            "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize, status) VALUES (?, ?, ?, ?)"
+          )(
+            slot,
+            hash(h).bytes.toArray,
+            100L,
+            status
+          )
+        // (1) copied, evicted, then announced and fetched again in part
+        row(10, 1, 0)
+        insertBody(c, 1, whole, Some(Vector(Some(tx(0)), None)))
+        // (2) a collection's mark committed, its sweep not run: one hash all marked, one in part
+        row(3, 2, 3)
+        row(4, 2, 3)
+        row(5, 3, 3)
+        row(12, 3, 0)
+        insertBody(c, 2, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+        // (3) pinned, its closure allocated by a fill that filled nothing: zeroes
+        row(6, 4, 1)
+        insertBody(c, 4, whole, Some(Vector(None, None)))
+        // (4) copied twice: the rows of 20 and 21 at the first promotion, 30 at the second
+        row(20, 5, 2)
+        row(21, 5, 2)
+        row(30, 5, 2)
+        insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+      })
+      _ <- IO.blocking(Using.resource(open(source / "leios.imm.db")) { c =>
+        referenceSchema(c, volatile = false)
+        def row(slot: Long, h: Int) =
+          update(c, "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize) VALUES (?, ?, ?)")(
+            slot,
+            hash(h).bytes.toArray,
+            100L
+          )
+        row(5, 1)
+        insertBody(c, 1, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+        row(21, 5)
+        row(30, 5)
+        insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+      })
+      _ <- store(dir / "store").use(s => imported(source, s) *> exported(s, again))
+    yield
+      assertEquals(dump(source / "leios.vol.db", "ebs").size, 9)
+      assertEquals(dump(source / "leios.imm.db", "ebs").size, 3)
+      Vector("leios.vol.db", "leios.imm.db").foreach { file =>
+        Vector("ebs", "ebBodies", "ebClosures").foreach(table =>
+          assertEquals(dump(again / file, table), dump(source / file, table), s"$file $table")
+        )
+      }
+      // the reference's own predicates select the same hashes in both
+      ReferencePredicates.foreach { (what, sql) =>
+        assertEquals(
+          column(again / "leios.vol.db", sql),
+          column(source / "leios.vol.db", sql),
+          what
+        )
+      }
+      assertEquals(
+        column(again / "leios.vol.db", SweepPickMarked),
+        Vector(hash(2).bytes.hex.toUpperCase)
+      )
+  }
+
+  dirs.test("an export writes the immutable rows the reference's copier writes, cycle by cycle") {
+    dir =>
+      val reference = dir / "reference"
+      def announced(s: RocksLeiosStore[IO], h: Int, slots: Vector[Long])(using
+          Handle[IO, LeiosStoreError]
+      ) = slots.traverse_(n => s.writeEbPoint(point(n, h), word32(1)))
+      def fetched(s: RocksLeiosStore[IO], h: Int, at: Long)(using Handle[IO, LeiosStoreError]) =
+        s.writeEbBody(point(at, h), body(2), Vector.empty) *>
+          s.writeTxs(point(at, h), Vector(0 -> tx(0), 1 -> tx(1)))
+      for
+        _ <- store(dir / "a").use { s =>
+          ok(for
+            // one promotion after three announcements
+            _ <- announced(s, 1, Vector(20, 21, 30))
+            _ <- fetched(s, 1, 20)
+            _ <- s.promoteToImmutable(Vector(point(20, 1)))
+            // one after two announcements, another after a third
+            _ <- announced(s, 2, Vector(20, 21))
+            _ <- fetched(s, 2, 20)
+            _ <- s.promoteToImmutable(Vector(point(20, 2)))
+            _ <- announced(s, 2, Vector(30))
+            _ <- s.promoteToImmutable(Vector(point(30, 2)))
+          yield ()) *> exported(s, reference)
+        }
+        rows <- IO.blocking(
+          column(reference / "leios.imm.db", "SELECT hex(ebHashBytes) || ':' || ebSlot FROM ebs")
+        )
+      yield assertEquals(
+        rows.sorted,
+        Vector(s"${hash(1).bytes.hex}:30", s"${hash(2).bytes.hex}:21", s"${hash(2).bytes.hex}:30")
+          .map(_.toUpperCase)
+          .sorted
+      )
   }
 
   dirs.test("an export does not write over an existing database") { dir =>
@@ -377,6 +496,59 @@ object LeiosReferenceDbSuite:
         blob
       )
     }
+
+  /** The reference's own SQL (ouroboros-consensus 2416493b `Impl/SQLite/Queries.hs`), on the
+    * volatile file alone: the sweeper's pick (`sql_sweep_pick_marked`, 217-226, its limit lifted),
+    * the copier's work list (`sql_next_pinned_eb`, 177-179, without the attached file's `vol.`
+    * prefix and limit), the hashes it would copy (`sql_copy_has_closure`, 131-133, over every
+    * pinned hash) and the rows a mark at slot 25 takes (`sql_gc_markable`, 193-200).
+    */
+  val SweepPickMarked: String =
+    "SELECT DISTINCT hex(cand.ebHashBytes) FROM ebs cand\n" +
+      "WHERE cand.status = 3\n" +
+      "  AND NOT EXISTS\n" +
+      "    (SELECT 1 FROM ebs live\n" +
+      "     WHERE live.ebHashBytes = cand.ebHashBytes AND live.status <> 3)\n" +
+      "ORDER BY 1"
+
+  val ReferencePredicates: Vector[(String, String)] = Vector(
+    "sweep" -> SweepPickMarked,
+    "pinned" -> "SELECT hex(ebHashBytes) FROM ebs WHERE status = 1 ORDER BY ebSlot",
+    "copyable" -> ("SELECT DISTINCT hex(e.ebHashBytes) FROM ebs e WHERE e.status = 1 AND " +
+      "EXISTS (SELECT 1 FROM ebClosures WHERE ebHashBytes = e.ebHashBytes) ORDER BY 1"),
+    "markable" -> ("SELECT hex(c.ebHashBytes) || ':' || c.ebSlot FROM ebs AS c WHERE " +
+      "c.status IN (0, 2) AND c.ebSlot < 25\n" +
+      "  AND NOT EXISTS\n" +
+      "    (SELECT 1 FROM ebs live\n" +
+      "     WHERE live.ebHashBytes = c.ebHashBytes\n" +
+      "       AND (live.status = 1 OR live.ebSlot >= 25)) ORDER BY 1")
+  )
+
+  /** Every row of `table`, each column as text (a blob in hex), in order. */
+  def dump(path: Path, table: String): Vector[String] =
+    Using.resource(DriverManager.getConnection("jdbc:sqlite:" + path.toString)) { c =>
+      Using.resource(c.createStatement()) { s =>
+        Using.resource(s.executeQuery(s"SELECT * FROM $table ORDER BY 1, 2")) { r =>
+          val n = r.getMetaData.getColumnCount
+          Iterator
+            .continually(r.next())
+            .takeWhile(identity)
+            .map(_ =>
+              (1 to n)
+                .map(i =>
+                  r.getObject(i) match
+                    case bytes: Array[Byte] => Bytes.wrap(bytes).hex
+                    case other              => String.valueOf(other)
+                )
+                .mkString("|")
+            )
+            .toVector
+        }
+      }
+    }
+
+  /** The first column of every row of `sql`. */
+  def column(path: Path, sql: String): Vector[String] = query(path, sql)
 
   def query(path: Path, sql: String): Vector[String] =
     Using.resource(DriverManager.getConnection("jdbc:sqlite:" + path.toString)) { c =>
