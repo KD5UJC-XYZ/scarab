@@ -13445,7 +13445,7 @@
     "EraPlutusContextSuite",
     "DijkstraPlutusContextSuite"
    ],
-   "note": "derived from the scripts used (`toScriptHashByPurpose`), as every construction of the reference's makes it, and computed when first asked for, as its field is lazy (TYP-1, decided 2026-11-20, #85); the scripts used come from the scripts needed, one per purpose's index, so `Map.fromList`'s choice of the last of a repeated index shows nowhere. Only Plutus V4's translation reads it (`ScriptHashNotFoundForPurpose`), which `DijkstraPlutusContextSuite` compares with the reference's on the 49 Plutus V4 contexts recorded and its two refusals of a purpose with no script.",
+   "note": "derived from the scripts used (`toScriptHashByPurpose`), as every construction of the reference's makes it, and computed when first asked for, as its field is lazy (TYP-1, decided 2026-11-20, #85); the scripts used come from the scripts needed, one per purpose's index, so `Map.fromList`'s choice of the last of a repeated index shows nowhere. Only Plutus V4's translation reads it (`ScriptHashNotFoundForPurpose`), which `DijkstraPlutusContextSuite` compares with the reference's on the 53 Plutus V4 contexts recorded and its two refusals of a purpose with no script.",
    "digest": "d5a5fad51d264992"
   },
   "def ledger.era.LedgerTxInfo.toScriptHashByPurpose": {
@@ -26038,7 +26038,7 @@
    "evidence": [
     "DijkstraPlutusContextSuite"
    ],
-   "note": "written for Dijkstra, the one era with Plutus V4; the reference's is for any era with Dijkstra's classes; the batch's fields are read from each level's body once (`BatchTx`) and combined by the reference's semigroups: withdrawals and direct deposits summed, validity intervals intersected, votes right-biased, datums left-biased, mints and burns filtered per transaction then summed. Its differential evidence is incomplete (CNF-2) for two of the batch's combinations, which no recorded case reaches (every whole-transaction view recorded has no votes and no treasury amount): votes on the same action at two levels (the right-biased union) and a current treasury amount given by a sub-transaction (the first present)",
+   "note": "written for Dijkstra, the one era with Plutus V4; the reference's is for any era with Dijkstra's classes; the batch's fields are read from each level's body once (`BatchTx`) and combined by the reference's semigroups: withdrawals and direct deposits summed, validity intervals intersected, votes right-biased, datums left-biased, mints and burns filtered per transaction then summed, and the current treasury amount the first present, the sub-transactions' in order before the top level's. The refusals fixture's four guard cases compare the votes' union (one voter's votes on an action at three levels, other voters and actions at two) and the treasury amount (given by a sub-transaction only, and at two levels) with the reference's",
    "digest": "cd5bfec433621fce"
   },
   "def ledger.era.dijkstra.DijkstraTxInfo.transPlutusPurposeV4": {

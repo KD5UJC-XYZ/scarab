@@ -16,10 +16,10 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
   * `V4/Contexts.hs`), and written back with `ToData` to the reference's bytes. The fixtures are the
   * chain's own transactions (`leios-testnet-chain-contexts`, 34 Plutus V4 contexts), the
   * hand-written cases of every V4 field (`leios-testnet-contexts`, 14) and the cases the chain does
-  * not reach (`leios-testnet-context-refusals`, 1): 49 in all, at both levels.
+  * not reach (`leios-testnet-context-refusals`, 5): 53 in all, at both levels.
   *
   * This shows that the types hold every field of each recorded context in the reference's encoding.
-  * That the ledger's translation builds each of the 49, byte for byte, from the transaction it was
+  * That the ledger's translation builds each of the 53, byte for byte, from the transaction it was
   * recorded for is `DijkstraPlutusContextSuite` 's.
   */
 class PlutusLedgerApiV4Suite extends FunSuite:
@@ -59,7 +59,7 @@ class PlutusLedgerApiV4Suite extends FunSuite:
   private val fixtures = Vector(
     "fixtures/reference/leios-testnet-chain-contexts/results.json" -> 34,
     "fixtures/reference/leios-testnet-contexts/results.json" -> 14,
-    "fixtures/reference/leios-testnet-context-refusals/results.json" -> 1
+    "fixtures/reference/leios-testnet-context-refusals/results.json" -> 5
   )
 
   private val recorded: Vector[(String, Node)] =

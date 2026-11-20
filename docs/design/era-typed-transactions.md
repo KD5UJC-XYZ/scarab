@@ -778,11 +778,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     distinct hash and policy, a committee, `TopTxInfoSimplified` with every field distinct, and the V3 voters and
     vote the corpus lacks; and a Plutus V4 script's arguments, through its language, are its context alone, each
     recorded argument's bytes.
-  - `PlutusLedgerApiV4Suite` reads each of the 49 Plutus V4 arguments the reference recorded (34 on the testnet's
-    chain, 14 of the hand-written cases, 1 of the refusals), at both levels, into the types, refusing any encoding
+  - `PlutusLedgerApiV4Suite` reads each of the 53 Plutus V4 arguments the reference recorded (34 on the testnet's
+    chain, 14 of the hand-written cases, 5 of the refusals), at both levels, into the types, refusing any encoding
     it does not expect, and writes each back to the reference's bytes; every script purpose is among them, and a
     guard both with the whole transaction's information and without.
-  - The ledger's translation builds each of the 49 from the transaction it was recorded for, its serialized
+  - The ledger's translation builds each of the 53 from the transaction it was recorded for, its serialized
     arguments compared byte for byte (Dijkstra's Plutus V4 script contexts, below).
 - **Dijkstra's Plutus V1 to V3 script contexts** (`era/dijkstra/DijkstraTxInfo.scala`;
   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-569`, cardano-ledger 9df9f98c): Dijkstra's
@@ -827,22 +827,23 @@ Conway's rules on the classes follow as the rest of stage 2.
     typed `CollectError`s, every constructor and field of which, the networks, credential kinds, votes, anchors,
     actions, purposes and indices among them, is what the reference's record (`Show`) reads as. The chain context
     fixture: all 273 contexts of its 200 transactions (68 Plutus V1, 54 V2, 117 V3 and 34 V4, 18 of the V4 ones in
-    sub-transactions). The refusals fixture: every level of its 18 cases, 9 contexts and 12 refusals (Dijkstra's
+    sub-transactions). The refusals fixture: every level of its 22 cases, 13 contexts and 12 refusals (Dijkstra's
     guard of each of its four fields, Conway's guard of V1 and V2 on each of its four, a DRep's registration under
     V1, a V3 script in a sub-transaction, a guard whose sub-transaction fails and a guard's redeemer with no
-    script). The hand-written V4 cases (`leios-testnet-contexts`): every level of its 11 cases, 14 contexts and 7
+    script); its contexts include four guards whose whole-transaction view combines the levels' votes and current treasury
+    amounts: one voter's votes on an action at three levels (the right-biased union of `VotingProcedures`, the
+    sub-transactions' in order and then the top level's), votes by other voters and on other actions at two levels,
+    a treasury amount given by a sub-transaction only, and amounts at two levels (the first present; they differ,
+    which the rules refuse and the collection does not check). Making the union left-biased, or taking the last
+    amount, fails the suite on the first and the last of these. The hand-written V4 cases (`leios-testnet-contexts`): every level of its 11 cases, 14 contexts and 7
     refusals (a pointer and a Byron output, an unknown input, a reference input that is an input, a redeemer that
-    names nothing, a script without its redeemer, a key withdrawal's redeemer). These are the 49 Plutus V4
+    names nothing, a script without its redeemer, a key withdrawal's redeemer). These are the 53 Plutus V4
     arguments `PlutusLedgerApiV4Suite` reads. No case is deferred. A body of 65,537 outputs has 65,536 in each
     language's information, V4's included.
   - The makers defer each level's collection until it is read and keep it (`Eval.later`), as the reference's
     annotated transaction keeps its fields lazy (`Tx.hs:535-557`) and reads the batch's collections after phase 1,
     the top level's first (`Dijkstra/UTxO.hs:258-276`): the suite shows that annotating the guarded case and reading
     its other members runs no translation and reads no clock.
-  - Incomplete (CNF-2): no recorded case gives a guard's whole-transaction view votes or a treasury amount, so two
-    of the batch's combinations are not compared with the reference: votes on the same action at two levels (the
-    right-biased union of `VotingProcedures`) and a current treasury amount given by a sub-transaction (the first
-    present).
   - Not yet: the node builds its contexts with the flat path; the rules on the era types (UTXOS, LEDGER and the
     mempool) come with the rest of stage 2 (#85).
 - **The annotated transaction and its UTXOW predicates** (`era/StAnnTx.scala`, `era/EraTxAuxData.scala`,
