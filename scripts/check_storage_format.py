@@ -19,7 +19,12 @@ points to FMT-1 (docs/design-rules.md). The surface is:
 - `format_sources`: a code digest of each source that is nothing but persisted-format code: the readers and writers
   of the snapshot versions (`SnapshotV<n>.scala`), the sidecar schema, the checkpoint binding and its digest, the
   snapshot migration, the generic migration and atomic replacement, the storage codec and its instances, the
-  network identity record and its file;
+  network identity record and its file, and the codecs of the Haskell ledger state that a V10 snapshot's body holds
+  (`HASKELL_STATE_SOURCES`, in `haskell/state`: the codec traits from `VocabularyCodecs` to `LedgerFileCodecs`, the
+  objects they write with, `Envelope`, `Wire`, `Record`, `Params`, `ConwayCodecs` and `NodeOrders`, and the choice of
+  those codecs by layout, `HaskellStateCodecs`, `HaskellLedgerFile`, `HaskellState`, `ReferenceLayout` and
+  `ProposalsReading`). The state codecs also write node-to-client answers and a Haskell node's `state` file for
+  import and export; an edit made for those is a storage format change too;
 - `format_members`: a code digest of each persisted-format definition in a file that also holds other code: the
   UTxO store's key and value coding (`UtxoStore.Coding`), the memory store's `utxo.bin` (`MemoryUtxoStore`'s
   `checkpoint` and `restore`), the RocksDB store's stamp key, its writes and stamp read and its companion (key
@@ -45,8 +50,13 @@ from V8 to its current version: deployed stores are V8 (FMT-1).
 
 The guard does not see a persisted byte that none of these pins: a layout written inline in the rest of a file it
 reads in part (the immutable store's chunk and index file names in its `open` and preflight code, the RocksDB
-options in the store's class), or an encoding defined in a file not listed here. Its docstring is the list of what
-it sees.
+options in the store's class), or an encoding defined in a file not listed here. Of the Haskell state, it does not
+see the codecs no V10 snapshot reaches (`UtxoCodecs`, `DijkstraCodecs`, the tables, `meta` file and checksum of a
+Haskell node's snapshot directory, the ancillary manifest), the decoders of other packages the state codecs call (a
+certificate's, a proposal's, a block's), the CBOR decoder, the values they write as they hold them (an era's index,
+a script's tag, bytes kept as they were read), the ledger's conversions and orders they write in (`Convert`,
+`Sorted`, the orders of the ledger's types) and the choice of a layout by build (`StateLayout.of`). Its docstring
+is the list of what it sees.
 
 The manifest holds the surface and the record of the approval that admitted it. Its `approval` entry holds
 `question`, `asked_at`, `decision` and `decided_at` (UTC ISO 8601 with seconds and `Z`, decided after asked, not
@@ -110,6 +120,16 @@ FORMAT_SOURCES = (
     f'{STORAGE_MAIN}/NodeCodecs.scala',
     f'{STORAGE_MAIN}/ProductFields.scala',
 )
+HASKELL_STATE = f'{STORAGE_MAIN}/haskell/state'
+# The codecs of the Haskell ledger state that a V10 snapshot's body holds (`SnapshotV5.parts` and `decodeBody`, through
+# `ReferenceLayout`), and nothing else: the files of `haskell/state` that no snapshot reaches are not here. Added under
+# the owner's approval of 2026-11-20 (asked 03:23:52Z, answered 03:23:56Z).
+HASKELL_STATE_SOURCES = tuple(f'{HASKELL_STATE}/{name}.scala' for name in (
+    'ReferenceLayout', 'HaskellLedgerFile', 'HaskellState', 'HaskellStateCodecs', 'ProposalsReading',
+    'LedgerFileCodecs', 'ConsensusCodecs', 'EpochStateCodecs', 'RewardCodecs', 'SnapshotCodecs', 'GovStateCodecs',
+    'CertStateCodecs', 'NodeTypeCodecs', 'VocabularyCodecs',
+    'Envelope', 'Wire', 'Record', 'Params', 'ConwayCodecs', 'NodeOrders',
+))
 # The persisted-format definitions in files that also hold other code: (name, file, enclosing definition or None,
 # the definition), each a header the code holds once; a definition is its header line and the lines indented under it.
 FORMAT_MEMBERS = (
@@ -162,6 +182,7 @@ OWNER_NAMED_PATHS = (
     REGISTRY,
     'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala',
     f'{STORAGE_MAIN}/*.scala',
+    *HASKELL_STATE_SOURCES,
     'storage/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/node/NativeSnapshots.scala',
@@ -193,11 +214,13 @@ REQUIRED_BY_OTHER_GATES = (
 FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
 # Paths one storage format change may touch beyond FORMAT_CHANGE_PATHS, by the number of its pull request: an
 # exception the owner approved for that pull request only, which no other pull request gets. The number is read
-# from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads.
+# from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads. A path
+# that FORMAT_CHANGE_PATHS came to hold later is dropped from its exception: the codecs of the Haskell state
+# (`HASKELL_STATE_SOURCES`), which #1127 and #1173 touched.
 ONE_OFF_PATHS = {
     # #1127: PlutusV4 among the kinds of a stored script, V10 changed in place (#85, #54; approved
     # 2026-11-17T01:35:35Z). `ScriptKind` is declared in `Scripts.scala`, and the other files match on it
-    # exhaustively.
+    # exhaustively (`ConwayCodecs.scala`, one of them, is now on the general list).
     1127: (
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Scripts.scala',
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala',
@@ -205,12 +228,12 @@ ONE_OFF_PATHS = {
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTypes.scala',
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTypes.scala',
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/TxOutMemPack.scala',
-        'storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala',
     ),
     # #1173: Praos2 among the chain-dependent states, V10 changed in place (#826; approved 2026-11-17T21:13:31Z,
     # these paths 2026-11-17T21:53:53Z). `ChainDepState` is declared in `ChainDepState.scala`; seven files match on it
-    # exhaustively, `Praos2.scala` gives its state the equality and rendering the enum derives, and the rest are the
-    # case's generator, its evidence and tests, and a sentence of `docs/leios.md` the change makes false.
+    # exhaustively (`ConsensusCodecs.scala`, one of them, is now on the general list), `Praos2.scala` gives its state
+    # the equality and rendering the enum derives, and the rest are the case's generator, its evidence and tests, and a
+    # sentence of `docs/leios.md` the change makes false.
     1173: (
         'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos.scala',
         'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala',
@@ -222,7 +245,6 @@ ONE_OFF_PATHS = {
         'node/src/main/scala/xyz/kd5ujc/scarab/node/NodeHeaderRules.scala',
         'node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/QueryAnswers.scala',
         'node/src/test/scala/xyz/kd5ujc/scarab/consensus/DijkstraCrossingSuite.scala',
-        'storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala',
         'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosLayoutSuite.scala',
         'tools/src/main/scala/xyz/kd5ujc/scarab/node/HaskellScalaCompareMain.scala',
     ),
@@ -666,7 +688,8 @@ def digests_of(root: Path, directories, name: re.Pattern[str], what: str) -> dic
 
 
 def format_sources(root: Path) -> dict:
-    paths = [*FORMAT_SOURCES, *(p.relative_to(root).as_posix() for p in snapshot_readers(root).values())]
+    paths = [*FORMAT_SOURCES, *HASKELL_STATE_SOURCES,
+             *(p.relative_to(root).as_posix() for p in snapshot_readers(root).values())]
     return {path: code_digest(read(root, path)) for path in sorted(set(paths))}
 
 

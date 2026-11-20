@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Storage format change for #826 (Praos2), confirming in the guard's terms so I can record it in docs/data/storage-format.json. The live ChainDepState gains a Praos2 case. The V10 sidecar fingerprint moves in place (no V11) and the V10 fixtures are regenerated. A new frozen ChainDepState (PBft, TPraos, Praos) keeps V7–V9's fingerprints. A one-off guard exception, landed first in its own PR, admits the ~10 files that match on ChainDepState for this PR only. May I record this storage format change as approved?",
-  "asked_at": "2026-11-17T21:09:08Z",
-  "decision": "Approved as asked, with the frozen copy for V7–V9: the owner chose it after asking which was easier to maintain (21:10:58Z). It confirms the owner's choice earlier in the same session of adding Praos2 to the chain-dependent state the V10 sidecar holds and changing V10 in place, its fingerprint moving and its fixtures regenerated, rather than freezing the sidecar's codec, holding Praos2 in a header-only type or narrowing the sidecar's pending state (asked 2026-11-17T20:52:58Z; a first selection withdrawn at 21:05:30Z; answered 21:08:52Z). The one-off guard exception's thirteen files were approved separately (asked 21:52:05Z, answered 21:53:53Z) and land in #1174.",
-  "decided_at": "2026-11-17T21:13:31Z",
-  "surface_sha256": "7a3827ca66bd94d7f19bc91d8f1485c2d4ab6d372f85e3d1aecd1270303e0414"
+  "question": "Storage format (FMT-1): extend check_storage_format.py's watched surface to cover the Haskell ledger-state codecs (storage/.../haskell/state/*Codecs.scala) that write the ledger state inside the V10 snapshot? No bytes change; the guard's manifest surface changes, so its approval record is updated. After this, any edit to those codecs … fails the guard until you approve it in its own PR.",
+  "asked_at": "2026-11-20T03:23:52Z",
+  "decision": "Approved: the guard watches every codec file that writes the bytes of a V10 snapshot, in a pull request of its own at level 3; no persisted byte changes.",
+  "decided_at": "2026-11-20T03:23:56Z",
+  "surface_sha256": "ca955baf626c645cf1f7f7e0eedd5882d1fbdf129300e66107a34fcde8ddf2c8"
  },
  "surface": {
   "registry": {
@@ -261,7 +261,27 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": "034c11e689feb29bc44d5855b63d70ac5a622f656afcc7a05ace805fbd58da1a",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": "1db1c2781205f65ae9decbc835e34a1118a821bfc53be1128f48eb48224d1add",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": "c56ee0253fd57be19c42d7d9f11e517b9a8130d0d79349a3e81db4230ccc2402",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5"
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "b0f307112e7248c1c9422313eb7628b36dd3516ee636af36459312c657d8855a",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "7da4d03a64bc43011fc440c87f2bda0f6659da8f9bf4dad99cd7a119ae657068",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "4be536a2166841090cd0d27e42f9e247dfd5550c5251662c6c8c0632bb1fbd14",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala": "b5786dd7c6a4097a345fb1bc7371d06fcd9d8d4c6344ef0734291ab1af36b9d7",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellLedgerFile.scala": "44ce725f39bc7e9060334fc98614c7ac435c25ce9a66c16629e0b50e2c8c4562",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellState.scala": "f45c212166c972c81d61da11bbaa5ee4da3250c67411e886ba3c401640c76772",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecs.scala": "eff5766f1249ba4843cb3e22e9819133370f4d955094cd283d6d96ee3c7ae9c9",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileCodecs.scala": "da67df20db22b3535397dc21fafe51ec5e0d858e12ce2a6e4aab1894668f9d32",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeOrders.scala": "344093d18720fc3e064dabca426d2eb1ace16246a5b18d279407e453298b960c",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": "ce117bc8a66922359ed462b45103b5891fbee3e51ff9b3c7c0585e4dc1252fe2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": "41c5941c850388e1eb68d2ab6dfb2e3c7361167ea0eb80218c17a876f221442d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ProposalsReading.scala": "1db8028ebb4238a55e1dc869d46aa98db7333d7b5eb510a0763bc0aad382a1e1",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Record.scala": "3cc9db95616e5b058f27d41da49f4a273699cc46ab98cb7b2dc9f1e6a7939c46",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ReferenceLayout.scala": "3615cd8286548704b534e00d3deabe113957b26564d92291c4f9c6204af271ea",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/RewardCodecs.scala": "ad6f62555ab3bc5a052887bc72f340712eaaf2a29101febfc7a108132fcde583",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotCodecs.scala": "b6359962bb2c3146c9f398e7b0edc726ec5f2192d883fd7277a397fb3b07fd66",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/VocabularyCodecs.scala": "d9f29bc82aa2c53db970e9b65f6fdb091cb7387831ac0da8cc228afdc0a572ba",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Wire.scala": "69454c40ca47e61e50a5bd2845e71f5eb93799bbecb7f470c8f9a3f505fd63bd"
   },
   "format_members": {
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#UtxoStore.Coding": "72e8b74b8ffc95b29f030937c8d31777e41d35645c3677abb86df1e64e36f42b",
@@ -299,14 +319,14 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c"
   },
   "frozen_schemas": {
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenChainDepState.scala": "6afa78dcaf92286304f7c1addc8cff6d12936191555ffd99f06511300ff846c2",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala": "dc1bd190d36c791cf081e7e602a0c6c1c28d145c684b618be0c33b1f760a4498",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenProtocolParams.scala": "b4356c8b94c6087772811896e6fe6cbc2ecfcba6b029d12e2905fbf33dcc90f2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenScriptKind.scala": "e80219ba877678d38929947e07532e80c1c66dd18be5db6bc0f078c9563225b7",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenSidecar.scala": "cc4c040093a9f1e7112ab0fadd851f756b058f8e0221ba84fc2e95771dcbe249",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV7.scala": "eb379927b5c47f89f12afd9a95ff2ce9cc9d4cd01bb37e245c60b2b48c5c844f",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV8.scala": "4c908a9fb5f60efa1156258b06024172832e3d5d217397b2c4060c015ba199b2",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV9.scala": "5ff7829aac861aed187d71230c5283b0bc337a0f757bc8e4bfef1cce06525270",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenScriptKind.scala": "e80219ba877678d38929947e07532e80c1c66dd18be5db6bc0f078c9563225b7",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenChainDepState.scala": "6afa78dcaf92286304f7c1addc8cff6d12936191555ffd99f06511300ff846c2"
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV9.scala": "5ff7829aac861aed187d71230c5283b0bc337a0f757bc8e4bfef1cce06525270"
   },
   "goldens": {
    "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala": {

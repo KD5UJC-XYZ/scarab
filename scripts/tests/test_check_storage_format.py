@@ -136,6 +136,22 @@ class SurfaceTest(TreeTest):
         self.edit(fmt.MIGRATION, 'SnapshotV10.fromV9(content)', 'SnapshotV10.fromV9(content.clone())')
         self.assertLoud(self.check(), 'format_sources.' + fmt.MIGRATION)
 
+    def test_a_codec_of_the_haskell_state_a_v10_snapshot_holds_that_changes_is_a_change(self):
+        conway, ledger_file = f'{fmt.HASKELL_STATE}/ConwayCodecs.scala', f'{fmt.HASKELL_STATE}/LedgerFileCodecs.scala'
+        self.edit(conway, 'alternative(out, 2, s.kind.tag)', 'alternative(out, 2, s.kind.tag + 1)')
+        self.assertLoud(self.check(), 'format_sources.' + conway)
+        self.setUp()
+        self.edit(ledger_file, '      out.arrayHead(2)', '      out.arrayHead(3)')
+        self.assertLoud(self.check(), 'format_sources.' + ledger_file)
+        self.setUp()
+        self.edit(ledger_file, '  /** `AnnTip` of the Cardano chain', '  /** The `AnnTip` of the Cardano chain')
+        self.assertEqual(self.check(), [])
+        self.setUp()
+        (self.root / conway).unlink()
+        self.assertLoud(self.check(), 'cannot be read', conway)
+        # the codecs no V10 snapshot reaches are not on the surface
+        self.assertNotIn(f'{fmt.HASKELL_STATE}/UtxoCodecs.scala', fmt.surface_paths(ROOT))
+
     def test_a_format_definition_in_a_mixed_file_is_pinned_and_the_rest_of_the_file_is_not(self):
         self.edit(UTXO, 'a(0) = 1', 'a(0) = 2')
         self.assertLoud(self.check(), 'format_members.' + UTXO + '#UtxoStore.Coding')
