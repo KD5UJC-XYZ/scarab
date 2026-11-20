@@ -86,8 +86,9 @@ collection, an approved Deviation ([decisions register](../decisions.md#genesis-
 that fails, the force included, or an exception in the fiber that runs them, stops the node. A file
 holds 1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected
 before another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
-387-399); files an earlier build wrote keep their 512-block boundaries, and the last of them, the one
-being written, is reopened under the 1,000-block limit and filled to 1,000. The selected-chain log shares the
+387-399); files an earlier build wrote keep their 512-block boundaries, but the newest file of such a
+log, if it holds fewer than 1,000 blocks (a full 512-block one included), is the one written to and is
+filled to 1,000. The selected-chain log shares the
 writer: its files of 512 blocks are now rolled at the block that fills them too, so a full one can be
 collected at the next 4,096-block trigger before another record is written. When the log is opened, the
 files of its directory whose names it does not read are logged and left alone, as the reference traces

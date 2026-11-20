@@ -8,7 +8,8 @@
   and collection is logged at Debug (`scheduledGC`, `performedGC`), as the reference traces them.
 - The received log's files hold 1,000 blocks, and the next one is started as soon as one fills, so a
   full file can be collected before another block arrives; files an earlier build wrote keep their
-  512-block boundaries, and the last of them, the one being written, is filled to 1,000. The selected-chain log shares the writer: its 512-block files are now rolled
+  512-block boundaries, but the newest file of such a log, a full 512-block one included, is the one
+  written to and is filled to 1,000. The selected-chain log shares the writer: its 512-block files are now rolled
   at the block that fills them, so a full one can be collected at the next 4,096-block trigger before
   another record is written.
 - The collection is timed from the end of the copy, before the backing store is brought forward, and
