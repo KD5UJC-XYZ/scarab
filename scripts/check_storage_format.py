@@ -324,6 +324,17 @@ ONE_OFF_PATHS = {
         'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosLayoutSuite.scala',
         'tools/src/main/scala/xyz/kd5ujc/scarab/node/HaskellScalaCompareMain.scala',
     ),
+    # #1244: the BLS-key format change of the Leios build's future pool parameters (#54; approved
+    # 2026-11-20T04:09:53Z): its tests of the state codecs and the epoch state, the refusal it narrows, and the two
+    # documents that describe the layout. Its codec files are on the general list.
+    1244: (
+        'docs/compatibility/dijkstra.md',
+        'docs/design/haskell-snapshots.md',
+        'node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraEpochReferenceSuite.scala',
+        'protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/DijkstraNotYet.scala',
+        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/DijkstraEpochStateSuite.scala',
+        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/FuturePoolParamsCodecSuite.scala',
+    ),
 }
 # A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the
 # guard and its tests, so that weakening the guard is as loud as a format change.
