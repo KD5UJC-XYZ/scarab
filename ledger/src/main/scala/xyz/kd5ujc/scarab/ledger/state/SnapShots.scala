@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.state
 
 import cats.{Eq, Show}
 import cats.derived.*
+import cats.syntax.eq.*
 import monocle.{Focus, Lens}
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -62,6 +63,15 @@ final case class BlsKey(key: Bytes, proofOfPossession: Bytes) derives Eq, Show, 
   */
 final case class BlsKeyState(key: BlsKey, registeredIn: EpochNo) derives Eq, Show, Diff
 
+object BlsKeyState:
+  /** `registerBlsKey` of `mkStakePoolState epoch current` (9df9f98c `State/StakePool.hs:299-320`):
+    * the state of `key` registered at `epoch` for a pool that holds `current`. The key the pool
+    * already holds keeps the epoch it was first registered in; any other starts its lifetime at
+    * `epoch`.
+    */
+  def register(epoch: EpochNo, current: Option[BlsKeyState])(key: BlsKey): BlsKeyState =
+    current.filter(_.key === key).getOrElse(BlsKeyState(key, epoch))
+
 /** The voting key of a pool, in its state and in a stake snapshot, by layout: the 11.1 layout has
   * no such field; the Leios layout has `spsBlsKey` /`spssBlsKey`, a `StrictMaybe BlsKeyState`,
   * after the VRF key hash (9df9f98c `State/StakePool.hs:165`, `State/SnapShots.hs:197`).
@@ -100,7 +110,7 @@ enum PoolParamsBlsKey derives Eq, Show:
     */
   def registered(epoch: EpochNo): PoolBlsKey = this match
     case Node11_1   => PoolBlsKey.Node11_1
-    case Leios(key) => PoolBlsKey.Leios(key.map(BlsKeyState(_, epoch)))
+    case Leios(key) => PoolBlsKey.Leios(key.map(BlsKeyState.register(epoch, None)))
 
 object PoolParamsBlsKey:
   /** The voting key of parameters that a certificate before Dijkstra registers, in `layout`: none
