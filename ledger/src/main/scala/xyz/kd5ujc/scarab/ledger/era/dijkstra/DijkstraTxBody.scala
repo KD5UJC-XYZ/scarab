@@ -181,6 +181,14 @@ object DijkstraTxBody:
 
   given [L <: TxLevel]: CanEqual[DijkstraTxBody[L], DijkstraTxBody[L]] = CanEqual.derived
 
+  /** `toSTxLevel` of a body (`instance HasEraTxLevel TxBody DijkstraEra`, `TxBody.hs:1079-1084`,
+    * cardano-ledger 9df9f98c): the level the body is of, read from its constructor, as
+    * `withBothTxLevels` reads it.
+    */
+  def toSTxLevel[L <: TxLevel](body: DijkstraTxBody[L]): BothLevels[L] = body match
+    case _: TopTxBody => BothLevels.Top
+    case _: SubTxBody => BothLevels.Sub
+
   /** The top-level body, which is the only body of the top level. */
   def topBody(body: DijkstraTxBody[TxLevel.Top]): TopTxBody = body match
     case t: TopTxBody => t
