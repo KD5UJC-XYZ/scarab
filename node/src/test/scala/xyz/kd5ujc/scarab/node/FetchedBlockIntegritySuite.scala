@@ -70,6 +70,11 @@ class FetchedBlockIntegritySuite extends FunSuite:
       .fold(error => fail(error.message), identity)
     assertEquals(recovered.header, header)
     assertEquals(recovered.block, raw)
+    assertEquals(
+      ReceivedBlockRecovery.seeded(raw, epochSlots),
+      Right(recovered.metadata),
+      "seeding builds from the header alone what the check builds"
+    )
     val changed = Vector(
       ref.copy(slot = ref.slot + 1),
       ref.copy(hash = Bytes(Vector.fill(32)(0.toByte))),
@@ -88,6 +93,7 @@ class FetchedBlockIntegritySuite extends FunSuite:
       )
     }
     assert(ReceivedBlockRecovery.checked(ref, Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
+    assert(ReceivedBlockRecovery.seeded(Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
   }
 
   for era <- Era.values.filterNot(e => e == Era.Byron || e == Era.Dijkstra) do

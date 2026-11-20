@@ -29,6 +29,22 @@ private[scarab] object ReceivedBlockRecovery:
       case VolatileStore.Refusal.Corrupt(error)     => error
     }
 
+  /** The metadata the block pool is seeded with from a block the received log holds at the node's
+    * start ([[BlockPool.DeliveredHeader.checkedAtOpen]]): the block decoded, as the reference's
+    * VolatileDB decodes each block it opens, and its body not checked against its header again,
+    * which the open has done ([[startUp]]). A block that does not decode, or whose header's fields
+    * are not the punishment view's, is refused, as that check refuses it.
+    */
+  def seeded(raw: Bytes, byronEpochSlots: BigInt): Either[StorageError, BlockPool.DeliveredHeader] =
+    for
+      block <- Block
+        .decode(raw, byronEpochSlots)
+        .leftMap(StorageError.Corrupt("received block", _))
+      metadata <- BlockPool.DeliveredHeader
+        .checkedAtOpen(block)
+        .leftMap(StorageError.Corrupt("received block header", _))
+    yield metadata
+
   /** [[checked]], with why it refuses a block: the block, or a transaction or Byron body in it,
     * does not decode; or it decodes, and its header is not the record's, its body does not match
     * its header, or its header's fields are not the punishment view's.

@@ -291,15 +291,16 @@ object Main extends IOApp:
         refs
           .traverse { ref =>
             // each body is read and dropped at once: the forest keeps the metadata and reads the
-            // body back from the log, so the start does not hold every recovered body. The open
-            // has cut every record that fails this check (ReceivedBlockRecovery.startUp), and the
-            // start added only resumed blocks of the selected chain, so a refusal here is of a
-            // block the log keeps but the pool is not seeded with
+            // body back from the log, so the start does not hold every recovered body. Each block
+            // has been checked: the open's start-up check (ReceivedBlockRecovery.startUp) of every
+            // record it indexed, and the resume of the blocks of the selected chain the start added
+            // after it, nothing else written since; so only its header is read here, and a
+            // refusal, not expected, is of a block the log keeps but the pool is not seeded with
             cache.get(ref.hash).flatMap {
               case None => IO.pure(None)
               case Some((_, raw)) =>
-                ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
-                  case Right(delivered) => IO.pure(Some(delivered.metadata))
+                ReceivedBlockRecovery.seeded(raw, epochSlots) match
+                  case Right(metadata) => IO.pure(Some(metadata))
                   case Left(error) =>
                     Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)).as(None)
             }
