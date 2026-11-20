@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import scala.annotation.unused
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
+import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, TxIx}
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
 
 import PlutusData.{B, I}
@@ -246,7 +246,14 @@ object ScriptContexts:
       language: PlutusLanguage,
       env: Environment
   ): Result[PlutusData] =
-    outs.zipWithIndex
+    // From Babbage, zipped with `[minBound ..] :: [TxIx]` (`Babbage/TxInfo.hs:334-338, 373-377`,
+    // `Conway/TxInfo.hs:412-416, 452-456, 498-502`, cardano-ledger f649f975), so none past index
+    // 65,535; Alonzo's maps every output (`mapMaybe transTxOut`, `Alonzo/Plutus/TxInfo.hs:149`),
+    // whose index only a Byron output's refusal, which Alonzo does not make, would read
+    val indexed =
+      if env.refusesByron then TxIx.enumerate(outs).map((out, ix) => (out, ix.index))
+      else outs.zipWithIndex
+    indexed
       .traverse { case (out, index) =>
         val source = TxOutSource.TxOutFromOutput(index)
         if language == PlutusLanguage.V1 then outputV1(out, source, env)

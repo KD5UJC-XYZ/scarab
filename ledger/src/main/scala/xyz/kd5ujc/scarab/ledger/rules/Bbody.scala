@@ -71,7 +71,11 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
       BlockFailure.Tx(_)
     )
 
-  /** The reference scripts of the block's transactions, in bytes (`totalRefScriptSizeInBlock`). */
+  /** The reference scripts of the block's transactions, in bytes (`totalRefScriptSizeInBlock`,
+    * `Conway/Rules/Bbody.hs:357-370`, cardano-ledger f649f975): from version 11 the outputs each
+    * transaction creates (`txouts`, [[TxIn.txouts]]) or its collateral return (`collOuts`,
+    * [[TxIn.collOuts]]) are there for the next.
+    */
   def refScriptsSize(pp: ProtocolParams, utxo: NodeUtxo, txs: Vector[Tx]): Long =
     val running = pp.protocolMajor > 10
     val (_, total) = txs.foldLeft((Map.empty[TxIn, TxOut], 0L)) { case ((added, sum), tx) =>
@@ -84,9 +88,8 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
         .sum
       val created =
         if !running then added
-        else if tx.isValid then
-          added ++ body.outputs.zipWithIndex.map { (out, i) => TxIn(body.id, i) -> out }
-        else added ++ body.collateralReturn.map(r => TxIn(body.id, body.outputs.size) -> r)
+        else if tx.isValid then added ++ TxIn.txouts(body.id, body.outputs)
+        else added ++ TxIn.collOuts(body.id, body.outputs.size, body.collateralReturn)
       (created, sum + size)
     }
     total

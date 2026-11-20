@@ -242,8 +242,9 @@ object BlockNo:
   given Show[BlockNo] = Show.show(b => s"BlockNo(${Word64.decimal(b)})")
 
 /** `TxIx` (cardano-ledger f649f975 `BaseTypes.hs:918-921`): the position of a transaction in its
-  * block, a `Word16` with the derived bounded `Enum`. A position exists only as LEDGERS enumerates
-  * it ([[TxIx.enumerate]]), so none is past 65,535.
+  * block, or of an output in its transaction, a `Word16` with the derived bounded `Enum`. A
+  * position exists only as the ledger enumerates it ([[TxIx.enumerate]]) or reads it from a count
+  * ([[TxIx.txIxFromIntegral]]), so none is past 65,535 ([[TxIx.maxBound]]).
   */
 opaque type TxIx = Int
 
@@ -258,6 +259,14 @@ object TxIx:
     * `maxBound`.
     */
   def enumerate[A](as: Vector[A]): Vector[(A, TxIx)] = as.take(count).zipWithIndex
+
+  /** `maxBound` of the derived `Bounded` instance: 65,535. */
+  val maxBound: TxIx = count - 1
+
+  /** `txIxFromIntegral` (`BaseTypes.hs:934-936`, cardano-ledger f649f975): the position `n`, none
+    * if it is negative or past [[maxBound]] (`integralToBounded`).
+    */
+  def txIxFromIntegral(n: Int): Option[TxIx] = Option.when(n >= 0 && n < count)(n)
 
   extension (ix: TxIx) def index: Int = ix
 

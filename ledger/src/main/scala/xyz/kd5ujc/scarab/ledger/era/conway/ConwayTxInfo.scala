@@ -83,7 +83,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   DRep,
   DRepRole,
   EraTag,
-  HotCommittee
+  HotCommittee,
+  TxIx
 }
 
 /** Why Conway's translation of a transaction to a script context fails (`data ConwayContextError
@@ -110,7 +111,10 @@ trait ConwayEraPlutusTxInfo[L <: Language, E <: EraTag] extends EraPlutusTxInfo[
   * 9df9f98c) and its instances for Plutus V1 to V3. A function the reference writes for any era
   * with Conway's classes is generic in the era over them, as the reference's is, so Dijkstra's
   * contexts share it; one the reference writes for an era whose certificates are Conway's (`TxCert
-  * era ~ ConwayTxCert era`) is written for Conway's.
+  * era ~ ConwayTxCert era`) is written for Conway's. A body's outputs are translated with their
+  * indices as the reference zips them with `[minBound ..] :: [TxIx]` (`Conway/TxInfo.hs:412-416,
+  * 452-456, 498-502`, cardano-ledger f649f975), so none past the last index, 65,535
+  * ([[xyz.kd5ujc.scarab.ledger.state.TxIx.enumerate]]).
   */
 object ConwayTxInfo:
   import PlutusTxInfos.*
@@ -531,11 +535,10 @@ object ConwayTxInfo:
                 if pv.pvMajor.value >= 11 then
                   checkReferenceInputsNotDisjointFromInputs[Conway, TxLevel.Top](txBody)
                 else Right(())
-              outputs <- b
-                .outputs[TxLevel.Top](txBody)
-                .zipWithIndex
+              outputs <- TxIx
+                .enumerate(b.outputs[TxLevel.Top](txBody))
                 .traverse((out, ix) =>
-                  BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix), out)
+                  BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix.index), out)
                 )
               txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV3, Conway, TxLevel.Top](
                 pv,
@@ -716,10 +719,11 @@ object ConwayTxInfo:
                 .referenceInputs[TxLevel.Top](txBody)
                 .toVector
                 .traverse(transTxInInfoV1(lti.ltiUTxO, _))
-              outputs <- b
-                .outputs[TxLevel.Top](txBody)
-                .zipWithIndex
-                .traverse((out, ix) => transTxOutV1[Conway](TxOutSource.TxOutFromOutput(ix), out))
+              outputs <- TxIx
+                .enumerate(b.outputs[TxLevel.Top](txBody))
+                .traverse((out, ix) =>
+                  transTxOutV1[Conway](TxOutSource.TxOutFromOutput(ix.index), out)
+                )
               txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV1, Conway, TxLevel.Top](
                 lti.ltiProtVer,
                 txBody
@@ -806,11 +810,10 @@ object ConwayTxInfo:
                 .referenceInputs[TxLevel.Top](txBody)
                 .toVector
                 .traverse(BabbageTxInfo.transTxInInfoV2(lti.ltiUTxO, _))
-              outputs <- b
-                .outputs[TxLevel.Top](txBody)
-                .zipWithIndex
+              outputs <- TxIx
+                .enumerate(b.outputs[TxLevel.Top](txBody))
                 .traverse((out, ix) =>
-                  BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix), out)
+                  BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix.index), out)
                 )
               txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV2, Conway, TxLevel.Top](
                 pv,

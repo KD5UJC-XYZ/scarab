@@ -850,7 +850,8 @@
           "EpochGeometrySuite",
           "CertificateRedeemerIndexSuite",
           "MissingRedeemersRefusalSuite",
-          "RedeemerIndexReferenceSuite"
+          "RedeemerIndexReferenceSuite",
+          "TxOutsBoundSuite"
         ],
         "paths": [
           "fixtures/reference/instant-stake/README.md",
@@ -862,7 +863,8 @@
           299,
           344,
           828,
-          825
+          825,
+          85
         ]
       },
       "page": "docs/compatibility/ledger-alonzo-babbage.md"

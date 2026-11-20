@@ -28,8 +28,8 @@ object TxDependencies:
           .maxOption
           .getOrElse(0)
         val created =
-          if tx.isValid then body.outputs.indices.map(TxIn(body.id, _)).toVector
-          else body.collateralReturn.toVector.map(_ => TxIn(body.id, body.outputs.size))
+          if tx.isValid then TxIn.txouts(body.id, body.outputs).map(_._1)
+          else TxIn.collOuts(body.id, body.outputs.size, body.collateralReturn).toVector.map(_._1)
         val read =
           reads.foldLeft(s.readers)((m, in) => m.updated(in, m.getOrElse(in, Set.empty) + index))
         Prefix(

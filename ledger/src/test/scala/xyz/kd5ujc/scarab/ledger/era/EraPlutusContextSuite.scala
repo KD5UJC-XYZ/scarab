@@ -1117,6 +1117,56 @@ class EraPlutusContextSuite extends munit.FunSuite:
     )
   }
 
+  test(
+    "a body's outputs are translated up to the last transaction index, as the reference zips them"
+  ) {
+    // `zipWithM ... [minBound ..]` over `TxIx`, a `Word16` (`Conway/TxInfo.hs:412-416, 452-456,
+    // 498-502`, `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:918-921`,
+    // cardano-ledger f649f975): of 65,537 outputs the first 65,536 are translated
+    def outputs[L <: Language](t: EraPlutusTxInfo[L, Conway], c: Case)(
+        count: PlutusTxInfo[L] => Int
+    ): Option[Int] =
+      t.toPlutusTxInfo(typed(c)._3).unPlutusTxInfoResult.toOption.map(count)
+    def all(c: Case): Vector[Option[Int]] =
+      Vector(
+        outputs(EraPlutusTxInfo.conwayPlutusV1, c)(_.txInfoOutputs.size),
+        outputs(EraPlutusTxInfo.conwayPlutusV2, c)(_.txInfoOutputs.size),
+        outputs(v3, c)(_.txInfoOutputs.size)
+      )
+    val c = cases
+      .find(c => c.flat.body.outputs.nonEmpty && all(c).forall(_.isDefined))
+      .getOrElse(fail("no case every language translates"))
+    val first = cbor(c.parts.body).value match
+      case CborValue.Map(kvs) =>
+        kvs.collectFirst { case (k, v) if k.value == uint(1) => v.value } match
+          case Some(CborValue.Arr(first +: _)) => first
+          case other                           => fail(s"not outputs: $other")
+      case other => fail(s"not a body: $other")
+    val entries = cbor(c.parts.body).value match
+      case CborValue.Map(kvs) =>
+        kvs.map((k, v) =>
+          if k.value == uint(1) then k -> node(CborValue.Arr(Vector.fill(65537)(first)))
+          else k -> v
+        )
+      case other => fail(s"not a body: $other")
+    val body =
+      Cbor
+        .encode(CborValue.Map(entries), Cbor.Limits.Unbounded)
+        .fold(e => fail(e.toString), identity)
+    val parts = c.parts.copy(body = body)
+    val wide = c.copy(
+      name = "65,537 outputs",
+      parts = parts,
+      flat = FlatTx.fromBlock(parts, Era.Conway).fold(e => fail(e.toString), identity)
+    )
+    assertEquals(wide.flat.body.outputs.size, 65537)
+    assertEquals(all(wide), Vector.fill(3)(Some(65536)))
+    // and the flat translation the node runs gives the same information in each language
+    assert(sameTxInfo(wide, wide.major).isRight)
+    assert(sameLegacyTxInfo(wide, wide.major, PlutusLanguage.V1).isRight)
+    assert(sameLegacyTxInfo(wide, wide.major, PlutusLanguage.V2).isRight)
+  }
+
   // ---------------------------------------------------------------------------------------------
   // The scripts of a transaction with their contexts (`Alonzo/Plutus/Evaluate.hs`)
 

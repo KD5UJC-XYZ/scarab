@@ -78,6 +78,17 @@ unread legacy key 17 unadoptable. This establishes a valid ordinary-version scen
 observed occurrence on an actual public chain. No retained reference divergence is approved;
 the pending proposals' replacement values are the era translation itself, with no schema change.
 
+### The output index bound (#85)
+
+The reference numbers a body's outputs with the 16-bit `TxIx`, so its `txouts` creates at most 65,536 entries and a
+collateral return's index is clamped to 65,535 (`State/UTxO.hs:146-158` and `Babbage/Collateral.hs:43-61`, the
+same at cardano-ledger f649f975, 29a7d656 and 9df9f98c). Scarab's UTxO rules, instant stake, the reference scripts a
+block counts, Allegra's and Mary's three bounded output checks and the Plutus contexts from Babbage on follow it.
+Alonzo's Plutus V1 context still holds every output, as the reference's does. `TxOutsBoundSuite` pins the index
+sequence, the clamp, Babbage's and Conway's creation and stake, and Mary's checks against Shelley's;
+`EraPlutusContextSuite` pins the bounded Conway contexts, on the era types and on the node's path. No transaction
+within the current size limits reaches the bound, so no recorded chain evidence exercises it.
+
 ## Explicitly unchecked or unconfirmed
 
 block execution-unit limits are validated (protocol >= 5) but only by unit tests (`ShelleyBbodySuite`, `BbodySuite`) and the sync; no Alonzo-era transaction with datums and no redeemers exists on Preview, so that case of the integrity hash (`0x80` redeemers) has no chain evidence of its own (the Babbage case is the same code)

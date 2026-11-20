@@ -15604,7 +15604,8 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "fd62f405195d8b45"
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "digest": "e3d8aa86be0c973a"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxInInfoV3": {
    "upstream": [
@@ -20543,7 +20544,8 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "3ee445f53bea9420"
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "digest": "b0364ba1d6996e90"
   },
   "val ledger.era.conway.ConwayTxInfo.plutusV2": {
    "upstream": [
@@ -20574,7 +20576,8 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "3cd654f6a28a8c2d"
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "digest": "25367329fc1ff9be"
   },
   "val ledger.era.conway.ConwayTxInfo.context": {
    "upstream": [
@@ -26194,6 +26197,161 @@
    ],
    "note": "the level a body is of, read from its constructor, as the reference's `toSTxLevel` reads it from the raw body's",
    "digest": "e5f2836e486c3f79"
+  },
+  "def ledger.TxIn.txouts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "txouts",
+     "lines": [
+      146,
+      158
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "txouts",
+     "lines": [
+      146,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of a transaction's id and outputs, which the flat bodies of every era hold; the outputs zipped with TxIx.enumerate, so none past index 65,535",
+   "digest": "5c977246a348421b"
+  },
+  "def ledger.TxIn.mkCollateralTxIn": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "symbol": "mkCollateralTxIn",
+     "lines": [
+      52,
+      61
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "symbol": "mkCollateralTxIn",
+     "lines": [
+      52,
+      61
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of a transaction's id and its outputs' count",
+   "digest": "c24eee36219736ed"
+  },
+  "def ledger.TxIn.collOuts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "symbol": "collOuts",
+     "lines": [
+      43,
+      50
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "symbol": "collOuts",
+     "lines": [
+      43,
+      50
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of a transaction's id, its outputs' count and its collateral return, the one entry as an option",
+   "digest": "7ae41dbcea1ba986"
+  },
+  "def ledger.state.TxIx.txIxFromIntegral": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "txIxFromIntegral",
+     "lines": [
+      934,
+      936
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "txIxFromIntegral",
+     "lines": [
+      941,
+      943
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of an Int, none where the reference's MonadFail fails",
+   "digest": "2a557bdec4a74858"
+  },
+  "val ledger.state.TxIx.maxBound": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Bounded",
+     "lines": [
+      918,
+      921
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Bounded",
+     "lines": [
+      925,
+      928
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "maxBound of TxIx's derived Bounded instance, a Word16's",
+   "digest": "c33d11a3cdf12810"
   }
  },
  "glue": [

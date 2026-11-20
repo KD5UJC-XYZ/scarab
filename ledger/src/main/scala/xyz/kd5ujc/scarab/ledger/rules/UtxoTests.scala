@@ -323,13 +323,19 @@ object UtxoTests:
     * (`Shelley/Rules/Utxo.hs:393-403`, `Allegra/Rules/Utxo.hs:202-216`), by the era of `pre`
     * whatever the protocol version: the size of the values from Allegra
     * (`Allegra/Rules/Utxo.hs:211`), and the bootstrap attributes failure Shelley's own in Shelley
-    * and injected from Allegra.
+    * and injected from Allegra. Shelley checks every output (`outputsTxBodyL`,
+    * `Shelley/Rules/Utxo.hs:363`); Allegra and Mary the outputs `txouts` creates
+    * (`Allegra/Rules/Utxo.hs:205`, cardano-ledger f649f975), none past index 65,535
+    * ([[TxIn.txouts]]).
     */
   def shelleyAfterPpup[E <: EraTag](build: ReferenceBuild, pp: ProtocolParams, tx: Tx)(using
       pre: PreConway[E]
   ): Test[PredicateFailure] =
     given ShelleyBasedEra[E] = pre.era
-    val outs = tx.body.outputs
+    val outs =
+      if pre.atLeast(ShelleyBasedEra.SAllegra) then
+        TxIn.txouts(tx.body.id, tx.body.outputs).map(_._2)
+      else tx.body.outputs
     Test.all(
       outputTooSmall[E](pp, outs),
       (if pre.atLeast(ShelleyBasedEra.SAllegra) then outputTooBig[E](pp, outs)

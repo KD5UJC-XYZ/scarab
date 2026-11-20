@@ -992,6 +992,32 @@ object TxIn:
     val ids = a.id.compareTo(b.id)
     if ids != 0 then ids else a.index.compare(b.index)
 
+  /** `txouts` (`libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs:146-158`, cardano-ledger
+    * f649f975, the same at 9df9f98c): each output of the transaction `txId` with the input that
+    * names it, zipped with `[minBound ..] :: [TxIx]`
+    * ([[xyz.kd5ujc.scarab.ledger.state.TxIx.enumerate]]), so an output past index 65,535 has none
+    * and is not created.
+    */
+  def txouts[A](txId: Bytes, outputs: Vector[A]): Vector[(TxIn, A)] =
+    xyz.kd5ujc.scarab.ledger.state.TxIx
+      .enumerate(outputs)
+      .map((out, ix) => TxIn(txId, BigInt(ix.index)) -> out)
+
+  /** `mkCollateralTxIn` (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs:52-61`,
+    * cardano-ledger f649f975, the same at 9df9f98c): the input of the collateral return of the
+    * transaction `txId` of `outputCount` outputs, at the index after its last output, or at
+    * `maxBound` (65,535) when that index does not fit a `TxIx`.
+    */
+  def mkCollateralTxIn(txId: Bytes, outputCount: Int): TxIn =
+    val ix = xyz.kd5ujc.scarab.ledger.state.TxIx
+    TxIn(txId, BigInt(ix.txIxFromIntegral(outputCount).getOrElse(ix.maxBound).index))
+
+  /** `collOuts` (`Babbage/Collateral.hs:43-50`, cardano-ledger f649f975, the same at 9df9f98c): the
+    * collateral return, if any, at its input ([[mkCollateralTxIn]]).
+    */
+  def collOuts[A](txId: Bytes, outputCount: Int, collateralReturn: Option[A]): Option[(TxIn, A)] =
+    collateralReturn.map(mkCollateralTxIn(txId, outputCount) -> _)
+
   /** `decodeRecordNamed` of a transaction id and a `TxIx`, a `Word16` (`newtype TxIx = TxIx {unTxIx
     * :: Word16}`, `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:917-921`,
     * cardano-ledger f649f975): an index past 65535 is refused, as `decodeWord16` refuses it (#720).
