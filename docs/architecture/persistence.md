@@ -20,6 +20,7 @@ composition and `Follower` the consumer, both in `node`):
 | `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to a derived type is persisted with no codec change; `ByronVersion` and `Script` are written field by field in the layout they were written in, and persist only the fields their codecs name |
 | `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`, `NetworkMismatch`, `ForeignChain`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |
 | `HaskellImmutableReader[F]` | `storage/haskell/` | Read-only view of a Haskell node's ImmutableDB (see below); `HaskellImport` appends its blocks to our `ImmutableStore` |
+| `LeiosStore[F]` | `LeiosStore.scala` (`RocksLeiosStore`) | Leios endorser blocks: announced points, bodies and their transactions, with the reference LeiosDB's operations (see below) |
 
 ```sh
 follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
@@ -178,6 +179,49 @@ blocks:
   reports `resumed` and `dropped`). The relay's served chain and the mempool start from that tip, so
   the first ChainSync intersection offered to the peer is the previous tip, not the immutable
   boundary. The states are not stored (they are a pure function of the blocks), only re-derived.
+
+**Leios endorser blocks** (`<db>/leios/`, issue #830). A RocksDB database of its own beside the
+immutable store and the UTxO store, and not part of the ledger snapshot: the store of the reference's
+LeiosDB (ouroboros-consensus 2416493b `Storage/LeiosDB`, `API.hs`), with its SQLite backend's
+behaviour. Its layout is a prototype format of the Leios testnet build, unstable as that build's other
+layouts are: a store of another magic or version is refused (`LeiosStoreError.UnknownFormat`), and
+nothing migrates it. Its column families:
+
+| Family | Key | Value |
+|---|---|---|
+| `meta` | `format` | the magic `SCRBLEIO`, then the version as a 32-bit big-endian integer (1) |
+| `points` | slot (u64 big-endian), endorser-block hash (32 bytes) | announced size (u64 big-endian), status (u8: 0 volatile, 1 certified, 2 immutable, 3 immutable and evicted from volatile) |
+| `bodies` | hash | the body's encoding (`encodeLeiosEb`: a map of each transaction hash to its size) |
+| `txs` | hash, transaction offset (u32 big-endian) | the transaction's bytes |
+| `complete` | hash | empty: present once every transaction the body lists is stored |
+
+Opening the store holds an exclusive lock of the operating system on `leios.lock` beside it (not
+part of the store), so that opens run one at a time; the opens of one process are serialised in the
+process first, since its record locks belong to the process, by the permits of the one
+`LeiosStoreLocks` the process makes and gives every open. Missing ancestors of `leios/` are made
+and each one's entry in its parent synced. Under the lock, a store found at `leios/` has its
+parent directory synced before it is taken; an absent or empty `leios/` gets a new store, made in a
+marked staging directory (`leios.staging/<random UUID>/`), its format record synced, published by an
+atomic rename and the parent synced: a first open interrupted before the rename leaves nothing at
+`leios/`. Marked staging directories earlier opens left are removed. Writes are serialised, as the reference's one write queue serialises them, and
+each is one RocksDB batch with the write-ahead log on: the store has no checkpoint to be rebuilt from.
+A read sees the store at one moment, through a RocksDB snapshot, as the reference reads inside one
+SQLite transaction. Each write returns
+the points whose closure it completed. `writeEbPoint` is idempotent; `writeEbBody` needs its point
+and stores a body once, with the local fills whose source holds a transaction of the listed hash;
+`writeTxs` drops a transaction that is not in the body, of another size than declared, empty or
+zero-led, or repeated in the write. `promoteToImmutable` makes every point of the hash certified, or
+immutable once a transaction of it is stored (the reference's pin and copy); `garbageCollect(slot)`,
+unless a point of the same hash is certified or at or after the slot, removes the volatile points
+older than it and makes the immutable ones evicted, then removes the bodies and transactions no point
+names: in writes of at most 256 hashes, each
+hash decided and collected whole in the write that takes it, from the volatile points the store
+keeps apart in memory, so a collection costs nothing for the immutable points. An evicted point is in the reference's immutable file only: its body and transactions stay, and
+lookups find them, but what the reference reads from its volatile file alone does not see the hash,
+from any slot (`scanEbPoints`, `scanCompleteEbClosuresNotOlderThanSlot`, a novel point's completion,
+`writeTxs`) until its body is written again, which empties its closure until its transactions are
+written again, as the reference's volatile file holds it then, and makes its evicted points immutable
+again, so that a later collection evicts them again and keeps the endorser block. The points of each hash are held in memory, read when the store opens.
 
 **Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
 `--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest

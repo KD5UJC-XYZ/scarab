@@ -845,6 +845,866 @@
    "note": "the ten items with the third read by the slot's codec: none for the node's parameters (refused as DijkstraNotYet.PoolParamsBlsKey where it is a key), the key for the state's parameters; the reference peeks at the third item's type instead",
    "digest": "13eedd12517ba138"
   },
+  "class storage.LeiosEb": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "LeiosEb",
+     "lines": [
+      209,
+      213
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "eefca8bd78bf035c"
+  },
+  "def storage.LeiosEb#encoded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "encodeLeiosEb",
+     "lines": [
+      247,
+      252
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "986cff600c4b089b"
+  },
+  "def storage.LeiosEb#bounds": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "encodeTxBounds",
+     "lines": [
+      264,
+      267
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "2c46f11b56f18f68"
+  },
+  "def storage.LeiosEb#txBounds": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "encodeTxBounds",
+     "lines": [
+      264,
+      267
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "d5ac664bde9a540d"
+  },
+  "def storage.LeiosEb.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "decodeStoredTxHashes",
+     "lines": [
+      186,
+      198
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "2f423f0c123d627e"
+  },
+  "def storage.LeiosEb.hashTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "hashTxBytes",
+     "lines": [
+      162,
+      163
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "cd3efd32da72da71"
+  },
+  "def storage.LeiosEb.written": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Completion.hs",
+     "symbol": "txIsWritten",
+     "lines": [
+      34,
+      35
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "43701de9ab459bd2"
+  },
+  "val storage.LeiosEb.HashBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "EbHash",
+     "lines": [
+      88,
+      88
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "172ace9c818ffc53"
+  },
+  "class storage.TxLocation": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "TxLocation",
+     "lines": [
+      204,
+      205
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "f3fd57389a096929"
+  },
+  "class storage.LocalFill": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "LocalFill",
+     "lines": [
+      173,
+      175
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "673a62494b033081"
+  },
+  "class storage.BodyWritten": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "writeEbBody",
+     "lines": [
+      127,
+      136
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "e58e9572887993bf"
+  },
+  "enum storage.EbStatus": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Schema.hs",
+     "symbol": "status",
+     "lines": [
+      20,
+      23
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "3c937615625d30b7"
+  },
+  "trait storage.LeiosStore": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "LeiosDbReader",
+     "lines": [
+      78,
+      108
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "LeiosDbWriter",
+     "lines": [
+      115,
+      159
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "4507844636b94302"
+  },
+  "def storage.LeiosStore#writeEbPoint": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "writeEbPoint",
+     "lines": [
+      118,
+      126
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "9921afedcd56bc7b"
+  },
+  "def storage.LeiosStore#writeEbBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "writeEbBody",
+     "lines": [
+      127,
+      136
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "c99255ef91a0a0e4"
+  },
+  "def storage.LeiosStore#writeTxs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "writeTxs",
+     "lines": [
+      137,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "e75a3de5f6f3dc0d"
+  },
+  "def storage.LeiosStore#lookupEbBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "lookupEbBody",
+     "lines": [
+      80,
+      82
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "891cef3bb3d6bb55"
+  },
+  "def storage.LeiosStore#lookupEbClosure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "lookupEbClosure",
+     "lines": [
+      83,
+      91
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "7ed300c2f346564d"
+  },
+  "def storage.LeiosStore#batchRetrieveTxs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "batchRetrieveTxs",
+     "lines": [
+      92,
+      96
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "cf051b7f261bdffd"
+  },
+  "def storage.LeiosStore#scanEbPoints": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "testScanEbPoints",
+     "lines": [
+      97,
+      101
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "6c07b85698b9ef35"
+  },
+  "def storage.LeiosStore#scanCompleteEbClosuresNotOlderThanSlot": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "scanCompleteEbClosuresNotOlderThanSlot",
+     "lines": [
+      102,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "7b3f58f5e8406b1a"
+  },
+  "def storage.LeiosStore#garbageCollect": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "leiosDbGarbageCollect",
+     "lines": [
+      60,
+      66
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "b8a13cad830a9060"
+  },
+  "def storage.LeiosStore#promoteToImmutable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "leiosDbPromoteToImmutable",
+     "lines": [
+      67,
+      71
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "91ae8e3a93259c25"
+  },
+  "def storage.RocksLeiosStore#writeEbPoint": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbPoint",
+     "lines": [
+      76,
+      112
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "18259e5d9a618e20"
+  },
+  "def storage.RocksLeiosStore#writeEbBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbBody",
+     "lines": [
+      120,
+      237
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/InMemory.hs",
+     "symbol": "point not registered",
+     "lines": [
+      295,
+      305
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "0fce855e22535f0c"
+  },
+  "def storage.RocksLeiosStore#writeTxs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertTxs",
+     "lines": [
+      268,
+      333
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "5ea0985bb3c477d2"
+  },
+  "def storage.RocksLeiosStore#lookupEbBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlLookupEbBody",
+     "lines": [
+      71,
+      84
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "e212b9f270208113"
+  },
+  "def storage.RocksLeiosStore#lookupEbClosure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlLookupEbClosure",
+     "lines": [
+      136,
+      166
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite.hs",
+     "symbol": "lookupEbClosure",
+     "lines": [
+      217,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "e93525bf8047fa05"
+  },
+  "def storage.RocksLeiosStore#batchRetrieveTxs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlBatchRetrieveTxs",
+     "lines": [
+      89,
+      131
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "5a42be479215dd77"
+  },
+  "def storage.RocksLeiosStore#scanEbPoints": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlScanEbPoints",
+     "lines": [
+      58,
+      69
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "c4a43f807271aff6"
+  },
+  "def storage.RocksLeiosStore#scanCompleteEbClosuresNotOlderThanSlot": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlScanBodiedPointsSince",
+     "lines": [
+      170,
+      182
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite.hs",
+     "symbol": "scanCompleteEbClosuresNotOlderThanSlot",
+     "lines": [
+      217,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "27f67257bc5ec477"
+  },
+  "def storage.RocksLeiosStore#garbageCollect": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Queries.hs",
+     "symbol": "sql_gc_markable",
+     "lines": [
+      193,
+      200
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Maintenance.hs",
+     "symbol": "sweepEbBatch",
+     "lines": [
+      305,
+      325
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "0198550d96c12422"
+  },
+  "def storage.RocksLeiosStore#promoteToImmutable": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Maintenance.hs",
+     "symbol": "sqlPromoteToImmutable",
+     "lines": [
+      96,
+      101
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Queries.hs",
+     "symbol": "sql_pin_eb",
+     "lines": [
+      118,
+      127
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Maintenance.hs",
+     "symbol": "copyEbToImmutable",
+     "lines": [
+      112,
+      168
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "0611dd8a1837b674"
+  },
+  "def storage.LeiosEb.from": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "TxHash",
+     "lines": [
+      147,
+      147
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "1f14baf503ede307"
+  },
+  "def storage.RocksLeiosStore#batchRetrieveTxsIn": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlBatchRetrieveTxs",
+     "lines": [
+      89,
+      131
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "31fa098167213dd3"
+  },
+  "def storage.RocksLeiosStore#lookupEbClosureIn": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlLookupEbClosure",
+     "lines": [
+      136,
+      166
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite.hs",
+     "symbol": "lookupEbClosure",
+     "lines": [
+      217,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "177b6c92796fa77e"
+  },
+  "def storage.RocksLeiosStore#scanCompleteIn": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "symbol": "sqlScanBodiedPointsSince",
+     "lines": [
+      170,
+      182
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite.hs",
+     "symbol": "scanCompleteEbClosuresNotOlderThanSlot",
+     "lines": [
+      217,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "095962a96f959e08"
+  },
+  "def storage.RocksLeiosStore#collectBatch": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Maintenance.hs",
+     "symbol": "sweepEbBatch",
+     "lines": [
+      305,
+      325
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Queries.hs",
+     "symbol": "sql_gc_markable",
+     "lines": [
+      193,
+      200
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "502e01afcf91b1d3"
+  },
   "def storage.VolatileStore#collect": {
    "upstream": [
     {
@@ -1105,6 +1965,93 @@
     "def storage.StateAdmission.restored",
     "def storage.StateAdmission.of",
     "def storage.SnapshotFormat.admitting"
+   ]
+  },
+  {
+   "reason": "the store's own RocksDB layout of the Leios store format approved for #830 (meta, points, bodies, txs and complete column families, the format record, and opening, release and the in-memory points of each hash); the reference keeps the same records in SQLite tables",
+   "definitions": [
+    "class storage.RocksLeiosStore",
+    "object storage.RocksLeiosStore",
+    "class storage.RocksLeiosStore.Families",
+    "def storage.RocksLeiosStore.Families#all",
+    "def storage.RocksLeiosStore.Families#apply",
+    "val storage.RocksLeiosStore.Families#bodies",
+    "val storage.RocksLeiosStore.Families#complete",
+    "val storage.RocksLeiosStore.Families#meta",
+    "val storage.RocksLeiosStore.Families#points",
+    "val storage.RocksLeiosStore.Families#txs",
+    "enum storage.RocksLeiosStore.Family",
+    "def storage.RocksLeiosStore.be",
+    "def storage.RocksLeiosStore.resource",
+    "def storage.RocksLeiosStore.resourceWith",
+    "val storage.RocksLeiosStore.FormatRecord",
+    "val storage.RocksLeiosStore.Magic",
+    "val storage.RocksLeiosStore.Version"
+   ]
+  },
+  {
+   "reason": "what an import from or an export to the reference's SQLite files exchanges with the store, one endorser block at a time; the reference has no import or export of its LeiosDB",
+   "definitions": [
+    "class storage.StoredEb",
+    "def storage.RocksLeiosStore#stored",
+    "def storage.RocksLeiosStore#importBody",
+    "def storage.RocksLeiosStore#importPoints"
+   ]
+  },
+  {
+   "reason": "closed typed errors and their messages, where the reference throws a LeiosDbException with a message (ERR-1)",
+   "definitions": [
+    "enum storage.LeiosStoreError",
+    "def storage.LeiosStoreError#message",
+    "enum storage.LeiosRecord",
+    "enum storage.LeiosEb.Error"
+   ]
+  },
+  {
+   "reason": "accessors of a body and of a status byte, which the reference reads inline from the vector of its LeiosEb and from the status column",
+   "definitions": [
+    "object storage.LeiosEb",
+    "def storage.LeiosEb#size",
+    "def storage.LeiosEb#declared",
+    "object storage.EbStatus",
+    "def storage.EbStatus.fromCode"
+   ]
+  },
+  {
+   "reason": "how the store's RocksDB keeps the reference's guarantees: a read through a snapshot (the reference reads inside one SQLite transaction, dbWithTransaction), the points held in memory with the volatile ones a collection visits (its idx_ebs_sweepable index), the size of a collection's batch, and the staging directory a new store is made in and published from by an atomic rename",
+   "definitions": [
+    "class storage.RocksLeiosStore.View",
+    "def storage.RocksLeiosStore#viewing",
+    "class storage.RocksLeiosStore.Points",
+    "val storage.RocksLeiosStore.GcBatch"
+   ]
+  },
+  {
+   "reason": "a body's equality, hash and text, the ones its case class had, which it no longer is so that no product mirror can make one unchecked",
+   "definitions": [
+    "def storage.LeiosEb#equals",
+    "def storage.LeiosEb#hashCode",
+    "def storage.LeiosEb#toString"
+   ]
+  },
+  {
+   "reason": "the export's reading of the store from one snapshot, and a first open: under an exclusive operating-system lock on a file beside the store, a new store made in a marked staging directory and published by an atomic rename, and the parent directory synced before a store is taken; the reference reads inside one SQLite transaction, creates its files in place (initialiseLeiosDbFiles) with SQLite's own locking, and has no export",
+   "definitions": [
+    "def storage.RocksLeiosStore#exporting",
+    "def storage.RocksLeiosStore.stagingRoot",
+    "val storage.RocksLeiosStore.StagingMarker",
+    "def storage.RocksLeiosStore.firstOpen",
+    "def storage.RocksLeiosStore.lockFile"
+   ]
+  },
+  {
+   "reason": "the permits that keep a process's first opens of one Leios store apart, one per lock file, before its operating-system lock is taken: that lock belongs to the process, so it cannot exclude another open of the same process; an instance the caller makes once for the process (EFF-4); the reference's SQLite files have SQLite's own locking, and it has no such permits",
+   "definitions": [
+    "class storage.LeiosStoreLocks",
+    "object storage.LeiosStoreLocks",
+    "def storage.LeiosStoreLocks#held",
+    "def storage.LeiosStoreLocks.make",
+    "def storage.LeiosStoreLocks.resource"
    ]
   }
  ]
