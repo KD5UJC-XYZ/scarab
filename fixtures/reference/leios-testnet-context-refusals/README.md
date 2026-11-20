@@ -59,7 +59,10 @@ python3 -I scripts/oracle/leios-testnet/chain/refusals.py --evidence <a director
 python3 -I scripts/oracle/leios-testnet/chain/refusals.py --verify-only
 ```
 
-The suites that read it come with Dijkstra's script contexts on the era types (#85).
+`DijkstraPlutusContextSuite` reads it with Dijkstra's Plutus V1 to V3 script contexts on the era types: every level of the
+16 cases without a refusal of a Plutus V4 context, the contexts byte for byte and each refusal as its typed error, read
+against the recorded failure. The two cases refused for a Plutus V4 context, and the V4 context of the four languages'
+minting, are read with Dijkstra's Plutus V4 contexts (#85).
 
 ## Licence
 

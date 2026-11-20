@@ -13429,7 +13429,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "derived from the scripts used (`toScriptHashByPurpose`), as every construction of the reference's makes it, and computed when first asked for, as its field is lazy (TYP-1, decided 2026-11-20, #85); the scripts used come from the scripts needed, one per purpose's index, so `Map.fromList`'s choice of the last of a repeated index shows nowhere. Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "note": "derived from the scripts used (`toScriptHashByPurpose`), as every construction of the reference's makes it, and computed when first asked for, as its field is lazy (TYP-1, decided 2026-11-20, #85); the scripts used come from the scripts needed, one per purpose's index, so `Map.fromList`'s choice of the last of a repeated index shows nowhere. Only Plutus V4's translation reads it (`ScriptHashNotFoundForPurpose`), so its differential evidence is incomplete (CNF-2) until the 34 Plutus V4 contexts recorded on the testnet's chain are compared (#85); the suite's tests of it are the node's own.",
    "digest": "d5a5fad51d264992"
   },
   "def ledger.era.LedgerTxInfo.toScriptHashByPurpose": {
@@ -13488,9 +13488,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "DijkstraPlutusContextSuite"
    ],
-   "note": "the level from the level's information, through the era's body class (`EraTxBody#levelOf`), where the reference's reads the transaction's (`toSTxLevel . ltiTx`). Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "note": "the level from the level's information, through the era's body class (`EraTxBody#levelOf`), where the reference's reads the transaction's (`toSTxLevel . ltiTx`). Dijkstra's Plutus V1 to V3 contexts read it at both levels (`DijkstraPlutusContextSuite`: the 239 contexts recorded on the testnet's chain at the top level and a V3 script's refusal in a sub-transaction, against the reference's); its differential evidence is incomplete (CNF-2) until the 34 Plutus V4 contexts recorded there, 18 of them in sub-transactions, are compared too (#85).",
    "digest": "e60aa40f847e0297"
   },
   "def ledger.era.LedgerTxInfo.withTopTxLevelOnly": {
@@ -13524,6 +13525,37 @@
    "note": "of a transaction's information",
    "digest": "71f2f1d73c18459a"
   },
+  "def ledger.era.LedgerTxInfo.withBothTxLevels": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "symbol": "withBothTxLevels",
+     "lines": [
+      123,
+      130
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "symbol": "withBothTxLevels",
+     "lines": [
+      123,
+      130
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "of a transaction's information, its level read from the level's information (`EraTxBody#levelOf`) where the reference's reads the transaction's (`toSTxLevel`)",
+   "digest": "046798ea512143e0"
+  },
   "enum ledger.era.LedgerLevelTxInfo": {
    "upstream": [
     {
@@ -13550,9 +13582,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "DijkstraPlutusContextSuite"
    ],
-   "note": "the sub-transaction's case is Dijkstra's alone, the only era with sub-transactions, so an era with the top level only has only the top level's case, as the reference's `withTopTxLevelOnly` makes it; a sub-transaction's id is its body's hash. Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "note": "the sub-transaction's case is Dijkstra's alone, the only era with sub-transactions, so an era with the top level only has only the top level's case, as the reference's `withTopTxLevelOnly` makes it; a sub-transaction's id is its body's hash. Dijkstra's Plutus V1 to V3 contexts read it at both levels (`DijkstraPlutusContextSuite`: the 239 contexts recorded on the testnet's chain at the top level and a V3 script's refusal in a sub-transaction, against the reference's); its differential evidence is incomplete (CNF-2) until the 34 Plutus V4 contexts recorded there, 18 of them in sub-transactions, are compared too (#85).",
    "digest": "ff966a6d31aedabe"
   },
   "def ledger.era.EraTxBody#levelOf": {
@@ -13601,9 +13634,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "DijkstraPlutusContextSuite"
    ],
-   "note": "the era's evidence of the level of a transaction's information, read from the level's information, where the reference's `toSTxLevel . ltiTx` reads the transaction's level. Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "note": "the era's evidence of the level of a transaction's information, read from the level's information, where the reference's `toSTxLevel . ltiTx` reads the transaction's level. Dijkstra's Plutus V1 to V3 contexts read it at both levels (`DijkstraPlutusContextSuite`: the 239 contexts recorded on the testnet's chain at the top level and a V3 script's refusal in a sub-transaction, against the reference's); its differential evidence is incomplete (CNF-2) until the 34 Plutus V4 contexts recorded there, 18 of them in sub-transactions, are compared too (#85).",
    "digest": "7c313c98d9b23c39"
   },
   "trait ledger.era.EraPlutusTxInfo": {
@@ -14277,6 +14311,79 @@
    ],
    "note": "the instance, given in the class's companion",
    "digest": "63aafe6d4575671e"
+  },
+  "given ledger.era.EraPlutusTxInfo.dijkstraPlutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 DijkstraEra",
+     "lines": [
+      333,
+      368
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the instance, given in the class's companion",
+   "digest": "1fd8c5f37848e031"
+  },
+  "given ledger.era.EraPlutusTxInfo.dijkstraPlutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 DijkstraEra",
+     "lines": [
+      392,
+      431
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the instance, given in the class's companion",
+   "digest": "f87f819f4ca0a92c"
+  },
+  "given ledger.era.EraPlutusTxInfo.dijkstraPlutusV3": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV3 DijkstraEra",
+     "lines": [
+      433,
+      484
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 DijkstraEra",
+     "lines": [
+      568,
+      569
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the instance, given in the class's companion",
+   "digest": "8306dbd67aa278be"
   },
   "def ledger.era.Indexable.fromIndexSet": {
    "upstream": [
@@ -25283,7 +25390,7 @@
    "class": "Gap",
    "structure": "same",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
-   "note": "each field computed when first read, as the reference keeps them lazy; nothing gives one yet: `mkTxInfoResult` comes with Dijkstra's script contexts (#85's item on them). Each slot is the shared `PlutusTxInfoResult`, a direct `Either` as 9df9f98c's is (`Alonzo/Plutus/Context.hs:193-196`), V4's of the V4 `TxInfo` (`Context.hs:280`)",
+   "note": "each field computed when first read, as the reference keeps them lazy. Dijkstra's Plutus V1 to V3 instances read their fields (`DijkstraPlutusContextSuite`), but no production code makes one: Dijkstra's `EraPlutusContext` instance, whose `mkTxInfoResult` makes it, and the Plutus V4 translation of its last field come with Dijkstra's Plutus V4 contexts (#85's item on Dijkstra's script contexts); the suite makes one with a context of its own. Each slot is the shared `PlutusTxInfoResult`, a direct `Either` as 9df9f98c's is (`Alonzo/Plutus/Context.hs:193-196`), V4's of the V4 `TxInfo` (`Context.hs:280`)",
    "digest": "d97c032693836f40"
   },
   "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV1": {
@@ -25299,11 +25406,13 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "same",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
-   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them)",
-   "digest": "9644071c8b3ff7af"
+   "note": "the field the reference's lookup of the language selects, read by Dijkstra's Plutus V1 instance (`lookupTxInfoResult`); no production code makes the result yet (the class's entry)",
+   "digest": "9644071c8b3ff7af",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ]
   },
   "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV2": {
    "upstream": [
@@ -25318,11 +25427,13 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "same",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
-   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them)",
-   "digest": "0fb28cc06f5370cc"
+   "note": "the field the reference's lookup of the language selects, read by Dijkstra's Plutus V2 instance (`lookupTxInfoResult`); no production code makes the result yet (the class's entry)",
+   "digest": "0fb28cc06f5370cc",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ]
   },
   "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV3": {
    "upstream": [
@@ -25337,11 +25448,13 @@
      ]
     }
    ],
-   "class": "Gap",
+   "class": "Mirror",
    "structure": "same",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
-   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them)",
-   "digest": "720bdb45be378630"
+   "note": "the field the reference's lookup of the language selects, read by Dijkstra's Plutus V3 instance (`lookupTxInfoResult`); no production code makes the result yet (the class's entry)",
+   "digest": "720bdb45be378630",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ]
   },
   "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV4": {
    "upstream": [
@@ -25359,8 +25472,165 @@
    "class": "Gap",
    "structure": "same",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
-   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them); its payload is the V4 `TxInfo` or its failure, as the reference's is (`Alonzo/Plutus/Context.hs:193-196, 280`, cardano-ledger 9df9f98c)",
+   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's Plutus V4 contexts (#85's item on Dijkstra's script contexts); its payload is the V4 `TxInfo` or its failure, as the reference's is (`Alonzo/Plutus/Context.hs:193-196, 280`, cardano-ledger 9df9f98c)",
    "digest": "52b7b2096c4b2d2c"
+  },
+  "def ledger.era.dijkstra.DijkstraTxInfo.transTxCertV1V2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "transTxCertV1V2",
+     "lines": [
+      370,
+      390
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "Dijkstra's own, for any era with Conway's certificate class: unlike Conway's it has no certificate of Shelley's form to fall back on",
+   "digest": "91ad66ddc400981d"
+  },
+  "def ledger.era.dijkstra.DijkstraTxInfo.guardDijkstraFeaturesForPlutusV1toV3": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "guardDijkstraFeaturesForPlutusV1toV3",
+     "lines": [
+      486,
+      519
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "of the top-level body, as Conway's guard is of the body; the required top-level guards as a set in the credentials' order (`NES.fromSet . Map.keysSet`)",
+   "digest": "0094a2131cd2c976"
+  },
+  "def ledger.era.dijkstra.DijkstraTxInfo.transFailUnsupportedScriptInSubTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "transFailUnsupportedScriptInSubTx",
+     "lines": [
+      521,
+      532
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "written for Dijkstra, the only era whose transactions have the sub-transaction level; the reference's is for any era",
+   "digest": "71659d19e3c80550"
+  },
+  "def ledger.era.dijkstra.DijkstraTxInfo.transTxCertV3": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "transTxCertV3",
+     "lines": [
+      534,
+      566
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "for Dijkstra's certificates, its match exhaustive, so the reference's last case (`error \"Impossible\"`) has no counterpart",
+   "digest": "6cedb140ab75eb17"
+  },
+  "val ledger.era.dijkstra.DijkstraTxInfo.plutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 DijkstraEra",
+     "lines": [
+      333,
+      368
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "digest": "9817a2b572f1e1f8",
+   "note": "its outputs zipped with `[minBound ..] :: [TxIx]`, so none past index 65,535 is translated"
+  },
+  "val ledger.era.dijkstra.DijkstraTxInfo.plutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 DijkstraEra",
+     "lines": [
+      392,
+      431
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "digest": "a0dc09f27334395b",
+   "note": "its outputs zipped with `[minBound ..] :: [TxIx]`, so none past index 65,535 is translated"
+  },
+  "val ledger.era.dijkstra.DijkstraTxInfo.plutusV3": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV3 DijkstraEra",
+     "lines": [
+      433,
+      484
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 DijkstraEra",
+     "lines": [
+      568,
+      569
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "digest": "1b2340d1a6d0505b",
+   "note": "its outputs zipped with `[minBound ..] :: [TxIx]`, so none past index 65,535 is translated"
   },
   "enum ledger.era.dijkstra.DijkstraContextError": {
    "upstream": [
@@ -26340,6 +26610,7 @@
     "object ledger.era.ShelleyUTxO",
     "object ledger.era.UTxOs",
     "object ledger.era.conway.ConwayTxInfo",
+    "object ledger.era.dijkstra.DijkstraTxInfo",
     "object ledger.era.dijkstra.DijkstraUTxO"
    ]
   },
