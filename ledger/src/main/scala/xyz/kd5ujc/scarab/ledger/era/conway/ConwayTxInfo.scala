@@ -16,6 +16,10 @@ import xyz.kd5ujc.scarab.ledger.{
   VotingProcedure
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraUTxO,
+  ConwayEraScript,
+  ConwayEraTxCert,
+  ShelleyEraTxCert,
   TxOut,
   SupportedLanguage,
   PlutusV2Args,
@@ -102,26 +106,26 @@ trait ConwayEraPlutusTxInfo[L <: Language, E <: EraTag] extends EraPlutusTxInfo[
   def toPlutusChangedParameters(ppu: PParamsUpdate[E]): PV3.ChangedParameters
 
 /** Conway's translations (`eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs`, cardano-ledger
-  * f649f975) and its instance for Plutus V3. A function the reference writes for any era whose
-  * certificates, purposes or proposals are Conway's (`TxCert era ~ ConwayTxCert era`,
-  * `ConwayEraPlutusTxInfo 'PlutusV3 era`) is written here for Conway's; the reference shares it
-  * with Dijkstra, whose types come later (#85).
+  * f649f975; those that take the transaction's information, and the ones generic in the era, at
+  * 9df9f98c) and its instances for Plutus V1 to V3. A function the reference writes for any era
+  * with Conway's classes is generic in the era over them, as the reference's is, so Dijkstra's
+  * contexts share it; one the reference writes for an era whose certificates are Conway's (`TxCert
+  * era ~ ConwayTxCert era`) is written for Conway's.
   */
 object ConwayTxInfo:
   import PlutusTxInfos.*
 
-  /** `transTxInInfoV3` (`Conway/TxInfo.hs:338-350`, cardano-ledger f649f975): an input with the
+  /** `transTxInInfoV3` (`Conway/TxInfo.hs:360-373`, cardano-ledger 9df9f98c): an input with the
     * output the UTxO set holds for it, in the V3 form.
     */
   def transTxInInfoV3[E <: EraTag](utxo: UTxO[E], txIn: TxIn)(using
       o: BabbageEraTxOut[E],
+      injA: Inject[AlonzoContextError[E], ContextError[E]],
       inj: Inject[xyz.kd5ujc.scarab.ledger.era.BabbageContextError[E], ContextError[E]],
       v: Value[E] =:= MultiAssetValue
   ): Either[ContextError[E], PV3.TxInInfo] =
     for
-      txOut <- AlonzoTxInfo
-        .transLookupTxOut[E, AlonzoContextError[E]](utxo, txIn)
-        .leftMap(e => inj.inject(BabbageContextError.AlonzoContextError(e)))
+      txOut <- AlonzoTxInfo.transLookupTxOut[E, ContextError[E]](utxo, txIn)
       plutusTxOut <- BabbageTxInfo.transTxOutV2(TxOutSource.TxOutFromInput(txIn), txOut)
     yield PV3.TxInInfo(transTxIn(txIn), plutusTxOut)
 
@@ -240,27 +244,51 @@ object ConwayTxInfo:
     case DRep.DRepAlwaysAbstain      => PV3.DRep.DRepAlwaysAbstain
     case DRep.DRepAlwaysNoConfidence => PV3.DRep.DRepAlwaysNoConfidence
 
-  /** `transPlutusPurposeV3` (`Conway/TxInfo.hs:627-645`, cardano-ledger f649f975): a purpose in the
-    * V3 form, a certificate's and a proposal's with their index. Every Conway purpose has a V3
-    * form, so the reference's `PlutusPurposeNotSupported` is of a later era's purposes.
+  /** `transPlutusPurposeV3` (`Conway/TxInfo.hs:640-659`, cardano-ledger 9df9f98c): a purpose in the
+    * V3 form, read through the script class's readers, a certificate's and a proposal's with their
+    * index; another purpose (a later era's) refused (`PlutusPurposeNotSupported`).
     */
-  def transPlutusPurposeV3(
+  def transPlutusPurposeV3[E <: EraTag](
       pv: ProtVer,
-      purpose: ConwayPlutusPurpose[AsIxItem]
-  )(using t: ConwayEraPlutusTxInfo[Language.PlutusV3, Conway]): PV3.ScriptPurpose =
-    purpose match
-      case ConwayPlutusPurpose.ConwaySpending(AsIxItem(_, txIn)) =>
-        PV3.ScriptPurpose.Spending(transTxIn(txIn))
-      case ConwayPlutusPurpose.ConwayMinting(AsIxItem(_, policyId)) =>
-        PV3.ScriptPurpose.Minting(AlonzoTxInfo.transPolicyID(policyId))
-      case ConwayPlutusPurpose.ConwayCertifying(AsIxItem(ix, txCert)) =>
-        PV3.ScriptPurpose.Certifying(ix.value, transTxCert(pv, txCert))
-      case ConwayPlutusPurpose.ConwayWithdrawing(AsIxItem(_, accountAddress)) =>
-        PV3.ScriptPurpose.Rewarding(transAccountAddress(accountAddress))
-      case ConwayPlutusPurpose.ConwayVoting(AsIxItem(_, voter)) =>
-        PV3.ScriptPurpose.Voting(transVoter(voter))
-      case ConwayPlutusPurpose.ConwayProposing(AsIxItem(ix, proposal)) =>
-        PV3.ScriptPurpose.Proposing(ix.value, transProposal(proposal))
+      purpose: PlutusPurpose[AsIxItem, E]
+  )(using
+      t: ConwayEraPlutusTxInfo[Language.PlutusV3, E],
+      s: ConwayEraScript[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV3.ScriptPurpose] =
+    s.toSpendingPurpose[AsIxItem](purpose)
+      .map(a => Right(PV3.ScriptPurpose.Spending(transTxIn(a.item))))
+      .orElse(
+        s.toMintingPurpose[AsIxItem](purpose)
+          .map(a => Right(PV3.ScriptPurpose.Minting(AlonzoTxInfo.transPolicyID(a.item))))
+      )
+      .orElse(
+        s.toCertifyingPurpose[AsIxItem](purpose)
+          .map(a => t.toPlutusTxCert(pv, a.item).map(PV3.ScriptPurpose.Certifying(a.ix.value, _)))
+      )
+      .orElse(
+        s.toWithdrawingPurpose[AsIxItem](purpose)
+          .map(a => Right(PV3.ScriptPurpose.Rewarding(transAccountAddress(a.item))))
+      )
+      .orElse(
+        s.toVotingPurpose[AsIxItem](purpose)
+          .map(a => Right(PV3.ScriptPurpose.Voting(transVoter(a.item))))
+      )
+      .orElse(
+        s.toProposingPurpose[AsIxItem](purpose)
+          .map(a => Right(PV3.ScriptPurpose.Proposing(a.ix.value, transProposal(a.item))))
+      )
+      .getOrElse(
+        Left(
+          inj.inject(
+            AlonzoContextError.PlutusPurposeNotSupported(
+              s.hoistPlutusPurpose[AsIxItem, AsItem](
+                [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+              )(purpose)
+            )
+          )
+        )
+      )
 
   /** `transVoter` (`Conway/TxInfo.hs:647-651`, cardano-ledger f649f975). */
   def transVoter(v: Voter): PV3.Voter = v match
@@ -273,12 +301,12 @@ object ConwayTxInfo:
   def transGovActionId(id: GovActionId): PV3.GovernanceActionId =
     PV3.GovernanceActionId(transTxId(id.txId), id.index)
 
-  /** `transGovAction` (`Conway/TxInfo.hs:660-695`, cardano-ledger f649f975): the removed committee
+  /** `transGovAction` (`Conway/TxInfo.hs:674-709`, cardano-ledger 9df9f98c): the removed committee
     * members in their set's order and the added ones in their map's, the guardrails script and a
-    * parent by their translations.
+    * parent by their translations, the update by the language's.
     */
-  def transGovAction(a: GovAction[Conway])(using
-      t: ConwayEraPlutusTxInfo[Language.PlutusV3, Conway]
+  def transGovAction[L <: Language, E <: EraTag](a: GovAction[E])(using
+      t: ConwayEraPlutusTxInfo[L, E]
   ): PV3.GovernanceAction =
     def transGovPolicy(h: Option[xyz.kd5ujc.scarab.ledger.state.ScriptHash]) =
       h.map(transScriptHash)
@@ -320,11 +348,11 @@ object ConwayTxInfo:
         )
       case GovAction.InfoAction() => PV3.GovernanceAction.InfoAction
 
-  /** `transVotingProcedures` (`Conway/TxInfo.hs:701-704`, cardano-ledger f649f975): the voters and
+  /** `transVotingProcedures` (`Conway/TxInfo.hs:715-718`, cardano-ledger 9df9f98c): the voters and
     * each voter's actions in their order.
     */
-  def transVotingProcedures(
-      vps: VotingProcedures[Conway]
+  def transVotingProcedures[E <: EraTag](
+      vps: VotingProcedures[E]
   ): AssocMap[PV3.Voter, AssocMap[PV3.GovernanceActionId, PV3.Vote]] =
     AssocMap(vps.unVotingProcedures.toVector.map { (voter, votes) =>
       transVoter(voter) -> AssocMap(votes.toVector.map { (id, procedure) =>
@@ -338,9 +366,9 @@ object ConwayTxInfo:
     case Vote.Yes     => PV3.Vote.VoteYes
     case Vote.Abstain => PV3.Vote.Abstain
 
-  /** `transProposal` (`Conway/TxInfo.hs:712-722`, cardano-ledger f649f975): the anchor left out. */
-  def transProposal(p: ProposalProcedure[Conway])(using
-      ConwayEraPlutusTxInfo[Language.PlutusV3, Conway]
+  /** `transProposal` (`Conway/TxInfo.hs:726-736`, cardano-ledger 9df9f98c): the anchor left out. */
+  def transProposal[L <: Language, E <: EraTag](p: ProposalProcedure[E])(using
+      ConwayEraPlutusTxInfo[L, E]
   ): PV3.ProposalProcedure =
     PV3.ProposalProcedure(
       transCoinToLovelace(p.pProcDeposit),
@@ -366,54 +394,71 @@ object ConwayTxInfo:
     case PV3.ScriptPurpose.Voting(voter)           => PV3.ScriptInfo.VotingScript(voter)
     case PV3.ScriptPurpose.Proposing(ix, proposal) => PV3.ScriptInfo.ProposingScript(ix, proposal)
 
-  /** `toPlutusV3Args` (`Conway/TxInfo.hs:745-766`, cardano-ledger f649f975): the script context of
-    * the information, the redeemer and the purpose with the spending datum.
+  /** `toPlutusV3Args` (`Conway/TxInfo.hs:742-767`, cardano-ledger 9df9f98c): the script context of
+    * the information, the redeemer and the purpose, with the spending datum of the information's
+    * transaction ([[AlonzoTxInfo.spendingDatum]]) after the purpose, where f649f975's is given the
+    * datum (`:745-766`).
     */
-  def toPlutusV3Args(
-      pv: ProtVer,
+  def toPlutusV3Args[E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
       txInfo: PV3.TxInfo,
-      plutusPurpose: ConwayPlutusPurpose[AsIxItem],
-      maybeSpendingData: Option[Data],
+      plutusPurpose: PlutusPurpose[AsIxItem, E],
       redeemerData: Data
   )(using
-      t: ConwayEraPlutusTxInfo[Language.PlutusV3, Conway]
-  ): Either[ContextError[Conway], PlutusV3Args] =
-    t.toPlutusScriptPurpose(pv, plutusPurpose).map { scriptPurpose =>
-      PlutusV3Args(
-        PV3.ScriptContext(
-          txInfo,
-          BabbageTxInfo.transRedeemer(redeemerData),
-          scriptPurposeToScriptInfo(
-            scriptPurpose,
-            maybeSpendingData.map(d => transDatum(d.getPlutusData))
-          )
+      t: EraPlutusTxInfo[Language.PlutusV3, E],
+      u: AlonzoEraUTxO[E],
+      s: ConwayEraScript[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PlutusV3Args] =
+    for
+      scriptPurpose <- t.toPlutusScriptPurpose(lti, plutusPurpose)
+      maybeSpendingData <- AlonzoTxInfo.spendingDatum(lti, plutusPurpose)
+    yield PlutusV3Args(
+      PV3.ScriptContext(
+        txInfo,
+        BabbageTxInfo.transRedeemer(redeemerData),
+        scriptPurposeToScriptInfo(
+          scriptPurpose,
+          maybeSpendingData.map(d => transDatum(d.getPlutusData))
         )
       )
-    }
+    )
 
-  /** `transValidityInterval` of Conway (`Conway/TxInfo.hs:790-814`, cardano-ledger f649f975): the
+  /** `transValidityInterval` of Conway (`Conway/TxInfo.hs:791-811`, cardano-ledger 9df9f98c): the
     * interval in POSIX time, an interval with an end alone open at its end, unlike Alonzo's; a slot
-    * the clock cannot translate refused (`TimeTranslationPastHorizon`).
+    * the clock cannot translate refused ([[transSlotToPOSIXTime]]).
     */
-  def transValidityInterval[E <: EraTag, A](
+  def transValidityInterval[E <: EraTag](
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
       vi: ValidityInterval
-  )(using inj: Inject[AlonzoContextError[E], A]): Either[A, PV1.POSIXTimeRange] =
-    def transSlotToPOSIXTime(slot: BigInt): Either[A, PV1.POSIXTime] =
-      slotToPOSIXTime(slot)
-        .bimap(e => inj.inject(AlonzoContextError.TimeTranslationPastHorizon(e)), PV1.POSIXTime(_))
+  )(using
+      Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV1.POSIXTimeRange] =
+    def transSlot(slot: BigInt) = transSlotToPOSIXTime[E](slotToPOSIXTime, slot)
     vi match
       case ValidityInterval(None, None)    => Right(PV1.Interval.always)
-      case ValidityInterval(Some(i), None) => transSlotToPOSIXTime(i).map(PV1.Interval.from)
+      case ValidityInterval(Some(i), None) => transSlot(i).map(PV1.Interval.from)
       case ValidityInterval(None, Some(i)) =>
-        transSlotToPOSIXTime(i).map(t =>
+        transSlot(i).map(t =>
           PV1.Interval(PV1.LowerBound(PV1.Extended.NegInf, true), PV1.strictUpperBound(t))
         )
       case ValidityInterval(Some(i), Some(j)) =>
         for
-          t1 <- transSlotToPOSIXTime(i)
-          t2 <- transSlotToPOSIXTime(j)
+          t1 <- transSlot(i)
+          t2 <- transSlot(j)
         yield PV1.Interval(PV1.lowerBound(t1), PV1.strictUpperBound(t2))
+
+  /** `transSlotToPOSIXTime` (`Conway/TxInfo.hs:813-823`, cardano-ledger 9df9f98c): a slot in POSIX
+    * time, one the clock cannot translate refused (`TimeTranslationPastHorizon`).
+    */
+  def transSlotToPOSIXTime[E <: EraTag](
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+      slot: BigInt
+  )(using
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV1.POSIXTime] =
+    slotToPOSIXTime(slot)
+      .bimap(e => inj.inject(AlonzoContextError.TimeTranslationPastHorizon(e)), PV1.POSIXTime(_))
 
   /** `checkReferenceInputsNotDisjointFromInputs` (`Conway/TxInfo.hs:816-827`, cardano-ledger
     * f649f975): the inputs that are also reference inputs, in their order, refused.
@@ -432,9 +477,9 @@ object ConwayTxInfo:
         Left(inj.inject(ConwayContextError.ReferenceInputsNotDisjointFromInputs(common)))
       case None => Right(())
 
-  /** `instance EraPlutusTxInfo 'PlutusV3 ConwayEra` (`Conway/TxInfo.hs:482-534`) and `instance
-    * ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra` (`Conway/TxInfo.hs:786-787`, cardano-ledger
-    * f649f975).
+  /** `instance EraPlutusTxInfo 'PlutusV3 ConwayEra` (`Conway/TxInfo.hs:497-547`) and `instance
+    * ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra` (`Conway/TxInfo.hs:787-789`, cardano-ledger
+    * 9df9f98c).
     */
   val plutusV3: ConwayEraPlutusTxInfo[Language.PlutusV3, Conway] =
     new ConwayEraPlutusTxInfo[Language.PlutusV3, Conway]:
@@ -455,84 +500,87 @@ object ConwayTxInfo:
       ): Either[ContextError[Conway], PV3.TxCert] =
         Right(transTxCert(pv, txCert))
 
-      override def toPlutusScriptPurpose(
-          pv: ProtVer,
+      override def toPlutusScriptPurpose[T <: TxLevel](
+          lti: LedgerTxInfo[T, Conway],
           purpose: ConwayPlutusPurpose[AsIxItem]
       ): Either[ContextError[Conway], PV3.ScriptPurpose] =
-        Right(transPlutusPurposeV3(pv, purpose))
+        transPlutusPurposeV3[Conway](lti.ltiProtVer, purpose)
 
-      override def toPlutusTxInfo(
-          lti: LedgerTxInfo[Conway]
+      override def toPlutusTxInfo[T <: TxLevel](
+          lti0: LedgerTxInfo[T, Conway]
       ): PlutusTxInfoResult[Language.PlutusV3, Conway] =
-        val tx = lti.ltiTx
-        val txBody = t.body[TxLevel.Top](tx)
-        val pv = lti.ltiProtVer
-        val result = for
-          timeRange <- transValidityInterval[Conway, ContextError[Conway]](
-            lti.ltiSlotToPOSIXTime,
-            b.vldt[TxLevel.Top](txBody)
-          )
-          inputsInfo <- b
-            .inputs[TxLevel.Top](txBody)
-            .toVector
-            .traverse(transTxInInfoV3(lti.ltiUTxO, _))
-          refInputsInfo <- b
-            .referenceInputs[TxLevel.Top](txBody)
-            .toVector
-            .traverse(transTxInInfoV3(lti.ltiUTxO, _))
-          _ <-
-            if pv.pvMajor.value >= 11 then
-              checkReferenceInputsNotDisjointFromInputs[Conway, TxLevel.Top](txBody)
-            else Right(())
-          outputs <- b
-            .outputs[TxLevel.Top](txBody)
-            .zipWithIndex
-            .traverse((out, ix) =>
-              BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix), out)
+        LedgerTxInfo.withTopTxLevelOnly(lti0) { lti =>
+          val tx = lti.ltiTx
+          val txBody = t.body[TxLevel.Top](tx)
+          val pv = lti.ltiProtVer
+          PlutusTxInfoResult(
+            for
+              timeRange <- transValidityInterval[Conway](
+                lti.ltiSlotToPOSIXTime,
+                b.vldt[TxLevel.Top](txBody)
+              )
+              inputsInfo <- b
+                .inputs[TxLevel.Top](txBody)
+                .toVector
+                .traverse(transTxInInfoV3(lti.ltiUTxO, _))
+              refInputsInfo <- b
+                .referenceInputs[TxLevel.Top](txBody)
+                .toVector
+                .traverse(transTxInInfoV3(lti.ltiUTxO, _))
+              _ <-
+                if pv.pvMajor.value >= 11 then
+                  checkReferenceInputsNotDisjointFromInputs[Conway, TxLevel.Top](txBody)
+                else Right(())
+              outputs <- b
+                .outputs[TxLevel.Top](txBody)
+                .zipWithIndex
+                .traverse((out, ix) =>
+                  BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix), out)
+                )
+              txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV3, Conway, TxLevel.Top](
+                pv,
+                txBody
+              )
+              plutusRedeemers <- BabbageTxInfo
+                .transTxRedeemers[Language.PlutusV3, Conway, TxLevel.Top](lti)
+              datums = AlonzoTxInfo
+                .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
+            yield PV3.TxInfo(
+              txInfoInputs = inputsInfo,
+              txInfoReferenceInputs = refInputsInfo,
+              txInfoOutputs = outputs,
+              txInfoFee = transCoinToLovelace(b.fee(txBody)),
+              txInfoMint = transMintValue(b.mint[TxLevel.Top](txBody)),
+              txInfoTxCerts = txCerts,
+              txInfoWdrl = transTxBodyWithdrawals[Conway, TxLevel.Top](txBody),
+              txInfoValidRange = timeRange,
+              txInfoSignatories =
+                AlonzoTxInfo.transTxBodyReqSignerHashes[Conway, TxLevel.Top](txBody),
+              txInfoRedeemers = plutusRedeemers,
+              txInfoData = AssocMap(datums),
+              txInfoId = transTxBodyId[Conway, TxLevel.Top](txBody),
+              txInfoVotes = transVotingProcedures(b.votingProcedures[TxLevel.Top](txBody)),
+              txInfoProposalProcedures = b
+                .proposalProcedures[TxLevel.Top](txBody)
+                .toVector
+                .map(transProposal[Language.PlutusV3, Conway]),
+              txInfoCurrentTreasuryAmount =
+                b.currentTreasuryValue[TxLevel.Top](txBody).map(transCoinToLovelace),
+              txInfoTreasuryDonation =
+                Option.unless(b.treasuryDonation[TxLevel.Top](txBody).value == 0)(
+                  transCoinToLovelace(b.treasuryDonation[TxLevel.Top](txBody))
+                )
             )
-          txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV3, Conway, TxLevel.Top](
-            pv,
-            txBody
           )
-          plutusRedeemers <- BabbageTxInfo.transTxRedeemers[Language.PlutusV3, Conway, TxLevel.Top](
-            pv,
-            tx
-          )
-          datums = AlonzoTxInfo
-            .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
-        yield PV3.TxInfo(
-          txInfoInputs = inputsInfo,
-          txInfoReferenceInputs = refInputsInfo,
-          txInfoOutputs = outputs,
-          txInfoFee = transCoinToLovelace(b.fee(txBody)),
-          txInfoMint = transMintValue(b.mint[TxLevel.Top](txBody)),
-          txInfoTxCerts = txCerts,
-          txInfoWdrl = transTxBodyWithdrawals[Conway, TxLevel.Top](txBody),
-          txInfoValidRange = timeRange,
-          txInfoSignatories = AlonzoTxInfo.transTxBodyReqSignerHashes[Conway, TxLevel.Top](txBody),
-          txInfoRedeemers = plutusRedeemers,
-          txInfoData = AssocMap(datums),
-          txInfoId = transTxBodyId[Conway, TxLevel.Top](txBody),
-          txInfoVotes = transVotingProcedures(b.votingProcedures[TxLevel.Top](txBody)),
-          txInfoProposalProcedures =
-            b.proposalProcedures[TxLevel.Top](txBody).toVector.map(transProposal),
-          txInfoCurrentTreasuryAmount =
-            b.currentTreasuryValue[TxLevel.Top](txBody).map(transCoinToLovelace),
-          txInfoTreasuryDonation =
-            Option.unless(b.treasuryDonation[TxLevel.Top](txBody).value == 0)(
-              transCoinToLovelace(b.treasuryDonation[TxLevel.Top](txBody))
-            )
-        )
-        PlutusTxInfoResult(result.map(txInfo => _ => Right(txInfo)))
+        }
 
-      override def toPlutusArgs(
-          pv: ProtVer,
+      override def toPlutusArgs[T <: TxLevel](
+          lti: LedgerTxInfo[T, Conway],
           txInfo: PV3.TxInfo,
           purpose: ConwayPlutusPurpose[AsIxItem],
-          maybeSpendingData: Option[Data],
           redeemerData: Data
       ): Either[ContextError[Conway], PlutusV3Args] =
-        toPlutusV3Args(pv, txInfo, purpose, maybeSpendingData, redeemerData)
+        toPlutusV3Args[Conway, T](lti, txInfo, purpose, redeemerData)
 
       override def toPlutusTxInInfo(
           utxo: UTxO[Conway],
@@ -544,7 +592,7 @@ object ConwayTxInfo:
           result: ConwayTxInfoResult
       ): PlutusTxInfoResult[Language.PlutusV3, Conway] = result.tirPlutusV3
 
-  /** `transTxOutV1` of Conway (`Conway/TxInfo.hs:304-320`, cardano-ledger f649f975): the output in
+  /** `transTxOutV1` of Conway (`Conway/TxInfo.hs:327-342`, cardano-ledger 9df9f98c): the output in
     * the V1 form, an inline datum refused, then a Byron address; a reference script, which the V1
     * output has no field for, is left out, unlike Babbage's. The inline datum is read as data to
     * ask whether there is one (`isSJust (txOut ^. dataTxOutL)`, whose strict `SJust` forces
@@ -565,22 +613,21 @@ object ConwayTxInfo:
           .transTxOut[E](txOut)
           .toRight(inj.inject(BabbageContextError.ByronTxOutInContext(txOutSource)))
 
-  /** `transTxInInfoV1` of Conway (`Conway/TxInfo.hs:322-335`, cardano-ledger f649f975): an input
+  /** `transTxInInfoV1` of Conway (`Conway/TxInfo.hs:344-358`, cardano-ledger 9df9f98c): an input
     * with the output the UTxO set holds for it, in the V1 form.
     */
   def transTxInInfoV1[E <: EraTag](utxo: UTxO[E], txIn: TxIn)(using
       o: BabbageEraTxOut[E],
+      injA: Inject[AlonzoContextError[E], ContextError[E]],
       inj: Inject[xyz.kd5ujc.scarab.ledger.era.BabbageContextError[E], ContextError[E]],
       v: Value[E] =:= MultiAssetValue
   ): Either[ContextError[E], PV1.TxInInfo] =
     for
-      txOut <- AlonzoTxInfo
-        .transLookupTxOut[E, AlonzoContextError[E]](utxo, txIn)
-        .leftMap(e => inj.inject(BabbageContextError.AlonzoContextError(e)))
+      txOut <- AlonzoTxInfo.transLookupTxOut[E, ContextError[E]](utxo, txIn)
       plutusTxOut <- transTxOutV1(TxOutSource.TxOutFromInput(txIn), txOut)
     yield PV1.TxInInfo(PlutusTxInfos.transTxIn(txIn), plutusTxOut)
 
-  /** `guardConwayFeaturesForPlutusV1V2` (`Conway/TxInfo.hs:352-381`, cardano-ledger f649f975), of
+  /** `guardConwayFeaturesForPlutusV1V2` (`Conway/TxInfo.hs:375-404`, cardano-ledger 9df9f98c), of
     * the transaction's body: votes, then proposals, then a treasury donation, then the current
     * treasury, none of which a V1 or V2 context can show, refused.
     */
@@ -604,11 +651,14 @@ object ConwayTxInfo:
         case Some(treasury) =>
           Left(inj.inject(ConwayContextError.CurrentTreasuryFieldNotSupported(treasury)))
 
-  /** `transTxCertV1V2` (`Conway/TxInfo.hs:383-397`, cardano-ledger f649f975): a registration or an
-    * unregistration with its deposit or refund without it, else Alonzo's common form, else refused.
+  /** `transTxCertV1V2` (`Conway/TxInfo.hs:406-418`, cardano-ledger 9df9f98c): a registration or an
+    * unregistration with its deposit or refund without it, else Alonzo's common form, which refuses
+    * the rest ([[AlonzoTxInfo.transTxCertCommon]]).
     */
-  def transTxCertV1V2(txCert: ConwayTxCert): Either[ContextError[Conway], PV1.DCert] =
-    val c = xyz.kd5ujc.scarab.ledger.era.EraTxCert.conway
+  def transTxCertV1V2[E <: EraTag](txCert: TxCert[E])(using
+      c: ConwayEraTxCert[E] & ShelleyEraTxCert[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV1.DCert] =
     c.getRegDepositTxCert(txCert)
       .map((stakeCred, _) =>
         PV1.DCert.DCertDelegRegKey(PV1.StakingCredential.StakingHash(transCred(stakeCred)))
@@ -619,40 +669,10 @@ object ConwayTxInfo:
             PV1.DCert.DCertDelegDeRegKey(PV1.StakingCredential.StakingHash(transCred(stakeCred)))
           )
       )
-      .orElse(AlonzoTxInfo.transTxCertCommon[Conway](txCert)(using c))
-      .toRight(ConwayContextError.CertificateNotSupported(txCert))
+      .fold(AlonzoTxInfo.transTxCertCommon[E](txCert))(Right(_))
 
-  /** `transPlutusPurposeV1V2` (`Conway/TxInfo.hs:724-739`, cardano-ledger f649f975) over Alonzo's
-    * `transPlutusPurpose` (`Alonzo/Plutus/TxInfo.hs:381-392`), written out: Alonzo's purposes are
-    * not among the era types yet. A certificate takes the V1 and V2 form both languages'
-    * `toPlutusTxCert` give (`transTxCertV1V2`); a vote and a proposal are refused.
-    */
-  def transPlutusPurposeV1V2(
-      purpose: ConwayPlutusPurpose[AsIxItem]
-  ): Either[ContextError[Conway], PV1.ScriptPurpose] = purpose match
-    case ConwayPlutusPurpose.ConwaySpending(AsIxItem(_, txIn)) =>
-      Right(PV1.ScriptPurpose.Spending(PlutusTxInfos.transTxIn(txIn)))
-    case ConwayPlutusPurpose.ConwayMinting(AsIxItem(_, policyId)) =>
-      Right(PV1.ScriptPurpose.Minting(AlonzoTxInfo.transPolicyID(policyId)))
-    case ConwayPlutusPurpose.ConwayCertifying(AsIxItem(_, txCert)) =>
-      transTxCertV1V2(txCert).map(PV1.ScriptPurpose.Certifying(_))
-    case ConwayPlutusPurpose.ConwayWithdrawing(AsIxItem(_, accountAddress)) =>
-      Right(
-        PV1.ScriptPurpose.Rewarding(
-          PV1.StakingCredential.StakingHash(transAccountAddress(accountAddress))
-        )
-      )
-    case ConwayPlutusPurpose.ConwayVoting(_) | ConwayPlutusPurpose.ConwayProposing(_) =>
-      Left(
-        ConwayContextError.PlutusPurposeNotSupported(
-          ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
-            [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
-          )(purpose)
-        )
-      )
-
-  /** `instance EraPlutusTxInfo 'PlutusV1 ConwayEra` (`Conway/TxInfo.hs:399-437`, cardano-ledger
-    * f649f975).
+  /** `instance EraPlutusTxInfo 'PlutusV1 ConwayEra` (`Conway/TxInfo.hs:420-455`, cardano-ledger
+    * 9df9f98c).
     */
   val plutusV1: EraPlutusTxInfo[Language.PlutusV1, Conway] =
     new EraPlutusTxInfo[Language.PlutusV1, Conway]:
@@ -667,64 +687,68 @@ object ConwayTxInfo:
       override def toPlutusTxCert(
           pv: ProtVer,
           txCert: ConwayTxCert
-      ): Either[ContextError[Conway], PV1.DCert] = transTxCertV1V2(txCert)
+      ): Either[ContextError[Conway], PV1.DCert] = transTxCertV1V2[Conway](txCert)
 
-      override def toPlutusScriptPurpose(
-          pv: ProtVer,
+      override def toPlutusScriptPurpose[T <: TxLevel](
+          lti: LedgerTxInfo[T, Conway],
           purpose: ConwayPlutusPurpose[AsIxItem]
-      ): Either[ContextError[Conway], PV1.ScriptPurpose] = transPlutusPurposeV1V2(purpose)
+      ): Either[ContextError[Conway], PV1.ScriptPurpose] =
+        AlonzoTxInfo.transPlutusPurpose[Language.PlutusV1, Conway](lti.ltiProtVer, purpose)
 
-      override def toPlutusTxInfo(
-          lti: LedgerTxInfo[Conway]
+      override def toPlutusTxInfo[T <: TxLevel](
+          lti0: LedgerTxInfo[T, Conway]
       ): PlutusTxInfoResult[Language.PlutusV1, Conway] =
-        val tx = lti.ltiTx
-        val txBody = t.body[TxLevel.Top](tx)
-        val result = for
-          _ <- guardConwayFeaturesForPlutusV1V2[Conway, TxLevel.Top](txBody)
-          timeRange <- transValidityInterval[Conway, ContextError[Conway]](
-            lti.ltiSlotToPOSIXTime,
-            b.vldt[TxLevel.Top](txBody)
+        LedgerTxInfo.withTopTxLevelOnly(lti0) { lti =>
+          val tx = lti.ltiTx
+          val txBody = t.body[TxLevel.Top](tx)
+          PlutusTxInfoResult(
+            for
+              _ <- guardConwayFeaturesForPlutusV1V2[Conway, TxLevel.Top](txBody)
+              timeRange <- transValidityInterval[Conway](
+                lti.ltiSlotToPOSIXTime,
+                b.vldt[TxLevel.Top](txBody)
+              )
+              inputs <- b
+                .inputs[TxLevel.Top](txBody)
+                .toVector
+                .traverse(transTxInInfoV1(lti.ltiUTxO, _))
+              _ <- b
+                .referenceInputs[TxLevel.Top](txBody)
+                .toVector
+                .traverse(transTxInInfoV1(lti.ltiUTxO, _))
+              outputs <- b
+                .outputs[TxLevel.Top](txBody)
+                .zipWithIndex
+                .traverse((out, ix) => transTxOutV1[Conway](TxOutSource.TxOutFromOutput(ix), out))
+              txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV1, Conway, TxLevel.Top](
+                lti.ltiProtVer,
+                txBody
+              )
+              datums = AlonzoTxInfo
+                .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
+            yield PV1.TxInfo(
+              txInfoInputs = inputs,
+              txInfoOutputs = outputs,
+              txInfoFee = transCoinToValue(b.fee(txBody)),
+              txInfoMint = AlonzoTxInfo.transMintValue(b.mint[TxLevel.Top](txBody)),
+              txInfoDCert = txCerts,
+              txInfoWdrl = AlonzoTxInfo.transTxBodyWithdrawals[Conway, TxLevel.Top](txBody),
+              txInfoValidRange = timeRange,
+              txInfoSignatories =
+                AlonzoTxInfo.transTxBodyReqSignerHashes[Conway, TxLevel.Top](txBody),
+              txInfoData = datums,
+              txInfoId = AlonzoTxInfo.transTxBodyId[Conway, TxLevel.Top](txBody)
+            )
           )
-          inputs <- b
-            .inputs[TxLevel.Top](txBody)
-            .toVector
-            .traverse(transTxInInfoV1(lti.ltiUTxO, _))
-          _ <- b
-            .referenceInputs[TxLevel.Top](txBody)
-            .toVector
-            .traverse(transTxInInfoV1(lti.ltiUTxO, _))
-          outputs <- b
-            .outputs[TxLevel.Top](txBody)
-            .zipWithIndex
-            .traverse((out, ix) => transTxOutV1[Conway](TxOutSource.TxOutFromOutput(ix), out))
-          txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV1, Conway, TxLevel.Top](
-            lti.ltiProtVer,
-            txBody
-          )
-          datums = AlonzoTxInfo
-            .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
-        yield PV1.TxInfo(
-          txInfoInputs = inputs,
-          txInfoOutputs = outputs,
-          txInfoFee = transCoinToValue(b.fee(txBody)),
-          txInfoMint = AlonzoTxInfo.transMintValue(b.mint[TxLevel.Top](txBody)),
-          txInfoDCert = txCerts,
-          txInfoWdrl = AlonzoTxInfo.transTxBodyWithdrawals[Conway, TxLevel.Top](txBody),
-          txInfoValidRange = timeRange,
-          txInfoSignatories = AlonzoTxInfo.transTxBodyReqSignerHashes[Conway, TxLevel.Top](txBody),
-          txInfoData = datums,
-          txInfoId = AlonzoTxInfo.transTxBodyId[Conway, TxLevel.Top](txBody)
-        )
-        PlutusTxInfoResult(result.map(txInfo => _ => Right(txInfo)))
+        }
 
-      override def toPlutusArgs(
-          pv: ProtVer,
+      override def toPlutusArgs[T <: TxLevel](
+          lti: LedgerTxInfo[T, Conway],
           txInfo: PV1.TxInfo,
           purpose: ConwayPlutusPurpose[AsIxItem],
-          maybeSpendingData: Option[Data],
           redeemerData: Data
       ): Either[ContextError[Conway], PlutusV1Args] =
-        AlonzoTxInfo.toPlutusV1Args[Conway](pv, txInfo, purpose, maybeSpendingData, redeemerData)
+        AlonzoTxInfo.toPlutusV1Args[Conway, T](lti, txInfo, purpose, redeemerData)
 
       override def toPlutusTxInInfo(
           utxo: UTxO[Conway],
@@ -736,8 +760,8 @@ object ConwayTxInfo:
           result: ConwayTxInfoResult
       ): PlutusTxInfoResult[Language.PlutusV1, Conway] = result.tirPlutusV1
 
-  /** `instance EraPlutusTxInfo 'PlutusV2 ConwayEra` (`Conway/TxInfo.hs:439-480`, cardano-ledger
-    * f649f975).
+  /** `instance EraPlutusTxInfo 'PlutusV2 ConwayEra` (`Conway/TxInfo.hs:457-495`, cardano-ledger
+    * 9df9f98c).
     */
   val plutusV2: EraPlutusTxInfo[Language.PlutusV2, Conway] =
     new EraPlutusTxInfo[Language.PlutusV2, Conway]:
@@ -752,73 +776,76 @@ object ConwayTxInfo:
       override def toPlutusTxCert(
           pv: ProtVer,
           txCert: ConwayTxCert
-      ): Either[ContextError[Conway], PV1.DCert] = transTxCertV1V2(txCert)
+      ): Either[ContextError[Conway], PV1.DCert] = transTxCertV1V2[Conway](txCert)
 
-      override def toPlutusScriptPurpose(
-          pv: ProtVer,
+      override def toPlutusScriptPurpose[T <: TxLevel](
+          lti: LedgerTxInfo[T, Conway],
           purpose: ConwayPlutusPurpose[AsIxItem]
-      ): Either[ContextError[Conway], PV1.ScriptPurpose] = transPlutusPurposeV1V2(purpose)
+      ): Either[ContextError[Conway], PV1.ScriptPurpose] =
+        AlonzoTxInfo.transPlutusPurpose[Language.PlutusV2, Conway](lti.ltiProtVer, purpose)
 
-      override def toPlutusTxInfo(
-          lti: LedgerTxInfo[Conway]
+      override def toPlutusTxInfo[T <: TxLevel](
+          lti0: LedgerTxInfo[T, Conway]
       ): PlutusTxInfoResult[Language.PlutusV2, Conway] =
-        val tx = lti.ltiTx
-        val txBody = t.body[TxLevel.Top](tx)
-        val pv = lti.ltiProtVer
-        val result = for
-          _ <- guardConwayFeaturesForPlutusV1V2[Conway, TxLevel.Top](txBody)
-          timeRange <- transValidityInterval[Conway, ContextError[Conway]](
-            lti.ltiSlotToPOSIXTime,
-            b.vldt[TxLevel.Top](txBody)
-          )
-          inputs <- b
-            .inputs[TxLevel.Top](txBody)
-            .toVector
-            .traverse(BabbageTxInfo.transTxInInfoV2(lti.ltiUTxO, _))
-          refInputs <- b
-            .referenceInputs[TxLevel.Top](txBody)
-            .toVector
-            .traverse(BabbageTxInfo.transTxInInfoV2(lti.ltiUTxO, _))
-          outputs <- b
-            .outputs[TxLevel.Top](txBody)
-            .zipWithIndex
-            .traverse((out, ix) =>
-              BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix), out)
+        LedgerTxInfo.withTopTxLevelOnly(lti0) { lti =>
+          val tx = lti.ltiTx
+          val txBody = t.body[TxLevel.Top](tx)
+          val pv = lti.ltiProtVer
+          PlutusTxInfoResult(
+            for
+              _ <- guardConwayFeaturesForPlutusV1V2[Conway, TxLevel.Top](txBody)
+              timeRange <- transValidityInterval[Conway](
+                lti.ltiSlotToPOSIXTime,
+                b.vldt[TxLevel.Top](txBody)
+              )
+              inputs <- b
+                .inputs[TxLevel.Top](txBody)
+                .toVector
+                .traverse(BabbageTxInfo.transTxInInfoV2(lti.ltiUTxO, _))
+              refInputs <- b
+                .referenceInputs[TxLevel.Top](txBody)
+                .toVector
+                .traverse(BabbageTxInfo.transTxInInfoV2(lti.ltiUTxO, _))
+              outputs <- b
+                .outputs[TxLevel.Top](txBody)
+                .zipWithIndex
+                .traverse((out, ix) =>
+                  BabbageTxInfo.transTxOutV2[Conway](TxOutSource.TxOutFromOutput(ix), out)
+                )
+              txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV2, Conway, TxLevel.Top](
+                pv,
+                txBody
+              )
+              plutusRedeemers <- BabbageTxInfo
+                .transTxRedeemers[Language.PlutusV2, Conway, TxLevel.Top](lti)
+              datums = AlonzoTxInfo
+                .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
+            yield PV2.TxInfo(
+              txInfoInputs = inputs,
+              txInfoReferenceInputs = refInputs,
+              txInfoOutputs = outputs,
+              txInfoFee = transCoinToValue(b.fee(txBody)),
+              txInfoMint = AlonzoTxInfo.transMintValue(b.mint[TxLevel.Top](txBody)),
+              txInfoDCert = txCerts,
+              txInfoWdrl =
+                AssocMap(AlonzoTxInfo.transTxBodyWithdrawals[Conway, TxLevel.Top](txBody)),
+              txInfoValidRange = timeRange,
+              txInfoSignatories =
+                AlonzoTxInfo.transTxBodyReqSignerHashes[Conway, TxLevel.Top](txBody),
+              txInfoRedeemers = plutusRedeemers,
+              txInfoData = AssocMap(datums),
+              txInfoId = AlonzoTxInfo.transTxBodyId[Conway, TxLevel.Top](txBody)
             )
-          txCerts <- AlonzoTxInfo.transTxBodyCerts[Language.PlutusV2, Conway, TxLevel.Top](
-            pv,
-            txBody
           )
-          plutusRedeemers <- BabbageTxInfo.transTxRedeemers[Language.PlutusV2, Conway, TxLevel.Top](
-            pv,
-            tx
-          )
-          datums = AlonzoTxInfo
-            .transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf)
-        yield PV2.TxInfo(
-          txInfoInputs = inputs,
-          txInfoReferenceInputs = refInputs,
-          txInfoOutputs = outputs,
-          txInfoFee = transCoinToValue(b.fee(txBody)),
-          txInfoMint = AlonzoTxInfo.transMintValue(b.mint[TxLevel.Top](txBody)),
-          txInfoDCert = txCerts,
-          txInfoWdrl = AssocMap(AlonzoTxInfo.transTxBodyWithdrawals[Conway, TxLevel.Top](txBody)),
-          txInfoValidRange = timeRange,
-          txInfoSignatories = AlonzoTxInfo.transTxBodyReqSignerHashes[Conway, TxLevel.Top](txBody),
-          txInfoRedeemers = plutusRedeemers,
-          txInfoData = AssocMap(datums),
-          txInfoId = AlonzoTxInfo.transTxBodyId[Conway, TxLevel.Top](txBody)
-        )
-        PlutusTxInfoResult(result.map(txInfo => _ => Right(txInfo)))
+        }
 
-      override def toPlutusArgs(
-          pv: ProtVer,
+      override def toPlutusArgs[T <: TxLevel](
+          lti: LedgerTxInfo[T, Conway],
           txInfo: PV2.TxInfo,
           purpose: ConwayPlutusPurpose[AsIxItem],
-          maybeSpendingData: Option[Data],
           redeemerData: Data
       ): Either[ContextError[Conway], PlutusV2Args] =
-        BabbageTxInfo.toPlutusV2Args[Conway](pv, txInfo, purpose, maybeSpendingData, redeemerData)
+        BabbageTxInfo.toPlutusV2Args[Conway, T](lti, txInfo, purpose, redeemerData)
 
       override def toPlutusTxInInfo(
           utxo: UTxO[Conway],
@@ -830,7 +857,7 @@ object ConwayTxInfo:
           result: ConwayTxInfoResult
       ): PlutusTxInfoResult[Language.PlutusV2, Conway] = result.tirPlutusV2
 
-  /** `instance EraPlutusContext ConwayEra` (`Conway/TxInfo.hs:149-178`, cardano-ledger f649f975):
+  /** `instance EraPlutusContext ConwayEra` (`Conway/TxInfo.hs:157-187`, cardano-ledger 9df9f98c):
     * Plutus V1 to V3, each language's information computed when first looked up.
     */
   val context: EraPlutusContext[Conway] = new EraPlutusContext[Conway]:
@@ -842,7 +869,7 @@ object ConwayTxInfo:
       case xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3 => Some(SupportedLanguage(plutusV3))
       case xyz.kd5ujc.scarab.plutus.PlutusLanguage.V4 => None
 
-    // `Conway/TxInfo.hs:164-167`, cardano-ledger f649f975
+    // `Conway/TxInfo.hs:171-174`, cardano-ledger 9df9f98c
     override def mkSupportedPlutusRunnable(
         v: Version,
         plutusScript: ConwayPlutusScript
@@ -854,7 +881,7 @@ object ConwayTxInfo:
       case ConwayPlutusScript.V3(p) =>
         SupportedPlutusRunnable(plutusV3, PlutusRunnable.decodePlutusRunnable(v, p))
 
-    override def mkTxInfoResult(lti: LedgerTxInfo[Conway]): ConwayTxInfoResult =
+    override def mkTxInfoResult[T <: TxLevel](lti: LedgerTxInfo[T, Conway]): ConwayTxInfoResult =
       ConwayTxInfoResult(
         plutusV1.toPlutusTxInfo(lti),
         plutusV2.toPlutusTxInfo(lti),
@@ -862,7 +889,7 @@ object ConwayTxInfo:
       )
 
 /** Conway's memoised transaction information (`data TxInfoResult ConwayEra = ConwayTxInfoResult`,
-  * `Conway/TxInfo.hs:152-156`, cardano-ledger f649f975): Plutus V1's, V2's and V3's, each computed
+  * `Conway/TxInfo.hs:160-164`, cardano-ledger 9df9f98c): Plutus V1's, V2's and V3's, each computed
   * when first looked up, as the reference keeps its fields lazy.
   */
 final class ConwayTxInfoResult(

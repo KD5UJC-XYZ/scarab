@@ -5,13 +5,14 @@ import scala.annotation.unused
 import cats.data.NonEmptyList
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{DataSite, TranslationError}
+import xyz.kd5ujc.scarab.ledger.TranslationError
 import xyz.kd5ujc.scarab.ledger.state.EraTag
 import xyz.kd5ujc.scarab.plutus.{EvalRequest, ExUnits, PlutusLanguage as Lang}
 
 // A Plutus script ready to run with its arguments, and the collection of a transaction's
 // (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs`,
-// `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs`, cardano-ledger f649f975).
+// `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs`, cardano-ledger f649f975; the
+// collection of a transaction's information with its scripts used at 9df9f98c).
 
 /** A Plutus script of language `L` to run (`data PlutusRunnable (l :: Language)`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs:135-141`, cardano-ledger
@@ -245,14 +246,6 @@ object AlonzoPlutusEvaluate:
   ): PlutusPurpose[AsIx, E] =
     s.hoistPlutusPurpose[AsIxItem, AsIx]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a))(p)
 
-  private def asPurpose[E <: EraTag](p: PlutusPurpose[AsIxItem, E])(using
-      s: ConwayEraScript[E]
-  ): PlutusPurpose[AsPurpose, E] =
-    s.hoistPlutusPurpose[
-      AsIxItem,
-      AsPurpose
-    ]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsPurpose[AsIxItem, ix, it](a))(p)
-
   /** `resolveNeededPlutusScriptsWithPurpose` (`Alonzo/UTxO.hs:431-465`, cardano-ledger f649f975):
     * the cache with the scripts provided added, the cached one kept where both have a hash, and
     * each needed purpose whose script is a provided Plutus script, with the cached runnable if
@@ -286,43 +279,23 @@ object AlonzoPlutusEvaluate:
     )
     (updatedPlutusScriptCache, neededPlutusScriptsWithPurpose)
 
-  /** `mkPlutusWithContext` (`Alonzo/Plutus/TxInfo.hs:100-127`, cardano-ledger f649f975): the script
-    * with the arguments of its language for the purpose, from the language's memoised information.
-    * The spending datum (`getSpendingDatum`) is read before the arguments are made; its failure,
-    * which only an inline datum taken unread can reach, is the node's own `Undecodable` where the
-    * reference raises `error` when the arguments force it.
+  /** `mkPlutusWithContext` (`Alonzo/Plutus/TxInfo.hs:102-130`, cardano-ledger 9df9f98c): the script
+    * with the arguments of its language for the purpose, from the language's memoised information,
+    * of a transaction of any level. The arguments read the spending datum themselves
+    * (`toPlutusArgs`), where f649f975's reads it here (`:100-127`).
     */
-  def mkPlutusWithContext[E <: EraTag](script: SupportedPlutusRunnable[E])(
+  def mkPlutusWithContext[E <: EraTag, T <: TxLevel](script: SupportedPlutusRunnable[E])(
       plutusPurpose: PlutusPurpose[AsIxItem, E],
-      lti: LedgerTxInfo[E],
+      lti: LedgerTxInfo[T, E],
       txInfoResult: TxInfoResult[E],
       redeemerData: Data,
       exUnits: ExUnits,
       costModel: CostModel[script.L]
-  )(using
-      u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
-      c: EraPlutusContext[E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]]
-  ): Either[ContextError[E], PlutusWithContext] =
+  )(using c: EraPlutusContext[E]): Either[ContextError[E], PlutusWithContext] =
     val t: EraPlutusTxInfo[script.L, E] = script.plutusTxInfo
-    val maybeSpendingDatum =
-      u.getSpendingDatum[TxLevel.Top](lti.ltiUTxO, lti.ltiTx, asItem(plutusPurpose))(using
-        u.txOf.bodyOf.top
-      )
     for
-      mkTxInfo <- c.lookupTxInfoResult[script.L](txInfoResult)(using t).unPlutusTxInfoResult
-      txInfo <- mkTxInfo(asPurpose(plutusPurpose))
-      spendingDatum <- maybeSpendingDatum.left.map(e =>
-        inj.inject(AlonzoContextError.Undecodable(DataSite.InlineDatum, e))
-      )
-      plutusArgs <- t.toPlutusArgs(
-        lti.ltiProtVer,
-        txInfo,
-        plutusPurpose,
-        spendingDatum,
-        redeemerData
-      )
+      txInfo <- c.lookupTxInfoResult[script.L](txInfoResult)(using t).unPlutusTxInfoResult
+      plutusArgs <- t.toPlutusArgs(lti, txInfo, plutusPurpose, redeemerData)
     yield PlutusWithContext[script.L](
       lti.ltiProtVer.pvMajor,
       script.plutusRunnable,
@@ -331,47 +304,39 @@ object AlonzoPlutusEvaluate:
       costModel
     )(using t.plutusLanguage)
 
-  /** `scriptsWithContextFromLedgerTxInfo` (`Alonzo/Plutus/Evaluate.hs:118-129`, cardano-ledger
-    * f649f975): with the era's memoised information of the transaction.
+  /** `scriptsWithContextFromLedgerTxInfo` (`Alonzo/Plutus/Evaluate.hs:120-129`, cardano-ledger
+    * 9df9f98c): with the era's memoised information of the transaction.
     */
-  def scriptsWithContextFromLedgerTxInfo[E <: EraTag](
-      lti: LedgerTxInfo[E],
-      costModels: CostModels,
-      plutusScriptsUsed: List[Used[E]]
+  def scriptsWithContextFromLedgerTxInfo[E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
+      costModels: CostModels
   )(using
       x: AlonzoEraTx[E],
-      u: AlonzoEraUTxO[E],
       s: ConwayEraScript[E],
-      c: EraPlutusContext[E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]]
+      c: EraPlutusContext[E]
   ): Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]] =
-    scriptsWithContextFromLedgerTxInfoWithResult(
-      lti,
-      c.mkTxInfoResult(lti),
-      costModels,
-      plutusScriptsUsed
-    )
+    scriptsWithContextFromLedgerTxInfoWithResult(lti, c.mkTxInfoResult(lti), costModels)
 
-  /** `scriptsWithContextFromLedgerTxInfoWithResult` (`Alonzo/Plutus/Evaluate.hs:131-185`,
-    * cardano-ledger f649f975): each script used with its redeemer, its language's cost model and
-    * its context, every failure collected. As the reference's `merge`, the successes come in
-    * reverse order, once there is a failure no context is made, and the failures come in reverse
-    * order too.
+  /** `scriptsWithContextFromLedgerTxInfoWithResult` (`Alonzo/Plutus/Evaluate.hs:131-182`,
+    * cardano-ledger 9df9f98c): each script the information uses (`ltiScriptsUsed`) with its
+    * redeemer, its language's cost model and its context, every failure collected. As the
+    * reference's `merge`, the successes come in reverse order, once there is a failure no context
+    * is made, and the failures come in reverse order too. f649f975's takes the transaction's
+    * information without the scripts used, which its callers resolve (`:131-185`).
     */
-  def scriptsWithContextFromLedgerTxInfoWithResult[E <: EraTag](
-      lti: LedgerTxInfo[E],
+  def scriptsWithContextFromLedgerTxInfoWithResult[E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
       txInfoResult: TxInfoResult[E],
-      costModels: CostModels,
-      plutusScriptsUsed: List[Used[E]]
+      costModels: CostModels
   )(using
       x: AlonzoEraTx[E],
-      u: AlonzoEraUTxO[E],
       s: ConwayEraScript[E],
-      c: EraPlutusContext[E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]]
+      c: EraPlutusContext[E]
   ): Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]] =
     type Found = (SupportedPlutusRunnable[E], PlutusPurpose[AsIxItem, E], Data, ExUnits)
-    val redeemers = x.witsOf.rdmrsTxWits(x.wits[TxLevel.Top](lti.ltiTx)(using x.bodyOf.top)).entries
+    val redeemers = x.witsOf
+      .rdmrsTxWits(x.wits[T](lti.ltiTx)(using LedgerTxInfo.toSTxLevel(lti)(using x.bodyOf)))
+      .entries
     def getScriptWithRedeemer(used: Used[E]): Either[CollectError[E], Found] =
       val (plutusPurpose, plutusScriptRunnable) = used
       redeemers.get(asIx(plutusPurpose)) match
@@ -394,9 +359,9 @@ object AlonzoPlutusEvaluate:
           costModel
         ).left.map(CollectError.BadTranslation(_))
       yield pwc
-    merge(apply)(plutusScriptsUsed.map(getScriptWithRedeemer), Right(Nil))
+    merge(apply)(lti.ltiScriptsUsed.map(getScriptWithRedeemer), Right(Nil))
 
-  /** `merge` (`Alonzo/Plutus/Evaluate.hs:170-185`, cardano-ledger f649f975): the failures of `xs`
+  /** `merge` (`Alonzo/Plutus/Evaluate.hs:168-182`, cardano-ledger 9df9f98c): the failures of `xs`
     * and of `f`, once one is found, or else every success, each put in front.
     */
   private def merge[T, B, A](f: T => Either[A, B])(
@@ -411,10 +376,11 @@ object AlonzoPlutusEvaluate:
         case (Left(a), Left(cs))   => Left(a :: cs)
     }
 
-  /** `collectPlutusScriptsWithContext` (`Alonzo/Plutus/Evaluate.hs:83-116`, cardano-ledger
-    * f649f975): the scripts the transaction needs and provides, with their contexts, at the
-    * parameters' protocol version and with their cost models. The epoch information and the system
-    * start are the one clock function of [[LedgerTxInfo]].
+  /** `collectPlutusScriptsWithContext` (`Alonzo/Plutus/Evaluate.hs:83-118`, cardano-ledger
+    * 9df9f98c): the scripts the top-level transaction needs and provides, with their contexts, at
+    * the parameters' protocol version and with their cost models, and no sub-transaction's
+    * information (`LedgerTopTxInfo mempty`). The epoch information and the system start are the one
+    * clock function of [[LedgerTxInfo]].
     */
   def collectPlutusScriptsWithContext[E <: EraTag](
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
@@ -427,13 +393,11 @@ object AlonzoPlutusEvaluate:
       u: AlonzoEraUTxO[E],
       s: ConwayEraScript[E],
       c: EraPlutusContext[E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]],
       needed: ScriptsNeeded[E] =:= AlonzoScriptsNeeded[E]
   ): Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]] =
     val protVer = p.ppProtocolVersionL.get(pp)
-    val ledgerTxInfo = LedgerTxInfo(protVer, slotToPOSIXTime, utxo, tx)
     val top = u.txOf.bodyOf.top
-    val (_, neededPlutusScripts) = resolveNeededPlutusScriptsWithPurpose(
+    val (_, plutusScriptsUsed) = resolveNeededPlutusScriptsWithPurpose(
       protVer,
       u.getScriptsProvided[TxLevel.Top](utxo, tx)(using top),
       needed(
@@ -441,5 +405,13 @@ object AlonzoPlutusEvaluate:
       ),
       Map.empty
     )
+    val ledgerTxInfo = LedgerTxInfo(
+      protVer,
+      slotToPOSIXTime,
+      utxo,
+      tx,
+      plutusScriptsUsed,
+      LedgerLevelTxInfo.LedgerTopTxInfo(Map.empty)
+    )
     val costModels = PParams.lensHKD[E].andThen(p.hkdCostModelsL[Identity]).get(pp)
-    scriptsWithContextFromLedgerTxInfo(ledgerTxInfo, costModels, neededPlutusScripts)
+    scriptsWithContextFromLedgerTxInfo(ledgerTxInfo, costModels)

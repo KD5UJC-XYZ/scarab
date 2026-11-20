@@ -33,6 +33,13 @@ trait EraTxBody[E <: EraTag]:
   /** The top level, which every era has. */
   def top: Level[TxLevel.Top]
 
+  /** The level of a transaction's information for its script contexts (`toSTxLevel` of `instance
+    * HasEraTxLevel LedgerTxInfo era`,
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs:130-131`, cardano-ledger
+    * 9df9f98c): an era with the top level only has no sub-transaction's information.
+    */
+  def levelOf[L <: TxLevel](level: LedgerLevelTxInfo[L, E]): Level[L]
+
   /** The outputs' class (the superclass `EraTxOut era`). */
   def outputsOf: EraTxOut[E]
 

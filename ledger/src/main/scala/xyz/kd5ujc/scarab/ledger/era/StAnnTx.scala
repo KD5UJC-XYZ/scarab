@@ -23,16 +23,18 @@ final case class AlonzoStAnnTx[E <: EraTag](
     asatPlutusScriptsWithContext: Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]]
 )
 
-/** Alonzo's annotated transactions (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs:121-160`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:177-214`, cardano-ledger f649f975).
+/** Alonzo's annotated transactions (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs:125-166`,
+  * cardano-ledger 9df9f98c; `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:177-214`,
+  * cardano-ledger f649f975).
   */
 object AlonzoStAnnTx:
-  /** `mkAlonzoStAnnTx` (`Alonzo.hs:121-160`, cardano-ledger f649f975): the transaction with the
-    * scripts it needs and provides, the needed Plutus scripts resolved against those provided and
-    * the cache, the languages they use, and the scripts with their contexts at the parameters'
-    * version and with their cost models. The epoch information and the system start are the one
-    * clock function of [[LedgerTxInfo]]. The reference's `mkStAnnTx` member of `ApplyTx`, which
-    * this is for Conway, comes with the mempool.
+  /** `mkAlonzoStAnnTx` (`Alonzo.hs:125-166`, cardano-ledger 9df9f98c; `:121-160` at f649f975): the
+    * transaction with the scripts it needs and provides, the needed Plutus scripts resolved against
+    * those provided and the cache, the languages they use, and the scripts with their contexts at
+    * the parameters' version and with their cost models, of the transaction's information with the
+    * scripts used and no sub-transaction's (`LedgerTopTxInfo mempty`). The epoch information and
+    * the system start are the one clock function of [[LedgerTxInfo]]. The reference's `mkStAnnTx`
+    * member of `ApplyTx`, which this is for Conway, comes with the mempool.
     */
   def mkAlonzoStAnnTx[E <: EraTag](
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
@@ -46,7 +48,6 @@ object AlonzoStAnnTx:
       u: AlonzoEraUTxO[E],
       s: ConwayEraScript[E],
       c: EraPlutusContext[E],
-      inj: Inject[AlonzoContextError[E], ContextError[E]],
       needed: ScriptsNeeded[E] =:= AlonzoScriptsNeeded[E]
   ): AlonzoStAnnTx[E] =
     val protVer = p.ppProtocolVersionL.get(pp)
@@ -61,7 +62,14 @@ object AlonzoStAnnTx:
         needed(scriptsNeeded),
         stAnnTxCache
       )
-    val ledgerTxInfo = LedgerTxInfo(protVer, slotToPOSIXTime, utxo, tx)
+    val ledgerTxInfo = LedgerTxInfo(
+      protVer,
+      slotToPOSIXTime,
+      utxo,
+      tx,
+      plutusScriptsUsed,
+      LedgerLevelTxInfo.LedgerTopTxInfo(Map.empty)
+    )
     AlonzoStAnnTx(
       asatTx = tx,
       asatScriptsNeeded = scriptsNeeded,
@@ -70,8 +78,7 @@ object AlonzoStAnnTx:
       asatPlutusRunnableCache = newStAnnTxCache,
       asatPlutusScriptsWithContext = AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfo(
         ledgerTxInfo,
-        PParams.lensHKD[E].andThen(p.hkdCostModelsL[Identity]).get(pp),
-        plutusScriptsUsed
+        PParams.lensHKD[E].andThen(p.hkdCostModelsL[Identity]).get(pp)
       )
     )
 

@@ -74,41 +74,41 @@ object BabbageTxInfo:
   /** `transRedeemer` (`Babbage/TxInfo.hs:188-189`, cardano-ledger f649f975). */
   def transRedeemer(data: Data): PV1.Redeemer = PV1.Redeemer(data.getPlutusData)
 
-  /** `transRedeemerPtr` (`Babbage/TxInfo.hs:191-207`, cardano-ledger f649f975): the purpose a
-    * redeemer's pointer names in the language's form, with the redeemer; a pointer that names
-    * nothing refused.
+  /** `transRedeemerPointerV2V3` (`Babbage/TxInfo.hs:195-211`, cardano-ledger 9df9f98c; f649f975's
+    * `transRedeemerPtr`, `:191-207`, of the body and the protocol version): the purpose a
+    * redeemer's pointer names in the transaction's body, in the language's form, with the redeemer;
+    * a pointer that names nothing refused.
     */
-  def transRedeemerPtr[L <: Language, E <: EraTag, T <: TxLevel](
-      pv: ProtVer,
-      txBody: TxBody[T, E],
+  def transRedeemerPointerV2V3[L <: Language, E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
       redeemer: (PlutusPurpose[AsIx, E], (Data, ExUnits))
   )(using
       t: EraPlutusTxInfo[L, E],
-      b: AlonzoEraTxBody[E],
-      l: b.Level[T],
+      x: AlonzoEraTx[E],
       inj: Inject[BabbageContextError[E], ContextError[E]]
   ): Either[ContextError[E], (PlutusScriptPurpose[L], PV1.Redeemer)] =
+    given x.bodyOf.Level[T] = LedgerTxInfo.toSTxLevel(lti)(using x.bodyOf)
     val (ptr, (d, _)) = redeemer
-    b.redeemerPointerInverse[T](txBody, ptr) match
+    x.bodyOf.redeemerPointerInverse[T](x.body[T](lti.ltiTx), ptr) match
       case None => Left(inj.inject(BabbageContextError.RedeemerPointerPointsToNothing(ptr)))
       case Some(sp) =>
-        t.toPlutusScriptPurpose(pv, sp)
+        t.toPlutusScriptPurpose(lti, sp)
           .map(plutusScriptPurpose => (plutusScriptPurpose, transRedeemer(d)))
 
-  /** `transTxRedeemers` (`Babbage/TxInfo.hs:211-226`, cardano-ledger f649f975): every redeemer of
-    * the witnesses, in the order of their pointers, by its purpose.
+  /** `transTxRedeemers` (`Babbage/TxInfo.hs:215-229`, cardano-ledger 9df9f98c): every redeemer of
+    * the information's transaction, in the order of their pointers, by its purpose.
     */
-  def transTxRedeemers[L <: Language, E <: EraTag, T <: TxLevel](pv: ProtVer, tx: Tx[T, E])(using
+  def transTxRedeemers[L <: Language, E <: EraTag, T <: TxLevel](lti: LedgerTxInfo[T, E])(using
       t: EraPlutusTxInfo[L, E],
       x: AlonzoEraTx[E],
-      l: x.bodyOf.Level[T],
       inj: Inject[BabbageContextError[E], ContextError[E]]
   ): Either[ContextError[E], AssocMap[PlutusScriptPurpose[L], PV1.Redeemer]] =
+    given x.bodyOf.Level[T] = LedgerTxInfo.toSTxLevel(lti)(using x.bodyOf)
     x.witsOf
-      .rdmrsTxWits(x.wits[T](tx))
+      .rdmrsTxWits(x.wits[T](lti.ltiTx))
       .entries
       .toVector
-      .traverse(transRedeemerPtr[L, E, T](pv, x.body[T](tx), _)(using t, x.bodyOf, l, inj))
+      .traverse(transRedeemerPointerV2V3[L, E, T](lti, _))
       .map(AssocMap(_))
 
   /** `transTxInInfoV2` (`Babbage/TxInfo.hs:174-186`, cardano-ledger f649f975): an input with the
@@ -126,22 +126,27 @@ object BabbageTxInfo:
       plutusTxOut <- transTxOutV2(TxOutSource.TxOutFromInput(txIn), txOut)
     yield PV2.TxInInfo(transTxIn(txIn), plutusTxOut)
 
-  /** `toPlutusV2Args` (`Babbage/TxInfo.hs:403-414`, cardano-ledger f649f975). */
-  def toPlutusV2Args[E <: EraTag](
-      pv: ProtVer,
+  /** `toPlutusV2Args` (`Babbage/TxInfo.hs:437-458`, cardano-ledger 9df9f98c): the legacy arguments,
+    * with the spending datum of the information's transaction.
+    */
+  def toPlutusV2Args[E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
       txInfo: PV2.TxInfo,
       scriptPurpose: PlutusPurpose[AsIxItem, E],
-      maybeSpendingData: Option[Data],
       redeemerData: Data
   )(using
-      t: EraPlutusTxInfo[Language.PlutusV2, E]
+      t: EraPlutusTxInfo[Language.PlutusV2, E],
+      u: AlonzoEraUTxO[E],
+      s: ConwayEraScript[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], PlutusV2Args] =
-    AlonzoTxInfo
-      .toLegacyPlutusArgs[Language.PlutusV2, E](
-        pv,
+    for
+      maybeSpendingData <- AlonzoTxInfo.spendingDatum(lti, scriptPurpose)
+      args <- AlonzoTxInfo.toLegacyPlutusArgs[Language.PlutusV2, E, T](
+        lti,
         PV2.ScriptContext(txInfo, _),
         scriptPurpose,
         maybeSpendingData,
         redeemerData
       )
-      .map(PlutusV2Args(_))
+    yield PlutusV2Args(args)

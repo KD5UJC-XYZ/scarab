@@ -9,15 +9,20 @@ import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** Why Alonzo's translation of a transaction to a script context fails (`data AlonzoContextError
-  * era`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs:213-216`, cardano-ledger
-  * f649f975), which every later era's error carries. A time past the horizon carries the clock's
-  * typed failure, where the reference's carries its `Text`; [[Undecodable]] is the node's own, as
-  * an output's inline datum is read from the bytes it arrived as where the reference's
-  * `binaryDataToData` takes it as data (`Plutus/Data.hs:244-249`, an `error` otherwise).
+  * era`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs:222-230`, cardano-ledger
+  * 9df9f98c), which every later era's error carries. An unsupported certificate and an unsupported
+  * purpose are Alonzo's at 9df9f98c and 29a7d656, and Conway's own at f649f975
+  * (`Conway/TxInfo.hs:180-189`), where Conway's injection puts them back ([[Inject.conwayAlonzo]]).
+  * A time past the horizon carries the clock's typed failure, where the reference's carries its
+  * `Text`; [[Undecodable]] is the node's own, as an output's inline datum is read from the bytes it
+  * arrived as where the reference's `binaryDataToData` takes it as data (`Plutus/Data.hs:244-249`,
+  * an `error` otherwise).
   */
 enum AlonzoContextError[E <: EraTag]:
   case TranslationLogicMissingInput(txIn: TxIn)
   case TimeTranslationPastHorizon(cause: TranslationError)
+  case CertificateNotSupported(txCert: TxCert[E])
+  case PlutusPurposeNotSupported(purpose: PlutusPurpose[AsItem, E])
 
   /** An output's inline datum, at `site`, that does not decode, with the decoder's failure: never
     * of an output an era's decoder read, which reads it as data.
@@ -25,7 +30,8 @@ enum AlonzoContextError[E <: EraTag]:
   case Undecodable(site: DataSite, cause: PlutusData.DecodeError)
 
 /** Alonzo's translations (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs`,
-  * cardano-ledger f649f975) that the later eras' contexts use.
+  * cardano-ledger f649f975; those that take the transaction's information at 9df9f98c) that the
+  * later eras' contexts use.
   */
 object AlonzoTxInfo:
   import PlutusTxInfos.*
@@ -145,12 +151,14 @@ object AlonzoTxInfo:
   def transMintValue(m: Map[Bytes, Map[Bytes, BigInt]]): PV1.Value =
     transCoinToValue(Coin(0)) <> transMultiAsset(m)
 
-  /** `transTxCertCommon` (`Alonzo/Plutus/TxInfo.hs:364-379`, cardano-ledger f649f975): a
-    * certificate in the V1 form, none for one Conway deprecated or added.
+  /** `transTxCertCommon` (`Alonzo/Plutus/TxInfo.hs:435-454`, cardano-ledger 9df9f98c): a
+    * certificate in the V1 form, one Conway deprecated or added refused
+    * (`CertificateNotSupported`), where f649f975's gives none and Conway refuses it (`:364-379`).
     */
   def transTxCertCommon[E <: EraTag](txCert: TxCert[E])(using
-      c: ShelleyEraTxCert[E]
-  ): Option[PV1.DCert] =
+      c: ShelleyEraTxCert[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV1.DCert] =
     c.getRegTxCert(txCert)
       .map(stakeCred =>
         PV1.DCert.DCertDelegRegKey(PV1.StakingCredential.StakingHash(transCred(stakeCred)))
@@ -174,13 +182,61 @@ object AlonzoTxInfo:
       .orElse(c.getRetirePoolTxCert(txCert).map { (poolId, retireEpochNo) =>
         PV1.DCert.DCertPoolRetire(transKeyHash(poolId), transEpochNo(retireEpochNo))
       })
+      .toRight(inj.inject(AlonzoContextError.CertificateNotSupported(txCert)))
 
-  /** `toLegacyPlutusArgs` (`Alonzo/Plutus/TxInfo.hs:180-194`, cardano-ledger f649f975): the purpose
+  /** `transPlutusPurpose` (`Alonzo/Plutus/TxInfo.hs:456-472`, cardano-ledger 9df9f98c): a purpose
+    * in the V1 and V2 form, read through the script class's readers, a certificate's through the
+    * language's `toPlutusTxCert`; another purpose refused (`PlutusPurposeNotSupported`). It
+    * replaces f649f975's Conway `transPlutusPurposeV1V2` (`Conway/TxInfo.hs:724-739`), whose
+    * results are the same.
+    */
+  def transPlutusPurpose[L <: Language, E <: EraTag](
+      pv: ProtVer,
+      purpose: PlutusPurpose[AsIxItem, E]
+  )(using
+      t: EraPlutusTxInfo[L, E],
+      cert: PlutusTxCert[L] =:= PV1.DCert,
+      s: ConwayEraScript[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV1.ScriptPurpose] =
+    s.toSpendingPurpose[AsIxItem](purpose)
+      .map(a => Right(PV1.ScriptPurpose.Spending(transTxIn(a.item))))
+      .orElse(
+        s.toMintingPurpose[AsIxItem](purpose)
+          .map(a => Right(PV1.ScriptPurpose.Minting(transPolicyID(a.item))))
+      )
+      .orElse(
+        s.toCertifyingPurpose[AsIxItem](purpose)
+          .map(a => t.toPlutusTxCert(pv, a.item).map(c => PV1.ScriptPurpose.Certifying(cert(c))))
+      )
+      .orElse(
+        s.toWithdrawingPurpose[AsIxItem](purpose)
+          .map(a =>
+            Right(
+              PV1.ScriptPurpose.Rewarding(
+                PV1.StakingCredential.StakingHash(transAccountAddress(a.item))
+              )
+            )
+          )
+      )
+      .getOrElse(
+        Left(
+          inj.inject(
+            AlonzoContextError.PlutusPurposeNotSupported(
+              s.hoistPlutusPurpose[AsIxItem, AsItem](
+                [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+              )(purpose)
+            )
+          )
+        )
+      )
+
+  /** `toLegacyPlutusArgs` (`Alonzo/Plutus/TxInfo.hs:189-203`, cardano-ledger 9df9f98c): the purpose
     * in the language's form in its context, the redeemer, and the datum of a spending script before
     * them.
     */
-  def toLegacyPlutusArgs[L <: Language, E <: EraTag](
-      pv: ProtVer,
+  def toLegacyPlutusArgs[L <: Language, E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
       mkScriptContext: PlutusScriptPurpose[L] => PlutusScriptContext[L],
       scriptPurpose: PlutusPurpose[AsIxItem, E],
       maybeSpendingData: Option[Data],
@@ -188,7 +244,7 @@ object AlonzoTxInfo:
   )(using
       t: EraPlutusTxInfo[L, E]
   ): Either[ContextError[E], LegacyPlutusArgs[L]] =
-    t.toPlutusScriptPurpose(pv, scriptPurpose).map(mkScriptContext).map { scriptContext =>
+    t.toPlutusScriptPurpose(lti, scriptPurpose).map(mkScriptContext).map { scriptContext =>
       val redeemer = redeemerData.getPlutusData
       maybeSpendingData match
         case None => LegacyPlutusArgs.LegacyPlutusArgs2(redeemer, scriptContext)
@@ -196,20 +252,51 @@ object AlonzoTxInfo:
           LegacyPlutusArgs.LegacyPlutusArgs3(spendingData.getPlutusData, redeemer, scriptContext)
     }
 
-  /** `toPlutusV1Args` (`Alonzo/Plutus/TxInfo.hs:167-178`, cardano-ledger f649f975). */
-  def toPlutusV1Args[E <: EraTag](
-      pv: ProtVer,
+  /** `getSpendingDatum` of the information's UTxO set and transaction, at the transaction's level,
+    * for the purpose (`Alonzo/Plutus/TxInfo.hs:186-187`, cardano-ledger 9df9f98c). Its failure,
+    * which only an inline datum taken unread ([[BabbageTxOutRep.fromStored]]) can reach, is the
+    * node's own `Undecodable`, where the reference raises `error` when the arguments force it. Only
+    * a spending purpose has a datum, and its purpose's translation cannot fail, so the failure is
+    * the same before the purpose's or after it.
+    */
+  def spendingDatum[E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
+      plutusPurpose: PlutusPurpose[AsIxItem, E]
+  )(using
+      u: AlonzoEraUTxO[E],
+      s: ConwayEraScript[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], Option[Data]] =
+    u.getSpendingDatum[T](
+      lti.ltiUTxO,
+      lti.ltiTx,
+      s.hoistPlutusPurpose[AsIxItem, AsItem](
+        [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+      )(plutusPurpose)
+    )(using LedgerTxInfo.toSTxLevel(lti)(using u.txOf.bodyOf))
+      .leftMap(e => inj.inject(AlonzoContextError.Undecodable(DataSite.InlineDatum, e)))
+
+  /** `toPlutusV1Args` (`Alonzo/Plutus/TxInfo.hs:166-187`, cardano-ledger 9df9f98c): the legacy
+    * arguments, with the spending datum of the information's transaction.
+    */
+  def toPlutusV1Args[E <: EraTag, T <: TxLevel](
+      lti: LedgerTxInfo[T, E],
       txInfo: PV1.TxInfo,
       scriptPurpose: PlutusPurpose[AsIxItem, E],
-      maybeSpendingData: Option[Data],
       redeemerData: Data
   )(using
-      t: EraPlutusTxInfo[Language.PlutusV1, E]
+      t: EraPlutusTxInfo[Language.PlutusV1, E],
+      u: AlonzoEraUTxO[E],
+      s: ConwayEraScript[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], PlutusV1Args] =
-    toLegacyPlutusArgs[Language.PlutusV1, E](
-      pv,
-      PV1.ScriptContext(txInfo, _),
-      scriptPurpose,
-      maybeSpendingData,
-      redeemerData
-    ).map(PlutusV1Args(_))
+    for
+      maybeSpendingData <- spendingDatum(lti, scriptPurpose)
+      args <- toLegacyPlutusArgs[Language.PlutusV1, E, T](
+        lti,
+        PV1.ScriptContext(txInfo, _),
+        scriptPurpose,
+        maybeSpendingData,
+        redeemerData
+      )
+    yield PlutusV1Args(args)
