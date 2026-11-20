@@ -22,12 +22,10 @@ enum DijkstraNotYet extends DomainError:
     */
   case Rules
 
-  /** A pool's BLS key in a `StakePoolParams` of a Dijkstra state in the Leios build's layout, the
-    * third of its ten items from version 12 (cardano-ledger 9df9f98c `State/StakePool.hs:716-771`):
-    * the state's parameters hold it, but the codec of the state's parameters neither reads nor
-    * writes it yet, nor does a query answer that writes them; ten items whose third is `null` are
-    * no key, and read. Reading and writing it changes what a native snapshot holds, a storage
-    * format change. Persisted formats.
+  /** A pool's BLS key in a `StakePoolParams` in the Leios build's layout, the third of its ten
+    * items from version 12 (cardano-ledger 9df9f98c `State/StakePool.hs:716-771`), read as the
+    * node's pool parameters (`PoolParams`), which have no place for it; ten items whose third is
+    * `null` are no key, and read. The state's parameters read and write it. Persisted formats.
     */
   case PoolParamsBlsKey
 
@@ -51,7 +49,7 @@ enum DijkstraNotYet extends DomainError:
       "a Dijkstra ledger state of the 11.1 layout is not read or written by this build"
     case Rules => "the ledger rules of Dijkstra are not implemented"
     case PoolParamsBlsKey =>
-      "a pool's BLS key in a Dijkstra state's pool parameters is not read by this build"
+      "a pool's BLS key is not read into the node's pool parameters, which have no place for it"
     case ParameterUpdate =>
       "a Dijkstra parameter update in a governance proposal of the state is not read by this build"
     case PerasEpochContext =>

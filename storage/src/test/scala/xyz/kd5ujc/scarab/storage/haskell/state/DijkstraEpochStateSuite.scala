@@ -136,7 +136,8 @@ class DijkstraEpochStateSuite extends FunSuite:
     assertEquals(readBytes(leios, poolParams(Some(_.nul()), tenth)), params)
     // with no key the reference writes nine items (`withStakePoolParamsFlatEncoding`, `:716-736`)
     assertEquals(leios.write(params), Right(nine))
-    // a list third is a key: not read by this build
+    // a list third is a key: not read into the node's parameters, which have no place for it (the
+    // state's parameters read it, `FuturePoolParamsCodecSuite`)
     // a valid key (`BlsKey`, `State/StakePool.hs:532-542`, 9df9f98c), which the reference reads
     val key =
       (w: Writer) => w.raw(LeiosStateCodecs.blsKey(using v12).encodeUnchecked(LeiosGen.keys.head))

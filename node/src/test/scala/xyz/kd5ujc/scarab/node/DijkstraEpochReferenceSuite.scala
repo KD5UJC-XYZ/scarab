@@ -29,8 +29,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.node.read.EraRead
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs, Versions}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
 
 /** Dijkstra's tick across epoch boundaries, against the native TICK of the Leios build
   * (`fixtures/reference/dijkstra-epoch`, oracle `scripts/oracle/dijkstra-epoch`): the two Dijkstra
@@ -51,14 +50,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs, 
   * oracle's, and it is ticked across the boundary.
   *
   * A re-registration of a pool that holds a voting key gives future parameters that carry it
-  * (`stakePoolStateToStakePoolParams`), as on the testnet, where every pool holds one. The rules
-  * hold them, and at the boundary Dijkstra's POOLREAP keeps the key with the epoch it was
-  * registered in (`mkStakePoolState e (currentState ^. spsBlsKeyL)`), so every state from the
-  * boundary on is compared. The state's codec does not write parameters that carry a key yet
-  * (`DijkstraNotYet.PoolParamsBlsKey`, #826 comment 6967015840, #85 item 38), so a state that holds
-  * them, the derived state and the testnet's tick inside its epoch on the `rewards` path, is not
-  * compared: it is checked to be refused for those keys alone, the same state without them being
-  * written.
+  * (`stakePoolStateToStakePoolParams`), as on the testnet, where every pool holds one: the state
+  * writes them as ten items with the key third (`withStakePoolParamsFlatEncoding`), and at the
+  * boundary Dijkstra's POOLREAP keeps the key with the epoch it was registered in
+  * (`mkStakePoolState e (currentState ^. spsBlsKeyL)`).
   */
 class DijkstraEpochReferenceSuite extends FunSuite:
   private given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
@@ -157,9 +152,7 @@ class DijkstraEpochReferenceSuite extends FunSuite:
         )
       case other => fail(s"unknown change $other")
 
-  /** The future parameters of `nes` that carry a voting key, which the state's codec does not write
-    * yet (`DijkstraNotYet.PoolParamsBlsKey`).
-    */
+  /** The future parameters of `nes` that carry a voting key. */
   private def keyedFuture(nes: NewEpochState[Dijkstra]): Set[KeyHash[StakePool]] =
     EraLedger
       .pState(nes.es.ls)
@@ -170,30 +163,6 @@ class DijkstraEpochReferenceSuite extends FunSuite:
   private def carriesKey(k: PoolParamsBlsKey): Boolean = k match
     case PoolParamsBlsKey.Leios(key) => key.isDefined
     case PoolParamsBlsKey.Node11_1   => false
-
-  /** The refusal of the state's codec of future parameters that carry a voting key. */
-  private val keyRefused =
-    Some(ConstraintViolation("StakePoolParams", "no BLS key", "a BLS key"))
-
-  /** The bytes the build writes of `nes`, or none where it holds future parameters that carry a
-    * voting key: then the writer refuses it, each of those parameters for its key, and writes the
-    * same state with those keys dropped, so the keys are all it refuses.
-    */
-  private def written(nes: NewEpochState[Dijkstra], at: String): Option[Bytes] =
-    val keyed = keyedFuture(nes)
-    if keyed.isEmpty then Some(right(state.write(nes).left.map(_.toString)))
-    else
-      assert(state.write(nes).isLeft, s"$at: future parameters with a voting key are written")
-      val p = EraLedger.pState(nes.es.ls)
-      val params =
-        LeiosStateCodecs.stakePoolParams(using Versions.eraLow(ShelleyBasedEra.SDijkstra))
-      keyed.foreach(id => assertEquals(params.check(p.future(id)), keyRefused, s"$at: $id"))
-      val dropped = p.copy(future = p.future.transform { (id, f) =>
-        if keyed(id) then f.copy(blsKey = PoolParamsBlsKey.Leios(None)) else f
-      })
-      val without = nes.copy(es = nes.es.copy(ls = EraLedger.withPState(nes.es.ls, dropped)))
-      assert(state.write(without).isRight, s"$at: refused for more than its voting keys")
-      None
 
   /** One of the oracle's changes to the state: of the parameters, or of the pool state. */
   private def changeState(nes: NewEpochState[Dijkstra], c: ACursor): NewEpochState[Dijkstra] =
@@ -240,16 +209,11 @@ class DijkstraEpochReferenceSuite extends FunSuite:
       case None => nes
       case Some(name) =>
         val out = derived(c, nes)
-        written(out, name).foreach { encoded =>
-          derivation.get[String]("file").toOption.foreach { file =>
-            assertEquals(
-              encoded.hex,
-              Bytes.wrap(Files.readAllBytes(fixture.resolve(file))).hex,
-              name
-            )
-          }
-          assertEquals(sha256(encoded), text(derivation, "stateSha256"), name)
+        val encoded = right(state.write(out).left.map(_.toString))
+        derivation.get[String]("file").toOption.foreach { file =>
+          assertEquals(encoded.hex, Bytes.wrap(Files.readAllBytes(fixture.resolve(file))).hex, name)
         }
+        assertEquals(sha256(encoded), text(derivation, "stateSha256"), name)
         out
 
   /** The configuration directory of the network whose Shelley genesis the oracle read. */
@@ -292,12 +256,9 @@ class DijkstraEpochReferenceSuite extends FunSuite:
     val name = text(c, "name")
     val path = text(c, "path")
     val derivation = c.downField("derivation").get[String]("name").getOrElse("none")
-    val compared =
-      if keyed.contains(c) then
-        "from the boundary on; before it the state holds future parameters with a voting key, " +
-          "which the codec does not write yet, and is not compared"
-      else "after every slot"
-    test(s"$name, $derivation, $path: Dijkstra's tick agrees with the native tick $compared") {
+    test(
+      s"$name, $derivation, $path: Dijkstra's tick agrees with the native tick after every slot"
+    ) {
       val read = input(name, text(c, "stateSha256"))
       val globals = globalsOf(configOf(text(c, "genesis")))
       assertEquals(sha256(state.encodeUnchecked(read)), text(c, "newEpochStateSha256"))
@@ -334,19 +295,12 @@ class DijkstraEpochReferenceSuite extends FunSuite:
       val slot = right(SlotNo.fromBigInt(number(tick, "slot")))
       val at = s"at slot ${number(tick, "slot")}"
       val after = right(Sts(Tick.sts[Dijkstra])(globals, (), before, slot).leftMap(_.show))
-      // a state still holding future parameters with a voting key is not written yet; the
-      // boundary adopts them, so every state after it is
-      assert(
-        !tick.get[Boolean]("crossedBoundary").getOrElse(false) || keyedFuture(after).isEmpty,
-        at
-      )
-      written(after, at).foreach { encoded =>
-        tick.get[String]("file").toOption.foreach { file =>
-          val expected = Bytes.wrap(Files.readAllBytes(fixture.resolve(file)))
-          assertEquals(encoded.hex, expected.hex, at)
-        }
-        assertEquals(sha256(encoded), text(tick, "stateSha256"), at)
+      val encoded = right(state.write(after).left.map(_.toString))
+      tick.get[String]("file").toOption.foreach { file =>
+        val expected = Bytes.wrap(Files.readAllBytes(fixture.resolve(file)))
+        assertEquals(encoded.hex, expected.hex, at)
       }
+      assertEquals(sha256(encoded), text(tick, "stateSha256"), at)
       assertEquals(after.epoch.toBigInt, number(tick.downField("facts"), "epoch"), at)
       after
     }

@@ -46,13 +46,13 @@ import DecodeError.Kind
 import NodeOrders.given
 import Wire.*
 
-/** `StakePoolParams` of ten items, its third the BLS key's place holding none
-  * ([[NodeTypeCodecs.poolParams]]).
+/** `StakePoolParams` of ten items, its third the BLS key's place: holding none
+  * ([[NodeTypeCodecs.poolParams]]) or a key (`CertStateCodecs.stakePoolParams`).
   */
-private[state] final case class PoolParamsBlsSlot(
+private[state] final case class PoolParamsBlsSlot[K](
     operator: Bytes,
     vrfKeyHash: Bytes,
-    blsKey: Unit,
+    blsKey: K,
     pledge: BigInt,
     cost: BigInt,
     margin: Rational,
@@ -194,9 +194,10 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     def encode(a: BigInt, out: Writer): Unit = out.integer(a)
 
   /** The third of ten items of a `StakePoolParams` in the Leios layout from version 12
-    * (`decodeBlsKeyBackwardsCompatible`, cardano-ledger 9df9f98c `State/StakePool.hs:762-771`):
-    * `null` is no key; a list is a key, refused ([[DijkstraNotYet.PoolParamsBlsKey]]). Never
-    * written: the writer writes nine items.
+    * (`decodeBlsKeyBackwardsCompatible`, cardano-ledger 9df9f98c `State/StakePool.hs:762-771`), as
+    * the node's parameters read it: `null` is no key; a list is a key, which the node's parameters
+    * have no place for, refused ([[DijkstraNotYet.PoolParamsBlsKey]]); the state's parameters read
+    * it (`CertStateCodecs.stakePoolParams`). Never written: the writer writes nine items.
     */
   private val noBlsKey: Codec[Unit] = new Codec[Unit]:
     def decode(n: Node): Decoded[Unit] = n.value match
@@ -213,8 +214,9 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     * In the Leios layout from version 12 a pool may carry its BLS key third
     * (`decodeStakePoolParamsFlat`, cardano-ledger 9df9f98c `State/StakePool.hs:744-771`): ten items
     * whose third is `null` are no key and read as the nine; ten whose third is a list are a key,
-    * refused ([[DijkstraNotYet.PoolParamsBlsKey]]): the held parameters have no place for it. The
-    * writer writes nine, as the reference does for a pool with no key (`:716-736`).
+    * refused ([[DijkstraNotYet.PoolParamsBlsKey]]): the node's parameters have no place for it, and
+    * the state's parameters read it (`CertStateCodecs.stakePoolParams`). The writer writes nine, as
+    * the reference does for a pool with no key (`:716-736`).
     */
   given poolParams(using v: ProtVer): Codec[PoolParams] = new Codec[PoolParams]:
     private val stored = Record.of[PoolParams](
@@ -230,20 +232,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         nullable(poolMetadata)
       )
     )
-    private val withSlot = Record.of[PoolParamsBlsSlot](
-      (
-        hash28,
-        hash32Bytes,
-        noBlsKey,
-        heldCoin,
-        heldCoin,
-        unitIntervalAt,
-        rewardAccount,
-        sortedSet(hash28),
-        relays,
-        nullable(poolMetadata)
-      )
-    )
+    private val withSlot = poolParamsWithSlot(noBlsKey)
     private val read: Node => Decoded[PoolParams] = stateLayout match
       case StateLayout.Node11_1 => stored.decode
       case StateLayout.Leios =>
@@ -259,6 +248,28 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       ConwayCodecs.poolFields(a, out)
     override def check(a: PoolParams): Option[ConstraintViolation] =
       stored.check(a).orElse(a.metadata.flatMap(poolMetadata.check))
+
+  /** The ten items of a `StakePoolParams` in the Leios layout from version 12, the third read by
+    * `slot` (`decodeStakePoolParamsFlat`, cardano-ledger 9df9f98c `State/StakePool.hs:746-771`).
+    * Read only: the parameters are written by [[ConwayCodecs.poolFieldsWith]].
+    */
+  protected def poolParamsWithSlot[K](slot: Codec[K])(using
+      ProtVer
+  ): Codec[PoolParamsBlsSlot[K]] =
+    Record.of[PoolParamsBlsSlot[K]](
+      (
+        hash28,
+        hash32Bytes,
+        slot,
+        heldCoin,
+        heldCoin,
+        unitIntervalAt,
+        rewardAccount,
+        sortedSet(hash28),
+        relays,
+        nullable(poolMetadata)
+      )
+    )
 
   /** The metadata bytes retained by the ledger, written as `PoolMetadata` 's value
     * (`State/StakePool.hs:516-520`, cardano-ledger f649f975).

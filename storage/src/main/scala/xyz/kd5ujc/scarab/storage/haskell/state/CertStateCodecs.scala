@@ -4,9 +4,9 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 import cats.syntax.either.*
 import cats.syntax.traverse.*
 import scala.collection.immutable.SortedSet
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational, Value}
 import xyz.kd5ujc.scarab.crypto.bls.{BlsError, ProofOfPossession, VerificationKey}
-import xyz.kd5ujc.scarab.ledger.{DecoderVersion, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{DecoderVersion, LedgerDecodeError, PoolParams}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
@@ -232,51 +232,78 @@ trait CertStateCodecs extends NodeTypeCodecs:
       )
 
   /** `StakePoolParams` of the future parameters (`State/StakePool.hs:540-589`, cardano-ledger
-    * f649f975; `:701-772` at 9df9f98c) at the state's types: written by the node's parameters'
-    * codec ([[poolParams]]), whose bytes they are, and read by it and then as the reference reads
-    * the two fields that codec keeps unread: the metadata is `DecCBOR PoolMetadata` at the state's
-    * version and in this layout's build ([[PoolMetadata.read]]: a record of a `Url`, bounded by the
+    * f649f975; `:701-772` at 9df9f98c) at the state's types: written as the node's parameters'
+    * codec ([[poolParams]]) writes them, and read by it and then as the reference reads the two
+    * fields that codec keeps unread: the metadata is `DecCBOR PoolMetadata` at the state's version
+    * and in this layout's build ([[PoolMetadata.read]]: a record of a `Url`, bounded by the
     * version, its text chunked only in the Leios layout from version 12, and a hash), and the
     * account's network is 0 or 1 (`decodeAccountAddressT`, `Address.hs:930-948`). Reading them so
-    * was decided by the owner on 2026-11-19 (#85 item 38). They hold the voting key's place of this
-    * layout ([[PoolParamsBlsKey.certified]]): the 11.1 layout has none, and the Leios layout reads
-    * a key nowhere ([[DijkstraNotYet.PoolParamsBlsKey]]), so parameters holding one, or of another
-    * layout, are not written.
+    * was decided by the owner on 2026-11-19 (#85 item 38).
+    *
+    * They hold the voting key's place of this layout: the 11.1 layout has none; in the Leios layout
+    * from version 12 a key is the third of ten items (`decodeStakePoolParamsFlat`, `:746-771`: a
+    * list is a key, `null` or nine items none), written there as `withStakePoolParamsFlatEncoding`
+    * writes it (`:716-736`: ten items with a key, nine without) and below version 12 not written,
+    * as the reference drops it. Reading and writing the key was approved under the format freeze on
+    * 2026-11-20 (#54). Parameters of another layout are not written.
     */
   given stakePoolParams(using v: ProtVer): Codec[StakePoolParams] = new Codec[StakePoolParams]:
     private val flat = poolParams
-    private val blsKey = PoolParamsBlsKey.certified(stateLayout)
+    private val keyed = poolParamsWithSlot(blsKey)
+
+    /** The parameters and their key, where `n` holds one: in the Leios layout from version 12, ten
+      * items whose third is a list (`decodeBlsKeyBackwardsCompatible`, `:764-771`).
+      */
+    private def withKey(n: Node): Option[Decoded[(PoolParams, PoolParamsBlsKey)]] =
+      stateLayout match
+        case StateLayout.Node11_1 => None
+        case StateLayout.Leios =>
+          n.value match
+            case Value.Arr(xs) if v.atLeast(12) && xs.sizeIs == 10 =>
+              xs.lift(2).map(_.value).collect { case Value.Arr(_) =>
+                keyed.decode(n).map(p => (p.params, PoolParamsBlsKey.Leios(Some(p.blsKey))))
+              }
+            case _ => None
+
     def decode(n: Node): Decoded[StakePoolParams] =
-      flat.decode(n).flatMap { p =>
-        DecoderVersion
-          .ofMajor(v.major.toBigInt)
-          .toRight(DecodeError.at(n, Kind.OutOfRange("a decoder version", v.major.toBigInt)))
-          .flatMap(version =>
-            p.metadata
-              .traverse(PoolMetadata.read(_, version, stateLayout))
-              .leftMap(e => DecodeError.at(n, Kind.Domain(e)))
-          )
-          .flatMap(metadata =>
-            Convert
-              .stakePoolParams(p, blsKey, metadata)
-              .leftMap(e => DecodeError.at(n, Kind.Domain(e)))
-          )
-      }
-    def encode(a: StakePoolParams, out: Writer): Unit = flat.encode(Convert.poolParamsBack(a), out)
-    override def check(a: StakePoolParams): Option[ConstraintViolation] =
-      a.blsKey match
-        case PoolParamsBlsKey.Leios(Some(_)) =>
-          Some(ConstraintViolation("StakePoolParams", "no BLS key", "a BLS key"))
-        case k @ (PoolParamsBlsKey.Leios(None) | PoolParamsBlsKey.Node11_1) =>
-          Option
-            .when(k.stateLayout != stateLayout)(
-              ConstraintViolation(
-                "StakePoolParams",
-                s"a part of the ${stateLayout.toString} layout",
-                k.stateLayout.toString
-              )
+      withKey(n)
+        .getOrElse(flat.decode(n).map((_, PoolParamsBlsKey.certified(stateLayout))))
+        .flatMap { (p, key) =>
+          DecoderVersion
+            .ofMajor(v.major.toBigInt)
+            .toRight(DecodeError.at(n, Kind.OutOfRange("a decoder version", v.major.toBigInt)))
+            .flatMap(version =>
+              p.metadata
+                .traverse(PoolMetadata.read(_, version, stateLayout))
+                .leftMap(e => DecodeError.at(n, Kind.Domain(e)))
             )
-            .orElse(flat.check(Convert.poolParamsBack(a)))
+            .flatMap(metadata =>
+              Convert
+                .stakePoolParams(p, key, metadata)
+                .leftMap(e => DecodeError.at(n, Kind.Domain(e)))
+            )
+        }
+
+    def encode(a: StakePoolParams, out: Writer): Unit = a.blsKey match
+      case PoolParamsBlsKey.Leios(Some(k)) if v.atLeast(12) =>
+        out.arrayHead(10)
+        ConwayCodecs.poolFieldsWith(Convert.poolParamsBack(a), out)(blsKey.encode(k, out))
+      case PoolParamsBlsKey.Leios(_) | PoolParamsBlsKey.Node11_1 =>
+        flat.encode(Convert.poolParamsBack(a), out)
+
+    override def check(a: StakePoolParams): Option[ConstraintViolation] =
+      Option
+        .when(a.blsKey.stateLayout != stateLayout)(
+          ConstraintViolation(
+            "StakePoolParams",
+            s"a part of the ${stateLayout.toString} layout",
+            a.blsKey.stateLayout.toString
+          )
+        )
+        .orElse(a.blsKey match
+          case PoolParamsBlsKey.Leios(key) => key.flatMap(blsKey.check).map(_.at("blsKey"))
+          case PoolParamsBlsKey.Node11_1   => None)
+        .orElse(flat.check(Convert.poolParamsBack(a)))
 
   /** `PState` (`CertState.hs:253-255`): the VRF key hashes with their number of registrations, the
     * pools, their future parameters and their retirements.
