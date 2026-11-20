@@ -557,8 +557,8 @@ class DijkstraUTxOSuite extends FunSuite:
     )
   }
 
-  // ---- the annotated transaction, on built values: nothing makes one until Dijkstra's script
-  // contexts (#85's item on them); these show only that each member reads its field
+  // ---- the annotated transaction, on built values: these show only that each member reads its
+  // field (the makers' are DijkstraPlutusContextSuite's)
 
   test("the annotated transaction's members read its fields, the batch's contexts together") {
     val c = chainCases
@@ -582,7 +582,7 @@ class DijkstraUTxOSuite extends FunSuite:
         unforced,
         Set(PlutusLanguage.V4),
         Map.empty,
-        contexts
+        cats.Eval.now(contexts)
       )
     def top(s: DijkstraStAnnTx.SubTx) = DijkstraStAnnTx.TopTx(
       c.era,
@@ -591,7 +591,7 @@ class DijkstraUTxOSuite extends FunSuite:
       PlutusLegacyMode.NotLegacy,
       Set(PlutusLanguage.V3),
       Map.empty,
-      Right(Nil),
+      cats.Eval.now(Right(Nil)),
       List(s)
     )
     val failing = subAnn(Left(NonEmptyList.one(noCostModel)))

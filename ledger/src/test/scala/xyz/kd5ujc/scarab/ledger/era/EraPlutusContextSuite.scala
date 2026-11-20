@@ -210,6 +210,8 @@ class EraPlutusContextSuite extends munit.FunSuite:
             case AlonzoContextError.CertificateNotSupported(_) |
                 AlonzoContextError.PlutusPurposeNotSupported(_) =>
               fail(s"Conway's injection keeps $a its own")
+            case AlonzoContextError.ImpossibleContextError(_) =>
+              fail(s"no Conway translation fails with $a")
         case BabbageContextError.ByronTxOutInContext(source) =>
           TranslationError.ByronTxOutInContext(source)
         case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>

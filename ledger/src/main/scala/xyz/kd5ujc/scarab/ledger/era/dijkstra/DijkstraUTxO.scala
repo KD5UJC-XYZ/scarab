@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.data.NonEmptyList
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoScriptsNeeded,
@@ -296,10 +295,14 @@ object DijkstraUTxO:
           BothLevels[L]
       ): Either[NonEmptyList[CollectError[Dijkstra]], List[PlutusWithContext]] = stAnnTx match
         case s: DijkstraStAnnTx.TopTx =>
-          (s.dsattPlutusScriptsWithContext :: s.dsattSubTransactions.map(sub =>
-            plutusScriptsWithContextStAnnTx[TxLevel.Sub](sub)(using BothLevels.Sub)
-          )).sequence.map(_.flatten)
-        case s: DijkstraStAnnTx.SubTx => s.dsastPlutusScriptsWithContext
+          // `concat <$> sequence`: the top level's first, a sub-transaction's read only while every
+          // one before it was collected, as the reference's lazy list is forced
+          s.dsattSubTransactions.foldLeft(s.dsattPlutusScriptsWithContext.value)((collected, sub) =>
+            collected.flatMap(pwcs =>
+              plutusScriptsWithContextStAnnTx[TxLevel.Sub](sub)(using BothLevels.Sub).map(pwcs ++ _)
+            )
+          )
+        case s: DijkstraStAnnTx.SubTx => s.dsastPlutusScriptsWithContext.value
       override def plutusLanguagesUsedStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
           BothLevels[L]
       ): Set[Lang] = stAnnTx match

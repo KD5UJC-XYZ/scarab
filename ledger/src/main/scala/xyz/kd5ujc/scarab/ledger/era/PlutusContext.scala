@@ -40,8 +40,8 @@ object Inject:
       case AlonzoContextError.PlutusPurposeNotSupported(purpose) =>
         conway.ConwayContextError.PlutusPurposeNotSupported(purpose)
       case a @ (AlonzoContextError.TranslationLogicMissingInput(_) |
-          AlonzoContextError.TimeTranslationPastHorizon(_) |
-          AlonzoContextError.Undecodable(_, _)) =>
+          AlonzoContextError.TimeTranslationPastHorizon(_) | AlonzoContextError.Undecodable(_, _) |
+          AlonzoContextError.ImpossibleContextError(_)) =>
         conway.ConwayContextError.BabbageContextError(BabbageContextError.AlonzoContextError(a))
 
   /** `instance Inject (ConwayContextError era) (DijkstraContextError era)`
@@ -308,8 +308,8 @@ trait EraPlutusTxInfo[L <: Language, E <: EraTag]:
   def lookupTxInfoResult(result: TxInfoResult[E]): PlutusTxInfoResult[L, E]
 
 /** The instances of each era and language, the one place that lists them: Conway's for Plutus V1 to
-  * V3 (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c) and Dijkstra's for Plutus V1 to V3
-  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-484, 568-569`, cardano-ledger
+  * V3 (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c) and Dijkstra's for Plutus V1 to V4
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-484, 568-629`, cardano-ledger
   * 9df9f98c).
   */
 object EraPlutusTxInfo:
@@ -325,6 +325,8 @@ object EraPlutusTxInfo:
     dijkstra.DijkstraTxInfo.plutusV2
   given dijkstraPlutusV3: conway.ConwayEraPlutusTxInfo[Language.PlutusV3, Dijkstra] =
     dijkstra.DijkstraTxInfo.plutusV3
+  given dijkstraPlutusV4: conway.ConwayEraPlutusTxInfo[Language.PlutusV4, Dijkstra] =
+    dijkstra.DijkstraTxInfo.plutusV4
 
 /** The memoised transaction information of every language era `E` supports (`data TxInfoResult
   * era`, `Context.hs:234`, cardano-ledger 9df9f98c): Conway's of Plutus V1 to V3
@@ -395,10 +397,13 @@ trait EraPlutusContext[E <: EraTag]:
   ): PlutusTxInfoResult[L, E] = t.lookupTxInfoResult(result)
 
 /** The instances of each era, the one place that lists them: Conway's (`Conway/TxInfo.hs:157-187`,
-  * cardano-ledger 9df9f98c).
+  * cardano-ledger 9df9f98c) and Dijkstra's
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:299-331`, cardano-ledger 9df9f98c).
   */
 object EraPlutusContext:
   given conway: EraPlutusContext[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxInfo.context
+  given dijkstra: EraPlutusContext[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxInfo.context
 
 /** The functions of `Context.hs` (cardano-ledger 9df9f98c). */
 object PlutusContext:
