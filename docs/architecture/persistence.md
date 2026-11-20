@@ -195,11 +195,12 @@ nothing migrates it. Its column families:
 | `txs` | hash, transaction offset (u32 big-endian) | the transaction's bytes |
 | `complete` | hash | empty: present once every transaction the body lists is stored |
 
-A new store is made in a staging directory of its own (`leios.staging/<random UUID>/`, marked as
-one), its format record synced, and published by an atomic rename, which refuses a directory that is
-not empty: a first open interrupted before the rename leaves nothing at `leios/`, and of two first
-opens one publishes and the other opens its store. Only marked staging directories are removed, once
-the store is published. Writes are serialised, as the reference's one write queue serialises them, and
+Opening the store holds an exclusive lock of the operating system on `leios.lock` beside it (not
+part of the store), so that opens run one at a time. Under it, a store found at `leios/` has its
+parent directory synced before it is taken; an absent or empty `leios/` gets a new store, made in a
+marked staging directory (`leios.staging/<random UUID>/`), its format record synced, published by an
+atomic rename and the parent synced: a first open interrupted before the rename leaves nothing at
+`leios/`. Marked staging directories earlier opens left are removed. Writes are serialised, as the reference's one write queue serialises them, and
 each is one RocksDB batch with the write-ahead log on: the store has no checkpoint to be rebuilt from.
 A read sees the store at one moment, through a RocksDB snapshot, as the reference reads inside one
 SQLite transaction. Each write returns

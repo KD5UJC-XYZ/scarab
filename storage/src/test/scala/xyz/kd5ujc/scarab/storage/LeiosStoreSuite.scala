@@ -489,79 +489,30 @@ class LeiosStoreSuite extends CatsEffectSuite:
         assertEquals(points, Vector.empty)
   }
 
-  dirs.test("a first open that finds a store published since it looked opens it") { dir =>
-    val leios = dir / "leios"
-    for
-      // another first open publishes between this one's check and its look at the directory
-      prepared <- attempt(
-        around(leios, ok(RocksLeiosStore.prepare[IO](leios)))
-      )
-      points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
-    yield
-      assertEquals(prepared, Right(()))
-      assertEquals(points, Vector(point(1, 1)))
-  }
-
-  dirs.test("a first open whose empty target goes while it looks stages its own store") { dir =>
+  dirs.test("a first open into a pre-created empty directory makes the store there") { dir =>
     val leios = dir / "leios"
     for
       _ <- IO.blocking(java.nio.file.Files.createDirectories(leios.toNioPath))
-      // another first open removes the empty target to publish there, between this one's check
-      // that it is a directory and its listing of it
-      prepared <- attempt(
-        around(
-          leios,
-          IO.blocking(java.nio.file.Files.delete(leios.toNioPath))
-        )
-      )
       points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
-    yield
-      assertEquals(prepared, Right(()))
-      assertEquals(points, Vector(point(1, 1)))
+    yield assertEquals(points, Vector(point(1, 1)))
   }
 
-  dirs.test("a first open whose empty target another publishes into while it looks opens it") {
-    dir =>
-      val leios = dir / "leios"
-      for
-        _ <- IO.blocking(java.nio.file.Files.createDirectories(leios.toNioPath))
-        prepared <- attempt(
-          around(leios, ok(RocksLeiosStore.prepare[IO](leios)))
-        )
-        points <- store(leios).use(s =>
-          ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints)
-        )
-      yield
-        assertEquals(prepared, Right(()))
-        assertEquals(points, Vector(point(1, 1)))
-  }
-
-  dirs.test("a first open whose rename cannot be made durable fails, though its store is there") {
+  dirs.test("a first open whose rename cannot be made durable fails; the next syncs it first") {
     dir =>
       val leios = dir / "leios"
       val injected = new java.io.IOException("injected sync failure")
       for
-        prepared <- attempt(
-          RocksLeiosStore.prepareAround[IO](leios, IO.unit, _ => IO.raiseError(injected))
-        )
+        failed <- attempt(firstOpen(leios, _ => IO.raiseError(injected)))
         published <- IO.blocking(java.nio.file.Files.exists(leios.toNioPath.resolve("CURRENT")))
+        synced <- IO.ref(Vector.empty[java.nio.file.Path])
+        again <- attempt(firstOpen(leios, target => synced.update(_ :+ target)))
+        syncs <- synced.get
       yield
-        assertEquals(prepared, Left(LeiosStoreError.Io(injected)))
+        assertEquals(failed, Left(LeiosStoreError.Io(injected)))
         assert(published, "the rename was done; only its sync failed")
-  }
-
-  dirs.test("a first open that cannot settle stops at its bound with a typed error") { dir =>
-    val leios = dir / "leios"
-    for
-      // a file where the staging directories go: every staging fails, and the open looks again
-      _ <- IO.blocking(
-        java.nio.file.Files.write(RocksLeiosStore.stagingRoot(leios.toNioPath), "x".getBytes)
-      )
-      prepared <- attempt(RocksLeiosStore.prepare[IO](leios))
-    yield assert(prepared.left.exists {
-      case LeiosStoreError.FirstOpenUnsettled(4, _) => true
-      case _                                        => false
-    })
+        assertEquals(again, Right(()))
+        // the store found published is made durable before it is taken
+        assertEquals(syncs, Vector(leios.toNioPath))
   }
 
   dirs.test("a store opens though its staging directory cannot be read") { dir =>
@@ -654,21 +605,25 @@ class LeiosStoreSuite extends CatsEffectSuite:
       assertEquals(kept, Vector(point(9, 9)))
   }
 
-  dirs.test("of two concurrent first opens one publishes, and both find the store") { dir =>
-    val leios = dir / "leios"
-    for
-      both <- (
-        attempt(RocksLeiosStore.prepare[IO](leios)),
-        attempt(RocksLeiosStore.prepare[IO](leios))
-      ).parTupled
-      points <- store(leios).use(s => ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints))
-      staged <- IO.blocking(
-        java.nio.file.Files.exists(RocksLeiosStore.stagingRoot(leios.toNioPath))
-      )
-    yield
-      assertEquals(both, (Right(()), Right(())))
-      assertEquals(points, Vector(point(1, 1)))
-      assert(!staged, "no staging directory is left")
+  dirs.test("two concurrent first opens both find one store, every time") { dir =>
+    (0 until 25).toVector.traverse_ { i =>
+      val leios = dir / s"leios-$i"
+      for
+        both <- (
+          attempt(firstOpen(leios, _ => IO.unit)),
+          attempt(firstOpen(leios, _ => IO.unit))
+        ).parTupled
+        points <- store(leios).use(s =>
+          ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints)
+        )
+        staged <- IO.blocking(
+          java.nio.file.Files.exists(RocksLeiosStore.stagingRoot(leios.toNioPath))
+        )
+      yield
+        assertEquals(both, (Right(()), Right(())))
+        assertEquals(points, Vector(point(1, 1)))
+        assert(!staged, "no staging directory is left")
+    }
   }
 
   dirs.test("collection takes a hash whole, and decides each hash in the write that takes it") {
@@ -814,9 +769,11 @@ object LeiosStoreSuite:
       db.close()
     }
 
-  /** A first open with `between` run after its first look, its rename's sync left out. */
-  def around(dir: Path, between: IO[Unit])(using Handle[IO, LeiosStoreError]): IO[Unit] =
-    RocksLeiosStore.prepareAround[IO](dir, between, _ => IO.unit)
+  /** A first open of `dir` that opens nothing, its parent directory synced with `sync`. */
+  def firstOpen(dir: Path, sync: java.nio.file.Path => IO[Unit])(using
+      Handle[IO, LeiosStoreError]
+  ): IO[Unit] =
+    RocksLeiosStore.firstOpen[IO, Unit](dir, sync)(IO.unit)
 
   /** Hash `i` of many: distinct for every `i` below 2^31. */
   def wide(i: Int): EbHash =

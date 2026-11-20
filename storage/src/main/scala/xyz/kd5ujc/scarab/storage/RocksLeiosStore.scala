@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
-import java.nio.channels.FileChannel
+import java.nio.channels.{FileChannel, FileLock, OverlappingFileLockException}
 import java.nio.charset.StandardCharsets.US_ASCII
 import java.nio.file.{Files, StandardCopyOption, StandardOpenOption}
 import java.util.Arrays
@@ -24,6 +24,7 @@ import org.rocksdb.{
 }
 import scala.annotation.tailrec
 import scala.collection.immutable.{SortedMap, SortedSet}
+import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -65,7 +66,10 @@ final case class StoredEb(
   * checkpoint to be rebuilt from. A read sees the store at one moment, through a RocksDB snapshot
   * ([[RocksLeiosStore.View]]), as the reference reads inside one SQLite transaction. Every call
   * holds a permit of `gate` while it runs and the release takes all of them, so the database is
-  * never closed under a call.
+  * never closed under a call. A first open holds an exclusive lock of the operating system on
+  * `<dir>.lock`, beside the store, while it makes, syncs, checks and opens the store
+  * ([[RocksLeiosStore.firstOpen]]); the lock file is not part of the store, as the reference's
+  * SQLite files have SQLite's own locking.
   *
   * One store holds what the reference splits between its volatile and immutable files. A hash the
   * reference's collection evicted from its volatile file has its points [[EbStatus.Evicted]]: its
@@ -882,9 +886,7 @@ object RocksLeiosStore:
       }
     }
 
-  /** Publish `stage` as `dir`, which is absent or an empty directory: an atomic rename, synced. A
-    * rename refuses a directory that is not empty, so of two first opens only one publishes.
-    */
+  /** Publish `stage` as `dir`, which is absent or an empty directory: an atomic rename. */
   private def publish(stage: java.nio.file.Path, dir: java.nio.file.Path): Unit =
     if Files.isDirectory(dir) then Files.delete(dir)
     Files.move(stage, dir, StandardCopyOption.ATOMIC_MOVE)
@@ -895,17 +897,12 @@ object RocksLeiosStore:
       _.force(true)
     )
 
-  /** How often a first open looks at its target again when it changed while it looked. */
-  private val FirstOpenAttempts = 4
-
-  /** What a first open finds at its target. */
-  private enum Target:
-    case Published, Vacant, Occupied
-
-  /** The staging directories of `dir` that first opens left, those that hold the marker. They are
-    * removed once `dir` holds a store: no staging directory can be published any more, and a first
-    * open still making one finds its staging gone and opens the published store.
+  /** The lock a first open of `dir` holds: a sibling of `dir` in its parent, not part of the store.
     */
+  private[storage] def lockFile(dir: java.nio.file.Path): java.nio.file.Path =
+    dir.resolveSibling(s"${dir.getFileName}.lock")
+
+  /** The staging directories of `dir` that first opens left, those that hold the marker. */
   private def stagedLeftovers(dir: java.nio.file.Path): Vector[java.nio.file.Path] =
     val root = stagingRoot(dir)
     if !Files.isDirectory(root) then Vector.empty
@@ -922,53 +919,50 @@ object RocksLeiosStore:
     if Files.isDirectory(root) && Using.resource(Files.list(root))(_.findAny().isEmpty) then
       Files.delete(root)
 
-  /** Make `dir` hold a store, or check that it holds one of this build's families. A new store is
-    * made in a staging directory of its own (`<dir>.staging/<random UUID>`), marked, its families
-    * and format record written and synced, then published by an atomic rename ([[publish]]). A
-    * first open interrupted before the rename leaves only its staging directory, which a later open
-    * removes; a first open that loses the rename to another opens the other's store. A directory
-    * that holds anything but a store is refused.
-    */
-  private[storage] def prepare[F[_]: Async](dir: Path)(using Raise[F, LeiosStoreError]): F[Unit] =
-    prepareAround(dir, Async[F].unit, target => Async[F].blocking(syncParent(target)))
-
-  /** [[prepare]], running `between` after it first looked at `dir` and before it acts on what it
-    * found, where another first open may remove an empty `dir` or publish its store there; and
-    * making its own rename durable with `sync`.
+  /** `open` once `dir` holds a store of this build's families, all under an exclusive lock of the
+    * operating system on [[lockFile]], so that first opens, of this process or another, run one at
+    * a time. Under the lock, in a straight line: a store already at `dir` (it holds `CURRENT`) has
+    * its parent directory synced with `sync`, so that a store a crashed open published is durable
+    * before it is taken, and its column families checked; an absent or empty `dir` gets a new
+    * store, made in a marked staging directory of its own (`<dir>.staging/<random UUID>`),
+    * published by an atomic rename and synced the same way; anything else is refused. The staging
+    * directories earlier opens left are removed, on a best effort. The lock is given back once
+    * `open` is done.
     *
-    * It looks at `dir` until what it finds settles, at most [[FirstOpenAttempts]] times: a store is
-    * validated; an absent or empty `dir` gets a store staged and published; anything else is
-    * refused. A look that fails, or a publication that loses its rename to another first open's,
-    * looks again. Only a failure up to the rename looks again: once this open's own rename is done,
-    * a failure to make it durable is its error.
+    * Within one process, `FileChannel.lock` refuses a lock another of its channels holds rather
+    * than waiting for it, so a first open that meets one looks again a little later.
     */
-  private[storage] def prepareAround[F[_]: Async](
-      dir: Path,
-      between: F[Unit],
-      sync: java.nio.file.Path => F[Unit]
-  )(using Raise[F, LeiosStoreError]): F[Unit] =
+  private[storage] def firstOpen[F[_]: Async, A](dir: Path, sync: java.nio.file.Path => F[Unit])(
+      open: F[A]
+  )(using Raise[F, LeiosStoreError]): F[A] =
     val F = Async[F]
     val nio = dir.toNioPath
-    def fail[A](e: LeiosStoreError): F[A] = e.raise[F, A]
-    def io[A](body: => A): F[A] =
+    def fail[B](e: LeiosStoreError): F[B] = e.raise[F, B]
+    def io[B](body: => B): F[B] =
       F.blocking(body).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
     def bestEffort(body: => Unit): F[Unit] = F.blocking(body).attempt.void
+    val synced: F[Unit] =
+      sync(nio).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
+    def acquired(channel: FileChannel): F[FileLock] =
+      F.blocking(channel.lock()).attempt.flatMap {
+        case Right(lock)                           => F.pure(lock)
+        case Left(_: OverlappingFileLockException) => F.sleep(10.millis) *> acquired(channel)
+        case Left(e)                               => fail(LeiosStoreError.Io(e))
+      }
+    val locked: Resource[F, FileLock] =
+      Resource
+        .make(io {
+          Files.createDirectories(nio.toAbsolutePath.getParent)
+          FileChannel.open(lockFile(nio), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+        })(channel => F.blocking(channel.close()))
+        .flatMap(channel => Resource.make(acquired(channel))(lock => F.blocking(lock.release())))
     val validated: F[Unit] =
       io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
         .map(_.asScala.toVector.map(Bytes.wrap))
         .flatMap(found =>
           F.unlessA(found.toSet == FamilyNames.toSet)(fail(LeiosStoreError.ForeignDatabase(found)))
         )
-    // what `dir` is, or why it could not be told: it may change while it is looked at
-    val look: F[Either[Throwable, Target]] = F.blocking {
-      if Files.exists(nio.resolve("CURRENT")) then Target.Published
-      else if Files.notExists(nio) then Target.Vacant
-      else if Files.isDirectory(nio) && Using.resource(Files.list(nio))(_.findAny().isEmpty) then
-        Target.Vacant
-      else Target.Occupied
-    }.attempt
-    // a staged store published here, or the reason it was not: before or at its rename only
-    val staged: F[Either[Throwable, Unit]] =
+    val made: F[Unit] =
       SecureRandom
         .javaSecuritySecureRandom[F]
         .flatMap(random => UUIDGen.fromSecureRandom[F](using F, random).randomUUID)
@@ -977,45 +971,40 @@ object RocksLeiosStore:
           F.blocking {
             build(stage)
             publish(stage, nio)
+            Files.delete(nio.resolve(StagingMarker))
           }.attempt
-            .flatTap(moved => F.whenA(moved.isLeft)(bestEffort(RocksUtxoStore.deleteTree(stage))))
+            .flatMap {
+              case Right(()) => synced
+              case Left(e) =>
+                bestEffort(RocksUtxoStore.deleteTree(stage)) *> fail[Unit](LeiosStoreError.Io(e))
+            }
         }
-    def settle(attempt: Int): F[Unit] =
-      def again(cause: Throwable): F[Unit] =
-        if attempt + 1 >= FirstOpenAttempts then
-          fail(LeiosStoreError.FirstOpenUnsettled(attempt + 1, cause))
-        else settle(attempt + 1)
-      look.flatTap(_ => F.whenA(attempt == 0)(between)).flatMap {
-        case Right(Target.Published) => validated
-        case Right(Target.Occupied)  => fail(LeiosStoreError.ForeignDatabase(Vector.empty))
-        case Right(Target.Vacant) =>
-          staged.flatMap {
-            case Right(()) =>
-              // this open's own rename: only making it durable is left, and its failure is ours
-              io(Files.delete(nio.resolve(StagingMarker))) *> sync(nio).attempt.flatMap(
-                _.fold(e => fail(LeiosStoreError.Io(e)), F.pure)
-              )
-            case Left(e) => again(e)
-          }
-        case Left(e) => again(e)
+    val prepared: F[Unit] =
+      io(Files.exists(nio.resolve("CURRENT"))).flatMap {
+        case true => synced *> validated
+        case false =>
+          io(
+            Files.notExists(nio) || Files.isDirectory(nio) && Using.resource(Files.list(nio))(
+              _.findAny().isEmpty
+            )
+          )
+            .ifM(made, fail(LeiosStoreError.ForeignDatabase(Vector.empty)))
       }
-    val made: F[Unit] = settle(0)
-    // A first open still staging may be removing its own directory, or still writing into it,
-    // while it is removed here: each removal is a best effort, and what is left goes next time.
-    // Looking for them is a best effort too: another first open may have removed the root, or it
-    // may not be readable, and neither keeps a valid store from opening.
-    made *> F
-      .blocking(stagedLeftovers(nio))
-      .attempt
-      .map(_.getOrElse(Vector.empty))
-      .flatMap(_.traverse_(stage => bestEffort(RocksUtxoStore.deleteTree(stage))))
-      *> bestEffort(discardRoot(nio))
+    // Looking for leftovers and removing them are a best effort: an unreadable staging root keeps
+    // no valid store from opening, and what is left goes next time.
+    val tidied: F[Unit] =
+      F.blocking(stagedLeftovers(nio))
+        .attempt
+        .map(_.getOrElse(Vector.empty))
+        .flatMap(_.traverse_(stage => bestEffort(RocksUtxoStore.deleteTree(stage))))
+        *> bestEffort(discardRoot(nio))
+    locked.surround(prepared *> tidied *> open)
 
   // Permits of `gate`: one for each call, all of them for the release.
   private val Permits = 1L << 40
 
-  /** Open the store in `dir`, making it if `dir` is absent or an empty directory ([[initialise]]).
-    * A database whose column families or format record are not this build's, and a directory that
+  /** Open the store in `dir`, making it if `dir` is absent or an empty directory ([[firstOpen]]). A
+    * database whose column families or format record are not this build's, and a directory that
     * holds anything but a database, are refused.
     */
   def resource[F[_]: Async](dir: Path)(using
@@ -1028,9 +1017,12 @@ object RocksLeiosStore:
       F.blocking(body).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
 
     for
-      _ <- Resource.eval(prepare[F](dir))
       natives <- Resource.make(F.delay(new Natives(create = false)))(n => F.blocking(n.close()))
-      opened <- Resource.make(io(openAt(nio, natives)))(o => F.blocking(o.close()))
+      opened <- Resource.make(
+        firstOpen[F, Opened](dir, target => F.blocking(syncParent(target)))(
+          io(openAt(nio, natives))
+        )
+      )(o => F.blocking(o.close()))
       db = opened.db
       families = opened.families
       _ <- Resource.eval(

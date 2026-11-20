@@ -81,11 +81,6 @@ enum LeiosStoreError extends DomainError:
   /** The store was released. */
   case Closed
 
-  /** A first open found the store's directory changing each time it looked, `attempts` times, the
-    * last time for `cause`: other first opens kept racing it.
-    */
-  case FirstOpenUnsettled(attempts: Int, cause: Throwable)
-
   /** RocksDB or the operating system failed. */
   case Io(cause: Throwable)
 
@@ -106,9 +101,7 @@ enum LeiosStoreError extends DomainError:
     case DeclaredSizeTooLarge(hash, o, size) =>
       s"transaction $o of ${hash.bytes.hex} is declared at $size bytes, more than an array holds"
     case Closed => "the Leios store is closed"
-    case FirstOpenUnsettled(n, e) =>
-      s"the Leios store's directory kept changing while it was first opened ($n attempts): ${e.getMessage}"
-    case Io(e) => s"the Leios store failed: ${e.getMessage}"
+    case Io(e)  => s"the Leios store failed: ${e.getMessage}"
 
 /** The store of endorser blocks: announced points, bodies and their transactions, mirroring the
   * reference's `LeiosDbReader` and `LeiosDbWriter` (ouroboros-consensus 2416493b
