@@ -1921,11 +1921,21 @@
     {
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
+     "symbol": "mkOpenStateHelper",
+     "lines": [
+      372,
+      436
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
      "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
      "symbol": "parseBlockFile",
      "lines": [
       52,
-      104
+      107
      ]
     },
     {
@@ -1942,16 +1952,6 @@
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
      "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
-     "symbol": "mkOpenStateHelper",
-     "lines": [
-      372,
-      436
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
      "symbol": "addToReverseIndex",
      "lines": [
       464,
@@ -1960,13 +1960,45 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "ReceivedBlocksSuite",
     "VolatileStoreSuite"
    ],
-   "note": "as parseBlockFile and extractBlockInfo, each block is read in turn and its location kept with what is read from its body (here the predecessor). As mkOpenStateHelper, each file is validated on its own, in order of number: cut at its first record that is incomplete, fails its checksum or is not understood, the files after it read all the same, and a later record of a block already indexed whose bytes are the indexed record's cuts its file there (DuplicatedBlock). The selected-chain journal's open (open, openIndex) keeps its in-order recovery, which replays rollback records in order. Where it differs: a later record of an indexed block whose bytes differ takes the earlier record's place, and nothing is cut: the received log writes one only to replace a record found inconsistent (restoreSelected, or a receipt after discardRecovered), where the reference's putBlockImpl never writes a block twice (#1247)",
-   "digest": "084ec3d290c29324"
+   "note": "as mkOpenStateHelper and its validateFile, each file in order of number is parsed (parsedBlocks, as parseBlockFile: each block read in turn with its location and what is read from it, here the predecessor, as extractBlockInfo; the parse stops at the first record it cannot read, BlockReadErr), then its blocks are added to the index up to the first one already held, in an earlier file or earlier in the same one, whatever its bytes (addedToIndex, as addToReverseIndex, DuplicatedBlock); the file is cut at the earlier of the two, the files after it are read all the same, and the file being written is chosen as mkOpenStateHelper chooses it. What reading a record means is the format's: a record that is incomplete, fails its checksum, is not understood or is not a block (the received log writes no rollback record) cannot be read, and neither can one whose block the given check refuses (ReceivedBlocks.Check: the block decodes and its header names the point the record stores, which the reference reads from the block itself). The selected-chain journal's open (open, openIndex) keeps its in-order recovery, which replays rollback records in order (#1247)",
+   "digest": "de060f09ebc51ab5"
+  },
+  "type storage.ReceivedBlocks.Check": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "VolatileDbArgs",
+     "lines": [
+      159,
+      174
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "parseBlockFile",
+     "lines": [
+      69,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "FetchedBlockIntegritySuite"
+   ],
+   "note": "the block decoder and integrity predicate the reference gives its VolatileDB (volCodecConfig, volCheckIntegrity, volValidationPolicy), as one function the node passes to the received log's open (ReceivedBlockRecovery.startUp), given the point the record stores as well: a record it refuses cannot be read and cuts its file, as parseBlockFile cuts at BlockReadErr or BlockCorruptedErr. Where it differs: the node's check decodes the block, checks the record's point and checks the body against the header at every open, where the reference only decodes by default (NoValidation) and checks integrity (the header's own and the body against the header) only with ValidateAll, after an unclean shutdown (ensureValidateAll, ChainDB/Impl/Args.hs 154-167); the header's own integrity is not checked here (#1247)",
+   "digest": "a003af77677cc7b3"
   },
   "def storage.ChainStorage.predecessorOf": {
    "upstream": [
@@ -2122,7 +2154,7 @@
     "GcScheduleSuite",
     "ReceivedCollectionSuite"
    ],
-   "digest": "7a4d2668f1c28669"
+   "digest": "b09605f06bff4ea1"
   },
   "def storage.GcSchedule#schedule": {
    "upstream": [
@@ -2237,8 +2269,8 @@
     "GcScheduleSuite",
     "ReceivedCollectionSuite"
    ],
-   "note": "waits for the time of the oldest entry, takes it off the queue and collects its slot, one at a time, as the reference's runner; a collection that fails ends the runner with the failure as its value (ADR 0017), which ChainStorage hands to the node to stop on, where the reference's runner throws in its linked thread",
-   "digest": "6bacac72b576132f"
+   "note": "waits for the time of the oldest entry, takes it off the queue and collects its slot, one at a time, as the reference's runner; a collection that fails ends the runner with the failure as its value, and an exception anywhere in it, its waits included, with the value it is given for one (ADR 0017), which ChainStorage hands to the node to stop on, where the reference's runner throws in its linked thread",
+   "digest": "ca238d24ec8b8bfa"
   },
   "val storage.ReceivedBlocks.DefaultBlocksPerFile": {
    "upstream": [

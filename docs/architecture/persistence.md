@@ -192,17 +192,20 @@ when it fills (`volMaxBlocksPerFile`). In memory there is an index of every bloc
 and the predecessor its header names) and a cache of recent bodies; a body is read back from its file.
 
 - Opening validates each file on its own, in order of number (`VolatileStore.openIndexWith`, the
-  reference's `mkOpenStateHelper`): a file is cut at its first record that is incomplete or fails its
-  checksum, and the files after it are read all the same; a later copy of a block already indexed,
-  byte for byte, cuts its file there. A later record of an indexed block with other bytes replaces it in
-  the index: the start writes one to replace a record found inconsistent (`restoreSelected`, or a
-  receipt after `discardRecovered`).
+  reference's `mkOpenStateHelper` and `validateFile`): a file is read up to its first record that is
+  incomplete, fails its checksum or whose block the start-up check refuses (`ReceivedBlocks.Check`,
+  given by the node: the block decodes, its header names the record's point and its body is the
+  header's), its blocks are indexed up to the first one already indexed, whatever the bytes of its
+  record, and it is cut at the earlier of the two; the files after it are read all the same. A block
+  is logged once: a receipt and the start's repair of the selected chain's blocks (`restoreSelected`)
+  write only a block the log lacks.
 - Collection runs on the reference's schedule (`GcSchedule`): each copy of blocks to the immutable
-  store schedules a collection below the new immutable tip's slot, 60 s later rounded up to a 10 s
-  mark, one per interval, run by a fiber of its own after the immutable store is forced. It deletes
-  every file but the one being written whose blocks are all below that slot, and only their blocks
-  leave the index. The schedule is not stored: after a restart the next copy's collection covers
-  what was pending. A collection that fails stops the node (`Recovered.collectionsStopped`).
+  store schedules a collection below the new immutable tip's slot, timed from the end of the copy,
+  60 s later rounded up to a 10 s mark, at most one entry to a mark, run one at a time by a fiber of
+  its own after the immutable store is forced. It deletes every file but the one being written whose
+  blocks are all below that slot, and only their blocks leave the index. The schedule is not stored:
+  after a restart the next copy's collection covers what was pending. A collection that fails, or an
+  exception in the fiber, stops the node (`Recovered.collectionsStopped`).
 
 **Leios endorser blocks** (`<db>/leios/`, issue #830). A RocksDB database of its own beside the
 immutable store and the UTxO store, and not part of the ledger snapshot: the store of the reference's

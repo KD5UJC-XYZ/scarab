@@ -64,25 +64,42 @@ restart; `ServerSuite`, `ReceivedBlocksSuite` and `PeerDefectPolicySuite`. These
 outcomes as its source at the pins gives them; no running reference node is asked for a fork.
 
 The received log is collected and recovered as the reference's VolatileDB (#1247). Each copy of
-blocks to the immutable store schedules a collection below the new immutable tip's slot, run 60 s later,
-rounded up to a 10 s mark; a copy in the same interval as the last one scheduled replaces it, so at most
-one collection runs in an interval, and nothing of the schedule survives a restart, where the next copy's
+blocks to the immutable store schedules a collection below the new immutable tip's slot, timed from the
+end of the copy, run 60 s later, rounded up to a 10 s mark; a copy for the same 10 s mark as the last
+one scheduled replaces it, and nothing of the schedule survives a restart, where the next copy's
 collection covers it (`cdbsGcDelay`, `cdbsGcInterval`, `Storage/ChainDB/Impl/Args.hs` 119-124;
 `copyToImmutableDBRunner`, `scheduleGC` and `gcScheduleRunner`, `Storage/ChainDB/Impl/Background.hs`
-257-296 and 466-652, ouroboros-consensus `82ecba329`; the same code at `808e40054`). Scarab forces its
-immutable store to disk before each collection; a collection that fails stops the node. A file holds
-1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected before
-another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
-387-399). When the log is opened, each file is validated on its own: a damaged file is cut at its last
-good record and the files after it are read all the same, and a later copy of a block already indexed,
-byte for byte, cuts its file there (`mkOpenStateHelper`, `addToReverseIndex`,
-`Storage/VolatileDB/Impl/State.hs` 372-436 and 464-492). A later record of an indexed block whose bytes
-differ takes the earlier record's place instead: the log writes one only to replace a record found
-inconsistent at the start (`ReceivedBlocks.restoreSelected`, or a receipt after `discardRecovered`),
-which the reference's VolatileDB, writing no block twice, never holds. The selected-chain log keeps its
-in-order recovery, since it replays rollback records in order.
+257-296 and 466-652, ouroboros-consensus `82ecba329`; the same code at `808e40054`). Collections run one
+at a time, so one an interval is a goal, as the reference calls it (`Background.hs` 486-492): a
+collection that runs past the next entry's time leaves the entries due meanwhile queued, one to a 10 s
+mark, and they run back to back after it. Scarab forces its immutable store to disk before each
+collection; a collection that fails, or an exception in the fiber that runs them, stops the node. A file
+holds 1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected
+before another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
+387-399). When the log is opened, each file is validated on its own (`mkOpenStateHelper`,
+`validateFile`, `Storage/VolatileDB/Impl/State.hs` 372-436): it is read up to its first record that is
+damaged or whose block the start-up check refuses, as the reference stops at the first block it cannot
+read (`parseBlockFile`, `BlockReadErr`, `Storage/VolatileDB/Impl/Parser.hs` 52-107), its blocks are
+indexed up to the first one already indexed, in an earlier file or earlier in the same one, whatever the
+bytes of its record (`addToReverseIndex`, `DuplicatedBlock`, `State.hs` 464-492), the file is cut at the
+earlier of the two, and the files after it are read all the same. No path writes a second record of a
+block the log holds: a receipt and the start's repair of the selected chain's blocks
+(`ReceivedBlocks.restoreSelected`) write only a block the log lacks, as `putBlockImpl` skips a block
+whose hash it holds. A record that fails its checksum when it is read back later leaves the index and
+can be written again; the next open cuts the damaged record's file there, or, reading it whole, cuts
+the later record's. The selected-chain log keeps its in-order recovery, since it replays rollback
+records in order.
 
-Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule, the storage's collections and a
-restart, under TestControl), `ReceivedBlocksSuite` (the files, a damaged file, a copy of an indexed block
-and a replacement) and `VolatileStoreSuite` (the selected-chain log's recovery), asserting the reference's
-outcomes as its source at the pins gives them.
+The start-up check differs from the reference's validation policy. It decodes the block, checks that
+its header names the point the record stores and checks the body against the header, at every open.
+The reference only decodes by default (`NoValidation`, `Storage/VolatileDB/Impl.hs` 188) and checks a
+block's integrity, its header's own and its body against its header, only after an unclean shutdown
+(`ensureValidateAll`, `Storage/ChainDB/Impl/Args.hs` 154-167; `Ouroboros/Consensus/Node.hs` 515-521 in
+ouroboros-consensus-diffusion). Scarab keeps no clean-shutdown marker, and its open does not check a
+header's own integrity.
+
+Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule, the storage's collections, a
+copy whose backing-store work moves the clock, a restart, under TestControl), `ReceivedBlocksSuite` (the
+files, a damaged file, a block that does not decode, repeats in the same and a later file with the same
+and other bytes, and the repair) and `VolatileStoreSuite` (the selected-chain log's recovery), asserting
+the reference's outcomes as its source at the pins gives them.

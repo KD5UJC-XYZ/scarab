@@ -52,8 +52,9 @@ block's body. A signature, a redeem key or a hash, which the reference reads wit
 `decodeBytes`, is still read at any width. The block's refusal is read from the pinned source: the
 reference was run only on a submitted vote whose voter's key is so written, which it refuses (the
 `ntc` run of #924 in the evidence log). No persisted format changes; a block an earlier build
-received with such a key and still holds in its received-block log is discarded when the node starts
-(`ReceivedBlockDiscarded`).
+received with such a key and still holds in its received-block log fails the start-up check when the
+log is opened, and the log's file is cut there, as the reference cuts a VolatileDB file at a block it
+cannot read (#1247).
 
 Dated evidence (2026-11-19): a block the node does not fetch again is read the same way. Replay of
 the node's own store, resume of its volatile log, and the replay of a reference node's ImmutableDB
