@@ -394,16 +394,24 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
           ours <- l.zip(left.raws).take(3).traverse(n.offer(_, _))
           chain <- n.follower.committedChain.get
           old <- n.offer(r(0), right.raws(0))
+          // our own first block again, now the immutable tip, which the forest still holds
+          immutable <- n.offer(l(0), left.raws(0))
           forest <- n.pool.processedSnapshot
           stored <- n.stored.get
         yield
+          val tooOld = Follower.Submission(
+            Follower.Adoption.Lost(Follower.AdoptionLoss.TooOld(l(2).point)),
+            Follower.Retention.TooOld
+          )
           assertEquals(ours, l.take(3).map(adopted))
           assertEquals(chain.anchor.point, l(0).point, "the first block is immutable")
-          assertEquals(old.retention, Follower.Retention.TooOld, "of its height: not kept")
-          assert(
-            old.adoption.isInstanceOf[Follower.Adoption.Lost],
-            s"and not adopted: ${old.adoption}"
+          assertEquals(old, tooOld, "of its height: not kept, not adopted")
+          assertEquals(
+            immutable,
+            tooOld,
+            "too old is checked first, as the reference does, though the forest has the block"
           )
+          assert(forest.contains(l(0).hash), "the forest keeps the immutable tip's block")
           assertEquals(forest.get(r(0).hash), None)
           assertEquals(stored, hashes(l.take(3)), "nor written to the received log")
       })

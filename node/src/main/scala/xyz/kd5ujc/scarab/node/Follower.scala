@@ -263,9 +263,11 @@ final class Follower[F[_]: Async, S] private (
           )
         )
       def stored(header: Header): F[Follower.Stored] =
-        (pool.processedSnapshot, pool.invalidBlocks.lookup(header.hash)).mapN { (forest, invalid) =>
-          if forest.contains(header.hash) then Follower.Stored.Present
-          else invalid.fold[Follower.Stored](Follower.Stored.Fresh)(Follower.Stored.Invalid(_))
+        (chain.get, pool.processedSnapshot, pool.invalidBlocks.lookup(header.hash)).mapN {
+          (current, forest, invalid) =>
+            if !Follower.youngerThanImmutable(current, header) then Follower.Stored.TooOld
+            else if forest.contains(header.hash) then Follower.Stored.Present
+            else invalid.fold[Follower.Stored](Follower.Stored.Fresh)(Follower.Stored.Invalid(_))
         }
       def select(header: Header, loss: Follower.AdoptionLoss)(using
           Raise[F, NodeError]
@@ -833,6 +835,15 @@ final class Follower[F[_]: Async, S] private (
           _.fold(F.pure[Follower.Stored](Follower.Stored.Fresh))(_.stored(header))
         )
         result <- stored match
+          // no younger than the immutable tip, as `IgnoreBlockOlderThanImmTip`: neither kept,
+          // judged nor selected, and not adopted
+          case Follower.Stored.TooOld =>
+            F.pure(
+              Follower.Submission(
+                Follower.Adoption.Lost(Follower.AdoptionLoss.TooOld(before.tip)),
+                Follower.Retention.TooOld
+              )
+            )
           // stored already, as `IgnoreBlockAlreadyInVolatileDB`: neither judged nor selected again,
           // and the forging loop reads the tip, the invalid set and the withheld set as they are
           case Follower.Stored.Present =>
@@ -1156,13 +1167,15 @@ object Follower:
         s"not kept: defect: ${Option(cause.getMessage).getOrElse(cause.getClass.getName)}"
 
   /** What the node holds of a forged block before chain selection runs for it, as the reference's
-    * ChainDB checks a block it is given (Storage/ChainDB/Impl/ChainSel.hs:431-440,
-    * ouroboros-consensus 82ecba329): nothing yet, the block itself
-    * (`IgnoreBlockAlreadyInVolatileDB`, which withheld blocks are too), or its recorded invalidity
-    * (`IgnoreInvalidBlock`).
+    * ChainDB checks a block it is given, in its order (Storage/ChainDB/Impl/ChainSel.hs:428-440,
+    * ouroboros-consensus 82ecba329): a block no younger than the immutable tip
+    * (`IgnoreBlockOlderThanImmTip`, [[Follower.youngerThanImmutable]]), the block itself
+    * (`IgnoreBlockAlreadyInVolatileDB`, which withheld blocks are too), its recorded invalidity
+    * (`IgnoreInvalidBlock`), or nothing yet.
     */
   private[node] enum Stored:
     case Fresh
+    case TooOld
     case Present
     case Invalid(error: ValidationError)
 
@@ -1185,6 +1198,12 @@ object Follower:
       * ouroboros-consensus 82ecba329).
       */
     case AlreadyStored(tip: ChainSync.Point)
+
+    /** The block is no younger than the immutable tip, and chain selection does not run for it
+      * (`IgnoreBlockOlderThanImmTip`, Storage/ChainDB/Impl/ChainSel.hs:428-430, ouroboros-consensus
+      * 82ecba329).
+      */
+    case TooOld(tip: ChainSync.Point)
     def message: String = this match
       case DetachedPredecessor(tip, _) =>
         s"the tip moved to ${Points.show(tip)} and the block's predecessor is not on our chain"
@@ -1192,6 +1211,8 @@ object Follower:
         s"the tip moved to ${Points.show(tip)}, which chain selection prefers to the block"
       case LimitOnEagerness(tip) =>
         s"the Limit on Eagerness keeps the block from chain selection, whose tip is ${Points.show(tip)}"
+      case TooOld(tip) =>
+        s"the block is no younger than the immutable tip; the tip is ${Points.show(tip)}"
       case AlreadyStored(tip) =>
         s"the block is stored already and not selected again; the tip is ${Points.show(tip)}"
 
