@@ -2,24 +2,18 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
-import io.circe.{Json, parser}
-import java.nio.file.{Files, Path}
-import scala.jdk.CollectionConverters.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   Block,
   CborRead,
-  Credential as FlatCredential,
   DecodeField,
   GovActionId,
   LedgerDecodeError,
   Metadatum,
   PreprodDeepTx,
-  RewardAccount,
   TxIn,
-  Voter,
   VotingProcedure
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
@@ -35,16 +29,12 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraLanguage,
   DijkstraPoolMetadata,
   DijkstraPoolParams,
-  DijkstraProposal,
-  DijkstraPurpose,
   DijkstraPurposes,
   DijkstraRelay,
   DijkstraScript as FlatScript,
   DijkstraTx as FlatTx,
   DijkstraTxBody as FlatBody,
-  DijkstraTxIn,
   DijkstraTxOut as FlatTxOut,
-  DijkstraVoter,
   DijkstraWitnesses,
   V12
 }
@@ -98,32 +88,7 @@ import xyz.kd5ujc.scarab.plutus.PlutusLanguage
   * `leios-testnet-chain-contexts`, the latter recorded on the testnet's chain).
   */
 class DijkstraTxSuite extends FunSuite:
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
-  private def node(raw: Bytes): Node =
-    CborRead.decode(raw, V12.nestedLimits).fold(e => fail(e.toString), identity)
-
-  private def jsonLines(path: String): Vector[Json] =
-    Files
-      .readAllLines(Path.of(path))
-      .asScala
-      .toVector
-      .filter(_.nonEmpty)
-      .map(l => parser.parse(l).fold(e => fail(e.message), identity))
-
-  private def json(path: String): Json =
-    parser.parse(Files.readString(Path.of(path))).fold(e => fail(e.message), identity)
-
-  private def str(j: Json, name: String): String =
-    j.hcursor.get[String](name).fold(e => fail(s"$name: ${e.message}"), identity)
-
-  private def tsv(path: String): Vector[Array[String]] =
-    Files
-      .readAllLines(Path.of(path))
-      .asScala
-      .toVector
-      .drop(1)
-      .filterNot(l => l.startsWith("#") || l.isEmpty)
-      .map(_.split('\t'))
+  import DijkstraCorpus.{certKey, eraItem, flatItem, hex, keyOf, node, str, txIn, voter}
 
   private val bodies = EraTxBody.dijkstra
   private val wits = EraTxWits.dijkstra
@@ -131,14 +96,7 @@ class DijkstraTxSuite extends FunSuite:
 
   // ---- the flat decoder's fields, read independently of the projection
 
-  private def txIn(i: DijkstraTxIn): TxIn = TxIn(i.id, BigInt(i.index))
-
   private def anchor(a: DijkstraAnchor): Anchor = Anchor(a.url, a.hash)
-
-  private def voter(v: DijkstraVoter): Voter = v match
-    case DijkstraVoter.Committee(c) => Voter.CommitteeHot(c)
-    case DijkstraVoter.DRep(c)      => Voter.DRepVoter(c)
-    case DijkstraVoter.StakePool(p) => Voter.Pool(p)
 
   private def interval(i: AccountBalanceInterval): DijkstraBalanceInterval = i match
     case AccountBalanceInterval.AccountBalanceLowerBound(l) =>
@@ -148,26 +106,6 @@ class DijkstraTxSuite extends FunSuite:
     case AccountBalanceInterval.AccountBalanceBothBounds(l, u) =>
       DijkstraBalanceInterval.Both(l.unInclusive.value, u.unExclusive.value)
     case AccountBalanceInterval.AccountBalanceExact(c) => DijkstraBalanceInterval.Exact(c.value)
-
-  private def keyOf(c: FlatCredential): Option[Bytes] = c match
-    case FlatCredential.Key(h)    => Some(h)
-    case FlatCredential.Script(_) => None
-
-  /** The key that signs a certificate (`getVKeyWitnessDijkstraTxCert`, `TxCert.hs:342-351`,
-    * cardano-ledger 9df9f98c).
-    */
-  private def certKey(c: DijkstraCert): Option[Bytes] = c match
-    case DijkstraCert.Register(c, _)                 => keyOf(c)
-    case DijkstraCert.Unregister(c, _)               => keyOf(c)
-    case DijkstraCert.Delegate(c, _)                 => keyOf(c)
-    case DijkstraCert.RegisterDelegate(c, _, _)      => keyOf(c)
-    case DijkstraCert.RegisterPool(p)                => Some(p.operator)
-    case DijkstraCert.RetirePool(p, _)               => Some(p)
-    case DijkstraCert.AuthorizeCommitteeHotKey(c, _) => keyOf(c)
-    case DijkstraCert.ResignCommitteeColdKey(c, _)   => keyOf(c)
-    case DijkstraCert.RegisterDRep(c, _, _)          => keyOf(c)
-    case DijkstraCert.UnregisterDRep(c, _)           => keyOf(c)
-    case DijkstraCert.UpdateDRep(c, _)               => keyOf(c)
 
   private def language(l: DijkstraLanguage): PlutusLanguage = l match
     case DijkstraLanguage.PlutusV1 => PlutusLanguage.V1
@@ -379,42 +317,6 @@ class DijkstraTxSuite extends FunSuite:
         assertEquals((c.anchor, c.script), (anchor(fa), fpol), what)
       case (GovAction.InfoAction(), DijkstraGovAction.InfoAction) => ()
       case other                                                  => fail(s"$what: $other")
-
-  /** What a redeemer key names, as both resolutions can say it. */
-  private enum Item:
-    case Input(in: TxIn)
-    case Policy(policy: Bytes)
-    case Cert(key: Option[Bytes], script: Option[Bytes])
-    case Account(account: RewardAccount)
-    case ByVoter(voter: Voter)
-    case Proposal(proposal: DijkstraProposal)
-    case Guard(script: Bytes)
-
-  /** The item a redeemer key names, by the flat decoder's own resolution
-    * ([[DijkstraPurposes.inverse]]): its tag, index and item.
-    */
-  private def flatItem(p: DijkstraPurpose): (Int, BigInt, Item) = p match
-    case DijkstraPurpose.Spending(ix, in) => (0, BigInt(ix), Item.Input(txIn(in)))
-    case DijkstraPurpose.Minting(ix, pol) => (1, BigInt(ix), Item.Policy(pol))
-    case DijkstraPurpose.Certifying(ix, c) =>
-      (2, BigInt(ix), Item.Cert(certKey(c), DijkstraPurposes.certificateScript(c)))
-    case DijkstraPurpose.Withdrawing(ix, a)   => (3, BigInt(ix), Item.Account(a))
-    case DijkstraPurpose.Voting(ix, v)        => (4, BigInt(ix), Item.ByVoter(voter(v)))
-    case DijkstraPurpose.Proposing(ix, p)     => (5, BigInt(ix), Item.Proposal(p))
-    case DijkstraPurpose.Guarding(ix, script) => (6, BigInt(ix), Item.Guard(script))
-
-  private def eraItem(p: DijkstraPlutusPurpose[AsIxItem]): (Int, BigInt, Item) =
-    import DijkstraPlutusPurpose.*
-    val c = DijkstraTxCert.instance
-    p match
-      case DijkstraSpending(AsIxItem(ix, in))    => (0, ix.value, Item.Input(in))
-      case DijkstraMinting(AsIxItem(ix, policy)) => (1, ix.value, Item.Policy(policy))
-      case DijkstraCertifying(AsIxItem(ix, cert)) =>
-        (2, ix.value, Item.Cert(c.getVKeyWitnessTxCert(cert), c.getScriptWitnessTxCert(cert)))
-      case DijkstraWithdrawing(AsIxItem(ix, a)) => (3, ix.value, Item.Account(a))
-      case DijkstraVoting(AsIxItem(ix, v))      => (4, ix.value, Item.ByVoter(v))
-      case DijkstraProposing(AsIxItem(ix, p))   => (5, ix.value, Item.Proposal(p.read))
-      case DijkstraGuarding(AsIxItem(ix, h))    => (6, ix.value, Item.Guard(h.bytes))
 
   /** Every field of a body of either level equal to the flat decoder's. */
   private def sameBody[L <: TxLevel](era: DijkstraTxBody[L], flat: FlatBody, what: String)(using
@@ -715,7 +617,7 @@ class DijkstraTxSuite extends FunSuite:
           .foldLeft(none)(_ + _)
       case other => fail(s"$what: $other")
 
-  private lazy val corpus = jsonLines("fixtures/reference/leios-testnet-blocks/cases.jsonl")
+  private def corpus = DijkstraCorpus.leiosCorpus
 
   test(
     "every transaction of the Leios corpus reads as the flat decoder reads it, or is refused as it"
@@ -770,9 +672,9 @@ class DijkstraTxSuite extends FunSuite:
   test(
     "every transaction of the public Leios testnet's blocks reads as the flat decoder reads it"
   ) {
-    val rows = tsv("fixtures/leios/testnet/blocks-rc-2026w44.tsv")
+    val rows = DijkstraCorpus.testnetBlocks
     assert(rows.nonEmpty)
-    val tally = rows.map(p => ofBlock(hex(p(5)), p(0))).foldLeft(none)(_ + _)
+    val tally = rows.map((name, raw) => ofBlock(raw, name)).foldLeft(none)(_ + _)
     // the 40 transactions of the announcing block, none with sub-transactions
     assertEquals(tally, Tally(txs = 40, subs = 0, pools = 0, refused = 0))
   }
@@ -780,12 +682,9 @@ class DijkstraTxSuite extends FunSuite:
   test(
     "the devnet chain's Dijkstra transactions and its submitted one read as the flat decoder reads them"
   ) {
-    val rows = tsv("fixtures/dijkstra-devnet/blocks.tsv").filter(_(0) == "8")
-    val tally = rows.map(p => ofBlock(hex(p(4)), s"devnet block ${p(1)}")).foldLeft(none)(_ + _)
-    val submitted = """"cborHex"\s*:\s*"([0-9a-f]+)"""".r
-      .findFirstMatchIn(Files.readString(Path.of("fixtures/dijkstra-devnet/transaction.json")))
-      .map(m => hex(m.group(1)))
-      .getOrElse(fail("no cborHex"))
+    val tally =
+      DijkstraCorpus.devnetBlocks.map((name, raw) => ofBlock(raw, name)).foldLeft(none)(_ + _)
+    val submitted = DijkstraCorpus.devnetSubmitted
     val mempool = compare(
       FlatTx.fromSubmission(submitted),
       DijkstraTx.fromSubmission(submitted),
@@ -795,24 +694,16 @@ class DijkstraTxSuite extends FunSuite:
   }
 
   test("the transactions of the script-context fixtures read as the flat decoder reads them") {
-    val contexts = json("fixtures/reference/leios-testnet-contexts/cases.json").asArray
-      .getOrElse(fail("not an array"))
+    val contexts = DijkstraCorpus.contextCases
       .map(c => inBlock(hex(str(c, "bytes")), str(c, "name")))
       .foldLeft(none)(_ + _)
-    val chain = json("fixtures/reference/leios-testnet-chain-contexts/cases.json").hcursor
-      .get[Vector[Json]]("cases")
-      .fold(e => fail(e.message), identity)
+    val chain = DijkstraCorpus.chainContextCases
       .map(c => inBlock(hex(str(c, "bytes")), str(c, "name")))
       .foldLeft(none)(_ + _)
     // the 200 transactions recorded on the testnet's chain hold 38 of its 280 sub-transactions
     assertEquals((contexts, chain), (Tally(11, 3, 1, 0), Tally(200, 38, 0, 0)))
     // some arrived in an order that is not their ids', which the ordered map keeps
-    val unsorted = (json("fixtures/reference/leios-testnet-contexts/cases.json").asArray
-      .getOrElse(fail("not an array")) ++ json(
-      "fixtures/reference/leios-testnet-chain-contexts/cases.json"
-    ).hcursor
-      .get[Vector[Json]]("cases")
-      .fold(e => fail(e.message), identity))
+    val unsorted = (DijkstraCorpus.contextCases ++ DijkstraCorpus.chainContextCases)
       .flatMap(c => DijkstraTx.inBlock(node(hex(str(c, "bytes")))).toOption)
       .map(t => bodies.subTransactions(t.body).keys)
       .count(ids => ids.sizeIs >= 2 && ids != ids.sorted)
@@ -824,10 +715,7 @@ class DijkstraTxSuite extends FunSuite:
   ) {
     // `fixtures/reference/dijkstra-rules`: the devnet's transaction and its variants, each a
     // transaction of a block body
-    val txs = jsonLines("fixtures/reference/dijkstra-rules/cases.jsonl")
-      .filter(j => str(j, "kind") == "utxow")
-      .map(j => str(j, "tx"))
-      .distinct
+    val txs = DijkstraCorpus.utxowCases.map(j => str(j, "tx")).distinct
     val tally = txs.zipWithIndex.map((t, i) => inBlock(hex(t), s"utxow $i")).foldLeft(none)(_ + _)
     assertEquals(tally, Tally(11, 0, 0, 0))
   }
@@ -836,16 +724,9 @@ class DijkstraTxSuite extends FunSuite:
     // `fixtures/reference/dijkstra-crossing`: each Conway transaction the reference carried into
     // Dijkstra, in Dijkstra's mempool form (`toCBORForMempoolSubmission`), as a client or the
     // hard-fork mempool submits it; that form is also the size the reference computes for the fee
-    val forms = jsonLines("fixtures/reference/dijkstra-crossing/cases.jsonl")
-      .flatMap(c =>
-        Vector("rematch", "translateEra").flatMap(k =>
-          c.hcursor.downField("reference").downField(k).get[String]("mempool").toOption
-        )
-      )
-      .distinct
+    val forms = DijkstraCorpus.crossingForms
     val tally = forms.zipWithIndex
-      .map { (f, i) =>
-        val raw = hex(f)
+      .map { (raw, i) =>
         val era = DijkstraTx.fromSubmission(raw)
         era.foreach(t => assertEquals(t.sizeTxF, raw.size.toLong, s"crossing $i: size"))
         compare(FlatTx.fromSubmission(raw), era, s"crossing $i")

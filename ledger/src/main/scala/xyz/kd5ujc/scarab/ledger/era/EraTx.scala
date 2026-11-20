@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, Dijkstra, EraTag}
 
 /** Whether a transaction's scripts are expected to validate (`data IsPhase2Valid`, cardano-ledger
   * f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:157-159`): the flag a block gives
@@ -143,3 +143,5 @@ object AlonzoTx:
 object EraTx:
   given conway: (AlonzoEraTx[Conway] { val bodyOf: EraTxBody.conway.type }) =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx.instance
+  given dijkstra: (AlonzoEraTx[Dijkstra] { val bodyOf: EraTxBody.dijkstra.type }) =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.instance
