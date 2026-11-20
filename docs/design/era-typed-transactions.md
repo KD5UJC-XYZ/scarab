@@ -666,8 +666,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   `transTxInInfoV1`, `guardConwayFeaturesForPlutusV1V2` and `transTxCertV1V2`, Alonzo's purposes in the V1 and
   V2 form (`transPlutusPurpose`, which replaced f649f975's Conway `transPlutusPurposeV1V2` with the shape of
   9df9f98c, below), Alonzo's V1 output, withdrawals, mint, common certificates and legacy arguments, Babbage's V2
-  input and arguments), so the language families have every case the reference's have (V4's as V3's types), the
-  inputs' without Alonzo's own V1 case. `EraPlutusContext` is the reference's class with
+  input and arguments), so the language families have every case the reference's have (V4's of plutus-ledger-api's
+  `V4`, below), the inputs' without Alonzo's own V1 case. `EraPlutusContext` is the reference's class with
   `mkSupportedLanguage`, `mkTxInfoResult` and `lookupTxInfoResult`, Conway's instance memoising each
   language's information lazily (`ConwayTxInfoResult`), and `SupportedLanguage` equal and ordered by its
   language.
@@ -752,6 +752,32 @@ Conway's rules on the classes follow as the rest of stage 2.
     chain, at both levels, byte for byte (#85's item on Dijkstra's script contexts); the tests above are the
     node's own. The scripts used come from the scripts needed, one per purpose's index, so no two share an index
     and `Map.fromList`'s choice of the last of a repeated one shows nowhere.
+- **The Plutus V4 script context's types** (`era/PlutusLedgerApiV4.scala`; `plutus-ledger-api/src/PlutusLedgerApi/V4/`
+  at plutus 261766ad, plutus-ledger-api 1.71.0.0, the version the Leios testnet's node links): `PV4`, the types the
+  ledger's Plutus V4 translation builds (the transaction's information with its sub-transaction's index, direct
+  deposits, account balance intervals and guards, the script context with its script information, a guard's
+  information of the whole transaction, `TopTxInfo` and `TopTxInfoSimplified`, and V4's certificates, purposes,
+  outputs, committee and governance actions), each with its `ToData` encoding: a record of `makeIsDataSchemaAsList`
+  and a newtype derived `via ListEncoded` as the list of its fields, a sum of `makeIsDataSchemaIndexed` as the
+  constructor of its index; a type V4 takes from V1 to V3 is that version's. A newtype over V3's record or a tuple
+  that a pattern synonym presents as fields (`TxOutRef`, `GovernanceActionId`, `ProtocolVersion`,
+  `ProposalProcedure`) has those fields here, a difference of structure whose encoding the suite compares;
+  `Committee` keeps its pair. The language families' Plutus V4 cases and `PlutusV4Args` are V4's types, as at
+  9df9f98c (`Alonzo/Plutus/Context.hs:264-289`, `Plutus/Language.hs:583`) and 29a7d656, where f649f975's are V3's.
+  - plutus-tx's ratio (`PV3.Rational`, which V4's wraps) is made only by `ratio` and `fromHaskellRatio`
+    (`plutus-tx/src/PlutusTx/Ratio.hs:216-225, 389-390`, plutus 261766ad), so it is reduced with a positive
+    denominator, the invariants the reference keeps (`:68-73`); `transBoundedRational` uses `fromHaskellRatio`, as
+    9df9f98c's does (`Plutus/TxInfo.hs:119-120`).
+  - Direct tests write values the corpus cannot tell apart in the reference's field order: a minting purpose with
+    distinct hash and policy, a committee, `TopTxInfoSimplified` with every field distinct, and the V3 voters and
+    vote the corpus lacks; and a Plutus V4 script's arguments, through its language, are its context alone, each
+    recorded argument's bytes.
+  - `PlutusLedgerApiV4Suite` reads each of the 49 Plutus V4 arguments the reference recorded (34 on the testnet's
+    chain, 14 of the hand-written cases, 1 of the refusals), at both levels, into the types, refusing any encoding
+    it does not expect, and writes each back to the reference's bytes; every script purpose is among them, and a
+    guard both with the whole transaction's information and without.
+  - That the ledger builds these values is shown with Dijkstra's Plutus V4 translation (#85's item on Dijkstra's
+    script contexts); until then it is not established (CNF-2).
 - **The annotated transaction and its UTXOW predicates** (`era/StAnnTx.scala`, `era/EraTxAuxData.scala`,
   `era/rules/Utxow.scala`; `Core.hs:180-188`, `Alonzo/Tx.hs:556-565`, `Alonzo.hs:121-160`,
   `Alonzo/UTxO.hs:154-214`, `Alonzo/TxAuxData.hs:363-373,494-515`, `Shelley/Rules/Utxow.hs:427-443` and
@@ -968,8 +994,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     annotated transaction yet: its maker (`mkDijkstraStAnnTopTx`, `Dijkstra.hs:108-219`) needs the contexts, which
     come with them ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123)). Its
     members are read on built values only, a Gap of that item. The memoised information's slots are the shared
-    `PlutusTxInfoResult`, a direct `Either` as 9df9f98c's is (`Alonzo/Plutus/Context.hs:193-196`, above); V4's holds
-    V3's `TxInfo` where 9df9f98c's holds `PV4.TxInfo` (`:280`), which waits for that item. The legacy-mode flag is an enum (`PlutusLegacyMode`), the
+    `PlutusTxInfoResult`, a direct `Either` as 9df9f98c's is (`Alonzo/Plutus/Context.hs:193-196`, above), V4's of
+    the V4 `TxInfo` (`:280`, above). The legacy-mode flag is an enum (`PlutusLegacyMode`), the
     reference's `Bool` (TYP-4). `DijkstraEraUTxO`'s member of a sub-transaction's annotated form takes the evidence of
     that level (`SubOnly`, as `TopOnly` gives the top level), as the family named at the sub-transaction level
     outright would be reduced at Conway too, where it has no case.
