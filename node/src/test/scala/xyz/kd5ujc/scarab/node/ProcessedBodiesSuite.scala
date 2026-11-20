@@ -387,7 +387,7 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
             assertEquals(
               logged.map(line => line.kind -> line.fields.toMap.get("hash").flatMap(_.asString)),
               Vector(EventKind.ReceivedBlockDiscarded -> Some(noBlock.hash.hex)),
-              "only the record whose header does not decode is discarded, and logged"
+              "only the record that does not decode is discarded, and logged"
             )
         }
         .rescue(error => IO(fail(error.message)))

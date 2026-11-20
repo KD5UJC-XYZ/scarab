@@ -132,12 +132,14 @@ checks a block's integrity, its header's own and its body against its header, on
 shutdown or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB/Impl/Args.hs` 154-167;
 `Ouroboros/Consensus/Node.hs` 515-521 and 1118-1128 in ouroboros-consensus-diffusion; `Args.hs` 162-175,
 `Node.hs` 517-523 and 1151-1161 at `808e40054`). Scarab keeps no clean-shutdown marker, so it checks at
-every open; it does not check a header's own integrity again, which was checked when the header
-arrived. The start seeds the block pool from the log by decoding each block's header, without checking
-its body a second time, and adds a block of the selected chain that the log lacks only once it passes
+every open; it does not check a header's own integrity again. With header-first validation, the default,
+that was checked when the header arrived; with `--header-first off` in Praos mode a block is fetched
+before its header is checked, and an epoch boundary block carries no signature. The start seeds the block
+pool from the log by decoding each block, as the reference decodes each block it opens, without checking
+its body against its header a second time, and adds a block of the selected chain that the log lacks only once it passes
 the start-up check, which a resume does not run in full (a Byron boundary block's body is not decoded)
 (`ProcessedBodiesSuite`: after an open whose check accepts every record, a block whose body is not its
-header's is seeded and a record whose header does not decode is logged and skipped; such a block is
+header's is seeded and a record that does not decode is logged and skipped; such a block is
 not added by the start, and is logged).
 
 Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule and its traces, the storage's
