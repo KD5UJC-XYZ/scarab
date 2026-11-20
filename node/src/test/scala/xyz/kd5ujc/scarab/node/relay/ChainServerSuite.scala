@@ -7,7 +7,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.ChainSyncServer.Update
-import xyz.kd5ujc.scarab.network.Settled
+import xyz.kd5ujc.scarab.network.{BlockFetchServer, Settled}
+import xyz.kd5ujc.scarab.protocol.NetworkError
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
 import xyz.kd5ujc.scarab.storage.{CountedReads, FileImmutableStore, ImmutableStore, StorageTestKit}
 import munit.ScalaCheckSuite
@@ -129,6 +130,45 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private val k = 3
 
+  /** What an answer for a range gives, its blocks read whole. */
+  private enum Got:
+    case NoBlocks
+    case Blocks(raws: Vector[Bytes])
+
+    /** Refused at once, or in the batch after the blocks `sent`. */
+    case Refused(refusal: NetworkError.RangeRefusal, sent: Vector[Bytes])
+
+  private def got(answer: BlockFetchServer.Answer[IO]): IO[Got] = answer match
+    case BlockFetchServer.Answer.NoBlocks()       => IO.pure(Got.NoBlocks)
+    case BlockFetchServer.Answer.Refused(refusal) => IO.pure(Got.Refused(refusal, Vector.empty))
+    case BlockFetchServer.Answer.Batch(blocks) =>
+      blocks.compile.toVector.map { items =>
+        val sent = items.flatMap(_.toOption)
+        items
+          .collectFirst { case Left(refusal) => refusal }
+          .fold(Got.Blocks(sent))(
+            Got.Refused(_, sent)
+          )
+      }
+
+  private def raws(ns: Range): Vector[Bytes] = ns.toVector.map(raw(_))
+
+  /** `blocks`, with `act` run once a batch has read its first `after` blocks and before it reads
+    * the next: a batch reads each held block when it is pulled.
+    */
+  private def tapped(
+      blocks: BlockFetchServer.Blocks[IO],
+      after: Int,
+      act: IO[Unit]
+  ): BlockFetchServer.Blocks[IO] = (from, to) =>
+    blocks.range(from, to).map {
+      case BlockFetchServer.Answer.Batch(sent) =>
+        BlockFetchServer.Answer.Batch(
+          sent.zipWithIndex.evalTap((_, n) => act.whenA(n == after - 1)).map(_._1)
+        )
+      case other => other
+    }
+
   private def readAll(
       source: xyz.kd5ujc.scarab.network.ChainSyncServer.Source[IO, NtNHeader]
   ): IO[List[Int]] =
@@ -146,7 +186,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 10).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -185,7 +226,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 8).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -218,7 +260,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 4).toList.traverse_(i =>
               persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
@@ -309,7 +352,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         ok {
           FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
             for
-              server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+              server <- ChainServer
+                .open[IO](Some(store), None, headerOf, fatal)
               persistence = server.persistence[Unit]
               _ <- (1 to 2).toList.traverse_(i =>
                 persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
@@ -347,7 +391,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             _ <- (1 to 10).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -360,11 +405,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 )
             }
             blocks = server.blocks
-            range = (a: Int, b: Int) =>
-              blocks.range(ref(a).point, ref(b).point).flatMap {
-                case None    => IO.pure(None)
-                case Some(s) => s.compile.toList.map(_.map(_.value.head.toInt).some)
-              }
+            range = (a: Int, b: Int) => blocks.range(ref(a).point, ref(b).point).flatMap(got)
             inStore <- range(2, 5)
             single <- range(4, 4)
             across <- range(5, 9)
@@ -373,13 +414,13 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             unknown <- range(2, 77)
             whole <- range(1, 10)
           yield
-            assertEquals(inStore, Some(List(2, 3, 4, 5)))
-            assertEquals(single, Some(List(4)))
-            assertEquals(across, Some(List(5, 6, 7, 8, 9)))
-            assertEquals(volatile, Some(List(8, 9, 10)))
-            assertEquals(backwards, None)
-            assertEquals(unknown, None)
-            assertEquals(whole, Some((1 to 10).toList))
+            assertEquals(inStore, Got.Blocks(raws(2 to 5)))
+            assertEquals(single, Got.Blocks(raws(4 to 4)))
+            assertEquals(across, Got.Blocks(raws(5 to 9)))
+            assertEquals(volatile, Got.Blocks(raws(8 to 10)))
+            assertEquals(backwards, Got.NoBlocks)
+            assertEquals(unknown, Got.NoBlocks)
+            assertEquals(whole, Got.Blocks(raws(1 to 10)))
         }
       }
     }
@@ -390,7 +431,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal)
             persistence = server.persistence[Unit]
             extend = (i: Int) =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -405,31 +447,18 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             blocks = server.blocks
             // After the first block is sent, blocks 8 and 9 of the captured volatile chain move
             // to the store before the stored part is read.
-            promoting <- blocks.range(ref(5).point, ref(9).point).flatMap {
-              case None => IO.pure(None)
-              case Some(s) =>
-                s.zipWithIndex
-                  .evalTap((_, n) => (extend(11) *> extend(12)).whenA(n == 0))
-                  .map(_._1.value.head.toInt)
-                  .compile
-                  .toList
-                  .map(_.some)
-            }
+            promoting <- tapped(blocks, 1, extend(11) *> extend(12))
+              .range(ref(5).point, ref(9).point)
+              .flatMap(got)
             // Block 10 is already in the store but still in the volatile chain when the request
             // arrives (the store is written first).
             _ <- store.append(ref(10), raw(10))
-            written <- blocks.range(ref(8).point, ref(11).point).flatMap {
-              case None    => IO.pure(None)
-              case Some(s) => s.compile.toList.map(_.map(_.value.head.toInt).some)
-            }
-            fromBoundary <- blocks.range(ref(9).point, ref(12).point).flatMap {
-              case None    => IO.pure(None)
-              case Some(s) => s.compile.toList.map(_.map(_.value.head.toInt).some)
-            }
+            written <- blocks.range(ref(8).point, ref(11).point).flatMap(got)
+            fromBoundary <- blocks.range(ref(9).point, ref(12).point).flatMap(got)
           yield
-            assertEquals(promoting, Some(List(5, 6, 7, 8, 9)))
-            assertEquals(written, Some(List(8, 9, 10, 11)))
-            assertEquals(fromBoundary, Some(List(9, 10, 11, 12)))
+            assertEquals(promoting, Got.Blocks(raws(5 to 9)))
+            assertEquals(written, Got.Blocks(raws(8 to 11)))
+            assertEquals(fromBoundary, Got.Blocks(raws(9 to 12)))
         }
       }
     }
@@ -487,7 +516,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal)
             _ <- grow(store, server, chain)
             starts = Vector(
               Point.Origin,
@@ -514,9 +544,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               boundary20.point -> ref(39).point,
               ref(1).point -> ref(40).point
             )
-            fetched <- ranges.traverse((from, to) =>
-              server.blocks.range(from, to).flatMap(_.traverse(_.compile.toVector))
-            )
+            fetched <- ranges.traverse((from, to) => server.blocks.range(from, to).flatMap(got))
           yield
             starts.zip(followed).foreach { (start, got) =>
               val from = start match
@@ -526,7 +554,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             }
             assertEquals(whole, raws)
             ranges.zip(fetched).foreach { case ((from, to), got) =>
-              assertEquals(got, Some(raws.slice(at(from), at(to) + 1)), s"$from to $to")
+              assertEquals(got, Got.Blocks(raws.slice(at(from), at(to) + 1)), s"$from to $to")
             }
         }
       }
@@ -610,11 +638,16 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             _ <- log.set(Vector.empty)
             range <- server.blocks.range(ref(from).point, ref(to).point)
             checking <- log.get
-            sent <- range.traverse(
-              _.evalMap(b => log.get.map(reads => (b, reads.size))).compile.toVector
-            )
+            sent <- range match
+              case BlockFetchServer.Answer.Batch(blocks) =>
+                blocks
+                  .evalMap(b => log.get.map(reads => (b, reads.size)))
+                  .compile
+                  .toVector
+                  .map(sent => Got.Blocks(sent.flatMap(_._1.toOption)) -> sent.map(_._2))
+              case other => got(other).map(_ -> Vector.empty[Int])
             reads <- log.get
-          yield (sent.map(_.map(_._1)), checking, sent.toVector.flatten.map(_._2), reads)
+          yield (sent._1, checking, sent._2, reads)
         for
           inChunk <- fetch(12, 16)
           across <- fetch(17, 23)
@@ -630,9 +663,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
           assertEquals(
             answers.map(_._1),
-            Vector(12 to 16, 17 to 23, 14 to 14, 35 to 39).map(ns =>
-              Some(ns.toVector.map(raw(_)))
-            ) ++ Vector(None, None)
+            Vector(12 to 16, 17 to 23, 14 to 14, 35 to 39).map(ns => Got.Blocks(raws(ns))) ++
+              Vector(Got.NoBlocks, Got.NoBlocks)
           )
           // each stored block of the range once, in order, and nothing after it
           assertEquals(
@@ -673,10 +705,11 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal)
             _ <- grow(store, server, chain)
             range = (from: BlockRef, to: BlockRef) =>
-              server.blocks.range(from.point, to.point).flatMap(_.traverse(_.compile.toVector))
+              server.blocks.range(from.point, to.point).flatMap(got)
             storedBack <- range(boundary(20), ref(19))
             volatileBack <- range(boundary(40), ref(39))
             boundaryFirst <- range(boundary(20), ref(20))
@@ -684,12 +717,16 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             toBoundary <- range(ref(19), boundary(20))
             volatileFirst <- range(boundary(40), ref(40))
           yield
-            assertEquals(storedBack, None, "stored, from a boundary block back")
-            assertEquals(volatileBack, None, "volatile, from a boundary block back")
-            assertEquals(boundaryFirst, Some(Vector(raw(19, 9), raw(20))))
-            assertEquals(boundaryLast, None, "from the main block of a slot to its boundary block")
-            assertEquals(toBoundary, Some(Vector(raw(19), raw(19, 9))))
-            assertEquals(volatileFirst, Some(Vector(raw(39, 9), raw(40))))
+            assertEquals(storedBack, Got.NoBlocks, "stored, from a boundary block back")
+            assertEquals(volatileBack, Got.NoBlocks, "volatile, from a boundary block back")
+            assertEquals(boundaryFirst, Got.Blocks(Vector(raw(19, 9), raw(20))))
+            assertEquals(
+              boundaryLast,
+              Got.NoBlocks,
+              "from the main block of a slot to its boundary block"
+            )
+            assertEquals(toBoundary, Got.Blocks(Vector(raw(19), raw(19, 9))))
+            assertEquals(volatileFirst, Got.Blocks(Vector(raw(39, 9), raw(40))))
         }
       }
     }

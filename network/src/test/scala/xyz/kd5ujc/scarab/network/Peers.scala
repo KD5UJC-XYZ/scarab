@@ -28,6 +28,12 @@ object Peers:
   def header(n: Int): Bytes = Bytes(Vector(n.toByte))
   def block(n: Int): Bytes = Bytes(Vector.fill(100 + n)(n.toByte))
 
+  /** A BlockFetch source's answer from the blocks it found: `NoBlocks` for none. */
+  def answer[F[_]](found: Option[fs2.Stream[F, Bytes]]): BlockFetchServer.Answer[F] =
+    found.fold(BlockFetchServer.Answer.NoBlocks[F]())(blocks =>
+      BlockFetchServer.Answer.Batch(blocks.map(Right(_)))
+    )
+
   private def fail[A](reason: String): IO[A] = IO.raiseError(new IllegalStateException(reason))
   private def lift[A](either: Either[ProtocolError, A]): IO[A] =
     either.fold(e => fail(e.message), IO.pure)

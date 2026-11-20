@@ -96,7 +96,8 @@ class SocketTransportSuite extends FailsOnUncaught:
       NtNHeader.codec,
       Resource.pure(cursor),
       new BlockFetchServer.Blocks[IO]:
-        def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
+        def range(from: ChainSync.Point, to: ChainSync.Point) =
+          IO.pure(BlockFetchServer.Answer.NoBlocks())
       ,
       new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions

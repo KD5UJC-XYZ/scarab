@@ -40,8 +40,10 @@ class WarmHotSuite extends FailsOnUncaught:
       val i = all.indexWhere(n => Peers.point(n) == from)
       val j = all.indexWhere(n => Peers.point(n) == to)
       IO.pure(
-        Option.when(i >= 0 && j >= i)(
-          Stream.emits(all.slice(i, j + 1).map(Peers.block).toList).covary[IO]
+        Peers.answer(
+          Option.when(i >= 0 && j >= i)(
+            Stream.emits(all.slice(i, j + 1).map(Peers.block).toList).covary[IO]
+          )
         )
       )
     val sink = new TxSubmissionServer.Sink[IO]:

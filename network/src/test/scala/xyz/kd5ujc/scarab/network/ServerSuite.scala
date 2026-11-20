@@ -10,6 +10,8 @@ import fs2.Stream
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{
+  BlockFetch,
+  CardanoBlockFetch,
   ChainSync,
   ChainSyncFixtures,
   Handshake,
@@ -91,8 +93,10 @@ class ServerSuite extends FailsOnUncaught:
       blocks.get.map { chain =>
         val i = chain.indexWhere(n => Peers.point(n) == from)
         val j = chain.indexWhere(n => Peers.point(n) == to)
-        Option.when(i >= 0 && j >= i)(
-          Stream.emits(chain.slice(i, j + 1).map(Peers.block).toList).covary[IO]
+        Peers.answer(
+          Option.when(i >= 0 && j >= i)(
+            Stream.emits(chain.slice(i, j + 1).map(Peers.block).toList).covary[IO]
+          )
         )
       }
 
@@ -269,6 +273,69 @@ class ServerSuite extends FailsOnUncaught:
         )
       )
     )
+
+  test("BlockFetch server: a refused range ends the server, before the batch or in it"):
+    // `MiniProtocol/BlockFetch/Server.hs` 107-146 (ouroboros-consensus 82ecba32): an Origin end
+    // throws `NoGenesisBlock` before the ChainDB is asked, `InvalidIteratorRange` comes from
+    // opening the iterator, before `StartBatch`, and `BlockGCed` from the batch, with no `BatchDone`
+    val collected = NetworkError.RangeRefusal.Collected(Peers.point(2))
+    val invalid = NetworkError.RangeRefusal.InvalidRange(Peers.point(3), Peers.point(1))
+    def exchange(from: Point, to: Point) =
+      for
+        asked <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
+        source = new BlockFetchServer.Blocks[IO]:
+          def range(from: Point, to: Point) =
+            asked.update(_ :+ (from -> to)).as {
+              if from == Peers.point(3) then BlockFetchServer.Answer.Refused(invalid)
+              else
+                BlockFetchServer.Answer.Batch(
+                  Stream.emits(Vector(Right(Peers.block(1)), Left(collected))).covary[IO]
+                )
+            }
+        outcome <- typed {
+          linked(protocols = Set(3)).use { (client, server) =>
+            for
+              c <- client.channel(3)
+              s <- server.channel(3, Mux.Role.Responder)
+              serving <- typed(BlockFetchServer.run(s, source)).start
+              request <- BlockFetch
+                .encode(
+                  BlockFetch.State.Idle,
+                  BlockFetch.Role.Client,
+                  BlockFetch.Message.RequestRange(from, to),
+                  CardanoBlockFetch.payloadCodec()
+                )
+                .fold(e => IO.raiseError(RuntimeException(e.message)), IO.pure)
+              _ <- c.send(request)
+              ended <- serving.joinWithNever
+            yield ended
+          }
+        }
+        seen <- asked.get
+      yield (outcome, seen)
+    for
+      origin <- exchange(Point.Origin, Peers.point(2))
+      refused <- exchange(Peers.point(3), Peers.point(1))
+      inBatch <- exchange(Peers.point(1), Peers.point(2))
+    yield
+      assertEquals(
+        origin,
+        (Right(Left(NetworkError.RangeRefused(NetworkError.RangeRefusal.NoGenesisBlock))), Vector())
+      )
+      assertEquals(
+        refused,
+        (
+          Right(Left(NetworkError.RangeRefused(invalid))),
+          Vector(Peers.point(3) -> Peers.point(1))
+        )
+      )
+      assertEquals(
+        inBatch,
+        (
+          Right(Left(NetworkError.RangeRefused(collected))),
+          Vector(Peers.point(1) -> Peers.point(2))
+        )
+      )
 
   test("KeepAlive server echoes cookies and stops on Done"):
     typed {

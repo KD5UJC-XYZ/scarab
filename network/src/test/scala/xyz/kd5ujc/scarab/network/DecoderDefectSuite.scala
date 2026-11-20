@@ -42,7 +42,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
   private val handlers = ServerHandlers[IO, Bytes](
     ChainSyncFixtures.rawItem,
     Resource.pure(source),
-    (_, _) => IO.pure(None),
+    (_, _) => IO.pure(BlockFetchServer.Answer.NoBlocks()),
     new TxSubmissionServer.Sink[IO]:
       def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)

@@ -38,6 +38,15 @@ enum NetworkError extends DomainError:
     */
   case NotKept(protocol: Int, after: ChainSync.Point)
 
+  /** Our BlockFetch server ended the connection over a range the peer asked for, for `refusal`, as
+    * the reference's server throws for it (ouroboros-consensus 82ecba32,
+    * `MiniProtocol/BlockFetch/Server.hs` 107-146): its mux stops on the exception and the
+    * connection closes (network-mux `Mux.hs` 458-463, ouroboros-network c45735a5), with no
+    * `NoBlocks` and no `BatchDone` for that range. The node goes on: the reference's rethrow policy
+    * makes each of them `ShutdownPeer` (`Node/RethrowPolicy.hs` 72-100).
+    */
+  case RangeRefused(refusal: NetworkError.RangeRefusal)
+
   /** An accepted connection stayed silent after its handshake for the protocol idle timeout: no
     * remote-initiated mini-protocol sent a byte (ouroboros-network c45735a5,
     * `defaultProtocolIdleTimeout`).
@@ -102,10 +111,9 @@ enum NetworkError extends DomainError:
       s"${Protocols.name(Protocols.LocalStateQuery)} acquired UTxO view at $point with stamp $pinned; expected $flushed..$selected"
     case BearerClosed(r) => s"connection closed: ${r.message}"
     case NotKept(p, after) =>
-      val point = after match
-        case ChainSync.Point.Origin            => "origin"
-        case ChainSync.Point.Block(slot, hash) => s"${slot.value}@${hash.hex.take(16)}"
-      s"${Protocols.name(p)}: the block after $point is not kept: the node keeps no chain database"
+      s"${Protocols.name(p)}: the block after ${NetworkError.pointText(after)} is not kept: the node keeps no chain database"
+    case RangeRefused(refusal) =>
+      s"${Protocols.name(Protocols.BlockFetch)}: the range ends the connection: ${refusal.message}"
     case ProtocolIdleTimeout(after) =>
       s"no mini-protocol activity within ${after.toSeconds} s of the handshake"
     case Defect(t) => s"network defect: ${NetworkError.describe(t)}"
@@ -182,6 +190,38 @@ object NetworkError:
 
   enum SduOperation:
     case Read, Write
+
+  /** Why our BlockFetch server ends the connection over a range ([[RangeRefused]]). */
+  enum RangeRefusal:
+    /** An end of the range is Origin: `NoGenesisBlock` (`MiniProtocol/BlockFetch/Server.hs`
+      * 107-112), before anything is looked up.
+      */
+    case NoGenesisBlock
+
+    /** The bounds `from` to `to` are not a range: the ChainDB iterator's `InvalidIteratorRange` (a
+      * lower bound in a later slot than the upper, or a walk back from the upper bound that reaches
+      * the start of the chain without meeting the lower; `Storage/ChainDB/Impl/Iterator.hs` 254-257
+      * and 494-504), or the ImmutableDB's `InvalidIteratorRangeError` for the bounds it is asked to
+      * stream between (`Storage/ImmutableDB/Impl/Iterator.hs` 134-159).
+      */
+    case InvalidRange(from: ChainSync.Point, to: ChainSync.Point)
+
+    /** The block at `point`, part of a batch already started, was collected since and is not in the
+      * immutable chain: `IteratorBlockGCed`, which the server raises as `BlockGCed`
+      * (`Storage/ChainDB/Impl/Iterator.hs` 654-695 and 774-784; `Server.hs` 144-146).
+      */
+    case Collected(point: ChainSync.Point)
+
+    def message: String = this match
+      case NoGenesisBlock => "an end of the range is Origin"
+      case InvalidRange(from, to) =>
+        s"${NetworkError.pointText(from)} to ${NetworkError.pointText(to)} is not a range"
+      case Collected(point) => s"${NetworkError.pointText(point)} was collected during the batch"
+
+  /** A point as the messages write it. */
+  private def pointText(point: ChainSync.Point): String = point match
+    case ChainSync.Point.Origin            => "origin"
+    case ChainSync.Point.Block(slot, hash) => s"${slot.value}@${hash.hex.take(16)}"
 
   /** The text of an unexpected exception, for presentation only. */
   def describe(cause: Throwable): String =

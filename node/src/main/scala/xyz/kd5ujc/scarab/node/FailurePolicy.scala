@@ -54,6 +54,11 @@ object FailurePolicy:
     // chain database): the connection closes, and the peer, which asked for nothing wrong, is not
     // charged (#924). The reference always keeps its immutable chain and has no such case.
     case _: PeerError.NotKept => FailureClass.NotThePeers
+    // Our BlockFetch server ended the connection over the peer's range: `NoGenesisBlock` and
+    // `BlockGCed` (`distantPeer`), the ChainDB's `InvalidIteratorRange` (`theyBuggyOrEvil`) and the
+    // ImmutableDB's `InvalidIteratorRangeError` (`ourBug`) are each `ShutdownPeer` (consensus
+    // 82ecba329 Node/RethrowPolicy.hs:72-100), the peer tried again after the error delay
+    case _: PeerError.RangeRefused => FailureClass.Transient
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving

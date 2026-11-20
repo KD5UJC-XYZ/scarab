@@ -32,7 +32,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
           def poll = IO.pure(None)
           def await = IO.never
       ),
-      (_, _) => IO.pure(None),
+      (_, _) => IO.pure(xyz.kd5ujc.scarab.network.BlockFetchServer.Answer.NoBlocks()),
       new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)

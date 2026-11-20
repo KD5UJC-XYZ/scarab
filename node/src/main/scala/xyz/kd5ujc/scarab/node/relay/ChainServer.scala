@@ -213,7 +213,11 @@ final class ChainServer[F[_]: Async] private (
           case _ => None
         }
       }
-    }
+    }.map(
+      _.fold(BlockFetchServer.Answer.NoBlocks[F]())(served =>
+        BlockFetchServer.Answer.Batch(served.map(Right(_)))
+      )
+    )
 
   /** Where `point` stands on `chain`: in the volatile chain, or in the store, found in its index.
     */

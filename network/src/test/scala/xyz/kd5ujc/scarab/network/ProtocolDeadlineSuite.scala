@@ -90,7 +90,9 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
                 blocks = new BlockFetchServer.Blocks[IO]:
                   def range(from: ChainSync.Point, to: ChainSync.Point) =
                     IO.pure(
-                      Some(Stream.sleep_[IO](2.seconds) ++ Stream.emit(Bytes(Vector(1.toByte))))
+                      Peers.answer(
+                        Some(Stream.sleep_[IO](2.seconds) ++ Stream.emit(Bytes(Vector(1.toByte))))
+                      )
                     )
                 timeouts = BlockFetchRuntime.Timeouts(
                   ProtocolDeadline.Unbounded,

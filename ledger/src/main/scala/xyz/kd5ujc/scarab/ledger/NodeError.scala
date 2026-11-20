@@ -105,6 +105,14 @@ enum PeerError extends NodeError:
     */
   case NotKept(cause: NetworkError.NotKept)
 
+  /** Our BlockFetch server ended this connection over a range the peer asked for
+    * ([[NetworkError.RangeRefused]]): an Origin end, bounds that are not a range, or a block of the
+    * batch collected since it started. The connection closes and the node goes on, and the peer is
+    * tried again after the error delay, as the reference's rethrow policy makes each of these
+    * exceptions `ShutdownPeer` ([[xyz.kd5ujc.scarab.node.FailurePolicy.classify]]).
+    */
+  case RangeRefused(cause: NetworkError.RangeRefused)
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -129,6 +137,7 @@ enum PeerError extends NodeError:
     case Unverifiable(e)       => e.message
     case HeaderUndecided(p, d) => s"${Points.show(p)} has no verdict: ${d.message}"
     case NotKept(cause)        => cause.message
+    case RangeRefused(cause)   => cause.message
 
 object PeerError:
   enum GenesisProblem:

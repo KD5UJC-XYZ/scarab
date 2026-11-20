@@ -76,7 +76,7 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
         def await = park(Protocols.ChainSync)
       val blocks: BlockFetchServer.Blocks[IO] = (_, _) =>
         if parking then park(Protocols.BlockFetch)
-        else IO.pure(Some(Stream.emit(Peers.block(1)).covary[IO]))
+        else IO.pure(Peers.answer(Some(Stream.emit(Peers.block(1)).covary[IO])))
       val sink = new TxSubmissionServer.Sink[IO]:
         def reader = TxSubmission2Fixtures.structural
         def known(id: Bytes) = if parking then park(Protocols.TxSubmission2) else IO.pure(false)

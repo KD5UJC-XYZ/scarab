@@ -186,12 +186,15 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         new BlockFetchServer.Blocks[IO]:
           def range(from: Point, to: Point) =
             answered.getAndUpdate(_ + 1).flatMap { n =>
-              honest.blocks.range(from, to).map { found =>
-                if n == 0 then
-                  found.map(_.map(_ => Bytes(Vector(0xff.toByte))).evalTap { raw =>
-                    malformed.complete(raw).void
-                  })
-                else found
+              honest.blocks.range(from, to).map {
+                case BlockFetchServer.Answer.Batch(found) if n == 0 =>
+                  BlockFetchServer.Answer.Batch(
+                    found.map(_.map(_ => Bytes(Vector(0xff.toByte)))).evalTap {
+                      case Right(raw) => malformed.complete(raw).void
+                      case Left(_)    => IO.unit
+                    }
+                  )
+                case other => other
               }
             }
         ,

@@ -30,7 +30,8 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     val blocks = new BlockFetchServer.Blocks[IO]:
-      def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
+      def range(from: ChainSync.Point, to: ChainSync.Point) =
+        IO.pure(BlockFetchServer.Answer.NoBlocks())
     val transactions = new TxSubmissionServer.Sink[IO]:
       def reader = RelayedTransactions
       def known(id: xyz.kd5ujc.scarab.codec.Bytes) = IO.pure(false)
