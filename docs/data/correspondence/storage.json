@@ -1333,7 +1333,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "a0ad3e0af565d8f1"
+   "digest": "18259e5d9a618e20"
   },
   "def storage.RocksLeiosStore#writeEbBody": {
    "upstream": [

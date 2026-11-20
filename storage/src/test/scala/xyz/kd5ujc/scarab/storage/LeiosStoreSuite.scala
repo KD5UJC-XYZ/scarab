@@ -535,6 +535,27 @@ class LeiosStoreSuite extends CatsEffectSuite:
         )
   }
 
+  dirs.test("cancelling a first open that waits for the lock gives its permit back") { dir =>
+    val leios = dir / "leios"
+    for
+      locks <- LeiosStoreLocks.make[IO]
+      tried <- IO.deferred[java.nio.channels.FileChannel]
+      // a holder in another process: every attempt finds the lock held
+      fiber <- attempt(
+        firstOpenWith(leios, locks, _ => IO.unit, channel => tried.complete(channel).as(None))
+      ).start
+      channel <- tried.get
+      _ <- fiber.cancel
+      outcome <- fiber.join
+      closed <- IO(!channel.isOpen)
+      later <- attempt(firstOpen(leios, locks, _ => IO.unit))
+    yield
+      assert(outcome.isCanceled, outcome.toString)
+      assert(closed, "the cancelled open closed its lock file")
+      // the permit was given back: an open with the same instance takes it and the lock
+      assertEquals(later, Right(()))
+  }
+
   dirs.test("a store opens though its staging directory cannot be read") { dir =>
     val leios = dir / "leios"
     val root = RocksLeiosStore.stagingRoot(leios.toNioPath)
@@ -797,7 +818,16 @@ object LeiosStoreSuite:
   def firstOpen(dir: Path, locks: LeiosStoreLocks[IO], sync: java.nio.file.Path => IO[Unit])(using
       Handle[IO, LeiosStoreError]
   ): IO[Unit] =
-    RocksLeiosStore.firstOpen[IO, Unit](dir, locks, sync)(IO.unit)
+    firstOpenWith(dir, locks, sync, channel => IO.blocking(Option(channel.tryLock())))
+
+  /** [[firstOpen]], attempting the lock with `attemptLock`. */
+  def firstOpenWith(
+      dir: Path,
+      locks: LeiosStoreLocks[IO],
+      sync: java.nio.file.Path => IO[Unit],
+      attemptLock: java.nio.channels.FileChannel => IO[Option[java.nio.channels.FileLock]]
+  )(using Handle[IO, LeiosStoreError]): IO[Unit] =
+    RocksLeiosStore.firstOpen[IO, Unit](dir, locks, sync, attemptLock)(IO.unit)
 
   /** Hash `i` of many: distinct for every `i` below 2^31. */
   def wide(i: Int): EbHash =

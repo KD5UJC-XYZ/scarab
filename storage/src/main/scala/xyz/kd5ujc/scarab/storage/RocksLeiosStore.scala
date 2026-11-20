@@ -23,6 +23,7 @@ import org.rocksdb.{
   WriteOptions
 }
 import scala.annotation.tailrec
+import scala.concurrent.duration.*
 import scala.collection.immutable.{SortedMap, SortedSet}
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
@@ -276,12 +277,14 @@ final class RocksLeiosStore[F[_]] private (
         if has(families.points, k) then Right((Vector.empty, p))
         else
           evicted(p, point.hash, key).map { gone =>
+            // the reference completes a novel point whose body it holds in its volatile file; read
+            // before the commit, so that nothing after it can fail and leave the points held in
+            // memory behind the store
+            val completed =
+              if !gone && has(families.complete, key) then Vector(point) else Vector.empty
             commit(
               Vector(Op.Put(Family.Points, k, pointValue(announced.toLong, EbStatus.Volatile)))
             )
-            // the reference completes a novel point whose body it holds in its volatile file
-            val completed =
-              if !gone && has(families.complete, key) then Vector(point) else Vector.empty
             (completed, p.added(point.hash, point.slot, EbStatus.Volatile))
           }
       }
@@ -937,11 +940,15 @@ object RocksLeiosStore:
     *
     * Ancestors of `dir` that do not exist are made, and each made directory's entry in its parent
     * synced with `sync`, walking up to the first that existed, so that the store's path is durable.
+    * The lock is waited for with `attemptLock` (a `tryLock` that finds the lock held gives
+    * nothing), pausing between attempts, so that cancelling an open that waits closes its lock file
+    * and gives back its permit.
     */
   private[storage] def firstOpen[F[_]: Async, A](
       dir: Path,
       locks: LeiosStoreLocks[F],
-      sync: java.nio.file.Path => F[Unit]
+      sync: java.nio.file.Path => F[Unit],
+      attemptLock: FileChannel => F[Option[FileLock]]
   )(open: F[A])(using Raise[F, LeiosStoreError]): F[A] =
     val F = Async[F]
     val nio = dir.toNioPath
@@ -966,6 +973,16 @@ object RocksLeiosStore:
           sync(made).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
         )
       }
+    // The operating-system lock, waited for with `tryLock` so that the wait can be cancelled: a
+    // holder in another process may hold it for long.
+    def waited(channel: FileChannel, pause: FiniteDuration): F[FileLock] =
+      attemptLock(channel).attempt.flatMap {
+        case Left(e)           => fail(LeiosStoreError.Io(e))
+        case Right(Some(lock)) => F.pure(lock)
+        case Right(None)       => F.sleep(pause) *> waited(channel, (pause * 2).min(LockPauseMax))
+      }
+    // The ancestors are made first, since the lock file lives in the parent. The permit is taken
+    // before the lock file is opened and given back after it is closed.
     val locked: Resource[F, FileLock] =
       Resource
         .eval(ancestors *> io(parent.toRealPath().resolve(lockFile(nio).getFileName)))
@@ -975,7 +992,11 @@ object RocksLeiosStore:
             io(FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE))
           )(channel => F.blocking(channel.close()))
         )
-        .flatMap(channel => Resource.make(io(channel.lock()))(lock => F.blocking(lock.release())))
+        .flatMap(channel =>
+          Resource.makeFull[F, FileLock](poll => poll(waited(channel, LockPauseMin)))(lock =>
+            F.blocking(lock.release())
+          )
+        )
     val validated: F[Unit] =
       io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
         .map(_.asScala.toVector.map(Bytes.wrap))
@@ -1020,6 +1041,10 @@ object RocksLeiosStore:
         *> bestEffort(discardRoot(nio))
     locked.surround(prepared *> tidied *> open)
 
+  // The first and the longest pause between two attempts of a first open at its lock.
+  private val LockPauseMin: FiniteDuration = 10.millis
+  private val LockPauseMax: FiniteDuration = 1.second
+
   // Permits of `gate`: one for each call, all of them for the release.
   private val Permits = 1L << 40
 
@@ -1040,7 +1065,12 @@ object RocksLeiosStore:
     for
       natives <- Resource.make(F.delay(new Natives(create = false)))(n => F.blocking(n.close()))
       opened <- Resource.make(
-        firstOpen[F, Opened](dir, locks, target => F.blocking(syncParent(target)))(
+        firstOpen[F, Opened](
+          dir,
+          locks,
+          target => F.blocking(syncParent(target)),
+          channel => F.blocking(Option(channel.tryLock()))
+        )(
           io(openAt(nio, natives))
         )
       )(o => F.blocking(o.close()))
