@@ -27,6 +27,12 @@ class LeiosStoreSuite extends CatsEffectSuite:
       .resource[IO]
       .flatMap(locks => allowing(RocksLeiosStore.resource[IO](dir, locks)))
 
+  /** The store as stored, without what an open resumes, as the import and export open it. */
+  private def verbatim(dir: Path): Resource[IO, RocksLeiosStore[IO]] =
+    LeiosStoreLocks
+      .resource[IO]
+      .flatMap(locks => allowing(RocksLeiosStore.verbatim[IO](dir, locks)))
+
   private val dirs = ResourceFunFixture(Files.forAsync[IO].tempDirectory)
 
   dirs.test("a point is written once, and points scan by slot") { dir =>
@@ -806,7 +812,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
   ) { dir =>
     val leios = dir / "leios"
     for
-      _ <- store(leios).use { s =>
+      _ <- verbatim(leios).use { s =>
         ok(
           s.importVolatile(
             Vector(
@@ -824,7 +830,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
           )
         )
       }
-      found <- store(leios).use { s =>
+      found <- verbatim(leios).use { s =>
         ok(for
           scanned <- s.scanEbPoints
           reopened <- s.stored(hash(2))
@@ -845,6 +851,53 @@ class LeiosStoreSuite extends CatsEffectSuite:
       assertEquals(swept, Vector(point(3, 2), point(4, 2), point(5, 3)))
       assertEquals(gone.volatile, Held(Vector.empty, None, None))
       assertEquals(pinned.volatile.points.map(_._3), Vector(EbStatus.Certified))
+  }
+
+  dirs.test(
+    "an open resumes a copy and a sweep the reference left pending, as the reference starts"
+  ) { dir =>
+    val leios = dir / "leios"
+    val volatile = RocksLeiosStore.Partition.Volatile
+    for
+      // as an import leaves a reference stopped between a pin and its copy, and between a mark
+      // and its sweep: hash 1 pinned with its closure, hash 2 all marked, hash 3 marked in part
+      _ <- verbatim(leios).use { s =>
+        ok(
+          s.importVolatile(
+            Vector(
+              (point(1, 1), 1L, EbStatus.Certified),
+              (point(2, 2), 1L, EbStatus.Marked),
+              (point(3, 2), 1L, EbStatus.Marked),
+              (point(4, 3), 1L, EbStatus.Marked),
+              (point(5, 3), 1L, EbStatus.Volatile)
+            )
+          ) *>
+            s.importBody(volatile, hash(1), body(2), Some(SortedMap(0 -> tx(0), 1 -> tx(1)))) *>
+            s.importBody(volatile, hash(2), body(1), Some(SortedMap(0 -> tx(0))))
+        )
+      }
+      // an open as the import's keeps them as they are
+      kept <- verbatim(leios).use(s => ok((s.stored(hash(1)), s.scanEbPoints).tupled))
+      // a live open resumes them, with no promotion, transaction write or collection
+      resumed <- store(leios).use(s =>
+        ok(
+          (s.stored(hash(1)), s.stored(hash(2)), s.scanEbPoints, s.lookupEbClosure(hash(1))).tupled
+        )
+      )
+    yield
+      val (pending, points) = kept
+      assertEquals(pending.volatile.points.map(_._3), Vector(EbStatus.Certified))
+      assertEquals(pending.immutable, Held(Vector.empty, None, None))
+      assertEquals(points.size, 5)
+      val (copied, swept, left, closure) = resumed
+      assertEquals(copied.volatile.points.map(_._3), Vector(EbStatus.Copied))
+      assertEquals(
+        copied.immutable,
+        Held(Vector(slot(1) -> 1L), Some(body(2).encoded), Some(SortedMap(0 -> tx(0), 1 -> tx(1))))
+      )
+      assertEquals(swept.volatile, Held(Vector.empty, None, None))
+      assertEquals(left, Vector(point(1, 1), point(4, 3), point(5, 3)))
+      assertEquals(closure.map(_.map(_._2)), Some(Vector(tx(0), tx(1))))
   }
 
   dirs.test("fills that fill nothing allocate the closure, which the copier then copies") { dir =>

@@ -225,7 +225,12 @@ holds them, then marks and sweeps at once each hash with a volatile or copied ro
 unless a row of the hash is pinned or at or after the slot: the hash's rows, body and closure go from
 the volatile partition, and the immutable partition keeps what was copied. It runs in writes of at most
 256 hashes, each hash decided and collected whole in the write that takes it, from the rows of the
-volatile partition the store holds in memory, read when it opens. The reads take the volatile
+volatile partition the store holds in memory, read when it opens. An open then resumes what the
+reference resumes when it starts, its copier's pass and its sweep pass: it copies each hash with a
+pinned row and a volatile closure, and sweeps each hash all of whose rows are marked, as a store read
+from a reference stopped between a pin and its copy, or a mark and its sweep, holds them. The import
+from and the export to the reference's database open the store without this, so that they exchange
+that state as it is; the next open resumes it. The reads take the volatile
 partition first and the immutable one for what it does not hold: a body, a closure (none while the
 volatile partition holds the body and not its whole closure), the transactions by offset; the point
 scans read the volatile partition alone.

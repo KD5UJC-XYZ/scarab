@@ -514,6 +514,55 @@ final class RocksLeiosStore[F[_]] private (
         }
     }
 
+  /** What the reference resumes when it starts: the copier's pass, its doorbell starting rung
+    * (`copierDoorbell`, `Impl/SQLite.hs:157-161` at 2416493b), and the sweep pass, the writer's
+    * sweep state starting as a pass in progress (`serve 0 (Just 0)`, `Impl/SQLite.hs:345-361`).
+    * Every hash with a pinned row and a volatile closure is copied, and every hash all of whose
+    * rows are marked is swept, in writes of at most [[GcBatch]] hashes, as a store read from a
+    * reference database stopped between a pin and its copy, or a mark and its sweep, holds them.
+    */
+  private[storage] def resume(using Raise[F, LeiosStoreError]): F[Unit] =
+    def swept(cursor: Option[EbHash]): F[Unit] =
+      sweepMarked(cursor).flatMap(_.fold(F.unit)(last => swept(Some(last))))
+    def copies(pending: Vector[EbHash]): F[Unit] =
+      if pending.isEmpty then F.unit
+      else copyPending(pending.take(GcBatch)) *> copies(pending.drop(GcBatch))
+    state.get
+      .map(
+        _.rows
+          .collect {
+            case (hash, rows) if rows.values.exists(_.status == EbStatus.Certified) => hash
+          }
+          .toVector
+          .sorted
+      )
+      .flatMap(copies) *> swept(None)
+
+  /** One write of the copier's pass: each of `hashes` with a pinned row and a volatile closure is
+    * copied (`copyEbToImmutable`, `Impl/SQLite/Maintenance.hs:112-168` at 2416493b).
+    */
+  private def copyPending(hashes: Vector[EbHash])(using Raise[F, LeiosStoreError]): F[Unit] =
+    writing { p =>
+      hashes
+        .foldLeftM((Vector.empty[Op], p)) { case ((ops, q), hash) =>
+          hashKey(hash).flatMap { key =>
+            if !has(Family.VolClosures, key) then Right((ops, q))
+            else
+              (body(Partition.Volatile, hash, key), transactions(Partition.Volatile, key)).mapN {
+                (eb, txs) =>
+                  eb.fold((ops, q)) { b =>
+                    val (copy, next) = copied(q, hash, key, b.encoded, txs)
+                    (ops ++ copy, next)
+                  }
+              }
+          }
+        }
+        .map { (ops, next) =>
+          commit(ops)
+          ((), next)
+        }
+    }
+
   // --- reads ---
 
   /** The partition whose body a read takes: the volatile one if it holds the body, the immutable
@@ -1131,12 +1180,24 @@ object RocksLeiosStore:
   /** Open the store in `dir`, making it if `dir` is absent or an empty directory ([[firstOpen]]). A
     * database whose column families or format record are not this build's, and a directory that
     * holds anything but a database, are refused. `locks` keeps the process's opens apart: the
-    * caller makes one for the process and gives it to every open.
+    * caller makes one for the process and gives it to every open. Once open, the store resumes what
+    * the reference resumes when it starts ([[RocksLeiosStore#resume]]): a pending copy and a
+    * pending sweep.
     */
   def resource[F[_]: Async](dir: Path, locks: LeiosStoreLocks[F])(using
       Raise[F, LeiosStoreError]
   ): Resource[F, RocksLeiosStore[F]] =
-    resourceWith(dir, locks, channel => Async[F].blocking(Option(channel.tryLock())))
+    opening(dir, locks, channel => Async[F].blocking(Option(channel.tryLock())))(_.resume)
+
+  /** [[resource]] without what the reference resumes when it starts ([[RocksLeiosStore#resume]]):
+    * the store as stored, so that an import from the reference's database or an export to it holds
+    * the reference's state as it is, a pin awaiting its copy and a mark awaiting its sweep
+    * included. The next open by [[resource]] resumes them.
+    */
+  private[storage] def verbatim[F[_]: Async](dir: Path, locks: LeiosStoreLocks[F])(using
+      Raise[F, LeiosStoreError]
+  ): Resource[F, RocksLeiosStore[F]] =
+    opening(dir, locks, channel => Async[F].blocking(Option(channel.tryLock())))(_ => Async[F].unit)
 
   /** [[resource]], attempting the first open's lock with `attemptLock`. */
   private[storage] def resourceWith[F[_]: Async](
@@ -1144,6 +1205,16 @@ object RocksLeiosStore:
       locks: LeiosStoreLocks[F],
       attemptLock: FileChannel => F[Option[FileLock]]
   )(using Raise[F, LeiosStoreError]): Resource[F, RocksLeiosStore[F]] =
+    opening(dir, locks, attemptLock)(_.resume)
+
+  /** An open, `resumed` once the store is open and before it is given out. */
+  private def opening[F[_]: Async](
+      dir: Path,
+      locks: LeiosStoreLocks[F],
+      attemptLock: FileChannel => F[Option[FileLock]]
+  )(resumed: RocksLeiosStore[F] => F[Unit])(using
+      Raise[F, LeiosStoreError]
+  ): Resource[F, RocksLeiosStore[F]] =
     val F = Async[F]
     val nio = dir.toNioPath
     def fail[A](e: LeiosStoreError): F[A] = e.raise[F, A]
@@ -1197,4 +1268,5 @@ object RocksLeiosStore:
         gate.acquireN(Permits) *> released.set(true) *> F.blocking(store.closeOptions()) *>
           gate.releaseN(Permits)
       )
+      _ <- Resource.eval(resumed(store))
     yield store

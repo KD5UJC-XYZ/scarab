@@ -1858,6 +1858,36 @@
     "ChainServerSuite"
    ],
    "digest": "2f5fd2f6a029cfb2"
+  },
+  "def storage.RocksLeiosStore#resume": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite.hs",
+     "symbol": "copierDoorbell",
+     "lines": [
+      157,
+      161
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite.hs",
+     "symbol": "serve",
+     "lines": [
+      345,
+      361
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "4113e0bd95e63f72"
   }
  },
  "glue": [
@@ -1987,14 +2017,15 @@
    ]
   },
   {
-   "reason": "what an import from or an export to the reference's SQLite files exchanges with the store, one endorser block at a time, the rows, body and closure of each partition as its tables hold them; the reference has no import or export of its LeiosDB",
+   "reason": "what an import from or an export to the reference's SQLite files exchanges with the store, one endorser block at a time, the rows, body and closure of each partition as its tables hold them, through an open that resumes nothing, so a pending copy or sweep is exchanged as it is; the reference has no import or export of its LeiosDB",
    "definitions": [
     "class storage.StoredEb",
     "def storage.RocksLeiosStore#stored",
     "def storage.RocksLeiosStore#importBody",
     "class storage.Held",
     "def storage.RocksLeiosStore#importVolatile",
-    "def storage.RocksLeiosStore#importImmutable"
+    "def storage.RocksLeiosStore#importImmutable",
+    "def storage.RocksLeiosStore.verbatim"
    ]
   },
   {
