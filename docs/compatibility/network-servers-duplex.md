@@ -63,13 +63,26 @@ and the join, blocks collected during a batch, a change between the reads of the
 restart; `ServerSuite`, `ReceivedBlocksSuite` and `PeerDefectPolicySuite`. These assert the reference's
 outcomes as its source at the pins gives them; no running reference node is asked for a fork.
 
-Not changed here: when the received log is collected, a Gap tracked in #1247. The reference collects
-its VolatileDB a delay after blocks are copied to its ImmutableDB (`cdbsGcDelay`, 60 s,
-`Storage/ChainDB/Impl/Args.hs` 123) and keeps 1,000 blocks to a file (`Storage/VolatileDB/Impl.hs`
-186); Scarab collects when its immutable store has made a batch of blocks durable
-(`volatileCollectBlocks`) and keeps 512 to a file, so a block below the immutable tip may stay readable
-for a different time. Also #1247: how the received log recovers when it is opened after damage. Scarab keeps the
-valid prefix of the first damaged file and removes every file after it; the reference truncates each
-damaged file and keeps the others (`mkOpenStateHelper`, `Storage/VolatileDB/Impl/State.hs` 372-436), so
-after such a recovery a fork held only in the received log can be answered `NoBlocks` until it is fetched
-again.
+The received log is collected and recovered as the reference's VolatileDB (#1247). Each copy of
+blocks to the immutable store schedules a collection below the new immutable tip's slot, run 60 s later,
+rounded up to a 10 s mark; a copy in the same interval as the last one scheduled replaces it, so at most
+one collection runs in an interval, and nothing of the schedule survives a restart, where the next copy's
+collection covers it (`cdbsGcDelay`, `cdbsGcInterval`, `Storage/ChainDB/Impl/Args.hs` 119-124;
+`copyToImmutableDBRunner`, `scheduleGC` and `gcScheduleRunner`, `Storage/ChainDB/Impl/Background.hs`
+257-296 and 466-652, ouroboros-consensus `82ecba329`; the same code at `808e40054`). Scarab forces its
+immutable store to disk before each collection; a collection that fails stops the node. A file holds
+1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected before
+another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
+387-399). When the log is opened, each file is validated on its own: a damaged file is cut at its last
+good record and the files after it are read all the same, and a later copy of a block already indexed,
+byte for byte, cuts its file there (`mkOpenStateHelper`, `addToReverseIndex`,
+`Storage/VolatileDB/Impl/State.hs` 372-436 and 464-492). A later record of an indexed block whose bytes
+differ takes the earlier record's place instead: the log writes one only to replace a record found
+inconsistent at the start (`ReceivedBlocks.restoreSelected`, or a receipt after `discardRecovered`),
+which the reference's VolatileDB, writing no block twice, never holds. The selected-chain log keeps its
+in-order recovery, since it replays rollback records in order.
+
+Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule, the storage's collections and a
+restart, under TestControl), `ReceivedBlocksSuite` (the files, a damaged file, a copy of an indexed block
+and a replacement) and `VolatileStoreSuite` (the selected-chain log's recovery), asserting the reference's
+outcomes as its source at the pins gives them.

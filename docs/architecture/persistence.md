@@ -158,7 +158,8 @@ as an append-only file instead of a block store with a successor map: a record i
 `crc u32 | kind u8 | flags u8 | length u32 | slot u64 | blockNo u64 | hash[32] | payload`, the CRC-32
 covering everything after it. `kind` is a block (payload: the raw block) or a rollback to a point
 (Origin or a block; no payload), so the chain a log describes is a fold over its records
-(`VolatileStore.chainOf`) and forks need no extra structure. A file rolls over after 512 blocks.
+(`VolatileStore.chainOf`) and forks need no extra structure. A file holds 512 blocks, and the next
+one is started when it fills.
 The store is a hint, not a source of truth, and is built so that it can only be wrong by missing
 blocks:
 
@@ -167,7 +168,8 @@ blocks:
   checksum matches. Appends are not forced one by one: a crash loses at most the unforced tail, and
   those blocks are fetched again.
 - Collection never loses a block the immutable store lacks. Blocks reach the immutable store when
-  they age past `k`; every 512 of those the immutable store is forced (`sync`) and the log files
+  they age past `k`; every 4,096 of those (`volatileCollectBlocks`) the immutable store is forced
+  (`sync`) and the log files
   whose blocks are all at or below the new immutable tip are deleted (oldest first, the newest file
   stays). A rollback marker whose target was collected leaves an empty chain, which is where the
   volatile chain starts after the immutable tip anyway.
@@ -182,6 +184,25 @@ blocks:
   reports `resumed` and `dropped`). The relay's served chain and the mempool start from that tip, so
   the first ChainSync intersection offered to the peer is the previous tip, not the immutable
   boundary. The states are not stored (they are a pure function of the blocks), only re-derived.
+
+**Received blocks** (`<db>/received/<seq>.log`, `ReceivedBlocks`). Every block admitted from a peer or
+forged, selected or not, in the volatile log's record format, block records only: the reference's
+VolatileDB, which holds every block received. A file holds 1,000 blocks, and the next one is started
+when it fills (`volMaxBlocksPerFile`). In memory there is an index of every block (where its record is
+and the predecessor its header names) and a cache of recent bodies; a body is read back from its file.
+
+- Opening validates each file on its own, in order of number (`VolatileStore.openIndexWith`, the
+  reference's `mkOpenStateHelper`): a file is cut at its first record that is incomplete or fails its
+  checksum, and the files after it are read all the same; a later copy of a block already indexed,
+  byte for byte, cuts its file there. A later record of an indexed block with other bytes replaces it in
+  the index: the start writes one to replace a record found inconsistent (`restoreSelected`, or a
+  receipt after `discardRecovered`).
+- Collection runs on the reference's schedule (`GcSchedule`): each copy of blocks to the immutable
+  store schedules a collection below the new immutable tip's slot, 60 s later rounded up to a 10 s
+  mark, one per interval, run by a fiber of its own after the immutable store is forced. It deletes
+  every file but the one being written whose blocks are all below that slot, and only their blocks
+  leave the index. The schedule is not stored: after a restart the next copy's collection covers
+  what was pending. A collection that fails stops the node (`Recovered.collectionsStopped`).
 
 **Leios endorser blocks** (`<db>/leios/`, issue #830). A RocksDB database of its own beside the
 immutable store and the UTxO store, and not part of the ledger snapshot: the store of the reference's

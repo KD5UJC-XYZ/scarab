@@ -1947,17 +1947,26 @@
       372,
       436
      ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
+     "symbol": "addToReverseIndex",
+     "lines": [
+      464,
+      492
+     ]
     }
    ],
-   "class": "Gap",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1247",
+   "class": "Mirror",
    "structure": "differs",
    "evidence": [
     "ReceivedBlocksSuite",
     "VolatileStoreSuite"
    ],
-   "note": "as parseBlockFile and extractBlockInfo, each block is read in turn and its location kept with what is read from its body (here the predecessor). It differs in the recovery it shares with openIndex: the first damaged file is cut and every file after it removed, where the reference's open (mkOpenStateHelper) truncates each damaged file and keeps the others, and truncates a later file at a block already indexed: a Gap (#1247), to be aligned for the received log; the selected-chain journal keeps its in-order recovery",
-   "digest": "666577b18901c140"
+   "note": "as parseBlockFile and extractBlockInfo, each block is read in turn and its location kept with what is read from its body (here the predecessor). As mkOpenStateHelper, each file is validated on its own, in order of number: cut at its first record that is incomplete, fails its checksum or is not understood, the files after it read all the same, and a later record of a block already indexed whose bytes are the indexed record's cuts its file there (DuplicatedBlock). The selected-chain journal's open (open, openIndex) keeps its in-order recovery, which replays rollback records in order. Where it differs: a later record of an indexed block whose bytes differ takes the earlier record's place, and nothing is cut: the received log writes one only to replace a record found inconsistent (restoreSelected, or a receipt after discardRecovered), where the reference's putBlockImpl never writes a block twice (#1247)",
+   "digest": "084ec3d290c29324"
   },
   "def storage.ChainStorage.predecessorOf": {
    "upstream": [
@@ -2009,6 +2018,247 @@
     "LeiosStoreSuite"
    ],
    "digest": "4113e0bd95e63f72"
+  },
+  "trait storage.GcSchedule": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "GcSchedule",
+     "lines": [
+      532,
+      532
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "b69de4796ddef554"
+  },
+  "class storage.GcSchedule.Scheduled": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "ScheduledGc",
+     "lines": [
+      534,
+      540
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "f74adaf3dfd40a34"
+  },
+  "class storage.GcSchedule.Params": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "GcParams",
+     "lines": [
+      545,
+      552
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "90576c9de77b5bb7"
+  },
+  "val storage.GcSchedule.Params.Reference": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Args.hs",
+     "symbol": "defaultSpecificArgs",
+     "lines": [
+      119,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "753343c565a66f32"
+  },
+  "def storage.GcSchedule.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "newGcSchedule",
+     "lines": [
+      554,
+      555
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "7a4d2668f1c28669"
+  },
+  "def storage.GcSchedule#schedule": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "scheduleGC",
+     "lines": [
+      557,
+      576
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "368c5b7c98b504d8"
+  },
+  "def storage.GcSchedule.scheduled": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "scheduleGC",
+     "lines": [
+      566,
+      576
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "3adce5962596d846"
+  },
+  "def storage.GcSchedule.timeFor": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "computeTimeForGC",
+     "lines": [
+      578,
+      591
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "roundUpToInterval",
+     "lines": [
+      593,
+      609
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "the time is rounded on the monotonic clock in nanoseconds, the reference's in picoseconds; a time past the clock's range is its largest value",
+   "digest": "84fb5cd844b176f8"
+  },
+  "def storage.GcSchedule#pending": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "dumpGcSchedule",
+     "lines": [
+      647,
+      652
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite"
+   ],
+   "digest": "1071d7fe349efff5"
+  },
+  "def storage.GcSchedule#run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "gcScheduleRunner",
+     "lines": [
+      611,
+      645
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "waits for the time of the oldest entry, takes it off the queue and collects its slot, one at a time, as the reference's runner; a collection that fails ends the runner with the failure as its value (ADR 0017), which ChainStorage hands to the node to stop on, where the reference's runner throws in its linked thread",
+   "digest": "6bacac72b576132f"
+  },
+  "val storage.ReceivedBlocks.DefaultBlocksPerFile": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "volMaxBlocksPerFile",
+     "lines": [
+      180,
+      189
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite"
+   ],
+   "digest": "15e24a747a226ee0"
   }
  },
  "glue": [
@@ -2231,6 +2481,20 @@
    "definitions": [
     "enum storage.leios.LeiosReferenceDb.Error",
     "def storage.leios.LeiosReferenceDb.Error#message"
+   ]
+  },
+  {
+   "reason": "the companions of the received log's collection schedule, and its parameters' constructor, which refuses an interval that is not positive (a precondition the reference states in a comment, roundUpToInterval, Storage/ChainDB/Impl/Background.hs 593-609 at ouroboros-consensus 82ecba329) and a negative delay",
+   "definitions": [
+    "object storage.GcSchedule",
+    "object storage.GcSchedule.Params",
+    "def storage.GcSchedule.Params.of"
+   ]
+  },
+  {
+   "reason": "why the received log's collections stopped, carried as a value across the runner fiber's boundary (ADR 0017) for the node to stop on; the reference's runner throws in a thread linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-121 and 140-141 at ouroboros-consensus 82ecba329)",
+   "definitions": [
+    "enum storage.ChainStorage.CollectionStopped"
    ]
   }
  ]
