@@ -196,9 +196,10 @@ and the predecessor its header names) and a cache of recent bodies; a body is re
   incomplete, fails its checksum or whose block the start-up check refuses (`ReceivedBlocks.Check`,
   given by the node: the block decodes, its header names the record's point and its body is the
   header's), its blocks are indexed up to the first one already indexed, whatever the bytes of its
-  record, and it is cut at the earlier of the two; the files after it are read all the same. Each file
-  cut is logged once with its offset and typed cause (`StorageEvent.ReceivedTruncated`, the
-  reference's `Truncate`), and the open's totals as `StorageEvent.ReceivedOpened`. A block
+  record, and it is cut at the earlier of the two; the files after it are read all the same. Each cut
+  is logged as it is made, with its file, offset and typed cause (`StorageEvent.ReceivedTruncated`,
+  the reference's `Truncate`, twice for a file cut where its parse stopped and then at an earlier
+  repeat), and the open's totals as `StorageEvent.ReceivedOpened`. A block
   the index holds is not written again: a receipt and the start's repair of the selected chain's
   blocks (`restoreSelected`) write only a block the log lacks. A record that fails its checksum when
   it is read back leaves the index, so the block can be written again; the next open settles it, as

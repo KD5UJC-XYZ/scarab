@@ -672,7 +672,7 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
-  test("each file the open cuts is reported once, where and why, and the next open reports none") {
+  test("each cut the open makes is reported, where and why, and the next open reports none") {
     // three records to a file: [1 2 3] [4 U 6] [7 1 8] [9 ~]: U holds block 5's reference over a
     // body that does not decode, the second file holds a repeat of block 1, and the last file ends
     // in bytes that are not a record. Each cut is reported as the reference traces `Truncate`, with
@@ -693,22 +693,30 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
           _ <- IO(
             JFiles.write(logFiles(dir)(3), Array.fill[Byte](10)(7), StandardOpenOption.APPEND)
           )
-          first <- ReceivedBlocks.recovering[IO](dir, 3)(unread, decodes).use((_, r) => IO.pure(r))
-          again <- ReceivedBlocks.recovering[IO](dir, 3)(unread, decodes).use((_, r) => IO.pure(r))
+          first <- ReceivedBlocks
+            .recovering[IO](dir, 3)(unread, decodes, _ => IO.unit)
+            .use((_, r) => IO.pure(r))
+          again <- ReceivedBlocks
+            .recovering[IO](dir, 3)(unread, decodes, _ => IO.unit)
+            .use((_, r) => IO.pure(r))
         yield
           assertEquals(
             first.cuts,
             Vector(
               VolatileStore.Cut(
-                1,
+                "00000001.log",
                 size(bs(3)),
                 VolatileStore.CutCause.Refused(
                   bs(4)._1.hash,
                   StorageError.Corrupt("synthetic block", Undecodable.Body)
                 )
               ),
-              VolatileStore.Cut(2, size(bs(6)), VolatileStore.CutCause.Repeated(bs(0)._1.hash, 0)),
-              VolatileStore.Cut(3, size(bs(8)), VolatileStore.CutCause.Unreadable)
+              VolatileStore.Cut(
+                "00000002.log",
+                size(bs(6)),
+                VolatileStore.CutCause.Repeated(bs(0)._1.hash, "00000000.log")
+              ),
+              VolatileStore.Cut("00000003.log", size(bs(8)), VolatileStore.CutCause.Unreadable)
             ),
             "one cut per file, at its offset, with its cause"
           )
@@ -716,6 +724,95 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
           assertEquals(again.cuts, Vector.empty, "the next open cuts nothing")
           assertEquals(again.report.truncatedBytes, 0L, "and reports no bytes cut")
       }
+    }
+  }
+
+  test("a file with a repeat before a refused block is cut and reported twice, as the reference") {
+    // two files: [A] [B A U C], U a body that does not decode. The reference parses the second file
+    // up to U and truncates there, then finds the repeat of A and truncates again, tracing both
+    // (`validateFile`, `Storage/VolatileDB/Impl/State.hs` 412-424, ouroboros-consensus 82ecba329):
+    // the cuts are told in that order, each as it is made, and the file keeps B
+    tempDir.use { dir =>
+      ok {
+        val (a, b, c, u) = (block(1), block(2), block(4), block(3)._1 -> undecodable)
+        def size(x: (BlockRef, Bytes)): Long =
+          VolatileStore.encode(VolatileRecord.Block(x._1, x._2)).length.toLong
+        for
+          _ <- VolatileStore
+            .open[IO](dir, 1)
+            .use((log, _) => log.append(a._1, a._2))
+          _ <- IO {
+            val second = dir.toNioPath.resolve("00000001.log")
+            val records =
+              Vector(b, a, u, c).map((r, raw) => VolatileStore.encode(VolatileRecord.Block(r, raw)))
+            JFiles.write(second, records.flatten.toArray)
+          }
+          told <- cats.effect.Ref.of[IO, Vector[VolatileStore.Cut]](Vector.empty)
+          recovery <- ReceivedBlocks
+            .recovering[IO](dir, 4)(unread, decodes, c => told.update(_ :+ c))
+            .use((_, r) => IO.pure(r))
+          cuts <- told.get
+          files <- IO(logFiles(dir).map(recordsOf))
+        yield
+          val expected = Vector(
+            VolatileStore.Cut(
+              "00000001.log",
+              size(b) + size(a),
+              VolatileStore.CutCause.Refused(
+                u._1.hash,
+                StorageError.Corrupt("synthetic block", Undecodable.Body)
+              )
+            ),
+            VolatileStore.Cut(
+              "00000001.log",
+              size(b),
+              VolatileStore.CutCause.Repeated(a._1.hash, "00000000.log")
+            )
+          )
+          assertEquals(cuts, expected, "both cuts told, the parse's first")
+          assertEquals(recovery.cuts, expected, "and the open's report holds the same")
+          assertEquals(files(1), Vector(VolatileRecord.Block(b._1, b._2)), "the file keeps B")
+          assertEquals(recovery.report.truncatedBytes, size(a) + size(u) + size(c), "bytes cut")
+      }
+    }
+  }
+
+  test("a cut is told as it is made, even when a later file then fails to open") {
+    // [1 ~] then a directory where the next log file would be: the first file is cut and the cut
+    // told before the open fails on the second, so it is not lost with the failed open
+    tempDir.use { dir =>
+      for
+        told <- cats.effect.Ref.of[IO, Vector[VolatileStore.Cut]](Vector.empty)
+        result <- attempt {
+          for
+            _ <- VolatileStore
+              .open[IO](dir, 5)
+              .use((log, _) => log.append(block(1)._1, block(1)._2))
+            _ <- IO {
+              JFiles.write(logFiles(dir).head, Array.fill[Byte](10)(7), StandardOpenOption.APPEND)
+              JFiles.createDirectory(dir.toNioPath.resolve("00000001.log"))
+            }
+            _ <- ReceivedBlocks
+              .recovering[IO](dir, 5)(unread, decodes, c => told.update(_ :+ c))
+              .use_
+          yield ()
+        }
+        cuts <- told.get
+      yield
+        result match
+          case Left(StorageError.Io(_, _: java.io.IOException)) => ()
+          case other => fail(s"the open fails on the directory, got $other")
+        assertEquals(
+          cuts,
+          Vector(
+            VolatileStore.Cut(
+              "00000000.log",
+              VolatileStore.encode(VolatileRecord.Block(block(1)._1, block(1)._2)).length.toLong,
+              VolatileStore.CutCause.Unreadable
+            )
+          ),
+          "the first file's cut was told"
+        )
     }
   }
 

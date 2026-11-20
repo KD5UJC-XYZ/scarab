@@ -9,15 +9,15 @@
 - The collection is timed from the end of the copy, before the backing store is brought forward, and
   an exception in the fiber that runs the collections stops the node as a failed collection does.
 - Opening the received log validates each file on its own: a file is cut at its first damaged record
-  or its first block that fails the start-up check (it does not decode, or its header is not the
-  record's), and the files after it are kept, where the files after the first damaged one were
+  or its first block that fails the start-up check (it does not decode, its header is not the
+  record's, or its body does not match its header), and the files after it are kept, where the files after the first damaged one were
   removed and a malformed block was dropped by itself after the open. A later record of a block
   already indexed, in the same file or a later one, cuts its file there whatever its bytes. A block
   the log's index holds is not written again: the start's repair of the selected chain's blocks
-  writes only those the log lacks. Each file the open cuts is logged (`receivedTruncated`, at Debug,
-  as the reference traces `Truncate`) with its offset and cause: a record that cannot be read, a block
-  the start-up check refuses, or a block already held in a named file; the open's totals are logged as
-  `receivedOpened`. The selected-chain log still recovers its files in order.
+  writes only those the log lacks. Each cut the open makes is logged as it is made
+  (`receivedTruncated`, at Debug, as the reference traces `Truncate`) with its file, offset and cause:
+  a record that cannot be read, a block the start-up check refuses, or a block already held in a named
+  file; the open's totals are logged as `receivedOpened`. The selected-chain log still recovers its files in order.
 - In either log, a record header whose length runs past the file's end or what an Int holds, or
   whose record fails its checksum, ends the file's readable part without the record being read
   whole, where a damaged length near the largest an Int holds failed the open or asked for an array

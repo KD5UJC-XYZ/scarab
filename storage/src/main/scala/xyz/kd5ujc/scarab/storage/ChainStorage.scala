@@ -424,17 +424,19 @@ object ChainStorage:
       )
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
+      _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
+      // each cut of the received log is reported as it is made, as the reference traces it
       receivedOpened <- ReceivedBlocks.recovering[F](
         dir / "received",
         config.receivedFileBlocks,
         config.receivedCacheBytes
-      )(ChainStorage.predecessorOf(config.byronEpochSlots), receivedCheck)
-      (received, recovery) = receivedOpened
-      _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
-      _ <- Resource.eval(
-        recovery.cuts.traverse_(cut => events.emit(StorageEvent.ReceivedTruncated(cut))) *>
-          events.emit(StorageEvent.ReceivedOpened(recovery.report))
+      )(
+        ChainStorage.predecessorOf(config.byronEpochSlots),
+        receivedCheck,
+        cut => events.emit(StorageEvent.ReceivedTruncated(cut))
       )
+      (received, recovery) = receivedOpened
+      _ <- Resource.eval(events.emit(StorageEvent.ReceivedOpened(recovery.report)))
       migratedSnapshots <- Resource.eval(
         snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))
       )

@@ -250,7 +250,7 @@ object Traced:
       )
     case StorageEvent.ReceivedTruncated(cut) =>
       val where = List(
-        "file" -> VolatileStore.fileName(cut.file).asJson,
+        "file" -> cut.file.asJson,
         "offset" -> cut.offset.asJson
       )
       val fields = cut.cause match
@@ -266,7 +266,7 @@ object Traced:
           where ++ List(
             "cause" -> "repeated".asJson,
             "hash" -> hash.hex.asJson,
-            "heldIn" -> VolatileStore.fileName(heldIn).asJson
+            "heldIn" -> heldIn.asJson
           )
       EventKind.ReceivedTruncated.line(fields*)
     case StorageEvent.VolatileResumed(resumed, dropped, millis) =>

@@ -366,34 +366,52 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         assertEquals(first, hashesOf(1, 5, 7), "each file cut at its refused record")
         assertEquals(records.take(3), Vector(1, 1, 1), "one record left in each file")
         assertEquals(again, first, "and the next open reads the same")
-        firstEvents.collect { case StorageEvent.ReceivedTruncated(cut) => cut } match
+        def size(b: (BlockRef, Bytes)): Long =
+          VolatileStore.encode(VolatileRecord.Block(b._1, b._2)).length.toLong
+        // the received log's events, in the order they were emitted
+        def receivedOf(events: Vector[StorageEvent]): Vector[StorageEvent] = events.collect {
+          case e @ (StorageEvent.ReceivedTruncated(_) | StorageEvent.ReceivedOpened(_)) => e
+        }
+        receivedOf(firstEvents) match
           case Vector(
-                VolatileStore.Cut(
-                  0,
-                  _,
-                  VolatileStore.CutCause.Refused(
-                    m,
-                    StorageError.Corrupt(_, _: ReceivedBlockRecovery.Problem.MetadataMismatch)
+                StorageEvent.ReceivedTruncated(
+                  VolatileStore.Cut(
+                    "00000000.log",
+                    mAt,
+                    VolatileStore.CutCause.Refused(
+                      m,
+                      StorageError.Corrupt(_, _: ReceivedBlockRecovery.Problem.MetadataMismatch)
+                    )
                   )
                 ),
-                VolatileStore.Cut(
-                  1,
-                  _,
-                  VolatileStore.CutCause.Refused(u, StorageError.Corrupt(_, _: ChainError))
-                )
+                StorageEvent.ReceivedTruncated(
+                  VolatileStore.Cut(
+                    "00000001.log",
+                    uAt,
+                    VolatileStore.CutCause.Refused(u, StorageError.Corrupt(_, _: ChainError))
+                  )
+                ),
+                StorageEvent.ReceivedOpened(report)
               ) =>
             assertEquals(m, mismatched._1.hash, "the block whose header is not its record's")
+            assertEquals(mAt, size(block(1)), "cut after block 1")
             assertEquals(u, undecodable._1.hash, "the block that does not decode")
-          case other => fail(s"one cut per file, each refused by the node's check, got $other")
-        assertEquals(
-          firstEvents.collect { case StorageEvent.ReceivedOpened(r) => r.blocks },
-          Vector(3),
-          "the open reports the blocks it kept"
-        )
-        assertEquals(
-          againEvents.collect { case StorageEvent.ReceivedTruncated(cut) => cut },
-          Vector.empty,
-          "the next open cuts nothing"
-        )
+            assertEquals(uAt, size(block(5)), "cut after block 5")
+            assertEquals(
+              report,
+              VolatileStore.OpenReport(
+                3,
+                3,
+                size(mismatched) + size(block(4)) + size(undecodable) + size(block(6)),
+                0
+              ),
+              "three blocks in three files, and the bytes cut"
+            )
+          case other =>
+            fail(s"a cut per file, each refused by the node's check, then the report, got $other")
+        receivedOf(againEvents) match
+          case Vector(StorageEvent.ReceivedOpened(report)) =>
+            assertEquals(report.truncatedBytes, 0L, "the next open cuts nothing")
+          case other => fail(s"the next open reports no cut, got $other")
     }
   }

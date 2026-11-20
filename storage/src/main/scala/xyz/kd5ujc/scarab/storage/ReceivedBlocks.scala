@@ -233,7 +233,8 @@ object ReceivedBlocks:
   )(predecessorOf: Bytes => Option[Predecessor], check: Check)(using
       Raise[F, StorageError]
   ): Resource[F, ReceivedBlocks[F]] =
-    recovering[F](dir, blocksPerFile, cacheBytes)(predecessorOf, check).map(_._1)
+    recovering[F](dir, blocksPerFile, cacheBytes)(predecessorOf, check, _ => Async[F].unit)
+      .map(_._1)
 
   /** Open the log in `dir`, and what the open found.
     *
@@ -242,12 +243,18 @@ object ReceivedBlocks:
     *   body as it is logged, and to each record the open indexes.
     * @param check
     *   The start-up check of each record the open reads: the file is cut at the first one refused.
+    * @param cut
+    *   Told of each cut the open makes, once it is made, before the next file is read.
     */
   def recovering[F[_]: Async](
       dir: Path,
       blocksPerFile: Int = DefaultBlocksPerFile,
       cacheBytes: Long = DefaultCacheBytes
-  )(predecessorOf: Bytes => Option[Predecessor], check: Check)(using
+  )(
+      predecessorOf: Bytes => Option[Predecessor],
+      check: Check,
+      cut: VolatileStore.Cut => F[Unit]
+  )(using
       Raise[F, StorageError]
   ): Resource[F, (ReceivedBlocks[F], Recovery)] =
     for
@@ -255,7 +262,8 @@ object ReceivedBlocks:
       // cache fills with the bodies received after it. The recovered chain is the index, a block
       // once.
       opened <- VolatileStore.openIndexWith[F, Option[Predecessor]](dir, blocksPerFile)(
-        (ref, raw) => check(ref, raw).map(_ => predecessorOf(raw))
+        (ref, raw) => check(ref, raw).map(_ => predecessorOf(raw)),
+        cut
       )
       (log, recovered) = opened
       index <- Resource.eval(

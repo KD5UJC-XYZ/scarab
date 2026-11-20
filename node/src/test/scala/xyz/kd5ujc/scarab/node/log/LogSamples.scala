@@ -687,10 +687,12 @@ object LogSamples:
       dijkstraAdopted = false
     ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
-    StorageEvent.ReceivedTruncated(VolatileStore.Cut(3, 4096L, VolatileStore.CutCause.Unreadable)),
+    StorageEvent.ReceivedTruncated(
+      VolatileStore.Cut("00000003.log", 4096L, VolatileStore.CutCause.Unreadable)
+    ),
     StorageEvent.ReceivedTruncated(
       VolatileStore.Cut(
-        4,
+        "00000004.log",
         0L,
         VolatileStore.CutCause.Refused(
           hash,
@@ -699,7 +701,7 @@ object LogSamples:
       )
     ),
     StorageEvent.ReceivedTruncated(
-      VolatileStore.Cut(5, 120L, VolatileStore.CutCause.Repeated(hash, 2))
+      VolatileStore.Cut("00000005.log", 120L, VolatileStore.CutCause.Repeated(hash, "00000002.log"))
     ),
     StorageEvent.ReceivedOpened(VolatileStore.OpenReport(12, 6, 4216L, 0)),
     StorageEvent.VolatileResumed(10, 1, 300L),
