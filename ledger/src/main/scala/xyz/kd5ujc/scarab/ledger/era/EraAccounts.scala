@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   CompactCoin,
   Conway,
+  Dijkstra,
   ConwayAccountState,
   Credential,
   DRep,
@@ -27,7 +28,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * ([[xyz.kd5ujc.scarab.ledger.state.Accounts]], `Account.hs:90`).
   */
 type AccountState[E <: EraTag] = E match
-  case Conway => ConwayAccountState
+  case Conway   => ConwayAccountState
+  case Dijkstra => ConwayAccountState
 
 /** The stake accounts of era `E` (`class EraAccounts`, `State/Account.hs:67-117`, cardano-ledger
   * f649f975).
@@ -59,6 +61,8 @@ trait EraAccounts[E <: EraTag]:
 object EraAccounts:
   given conway: ConwayEraAccounts[Conway] =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayState.accounts
+  given dijkstra: ConwayEraAccounts[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraState.accounts
 
   /** `sumBalancesAccounts` (`State/Account.hs:119-121`, cardano-ledger f649f975): the compact
     * balances summed as `CompactForm Coin` 's monoid sums them.

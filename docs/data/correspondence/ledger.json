@@ -8265,11 +8265,22 @@
       89,
       89
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/Account.hs",
+     "symbol": "AccountState DijkstraEra",
+     "lines": [
+      12,
+      12
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "680f5add1a494354"
+   "digest": "a2066799e434c4ee",
+   "note": "Conway's case and Dijkstra's, both `ConwayAccountState`"
   },
   "val ledger.era.conway.ConwayState.accounts": {
    "upstream": [
@@ -23745,6 +23756,131 @@
    ],
    "note": "every member the class has here: `mkBasicTx` and `validateNativeScript` are no member of it for any era, and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, equal to the flat rules' (`DijkstraTxMeasures.totalExUnits`) on every Dijkstra transaction the repository holds, and each sub-transaction's to its redeemers' units as the flat decoder read them. `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184)",
    "digest": "71074c114b1f6e49"
+  },
+  "val ledger.era.dijkstra.DijkstraState.accounts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/Account.hs",
+     "symbol": "EraAccounts DijkstraEra",
+     "lines": [
+      11,
+      28
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/Account.hs",
+     "symbol": "ConwayEraAccounts DijkstraEra",
+     "lines": [
+      30,
+      32
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraStateSuite"
+   ],
+   "note": "Dijkstra's two accounts instances in one value, given in the root class's companion: Conway's records and lenses, as the reference's are; registering two accounts of distinct deposits, one delegated to a pool and a DRep (both lenses read back), and unregistering one give Conway's instance's results",
+   "digest": "98081f79762f0908"
+  },
+  "val ledger.era.dijkstra.DijkstraState.certState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/CertState.hs",
+     "symbol": "EraCertState DijkstraEra",
+     "lines": [
+      22,
+      35
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/CertState.hs",
+     "symbol": "ConwayEraCertState DijkstraEra",
+     "lines": [
+      37,
+      39
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraStateSuite"
+   ],
+   "note": "Dijkstra's two certificate-state instances in one value, given in the root class's companion: Conway's lenses and obligations, each obligation field the sum of a state's distinct stake, pool and DRep deposits as Conway's instance gives it, and Dijkstra's deposits and refunds of a batch; the refunds at the body's own level (`withBothTxLevels`, `DijkstraTxBody.toSTxLevel`)",
+   "digest": "1b5acd088e103aae"
+  },
+  "def ledger.era.dijkstra.DijkstraState.dijkstraCertsTotalDepositsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/CertState.hs",
+     "symbol": "dijkstraCertsTotalDepositsTxBody",
+     "lines": [
+      41,
+      60
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraStateSuite"
+   ],
+   "note": "written for Dijkstra, as the instance's members are; the batch's certificates, the sub-transactions' first, concatenated as the reference's `StrictSeq`s are, and each level's proposals. Equal to the flat rules' (`Deposits.of`) on a set of transactions: Of the 217 transactions recorded on the Leios testnet's chain and of the reference's UTXOW cases, the 176 without sub-transactions that the Conway decoder reads; the 13 it refuses, for a field Dijkstra adds or changes, and the 28 batches are not compared with the flat path, which has no computation of a batch's. Every one of the 217 without certificates (the two parameter changes among them) gives the parameters' deposit for each proposal at both levels; crafted batches give a pool registered at both levels counted once, a pool the state holds counted not at all, a stake key's registration charged the parameters' key deposit (`ppKeyDeposit`, as `getTotalDepositsTxCerts` charges it; the certificate declares the same amount) and proposals at both levels, totals derived by hand from the reference's rules",
+   "digest": "24f2f85499a63911"
+  },
+  "def ledger.era.dijkstra.DijkstraState.dijkstraCertsTotalRefundsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/CertState.hs",
+     "symbol": "dijkstraCertsTotalRefundsTxBody",
+     "lines": [
+      62,
+      81
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraStateSuite"
+   ],
+   "note": "written for Dijkstra; the refunds the batch's certificates declare, no deposit looked up. Equal to the flat rules' (`DijkstraUtxo.declaredRefunds`) on a set of transactions: Of the 217 transactions recorded on the Leios testnet's chain and of the reference's UTXOW cases, the 176 without sub-transactions that the Conway decoder reads; the 13 it refuses, for a field Dijkstra adds or changes, and the 28 batches are not compared with the flat path, which has no computation of a batch's. A crafted batch's refunds are each level's declared stake and DRep refunds, the top level's adding up both levels'",
+   "digest": "b25e69c25d8a6cb8"
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody.toSTxLevel": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "symbol": "HasEraTxLevel TxBody DijkstraEra",
+     "lines": [
+      1079,
+      1084
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraStateSuite"
+   ],
+   "note": "the level a body is of, read from its constructor, as the reference's `toSTxLevel` reads it from the raw body's",
+   "digest": "e5f2836e486c3f79"
   }
  },
  "glue": [
@@ -23923,7 +24059,9 @@
     "object ledger.era.dijkstra.DijkstraStAnnTx",
     "object ledger.era.dijkstra.PlutusLegacyMode",
     "given ledger.era.dijkstra.PlutusLegacyMode.given_CanEqual_PlutusLegacyMode_PlutusLegacyMode",
-    "given ledger.state.Credential.guardCredentialOrder"
+    "given ledger.state.Credential.guardCredentialOrder",
+    "given ledger.era.EraAccounts.dijkstra",
+    "given ledger.era.EraCertState.dijkstra"
    ]
   },
   {
@@ -24087,7 +24225,8 @@
     "object ledger.era.BinaryData",
     "object ledger.era.Datum",
     "given ledger.era.BinaryData.given_CanEqual_BinaryData_BinaryData",
-    "given ledger.era.Datum.given_CanEqual_Era_Era"
+    "given ledger.era.Datum.given_CanEqual_Era_Era",
+    "object ledger.era.dijkstra.DijkstraState"
    ]
   },
   {

@@ -960,6 +960,25 @@ Conway's rules on the classes follow as the rest of stage 2.
     of its `MissingScriptWitnessesUTXOW` and `ExtraneousScriptWitnessesUTXOW` are the functions', and each case it
     accepts conserves value, is witnessed, pays the fee and provides exactly the scripts needed; a crafted witness of a
     script a reference input provides is extraneous, as `babbageMissingScripts` has it.
+- **Dijkstra's accounts and certificate state** (`era/dijkstra/DijkstraState.scala`; `State/Account.hs` and
+  `State/CertState.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
+  `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` of Dijkstra, over Conway's records and
+  lenses as the reference's are (`AccountState`'s Dijkstra case is `ConwayAccountState`), with Dijkstra's deposits
+  and refunds of a batch: the deposits of the batch's certificates, the sub-transactions' first, and of each level's
+  proposals (`dijkstraCertsTotalDepositsTxBody`, `:41-60`); the refunds the batch's certificates declare, no deposit
+  looked up (`dijkstraCertsTotalRefundsTxBody`, `:62-81`), at the body's own level (`DijkstraTxBody.toSTxLevel`, the
+  reference's `HasEraTxLevel TxBody`, `TxBody.hs:1079-1084`).
+  - `DijkstraStateSuite`, on the 217 transactions recorded on the Leios testnet's chain, which its ledger accepted, and
+    of the reference's UTXOW cases: the 176 without sub-transactions that the Conway decoder reads have the flat rules'
+    deposits and refunds (`Deposits.of`, `DijkstraUtxo.declaredRefunds`); the 13 it refuses, for a field Dijkstra adds
+    or changes (a witness set's key 8, a parameter change of keys 45 to 48, the direct deposits' key 25 with the
+    balance intervals' key 26, a guard where Conway has a signer), are counted by their typed refusal, and the 28
+    batches have no flat computation. Every one
+    without certificates has the parameters' deposit for each of its proposals at both levels. Crafted batches give the
+    refunds of each level, and the deposits of a pool registered at both levels (counted once), of a pool the state
+    holds (not counted) and of proposals at both levels, each total derived by hand from the reference's rules. The
+    accounts and the obligations are Conway's instance's, on a state of distinct stake, pool and DRep deposits and an
+    account delegated to a pool and a DRep.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

@@ -124,6 +124,10 @@ object DijkstraCorpus extends Assertions:
     */
   def testnetPParams
       : xyz.kd5ujc.scarab.ledger.era.PParams[xyz.kd5ujc.scarab.ledger.state.Dijkstra] =
+    era(testnetStored)
+
+  /** The testnet's parameters as the node stores them ([[testnetPParams]]). */
+  def testnetStored: xyz.kd5ujc.scarab.ledger.ProtocolParams =
     val shelley = json("fixtures/leios/testnet/config/shelley-genesis.json").hcursor
       .downField("protocolParams")
     val conway = json("fixtures/leios/testnet/config/conway-genesis.json").hcursor
@@ -136,6 +140,12 @@ object DijkstraCorpus extends Assertions:
         drepDeposit = num(conway.downField("dRepDeposit")),
         govActionDeposit = num(conway.downField("govActionDeposit"))
       )
+    stored
+
+  /** Stored parameters as Dijkstra's. */
+  def era(
+      stored: xyz.kd5ujc.scarab.ledger.ProtocolParams
+  ): xyz.kd5ujc.scarab.ledger.era.PParams[xyz.kd5ujc.scarab.ledger.state.Dijkstra] =
     xyz.kd5ujc.scarab.ledger.era.PParams[xyz.kd5ujc.scarab.ledger.state.Dijkstra](
       DijkstraPParams.fromStored(stored).fold(e => fail(e.toString), identity)
     )
@@ -146,6 +156,10 @@ object DijkstraCorpus extends Assertions:
   def utxowPParams(
       c: Json
   ): xyz.kd5ujc.scarab.ledger.era.PParams[xyz.kd5ujc.scarab.ledger.state.Dijkstra] =
+    era(utxowStored(c))
+
+  /** The parameters of a UTXOW case as the node stores them ([[utxowPParams]]). */
+  def utxowStored(c: Json): xyz.kd5ujc.scarab.ledger.ProtocolParams =
     import xyz.kd5ujc.scarab.codec.Rational
     import xyz.kd5ujc.scarab.plutus.ExUnits
     val p = c.hcursor.downField("params")
@@ -180,9 +194,7 @@ object DijkstraCorpus extends Assertions:
         priceMem = ratio(p.downField("prices").downN(0)),
         priceSteps = ratio(p.downField("prices").downN(1))
       )
-    xyz.kd5ujc.scarab.ledger.era.PParams[xyz.kd5ujc.scarab.ledger.state.Dijkstra](
-      DijkstraPParams.fromStored(stored).fold(e => fail(e.toString), identity)
-    )
+    stored
 
   /** What a UTXOW refusal of the reference records that the UTxO functions compute: the values
     * consumed and produced, the minimum fee, the keys not witnessed, the scripts missing and the

@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   CompactCoin,
   Conway,
   Credential,
+  Dijkstra,
   DRep,
   DRepRole,
   DRepState,
@@ -95,6 +96,8 @@ trait ConwayEraCertState[E <: EraTag] extends EraCertState[E]:
 object EraCertState:
   given conway: ConwayEraCertState[Conway] =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayState.certState
+  given dijkstra: ConwayEraCertState[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraState.certState
 
   /** `shelleyObligationCertState` (`eras/shelley/impl/src/Cardano/Ledger/Shelley/State/
     * CertState.hs:77-84`, cardano-ledger f649f975): the accounts' deposits and the pools', each
