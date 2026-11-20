@@ -317,10 +317,12 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
   test("the storage's open cuts a received-log file at the first record the node's check refuses") {
     // three records to a file: [1 M 4] [5 U 6] [7], M holding block 2's reference over block 3's
     // body (it decodes, but its header is not the record's) and U block 6's reference over bytes
-    // that do not decode. The node's start-up check refuses both, as the reference's parse stops
+    // that do not decode. The node's start-up check refuses both: U as the reference's parse stops
     // at a block it cannot read (`parseBlockFile`, `BlockReadErr`,
-    // `Storage/VolatileDB/Impl/Parser.hs` 70-107, ouroboros-consensus 82ecba329): each file is cut
-    // there and the third is read all the same, at this open and the next
+    // `Storage/VolatileDB/Impl/Parser.hs` 70-107, ouroboros-consensus 82ecba329), and M by the
+    // check of the reference Scarab's record keeps beside the block, which the reference reads
+    // from the block itself. Each file is cut there and the third is read all the same, at this
+    // open and the next
     StorageTestKit.tempDir.use { dir =>
       val mismatched = block(2)._1 -> block(3)._2
       val undecodable = block(6)._1 -> Bytes(Vector(0xff.toByte, 0x00.toByte))

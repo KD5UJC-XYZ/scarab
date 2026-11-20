@@ -15,15 +15,14 @@ import scala.util.control.NonFatal
   * to the interval. A schedule for the same time as the last one queued replaces it: the entries
   * are coalesced by their time, one to an interval, of the newest slot scheduled for it. The runner
   * ([[run]]) waits for the time of the oldest entry, takes it off the queue and collects its slot,
-  * one collection at a time. The aim, in the reference's words a goal "when possible", is at most
-  * one collection an interval (`Background.hs` 486-492): while each collection ends before the next
-  * entry's time, each starts at its own entry's time, so the starts are an interval apart or more,
-  * and the queue holds at most ⌈delay / interval⌉ + 1 entries. A collection that runs longer delays
-  * the ones after it: the entries that fall due meanwhile stay queued, one to an interval, and run
-  * back to back once it ends, so two may start less than an interval apart. Nothing of the schedule
-  * is kept on disk: after a restart, the collection the next copy schedules covers the earlier
-  * ones, since a collection takes every file below its slot (`copyToImmutableDBRunner`'s comment,
-  * `Background.hs` 253-256; 254-257 at 808e40054).
+  * one collection at a time. At most one collection an interval is a goal, "when possible" in the
+  * reference's words (`Background.hs` 486-492), not a bound: while the runner takes each entry off
+  * when it falls due, the queue holds at most ⌈delay / interval⌉ + 1 entries, and a collection that
+  * runs past the next entry's time, or a runner that is late, leaves the entries due meanwhile
+  * queued, one to an interval, to run back to back. Nothing of the schedule is kept on disk: after
+  * a restart, the collection the next copy schedules covers the earlier ones, since a collection
+  * takes every file below its slot (`copyToImmutableDBRunner`'s comment, `Background.hs` 253-256;
+  * 254-257 at 808e40054).
   */
 trait GcSchedule[F[_]]:
   /** Schedule a collection for `slot`, the immutable tip's after a copy. */

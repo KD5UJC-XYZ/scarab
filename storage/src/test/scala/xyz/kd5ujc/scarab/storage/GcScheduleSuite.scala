@@ -240,9 +240,12 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
       assertEquals(attempts, Vector(BigInt(1)), "no collection after it")
   }
 
-  /** IO's Temporal, but its monotonic clock fails on its `failAt`-th read. */
+  /** IO's Temporal, but its monotonic clock fails on its `failAt` -th read; it does not wait, and
+    * fails if asked to: the runner must end at the failed read, before it waits.
+    */
   private def clockFailing(failAt: Int, reads: Ref[IO, Int]): Temporal[IO] =
     val io = Temporal[IO]
+    val unused = IO.raiseError[Unit](new UnsupportedOperationException("the runner waited"))
     new Temporal[IO]:
       def pure[A](a: A) = io.pure(a)
       def flatMap[A, B](fa: IO[A])(f: A => IO[B]) = io.flatMap(fa)(f)
@@ -256,11 +259,11 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
       def unique = io.unique
       def start[A](fa: IO[A]) = io.start(fa)
       def never[A] = io.never[A]
-      def cede = io.cede
+      def cede = unused
       override def racePair[A, B](fa: IO[A], fb: IO[B]) = io.racePair(fa, fb)
       def ref[A](a: A) = io.ref(a)
       def deferred[A] = io.deferred[A]
-      def sleep(time: FiniteDuration) = io.sleep(time)
+      def sleep(time: FiniteDuration) = unused
       def realTime = io.realTime
       def monotonic = reads
         .updateAndGet(_ + 1)
