@@ -860,26 +860,39 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
             .map(f => f.getFileName.toString -> JFiles.readAllBytes(f).toVector)
             .toMap
         )
-      for
-        _ <- IO {
-          JFiles.write(
-            dir.toNioPath.resolve("1.log"),
-            VolatileStore.encode(VolatileRecord.Block(a._1, a._2))
-          )
-          JFiles.write(dir.toNioPath.resolve("notes.txt"), Array[Byte](1, 2, 3))
-        }
-        before <- IO(contents)
-        received <- attempt(ReceivedBlocks.open[IO](dir, 4)(unread, decodes).use_)
-        selected <- attempt(VolatileStore.open[IO](dir, 4).use_)
-        after <- IO(contents)
-      yield
-        List(received, selected).foreach {
-          case Left(StorageError.Corrupt(what, FileNameProblem.NotCanonical(name, canonical))) =>
-            assertEquals(what, dir.toNioPath.toString, "the log's directory")
-            assertEquals((name, canonical), ("1.log", "00000001.log"), "the name and the log's own")
-          case other => fail(s"the log is refused for the name, got $other")
-        }
-        assertEquals(after, before, "the directory is unchanged, byte for byte")
+      def record(x: (BlockRef, Bytes)) = VolatileStore.encode(VolatileRecord.Block(x._1, x._2))
+      // `00000000.log` ends in bytes that are not a record, which a recovery would cut: the
+      // refusal comes before any recovery, so it is not cut
+      def refused(alone: Boolean) =
+        for
+          _ <- IO {
+            JFiles.write(dir.toNioPath.resolve("1.log"), record(a))
+            JFiles.write(dir.toNioPath.resolve("notes.txt"), Array[Byte](1, 2, 3))
+            if !alone then
+              JFiles.write(
+                dir.toNioPath.resolve("00000000.log"),
+                record(block(2)) ++ Array[Byte](7, 7)
+              )
+          }
+          before <- IO(contents)
+          received <- attempt(ReceivedBlocks.open[IO](dir, 4)(unread, decodes).use_)
+          afterReceived <- IO(contents)
+          selected <- attempt(VolatileStore.open[IO](dir, 4).use_)
+          afterSelected <- IO(contents)
+        yield
+          List(received, selected).foreach {
+            case Left(StorageError.Corrupt(what, FileNameProblem.NotCanonical(name, canonical))) =>
+              assertEquals(what, dir.toNioPath.toString, "the log's directory")
+              assertEquals(
+                (name, canonical),
+                ("1.log", "00000001.log"),
+                "the name and the log's own"
+              )
+            case other => fail(s"the log is refused for the name, got $other")
+          }
+          assertEquals(afterReceived, before, "the received log's open changes nothing")
+          assertEquals(afterSelected, before, "nor does the selected-chain log's")
+      refused(alone = true) *> refused(alone = false)
     }
   }
 

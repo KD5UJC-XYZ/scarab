@@ -342,31 +342,42 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
       for
         failed <- Ref.of[IO, Option[NodeError]](None)
         reported <- Ref.of[IO, Option[ChainStorage.CollectionStopped]](None)
-        _ <- n.act(put(1, 2, 3))
-        _ <- n.act(copied(1, 2))
-        // the wait for the report is started before the failure, in a fiber of its own, so it never
-        // holds up the steps, the stop among them (TST-5)
-        _ <- n.act(recovered =>
-          recovered.collectionsStopped.flatMap(stopped => reported.set(Some(stopped))).start.void
-        )
-        // the received log's directory goes: the collection at 60 s cannot sync it
-        _ <- IO.blocking {
-          val received = (dir / "received").toNioPath
-          Using.resource(JFiles.list(received))(_.iterator.asScala.toVector).foreach(JFiles.delete)
-          JFiles.delete(received)
-        }
-        _ <- n.advance(60.seconds)
-        _ <- n.act { recovered =>
-          Handle
-            .allow[NodeError] {
-              val (ref, raw) = block(3)
-              recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), 3))
-            }
-            .rescue(error => failed.set(Some(error)))
-        }
-        error <- failed.get
-        stopped <- reported.get
-        traced <- n.collections
+        waiter <- Ref.of[IO, Option[cats.effect.FiberIO[Unit]]](None)
+        observed <- (for
+          _ <- n.act(put(1, 2, 3))
+          _ <- n.act(copied(1, 2))
+          // the wait for the report is started before the failure, in a fiber of its own the test
+          // keeps, so it never holds up the steps, the stop among them (TST-5)
+          _ <- n.act(recovered =>
+            recovered.collectionsStopped
+              .flatMap(stopped => reported.set(Some(stopped)))
+              .start
+              .flatMap(fiber => waiter.set(Some(fiber)))
+          )
+          // the received log's directory goes: the collection at 60 s cannot sync it
+          _ <- IO.blocking {
+            val received = (dir / "received").toNioPath
+            Using
+              .resource(JFiles.list(received))(_.iterator.asScala.toVector)
+              .foreach(JFiles.delete)
+            JFiles.delete(received)
+          }
+          _ <- n.advance(60.seconds)
+          _ <- n.act { recovered =>
+            Handle
+              .allow[NodeError] {
+                val (ref, raw) = block(3)
+                recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), 3))
+              }
+              .rescue(error => failed.set(Some(error)))
+          }
+          error <- failed.get
+          stopped <- reported.get
+          traced <- n.collections
+        yield (error, stopped, traced))
+          // the waiter is cancelled before the stop, however the test ends (TST-5)
+          .guarantee(n.act(_ => waiter.get.flatMap(_.traverse_(_.cancel))))
+        (error, stopped, traced) = observed
       yield
         assert(
           !traced.exists {
