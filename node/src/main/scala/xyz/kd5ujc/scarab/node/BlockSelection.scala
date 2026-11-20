@@ -37,6 +37,8 @@ private[node] final class BlockSelection[F[_]: Async] private (
       last: Ref[F, Option[(BlockPool.Processed, Bytes)]]
   ): BlockSelection.Bodies[F] =
     new BlockSelection.Bodies[F]:
+      def forged(header: Header) =
+        bodies.get(header.hash).exists(_.origin == BlockPool.Source.Forged)
       def fetch(header: Header)(using Raise[F, NodeError]) =
         bodies
           .get(header.hash)
@@ -125,8 +127,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
               reader(bodies, last),
               candidate,
               validation(cause),
-              phase,
-              cause
+              phase
             )
           )
           after <- pool.invalidBlocks.snapshot
@@ -261,6 +262,12 @@ private[node] object BlockSelection:
     */
   trait Bodies[F[_]]:
     def fetch(header: Header)(using Raise[F, NodeError]): F[Bytes]
+
+    /** Whether the block is one this node forged (`BlockPool.Source.Forged`): with no verdict on
+      * it, it is our own block without a verdict, which is not judged again (R3 of the #567
+      * decision).
+      */
+    def forged(header: Header): Boolean
     def invalidated(header: Header, error: ValidationError): F[Either[BlockPoolProblem, Unit]]
 
   trait Application[F[_]]:
@@ -276,8 +283,7 @@ private[node] object BlockSelection:
         bodies: Bodies[F],
         candidate: ChainSelection.Candidate,
         validation: Peer.Validation[F],
-        phase: Phase,
-        cause: Cause
+        phase: Phase
     )(using
         Raise[F, NodeError]
     ): F[Unit]

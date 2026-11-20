@@ -5,7 +5,9 @@ import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.Handle
 import cats.syntax.all.*
+import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.{FollowerEvent, NoVerdictRetry}
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.{Fragment, LatestSlot}
 import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError, StorageError, ValidationError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
@@ -201,6 +203,57 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
           }
       })
     yield ()
+  }
+
+  test("a held-back forged block with no verdict when selection reaches it is not judged again") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      third = chain.headers(2)
+      seen <- Ref.of[IO, Option[(Vector[Follower.Submission], Node)]](None)
+      // the third block's first judgement, at the reselection once caught up, has no verdict for
+      // a cause that may pass; later ones are valid
+      control <- TestControl.execute(
+        node(Some(Gsm.Phase.PreSyncing), withheldOnce = Set(third.hash)) { n =>
+          for
+            submissions <- chain.headers.zip(chain.raws).take(3).traverse(n.offer(_, _))
+            _ <- n.phase(Gsm.Phase.CaughtUp)
+            _ <- n.events.discrete
+              .find(_.exists {
+                case FollowerEvent.NoVerdict(point, _, _, _) => point == third.point
+                case _                                       => false
+              })
+              .compile
+              .drain
+            _ <- seen.set(Some(submissions -> n))
+            _ <- IO.never[Unit]
+          yield ()
+        }
+      )
+      _ <- control.tick
+      reached <- seen.get
+      // a peer's block withheld so would be judged again after 1 s, then 2, 4, 8, 16 s
+      _ <- control.advanceAndTick(50.seconds)
+      (submissions, n) = reached.getOrElse(fail("the reselection did not reach the block"))
+      withheld <- n.pool.noVerdictBlocks.lookup(third.hash)
+      after <- n.follower.committedChain.get
+      events <- n.events.get
+      running <- control.results
+    yield
+      assertEquals(submissions.last, heldBack(chain.headers(1)), "held back and kept")
+      assertEquals(after.tip, chain.headers(1).point, "never adopted later without being delivered")
+      assert(!Node.extended(events).exists(_.hash == third.hash), "nor reported adopted")
+      assertEquals(
+        withheld.map(_.schedule),
+        Some(NoVerdictBlocks.Schedule.Once),
+        "withheld for good, as our own block without a verdict"
+      )
+      assertEquals(
+        events.collect {
+          case FollowerEvent.NoVerdict(point, _, _, retry) if point == third.point => retry
+        },
+        Vector(NoVerdictRetry.Never)
+      )
+      assertEquals(running, None, "the node goes on")
   }
 
   test("a failure to keep forged blocks leaves what selection made of them, with the cause") {
