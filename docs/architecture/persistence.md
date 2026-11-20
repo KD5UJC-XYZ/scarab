@@ -188,15 +188,18 @@ immutable store and the UTxO store, and not part of the ledger snapshot: the sto
 LeiosDB (ouroboros-consensus 2416493b `Storage/LeiosDB`, `API.hs`), with its SQLite backend's
 behaviour. Its layout is a prototype format of the Leios testnet build, unstable as that build's other
 layouts are: a store of another magic or version is refused (`LeiosStoreError.UnknownFormat`), and
-nothing migrates it. Its column families:
+nothing migrates it. It holds the reference's two partitions, `leios.vol.db` and `leios.imm.db`, table
+for table (`Impl/SQLite/Schema.hs`), each in column families of its own:
 
 | Family | Key | Value |
 |---|---|---|
 | `meta` | `format` | the magic `SCRBLEIO`, then the version as a 32-bit big-endian integer (1) |
-| `points` | slot (u64 big-endian), endorser-block hash (32 bytes) | announced size (u64 big-endian), status (u8: 0 volatile, 1 certified, 2 immutable, 3 immutable and evicted from volatile) |
-| `bodies` | hash | the body's encoding (`encodeLeiosEb`: a map of each transaction hash to its size) |
-| `txs` | hash, transaction offset (u32 big-endian) | the transaction's bytes |
-| `complete` | hash | empty: present once every transaction the body lists is stored |
+| `vol.ebs` | slot (u64 big-endian), endorser-block hash (32 bytes) | announced size (u64 big-endian), status (u8, the reference's column: 0 volatile, 1 certified and pinned for the copier, 2 copied, 3 marked for the sweeper) |
+| `imm.ebs` | slot, hash | announced size |
+| `vol.ebBodies`, `imm.ebBodies` | hash | the body's encoding (`encodeLeiosEb`: a map of each transaction hash to its size) |
+| `vol.ebClosures`, `imm.ebClosures` | hash | empty: present once the closure is allocated, written or not |
+| `vol.txs`, `imm.txs` | hash, transaction offset (u32 big-endian) | the bytes of a transaction written in the closure, where the reference's closure holds zeroes for the others |
+| `vol.complete` | hash | empty: present once every transaction the volatile body lists is written (the reference keeps this in memory) |
 
 Opening the store holds an exclusive lock of the operating system on `leios.lock` beside it (not
 part of the store), so that opens run one at a time; the opens of one process are serialised in the
@@ -210,21 +213,30 @@ atomic rename and the parent synced: a first open interrupted before the rename 
 each is one RocksDB batch with the write-ahead log on: the store has no checkpoint to be rebuilt from.
 A read sees the store at one moment, through a RocksDB snapshot, as the reference reads inside one
 SQLite transaction. Each write returns
-the points whose closure it completed. `writeEbPoint` is idempotent; `writeEbBody` needs its point
-and stores a body once, with the local fills whose source holds a transaction of the listed hash;
-`writeTxs` drops a transaction that is not in the body, of another size than declared, empty or
-zero-led, or repeated in the write. `promoteToImmutable` makes every point of the hash certified, or
-immutable once a transaction of it is stored (the reference's pin and copy); `garbageCollect(slot)`,
-unless a point of the same hash is certified or at or after the slot, removes the volatile points
-older than it and makes the immutable ones evicted, then removes the bodies and transactions no point
-names: in writes of at most 256 hashes, each
-hash decided and collected whole in the write that takes it, from the volatile points the store
-keeps apart in memory, so a collection costs nothing for the immutable points. An evicted point is in the reference's immutable file only: its body and transactions stay, and
-lookups find them, but what the reference reads from its volatile file alone does not see the hash,
-from any slot (`scanEbPoints`, `scanCompleteEbClosuresNotOlderThanSlot`, a novel point's completion,
-`writeTxs`) until its body is written again, which empties its closure until its transactions are
-written again, as the reference's volatile file holds it then, and makes its evicted points immutable
-again, so that a later collection evicts them again and keeps the endorser block. The points of each hash are held in memory, read when the store opens.
+the points whose closure it completed. `writeEbPoint` adds a row to the volatile partition once;
+`writeEbBody` needs its point there and stores the body there once, allocating the closure when it has
+fills, whether they fill anything or not, with the fills whose source holds a transaction of the
+listed hash; `writeTxs` writes the volatile closure, allocating it, and drops a transaction that is
+not in the body, of another size than declared, empty or zero-led, or repeated in the write.
+`promoteToImmutable` pins every volatile or marked row of the hash; a hash with a pinned row and a
+volatile closure is copied, by the write that pins it or by a later write of its closure, as the
+reference's copier copies it: its newest row, its body and its closure go into the immutable
+partition, each only if it is not there yet, and its pinned rows become copied, so each copy cycle adds
+the newest row of its time and the immutable closure is the one first copied. `garbageCollect(slot)`
+first sweeps the hashes all of whose rows are marked, as a reference database whose sweep had not run
+holds them, then marks and sweeps at once each hash with a volatile or copied row older than the slot,
+unless a row of the hash is pinned or at or after the slot: the hash's rows, body and closure go from
+the volatile partition, and the immutable partition keeps what was copied. It runs in writes of at most
+256 hashes, each hash decided and collected whole in the write that takes it, from the rows of the
+volatile partition the store holds in memory, read when it opens. An open then resumes what the
+reference resumes when it starts, its copier's pass and its sweep pass: it copies each hash with a
+pinned row and a volatile closure, and sweeps each hash all of whose rows are marked, as a store read
+from a reference stopped between a pin and its copy, or a mark and its sweep, holds them. The import
+from and the export to the reference's database open the store without this, so that they exchange
+that state as it is; the next open resumes it. The reads take the volatile
+partition first and the immutable one for what it does not hold: a body, a closure (none while the
+volatile partition holds the body and not its whole closure), the transactions by offset; the point
+scans read the volatile partition alone.
 
 The node's start opens the store under `--reference-build leios-b004fe0c` with a database directory
 and `LeiosDbConfig.Backend: SQLite` (the default), once `follow` admits that build, which it refuses
