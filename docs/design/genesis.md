@@ -167,8 +167,9 @@ invalid. A kept block the direct selection did not take then goes to the worker'
 (`BlockSelection.Cause.Forged`, the candidates through it, nobody to blame), under the lock the submission holds, as
 the reference runs `chainSelectionForBlock` after `putBlock` (`ChainSel.hs:452`); the submission's outcome is what
 that selection decided. A kept forged block that any selection finds no verdict on is withheld for good in this run
-(`NoVerdictBlocks.recordOwn`, `NoVerdictRetry.Never`), as our own block without a verdict is a refusal (R3 of the
-decision of issue 567); every other block keeps the retry schedule. Rollback, LoE reconsideration, a delivery that makes its branch preferred and a restart's startup selection
+(`NoVerdictBlocks.recordOwn`, `Schedule.Never`: not released with a related block that comes due either), as our own
+block without a verdict is a refusal (R3 of the decision of issue 567); every other block keeps the retry schedule. A
+block the node holds already (`Follower.Stored`), withheld blocks included, is neither judged nor selected again. Rollback, LoE reconsideration, a delivery that makes its branch preferred and a restart's startup selection
 then see it with the other processed blocks. A failure to keep it, other than a storage failure, leaves it unkept and
 the forger's outcome as it was (`Follower.Retention`, logged `notKept`); a storage failure stops the node, as for a
 peer's block.

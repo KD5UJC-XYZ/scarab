@@ -84,15 +84,19 @@ worker's selection for it at once, its candidates going through the forest's blo
 `chainSelectionForBlock` right after `putBlock` (`ChainSel.hs:452`, 457 at 808e40054): a block forged on a kept block
 our chain no longer holds is adopted there when its branch is preferred, and the submission's outcome, which the
 forger traces, is what that selection decided, read as the reference's forging loop reads it (the block is the tip:
-adopted; recorded invalid: invalid; else not adopted, `NodeKernel.hs:758-769`). A block stored already is neither
-stored nor selected again (`IgnoreBlockAlreadyInVolatileDB`, `ChainSel.hs:431-433`). A rollback leaves the block in
+adopted; recorded invalid: invalid; else not adopted, `NodeKernel.hs:758-769`). What the node holds of the block is
+checked before anything else, in the reference's order: a block stored already, withheld blocks included, is neither
+judged, stored nor selected again (`IgnoreBlockAlreadyInVolatileDB`, `ChainSel.hs:431-433`), and a block known
+invalid is not judged again (`IgnoreInvalidBlock`, 434-440); the outcome is read as the forging loop reads it. A
+rollback leaves the block in
 the forest, and a restart seeds the forest from the received log before startup selection. A forged block the
 node's own implementation has no verdict on is never judged again in this run, as the forger handles our own block
 without a verdict as a refusal (R3 of the decision of issue 567): when the direct selection finds so, the block is
 not kept; when any selection of the worker finds so of a kept one (the one its submission runs, a reselection when
 the LoE moves or the node is caught up, an admission whose candidate goes through it), the block stays in the forest
-withheld for good (`NoVerdictRetry.Never`), and every other block keeps the retry schedule of a peer's block. A
-restart reads the kept block back as a recovered one, and judges it again as it does every withheld block.
+withheld for good (`NoVerdictRetry.Never`), not released either when a related peer block's retry comes due, and
+every other block keeps the retry schedule of a peer's block. A restart reads the kept block back as a recovered one,
+and judges it again as it does every withheld block.
 The forger's trace is the one of the submission (`adoptedBlock`,
 `didntAdoptBlock` or `forgedInvalidBlock`); a later selection of the block is logged as the chain's (`extended`), as
 the reference traces it in the ChainDB (`switchTo`, `AddedToCurrentChain`, `ChainSel.hs:964`), not in the forging
@@ -126,6 +130,9 @@ forging loop with the worker and the real block rules) check these cases in simu
   no session is blamed, and offered again it is not stored again;
 - held back, and with no verdict when the reselection once caught up reaches it, for a cause that may pass, it is
   withheld for good (`NoVerdictRetry.Never`) and neither judged again nor adopted in the 50 simulated seconds after;
+  offered again while its parent is our tip, it is neither judged nor adopted;
+- a forged block a rival took the chain from, withheld for good when a sibling's admission reached it, is neither
+  released nor adopted when a peer's child of it withheld earlier comes due, though its fault has passed;
 - when keeping fails with a typed failure other than storage, or throws, no block is kept, the forger's outcomes are
   the same and each block gets a `notKept` line; a storage failure is raised to the forger, typed, before the chain
   that would hold the block is published.
