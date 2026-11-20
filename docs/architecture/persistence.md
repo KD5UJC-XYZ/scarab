@@ -223,6 +223,16 @@ from any slot (`scanEbPoints`, `scanCompleteEbClosuresNotOlderThanSlot`, a novel
 written again, as the reference's volatile file holds it then, and makes its evicted points immutable
 again, so that a later collection evicts them again and keeps the endorser block. The points of each hash are held in memory, read when the store opens.
 
+The node's start opens the store under `--reference-build leios-b004fe0c` with a database directory
+and `LeiosDbConfig.Backend: SQLite` (the default), once `follow` admits that build, which it refuses
+at start for now (`ReferenceBuildNotYet.Rules`): after the database's ownership and network identity
+are checked and before the other stores, and releases it after them (`LeiosStorage`), as cardano-node
+b004fe0c opens its LeiosDB once the database's marker is checked and closes it after the run
+(`Run.hs:372-402`); the run's consumers receive it, as consensus receives `rnLeiosDb`. A release
+build opens none, nor does the backend `InMemory` (the reference's in-memory LeiosDB, which Scarab has
+no store for) or a run without `--db`. A failed open stops the start with `StorageError.LeiosStore`
+and the store's typed cause.
+
 **Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
 `--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest
 snapshot already is at the immutable tip, forces the immutable store and writes a snapshot with its

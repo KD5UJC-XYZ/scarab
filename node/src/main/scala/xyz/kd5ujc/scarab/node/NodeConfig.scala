@@ -566,7 +566,7 @@ object NodeConfig:
     for
       hardForks <- renamed(k, "ExperimentalHardForksEnabled", "TestEnableDevelopmentHardForkEras")
       fields <- ConfigFields.keyed[TopLevelKey]("configuration", json)
-      leios <- LeiosSettings.parse(fields)
+      leios <- LeiosSettings.parse(fields, build)
       ledgerDb <- LedgerDbSettings.parse(fields, build)
       dijkstraEpoch <-
         if hardForks.contains(true) then

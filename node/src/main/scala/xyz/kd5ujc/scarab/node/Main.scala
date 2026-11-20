@@ -33,6 +33,8 @@ import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
   ChainStorage,
   ImmutableStore,
+  LeiosStore,
+  LeiosStoreLocks,
   NetworkIdentityFile,
   MemoryUtxoStore,
   RocksUtxoStore,
@@ -1268,21 +1270,36 @@ object Main extends IOApp:
         ).mapN(StartupHangup.apply)
       )
       .flatTap(h => Signals.hangup[IO](startupHangup(options, cliPeers, setup, h)))
+    // the endorser-block store once the database is ours and of this network, as the reference
+    // opens its LeiosDB once the database's marker is checked (`Run.hs:372-402` at b004fe0c); opened
+    // first and released last, after the chain database, as the reference closes it after the run
+    val leios = LeiosStoreLocks
+      .resource[IO]
+      .flatMap(locks =>
+        LeiosStorage.resource[IO](
+          options.referenceBuild,
+          setup.config.settings.leios.database,
+          options.db.map(fs2.io.file.Path.fromNioPath),
+          locks
+        )
+      )
     (
       hangup,
       ownership *> compatible *> (
+        leios,
         utxoBacking(options),
         VerificationCache.resource[IO](),
         Scheduling.resource[IO](options.cpuThreads),
         Supervisor[IO](await = false)
       ).tupled
-    ).tupled.use { case (hup, ((store, checkpoints), cache, scheduling, supervisor)) =>
+    ).tupled.use { case (hup, (leiosStore, (store, checkpoints), cache, scheduling, supervisor)) =>
       followWith(
         options,
         cliPeers,
         setup,
         topology,
         store,
+        leiosStore,
         backing(store, checkpoints),
         cache,
         scheduling,
@@ -1304,6 +1321,7 @@ object Main extends IOApp:
       setup: NodeSetup,
       topology: Option[Topology],
       store: UtxoStore[IO],
+      leios: Option[LeiosStore[IO]],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
       credentials: Option[PoolCredentials],
@@ -1434,6 +1452,7 @@ object Main extends IOApp:
       loaded: NodeSetup,
       topology: Option[Topology],
       store: UtxoStore[IO],
+      leios: Option[LeiosStore[IO]],
       backing: StateBacking[IO, MirrorState],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
@@ -1456,6 +1475,7 @@ object Main extends IOApp:
         setup,
         topology,
         store,
+        leios,
         cache,
         scheduling,
         credentials,

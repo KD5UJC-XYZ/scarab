@@ -52,7 +52,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
     assertEquals(config.settings.maxNtnVersion, NtnVersion.V16)
   }
 
-  test("the live configuration retains the Leios and LedgerDB settings and reports them unused") {
+  test("the live configuration retains the Leios and LedgerDB settings, the store's used") {
     val settings = config.settings
     assertEquals(settings.dijkstraHardForkEpoch, Some(BigInt(0)))
     assertEquals(settings.leios.egressBudgetMbps, 250.0)
@@ -72,12 +72,13 @@ class LeiosTestnetConfigSuite extends FunSuite:
     assertEquals(settings.ledgerDb.snapshots.maximumDelaySeconds, BigInt(1080))
     for key <- List(
         "EgressBudgetMbps",
-        "LeiosDbConfig",
         "LeiosMinOfferLead",
         "LeiosAdaptiveEndorsements",
         "LedgerDB"
       )
     do assert(settings.unsupported.contains(s"$key: recognised but unused"))
+    // its SQLite backend is where the Leios build's node opens the endorser-block store
+    assert(!settings.unsupported.contains("LeiosDbConfig: recognised but unused"))
   }
 
   test("the node setup reads the genesis, funds and pool from `extraConfig` included") {
