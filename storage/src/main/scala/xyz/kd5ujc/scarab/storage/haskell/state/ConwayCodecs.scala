@@ -191,8 +191,18 @@ object ConwayCodecs:
     * read again here and written as values.
     */
   private[state] def poolFields(p: PoolParams, out: Writer)(using ProtVer): Unit =
+    poolFieldsWith(p, out)(())
+
+  /** [[poolFields]] with `third` written after the VRF key hash: the voting key of the Leios
+    * build's parameters from version 12 (`withStakePoolParamsFlatEncoding`, cardano-ledger 9df9f98c
+    * `State/StakePool.hs:716-736`).
+    */
+  private[state] def poolFieldsWith(p: PoolParams, out: Writer)(third: => Unit)(using
+      ProtVer
+  ): Unit =
     hash28.encode(p.operator, out)
     hash32.encode(p.vrfKeyHash, out)
+    third
     out.integer(p.pledge)
     out.integer(p.cost)
     unitInterval.encode(p.margin, out)

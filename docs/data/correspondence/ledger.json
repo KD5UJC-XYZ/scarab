@@ -24871,6 +24871,29 @@
    "note": "consistent with equals",
    "digest": "419b6df0ea6a0ccf"
   },
+  "def ledger.PoolRelays.fromState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "DecCBOR StakePoolRelay",
+     "lines": [458, 473]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR DnsName",
+     "lines": [692, 698]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": ["FuturePoolParamsCodecSuite"],
+   "note": "the relays of a pool's parameters in a ledger state, read for the validation the reference's decoder makes: tags 0 to 2 of their lengths, a 16-bit port, an address in the version's byte-string form, a DNS name of at most 64 or 128 bytes, its text chunked only in the Leios layout from version 12 (decodeString, Decoding/Decoder.hs:1564-1598); the parameters keep the bytes",
+   "digest": "fb87394681268175"
+  },
   "def ledger.state.BlsKeyState.register": {
    "upstream": [
     {

@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "First, asked 2026-11-20T03:23:52Z: Storage format (FMT-1): extend check_storage_format.py's watched surface to cover the Haskell ledger-state codecs (storage/.../haskell/state/*Codecs.scala) that write the ledger state inside the V10 snapshot? No bytes change; the guard's manifest surface changes, so its approval record is updated. After this, any edit to those codecs (including reference-following changes for Haskell import/export or node-to-client answers) fails the guard until you approve it in its own PR. Second, asked 2026-11-20T04:10:51Z: Codex showed #1241's guard still misses code that shapes V10 snapshot bytes outside the codec files: the relay decoder, ledger conversions (Convert.poolParamsBack), set ordering (Sorted), era indices (Era.scala), the CBOR decoder used on restore, and StateLayout.of. Each mutation passed the guard. How should the guard close this?",
-  "asked_at": "2026-11-20T04:10:51Z",
-  "decision": "Approved in two steps. The first answer (03:23:56Z): the guard watches every codec file that writes the bytes of a V10 snapshot, in a pull request of its own at level 3. The second, after an independent review showed definitions outside those files that shape the same bytes: the guard also pins those definitions of the V10 write and read path as members, not whole ledger files, and golden V10 body fixtures are added whose exact bytes it pins (multi-owner pools, relays, single-precision floats, indefinite stored records, both layouts), the fixtures approved under FMT-2 by the same answer. The guard reads a comment as absent at the token boundary it stands on, so that an inline comment no longer fires it; no recorded digest moves with that. A one-off path exception for the BLS-key format pull request was approved separately (asked 04:04:50Z, answered 04:09:53Z). No persisted byte of an existing format changes.",
-  "decided_at": "2026-11-20T04:57:18Z",
-  "surface_sha256": "e1b5c080c84757a2b362edcdfa61a31dfadddc7c6cd944219834bfddae84244a"
+  "question": "Storage format (FMT-1) approval: may the native V10 snapshot read and write a Dijkstra pool's future parameters WITH a BLS voting key? Today Scarab refuses such a state (Dijkstra state, Leios layout, a pending keyed pool re-registration), so it can't be snapshotted, imported from or exported to the Haskell node, or answered over node-to-client. The change mirrors the reference's encoding exactly (cardano-ledger 9df9f98c `State/StakePool.hs`: from version 12, a ten-item array with the key third, the key as [96-byte G2 key, 48-byte G1 proof]), checked against the testnet's recorded bytes. Bytes for every state without keyed future parameters stay identical; no deployed store is affected (deployed stores are V8; no V10 store is deployed) and no migration is needed. It would be its own PR, separate from the POOLREAP change.",
+  "asked_at": "2026-11-20T00:29:56Z",
+  "decision": "Approved as recommended: the native V10 snapshot, changed in place, reads and writes a Dijkstra pool's future parameters with a BLS voting key as the reference encodes them, in a pull request of its own separate from the POOLREAP change; nothing else of the format. The one-off guard exception for the paths outside the general list was approved separately (asked 2026-11-20T04:04:50Z, answered 04:09:53Z), with the node-to-client answer moved to a follow-up pull request and the exception landing first in #1241.",
+  "decided_at": "2026-11-20T01:07:58Z",
+  "surface_sha256": "fcb64692fb4eb5d8e267a326227db90a11b50d1d3d3ec23686127f45e833e452"
  },
  "surface": {
   "registry": {
@@ -264,9 +264,9 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": "1db1c2781205f65ae9decbc835e34a1118a821bfc53be1128f48eb48224d1add",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": "c56ee0253fd57be19c42d7d9f11e517b9a8130d0d79349a3e81db4230ccc2402",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "b0f307112e7248c1c9422313eb7628b36dd3516ee636af36459312c657d8855a",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "6cdebec042cb239e702bb38ab433438034af42d23f419151bbc9ef29b35b8fc3",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "7da4d03a64bc43011fc440c87f2bda0f6659da8f9bf4dad99cd7a119ae657068",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "050040f1e442e00fb448ef2a7c8296ff229413a41f46e7c79ad91e5d516aaa0e",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "4be536a2166841090cd0d27e42f9e247dfd5550c5251662c6c8c0632bb1fbd14",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala": "b5786dd7c6a4097a345fb1bc7371d06fcd9d8d4c6344ef0734291ab1af36b9d7",
@@ -275,7 +275,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecs.scala": "eff5766f1249ba4843cb3e22e9819133370f4d955094cd283d6d96ee3c7ae9c9",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileCodecs.scala": "da67df20db22b3535397dc21fafe51ec5e0d858e12ce2a6e4aab1894668f9d32",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeOrders.scala": "344093d18720fc3e064dabca426d2eb1ace16246a5b18d279407e453298b960c",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": "ce117bc8a66922359ed462b45103b5891fbee3e51ff9b3c7c0585e4dc1252fe2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": "11984ae5fef2a92fdd87fd8f912455f80d4312827bb0d80e1271f4e90a56cb8e",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": "41c5941c850388e1eb68d2ab6dfb2e3c7361167ea0eb80218c17a876f221442d",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ProposalsReading.scala": "1db8028ebb4238a55e1dc869d46aa98db7333d7b5eb510a0763bc0aad382a1e1",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Record.scala": "3cc9db95616e5b058f27d41da49f4a273699cc46ab98cb7b2dc9f1e6a7939c46",
@@ -319,7 +319,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "67592a136e8c67596733bdaa48a11245fb6d121f38057d4e1f2a7543b03bd14d",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.Stem": "ebc2ae76bf4aab10145b5e249e2eb46ca5bba8540d2f3dd632bc058e335cc82f",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#object PoolRelays": "e1030abbc8bf6ab226edeb636a2436cd10e6f146375e699716c3aa79f840a008",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#object PoolRelays": "fea6013e265c03b47f600b46539da124cd798973374fe9c1073eb72453f48d5f",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv4": "bcd221463706e4a367d5135af79e7a22871179e9c1440654d3fa72edadb48b74",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv6": "53f2efe986cd12d5d5690722c52fb207fba845a66eaf53bbd42b07bb61192569",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#object Ipv6": "7a93d1fe6bc62cc613437a5bd7b3582e917145debecc062f4f0b8de447c54bfa",

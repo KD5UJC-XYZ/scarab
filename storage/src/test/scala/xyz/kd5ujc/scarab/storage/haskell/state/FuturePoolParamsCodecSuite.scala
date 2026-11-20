@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, StateLayout}
+import xyz.kd5ujc.scarab.protocol.StateLayout
 
 /** `PState` 's future parameters at the state's types ([[StakePoolParams]]) keep the bytes the
   * state's `PState` had while it held the node's parameters: the codec of `PState` as it was, the
@@ -130,50 +130,130 @@ class FuturePoolParamsCodecSuite extends ScalaCheckSuite:
     }
   }
 
-  test("parameters holding a voting key, or of the other layout, are not written") {
-    val p = Build.stakePoolParams(
-      node.PoolParams(
-        Bytes(Vector.fill(28)(2.toByte)),
-        Bytes(Vector.fill(32)(3.toByte)),
-        BigInt(0),
-        BigInt(0),
-        Rational(1, 2),
-        node.RewardAccount(0, node.Credential.Key(Bytes(Vector.fill(28)(4.toByte)))),
-        Set.empty,
-        Bytes.empty,
-        None
-      )
+  private val keyedParams = Build.stakePoolParams(
+    node.PoolParams(
+      Bytes(Vector.fill(28)(2.toByte)),
+      Bytes(Vector.fill(32)(3.toByte)),
+      BigInt(0),
+      BigInt(0),
+      Rational(1, 2),
+      node.RewardAccount(0, node.Credential.Key(Bytes(Vector.fill(28)(4.toByte)))),
+      Set.empty,
+      Bytes.empty,
+      None
     )
-    val key = BlsKey(Bytes(Vector.fill(96)(6.toByte)), Bytes(Vector.fill(48)(7.toByte)))
-    families.foreach { c =>
-      val keyed = p.copy(blsKey = PoolParamsBlsKey.Leios(Some(key)))
-      assert(c.params.write(keyed).isLeft, s"${c.layout}: a key is written")
-      val other = c.layout match
-        case StateLayout.Node11_1 => PoolParamsBlsKey.Leios(None)
-        case StateLayout.Leios    => PoolParamsBlsKey.Node11_1
-      assert(c.params.write(p.copy(blsKey = other)).isLeft, s"${c.layout}: another layout")
-      assertEquals(
-        c.params.write(p.copy(blsKey = PoolParamsBlsKey.certified(c.layout))).isRight,
-        true
-      )
-    }
-    // a key in the Leios layout from version 12 is refused on reading, as before
-    // (`DijkstraNotYet.PoolParamsBlsKey`): ten items whose third is a list
-    val c = codecs(LeiosStateCodecs, 12)
-    val nine = c.flatParams.encodeUnchecked(Convert.poolParamsBack(p))
-    val keyItem = StateGen.item { w =>
-      w.arrayHead(2)
-      w.bytes(key.key)
-      w.bytes(key.proofOfPossession)
-    }
-    val ten = Bytes(
-      Vector(0x8a.toByte) ++ nine.value.slice(1, 1 + 30 + 34) ++ keyItem.value ++
+  )
+
+  /** A valid voting key (`BlsKey`, 9df9f98c `State/StakePool.hs:532-542`): a key of the devnet's.
+    */
+  private val key: BlsKey = LeiosGen.keys.head
+
+  /** `withStakePoolParamsFlatEncoding` (`:716-736`) of the parameters' nine items `nine` with
+    * `third` third: ten items.
+    */
+  private def ten(nine: Bytes, third: Bytes): Bytes =
+    Bytes(
+      Vector(0x8a.toByte) ++ nine.value.slice(1, 1 + 30 + 34) ++ third.value ++
         nine.value.drop(1 + 30 + 34)
     )
+
+  /** `EncCBOR BlsKey` (`:532-536`): `[bytes .size 96, bytes .size 48]`. */
+  private val keyItem = StateGen.item { w =>
+    w.arrayHead(2)
+    w.bytes(key.key)
+    w.bytes(key.proofOfPossession)
+  }
+
+  test("a voting key in the Leios layout: ten items from version 12, the key third, read back") {
+    val keyed = keyedParams.copy(blsKey = PoolParamsBlsKey.Leios(Some(key)))
+    Vector(codecs(LeiosStateCodecs, 12), codecs(NativeLeiosStateCodecs, 12)).foreach { c =>
+      val nine = c.flatParams.encodeUnchecked(Convert.poolParamsBack(keyedParams))
+      val bytes = ten(nine, keyItem)
+      assertEquals(c.params.write(keyed), Right(bytes), c.toString)
+      assertEquals(readOk(c.params, bytes), keyed)
+      // with no key: nine items written; ten whose third is null, and nine, read as no key
+      val none = keyedParams.copy(blsKey = PoolParamsBlsKey.Leios(None))
+      assertEquals(c.params.write(none), Right(nine))
+      assertEquals(readOk(c.params, ten(nine, Bytes(Vector(0xf6.toByte)))), none)
+      assertEquals(readOk(c.params, nine), none)
+      // the key is read as the reference reads it: a point the decoder refuses is refused
+      val bad = StateGen.item { w =>
+        w.arrayHead(2)
+        w.bytes(Bytes(Vector.fill(96)(6.toByte)))
+        w.bytes(key.proofOfPossession)
+      }
+      assert(c.params.decodeBytes(ten(nine, bad), HaskellState.limits).isLeft)
+    }
+  }
+
+  test("keyed parameters' relays are read as the reference reads them at version 12") {
+    val c = codecs(NativeLeiosStateCodecs, 12)
+    // ten items with the key third and `relays` ninth (`decodeStakePoolParamsFlat`, `:746-771`)
+    def keyedWith(relays: String): Bytes =
+      Bytes(
+        hex(s"8a 581c$key28 5820${"02" * 32}").value ++ keyItem.value ++
+          hex(s"00 00 d81e820102 581de0$key28 d9010280 $relays f6").value
+      )
+    val name = "6d" + "relay.example".getBytes("UTF-8").map(b => f"$b%02x").mkString
+    def read(relays: String) =
+      c.params.decodeBytes(keyedWith(relays), HaskellState.limits).left.map(_.kind)
+    // a relay of tag 3 is refused, as the reference refuses it (`invalidKey`,
+    // `State/StakePool.hs:473`, cardano-ledger 9df9f98c)
     assertEquals(
-      c.params.decodeBytes(ten, HaskellState.limits).left.map(_.kind),
-      Left(DecodeError.Kind.Domain(DijkstraNotYet.PoolParamsBlsKey))
+      read(s"81 82 03 $name"),
+      Left(
+        DecodeError.Kind.Domain(
+          node.LedgerDecodeError.PoolRelay(node.PoolRelayError.UnknownTag(0, BigInt(3)))
+        )
+      )
     )
+    // a DNS name of 129 bytes is refused (`textDecCBOR 128`, `BaseTypes.hs:692-698`,
+    // cardano-ledger 9df9f98c)
+    val long = "7881" + "61" * 129
+    assertEquals(
+      read(s"81 82 02 $long"),
+      Left(
+        DecodeError.Kind.Domain(
+          node.LedgerDecodeError.PoolRelay(node.PoolRelayError.DnsNameTooLong(0, 129))
+        )
+      )
+    )
+    // a name read: definite, and chunked text in the Leios layout from version 12 (`decodeString`)
+    val definite = read(s"81 83 01 f6 $name").map(_.relays)
+    assertEquals(definite.map(_.isEmpty), Right(false))
+    val chunked = "7f 66" + "relay.".getBytes("UTF-8").map(b => f"$b%02x").mkString + " 67" +
+      "example".getBytes("UTF-8").map(b => f"$b%02x").mkString + " ff"
+    assert(read(s"81 83 01 f6 $chunked").isRight, "a chunked DNS name at version 12")
+  }
+
+  test("a voting key below version 12 is not written, as the reference drops it; nor in 11.1") {
+    val keyed = keyedParams.copy(blsKey = PoolParamsBlsKey.Leios(Some(key)))
+    val c = codecs(LeiosStateCodecs, 9)
+    assertEquals(
+      c.params.write(keyed),
+      c.flatParams.write(Convert.poolParamsBack(keyedParams))
+    )
+    families.foreach { c =>
+      val other = c.layout match
+        case StateLayout.Node11_1 => PoolParamsBlsKey.Leios(Some(key))
+        case StateLayout.Leios    => PoolParamsBlsKey.Node11_1
+      assert(
+        c.params.write(keyedParams.copy(blsKey = other)).isLeft,
+        s"${c.layout}: another layout"
+      )
+    }
+  }
+
+  property("the Leios layout's future map with voting keys reads back what it writes") {
+    val c = codecs(NativeLeiosStateCodecs, 12)
+    forAll(pState(StateLayout.Leios), Gen.oneOf(LeiosGen.keys)) { (pair, k) =>
+      val (typed, _) = pair
+      val keyed = typed.copy(future =
+        typed.future.transform((_, p) => p.copy(blsKey = PoolParamsBlsKey.Leios(Some(k))))
+      )
+      val bytes = c.typed.write(keyed).fold(v => fail(v.toString), identity)
+      assertEquals(readOk(c.typed, bytes), keyed)
+    }
   }
 
   // ---- the read of the two fields the node's parameters' codec keeps unread (owner's decision of

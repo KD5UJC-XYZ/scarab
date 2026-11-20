@@ -802,9 +802,11 @@ with its `PParams` of 54 items), the header state's tip `[7, [slot, hash, block 
 chain-dependent state of Praos2 (`[1, [nine fields]]`, `Protocol/PolyPraos.hs:368-419`). The
 consensus envelopes around them are the same as before Dijkstra and not versioned by the ledger
 (`Shelley/Ledger/Ledger.hs:885-922`). Gated by layout: the 11.1 layout refuses a Dijkstra telescope,
-tip or era state both ways (`DijkstraNotYet.LedgerState`). Not read yet: a pool's BLS key in its
-`StakePoolParams` (`DijkstraNotYet.PoolParamsBlsKey`), a proposal's update of a parameter Dijkstra
-adds (`DijkstraNotYet.ParameterUpdate`) and a Peras epoch context (`DijkstraNotYet.PerasEpochContext`).
+tip or era state both ways (`DijkstraNotYet.LedgerState`). A pool's BLS key in its future
+`StakePoolParams` is read and written as the reference does from version 12: ten items with the key
+third, nine without (`State/StakePool.hs:716-771`; approved under the format freeze on 2026-11-20,
+#54). Not read yet: a proposal's update of a parameter Dijkstra adds
+(`DijkstraNotYet.ParameterUpdate`) and a Peras epoch context (`DijkstraNotYet.PerasEpochContext`).
 
 **The model.** Each record that differs holds one part that the layout decides, a closed enum with a
 case per layout extending `LayoutPart`: `Bound.Layout`, `ShelleyLedgerState.Layout`,
