@@ -195,6 +195,9 @@ class SurfaceTest(TreeTest):
             # a stored update is read with the transaction's stricter readers
             (fmt.CONWAY_PARAM_UPDATE, 'read(n, ConwayParam.stored)', 'read(n, ConwayParam.decoders)',
              '#ConwayParamUpdate.decodeStored'),
+            # a metadata URL of more than 64 bytes no longer reads at version 9 or later (#1241, confirmation review)
+            (f'{fmt.LEDGER_MAIN}/Tx.scala', 'val limit = if version.atLeast(9) then 128 else 64', 'val limit = 64',
+             '#PoolParams.urlAt'),
             # the 11.1 build is said to write the Leios layout
             (layout, 'case ReferenceBuild.Release11_1   => Right(Node11_1)',
              'case ReferenceBuild.Release11_1   => Right(Leios)', '#StateLayout.of'),

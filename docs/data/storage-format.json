@@ -9,7 +9,7 @@
   "asked_at": "2026-11-20T04:10:51Z",
   "decision": "Approved in two steps. The first answer (03:23:56Z): the guard watches every codec file that writes the bytes of a V10 snapshot, in a pull request of its own at level 3. The second, after an independent review showed definitions outside those files that shape the same bytes: the guard also pins those definitions of the V10 write and read path as members, not whole ledger files, and golden V10 body fixtures are added whose exact bytes it pins (multi-owner pools, relays, single-precision floats, indefinite stored records, both layouts), the fixtures approved under FMT-2 by the same answer. The guard reads a comment as absent at the token boundary it stands on, so that an inline comment no longer fires it; no recorded digest moves with that. A one-off path exception for the BLS-key format pull request was approved separately (asked 04:04:50Z, answered 04:09:53Z). No persisted byte of an existing format changes.",
   "decided_at": "2026-11-20T04:57:18Z",
-  "surface_sha256": "fef767eb414ef80b979899e978b4e6b2a9ff75388b9b3c7661859660fbe77f76"
+  "surface_sha256": "e1b5c080c84757a2b362edcdfa61a31dfadddc7c6cd944219834bfddae84244a"
  },
  "surface": {
   "registry": {
@@ -328,6 +328,23 @@
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayPort": "050121597e080a4e8e5e55b0ced6e52cfa88d7d8f8a390a21d228c184615cf50",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.poolParamsBack": "4e89c99fad71d9dcb20bbac4337e52fda8ec08d50e052200690753e8b9b12d5e",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.rewardAccountBack": "bcea0c5d429de34cff97e3c35e819b18acd1139bfec8aefea1fd516208c094f5",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.stakePoolParams": "32d293f1fb1e47d4c64a2d4c4ef11b7d93fe49e4487f5ac9fabc7eaee32d57df",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.keyHash": "46cbb34ab23a026855a30bcd88f1314d09d1e9672ededbb36ca056ffc2334de6",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.credential": "bc93cc878148e9673cee1e1580aac703f3f3a2977a63c6f6cb83afb6eb5821b3",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.back": "e93efe2e3c7afbdf2579e0e3da2d91dbfa6c24aedfb2c8e87257835990b03bcc",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.accountAddress": "7ff99106981c93bc8d197c59810878ddc8e230e91987fb1763fd4cc979f32e0d",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/StakePool.scala#PoolMetadata.read": "65e63aa1ca398524a9d0c399a74d19d16eb6a82a67ca8d070a5609bec447f918",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.metadataAt": "4458f8d4f48290d2f933b0041d9bf7fe2a92d9d8f71fb8b8f2737e33db67e313",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.urlAt": "99d2e529c5dec14a7b39383c114cd788491986371c2208d148b20f71f86d3c70",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.metadata": "7f0627ea5bf3aee19e6c1d2466d23f7c4d6d0cf9aef3aef171fb7c88af985bf0",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.decode": "771fe448e4539a9f29ec6a949d9ee1e0e3e5d3ab7a7f8de2112a8c6baf17c0ca",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.bytes": "437f83f3d2890ed1d43d777a8fb9f7c4423ca87959ab8c3bb2749943cb082514",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.indefinite": "ee88047a3b781d93a04ee0e49db718aec18d379feb4e7fd2b93c3d62deef48e5",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.text": "e7a5dcc4fb87f2f9a37194b237f14313d43548c46868e9a1a3b3c373be112b22",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.arrayN": "c6f7e06a35e10ddb5bd23eb0072a3484926c373ba691905f4be0034ee4a5a417",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByteStrings.scala#ByteStrings.of": "483df5f309ceb37dd10903815244f4d358594574198f0971a2fbbe83202195e7",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#checked": "a100393754bb434e682cedb82e5dcbbcad8d30c751ab1a8577ceb5c94b3104f8",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#UnitInterval.boundRational": "7c6e4d733cbcb1f11143c06f1b03d4b180e92eca8117a277ec0a0c59f054eb06",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#enum ConwayParam": "ba823725c0a39d5cf74523e615ed0512d9fc603f7903dd221bf17b705a1390cc",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#object ConwayParam": "b5f631ba5019ee966d5db65c388ea1be6a03c926c1b2b56d3b25fbaa9b30b0ff",
    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.decodeStored": "0a49b5162d9f1c07bd1d2fb48811fb9ef9a503fad5bcf273c5a5c589765728ca",
@@ -601,7 +618,7 @@
      "the future parameters",
      "the proposal: $other"
     ],
-    "code_sha256": "21a734936a3ee55507210e00144deb8b671555f76c67f6b01b23993b1dd04cf9"
+    "code_sha256": "8bd936025c6c804f913a5f0847237d7c00756bbc9431e0f6aa98f6c4bf32fa0a"
    },
    "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyCases.scala": {
     "literals": [
@@ -611,16 +628,21 @@
      "${c.file}: $e",
      "${c.source}: $e",
      "${c.source}: not a Conway state",
+     ".json",
      "0b",
      "0c",
      "0d",
      "0e",
      "1a00f42400 1b00000002540be400",
      "1a03b20b80 1b00000004a817c800",
+     "1f",
+     "5820",
      "5d",
      "82",
+     "82 7864",
      "9f",
      "_cardano._tcp.example.org.",
+     "a URL of 100 bytes",
      "a state with a pool",
      "a state with two pools",
      "a3",
@@ -629,7 +651,9 @@
      "fixtures/haskell-state/conway-4593/state",
      "fixtures/leios/state/conway-195/state",
      "fixtures/snapshot-v10-bodies",
+     "https://pools.example.org/",
      "leios-conway.cbor",
+     "m",
      "margin",
      "node11_1-conway-indefinite-prices.cbor",
      "node11_1-conway.cbor",
@@ -638,7 +662,7 @@
      "the body holds the update",
      "the update occurs once"
     ],
-    "code_sha256": "b21dc82b07d3135faf178847188bf05f3c230296dae28a5275923e9cf9816292"
+    "code_sha256": "72b4391a71e72720b9101a10f4fc612c8c24637b67cdc469fae1a003f1930fab"
    }
   },
   "previous_version_suites": {
@@ -650,9 +674,9 @@
   },
   "fixtures": {
    "fixtures/network-identity-v6/network-identity": "933037d584eefcb4357e1f1c3857c5854175b2e5636196d9152662dba89b9588",
-   "fixtures/snapshot-v10-bodies/leios-conway.cbor": "1a2d17c77bd580bf60aab499e1c9cf3232a53d3295744ff1bb8c4a966b0df4dd",
-   "fixtures/snapshot-v10-bodies/node11_1-conway-indefinite-prices.cbor": "7baf67d96ae98a5b60780edd6cf8ffc02468da01b7531b4920766c13baa7d70d",
-   "fixtures/snapshot-v10-bodies/node11_1-conway.cbor": "fe97da636da7cca7253d43df579892ff3b66094e5344e3c11583068a868261d8",
+   "fixtures/snapshot-v10-bodies/leios-conway.cbor": "b6a1f78813252d89cc00f865f29b5d7e2009023aa62917fd75386bb87286b830",
+   "fixtures/snapshot-v10-bodies/node11_1-conway-indefinite-prices.cbor": "ba223ee1e04ee9b549b6adc2801799ca99df8ec00b86f4bcec622a40deb43bb9",
+   "fixtures/snapshot-v10-bodies/node11_1-conway.cbor": "871ba419c08795a858c6879d58d641f6555260c5ada9c2d5ba0e24e1ffe0d224",
    "fixtures/snapshot-v10/SHA256SUMS": "e54e83261bb5bea3d01b40d67504d820c9026f6d2752c983fab4b8e3b4e352ca",
    "fixtures/snapshot-v10/conway-native-730.bin": "3f55eb9f3cfa35c576a9770283222eea7e6df3c382e66ba40ccb8bfb3b0e09e6",
    "fixtures/snapshot-v10/eras/allegra-151.bin": "9217fe33a479dfeffde89b054535012cff25437bebad6cef62c26dd1447b9f58",

@@ -15,7 +15,7 @@ these fixtures under FMT-2.
 
 | File | Build | Source state (sha256 of `state`) | Put in |
 |---|---|---|---|
-| `node11_1-conway.cbor` | `11.1` | `haskell-state/conway-4593` (`a18120e5…4bc9`) | a pool with two owners, pledge ≠ cost and a relay of each kind (IPv4 and IPv6, a name with a port, an SRV name ending in a dot); single-precision likelihoods; a proposal of `Prices` and two `ExUnits` with two pool votes; the pool's future parameters |
+| `node11_1-conway.cbor` | `11.1` | `haskell-state/conway-4593` (`a18120e5…4bc9`) | a pool with two owners, pledge ≠ cost and a relay of each kind (IPv4 and IPv6, a name with a port, an SRV name ending in a dot) and a metadata URL of 100 bytes (more than the 64 a URL holds below decoder version 9); single-precision likelihoods; a proposal of `Prices` and two `ExUnits` with two pool votes; the pool's future parameters, with that URL |
 | `leios-conway.cbor` | `leios-b004fe0c` | `leios/state/conway-195` (`736c7ab5…371c`) | as above, without future parameters (their voting key's layout is not settled) |
 | `node11_1-conway-indefinite-prices.cbor` | `11.1` | `node11_1-conway.cbor` | its proposal's `Prices` and `ExUnits` as indefinite lists, as an earlier writer stored them: it reads as `node11_1-conway.cbor` and writes it |
 

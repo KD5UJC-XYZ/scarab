@@ -35,7 +35,9 @@ points to FMT-1 (docs/design-rules.md). The surface is:
   kinds, flags, codec and file names), the snapshot file's checksum and name (`FileLedgerSnapshots`) and the
   checkpoint directory's name (`StateBacking.stem`), and the definitions of other packages on the write and read
   path of a V10 snapshot's Haskell state: the pool relays' reading and writing (`object PoolRelays`, the octets of
-  a relay's addresses, its port), the conversion of a pool's future parameters (`Convert.poolParamsBack`), the
+  a relay's addresses, its port), the conversions of a pool's future parameters both ways (`Convert`) and the
+  reading of their metadata at the state's decoder version (`PoolMetadata.read`, `PoolParams.metadataAt` and the
+  URL's limit, the `CborRead` and `ByteStrings` readers they use, the hashes' sizes and the margin's bound), the
   keys and readers of a stored parameter update (`ConwayParam`, `ConwayParamUpdate.decodeStored`), the orders its
   maps and sets are written in (`Sorted`, the hash, coin, credential, `DRep`, `WithOrigin`, `Word64`, `Ptr` and
   `Voter` orders, `Bytes.compareTo`), the era indices (`enum Era`), the layout of each reference build
@@ -197,10 +199,25 @@ FORMAT_MEMBERS = (
     ('RelayIp.be', POOL_RELAYS, r'object RelayIp:', r'private\[ledger\] def be\('),
     ('RelayIp.fromOctets', POOL_RELAYS, r'object RelayIp:', r'def fromOctets\('),
     ('RelayPort', POOL_RELAYS, None, r'object RelayPort:'),
-    # the future parameters of a pool, written as the node's `PoolParams`
-    ('Convert.poolParamsBack', f'{LEDGER_MAIN}/rules/Convert.scala', r'object Convert:', r'def poolParamsBack\('),
-    ('Convert.rewardAccountBack', f'{LEDGER_MAIN}/rules/Convert.scala', r'object Convert:',
-     r'def rewardAccountBack\('),
+    # the future parameters of a pool, written as the node's `PoolParams` and read back from them: the conversions,
+    # the reading of their metadata at the state's decoder version (the URL's limit) and of the hashes' sizes
+    *(('Convert.' + name, f'{LEDGER_MAIN}/rules/Convert.scala', r'object Convert:', header)
+      for name, header in (('poolParamsBack', r'def poolParamsBack\('),
+                           ('rewardAccountBack', r'def rewardAccountBack\('),
+                           ('stakePoolParams', r'def stakePoolParams\('), ('keyHash', r'def keyHash\['),
+                           ('credential', r'def credential\['), ('back', r'def back\['),
+                           ('accountAddress', r'def accountAddress\('))),
+    ('PoolMetadata.read', f'{LEDGER_STATE}/StakePool.scala', r'object PoolMetadata:', r'def read\('),
+    *(('PoolParams.' + name, f'{LEDGER_MAIN}/Tx.scala', r'object PoolParams:', header)
+      for name, header in (('metadataAt', r'private\[ledger\] def metadataAt\('), ('urlAt', r'private def urlAt\('),
+                           ('metadata', r'private def metadata\('))),
+    *(('CborRead.' + name, f'{LEDGER_MAIN}/CborRead.scala', r'private\[ledger\] object CborRead:', header)
+      for name, header in (('decode', r'def decode\('), ('bytes', r'def bytes\('), ('indefinite', r'def indefinite\('),
+                           ('text', r'def text\('), ('arrayN', r'def arrayN\('))),
+    ('ByteStrings.of', f'{LEDGER_MAIN}/ByteStrings.scala', r'object ByteStrings:', r'def of\('),
+    ('checked', f'{LEDGER_STATE}/Vocabulary.scala', None, r'private def checked\('),
+    ('UnitInterval.boundRational', f'{LEDGER_STATE}/Vocabulary.scala', r'object UnitInterval:',
+     r'def boundRational\('),
     # a stored parameter update: its keys, the reading of each value (indefinite `Prices` and `ExUnits` among them)
     ('enum ConwayParam', CONWAY_PARAM_UPDATE, None, r'enum ConwayParam\('),
     ('object ConwayParam', CONWAY_PARAM_UPDATE, None, r'object ConwayParam:'),

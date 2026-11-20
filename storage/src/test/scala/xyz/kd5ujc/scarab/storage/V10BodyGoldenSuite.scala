@@ -47,6 +47,7 @@ class V10BodyGoldenSuite extends FunSuite:
       assert(pool.owners.sizeIs == 2)
       assertEquals((pool.pledge, pool.cost), (V10BodyCases.pledge, V10BodyCases.cost))
       assertEquals(PoolRelays.decodeState(pool.relays), Right(V10BodyCases.relays))
+      assertEquals(pool.metadata, Some(V10BodyCases.metadataBytes))
       assertEquals(
         ConwayNewEpochState.es
           .andThen(EpochState.nonMyopic[Conway])
@@ -71,6 +72,8 @@ class V10BodyGoldenSuite extends FunSuite:
           val params = future.getOrElse(id, fail("the future parameters"))
           assertNotEquals(params.pledge, params.cost)
           assertEquals(params.owners, V10BodyCases.owners)
+          // a URL longer than 64 bytes, which a restore reads at the state's decoder version
+          assertEquals(params.metadata.map(_.bytes), Some(V10BodyCases.metadataBytes))
         case Edits.Conway => assertEquals(future.get(id), None)
   }
 

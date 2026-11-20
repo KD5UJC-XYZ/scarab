@@ -32,12 +32,15 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{ConwayCodecs, LedgerFileEra, Ref
   * decoded, given the values a V10 body can hold and a devnet's does not, and written by the
   * current codecs:
   *
-  *   - a pool with two owners, a pledge that is not its cost, and a relay of each kind (an address
-  *     with IPv4 and IPv6, a name with a port, and an SRV name that ends in a dot);
+  *   - a pool with two owners, a pledge that is not its cost, a relay of each kind (an address with
+  *     IPv4 and IPv6, a name with a port, and an SRV name that ends in a dot) and a metadata URL of
+  *     100 bytes;
   *   - likelihoods of single-precision floats;
   *   - in Conway, a parameter-change proposal of `Prices` and two `ExUnits`, with two pool votes;
-  *   - in the 11.1 layout, the future parameters of a pool (`psFutureStakePoolParams`), which the
-  *     state writes through [[xyz.kd5ujc.scarab.ledger.rules.Convert.poolParamsBack]].
+  *   - in the 11.1 layout, the future parameters of a pool (`psFutureStakePoolParams`), with that
+  *     metadata URL, which the state writes through
+  *     [[xyz.kd5ujc.scarab.ledger.rules.Convert.poolParamsBack]] and reads with the URL's limit of
+  *     its decoder version ([[PoolMetadata.read]]).
   *
   * The Leios layout's future parameters are left out: their voting key's layout is not settled yet.
   * A Dijkstra state is not a case: the Leios build's `dijkstra-203` capture is written back byte
@@ -104,6 +107,18 @@ object V10BodyCases extends Assertions:
     Sorted.set(Seq(keyHash[Staking]("0c"), keyHash[Staking]("0b")))
   val pledge: Coin = Coin(BigInt(7_000_000_000L))
   val cost: Coin = Coin(BigInt(340_000_000L))
+
+  /** A metadata URL of 100 bytes of UTF-8: more than the 64 a `Url` holds below decoder version 9,
+    * within the 128 it holds from it (`BaseTypes.hs:678-685`, cardano-ledger f649f975).
+    */
+  val metadataUrl: String = "https://pools.example.org/" + "m" * 69 + ".json"
+  val metadataBytes: Bytes =
+    val url = metadataUrl.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    assert(url.length == 100, "a URL of 100 bytes")
+    hex("82 7864" + Bytes.wrap(url).hex + "5820" + "1f" * 32)
+  val metadata: PoolMetadata =
+    PoolMetadata.held(metadataBytes).fold(e => fail(e.toString), identity)
+
   val likelihood: Likelihood =
     Likelihood(Vector(LogWeight(1.5f), LogWeight(-0.1f), LogWeight(3.0e-3f)))
 
@@ -150,7 +165,13 @@ object V10BodyCases extends Assertions:
     val voters = pools.keys.take(2).map(KeyHash.bytes(_)).toVector
     assert(voters.sizeIs == 2, "a state with two pools")
     val relayBytes = PoolRelays.encode(relays)
-    val shaped = pool.copy(owners = owners, pledge = pledge, cost = cost, relays = relayBytes)
+    val shaped = pool.copy(
+      owners = owners,
+      pledge = pledge,
+      cost = cost,
+      relays = relayBytes,
+      metadata = Some(metadataBytes)
+    )
     val withPool = ConwayNewEpochState.pools.modify(_.updated(first, shaped))(state)
     val withLikelihood = ConwayNewEpochState.es
       .andThen(EpochState.nonMyopic[Conway])
@@ -171,7 +192,7 @@ object V10BodyCases extends Assertions:
           AccountAddress(Network.Testnet, AccountId(Credential.KeyHashObj(keyHash[Staking]("0e")))),
           owners,
           relayBytes,
-          None
+          Some(metadata)
         )
         ConwayNewEpochState.ls
           .andThen(ConwayLedgerState.pState)
