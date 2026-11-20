@@ -677,6 +677,12 @@ Conway's rules on the classes follow as the rest of stage 2.
     arguments are read from their bytes after the purpose, whose failure is the reference's. The spending
     datum (`AlonzoTxInfo.spendingDatum`) is read before the purpose for V1 and V2 and after it for V3; only a
     spending purpose has one, and its translation cannot fail, so the order shows in no result.
+  - A body's outputs are zipped with the transaction indices in each of the three languages, as the reference
+    zips them with `[minBound ..] :: [TxIx]`, a `Word16` (`Conway/TxInfo.hs:412-416, 452-456, 498-502` at
+    f649f975, `:433-437, 470-474, 513-517` at 9df9f98c and 29a7d656), so an output past index 65,535 is in no
+    language's information (`TxIx.enumerate`). `EraPlutusContextSuite` widens a body to 65,537 outputs and
+    finds 65,536 in each language's `TxInfo`, the flat translation's the same. The node's other numberings of
+    a body's outputs follow the same bound (`TxIn.txouts`, `TxIn.mkCollateralTxIn`, `TxOutsBoundSuite`).
   - `EraPlutusContextSuite`: the typed V1 and V2 `TxInfo`s, through the era's memoised result, equal the flat
     ones or refuse alike on the same 432 rows and the 62 recorded block transactions, at the row's version and
     at 9, 10 and 11, reaching every refusal a V1 or V2 context has in Conway but `PlutusPurposeNotSupported`,
