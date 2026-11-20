@@ -62,13 +62,16 @@ final case class StoredEb(
   * store opens, as the reference's `idx_ebs_ebHashBytes` and `idx_ebs_sweepable` indexes find them.
   *
   * Writes are serialised (`writes`), as the reference's one write queue serialises them, and each
-  * is one atomic batch with RocksDB's write-ahead log, which makes it durable: the store has no
-  * checkpoint to be rebuilt from. A read sees the store at one moment, through a RocksDB snapshot
-  * ([[RocksLeiosStore.View]]), as the reference reads inside one SQLite transaction. Every call
-  * holds a permit of `gate` while it runs and the release takes all of them, so the database is
-  * never closed under a call. A first open holds an exclusive lock of the operating system on
-  * `<dir>.lock`, beside the store, while it makes, syncs, checks and opens the store
-  * ([[RocksLeiosStore.firstOpen]]), after the permit of that file among the process's opens
+  * is one atomic batch with RocksDB's write-ahead log on: the store has no checkpoint to be rebuilt
+  * from. The log is not synced at every write, so a crash of the process loses no write, and power
+  * loss can lose the latest writes while the store recovers to a consistent state, as the
+  * reference's SQLite files run in WAL mode with `synchronous = normal`
+  * (`Impl/SQLite/Connection.hs` at 2416493b). A read sees the store at one moment, through a
+  * RocksDB snapshot ([[RocksLeiosStore.View]]), as the reference reads inside one SQLite
+  * transaction. Every call holds a permit of `gate` while it runs and the release takes all of
+  * them, so the database is never closed under a call. A first open holds an exclusive lock of the
+  * operating system on `<dir>.lock`, beside the store, while it makes, syncs, checks and opens the
+  * store ([[RocksLeiosStore.firstOpen]]), after the permit of that file among the process's opens
   * ([[LeiosStoreLocks]], which the caller makes once for the process and gives every open); the
   * lock file is not part of the store, as the reference's SQLite files have SQLite's own locking.
   *
