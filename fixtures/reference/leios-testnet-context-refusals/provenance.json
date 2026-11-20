@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "measuredAt": "2026-11-20",
- "scope": "The Plutus script contexts the build of the public Leios testnet (release rc-2026w44) collects (mkDijkstraStAnnTopTx) for crafted Dijkstra transactions that reach what the chain's own transactions do not: the refusals of a Plutus V1 to V3 context in a Dijkstra transaction, a guard's context whose sub-transaction fails, a guard's redeemer with no script, and transactions of every language that are collected; in the chain context fixture's environment (protocol version 12.0, the cost models of Plutus V1 to V4 in force, the chain's system start and slot length). For each case the ToCBOR PlutusWithContext encoding of every context of the top-level transaction and of each sub-transaction, or the collection's failure as the ledger shows it (Show), at the top level and in each sub-transaction; results.topCollected and results.topRefused count the cases by their top level's collection alone (a case whose sub-transaction is refused counts as collected). Scripts are placeholders, never evaluated.",
+ "scope": "The Plutus script contexts the build of the public Leios testnet (release rc-2026w44) collects (mkDijkstraStAnnTopTx) for crafted Dijkstra transactions that reach what the chain's own transactions do not: the refusals of a Plutus V1 to V3 context in a Dijkstra transaction, a guard's context whose sub-transaction fails, a guard's redeemer with no script, transactions of every language that are collected, and a guard's view of a whole transaction whose levels give votes and current treasury amounts (transGuardingTopTxInfo; the amounts of one case differ, which the ledger's rules refuse and the collection does not check); in the chain context fixture's environment (protocol version 12.0, the cost models of Plutus V1 to V4 in force, the chain's system start and slot length). For each case the ToCBOR PlutusWithContext encoding of every context of the top-level transaction and of each sub-transaction, or the collection's failure as the ledger shows it (Show), at the top level and in each sub-transaction; results.topCollected and results.topRefused count the cases by their top level's collection alone (a case whose sub-transaction is refused counts as collected). Scripts are placeholders, never evaluated.",
  "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
  "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
  "plutusSourceCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
@@ -19,17 +19,17 @@
  },
  "commands": [
   "python3 -I scripts/oracle/leios-testnet/leios_context_refusal_cases.py > fixtures/reference/leios-testnet-context-refusals/cases.json",
-  "python3 -I scripts/oracle/leios-testnet/chain/refusals.py --evidence <a directory outside the checkout> --owner era-dijkstra-contexts"
+  "python3 -I scripts/oracle/leios-testnet/chain/refusals.py --evidence <a directory outside the checkout> --owner guardagg"
  ],
  "cases": {
   "file": "cases.json",
-  "count": 18,
-  "sha256": "bbc2d1743632afc76de2e78b045763522e2e1073e544395f02d4f7a1fec3a25d"
+  "count": 22,
+  "sha256": "463c034bc6ba024f99016e3e9f92e4ff17fa6be3e116da2d8e2c55fdb30dfc86"
  },
  "results": {
   "file": "results.json",
-  "sha256": "5ca08a9135cadcc657cffd7b368a48c23d966def40f76aa1e8ddba53e2928f7b",
-  "topCollected": 7,
+  "sha256": "42b61a375f00913efaa9cff7eeea845306e32194efc8b9485c2c078a4233fa5e",
+  "topCollected": 11,
   "topRefused": 11
  },
  "harness": {
@@ -54,7 +54,7 @@
    "scripts/oracle/leios-testnet/chain/refusals.py": "cc4265f9c5cf63a715cc397e142f6fe67b46eed07590cb6fe3624f97bf05b102",
    "scripts/oracle/leios-testnet/chain/run.py": "c78f85b81b727281d4481264217fd4eaea5c9c5749fad9d2aff0f8e40344b771",
    "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a",
-   "scripts/oracle/leios-testnet/leios_context_refusal_cases.py": "762bdeebf7398b5125cc6841bdb70df6ec1879373ae5cffc7e1f1a32b744f981",
+   "scripts/oracle/leios-testnet/leios_context_refusal_cases.py": "71e39be9321d10407f069f4a267a67ec07f642d4a72391b297272a2876778889",
    "scripts/oracle/leios-testnet/leios_context_cases.py": "447080742f17889b63b9e7288206cb43e7ad978b5850826944aafb354df14867",
    "scripts/oracle/conway-decoding/cases.py": "7896c2fbd5fdfd421d4ba7a54e2a08e9ab00265a065e7d5612968babbb030a09"
   },

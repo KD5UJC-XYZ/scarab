@@ -112,7 +112,8 @@ sub-transaction's; a collected level is written as it was before the sub-transac
 contexts fixture accepted, on the cases of `leios_context_refusal_cases.py`: crafted transactions in the chain's
 environment (#85). The chain's own transactions already have collected scripts of all four languages; these add the
 refusal paths they do not reach, and positive controls beside them, among them a transaction with scripts of all
-four languages. Unlike the chain's own transactions they may be refused, and the fixture keeps the answers as the
+four languages and guards whose view of the whole transaction folds votes and current treasury amounts across its
+levels. Unlike the chain's own transactions they may be refused, and the fixture keeps the answers as the
 harness writes them:
 
 ```sh

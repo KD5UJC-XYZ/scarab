@@ -65,10 +65,11 @@ import DijkstraCorpus.*
   *
   * The chain's 200 transactions (`fixtures/reference/leios-testnet-chain-contexts`): all 273
   * contexts (68 Plutus V1, 54 V2, 117 V3 and 34 V4, 18 of them in sub-transactions). The refusals
-  * (`fixtures/reference/leios-testnet-context-refusals`): every level of the 18 cases, 9 contexts
-  * and 12 refusals. The hand-written V4 cases (`fixtures/reference/leios-testnet-contexts`): every
-  * level of the 11 cases, 14 contexts and 7 refusals. A body of 65,537 outputs has 65,536 in each
-  * language's information.
+  * (`fixtures/reference/leios-testnet-context-refusals`): every level of the 22 cases, 13 contexts
+  * and 12 refusals; four of the contexts are guards whose view of the whole transaction folds the
+  * levels' votes and current treasury amounts. The hand-written V4 cases
+  * (`fixtures/reference/leios-testnet-contexts`): every level of the 11 cases, 14 contexts and 7
+  * refusals. A body of 65,537 outputs has 65,536 in each language's information.
   */
 class DijkstraPlutusContextSuite extends FunSuite:
   private val txs = EraTx.dijkstra
@@ -684,7 +685,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
       refusalCases,
       results("fixtures/reference/leios-testnet-context-refusals/results.json")
     )
-    assertEquals(compared.size, 18)
+    assertEquals(compared.size, 22)
     val all = compared.flatMap(_._2)
     assertEquals(
       byLanguage(all),
@@ -692,7 +693,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
         PlutusLanguage.V1 -> 2,
         PlutusLanguage.V2 -> 2,
         PlutusLanguage.V3 -> 4,
-        PlutusLanguage.V4 -> 1
+        PlutusLanguage.V4 -> 5
       )
     )
     // Dijkstra's guard of each of its four fields, Conway's guard of each of its four, a DRep's
@@ -706,6 +707,27 @@ class DijkstraPlutusContextSuite extends FunSuite:
       Vector(
         "V4 guard whose sub-transaction fails",
         "V4 with the redeemer of a guard whose script is not provided"
+      )
+    )
+    // the guards whose view of the whole transaction folds the levels' votes, the sub-transactions'
+    // in order then the top level's, by the right-biased union of `VotingProcedures`, and takes the
+    // first current treasury amount present (`transGuardingTopTxInfo`, `TxInfo.hs:868-869, 878,
+    // 913-916`, cardano-ledger 9df9f98c): each top level collected with the guard's context, whose
+    // arguments are compared byte for byte, and each sub-transaction with none
+    val guard = Vector(PlutusLanguage.V4)
+    assertEquals(
+      compared.collect {
+        case (name, ls) if name.startsWith("V4 guard with ") => name -> ls.map(_.contexts)
+      },
+      Vector(
+        "V4 guard with one voter's votes on an action at three levels" ->
+          Vector(guard, Vector.empty, Vector.empty),
+        "V4 guard with votes at two levels by other voters and on other actions" ->
+          Vector(guard, Vector.empty),
+        "V4 guard with the current treasury in a sub-transaction only" ->
+          Vector(guard, Vector.empty, Vector.empty),
+        "V4 guard with the current treasury at two levels" ->
+          Vector(guard, Vector.empty, Vector.empty)
       )
     )
   }
@@ -775,9 +797,9 @@ class DijkstraPlutusContextSuite extends FunSuite:
         }
       }
     }
-    // the legacy mode of every top level the reference collected: the 200 of the chain, the 7 of the
+    // the legacy mode of every top level the reference collected: the 200 of the chain, the 11 of the
     // refusals whose top level is not refused and the 4 hand-written cases it collected
-    assertEquals(checked.sum, 200 + 7 + 4)
+    assertEquals(checked.sum, 200 + 11 + 4)
   }
 
   test("the makers collect a level's contexts only when they are read, and once") {

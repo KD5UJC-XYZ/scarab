@@ -8,7 +8,8 @@ collected with their cost models. The cases reach what the chain's transactions 
 V1 to V3 context in a Dijkstra transaction (`guardDijkstraFeaturesForPlutusV1toV3`, Conway's
 `guardConwayFeaturesForPlutusV1V2`, an unsupported certificate, a script in a sub-transaction), a guard's context
 whose sub-transaction fails (`SubTxContextError`) and a guard's redeemer with no script
-(`ScriptHashNotFoundForPurpose`), beside transactions of every language that are collected. The scripts are
+(`ScriptHashNotFoundForPurpose`), beside transactions of every language that are collected, and a guard's view of
+a whole transaction whose levels give votes and current treasury amounts (`transGuardingTopTxInfo`). The scripts are
 placeholders that are never evaluated.
 
     python3 -I scripts/oracle/leios-testnet/leios_context_refusal_cases.py > cases.json
@@ -137,6 +138,35 @@ def legacy_in_sub():
     return array([k.body(fields), cmap([]), NULL, TRUE]), utxo
 
 
+# The votes the guard cases cast: a DRep's key and a stake pool's key, on two actions of one proposal.
+DREP, POOL = array([uint(2), bstr(h(0x53, 28))]), array([uint(4), bstr(h(0x61, 28))])
+ACTION_0, ACTION_1 = array([bstr(h(0x45, 32)), uint(0)]), array([bstr(h(0x45, 32)), uint(1)])
+NO, YES, ABSTAIN = 0, 1, 2
+
+
+def votes(*by_voter):
+    """Voting procedures, each voter with its votes on actions, in the order given (keys ascending)."""
+    return cmap([(voter, cmap([(action, array([uint(vote), NULL])) for action, vote in on])) for voter, on in by_voter])
+
+
+def guarded_batch(n, top, subs):
+    """A Plutus V4 guard at the top level, which collects the guard's view of the whole transaction
+    (`transGuardingTopTxInfo`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:819-925`), with the body
+    fields `top` at the top level and a sub-transaction of the fields of each of `subs`, in order."""
+    guard = k.script(n)
+    sg = plutus_hash(4, guard)
+    utxo = [(k.txin(0xF0), k.output(k.base_key(0x40), 9_000_000))]
+    sub_txs = []
+    for i, extra in enumerate(subs):
+        utxo.append((k.txin(0xF1 + i), k.output(k.base_key(0x42), 4_000_000)))
+        sub_txs.append(sub_transaction({0: array([k.txin(0xF1 + i)]),
+                                        1: array([k.output(k.base_key(0x46), 4_000_000)]), **extra}))
+    fields = {0: array([k.txin(0xF0)]), 1: array([k.output(k.base_key(0x4A), 8_000_000)]), 2: uint(200_000),
+              14: array([k.cred(script_hash=sg)]), 23: array(sub_txs), **top}
+    wits = cmap([(uint(5), k.redeemers((6, 0, uint(0)))), (uint(8), array([bstr(guard)]))])
+    return array([k.body(fields), wits, NULL, TRUE]), utxo
+
+
 CASES = [
     ("V1 spending, a reference input and a validity interval", lambda: legacy_spend(1, 1)),
     ("V2 spending, a reference input and a validity interval", lambda: legacy_spend(2, 2)),
@@ -163,6 +193,24 @@ CASES = [
     ("V3 in a sub-transaction", legacy_in_sub),
     ("V4 with the redeemer of a guard whose script is not provided",
      lambda: minting(4, 20, {14: array([k.cred(script_hash=h(0x58, 28))])}, more=[(6, 0, uint(0))])),
+    # The guard's view of the whole transaction folds the levels' votes, the sub-transactions' in order then the
+    # top level's, by the right-biased union of `VotingProcedures` (`foldMapBatch`, `TxInfo.hs:868-869, 878`;
+    # `Conway/Governance/Procedures.hs:438-440`), and takes the first current treasury amount present in that order
+    # (`F.asum`, `TxInfo.hs:913-916`), cardano-ledger 9df9f98c.
+    ("V4 guard with one voter's votes on an action at three levels",
+     lambda: guarded_batch(82, {19: votes((DREP, [(ACTION_0, YES)]))},
+                           [{19: votes((DREP, [(ACTION_0, NO), (ACTION_1, NO)]))},
+                            {19: votes((DREP, [(ACTION_0, ABSTAIN), (ACTION_1, ABSTAIN)]))}])),
+    ("V4 guard with votes at two levels by other voters and on other actions",
+     lambda: guarded_batch(83, {19: votes((DREP, [(ACTION_0, YES)]))},
+                           [{19: votes((DREP, [(ACTION_1, NO)]), (POOL, [(ACTION_0, ABSTAIN)]))}])),
+    ("V4 guard with the current treasury in a sub-transaction only",
+     lambda: guarded_batch(84, {}, [{}, {21: uint(100)}])),
+    # The ledger's rules require every amount given to be the treasury's (`DijkstraTreasuryValueMismatch`,
+    # `SubTreasuryValueMismatch`, `Rules/Ledger.hs:102`, `Rules/SubLedger.hs:113`), so a transaction whose amounts
+    # differ is refused there; the collection does not check them, and different amounts show which is taken.
+    ("V4 guard with the current treasury at two levels",
+     lambda: guarded_batch(85, {21: uint(300)}, [{}, {21: uint(200)}])),
 ]
 
 

@@ -8,10 +8,12 @@ The reference is the build the public Leios testnet runs: cardano-node `b004fe0c
 (`261766ad`); [the oracle README](../../../scripts/oracle/leios-testnet/README.md) says how each was established.
 
 The [chain context fixture](../leios-testnet-chain-contexts/README.md) holds the contexts of 200 transactions the
-testnet's ledger accepted, every one collected. These 18 transactions are written by hand, with placeholder scripts
+testnet's ledger accepted, every one collected. These 22 transactions are written by hand, with placeholder scripts
 that are never evaluated, to reach what those do not: a Plutus V1 to V3 script in a Dijkstra transaction meeting
-what its context cannot show, a guard's view of a whole transaction whose sub-transaction cannot be translated, and
-a guard's redeemer with no script; beside them, transactions of every language that are collected.
+what its context cannot show, a guard's view of a whole transaction whose sub-transaction cannot be translated, a
+guard's redeemer with no script, and a guard's view of a whole transaction whose levels give votes and current
+treasury amounts, which the chain's guards never had; beside them, transactions of every language that are
+collected.
 
 ## The cases
 
@@ -20,13 +22,24 @@ environment: protocol version 12.0, the cost models of Plutus V1 to V4 in force 
 slot length, so that a Plutus V1 to V3 script is collected with its cost model. The answers are those of the chain
 harness (`scripts/oracle/leios-testnet/chain/Main.hs`, `mkDijkstraStAnnTopTx`).
 
-Each case's answer has a collection for its top level and one for each sub-transaction. At the top level 7 cases
-are collected and 11 refused; one of the 7 is refused in its sub-transaction.
+Each case's answer has a collection for its top level and one for each sub-transaction. At the top level 11 cases
+are collected and 11 refused; one of the 11 is refused in its sub-transaction.
 
 - Collected: Plutus V1, V2 and V3 scripts spending an output with a datum hash, with a reference input, a validity
   interval and a guard that is a key; a V3 script certifying a script DRep's registration beside a vote, a proposal
   and a treasury donation; V1 to V4 scripts minting in one transaction; a V3 script with a pointer address among the
   outputs, which its context shows.
+- Collected: a Plutus V4 guard at the top level, whose view of the whole transaction (`transGuardingTopTxInfo`,
+  `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:819-925`) folds the levels' votes, the
+  sub-transactions' in order and then the top level's, by the right-biased union of `VotingProcedures`
+  (`TxInfo.hs:868-869, 878`; `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs:438-440`), and
+  takes the first current treasury amount present in that order (`TxInfo.hs:913-916`): one voter's votes on an
+  action at three levels, Yes at the top level over No and Abstain in the sub-transactions, and on a second action
+  the second sub-transaction's Abstain over the first's No; votes at two levels by another voter and on another
+  action, all kept; a treasury amount in the second of two sub-transactions only, which the view gives; and amounts
+  in the second sub-transaction and at the top level, of which the view gives the sub-transaction's. That last
+  case's amounts differ, which the ledger's rules refuse (`DijkstraTreasuryValueMismatch`,
+  `SubTreasuryValueMismatch`) and the collection does not check, so that the amount taken shows which.
 - Collected at the top level, which runs no script, and refused in the sub-transaction: a V3 minting script in a
   sub-transaction (`UnsupportedScriptInSubTx`, `transFailUnsupportedScriptInSubTx`, `TxInfo.hs:521-532`).
 - Refused by Dijkstra's guard of a V1 to V3 context (`guardDijkstraFeaturesForPlutusV1toV3`,
@@ -60,7 +73,7 @@ python3 -I scripts/oracle/leios-testnet/chain/refusals.py --verify-only
 ```
 
 `DijkstraPlutusContextSuite` reads it with Dijkstra's script contexts on the era types, each transaction annotated by
-`mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`: every level of the 18 cases, each context's serialized arguments
+`mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`: every level of the 22 cases, each context's serialized arguments
 compared byte for byte and the rest of its `PlutusWithContext` record field by field, and each refusal as its typed error,
 read against the recorded failure.
 
