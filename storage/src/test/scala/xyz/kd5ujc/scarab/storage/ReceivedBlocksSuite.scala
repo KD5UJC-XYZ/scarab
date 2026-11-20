@@ -17,6 +17,24 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
   /** For a test that reads no predecessor: no header is read. */
   private val unread: Bytes => Option[ReceivedBlocks.Predecessor] = _ => None
 
+  /** The log's files, in order of number. */
+  private def logFiles(dir: fs2.io.file.Path): Vector[java.nio.file.Path] =
+    scala.util.Using.resource(JFiles.list(dir.toNioPath))(
+      _.iterator.asScala.filter(_.toString.endsWith(".log")).toVector.sortBy(_.toString)
+    )
+
+  /** The records of a log file. */
+  private def recordsOf(file: java.nio.file.Path): Vector[VolatileRecord] =
+    VolatileStore.decodeAll(JFiles.readAllBytes(file)).map(_._1)
+
+  /** Flip a byte inside the body of the record at `index` of `file`. */
+  private def damage(file: java.nio.file.Path, index: Int): Unit =
+    val bytes = JFiles.readAllBytes(file)
+    val start = if index == 0 then 0 else VolatileStore.decodeAll(bytes)(index - 1)._2
+    val at = start + VolatileStore.HeaderSize + 1
+    bytes(at) = (bytes(at) ^ 0x55).toByte
+    JFiles.write(file, bytes)
+
   /** Every block held, each read through `get` (from the cache or the log). */
   private def entries(store: ReceivedBlocks[IO])(using
       Raise[IO, StorageError]
@@ -398,6 +416,144 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
             _ <- IO(assertEquals(held.unreadable, 1L))
           yield ()
         }
+      }
+    }
+  }
+
+  // ---- files of 1,000 blocks, rolled when they fill, and the recovery of each file (#1247) ----
+
+  test("a file holds 1,000 blocks, and the next one is started when it fills") {
+    // the reference's volMaxBlocksPerFile (`Storage/VolatileDB/Impl.hs` 186, ouroboros-consensus
+    // 82ecba329); a block that fills a file is followed at once by the next, empty file
+    tempDir.use { dir =>
+      ok {
+        val original = (1 to 1000).toVector.map(block(_))
+        for
+          _ <- ReceivedBlocks
+            .open[IO](dir)(unread)
+            .use(store => original.traverse_((ref, raw) => store.put(ref, raw)))
+          files <- IO(logFiles(dir).map(recordsOf(_).size))
+          held <- ReceivedBlocks.open[IO](dir)(unread).use(_.residency)
+        yield
+          assertEquals(files, Vector(1000, 0), "a full file of 1,000 blocks, and an empty one")
+          assertEquals(held.blocks, original.size, "every block is held after a reopen")
+      }
+    }
+  }
+
+  test("a file that fills is no longer the one being written, and is collected at once") {
+    // two blocks to a file: [1 2] fills with block 2 and the empty file after it is the one being
+    // written, so a cutoff above both blocks takes the full file before any block follows
+    tempDir.use { dir =>
+      ok {
+        val original = Vector(block(1), block(2))
+        ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+          for
+            _ <- original.traverse_((ref, raw) => store.put(ref, raw))
+            _ <- store.collect(block(3)._1.slot)
+            held <- entries(store)
+            files <- IO(logFiles(dir).size)
+          yield
+            assertEquals(held, Vector.empty, "the full file is collected")
+            assertEquals(files, 1, "only the file being written is left")
+        }
+      }
+    }
+  }
+
+  test("a damaged file is cut at its last good record, and the files after it are kept") {
+    // three blocks to a file: [1 2 3] [4 5 6] [7 8]. A byte of block 5's body is flipped: the
+    // second file is cut after block 4 and the third is read all the same, as the reference's
+    // open truncates each file on its own (`mkOpenStateHelper`, `Storage/VolatileDB/Impl/State.hs`
+    // 372-436, ouroboros-consensus 82ecba329)
+    tempDir.use { dir =>
+      ok {
+        val original = (1 to 8).toVector.map(block(_))
+        val kept = original.filterNot(b => b == original(4) || b == original(5))
+        for
+          _ <- ReceivedBlocks
+            .open[IO](dir, 3)(unread)
+            .use(store => original.traverse_((ref, raw) => store.put(ref, raw)))
+          before <- IO(logFiles(dir))
+          _ <- IO(damage(before(1), 1))
+          recovered <- ReceivedBlocks.open[IO](dir, 3)(unread).use(entries)
+          after <- IO(logFiles(dir).map(recordsOf))
+          // the repair holds, and the log is written to as before
+          later = block(9)
+          again <- ReceivedBlocks.open[IO](dir, 3)(unread).use { store =>
+            store.put(later._1, later._2) *> entries(store)
+          }
+          reopened <- ReceivedBlocks.open[IO](dir, 3)(unread).use(entries)
+        yield
+          assertEquals(before.size, 3, "two full files and the one being written")
+          assertEquals(recovered.toSet, kept.toSet, "every block but the damaged one's and after")
+          assertEquals(after.size, 3, "no file is removed")
+          assertEquals(
+            after(1),
+            Vector(VolatileRecord.Block(original(3)._1, original(3)._2)),
+            "the second file is cut after block 4"
+          )
+          assertEquals(after(2).size, 2, "the third file is whole")
+          assertEquals(again.toSet, kept.toSet + later, "the log keeps working")
+          assertEquals(reopened.toSet, kept.toSet + later, "and reopens the same")
+      }
+    }
+  }
+
+  test("a later file is cut at a copy of a block already indexed, and the files after it kept") {
+    // two blocks to a file: [1 2] [3 1 4] [5 6] []. The copy of block 1 cuts the second file
+    // there, so block 4 after it is lost, and the third file is kept, as the reference's open
+    // truncates a file at a block its index already holds (`addToReverseIndex`, `DuplicatedBlock`,
+    // `Storage/VolatileDB/Impl/State.hs` 464-492, ouroboros-consensus 82ecba329)
+    tempDir.use { dir =>
+      ok {
+        val bs = (1 to 6).toVector.map(block(_))
+        val (b1, b2, b3, b4, b5, b6) = (bs(0), bs(1), bs(2), bs(3), bs(4), bs(5))
+        for
+          _ <- ReceivedBlocks
+            .open[IO](dir, 2)(unread)
+            .use(store => Vector(b1, b2, b3).traverse_((ref, raw) => store.put(ref, raw)))
+          // the log's own appends, three to a file, write the copy into the second file
+          _ <- VolatileStore
+            .open[IO](dir, 3)
+            .use((log, _) => log.append(b1._1, b1._2) *> log.append(b4._1, b4._2))
+          _ <- ReceivedBlocks
+            .open[IO](dir, 2)(unread)
+            .use(store => Vector(b5, b6).traverse_((ref, raw) => store.put(ref, raw)))
+          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread).use(entries)
+          files <- IO(logFiles(dir).map(recordsOf))
+        yield
+          assertEquals(recovered.toSet, Set(b1, b2, b3, b5, b6), "block 4 is lost with the copy")
+          assertEquals(files.size, 4, "no file is removed")
+          assertEquals(files(1), Vector(VolatileRecord.Block(b3._1, b3._2)), "cut at the copy")
+          assertEquals(files(2).size, 2, "the file after it is whole")
+      }
+    }
+  }
+
+  test("a replacement in a later file survives reopen, with the blocks after it") {
+    // two blocks to a file: [c 2] [3 s] [4 5] []: c holds block 1's reference over another body,
+    // and restoreSelected writes the selected original s two files later. Its bytes differ from
+    // c's: s takes c's place in the index, and nothing after it is cut
+    tempDir.use { dir =>
+      ok {
+        val selected = block(1)
+        val corrupt = selected._1 -> block(100)._2
+        val others = Vector(block(2), block(3), block(4), block(5))
+        for
+          _ <- ReceivedBlocks.open[IO](dir, 2)(unread).use { store =>
+            for
+              _ <- store.put(corrupt._1, corrupt._2)
+              _ <- others.take(2).traverse_((ref, raw) => store.put(ref, raw))
+              _ <- store.restoreSelected(selected._1, selected._2)
+              _ <- others.drop(2).traverse_((ref, raw) => store.put(ref, raw))
+            yield ()
+          }
+          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread).use(entries)
+          files <- IO(logFiles(dir).map(recordsOf(_).size))
+        yield
+          assertEquals(recovered.toSet, others.toSet + selected, "the selected original is held")
+          assertEquals(files, Vector(2, 2, 2, 0), "no file is cut")
       }
     }
   }

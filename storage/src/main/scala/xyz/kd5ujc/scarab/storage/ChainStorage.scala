@@ -224,7 +224,7 @@ object ChainStorage:
     * @param adoptLegacyNetworkIdentity
     *   Explicit operator acknowledgement for adopting incomplete or missing identity.
     * @param volatileFileBlocks
-    *   Blocks per volatile log file.
+    *   Blocks per file of the selected-chain log.
     * @param volatileCollectBlocks
     *   Blocks that become immutable between two forced syncs of the immutable store, each followed
     *   by a collection of the log files wholly below the immutable tip. The sync is what makes
@@ -233,6 +233,8 @@ object ChainStorage:
     * @param receivedCacheBytes
     *   Bytes of received bodies kept in memory in front of the received-block log
     *   ([[ReceivedBlocks.DefaultCacheBytes]] says how the default is chosen).
+    * @param receivedFileBlocks
+    *   Blocks per file of the received-block log ([[ReceivedBlocks.DefaultBlocksPerFile]]).
     */
   final case class Config(
       snapshotPolicy: SnapshotPolicy,
@@ -244,7 +246,8 @@ object ChainStorage:
       adoptLegacyNetworkIdentity: Boolean = false,
       volatileFileBlocks: Int = 512,
       volatileCollectBlocks: Int = 4096,
-      receivedCacheBytes: Long = ReceivedBlocks.DefaultCacheBytes
+      receivedCacheBytes: Long = ReceivedBlocks.DefaultCacheBytes,
+      receivedFileBlocks: Int = ReceivedBlocks.DefaultBlocksPerFile
   )
 
   /** The node state recovered from disk, ready to anchor a
@@ -398,7 +401,7 @@ object ChainStorage:
       (volatile, logged) = volatileOpened
       received <- ReceivedBlocks.open[F](
         dir / "received",
-        config.volatileFileBlocks,
+        config.receivedFileBlocks,
         config.receivedCacheBytes
       )(ChainStorage.predecessorOf(config.byronEpochSlots))
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))

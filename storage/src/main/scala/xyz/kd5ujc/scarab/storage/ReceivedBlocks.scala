@@ -18,12 +18,14 @@ import xyz.kd5ujc.scarab.ledger.StorageError
   * the chain recovered on restart. This separate log uses the existing VolatileStore record format
   * unchanged and never writes rollback records. Collection is driven by a durable immutable slot,
   * rather than the adoption of an individual receipt. As in native VolatileDB, an LoE stall can
-  * retain a growing fork forest on disk until immutable progress permits collection.
+  * retain a growing fork forest on disk until immutable progress permits collection. A file holds
+  * [[ReceivedBlocks.DefaultBlocksPerFile]] blocks, and the next one is started when it fills.
   *
   * In memory, as in the reference's VolatileDB, there is an index of every block (its reference and
   * where its record is, [[VolatileStore.Location]]) and a body is read back from its log file when
-  * asked for. Opening rebuilds the index from the files a record at a time and keeps no body
-  * ([[VolatileStore.openIndex]]). In front of the log is a cache of the bodies received since,
+  * asked for. Opening rebuilds the index from the files a record at a time and keeps no body; each
+  * file is validated on its own, a damaged one cut at its last good record and the others kept
+  * ([[VolatileStore.openIndexWith]]). In front of the log is a cache of the bodies received since,
   * bounded in bytes ([[ReceivedBlocks.DefaultCacheBytes]]): the oldest bodies leave it first, and
   * its residency is reported ([[residency]]). The bound covers this index's own bodies; the block
   * pool holds a body only until its admission is processed, when it is in this log.
@@ -105,6 +107,12 @@ object ReceivedBlocks:
     * 2,000,000 = 20,000,000.
     */
   val DefaultCacheBytes: Long = 10L * 2_000_000L
+
+  /** The blocks a file of the log holds: 1,000, the reference's VolatileDB's `volMaxBlocksPerFile`
+    * (`defaultArgs`, `Storage/VolatileDB/Impl.hs` 180-189, ouroboros-consensus 82ecba329, the same
+    * at 808e40054).
+    */
+  val DefaultBlocksPerFile: Int = 1000
 
   /** The block a header names as its predecessor: none for the first block of a chain, as the
     * reference's `ChainHash` (`GenesisHash` or `BlockHash`) in a block's `BlockInfo` (`biPrevHash`,
@@ -202,15 +210,15 @@ object ReceivedBlocks:
     */
   def open[F[_]: Async](
       dir: Path,
-      blocksPerFile: Int = 512,
+      blocksPerFile: Int = DefaultBlocksPerFile,
       cacheBytes: Long = DefaultCacheBytes
   )(predecessorOf: Bytes => Option[Predecessor])(using
       Raise[F, StorageError]
   ): Resource[F, ReceivedBlocks[F]] =
     for
       // the open rebuilds the index and keeps no body, but the predecessor each header names; the
-      // cache fills with the bodies received after it. The log holds no rollback record, so its
-      // recovered chain is every block record in log order.
+      // cache fills with the bodies received after it. The recovered chain is the index, a block
+      // once.
       opened <- VolatileStore.openIndexWith[F, Option[Predecessor]](dir, blocksPerFile)(
         predecessorOf
       )
