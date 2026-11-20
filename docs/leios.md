@@ -41,6 +41,17 @@ are private working details; reproduce the review from these upstream identities
 | Independent implementations (existence only, not read in depth) | `txpipe/pallas` `pallas-network2/src/protocol/leiosnotify.rs`; `input-output-hk/leios-tools` (`net-rs` Rust node-side tooling with adversarial behaviours) | Useful cross-checks for codecs |
 | Leios paper | <https://eprint.iacr.org/2025/1115.pdf> | Background only |
 
+**When the Leios reference is re-pinned, check which hash an endorser block names its transactions
+by.** At ouroboros-consensus `2416493b` it is `hashTxBytes`, the Blake2b-256 of the transaction's
+raw CBOR (`Leios/Types.hs:162-163`, ouroboros-consensus 2416493b), which the LeiosDB checks on
+insert (`LeiosDB/Impl/SQLite/Insert.hs:231`, ouroboros-consensus 2416493b); the endorser-block
+store in review for #54 does the same. The Dijkstra ledger's `hashTx` is another hash: the
+Blake2b-256 of the body, witness and auxiliary-data hashes and the validity flag
+(`Dijkstra/Tx.hs:440-470`, cardano-ledger 9df9f98c), which consensus does not call at that pin. If a
+later pin names transactions by the ledger's `hashTx`, the store, LeiosFetch and the closure checks
+must follow, or Scarab would disagree with the reference about an endorser block's closure, a
+split risk ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184)).
+
 ## 2. What Linear Leios changes
 
 Leios is an overlay on Praos: the ranking-block (RB) chain, its fork choice, leader election, KES
@@ -673,7 +684,7 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 
 | ID | What is missing | Where it matters | Cited |
 |---|---|---|---|
-| **X1** | The node cannot follow this chain: `NtNHeader` refuses era index 7 and `Header.fromRaw(Conway)` the 12-element Conway header. `HfcHeader`, `LeiosHeader` and `LeiosBlock` exist, but `Follower`, `Peer`, `HeaderGate` and `LedgerRules` do not use them | the follower | `dijkstra.cddl` 56 to 71, 105 to 114; 11.4 |
+| **X1** | The node cannot follow this chain yet. A peer's ChainSync header of era index 7 is read as the Leios header (`NtNHeader`, `Header.fromRaw`), and under `--reference-build leios-b004fe0c` the header gate validates it as the build's ChainSync client does (#54): the ledger view forecast from the anchor (Conway's across the boundary, `DijkstraCrossing.forecast`, or Dijkstra's own, `forecastInEra`), the chain-dependent state translated into Praos2's and ticked, then the envelope and Praos2's rules, the leader check on the forecast stake (`NodeHeaderRules`, `Praos2Headers`; `DijkstraHeaderRulesSuite`). With the node's own setup of the testnet (maximum major version 12, the chain started in Dijkstra with Praos2's state, #54) the gate validates the chain's headers from its genesis and from a captured ledger state (`DijkstraHeaderGateSuite`). What still stops it: `follow` refuses the Leios build (`ReferenceBuildFlag.follows`), and `LedgerRules` applies no Dijkstra block (`DijkstraNotYet.Rules`) | the follower | `dijkstra.cddl` 56 to 71, 105 to 114; 11.4 |
 | **X2** | `Era` has no `Dijkstra`: the era history, `HardForkConfig` (no trigger at protocol version 12, `eraProtVerLow` 12), `ShelleyBasedEra`, the state mirror and the Haskell state-file telescope know seven eras. The chain enters Dijkstra at epoch 4 with no `TestDijkstraHardForkAtEpoch`, so a governance hard fork to protocol version 12 the node would have to derive from its own ledger. Adding the case breaks exhaustive matches in `consensus` (`HardFork.scala`, `SomeEra.scala`), `storage` (`ConsensusCodecs.scala`, `LedgerFileCodecs.scala`) and the era generators of `consensus` tests; this stage did not touch them | consensus, storage | cardano-ledger-core `Internal/Definition/Era.hs` 140 (pinned) |
 | **X3** | No Dijkstra ledger: `LEDGER`, `BBODY` with the Leios signal (`LeiosBbodySignal`), the transaction body (key 14 `guards` in place of `required_signers`, sub-transactions, the inline `is_valid` flag, Plutus V4 as `language 3` with the cost model of `dijkstra-genesis.json`), certificates, `pool_params.bls_key`, the rules that use the protocol parameters Dijkstra adds (update keys 34 to 56, which `ProtocolParams` holds; the translation from Conway is implemented, `Translate.conwayToDijkstra`, except for the outputs in the backing store, whose native reference scripts it does not re-encode; the node does not enter Dijkstra) | the rules | `dijkstra.cddl` 3 to 54, 116 and following, 719 to 733 (pinned); the Dijkstra changelog (section 3) |
 | **X4** | No stake distribution without a ledger: from epoch 2 the leader threshold of every header (152,586 of 154,698) is unchecked, and a pool's registered VRF key is not compared | header-first validation | 11.4 |
@@ -825,8 +836,9 @@ receiving driver, and no depth or item budget of the decoder's own.
 The integration work belongs to [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73);
 the configuration and validation follow-ups are linked below.
 
-1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
-   `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
+1. The node starts this chain in Dijkstra and its header gate validates the chain's headers with
+   Praos2 under the Leios build, from the genesis on (X1), but `follow` refuses the build and no
+   Dijkstra block is applied.
 2. `NodeConfig` reads the Dijkstra genesis file/hash and epoch/version triggers when experimental
    hard forks are enabled, `NodeSetup.verifyHashes` checks the supplied file, and `NodeSetup`
    reads it as the reference's `FromJSON DijkstraGenesis` does (#54). The Leios and

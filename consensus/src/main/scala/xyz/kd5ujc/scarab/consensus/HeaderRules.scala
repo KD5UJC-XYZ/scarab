@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.consensus
 
 import cats.data.NonEmptyVector
-import xyz.kd5ujc.scarab.ledger.{HeaderError, ProviderDefect}
+import xyz.kd5ujc.scarab.ledger.{HeaderDefect, HeaderError, ProviderDefect}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -47,10 +47,14 @@ object HeaderRules:
     case Unknown(reason: ForecastReason)
     case Invalid(error: HeaderError)
 
+    /** No forecast for a defect of the node's own ([[Outcome.Undecided]]). */
+    case Undecided(defect: HeaderDefect)
+
     def result: Outcome[H] = this match
-      case Check(run)      => run()
-      case Unknown(reason) => Outcome.Later(reason)
-      case Invalid(error)  => Outcome.Invalid(error)
+      case Check(run)        => run()
+      case Unknown(reason)   => Outcome.Later(reason)
+      case Invalid(error)    => Outcome.Invalid(error)
+      case Undecided(defect) => Outcome.Undecided(defect)
 
     def map[J](f: H => J): Prepared[J] = this match
       case Check(run) =>
@@ -60,9 +64,11 @@ object HeaderRules:
             case Outcome.Invalid(error)       => Outcome.Invalid(error)
             case Outcome.Unverifiable(defect) => Outcome.Unverifiable(defect)
             case Outcome.Later(reason)        => Outcome.Later(reason)
+            case Outcome.Undecided(defect)    => Outcome.Undecided(defect)
         )
-      case Unknown(reason) => Unknown(reason)
-      case Invalid(error)  => Invalid(error)
+      case Unknown(reason)   => Unknown(reason)
+      case Invalid(error)    => Invalid(error)
+      case Undecided(defect) => Undecided(defect)
 
   /** The reference time query uses the same intersection ledger as header validation. */
   trait Timing[S, H]:
@@ -99,6 +105,11 @@ object HeaderRules:
       * the node's chain has advanced.
       */
     case Later(reason: ForecastReason)
+
+    /** A defect of the node's own state or configuration stops the rules short of a verdict, and
+      * the chain's advance does not lift it: its sender is not at fault ([[HeaderDefect]]).
+      */
+    case Undecided(defect: HeaderDefect)
 
 /** The candidate chain of one peer as header validation sees it: the point where it joined ours,
   * the header state there and every header announced since with the state after it (`None` where no

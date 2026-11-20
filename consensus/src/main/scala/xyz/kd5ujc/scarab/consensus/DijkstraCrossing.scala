@@ -3,40 +3,27 @@ package xyz.kd5ujc.scarab.consensus
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.state.PraosState
-import xyz.kd5ujc.scarab.ledger.ProtocolParams
-import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, TickFailure, Translate}
+import xyz.kd5ujc.scarab.ledger.{CrossingForecastFailure, ProtocolParams}
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   Dijkstra,
+  EpochNo,
+  FuturePParams,
   NewEpochState,
   PoolDistr,
   ProtVer,
   SlotNo,
-  VocabError,
+  SnapShots,
   WithOrigin
 }
-import xyz.kd5ujc.scarab.protocol.LeiosWireError
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32}
-
-/** Why no Dijkstra ledger view is forecast from a Conway ledger state. */
-enum CrossingForecastFailure:
-  /** `OutsideForecastRange` (`Ouroboros/Consensus/Forecast.hs`, ouroboros-consensus 2416493b): the
-    * slot is not before the exclusive bound `maxFor` of a forecast from the tip `at`.
-    */
-  case OutsideForecastRange(at: WithOrigin[SlotNo], maxFor: SlotNo, forecastFor: SlotNo)
-
-  /** The state does not translate into Dijkstra ([[Translate.conwayToDijkstra]]). */
-  case Translation(cause: TickFailure)
-
-  /** A parameter of the view does not fit the word the reference's view holds it in. */
-  case Parameter(cause: LeiosWireError)
-
-  case Vocabulary(cause: VocabError)
 
 /** The parts of the hard-fork combinator's crossing from Conway (Praos) into Dijkstra (Praos2) that
   * concern the protocol, at ouroboros-consensus 2416493b with cardano-ledger 9df9f98c: the
-  * chain-dependent state and the ledger view forecast across the boundary. Both are pure and
-  * neither is wired: the node does not enter Dijkstra (#54).
+  * chain-dependent state and the ledger view forecast across the boundary, and Dijkstra's own
+  * forecast ([[forecastInEra]]). All are pure; the node's header rules use them under the Leios
+  * build (`NodeHeaderRules`), and its ledger does not enter Dijkstra (#54).
   */
 object DijkstraCrossing:
 
@@ -69,9 +56,12 @@ object DijkstraCrossing:
   /** `crossEraForecastConwayToDijkstraWrapper` (`Cardano/CanHardFork.hs:767-808`,
     * ouroboros-consensus 2416493b): the Dijkstra ledger view of `forecastFor` from the Conway state
     * `nes` at `tip`, the transition at `transition`. It does not translate the Conway view, which
-    * has no Leios parameters; it translates the state ([[Translate.conwayToDijkstra]], as the
-    * combinator does when it ticks across the boundary) and forecasts with Dijkstra's own rules
-    * (`ledgerViewForecastAtPolyPraos`, `Shelley/Ledger/SupportsProtocol.hs:105-140`).
+    * has no Leios parameters; it translates the state, as the combinator does when it ticks across
+    * the boundary, and forecasts with Dijkstra's own rules (`ledgerViewForecastAtPolyPraos`,
+    * `Shelley/Ledger/SupportsProtocol.hs:105-140`). The reference's translation is lazy and its
+    * forecast state holds no ledger tables (`forgetLedgerTables`), so only what the view reads is
+    * translated here ([[Basis.translated]]): the parameters, upgraded as
+    * `Translate.conwayToDijkstra` upgrades them, the snapshots and the epoch, never the UTxO.
     *
     * The slot must be before both bounds: the crossing's ([[forecastBound]], the stability windows
     * of `conway` and `dijkstra`) and then the Dijkstra forecast's own, the stability window past
@@ -88,19 +78,89 @@ object DijkstraCrossing:
   ): Either[CrossingForecastFailure, Praos2.LedgerView] =
     val maxFor =
       forecastBound(tip, transition, conway.stabilityWindow, dijkstra.stabilityWindow)
-    val innerMax = addSlots(dijkstra.stabilityWindow, successor(tip))
-    val atTip = tip == WithOrigin.At(forecastFor)
     // both bounds read only the tip, which the reference's lazy translation leaves for last
     for
       _ <- within(tip, maxFor, forecastFor)
-      _ <- if atTip then Right(()) else within(tip, innerMax, forecastFor)
-      translated <- Translate
-        .conwayToDijkstra(dijkstra, nes)
-        .leftMap(CrossingForecastFailure.Translation(_))
-      view <-
-        if atTip then ledgerView(PoolDistr.of(translated.es.snapshots.set), params(translated))
-        else (ledgerView.tupled)(tickf(dijkstra, forecastFor, translated))
+      _ <- inEraBound(dijkstra, forecastFor, tip)
+      translated <- Basis.translated(dijkstra, nes)
+      view <- viewAt(dijkstra, forecastFor, tip, translated)
     yield view
+
+  /** `ledgerViewForecastAtPolyPraos` of Dijkstra (`Shelley/Ledger/SupportsProtocol.hs:105-140`,
+    * ouroboros-consensus 2416493b, the forecast of `ledgerViewForecastAt` for a Praos2 era): the
+    * ledger view of `forecastFor` from the Dijkstra state `nes` at `tip`, the state's own at the
+    * tip (`currentForecast`) and after it the state ticked by TICKF ([[tickf]]), up to the
+    * exclusive bound of the stability window past the tip's successor. Dijkstra is the last era of
+    * the build, so no transition bounds it.
+    */
+  def forecastInEra(
+      dijkstra: Globals,
+      forecastFor: SlotNo,
+      tip: WithOrigin[SlotNo],
+      nes: NewEpochState[Dijkstra]
+  ): Either[CrossingForecastFailure, Praos2.LedgerView] =
+    // the view is made only once the bound holds (`ledgerViewForecastAtPolyPraos` throws first)
+    inEraBound(dijkstra, forecastFor, tip).flatMap(_ =>
+      viewAt(dijkstra, forecastFor, tip, Basis.of(nes))
+    )
+
+  /** The bound of [[forecastInEra]]: none at the tip itself, else the stability window past the
+    * tip's successor (`maxFor`, exclusive).
+    */
+  private def inEraBound(
+      dijkstra: Globals,
+      forecastFor: SlotNo,
+      tip: WithOrigin[SlotNo]
+  ): Either[CrossingForecastFailure, Unit] =
+    if tip == WithOrigin.At(forecastFor) then Right(())
+    else within(tip, addSlots(dijkstra.stabilityWindow, successor(tip)), forecastFor)
+
+  /** What the forecast reads of a Dijkstra state: its epoch, its snapshots and its current and
+    * future parameters.
+    */
+  private final case class Basis(
+      epoch: EpochNo,
+      snapshots: SnapShots,
+      current: ProtocolParams,
+      future: FuturePParams
+  )
+
+  private object Basis:
+    def of(nes: NewEpochState[Dijkstra]): Basis =
+      val gov = nes.es.ls.utxo.gov
+      Basis(nes.epoch, nes.es.snapshots, gov.curPParams, gov.futurePParams)
+
+    /** The basis of the Dijkstra state `Translate.conwayToDijkstra` makes of `nes`: the epoch and
+      * the snapshots carried over, the current and future parameters upgraded by the Dijkstra
+      * genesis (`TranslationContext DijkstraEra`), refused without one as the translation is
+      * ([[TickFailure.NoDijkstraGenesis]]).
+      */
+    def translated(
+        dijkstra: Globals,
+        nes: NewEpochState[Conway]
+    ): Either[CrossingForecastFailure, Basis] =
+      dijkstra.ledger.dijkstra
+        .toRight(CrossingForecastFailure.Translation(TickFailure.NoDijkstraGenesis))
+        .map { genesis =>
+          val gov = nes.es.ls.utxo.gov
+          Basis(
+            nes.epoch,
+            nes.es.snapshots,
+            genesis.upgrade(gov.curPParams),
+            FuturePParams.map(gov.futurePParams)(genesis.upgrade)
+          )
+        }
+
+  /** The view of [[forecastInEra]] once its bound holds. */
+  private def viewAt(
+      dijkstra: Globals,
+      forecastFor: SlotNo,
+      tip: WithOrigin[SlotNo],
+      basis: Basis
+  ): Either[CrossingForecastFailure, Praos2.LedgerView] =
+    if tip == WithOrigin.At(forecastFor) then
+      ledgerView(PoolDistr.of(basis.snapshots.set), basis.current)
+    else (ledgerView.tupled)(tickf(dijkstra, forecastFor, basis))
 
   /** TICKF of Dijkstra, Conway's (`EraRule "TICKF" DijkstraEra = Conway.TICKF`,
     * `Dijkstra/Era.hs:224`; `Conway/Rules/Tickf.hs:59-85`; cardano-ledger 9df9f98c), as far as the
@@ -116,19 +176,15 @@ object DijkstraCrossing:
   private def tickf(
       globals: Globals,
       slot: SlotNo,
-      nes: NewEpochState[Dijkstra]
+      basis: Basis
   ): (PoolDistr, ProtocolParams) =
     val now = slot.toBigInt
     val epoch = globals.epochOf(now)
     val pointOfNoReturn = globals.slotOfNoReturn(epoch)
-    val gov = nes.es.ls.utxo.gov
-    val future = gov.futurePParams
+    val future = basis.future
     val solid = if now < pointOfNoReturn then future else EraLedger.solidify(future)
-    if epoch != nes.epoch.toBigInt + 1 then (PoolDistr.of(nes.es.snapshots.set), params(nes))
-    else (PoolDistr.of(nes.es.snapshots.mark), solid.definite.getOrElse(params(nes)))
-
-  private def params(nes: NewEpochState[Dijkstra]): ProtocolParams =
-    nes.es.ls.utxo.gov.curPParams
+    if epoch != basis.epoch.toBigInt + 1 then (PoolDistr.of(basis.snapshots.set), basis.current)
+    else (PoolDistr.of(basis.snapshots.mark), solid.definite.getOrElse(basis.current))
 
   /** `forecastToPolyPraosLedgerView` of Praos2 (`Protocol/Praos2.hs:136-159`, ouroboros-consensus
     * 2416493b) over `mkDijkstraForecast` (`Dijkstra/Forecast.hs:124-152`, cardano-ledger 9df9f98c),

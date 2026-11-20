@@ -12,8 +12,15 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
-import xyz.kd5ujc.scarab.ledger.{Header, ProviderDefect, Verdicts}
-import xyz.kd5ujc.scarab.ledger.{EnvelopeError, LeiosHeader, Nonce, OCertError, PraosError}
+import xyz.kd5ujc.scarab.ledger.{Header, Praos2Defect, ProviderDefect, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{
+  EnvelopeError,
+  LeiosHeader,
+  Nonce,
+  OCertError,
+  Praos2Error,
+  PraosError
+}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   BlockNo,
@@ -139,10 +146,10 @@ class Praos2ReferenceSuite extends munit.FunSuite:
   private def testConfig(options: Json): Praos2.Config =
     val info = config.epochInfo
     val modifiedInfo = new Praos2.EpochInfo:
-      def epochOf(s: SlotNo): Either[Praos2.Defect, EpochNo] = info.epochOf(s)
-      def firstSlot(e: EpochNo): Either[Praos2.Defect, SlotNo] = info.firstSlot(e)
-      def epochSize(e: EpochNo): Either[Praos2.Defect, Word64] = info.epochSize(e)
-      def slotLengthMillis(s: SlotNo): Either[Praos2.Defect, BigInt] =
+      def epochOf(s: SlotNo): Either[Praos2Defect, EpochNo] = info.epochOf(s)
+      def firstSlot(e: EpochNo): Either[Praos2Defect, SlotNo] = info.firstSlot(e)
+      def epochSize(e: EpochNo): Either[Praos2Defect, Word64] = info.epochSize(e)
+      def slotLengthMillis(s: SlotNo): Either[Praos2Defect, BigInt] =
         optional[BigInt](options, "slotMicros").fold(info.slotLengthMillis(s))(us =>
           Right(us / 1000)
         )
@@ -216,38 +223,38 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     def tagged(tag: String, args: Json*): Json =
       Json.obj("tag" -> Json.fromString(tag), "args" -> Json.arr(args*))
     error match
-      case Praos2.Error.UnexpectedBlockNo(wanted, got) =>
+      case Praos2Error.UnexpectedBlockNo(wanted, got) =>
         tagged("UnexpectedBlockNo", n(wanted.toBigInt), n(got))
-      case Praos2.Error.UnexpectedSlotNo(wanted, got) =>
+      case Praos2Error.UnexpectedSlotNo(wanted, got) =>
         tagged("UnexpectedSlotNo", n(wanted.toBigInt), n(got))
-      case Praos2.Error.UnexpectedPrevHash(wanted, got) =>
+      case Praos2Error.UnexpectedPrevHash(wanted, got) =>
         tagged("UnexpectedPrevHash", wanted.fold(Json.Null)(h), got.fold(Json.Null)(h))
-      case Praos2.Error.Envelope(EnvelopeError.CheckpointMismatch(no, wanted, got)) =>
+      case Praos2Error.Envelope(EnvelopeError.CheckpointMismatch(no, wanted, got)) =>
         tagged("CheckpointMismatch", n(no), h(wanted), h(got))
-      case Praos2.Error.Envelope(EnvelopeError.ObsoleteNode(v, bound)) =>
+      case Praos2Error.Envelope(EnvelopeError.ObsoleteNode(v, bound)) =>
         tagged("ObsoleteNode", n(v), n(bound))
-      case Praos2.Error.Envelope(EnvelopeError.HeaderSizeTooLarge(size, bound)) =>
+      case Praos2Error.Envelope(EnvelopeError.HeaderSizeTooLarge(size, bound)) =>
         tagged("HeaderSizeTooLarge", n(size), n(bound))
-      case Praos2.Error.Envelope(EnvelopeError.BlockSizeTooLarge(size, bound)) =>
+      case Praos2Error.Envelope(EnvelopeError.BlockSizeTooLarge(size, bound)) =>
         tagged("BlockSizeTooLarge", n(size), n(bound))
-      case Praos2.Error.LeiosEbTooBig(size, bound) =>
+      case Praos2Error.LeiosEbTooBig(size, bound) =>
         tagged("LeiosEbTooBig", n(BigInt(size)), n(BigInt(bound.toLong)))
-      case Praos2.Error.LeiosCertWithoutAnnouncement => tagged("LeiosCertWithoutAnnouncement")
-      case Praos2.Error.LeiosCertTooYoung(a, s, first) =>
+      case Praos2Error.LeiosCertWithoutAnnouncement => tagged("LeiosCertWithoutAnnouncement")
+      case Praos2Error.LeiosCertTooYoung(a, s, first) =>
         tagged("LeiosCertTooYoung", n(a.toBigInt), n(s.toBigInt), n(first.toBigInt))
-      case Praos2.Error.KesBeforeStart(start, current) =>
+      case Praos2Error.KesBeforeStart(start, current) =>
         tagged("KESBeforeStartOCERT", n(start), n(current))
-      case Praos2.Error.KesAfterEnd(current, start, bound) =>
+      case Praos2Error.KesAfterEnd(current, start, bound) =>
         tagged("KESAfterEndOCERT", n(current), n(start), n(bound))
-      case Praos2.Error.CounterTooSmall(old, fresh) =>
+      case Praos2Error.CounterTooSmall(old, fresh) =>
         tagged("CounterTooSmallOCERT", n(old.toBigInt), n(fresh.toBigInt))
-      case Praos2.Error.CounterOverIncremented(old, fresh) =>
+      case Praos2Error.CounterOverIncremented(old, fresh) =>
         tagged("CounterOverIncrementedOCERT", n(old.toBigInt), n(fresh.toBigInt))
-      case Praos2.Error.Certificate(OCertError.NoCounter(key)) =>
+      case Praos2Error.Certificate(OCertError.NoCounter(key)) =>
         tagged("NoCounterForKeyHashOCERT", h(key))
-      case Praos2.Error.Certificate(OCertError.OpCertSignatureRejected) =>
+      case Praos2Error.Certificate(OCertError.OpCertSignatureRejected) =>
         tagged("InvalidSignatureOCERT", n(header.opCert.sequence), n(header.opCert.kesPeriod))
-      case Praos2.Error.Certificate(OCertError.KesSignatureRejected) =>
+      case Praos2Error.Certificate(OCertError.KesSignatureRejected) =>
         val current = header.slot / cfg.praos.slotsPerKesPeriod
         tagged(
           "InvalidKesSignatureOCERT",
@@ -256,14 +263,14 @@ class Praos2ReferenceSuite extends munit.FunSuite:
           n(current - header.opCert.kesPeriod),
           n(cfg.praos.maxKesEvolutions)
         )
-      case Praos2.Error.Praos(PraosError.IssuerWithoutStake(key)) => tagged("VRFKeyUnknown", h(key))
-      case Praos2.Error.Praos(PraosError.UnregisteredPool(key))   => tagged("VRFKeyUnknown", h(key))
-      case Praos2.Error.Praos(PraosError.VrfKeyMismatch(key, actual, registered)) =>
+      case Praos2Error.Praos(PraosError.IssuerWithoutStake(key)) => tagged("VRFKeyUnknown", h(key))
+      case Praos2Error.Praos(PraosError.UnregisteredPool(key))   => tagged("VRFKeyUnknown", h(key))
+      case Praos2Error.Praos(PraosError.VrfKeyMismatch(key, actual, registered)) =>
         assertEquals(registered.size, 1)
         tagged("VRFKeyWrongVRFKey", h(key), h(registered.toVector.head), h(actual))
-      case Praos2.Error.Praos(PraosError.VrfRejected(_)) =>
+      case Praos2Error.Praos(PraosError.VrfRejected(_)) =>
         tagged("VRFKeyBadProof", n(header.slot), nonce(state.praos.epochNonce))
-      case Praos2.Error.Praos(PraosError.NotElected(_, _)) =>
+      case Praos2Error.Praos(PraosError.NotElected(_, _)) =>
         val value =
           PraosLeaderThreshold.leaderValue(header.vrf.output).fold(e => fail(e.toString), identity)
         val share =
@@ -392,14 +399,14 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     val old = EpochNo.fromUnsigned(0)
     val first = SlotNo.fromUnsigned(0)
     val limited = new Praos2.EpochInfo:
-      def epochOf(s: SlotNo): Either[Praos2.Defect, EpochNo] =
-        Either.cond(s == first, old, Praos2.Defect.SlotOutsideForecast(s))
-      def firstSlot(e: EpochNo): Either[Praos2.Defect, SlotNo] =
-        Either.cond(e == old, first, Praos2.Defect.EpochOutsideForecast(e))
-      def epochSize(e: EpochNo): Either[Praos2.Defect, Word64] =
-        Either.cond(e == old, Word64.fromUnsigned(100), Praos2.Defect.EpochOutsideForecast(e))
-      def slotLengthMillis(s: SlotNo): Either[Praos2.Defect, BigInt] =
-        Left(Praos2.Defect.SlotOutsideForecast(s))
+      def epochOf(s: SlotNo): Either[Praos2Defect, EpochNo] =
+        Either.cond(s == first, old, Praos2Defect.SlotOutsideForecast(s))
+      def firstSlot(e: EpochNo): Either[Praos2Defect, SlotNo] =
+        Either.cond(e == old, first, Praos2Defect.EpochOutsideForecast(e))
+      def epochSize(e: EpochNo): Either[Praos2Defect, Word64] =
+        Either.cond(e == old, Word64.fromUnsigned(100), Praos2Defect.EpochOutsideForecast(e))
+      def slotLengthMillis(s: SlotNo): Either[Praos2Defect, BigInt] =
+        Left(Praos2Defect.SlotOutsideForecast(s))
     val previous = initial.protocol.praos.copy(lastSlot = WithOrigin.At(first))
     val result = Praos2
       .tick(
@@ -419,16 +426,16 @@ class Praos2ReferenceSuite extends munit.FunSuite:
 
   test("missing epoch forecast is a defect before a header verdict") {
     val h = headers.head
-    val missing = Praos2.Defect.EpochOutsideForecast(EpochNo.fromUnsigned(0))
+    val missing = Praos2Defect.EpochOutsideForecast(EpochNo.fromUnsigned(0))
     val info = new Praos2.EpochInfo:
-      def epochOf(s: SlotNo): Either[Praos2.Defect, EpochNo] =
-        Left(Praos2.Defect.SlotOutsideForecast(s))
-      def firstSlot(e: EpochNo): Either[Praos2.Defect, SlotNo] =
-        Left(Praos2.Defect.EpochOutsideForecast(e))
-      def epochSize(e: EpochNo): Either[Praos2.Defect, Word64] =
-        Left(Praos2.Defect.EpochOutsideForecast(e))
-      def slotLengthMillis(s: SlotNo): Either[Praos2.Defect, BigInt] =
-        Left(Praos2.Defect.SlotOutsideForecast(s))
+      def epochOf(s: SlotNo): Either[Praos2Defect, EpochNo] =
+        Left(Praos2Defect.SlotOutsideForecast(s))
+      def firstSlot(e: EpochNo): Either[Praos2Defect, SlotNo] =
+        Left(Praos2Defect.EpochOutsideForecast(e))
+      def epochSize(e: EpochNo): Either[Praos2Defect, Word64] =
+        Left(Praos2Defect.EpochOutsideForecast(e))
+      def slotLengthMillis(s: SlotNo): Either[Praos2Defect, BigInt] =
+        Left(Praos2Defect.SlotOutsideForecast(s))
     assertEquals(
       Praos2.tick(config.copy(epochInfo = info), view, slot(h.slot), initial),
       Left(missing)
@@ -446,23 +453,23 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     val slotResult = Praos2.validate(config, h, Praos2.Ticked(highSlot, view))
     assertEquals(
       blockResult,
-      Left(Praos2.Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.BlockNo))
+      Left(Praos2Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.BlockNo))
     )
     assertEquals(
       slotResult,
-      Left(Praos2.Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.SlotNo))
+      Left(Praos2Defect.SuccessorOverflow(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.SlotNo))
     )
   }
 
   test("a zero slot length or KES period is a configuration defect") {
     assertEquals(
       Praos2.minCertificationSlot(0, view, slot(0)),
-      Left(Praos2.Defect.NonPositiveSlotLength(0))
+      Left(Praos2Defect.NonPositiveSlotLength(0))
     )
     val bad = config.copy(praos = config.praos.copy(slotsPerKesPeriod = 0))
     assertEquals(
       Praos2.validateProtocol(bad, headers.head, Praos2.Ticked(initial, view)),
-      Left(Praos2.Defect.NonPositiveKesPeriod(0))
+      Left(Praos2Defect.NonPositiveKesPeriod(0))
     )
   }
 

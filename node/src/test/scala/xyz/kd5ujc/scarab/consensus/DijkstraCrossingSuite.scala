@@ -12,8 +12,8 @@ import xyz.kd5ujc.scarab.consensus.state.{
   ProtocolExtras,
   ProtocolState
 }
-import xyz.kd5ujc.scarab.ledger.{Block, EbAnnouncement, LeiosHeader, Nonce}
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, TickFailure}
+import xyz.kd5ujc.scarab.ledger.{Block, CrossingForecastFailure, EbAnnouncement, LeiosHeader, Nonce}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, TickFailure, Translate}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   BlockNo,
@@ -281,4 +281,29 @@ class DijkstraCrossingSuite extends munit.FunSuite:
     val state = altered(pp => FuturePParams.PotentialPParamsUpdate(Some(pp)))
     assertEquals(headerLimit(forecast(SlotNo.fromUnsigned(249), state = state)), 1100)
     assertEquals(headerLimit(forecast(SlotNo.fromUnsigned(250), state = state)), 1200)
+  }
+
+  test("the views across the boundary are those of the Dijkstra state the translation makes") {
+    // the forecast translates only the parameters and the snapshots; its views are Dijkstra's own
+    // forecast from the whole translated state, header after header from the one Conway anchor
+    def whole(state: NewEpochState[Conway], slot: SlotNo) =
+      DijkstraCrossing.forecastInEra(
+        globals,
+        slot,
+        tip,
+        Translate.conwayToDijkstra(globals, state).fold(e => fail(e.toString), identity)
+      )
+    val slots = dijkstraHeaders.map(slotOf) ++ Vector(249L, 250L, 274L).map(SlotNo.fromUnsigned)
+    val states = Vector(
+      ledger,
+      altered(FuturePParams.DefinitePParamsUpdate(_)),
+      altered(pp => FuturePParams.PotentialPParamsUpdate(Some(pp)))
+    )
+    for
+      state <- states
+      slot <- slots
+    do
+      val view = forecast(slot, state = state)
+      assert(view.isRight, s"slot ${slot.toBigInt}: $view")
+      assertEquals(view, whole(state, slot), s"slot ${slot.toBigInt}")
   }

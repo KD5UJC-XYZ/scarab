@@ -32,6 +32,11 @@ object FailurePolicy:
     // The reference charges the error delay; the failure is our implementation's, so nothing is
     // counted against the peer (owner decision 2026-10-28, issue 567; #584).
     case _: PeerError.Unverifiable => FailureClass.NotThePeers
+    // A defect of the node's own state or configuration left the peer's header without a verdict
+    // (a Dijkstra ledger view that cannot be made, a Praos2 parameter that cannot hold): the
+    // reference's exception in the ChainSync client ends the peer (`ourBug`, `ShutdownPeer`); as
+    // for the other defects of our own, nothing is counted against the peer
+    case _: PeerError.HeaderUndecided => FailureClass.NotThePeers
     // The node's own code threw while it answered the peer (the ledger rules on a transaction the
     // peer submitted): the connection closes, as the exception ends that mini-protocol in the
     // reference (consensus 82ecba329 Mempool/Update.hs `doAddTx`, in the TxSubmission2 thread;
