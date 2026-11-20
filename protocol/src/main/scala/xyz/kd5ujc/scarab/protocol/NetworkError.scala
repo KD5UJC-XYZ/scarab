@@ -191,32 +191,43 @@ object NetworkError:
   enum SduOperation:
     case Read, Write
 
-  /** Why our BlockFetch server ends the connection over a range ([[RangeRefused]]). */
+  /** Why our BlockFetch server ends the connection over a range ([[RangeRefused]]): one case for
+    * each exception the reference raises for a range, named as it is (ouroboros-consensus
+    * 82ecba32).
+    */
   enum RangeRefusal:
-    /** An end of the range is Origin: `NoGenesisBlock` (`MiniProtocol/BlockFetch/Server.hs`
-      * 107-112), before anything is looked up.
+    /** An end of the range is Origin: the server's `NoGenesisBlock` (`BlockFetchServerException`,
+      * `MiniProtocol/BlockFetch/Server.hs` 42-67, raised at 107-112), before anything is looked up.
       */
     case NoGenesisBlock
 
-    /** The bounds `from` to `to` are not a range: the ChainDB iterator's `InvalidIteratorRange` (a
-      * lower bound in a later slot than the upper, or a walk back from the upper bound that reaches
-      * the start of the chain without meeting the lower; `Storage/ChainDB/Impl/Iterator.hs` 254-257
-      * and 494-504), or the ImmutableDB's `InvalidIteratorRangeError` for the bounds it is asked to
-      * stream between (`Storage/ImmutableDB/Impl/Iterator.hs` 134-159).
+    /** The bounds `from` to `to` are not a range of the ChainDB: a lower bound in a later slot than
+      * the upper, or a walk back from the upper bound that reaches the start of the chain without
+      * meeting the lower (`ChainDbError`'s `InvalidIteratorRange`, `Storage/ChainDB/API.hs`
+      * 981-999, raised at `Storage/ChainDB/Impl/Iterator.hs` 254-257 and 494-504).
       */
-    case InvalidRange(from: ChainSync.Point, to: ChainSync.Point)
+    case InvalidIteratorRange(from: ChainSync.Point, to: ChainSync.Point)
+
+    /** The bounds `from` to `to` the ImmutableDB is asked to stream between are not a range: a
+      * lower bound in a later slot, or a main block before the boundary block of its slot
+      * (`ApiMisuse`'s `InvalidIteratorRangeError`, `Storage/ImmutableDB/API.hs` 370-379, raised at
+      * `Storage/ImmutableDB/Impl/Iterator.hs` 134-159).
+      */
+    case InvalidIteratorRangeError(from: ChainSync.Point, to: ChainSync.Point)
 
     /** The block at `point`, part of a batch already started, was collected since and is not in the
-      * immutable chain: `IteratorBlockGCed`, which the server raises as `BlockGCed`
-      * (`Storage/ChainDB/Impl/Iterator.hs` 654-695 and 774-784; `Server.hs` 144-146).
+      * immutable chain: the iterator's `IteratorBlockGCed`, which the server raises as `BlockGCed`
+      * (`Storage/ChainDB/Impl/Iterator.hs` 654-695 and 774-784; `Server.hs` 42-67 and 144-146).
       */
-    case Collected(point: ChainSync.Point)
+    case BlockGCed(point: ChainSync.Point)
 
     def message: String = this match
       case NoGenesisBlock => "an end of the range is Origin"
-      case InvalidRange(from, to) =>
-        s"${NetworkError.pointText(from)} to ${NetworkError.pointText(to)} is not a range"
-      case Collected(point) => s"${NetworkError.pointText(point)} was collected during the batch"
+      case InvalidIteratorRange(from, to) =>
+        s"${NetworkError.pointText(from)} to ${NetworkError.pointText(to)} is not a range of the chain database"
+      case InvalidIteratorRangeError(from, to) =>
+        s"${NetworkError.pointText(from)} to ${NetworkError.pointText(to)} is not a range of the immutable chain"
+      case BlockGCed(point) => s"${NetworkError.pointText(point)} was collected during the batch"
 
   /** A point as the messages write it. */
   private def pointText(point: ChainSync.Point): String = point match

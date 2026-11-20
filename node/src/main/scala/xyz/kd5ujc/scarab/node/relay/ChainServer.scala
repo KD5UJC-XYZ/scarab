@@ -201,26 +201,35 @@ final class ChainServer[F[_]: Async] private (
       case _ =>
         F.pure(BlockFetchServer.Answer.Refused(NetworkError.RangeRefusal.NoGenesisBlock))
 
-  /** The blocks held now, by hash: the selected volatile chain's, each after the block before it,
-    * and the received log's, each after the predecessor its header names, a Byron chain's first
-    * block after Origin.
+  /** The blocks held at one instant, by hash: the selected volatile chain's, each after the block
+    * before it, and the received log's, each after the predecessor its header names, a Byron
+    * chain's first block after Origin. The reference walks one snapshot of its VolatileDB's index
+    * (`computePathVolatileDB`, `Storage/ChainDB/Impl/Iterator.hs` 494-504): the volatile chain is
+    * read on both sides of the read of the received log's index and the reads are taken again until
+    * its blocks did not change between them, so the two are as they were when the index was read.
     */
   private def heldNow: F[Bytes => Option[HeldRange.Held]] =
-    (state.get, held.received.traverse(r => r.links)).mapN { (chain, links) =>
-      def received(hash: Bytes) = links.flatMap(_(hash)).map { linked =>
-        HeldRange.Held(
-          linked.ref,
-          linked.predecessor match
-            case ReceivedBlocks.Predecessor.Genesis => None
-            case ReceivedBlocks.Predecessor.Block(previous) =>
-              Option.unless(held.origin.contains(previous))(previous)
-        )
+    def selected(chain: ServedChain)(hash: Bytes) =
+      chain.predecessorOf(hash).map(HeldRange.Held(_, _))
+    held.received.fold(state.get.map(selected)) { received =>
+      F.tailRecM(()) { _ =>
+        (state.get, received.links, state.get).mapN { (before, links, after) =>
+          def logged(hash: Bytes) = links(hash).map { linked =>
+            HeldRange.Held(
+              linked.ref,
+              linked.predecessor match
+                case ReceivedBlocks.Predecessor.Genesis => None
+                case ReceivedBlocks.Predecessor.Block(previous) =>
+                  Option.unless(held.origin.contains(previous))(previous)
+            )
+          }
+          Either.cond(
+            before.generation == after.generation,
+            (hash: Bytes) => selected(before)(hash).orElse(logged(hash)),
+            ()
+          )
+        }
       }
-      hash =>
-        chain
-          .predecessorOf(hash)
-          .map(HeldRange.Held(_, _))
-          .orElse(received(hash))
     }
 
   /** What a range reads: the store, and the held blocks' originals, the volatile chain's from

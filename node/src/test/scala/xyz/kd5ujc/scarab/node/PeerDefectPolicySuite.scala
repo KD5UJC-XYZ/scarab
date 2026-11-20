@@ -81,8 +81,9 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
     val point = ChainSync.Point.Block(ChainSync.UInt64.saturating(BigInt(3)), Bytes(Vector(1)))
     Vector(
       NetworkError.RangeRefusal.NoGenesisBlock,
-      NetworkError.RangeRefusal.InvalidRange(point, ChainSync.Point.Origin),
-      NetworkError.RangeRefusal.Collected(point)
+      NetworkError.RangeRefusal.InvalidIteratorRange(point, ChainSync.Point.Origin),
+      NetworkError.RangeRefusal.InvalidIteratorRangeError(point, ChainSync.Point.Origin),
+      NetworkError.RangeRefusal.BlockGCed(point)
     ).foreach { refusal =>
       val refused = NetworkError.RangeRefused(refusal)
       Peer.networkFault(refused) match

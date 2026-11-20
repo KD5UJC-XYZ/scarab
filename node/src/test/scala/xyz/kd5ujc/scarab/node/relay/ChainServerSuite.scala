@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.relay
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.syntax.all.*
-import fs2.Pull
+import fs2.{Pull, Stream}
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch, Era, NtNHeader}
@@ -32,7 +32,7 @@ import xyz.kd5ujc.scarab.storage.{
 }
 import munit.ScalaCheckSuite
 import cats.mtl.Handle
-import xyz.kd5ujc.scarab.ledger.NodeError
+import xyz.kd5ujc.scarab.ledger.{NodeError, StorageError}
 import xyz.kd5ujc.scarab.node.Fatal
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -172,8 +172,13 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private def raws(ns: Range): Vector[Bytes] = ns.toVector.map(raw(_))
 
+  /** The ChainDB's `InvalidIteratorRange`. */
   private def invalid(from: Point, to: Point): NetworkError.RangeRefusal =
-    NetworkError.RangeRefusal.InvalidRange(from, to)
+    NetworkError.RangeRefusal.InvalidIteratorRange(from, to)
+
+  /** The ImmutableDB's `InvalidIteratorRangeError`. */
+  private def invalidImmutable(from: Point, to: Point): NetworkError.RangeRefusal =
+    NetworkError.RangeRefusal.InvalidIteratorRangeError(from, to)
 
   /** `blocks`, with `act` run once a batch has read its first `after` blocks and before it reads
     * the next: a batch reads each held block when it is pulled.
@@ -753,7 +758,11 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             assertEquals(storedBack, refused(boundary(20), ref(19)), "stored, from a boundary back")
             assertEquals(volatileBack, refused(boundary(40), ref(39)), "volatile, boundary back")
             assertEquals(boundaryFirst, Got.Blocks(Vector(raw(19, 9), raw(20))))
-            assertEquals(boundaryLast, refused(ref(20), boundary(20)), "main block, then boundary")
+            assertEquals(
+              boundaryLast,
+              Got.Refused(invalidImmutable(ref(20).point, boundary(20).point), Vector.empty),
+              "main block, then boundary"
+            )
             assertEquals(toBoundary, Got.Blocks(Vector(raw(19), raw(19, 9))))
             assertEquals(volatileFirst, Got.Blocks(Vector(raw(39, 9), raw(40))))
         }
@@ -782,8 +791,30 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
       case _ => None
 
-  /** Fork 1 follows main block 8; fork 3 follows a block the node does not hold. */
-  private val forks = Map(1 -> ref(8), 3 -> BlockRef(BigInt(24), hash(777777), BigInt(8)))
+  /** Fork 1 follows main block 8, fork 6 main block 10; fork 3 follows a block the node does not
+    * hold.
+    */
+  private val forks =
+    Map(1 -> ref(8), 3 -> BlockRef(BigInt(24), hash(777777), BigInt(8)), 6 -> ref(10))
+
+  /** `received`, whose next read of its links runs the action `hook` holds first. */
+  private final class Hooked(received: ReceivedBlocks[IO], hook: Ref[IO, IO[Unit]])
+      extends ReceivedBlocks[IO]:
+    def put(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[IO, StorageError]) =
+      received.put(ref, raw)
+    def restoreSelected(ref: BlockRef, raw: Bytes)(using cats.mtl.Raise[IO, StorageError]) =
+      received.restoreSelected(ref, raw)
+    def discardRecovered(hash: Bytes) = received.discardRecovered(hash)
+    def get(hash: Bytes)(using cats.mtl.Raise[IO, StorageError]) = received.get(hash)
+    def original(hash: Bytes)(using cats.mtl.Raise[IO, StorageError]) = received.original(hash)
+    def links = hook.getAndSet(IO.unit).flatten *> received.links
+    def refs = received.refs
+    def hashes = received.hashes
+    def holds = received.holds
+    def invalidate(hash: Bytes) = received.invalidate(hash)
+    def collect(durableSlot: BigInt)(using cats.mtl.Raise[IO, StorageError]) =
+      received.collect(durableSlot)
+    def residency = received.residency
 
   /** A node over a store and a received log: main blocks are received and then adopted as the node
     * adopts a fetched block, each storing the block `k` before it; other blocks only received.
@@ -807,26 +838,32 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** A node over the store and received log in `dir`, its log `blocksPerFile` blocks to a file,
     * that adopted main blocks 1 to 10 (1 to 7 stored) and received fork 1's blocks 9 and 10.
     */
-  private def node[A](dir: fs2.io.file.Path, blocksPerFile: Int = 512)(
+  private def node[A](
+      dir: fs2.io.file.Path,
+      blocksPerFile: Int = 512,
+      linked: Map[Bytes, ReceivedBlocks.Predecessor] = Map.empty,
+      hook: Option[Ref[IO, IO[Unit]]] = None
+  )(
       body: Handle[IO, NodeError] ?=> Node => IO[A]
   ): IO[A] =
+    val predecessorOf = (raw: Bytes) => linked.get(raw).orElse(predecessors(forks)(raw))
     ok {
       FileImmutableStore.open[IO](dir / "immutable", 30L).use { (store, _) =>
-        ReceivedBlocks.open[IO](dir / "received", blocksPerFile)(predecessors(forks)).use {
-          received =>
-            for
-              server <- ChainServer.open[IO](
-                Some(store),
-                None,
-                headerOf,
-                fatal,
-                ChainServer.Held(Some(received), None)
-              )
-              node = Node(server, store, received)
-              _ <- (1 to 10).toList.traverse_(node.adopt(_))
-              _ <- node.receive(9, 1) *> node.receive(10, 1)
-              result <- body(node)
-            yield result
+        ReceivedBlocks.open[IO](dir / "received", blocksPerFile)(predecessorOf).use { log =>
+          val received = hook.fold(log)(Hooked(log, _))
+          for
+            server <- ChainServer.open[IO](
+              Some(store),
+              None,
+              headerOf,
+              fatal,
+              ChainServer.Held(Some(received), None)
+            )
+            node = Node(server, store, received)
+            _ <- (1 to 10).toList.traverse_(node.adopt(_))
+            _ <- node.receive(9, 1) *> node.receive(10, 1)
+            result <- body(node)
+          yield result
         }
       }
     }
@@ -905,57 +942,54 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             blocks,
             noTransactions
           )
-          exchange <- Mux.resource(local, NodeToNodeServer.Protocol).use { client =>
-            for
-              ended <- Deferred[IO, NetworkError]
-              serving <- Peers
-                .typed(
-                  Mux
-                    .resource(
-                      remote,
-                      NodeToNodeServer.Protocol,
-                      Mux.Config(role = Mux.Role.Responder)
-                    )
-                    .use(mux => NodeToNodeServer.start(mux, handlers).use(_ => mux.closed))
-                )
-                .flatMap(reason => ended.complete(reason.merge).void)
-                .guarantee(remote.close)
-                .start
-              c <- client.channel(Protocols.BlockFetch)
-              _ <- c.send(encoded(BlockFetch.Message.RequestRange(from, to)))
-              read <- {
-                def next(
-                    state: BlockFetch.State,
-                    sent: Vector[Wire]
-                ): IO[(Vector[Wire], Option[NetworkError])] =
-                  Peers
-                    .typed(
-                      c.recvPrefix(2500000)(
-                        BlockFetch.decodePrefix(state, BlockFetch.Role.Server, _, codec)
+          ended <- Deferred[IO, NetworkError]
+          // the connection's owner: it closes the bearer once the server's mux has ended, and is
+          // cancelled when the exchange ends however it ends
+          serverSide = Peers
+            .typed(
+              Mux
+                .resource(remote, NodeToNodeServer.Protocol, Mux.Config(role = Mux.Role.Responder))
+                .use(mux => NodeToNodeServer.start(mux, handlers).use(_ => mux.closed))
+            )
+            .flatMap(reason => ended.complete(reason.merge).void)
+            .guarantee(remote.close)
+          exchange <- (Mux.resource(local, NodeToNodeServer.Protocol), serverSide.background).tupled
+            .use { (client, serving) =>
+              for
+                c <- client.channel(Protocols.BlockFetch)
+                _ <- c.send(encoded(BlockFetch.Message.RequestRange(from, to)))
+                read <- {
+                  def next(
+                      state: BlockFetch.State,
+                      sent: Vector[Wire]
+                  ): IO[(Vector[Wire], Option[NetworkError])] =
+                    Peers
+                      .typed(
+                        c.recvPrefix(2500000)(
+                          BlockFetch.decodePrefix(state, BlockFetch.Role.Server, _, codec)
+                        )
                       )
-                    )
-                    .flatMap {
-                      case Left(closed) => IO.pure(sent -> Some(closed))
-                      case Right(BlockFetch.Message.StartBatch) =>
-                        next(BlockFetch.State.Streaming, sent :+ Wire.StartBatch)
-                      case Right(BlockFetch.Message.Block(block)) =>
-                        blocksSeen.update(_ + 1) *>
-                          next(BlockFetch.State.Streaming, sent :+ Wire.Block(block.bytes))
-                      case Right(BlockFetch.Message.NoBlocks) =>
-                        IO.pure((sent :+ Wire.NoBlocks) -> None)
-                      case Right(BlockFetch.Message.BatchDone) =>
-                        IO.pure((sent :+ Wire.BatchDone) -> None)
-                      case Right(other) => IO(fail(s"the server sent $other"))
-                    }
-                next(BlockFetch.State.Busy, Vector.empty)
-              }
-              (sent, seen) = read
-              _ <- seen.fold(
-                c.send(encoded(BlockFetch.Message.ClientDone)) *> serving.cancel
-              )(_ => serving.joinWithNever)
-              reason <- ended.tryGet
-            yield Exchange(sent, reason, seen)
-          }
+                      .flatMap {
+                        case Left(closed) => IO.pure(sent -> Some(closed))
+                        case Right(BlockFetch.Message.StartBatch) =>
+                          next(BlockFetch.State.Streaming, sent :+ Wire.StartBatch)
+                        case Right(BlockFetch.Message.Block(block)) =>
+                          blocksSeen.update(_ + 1) *>
+                            next(BlockFetch.State.Streaming, sent :+ Wire.Block(block.bytes))
+                        case Right(BlockFetch.Message.NoBlocks) =>
+                          IO.pure((sent :+ Wire.NoBlocks) -> None)
+                        case Right(BlockFetch.Message.BatchDone) =>
+                          IO.pure((sent :+ Wire.BatchDone) -> None)
+                        case Right(other) => IO(fail(s"the server sent $other"))
+                      }
+                  next(BlockFetch.State.Busy, Vector.empty)
+                }
+                (sent, seen) = read
+                // the connection ended: the server's side has finished, and said why
+                _ <- seen.fold(c.send(encoded(BlockFetch.Message.ClientDone)))(_ => serving.void)
+                reason <- ended.tryGet
+              yield Exchange(sent, reason, seen)
+            }
         yield exchange
       }
       .map(_.fold(e => fail(e.message), identity))
@@ -1074,7 +1108,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           // the walk stops at block 5, and its path joins the immutable chain at its tip, block 7
           joined <- overWire(node.server, ref(3).point, ref(10).point)
         yield
-          assertEquals(offPath, refused(invalid(ref(9, 1).point, ref(7).point)))
+          assertEquals(offPath, refused(invalidImmutable(ref(9, 1).point, ref(7).point)))
           assertEquals(joined, served(raws(3 to 10)))
       }
     }
@@ -1090,7 +1124,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           got =>
             assertEquals(
               got,
-              refused(NetworkError.RangeRefusal.Collected(ref(10, 1).point), Vector(raw(9, 1)))
+              refused(NetworkError.RangeRefusal.BlockGCed(ref(10, 1).point), Vector(raw(9, 1)))
             )
         )
       }
@@ -1116,7 +1150,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(recovered, served(raws(5 to 10)))
       assertEquals(
         lost,
-        refused(NetworkError.RangeRefusal.Collected(ref(9, 1).point), Vector(raw(8)))
+        refused(NetworkError.RangeRefusal.BlockGCed(ref(9, 1).point), Vector(raw(8)))
       )
   }
 
@@ -1170,4 +1204,176 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       )
       assertEquals(offChain, None)
     }
+  }
+
+  test("a held path is followed by its predecessors whatever their slots") {
+    // held blocks at slots 40, 46 and 43, each after the one before: a block is held before
+    // selection judges it, and the reference's walk follows the hashes in its index, so the range
+    // from the first to the last is served whole
+    val first = BlockRef(BigInt(40), hash(920001), BigInt(11))
+    val second = BlockRef(BigInt(46), hash(920002), BigInt(12))
+    val third = BlockRef(BigInt(43), hash(920003), BigInt(13))
+    val raws = Vector(201, 202, 203).map(n => Bytes(Vector(n.toByte, 7.toByte)))
+    val linked = Map(
+      raws(0) -> ReceivedBlocks.Predecessor.Block(ref(10).hash),
+      raws(1) -> ReceivedBlocks.Predecessor.Block(first.hash),
+      raws(2) -> ReceivedBlocks.Predecessor.Block(second.hash)
+    )
+    tempDir.use { dir =>
+      node(dir, linked = linked) { node =>
+        Vector(first, second, third).zip(raws).traverse_((r, b) => node.received.put(r, b)) *>
+          overWire(node.server, first.point, third.point).map(got =>
+            assertEquals(got, served(raws))
+          )
+      }
+    }
+  }
+
+  test("a range is walked in one snapshot of the held blocks, as the reference walks its index") {
+    // between the read of the selected chain and the read of the received log, block 10 is rolled
+    // back and collected and fork 6's block 11, after it, is received: the two reads are taken
+    // again until the chain did not change between them, so block 11 is seen without block 10,
+    // as the reference's one snapshot would show it, and the range cannot be connected
+    tempDir.use { dir =>
+      for
+        hook <- Ref.of[IO, IO[Unit]](IO.unit)
+        got <- node(dir, blocksPerFile = 1, hook = Some(hook)) { node =>
+          val meanwhile = ok(
+            node.server.persistence[Unit].rolledBack(ref(9).point) *> node.receive(11, 6) *>
+              node.received.collect(ref(11).slot)
+          )
+          hook.set(meanwhile) *> overWire(node.server, ref(10).point, ref(11, 6).point)
+        }
+      yield assertEquals(got, noBlocks)
+    }
+  }
+
+  /** Blocks 1 to `n` of a chain for [[HeldRange]] alone: slot `i`, number `i`, the body its number.
+    */
+  private def chainOf(n: Int): Vector[ImmutableStore.Stored] =
+    Vector.tabulate(n)(i =>
+      ImmutableStore.Stored(
+        BlockRef(BigInt(i + 1), hash(930000 + i + 1), BigInt(i + 1)),
+        Bytes.fromArray(BigInt(i + 1).toByteArray)
+      )
+    )
+
+  private def pointOf(ref: BlockRef): Point.Block =
+    Point.Block(UInt64.saturating(ref.slot), ref.hash)
+
+  /** A source for [[HeldRange]] over `chain`: the immutable chain is its first `immutable` blocks,
+    * the held bodies those `held` says, each body read recorded in `read`.
+    */
+  private def sourceOf(
+      chain: Vector[ImmutableStore.Stored],
+      immutable: Ref[IO, Int],
+      held: Int => Boolean,
+      read: Ref[IO, Vector[Int]]
+  ): HeldRange.Source[IO] = new HeldRange.Source[IO]:
+    private def index(hash: Bytes) = chain.indexWhere(_.ref.hash == hash)
+    def tip = immutable.get.map(n => chain.lift(n - 1).map(_.ref))
+    def refOf(point: Point.Block) =
+      immutable.get.map(n => chain.take(n).map(_.ref).find(r => pointOf(r) == point))
+    def stored(from: HeldRange.Lower, first: BlockRef, last: BlockRef) =
+      val start = index(first.hash) + (from match
+        case HeldRange.Lower.Inclusive(_) => 0
+        case HeldRange.Lower.Exclusive(_) => 1)
+      Stream.emits(chain.slice(start, index(last.hash) + 1)).covary[IO]
+    def body(hash: Bytes) =
+      val i = index(hash)
+      read.update(_ :+ (i + 1)) *> IO.pure(chain.lift(i).filter(_ => held(i + 1)).map(_.raw))
+
+  /** The blocks of `chain` from its `firstHeld` -th (from 0) held, each after the one before it in
+    * the chain, the first block of the chain after its start.
+    */
+  private def heldOf(
+      chain: Vector[ImmutableStore.Stored],
+      firstHeld: Int = 0
+  ): Bytes => Option[HeldRange.Held] =
+    chain.zipWithIndex
+      .drop(firstHeld)
+      .map((s, i) => s.ref.hash -> HeldRange.Held(s.ref, chain.lift(i - 1).map(_.ref.hash)))
+      .toMap
+      .get
+
+  private def drain(answer: BlockFetchServer.Answer[IO]): IO[Got] = got(answer)
+
+  test("the immutable tip moving between the walk and the join moves where the path joins it") {
+    // blocks 5 to 10 held, block 4 the immutable tip when the range is asked: the walk stops at
+    // block 5, whose predecessor is the tip; before the join reads the tip again it moves to block
+    // 7 (then to block 10): the part from the store runs to the new tip, and the held part goes on
+    // after it (`streamFromBoth`, `Iterator.hs` 390-433)
+    val chain = chainOf(10)
+    val held = heldOf(chain, firstHeld = 4)
+    def range(moved: Int) =
+      for
+        immutable <- Ref.of[IO, Int](4)
+        read <- Ref.of[IO, Vector[Int]](Vector.empty)
+        source = sourceOf(chain, immutable, _ > 4, read)
+        answer <- HeldRange.answer(
+          source,
+          immutable.set(moved).as(held),
+          pointOf(chain(2).ref),
+          pointOf(chain(9).ref)
+        )
+        sent <- drain(answer)
+        bodies <- read.get
+      yield (sent, bodies)
+    for
+      toSeven <- range(7)
+      toEnd <- range(10)
+    yield
+      assertEquals(toSeven, (Got.Blocks(chain.drop(2).map(_.raw)), Vector(8, 9, 10)))
+      assertEquals(toEnd, (Got.Blocks(chain.drop(2).map(_.raw)), Vector.empty[Int]))
+  }
+
+  test("a cycle of held predecessors ends the walk") {
+    // two blocks naming each other, which only a collision of block hashes could make: the
+    // reference's walk would not end; this one ends where the path would repeat
+    val a = BlockRef(BigInt(50), hash(940001), BigInt(20))
+    val b = BlockRef(BigInt(51), hash(940002), BigInt(21))
+    val held = Map(
+      a.hash -> HeldRange.Held(a, Some(b.hash)),
+      b.hash -> HeldRange.Held(b, Some(a.hash))
+    ).get
+    val other = pointOf(BlockRef(BigInt(7), hash(940003), BigInt(7)))
+    assertEquals(
+      HeldRange.path(held, pointOf(a), pointOf(b)).collect { case HeldRange.Path.Complete(p) =>
+        p.toVector
+      },
+      Some(Vector(a, b))
+    )
+    assertEquals(
+      HeldRange.path(held, other, pointOf(b)),
+      Some(HeldRange.Path.Partial(b.hash, cats.data.NonEmptyVector.of(a, b)))
+    )
+  }
+
+  test("a long batch streams, and recovers from the immutable chain, on a 256 KiB thread") {
+    // 20,000 held blocks asked for whole; the first 10,000 have left the held blocks and are read
+    // from the immutable chain, each checked against the path, and the rest from the held blocks
+    val chain = chainOf(20000)
+    Resource
+      .make(
+        IO.delay(
+          java.util.concurrent.Executors.newSingleThreadExecutor((run: Runnable) =>
+            new Thread(null, run, "held-range-small-stack", 256L * 1024)
+          )
+        )
+      )(executor => IO.delay(executor.shutdown()))
+      .use { executor =>
+        (for
+          immutable <- Ref.of[IO, Int](10000)
+          read <- Ref.of[IO, Vector[Int]](Vector.empty)
+          source = sourceOf(chain, immutable, _ > 10000, read)
+          answer <- HeldRange.answer(
+            source,
+            IO.pure(heldOf(chain)),
+            pointOf(chain.head.ref),
+            pointOf(chain.last.ref)
+          )
+          sent <- drain(answer)
+        yield sent).evalOn(scala.concurrent.ExecutionContext.fromExecutorService(executor))
+      }
+      .map(sent => assertEquals(sent, Got.Blocks(chain.map(_.raw))))
   }

@@ -278,8 +278,8 @@ class ServerSuite extends FailsOnUncaught:
     // `MiniProtocol/BlockFetch/Server.hs` 107-146 (ouroboros-consensus 82ecba32): an Origin end
     // throws `NoGenesisBlock` before the ChainDB is asked, `InvalidIteratorRange` comes from
     // opening the iterator, before `StartBatch`, and `BlockGCed` from the batch, with no `BatchDone`
-    val collected = NetworkError.RangeRefusal.Collected(Peers.point(2))
-    val invalid = NetworkError.RangeRefusal.InvalidRange(Peers.point(3), Peers.point(1))
+    val collected = NetworkError.RangeRefusal.BlockGCed(Peers.point(2))
+    val invalid = NetworkError.RangeRefusal.InvalidIteratorRange(Peers.point(3), Peers.point(1))
     def exchange(from: Point, to: Point) =
       for
         asked <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
