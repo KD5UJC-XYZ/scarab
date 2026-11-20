@@ -488,8 +488,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   generic in its era over its classes: `disjointRefInputs`, `validateOutsideValidityIntervalUTxO`,
   `validateInputSetEmptyUTxO`, `validateBadInputsUTxO` (with `allInputsTxBodyF`), `validateWrongNetwork`,
   `validateWrongNetworkWithdrawal`, `validateWrongNetworkInTxBody` and `validateTooManyCollateralInputs`.
-  - They report the node's flat failures, so each verdict is compared with the flat predicate's: on every
-    transaction of the recorded Conway refusal corpora (`ConwayUtxoChecksSuite`), five of the eight refuse
+  - Each verdict is compared with the flat predicate's, the era failure in the flat form (UTXO whole, below):
+    on every transaction of the recorded Conway refusal corpora (`ConwayUtxoChecksSuite`), five of the eight refuse
     somewhere; the other three refuse on cases crafted from a recorded one, an empty input set, spent
     reference inputs at version 10 and a collateral maximum of zero.
   - The independent review found two differences from the reference that the flat predicates share, so the
@@ -510,8 +510,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     and a declared total that is not the balance.
   - `collAdaBalance` adds the lovelace in a wrapping `Word64`, as `sumAllCoin` does; the flat path adds
     exactly. They differ only past the supply, which no set of collateral outputs reaches.
-  - A failure that carries an output or a value carries the node's stored form of it, through a glue class
-    (`StoredTxOut`) with Conway's instance only, until each era's failure types (§3.4).
+  - A failure carries the era's outputs and values; its flat form carries their stored form, through a glue
+    class (`StoredTxOut`) with Conway's instance only (UTXO whole, below).
   - The scripts needed and provided and the witnesses needed came with UTXOW, and `AlonzoEraUTxO` with
     its datums (below).
 - **The outputs** (`era/rules/`): `validateOutputTooSmallUTxO` with `babbageMinUTxOValue`,
@@ -562,9 +562,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     policy, the injection) comes in `UtxoContext[E]`: the node's `Globals` has no era history. The
     injection is a value per era and build that only the rules package makes (`InjectShelleyUtxoFailure`),
     chosen by build until the builds are types (`BuildRules`, #1063).
-  - UTXOS and the state's change are on the era types too (below). Still to come before UTXO is whole: its
-    transition (`conwayUtxoTransition`), with the annotated transaction (`StAnnTx`, below) as its signal, and
-    UTXOS's failures embedded in its own (#85).
+  - UTXOS, the state's change and UTXO's transition are on the era types too (below).
 - **UTXOS and the change of the UTxO state** (`era/rules/Utxos.scala`, `era/rules/Utxo.scala`,
   `era/EraStake.scala`, `era/PlutusEvaluate.scala`; the `Rules/Utxos.hs` of Alonzo, Babbage and Conway,
   `Shelley/Rules/Utxo.hs:584-647`, `Babbage/Rules/Utxo.hs:449-487`, `Babbage/Collateral.hs`,
@@ -636,6 +634,67 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Not yet (#85): Alonzo's and Babbage's own UTXOS transitions, which run PPUP; and the node's phase-2
     counters (`PlutusStats`) and its preparation of a block's evaluations, which the events stand for until
     the switch.
+- **UTXO whole, with the reference's failures** (`era/rules/Utxo.scala`, `era/rules/UtxoFailures.scala`; the
+  `Rules/Utxo.hs` of Shelley, Allegra, Alonzo, Babbage and Conway, cardano-ledger f649f975, where 29a7d656 and
+  9df9f98c differ in derived `Ord` instances, Alonzo's and Conway's units as `OrdExUnits`, the units read
+  through `getTotalExUnits`, and Allegra's injection below):
+  - UTXO's failures are the reference's own types, one per era (`ShelleyUtxoPredFailure` to
+    `ConwayUtxoPredFailure`), with `EraRuleFailure "UTXO"` a match type with Conway's case. Each predicate above
+    reports its own era's type, and `babbageUtxoValidation` and `feesOK` inject them as the reference's
+    `InjectRuleFailure "UTXO"` instances do (`InjectUtxoFailure`, with Conway's `babbageToConwayUtxoPredFailure`,
+    `alonzoToConwayUtxoPredFailure` and `allegraToConwayUtxoPredFailure`). Shelley's injection is Allegra's
+    `shelleyToAllegraUtxoPredFailure` then Conway's; the 11.1 pin's turns the bootstrap attributes' failure into
+    `OutputTooBigUTxO`, the 11.2 and Leios pins' keeps it, so it stays a value per build in `UtxoContext`.
+  - Conway's `conwayUtxoTransition` on the annotated transaction: `babbageUtxoValidation`, every failure
+    recorded; UTXOS as its sub-rule (`Judge.nest`), its failures and events embedded as the reference's
+    `Embed (UTXOS era) (UTXO era)` does (`EmbedUtxosInUtxo`); then Babbage's `updateUTxOState` after
+    `updateTreasuryDonation`, from the state the transition was given, whatever was recorded. The UTxO set
+    the predicates read is the outputs of the body's inputs, collateral inputs and reference inputs, read from
+    the store into the era: every output any predicate reads. A script with no verdict
+    (`ScriptVerdictUnavailable`) and a damaged store or an output outside the state's vocabulary
+    (`UtxoStateDefect`) stay their own typed raises, as UTXOS's and the state change's are.
+  - The era failures have no encoder yet. `ConwayUtxoPredFailure.toStored` gives a failure's flat form, glue
+    that the comparisons with the flat rules read. It is one-way and not lossless. A failed script keeps the
+    evaluator's request but not the runnable's script hash, which the typed `PlutusWithContext`'s equality also
+    holds. UTXOS's `CollectErrors` are returned as they are, since the flat failure holds their purposes and
+    context errors in its own vocabulary.
+  - `EraUtxoSuite` runs the whole rule and the flat UTXO (`rules.Utxo`) in one judgment from the same state on
+    the 70 Conway submissions of `EraUtxosSuite`, as submitted and with the flag the other way, under each
+    build and each policy. The failures are the same in the same order, UTXO's own in the flat form, a
+    script's failure by its error, trace and request, and a collection's by its kind. An admitted
+    transaction leaves the same state, and the counters UTXOS's events give, embedded in UTXO's, are the
+    flat rule's. With a maximum transaction size of one byte, UTXO's failure is recorded and UTXOS evaluates
+    no script (an evaluator that fails the suite if asked).
+  - `ConwayUtxoChecksSuite` does the same on every Conway case of the refusal corpora, with each case's UTxO
+    set and certificate state, under each build and policy, cases with several failures among them. Where
+    the reference refused a transaction for UTXO alone, the whole rule's failures, run at an odd depth as
+    under the reference's MEMPOOL, LEDGER and UTXOW, encode to the reference's refusal byte for byte. Three
+    such cases are left out, `tx-too-large`, `tx-too-large-spent-inputs` and `utxo-mint-units-too-big`: the
+    mempool's measure refuses them before the ledger (`Capacity.phase1`), so their recorded refusal is the
+    measure's, not a refusal of UTXO whole. Some cases are admitted under a policy, and UTXOS refuses some.
+    The predicates' comparisons above keep their expected values, each failure injected into Conway's and
+    put in the flat form.
+  - `PastHorizonReferenceSuite` runs the whole rule on the reference's recorded Conway refusals of an end
+    past the forecast horizon, with the recorded state, UTxO set and era history: its only failure is UTXOS's
+    collection error: the time past the horizon (`TimeTranslationPastHorizon`), with the clock's own failure
+    for the interval's end, complete and typed, the reference's refusal. The recorded capture has one redeemer,
+    and the reference's collector stops translating contexts at the first failure.
+  - Incomplete (CNF-2): a collection's failure is compared by kind, its contents being
+    `EraPlutusContextSuite`'s; a script's failure is compared by its cause and the evaluator's request, which
+    the flat form keeps, not by the runnable's script hash, which the typed `PlutusWithContext` also holds;
+    the reference's multi-script results (`fixtures/reference/script-results`) are compared at UTXOS alone
+    (`EraUtxosSuite`), not through UTXO whole; the refusals are compared through the flat form and the
+    node's encoder, not an encoder of the era failures (#796); the pre-Conway UTXO fixture
+    (`fixtures/reference/pre-conway-utxo`)
+    holds pre-Conway bodies with one Conway collateral predicate's verdict, not transactions Conway's UTXO
+    judges, so it stays with the flat predicates' suite; the recorded verdicts on a certificate's redeemer
+    index (`fixtures/devnet/redeemer-index.jsonl`) are UTXOW's, and come with its transition (#85); the
+    forecast corpus's Alonzo and Babbage cases, and the pre-Conway predicates of `remaining-predicates` and
+    `instant-stake`, are of eras whose UTXO is not typed yet.
+  - Not yet (#85): UTXOW's transition with UTXO embedded, the failing native scripts, and the node's phase-2
+    counters (`PlutusStats`), which the events stand for until the Conway switch. The defects stay typed raises
+    until then too: the node's `LedgerFailure.Unavailable` names a script by its flat redeemer, which a
+    `PlutusWithContext` does not carry, and has no case for a stored output the era does not read.
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): six of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts`, `missingRequiredDatums`,
@@ -952,7 +1011,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     `validateMetadata` reads the scripts only where the data and its hash are both present, the reference's
     order; the flat check reads them first, so data without its hash, with a script the decoder gives no
     verdict for, is the predicate's `MissingTxBodyMetadataHash` and the flat check's defect.
-  - Not yet (#85): UTXO's transition, LEDGER and the mempool on the era types. The node still builds
+  - Not yet (#85): UTXOW's transition, LEDGER and the mempool on the era types. The node still builds
     contexts and checks transactions with the flat rules.
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
