@@ -185,7 +185,7 @@ Status values: **planned**, **in progress**, **done**, **declined**, **folded**,
 
 ## L. Future eras (P2)
 
-- **L1** [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54) (planned) Dijkstra, the next era, is already in the 11.x configs. Track its spec.
+- **L1** [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54) (in progress) Dijkstra, the next era, is already in the 11.x configs. Track its spec.
 
 ## M. Code hygiene (from the pre-publication audit)
 
