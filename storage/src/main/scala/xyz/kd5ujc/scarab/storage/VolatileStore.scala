@@ -251,7 +251,9 @@ object VolatileStore:
       if size - at < HeaderSize || !fill(channel, header, at) then (acc, at)
       else
         val length = header.getInt(6)
-        if length < 0 || length > size - at - HeaderSize then (acc, at)
+        // a length past the file's end, or past what one record can hold, is not a record
+        if length < 0 || length > Int.MaxValue - HeaderSize || length > size - at - HeaderSize then
+          (acc, at)
         else
           val record = new Array[Byte](HeaderSize + length)
           System.arraycopy(header.array(), 0, record, 0, HeaderSize)

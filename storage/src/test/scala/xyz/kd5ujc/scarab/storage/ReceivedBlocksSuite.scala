@@ -588,6 +588,39 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
+  test("a record whose length no record can have cuts its file there, after a repeat too") {
+    // two blocks to a file: [A A X] [C], X a record header whose length is the largest an Int
+    // holds, in a file made long enough to hold it (sparse). The open reads past the repeat of A,
+    // as the reference parses a whole file before it looks for repeats, stops at X without
+    // allocating it, cuts the first file after A and reads the second
+    tempDir.use { dir =>
+      ok {
+        val (a, c) = (block(1), block(3))
+        for
+          _ <- VolatileStore
+            .open[IO](dir, 2)
+            .use((log, _) => Vector(a, a, c).traverse_((r, raw) => log.append(r, raw)))
+          _ <- IO {
+            val first = logFiles(dir).head
+            val header = java.nio.ByteBuffer.allocate(VolatileStore.HeaderSize)
+            header.putInt(0).put(1.toByte).put(0.toByte).putInt(Int.MaxValue)
+            JFiles.write(first, header.array(), StandardOpenOption.APPEND)
+            val written = JFiles.size(first)
+            scala.util.Using.resource(new java.io.RandomAccessFile(first.toFile, "rw"))(
+              _.setLength(written + Int.MaxValue.toLong)
+            )
+          }
+          recovered <- ReceivedBlocks.open[IO](dir, 2)(unread, decodes).use(entries)
+          files <- IO(logFiles(dir).map(recordsOf))
+          first <- IO(JFiles.size(logFiles(dir).head))
+        yield
+          assertEquals(recovered.toSet, Set(a, c), "A, and C in the second file")
+          assertEquals(files.head, Vector(VolatileRecord.Block(a._1, a._2)), "cut after A")
+          assertEquals(first, VolatileStore.encode(VolatileRecord.Block(a._1, a._2)).length.toLong)
+      }
+    }
+  }
+
   test("a record whose block does not decode cuts its file there, and later files are kept") {
     // three blocks to a file: [1 2 3] [4 U 6] [7 8] where U holds block 5's reference over a body
     // that does not decode. The second file is cut after block 4, as the reference cuts a file at
