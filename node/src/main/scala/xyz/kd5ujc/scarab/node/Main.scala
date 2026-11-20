@@ -1680,6 +1680,17 @@ object Main extends IOApp:
           Some(SnapshotMigration.toCurrent[IO]),
           Some(TransitionRecount.reopen[IO](genesis.geometry))
         )
+        // a failed collection of the received log stops the node, as the failure of the
+        // reference's collection ends the thread it is linked to (consensus 82ecba329
+        // Storage/ChainDB/Impl/Background.hs:116-121,140-141)
+        .flatTap(r =>
+          r.collectionsStopped.flatMap {
+            case ChainStorage.CollectionStopped.Failed(error) =>
+              instruments.fatalSink(Fatal.Storage(error))
+            case ChainStorage.CollectionStopped.Defect(cause) =>
+              instruments.fatalSink(Fatal.Defect(cause))
+          }.background
+        )
         .evalMap { r =>
           // the acquired endorser blocks at the open, before the volatile chain is replayed, as the
           // ChainDB seeds them before its initial chain selection (`ChainDB/Impl.hs:236-259` at

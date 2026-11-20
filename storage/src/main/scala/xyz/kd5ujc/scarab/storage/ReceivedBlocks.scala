@@ -82,13 +82,14 @@ trait ReceivedBlocks[F[_]]:
     */
   def invalidate(hash: Bytes): F[Unit]
 
-  /** Only call after the immutable store has made this boundary durable. Keep the cutoff slot:
-    * Byron EBBs and regular blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97,
-    * ouroboros-consensus 82ecba32). The log's files whose blocks are all below it are deleted, but
-    * the one being written ([[VolatileStore.collect]]), and the blocks of those files leave the
-    * index with them: a block below the cutoff in a file that is kept stays held, as the
-    * reference's VolatileDB removes the index entries of the files it deletes and no other
-    * (`garbageCollectFile`, `Storage/VolatileDB/Impl.hs` 518-543).
+  /** Only call after the immutable store has made this boundary durable: [[ChainStorage]] calls it
+    * on the reference's schedule ([[GcSchedule]]). Keep the cutoff slot: Byron EBBs and regular
+    * blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97, ouroboros-consensus 82ecba32).
+    * The log's files whose blocks are all below it are deleted, but the one being written
+    * ([[VolatileStore.collect]]), and the blocks of those files leave the index with them: a block
+    * below the cutoff in a file that is kept stays held, as the reference's VolatileDB removes the
+    * index entries of the files it deletes and no other (`garbageCollectFile`,
+    * `Storage/VolatileDB/Impl.hs` 518-543).
     */
   def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit]
 
