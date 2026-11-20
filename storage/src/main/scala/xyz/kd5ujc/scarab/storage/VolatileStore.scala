@@ -380,17 +380,53 @@ object VolatileStore:
       cut: Long
   )
 
+  /** The blocks of the log file open on `channel`, each with where its record is and what `read`
+    * makes of it, up to the first record that is incomplete, fails its checksum, is not understood,
+    * is not a block or whose block `read` refuses, and the offset where they end: the reference's
+    * `parseBlockFile`, which decodes the blocks of a file in turn and stops at the first it cannot
+    * read (`BlockReadErr`) or, validating, finds corrupt (`BlockCorruptedErr`)
+    * (`Storage/VolatileDB/Impl/Parser.hs` 52-107, ouroboros-consensus 82ecba329). A log of blocks
+    * only holds no rollback record, so one is a record the parse cannot read.
+    */
+  private def parsedBlocks[N](channel: FileChannel, seq: Int)(
+      read: (BlockRef, Bytes) => Option[N]
+  ): (Vector[(BlockRef, Location, N)], Long) =
+    foldRecords(channel, seq, Vector.empty[(BlockRef, Location, N)]) {
+      case (parsed, VolatileRecord.Block(ref, raw), at) =>
+        read(ref, raw).map(n => parsed :+ ((ref, at, n)))
+      case (_, VolatileRecord.Rollback(_), _) => None
+    }
+
+  /** `parsed` added to `index` in order up to the first block the index already holds, from an
+    * earlier file or earlier in the same one, whatever the bytes of its record: the index after,
+    * the blocks added, and the offset of the first such block's record. The reference's
+    * `addToReverseIndex`, whose file is cut there (`DuplicatedBlock`,
+    * `Storage/VolatileDB/Impl/State.hs` 464-492, ouroboros-consensus 82ecba329).
+    */
+  private def addedToIndex[N](
+      index: Map[Bytes, (BlockRef, Location, N)],
+      parsed: Vector[(BlockRef, Location, N)]
+  ): (Map[Bytes, (BlockRef, Location, N)], Vector[(BlockRef, Location, N)], Option[Long]) =
+    @tailrec def go(
+        index: Map[Bytes, (BlockRef, Location, N)],
+        accepted: Vector[(BlockRef, Location, N)],
+        rest: List[(BlockRef, Location, N)]
+    ): (Map[Bytes, (BlockRef, Location, N)], Vector[(BlockRef, Location, N)], Option[Long]) =
+      rest match
+        case Nil                                           => (index, accepted, None)
+        case (ref, at, _) :: _ if index.contains(ref.hash) => (index, accepted, Some(at.offset))
+        case (entry @ (ref, _, _)) :: more =>
+          go(index.updated(ref.hash, entry), accepted :+ entry, more)
+    go(index, Vector.empty, parsed.toList)
+
   /** The recovery of a log of blocks only, as the reference's VolatileDB validates its files
-    * (`mkOpenStateHelper`, `validateFile` and `addToReverseIndex`,
-    * `Storage/VolatileDB/Impl/State.hs` 372-436 and 464-492; `parseBlockFile`,
-    * `Storage/VolatileDB/Impl/Parser.hs` 52-107, ouroboros-consensus 82ecba329, the same at
-    * 808e40054). Each file, in order of number, is read up to its first record that is incomplete,
-    * fails its checksum or is not understood, whose block `read` refuses (the reference's
-    * `BlockReadErr`), or that is not a block, and cut there; the files after it are read all the
-    * same. A record of a block already indexed, from an earlier file or earlier in the same one,
-    * cuts its file there too, whatever its bytes (the reference's `DuplicatedBlock`): the index
-    * keeps the first record of each block, as the reference's writer never logs a block twice
-    * (`putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399). Only a block that is indexed is read.
+    * (`mkOpenStateHelper` and `validateFile`, `Storage/VolatileDB/Impl/State.hs` 372-436,
+    * ouroboros-consensus 82ecba329, the same at 808e40054). Each file, in order of number, is
+    * parsed ([[parsedBlocks]]) and its blocks added to the index ([[addedToIndex]]); the file is
+    * cut where the parse stopped, or earlier, at its first block the index already held, and the
+    * files after it are read all the same. The index keeps the first record of each block, as the
+    * reference's writer never logs a block twice (`putBlockImpl`, `Storage/VolatileDB/Impl.hs`
+    * 387-399). A file's blocks and newest slot are those of the blocks it added.
     */
   private def eachFile[N](read: (BlockRef, Bytes) => Option[N])(
       root: java.nio.file.Path,
@@ -399,32 +435,21 @@ object VolatileStore:
     val indexed = names.foldLeft(Indexed[N](Vector.empty, Map.empty, Vector.empty, 0L)) {
       case (acc, (seq, name)) =>
         val path = root.resolve(name)
-        val (found, good, size) =
-          Using.resource(FileChannel.open(path, StandardOpenOption.READ)) { ch =>
-            val (found, good) =
-              foldRecords(ch, seq, (acc, FileInfo(seq, 0, BigInt(-1)))) {
-                case ((found, info), VolatileRecord.Block(ref, raw), at) =>
-                  Option
-                    .unless(found.index.contains(ref.hash))(())
-                    .flatMap(_ => read(ref, raw))
-                    .map(n =>
-                      (
-                        found.copy(
-                          index = found.index.updated(ref.hash, (ref, at, n)),
-                          located = found.located :+ (ref -> at)
-                        ),
-                        info.copy(blocks = info.blocks + 1, maxSlot = info.maxSlot.max(ref.slot))
-                      )
-                    )
-                case (_, VolatileRecord.Rollback(_), _) => None
-              }
-            (found, good, ch.size())
-          }
+        val ((parsed, parsedTo), size) =
+          Using.resource(FileChannel.open(path, StandardOpenOption.READ))(ch =>
+            (parsedBlocks(ch, seq)(read), ch.size())
+          )
+        val (index, accepted, repeated) = addedToIndex(acc.index, parsed)
+        val good = repeated.getOrElse(parsedTo)
         if good < size then truncate(path, good)
-        val (indexedSoFar, info) = found
-        indexedSoFar.copy(
-          infos = indexedSoFar.infos :+ info,
-          cut = indexedSoFar.cut + (size - good)
+        val info = accepted.foldLeft(FileInfo(seq, 0, BigInt(-1))) { case (info, (ref, _, _)) =>
+          info.copy(blocks = info.blocks + 1, maxSlot = info.maxSlot.max(ref.slot))
+        }
+        Indexed(
+          acc.infos :+ info,
+          index,
+          acc.located ++ accepted.map((ref, at, _) => ref -> at),
+          acc.cut + (size - good)
         )
     }
     if indexed.cut > 0 then syncDir(root)
