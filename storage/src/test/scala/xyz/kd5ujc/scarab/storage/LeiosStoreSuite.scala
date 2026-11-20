@@ -8,6 +8,7 @@ import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import munit.CatsEffectSuite
 import org.rocksdb.{ColumnFamilyDescriptor, ColumnFamilyHandle, DBOptions, Options, RocksDB}
+import scala.collection.immutable.SortedMap
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosFetch, LeiosTxHash}
@@ -246,16 +247,22 @@ class LeiosStoreSuite extends CatsEffectSuite:
         kept <- s.scanEbPoints
         _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
         copied <- s.stored(hash(1))
-        // collected in the same session: the copied point is evicted, its body and
-        // transactions stay
+        // collected in the same session: the copied point goes from the volatile partition, its
+        // body and transactions stay in the immutable one
         _ <- s.garbageCollect(slot(50))
         collected <- s.scanEbPoints
         stored <- s.lookupEbBody(hash(1))
         held <- s.batchRetrieveTxs(hash(1), Vector(0))
       yield
-        assertEquals(pinned.points.map(_._3), Vector(EbStatus.Certified))
+        assertEquals(pinned.volatile.points.map(_._3), Vector(EbStatus.Certified))
+        assertEquals(pinned.immutable, Held(Vector.empty, None, None))
         assertEquals(kept, Vector(point(1, 1)))
-        assertEquals(copied.points.map(_._3), Vector(EbStatus.Immutable))
+        assertEquals(copied.volatile.points.map(_._3), Vector(EbStatus.Copied))
+        // the copier copied the row, the body and the closure into the immutable partition
+        assertEquals(
+          copied.immutable,
+          Held(Vector(slot(1) -> 1L), Some(body(2).encoded), Some(SortedMap(0 -> tx(0))))
+        )
         assertEquals(collected, Vector.empty)
         assertEquals(stored, Some(body(2).encoded))
         assertEquals(held, Vector(0 -> tx(0))))
@@ -454,12 +461,11 @@ class LeiosStoreSuite extends CatsEffectSuite:
       assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
       assertEquals(emptied, Vector(0 -> zeroes(tx(0).size), 1 -> zeroes(tx(1).size)))
       assertEquals(refetching, None)
-      // the evicted point is immutable again once the body is written again, so that the store
-      // keeps the endorser block; the reference holds it in its immutable file only, and lists and
-      // completes the point at 10 alone
-      assertEquals(completed, Vector(point(5, h), point(10, h)))
+      // the evicted point stays in the immutable partition only, so the point at 10 alone is
+      // completed and listed, as the reference's volatile partition holds it alone
+      assertEquals(completed, Vector(point(10, h)))
       assertEquals(rescanned, Vector(point(10, h)))
-      assertEquals(repointed, Vector(point(5, h), point(10, h)))
+      assertEquals(repointed, Vector(point(10, h)))
   }
 
   dirs.test("an endorser block fetched again after its eviction survives a later collection") {
@@ -487,7 +493,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
         val (stored, closure, points) = found
         assertEquals(stored, Some(body(2).encoded))
         assertEquals(closure.map(_.map(_._2)), Some(Vector(tx(0), tx(1))))
-        // the volatile point went; the immutable one is evicted again
+        // the volatile point went; the immutable partition keeps the endorser block
         assertEquals(points, Vector.empty)
   }
 
@@ -727,8 +733,11 @@ class LeiosStoreSuite extends CatsEffectSuite:
           }
           now <- s.scanEbPoints
         yield
-          assertEquals(read.map(_.points.map(_._1)), Vector(Vector(slot(1))))
-          assertEquals(read.map(_.txs.values.toVector), Vector(Vector(tx(0))))
+          assertEquals(read.map(_.volatile.points.map(_._1)), Vector(Vector(slot(1))))
+          assertEquals(
+            read.map(_.volatile.closure.map(_.values.toVector)),
+            Vector(Some(Vector(tx(0))))
+          )
           assertEquals(now, Vector.empty))
       }
   }
@@ -754,6 +763,171 @@ class LeiosStoreSuite extends CatsEffectSuite:
     yield
       assertEquals(strayed, Left(LeiosStoreError.ForeignDatabase(Vector.empty)))
       assertEquals(missing, Left(LeiosStoreError.FormatMissing))
+  }
+
+  dirs.test(
+    "an endorser block copied, evicted and fetched again in part keeps its whole immutable closure"
+  ) { dir =>
+    val h = 4
+    store(dir / "leios").use { s =>
+      ok(for
+        _ <- s.writeEbPoint(point(5, h), word32(1))
+        _ <- s.writeEbBody(point(5, h), body(2), Vector.empty)
+        _ <- s.writeTxs(point(5, h), Vector(0 -> tx(0), 1 -> tx(1)))
+        _ <- s.promoteToImmutable(Vector(point(5, h)))
+        _ <- s.garbageCollect(slot(8))
+        // announced and fetched again, one transaction of two written again
+        _ <- s.writeEbPoint(point(10, h), word32(1))
+        _ <- s.writeEbBody(point(10, h), body(2), Vector.empty)
+        _ <- s.writeTxs(point(10, h), Vector(0 -> tx(0)))
+        partial <- s.lookupEbClosure(hash(h))
+        retrieved <- s.batchRetrieveTxs(hash(h), Vector(0, 1))
+        refetching <- s.stored(hash(h))
+        // collected again before the rest is written again
+        _ <- s.garbageCollect(slot(20))
+        closure <- s.lookupEbClosure(hash(h))
+        collected <- s.stored(hash(h))
+      yield
+        // the reference reads its volatile partition while it holds the body: incomplete there
+        assertEquals(partial, None)
+        assertEquals(retrieved, Vector(0 -> tx(0), 1 -> zeroes(tx(1).size)))
+        assertEquals(refetching.volatile.closure, Some(SortedMap(0 -> tx(0))))
+        assertEquals(refetching.immutable.closure, Some(SortedMap(0 -> tx(0), 1 -> tx(1))))
+        assertEquals(refetching.immutable.points, Vector(slot(5) -> 1L))
+        // then the immutable partition again, whose closure the refetch never touched
+        assertEquals(closure.map(_.map(_._2)), Some(Vector(tx(0), tx(1))))
+        assertEquals(collected.volatile, Held(Vector.empty, None, None))
+        assertEquals(collected.immutable, refetching.immutable))
+    }
+  }
+
+  dirs.test(
+    "marked rows read from the reference stay marked until swept with their hash or pinned again"
+  ) { dir =>
+    val leios = dir / "leios"
+    for
+      _ <- store(leios).use { s =>
+        ok(
+          s.importVolatile(
+            Vector(
+              (point(1, 1), 1L, EbStatus.Marked),
+              (point(2, 1), 1L, EbStatus.Marked),
+              (point(3, 2), 1L, EbStatus.Marked),
+              (point(4, 2), 1L, EbStatus.Volatile),
+              (point(5, 3), 1L, EbStatus.Marked)
+            )
+          ) *> s.importBody(
+            RocksLeiosStore.Partition.Volatile,
+            hash(1),
+            body(1),
+            Some(SortedMap(0 -> tx(0)))
+          )
+        )
+      }
+      found <- store(leios).use { s =>
+        ok(for
+          scanned <- s.scanEbPoints
+          reopened <- s.stored(hash(2))
+          // a promotion pins a marked row (`sql_pin_eb` takes statuses 0 and 3)
+          _ <- s.promoteToImmutable(Vector(point(5, 3)))
+          // hash 1, all of whose rows are marked, is swept at once; hash 2 has an unmarked row,
+          // and a frontier of 0 marks nothing; hash 3 is pinned
+          _ <- s.garbageCollect(slot(0))
+          swept <- s.scanEbPoints
+          gone <- s.stored(hash(1))
+          pinned <- s.stored(hash(3))
+        yield (scanned, reopened, swept, gone, pinned))
+      }
+    yield
+      val (scanned, reopened, swept, gone, pinned) = found
+      assertEquals(scanned, Vector(1, 2, 3, 4, 5).map(n => point(n.toLong, (n - 1) / 2 + 1)))
+      assertEquals(reopened.volatile.points.map(_._3), Vector(EbStatus.Marked, EbStatus.Volatile))
+      assertEquals(swept, Vector(point(3, 2), point(4, 2), point(5, 3)))
+      assertEquals(gone.volatile, Held(Vector.empty, None, None))
+      assertEquals(pinned.volatile.points.map(_._3), Vector(EbStatus.Certified))
+  }
+
+  dirs.test("fills that fill nothing allocate the closure, which the copier then copies") { dir =>
+    store(dir / "leios").use { s =>
+      ok(for
+        _ <- s.writeEbPoint(point(1, 1), word32(1))
+        _ <- s.writeEbBody(point(1, 1), body(1), Vector.empty)
+        // pinned before their bodies: 2 with a fill its source cannot serve, 3 with none
+        _ <- s.writeEbPoint(point(2, 2), word32(1))
+        _ <- s.writeEbPoint(point(3, 3), word32(1))
+        _ <- s.promoteToImmutable(Vector(point(2, 2), point(3, 3)))
+        written <- s.writeEbBody(point(2, 2), body(1), Vector(LocalFill(0, TxLocation(hash(1), 0))))
+        _ <- s.writeEbBody(point(3, 3), body(1), Vector.empty)
+        allocated <- s.stored(hash(2))
+        bare <- s.stored(hash(3))
+      yield
+        assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
+        // an allocated closure of zeroes, distinct from none, which the copier checks for
+        assertEquals(allocated.volatile.closure, Some(SortedMap.empty[Int, Bytes]))
+        assertEquals(allocated.volatile.points.map(_._3), Vector(EbStatus.Copied))
+        assertEquals(
+          allocated.immutable,
+          Held(Vector(slot(2) -> 1L), Some(body(1).encoded), Some(SortedMap.empty[Int, Bytes]))
+        )
+        assertEquals(bare.volatile.closure, None)
+        assertEquals(bare.volatile.points.map(_._3), Vector(EbStatus.Certified))
+        assertEquals(bare.immutable, Held(Vector.empty, None, None)))
+    }
+  }
+
+  dirs.test("the copier copies the newest row of each cycle, and never refreshes what it copied") {
+    dir =>
+      def written(s: RocksLeiosStore[IO], h: Int, first: Long, more: Vector[Long])(
+          txs: Vector[(Int, Bytes)]
+      )(using Handle[IO, LeiosStoreError]) =
+        (first +: more).traverse_(n => s.writeEbPoint(point(n, h), word32(1))) *>
+          s.writeEbBody(point(first, h), body(2), Vector.empty) *>
+          s.writeTxs(point(first, h), txs)
+      val whole = Vector(0 -> tx(0), 1 -> tx(1))
+      store(dir / "leios").use { s =>
+        ok(for
+          // one cycle after three announcements
+          _ <- written(s, 1, 20, Vector(21, 30))(whole)
+          _ <- s.promoteToImmutable(Vector(point(20, 1)))
+          // a cycle after two, another after a third: each copies the newest row then
+          _ <- written(s, 2, 20, Vector(21))(whole)
+          _ <- s.promoteToImmutable(Vector(point(20, 2)))
+          _ <- s.writeEbPoint(point(30, 2), word32(1))
+          _ <- s.promoteToImmutable(Vector(point(30, 2)))
+          // promoted again with no new announcement: nothing is pinned, nothing copied
+          _ <- s.promoteToImmutable(Vector(point(30, 2)))
+          // promoted with half its closure: the copy is of that half, and stays so
+          _ <- written(s, 3, 5, Vector.empty)(Vector(0 -> tx(0)))
+          _ <- s.promoteToImmutable(Vector(point(5, 3)))
+          _ <- s.writeTxs(point(5, 3), Vector(1 -> tx(1)))
+          _ <- s.writeEbPoint(point(6, 3), word32(1))
+          _ <- s.promoteToImmutable(Vector(point(6, 3)))
+          once <- s.stored(hash(1))
+          twice <- s.stored(hash(2))
+          snapshot <- s.stored(hash(3))
+        yield
+          assertEquals(once.immutable.points, Vector(slot(30) -> 1L))
+          assertEquals(once.volatile.points.map(_._3), Vector.fill(3)(EbStatus.Copied))
+          assertEquals(twice.immutable.points, Vector(slot(21) -> 1L, slot(30) -> 1L))
+          assertEquals(snapshot.immutable.points, Vector(slot(5) -> 1L, slot(6) -> 1L))
+          assertEquals(snapshot.immutable.closure, Some(SortedMap(0 -> tx(0))))
+          assertEquals(snapshot.volatile.closure, Some(SortedMap(0 -> tx(0), 1 -> tx(1)))))
+      }
+  }
+
+  dirs.test("a store of the layout before the immutable partition is refused") { dir =>
+    val older = dir / "older"
+    for
+      _ <- IO.blocking(olderLayout(older))
+      refused <- attemptOpen(older)
+    yield assertEquals(
+      refused.left.map {
+        case LeiosStoreError.ForeignDatabase(found) =>
+          found.map(f => new String(f.toArray, java.nio.charset.StandardCharsets.US_ASCII))
+        case other => Vector(other.message)
+      },
+      Left(Vector("default", "meta", "points", "bodies", "txs", "complete"))
+    )
   }
 
   private def attemptOpen(dir: Path): IO[Either[LeiosStoreError, Unit]] =
@@ -861,6 +1035,26 @@ object LeiosStoreSuite:
         .find(h => new String(h.getName) == "meta")
         .getOrElse(throw new AssertionError("meta"))
       db.delete(meta, "format".getBytes)
+      handles.asScala.foreach(_.close())
+      db.close()
+    }
+
+  /** A store as the layout before the immutable partition made it: its column families and its
+    * format record, version 1.
+    */
+  def olderLayout(dir: Path): Unit =
+    val names = Vector("default", "meta", "points", "bodies", "txs", "complete")
+    scala.util.Using.resource(
+      new DBOptions().setCreateIfMissing(true).setCreateMissingColumnFamilies(true)
+    ) { options =>
+      val handles = new java.util.ArrayList[ColumnFamilyHandle]()
+      val db = RocksDB.open(
+        options,
+        dir.toString,
+        names.map(n => new ColumnFamilyDescriptor(n.getBytes)).asJava,
+        handles
+      )
+      db.put(handles.get(1), "format".getBytes, "SCRBLEIO".getBytes ++ Array[Byte](0, 0, 0, 1))
       handles.asScala.foreach(_.close())
       db.close()
     }

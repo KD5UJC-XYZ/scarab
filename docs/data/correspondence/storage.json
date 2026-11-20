@@ -1079,11 +1079,8 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
-   "digest": "3c937615625d30b7"
+   "structure": "same",
+   "digest": "33b2f63321506a80"
   },
   "trait storage.LeiosStore": {
    "upstream": [
@@ -1333,7 +1330,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "18259e5d9a618e20"
+   "digest": "d6acf998818f92db"
   },
   "def storage.RocksLeiosStore#writeEbBody": {
    "upstream": [
@@ -1363,7 +1360,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "0fce855e22535f0c"
+   "digest": "3862bb8dc450ca03"
   },
   "def storage.RocksLeiosStore#writeTxs": {
    "upstream": [
@@ -1383,7 +1380,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "5ea0985bb3c477d2"
+   "digest": "0720ba4dda146437"
   },
   "def storage.RocksLeiosStore#lookupEbBody": {
    "upstream": [
@@ -1403,7 +1400,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "e212b9f270208113"
+   "digest": "a2e87b8b6953a80b"
   },
   "def storage.RocksLeiosStore#lookupEbClosure": {
    "upstream": [
@@ -1473,7 +1470,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "c4a43f807271aff6"
+   "digest": "cbbc77fc2c8e5833"
   },
   "def storage.RocksLeiosStore#scanCompleteEbClosuresNotOlderThanSlot": {
    "upstream": [
@@ -1533,7 +1530,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "0198550d96c12422"
+   "digest": "7b1ae947226f38f2"
   },
   "def storage.RocksLeiosStore#promoteToImmutable": {
    "upstream": [
@@ -1573,7 +1570,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "0611dd8a1837b674"
+   "digest": "cff378bfd3569170"
   },
   "def storage.LeiosEb.from": {
    "upstream": [
@@ -1613,7 +1610,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "31fa098167213dd3"
+   "digest": "da45810a84254a76"
   },
   "def storage.RocksLeiosStore#lookupEbClosureIn": {
    "upstream": [
@@ -1643,7 +1640,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "177b6c92796fa77e"
+   "digest": "ca56f715392d777a"
   },
   "def storage.RocksLeiosStore#scanCompleteIn": {
    "upstream": [
@@ -1673,7 +1670,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "095962a96f959e08"
+   "digest": "a0130ade9bda4361"
   },
   "def storage.RocksLeiosStore#collectBatch": {
    "upstream": [
@@ -1703,7 +1700,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "502e01afcf91b1d3"
+   "digest": "8d5dba64d92bf085"
   },
   "def storage.VolatileStore#collect": {
    "upstream": [
@@ -1968,34 +1965,36 @@
    ]
   },
   {
-   "reason": "the store's own RocksDB layout of the Leios store format approved for #830 (meta, points, bodies, txs and complete column families, the format record, and opening, release and the in-memory points of each hash); the reference keeps the same records in SQLite tables",
+   "reason": "the store's own RocksDB layout of the Leios store format approved for #830 and changed for its exact round trip (a meta column family with the format record, and per partition the column families of the reference's ebs, ebBodies and ebClosures tables, the closure's written transactions, and the volatile closures' completion; opening, release and the in-memory rows of the volatile partition); the reference keeps the same records in its two SQLite files",
    "definitions": [
     "class storage.RocksLeiosStore",
     "object storage.RocksLeiosStore",
     "class storage.RocksLeiosStore.Families",
     "def storage.RocksLeiosStore.Families#all",
     "def storage.RocksLeiosStore.Families#apply",
-    "val storage.RocksLeiosStore.Families#bodies",
-    "val storage.RocksLeiosStore.Families#complete",
     "val storage.RocksLeiosStore.Families#meta",
-    "val storage.RocksLeiosStore.Families#points",
-    "val storage.RocksLeiosStore.Families#txs",
     "enum storage.RocksLeiosStore.Family",
     "def storage.RocksLeiosStore.be",
     "def storage.RocksLeiosStore.resource",
     "def storage.RocksLeiosStore.resourceWith",
     "val storage.RocksLeiosStore.FormatRecord",
     "val storage.RocksLeiosStore.Magic",
-    "val storage.RocksLeiosStore.Version"
+    "val storage.RocksLeiosStore.Version",
+    "enum storage.RocksLeiosStore.Partition",
+    "val storage.RocksLeiosStore.Partition#bodies",
+    "val storage.RocksLeiosStore.Partition#closures",
+    "val storage.RocksLeiosStore.Partition#txs"
    ]
   },
   {
-   "reason": "what an import from or an export to the reference's SQLite files exchanges with the store, one endorser block at a time; the reference has no import or export of its LeiosDB",
+   "reason": "what an import from or an export to the reference's SQLite files exchanges with the store, one endorser block at a time, the rows, body and closure of each partition as its tables hold them; the reference has no import or export of its LeiosDB",
    "definitions": [
     "class storage.StoredEb",
     "def storage.RocksLeiosStore#stored",
     "def storage.RocksLeiosStore#importBody",
-    "def storage.RocksLeiosStore#importPoints"
+    "class storage.Held",
+    "def storage.RocksLeiosStore#importVolatile",
+    "def storage.RocksLeiosStore#importImmutable"
    ]
   },
   {
@@ -2018,12 +2017,13 @@
    ]
   },
   {
-   "reason": "how the store's RocksDB keeps the reference's guarantees: a read through a snapshot (the reference reads inside one SQLite transaction, dbWithTransaction), the points held in memory with the volatile ones a collection visits (its idx_ebs_sweepable index), the size of a collection's batch, and the staging directory a new store is made in and published from by an atomic rename",
+   "reason": "how the store's RocksDB keeps the reference's guarantees: a read through a snapshot (the reference reads inside one SQLite transaction, dbWithTransaction), the volatile partition's rows held in memory with the volatile and copied ones a mark visits and the hashes with a marked row (its idx_ebs_sweepable and idx_ebs_markedForGc indexes), the size of a collection's batch, and the staging directory a new store is made in and published from by an atomic rename",
    "definitions": [
     "class storage.RocksLeiosStore.View",
     "def storage.RocksLeiosStore#viewing",
     "class storage.RocksLeiosStore.Points",
-    "val storage.RocksLeiosStore.GcBatch"
+    "val storage.RocksLeiosStore.GcBatch",
+    "class storage.RocksLeiosStore.Row"
    ]
   },
   {
