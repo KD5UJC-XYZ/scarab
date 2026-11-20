@@ -13373,12 +13373,54 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "LedgerTxInfo",
      "lines": [
-      92,
-      103
+      116,
+      128
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "LedgerTxInfo",
+     "lines": [
+      116,
+      128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the shape of 9df9f98c and 29a7d656 (decided 2026-11-20, #85), with no change of behaviour: the level, the scripts used and the level's information, which f649f975's `LedgerTxInfo era` (`Context.hs:92-103`) lacks; the epoch information and the system start as one clock, the flat translation's, whose failure is typed where the reference's is Text",
+   "digest": "bd45a975b56fbe1b"
+  },
+  "val ledger.era.LedgerTxInfo#ltiScriptHashesUsed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "ltiScriptHashesUsed",
+     "lines": [
+      124,
+      125
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "ltiScriptHashesUsed",
+     "lines": [
+      124,
+      125
      ]
     }
    ],
@@ -13387,19 +13429,203 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the epoch information and the system start as one clock, the flat translation's, whose failure is typed where the reference's is Text; a top-level transaction, the only level before Dijkstra (`withTopTxLevelOnly`); Dijkstra's `ltiMemoizedSubTransactions` is not here",
-   "digest": "b1a83a63612efc57"
+   "note": "derived from the scripts used (`toScriptHashByPurpose`), as every construction of the reference's makes it, and computed when first asked for, as its field is lazy (TYP-1, decided 2026-11-20, #85); the scripts used come from the scripts needed, one per purpose's index, so `Map.fromList`'s choice of the last of a repeated index shows nowhere. Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "digest": "d5a5fad51d264992"
+  },
+  "def ledger.era.LedgerTxInfo.toScriptHashByPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toScriptHashByPurpose",
+     "lines": [
+      133,
+      141
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toScriptHashByPurpose",
+     "lines": [
+      133,
+      141
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "digest": "4a317b15d75ccfe3"
+  },
+  "def ledger.era.LedgerTxInfo.toSTxLevel": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "HasEraTxLevel LedgerTxInfo",
+     "lines": [
+      130,
+      131
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "HasEraTxLevel LedgerTxInfo",
+     "lines": [
+      130,
+      131
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the level from the level's information, through the era's body class (`EraTxBody#levelOf`), where the reference's reads the transaction's (`toSTxLevel . ltiTx`). Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "digest": "e60aa40f847e0297"
+  },
+  "def ledger.era.LedgerTxInfo.withTopTxLevelOnly": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "symbol": "withTopTxLevelOnly",
+     "lines": [
+      96,
+      102
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "symbol": "withTopTxLevelOnly",
+     "lines": [
+      96,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of a transaction's information",
+   "digest": "71f2f1d73c18459a"
+  },
+  "enum ledger.era.LedgerLevelTxInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "LedgerLevelTxInfo",
+     "lines": [
+      104,
+      113
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "LedgerLevelTxInfo",
+     "lines": [
+      104,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the sub-transaction's case is Dijkstra's alone, the only era with sub-transactions, so an era with the top level only has only the top level's case, as the reference's `withTopTxLevelOnly` makes it; a sub-transaction's id is its body's hash. Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "digest": "ff966a6d31aedabe"
+  },
+  "def ledger.era.EraTxBody#levelOf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "HasEraTxLevel LedgerTxInfo",
+     "lines": [
+      130,
+      131
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "HasEraTxLevel LedgerTxInfo",
+     "lines": [
+      130,
+      131
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "symbol": "toSTxLevel",
+     "lines": [
+      72,
+      73
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "symbol": "toSTxLevel",
+     "lines": [
+      72,
+      73
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the era's evidence of the level of a transaction's information, read from the level's information, where the reference's `toSTxLevel . ltiTx` reads the transaction's level. Its differential evidence is incomplete (CNF-2) until Dijkstra's script contexts compare the 273 contexts recorded on the testnet's chain, at both levels, byte for byte (#85); the suite's tests of it are the node's own.",
+   "digest": "7c313c98d9b23c39"
   },
   "trait ledger.era.EraPlutusTxInfo": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "EraPlutusTxInfo",
      "lines": [
-      105,
-      144
+      143,
+      181
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "EraPlutusTxInfo",
+     "lines": [
+      143,
+      181
      ]
     }
    ],
@@ -13416,12 +13642,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "PlutusLanguage",
      "lines": [
-      106,
-      106
+      144,
+      144
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "PlutusLanguage",
+     "lines": [
+      144,
+      144
      ]
     }
    ],
@@ -13437,12 +13673,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "toPlutusTxCert",
      "lines": [
-      114,
-      118
+      152,
+      156
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toPlutusTxCert",
+     "lines": [
+      152,
+      156
      ]
     }
    ],
@@ -13457,12 +13703,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "toPlutusScriptPurpose",
      "lines": [
-      120,
-      124
+      158,
+      162
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toPlutusScriptPurpose",
+     "lines": [
+      158,
+      162
      ]
     }
    ],
@@ -13471,18 +13727,29 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "86842e70e7ad56fb"
+   "digest": "73f8ef1bdfc95017",
+   "note": "of the transaction's information, where f649f975's takes the protocol version (`Context.hs:120-124`)"
   },
   "def ledger.era.EraPlutusTxInfo#toPlutusTxInfo": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "toPlutusTxInfo",
      "lines": [
-      126,
-      129
+      164,
+      167
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toPlutusTxInfo",
+     "lines": [
+      164,
+      167
      ]
     }
    ],
@@ -13491,18 +13758,28 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "d3a838b4359bbebf"
+   "digest": "8b4632179cf822e1"
   },
   "def ledger.era.EraPlutusTxInfo#toPlutusArgs": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "toPlutusArgs",
      "lines": [
-      131,
-      138
+      169,
+      175
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toPlutusArgs",
+     "lines": [
+      169,
+      175
      ]
     }
    ],
@@ -13511,18 +13788,29 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "50466a18fe50c0a2"
+   "digest": "c5d511c01aa5ed31",
+   "note": "the spending datum read by the instance from the information, as 9df9f98c's `toPlutusV1Args` to `toPlutusV4Args` read it, where f649f975's class is given it (`Context.hs:131-138`)"
   },
   "def ledger.era.EraPlutusTxInfo#toPlutusTxInInfo": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "toPlutusTxInInfo",
      "lines": [
-      140,
-      144
+      177,
+      181
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toPlutusTxInInfo",
+     "lines": [
+      177,
+      181
      ]
     }
    ],
@@ -13537,32 +13825,54 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "PlutusTxInfoResult",
      "lines": [
-      156,
-      164
+      193,
+      196
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "PlutusTxInfoResult",
+     "lines": [
+      193,
+      196
      ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "81f87522e40336b6"
+   "digest": "28e58812a48e2410",
+   "note": "the shape of 9df9f98c and 29a7d656 (decided 2026-11-20, #85), with no change of behaviour: the information or its failure, where f649f975's (`Context.hs:156-164`) is a function of the purpose that every era it has ignores"
   },
   "def ledger.era.PlutusContext.mkPlutusTxInfoFromResult": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "mkPlutusTxInfoFromResult",
      "lines": [
-      167,
-      172
+      199,
+      204
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "mkPlutusTxInfoFromResult",
+     "lines": [
+      199,
+      204
      ]
     }
    ],
@@ -13571,24 +13881,34 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "fbdaf8ecfd03375b"
+   "digest": "72399aaa00f81839"
   },
   "def ledger.era.PlutusContext.toPlutusTxInfoForPurpose": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "toPlutusTxInfoForPurpose",
      "lines": [
-      178,
-      185
+      210,
+      217
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "toPlutusTxInfoForPurpose",
+     "lines": [
+      210,
+      217
      ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "530dcc960f95a3a1"
+   "digest": "e5082d28d340e32b"
   },
   "type ledger.era.ContextError": {
    "upstream": [
@@ -13832,42 +14152,74 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
-     "symbol": "Inject (AlonzoContextError era) (ConwayContextError era)",
+     "symbol": "Inject (Alonzo.AlonzoContextError era) (ConwayContextError era)",
      "lines": [
-      212,
-      213
+      230,
+      234
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "Inject (Alonzo.AlonzoContextError era) (ConwayContextError era)",
+     "lines": [
+      230,
+      234
      ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "0627accc20329e66"
+   "digest": "ae8a2452f13c9c0a",
+   "note": "an unsupported certificate or purpose as Conway's own, the rest through Babbage's; f649f975's Conway raises the two itself (`Conway/TxInfo.hs:397, 645, 739`), so Conway's errors are the same at both"
   },
   "given ledger.era.EraPlutusTxInfo.conwayPlutusV3": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV3 ConwayEra",
      "lines": [
-      482,
-      534
+      497,
+      547
      ]
     },
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV3 ConwayEra",
+     "lines": [
+      497,
+      547
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra",
      "lines": [
-      786,
-      787
+      787,
+      789
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra",
+     "lines": [
+      787,
+      789
      ]
     }
    ],
@@ -14541,12 +14893,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
      "symbol": "AlonzoContextError",
      "lines": [
-      213,
-      216
+      222,
+      230
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "AlonzoContextError",
+     "lines": [
+      228,
+      236
      ]
     }
    ],
@@ -14557,8 +14919,8 @@
     "ConwayPlutusContextRefusalsSuite",
     "ContextMatrixSuite"
    ],
-   "note": "`TimeTranslationPastHorizon` carries the clock's typed failure, the reference's a Text; `Undecodable` is the node's own, for an output's inline datum, which the reference's `binaryDataToData` takes as data (an `error` otherwise), and which only an inline datum taken unread (`BabbageTxOutRep.fromStored`) reaches; the evidence is transitive: EraPlutusContextSuite and ConwayPlutusContextRefusalsSuite show each typed failure is the flat one, and ContextMatrixSuite shows the flat failures encode to the reference's bytes",
-   "digest": "1f3454144e1e481f"
+   "note": "`TimeTranslationPastHorizon` carries the clock's typed failure, the reference's a Text; `Undecodable` is the node's own, of an inline datum taken unread, where the reference raises error; the unsupported certificate and purpose are Alonzo's as at 9df9f98c and 29a7d656, Conway's own at f649f975 (`Conway/TxInfo.hs:180-189`); `ImpossibleContextError` comes with Dijkstra's guarding context, which raises it at 9df9f98c (#85); 29a7d656's `mkPlutusWithContext` also raises it where converting the cost model fails (`Alonzo/Plutus/TxInfo.hs:127-128`), which a model of the script's language by its type (`CostModel[script.L]`) makes unreachable here",
+   "digest": "a2f3d58cc2afec9b"
   },
   "def ledger.era.AlonzoTxInfo.transLookupTxOut": {
    "upstream": [
@@ -14803,36 +15165,58 @@
    ],
    "digest": "1303043435cc3517"
   },
-  "def ledger.era.BabbageTxInfo.transRedeemerPtr": {
+  "def ledger.era.BabbageTxInfo.transRedeemerPointerV2V3": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
-     "symbol": "transRedeemerPtr",
+     "symbol": "transRedeemerPointerV2V3",
      "lines": [
-      191,
-      207
+      195,
+      211
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "transRedeemerPointerV2V3",
+     "lines": [
+      195,
+      211
      ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "499d3d5b05a3d07d"
+   "note": "f649f975's `transRedeemerPtr` (`Babbage/TxInfo.hs:191-207`), of the transaction's information",
+   "digest": "c77fe9825edaa1a8"
   },
   "def ledger.era.BabbageTxInfo.transTxRedeemers": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "transTxRedeemers",
      "lines": [
-      211,
-      226
+      215,
+      229
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "transTxRedeemers",
+     "lines": [
+      215,
+      229
      ]
     }
    ],
@@ -14841,7 +15225,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "cc37b9eef4621803"
+   "digest": "4fc6d2db42bbdfeb"
   },
   "class ledger.era.Data": {
    "upstream": [
@@ -14995,22 +15379,42 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV3 ConwayEra",
      "lines": [
-      482,
-      534
+      497,
+      547
      ]
     },
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV3 ConwayEra",
+     "lines": [
+      497,
+      547
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra",
      "lines": [
-      786,
-      787
+      787,
+      789
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra",
+     "lines": [
+      787,
+      789
      ]
     }
    ],
@@ -15020,18 +15424,28 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "891985841c9c0c30"
+   "digest": "fd62f405195d8b45"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxInInfoV3": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transTxInInfoV3",
      "lines": [
-      338,
-      350
+      360,
+      373
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transTxInInfoV3",
+     "lines": [
+      360,
+      373
      ]
     }
    ],
@@ -15040,7 +15454,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "5808eadb8fc8508f"
+   "digest": "4af8d8b321d466d0"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxId": {
    "upstream": [
@@ -15262,12 +15676,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transPlutusPurposeV3",
      "lines": [
-      627,
-      645
+      640,
+      659
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transPlutusPurposeV3",
+     "lines": [
+      640,
+      659
      ]
     }
    ],
@@ -15276,8 +15700,8 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "Conway's purposes, each with a V3 form; the reference's PlutusPurposeNotSupported is of a later era's",
-   "digest": "27ff5b9d440696e7"
+   "note": "each purpose read through the script class's readers; a later era's refused (`PlutusPurposeNotSupported`)",
+   "digest": "08ca5e3790832491"
   },
   "def ledger.era.conway.ConwayTxInfo.transVoter": {
    "upstream": [
@@ -15323,12 +15747,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transGovAction",
      "lines": [
-      660,
-      695
+      674,
+      709
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transGovAction",
+     "lines": [
+      674,
+      709
      ]
     }
    ],
@@ -15337,7 +15771,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "3b428b168cf41559"
+   "digest": "425dd23da4244ffe"
   },
   "def ledger.era.conway.ConwayTxInfo.transMap": {
    "upstream": [
@@ -15364,12 +15798,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transVotingProcedures",
      "lines": [
-      701,
-      704
+      715,
+      718
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transVotingProcedures",
+     "lines": [
+      715,
+      718
      ]
     }
    ],
@@ -15378,7 +15822,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "b980bb5830bbad24"
+   "digest": "15841484c483bf87"
   },
   "def ledger.era.conway.ConwayTxInfo.transVote": {
    "upstream": [
@@ -15405,12 +15849,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transProposal",
      "lines": [
-      712,
-      722
+      726,
+      736
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transProposal",
+     "lines": [
+      726,
+      736
      ]
     }
    ],
@@ -15419,7 +15873,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "362f6726780b1b20"
+   "digest": "e509335b853e6a3a"
   },
   "def ledger.era.conway.ConwayTxInfo.transProtVer": {
    "upstream": [
@@ -15445,12 +15899,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "toPlutusV3Args",
      "lines": [
-      745,
-      766
+      742,
+      767
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "toPlutusV3Args",
+     "lines": [
+      742,
+      767
      ]
     }
    ],
@@ -15459,7 +15923,8 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "3db5d44e2388a837"
+   "digest": "c68e74d4d4d96706",
+   "note": "the spending datum after the purpose, through `AlonzoTxInfo.spendingDatum`"
   },
   "def ledger.era.conway.ConwayTxInfo.scriptPurposeToScriptInfo": {
    "upstream": [
@@ -15485,12 +15950,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transValidityInterval",
      "lines": [
-      790,
-      814
+      791,
+      811
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transValidityInterval",
+     "lines": [
+      791,
+      811
      ]
     }
    ],
@@ -15500,7 +15975,38 @@
     "EraPlutusContextSuite"
    ],
    "note": "the clock's typed failure where the reference's is Text",
-   "digest": "b62b0137baab1824"
+   "digest": "5def2e83acf6adce"
+  },
+  "def ledger.era.conway.ConwayTxInfo.transSlotToPOSIXTime": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transSlotToPOSIXTime",
+     "lines": [
+      813,
+      823
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transSlotToPOSIXTime",
+     "lines": [
+      813,
+      823
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the clock's typed failure where the reference's is Text",
+   "digest": "551f623b9a7ed926"
   },
   "def ledger.era.conway.ConwayTxInfo.checkReferenceInputsNotDisjointFromInputs": {
    "upstream": [
@@ -17749,12 +18255,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "EraPlutusContext",
      "lines": [
-      187,
-      220
+      219,
+      252
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "EraPlutusContext",
+     "lines": [
+      219,
+      252
      ]
     }
    ],
@@ -17772,12 +18288,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "mkSupportedLanguage",
      "lines": [
-      204,
-      204
+      236,
+      236
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "mkSupportedLanguage",
+     "lines": [
+      236,
+      236
      ]
     }
    ],
@@ -17793,12 +18319,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "mkTxInfoResult",
      "lines": [
-      209,
-      209
+      241,
+      241
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "mkTxInfoResult",
+     "lines": [
+      241,
+      241
      ]
     }
    ],
@@ -17808,18 +18344,28 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "cfc08d2f83bc3947"
+   "digest": "d06803ba39498fa2"
   },
   "def ledger.era.EraPlutusContext#lookupTxInfoResult": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "lookupTxInfoResult",
      "lines": [
-      216,
-      220
+      248,
+      252
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "lookupTxInfoResult",
+     "lines": [
+      248,
+      252
      ]
     }
    ],
@@ -17836,22 +18382,32 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "lookupTxInfoResult",
      "lines": [
-      216,
-      220
+      248,
+      252
      ]
     },
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "lookupTxInfoResult",
+     "lines": [
+      248,
+      252
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "lookupTxInfoResult",
      "lines": [
-      175,
-      178
+      182,
+      185
      ]
     }
    ],
@@ -17868,29 +18424,29 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "TxInfoResult",
      "lines": [
-      202,
-      202
+      234,
+      234
      ]
     },
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
-     "symbol": "TxInfoResult ConwayEra",
+     "symbol": "TxInfoResult",
      "lines": [
-      152,
-      156
+      160,
+      164
      ]
     },
     {
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
-     "symbol": "TxInfoResult DijkstraEra",
+     "symbol": "TxInfoResult",
      "lines": [
       302,
       307
@@ -18060,12 +18616,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusContext ConwayEra",
      "lines": [
-      149,
-      178
+      157,
+      187
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusContext ConwayEra",
+     "lines": [
+      157,
+      187
      ]
     }
    ],
@@ -18082,12 +18648,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra",
      "lines": [
-      399,
-      437
+      420,
+      455
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra",
+     "lines": [
+      420,
+      455
      ]
     }
    ],
@@ -18104,12 +18680,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra",
      "lines": [
-      439,
-      480
+      457,
+      495
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra",
+     "lines": [
+      457,
+      495
      ]
     }
    ],
@@ -18354,27 +18940,86 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
      "symbol": "transTxCertCommon",
-     "lines": [364, 379]
+     "lines": [
+      435,
+      454
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transTxCertCommon",
+     "lines": [
+      441,
+      460
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": ["EraPlutusContextSuite", "ConwayPlutusContextRefusalsSuite"],
-   "digest": "6d00744ff2cd61fd"
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "digest": "7bec79ccb6261c3d",
+   "note": "a certificate Conway deprecated or added refused as Alonzo's `CertificateNotSupported`, where f649f975's gives none (`:364-379`)"
+  },
+  "def ledger.era.AlonzoTxInfo.transPlutusPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transPlutusPurpose",
+     "lines": [
+      456,
+      472
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transPlutusPurpose",
+     "lines": [
+      462,
+      478
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "each purpose read through the script class's readers, which are `ConwayEraScript`'s members here (#85); f649f975's Conway writes its V1 and V2 purposes itself (`Conway/TxInfo.hs:724-739`), with the same results",
+   "digest": "fe06d78e08c6a790"
   },
   "def ledger.era.AlonzoTxInfo.toLegacyPlutusArgs": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
      "symbol": "toLegacyPlutusArgs",
      "lines": [
-      180,
-      194
+      189,
+      203
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "toLegacyPlutusArgs",
+     "lines": [
+      195,
+      209
      ]
     }
    ],
@@ -18384,28 +19029,79 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "7de346b4278054fa"
+   "digest": "bee81bc2b7233108"
   },
   "def ledger.era.AlonzoTxInfo.toPlutusV1Args": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
      "symbol": "toPlutusV1Args",
      "lines": [
-      167,
-      178
+      166,
+      187
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "toPlutusV1Args",
+     "lines": [
+      172,
+      193
      ]
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "1126a18ff0eed5c8"
+   "digest": "383a67975c8f8ad7",
+   "note": "the spending datum, through `spendingDatum`, read before the purpose, whose translation cannot fail for the one purpose that has a datum"
+  },
+  "def ledger.era.AlonzoTxInfo.spendingDatum": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "getSpendingDatum",
+     "lines": [
+      186,
+      187
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "getSpendingDatum",
+     "lines": [
+      456,
+      458
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "getSpendingDatum",
+     "lines": [
+      755,
+      756
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the spending datum the arguments' `where` clauses read (`getSpendingDatum ltiUTxO ltiTx`), written once, at the transaction's level; its failure, which only an inline datum taken unread reaches, is the node's own `Undecodable` where the reference raises error",
+   "digest": "96e01697ed2e596e"
   },
   "def ledger.era.BabbageTxInfo.transTxInInfoV2": {
    "upstream": [
@@ -18432,22 +19128,32 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "toPlutusV2Args",
      "lines": [
-      403,
-      414
+      437,
+      458
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "toPlutusV2Args",
+     "lines": [
+      437,
+      458
      ]
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "2f0953e9d36fb49e"
+   "digest": "5c4e3c9ed59b5fae",
+   "note": "the spending datum, through `AlonzoTxInfo.spendingDatum`, read before the purpose, whose translation cannot fail for the one purpose that has a datum"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxOutV1": {
    "upstream": [
@@ -18476,12 +19182,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transTxInInfoV1",
      "lines": [
-      323,
-      335
+      344,
+      357
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transTxInInfoV1",
+     "lines": [
+      344,
+      357
      ]
     }
    ],
@@ -18491,7 +19207,7 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "adbfbe648a63149d"
+   "digest": "f5e1a5346b87bb7b"
   },
   "def ledger.era.conway.ConwayTxInfo.guardConwayFeaturesForPlutusV1V2": {
    "upstream": [
@@ -18519,12 +19235,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "transTxCertV1V2",
      "lines": [
-      383,
-      397
+      406,
+      418
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "transTxCertV1V2",
+     "lines": [
+      406,
+      418
      ]
     }
    ],
@@ -18534,40 +19260,29 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "2ea7b04cf0dac62e"
-  },
-  "def ledger.era.conway.ConwayTxInfo.transPlutusPurposeV1V2": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
-     "symbol": "transPlutusPurposeV1V2",
-     "lines": [
-      724,
-      739
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
-   ],
-   "note": "Alonzo's `transPlutusPurpose` (`Alonzo/Plutus/TxInfo.hs:381-392`) written out, as Alonzo's purposes are not among the era types yet; a certificate through `transTxCertV1V2`, both languages' `toPlutusTxCert`",
-   "digest": "b05f495d0ea68726"
+   "digest": "c040cb06ad102b3e",
+   "note": "generic in the era over Conway's and Shelley's certificate classes, as the reference's is"
   },
   "val ledger.era.conway.ConwayTxInfo.plutusV1": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra",
      "lines": [
-      399,
-      437
+      420,
+      455
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra",
+     "lines": [
+      420,
+      455
      ]
     }
    ],
@@ -18577,18 +19292,28 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "6c89ab565a651b94"
+   "digest": "3ee445f53bea9420"
   },
   "val ledger.era.conway.ConwayTxInfo.plutusV2": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra",
      "lines": [
-      439,
-      480
+      457,
+      495
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra",
+     "lines": [
+      457,
+      495
      ]
     }
    ],
@@ -18598,18 +19323,28 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "28e36f59d0fe5bd2"
+   "digest": "3cd654f6a28a8c2d"
   },
   "val ledger.era.conway.ConwayTxInfo.context": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
      "symbol": "EraPlutusContext ConwayEra",
      "lines": [
-      149,
-      178
+      157,
+      187
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "symbol": "EraPlutusContext ConwayEra",
+     "lines": [
+      157,
+      187
      ]
     }
    ],
@@ -18619,7 +19354,7 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "digest": "0c0e9ff9bc8b77be"
+   "digest": "c7f89a6d1fd38982"
   },
   "class ledger.era.conway.ConwayTxInfoResult": {
    "upstream": [
@@ -19505,12 +20240,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
      "symbol": "mkSupportedPlutusRunnable",
      "lines": [
-      206,
-      206
+      238,
+      238
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "symbol": "mkSupportedPlutusRunnable",
+     "lines": [
+      238,
+      238
      ]
     }
    ],
@@ -19856,12 +20601,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
      "symbol": "mkPlutusWithContext",
      "lines": [
-      100,
-      127
+      102,
+      130
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "mkPlutusWithContext",
+     "lines": [
+      104,
+      136
      ]
     }
    ],
@@ -19870,19 +20625,29 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "the cost model's type is the script's language; the spending datum is read before the arguments are made, and its failure, which only an inline datum taken unread can reach, is the node's own `Undecodable` with the decoder's failure, where the reference raises `error` when the arguments force it",
-   "digest": "1f1d60a538aee8bb"
+   "note": "the cost model's type is the script's language; the arguments read the spending datum themselves (`toPlutusArgs`); 29a7d656's converts the cost model and raises `ImpossibleContextError` where that fails (`Alonzo/Plutus/TxInfo.hs:127-128`), 9df9f98c's does not, and the model here is of the script's language by its type, so the branch has no counterpart",
+   "digest": "f1fe2258aec56d9e"
   },
   "def ledger.era.AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfo": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
      "symbol": "scriptsWithContextFromLedgerTxInfo",
      "lines": [
-      118,
+      120,
       129
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
+     "symbol": "scriptsWithContextFromLedgerTxInfo",
+     "lines": [
+      121,
+      131
      ]
     }
    ],
@@ -19891,18 +20656,28 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "d1e963df5f8ca4a9"
+   "digest": "9fda4be4db5a9cc7"
   },
   "def ledger.era.AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfoWithResult": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
      "symbol": "scriptsWithContextFromLedgerTxInfoWithResult",
      "lines": [
       131,
-      185
+      181
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
+     "symbol": "scriptsWithContextFromLedgerTxInfoWithResult",
+     "lines": [
+      133,
+      184
      ]
     }
    ],
@@ -19912,18 +20687,28 @@
     "EraPlutusContextSuite"
    ],
    "note": "with its `merge`, the successes and the failures each in reverse order",
-   "digest": "3d059c06d929b45c"
+   "digest": "00c9a8ff445b3cbb"
   },
   "def ledger.era.AlonzoPlutusEvaluate.collectPlutusScriptsWithContext": {
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
      "symbol": "collectPlutusScriptsWithContext",
      "lines": [
       83,
-      116
+      118
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs",
+     "symbol": "collectPlutusScriptsWithContext",
+     "lines": [
+      83,
+      119
      ]
     }
    ],
@@ -19933,7 +20718,7 @@
     "EraPlutusContextSuite"
    ],
    "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); of a top-level transaction only, without the reference's empty memo of sub-transactions' contexts (`ltiMemoizedSubTransactions = mempty`), which only Dijkstra fills (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123)",
-   "digest": "4745cf08700b40d4"
+   "digest": "f3c0963e52263228"
   },
   "def ledger.era.CostModel#cmLanguage": {
    "upstream": [
@@ -20248,12 +21033,22 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
      "symbol": "mkAlonzoStAnnTx",
      "lines": [
-      121,
-      160
+      125,
+      166
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
+     "symbol": "mkAlonzoStAnnTx",
+     "lines": [
+      127,
+      169
      ]
     }
    ],
@@ -20263,7 +21058,7 @@
     "EraPlutusContextSuite"
    ],
    "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); a function, which `ApplyTx`'s member `mkStAnnTx` is for Conway when the mempool comes",
-   "digest": "bc7cc2f1dc32243f"
+   "digest": "a88014618cbfdc4e"
   },
   "def ledger.era.AlonzoStAnnTx.scriptsProvidedAlonzoStAnnTx": {
    "upstream": [
@@ -21536,7 +22331,7 @@
     "DijkstraTxSuite"
    ],
    "note": "the class instances of both levels, the level the evidence's (`BothLevels`); there is no required signers' field (`notSupportedInThisEraL`, `:1416`), and the getter is the guards' keys (`:1419-1423`); `allInputsTxBodyF`, a member of `EraTx` at 9df9f98c, is a member of `EraTxBody` here, as at f649f975, and is `dijkstraAllInputsTxBodyF`",
-   "digest": "553e30209d262e20"
+   "digest": "e7897de75218cdc8"
   },
   "trait ledger.era.DijkstraEraTxBody": {
    "upstream": [
@@ -24386,6 +25181,7 @@
     "object ledger.era.PV2",
     "object ledger.era.PV3",
     "object ledger.era.PlutusContext",
+    "object ledger.era.LedgerTxInfo",
     "object ledger.era.PlutusTxInfos",
     "object ledger.era.ShelleyUTxO",
     "object ledger.era.UTxOs",
