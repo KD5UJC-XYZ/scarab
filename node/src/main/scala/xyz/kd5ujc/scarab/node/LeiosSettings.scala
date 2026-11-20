@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.state.Word64
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 enum LeiosDbBackend:
   case InMemory, SQLite
@@ -41,8 +42,20 @@ object LeiosSettings:
       "LeiosAdaptiveEndorsements"
     )
 
+  /** The keys `build` 's node uses, which are not reported unused: `LeiosDbConfig` under the Leios
+    * build when it keeps the store on disk, where the node opens it ([[LeiosStorage]]).
+    */
+  private def used(build: ReferenceBuild, database: LeiosDbBackend): Set[NodeConfig.TopLevelKey] =
+    (build, database) match
+      case (ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite) =>
+        Set[NodeConfig.TopLevelKey]("LeiosDbConfig")
+      case (ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.InMemory) |
+          (ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2, _) =>
+        Set.empty
+
   private[node] def parse(
-      k: ConfigFields[NodeConfig.TopLevelKey]
+      k: ConfigFields[NodeConfig.TopLevelKey],
+      build: ReferenceBuild
   ): Either[ConfigError, LeiosSettings] =
     for
       egress <- k.realFloat("EgressBudgetMbps")
@@ -65,13 +78,15 @@ object LeiosSettings:
         .obj("LeiosAdaptiveEndorsements")
         .flatMap(_.traverse(readAdaptive))
         .map(_.flatten)
-    yield LeiosSettings(
-      egress.getOrElse(250),
-      database.getOrElse(LeiosDbBackend.SQLite),
-      lead,
-      adaptive,
-      keys.filter(k.value(_).nonEmpty).toSet[String]
-    )
+    yield
+      val backend = database.getOrElse(LeiosDbBackend.SQLite)
+      LeiosSettings(
+        egress.getOrElse(250),
+        backend,
+        lead,
+        adaptive,
+        keys.filter(key => k.value(key).nonEmpty && !used(build, backend)(key)).toSet[String]
+      )
 
   private def readAdaptive(
       k: ConfigFields[String]

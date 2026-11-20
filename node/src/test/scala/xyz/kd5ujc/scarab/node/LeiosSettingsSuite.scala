@@ -308,3 +308,15 @@ class LeiosSettingsSuite extends FunSuite:
       )
     )
   }
+
+  test("LeiosDbConfig is used under the Leios build when the store is on disk, else unused") {
+    def unsupported(build: ReferenceBuild, backend: String): List[String] =
+      NodeConfig
+        .parse(build)(s"""{"LeiosDbConfig":{"Backend":"$backend"}}""")
+        .fold(e => fail(e.message), _.settings.unsupported)
+    val unused = List("LeiosDbConfig: recognised but unused")
+    assertEquals(unsupported(ReferenceBuild.LeiosB004fe0c, "SQLite"), Nil)
+    assertEquals(unsupported(ReferenceBuild.LeiosB004fe0c, "InMemory"), unused)
+    assertEquals(unsupported(ReferenceBuild.Release11_1, "SQLite"), unused)
+    assertEquals(unsupported(ReferenceBuild.Release11_2, "SQLite"), unused)
+  }
