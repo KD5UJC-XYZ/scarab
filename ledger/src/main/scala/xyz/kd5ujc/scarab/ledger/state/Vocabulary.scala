@@ -346,6 +346,7 @@ object Credential:
     new CredentialOrder[ColdCommittee]
   private val hotCommitteeOrder: Order[Credential[HotCommittee]] =
     new CredentialOrder[HotCommittee]
+  private val guardOrder: Order[Credential[Guard]] = new CredentialOrder[Guard]
 
   given stakePoolCredentialOrder: Order[Credential[StakePool]] = stakePoolOrder
   given stakingCredentialOrder: Order[Credential[Staking]] = stakingOrder
@@ -356,6 +357,7 @@ object Credential:
   given drepCredentialOrder: Order[Credential[DRepRole]] = drepOrder
   given coldCommitteeCredentialOrder: Order[Credential[ColdCommittee]] = coldCommitteeOrder
   given hotCommitteeCredentialOrder: Order[Credential[HotCommittee]] = hotCommitteeOrder
+  given guardCredentialOrder: Order[Credential[Guard]] = guardOrder
 
 /** `DRep` (`DRep.hs:67-72` (cardano-ledger f649f975), `deriving Ord`): key hash, script hash,
   * always-abstain, always-no-confidence.

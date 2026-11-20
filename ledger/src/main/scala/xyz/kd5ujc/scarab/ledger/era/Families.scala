@@ -92,10 +92,12 @@ type PlutusPurpose[F[_, _], E <: EraTag] = E match
 
 /** `ScriptsNeeded era` (`State/UTxO.hs:243-245`, cardano-ledger f649f975): what UTXOW needs to find
   * the scripts a transaction must run, by era. Conway's is Alonzo's form (`type ScriptsNeeded
-  * ConwayEra = AlonzoScriptsNeeded ConwayEra`, `Conway/UTxO.hs:120`).
+  * ConwayEra = AlonzoScriptsNeeded ConwayEra`, `Conway/UTxO.hs:120`), and so is Dijkstra's
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs:149`, cardano-ledger 9df9f98c).
   */
 type ScriptsNeeded[E <: EraTag] = E match
-  case Conway => AlonzoScriptsNeeded[Conway]
+  case Conway   => AlonzoScriptsNeeded[Conway]
+  case Dijkstra => AlonzoScriptsNeeded[Dijkstra]
 
 /** The auxiliary data of era `E` (`type TxAuxData era`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:483`, cardano-ledger f649f975).
@@ -114,10 +116,13 @@ type Tx[L <: TxLevel, E <: EraTag] = E match
 /** The transaction of era `E` at level `L` annotated with what the ledger state gives it (`type
   * StAnnTx (l :: TxLevel) era`, `Core.hs:180`, cardano-ledger f649f975): Conway's is Alonzo's, of a
   * top-level transaction only (`type StAnnTx l ConwayEra = AlonzoStAnnTx l ConwayEra`,
-  * `Conway/Tx.hs:67`).
+  * `Conway/Tx.hs:67`); Dijkstra's is its own, of both levels (`type StAnnTx l DijkstraEra =
+  * DijkstraStAnnTx l DijkstraEra`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:221`,
+  * cardano-ledger 9df9f98c).
   */
 type StAnnTx[L <: TxLevel, E <: EraTag] = E match
-  case Conway => AtTop[L, AlonzoStAnnTx[Conway]]
+  case Conway   => AtTop[L, AlonzoStAnnTx[Conway]]
+  case Dijkstra => dijkstra.DijkstraStAnnTx[L]
 
 /** The cache annotated transactions share (`type StAnnTxCache era`, `Core.hs:183`, cardano-ledger
   * f649f975): Conway's the runnable scripts by hash (`Conway/Tx.hs:69`), and so is Dijkstra's

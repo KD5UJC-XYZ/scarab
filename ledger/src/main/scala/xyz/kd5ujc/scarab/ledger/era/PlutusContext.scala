@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.ledger.{TranslationError, TxIn, Unsigned}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 // The translation of a transaction to the script context of a Plutus language
@@ -31,11 +31,36 @@ object Inject:
   given conwayAlonzo: Inject[AlonzoContextError[Conway], conway.ConwayContextError[Conway]] = a =>
     conway.ConwayContextError.BabbageContextError(BabbageContextError.AlonzoContextError(a))
 
+  /** `instance Inject (ConwayContextError era) (DijkstraContextError era)`
+    * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:290-291`, cardano-ledger 9df9f98c).
+    */
+  given dijkstraConway: Inject[conway.ConwayContextError[Dijkstra], ContextError[Dijkstra]] =
+    dijkstra.DijkstraContextError.ConwayContextError(_)
+
+  /** `instance Inject (BabbageContextError era) (DijkstraContextError era)` (`TxInfo.hs:293-294`,
+    * cardano-ledger 9df9f98c): through Conway's.
+    */
+  given dijkstraBabbage: Inject[BabbageContextError[Dijkstra], ContextError[Dijkstra]] = b =>
+    dijkstra.DijkstraContextError.ConwayContextError(
+      conway.ConwayContextError.BabbageContextError(b)
+    )
+
+  /** `instance Inject (AlonzoContextError era) (DijkstraContextError era)` (`TxInfo.hs:296-297`,
+    * cardano-ledger 9df9f98c): through Babbage's and Conway's.
+    */
+  given dijkstraAlonzo: Inject[AlonzoContextError[Dijkstra], ContextError[Dijkstra]] = a =>
+    dijkstra.DijkstraContextError.ConwayContextError(
+      conway.ConwayContextError.BabbageContextError(BabbageContextError.AlonzoContextError(a))
+    )
+
 /** The context error of era `E` (`type ContextError era`, `Context.hs:198`, cardano-ledger
-  * f649f975): Conway's is `ConwayContextError ConwayEra` (`Conway/TxInfo.hs:150`).
+  * f649f975): Conway's is `ConwayContextError ConwayEra` (`Conway/TxInfo.hs:150`), Dijkstra's
+  * `DijkstraContextError DijkstraEra`
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:300`, cardano-ledger 9df9f98c).
   */
 type ContextError[E <: EraTag] = E match
-  case Conway => conway.ConwayContextError[Conway]
+  case Conway   => conway.ConwayContextError[Conway]
+  case Dijkstra => dijkstra.DijkstraContextError[Dijkstra]
 
 /** The certificate of a language's context (`type family PlutusTxCert`, `Context.hs:232-236`,
   * cardano-ledger f649f975).
@@ -211,10 +236,12 @@ object EraPlutusTxInfo:
 
 /** The memoised transaction information of every language era `E` supports (`data TxInfoResult
   * era`, `Context.hs:202`, cardano-ledger f649f975): Conway's of Plutus V1 to V3
-  * (`Conway/TxInfo.hs:152-156`).
+  * (`Conway/TxInfo.hs:152-156`), Dijkstra's of V1 to V4
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:302-307`, cardano-ledger 9df9f98c).
   */
 type TxInfoResult[E <: EraTag] = E match
-  case Conway => conway.ConwayTxInfoResult
+  case Conway   => conway.ConwayTxInfoResult
+  case Dijkstra => dijkstra.DijkstraTxInfoResult
 
 /** A language era `E` supports, with its translation (`data SupportedLanguage era`,
   * `Context.hs:313-325`, cardano-ledger f649f975): equal and ordered as its language is.

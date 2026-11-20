@@ -879,7 +879,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     `StakePoolParams` holds; the flat decoder keeps its relays and metadata decoded, so they are read again
     from the body's bytes, as the datums and redeemers are. The transaction class
     instances (`EraTx`, `AlonzoEraTx`), with Dijkstra's annotated transaction and its override of
-    `getTotalExUnits` that adds the sub-transactions' units, come with `EraUTxO`.
+    `getTotalExUnits` that adds the sub-transactions' units, came with `EraUTxO` (below).
 - **Conway's UTxO functions for any era with Conway's classes** (`era/EraUTxO.scala`, `era/conway/ConwayUTxO.scala`,
   `era/EraScript.scala`, `era/EraTx.scala`), the first part of Dijkstra's UTxO instances (#85):
   - `getConwayScriptsNeeded`, `getConwayWitsVKeyNeeded`, `voterWitnesses`, `txNonDistinctRefScriptsSize` and
@@ -902,11 +902,64 @@ Conway's rules on the classes follow as the rest of stage 2.
     is its name kept (`:510-514`), and `alonzoMinFeeTx` and `validateExUnitsTooBigUTxO` read the member, as at
     9df9f98c. Conway's minimum fee and units check are therefore unchanged: `ConwayUtxoChecksSuite`, which compares
     them with the flat rules on every Conway case of the refusal corpora, passes as before. Dijkstra's instance in the
-    reference overrides the member to add its sub-transactions' units (`Dijkstra/Tx.hs:417-422`); the typed
-    override comes with Dijkstra's transaction class instance.
+    reference overrides the member to add its sub-transactions' units (`Dijkstra/Tx.hs:417-422`), as Dijkstra's
+    transaction class instance does (below).
   - `EraConwaySuite` and `DijkstraPlutusPurposeSuite` build each purpose and read it back by its own reader only;
     `DijkstraTxSuite` reads every purpose that a redeemer key of each corpus body resolves to (both levels) with each
     reader, and only its own reader reads it, its builder giving it back.
+- **Dijkstra's transaction and UTxO instances** (`era/dijkstra/DijkstraTx.scala`, `DijkstraStAnnTx.scala`,
+  `DijkstraTxInfo.scala`, `DijkstraUTxO.scala`; `Tx.hs`, `UTxO.hs` and `TxInfo.hs` of
+  `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c), on Conway's UTxO functions for any era
+  (above):
+  - `EraTx` and `AlonzoEraTx` of Dijkstra (`Tx.hs:216-253, 413-422`), of both levels: the parts, the annotated
+    transaction's transaction and cache, the size, Conway's minimum fee, the phase-two flag, and `getTotalExUnits`, which
+    adds each sub-transaction's units to the top level's.
+  - `EraUTxO`, `AlonzoEraUTxO` and `DijkstraEraUTxO` of Dijkstra (`UTxO.hs:63-66, 148-163, 200-211, 291-298`): the
+    value consumed (Mary's of each body, the sub-transactions' added at the top level) and produced (each body's own
+    outputs, donation, proposals' deposits, burned assets and direct deposits, the fee, and the deposits of the batch's
+    certificates counted together, the sub-transactions' first); the scripts provided (the sub-transactions' added at
+    the top level, the top level's kept on a repeated hash) and needed (Conway's, then each guard that is a script);
+    Conway's keys and minimum fee; the supplemental datums of every level at the top; Babbage's spending datum; and the
+    annotated transaction's members. `dijkstraConsumed` and `batchNonDistinctRefScriptsSize` with them.
+  - The functions are written for Dijkstra, whose levels are both, as Conway's `conwayProducedValue` is for Conway;
+    the reference writes them for any era whose levels are both.
+  - The annotated transaction (`DijkstraStAnnTx`, `Tx.hs:535-557`) and the two types it names that Dijkstra's script
+    contexts give, the context error (`DijkstraContextError`, `TxInfo.hs:155-172`) and the memoised transaction
+    information (`DijkstraTxInfoResult`, `TxInfo.hs:302-307`), are the families' Dijkstra cases. Nothing makes an
+    annotated transaction yet: its maker (`mkDijkstraStAnnTopTx`, `Dijkstra.hs:108-219`) needs the contexts, which
+    come with them ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123)). Its
+    members are read on built values only, a Gap of that item. The memoised information's slots are the shared
+    `PlutusTxInfoResult`, which mirrors f649f975's, so two differences wait for that item too: each slot is a function
+    of the purpose where 9df9f98c's is a direct `Either` (`Alonzo/Plutus/Context.hs:193-203`), and V4's holds V3's
+    `TxInfo` where 9df9f98c's holds `PV4.TxInfo` (`:280`). The legacy-mode flag is an enum (`PlutusLegacyMode`), the
+    reference's `Bool` (TYP-4). `DijkstraEraUTxO`'s member of a sub-transaction's annotated form takes the evidence of
+    that level (`SubOnly`, as `TopOnly` gives the top level), as the family named at the sub-transaction level
+    outright would be reduced at Conway too, where it has no case.
+  - Not here: `DijkstraEraTx`'s `hashTx` ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184)),
+    and `mkBasicTx` and `validateNativeScript`, which the class has for no era here.
+  - `DijkstraUTxOSuite` reads every Dijkstra transaction the repository holds (`DijkstraCorpus`, which
+    `DijkstraTxSuite` reads too), at both levels, with the recorded UTxO set where the corpus has one and stand-in
+    outputs elsewhere. Against the flat rules: the scripts needed equal `DijkstraPurposes.scriptsNeeded` in order,
+    purpose, index, item (a certificate by its key and script) and script hash, guards among them; the execution units
+    of the batch and of each sub-transaction, and the batch's reference scripts' size, equal `DijkstraTxMeasures`' and
+    the redeemers the flat decoder read; the top level's Plutus scripts provided, by hash and language, equal
+    `plutusScriptsProvided`; and the supplemental datums at each level equal the datum hashes the flat decoder read in
+    the outputs and the reference inputs' outputs, also where a sub-transaction's reference input names one (crafted)
+    and with the sub-transactions taken out of the body, as UTXOW reads it in the legacy mode.
+  - The flat path has a minimum fee (`DijkstraUtxo.minFee`), the keys needed (`TxChecks.neededWitnesses`) and the
+    supplemental datums (`TxChecks.supplementalDatumHashes`) for a transaction without Dijkstra's own fields, and the
+    value consumed and produced only inline: no complete Dijkstra batch comparison. What the reference records stands in
+    for it, as component checks under CNF-2, not the I1 verdict or the resulting state. On the 200 transactions recorded
+    on the testnet's chain, which its ledger accepted (28 with sub-transactions, 15 with units in one, ten with
+    certificates, one with direct deposits, none registering a pool), the value consumed is the value produced, the keys
+    needed at each level are a subset of its witnesses (an undercomputed set would pass), the batch's scripts needed
+    less its reference scripts are exactly its witnesses, the scripts provided are its witnesses and reference scripts,
+    and the top level's witness datums are allowed. On the reference's UTXOW cases, which have no sub-transactions,
+    the values of its three `ValueNotConservedUTxO` refusals, the minimum fee of its one `FeeTooSmallUTxO` (a
+    transaction without redeemers or reference scripts), the keys of its `MissingVKeyWitnessesUTXOW` and the scripts
+    of its `MissingScriptWitnessesUTXOW` and `ExtraneousScriptWitnessesUTXOW` are the functions', and each case it
+    accepts conserves value, is witnessed, pays the fee and provides exactly the scripts needed; a crafted witness of a
+    script a reference input provides is extraneous, as `babbageMissingScripts` has it.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

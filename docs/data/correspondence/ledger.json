@@ -5834,8 +5834,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "a protected method of the class, as Scala writes a function over its instance's members",
-   "digest": "2f6c41458344c9d0"
+   "note": "a method of the class, as Scala writes a function over its instance's members; Dijkstra's produced value calls it, as the reference's `localProducedValue` does",
+   "digest": "41490f16275fe472"
   },
   "def ledger.era.ConwayEraTxCert#conwayTotalDepositsTxCerts": {
    "upstream": [
@@ -9992,11 +9992,21 @@
       120,
       120
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "ScriptsNeeded DijkstraEra",
+     "lines": [
+      149,
+      149
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "8c5ac1054b693d9d"
+   "digest": "c93d11bcf731e942"
   },
   "class ledger.era.AlonzoScriptsNeeded": {
    "upstream": [
@@ -13546,6 +13556,16 @@
       150,
       150
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "ContextError DijkstraEra",
+     "lines": [
+      300,
+      300
+     ]
     }
    ],
    "class": "Mirror",
@@ -13553,8 +13573,8 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "Conway's case alone so far, as the other families",
-   "digest": "46bf958f5fac09f3"
+   "note": "Conway's case and Dijkstra's; Dijkstra's, `DijkstraContextError`, has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "digest": "179a89b5868e7c2b"
   },
   "type ledger.era.PlutusTxCert": {
    "upstream": [
@@ -17810,6 +17830,16 @@
       152,
       156
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "TxInfoResult DijkstraEra",
+     "lines": [
+      302,
+      307
+     ]
     }
    ],
    "class": "Mirror",
@@ -17818,8 +17848,8 @@
     "EraPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite"
    ],
-   "note": "Conway's case alone, as the other families",
-   "digest": "98a1ded517dcca97"
+   "note": "Conway's case and Dijkstra's; Dijkstra's has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "digest": "8b02b525087d82b7"
   },
   "class ledger.era.SupportedLanguage": {
    "upstream": [
@@ -20048,6 +20078,16 @@
       180,
       180
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "StAnnTx l DijkstraEra",
+     "lines": [
+      221,
+      221
+     ]
     }
    ],
    "class": "Mirror",
@@ -20055,8 +20095,8 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "Conway's case `AlonzoStAnnTx` at the top level alone, as the reference's only constructor is of a top-level transaction",
-   "digest": "b0479d3530ca2d91"
+   "note": "Conway's case `AlonzoStAnnTx` at the top level alone, as the reference's only constructor is of a top-level transaction; Dijkstra's `DijkstraStAnnTx` of both levels",
+   "digest": "ef7af00cf5b68b3e"
   },
   "type ledger.era.StAnnTxCache": {
    "upstream": [
@@ -23123,6 +23163,588 @@
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the account is the node's flat `RewardAccount` where the reference's is an `AccountAddress`, as the withdrawing purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
    "digest": "9d52a885448f3fa3"
+  },
+  "class ledger.era.dijkstra.DijkstraStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "DijkstraStAnnTx",
+     "lines": [
+      535,
+      557
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "nothing makes one yet: its maker, `mkDijkstraStAnnTopTx` (`Dijkstra.hs:108-219`), needs Dijkstra's script contexts, which come with #85's item on them; its members are read on built values only (incomplete, CNF-2)",
+   "digest": "0e41676f88501e72"
+  },
+  "class ledger.era.dijkstra.DijkstraStAnnTx.TopTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "DijkstraStAnnTopTx",
+     "lines": [
+      536,
+      546
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "the legacy mode is `PlutusLegacyMode` where the reference's is a `Bool` (TYP-4); nothing makes one yet: its maker, `mkDijkstraStAnnTopTx` (`Dijkstra.hs:108-219`), needs Dijkstra's script contexts, which come with #85's item on them; its members are read on built values only (incomplete, CNF-2)",
+   "digest": "440f418a53023db8"
+  },
+  "class ledger.era.dijkstra.DijkstraStAnnTx.SubTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "DijkstraStAnnSubTx",
+     "lines": [
+      547,
+      557
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "nothing makes one yet: its maker, `mkDijkstraStAnnTopTx` (`Dijkstra.hs:108-219`), needs Dijkstra's script contexts, which come with #85's item on them; its members are read on built values only (incomplete, CNF-2)",
+   "digest": "eca17b906581cc40"
+  },
+  "enum ledger.era.dijkstra.PlutusLegacyMode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "dsattPlutusLegacyMode",
+     "lines": [
+      540,
+      540
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "the reference's `Bool` field as a two-case enum, a choice of the mode the scripts run in (TYP-4); `Legacy` is the reference's `True`",
+   "digest": "1ce2c19bb23749e3"
+  },
+  "class ledger.era.dijkstra.DijkstraTxInfoResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "TxInfoResult DijkstraEra",
+     "lines": [
+      302,
+      307
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "note": "each field computed when first read, as the reference keeps them lazy; nothing gives one yet: `mkTxInfoResult` comes with Dijkstra's script contexts (#85's item on them). Two differences it inherits from the shared `PlutusTxInfoResult`, which mirrors f649f975's, to be closed with that item: the result is a function of the purpose where 9df9f98c's is a direct `Either` (`Alonzo/Plutus/Context.hs:193-203`), and the V4 slot holds V3's `TxInfo` where 9df9f98c's holds `PV4.TxInfo` (`Context.hs:280`, filled by `Dijkstra/TxInfo.hs:599-623`), as no V4 types of plutus-ledger-api are here yet",
+   "digest": "d97c032693836f40"
+  },
+  "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV1",
+     "lines": [
+      328,
+      328
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them)",
+   "digest": "9644071c8b3ff7af"
+  },
+  "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV2",
+     "lines": [
+      329,
+      329
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them)",
+   "digest": "0fb28cc06f5370cc"
+  },
+  "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV3": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV3",
+     "lines": [
+      330,
+      330
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them)",
+   "digest": "720bdb45be378630"
+  },
+  "val ledger.era.dijkstra.DijkstraTxInfoResult#tirPlutusV4": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV4",
+     "lines": [
+      331,
+      331
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "note": "the field the reference's lookup of the language selects; read by nothing until Dijkstra's script contexts (#85's item on them); its payload is V3's `TxInfo` where the reference's is `PV4.TxInfo` (`Alonzo/Plutus/Context.hs:280`, cardano-ledger 9df9f98c), and a function of the purpose where the reference's is a direct `Either` (`:193-203`)",
+   "digest": "52b7b2096c4b2d2c"
+  },
+  "enum ledger.era.dijkstra.DijkstraContextError": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "DijkstraContextError",
+     "lines": [
+      155,
+      172
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "note": "the reference's constructors with their fields: a transaction id as its body hash's `Bytes`, the direct deposits and the balance intervals as the body's maps; nothing gives one yet: the translations come with Dijkstra's script contexts (#85's item on them)",
+   "digest": "4d069273792f95a3"
+  },
+  "given ledger.era.Inject.dijkstraConway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "Inject (ConwayContextError era) (DijkstraContextError era)",
+     "lines": [
+      290,
+      291
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's injection; the translations that use it come with Dijkstra's script contexts (#85's item on them)",
+   "digest": "fb1ad5cfd91b7446"
+  },
+  "given ledger.era.Inject.dijkstraBabbage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "Inject (BabbageContextError era) (DijkstraContextError era)",
+     "lines": [
+      293,
+      294
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's injection; the translations that use it come with Dijkstra's script contexts (#85's item on them)",
+   "digest": "1fc999999164fb4a"
+  },
+  "given ledger.era.Inject.dijkstraAlonzo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "Inject (AlonzoContextError era) (DijkstraContextError era)",
+     "lines": [
+      296,
+      297
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's injection; the translations that use it come with Dijkstra's script contexts (#85's item on them)",
+   "digest": "26dab08fc6814065"
+  },
+  "trait ledger.era.DijkstraEraUTxO": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "DijkstraEraUTxO",
+     "lines": [
+      63,
+      66
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "every member of the reference's class; `scriptsHashesNeededStAnnTx` takes the evidence of the sub-transaction level (`SubOnly`) where the reference names `StAnnTx SubTx era`, which here would be reduced at Conway too",
+   "digest": "9eb839fb5772fe11"
+  },
+  "def ledger.era.DijkstraEraUTxO#subTransactionsStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "subTransactionsStAnnTx",
+     "lines": [
+      64,
+      64
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "a member of the annotated transaction, which nothing makes yet; read on built values only (incomplete, CNF-2)",
+   "digest": "6632d012ba221ecd"
+  },
+  "def ledger.era.DijkstraEraUTxO#plutusLegacyModeStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "plutusLegacyModeStAnnTxG",
+     "lines": [
+      65,
+      65
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "a member of the annotated transaction, which nothing makes yet; read on built values only (incomplete, CNF-2)",
+   "digest": "880db0f4a43acb78"
+  },
+  "def ledger.era.DijkstraEraUTxO#scriptsHashesNeededStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "scriptsHashesNeededStAnnTx",
+     "lines": [
+      66,
+      66
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "same",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "a member of the annotated transaction, which nothing makes yet; read on built values only (incomplete, CNF-2)",
+   "digest": "8e75e9a6e75f980a"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.dijkstraConsumed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "dijkstraConsumed",
+     "lines": [
+      71,
+      77
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the value produced on every transaction recorded on the Leios testnet's chain, which its ledger accepted (none registers a pool, so the produced value is given no registered pool), and to the reference's recorded value consumed in each `ValueNotConservedUTxO` of its UTXOW cases, which have no sub-transactions: a component check under CNF-2, not the I1 verdict or the resulting state. The flat path computes the value consumed only inline for a transaction without Dijkstra's own fields, so it has no complete Dijkstra batch comparison",
+   "digest": "1af5ad2709f48048"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getConsumedDijkstraValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "getConsumedDijkstraValue",
+     "lines": [
+      79,
+      104
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both",
+   "digest": "4b2b38fd393a2dc6"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.localProducedValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "localProducedValue",
+     "lines": [
+      134,
+      146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both",
+   "digest": "32aad02a4f6dd61b"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.dijkstraProducedValue": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "dijkstraProducedValue",
+     "lines": [
+      106,
+      128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; the batch's certificates, the sub-transactions' first, the sequences concatenated as the reference's `StrictSeq`s are",
+   "digest": "9f2aa07cebac5df4"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraScriptsProvided": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "getDijkstraScriptsProvided",
+     "lines": [
+      165,
+      186
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; its Plutus scripts by hash and language, at the top level, equal the flat contexts' (`DijkstraScriptContexts.plutusScriptsProvided`) on every Dijkstra transaction the repository holds; on the testnet's transactions and the reference's UTXOW cases its hashes are exactly the batch's witnesses' and its inputs' reference scripts'. A sub-transaction's own and a script's bytes are not compared",
+   "digest": "3946655273d678dd"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraScriptsNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "getDijkstraScriptsNeeded",
+     "lines": [
+      188,
+      198
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat rules' (`DijkstraPurposes.scriptsNeeded`) in order, purpose, index, item and script hash on every body of every Dijkstra transaction the repository holds, at both levels, a certificate's item by its key and script; the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
+   "digest": "be9d228c98e07984"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraSupplementalDataHashes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "getDijkstraSupplementalDataHashes",
+     "lines": [
+      213,
+      230
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal, at each level, to the datum hashes the flat decoder read in the body's outputs, collateral return and reference inputs' outputs, the sub-transactions' added at the top level, on every Dijkstra transaction the repository holds, on a crafted case where a sub-transaction's reference input names a datum hash, and on that transaction with its sub-transactions taken out of its body, as UTXOW reads it in the legacy mode",
+   "digest": "97fd04a2a19bb44c"
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.batchNonDistinctRefScriptsSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "batchNonDistinctRefScriptsSize",
+     "lines": [
+      300,
+      314
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat rules' (`DijkstraTxMeasures.batchRefScriptsSize`) on every Dijkstra transaction the repository holds",
+   "digest": "e6fc40d40b696b29"
+  },
+  "val ledger.era.dijkstra.DijkstraUTxO.instance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "EraUTxO DijkstraEra",
+     "lines": [
+      148,
+      163
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "AlonzoEraUTxO DijkstraEra",
+     "lines": [
+      200,
+      211
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "symbol": "DijkstraEraUTxO DijkstraEra",
+     "lines": [
+      291,
+      298
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "every member of the reference's three instances. The keys needed are Conway's (`getConwayWitsVKeyNeeded`): on the testnet's transactions they are a subset of each level's witnesses, and on the reference's UTXOW cases the keys not witnessed are its recorded missing key; a component check under CNF-2, not the I1 verdict or the resulting state, as an undercomputed set passes the subset check. The minimum fee is Conway's, equal to the reference's recorded minimum of its one `FeeTooSmallUTxO`, a case without redeemers, sub-transactions or reference scripts. Over the batch, the scripts needed less the reference scripts are exactly the witnesses on the testnet's transactions, and the reference's recorded missing and extraneous scripts on its UTXOW cases, with a crafted witness of a needed reference script extraneous, as `babbageMissingScripts` has it. The spending datum is Babbage's, compared on Conway. The flat path has `DijkstraUtxo.minFee`, `TxChecks.neededWitnesses` and `TxChecks.supplementalDatumHashes`, for a transaction without Dijkstra's own fields: no complete Dijkstra batch comparison. The annotated transaction's members are of its Gap (#85's item on Dijkstra's script contexts)",
+   "digest": "f69eac554f7d357e"
+  },
+  "val ledger.era.dijkstra.DijkstraTx.instance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "EraTx DijkstraEra",
+     "lines": [
+      216,
+      253
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "AlonzoEraTx DijkstraEra",
+     "lines": [
+      413,
+      422
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "every member the class has here: `mkBasicTx` and `validateNativeScript` are no member of it for any era, and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, equal to the flat rules' (`DijkstraTxMeasures.totalExUnits`) on every Dijkstra transaction the repository holds, and each sub-transaction's to its redeemers' units as the flat decoder read them. `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184)",
+   "digest": "71074c114b1f6e49"
   }
  },
  "glue": [
@@ -23295,7 +23917,13 @@
     "object ledger.state.Network",
     "object ledger.state.PoolMetadata",
     "object ledger.state.StakePoolParams",
-    "object ledger.state.PoolParamsBlsKey"
+    "object ledger.state.PoolParamsBlsKey",
+    "given ledger.era.EraTx.dijkstra",
+    "given ledger.era.EraUTxO.dijkstra",
+    "object ledger.era.dijkstra.DijkstraStAnnTx",
+    "object ledger.era.dijkstra.PlutusLegacyMode",
+    "given ledger.era.dijkstra.PlutusLegacyMode.given_CanEqual_PlutusLegacyMode_PlutusLegacyMode",
+    "given ledger.state.Credential.guardCredentialOrder"
    ]
   },
   {
@@ -23555,7 +24183,8 @@
     "object ledger.era.PlutusTxInfos",
     "object ledger.era.ShelleyUTxO",
     "object ledger.era.UTxOs",
-    "object ledger.era.conway.ConwayTxInfo"
+    "object ledger.era.conway.ConwayTxInfo",
+    "object ledger.era.dijkstra.DijkstraUTxO"
    ]
   },
   {
@@ -23723,6 +24352,12 @@
     "def ledger.DecoderVersion.ofMajor",
     "def ledger.era.rules.sameLayout",
     "class ledger.LedgerFailure.PoolParamsLayout"
+   ]
+  },
+  {
+   "reason": "the evidence of the sub-transaction level alone (`SubOnly`), which a member the reference gives at that level only takes, as `TopOnly` gives the top level, so that the family is not named at the sub-transaction level outright, where it is reduced at every era, Conway's included, which has no case there",
+   "definitions": [
+    "enum ledger.era.SubOnly"
    ]
   }
  ]

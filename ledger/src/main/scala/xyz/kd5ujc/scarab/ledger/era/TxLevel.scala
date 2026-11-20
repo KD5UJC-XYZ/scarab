@@ -25,6 +25,15 @@ enum BothLevels[L <: TxLevel]:
   case Top extends BothLevels[TxLevel.Top]
   case Sub extends BothLevels[TxLevel.Sub]
 
+/** The sub-transaction level alone, the evidence a member the reference gives at that level only
+  * takes (`StAnnTx SubTx era`, as Dijkstra's `scriptsHashesNeededStAnnTx` does,
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs:66`, cardano-ledger 9df9f98c): matching
+  * on it shows the level is `Sub`, as [[TopOnly]] shows the top level. A family named at the
+  * sub-transaction level outright is reduced at every era, Conway's included, where it has no case.
+  */
+enum SubOnly[L <: TxLevel]:
+  case Sub extends SubOnly[TxLevel.Sub]
+
 /** `B` at the top level, and no type at another level: the bodies of an era with top-level
   * transactions only.
   */

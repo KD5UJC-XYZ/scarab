@@ -8,7 +8,24 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraSubTx as FlatDijkstraSubTx,
   DijkstraTx as FlatDijkstraTx
 }
-import xyz.kd5ujc.scarab.ledger.era.{EraTxError, IsPhase2Valid, OMap, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraTx,
+  AlonzoEraTxAuxData,
+  AlonzoEraTxWits,
+  BothLevels,
+  EraTxAuxData,
+  EraTxBody,
+  EraTxError,
+  EraTxWits,
+  IsPhase2Valid,
+  OMap,
+  PParams,
+  SupportedPlutusRunnable,
+  TxLevel
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Dijkstra}
+import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** A Dijkstra transaction of level `L`: `Tx l DijkstraEra` (`data DijkstraTx l era`,
   * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:97-110`, cardano-ledger 9df9f98c): its
@@ -133,3 +150,61 @@ object DijkstraTx:
       DijkstraTxWits.fromFlat(flat.witnesses),
       flat.auxiliary.traverse(DijkstraTxAuxData.fromFlat)
     ).mapN(SubTx(_, _, _))
+
+  /** `instance EraTx DijkstraEra` (`Tx.hs:216-253`, cardano-ledger 9df9f98c) and `instance
+    * AlonzoEraTx DijkstraEra` (`Tx.hs:413-422`), of both levels. The size for the fee is the
+    * class's default (`Core.hs`), the bytes of the parts and the list's, which is
+    * [[DijkstraTx.sizeTxF]]'s count. `mkBasicTx` and `validateNativeScript` are not members of the
+    * class here, as for Conway; `allInputsTxBodyF` is [[EraTxBody.allInputs]].
+    */
+  val instance: AlonzoEraTx[Dijkstra] { val bodyOf: EraTxBody.dijkstra.type } =
+    new AlonzoEraTx[Dijkstra]:
+      override val bodyOf: EraTxBody.dijkstra.type = EraTxBody.dijkstra
+      override def witsOf: AlonzoEraTxWits[Dijkstra] = EraTxWits.dijkstra
+      override def auxDataOf: AlonzoEraTxAuxData[Dijkstra] = EraTxAuxData.dijkstra
+      override def body[L <: TxLevel](tx: DijkstraTx[L])(using BothLevels[L]): DijkstraTxBody[L] =
+        tx.body
+      override def wits[L <: TxLevel](tx: DijkstraTx[L])(using BothLevels[L]): DijkstraTxWits =
+        tx.wits
+      override def auxData[L <: TxLevel](tx: DijkstraTx[L])(using
+          BothLevels[L]
+      ): Option[DijkstraTxAuxData] = tx.auxData
+      // `txStAnnTxG` and `cacheStAnnTxG`, `Tx.hs:225-231`, cardano-ledger 9df9f98c
+      override def txStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
+          BothLevels[L]
+      ): DijkstraTx[L] = stAnnTx match
+        case s: DijkstraStAnnTx.TopTx => s.dsattTx
+        case s: DijkstraStAnnTx.SubTx => s.dsastTx
+      override def cacheStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
+          BothLevels[L]
+      ): Map[Bytes, SupportedPlutusRunnable[Dijkstra]] = stAnnTx match
+        case s: DijkstraStAnnTx.TopTx => s.dsattPlutusRunnableCache
+        case s: DijkstraStAnnTx.SubTx => s.dsastPlutusRunnableCache
+      override def sizeTxForFeeCalculation[L <: TxLevel](tx: DijkstraTx[L])(using
+          BothLevels[L]
+      ): Long = tx.sizeTxF
+      // `sizeTxF = dijkstraTxL . sizeDijkstraTxF`, `Tx.hs:243`, cardano-ledger 9df9f98c
+      override def sizeTxF[L <: TxLevel](tx: DijkstraTx[L])(using BothLevels[L]): Long = tx.sizeTxF
+      // `getMinFeeTx = getConwayMinFeeTx`, `Tx.hs:249`, cardano-ledger 9df9f98c
+      override def getMinFeeTx[L <: TxLevel](
+          pp: PParams[Dijkstra],
+          tx: DijkstraTx[L],
+          refScriptsSize: Long
+      )(using l: BothLevels[L]): Coin =
+        ConwayTx.getConwayMinFeeTx[Dijkstra, L](pp, tx, refScriptsSize)(using this, l)
+      override def isValid(tx: DijkstraTx[TxLevel.Top]): IsPhase2Valid = DijkstraTx.isValid(tx)
+      // `getTotalExUnits`, `Tx.hs:417-422`, cardano-ledger 9df9f98c: the witnesses' units, and at the top level each
+      // sub-transaction's
+      override def getTotalExUnits[L <: TxLevel](tx: DijkstraTx[L])(using
+          l: BothLevels[L]
+      ): ExUnits =
+        val own = super.getTotalExUnits[L](tx)
+        l match
+          case BothLevels.Top =>
+            EraTxBody.dijkstra
+              .subTransactions(tx.body)
+              .toVector
+              .foldLeft(own)((total, sub) =>
+                total + getTotalExUnits[TxLevel.Sub](sub)(using BothLevels.Sub)
+              )
+          case BothLevels.Sub => own

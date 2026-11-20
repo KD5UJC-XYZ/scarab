@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
   Credential,
+  Dijkstra,
   EraTag,
   KeyHash,
   PState,
@@ -112,6 +113,21 @@ trait AlonzoEraUTxO[E <: EraTag] extends EraUTxO[E]:
   def plutusLanguagesUsedStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using
       txOf.bodyOf.Level[L]
   ): Set[xyz.kd5ujc.scarab.plutus.PlutusLanguage]
+
+/** What only a Dijkstra transaction's annotated form holds (`class AlonzoEraUTxO era =>
+  * DijkstraEraUTxO era`, cardano-ledger 9df9f98c
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs:63-66`): its sub-transactions annotated,
+  * whether its scripts run in the legacy mode, and a sub-transaction's script hashes needed.
+  */
+trait DijkstraEraUTxO[E <: EraTag] extends AlonzoEraUTxO[E]:
+  /** `subTransactionsStAnnTx`. */
+  def subTransactionsStAnnTx(stAnnTx: StAnnTx[TxLevel.Top, E]): List[StAnnTx[TxLevel.Sub, E]]
+
+  /** `plutusLegacyModeStAnnTxG`: the reference's `Bool` as an enum (TYP-4). */
+  def plutusLegacyModeStAnnTx(stAnnTx: StAnnTx[TxLevel.Top, E]): dijkstra.PlutusLegacyMode
+
+  /** `scriptsHashesNeededStAnnTx`, of a sub-transaction's annotated form ([[SubOnly]]). */
+  def scriptsHashesNeededStAnnTx[L <: TxLevel](stAnnTx: StAnnTx[L, E])(using SubOnly[L]): Set[Bytes]
 
 /** `ScriptsProvided` (`State/UTxO.hs:229-232`, cardano-ledger f649f975): the scripts a transaction
   * provides, by hash. Each key is its script's hash (`getScriptsProvided` makes it so); the map's
@@ -481,8 +497,12 @@ object BabbageUTxO:
     val ins: Set[TxIn] = b.referenceInputs[L](txBody)(using lb) ++ b.inputs[L](txBody)(using lb)
     ScriptsProvided(t.witsOf.scriptTxWits(t.wits[L](tx)) ++ getReferenceScripts(utxo, ins))
 
-/** Conway's instance (`instance EraUTxO ConwayEra` and `instance AlonzoEraUTxO ConwayEra`,
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:119-147`, cardano-ledger f649f975).
+/** The instances of each era, the one place that lists them: Conway's (`instance EraUTxO ConwayEra`
+  * and `instance AlonzoEraUTxO ConwayEra`,
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:119-147`, cardano-ledger f649f975) and
+  * Dijkstra's (`Dijkstra/UTxO.hs:148-163, 200-211, 291-298`, cardano-ledger 9df9f98c).
   */
 object EraUTxO:
   given conway: AlonzoEraUTxO[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO.instance
+  given dijkstra: (DijkstraEraUTxO[Dijkstra] { val txOf: EraTx.dijkstra.type }) =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraUTxO.instance
