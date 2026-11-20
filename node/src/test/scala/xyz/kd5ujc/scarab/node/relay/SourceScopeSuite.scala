@@ -84,30 +84,30 @@ class SourceScopeSuite extends FailsOnUncaught:
         failure => reported.complete(failure).void,
         ChainServer.Held.none
       )
-      range <- xyz.kd5ujc.scarab.network.Peers.typed(
-        server.blocks.range(ref(1).point, ref(3).point)
+      // the range is made and pulled in one scope of the network capability, in the background
+      pulled = xyz.kd5ujc.scarab.network.Peers.typed(
+        server.blocks.range(ref(1).point, ref(3).point).flatMap {
+          case Right(blocks) =>
+            blocks
+              .evalMap {
+                case BlockFetchServer.IteratorResult.Block(raw) => seen.update(_ :+ raw)
+                case _                                          => IO.unit
+              }
+              .compile
+              .drain
+          case Left(unknown) => IO(fail(s"expected a batch, got $unknown"))
+        }
       )
-      _ <- range match
-        case Right(Right(blocks)) =>
-          blocks
-            .evalMap {
-              case BlockFetchServer.IteratorResult.Block(raw) => seen.update(_ :+ raw)
-              case _                                          => IO.unit
-            }
-            .compile
-            .drain
-            .background
-            .use { _ =>
-              for
-                failure <- reported.get.timeout(3.seconds)
-                closed <- released.get
-                values <- seen.get
-              yield
-                assertEquals(failure, Fatal.Storage(error))
-                assert(closed)
-                assertEquals(values, Vector(raw(1), raw(2)))
-            }
-        case other => IO(fail(s"expected a batch, got $other"))
+      _ <- pulled.background.use { _ =>
+        for
+          failure <- reported.get.timeout(3.seconds)
+          closed <- released.get
+          values <- seen.get
+        yield
+          assertEquals(failure, Fatal.Storage(error))
+          assert(closed)
+          assertEquals(values, Vector(raw(1), raw(2)))
+      }
     yield ()
   }
 

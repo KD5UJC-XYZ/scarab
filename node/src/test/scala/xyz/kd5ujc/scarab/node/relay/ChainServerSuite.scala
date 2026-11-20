@@ -1355,8 +1355,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   }
 
   test("a cycle of held predecessors ends the walk, and the range is not one the node holds") {
-    // two blocks naming each other, which only a collision of block hashes could make: the
-    // reference's walk would not end (`Paths.hs` 188-218 and 336-342); this one ends, an
+    // two held blocks each naming the other as its predecessor: the reference's walk would not
+    // end (`Paths.hs` 188-218 and 336-342); this one ends, an
     // Improvement of class (a) (#474), unless it meets the lower bound first
     val a = BlockRef(BigInt(50), hash(940001), BigInt(20))
     val b = BlockRef(BigInt(51), hash(940002), BigInt(21))
@@ -1443,22 +1443,30 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         reads <- Ref.of[IO, Int](0)
         pending <- Ref.of[IO, Option[cats.effect.FiberIO[Unit]]](None)
         next <- Ref.of[IO, Int](11)
-        got <- node(dir, hook = Some(hook)) { node =>
-          val change = ok(next.getAndUpdate(_ + 1).flatMap(n => node.adopt(n)))
-          // every read of the log changes the chain: at once, while a change can be published,
-          // and otherwise by a change that starts and lands once the read is done. The changes
-          // stop after 50 reads only so that a loop that waits for a quiet chain ends too
-          lazy val every: IO[Unit] = reads.updateAndGet(_ + 1).flatMap { n =>
-            val now = node.server.publishable.flatMap {
-              case _ if n > 50 => IO.unit
-              case true        => change
-              case false       => change.start.flatMap(fiber => pending.set(Some(fiber)))
+        answered <- node(dir, hook = Some(hook)) { node =>
+          // the change started while a read holds the lock is the scope's, and is joined while
+          // the stores are open
+          cats.effect.std.Supervisor[IO](await = false).use { writers =>
+            val change = ok(next.getAndUpdate(_ + 1).flatMap(n => node.adopt(n)))
+            // every read of the log changes the chain: at once, while a change can be published,
+            // and otherwise by a change that starts and lands once the read is done. The changes
+            // stop after 50 reads only so that a loop that waits for a quiet chain ends too
+            lazy val every: IO[Unit] = reads.updateAndGet(_ + 1).flatMap { n =>
+              val now = node.server.publishable.flatMap {
+                case _ if n > 50 => IO.unit
+                case true        => change
+                case false => writers.supervise(change).flatMap(fiber => pending.set(Some(fiber)))
+              }
+              now *> hook.set(every)
             }
-            now *> hook.set(every)
+            for
+              exchange <- hook
+                .set(every) *> overWire(node.server, ref(9, 1).point, ref(10, 1).point)
+              landed <- pending.get.flatMap(_.traverse(_.joinWithNever))
+            yield (exchange, landed)
           }
-          hook.set(every) *> overWire(node.server, ref(9, 1).point, ref(10, 1).point)
         }
-        landed <- pending.get.flatMap(_.traverse(_.joinWithNever))
+        (got, landed) = answered
         count <- reads.get
       yield
         assertEquals(got, served(fork1))

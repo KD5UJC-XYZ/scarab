@@ -55,8 +55,7 @@ private[relay] object HeldRange:
     /** The walk came back to a block already on the path before it met the lower bound. The
       * reference's walk would not end (`computePath`, `Paths.hs` 188-218, over
       * `computeReversePath`, 336-342, which follows the predecessors with no such check): an
-      * Improvement, of a defect of class (a) of REF-2 (#474), that only a collision of block hashes
-      * could reach. The range is not one the node holds.
+      * Improvement, of a defect of class (a) of REF-2 (#474). The range is not one the node holds.
       */
     case Cycle
 
