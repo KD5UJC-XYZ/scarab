@@ -23,7 +23,7 @@ module Main (main) where
 -- 12). The output is, for each case, what the parent harness writes for `kind` "context": every
 -- context of the top-level transaction and of each sub-transaction, each the `ToCBOR
 -- PlutusWithContext` encoding (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs:
--- 186-193`), or the collection's failure.
+-- 186-193`), or the collection's failure, the top level's and each sub-transaction's.
 
 import Cardano.Binary (DecoderError)
 import qualified Cardano.Crypto.Hash as Hash
@@ -108,10 +108,13 @@ spentOutput (i, o) = do
   output <- decodeHex o >>= either (die . show) pure . Binary.decodeFull (natVersion @12)
   pure (input, output)
 
-contexts :: Either e [PlutusWithContext] -> Value
+-- | A level's collection: its contexts, or its failure as the ledger shows it (`Show`), at the top
+-- level and in each sub-transaction alike. A collected level is written as before the failure was
+-- added, so the chain's own transactions' answers are unchanged.
+contexts :: Show e => Either e [PlutusWithContext] -> Value
 contexts =
   either
-    (const (object ["collected" .= False]))
+    (\failure -> object ["collected" .= False, "failure" .= show failure])
     (\pwcs -> object ["collected" .= True, "contexts" .= map (hexBytes . Plain.serialize') pwcs])
 
 runCase :: Chain -> PParams DijkstraEra -> Case -> IO Value

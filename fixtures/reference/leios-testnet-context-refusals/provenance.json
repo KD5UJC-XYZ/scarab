@@ -1,0 +1,64 @@
+{
+ "schemaVersion": 1,
+ "measuredAt": "2026-11-20",
+ "scope": "The Plutus script contexts the build of the public Leios testnet (release rc-2026w44) collects (mkDijkstraStAnnTopTx) for crafted Dijkstra transactions that reach what the chain's own transactions do not: the refusals of a Plutus V1 to V3 context in a Dijkstra transaction, a guard's context whose sub-transaction fails, a guard's redeemer with no script, and transactions of every language that are collected; in the chain context fixture's environment (protocol version 12.0, the cost models of Plutus V1 to V4 in force, the chain's system start and slot length). For each case the ToCBOR PlutusWithContext encoding of every context of the top-level transaction and of each sub-transaction, or the collection's failure as the ledger shows it (Show), at the top level and in each sub-transaction; results.topCollected and results.topRefused count the cases by their top level's collection alone (a case whose sub-transaction is refused counts as collected). Scripts are placeholders, never evaluated.",
+ "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+ "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+ "plutusSourceCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+ "reference": {
+  "release": "input-output-hk/ouroboros-leios rc-2026w44",
+  "cardanoNode": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+  "cardanoLedger": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+  "ouroborosConsensus": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+  "plutus": "plutus-core and plutus-ledger-api 1.71.0.0 (261766ad1d582bce8c86bad1af7a3b0e5355b21c)"
+ },
+ "compiler": "GHC 9.10.3 (the release builds with 9.6)",
+ "generator": {
+  "script": "scripts/oracle/leios-testnet/leios_context_refusal_cases.py",
+  "environment": "fixtures/reference/leios-testnet-chain-contexts/cases.json"
+ },
+ "commands": [
+  "python3 -I scripts/oracle/leios-testnet/leios_context_refusal_cases.py > fixtures/reference/leios-testnet-context-refusals/cases.json",
+  "python3 -I scripts/oracle/leios-testnet/chain/refusals.py --evidence <a directory outside the checkout> --owner era-dijkstra-contexts"
+ ],
+ "cases": {
+  "file": "cases.json",
+  "count": 18,
+  "sha256": "bbc2d1743632afc76de2e78b045763522e2e1073e544395f02d4f7a1fec3a25d"
+ },
+ "results": {
+  "file": "results.json",
+  "sha256": "5ca08a9135cadcc657cffd7b368a48c23d966def40f76aa1e8ddba53e2928f7b",
+  "topCollected": 7,
+  "topRefused": 11
+ },
+ "harness": {
+  "source": "scripts/oracle/leios-testnet/chain/Main.hs",
+  "sha256": "203424843a15c4ff6ff61e876aaf1a111d4ae4a795cc21f894ec6576376d2f8d"
+ },
+ "oracle": {
+  "imageId": "sha256:6eda2408a174059641319ab7c2475092c5daf83437daf62d89b80fbc7e24bba0",
+  "imageFilesSha256": {
+   "/oracle/leios-testnet/chain/Main.hs": "203424843a15c4ff6ff61e876aaf1a111d4ae4a795cc21f894ec6576376d2f8d",
+   "/oracle/leios-testnet/chain/scarab-leios-testnet-chain.cabal": "6eac84f5898c1da90eb3b08895e1a13b669ed68b8cc8cb851c7d8c7edcdc0ea4",
+   "/oracle/leios-testnet/cabal.project": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
+   "/oracle/leios-testnet/cabal.project.local": "211f4820919eb9a086db3cef543758dd8e7f870fbf722920b27b31467f0df549",
+   "/usr/local/bin/scarab-leios-testnet-chain": "110c44b84cb8c3b24c69c7acd1633bf53684eb8fb1556981b03c931b1878214a"
+  },
+  "oracleBinarySha256": "110c44b84cb8c3b24c69c7acd1633bf53684eb8fb1556981b03c931b1878214a",
+  "pinnedSources": {
+   "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c": "unchanged",
+   "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
+  },
+  "runnerSha256": {
+   "scripts/oracle/leios-testnet/chain/refusals.py": "cc4265f9c5cf63a715cc397e142f6fe67b46eed07590cb6fe3624f97bf05b102",
+   "scripts/oracle/leios-testnet/chain/run.py": "c78f85b81b727281d4481264217fd4eaea5c9c5749fad9d2aff0f8e40344b771",
+   "scripts/oracle/leios-testnet/leios_cbor.py": "916dee22a7f94a690f5c5c96e8a592d34c112228563ed1173b337e728a91685a",
+   "scripts/oracle/leios-testnet/leios_context_refusal_cases.py": "762bdeebf7398b5125cc6841bdb70df6ec1879373ae5cffc7e1f1a32b744f981",
+   "scripts/oracle/leios-testnet/leios_context_cases.py": "447080742f17889b63b9e7288206cb43e7ad978b5850826944aafb354df14867",
+   "scripts/oracle/conway-decoding/cases.py": "7896c2fbd5fdfd421d4ba7a54e2a08e9ab00265a065e7d5612968babbb030a09"
+  },
+  "network": "none"
+ },
+ "licence": "Apache-2.0, the project's licence, for the fixture's original material: the synthetic inputs Scarab generates (scripts/oracle/leios-testnet/leios_context_refusal_cases.py; placeholder scripts and hashes, no chain data) and the recorded results. Attributions: the environment (protocol version, cost models, system start and slot length) is the public Leios testnet's, as fixtures/reference/leios-testnet-chain-contexts records it; the verdicts are produced by the pinned Leios testnet build's unchanged cardano-ledger (Apache-2.0) in the chain harness image, which is not redistributed."
+}

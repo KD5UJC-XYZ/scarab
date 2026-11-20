@@ -66,7 +66,11 @@ executable, measured in the image by [`chain/run.py`](../../../scripts/oracle/le
 before it answered, with the ledger and cardano-base checkouts at the commits the project pins and
 unchanged. `python3 -I scripts/oracle/leios-testnet/chain/run.py --verify-only` checks the fixture
 against that record without Docker; on 2026-11-16 the image, so checked, answered the cases again
-with these `results.json` bytes.
+with these `results.json` bytes. On 2026-11-20 the harness was changed to write a sub-transaction's
+collection failure too (#85), which none of these transactions has; the rebuilt image answered the
+cases with `cases.json` and `results.json` byte for byte these, and its build was accepted anew
+(`--accept-build`), the reason and the previous build's digests recorded in the provenance
+(`buildAccepted`).
 
 The 200 transactions (89 of ranking blocks, 111 of endorser blocks; slots 292,839 to 2,562,177; 28
 with sub-transactions, 61 with a validity interval) run 273 scripts: 68 PlutusV1, 54 PlutusV2, 117

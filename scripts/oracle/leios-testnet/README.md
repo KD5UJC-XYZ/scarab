@@ -104,7 +104,26 @@ entry point is that executable; the parent image's tag the Dockerfile names is n
 fixture's provenance binds the image's build files and executable, and a later record must find them
 again (`--accept-build` accepts a build reviewed anew).
 
+The harness writes a level's collection failure as the ledger shows it (`Show`), the top level's and each
+sub-transaction's; a collected level is written as it was before the sub-transactions' failures were added
+(2026-11-20, #85), and the rebuilt image answered the chain's cases with the recorded bytes.
+
+`chain/refusals.py` runs the same image, measured by `run.py`'s check and required to be the build the chain
+contexts fixture accepted, on the cases of `leios_context_refusal_cases.py`: crafted transactions in the chain's
+environment (#85). The chain's own transactions already have collected scripts of all four languages; these add the
+refusal paths they do not reach, and positive controls beside them, among them a transaction with scripts of all
+four languages. Unlike the chain's own transactions they may be refused, and the fixture keeps the answers as the
+harness writes them:
+
+```sh
+python3 -I scripts/oracle/leios-testnet/leios_context_refusal_cases.py > fixtures/reference/leios-testnet-context-refusals/cases.json
+python3 -I scripts/oracle/leios-testnet/chain/refusals.py --evidence <a directory outside the checkout>
+python3 -I scripts/oracle/leios-testnet/chain/refusals.py --verify-only
+```
+
 The [chain contexts fixture](../../../fixtures/reference/leios-testnet-chain-contexts/README.md)
-says how its cases were extracted, and the
+says how its cases were extracted, the
+[context refusals fixture](../../../fixtures/reference/leios-testnet-context-refusals/README.md) what its cases
+reach, and the
 [chain scripts fixture](../../../fixtures/reference/leios-testnet-chain-scripts/README.md) how the
 plutus 1.71.0.0 oracle judged them.
