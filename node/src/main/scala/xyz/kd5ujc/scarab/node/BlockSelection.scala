@@ -37,6 +37,8 @@ private[node] final class BlockSelection[F[_]: Async] private (
       last: Ref[F, Option[(BlockPool.Processed, Bytes)]]
   ): BlockSelection.Bodies[F] =
     new BlockSelection.Bodies[F]:
+      def forged(header: Header) =
+        bodies.get(header.hash).exists(_.origin == BlockPool.Source.Forged)
       def fetch(header: Header)(using Raise[F, NodeError]) =
         bodies
           .get(header.hash)
@@ -60,8 +62,16 @@ private[node] final class BlockSelection[F[_]: Async] private (
             )
         }
 
+  /** Whom a refusal in a selection for `cause` may blame: the sender of an admitted block, nobody
+    * else (`Peer.Validation`).
+    */
+  private def validation(cause: BlockSelection.Cause): Peer.Validation[F] = cause match
+    case BlockSelection.Cause.Admitted(admission) => Peer.Validation.admission(pool, admission)
+    case BlockSelection.Cause.Reselection | BlockSelection.Cause.Forged(_) =>
+      Peer.Validation.none[F]
+
   private def selectLocked(
-      adding: Option[BlockPool.Admission],
+      cause: BlockSelection.Cause,
       phase: Phase = Phase.Admission
   )(using Raise[F, NodeError]): F[Unit] =
     for
@@ -73,10 +83,12 @@ private[node] final class BlockSelection[F[_]: Async] private (
       // only a reselection judges a withheld block again, the one due first with those of its
       // chain, never an admission: a delivery cannot bring an attempt forward, and a refusal on it
       // blames no session
-      released <- adding.fold(
-        pool.noVerdictBlocks
-          .release(now, hash => bodies.get(hash).flatMap(_.delivered.header.prevHash))
-      )(_ => F.pure(None))
+      released <- cause match
+        case BlockSelection.Cause.Reselection =>
+          pool.noVerdictBlocks
+            .release(now, hash => bodies.get(hash).flatMap(_.delivered.header.prevHash))
+        case BlockSelection.Cause.Admitted(_) | BlockSelection.Cause.Forged(_) =>
+          F.pure(None)
       known <- pool.invalidBlocks.snapshot
       // a block the node has no verdict on is not judged again before its time (issues 567, 693)
       withheld <- pool.noVerdictBlocks.excluded(released)
@@ -85,7 +97,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
           if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
           bodies.view.mapValues(_.delivered.header).toMap,
           known.entries.keySet ++ withheld,
-          adding.map(_.delivered.header.hash),
+          cause.containing,
           originPredecessor
         )
         .leftMap {
@@ -114,7 +126,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
             application.apply(
               reader(bodies, last),
               candidate,
-              adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _)),
+              validation(cause),
               phase
             )
           )
@@ -128,6 +140,14 @@ private[node] final class BlockSelection[F[_]: Async] private (
       // a released block no preferred candidate reached waits its delay again, uncounted
       _ <- released.traverse_(pool.noVerdictBlocks.unreached)
     yield ()
+
+  /** Chain selection for a block this node forged, which is in the processed forest: as for a
+    * delivered block, only the candidates through it, and nobody to punish for a refusal. The
+    * caller holds the application lock ([[Application.locked]]) and gives its own error scope.
+    */
+  private[node] val selecting: BlockSelection.Selecting[F] = new BlockSelection.Selecting[F]:
+    def forged(hash: Bytes)(using Raise[F, NodeError]): F[Unit] =
+      selectLocked(BlockSelection.Cause.Forged(hash))
 
   private def consume(using Raise[F, NodeError]): F[Unit] =
     F.foreverM(pool.admissions.next.flatMap {
@@ -145,7 +165,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
                     else
                       before.prepare(header, admission.taken.block) *> pool
                         .processAdmission(admission) *>
-                        selectLocked(Some(admission))
+                        selectLocked(BlockSelection.Cause.Admitted(admission))
                   }
               }
             }) *> pool.completeAdmission(header.hash)
@@ -153,7 +173,10 @@ private[node] final class BlockSelection[F[_]: Async] private (
       case BlockAdmissions.Work.Reprocess(done) =>
         pool.admissions.processing(WorkKind.Reprocess, AdmissionStage.WaitingForApplication)(
           application
-            .locked(pool.admissions.stage(AdmissionStage.Selecting) *> selectLocked(None))
+            .locked(
+              pool.admissions.stage(AdmissionStage.Selecting) *>
+                selectLocked(BlockSelection.Cause.Reselection)
+            )
             .guarantee(done.complete(()).void)
         )
     })
@@ -178,7 +201,8 @@ private[node] final class BlockSelection[F[_]: Async] private (
       .scoped[F, Fatal, Unit](Fatal.Defect(_)) {
         given Raise[F, NodeError] = Peer.contramapped(summon[Handle[F, Fatal]])(Fatal.of)
         application
-          .locked(selectLocked(None, Phase.Startup)) *> ready.complete(Right(())).void *>
+          .locked(selectLocked(BlockSelection.Cause.Reselection, Phase.Startup)) *>
+          ready.complete(Right(())).void *>
           F.both(consume, F.both(reselect, retries)).void
       }
       .guarantee(pool.admissions.close)
@@ -191,13 +215,46 @@ private[node] object BlockSelection:
   enum Phase:
     case Startup, Admission
 
+  /** What a selection runs for: the worker's reselection (the LoE moved, the node caught up, a
+    * withheld block is due, or the start), whose candidates are every path the forest has, and
+    * which judges again the withheld block due first; a delivered block's admission, whose
+    * candidates go through it and whose refusals may blame its sender; or a block this node forged
+    * ([[Follower.submitForged]]), whose candidates go through it and whose refusals blame nobody.
+    * The reference runs `ChainSelReprocessLoEBlocks` for the first and `chainSelectionForBlock` for
+    * the other two (ouroboros-consensus 82ecba329 `Storage/ChainDB/Impl/ChainSel.hs:372,452`).
+    */
+  enum Cause:
+    case Reselection
+    case Admitted(admission: BlockPool.Admission)
+    case Forged(hash: Bytes)
+
+    def containing: Option[Bytes] = this match
+      case Reselection         => None
+      case Admitted(admission) => Some(admission.delivered.header.hash)
+      case Forged(hash)        => Some(hash)
+
+  /** The worker's chain selection for a block this node forged, run by the follower under the
+    * application lock it holds.
+    */
+  trait Selecting[F[_]]:
+    def forged(hash: Bytes)(using Raise[F, NodeError]): F[Unit]
+
+  /** What is done with a block before it joins the processed forest: a delivered block is written
+    * to the received log and its verification cache warmed (`prepare`); a block this node forged is
+    * written to the received log only (`store`), since its rules ran or run when selection reaches
+    * it ([[Follower.submitForged]]).
+    */
   trait Before[F[_]]:
     def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
+    def store(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
 
   object Before:
     def noop[F[_]: cats.Applicative]: Before[F] = new Before[F]:
       def prepare(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(
           using Raise[F, NodeError]
+      ): F[Unit] = cats.Applicative[F].unit
+      def store(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(using
+          Raise[F, NodeError]
       ): F[Unit] = cats.Applicative[F].unit
 
   /** What the worker applies a candidate from: the bodies the pool admitted, and where a refusal of
@@ -205,6 +262,12 @@ private[node] object BlockSelection:
     */
   trait Bodies[F[_]]:
     def fetch(header: Header)(using Raise[F, NodeError]): F[Bytes]
+
+    /** Whether the block is one this node forged (`BlockPool.Source.Forged`): with no verdict on
+      * it, it is our own block without a verdict, which is not judged again (R3 of the #567
+      * decision).
+      */
+    def forged(header: Header): Boolean
     def invalidated(header: Header, error: ValidationError): F[Either[BlockPoolProblem, Unit]]
 
   trait Application[F[_]]:
@@ -231,18 +294,15 @@ private[node] object BlockSelection:
       fatal: Fatal => F[Unit],
       application: Application[F],
       originPredecessor: Option[Bytes]
-  )(using before: Before[F], owner: Raise[F, NodeError]): Resource[F, Unit] =
+  )(using before: Before[F], owner: Raise[F, NodeError]): Resource[F, Selecting[F]] =
     work.session.flatMap { session =>
       pool.invalidBlocks.selectionResource *> pool.admissions.resource(a =>
         session.ready(Vector(a.delivered.header.hash))
       ) *>
         (for
           ready <- Resource.eval(Deferred[F, Either[Fatal, Unit]])
-          _ <- Resource.make(
-            new BlockSelection(pool, session, application, originPredecessor, before)
-              .run(fatal, ready)
-              .start
-          )(_.cancel)
+          selection = new BlockSelection(pool, session, application, originPredecessor, before)
+          _ <- Resource.make(selection.run(fatal, ready).start)(_.cancel)
           result <- Resource.eval(ready.get)
           _ <- Resource.eval(result match
             case Right(_)                        => Async[F].unit
@@ -251,5 +311,5 @@ private[node] object BlockSelection:
             case Left(Fatal.Internal(cause))     => owner.raise[NodeError, Unit](cause)
             case Left(Fatal.Unverifiable(cause)) => owner.raise[NodeError, Unit](cause)
             case Left(Fatal.Defect(cause))       => Async[F].raiseError[Unit](cause))
-        yield ())
+        yield selection.selecting)
     }

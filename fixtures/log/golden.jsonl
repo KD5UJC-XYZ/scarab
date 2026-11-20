@@ -163,6 +163,7 @@
 {"event":"adopted","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"latencyMs":12}
 {"event":"adopted","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"latencyMs":null}
 {"event":"lost","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","reason":"slot battle"}
+{"event":"notKept","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","reason":"not kept: defect: keeping fault"}
 {"event":"kesEvolved","at":"2026-10-16T12:00:00Z","kesPeriod":33,"relativeKesPeriod":2}
 {"event":"kesReloaded","at":"2026-10-16T12:00:00Z","opCertCounter":4,"kesStart":30,"kesEvolutions":62,"kesPeriod":33,"remainingKesPeriods":59}
 {"event":"blockForgingUpdate","at":"2026-10-16T12:00:00Z","enabled":"EnabledBlockForging"}

@@ -424,6 +424,8 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                   ),
                                   raw
                                 )
+                              def store(header: Header, raw: Bytes)(using Raise[IO, NodeError]) =
+                                prepare(header, raw)
                             // Reference start order at 82ecba329: ChainDB and its AddBlockRunner
                             // (NodeLifecycle.hs:174–180), then the peers (Run.hs:441–474), the
                             // BlockFetch logic (Run.hs:478) and the GDD watcher (Run.hs:488–500). A

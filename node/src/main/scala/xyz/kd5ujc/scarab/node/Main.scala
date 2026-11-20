@@ -279,7 +279,7 @@ object Main extends IOApp:
             yield Some(Mempool.Target(ledger, tipSlot, adopted, tipHash))
         }
 
-  private def seedReceived(
+  private[node] def seedReceived(
       pool: BlockPool[IO],
       received: Option[ReceivedBlocks[IO]],
       epochSlots: BigInt
@@ -316,13 +316,16 @@ object Main extends IOApp:
     given BlockSelection.Before[IO] with
       def prepare(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes)(using
           Raise[IO, NodeError]
+      ): IO[Unit] = store(header, raw) *> preverify(Vector(raw))
+      def store(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes)(using
+          Raise[IO, NodeError]
       ): IO[Unit] =
         received.traverse_(
           _.put(
             BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary),
             raw
           )
-        ) *> preverify(Vector(raw))
+        )
     Resource
       .eval(work.fold(SelectionWork.create[IO](pool.fetchCoordinator.refreshGenesis))(IO.pure))
       .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))

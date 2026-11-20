@@ -553,6 +553,12 @@ object Traced:
         "hash" -> hash.hex.asJson,
         "reason" -> String.valueOf(reason).asJson
       )
+    case ForgeEvent.NotKept(slot, hash, retention) =>
+      EventKind.NotKept.line(
+        "slot" -> slot.asJson,
+        "hash" -> hash.hex.asJson,
+        "reason" -> retention.message.asJson
+      )
     case ForgeEvent.KesEvolved(period, rel) =>
       EventKind.KesEvolved.line("kesPeriod" -> period.asJson, "relativeKesPeriod" -> rel.asJson)
     case ForgeEvent.KesReloaded(counter, start, evolutions, period) =>

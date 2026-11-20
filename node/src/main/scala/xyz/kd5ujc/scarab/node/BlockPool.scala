@@ -311,7 +311,7 @@ final class BlockPool[F[_]: Async] private (
   private def distrust(source: Source, error: ValidationError): F[Unit] =
     (source match
       case Source.Session(origin) => distrustSession(origin, error)
-      case Source.Recovered =>
+      case Source.Recovered | Source.Forged =>
         slots.update(s => s.copy(entries = s.entries -- refusedHash(error)).coherent)
     ) *> recovered.traverse_(store => refusedHash(error).traverse_(store.invalidate))
 
@@ -395,7 +395,7 @@ final class BlockPool[F[_]: Async] private (
       lastValid: ChainSync.Point
   ): F[Either[BlockPoolProblem, Rejection]] =
     taken.origin match
-      case Source.Recovered => F.pure(Right(Rejection.NotImplicated(taken.origin)))
+      case Source.Recovered | Source.Forged => F.pure(Right(Rejection.NotImplicated(taken.origin)))
       case Source.Session(id) =>
         taken.metadata match
           case None => F.pure(Left(BlockPoolProblem.MissingDeliveredHeader(added)))
@@ -438,7 +438,7 @@ final class BlockPool[F[_]: Async] private (
   private def retained(source: Source, hash: Bytes): F[Boolean] =
     reap *> (source match
       case Source.Session(origin) => slots.get.map(_.origins.contains(origin))
-      case Source.Recovered =>
+      case Source.Recovered | Source.Forged =>
         (slots.get, recovered.traverse(_.holds)).mapN { (current, durable) =>
           current.entries.contains(hash) || current.processed.contains(hash) || durable.exists(
             _(hash)
@@ -551,6 +551,26 @@ final class BlockPool[F[_]: Async] private (
         Processed(admission.delivered, admission.taken.origin, held(admission.taken.block))
       current.copy(processed = current.processed.updated(hash, processed)) -> true
   }
+
+  /** A block this node forged joins the processed forest, as the reference's ChainDB puts a block
+    * it is given, a forged one included, in its VolatileDB before chain selection runs for it,
+    * unless the block is there already, known invalid or no higher than the immutable tip
+    * (`VolatileDB.putBlock`, ouroboros-consensus 82ecba329 `Storage/ChainDB/Impl/ChainSel.hs`
+    * 428-450; 433-455 at 808e40054, 467-489 at 2416493bf). Its body is read back from the received
+    * log, where it was put first, or held without one; a reselection of the forest considers it as
+    * any other block, and a refusal of it blames nobody ([[Source.Forged]]). False if the forest
+    * has it already.
+    */
+  private[node] def processForged(forged: Delivered): F[Boolean] =
+    slots
+      .modify { current =>
+        val hash = forged.header.hash
+        if current.processed.contains(hash) then current -> false
+        else
+          val processed = Processed(forged.metadata, Source.Forged, held(forged.block))
+          current.copy(processed = current.processed.updated(hash, processed)) -> true
+      }
+      .flatTap(added => fetchCoordinator.refreshGenesis.whenA(added))
 
   /** The body a processed block keeps in memory: none when the received log holds it. */
   private def held(raw: Bytes): Option[Bytes] = Option.when(recovered.isEmpty)(raw)
@@ -698,6 +718,13 @@ object BlockPool:
   enum Source:
     case Session(owner: Long)
     case Recovered
+
+    /** A block this node forged ([[BlockPool.processForged]]): no session delivered it, and a
+      * refusal of it blames nobody, as the reference's forging loop adds its block with
+      * `noPunishment` (ouroboros-consensus 82ecba329 `NodeKernel.hs:747`; `NodeKernel/Forge.hs:275`
+      * at 808e40054).
+      */
+    case Forged
 
   /** The received log, through callbacks that return readable original bytes and own their
     * infrastructure error scope.

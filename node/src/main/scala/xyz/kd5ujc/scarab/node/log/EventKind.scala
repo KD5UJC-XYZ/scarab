@@ -232,6 +232,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case Forged extends EventKind(Area.Forge, Severity.Info)
   case Adopted extends EventKind(Area.Forge, Severity.Info)
   case Lost extends EventKind(Area.Forge, Severity.Notice)
+  case NotKept extends EventKind(Area.Forge, Severity.Warning)
   case KesEvolved extends EventKind(Area.Forge, Severity.Info)
   case KesReloaded extends EventKind(Area.Forge, Severity.Notice)
   case KesReloadRefused extends EventKind(Area.Forge, Severity.Error)

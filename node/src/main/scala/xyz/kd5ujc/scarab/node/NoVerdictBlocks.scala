@@ -38,6 +38,14 @@ final class NoVerdictBlocks[F[_]: Async] private (
   def record(header: Header, cause: BlockNoVerdict): F[(Int, NoVerdictRetry)] =
     F.monotonic.flatMap(end => state.modify(_.recorded(header.hash, header.slot, cause, end)))
 
+  /** Record an attempt on a block this node forged that ended without a verdict: it is not judged
+    * again in this run, whatever its cause, nor released with a related block that is due
+    * ([[Schedule.Never]]), as the forger handles our own block without a verdict as a refusal (R3
+    * of the #567 decision; the retry schedule of #693 amends R1, a peer's block, only).
+    */
+  def recordOwn(header: Header, cause: BlockNoVerdict): F[(Int, NoVerdictRetry)] =
+    state.modify(_.recordedOwn(header.hash, header.slot, cause))
+
   /** A verdict on these blocks (judged valid, or refused by the rules): their schedules end. */
   def verdict(hashes: Iterable[Bytes]): F[Unit] =
     state.update(_.removed(hashes))
@@ -93,8 +101,8 @@ final class NoVerdictBlocks[F[_]: Async] private (
             withheld.cause,
             withheld.attempts,
             withheld.schedule match
-              case Schedule.Once     => None
-              case Schedule.At(next) => Some((next - now).max(Duration.Zero))
+              case Schedule.Once | Schedule.Never => None
+              case Schedule.At(next)              => Some((next - now).max(Duration.Zero))
           )
         )
     )
@@ -104,6 +112,11 @@ object NoVerdictBlocks:
   enum Schedule:
     /** Not in this run: its cause does not pass on its own. */
     case Once
+
+    /** Not in this run, and not released with a related block that is due either: a block this node
+      * forged ([[NoVerdictBlocks.recordOwn]]).
+      */
+    case Never
 
     /** At the monotonic time `next`. */
     case At(next: FiniteDuration)
@@ -160,6 +173,20 @@ object NoVerdictBlocks:
         case BlockNoVerdict.Recovery.Deterministic => (Schedule.Once, NoVerdictRetry.Never)
       (changed(byHash.updated(hash, Withheld(slot, cause, attempts, schedule))), (attempts, retry))
 
+    /** An attempt that ended without a verdict on a block of our own, never judged again in this
+      * run.
+      */
+    def recordedOwn(
+        hash: Bytes,
+        slot: BigInt,
+        cause: BlockNoVerdict
+    ): (Entries, (Int, NoVerdictRetry)) =
+      val attempts = byHash.get(hash).fold(1)(_.attempts + 1)
+      (
+        changed(byHash.updated(hash, Withheld(slot, cause, attempts, Schedule.Never))),
+        (attempts, NoVerdictRetry.Never)
+      )
+
     def removed(hashes: Iterable[Bytes]): Entries =
       val present = hashes.filter(byHash.contains)
       if present.isEmpty then this else changed(byHash -- present)
@@ -181,14 +208,20 @@ object NoVerdictBlocks:
         .minOption
         .map(_._3)
 
-    /** The block due first at `now`, with the withheld blocks before and after it on its chain. */
+    /** The block due first at `now`, with the withheld blocks before and after it on its chain, but
+      * our own blocks withheld for good ([[Schedule.Never]]): they stay excluded, and so does a
+      * candidate through them.
+      */
     def released(now: FiniteDuration, parent: Bytes => Option[Bytes]): Option[Released] =
       due(now).map { first =>
         val before = ancestors(first, parent)
         Released(
           first,
-          byHash.filter((hash, _) =>
-            hash == first || before.contains(hash) || ancestors(hash, parent).contains(first)
+          byHash.filter((hash, withheld) =>
+            withheld.schedule match
+              case Schedule.Never => false
+              case Schedule.Once | Schedule.At(_) =>
+                hash == first || before.contains(hash) || ancestors(hash, parent).contains(first)
           )
         )
       }

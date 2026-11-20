@@ -114,6 +114,12 @@ enum ForgeEvent:
     */
   case Lost(slot: BigInt, hash: Bytes, reason: String)
 
+  /** The forged block could not be kept for a later chain selection ([[Follower.submitForged]]): a
+    * failure of the node's own that does not stop it. What selection made of the block is traced as
+    * it would be otherwise.
+    */
+  case NotKept(slot: BigInt, hash: Bytes, retention: Follower.Retention)
+
   /** The KES key moved to a new period. */
   case KesEvolved(kesPeriod: BigInt, relativeKesPeriod: Int)
 
@@ -1510,7 +1516,23 @@ final class Forger[F[_]: Async, S](
   ): F[Unit] =
     val block = prepared.block
     val epoch = geometry.epochOf(slot)
-    follower.adoptForged(block.header, block.raw).flatMap {
+    follower.submitForged(block.header, block.raw).flatMap { submitted =>
+      adoption(slot, epoch, prepared, hold, submitted.adoption) *>
+        Forger
+          .notKept(slot, block.header.hash, submitted.retention)
+          .traverse_(event => hold.line(event))
+    }
+
+  /** What the forger does with what chain selection made of its block. */
+  private def adoption(
+      slot: BigInt,
+      epoch: BigInt,
+      prepared: Prepared[S],
+      hold: Holding,
+      selected: Follower.Adoption
+  )(using Handle[F, NodeError]): F[Unit] =
+    val block = prepared.block
+    selected match
       case Follower.Adoption.Adopted(ref) =>
         for
           at <- now
@@ -1547,7 +1569,6 @@ final class Forger[F[_]: Async, S](
       case Follower.Adoption.NoVerdict(_) =>
         val ids = prepared.ids.toSet
         hold.effect(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
-    }
 
   /** A block forged in `slot`, asserted: that Scarab forges, and whether with transactions. */
   private def forged(slot: BigInt, block: Forger.Built): F[Unit] =
@@ -1870,6 +1891,23 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+
+  /** The line a forged block that could not be kept gets: only for a failure of the node's own
+    * ([[Follower.Retention]]), not for a block the reference's ChainDB would not keep either, nor
+    * while no selection worker runs.
+    */
+  private[forge] def notKept(
+      slot: BigInt,
+      hash: Bytes,
+      retention: Follower.Retention
+  ): Option[ForgeEvent] = retention match
+    case Follower.Retention.Unmatched(_) | Follower.Retention.Failed(_) |
+        Follower.Retention.Defect(_) =>
+      Some(ForgeEvent.NotKept(slot, hash, retention))
+    case Follower.Retention.Kept | Follower.Retention.Present | Follower.Retention.TooOld |
+        Follower.Retention.KnownInvalid | Follower.Retention.NoVerdict |
+        Follower.Retention.NoWorker =>
+      None
 
   /** The most [[Forger]] sleeps at once: a century, far inside what a `FiniteDuration` holds. */
   val LongestWait: FiniteDuration = 36500.days

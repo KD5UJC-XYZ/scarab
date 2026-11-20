@@ -188,6 +188,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake`, `opCertCounter`; Scarab's account of a block, after `forgedBlock` |
 | `adopted` | `Forge.Adopted` | Info | `block`, `latencyMs`; after `adoptedBlock` |
 | `lost` | `Forge.Lost` | Notice | `slot`, `hash`, `reason`; after `didntAdoptBlock`, or when an adopted block is replaced later |
+| `notKept` | `Forge.NotKept` | Warning | `slot`, `hash`, `reason`: the forged block could not be kept for a later chain selection, a failure of the node's own that does not stop it (a storage failure does); what selection made of the block is logged as it is otherwise; an approved deviation ([decisions](../decisions.md#what-stops-the-node)) |
 | `kesEvolved` | `Forge.KesEvolved` | Info | `kesPeriod`, `relativeKesPeriod` |
 | `kesReloaded` | `Forge.KesReloaded` | Notice | `opCertCounter`, `kesStart`, `kesEvolutions`, `kesPeriod`, `remainingKesPeriods` |
 | `kesReloadRefused` | `Forge.KesReloadRefused` | Error | `kind`, `message` |

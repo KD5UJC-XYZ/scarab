@@ -147,7 +147,11 @@ step by step and trace by trace, with the reference's trace names, severities an
    transactions leave the mempool, valid or not, and the slot ends.
    In Genesis mode, before the node is caught up, the Limit on Eagerness can hold the block back as it holds back a
    peer's ([Genesis](../compatibility/ouroboros-genesis.md#a-forged-block-and-the-limit-on-eagerness)): it is then
-   `didntAdoptBlock` (then `lost`) as well.
+   `didntAdoptBlock` (then `lost`) as well. Whatever selection makes of the block, it is kept, as the reference's
+   ChainDB keeps a block it is given
+   ([Genesis](../compatibility/ouroboros-genesis.md#a-forged-block-is-kept-as-the-reference-keeps-it)): chain
+   selection may still take it later, which is logged as the chain's `extended`, not by the forger. A failure to
+   keep it that is not a storage failure is `notKept`, and the slot ends as it would otherwise.
 
 The forger needs no peer: like the reference it forges on its own chain. Only Praos with Conway transactions
 is forged: a TPraos era or Byron is `ForgeError.UnsupportedProtocol`, the ledger view of a
