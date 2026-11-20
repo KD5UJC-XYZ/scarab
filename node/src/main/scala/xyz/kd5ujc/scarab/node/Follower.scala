@@ -225,15 +225,18 @@ final class Follower[F[_]: Async, S] private (
     // (`retain`). A forged block whose body does not match its header (a bug of ours) is not kept:
     // the rules would refuse it when selection reached it.
     val before = summon[BlockSelection.Before[F]]
-    val forged = new Follower.Keeping[F]:
+    def forged(selecting: BlockSelection.Selecting[F]) = new Follower.Keeping[F]:
+      // the reference's order (ChainSel.hs:428-440): too old, already stored, known invalid
       private def admitted(
           header: Header,
           raw: Bytes
       ): F[Either[Follower.Retention, BlockPool.Delivered]] =
-        (chain.get, pool.invalidBlocks.lookup(header.hash)).mapN { (current, invalid) =>
-          if !Follower.youngerThanImmutable(current, header) then Left(Follower.Retention.TooOld)
-          else if invalid.isDefined then Left(Follower.Retention.KnownInvalid)
-          else BlockPool.Delivered.checked(header, raw).leftMap(Follower.Retention.Unmatched(_))
+        (chain.get, pool.processedSnapshot, pool.invalidBlocks.lookup(header.hash)).mapN {
+          (current, forest, invalid) =>
+            if !Follower.youngerThanImmutable(current, header) then Left(Follower.Retention.TooOld)
+            else if forest.contains(header.hash) then Left(Follower.Retention.Present)
+            else if invalid.isDefined then Left(Follower.Retention.KnownInvalid)
+            else BlockPool.Delivered.checked(header, raw).leftMap(Follower.Retention.Unmatched(_))
         }
       private def stored(block: BlockPool.Delivered)(using Raise[F, NodeError]): F[Unit] =
         before.store(block.header, block.block) *> pool.processForged(block).void
@@ -258,8 +261,30 @@ final class Follower[F[_]: Async, S] private (
                 .as(Follower.Retention.Kept)
           )
         )
-    BlockSelection.resource(pool, work, fatal, application, originPredecessor) *>
-      Resource.make(keeping.set(Some(forged)))(_ => keeping.set(None))
+      def select(header: Header, loss: Follower.AdoptionLoss)(using
+          Raise[F, NodeError]
+      ): F[Follower.Adoption] =
+        selecting.forged(header.hash) *> outcome(header, loss)
+      def outcome(header: Header, loss: Follower.AdoptionLoss): F[Follower.Adoption] =
+        (
+          chain.get,
+          pool.invalidBlocks.lookup(header.hash),
+          pool.noVerdictBlocks.lookup(header.hash)
+        ).mapN { (current, invalid, withheld) =>
+          if current.tip == header.point then
+            Follower.Adoption.Adopted(
+              BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+            )
+          else
+            invalid.fold(
+              withheld.fold(Follower.Adoption.Lost(loss))(w => Follower.Adoption.NoVerdict(w.cause))
+            )(Follower.Adoption.Invalid(_))
+        }
+    BlockSelection
+      .resource(pool, work, fatal, application, originPredecessor)
+      .flatMap(selecting =>
+        Resource.make(keeping.set(Some(forged(selecting))))(_ => keeping.set(None))
+      )
 
   /** The Limit on Eagerness on `selected`: the LoE fragment of the GSM state (`setGetLoEFragment`,
     * Node/Genesis.hs:252-278, ouroboros-consensus 82ecba329; the same at 808e40054 and 2416493bf),
@@ -740,14 +765,19 @@ final class Follower[F[_]: Async, S] private (
     * and the received log, unless the forest has it already, it is known invalid or it is no higher
     * than the immutable tip ([[Follower.youngerThanImmutable]]). An adopted block is kept before
     * the chain that holds it is published, so a later rollback leaves it in the forest; a refused
-    * one is recorded invalid there, as the reference's selection records it. The worker's
-    * selections read the forest: when a block delivered later makes the kept block's branch
-    * preferred, and when the LoE moves or the node is caught up
-    * ([[GenesisGovernor.selectionChanged]]), as `ChainSelReprocessLoEBlocks` does (ChainSel.hs
-    * 358-413, which `gddWatcher` triggers, Genesis/Governor.hs:172-184; ChainSel.hs:363-418 at
-    * 808e40054). The block is adopted then if it is still valid, joins our chain and is preferred;
-    * the forger's trace of it stays the one of its submission. A block our implementation has no
-    * verdict on is not kept: it is never judged again (`NoVerdictRetry.Never`).
+    * one is recorded invalid there, as the reference's selection records it. A kept block the
+    * direct selection did not take goes to the worker's selection for it at once, as the reference
+    * runs `chainSelectionForBlock` right after `putBlock` (ChainSel.hs:452): its candidates go
+    * through the forest's blocks, so a block whose predecessor left our chain but is kept can be
+    * adopted there, and the submission says what that selection decided
+    * ([[Follower.Keeping.select]]). The worker's selections read the forest later too: when a block
+    * delivered later makes the kept block's branch preferred, and when the LoE moves or the node is
+    * caught up ([[GenesisGovernor.selectionChanged]]), as `ChainSelReprocessLoEBlocks` does
+    * (ChainSel.hs 358-413, which `gddWatcher` triggers, Genesis/Governor.hs:172-184;
+    * ChainSel.hs:363-418 at 808e40054). The block is adopted then if it is still valid, joins our
+    * chain and is preferred; the forger's trace of it stays the one of its submission. A block our
+    * implementation has no verdict on is not kept: it is never judged again
+    * (`NoVerdictRetry.Never`).
     *
     * What became of the block is the submission's [[Follower.Retention]]: a failure to keep it does
     * not change the adoption ([[retain]]).
@@ -779,8 +809,28 @@ final class Follower[F[_]: Async, S] private (
               selected(limit).map(chosen => (chosen.base, l.depthTo(chosen.base))).toRight(lost)
             }
         result <- plan match
+          // kept, the block goes to the worker's selection, which may take it through blocks the
+          // forest has and our chain does not, as the reference's `chainSelectionForBlock` follows
+          // the VolatileDB's predecessors (ChainSel.hs:452, 735-777)
           case Left(reason) =>
-            retain(_.keep(header, raw)).map(Follower.Submission(Follower.Adoption.Lost(reason), _))
+            retain(_.keep(header, raw)).flatMap(kept =>
+              keeping.get
+                .flatMap(
+                  _.fold(F.pure(Follower.Adoption.Lost(reason)))(keeper =>
+                    kept match
+                      case Follower.Retention.Kept => keeper.select(header, reason)
+                      // stored already, as the reference's `IgnoreBlockAlreadyInVolatileDB`: no
+                      // selection, and the forging loop reads the tip as it is
+                      case Follower.Retention.Present => keeper.outcome(header, reason)
+                      case Follower.Retention.TooOld | Follower.Retention.KnownInvalid |
+                          Follower.Retention.NoVerdict | Follower.Retention.NoWorker |
+                          Follower.Retention.Unmatched(_) | Follower.Retention.Failed(_) |
+                          Follower.Retention.Defect(_) =>
+                        F.pure(Follower.Adoption.Lost(reason))
+                  )
+                )
+                .map(Follower.Submission(_, kept))
+            )
           case Right((at, depth)) =>
             for
               rolled <- before.rollback(at).fold(_.raise[F, VolatileChain[S]], _.pure[F])
@@ -991,8 +1041,8 @@ object Follower:
     * selection worker, whose selections read it, and the received log
     * ([[Follower.blockSelection]]). Each operation admits the block as the reference's ChainDB
     * admits a block it is given (Storage/ChainDB/Impl/ChainSel.hs:428-450, ouroboros-consensus
-    * 82ecba329): not when it is no younger than the immutable tip, nor when it is known invalid; a
-    * block the forest has already is kept as it is.
+    * 82ecba329): not when it is no younger than the immutable tip, nor when the forest has it
+    * already (`Present`, neither stored nor selected again), nor when it is known invalid.
     */
   private[node] trait Keeping[F[_]]:
     def keep(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Retention]
@@ -1004,10 +1054,27 @@ object Follower:
         Raise[F, NodeError]
     ): F[Retention]
 
+    /** Run the worker's chain selection for a kept block chain selection did not take directly for
+      * `loss`, as the reference runs it after `putBlock` (`chainSelectionForBlock`,
+      * Storage/ChainDB/Impl/ChainSel.hs:452, 82ecba329; 457 at 808e40054), and say what it made of
+      * the block as the reference's forging loop reads it (NodeKernel.hs:758-769): `Adopted` when
+      * the block is the tip after it, `Invalid` when it found the block invalid, `NoVerdict` when
+      * it withheld it, else `Lost(loss)`. The caller holds the application lock.
+      */
+    def select(header: Header, loss: AdoptionLoss)(using Raise[F, NodeError]): F[Adoption]
+
+    /** What the reference's forging loop reads of a block it added (NodeKernel.hs:758-769): as
+      * [[select]] says, without running a selection.
+      */
+    def outcome(header: Header, loss: AdoptionLoss): F[Adoption]
+
   /** What became of a forged block offered to [[Follower.submitForged]]. */
   enum Retention:
     /** In the selection worker's processed forest and the received log, for a later selection. */
     case Kept
+
+    /** Kept already, by an earlier submission or delivery (`IgnoreBlockAlreadyInVolatileDB`). */
+    case Present
 
     /** Not kept: it is no younger than the immutable tip (`IgnoreBlockOlderThanImmTip`). */
     case TooOld
@@ -1033,6 +1100,7 @@ object Follower:
 
     def message: String = this match
       case Kept         => "kept for a later selection"
+      case Present      => "kept already"
       case TooOld       => "not kept: it is no younger than the immutable tip"
       case KnownInvalid => "not kept: it is known invalid"
       case NoVerdict    => "not kept: the node has no verdict on it"

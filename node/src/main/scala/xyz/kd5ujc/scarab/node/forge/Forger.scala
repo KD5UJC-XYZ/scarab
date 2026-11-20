@@ -1904,8 +1904,9 @@ object Forger:
     case Follower.Retention.Unmatched(_) | Follower.Retention.Failed(_) |
         Follower.Retention.Defect(_) =>
       Some(ForgeEvent.NotKept(slot, hash, retention))
-    case Follower.Retention.Kept | Follower.Retention.TooOld | Follower.Retention.KnownInvalid |
-        Follower.Retention.NoVerdict | Follower.Retention.NoWorker =>
+    case Follower.Retention.Kept | Follower.Retention.Present | Follower.Retention.TooOld |
+        Follower.Retention.KnownInvalid | Follower.Retention.NoVerdict |
+        Follower.Retention.NoWorker =>
       None
 
   /** The most [[Forger]] sleeps at once: a century, far inside what a `FiniteDuration` holds. */

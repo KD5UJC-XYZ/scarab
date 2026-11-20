@@ -102,6 +102,58 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
     yield ()
   }
 
+  test("a forged block on a kept block off our chain is adopted at its submission when longer") {
+    for
+      (left, right) <- forks
+      l = left.headers
+      r = right.headers
+      peerTip <- delivered(right, 0, 1)
+      _ <- TestControl.executeEmbed(node(None, k = k) { n =>
+        for
+          _ <- n.deliver(peerTip)
+          rival <- n.offer(l(0), left.raws(0))
+          // forged on the kept rival, which our chain does not hold: no delivery and no
+          // reselection follow, and the submission's own selection decides
+          child <- n.offer(l(1), left.raws(1))
+          after <- n.follower.committedChain.get
+          extended <- n.extended
+        yield
+          assertEquals(rival, lost(Follower.AdoptionLoss.SelectionPrefersTip(r(0).point)))
+          assertEquals(child, adopted(l(1)), "the branch through the kept block is longer")
+          assertEquals(after.blocks.map(_._1.hash), hashes(l.take(2)), "and is our chain at once")
+          assertEquals(extended.map(_.hash), Vector(r(0).hash, l(0).hash, l(1).hash))
+      })
+    yield ()
+  }
+
+  test("a forged block on an adopted block a rollback left off our chain is adopted when longer") {
+    for
+      (left, right) <- forks
+      l = left.headers
+      r = right.headers
+      theirs <- delivered(right, 0, 2)
+      _ <- TestControl.executeEmbed(node(None, k = k) { n =>
+        for
+          first <- n.offer(l(0), left.raws(0))
+          _ <- n.deliver(theirs)
+          // forged on our former tip: as long as the peer's chain, so not preferred
+          tied <- n.offer(l(1), left.raws(1))
+          // and one more on it: longer, so selected at its submission
+          longer <- n.offer(l(2), left.raws(2))
+          after <- n.follower.committedChain.get
+        yield
+          assertEquals(first, adopted(l(0)))
+          assertEquals(
+            tied,
+            lost(Follower.AdoptionLoss.DetachedPredecessor(r(1).point, Some(l(0).hash))),
+            "its predecessor is off our chain, and its branch is no longer than ours"
+          )
+          assertEquals(longer, adopted(l(2)), "its branch, through the kept blocks, is longer")
+          assertEquals(after.blocks.map(_._1.hash), hashes(l.take(3)), "and is our chain at once")
+      })
+    yield ()
+  }
+
   /** Our forged `left(0)` is adopted, a peer's longer `right` takes the chain from it, and a peer
     * then delivers `left(1)` and `left(2)`: the branch through the kept `left(0)` is longer. With a
     * `log`, the node has a received log whose body cache holds one body at most, so each body put
@@ -291,14 +343,17 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
               _ <- n.deliver(again)
               forest <- n.pool.processedSnapshot
               prepared <- n.prepared.get
+              stored <- n.stored.get
               refs <- log.refs
             yield
               assertEquals(first, adopted(l(0)))
               assertEquals(
                 second,
-                lost(Follower.AdoptionLoss.SelectionPrefersTip(l(0).point)),
-                "the same block again: our tip already, and kept as it was"
+                adopted(l(0)).copy(retention = Follower.Retention.Present),
+                "the same block again: stored already, not selected again, and our tip, which " +
+                  "the reference's forging loop reads as adopted"
               )
+              assertEquals(stored, Vector(l(0).hash), "written to the received log once")
               assertEquals(
                 forest.get(l(0).hash).map(_.origin),
                 Some(BlockPool.Source.Forged),
@@ -312,7 +367,7 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
     yield ()
   }
 
-  test("a forged block the rules refuse is kept invalid; offered again it is known invalid") {
+  test("a forged block the rules refuse is kept invalid; offered again it is not stored again") {
     for
       (left, _) <- forks
       l = left.headers
@@ -341,7 +396,11 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
             Some(BlockPool.Source.Forged),
             "in the forest"
           )
-          assertEquals(again.retention, Follower.Retention.KnownInvalid, "offered again")
+          assert(
+            again.adoption.isInstanceOf[Follower.Adoption.Invalid],
+            s"again: ${again.adoption}"
+          )
+          assertEquals(again.retention, Follower.Retention.Present, "stored already")
           assertEquals(stored, hashes(l.take(2)), "written to the received log once")
           assertEquals(after.tip, l(0).point, "never selected")
           assertEquals(unchanged.revision, known.revision, "nor judged again")
