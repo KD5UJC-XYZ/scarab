@@ -69,7 +69,14 @@ end of the copy, run 60 s later, rounded up to a 10 s mark; a copy for the same 
 one scheduled replaces it, and nothing of the schedule survives a restart, where the next copy's
 collection covers it (`cdbsGcDelay`, `cdbsGcInterval`, `Storage/ChainDB/Impl/Args.hs` 119-124;
 `copyToImmutableDBRunner`, `scheduleGC` and `gcScheduleRunner`, `Storage/ChainDB/Impl/Background.hs`
-257-296 and 466-652, ouroboros-consensus `82ecba329`; the same code at `808e40054`). Collections run one
+257-296 and 466-652, ouroboros-consensus `82ecba329`; the same code at `808e40054`). The copy that
+schedules a collection is not the reference's: Scarab copies, and schedules, for each persisted extension
+that ages blocks past `k`, where the reference's copy runner copies the whole prefix then eligible and
+schedules once, so under a backlog the two can schedule other cutoffs at other times, a Gap
+([#1262](https://github.com/KD5UJC-XYZ/scarab/issues/1262)). Each schedule and each collection is logged
+(`scheduledGC`, `performedGC`), at Debug, as the reference traces `ScheduledGC` and `PerformedGC`
+(`Storage/ChainDB/Impl/Types.hs` 1049-1054 at `82ecba329`, 1082-1087 at `808e40054`; cardano-node 11.1.3
+`Cardano/Node/Tracing/Tracers/ChainDB.hs` 1183-1184). Collections run one
 at a time, so one an interval is a goal, as the reference calls it (`Background.hs` 486-492): a
 collection that runs past the next entry's time leaves the entries due meanwhile queued, one to a 10 s
 mark, and they run back to back after it. Scarab forces its immutable store to disk before each
@@ -79,10 +86,19 @@ collection, an approved Deviation ([decisions register](../decisions.md#genesis-
 that fails, the force included, or an exception in the fiber that runs them, stops the node. A file
 holds 1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected
 before another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
-387-399). When the log is opened, each file is validated on its own (`mkOpenStateHelper`,
+387-399); files an earlier build wrote keep their 512-block boundaries. The selected-chain log shares the
+writer: its files of 512 blocks are now rolled at the block that fills them too, so a full one can be
+collected at the next 4,096-block trigger before another record is written. When the log is opened, the
+files of its directory whose names it does not read are logged and left alone, as the reference traces
+`InvalidFileNames` (`receivedInvalidFileNames`; `mkOpenState`, `State.hs` 319-339), and two names that
+read as one file number (`1.log` and `00000001.log`) refuse the log before any file changes, since a
+block's file is found by its number: a simple rule for an operational edge, as a name in a locale's
+digits is refused (`FileNameProblem`). Then each file is validated on its own (`mkOpenStateHelper`,
 `validateFile`, `Storage/VolatileDB/Impl/State.hs` 372-436): it is read up to its first record that is
 damaged or whose block the start-up check refuses, as the reference stops at the first block it cannot
-read (`parseBlockFile`, `BlockReadErr`, `Storage/VolatileDB/Impl/Parser.hs` 52-107), its blocks are
+read (`BlockReadErr`: here a damaged record or a block that does not decode) or, validating, finds
+corrupt (`BlockCorruptedErr`: here a block that decodes and fails the check) (`parseBlockFile`,
+`Storage/VolatileDB/Impl/Parser.hs` 52-107), its blocks are
 indexed up to the first one already indexed, in an earlier file or earlier in the same one, whatever the
 bytes of its record (`addToReverseIndex`, `DuplicatedBlock`, `State.hs` 464-492), the file is cut at the
 earlier of the two, and the files after it are read all the same. Each cut is logged just before it is
@@ -95,7 +111,8 @@ is logged twice, in that order. The severity is Debug, the one cardano-node 11.1
 `receivedOpened`. No path writes a second record of a
 block the log holds: a receipt and the start's repair of the selected chain's blocks
 (`ReceivedBlocks.restoreSelected`) write only a block the log lacks, as `putBlockImpl` skips a block
-whose hash it holds. A record that fails its checksum when it is read back later leaves the index and
+whose hash it holds, and each such skip is logged (`receivedBlockAlreadyHere`, at Debug, as
+`BlockAlreadyHere`). A record that fails its checksum when it is read back later leaves the index and
 can be written again; the next open cuts the damaged record's file there, or, reading it whole, cuts
 the later record's. The selected-chain log keeps its in-order recovery, since it replays rollback
 records in order.
@@ -108,8 +125,12 @@ or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB/Impl/Arg
 `Ouroboros/Consensus/Node.hs` 515-521 and 1118-1128 in ouroboros-consensus-diffusion). Scarab keeps no
 clean-shutdown marker, and its open does not check a header's own integrity.
 
-Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule, the storage's collections, a
-copy whose backing-store work moves the clock, a restart, under TestControl), `ReceivedBlocksSuite` (the
-files, a damaged file, a block that does not decode, repeats in the same and a later file with the same
-and other bytes, and the repair) and `VolatileStoreSuite` (the selected-chain log's recovery), asserting
-the reference's outcomes as its source at the pins gives them.
+Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule and its traces, the storage's
+collections, a copy whose backing-store work moves the clock, a restart, under TestControl; the start-up
+check through the storage's open, on a block whose header is not its record's, bytes that do not decode
+and a block whose body does not match its header), `ReceivedBlocksSuite` (the files, a damaged file, a
+block that does not decode or is corrupt, repeats in the same and a later file with the same and other
+bytes, the cuts and other traces, two names of one number, the repair, and the scan on a small stack) and
+`VolatileStoreSuite` (the selected-chain log's recovery), asserting the reference's outcomes as its source
+at the pins gives them; none compares with a running reference node's VolatileDB
+([#1261](https://github.com/KD5UJC-XYZ/scarab/issues/1261)).

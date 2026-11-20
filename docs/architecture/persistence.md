@@ -159,7 +159,8 @@ as an append-only file instead of a block store with a successor map: a record i
 covering everything after it. `kind` is a block (payload: the raw block) or a rollback to a point
 (Origin or a block; no payload), so the chain a log describes is a fold over its records
 (`VolatileStore.chainOf`) and forks need no extra structure. A file holds 512 blocks, and the next
-one is started when it fills.
+one is started as soon as one fills, at the block that fills it, so a full file can be collected at
+the next 4,096-block trigger before another record is written to the log.
 The store is a hint, not a source of truth, and is built so that it can only be wrong by missing
 blocks:
 
@@ -186,31 +187,15 @@ blocks:
   boundary. The states are not stored (they are a pure function of the blocks), only re-derived.
 
 **Received blocks** (`<db>/received/<seq>.log`, `ReceivedBlocks`). Every block admitted from a peer or
-forged, selected or not, in the volatile log's record format, block records only: the reference's
-VolatileDB, which holds every block received. A file holds 1,000 blocks, and the next one is started
-when it fills (`volMaxBlocksPerFile`). In memory there is an index of every block (where its record is
-and the predecessor its header names) and a cache of recent bodies; a body is read back from its file.
-
-- Opening validates each file on its own, in order of number (`VolatileStore.openIndexWith`, the
-  reference's `mkOpenStateHelper` and `validateFile`): a file is read up to its first record that is
-  incomplete, fails its checksum or whose block the start-up check refuses (`ReceivedBlocks.Check`,
-  given by the node: the block decodes, its header names the record's point and its body is the
-  header's), its blocks are indexed up to the first one already indexed, whatever the bytes of its
-  record, and it is cut at the earlier of the two; the files after it are read all the same. Each cut
-  is logged just before it is made, with its file, offset and typed cause (`StorageEvent.ReceivedTruncated`,
-  the reference's `Truncate`, twice for a file cut where its parse stopped and then at an earlier
-  repeat), and the open's totals as `StorageEvent.ReceivedOpened`. A block
-  the index holds is not written again: a receipt and the start's repair of the selected chain's
-  blocks (`restoreSelected`) write only a block the log lacks. A record that fails its checksum when
-  it is read back leaves the index, so the block can be written again; the next open settles it, as
-  for any repeat.
-- Collection runs on the reference's schedule (`GcSchedule`): each copy of blocks to the immutable
-  store schedules a collection below the new immutable tip's slot, timed from the end of the copy,
-  60 s later rounded up to a 10 s mark, at most one entry to a mark, run one at a time by a fiber of
-  its own after the immutable store is forced. It deletes every file but the one being written whose
-  blocks are all below that slot, and only their blocks leave the index. The schedule is not stored:
-  after a restart the next copy's collection covers what was pending. A collection that fails, or an
-  exception in the fiber, stops the node (`Recovered.collectionsStopped`).
+forged, selected or not, in the volatile log's record format, block records only: the counterpart of
+the reference's VolatileDB, which holds the blocks its ChainDB adds, not those older than its
+immutable tip, already held, or known invalid (`addBlockSync`, `Storage/ChainDB/Impl/ChainSel.hs`
+425-452, ouroboros-consensus 82ecba329). A file holds 1,000 blocks, and the next one is started when
+it fills (`volMaxBlocksPerFile`); files an earlier build wrote keep their 512-block boundaries. In
+memory there is an index of every block (where its record is and the predecessor its header names)
+and a cache of recent bodies; a body is read back from its file. How the log is opened and recovered,
+when it is collected, and what it logs as it does are on the
+[compatibility page](../compatibility/network-servers-duplex.md) (#1247), which is their one home.
 
 **Leios endorser blocks** (`<db>/leios/`, issue #830). A RocksDB database of its own beside the
 immutable store and the UTxO store, and not part of the ledger snapshot: the store of the reference's
