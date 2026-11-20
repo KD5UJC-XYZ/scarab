@@ -85,9 +85,10 @@ worker's selection for it at once, its candidates going through the forest's blo
 our chain no longer holds is adopted there when its branch is preferred, and the submission's outcome, which the
 forger traces, is what that selection decided, read as the reference's forging loop reads it (the block is the tip:
 adopted; recorded invalid: invalid; else not adopted, `NodeKernel.hs:758-769`). What the node holds of the block is
-checked before anything else, in the reference's order: a block stored already, withheld blocks included, is neither
-judged, stored nor selected again (`IgnoreBlockAlreadyInVolatileDB`, `ChainSel.hs:431-433`), and a block known
-invalid is not judged again (`IgnoreInvalidBlock`, 434-440); the outcome is read as the forging loop reads it. A
+checked before anything else, in the reference's order: a block no younger than the immutable tip is neither kept nor
+adopted (`IgnoreBlockOlderThanImmTip`, `ChainSel.hs:428-430`), a block stored already, withheld blocks included, is
+neither judged, stored nor selected again (`IgnoreBlockAlreadyInVolatileDB`, 431-433), and a block known invalid is
+not judged again (`IgnoreInvalidBlock`, 434-440); the outcome is read as the forging loop reads it. A
 rollback leaves the block in
 the forest, and a restart seeds the forest from the received log before startup selection. A forged block the
 node's own implementation has no verdict on is never judged again in this run, as the forger handles our own block
@@ -124,7 +125,8 @@ forging loop with the worker and the real block rules) check these cases in simu
 - an adopted forged block that a peer's longer chain rolled back wins again when its branch grows, without being
   delivered, as a fetched block does; with a received log whose cache holds one body, from the log; and after the
   log is closed and opened again, through `Main.seedReceived` and startup selection;
-- a forged block no younger than the immutable tip is not kept, and the rule's epoch boundary exception holds; the
+- a forged block no younger than the immutable tip is not kept, nor is our own block offered again once it is the
+  immutable tip, which the forest still holds, and the rule's epoch boundary exception holds; the
   same block offered again is neither stored nor selected again, and, delivered by a peer, not processed;
 - refused by the rules, at its submission or when selection reaches it, it is recorded invalid and never selected,
   no session is blamed, and offered again it is not stored again;

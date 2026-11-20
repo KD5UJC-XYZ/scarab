@@ -169,7 +169,8 @@ the reference runs `chainSelectionForBlock` after `putBlock` (`ChainSel.hs:452`)
 that selection decided. A kept forged block that any selection finds no verdict on is withheld for good in this run
 (`NoVerdictBlocks.recordOwn`, `Schedule.Never`: not released with a related block that comes due either), as our own
 block without a verdict is a refusal (R3 of the decision of issue 567); every other block keeps the retry schedule. A
-block the node holds already (`Follower.Stored`), withheld blocks included, is neither judged nor selected again. Rollback, LoE reconsideration, a delivery that makes its branch preferred and a restart's startup selection
+block no younger than the immutable tip, or one the node holds already, withheld blocks included (`Follower.Stored`,
+checked first in the reference's order), is neither judged nor selected again. Rollback, LoE reconsideration, a delivery that makes its branch preferred and a restart's startup selection
 then see it with the other processed blocks. A failure to keep it, other than a storage failure, leaves it unkept and
 the forger's outcome as it was (`Follower.Retention`, logged `notKept`); a storage failure stops the node, as for a
 peer's block.
