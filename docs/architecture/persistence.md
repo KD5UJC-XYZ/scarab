@@ -196,7 +196,9 @@ nothing migrates it. Its column families:
 | `complete` | hash | empty: present once every transaction the body lists is stored |
 
 Opening the store holds an exclusive lock of the operating system on `leios.lock` beside it (not
-part of the store), so that opens run one at a time. Under it, a store found at `leios/` has its
+part of the store), so that opens run one at a time; the opens of one process are serialised in the
+process first, since its record locks belong to the process. Missing ancestors of `leios/` are made
+and each one's entry in its parent synced. Under the lock, a store found at `leios/` has its
 parent directory synced before it is taken; an absent or empty `leios/` gets a new store, made in a
 marked staging directory (`leios.staging/<random UUID>/`), its format record synced, published by an
 atomic rename and the parent synced: a first open interrupted before the rename leaves nothing at

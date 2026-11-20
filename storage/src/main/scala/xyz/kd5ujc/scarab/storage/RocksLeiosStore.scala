@@ -7,7 +7,8 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
-import java.nio.channels.{FileChannel, FileLock, OverlappingFileLockException}
+import java.nio.channels.{FileChannel, FileLock}
+import java.util.concurrent.{ConcurrentHashMap, Semaphore as JSemaphore}
 import java.nio.charset.StandardCharsets.US_ASCII
 import java.nio.file.{Files, StandardCopyOption, StandardOpenOption}
 import java.util.Arrays
@@ -24,7 +25,6 @@ import org.rocksdb.{
 }
 import scala.annotation.tailrec
 import scala.collection.immutable.{SortedMap, SortedSet}
-import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -897,6 +897,24 @@ object RocksLeiosStore:
       _.force(true)
     )
 
+  /** The first opens of this process in progress, one permit per lock file (by its real path): the
+    * operating system's record locks belong to the process, so they cannot keep two opens of one
+    * process apart, and closing one open's channel would drop the lock another holds. A kept site
+    * of process-wide state (EFF-4) and of a Java concurrent type (FUN-2 (b), the record locks'
+    * contract): it holds nothing but these permits, and only [[inProcess]] touches it.
+    */
+  private val opening = new ConcurrentHashMap[java.nio.file.Path, JSemaphore]()
+
+  /** This process's permit for the lock file at `path`, held for the resource's life. */
+  private def inProcess[F[_]: Async](path: java.nio.file.Path): Resource[F, java.nio.file.Path] =
+    Resource
+      .make(Async[F].interruptible {
+        val permit = opening.computeIfAbsent(path, _ => new JSemaphore(1))
+        permit.acquire()
+        permit
+      })(permit => Async[F].delay(permit.release()))
+      .as(path)
+
   /** The lock a first open of `dir` holds: a sibling of `dir` in its parent, not part of the store.
     */
   private[storage] def lockFile(dir: java.nio.file.Path): java.nio.file.Path =
@@ -929,8 +947,13 @@ object RocksLeiosStore:
     * directories earlier opens left are removed, on a best effort. The lock is given back once
     * `open` is done.
     *
-    * Within one process, `FileChannel.lock` refuses a lock another of its channels holds rather
-    * than waiting for it, so a first open that meets one looks again a little later.
+    * The operating system's record locks belong to the process: within one process a second lock is
+    * refused, and closing any channel of the file drops the lock another channel holds. So the
+    * opens of one process are serialised first by [[opening]], from before the lock file is opened
+    * until after it is closed, and the operating-system lock only ever excludes other processes.
+    *
+    * Ancestors of `dir` that do not exist are made, and each made directory's entry in its parent
+    * synced with `sync`, walking up to the first that existed, so that the store's path is durable.
     */
   private[storage] def firstOpen[F[_]: Async, A](dir: Path, sync: java.nio.file.Path => F[Unit])(
       open: F[A]
@@ -943,19 +966,31 @@ object RocksLeiosStore:
     def bestEffort(body: => Unit): F[Unit] = F.blocking(body).attempt.void
     val synced: F[Unit] =
       sync(nio).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
-    def acquired(channel: FileChannel): F[FileLock] =
-      F.blocking(channel.lock()).attempt.flatMap {
-        case Right(lock)                           => F.pure(lock)
-        case Left(_: OverlappingFileLockException) => F.sleep(10.millis) *> acquired(channel)
-        case Left(e)                               => fail(LeiosStoreError.Io(e))
+    val parent = nio.toAbsolutePath.getParent
+    // the ancestors of `dir` that are missing, outermost first: each is made, then its entry synced
+    val ancestors: F[Unit] =
+      io(
+        Iterator
+          .iterate(Option(parent))(_.flatMap(d => Option(d.getParent)))
+          .takeWhile(_.exists(Files.notExists(_)))
+          .flatten
+          .toVector
+          .reverse
+      ).flatMap { missing =>
+        io(Files.createDirectories(parent)) *> missing.traverse_(made =>
+          sync(made).attempt.flatMap(_.fold(e => fail(LeiosStoreError.Io(e)), F.pure))
+        )
       }
     val locked: Resource[F, FileLock] =
       Resource
-        .make(io {
-          Files.createDirectories(nio.toAbsolutePath.getParent)
-          FileChannel.open(lockFile(nio), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-        })(channel => F.blocking(channel.close()))
-        .flatMap(channel => Resource.make(acquired(channel))(lock => F.blocking(lock.release())))
+        .eval(ancestors *> io(parent.toRealPath().resolve(lockFile(nio).getFileName)))
+        .flatMap(inProcess[F])
+        .flatMap(path =>
+          Resource.make(
+            io(FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE))
+          )(channel => F.blocking(channel.close()))
+        )
+        .flatMap(channel => Resource.make(io(channel.lock()))(lock => F.blocking(lock.release())))
     val validated: F[Unit] =
       io(Using.resource(new Options())(o => RocksDB.listColumnFamilies(o, nio.toString)))
         .map(_.asScala.toVector.map(Bytes.wrap))

@@ -515,6 +515,22 @@ class LeiosStoreSuite extends CatsEffectSuite:
         assertEquals(syncs, Vector(leios.toNioPath))
   }
 
+  dirs.test("a first open makes missing ancestors durable, outermost first, then the store") {
+    dir =>
+      val leios = dir / "a" / "b" / "leios"
+      for
+        synced <- IO.ref(Vector.empty[java.nio.file.Path])
+        opened <- attempt(firstOpen(leios, target => synced.update(_ :+ target)))
+        syncs <- synced.get
+      yield
+        assertEquals(opened, Right(()))
+        // each made directory's entry in its parent, then the store's in its own
+        assertEquals(
+          syncs.map(_.toAbsolutePath),
+          Vector(dir / "a", dir / "a" / "b", leios).map(_.toNioPath.toAbsolutePath)
+        )
+  }
+
   dirs.test("a store opens though its staging directory cannot be read") { dir =>
     val leios = dir / "leios"
     val root = RocksLeiosStore.stagingRoot(leios.toNioPath)
