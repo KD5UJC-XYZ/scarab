@@ -244,7 +244,7 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
       assert(!Node.extended(events).exists(_.hash == third.hash), "nor reported adopted")
       assertEquals(
         withheld.map(_.schedule),
-        Some(NoVerdictBlocks.Schedule.Once),
+        Some(NoVerdictBlocks.Schedule.Never),
         "withheld for good, as our own block without a verdict"
       )
       assertEquals(
@@ -254,6 +254,37 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
         Vector(NoVerdictRetry.Never)
       )
       assertEquals(running, None, "the node goes on")
+  }
+
+  test("a held-back forged block withheld for good, offered again, is neither judged nor adopted") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      third = chain.headers(2)
+      _ <- TestControl.executeEmbed(
+        node(Some(Gsm.Phase.PreSyncing), withheldOnce = Set(third.hash)) { n =>
+          for
+            _ <- chain.headers.zip(chain.raws).take(3).traverse(n.offer(_, _))
+            _ <- n.phase(Gsm.Phase.CaughtUp)
+            _ <- n.events.discrete
+              .find(_.exists {
+                case FollowerEvent.NoVerdict(point, _, _, _) => point == third.point
+                case _                                       => false
+              })
+              .compile
+              .drain
+            // its parent is our tip, so the direct path would take it, and its fault has passed
+            again <- n.offer(third, chain.raws(2))
+            after <- n.follower.committedChain.get
+          yield
+            assert(
+              again.adoption.isInstanceOf[Follower.Adoption.NoVerdict],
+              s"stored already and withheld: not judged again, ${again.adoption}"
+            )
+            assertEquals(again.retention, Follower.Retention.Present)
+            assertEquals(after.tip, chain.headers(1).point, "and not adopted")
+        }
+      )
+    yield ()
   }
 
   test("a failure to keep forged blocks leaves what selection made of them, with the cause") {

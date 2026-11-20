@@ -40,7 +40,8 @@ private[node] object ForgedRetention extends munit.Assertions:
       events: SignallingRef[IO, Vector[FollowerEvent]],
       prepared: Ref[IO, Vector[Bytes]],
       stored: Ref[IO, Vector[Bytes]],
-      fatals: Ref[IO, Vector[Fatal]]
+      fatals: Ref[IO, Vector[Fatal]],
+      faults: Ref[IO, Set[Bytes]]
   ):
     def offer(header: Header, raw: Bytes)(using Handle[IO, NodeError]): IO[Follower.Submission] =
       follower.submitForged(header, raw)
@@ -153,8 +154,9 @@ private[node] object ForgedRetention extends munit.Assertions:
   /** A node with its worker started: in Genesis mode with its governor in `phase`, or in Praos mode
     * (`None`); keeping `k` volatile blocks from `initial`; `refused` are the blocks its rules
     * refuse, `withheldOnce` those whose first judgement has no verdict for a cause that may pass
-    * (`noVerdict`) and whose later ones are valid, `preparation` what writing a forged block does,
-    * and `received` the log the pool reads bodies back from (whose recovered blocks
+    * (`noVerdict`) and whose later ones are valid (and the node's `faults`, set by the case, those
+    * whose judgement has none while they are in it), `preparation` what writing a forged block
+    * does, and `received` the log the pool reads bodies back from (whose recovered blocks
     * `Main.seedReceived` seeds first). `use` runs once the worker's startup selection is done.
     */
   def node[A](
@@ -176,15 +178,18 @@ private[node] object ForgedRetention extends munit.Assertions:
       stored <- Ref.of[IO, Vector[Bytes]](Vector.empty)
       fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
       judged <- Ref.of[IO, Set[Bytes]](Set.empty)
+      faults <- Ref.of[IO, Set[Bytes]](Set.empty)
       follower <- Follower.create[IO, BigInt](
         BlockRules.from((_, h, _) =>
           if refused(h.hash) then
             Raise[IO, ValidationError]
               .raise(ValidationError(h.point, BlockFailure.EpochPrecedesLedger(0)))
           else
-            judged.modify(seen => (seen + h.hash, seen(h.hash))).flatMap { before =>
-              if withheldOnce(h.hash) && !before then Raise[IO, ValidationError].raise(noVerdict(h))
-              else IO.pure(h.blockNo)
+            (judged.modify(seen => (seen + h.hash, seen(h.hash))), faults.get).flatMapN {
+              (before, faulty) =>
+                if faulty(h.hash) || (withheldOnce(h.hash) && !before) then
+                  Raise[IO, ValidationError].raise(noVerdict(h))
+                else IO.pure(h.blockNo)
             }
         ),
         event => events.update(_ :+ event),
@@ -210,7 +215,9 @@ private[node] object ForgedRetention extends munit.Assertions:
           Main.seedReceived(pool, received, BigInt(21600)) *>
             follower
               .blockSelection(pool, work, fault => fatals.update(_ :+ fault))
-              .use(_ => use(Node(pool, follower, governor, events, prepared, stored, fatals)))
+              .use(_ =>
+                use(Node(pool, follower, governor, events, prepared, stored, fatals, faults))
+              )
               .timeoutTo(backstop, IO(fail(s"the case did not finish within $backstop")))
         }
         .rescue(error => IO(fail(error.message)))

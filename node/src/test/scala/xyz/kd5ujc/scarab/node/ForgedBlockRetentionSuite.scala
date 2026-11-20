@@ -190,7 +190,7 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
       )
       assertEquals(
         withheld.map(_.schedule),
-        Some(NoVerdictBlocks.Schedule.Once),
+        Some(NoVerdictBlocks.Schedule.Never),
         "withheld, and not judged again, as our own block on the direct path"
       )
       assertEquals(
@@ -199,6 +199,70 @@ class ForgedBlockRetentionSuite extends FailsOnUncaught:
             retry
         },
         Vector(NoVerdictRetry.Never)
+      )
+      assertEquals(running, None, "the node goes on")
+  }
+
+  test("a forged block withheld for good is not released when a related peer block comes due") {
+    for
+      // a prefix forged by one pool and a branch of each of two pools on it; our forged block is
+      // the prefix's tip, a peer's child of it the left branch's first block, and its siblings the
+      // right branch's; the rival is a chain from Origin one block longer than the prefix
+      branches <- ForgedChain.competingForks(5000 until 5010, 5010 until 5060, 1, 2)
+      (ours, theirs) = branches
+      common = ours.headers.zip(theirs.headers).takeWhile(_ == _).size
+      prefix = ours.headers.take(common)
+      forged = prefix.last
+      child <- delivered(ours, common, common + 1)
+      siblings <- delivered(theirs, common, common + 2)
+      (_, other) <- forks
+      rival <- delivered(other, 0, common + 1)
+      _ <- IO {
+        assert(common >= 1, s"the forks share a prefix, got $common blocks")
+        assertEquals(siblings.size, 2, "two blocks on the right branch")
+      }
+      seen <- Ref.of[IO, Option[ForgedRetention.Node]](None)
+      control <- TestControl.execute(
+        node(None, k = common + 3, withheldOnce = child.map(_.header.hash).toSet) { n =>
+          for
+            _ <- prefix.zip(ours.raws).traverse(n.offer(_, _))
+            // the peer's child has no verdict at its first judgement: withheld, due in 1 s
+            _ <- n.deliver(child)
+            // the rival takes the chain from our block
+            _ <- n.deliver(rival)
+            // the siblings' branch through our block is the longer; our block has no verdict now
+            _ <- n.faults.update(_ + forged.hash) *> n.deliver(siblings)
+            // and its fault passes
+            _ <- n.faults.update(_ - forged.hash)
+            _ <- seen.set(Some(n))
+            _ <- IO.never[Unit]
+          yield ()
+        }
+      )
+      _ <- control.tick
+      reached <- seen.get
+      // the child is due after 1 s, then 2, 4, 8, 16 s
+      _ <- control.advanceAndTick(50.seconds)
+      n = reached.getOrElse(fail("the case did not reach its end"))
+      withheld <- n.pool.noVerdictBlocks.lookup(forged.hash)
+      after <- n.follower.committedChain.get
+      events <- n.events.get
+      running <- control.results
+    yield
+      assertEquals(
+        after.tip,
+        rival.last.header.point,
+        "neither our block nor its branch is adopted"
+      )
+      assertEquals(
+        ForgedRetention.Node.extended(events).count(_.hash == forged.hash),
+        1,
+        "our block was adopted at its submission only"
+      )
+      assertEquals(
+        withheld.map(_.schedule),
+        Some(NoVerdictBlocks.Schedule.Never),
+        "withheld for good, and not released with the child"
       )
       assertEquals(running, None, "the node goes on")
   }
