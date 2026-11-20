@@ -96,7 +96,9 @@ The forger's trace is the one of the submission (`adoptedBlock`,
 the reference traces it in the ChainDB (`switchTo`, `AddedToCurrentChain`, `ChainSel.hs:964`), not in the forging
 loop. Keeping the block is the node's work, not the forger's: if it fails other than in storage, the block is not
 kept, the forger's outcome is what selection made of it all the same, and a `notKept` line says why; a storage
-failure stops the node, as a failed write of a peer's block to the received log does.
+failure stops the node, as a failed write of a peer's block to the received log does. The reference has no such
+best-effort keeper, and an exception in its add-block work stops the node: going on is an approved deviation
+([decisions register](../decisions.md#what-stops-the-node), row of 2026-11-20).
 
 `HeldBackForgedBlockSuite` (the follower with its selection worker and GDD governor), `ForgedBlockRetentionSuite`
 (the follower in Praos mode with its worker, with and without a received log) and `ForgeLimitOnEagernessSuite` (the
