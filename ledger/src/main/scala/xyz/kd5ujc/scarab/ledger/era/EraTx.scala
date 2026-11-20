@@ -63,6 +63,15 @@ trait EraTx[E <: EraTag]:
     */
   def sizeTxF[L <: TxLevel](tx: Tx[L, E])(using bodyOf.Level[L]): Long
 
+  /** `validateNativeScript` (`Core.hs:213`, cardano-ledger f649f975): whether the native script
+    * holds for the transaction: Allegra's `validateTimelock` from Allegra to Conway
+    * ([[AllegraTx.validateTimelock]]), Dijkstra's `validateDijkstraNativeScript` (cardano-ledger
+    * 9df9f98c).
+    */
+  def validateNativeScript[L <: TxLevel](tx: Tx[L, E], native: NativeScript[E])(using
+      bodyOf.Level[L]
+  ): Boolean
+
   /** `getMinFeeTx` (`Core.hs:215-221`, cardano-ledger f649f975): the minimum fee of the
     * transaction, its witnesses excluded, given the size of the reference scripts it uses.
     */

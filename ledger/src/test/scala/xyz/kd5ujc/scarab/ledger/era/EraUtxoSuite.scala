@@ -238,7 +238,9 @@ class EraUtxoSuite extends munit.FunSuite:
       case Left(Left(ScriptVerdictUnavailable(_, reason))) => Outcome.NoVerdict(reason)
       case Left(Right(defect))                             => fail(s"$what: era defect $defect")
       case Right(Left(fs)) =>
-        Outcome.Refused(fs.toList.map(f => EraUtxoRun.eraForm(f).getOrElse(fail(s"$what: $f"))))
+        Outcome.Refused(
+          fs.toList.map(f => EraUtxoRun.eraForm(f, purposes(c)).getOrElse(fail(s"$what: $f")))
+        )
       case Right(Right((state, events))) =>
         val (succeeded, failed, scripts) = EraUtxoRun
           .counters(t.isValid(c.typed) == IsPhase2Valid.Phase2Valid, events)
@@ -341,4 +343,199 @@ class EraUtxoSuite extends munit.FunSuite:
           )
         case other => fail(s"${c.name}: $other")
     }
+  }
+
+  // ---- UTXOW whole: its checks, then UTXO with UTXOS -------------------------------------------
+
+  /** `c` with its body's script integrity hash (key 11) taken out, read again by both paths. */
+  private def withoutIntegrity(c: Case): Case =
+    val body = right(s"${c.name} body")(xyz.kd5ujc.scarab.codec.Cbor.decode(c.flat.body.raw))
+    val edited = body.value match
+      case xyz.kd5ujc.scarab.codec.Value.Map(fields) =>
+        xyz.kd5ujc.scarab.codec.Value.Map(
+          fields.filterNot((k, _) => k.value == xyz.kd5ujc.scarab.codec.Value.UInt(11))
+        )
+      case other => fail(s"${c.name}: a body that is not a map: $other")
+    val raw = right(s"${c.name} re-encode")(
+      xyz.kd5ujc.scarab.codec.Cbor.encode(edited, xyz.kd5ujc.scarab.codec.Cbor.Limits.Unbounded)
+    )
+    val witnesses = c.flat.witnesses.raw.getOrElse(fail(s"${c.name}: no witness bytes"))
+    val parts = Block.Transaction(raw, witnesses, c.flat.auxiliary, c.flat.isValid)
+    c.copy(
+      name = s"${c.name} (no integrity hash)",
+      flat = right(s"${c.name} flat")(FlatTx.fromBlock(parts, ProtocolEra.Conway)),
+      typed = right(s"${c.name} typed")(ConwayTx.decode(parts, StateLayout.Node11_1))
+    )
+
+  /** The purposes of `c`'s scripts needed in their flat form, for a missing redeemer's failure. */
+  private def purposes(c: Case) =
+    val u = EraUTxO.conway
+    rules.ConwayUtxowPredFailure.storedPurposes(
+      u.getScriptsNeeded[TxLevel.Top](c.eraUtxo, t.body[TxLevel.Top](c.typed)(using t.bodyOf.top))(
+        using u.txOf.bodyOf.top
+      ),
+      c.eraUtxo
+    )
+
+  /** Both UTXOWs on `c`: the same outcome, which is returned, and where admitted the same state;
+    * the counters UTXOS's events give, through UTXO's and UTXOW's embeddings, are the flat rule's.
+    */
+  private def sameUtxow(
+      c: Case,
+      build: ReferenceBuild,
+      validation: TxEnv.Validation,
+      evaluator: ScriptEvaluator[Id]
+  ): Outcome =
+    val what = s"${c.name} under ${build.name}, $validation (UTXOW)"
+    val ls = ledger(c)
+    val ctx = env.copy(
+      clock = Some(c.clock),
+      evaluator = evaluator,
+      validation = validation,
+      referenceBuild = build
+    )
+    val flat = Judgment.run(xyz.kd5ujc.scarab.ledger.rules.Utxow, RuleT.Policy.Accumulate)(
+      TestLedger.globals,
+      FlatUtxoEnv(ctx, c.flatPp, ConwayLedgerState.cert.get(ls)),
+      Counted(LedgerState.utxo[Conway].get(ls), PlutusStats.zero),
+      FlatStAnnTx(c.flat, FlatUtxo.fromMap(c.utxo))
+    )
+    val era = EraUtxoRun.Utxow.run(
+      UtxoEnv(env.slot, c.pp, ConwayLedgerState.cert.get(ls)),
+      stAnnTx(c),
+      UtxoContext[Conway](
+        Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
+        0,
+        historyAt(env.slot),
+        validation,
+        ConwayUtxo.injectShelleyFailure(build)
+      ),
+      LedgerState.utxo[Conway].get(ls),
+      evaluator,
+      env.verdicts,
+      env.decoder
+    )
+    val theirs = flat match
+      case Left(LedgerFailure.Unavailable(_, _, reason)) => Outcome.NoVerdict(reason)
+      case Left(other)                                   => fail(s"$what: flat defect $other")
+      case Right(Left(fs)) =>
+        Outcome.Refused(fs.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
+      case Right(Right(counted)) =>
+        Outcome.Admitted(counted.plutus.succeeded, counted.plutus.failed, counted.plutus.scripts)
+    val ours = era match
+      case Left(Left(Left(ScriptVerdictUnavailable(_, reason)))) => Outcome.NoVerdict(reason)
+      case Left(defect) => fail(s"$what: era defect $defect")
+      case Right(Left(fs)) =>
+        Outcome.Refused(
+          fs.toList.map(f => EraUtxoRun.Utxow.eraForm(f, purposes(c)).getOrElse(fail(s"$what: $f")))
+        )
+      case Right(Right((state, events))) =>
+        val (succeeded, failed, scripts) = EraUtxoRun.Utxow
+          .counters(t.isValid(c.typed) == IsPhase2Valid.Phase2Valid, events)
+          .getOrElse(fail(s"$what: events $events"))
+        flat match
+          case Right(Right(counted)) =>
+            assert(
+              summon[cats.Eq[UTxOState[Conway]]].eqv(state, counted.state),
+              s"$what: $state\n${counted.state}"
+            )
+          case _ => ()
+        Outcome.Admitted(succeeded, failed, scripts)
+    assertEquals(ours, theirs, what)
+    ours
+
+  test("UTXOW whole, as submitted: the reference's verdict and the flat UTXOW's") {
+    recorded.foreach { c =>
+      sameUtxow(c, ReferenceBuild.Release11_1, TxEnv.Validation.All, scarab) match
+        case Outcome.Admitted(_, _, _) => assert(c.accepted, s"${c.name}: the reference refused")
+        case Outcome.Refused(_)        => assert(!c.accepted, s"${c.name}: the reference accepted")
+        case Outcome.NoVerdict(reason) => fail(s"${c.name}: no verdict, $reason")
+    }
+  }
+
+  test("UTXOW whole on every case, both flags, each build and each policy: the flat UTXOW's") {
+    val outcomes = for
+      c <- everyCase
+      build <- ReferenceBuild.values.toVector
+      validation <- TxEnv.Validation.values.toVector
+    yield sameUtxow(c, build, validation, scarab)
+    assert(outcomes.exists { case Outcome.Admitted(_, _, n) => n > 0; case _ => false })
+    assert(outcomes.exists { case Outcome.Refused(_) => true; case _ => false })
+  }
+
+  test("a failure of UTXOW alone is recorded, and UTXOS then evaluates nothing") {
+    // each accepted case with its script integrity hash taken out: UTXOW's checks of the integrity
+    // hash and the signatures (its body changed) fail, UTXO's none, and UTXOS collects the scripts
+    // but evaluates none (`whenFailureFree`): the evaluator fails the suite if asked
+    val withScripts = recorded.filter(c => c.accepted && c.flat.witnesses.redeemers.nonEmpty)
+    assert(withScripts.nonEmpty)
+    val refused = withScripts.map(c =>
+      sameUtxow(
+        withoutIntegrity(c),
+        ReferenceBuild.Release11_1,
+        TxEnv.Validation.All,
+        never(c.name)
+      )
+    )
+    assert(refused.forall {
+      case Outcome.Refused(fs) =>
+        fs.exists {
+          case EraUtxoRun.Failure.Utxo(
+                xyz.kd5ujc.scarab.ledger.PredicateFailure.Utxow(
+                  xyz.kd5ujc.scarab.ledger.UtxowFailure.PPViewHashesDontMatch(_)
+                )
+              ) =>
+            true
+          case _ => false
+        } && fs.forall {
+          case EraUtxoRun.Failure.Utxo(
+                xyz.kd5ujc.scarab.ledger.PredicateFailure.Utxow(
+                  xyz.kd5ujc.scarab.ledger.UtxowFailure.Utxo(_)
+                )
+              ) =>
+            false
+          case EraUtxoRun.Failure.Utxo(_) => true
+          case _                          => false
+        }
+      case _ => false
+    })
+  }
+
+  test("UTXO's and UTXOS's failures are injected into UTXOW's as the embedding wraps them") {
+    import xyz.kd5ujc.scarab.ledger.era.rules.{
+      AlonzoUtxoPredFailure,
+      ConwayUtxoPredFailure,
+      ConwayUtxosPredFailure,
+      ConwayUtxowPredFailure,
+      EmbedUtxoInUtxow,
+      InjectUtxowFailure,
+      ShelleyUtxoPredFailure,
+      TagMismatchDescription
+    }
+    val utxos = ConwayUtxosPredFailure.ValidationTagMismatch[Conway](
+      IsPhase2Valid.Phase2Invalid,
+      TagMismatchDescription.PassedUnexpectedly
+    )
+    val utxo: ConwayUtxoPredFailure[Conway] = ConwayUtxoPredFailure.UtxosFailure(utxos)
+    val wrapped: ConwayUtxowPredFailure[Conway] = ConwayUtxowPredFailure.UtxoFailure(utxo)
+    assertEquals(
+      summon[InjectUtxowFailure[ConwayUtxosPredFailure[Conway], Conway]].injectFailure(utxos),
+      wrapped
+    )
+    assertEquals(
+      summon[InjectUtxowFailure[ConwayUtxoPredFailure[Conway], Conway]].injectFailure(utxo),
+      wrapped
+    )
+    assertEquals(EmbedUtxoInUtxow.conway.wrapFailed(utxo), wrapped)
+    val input = AlonzoUtxoPredFailure.InputSetEmptyUTxO[Conway]()
+    assertEquals(
+      summon[InjectUtxowFailure[AlonzoUtxoPredFailure[Conway], Conway]].injectFailure(input),
+      ConwayUtxowPredFailure.UtxoFailure[Conway](ConwayUtxoPredFailure.InputSetEmptyUTxO[Conway]())
+    )
+    assertEquals(
+      InjectUtxowFailure
+        .conwayShelleyUtxo(ConwayUtxo.injectShelleyFailure11_2)
+        .injectFailure(ShelleyUtxoPredFailure.InputSetEmptyUTxO[Conway]()),
+      ConwayUtxowPredFailure.UtxoFailure[Conway](ConwayUtxoPredFailure.InputSetEmptyUTxO[Conway]())
+    )
   }

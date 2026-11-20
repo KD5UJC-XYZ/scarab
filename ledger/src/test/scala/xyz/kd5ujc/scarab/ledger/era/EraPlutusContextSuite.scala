@@ -1723,10 +1723,11 @@ class EraPlutusContextSuite extends munit.FunSuite:
   private def metadataBoth(c: Case, scripts: ScriptDecoder[Id]) =
     val (_, _, st) = annotated(c)
     val era =
-      rules.ShelleyUtxow.validateMetadata[Conway, TxLevel.Top](scripts, eraParams(c), st)(using
-        t,
-        top
-      )
+      rules.ShelleyUtxow
+        .validateMetadata[Conway, TxLevel.Top](scripts, eraParams(c), st)(using t, top)
+        .map(test =>
+          EraUtxoRun.utxowFlat(test)(EraUtxoRun.shelleyW).getOrElse(fail(s"${c.name}: $test"))
+        )
     val flat = xyz.kd5ujc.scarab.ledger.TxChecks
       .auxiliaryChecks[Conway](flatParams(c), c.flat, TestLedger.env.copy(decoder = scripts))(using
         ShelleyBasedEra.SConway
@@ -1815,7 +1816,11 @@ class EraPlutusContextSuite extends munit.FunSuite:
     val pp =
       PParams[Conway](ConwayPParams.fromStored(flatPp).fold(e => fail(s"${c.name}: $e"), identity))
     val (_, _, st) = annotated(c, cache)
-    val era = rules.BabbageUtxow.validateScriptsWellFormed[Conway](scripts, pp, st)
+    val era = rules.BabbageUtxow
+      .validateScriptsWellFormed[Conway](scripts, pp, st)
+      .map(test =>
+        EraUtxoRun.utxowFlat(test)(EraUtxoRun.babbageW).getOrElse(fail(s"${c.name}: $test"))
+      )
     val flat = xyz.kd5ujc.scarab.ledger.TxChecks
       .scriptsWellFormed[Conway](flatPp, c.flat, TestLedger.env.copy(decoder = scripts))(using
         ShelleyBasedEra.SConway
@@ -2270,7 +2275,11 @@ class EraPlutusContextSuite extends munit.FunSuite:
         assertEquals(
           rules.ShelleyUtxow
             .validateMetadata[Conway, TxLevel.Top](decoder, eraParams(c), st)(using t, top)
-            .map(failuresOf),
+            .map(test =>
+              failuresOf(
+                EraUtxoRun.utxowFlat(test)(EraUtxoRun.shelleyW).getOrElse(fail(s"$name: $test"))
+              )
+            ),
           Right(
             if valid then Vector.empty
             else Vector(utxow(xyz.kd5ujc.scarab.ledger.UtxowFailure.InvalidMetadata))

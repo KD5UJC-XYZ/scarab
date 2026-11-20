@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
 import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, LedgerDecodeError, Unsigned}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.ledger.era.{
+  AllegraTx,
   AlonzoEraTx,
   AlonzoEraTxAuxData,
   AlonzoTx,
@@ -113,6 +114,12 @@ object ConwayTx:
       ): Long =
         l match
           case TopOnly.Top => tx.sizeTxForFeeCalculation
+      // `validateNativeScript = validateTimelock`, `Conway/Tx.hs:89`, cardano-ledger f649f975
+      override def validateNativeScript[L <: TxLevel](
+          tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway],
+          native: ConwayTimelock
+      )(using l: TopOnly[L]): Boolean =
+        AllegraTx.validateTimelock[Conway, L](tx, native.rep)(using this, l)
       // `getMinFeeTx = getConwayMinFeeTx`, `Conway/Tx.hs:92`, cardano-ledger f649f975
       override def getMinFeeTx[L <: TxLevel](
           pp: PParams[Conway],

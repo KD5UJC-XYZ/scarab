@@ -20,14 +20,13 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxowFailure,
   Verdicts
 }
-import xyz.kd5ujc.scarab.ledger.era.conway.{
-  ConwayPParams,
-  ConwayPlutusPurpose,
-  ConwayTx,
-  ConwayTxCert,
-  ConwayUTxO
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayTxCert, ConwayUTxO}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  AlonzoUtxow,
+  BabbageUtxow,
+  ConwayUtxowPredFailure,
+  ShelleyUtxow
 }
-import xyz.kd5ujc.scarab.ledger.era.rules.{AlonzoUtxow, BabbageUtxow, ShelleyUtxow}
 import xyz.kd5ujc.scarab.ledger.rules.{StAnnTx, Test as Verdict, UtxoEnv, Utxow}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.NodeSetup
@@ -156,7 +155,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
 
   /** `missingRequiredDatums`' failures on the era types. */
   private def typedDatums(s: Seen): Vector[PredicateFailure] =
-    failuresOf(
+    typedFailures(s, EraUtxoRun.alonzoW)(
       AlonzoUtxow.missingRequiredDatums[Conway, TxLevel.Top](scriptsProvided(s), s.utxo, s.typed)(
         using
         tx,
@@ -170,18 +169,27 @@ class ConwayUtxowChecksSuite extends FunSuite:
     * form ([[ConwayPlutusPurpose.toStored]]).
     */
   private def typedRedeemers(s: Seen): Vector[PredicateFailure] =
-    failuresOf(
+    typedFailures(s, EraUtxoRun.alonzoW)(
       AlonzoUtxow.hasExactSetOfRedeemers[Conway, TxLevel.Top](
         s.typed,
         scriptsProvided(s),
         scriptsNeeded(s)
-      )(p => ConwayPlutusPurpose.toStored(p, s.utxo).getOrElse(fail(s"${s.label}: no flat $p")))(
-        using
-        tx,
-        top,
-        summon,
-        summon
-      )
+      )(using tx, top)
+    )
+
+  /** A UTXOW predicate's failures in the node's flat form, injected into Conway's by `inject`, a
+    * missing redeemer's purpose by the case's scripts needed and UTxO set.
+    */
+  private def typedFailures[A](s: Seen, inject: A => ConwayUtxowPredFailure[Conway])(
+      test: Verdict[A]
+  ): Vector[PredicateFailure] =
+    failuresOf(
+      EraUtxoRun
+        .utxowFlat(test)(
+          inject,
+          ConwayUtxowPredFailure.storedPurposes(scriptsNeeded(s), s.utxo)
+        )
+        .getOrElse(fail(s"${s.label}: no flat form of $test"))
     )
 
   /** `getReferenceScripts` (`Babbage/UTxO.hs:148-155`, cardano-ledger f649f975) of the inputs and
@@ -218,7 +226,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
         TxChecks.verifiedWits(s.flat, Verdicts.Direct).map(failuresOf),
         ShelleyUtxow
           .validateVerifiedWits[Conway, TxLevel.Top](s.typed, Verdicts.Direct)(using tx, top)
-          .map(failuresOf)
+          .map(typedFailures(s, EraUtxoRun.shelleyW))
       ),
       (
         "babbageMissingScripts",
@@ -231,7 +239,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
           }
         ),
         Right(
-          failuresOf(
+          typedFailures(s, EraUtxoRun.shelleyW)(
             BabbageUtxow.babbageMissingScripts[Conway](
               s.pp,
               EraUTxO.conway.getScriptsHashesNeeded(scriptsNeeded(s)),
@@ -250,7 +258,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
           }
         ),
         Right(
-          failuresOf(
+          typedFailures(s, EraUtxoRun.shelleyW)(
             ShelleyUtxow.validateNeededWitnesses[Conway, TxLevel.Top](
               EraTxWits.keyHashWitnessesTxWits[Conway](wits)(using tx.witsOf),
               s.cert,
@@ -291,7 +299,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
           )
         ),
         Right(
-          failuresOf(
+          typedFailures(s, EraUtxoRun.alonzoW)(
             AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](s.typed, s.pp, integrity)(
               using
               tx,
@@ -341,7 +349,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
     // the era-typed failure, encoded as the node sends it, is the reference's refusal
     val compared = seen.filter(_.families == Vector(Family.UTXOW)).flatMap { s =>
       val wits = tx.wits[TxLevel.Top](s.typed)(using top)
-      val failures = failuresOf(
+      val failures = typedFailures(s, EraUtxoRun.shelleyW)(
         ShelleyUtxow.validateNeededWitnesses[Conway, TxLevel.Top](
           EraTxWits.keyHashWitnessesTxWits[Conway](wits)(using tx.witsOf),
           s.cert,
