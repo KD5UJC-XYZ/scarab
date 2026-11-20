@@ -51,9 +51,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
   * from each: its smallest pool P retiring at the next epoch, with its current parameters as its
   * future ones (`stakePoolStateToStakePoolParams Testnet`, the networks of the captures). Here the
   * same state is built. On the testnet's state P holds a voting key, which its future parameters
-  * would carry (`StakePool.hs:701-740`) and which the answer does not write yet: the state's
-  * parameters hold it, but their writer has no place for it (`DijkstraNotYet.PoolParamsBlsKey`,
-  * #826 comment 6967015840), so that case is compared on the two devnet states only.
+  * carry, ten items with the key third (`withStakePoolParamsFlatEncoding`, `StakePool.hs:716-736`).
   */
 class LeiosQueryAnswersSuite extends FunSuite:
   private val setup: NodeSetup = NtcGolden.setup
@@ -103,8 +101,8 @@ class LeiosQueryAnswersSuite extends FunSuite:
 
   /** The oracle's derived state: the smallest pool retiring at the next epoch, its parameters as
     * read back from its state (`stakePoolStateToStakePoolParams`, `State/StakePool.hs:325-343`,
-    * cardano-ledger 9df9f98c) on the testnet (network 0) as its future ones; none if that pool
-    * holds a voting key.
+    * cardano-ledger 9df9f98c) on the testnet (network 0) as its future ones, with the voting key it
+    * holds (`sppBlsKey = bksKey <$> spsBlsKey sps`).
     */
   private def retiringWithFuture[E <: EraTag](
       nes: NewEpochState[E],
@@ -113,24 +111,27 @@ class LeiosQueryAnswersSuite extends FunSuite:
     given ShelleyBasedEra[E] = era
     val ls = nes.es.ls
     val p = EraLedger.pState(ls)
-    p.stakePools.headOption.collect {
-      case (id, s) if s.blsKey == PoolBlsKey.Leios(None) =>
-        val params = PoolParams(
-          id.bytes,
-          s.vrf.bytes,
-          s.pledge.value,
-          s.cost.value,
-          s.margin,
-          RewardAccount(0, EraRead.credential(s.accountId)),
-          s.owners.iterator.map(_.bytes).toSet,
-          s.relays,
-          s.metadata
-        )
-        val held = p.copy(
-          retiring = p.retiring + (id -> nes.epoch.addInterval(EpochInterval.one)),
-          future = p.future + (id -> Build.stakePoolParams(params, PoolParamsBlsKey.Leios(None)))
-        )
-        nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, held)))
+    p.stakePools.headOption.map { (id, s) =>
+      val params = PoolParams(
+        id.bytes,
+        s.vrf.bytes,
+        s.pledge.value,
+        s.cost.value,
+        s.margin,
+        RewardAccount(0, EraRead.credential(s.accountId)),
+        s.owners.iterator.map(_.bytes).toSet,
+        s.relays,
+        s.metadata
+      )
+      // `sppBlsKey = bksKey <$> spsBlsKey sps`, in the state's layout
+      val blsKey = s.blsKey match
+        case PoolBlsKey.Node11_1 => PoolParamsBlsKey.Node11_1
+        case PoolBlsKey.Leios(k) => PoolParamsBlsKey.Leios(k.map(_.key))
+      val held = p.copy(
+        retiring = p.retiring + (id -> nes.epoch.addInterval(EpochInterval.one)),
+        future = p.future + (id -> Build.stakePoolParams(params, blsKey))
+      )
+      nes.copy(es = nes.es.copy(ls = EraLedger.withPState(ls, held)))
     }
 
   private final case class Case(
@@ -212,13 +213,11 @@ class LeiosQueryAnswersSuite extends FunSuite:
       assertEquals(c.cases.count(_.derived), 2, c.name)
       assert(c.cases.exists(_.query == LedgerQuery.GetLeiosCommittee), c.name)
     }
-    // the derived state is built where the oracle's smallest pool holds no voting key
-    assertEquals(captured.map(_.state.derived.isDefined), Vector(true, true, false))
+    assertEquals(captured.map(_.state.derived.isDefined), Vector(true, true, true))
   }
 
-  /** The cases compared: the derived ones where the derived state is built. */
-  private def compared(c: Captured): Vector[Case] =
-    c.cases.filter(k => !k.derived || c.state.derived.isDefined)
+  /** The cases compared: all of them. */
+  private def compared(c: Captured): Vector[Case] = c.cases
 
   test("the Leios build at version 23 answers each with the bytes of the build's ledger code") {
     val checked =
@@ -232,7 +231,7 @@ class LeiosQueryAnswersSuite extends FunSuite:
           k.label
         )
         k
-    assertEquals(checked.size, 22)
+    assertEquals(checked.size, 24)
   }
 
   test("inside GetCBOR each answer is the same bytes under tag 24") {

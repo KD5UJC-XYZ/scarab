@@ -809,7 +809,7 @@
    ],
    "class": "Mirror",
    "structure": "differs",
-   "evidence": ["FuturePoolParamsCodecSuite", "HaskellStateCodecSuite", "LeiosLayoutSuite", "DijkstraEpochReferenceSuite"],
+   "evidence": ["FuturePoolParamsCodecSuite", "HaskellStateCodecSuite", "LeiosLayoutSuite", "DijkstraEpochReferenceSuite", "LeiosQueryAnswersSuite"],
    "note": "nine items written by the node's parameters' codec (poolParams), so the bytes of parameters without a key are those written before (FuturePoolParamsCodecSuite, both layouts). Read by that codec, then as the reference reads the two fields it keeps unread: the metadata as DecCBOR PoolMetadata at the state's version (PoolMetadata.read: a [url, hash] record, the url bounded by the version and its text chunked only in the Leios layout from version 12, the hash chunked from 12 in both) and the account's network 0 or 1 (decodeAccountAddressT, Address.hs:930-948 at f649f975), each refused with a typed error; the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here. In the Leios layout from version 12 the voting key is read where the third of ten items is a list (decodeStakePoolParamsFlat) and written as ten items with the key third (withStakePoolParamsFlatEncoding, through ConwayCodecs.poolFieldsWith); below version 12 it is not written, as the reference drops it. Keyed parameters have their relays read as the reference reads them (PoolRelays.fromState); keyless ones keep the earlier reader, which takes any array and keeps its bytes. Reading and writing the key was approved under the format freeze on 2026-11-20 (#54), V10 changed in place",
    "digest": "7082b046a8ef49bc"
   },
