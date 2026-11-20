@@ -24,36 +24,45 @@ on an inbound duplex connection the inbound governor runs our ChainSync, BlockFe
 The BlockFetch server answers a range as the reference's ChainDB iterator streams it to its server
 (ouroboros-consensus `82ecba329`, the same at `808e40054`: `Storage/ChainDB/Impl/Iterator.hs`,
 `Storage/ChainDB/Impl/Paths.hs` and `MiniProtocol/BlockFetch/Server.hs` 87-146), over the blocks the
-node holds: the immutable store, the selected volatile chain and the received log, which keeps every
-block the node received or forged (as #1239 keeps forged blocks), held invalid too, until its file is
-collected, as the reference's VolatileDB does. A block need not be on the selected chain to be served (`relay/HeldRange.scala`). ChainSync still
-follows the selected chain alone, as the reference's follower does.
+node holds: the immutable store, the selected volatile chain and the received log. The received log
+keeps the originals admitted to it: a block received from a peer, or forged (#1239), unless it is held
+already, known invalid or no younger than the immutable tip when it arrives, as the reference's ChainDB
+adds a block to its VolatileDB (`Storage/ChainDB/Impl/ChainSel.hs` 425-451). It keeps them, refused
+by validation later or not, until their file is collected. A block need not be on the selected chain to be
+served (`relay/HeldRange.scala`): the walk follows each held block's predecessor by its hash, whatever
+its slot, and reads the selected chain and the received log as they were at one instant, as the
+reference walks one snapshot of its VolatileDB's index. ChainSync still follows the selected chain
+alone, as the reference's follower does.
 
 | The range asked for | Reference | Scarab |
 |---|---|---|
 | Upper bound newer than the immutable tip, and the walk back from it through the held blocks meets the lower bound | `StartBatch`, the blocks oldest first, `BatchDone` | the same |
 | The walk leaves the held blocks at the immutable tip, or at a block that has reached the immutable chain since | the immutable chain's part, then the held part | the same |
 | Upper bound not held, or a walk that cannot reach the immutable tip (`ForkTooOld`); upper bound no newer than the tip and not in the immutable chain (`MissingBlock`) | `UnknownRange`, answered `NoBlocks` | `NoBlocks` |
-| Lower bound in a later slot than the upper, or a walk that reaches the start of the chain without meeting the lower bound | `InvalidIteratorRange` thrown | the connection ends (`RangeRefused`, `InvalidRange`) |
-| Bounds the immutable chain refuses: a lower bound newer than the tip the walk joins, or a main block before the boundary block of its slot | the ImmutableDB's `InvalidIteratorRangeError` thrown | the connection ends (`InvalidRange`) |
+| Lower bound in a later slot than the upper, or a walk that reaches the start of the chain without meeting the lower bound | the ChainDB's `InvalidIteratorRange` thrown | the connection ends (`RangeRefused`, `InvalidIteratorRange`) |
+| Bounds the immutable chain refuses: a lower bound newer than the tip the walk joins, or a main block before the boundary block of its slot | the ImmutableDB's `InvalidIteratorRangeError` thrown | the connection ends (`InvalidIteratorRangeError`) |
 | An end at Origin | `NoGenesisBlock` thrown | the connection ends (`NoGenesisBlock`) |
-| A held block collected after the batch started | read from the immutable chain, its point checked against the path; if it is not there, `IteratorBlockGCed`, thrown as `BlockGCed`, with no `BatchDone` | the same (`Collected`) |
+| A held block collected after the batch started | read from the immutable chain, its point checked against the path; if it is not there, `IteratorBlockGCed`, thrown as `BlockGCed`, with no `BatchDone` | the same (`BlockGCed`) |
 
 Each exception stops the reference's mux, which closes the connection (network-mux `Mux.hs` 458-463,
 ouroboros-network `c45735a5`), and its rethrow policy makes each one `ShutdownPeer`
-(`Node/RethrowPolicy.hs` 72-100): Scarab's server raises `NetworkError.RangeRefused`, the connection
-ends, and the peer is tried again after a backoff (`FailurePolicy`). The received log's collection
-deletes every file but the one being written whose newest slot is below the cutoff, and only those
-files' blocks leave its index, as the reference's VolatileDB collects (`garbageCollectImpl`,
-`garbageCollectFile`, `Storage/VolatileDB/Impl.hs` 453-543).
+(`Node/RethrowPolicy.hs` 72-100). Scarab's server raises `NetworkError.RangeRefused` and the connection
+ends; the peer's failure is `Transient` (`FailurePolicy`): it is tried again after the ordinary error
+delay, and like any failing peer it is forgotten once its failures reach the normal retry limit. The
+received log's collection deletes every file but the one being written whose newest slot is below the
+cutoff, and only those files' blocks leave its index, as the reference's VolatileDB collects
+(`garbageCollectImpl`, `garbageCollectFile`, `Storage/VolatileDB/Impl.hs` 453-543).
 
-Evidence: `ChainServerSuite` (each outcome over a connection served by `NodeToNodeServer.start`, with a
-held fork never selected, a block rolled back, a block held invalid, a range joining the immutable
-chain, blocks collected during a batch, and a restart), `ServerSuite`, `ReceivedBlocksSuite` and
-`PeerDefectPolicySuite`.
+Evidence: `ChainServerSuite` asserts each outcome above over a connection served by
+`NodeToNodeServer.start`, with a held fork never selected, a block rolled back, a block held invalid,
+a path whose slots do not rise, a range joining the immutable chain, a tip that moves between the walk
+and the join, blocks collected during a batch, a change between the reads of the held blocks, and a
+restart; `ServerSuite`, `ReceivedBlocksSuite` and `PeerDefectPolicySuite`. These assert the reference's
+outcomes as its source at the pins gives them; no running reference node is asked for a fork.
 
-Not changed here: when the received log is collected. The reference collects its VolatileDB a delay after
-blocks are copied to its ImmutableDB (`cdbsGcDelay`, 60 s, `Storage/ChainDB/Impl/Args.hs` 123) and
-keeps 1,000 blocks to a file (`Storage/VolatileDB/Impl.hs` 186); Scarab collects when its immutable
-store has made a batch of blocks durable (`volatileCollectBlocks`) and keeps 512 to a file, so a block
-below the immutable tip may stay readable for a different time.
+Not changed here: when the received log is collected, a Gap tracked in #1247. The reference collects
+its VolatileDB a delay after blocks are copied to its ImmutableDB (`cdbsGcDelay`, 60 s,
+`Storage/ChainDB/Impl/Args.hs` 123) and keeps 1,000 blocks to a file (`Storage/VolatileDB/Impl.hs`
+186); Scarab collects when its immutable store has made a batch of blocks durable
+(`volatileCollectBlocks`) and keeps 512 to a file, so a block below the immutable tip may stay readable
+for a different time.

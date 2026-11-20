@@ -881,9 +881,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
+    "ChainServerSuite",
     "ReceivedBlocksSuite"
    ],
-   "note": "the block's reference (hash, slot, number, boundary) and its predecessor; the header's offset and size, which the reference keeps to read a header alone, are not kept",
+   "note": "the block's reference (hash, slot, number, boundary) and its predecessor, the fields of BlockInfo the iterator's path walk reads; the header's offset and size, which the reference keeps to read a header alone, are not kept. Evidence: the wire cases of ChainServerSuite assert each outcome of the reference's ChainDB iterator and BlockFetch server, as their source at the pins gives it, over a connection Scarab serves; no running reference node is asked",
    "digest": "adb426558b5074cb"
   },
   "enum storage.ReceivedBlocks.Predecessor": {
@@ -933,9 +934,10 @@
    "structure": "differs",
    "evidence": [
     "ReceivedBlocksSuite",
-    "VolatileStoreSuite"
+    "VolatileStoreSuite",
+    "ChainServerSuite"
    ],
-   "note": "the index is rebuilt a record at a time, keeping a note of each block read from its body, as the reference keeps each block's BlockInfo; the note is the caller's",
+   "note": "the index is rebuilt a record at a time, keeping a note of each block read from its body, as the reference keeps each block's BlockInfo; the note is the caller's. Evidence: ReceivedBlocksSuite reopens a log and reads the same predecessors back, and ChainServerSuite serves a held fork after a restart, as the reference's iterator would over its reopened VolatileDB; no running reference node is asked",
    "digest": "666577b18901c140"
   },
   "def storage.ChainStorage.predecessorOf": {

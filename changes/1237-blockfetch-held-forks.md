@@ -5,10 +5,11 @@
   invalid, is served until the received log collects it, and a range on such a fork is walked back through the held blocks and
   joined to the immutable chain at its tip. ChainSync still follows the selected chain alone.
 - A range the reference's server refuses with an exception now ends the connection instead of being
-  answered `NoBlocks`: an Origin end (`NoGenesisBlock`), bounds that are not a range
-  (`InvalidIteratorRange`), and a block collected during its batch (`BlockGCed`, with no
-  `BatchDone`). The peer is tried again after a backoff, as for the reference's `ShutdownPeer`; an
-  Origin end no longer counts as a protocol violation.
+  answered `NoBlocks`: an Origin end (`NoGenesisBlock`), bounds that are not a range of the chain
+  database or of the immutable chain (`InvalidIteratorRange`, `InvalidIteratorRangeError`), and a
+  block collected during its batch (`BlockGCed`, with no `BatchDone`). The peer is tried again after
+  the ordinary error delay, as for the reference's `ShutdownPeer`, and an Origin end no longer counts
+  as a protocol violation.
 
 ### Fixed (storage, #1237)
 

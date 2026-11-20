@@ -1108,33 +1108,33 @@
     {
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Iterator.hs",
-     "symbol": "computePathVolatileDB",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "symbol": "InvalidIteratorRange",
      "lines": [
-      494,
-      504
+      981,
+      999
      ]
     },
     {
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Iterator.hs",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/API.hs",
      "symbol": "InvalidIteratorRangeError",
      "lines": [
-      134,
-      159
+      370,
+      379
      ]
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "ServerSuite",
     "ChainServerSuite",
     "PeerDefectPolicySuite"
    ],
-   "note": "one closed type for the exceptions the reference's server, ChainDB iterator and ImmutableDB raise for a range: NoGenesisBlock, InvalidIteratorRange and InvalidIteratorRangeError, BlockGCed; each ends the connection",
-   "digest": "8b797b4b946dde04"
+   "note": "one case for each exception the reference raises for a range, named as it is: NoGenesisBlock and BlockGCed (BlockFetchServerException), InvalidIteratorRange (ChainDbError), InvalidIteratorRangeError (the ImmutableDB's ApiMisuse); as a closed type, each ends the connection",
+   "digest": "cfc6c4925b5e93d2"
   },
   "enum network.BlockFetchServer.Answer": {
    "upstream": [
@@ -1152,10 +1152,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ServerSuite",
-    "ChainServerSuite"
+    "ChainServerSuite",
+    "ServerSuite"
    ],
-   "note": "the ChainDB stream's Either UnknownRange Iterator, and the exceptions its opening and its iterator raise, as one answer; IteratorBlockGCed is a refusal at the end of the batch's stream",
+   "note": "the ChainDB stream's Either UnknownRange Iterator and the exceptions its opening and its iterator raise, as one answer; IteratorBlockGCed is a refusal at the end of the batch's stream. Evidence: the wire cases of ChainServerSuite assert each outcome of the reference's ChainDB iterator and BlockFetch server, as their source at the pins gives it, over a connection Scarab serves; no running reference node is asked",
    "digest": "f9f28ddee61ec2ca"
   }
  },
