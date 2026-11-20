@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{Deferred, IO, Outcome, Ref}
+import cats.effect.{Deferred, IO, Outcome, Ref, Temporal}
+import cats.effect.kernel.Poll
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
@@ -237,6 +238,65 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
         case Some(Refused.Defect(_: IllegalStateException)) => ()
         case other => fail(s"the runner ends with the exception as its value, got $other")
       assertEquals(attempts, Vector(BigInt(1)), "no collection after it")
+  }
+
+  /** IO's Temporal, but its monotonic clock fails on its `failAt`-th read. */
+  private def clockFailing(failAt: Int, reads: Ref[IO, Int]): Temporal[IO] =
+    val io = Temporal[IO]
+    new Temporal[IO]:
+      def pure[A](a: A) = io.pure(a)
+      def flatMap[A, B](fa: IO[A])(f: A => IO[B]) = io.flatMap(fa)(f)
+      def tailRecM[A, B](a: A)(f: A => IO[Either[A, B]]) = io.tailRecM(a)(f)
+      def raiseError[A](e: Throwable) = io.raiseError[A](e)
+      def handleErrorWith[A](fa: IO[A])(f: Throwable => IO[A]) = io.handleErrorWith(fa)(f)
+      def forceR[A, B](fa: IO[A])(fb: IO[B]) = io.forceR(fa)(fb)
+      def uncancelable[A](body: Poll[IO] => IO[A]) = io.uncancelable(body)
+      def canceled = io.canceled
+      def onCancel[A](fa: IO[A], fin: IO[Unit]) = io.onCancel(fa, fin)
+      def unique = io.unique
+      def start[A](fa: IO[A]) = io.start(fa)
+      def never[A] = io.never[A]
+      def cede = io.cede
+      override def racePair[A, B](fa: IO[A], fb: IO[B]) = io.racePair(fa, fb)
+      def ref[A](a: A) = io.ref(a)
+      def deferred[A] = io.deferred[A]
+      def sleep(time: FiniteDuration) = io.sleep(time)
+      def realTime = io.realTime
+      def monotonic = reads
+        .updateAndGet(_ + 1)
+        .flatMap(n =>
+          if n == failAt then IO.raiseError(new IllegalStateException("clock")) else io.monotonic
+        )
+
+  test("an exception while the runner waits ends it with a value, and nothing is collected") {
+    // the first clock read is the schedule's, the second the runner's, as it waits for the entry
+    for
+      reads <- Ref.of[IO, Int](0)
+      actions <- Queue.unbounded[IO, Option[IO[Unit]]]
+      schedule <- GcSchedule[IO](reference)(using clockFailing(2, reads))
+      tried <- Ref.of[IO, Vector[BigInt]](Vector.empty)
+      ended <- Deferred[IO, Refused]
+      program = schedule
+        .run[Refused](slot => tried.update(_ :+ slot).as(Right(())), Refused.Defect(_))
+        .flatMap(ended.complete)
+        .background
+        .use(_ => performed(actions))
+      control <- TestControl.execute(program)
+      _ <- control.tick
+      observed <- controlled(control, actions) {
+        for
+          _ <- actions.offer(Some(schedule.schedule(BigInt(1)))) *> control.tick
+          _ <- forward(control, 100.seconds)
+          result <- ended.tryGet
+          attempts <- tried.get
+        yield (result, attempts)
+      }
+      (result, attempts) = observed
+    yield
+      result match
+        case Some(Refused.Defect(_: IllegalStateException)) => ()
+        case other => fail(s"the runner ends with the clock's exception as its value, got $other")
+      assertEquals(attempts, Vector.empty, "the collection is not reached")
   }
 
   // ---- the pure parts: the time of a collection and the queue ----

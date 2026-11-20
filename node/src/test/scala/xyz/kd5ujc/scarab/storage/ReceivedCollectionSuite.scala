@@ -313,3 +313,52 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
           case other => fail(s"the next block is refused with the collection's failure, got $other")
     }
   }
+
+  test("the storage's open cuts a received-log file at the first record the node's check refuses") {
+    // three records to a file: [1 M 4] [5 U 6] [7], M holding block 2's reference over block 3's
+    // body (it decodes, but its header is not the record's) and U block 6's reference over bytes
+    // that do not decode. The node's start-up check refuses both, as the reference's parse stops
+    // at a block it cannot read (`parseBlockFile`, `BlockReadErr`,
+    // `Storage/VolatileDB/Impl/Parser.hs` 70-107, ouroboros-consensus 82ecba329): each file is cut
+    // there and the third is read all the same, at this open and the next
+    StorageTestKit.tempDir.use { dir =>
+      val mismatched = block(2)._1 -> block(3)._2
+      val undecodable = block(6)._1 -> Bytes(Vector(0xff.toByte, 0x00.toByte))
+      val written =
+        Vector(block(1), mismatched, block(4), block(5), undecodable, block(6), block(7))
+      def opened: IO[Set[Bytes]] =
+        typed(
+          ChainStorage
+            .open[IO, Int](
+              dir,
+              config,
+              rules,
+              0,
+              _ => IO.unit,
+              StateBacking.none[IO, Int],
+              _ => IO.unit
+            )(ReceivedBlockRecovery.startUp(epochSlots))
+            .use(_.received.hashes)
+        )
+      for
+        _ <- IO(assert(blocks.size >= 7, s"seven blocks, found ${blocks.size}"))
+        _ <- StorageTestKit.ok(
+          VolatileStore
+            .open[IO](dir / "received", 3)
+            .use((log, _) => written.traverse_((ref, raw) => log.append(ref, raw)))
+        )
+        first <- opened
+        records <- IO(
+          Using
+            .resource(JFiles.list((dir / "received").toNioPath))(
+              _.iterator.asScala.toVector.sortBy(_.toString)
+            )
+            .map(f => VolatileStore.decodeAll(JFiles.readAllBytes(f)).size)
+        )
+        again <- opened
+      yield
+        assertEquals(first, hashesOf(1, 5, 7), "each file cut at its refused record")
+        assertEquals(records.take(3), Vector(1, 1, 1), "one record left in each file")
+        assertEquals(again, first, "and the next open reads the same")
+    }
+  }
