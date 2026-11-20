@@ -5,7 +5,7 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Storage format (FMT-1): extend check_storage_format.py's watched surface to cover the Haskell ledger-state codecs (storage/.../haskell/state/*Codecs.scala) that write the ledger state inside the V10 snapshot? No bytes change; the guard's manifest surface changes, so its approval record is updated. After this, any edit to those codecs … fails the guard until you approve it in its own PR.",
+  "question": "Storage format (FMT-1): extend check_storage_format.py's watched surface to cover the Haskell ledger-state codecs (storage/.../haskell/state/*Codecs.scala) that write the ledger state inside the V10 snapshot? No bytes change; the guard's manifest surface changes, so its approval record is updated. After this, any edit to those codecs (including reference-following changes for Haskell import/export or node-to-client answers) fails the guard until you approve it in its own PR.",
   "asked_at": "2026-11-20T03:23:52Z",
   "decision": "Approved: the guard watches every codec file that writes the bytes of a V10 snapshot, in a pull request of its own at level 3; no persisted byte changes.",
   "decided_at": "2026-11-20T03:23:56Z",
