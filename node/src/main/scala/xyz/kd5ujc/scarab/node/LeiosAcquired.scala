@@ -17,8 +17,9 @@ import xyz.kd5ujc.scarab.storage.{BodyWritten, LeiosEb, LeiosStore, LeiosStoreEr
   * (ouroboros-consensus 2416493b `Storage/ChainDB/Impl/Types.hs:405-445`), held by the block pool,
   * the node's ChainDB. It is
   *
-  *   - seeded when the chain database opens, from the store's complete closures announced no
-  *     earlier than the immutable tip ([[seeded]], `ChainDB/Impl.hs:236-247`);
+  *   - seeded when the chain database opens, before the volatile chain is replayed, from the
+  *     store's complete closures announced no earlier than the immutable tip
+  *     ([[LeiosAcquired.scanned]], [[seed]], `ChainDB/Impl.hs:236-247`);
   *   - grown from the store's completions ([[acquired]]), which the selection worker takes one at a
   *     time ([[next]]), as `leiosAcquiredEbsRunner` takes the store's `AcquiredEbTxs` notifications
   *     (`ChainDB/Impl/Background.hs:170-200`);
@@ -37,20 +38,8 @@ private[node] final class LeiosAcquired[F[_]] private (
 )(using F: Async[F]):
   def snapshot: F[AcquiredLeiosEbs] = state.get
 
-  /** The set at the open of the chain database: the store's complete closures announced at or after
-    * the immutable tip's slot (the origin's is 0), `scanCompleteEbClosuresNotOlderThanSlot`.
-    */
-  def seeded(store: LeiosStore[F], immutableTip: Option[BigInt])(using
-      Raise[F, StorageError]
-  ): F[Unit] =
-    // a slot past every Word64 has no point at or after it
-    Word64
-      .from(immutableTip.getOrElse(BigInt(0)))
-      .fold(
-        _ => F.pure(Vector.empty[EbPoint]),
-        slot => store.scanCompleteEbClosuresNotOlderThanSlot(slot)(using LeiosStorage.lifted[F])
-      )
-      .flatMap(points => state.set(AcquiredLeiosEbs.of(points)))
+  /** The set the chain database opened with ([[LeiosAcquired.scanned]]). */
+  def seed(opened: AcquiredLeiosEbs): F[Unit] = state.set(opened)
 
   /** The next completion of the store, waiting for one. */
   def next: F[EbPoint] = completions.take
@@ -108,6 +97,22 @@ private[node] final class LeiosAcquired[F[_]] private (
       store.promoteToImmutable(points)
 
 private[node] object LeiosAcquired:
+  /** The set at the open of the chain database: the store's complete closures announced at or after
+    * the immutable tip's slot (the origin's is 0), `scanCompleteEbClosuresNotOlderThanSlot`
+    * (`ChainDB/Impl.hs:236-247` at ouroboros-consensus 2416493b).
+    */
+  def scanned[F[_]: Async](store: LeiosStore[F], immutableTip: Option[BigInt])(using
+      Raise[F, StorageError]
+  ): F[AcquiredLeiosEbs] =
+    // a slot past every Word64 has no point at or after it
+    Word64
+      .from(immutableTip.getOrElse(BigInt(0)))
+      .fold(
+        _ => Async[F].pure(Vector.empty[EbPoint]),
+        slot => store.scanCompleteEbClosuresNotOlderThanSlot(slot)(using LeiosStorage.lifted[F])
+      )
+      .map(AcquiredLeiosEbs.of)
+
   def create[F[_]: Async]: F[LeiosAcquired[F]] =
     (Ref.of[F, AcquiredLeiosEbs](AcquiredLeiosEbs.empty), Queue.unbounded[F, EbPoint])
       .mapN(new LeiosAcquired(_, _))

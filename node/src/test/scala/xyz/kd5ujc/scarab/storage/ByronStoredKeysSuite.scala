@@ -168,7 +168,8 @@ class ByronStoredKeysSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   rules,
                   epochSlots,
                   e => log.update(_ :+ e),
-                  _ => IO.unit
+                  _ => IO.unit,
+                  xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs.empty
                 )
                 .product(log.get)
                 .map { (resumed, events) =>

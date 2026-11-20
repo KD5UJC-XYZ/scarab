@@ -557,7 +557,8 @@ object Main extends IOApp:
       resumed: Vector[ChainStorage.Resumed[S]],
       persistence: Option[ChainPersistence[IO, S]],
       immutable: Option[ImmutableStore[IO]],
-      received: Option[ReceivedBlocks[IO]]
+      received: Option[ReceivedBlocks[IO]],
+      acquired: xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
   )
 
   /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
@@ -1650,7 +1651,8 @@ object Main extends IOApp:
           Vector.empty,
           Some(ChainPersistence.backingOnly[IO, MirrorState](backing)),
           None,
-          None
+          None,
+          xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs.empty
         )
       )
     ) { dir =>
@@ -1679,26 +1681,37 @@ object Main extends IOApp:
           Some(TransitionRecount.reopen[IO](genesis.geometry))
         )
         .evalMap { r =>
-          ChainStorage
-            .resume[IO, MirrorState](
-              r,
-              k,
-              setup.origin,
-              rules.rules,
-              genesis.geometry.byron.epochSlots,
-              storageEvents,
-              rules.warm,
-              Some(scheduling.compute)
+          // the acquired endorser blocks at the open, before the volatile chain is replayed, as the
+          // ChainDB seeds them before its initial chain selection (`ChainDB/Impl.hs:236-259` at
+          // ouroboros-consensus 2416493b): the replay parks what that selection hides
+          run.leios
+            .fold(IO.pure(xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs.empty))(
+              LeiosAcquired.scanned[IO](_, r.anchor.map(_.slot))
             )
-            .map(resumed =>
-              Storage(
-                r.anchor,
-                r.state,
-                resumed,
-                Some(r.persistence),
-                Some(r.store),
-                Some(r.received)
-              )
+            .flatMap(acquired =>
+              ChainStorage
+                .resume[IO, MirrorState](
+                  r,
+                  k,
+                  setup.origin,
+                  rules.rules,
+                  genesis.geometry.byron.epochSlots,
+                  storageEvents,
+                  rules.warm,
+                  acquired,
+                  Some(scheduling.compute)
+                )
+                .map(resumed =>
+                  Storage(
+                    r.anchor,
+                    r.state,
+                    resumed,
+                    Some(r.persistence),
+                    Some(r.store),
+                    Some(r.received),
+                    acquired
+                  )
+                )
             )
         }
     }
@@ -1734,7 +1747,7 @@ object Main extends IOApp:
             instruments.fatalSink(Fatal.Internal(problem))
       val headers = headerChecks(run, instruments, rules, chain)
       for
-        supply <- supplied(run, instruments, chain, headers, opened.received, opened.anchor)
+        supply <- supplied(run, instruments, chain, headers, opened.received, opened.acquired)
         connections <- connected(run, instruments, chain, headers, supply, opened.immutable)
         services <- served(
           run,
@@ -1993,7 +2006,7 @@ object Main extends IOApp:
       chain: Chain,
       headers: Headers,
       receivedBlocks: Option[ReceivedBlocks[IO]],
-      immutableTip: Option[BlockRef]
+      acquired: xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
   )(using
       Handle[IO, NodeError],
       Log[IO],
@@ -2048,9 +2061,9 @@ object Main extends IOApp:
         follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
         follower.installInvalidBlocks(blockPool.invalidBlocks) *>
         collectors.add(Collectors.pool(blockPool)) *>
-        // the acquired endorser blocks seeded from the store before the first chain selection, as
-        // the ChainDB seeds them at its open (`ChainDB/Impl.hs:236-247` at consensus 2416493b)
-        run.leios.traverse_(blockPool.leios.seeded(_, immutableTip.map(_.slot)))
+        // the acquired endorser blocks the chain database opened with, before the first chain
+        // selection (`ChainDB/Impl.hs:236-247` at ouroboros-consensus 2416493b)
+        blockPool.leios.seed(acquired)
       genesisRuntime <- createGenesisRuntime(
         setup,
         follower,
