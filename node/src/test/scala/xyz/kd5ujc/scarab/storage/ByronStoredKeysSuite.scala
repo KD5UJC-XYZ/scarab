@@ -190,8 +190,8 @@ class ByronStoredKeysSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val haskell = dir.toNioPath.resolve("haskell")
       haskellDb(haskell, recorded)
       for
+        // an instance of the Leios stores' permits of its own, as the command makes one
         imported <- attempt(
-          // an instance of the Leios stores' permits of its own, as the command makes one
           LeiosStoreLocks
             .make[IO]
             .flatMap(locks =>
@@ -222,8 +222,8 @@ class ByronStoredKeysSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val haskell = dir.toNioPath.resolve("haskell")
       haskellDb(haskell, recorded.take(2) :+ wideVoter)
       for
+        // an instance of the Leios stores' permits of its own, as the command makes one
         imported <- attempt(
-          // an instance of the Leios stores' permits of its own, as the command makes one
           LeiosStoreLocks
             .make[IO]
             .flatMap(locks =>
