@@ -94,17 +94,18 @@ class CompactCoinRulesSuite extends FunSuite:
       retiring = Sorted.map(List(pool(1) -> epoch, pool(2) -> epoch))
     )
     val ls = EraLedger.withPState(initial.ls, pstate)
-    val after = ok(
-      PoolReap.step(
+    val after = PoolReap
+      .step(
         epoch,
         PoolreapState[Shelley](
           ls.utxo.copy(deposited = Coin(7)),
           initial.chainAccount,
           ls.cert
         ),
-        PoolReap.shelleyRelease
+        PoolReap.shelleyRelease,
+        PoolReap.shelleyAdopt
       )
-    )
+      .fold(e => fail(e.toString), identity)
     assertEquals(after.utxo.deposited.value, BigInt(7))
     assertEquals(after.chainAccount.treasury.value, BigInt(1))
     assertEquals(after.cert.dState.accounts.states(cred(1)).balance.toBigInt, maximum)

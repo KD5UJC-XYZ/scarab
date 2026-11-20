@@ -46,7 +46,7 @@ object PoolReap:
           failures: Raise[F, TickFailure]
       ): F[Unit] =
         Sts.modifyE[F, PoolreapState[E], TickFailure](
-          step(epoch, _, shelleyRelease).leftMap(TickFailure.Vocab(_))
+          step(epoch, _, shelleyRelease, shelleyAdopt)
         )
 
   /** The VRF key hashes a reap stops using, and how the count of each is released: `superseded`,
@@ -66,6 +66,20 @@ object PoolReap:
   val shelleyRelease: Release = (counts, superseded, retired) =>
     removeOccurrences(counts -- superseded.toSet, retired)
 
+  /** The voting key a pool holds once its future parameters take effect at the epoch:
+    * `mkStakePoolState e` of the parameters (9df9f98c `State/StakePool.hs:288-320`), from the
+    * pool's state and its future parameters, or the failure of a state the rule does not hold.
+    */
+  type Adopt = (StakePoolState, StakePoolParams, EpochNo) => Either[TickFailure, PoolBlsKey]
+
+  /** Shelley's (`mkStakePoolState e SNothing`, 9df9f98c `Shelley/Rules/PoolReap.hs:137-155`, the
+    * rule up to Conway), in the layout of the pool's state: in the Leios layout a re-registered
+    * pool holds no key, the parameters a certificate before Dijkstra registers carrying none
+    * ([[PoolParamsBlsKey.certified]]).
+    */
+  val shelleyAdopt: Adopt = (current, _, _) =>
+    Right(PoolBlsKey.certified(current.blsKey.stateLayout))
+
   /** `removeVRFKeyHashOccurrence` over `vrfs` (`State/CertState.hs:515-519`, cardano-ledger
     * 9df9f98c): one decrement each, a count that reaches zero removed, a hash not counted
     * unchanged.
@@ -84,9 +98,12 @@ object PoolReap:
   private def decrement(n: NonZero[Word64]): Option[NonZero[Word64]] =
     NonZero.from(Word64.fromUnsigned(n.value.bits - 1)).toOption
 
-  def step[E <: EraTag](epoch: EpochNo, st: PoolreapState[E], release: Release)(using
-      ShelleyBasedEra[E]
-  ): Either[VocabError, PoolreapState[E]] =
+  def step[E <: EraTag](
+      epoch: EpochNo,
+      st: PoolreapState[E],
+      release: Release,
+      adopt: Adopt
+  )(using ShelleyBasedEra[E]): Either[TickFailure, PoolreapState[E]] =
     val ls0 = LedgerState[E](st.cert, st.utxo)
     val ps0 = EraLedger.pState(ls0)
     // the active VRF key hash of each pool re-registered with another key, in pool order
@@ -95,18 +112,19 @@ object PoolReap:
         ps0.future.get(id).filter(_.vrf != sps.vrf).as(sps.vrf)
       }.toVector
     // the future parameters take effect
-    val activated: Either[VocabError, SortedMap[KeyHash[StakePool], StakePoolState]] =
+    val activated: Either[TickFailure, SortedMap[KeyHash[StakePool], StakePoolState]] =
       ps0.future.toList
         .foldM(ps0.stakePools) { case (pools, (id, params)) =>
           pools.get(id) match
             case None          => Right(pools)
             case Some(current) =>
-              // `mkStakePoolState e SNothing` (9df9f98c `Shelley/Rules/PoolReap.hs:140-155`), in the
-              // layout of the pool's state: in the Leios layout a re-registered pool holds no key
-              val blsKey = PoolBlsKey.certified(current.blsKey.stateLayout)
-              Convert
-                .poolState(params, blsKey, current.deposit, current.delegators)
-                .map(pools.updated(id, _))
+              // `mkStakePoolState e _ (spsDeposit) (spsDelegators) futureParams`, its voting key
+              // the era's (`adopt`)
+              adopt(current, params, epoch).flatMap(blsKey =>
+                Convert
+                  .poolState(params, blsKey, current.deposit, current.delegators)
+                  .bimap(TickFailure.Vocab(_), pools.updated(id, _))
+              )
         }
     activated.map { pools =>
       val retired: Set[KeyHash[StakePool]] =

@@ -187,6 +187,28 @@
    ],
    "digest": "d77bcc16bec3b006"
   },
+  "val ledger.rules.DijkstraPoolReap.adopt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "symbol": "poolReapTransition",
+     "lines": [
+      122,
+      141
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPoolReapSuite",
+    "DijkstraEpochReferenceSuite"
+   ],
+   "note": "the voting key of mkStakePoolState e (currentState ^. spsBlsKeyL) futureParams; a pool's state or parameters of the 11.1 layout, which a Dijkstra state does not hold, are refused as DijkstraNotYet.LedgerState, as Dijkstra's SNAP refuses its snapshots",
+   "digest": "b48c0741a38ffbf4"
+  },
   "val ledger.rules.DijkstraPoolReap.release": {
    "upstream": [
     {
@@ -225,7 +247,7 @@
    "evidence": [
     "DijkstraEpochReferenceSuite"
    ],
-   "digest": "4804eb58d59b0e31"
+   "digest": "99f5c5db9fd97b4e"
   },
   "val ledger.rules.DijkstraSnap.sts": {
    "upstream": [
@@ -246,6 +268,28 @@
     "DijkstraEpochReferenceSuite"
    ],
    "digest": "cae8097f6a11a474"
+  },
+  "val ledger.rules.PoolReap.shelleyAdopt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/PoolReap.hs",
+     "symbol": "poolReapTransition",
+     "lines": [
+      137,
+      155
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "PoolBlsKeyLayoutSuite",
+    "TickRulesSuite"
+   ],
+   "note": "mkStakePoolState e SNothing gives the parameters' key; here the pool's layout's no key, which is the same: a certificate before Dijkstra registers parameters without one (PoolParamsBlsKey.certified)",
+   "digest": "eb74a3f0cdbb0bdb"
   },
   "val ledger.rules.PoolReap.shelleyRelease": {
    "upstream": [
@@ -22724,6 +22768,22 @@
    "note": "consistent with equals",
    "digest": "419b6df0ea6a0ccf"
   },
+  "def ledger.state.BlsKeyState.register": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "symbol": "mkStakePoolState",
+     "lines": [288, 320]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["DijkstraPoolReapSuite", "DijkstraEpochReferenceSuite"],
+   "note": "registerBlsKey, local to mkStakePoolState",
+   "digest": "91f1332684693448"
+  },
   "def ledger.state.PoolParamsBlsKey.certified": {
    "upstream": [
     {
@@ -23126,6 +23186,13 @@
   }
  },
  "glue": [
+  {
+   "reason": "the companion of BlsKeyState, and the type of POOLREAP's voting key on adoption, which the reference passes to mkStakePoolState as an argument; neither has a counterpart",
+   "definitions": [
+    "object ledger.state.BlsKeyState",
+    "type ledger.rules.PoolReap.Adopt"
+   ]
+  },
   {
    "reason": "the node's own reasons for reaching no verdict on a header where the reference throws an exception the ChainSync client does not catch (PastHorizonException, a successor or narrowing of a machine word, a configuration it never builds), which end the peer's session uncharged (PeerError.HeaderUndecided), and their rendering (#54)",
    "definitions": [
