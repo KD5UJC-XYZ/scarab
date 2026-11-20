@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   V12
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  LedgerLevelTxInfo,
   AsIx,
   AsIxItem,
   Exclusive,
@@ -388,6 +389,10 @@ object DijkstraTxBody:
     new DijkstraEraTxBody[Dijkstra]:
       type Level[L <: TxLevel] = BothLevels[L]
       override def top: BothLevels[TxLevel.Top] = BothLevels.Top
+      override def levelOf[L <: TxLevel](level: LedgerLevelTxInfo[L, Dijkstra]): BothLevels[L] =
+        level match
+          case LedgerLevelTxInfo.LedgerTopTxInfo(_) => BothLevels.Top
+          case LedgerLevelTxInfo.LedgerSubTxInfo(_) => BothLevels.Sub
       override def outputsOf: BabbageEraTxOut[Dijkstra] = DijkstraTxOut.instance
       override def certsOf: ConwayEraTxCert[Dijkstra] = DijkstraTxCert.instance
       override def scriptsOf: DijkstraEraScript[Dijkstra] = DijkstraScript.instance

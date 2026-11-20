@@ -79,6 +79,9 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
               TranslationError.UnresolvedInput(in)
             case AlonzoContextError.TimeTranslationPastHorizon(cause) => cause
             case AlonzoContextError.Undecodable(site, _) => TranslationError.Undecodable(site)
+            case AlonzoContextError.CertificateNotSupported(_) |
+                AlonzoContextError.PlutusPurposeNotSupported(_) =>
+              fail(s"Conway's injection keeps $a its own")
         case BabbageContextError.ByronTxOutInContext(source) =>
           TranslationError.ByronTxOutInContext(source)
         case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>
@@ -97,9 +100,8 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
         Unsigned.from[Unsigned.Width.W32](BigInt(0)).getOrElse(fail("minor"))
       )
       val ours = EraPlutusTxInfo.conwayPlutusV3
-        .toPlutusTxInfo(LedgerTxInfo(pv, clock, s.utxo, s.typed))
+        .toPlutusTxInfo(topTxInfo(pv, s))
         .unPlutusTxInfoResult
-        .flatMap(_(ConwayPlutusPurpose.ConwaySpending(AsPurpose())))
         .bimap(asFlat, ToData[PV3.TxInfo].toBuiltinData)
       val env = ScriptContexts.Environment(
         ShelleyBasedEra.SConway,
@@ -124,6 +126,17 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
   }
 
   private val RefusalCaseCount = 84
+
+  /** A case's transaction information at the top level, no script used and no sub-transaction's. */
+  private def topTxInfo(pv: ProtVer, s: Seen): LedgerTxInfo[TxLevel.Top, Conway] =
+    LedgerTxInfo[TxLevel.Top, Conway](
+      pv,
+      clock,
+      s.utxo,
+      s.typed,
+      Nil,
+      LedgerLevelTxInfo.LedgerTopTxInfo(Map.empty)
+    )
 
   /** A failure in a form both paths give it in (the votes as a map, a certificate and a proposal as
     * the flat ones).
@@ -154,13 +167,12 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
     "the typed V1 and V2 TxInfos are the flat ones on every Conway case of the refusal corpora"
   ) {
     val ctx = EraPlutusContext.conway
-    val purpose = ConwayPlutusPurpose.ConwaySpending[AsPurpose](AsPurpose())
     val outcomes = seen.flatMap { s =>
       val pv = ProtVer(
         Version.mkVersion(s.major).getOrElse(fail(s"version ${s.major}")),
         Unsigned.from[Unsigned.Width.W32](BigInt(0)).getOrElse(fail("minor"))
       )
-      val result = ctx.mkTxInfoResult(LedgerTxInfo(pv, clock, s.utxo, s.typed))
+      val result = ctx.mkTxInfoResult(topTxInfo(pv, s))
       val env = ScriptContexts.Environment(
         ShelleyBasedEra.SConway,
         s.major,
@@ -171,12 +183,10 @@ class ConwayPlutusContextRefusalsSuite extends FunSuite:
       val v1 = ctx
         .lookupTxInfoResult[Language.PlutusV1](result)
         .unPlutusTxInfoResult
-        .flatMap(_(purpose))
         .bimap(normTyped, ToData[PV1.TxInfo].toBuiltinData)
       val v2 = ctx
         .lookupTxInfoResult[Language.PlutusV2](result)
         .unPlutusTxInfoResult
-        .flatMap(_(purpose))
         .bimap(normTyped, ToData[PV2.TxInfo].toBuiltinData)
       Vector(PlutusLanguage.V1 -> v1, PlutusLanguage.V2 -> v2).map { (language, ours) =>
         val flat = ScriptContexts.txInfo(language, s.flat, env)

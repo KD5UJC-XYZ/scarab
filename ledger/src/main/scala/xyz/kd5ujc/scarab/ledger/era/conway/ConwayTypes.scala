@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  LedgerLevelTxInfo,
   AlonzoEraTxBodyToConway,
   AlonzoScriptRep,
   AsIx,
@@ -513,6 +514,9 @@ object ConwayTxBody:
     new ConwayEraTxBody[Conway] with AlonzoEraTxBodyToConway[Conway]:
       type Level[L <: TxLevel] = TopOnly[L]
       override def top: TopOnly[TxLevel.Top] = TopOnly.Top
+      override def levelOf[L <: TxLevel](level: LedgerLevelTxInfo[L, Conway]): TopOnly[L] =
+        level match
+          case LedgerLevelTxInfo.LedgerTopTxInfo(_) => TopOnly.Top
       override def outputsOf: BabbageEraTxOut[Conway] = ConwayTxOut.instance
       override def certsOf: ConwayEraTxCert[Conway] = ConwayTxCert.instance
       override def scriptsOf: ConwayEraScript[Conway] = ConwayScript.instance

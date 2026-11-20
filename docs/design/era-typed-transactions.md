@@ -663,9 +663,10 @@ Conway's rules on the classes follow as the rest of stage 2.
   - The node still builds contexts with the flat translation.
 - **Plutus V1 and V2, and the era's script contexts** (the same modules): Conway's instances for Plutus V1
   and V2 (`Conway/TxInfo.hs:399-480`) with the translations they call (Conway's `transTxOutV1`,
-  `transTxInInfoV1`, `guardConwayFeaturesForPlutusV1V2`, `transTxCertV1V2` and `transPlutusPurposeV1V2`,
-  Alonzo's V1 output, withdrawals, mint, common certificates and legacy arguments, Babbage's V2 input and
-  arguments), so the language families have every case the reference's have (V4's as V3's types), the
+  `transTxInInfoV1`, `guardConwayFeaturesForPlutusV1V2` and `transTxCertV1V2`, Alonzo's purposes in the V1 and
+  V2 form (`transPlutusPurpose`, which replaced f649f975's Conway `transPlutusPurposeV1V2` with the shape of
+  9df9f98c, below), Alonzo's V1 output, withdrawals, mint, common certificates and legacy arguments, Babbage's V2
+  input and arguments), so the language families have every case the reference's have (V4's as V3's types), the
   inputs' without Alonzo's own V1 case. `EraPlutusContext` is the reference's class with
   `mkSupportedLanguage`, `mkTxInfoResult` and `lookupTxInfoResult`, Conway's instance memoising each
   language's information lazily (`ConwayTxInfoResult`), and `SupportedLanguage` equal and ordered by its
@@ -673,7 +674,9 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Each language's instance selects its own information from the memoised result
     (`EraPlutusTxInfo#lookupTxInfoResult`), so the reference's impossible lookup of a language the era does not
     support (`lookupTxInfoResultImpossible`) has no counterpart. The redeemer and the datum of the legacy
-    arguments are read from their bytes after the purpose, whose failure is the reference's.
+    arguments are read from their bytes after the purpose, whose failure is the reference's. The spending
+    datum (`AlonzoTxInfo.spendingDatum`) is read before the purpose for V1 and V2 and after it for V3; only a
+    spending purpose has one, and its translation cannot fail, so the order shows in no result.
   - `EraPlutusContextSuite`: the typed V1 and V2 `TxInfo`s, through the era's memoised result, equal the flat
     ones or refuse alike on the same 432 rows and the 62 recorded block transactions, at the row's version and
     at 9, 10 and 11, reaching every refusal a V1 or V2 context has in Conway but `PlutusPurposeNotSupported`,
@@ -681,9 +684,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     V2 requests the reference collected there (14 recorded, 78 of the matrix, 49 of the script results) has
     the typed arguments byte for byte. `ConwayPlutusContextRefusalsSuite` compares the V1 and V2 `TxInfo`s on
     the 84 refusal-corpus cases too.
-- **The scripts of a transaction with their contexts** (`era/PlutusEvaluate.scala`; `Plutus/Evaluate.hs`,
-  `Alonzo/Plutus/Evaluate.hs`, `Alonzo/Plutus/TxInfo.hs:100-127` and `Alonzo/UTxO.hs:431-465`, cardano-ledger
-  f649f975): `PlutusRunnable`, `SupportedPlutusRunnable` (equal by language and script hash),
+- **The scripts of a transaction with their contexts** (`era/PlutusEvaluate.scala`; `Plutus/Evaluate.hs` and
+  `Alonzo/UTxO.hs:431-465` at cardano-ledger f649f975; `Alonzo/Plutus/Evaluate.hs:83-182` and
+  `Alonzo/Plutus/TxInfo.hs:102-130` at 9df9f98c, with the shape below): `PlutusRunnable`, `SupportedPlutusRunnable` (equal by language and script hash),
   `EraPlutusContext#mkSupportedPlutusRunnable` with Conway's instance, `CostModel`, `PlutusWithContext`, the
   era's `CollectError`, and Alonzo's `resolveNeededPlutusScriptsWithPurpose`, `mkPlutusWithContext`,
   `scriptsWithContextFromLedgerTxInfo` (with its `merge`, the successes and the failures each in reverse order)
@@ -699,10 +702,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     known language's model is always valid after decoding
     (`mkCostModelsLenient`, `CostModels.hs:426-440`, and `CostModelDecode`), so the tag is the reference's
     `costModelsValid` lookup; the split of the valid and the unknown models is #85's item on the order of the
-    parameters.
-  - The spending datum is read before the arguments are made; its failure, which only an inline datum taken
-    unread can reach, is the node's own `Undecodable` with the decoder's failure, where the reference raises
-    `error`, as an output's inline datum's is in the contexts.
+    parameters. 29a7d656's `mkPlutusWithContext` converts the cost model to the language's and raises
+    `ImpossibleContextError` where that fails (`Alonzo/Plutus/TxInfo.hs:127-128`), which 9df9f98c's does not; a
+    model here is of the script's language by its type (`CostModel[script.L]`), so there is no conversion and
+    that branch has no counterpart.
+  - The collection reads the scripts used from the transaction's information (`ltiScriptsUsed`), and the
+    arguments read the spending datum themselves (`toPlutusArgs`, below), where f649f975's collection is given
+    the datum by `mkPlutusWithContext`. The datum's failure, which only an inline datum taken unread can reach,
+    is the node's own `Undecodable` with the decoder's failure, where the reference raises `error`, as an
+    output's inline datum's is in the contexts.
   - `EraPlutusContextSuite`: the scripts collected with their contexts, as the evaluator's requests, equal the
     flat path's (`Phase2.collect`) in order on the same 432 rows and 62 recorded block transactions, or both
     fail with the same failures in the same order, compared after normalisation (a missing redeemer by its
@@ -711,8 +719,39 @@ Conway's rules on the classes follow as the rest of stage 2.
     language's model. Each runnable made from a script has that script's hash; the resolver gives a provided script's runnable
     the key it is provided under, which is trusted to be its hash, as the reference trusts it. A needed script's cached runnable is the one used,
     and a script the cache holds that the transaction does not provide meets no need.
-  - The collection is of a top-level transaction, without the reference's empty memo of sub-transactions'
-    contexts, which only Dijkstra fills (#85's item on Dijkstra's script contexts).
+  - The collection is of a top-level transaction, with no sub-transaction's information, which only Dijkstra's
+    annotated transaction gives (#85's item on Dijkstra's script contexts).
+- **The classes at the shape of 9df9f98c and 29a7d656** (`era/PlutusContext.scala`, the `TxInfo` modules and
+  `era/PlutusEvaluate.scala`; `Alonzo/Plutus/Context.hs:104-252`, `Alonzo/Plutus/TxInfo.hs`, `Babbage/TxInfo.hs`
+  and `Conway/TxInfo.hs` at cardano-ledger 9df9f98c, which 29a7d656, the ledger of cardano-node 11.2.1, shares).
+  The owner decided, in the chat session doing the work, to give the shared script-context classes this shape,
+  as a Mirror of 29a7d656 and 9df9f98c with no change of behaviour; f649f975's signatures differ (asked
+  2026-11-20T04:08:22Z, decided 2026-11-20T04:10:24Z, #85):
+  - `LedgerTxInfo` is indexed by the transaction's level and holds the scripts used (`ltiScriptsUsed`) and the
+    level's information (`LedgerLevelTxInfo`): at the top level the memoised information of each sub-transaction
+    by its id, which only Dijkstra fills, and a sub-transaction's index. The sub-transaction's case is Dijkstra's
+    alone, so the level of an era with the top level only is the top level by construction, as the reference's
+    `withTopTxLevelOnly` shows it; an era's body class reads the level (`EraTxBody#levelOf`, the reference's
+    `HasEraTxLevel LedgerTxInfo`). The script hashes by purpose (`ltiScriptHashesUsed`) are derived from the
+    scripts used, as every construction of the reference's makes them (TYP-1).
+  - `PlutusTxInfoResult` is the information or its failure, where f649f975's is a function of the purpose that
+    every era it has ignores. `toPlutusScriptPurpose` and `toPlutusArgs` take the transaction's information, and
+    the arguments read the spending datum themselves (`AlonzoTxInfo.spendingDatum`, its failure still the node's
+    own `Undecodable`); the collection reads the scripts used from the information.
+  - The unsupported certificate and purpose are `AlonzoContextError`'s, as at 9df9f98c and 29a7d656; Conway's
+    injection puts them back as Conway's own, which f649f975's Conway raises itself, so every Conway error is
+    the same value at both. Conway's shared translations are generic in the era over Conway's classes, as the
+    reference's are, and Alonzo's `transPlutusPurpose` replaces Conway's `transPlutusPurposeV1V2`.
+  - `EraPlutusContextSuite` and `ConwayPlutusContextRefusalsSuite` pass with their expected values unchanged: every
+    Conway `TxInfo`, argument, collection and refusal above is the same. Tests show Conway's injection of the two
+    cases, a vote refused by Alonzo's purposes, the script hashes derived from the scripts used, and that a
+    sub-transaction's information at Conway does not compile, its twin at Dijkstra compiling.
+  - Three differ in structure from the reference: the derived script hashes, the sub-transaction's case of
+    Dijkstra alone, and the level read from the level's information. Their differential evidence is
+    incomplete (CNF-2) until Dijkstra's contexts compare every one of the 273 contexts recorded on the testnet's
+    chain, at both levels, byte for byte (#85's item on Dijkstra's script contexts); the tests above are the
+    node's own. The scripts used come from the scripts needed, one per purpose's index, so no two share an index
+    and `Map.fromList`'s choice of the last of a repeated one shows nowhere.
 - **The annotated transaction and its UTXOW predicates** (`era/StAnnTx.scala`, `era/EraTxAuxData.scala`,
   `era/rules/Utxow.scala`; `Core.hs:180-188`, `Alonzo/Tx.hs:556-565`, `Alonzo.hs:121-160`,
   `Alonzo/UTxO.hs:154-214`, `Alonzo/TxAuxData.hs:363-373,494-515`, `Shelley/Rules/Utxow.hs:427-443` and
@@ -929,9 +968,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     annotated transaction yet: its maker (`mkDijkstraStAnnTopTx`, `Dijkstra.hs:108-219`) needs the contexts, which
     come with them ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123)). Its
     members are read on built values only, a Gap of that item. The memoised information's slots are the shared
-    `PlutusTxInfoResult`, which mirrors f649f975's, so two differences wait for that item too: each slot is a function
-    of the purpose where 9df9f98c's is a direct `Either` (`Alonzo/Plutus/Context.hs:193-203`), and V4's holds V3's
-    `TxInfo` where 9df9f98c's holds `PV4.TxInfo` (`:280`). The legacy-mode flag is an enum (`PlutusLegacyMode`), the
+    `PlutusTxInfoResult`, a direct `Either` as 9df9f98c's is (`Alonzo/Plutus/Context.hs:193-196`, above); V4's holds
+    V3's `TxInfo` where 9df9f98c's holds `PV4.TxInfo` (`:280`), which waits for that item. The legacy-mode flag is an enum (`PlutusLegacyMode`), the
     reference's `Bool` (TYP-4). `DijkstraEraUTxO`'s member of a sub-transaction's annotated form takes the evidence of
     that level (`SubOnly`, as `TopOnly` gives the top level), as the family named at the sub-transaction level
     outright would be reduced at Conway too, where it has no case.

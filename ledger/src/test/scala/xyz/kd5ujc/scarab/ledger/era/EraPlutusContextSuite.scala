@@ -178,14 +178,21 @@ class EraPlutusContextSuite extends munit.FunSuite:
   /** The typed transaction, UTxO set and translation input of a case; a case the era types do not
     * read fails, never skips (CNF-2).
     */
-  private def typed(c: Case, major: Int = -1): (ConwayTx, UTxO[Conway], LedgerTxInfo[Conway]) =
+  private def typed(
+      c: Case,
+      major: Int = -1
+  ): (ConwayTx, UTxO[Conway], LedgerTxInfo[TxLevel.Top, Conway]) =
     val tx =
       ConwayTx.decode(c.parts, StateLayout.Node11_1).fold(e => fail(s"${c.name}: $e"), identity)
     val utxo = UTxO[Conway]((c.spent ++ c.references).map { (in, out) =>
       in -> ConwayTxOut.fromStored(out).fold(e => fail(s"${c.name}: $e"), identity)
     })
     val pv = protVer(if major < 0 then c.major else major)
-    (tx, utxo, LedgerTxInfo(pv, c.posix, utxo, tx))
+    (
+      tx,
+      utxo,
+      LedgerTxInfo(pv, c.posix, utxo, tx, Nil, LedgerLevelTxInfo.LedgerTopTxInfo(Map.empty))
+    )
 
   private def flatEnv(c: Case, major: Int): ScriptContexts.Environment =
     ScriptContexts.Environment(ShelleyBasedEra.SConway, major, c.spent, c.references, c.posix)
@@ -200,6 +207,9 @@ class EraPlutusContextSuite extends munit.FunSuite:
               TranslationError.UnresolvedInput(in)
             case AlonzoContextError.TimeTranslationPastHorizon(cause) => cause
             case AlonzoContextError.Undecodable(site, _) => TranslationError.Undecodable(site)
+            case AlonzoContextError.CertificateNotSupported(_) |
+                AlonzoContextError.PlutusPurposeNotSupported(_) =>
+              fail(s"Conway's injection keeps $a its own")
         case BabbageContextError.ByronTxOutInContext(source) =>
           TranslationError.ByronTxOutInContext(source)
         case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>
@@ -215,11 +225,9 @@ class EraPlutusContextSuite extends munit.FunSuite:
     case other => fail(s"no Plutus V3 translation fails with $other")
 
   private def typedTxInfo(
-      lti: LedgerTxInfo[Conway]
+      lti: LedgerTxInfo[TxLevel.Top, Conway]
   ): Either[ConwayContextError[Conway], PV3.TxInfo] =
-    v3.toPlutusTxInfo(lti)
-      .unPlutusTxInfoResult
-      .flatMap(_(ConwayPlutusPurpose.ConwaySpending(AsPurpose())))
+    v3.toPlutusTxInfo(lti).unPlutusTxInfoResult
 
   /** The typed V3 `TxInfo` of `c` at `major` against the flat one: equal data, or equal failures.
     */
@@ -241,30 +249,14 @@ class EraPlutusContextSuite extends munit.FunSuite:
       case 5     => ConwayPlutusPurpose.ConwayProposing(AsIx(ix))
       case other => fail(s"not a Conway tag: $other")
 
-  // The spending datum `getSpendingDatum` gives: every inline datum of these cases reads as data.
-  private def spendingDatum(e: PlutusData.DecodeError): Option[Data] =
-    fail(s"a spending datum that is not data: $e")
-
   /** The typed V3 script context of the redeemer at `pointer`, serialised. */
   private def typedContext(c: Case, pointer: ConwayPlutusPurpose[AsIx]): Bytes =
-    val (tx, utxo, lti) = typed(c)
+    val (tx, _, lti) = typed(c)
     val body = t.body[TxLevel.Top](tx)
     val purpose = t.bodyOf
       .redeemerPointerInverse[TxLevel.Top](body, pointer)
       .getOrElse(fail(s"${c.name}: $pointer names nothing"))
     val redeemer = t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries(pointer)._1
-    val datum = u
-      .getSpendingDatum[TxLevel.Top](
-        utxo,
-        tx,
-        ConwayPlutusPurpose.hoistPlutusPurpose[
-          AsIxItem,
-          AsItem
-        ]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a))(
-          purpose
-        )
-      )(using u.txOf.bodyOf.top)
-      .fold(spendingDatum, identity)
     val args = for
       info <- PlutusContext.mkPlutusTxInfoFromResult[Language.PlutusV3, Conway](
         ConwayPlutusPurpose.hoistPlutusPurpose[
@@ -275,7 +267,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
         ),
         v3.toPlutusTxInfo(lti)
       )
-      a <- v3.toPlutusArgs(lti.ltiProtVer, info, purpose, datum, redeemer)
+      a <- v3.toPlutusArgs(lti, info, purpose, redeemer)
     yield a
     args.fold(
       e => fail(s"${c.name}: $e"),
@@ -407,7 +399,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
   test("an end alone is open at its end, unlike Alonzo's") {
     val (_, _, lti) = typed(base)
     val ttl = base.flat.body.ttl.get
-    val range = ConwayTxInfo.transValidityInterval[Conway, ConwayContextError[Conway]](
+    val range = ConwayTxInfo.transValidityInterval[Conway](
       lti.ltiSlotToPOSIXTime,
       ValidityInterval(None, Some(ttl))
     )
@@ -928,7 +920,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
       TranslationError.TreasuryDonationFieldNotSupported(coin.value)
     case ConwayContextError.CurrentTreasuryFieldNotSupported(coin) =>
       TranslationError.CurrentTreasuryFieldNotSupported(coin.value)
-    case ConwayContextError.CertificateNotSupported(cert) =>
+    case ConwayContextError.CertificateNotSupported[Conway](cert) =>
       TranslationError.CertificateNotSupported(conway.ConwayTxCert.toStored(cert))
     case ConwayContextError.PlutusPurposeNotSupported(purpose) =>
       purpose match
@@ -939,23 +931,20 @@ class EraPlutusContextSuite extends munit.FunSuite:
 
   /** The typed information of `language` through the era's memoised result, as data. */
   private def typedLegacyTxInfo(
-      lti: LedgerTxInfo[Conway],
+      lti: LedgerTxInfo[TxLevel.Top, Conway],
       language: PlutusLanguage
   ): Either[ConwayContextError[Conway], PlutusData] =
     val result = ctx.mkTxInfoResult(lti)
-    val purpose = ConwayPlutusPurpose.ConwaySpending[AsPurpose](AsPurpose())
     language match
       case PlutusLanguage.V1 =>
         ctx
           .lookupTxInfoResult[Language.PlutusV1](result)
           .unPlutusTxInfoResult
-          .flatMap(_(purpose))
           .map(ToData[PV1.TxInfo].toBuiltinData)
       case PlutusLanguage.V2 =>
         ctx
           .lookupTxInfoResult[Language.PlutusV2](result)
           .unPlutusTxInfoResult
-          .flatMap(_(purpose))
           .map(ToData[PV2.TxInfo].toBuiltinData)
       case other => fail(s"not a legacy language: $other")
 
@@ -1013,21 +1002,12 @@ class EraPlutusContextSuite extends munit.FunSuite:
       pointer: ConwayPlutusPurpose[AsIx],
       language: PlutusLanguage
   ): Vector[Bytes] =
-    val (tx, utxo, lti) = typed(c)
+    val (tx, _, lti) = typed(c)
     val body = t.body[TxLevel.Top](tx)
     val purpose = t.bodyOf
       .redeemerPointerInverse[TxLevel.Top](body, pointer)
       .getOrElse(fail(s"${c.name}: $pointer names nothing"))
     val redeemer = t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries(pointer)._1
-    val datum = u
-      .getSpendingDatum[TxLevel.Top](
-        utxo,
-        tx,
-        ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
-          [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
-        )(purpose)
-      )(using u.txOf.bodyOf.top)
-      .fold(spendingDatum, identity)
     val asPurpose = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsPurpose](
       [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsPurpose(a)
     )(purpose)
@@ -1041,7 +1021,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
               asPurpose,
               ctx.lookupTxInfoResult[Language.PlutusV1](result)
             )
-          a <- t1.toPlutusArgs(lti.ltiProtVer, info, purpose, datum, redeemer)
+          a <- t1.toPlutusArgs(lti, info, purpose, redeemer)
         yield LegacyPlutusArgs.legacyPlutusArgsToData(a.unPlutusV1Args)
       case PlutusLanguage.V2 =>
         val t2 = EraPlutusTxInfo.conwayPlutusV2
@@ -1051,7 +1031,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
               asPurpose,
               ctx.lookupTxInfoResult[Language.PlutusV2](result)
             )
-          a <- t2.toPlutusArgs(lti.ltiProtVer, info, purpose, datum, redeemer)
+          a <- t2.toPlutusArgs(lti, info, purpose, redeemer)
         yield LegacyPlutusArgs.legacyPlutusArgsToData(a.unPlutusV2Args)
       case other => fail(s"not a legacy language: $other")
     args.fold(e => fail(s"${c.name}: $e"), _.map(DataSerialisation.serialise))
@@ -1127,14 +1107,13 @@ class EraPlutusContextSuite extends munit.FunSuite:
     )
     val (_, _, lti) = typed(base)
     val result = ctx.mkTxInfoResult(lti)
-    val purpose = ConwayPlutusPurpose.ConwaySpending[AsPurpose](AsPurpose())
     assertEquals(
-      ctx.lookupTxInfoResult[Language.PlutusV3](result).unPlutusTxInfoResult.flatMap(_(purpose)),
-      v3.toPlutusTxInfo(lti).unPlutusTxInfoResult.flatMap(_(purpose))
+      ctx.lookupTxInfoResult[Language.PlutusV3](result).unPlutusTxInfoResult,
+      v3.toPlutusTxInfo(lti).unPlutusTxInfoResult
     )
     assertEquals(
-      ctx.lookupTxInfoResult[Language.PlutusV1](result).unPlutusTxInfoResult.flatMap(_(purpose)),
-      EraPlutusTxInfo.conwayPlutusV1.toPlutusTxInfo(lti).unPlutusTxInfoResult.flatMap(_(purpose))
+      ctx.lookupTxInfoResult[Language.PlutusV1](result).unPlutusTxInfoResult,
+      EraPlutusTxInfo.conwayPlutusV1.toPlutusTxInfo(lti).unPlutusTxInfoResult
     )
   }
 
@@ -1379,6 +1358,108 @@ class EraPlutusContextSuite extends munit.FunSuite:
     )
     // kept in the returned cache all the same
     assert(cacheOnly(hash) eq cached)
+  }
+
+  test(
+    "the information's script hashes by purpose are its scripts used's, at the top level alone"
+  ) {
+    val c = collectedV3
+    val (tx, utxo, lti) = typed(c)
+    val (_, used) = AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose[Conway](
+      lti.ltiProtVer,
+      u.getScriptsProvided[TxLevel.Top](utxo, tx)(using u.txOf.bodyOf.top),
+      u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](tx))(using u.txOf.bodyOf.top),
+      Map.empty
+    )
+    assert(used.nonEmpty, c.name)
+    val withUsed = lti.copy[TxLevel.Top, Conway](ltiScriptsUsed = used)
+    // `toScriptHashByPurpose`: each runnable's hash by its purpose's index
+    assertEquals(
+      withUsed.ltiScriptHashesUsed,
+      used.map { (purpose, r) =>
+        ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsIx](
+          [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a)
+        )(purpose) -> r.plutusRunnable.plutusRunnableScriptHash
+      }.toMap
+    )
+    assertEquals(lti.ltiScriptHashesUsed, Map.empty[ConwayPlutusPurpose[AsIx], Bytes])
+    // the scripts with their contexts are those of the information's scripts used
+    val costModels = PParams
+      .lensHKD[Conway]
+      .andThen(summon[AlonzoEraPParams[Conway]].hkdCostModelsL[Identity])
+      .get(eraParams(c))
+    assertEquals(
+      AlonzoPlutusEvaluate
+        .scriptsWithContextFromLedgerTxInfo[Conway, TxLevel.Top](withUsed, costModels),
+      AlonzoPlutusEvaluate.collectPlutusScriptsWithContext[Conway](c.posix, eraParams(c), tx, utxo)
+    )
+    assertEquals(
+      AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfo[Conway, TxLevel.Top](lti, costModels),
+      Right(Nil)
+    )
+    // Conway's level is the top level: a sub-transaction's information is Dijkstra's alone
+    assertEquals(LedgerTxInfo.toSTxLevel(lti)(using t.bodyOf), TopOnly.Top)
+    assertNotEquals(
+      compileErrors(
+        "val l: LedgerLevelTxInfo[TxLevel.Sub, Conway] = LedgerLevelTxInfo.LedgerSubTxInfo(xyz.kd5ujc.scarab.ledger.state.TxIx.enumerate(Vector(())).head._2)"
+      ),
+      ""
+    )
+    assertEquals(
+      compileErrors(
+        "val l: LedgerLevelTxInfo[TxLevel.Sub, xyz.kd5ujc.scarab.ledger.state.Dijkstra] = LedgerLevelTxInfo.LedgerSubTxInfo(xyz.kd5ujc.scarab.ledger.state.TxIx.enumerate(Vector(())).head._2)"
+      ),
+      ""
+    )
+  }
+
+  test("an unsupported certificate or purpose is Alonzo's, put back as Conway's own error") {
+    val inj = summon[Inject[AlonzoContextError[Conway], ContextError[Conway]]]
+    val voter = xyz.kd5ujc.scarab.ledger.Voter.Pool(Bytes.fromArray(Array.fill[Byte](28)(4)))
+    val ix = Unsigned.from[Unsigned.Width.W32](BigInt(0)).getOrElse(fail("index"))
+    val voting = ConwayPlutusPurpose.ConwayVoting[AsIxItem](AsIxItem(ix, voter))
+    val refused = ConwayPlutusPurpose.ConwayVoting[AsItem](AsItem(voter))
+    assertEquals(
+      inj.inject(AlonzoContextError.PlutusPurposeNotSupported[Conway](refused)),
+      ConwayContextError.PlutusPurposeNotSupported[Conway](refused)
+    )
+    // the V1 and V2 purposes of Alonzo's translation refuse a vote with it
+    assertEquals(
+      AlonzoTxInfo.transPlutusPurpose[Language.PlutusV1, Conway](protVer(10), voting),
+      Left(ConwayContextError.PlutusPurposeNotSupported[Conway](refused))
+    )
+    assertEquals(
+      AlonzoTxInfo.transPlutusPurpose[Language.PlutusV2, Conway](protVer(10), voting),
+      Left(ConwayContextError.PlutusPurposeNotSupported[Conway](refused))
+    )
+    // a DRep's registration, which the V1 and V2 forms lack
+    val c = withBody(
+      base,
+      "a DRep registration",
+      4 -> arr(arr(uint(16), keyCred(9), uint(500), CborValue.Null))
+    )
+    val (tx, _, _) = typed(c)
+    val cert = t.bodyOf.certs[TxLevel.Top](t.body[TxLevel.Top](tx)) match
+      case Vector(only) => only
+      case other        => fail(s"certificates $other")
+    assertEquals(
+      inj.inject(AlonzoContextError.CertificateNotSupported[Conway](cert)),
+      ConwayContextError.CertificateNotSupported[Conway](cert)
+    )
+    assertEquals(
+      ConwayTxInfo.transTxCertV1V2[Conway](cert),
+      Left(ConwayContextError.CertificateNotSupported[Conway](cert))
+    )
+    // the rest through Babbage's, as at f649f975
+    val in = base.spent.keys.head
+    assertEquals(
+      inj.inject(AlonzoContextError.TranslationLogicMissingInput[Conway](in)),
+      ConwayContextError.BabbageContextError[Conway](
+        BabbageContextError.AlonzoContextError(
+          AlonzoContextError.TranslationLogicMissingInput[Conway](in)
+        )
+      )
+    )
   }
 
   test(
