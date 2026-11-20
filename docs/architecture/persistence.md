@@ -174,7 +174,10 @@ blocks:
 - On start, after the snapshot is restored and the immutable blocks replayed, `ChainStorage.resume`
   takes the logged chain after the immutable tip (at most `k` blocks) and applies each block through
   the node's rules on top of the recovered state (`Verification.warm` first), rebuilding the exact
-  `VolatileChain`. A block that does not connect or that the rules refuse ends the chain there; the
+  `VolatileChain`. A block that does not connect or that the rules refuse ends the chain there, and so
+  does a ranking block certifying an endorser block whose closure the store has not completed (the
+  acquired set is read from the Leios store first, as the reference's initial chain selection hides
+  such a block; it stays in the received log, parked until the closure completes); the
   log is cut back with a rollback marker and the rest is fetched from the peer (`volatileResumed`
   reports `resumed` and `dropped`). The relay's served chain and the mempool start from that tip, so
   the first ChainSync intersection offered to the peer is the previous tip, not the immutable

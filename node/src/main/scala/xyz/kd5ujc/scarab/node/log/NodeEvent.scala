@@ -241,6 +241,8 @@ object NodeEvent:
     Encoder.instance {
       case xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Add       => Json.fromString("add")
       case xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.Reprocess => Json.fromString("reprocess")
+      case xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind.ReprocessLeiosEb =>
+        Json.fromString("reprocessLeiosEb")
     }
 
   private given Encoder[xyz.kd5ujc.scarab.node.BlockAdmissions.AdmissionStage] =

@@ -13,7 +13,16 @@ import fs2.io.file.Path
 import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.{
+  AcquiredLeiosEbs,
+  Anchor,
+  BlockRef,
+  BlockRules,
+  LeiosBlockInfo,
+  LeiosCertGate,
+  LeiosForestBlock,
+  VolatileChain
+}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ChainError,
@@ -506,6 +515,15 @@ object ChainStorage:
     * fails on a block raises instead, and the log is left as it is; a log with more than `k` blocks
     * after the immutable tip (the immutable store lost an unforced tail) resumes the first `k`. The
     * result is the volatile chain the node continues from.
+    *
+    * A ranking block whose certificate references an endorser block not in `acquired`, the set the
+    * chain database is seeded with at its open, ends the chain there too, before its rules run: the
+    * reference's initial chain selection hides it ([[LeiosCertGate]], `ignoreUnacquiredCertRBSuc`,
+    * `Storage/ChainDB/Impl/ChainSel.hs:187-198` after the seed of `ChainDB/Impl.hs:236-259`, at
+    * ouroboros-consensus 2416493b), and it stays in the received log, parked until the closure
+    * completes. The gate reads each block's predecessor as the forest holds it: the replayed block
+    * before it, or the anchor as the received log holds it. `leiosOf` reads a block's Leios fields
+    * ([[LeiosBlockInfo.of]]; tests give blocks of an era without Leios the fields of one).
     */
   def resume[F[_]: Async, S](
       recovered: Recovered[F, S],
@@ -515,10 +533,24 @@ object ChainStorage:
       byronEpochSlots: BigInt,
       events: StorageEvents[F],
       prepare: Vector[Bytes] => F[Unit],
-      compute: Option[Compute[F]] = None
+      acquired: AcquiredLeiosEbs,
+      compute: Option[Compute[F]] = None,
+      leiosOf: Block => LeiosBlockInfo = LeiosBlockInfo.of
   )(using handle: Handle[F, NodeError]): F[Vector[Resumed[S]]] =
     val F = Async[F]
     val anchor = recovered.anchor
+    // the anchor as the forest holds it: its predecessor and Leios fields, if the received log has
+    // its body
+    val anchorBlock: F[Map[Bytes, LeiosForestBlock]] =
+      anchor
+        .flatTraverse(a => recovered.received.get(a.hash).map(_.map(_._2)))
+        .map(
+          _.flatMap(raw => Block.decode(raw, byronEpochSlots).toOption).fold(
+            Map.empty[Bytes, LeiosForestBlock]
+          )(block =>
+            Map(block.header.hash -> LeiosForestBlock(block.header.prevHash, leiosOf(block)))
+          )
+        )
     val after = anchor.fold(recovered.volatile) { a =>
       val i = recovered.volatile.indexWhere(_._1.hash == a.hash)
       if i >= 0 then recovered.volatile.drop(i + 1)
@@ -528,6 +560,7 @@ object ChainStorage:
     val start = VolatileChain[S](k, Anchor(anchor, recovered.state), Vector.empty, origin)
     def go(
         chain: VolatileChain[S],
+        forest: Map[Bytes, LeiosForestBlock],
         todo: List[(BlockRef, Bytes)],
         done: Vector[Resumed[S]]
     ): F[Vector[Resumed[S]]] = todo match
@@ -540,7 +573,12 @@ object ChainStorage:
             // The selected journal is a recovery hint. Its complete identity must agree with the
             // original header before its metadata can become the resumed public chain.
             val actual = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+            val grownForest =
+              forest.updated(header.hash, LeiosForestBlock(header.prevHash, leiosOf(block)))
             if actual != ref then F.pure(done)
+            // a ranking block certifying an endorser block not acquired is parked, not replayed
+            else if LeiosCertGate.unacquired(acquired, grownForest.get)(header.hash) then
+              F.pure(done)
             else
               handle.attempt(rules(chain.state, header, raw)).flatMap {
                 // A ledger state out of range stops the node: it does not end the chain here.
@@ -560,6 +598,7 @@ object ChainStorage:
                     case Right((grown, _)) =>
                       F.cede *> go(
                         grown,
+                        grownForest,
                         rest,
                         done :+ Resumed(ref, raw, next, SelectView.of(header))
                       )
@@ -567,8 +606,9 @@ object ChainStorage:
     for
       began <- Clock[F].monotonic
       _ <- prepare(candidates.map(_._2))
-      resumed <- compute.fold(go(start, candidates.toList, Vector.empty))(
-        _.within(go(start, candidates.toList, Vector.empty))
+      forest <- anchorBlock
+      resumed <- compute.fold(go(start, forest, candidates.toList, Vector.empty))(
+        _.within(go(start, forest, candidates.toList, Vector.empty))
       )
       _ <- recovered.adopt(resumed.map(r => r.ref -> r.raw))
       dropped = after.size - resumed.size

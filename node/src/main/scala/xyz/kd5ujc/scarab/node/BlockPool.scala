@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, PeerError, ValidationError}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.genesis.DiffusionPunishment
-import xyz.kd5ujc.scarab.consensus.ChainSelection
+import xyz.kd5ujc.scarab.consensus.{ChainSelection, LeiosBlockInfo}
 import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, Fetched, FetchMode}
 import scala.concurrent.duration.*
 
@@ -59,7 +59,8 @@ final class BlockPool[F[_]: Async] private (
     recovered: Option[BlockPool.Recovered[F]],
     private[node] val invalidBlocks: InvalidBlocks[F],
     private[node] val noVerdictBlocks: NoVerdictBlocks[F],
-    private[node] val admissions: BlockAdmissions[F]
+    private[node] val admissions: BlockAdmissions[F],
+    private[node] val leios: LeiosAcquired[F]
 ):
   import BlockPool.*
   private val F = Async[F]
@@ -746,9 +747,14 @@ object BlockPool:
   enum Diffusion:
     case On, Off
 
+  /** A delivered block's header, what diffusion punishment reads of it, and its Leios fields, which
+    * the acquired-endorser-block gate reads ([[LeiosBlockInfo]], the reference's VolatileDB
+    * `BlockInfo` takes them from the block when it is put).
+    */
   final case class DeliveredHeader(
       header: Header,
       view: DiffusionPunishment.View,
+      leios: LeiosBlockInfo,
       admission: BigInt = 0
   )
   private[node] final case class Admission private[BlockPool] (
@@ -770,15 +776,21 @@ object BlockPool:
       val header: Header,
       val block: Bytes,
       val metadata: DeliveredHeader
-  )
+  ):
+    /** This block with `leios` as its Leios fields, for tests of the acquired-endorser-block gate
+      * on blocks of an era without Leios: a certifying Dijkstra chain cannot be forged here.
+      */
+    private[node] def withLeios(leios: LeiosBlockInfo): Delivered =
+      new Delivered(header, block, metadata.copy(leios = leios))
+
   object Delivered:
     def checked(header: Header, block: Bytes): Either[PeerError.ProtocolProblem, Delivered] =
       for
-        _ <- FetchedBlockIntegrity.check(header, block)
+        decoded <- FetchedBlockIntegrity.check(header, block)
         view <- DiffusionPunishment
           .view(header)
           .leftMap(PeerError.ProtocolProblem.InvalidPunishmentHeader(_))
-      yield new Delivered(header, block, DeliveredHeader(header, view))
+      yield new Delivered(header, block, DeliveredHeader(header, view, LeiosBlockInfo.of(decoded)))
 
   enum Rejection:
     case Forgiven(source: Source)
@@ -861,12 +873,17 @@ object BlockPool:
             Some(fetched),
             policy.peerSalt
           )
-          .flatMap(coordinator => NoVerdictBlocks.create[F].map(coordinator -> _))
-          .flatMap((coordinator, noVerdict) =>
+          .flatMap(coordinator =>
+            (NoVerdictBlocks.create[F], LeiosAcquired.create[F]).mapN((coordinator, _, _))
+          )
+          .flatMap((coordinator, noVerdict, leios) =>
             InvalidBlocks
               .create[F](cutoff =>
-                // the blocks without a verdict are pruned at the same cutoff as the invalid ones
-                noVerdict.pruneBefore(cutoff) *> slots.update { current =>
+                // the blocks without a verdict are pruned at the same cutoff as the invalid ones,
+                // and the acquired endorser blocks as the reference prunes them when it schedules
+                // the collection (`pruneAcquiredLeiosEbs`, `ChainDB/Impl/Background.hs:381-386` at
+                // ouroboros-consensus 2416493b)
+                noVerdict.pruneBefore(cutoff) *> leios.pruned(cutoff) *> slots.update { current =>
                   val expired = current.headers.collect {
                     case (hash, metadata)
                         if metadata.header.slot < cutoff && !current.fresh(hash) =>
@@ -894,7 +911,8 @@ object BlockPool:
                       recovered,
                       invalid,
                       noVerdict,
-                      admissions
+                      admissions,
+                      leios
                     )
                   )
               )

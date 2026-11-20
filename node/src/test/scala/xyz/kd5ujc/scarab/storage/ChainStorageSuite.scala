@@ -754,7 +754,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   nodeRules,
                   geometry.byron.epochSlots,
                   events,
-                  _ => IO.unit
+                  _ => IO.unit,
+                  xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs.empty
                 )
                 chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
                   VolatileChain(

@@ -653,7 +653,9 @@
       "evidence": {
         "suites": [
           "ChainSelectionSuite",
-          "CandidateSelectionSuite"
+          "CandidateSelectionSuite",
+          "LeiosChainSelSuite",
+          "LeiosEbGateSuite"
         ]
       },
       "page": "docs/compatibility/chain-selection.md"

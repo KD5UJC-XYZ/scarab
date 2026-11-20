@@ -36,7 +36,7 @@ class AvailableBlocksSuite extends FunSuite:
       selected: ChainSelection.Local,
       bodies: Map[Bytes, Header],
       invalid: Set[Bytes] = Set.empty,
-      containing: Option[Bytes] = None,
+      containing: Option[Set[Bytes]] = None,
       genesis: Option[Bytes] = None
   ): Vector[ChainSelection.Candidate] =
     AvailableBlocks
@@ -93,10 +93,10 @@ class AvailableBlocksSuite extends FunSuite:
       Vector(ChainSelection.Candidate(Point.Origin, Vector(a)))
     )
     assertEquals(
-      candidates(origin, chain(a, b, c), containing = Some(b.hash)),
+      candidates(origin, chain(a, b, c), containing = Some(Set(b.hash))),
       Vector(ChainSelection.Candidate(Point.Origin, Vector(a, b, c)))
     )
-    assertEquals(candidates(origin, chain(a, b), containing = Some(c.hash)), Vector.empty)
+    assertEquals(candidates(origin, chain(a, b), containing = Some(Set(c.hash))), Vector.empty)
   }
 
   test("first-admission candidates contain their cause; reprocessing considers all branches") {
@@ -104,7 +104,7 @@ class AvailableBlocksSuite extends FunSuite:
     val b = header(2, Some(a.hash), 1, 2)
     val c = header(3, Some(a.hash), 1, 3)
     assertEquals(
-      candidates(origin, chain(a, b, c), containing = Some(b.hash)),
+      candidates(origin, chain(a, b, c), containing = Some(Set(b.hash))),
       Vector(ChainSelection.Candidate(Point.Origin, Vector(a, b)))
     )
     assertEquals(candidates(origin, chain(a, b, c)).size, 2)

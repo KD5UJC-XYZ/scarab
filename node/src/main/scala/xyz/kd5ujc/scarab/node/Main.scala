@@ -557,7 +557,8 @@ object Main extends IOApp:
       resumed: Vector[ChainStorage.Resumed[S]],
       persistence: Option[ChainPersistence[IO, S]],
       immutable: Option[ImmutableStore[IO]],
-      received: Option[ReceivedBlocks[IO]]
+      received: Option[ReceivedBlocks[IO]],
+      acquired: xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
   )
 
   /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
@@ -1423,10 +1424,14 @@ object Main extends IOApp:
       observePeer: Peer.Observation => IO[Unit]
   )
 
-  /** The blocks fetched ahead, shared by every session, and the Genesis runtime when it runs. */
+  /** The blocks fetched ahead, shared by every session, the Genesis runtime when it runs, and the
+    * endorser-block store whose completions chain selection reads ([[LeiosAcquired.notifying]]):
+    * the store its writers use.
+    */
   private final case class Supply(
       blockPool: BlockPool[IO],
-      genesisRuntime: Option[GenesisRuntime[IO]]
+      genesisRuntime: Option[GenesisRuntime[IO]],
+      leios: Option[LeiosStore[IO]]
   )
 
   /** The connections: the manager, the inbound governor, the outbound network and the listener. */
@@ -1646,7 +1651,8 @@ object Main extends IOApp:
           Vector.empty,
           Some(ChainPersistence.backingOnly[IO, MirrorState](backing)),
           None,
-          None
+          None,
+          xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs.empty
         )
       )
     ) { dir =>
@@ -1675,26 +1681,37 @@ object Main extends IOApp:
           Some(TransitionRecount.reopen[IO](genesis.geometry))
         )
         .evalMap { r =>
-          ChainStorage
-            .resume[IO, MirrorState](
-              r,
-              k,
-              setup.origin,
-              rules.rules,
-              genesis.geometry.byron.epochSlots,
-              storageEvents,
-              rules.warm,
-              Some(scheduling.compute)
+          // the acquired endorser blocks at the open, before the volatile chain is replayed, as the
+          // ChainDB seeds them before its initial chain selection (`ChainDB/Impl.hs:236-259` at
+          // ouroboros-consensus 2416493b): the replay parks what that selection hides
+          run.leios
+            .fold(IO.pure(xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs.empty))(
+              LeiosAcquired.scanned[IO](_, r.anchor.map(_.slot))
             )
-            .map(resumed =>
-              Storage(
-                r.anchor,
-                r.state,
-                resumed,
-                Some(r.persistence),
-                Some(r.store),
-                Some(r.received)
-              )
+            .flatMap(acquired =>
+              ChainStorage
+                .resume[IO, MirrorState](
+                  r,
+                  k,
+                  setup.origin,
+                  rules.rules,
+                  genesis.geometry.byron.epochSlots,
+                  storageEvents,
+                  rules.warm,
+                  acquired,
+                  Some(scheduling.compute)
+                )
+                .map(resumed =>
+                  Storage(
+                    r.anchor,
+                    r.state,
+                    resumed,
+                    Some(r.persistence),
+                    Some(r.store),
+                    Some(r.received),
+                    acquired
+                  )
+                )
             )
         }
     }
@@ -1730,7 +1747,7 @@ object Main extends IOApp:
             instruments.fatalSink(Fatal.Internal(problem))
       val headers = headerChecks(run, instruments, rules, chain)
       for
-        supply <- supplied(run, instruments, chain, headers, opened.received)
+        supply <- supplied(run, instruments, chain, headers, opened.received, opened.acquired)
         connections <- connected(run, instruments, chain, headers, supply, opened.immutable)
         services <- served(
           run,
@@ -1988,7 +2005,8 @@ object Main extends IOApp:
       instruments: Instruments,
       chain: Chain,
       headers: Headers,
-      receivedBlocks: Option[ReceivedBlocks[IO]]
+      receivedBlocks: Option[ReceivedBlocks[IO]],
+      acquired: xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
   )(using
       Handle[IO, NodeError],
       Log[IO],
@@ -2042,7 +2060,10 @@ object Main extends IOApp:
       ) *> seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
         follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
         follower.installInvalidBlocks(blockPool.invalidBlocks) *>
-        collectors.add(Collectors.pool(blockPool))
+        collectors.add(Collectors.pool(blockPool)) *>
+        // the acquired endorser blocks the chain database opened with, before the first chain
+        // selection (`ChainDB/Impl.hs:236-247` at ouroboros-consensus 2416493b)
+        blockPool.leios.seed(acquired)
       genesisRuntime <- createGenesisRuntime(
         setup,
         follower,
@@ -2050,7 +2071,7 @@ object Main extends IOApp:
         chain.ref.get.map(_.state.geometry(genesis.geometry)),
         headers.nodeChain
       )
-    yield Supply(blockPool, genesisRuntime)
+    yield Supply(blockPool, genesisRuntime, run.leios.map(blockPool.leios.notifying))
 
   /** The node's connections: the manager, the inbound governor, the outbound peer network and the
     * relay's listener.
