@@ -30,10 +30,11 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
 
   private val dirs = ResourceFunFixture(Files.forAsync[IO].tempDirectory)
 
+  /** A store as the import and export open it: as stored, resuming nothing. */
   private def store(dir: Path): Resource[IO, RocksLeiosStore[IO]] =
     LeiosStoreLocks
       .resource[IO]
-      .flatMap(locks => allowing(RocksLeiosStore.resource[IO](dir, locks)))
+      .flatMap(locks => allowing(RocksLeiosStore.verbatim[IO](dir, locks)))
 
   /** Everything the store holds, hash by hash. */
   private def contents(s: RocksLeiosStore[IO]): IO[Vector[StoredEb]] =
@@ -340,7 +341,9 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
         row(30, 5)
         insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
       })
-      _ <- store(dir / "store").use(s => imported(source, s) *> exported(s, again))
+      // imported, then exported from another open: the pending pin and marks stay as they are
+      _ <- store(dir / "store").use(imported(source, _))
+      _ <- store(dir / "store").use(exported(_, again))
     yield
       assertEquals(dump(source / "leios.vol.db", "ebs").size, 9)
       assertEquals(dump(source / "leios.imm.db", "ebs").size, 3)

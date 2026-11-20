@@ -202,9 +202,11 @@ object HaskellImport:
           outer.raise(HaskellImportError.Leios(LeiosReferenceDb.Error.Store(e)))
       LeiosReferenceDb.present[F](config.haskellDb).flatMap {
         case false => F.pure(None)
-        case true =>
+        case true  =>
+          // as stored: the reference's pending copies and sweeps are imported as they are, and the
+          // node's next open of the store resumes them
           RocksLeiosStore
-            .resource[F](config.db / "leios", leiosLocks)
+            .verbatim[F](config.db / "leios", leiosLocks)
             .use(LeiosReferenceDb.importInto[F](config.haskellDb, _))
             .map(Some(_))
       }
