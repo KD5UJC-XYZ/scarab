@@ -86,8 +86,12 @@ our chain no longer holds is adopted there when its branch is preferred, and the
 forger traces, is what that selection decided, read as the reference's forging loop reads it (the block is the tip:
 adopted; recorded invalid: invalid; else not adopted, `NodeKernel.hs:758-769`). A block stored already is neither
 stored nor selected again (`IgnoreBlockAlreadyInVolatileDB`, `ChainSel.hs:431-433`). A rollback leaves the block in
-the forest, and a restart seeds the forest from the received log before startup selection. A block the node's own implementation has no verdict
-on is not kept: it is never judged again. The forger's trace is the one of the submission (`adoptedBlock`,
+the forest, and a restart seeds the forest from the received log before startup selection. A block the node's own
+implementation has no verdict on is never judged again in this run, as the forger handles it as a refusal (R3 of
+the decision of issue 567): when the direct selection finds so, the block is not kept; when the selection its
+submission runs does, the block stays in the forest withheld for good (`NoVerdictRetry.Never`), and the other blocks
+of that candidate keep the retry schedule of a peer's block. A restart judges a withheld block again, as it does any.
+The forger's trace is the one of the submission (`adoptedBlock`,
 `didntAdoptBlock` or `forgedInvalidBlock`); a later selection of the block is logged as the chain's (`extended`), as
 the reference traces it in the ChainDB (`switchTo`, `AddedToCurrentChain`, `ChainSel.hs:964`), not in the forging
 loop. Keeping the block is the node's work, not the forger's: if it fails other than in storage, the block is not
@@ -107,7 +111,8 @@ forging loop with the worker and the real block rules) check these cases in simu
   predecessor left our chain once that predecessor is delivered after it, neither delivered itself;
 - a block forged on a kept block our chain does not hold (one that lost the tie, or our adopted block a peer's chain
   rolled back) is adopted at its submission when its branch is the longer, with no delivery or reselection after it,
-  and reported `Adopted`;
+  and reported `Adopted`; when that selection has no verdict on the block, for a cause that may pass, the submission
+  is `NoVerdict` and the block is not judged again, nor adopted, in the 50 simulated seconds after it;
 - an adopted forged block that a peer's longer chain rolled back wins again when its branch grows, without being
   delivered, as a fetched block does; with a received log whose cache holds one body, from the log; and after the
   log is closed and opened again, through `Main.seedReceived` and startup selection;
@@ -122,7 +127,8 @@ forging loop with the worker and the real block rules) check these cases in simu
 With only a block the LoE holds back kept, as before this behaviour was built, every case that waits for a kept block
 to be selected does not end, and the cases of duplicates, refusals and the forest's contents fail; the longer chain's
 case, the fetched block's and the earlier cases pass. Without the selection at submission, a block forged on a kept
-block off our chain is `Lost(DetachedPredecessor)` and our chain stays where it was.
+block off our chain is `Lost(DetachedPredecessor)` and our chain stays where it was; with a peer's retry schedule
+for the block that selection has no verdict on, it is judged again a second later and adopted.
 
 Not shown: no run against a reference node, and no devnet scenario forges in Genesis mode. The reference also serves
 the blocks of its VolatileDB over BlockFetch, recent forks included; Scarab serves its selected chain and the
