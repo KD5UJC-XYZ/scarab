@@ -49,7 +49,11 @@ object MithrilBootstrap:
       artifact: MithrilClient.Artifact
   )
 
-  def run[F[_]: Async](config: Config, client: MithrilClient[F])(using
+  /** `leiosLocks` is the instance of the Leios stores' permits the process makes once and gives
+    * every open of a Leios store ([[LeiosStoreLocks]]); the import of the blocks opens one.
+    */
+  def run[F[_]: Async](config: Config, client: MithrilClient[F], leiosLocks: LeiosStoreLocks[F])(
+      using
       outer: Handle[F, Error],
       env: Ask[F, ConsensusMirrorEnv]
   ): F[Report] =
@@ -157,7 +161,11 @@ object MithrilBootstrap:
           ()
         })
         imported <- HaskellImport
-          .run[F](config.immutable.copy(haskellDb = verified.directory, db = stage), _ => F.unit)
+          .run[F](
+            config.immutable.copy(haskellDb = verified.directory, db = stage),
+            leiosLocks,
+            _ => F.unit
+          )
         _ <- F.whenA(imported.truncation.nonEmpty)(Error.TruncatedImmutable.raise[F, Unit])
         trust = config.ledger.trust match
           case LedgerSnapshotImport.Trust.Verify(_, key) =>

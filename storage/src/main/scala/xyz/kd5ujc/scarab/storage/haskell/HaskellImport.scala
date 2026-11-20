@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.storage.{
   FileImmutableStore,
   NetworkIdentityFile
 }
-import xyz.kd5ujc.scarab.storage.{LeiosStoreError, RocksLeiosStore}
+import xyz.kd5ujc.scarab.storage.{LeiosStoreError, LeiosStoreLocks, RocksLeiosStore}
 import xyz.kd5ujc.scarab.storage.leios.LeiosReferenceDb
 import scala.concurrent.duration.FiniteDuration
 
@@ -135,7 +135,15 @@ object HaskellImport:
       identityKnown: Boolean
   )
 
-  def run[F[_]: Async](config: Config, progress: Progress => F[Unit])(using
+  /** Import the source's blocks, and its Leios database if it has one, into the target. The Leios
+    * store is opened with `leiosLocks`, the instance the process makes once and gives every open of
+    * a Leios store ([[LeiosStoreLocks]]).
+    */
+  def run[F[_]: Async](
+      config: Config,
+      leiosLocks: LeiosStoreLocks[F],
+      progress: Progress => F[Unit]
+  )(using
       outer: Raise[F, HaskellImportError]
   ): F[Report] =
     val F = Async[F]
@@ -196,7 +204,7 @@ object HaskellImport:
         case false => F.pure(None)
         case true =>
           RocksLeiosStore
-            .resource[F](config.db / "leios")
+            .resource[F](config.db / "leios", leiosLocks)
             .use(LeiosReferenceDb.importInto[F](config.haskellDb, _))
             .map(Some(_))
       }

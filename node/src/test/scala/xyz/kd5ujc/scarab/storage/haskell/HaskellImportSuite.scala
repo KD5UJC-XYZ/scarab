@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.storage.haskell
 
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-import cats.effect.IO
+import cats.effect.{IO, Resource}
+import cats.mtl.Raise
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath, StandardCopyOption}
 import java.security.MessageDigest
@@ -12,7 +13,13 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.protocol.{ChainSync, DijkstraNotYet}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.storage.{FileImmutableStore, ImmutableStore}
+import xyz.kd5ujc.scarab.storage.{
+  FileImmutableStore,
+  ImmutableStore,
+  LeiosStoreLocks,
+  LeiosStoreSuite,
+  RocksLeiosStore
+}
 import xyz.kd5ujc.scarab.storage.StorageTestKit.{ok, tempDir}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
@@ -36,6 +43,19 @@ class HaskellImportSuite extends CatsEffectSuite:
   private val previewChunk = ChunkSlots
     .fromSecurityParam(previewSetup.geometry.k.toLong)
     .getOrElse(fail("chunk size"))
+
+  /** One import run, as the command runs it: with an instance of the Leios stores' permits of its
+    * own.
+    */
+  private def importing(config: HaskellImport.Config, progress: HaskellImport.Progress => IO[Unit])(
+      using Raise[IO, HaskellImportError]
+  ): IO[HaskellImport.Report] =
+    LeiosStoreLocks.make[IO].flatMap(HaskellImport.run[IO](config, _, progress))
+
+  private def leiosStore(dir: Path): Resource[IO, RocksLeiosStore[IO]] =
+    LeiosStoreLocks
+      .resource[IO]
+      .flatMap(locks => LeiosStoreSuite.allowing(RocksLeiosStore.resource[IO](dir, locks)))
 
   private def sha256(a: Array[Byte]): String =
     MessageDigest.getInstance("SHA-256").digest(a).map("%02x".format(_)).mkString
@@ -155,7 +175,7 @@ class HaskellImportSuite extends CatsEffectSuite:
     tempDir.use { dir =>
       val db = dir.toNioPath.resolve("scala-db")
       attempt(
-        HaskellImport.run[IO](
+        importing(
           config(previewRoot, db, previewSetup, previewChunk),
           _ => IO.unit
         )
@@ -198,7 +218,7 @@ class HaskellImportSuite extends CatsEffectSuite:
         )
         blocks = read.fold(e => fail(e.message), identity)
         imported <- attempt(
-          HaskellImport.run[IO](config(previewRoot, db, previewSetup, previewChunk), _ => IO.unit)
+          importing(config(previewRoot, db, previewSetup, previewChunk), _ => IO.unit)
         )
         _ = imported.fold(e => fail(e.message), identity)
         found <- foundInIndex(db, blocks)
@@ -218,18 +238,18 @@ class HaskellImportSuite extends CatsEffectSuite:
       val first = golden.count(_.slot <= stop).toLong
       for
         r1 <- attempt(
-          HaskellImport.run[IO](
+          importing(
             config(previewRoot, db, previewSetup, previewChunk, Some(stop)),
             _ => IO.unit
           )
         )
         _ = assertEquals(r1.map(r => (r.appended, r.stoppedAtSlot)), Right((first, true)))
         r2 <- attempt(
-          HaskellImport.run[IO](config(previewRoot, db, previewSetup, previewChunk), _ => IO.unit)
+          importing(config(previewRoot, db, previewSetup, previewChunk), _ => IO.unit)
         )
         _ = assertEquals(r2.map(r => (r.skipped, r.appended)), Right((first, golden.size - first)))
         r3 <- attempt(
-          HaskellImport.run[IO](config(previewRoot, db, previewSetup, previewChunk), _ => IO.unit)
+          importing(config(previewRoot, db, previewSetup, previewChunk), _ => IO.unit)
         )
         _ = assertEquals(r3.map(r => (r.skipped, r.appended)), Right((golden.size.toLong, 0L)))
         blocks <- stored(db)
@@ -238,24 +258,15 @@ class HaskellImportSuite extends CatsEffectSuite:
   }
 
   test("a Leios node's endorser-block database is read into the Leios store beside the blocks") {
-    import xyz.kd5ujc.scarab.storage.RocksLeiosStore
     import xyz.kd5ujc.scarab.storage.leios.LeiosReferenceDb
-    import xyz.kd5ujc.scarab.storage.LeiosStoreSuite.{
-      allowing,
-      body,
-      hash,
-      ok as leiosOk,
-      point,
-      tx,
-      word32
-    }
+    import xyz.kd5ujc.scarab.storage.LeiosStoreSuite.{body, hash, ok as leiosOk, point, tx, word32}
     import xyz.kd5ujc.scarab.storage.leios.LeiosReferenceDbSuite.exported
     tempDir.use { dir =>
       val haskell = dir.toNioPath.resolve("haskell")
       copyDir(previewRoot, haskell)
       val db = dir.toNioPath.resolve("scala-db")
       for
-        _ <- allowing(RocksLeiosStore.resource[IO](dir / "source")).use { s =>
+        _ <- leiosStore(dir / "source").use { s =>
           leiosOk(
             s.writeEbPoint(point(7, 1), word32(1)) *> s.writeEbBody(
               point(7, 1),
@@ -266,13 +277,13 @@ class HaskellImportSuite extends CatsEffectSuite:
           ) *> exported(s, fsPath(haskell))
         }
         report <- attempt(
-          HaskellImport.run[IO](config(haskell, db, previewSetup, previewChunk), _ => IO.unit)
+          importing(config(haskell, db, previewSetup, previewChunk), _ => IO.unit)
         )
-        closure <- allowing(RocksLeiosStore.resource[IO](fsPath(db.resolve("leios")))).use(s =>
+        closure <- leiosStore(fsPath(db.resolve("leios"))).use(s =>
           leiosOk(s.lookupEbClosure(hash(1)))
         )
         plain <- attempt(
-          HaskellImport.run[IO](
+          importing(
             config(previewRoot, dir.toNioPath.resolve("plain"), previewSetup, previewChunk),
             _ => IO.unit
           )
@@ -296,7 +307,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       JFiles.writeString(haskell.resolve("protocolMagicId"), "764824073")
       val db = dir.toNioPath.resolve("scala-db")
       attempt(
-        HaskellImport.run[IO](config(haskell, db, previewSetup, previewChunk), _ => IO.unit)
+        importing(config(haskell, db, previewSetup, previewChunk), _ => IO.unit)
       ).map { r =>
         assertEquals(r.map(_ => ()), Left(HaskellImportError.MagicMismatch(764824073L, 2L)))
         assert(!JFiles.exists(db.resolve("immutable")), "the target must not be created")
@@ -310,7 +321,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       val other =
         previewSetup.identity.copy(byronGenesis = Some(Bytes.fromArray(Array.fill(32)(9.toByte))))
       val cfg = config(previewRoot, db, previewSetup, previewChunk).copy(identity = other)
-      attempt(HaskellImport.run[IO](cfg, _ => IO.unit)).map {
+      attempt(importing(cfg, _ => IO.unit)).map {
         case Left(HaskellImportError.ForeignGenesis(found, _)) =>
           assertEquals(found, "no predecessor")
         case other => fail(s"expected ForeignGenesis, got $other")
@@ -340,7 +351,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       val dbB = dir.toNioPath.resolve("db-b")
       for
         a <- attempt(
-          HaskellImport.run[IO](config(tornNewest, dbA, previewSetup, previewChunk), _ => IO.unit)
+          importing(config(tornNewest, dbA, previewSetup, previewChunk), _ => IO.unit)
         )
         report = a.fold(e => fail(e.message), identity)
         // Every block of chunks 0 and 1, and those of chunk 2 before the cut.
@@ -351,7 +362,7 @@ class HaskellImportSuite extends CatsEffectSuite:
         _ = assertEquals(report.truncation.map(_._2.entries), Some(1))
         _ = assertEquals(fingerprint(tornNewest), before, "the source must not be repaired")
         b <- attempt(
-          HaskellImport.run[IO](config(damaged, dbB, previewSetup, previewChunk), _ => IO.unit)
+          importing(config(damaged, dbB, previewSetup, previewChunk), _ => IO.unit)
         )
       yield b match
         case Left(HaskellImportError.Source(HaskellImmutableError.Invalid(c, _))) =>
@@ -435,7 +446,7 @@ class HaskellImportSuite extends CatsEffectSuite:
           blocks.count(_.isEbb),
           erasItems.count(_.position.isInstanceOf[BlockPosition.Ebb])
         )
-        r <- attempt(HaskellImport.run[IO](config(haskell, db, erasSetup, erasChunk), _ => IO.unit))
+        r <- attempt(importing(config(haskell, db, erasSetup, erasChunk), _ => IO.unit))
         report = r.fold(e => fail(e.message), identity)
         _ = assertEquals(report.appended, erasRaw.size.toLong)
         out <- stored(db)
@@ -476,7 +487,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       val haskell = dir.toNioPath.resolve("haskell")
       write(haskell, erasSetup.identity.magic, erasChunk, Vector(item))
       val db = dir.toNioPath.resolve("scala-db")
-      attempt(HaskellImport.run[IO](config(haskell, db, erasSetup, erasChunk), _ => IO.unit))
+      attempt(importing(config(haskell, db, erasSetup, erasChunk), _ => IO.unit))
         .flatMap { r =>
           assertEquals(
             r.map(_ => ()),
@@ -492,7 +503,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       val haskell = dir.toNioPath.resolve("haskell")
       write(haskell, erasSetup.identity.magic, erasChunk, erasItems.patch(10, Nil, 1))
       val db = dir.toNioPath.resolve("scala-db")
-      attempt(HaskellImport.run[IO](config(haskell, db, erasSetup, erasChunk), _ => IO.unit)).map {
+      attempt(importing(config(haskell, db, erasSetup, erasChunk), _ => IO.unit)).map {
         case Left(HaskellImportError.BrokenLink(_, _, _))      => ()
         case Left(HaskellImportError.BlockNumberJump(_, _, _)) => ()
         case other => fail(s"expected a broken link, got $other")

@@ -10,7 +10,7 @@ import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.storage.{EbStatus, LeiosEb, RocksLeiosStore, StoredEb}
+import xyz.kd5ujc.scarab.storage.{EbStatus, LeiosEb, LeiosStoreLocks, RocksLeiosStore, StoredEb}
 import xyz.kd5ujc.scarab.storage.LeiosStoreSuite.*
 
 /** The import and export of the reference's Leios database (`leios.vol.db`, `leios.imm.db`;
@@ -24,7 +24,9 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
   private val dirs = ResourceFunFixture(Files.forAsync[IO].tempDirectory)
 
   private def store(dir: Path): Resource[IO, RocksLeiosStore[IO]] =
-    allowing(RocksLeiosStore.resource[IO](dir))
+    LeiosStoreLocks
+      .resource[IO]
+      .flatMap(locks => allowing(RocksLeiosStore.resource[IO](dir, locks)))
 
   /** Everything the store holds, hash by hash. */
   private def contents(s: RocksLeiosStore[IO]): IO[Vector[StoredEb]] =

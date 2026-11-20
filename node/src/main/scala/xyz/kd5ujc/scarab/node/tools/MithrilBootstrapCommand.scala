@@ -11,6 +11,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.storage.LeiosStoreLocks
 import xyz.kd5ujc.scarab.storage.haskell.HaskellImport
 import xyz.kd5ujc.scarab.storage.mithril.{MithrilBootstrap, MithrilClient}
 
@@ -193,7 +194,11 @@ object MithrilBootstrapCommand:
           given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(IO.pure(Map.empty))
           Handle
             .allow[MithrilBootstrap.Error] {
-              MithrilBootstrap.run[IO](config, MithrilClient.official[IO]).map(Some(_))
+              // the process's one instance: the command opens a Leios store nowhere else
+              LeiosStoreLocks
+                .make[IO]
+                .flatMap(MithrilBootstrap.run[IO](config, MithrilClient.official[IO], _))
+                .map(Some(_))
             }
             .rescue(error => log("error", "message" -> Json.fromString(error.message)).as(None))
             .flatMap {

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.tools
 
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.LeiosStoreLocks
 import xyz.kd5ujc.scarab.storage.haskell.{ChunkSlots, HaskellImport, HaskellImportError}
 import cats.effect.{ExitCode, IO}
 import cats.mtl.Handle
@@ -103,7 +104,11 @@ object HaskellImportCommand:
             )
             Handle
               .allow[HaskellImportError] {
-                HaskellImport.run[IO](config, progress).map(Some(_))
+                // the process's one instance: the command opens a Leios store nowhere else
+                LeiosStoreLocks
+                  .make[IO]
+                  .flatMap(HaskellImport.run[IO](config, _, progress))
+                  .map(Some(_))
               }
               .rescue(e => log("error", "message" -> Json.fromString(e.message)).as(None))
               .flatMap {
