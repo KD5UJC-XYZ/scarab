@@ -85,8 +85,8 @@ damaged or whose block the start-up check refuses, as the reference stops at the
 read (`parseBlockFile`, `BlockReadErr`, `Storage/VolatileDB/Impl/Parser.hs` 52-107), its blocks are
 indexed up to the first one already indexed, in an earlier file or earlier in the same one, whatever the
 bytes of its record (`addToReverseIndex`, `DuplicatedBlock`, `State.hs` 464-492), the file is cut at the
-earlier of the two, and the files after it are read all the same. Each cut is logged as it is made,
-before the next file is read, with its file, offset and cause, as the reference traces `Truncate` with
+earlier of the two, and the files after it are read all the same. Each cut is logged just before it is
+made, before the next file is read, with its file, offset and cause, as the reference traces `Truncate` with
 its `ParseError` (`receivedTruncated`; `Storage/VolatileDB/Impl/Types.hs` 77-99; `validateFile` and
 `truncateError`, `State.hs` 412-450): a file cut where its parse stopped and then at an earlier repeat
 is logged twice, in that order. The severity is Debug, the one cardano-node 11.1.3 gives `Truncate`

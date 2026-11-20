@@ -731,7 +731,7 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     // two files: [A] [B A U C], U a body that does not decode. The reference parses the second file
     // up to U and truncates there, then finds the repeat of A and truncates again, tracing both
     // (`validateFile`, `Storage/VolatileDB/Impl/State.hs` 412-424, ouroboros-consensus 82ecba329):
-    // the cuts are told in that order, each as it is made, and the file keeps B
+    // the cuts are told in that order, each just before it is made, and the file keeps B
     tempDir.use { dir =>
       ok {
         val (a, b, c, u) = (block(1), block(2), block(4), block(3)._1 -> undecodable)
@@ -747,11 +747,18 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
               Vector(b, a, u, c).map((r, raw) => VolatileStore.encode(VolatileRecord.Block(r, raw)))
             JFiles.write(second, records.flatten.toArray)
           }
-          told <- cats.effect.Ref.of[IO, Vector[VolatileStore.Cut]](Vector.empty)
+          told <- cats.effect.Ref.of[IO, Vector[(VolatileStore.Cut, Long)]](Vector.empty)
+          second = dir.toNioPath.resolve("00000001.log")
+          whole <- IO(JFiles.size(second))
           recovery <- ReceivedBlocks
-            .recovering[IO](dir, 4)(unread, decodes, c => told.update(_ :+ c))
+            .recovering[IO](dir, 4)(
+              unread,
+              decodes,
+              c => IO(JFiles.size(second)).flatMap(length => told.update(_ :+ (c -> length)))
+            )
             .use((_, r) => IO.pure(r))
-          cuts <- told.get
+          toldWith <- told.get
+          cuts = toldWith.map(_._1)
           files <- IO(logFiles(dir).map(recordsOf))
         yield
           val expected = Vector(
@@ -770,6 +777,11 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
             )
           )
           assertEquals(cuts, expected, "both cuts told, the parse's first")
+          assertEquals(
+            toldWith.map(_._2),
+            Vector(whole, size(b) + size(a)),
+            "each told before its truncation: the whole file, then the file cut at U"
+          )
           assertEquals(recovery.cuts, expected, "and the open's report holds the same")
           assertEquals(files(1), Vector(VolatileRecord.Block(b._1, b._2)), "the file keeps B")
           assertEquals(recovery.report.truncatedBytes, size(a) + size(u) + size(c), "bytes cut")
@@ -800,6 +812,8 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
         cuts <- told.get
       yield
         result match
+          // where it fails depends on the file system: reading the directory as a log file, or
+          // opening it as the file to append to
           case Left(StorageError.Io(_, _: java.io.IOException)) => ()
           case other => fail(s"the open fails on the directory, got $other")
         assertEquals(
@@ -813,6 +827,36 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
           ),
           "the first file's cut was told"
         )
+    }
+  }
+
+  test("a repeat names the file it was read from when two listed names share a number") {
+    // `1.log`, empty, and `00000001.log` holding [B B]: both are file number 1, and the repeat of
+    // B names the file B was read from, whichever of the two is listed first
+    tempDir.use { dir =>
+      ok {
+        val b = block(2)
+        val record = VolatileStore.encode(VolatileRecord.Block(b._1, b._2))
+        for
+          _ <- IO {
+            JFiles.write(dir.toNioPath.resolve("1.log"), Array.emptyByteArray)
+            JFiles.write(dir.toNioPath.resolve("00000001.log"), record ++ record)
+          }
+          recovery <- ReceivedBlocks
+            .recovering[IO](dir, 4)(unread, decodes, _ => IO.unit)
+            .use((_, r) => IO.pure(r))
+        yield assertEquals(
+          recovery.cuts,
+          Vector(
+            VolatileStore.Cut(
+              "00000001.log",
+              record.length.toLong,
+              VolatileStore.CutCause.Repeated(b._1.hash, "00000001.log")
+            )
+          ),
+          "the repeat names 00000001.log, the file B is held in"
+        )
+      }
     }
   }
 

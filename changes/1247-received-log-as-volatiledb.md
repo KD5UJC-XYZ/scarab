@@ -14,7 +14,7 @@
   removed and a malformed block was dropped by itself after the open. A later record of a block
   already indexed, in the same file or a later one, cuts its file there whatever its bytes. A block
   the log's index holds is not written again: the start's repair of the selected chain's blocks
-  writes only those the log lacks. Each cut the open makes is logged as it is made
+  writes only those the log lacks. Each cut the open makes is logged just before it is made
   (`receivedTruncated`, at Debug, as the reference traces `Truncate`) with its file, offset and cause:
   a record that cannot be read, a block the start-up check refuses, or a block already held in a named
   file; the open's totals are logged as `receivedOpened`. The selected-chain log still recovers its files in order.

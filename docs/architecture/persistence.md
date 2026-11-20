@@ -197,7 +197,7 @@ and the predecessor its header names) and a cache of recent bodies; a body is re
   given by the node: the block decodes, its header names the record's point and its body is the
   header's), its blocks are indexed up to the first one already indexed, whatever the bytes of its
   record, and it is cut at the earlier of the two; the files after it are read all the same. Each cut
-  is logged as it is made, with its file, offset and typed cause (`StorageEvent.ReceivedTruncated`,
+  is logged just before it is made, with its file, offset and typed cause (`StorageEvent.ReceivedTruncated`,
   the reference's `Truncate`, twice for a file cut where its parse stopped and then at an earlier
   repeat), and the open's totals as `StorageEvent.ReceivedOpened`. A block
   the index holds is not written again: a receipt and the start's repair of the selected chain's

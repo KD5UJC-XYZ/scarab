@@ -244,7 +244,8 @@ object ReceivedBlocks:
     * @param check
     *   The start-up check of each record the open reads: the file is cut at the first one refused.
     * @param cut
-    *   Told of each cut the open makes, once it is made, before the next file is read.
+    *   Told of each cut the open makes, just before it is made, as the reference traces each
+    *   truncation before it truncates.
     */
   def recovering[F[_]: Async](
       dir: Path,

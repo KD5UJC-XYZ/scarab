@@ -368,12 +368,15 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         assertEquals(again, first, "and the next open reads the same")
         def size(b: (BlockRef, Bytes)): Long =
           VolatileStore.encode(VolatileRecord.Block(b._1, b._2)).length.toLong
-        // the received log's events, in the order they were emitted
+        // the logs' open events, in the order they were emitted
         def receivedOf(events: Vector[StorageEvent]): Vector[StorageEvent] = events.collect {
-          case e @ (StorageEvent.ReceivedTruncated(_) | StorageEvent.ReceivedOpened(_)) => e
+          case e @ (StorageEvent.VolatileOpened(_) | StorageEvent.ReceivedTruncated(_) |
+              StorageEvent.ReceivedOpened(_)) =>
+            e
         }
         receivedOf(firstEvents) match
           case Vector(
+                StorageEvent.VolatileOpened(_),
                 StorageEvent.ReceivedTruncated(
                   VolatileStore.Cut(
                     "00000000.log",
@@ -408,9 +411,11 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
               "three blocks in three files, and the bytes cut"
             )
           case other =>
-            fail(s"a cut per file, each refused by the node's check, then the report, got $other")
+            fail(
+              s"the journal's open, a cut per file refused by the node's check, then the report, got $other"
+            )
         receivedOf(againEvents) match
-          case Vector(StorageEvent.ReceivedOpened(report)) =>
+          case Vector(StorageEvent.VolatileOpened(_), StorageEvent.ReceivedOpened(report)) =>
             assertEquals(report.truncatedBytes, 0L, "the next open cuts nothing")
           case other => fail(s"the next open reports no cut, got $other")
     }

@@ -380,12 +380,12 @@ object VolatileStore:
     * it parses it and keeps its `BlockInfo` in its index (`parseBlockFile` and `extractBlockInfo`,
     * `Storage/VolatileDB/Impl/Parser.hs` 52-128; `Storage/VolatileDB/Impl/Types.hs` 127-133,
     * ouroboros-consensus 82ecba329). A record `read` refuses is one whose block the reference could
-    * not read, and its file is cut there. Each cut is given to `cut` once it is made, before the
-    * next file is read, as the reference traces each truncation as it validates its files, and it
-    * is in [[Opened.cuts]]. Each file is validated on its own ([[eachFile]]), as the reference's
-    * VolatileDB opens its files (`mkOpenStateHelper`, `Storage/VolatileDB/Impl/State.hs` 372-436,
-    * ouroboros-consensus 82ecba329, the same at 808e40054). The recovered chain is the index, a
-    * block once, in the order of its records.
+    * not read, and its file is cut there. Each cut is given to `cut` just before it is made, as the
+    * reference traces each truncation and then truncates, and it is in [[Opened.cuts]]. Each file
+    * is validated on its own ([[eachFile]]), as the reference's VolatileDB opens its files
+    * (`mkOpenStateHelper`, `Storage/VolatileDB/Impl/State.hs` 372-436, ouroboros-consensus
+    * 82ecba329, the same at 808e40054). The recovered chain is the index, a block once, in the
+    * order of its records.
     */
   def openIndexWith[F[_]: Async, N](dir: Path, blocksPerFile: Int = 512)(
       read: (BlockRef, Bytes) => Either[StorageError, N],
@@ -454,7 +454,7 @@ object VolatileStore:
       located: Vector[(BlockRef, Location)],
       cut: Long,
       cuts: Vector[Cut],
-      names: Map[Int, String]
+      files: Map[Bytes, String]
   )
   private object Indexed:
     def empty[N]: Indexed[N] =
@@ -484,10 +484,9 @@ object VolatileStore:
 
   /** `parsed` added to `index` in order up to the first block the index already holds, from an
     * earlier file or earlier in the same one, whatever the bytes of its record: the index after,
-    * the blocks added, and the offset of the first such block's record, its hash and the number of
-    * the file that holds it already. The reference's `addToReverseIndex`, whose file is cut there
-    * (`DuplicatedBlock`, `Storage/VolatileDB/Impl/State.hs` 464-492, ouroboros-consensus
-    * 82ecba329).
+    * the blocks added, and the offset of the first such block's record and its hash. The
+    * reference's `addToReverseIndex`, whose file is cut there (`DuplicatedBlock`,
+    * `Storage/VolatileDB/Impl/State.hs` 464-492, ouroboros-consensus 82ecba329).
     */
   private def addedToIndex[N](
       index: Map[Bytes, (BlockRef, Location, N)],
@@ -495,7 +494,7 @@ object VolatileStore:
   ): (
       Map[Bytes, (BlockRef, Location, N)],
       Vector[(BlockRef, Location, N)],
-      Option[(Long, Bytes, Int)]
+      Option[(Long, Bytes)]
   ) =
     @tailrec def go(
         index: Map[Bytes, (BlockRef, Location, N)],
@@ -504,22 +503,22 @@ object VolatileStore:
     ): (
         Map[Bytes, (BlockRef, Location, N)],
         Vector[(BlockRef, Location, N)],
-        Option[(Long, Bytes, Int)]
+        Option[(Long, Bytes)]
     ) =
       rest match
         case Nil => (index, accepted, None)
         case (entry @ (ref, at, _)) :: more =>
           index.get(ref.hash) match
-            case Some((_, held, _)) => (index, accepted, Some((at.offset, ref.hash, held.seq)))
-            case None               => go(index.updated(ref.hash, entry), accepted :+ entry, more)
+            case Some(_) => (index, accepted, Some((at.offset, ref.hash)))
+            case None    => go(index.updated(ref.hash, entry), accepted :+ entry, more)
     go(index, Vector.empty, parsed.toList)
 
   /** The recovery of a log of blocks only, as the reference's VolatileDB validates its files
     * (`mkOpenStateHelper` and `validateFile`, `Storage/VolatileDB/Impl/State.hs` 372-436,
     * ouroboros-consensus 82ecba329, the same at 808e40054), a file at a time ([[validated]]), each
-    * cut given to `cut` before the next file is read. The index keeps the first record of each
-    * block, as the reference's writer never logs a block twice (`putBlockImpl`,
-    * `Storage/VolatileDB/Impl.hs` 387-399).
+    * cut given to `cut` before it is made and before the next file is read. The index keeps the
+    * first record of each block, as the reference's writer never logs a block twice
+    * (`putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399).
     */
   private def eachFile[F[_]: Async, N](
       read: (BlockRef, Bytes) => Either[StorageError, N],
@@ -529,8 +528,7 @@ object VolatileStore:
   ): F[Found[(Location, N)]] =
     names
       .foldLeftM(Indexed.empty[N]) { case (acc, (seq, name)) =>
-        guarded(root.resolve(name).toString)(validated(read)(root, acc, seq, name))
-          .flatMap((next, made) => made.traverse_(cut).as(next))
+        validated(read, cut)(root, acc, seq, name)
       }
       .flatMap(indexed =>
         guarded(root.toString) {
@@ -550,47 +548,48 @@ object VolatileStore:
         }
       )
 
-  /** One file of a log of blocks only validated, as the reference's `validateFile`: parsed
-    * ([[parsedBlocks]]) and cut where the parse stopped, then its blocks added to the index
-    * ([[addedToIndex]]) and cut again at its first block the index already held, in this order,
-    * each cut made and answered as the reference truncates and traces it (`truncateError`,
-    * `Storage/VolatileDB/Impl/State.hs` 412-450). A file's blocks and newest slot are those of the
-    * blocks it added.
+  /** One file of a log of blocks only validated, as the reference's `validateFile`
+    * (`Storage/VolatileDB/Impl/State.hs` 412-436): parsed ([[parsedBlocks]]) and cut where the
+    * parse stopped, then its blocks added to the index ([[addedToIndex]]) and cut again at its
+    * first block the index already held, in this order. Each cut is given to `cut` and then made,
+    * as the reference traces each truncation and then truncates (`truncateError`, 438-450). A
+    * file's blocks and newest slot are those of the blocks it added; a repeat names the file that
+    * holds the block, this one when it was added from earlier in it.
     */
-  private def validated[N](read: (BlockRef, Bytes) => Either[StorageError, N])(
-      root: java.nio.file.Path,
-      acc: Indexed[N],
-      seq: Int,
-      name: String
-  ): (Indexed[N], Vector[Cut]) =
+  private def validated[F[_]: Async, N](
+      read: (BlockRef, Bytes) => Either[StorageError, N],
+      cut: Cut => F[Unit]
+  )(root: java.nio.file.Path, acc: Indexed[N], seq: Int, name: String)(using
+      Raise[F, StorageError]
+  ): F[Indexed[N]] =
     val path = root.resolve(name)
-    val names = if acc.names.contains(seq) then acc.names else acc.names.updated(seq, name)
-    val ((parsed, parsedTo, stopped), size) =
-      Using.resource(FileChannel.open(path, StandardOpenOption.READ))(ch =>
-        (parsedBlocks(ch, seq)(read), ch.size())
+    def made(c: Cut): F[Unit] = cut(c) *> guarded(path.toString)(truncate(path, c.offset))
+    for
+      scanned <- guarded(path.toString)(
+        Using.resource(FileChannel.open(path, StandardOpenOption.READ))(ch =>
+          (parsedBlocks(ch, seq)(read), ch.size())
+        )
       )
-    val parseCut = stopped.map(Cut(name, parsedTo, _))
-    parseCut.foreach(c => truncate(path, c.offset))
-    val (index, accepted, repeated) = addedToIndex(acc.index, parsed)
-    val repeatCut = repeated.map((offset, hash, held) =>
-      Cut(name, offset, CutCause.Repeated(hash, names.getOrElse(held, nameOf(held))))
-    )
-    repeatCut.foreach(c => truncate(path, c.offset))
-    val made = parseCut.toVector ++ repeatCut
-    val good = made.lastOption.fold(size)(_.offset)
-    val info = accepted.foldLeft(FileInfo(seq, 0, BigInt(-1))) { case (info, (ref, _, _)) =>
-      info.copy(blocks = info.blocks + 1, maxSlot = info.maxSlot.max(ref.slot))
-    }
-    (
-      Indexed(
-        acc.infos :+ info,
-        index,
-        acc.located ++ accepted.map((ref, at, _) => ref -> at),
-        acc.cut + (size - good),
-        acc.cuts ++ made,
-        names
-      ),
-      made
+      ((parsed, parsedTo, stopped), size) = scanned
+      parseCut = stopped.map(Cut(name, parsedTo, _))
+      _ <- parseCut.traverse_(made)
+      (index, accepted, repeated) = addedToIndex(acc.index, parsed)
+      repeatCut = repeated.map((offset, hash) =>
+        Cut(name, offset, CutCause.Repeated(hash, acc.files.getOrElse(hash, name)))
+      )
+      _ <- repeatCut.traverse_(made)
+      cuts = parseCut.toVector ++ repeatCut
+      good = cuts.lastOption.fold(size)(_.offset)
+      info = accepted.foldLeft(FileInfo(seq, 0, BigInt(-1))) { case (info, (ref, _, _)) =>
+        info.copy(blocks = info.blocks + 1, maxSlot = info.maxSlot.max(ref.slot))
+      }
+    yield Indexed(
+      acc.infos :+ info,
+      index,
+      acc.located ++ accepted.map((ref, at, _) => ref -> at),
+      acc.cut + (size - good),
+      acc.cuts ++ cuts,
+      acc.files ++ accepted.map((ref, _, _) => ref.hash -> name)
     )
 
   /** `body`, run as blocking work, an exception it throws the storage error of `what`. */

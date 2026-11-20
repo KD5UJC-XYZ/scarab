@@ -425,7 +425,7 @@ object ChainStorage:
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
-      // each cut of the received log is reported as it is made, as the reference traces it
+      // each cut of the received log is reported just before it is made, as the reference traces it
       receivedOpened <- ReceivedBlocks.recovering[F](
         dir / "received",
         config.receivedFileBlocks,
