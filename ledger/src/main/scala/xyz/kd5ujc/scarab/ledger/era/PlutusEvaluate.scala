@@ -2,12 +2,22 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import scala.annotation.unused
+import cats.{Monad, Monoid}
 import cats.data.NonEmptyList
+import cats.mtl.Raise
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.TranslationError
 import xyz.kd5ujc.scarab.ledger.state.EraTag
-import xyz.kd5ujc.scarab.plutus.{EvalRequest, ExUnits, PlutusLanguage as Lang}
+import xyz.kd5ujc.scarab.plutus.{
+  EvalFailure,
+  EvalRequest,
+  EvalResult,
+  ExUnits,
+  PlutusLanguage as Lang,
+  ScriptEvaluator
+}
 
 // A Plutus script ready to run with its arguments, and the collection of a transaction's
 // (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs`,
@@ -415,3 +425,84 @@ object AlonzoPlutusEvaluate:
     )
     val costModels = PParams.lensHKD[E].andThen(p.hkdCostModelsL[Identity]).get(pp)
     scriptsWithContextFromLedgerTxInfo(ledgerTxInfo, costModels)
+
+/** Why a Plutus script failed (`data ScriptFailure`,
+  * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs:146-150`, cardano-ledger
+  * f649f975): the evaluator's failure and the script with its context. The reference's
+  * `scriptFailureMessage` is a text it writes from the failure (`explainPlutusEvaluationError`,
+  * `:401-420`); here the failure keeps its type ([[xyz.kd5ujc.scarab.plutus.EvalFailure]]), and the
+  * text is written where it is shown.
+  */
+final case class ScriptFailure(
+    scriptFailureCause: EvalFailure,
+    scriptFailurePlutus: PlutusWithContext
+)
+
+/** The outcome of running Plutus scripts (`data ScriptResult`, `Evaluate.hs:152-181`,
+  * cardano-ledger f649f975): the scripts that passed, and the failures if any failed. Results are
+  * put together in the order of the scripts, as the reference's `Semigroup` and `Monoid` put them.
+  */
+enum ScriptResult:
+  case Passes(passed: List[PlutusWithContext])
+  case Fails(passed: List[PlutusWithContext], failures: NonEmptyList[ScriptFailure])
+
+object ScriptResult:
+  /** `scriptPass` (`Evaluate.hs:157-158`, cardano-ledger f649f975). */
+  def scriptPass(pwc: PlutusWithContext): ScriptResult = Passes(List(pwc))
+
+  /** `scriptFail` (`Evaluate.hs:160-161`, cardano-ledger f649f975). */
+  def scriptFail(sf: ScriptFailure): ScriptResult = Fails(Nil, NonEmptyList.one(sf))
+
+  /** `instance Semigroup ScriptResult` and `Monoid` (`Evaluate.hs:174-181`, cardano-ledger
+    * f649f975).
+    */
+  given Monoid[ScriptResult] with
+    def empty: ScriptResult = Passes(Nil)
+    def combine(x: ScriptResult, y: ScriptResult): ScriptResult = (x, y) match
+      case (Passes(ps), Passes(qs))       => Passes(ps ++ qs)
+      case (Passes(ps), Fails(qs, xs))    => Fails(ps ++ qs, xs)
+      case (Fails(ps, xs), Passes(qs))    => Fails(ps ++ qs, xs)
+      case (Fails(ps, xs), Fails(qs, ys)) => Fails(ps ++ qs, xs.concatNel(ys))
+
+/** A script the evaluator gave no verdict for
+  * ([[xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported]]): a limit or a defect of this
+  * implementation, which the reference does not have. It is a defect, never a script's failure, so
+  * the transaction it is in has no verdict.
+  */
+final case class ScriptVerdictUnavailable(
+    plutus: PlutusWithContext,
+    reason: EvalFailure.Unsupported
+)
+
+/** The evaluation of Plutus scripts with their contexts, through the evaluator the `plutus` module
+  * gives ([[xyz.kd5ujc.scarab.plutus.ScriptEvaluator]]).
+  */
+object PlutusEvaluation:
+  /** `runPlutusScript` (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs:370-376`,
+    * cardano-ledger f649f975): the script run with its arguments, its cost model and its budget at
+    * its protocol version ([[PlutusWithContext.evalRequest]]), a pass or a failure; no verdict is
+    * raised as [[ScriptVerdictUnavailable]].
+    */
+  def runPlutusScript[F[_]: Monad](pwc: PlutusWithContext)(using
+      evaluator: ScriptEvaluator[F],
+      raise: Raise[F, ScriptVerdictUnavailable]
+  ): F[ScriptResult] =
+    evaluator.evaluate(PlutusWithContext.evalRequest(pwc)).flatMap {
+      case EvalResult.Success(_, _) => ScriptResult.scriptPass(pwc).pure[F]
+      case EvalResult.Failure(reason: EvalFailure.Unsupported, _, _) =>
+        raise.raise(ScriptVerdictUnavailable(pwc, reason))
+      case EvalResult.Failure(reason, _, _) =>
+        ScriptResult.scriptFail(ScriptFailure(reason, pwc)).pure[F]
+    }
+
+  /** `evalPlutusScripts` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs:188-207`,
+    * cardano-ledger f649f975): each script run in turn, their results put together in order. The
+    * first script with no verdict ends the evaluation.
+    */
+  def evalPlutusScripts[F[_]: Monad](pwcs: List[PlutusWithContext])(using
+      ScriptEvaluator[F],
+      Raise[F, ScriptVerdictUnavailable]
+  ): F[ScriptResult] =
+    pwcs.foldLeftM(Monoid[ScriptResult].empty)((results, pwc) =>
+      runPlutusScript[F](pwc).map(results |+| _)
+    )

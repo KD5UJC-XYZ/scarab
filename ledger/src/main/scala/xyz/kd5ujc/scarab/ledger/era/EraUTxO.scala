@@ -272,6 +272,16 @@ object AlonzoUTxO:
 
 /** The core's functions of the UTxO set (`State/UTxO.hs`, cardano-ledger f649f975). */
 object UTxOs:
+  /** `txouts` (`State/UTxO.hs:146-158`, cardano-ledger f649f975): the outputs a body creates, each
+    * at its index, as [[xyz.kd5ujc.scarab.ledger.TxIn.txouts]] numbers them (no output past index
+    * 65,535).
+    */
+  def txouts[E <: EraTag, L <: TxLevel](txBody: TxBody[L, E])(using
+      b: EraTxBody[E],
+      l: b.Level[L]
+  ): UTxO[E] =
+    UTxO(TxIn.txouts(b.id[L](txBody), b.outputs[L](txBody)).toMap)
+
   /** `txInsFilter` (`State/UTxO.hs:168-174`, cardano-ledger f649f975): the outputs of `txIns`. */
   def txInsFilter[E <: EraTag](utxo: UTxO[E], txIns: Set[TxIn]): UTxO[E] =
     UTxO(utxo.unUTxO.filter((in, _) => txIns.contains(in)))

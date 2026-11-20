@@ -72,10 +72,19 @@ trait StoredTxOut[E <: EraTag]:
   def toStored(out: TxOut[E]): xyz.kd5ujc.scarab.ledger.TxOut
   def storedValue(value: Value[E]): xyz.kd5ujc.scarab.ledger.Value
 
+  /** A stored output read as an output of era `E` (design §3.6), for the rules that read the UTxO
+    * set the state keeps; it refuses what only a damaged store holds.
+    */
+  private[ledger] def fromStored(out: xyz.kd5ujc.scarab.ledger.TxOut): Either[EraTxError, TxOut[E]]
+
 object StoredTxOut:
   given conway: StoredTxOut[Conway] with
     def toStored(out: TxOut[Conway]): xyz.kd5ujc.scarab.ledger.TxOut =
       xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.toStored(out)
+    private[ledger] def fromStored(
+        out: xyz.kd5ujc.scarab.ledger.TxOut
+    ): Either[EraTxError, TxOut[Conway]] =
+      xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.fromStored(out)
     def storedValue(value: Value[Conway]): xyz.kd5ujc.scarab.ledger.Value = value.stored
 
 /** The functions of Babbage's outputs (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`,
