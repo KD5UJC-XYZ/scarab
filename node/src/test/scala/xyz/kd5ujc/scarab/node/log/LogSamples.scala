@@ -687,6 +687,21 @@ object LogSamples:
       dijkstraAdopted = false
     ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
+    StorageEvent.ReceivedTruncated(VolatileStore.Cut(3, 4096L, VolatileStore.CutCause.Unreadable)),
+    StorageEvent.ReceivedTruncated(
+      VolatileStore.Cut(
+        4,
+        0L,
+        VolatileStore.CutCause.Refused(
+          hash,
+          StorageError.Corrupt("received block", xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)
+        )
+      )
+    ),
+    StorageEvent.ReceivedTruncated(
+      VolatileStore.Cut(5, 120L, VolatileStore.CutCause.Repeated(hash, 2))
+    ),
+    StorageEvent.ReceivedOpened(VolatileStore.OpenReport(12, 6, 4216L, 0)),
     StorageEvent.VolatileResumed(10, 1, 300L),
     StorageEvent.ShutdownSnapshot(anchor, written = true)
   )

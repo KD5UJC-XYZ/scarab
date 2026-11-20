@@ -90,6 +90,18 @@ enum StorageEvent:
   case NetworkRecorded(identity: NetworkIdentity, adopted: Boolean, dijkstraAdopted: Boolean)
   case VolatileOpened(report: VolatileStore.OpenReport)
 
+  /** The received-block log was opened ([[ReceivedBlocks]]), as [[VolatileOpened]] reports the
+    * selected-chain log.
+    */
+  case ReceivedOpened(report: VolatileStore.OpenReport)
+
+  /** A file of the received-block log was cut when the log was opened, where and why, as the
+    * reference's VolatileDB traces `Truncate` for each file it cuts
+    * (`Storage/VolatileDB/Impl/Types.hs` 99; `truncateError`, `Storage/VolatileDB/Impl/State.hs`
+    * 438-450, ouroboros-consensus 82ecba329, the same at 808e40054).
+    */
+  case ReceivedTruncated(cut: VolatileStore.Cut)
+
   /** The volatile chain was rebuilt from the log: `resumed` blocks applied on top of the immutable
     * state, `dropped` logged blocks after the immutable tip that were not (they do not apply, or
     * there were more than `k`) and will be fetched again.
@@ -412,12 +424,17 @@ object ChainStorage:
       )
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
-      received <- ReceivedBlocks.open[F](
+      receivedOpened <- ReceivedBlocks.recovering[F](
         dir / "received",
         config.receivedFileBlocks,
         config.receivedCacheBytes
       )(ChainStorage.predecessorOf(config.byronEpochSlots), receivedCheck)
+      (received, recovery) = receivedOpened
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
+      _ <- Resource.eval(
+        recovery.cuts.traverse_(cut => events.emit(StorageEvent.ReceivedTruncated(cut))) *>
+          events.emit(StorageEvent.ReceivedOpened(recovery.report))
+      )
       migratedSnapshots <- Resource.eval(
         snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))
       )

@@ -1966,7 +1966,7 @@
     "VolatileStoreSuite"
    ],
    "note": "as mkOpenStateHelper and its validateFile, each file in order of number is parsed (parsedBlocks, as parseBlockFile: each block read in turn with its location and what is read from it, here the predecessor, as extractBlockInfo; the parse stops at the first record it cannot read, BlockReadErr), then its blocks are added to the index up to the first one already held, in an earlier file or earlier in the same one, whatever its bytes (addedToIndex, as addToReverseIndex, DuplicatedBlock); the file is cut at the earlier of the two, the files after it are read all the same, and the file being written is chosen as mkOpenStateHelper chooses it. What reading a record means is the format's: a record that is incomplete, fails its checksum, is not understood or is not a block (the received log writes no rollback record) cannot be read, and neither can one whose block the given check refuses (ReceivedBlocks.Check: the block decodes and its header names the point the record stores, which the reference reads from the block itself). The selected-chain journal's open (open, openIndex) keeps its in-order recovery, which replays rollback records in order (#1247)",
-   "digest": "de060f09ebc51ab5"
+   "digest": "a7cddf511ed82359"
   },
   "type storage.ReceivedBlocks.Check": {
    "upstream": [
@@ -1999,6 +1999,82 @@
    ],
    "note": "the block decoder and integrity predicate the reference gives its VolatileDB (volCodecConfig, volCheckIntegrity, volValidationPolicy), as one function the node passes to the received log's open (ReceivedBlockRecovery.startUp), given the point the record stores as well: a record it refuses cannot be read and cuts its file, as parseBlockFile cuts at BlockReadErr or BlockCorruptedErr. Where it differs: the node's check decodes the block, checks the record's point and checks the body against the header at every open, where the reference only decodes by default (NoValidation) and checks integrity (the header's own and the body against the header) only with ValidateAll, after an unclean shutdown (ensureValidateAll, ChainDB/Impl/Args.hs 154-167); the header's own integrity is not checked here (#1247)",
    "digest": "a003af77677cc7b3"
+  },
+  "enum storage.VolatileStore.CutCause": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Types.hs",
+     "symbol": "ParseError",
+     "lines": [
+      77,
+      87
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "why the open of the received log cut a file, as ParseError: Unreadable for a record that cannot be read (BlockReadErr, without the reader's detail), Refused with the block's hash and the typed error of the check the open is given (BlockReadErr for a block that does not decode, BlockCorruptedErr for one found corrupt), and Repeated with the hash and the file that holds the block already (DuplicatedBlock, whose second file is the Cut's own). Where it differs: a block that does not decode is Refused, not BlockReadErr, since Scarab's record is read before its block is decoded (#1247)",
+   "digest": "dfc4ed082c67d93a"
+  },
+  "class storage.VolatileStore.Cut": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Types.hs",
+     "symbol": "Truncate",
+     "lines": [
+      99,
+      99
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
+     "symbol": "truncateError",
+     "lines": [
+      438,
+      450
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "the Truncate trace: why, which file (by its number) and the offset the file is cut at; ChainStorage emits one as StorageEvent.ReceivedTruncated, at Debug as cardano-node 11.1.3 and ouroboros-consensus 808e40054's tracing give Truncate. One per file cut: the reference traces two for a file it cuts at a parse error and then at an earlier repeat (#1247)",
+   "digest": "6e17e235f2e3426a"
+  },
+  "def storage.ReceivedBlocks.recovering": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "openDB",
+     "lines": [
+      200,
+      239
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "the open of the received log, as openDB opens the VolatileDB from its files (VolatileStore.openIndexWith), with what the open found handed back for ChainStorage's events, where the reference traces it as it goes; besides the reference's index it keeps a cache of recent bodies and the set of blocks refused since the open (#1247)",
+   "digest": "fa274d540b90c822"
   },
   "def storage.ChainStorage.predecessorOf": {
    "upstream": [
@@ -2527,6 +2603,18 @@
    "reason": "why the received log's collections stopped, carried as a value across the runner fiber's boundary (ADR 0017) for the node to stop on; the reference's runner throws in a thread linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-121 and 140-142 at ouroboros-consensus 82ecba329)",
    "definitions": [
     "enum storage.ChainStorage.CollectionStopped"
+   ]
+  },
+  {
+   "reason": "the name of a file of Scarab's own volatile log format, written in a log line; the reference names its files blocks-<n>.dat",
+   "definitions": [
+    "def storage.VolatileStore.fileName"
+   ]
+  },
+  {
+   "reason": "what the received log's open found (its report and the files it cut), handed from ReceivedBlocks to ChainStorage, which emits it as storage events; the reference traces each cut as its open goes",
+   "definitions": [
+    "class storage.ReceivedBlocks.Recovery"
    ]
   }
  ]

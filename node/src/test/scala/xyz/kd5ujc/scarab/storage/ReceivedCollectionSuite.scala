@@ -13,7 +13,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules}
-import xyz.kd5ujc.scarab.ledger.{Block, NodeError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.{NodeSetup, ReceivedBlockRecovery}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
@@ -328,20 +328,22 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
       val undecodable = block(6)._1 -> Bytes(Vector(0xff.toByte, 0x00.toByte))
       val written =
         Vector(block(1), mismatched, block(4), block(5), undecodable, block(6), block(7))
-      def opened: IO[Set[Bytes]] =
-        typed(
-          ChainStorage
-            .open[IO, Int](
-              dir,
-              config,
-              rules,
-              0,
-              _ => IO.unit,
-              StateBacking.none[IO, Int],
-              _ => IO.unit
-            )(ReceivedBlockRecovery.startUp(epochSlots))
-            .use(_.received.hashes)
-        )
+      def opened: IO[(Set[Bytes], Vector[StorageEvent])] =
+        Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { events =>
+          typed(
+            ChainStorage
+              .open[IO, Int](
+                dir,
+                config,
+                rules,
+                0,
+                event => events.update(_ :+ event),
+                StateBacking.none[IO, Int],
+                _ => IO.unit
+              )(ReceivedBlockRecovery.startUp(epochSlots))
+              .use(_.received.hashes)
+          ).product(events.get)
+        }
       for
         _ <- IO(assert(blocks.size >= 7, s"seven blocks, found ${blocks.size}"))
         _ <- StorageTestKit.ok(
@@ -349,7 +351,8 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
             .open[IO](dir / "received", 3)
             .use((log, _) => written.traverse_((ref, raw) => log.append(ref, raw)))
         )
-        first <- opened
+        firstOpen <- opened
+        (first, firstEvents) = firstOpen
         records <- IO(
           Using
             .resource(JFiles.list((dir / "received").toNioPath))(
@@ -357,10 +360,40 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
             )
             .map(f => VolatileStore.decodeAll(JFiles.readAllBytes(f)).size)
         )
-        again <- opened
+        againOpen <- opened
+        (again, againEvents) = againOpen
       yield
         assertEquals(first, hashesOf(1, 5, 7), "each file cut at its refused record")
         assertEquals(records.take(3), Vector(1, 1, 1), "one record left in each file")
         assertEquals(again, first, "and the next open reads the same")
+        firstEvents.collect { case StorageEvent.ReceivedTruncated(cut) => cut } match
+          case Vector(
+                VolatileStore.Cut(
+                  0,
+                  _,
+                  VolatileStore.CutCause.Refused(
+                    m,
+                    StorageError.Corrupt(_, _: ReceivedBlockRecovery.Problem.MetadataMismatch)
+                  )
+                ),
+                VolatileStore.Cut(
+                  1,
+                  _,
+                  VolatileStore.CutCause.Refused(u, StorageError.Corrupt(_, _: ChainError))
+                )
+              ) =>
+            assertEquals(m, mismatched._1.hash, "the block whose header is not its record's")
+            assertEquals(u, undecodable._1.hash, "the block that does not decode")
+          case other => fail(s"one cut per file, each refused by the node's check, got $other")
+        assertEquals(
+          firstEvents.collect { case StorageEvent.ReceivedOpened(r) => r.blocks },
+          Vector(3),
+          "the open reports the blocks it kept"
+        )
+        assertEquals(
+          againEvents.collect { case StorageEvent.ReceivedTruncated(cut) => cut },
+          Vector.empty,
+          "the next open cuts nothing"
+        )
     }
   }

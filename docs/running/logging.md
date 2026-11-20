@@ -205,6 +205,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `formatMigrated` | `Storage.FormatMigrated` | Notice | `kind`, `from`, `to`, `count` |
 | `immutableOpened` | `Storage.ImmutableOpened` | Info | `tip`, `blocks`, `chunks`, `truncatedEntries`, `truncatedBytes` |
 | `volatileOpened` | `Storage.VolatileOpened` | Info | `blocks`, `files`, `truncatedBytes`, `removedFiles` |
+| `receivedOpened` | `Storage.ReceivedOpened` | Info | `blocks`, `files`, `truncatedBytes`: the received-block log opened, as `volatileOpened` reports the selected-chain log |
+| `receivedTruncated` | `Storage.ReceivedTruncated` | Debug | `file`, `offset`, `cause` (`unreadable`: the record there cannot be read; `refused`, with `hash` and `reason`: its block fails the start-up check; `repeated`, with `hash` and `heldIn`, the file that holds the block already): a file of the received-block log cut when the log is opened, one line per file, as the reference's VolatileDB traces `Truncate`, at Debug as it does |
 | `receivedBlockDiscarded` | `Storage.ReceivedBlockDiscarded` | Warning | `hash`, `reason`: a block of the received log that fails its check when the block pool is seeded at the start, and is not seeded; the log's open has already cut every record that fails it, so this is not expected |
 | `volatileResumed` | `Storage.VolatileResumed` | Info | `resumed`, `dropped`, `millis` |
 | `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `dijkstraGenesis` (null without one), `adoptedExisting`, `adoptedDijkstraGenesis` (the identity recorded no Dijkstra genesis and adopted the configured one) |

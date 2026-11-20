@@ -672,6 +672,53 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
+  test("each file the open cuts is reported once, where and why, and the next open reports none") {
+    // three records to a file: [1 2 3] [4 U 6] [7 1 8] [9 ~]: U holds block 5's reference over a
+    // body that does not decode, the second file holds a repeat of block 1, and the last file ends
+    // in bytes that are not a record. Each cut is reported as the reference traces `Truncate`, with
+    // its file, offset and cause (`ParseError`: `BlockReadErr`, `DuplicatedBlock`;
+    // `Storage/VolatileDB/Impl/Types.hs` 77-99, ouroboros-consensus 82ecba329)
+    tempDir.use { dir =>
+      ok {
+        val bs = (1 to 9).toVector.map(block(_))
+        val undecodableFive = bs(4)._1 -> undecodable
+        val written =
+          Vector(bs(0), bs(1), bs(2), bs(3), undecodableFive, bs(5), bs(6), bs(0), bs(7), bs(8))
+        def size(b: (BlockRef, Bytes)): Long =
+          VolatileStore.encode(VolatileRecord.Block(b._1, b._2)).length.toLong
+        for
+          _ <- VolatileStore
+            .open[IO](dir, 3)
+            .use((log, _) => written.traverse_((ref, raw) => log.append(ref, raw)))
+          _ <- IO(
+            JFiles.write(logFiles(dir)(3), Array.fill[Byte](10)(7), StandardOpenOption.APPEND)
+          )
+          first <- ReceivedBlocks.recovering[IO](dir, 3)(unread, decodes).use((_, r) => IO.pure(r))
+          again <- ReceivedBlocks.recovering[IO](dir, 3)(unread, decodes).use((_, r) => IO.pure(r))
+        yield
+          assertEquals(
+            first.cuts,
+            Vector(
+              VolatileStore.Cut(
+                1,
+                size(bs(3)),
+                VolatileStore.CutCause.Refused(
+                  bs(4)._1.hash,
+                  StorageError.Corrupt("synthetic block", Undecodable.Body)
+                )
+              ),
+              VolatileStore.Cut(2, size(bs(6)), VolatileStore.CutCause.Repeated(bs(0)._1.hash, 0)),
+              VolatileStore.Cut(3, size(bs(8)), VolatileStore.CutCause.Unreadable)
+            ),
+            "one cut per file, at its offset, with its cause"
+          )
+          assertEquals(first.report.blocks, 6, "blocks 1, 2, 3, 4, 7 and 9")
+          assertEquals(again.cuts, Vector.empty, "the next open cuts nothing")
+          assertEquals(again.report.truncatedBytes, 0L, "and reports no bytes cut")
+      }
+    }
+  }
+
   test("a record whose block does not decode cuts its file there, and later files are kept") {
     // three blocks to a file: [1 2 3] [4 U 6] [7 8] where U holds block 5's reference over a body
     // that does not decode. The second file is cut after block 4, as the reference cuts a file at

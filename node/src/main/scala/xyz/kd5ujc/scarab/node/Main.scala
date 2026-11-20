@@ -736,6 +736,7 @@ object Main extends IOApp:
           StorageEvent.SnapshotRefused(_, _, _) | StorageEvent.ReplayStarted(_, _) |
           StorageEvent.ReplayProgress(_, _, _) | StorageEvent.ReplayFinished(_, _, _) |
           StorageEvent.NetworkRecorded(_, _, _) | StorageEvent.VolatileOpened(_) |
+          StorageEvent.ReceivedOpened(_) | StorageEvent.ReceivedTruncated(_) |
           StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) |
           StorageEvent.SnapshotDeleted(_) | StorageEvent.SnapshotNotDeleted(_, _) |
           StorageEvent.CheckpointNotDeleted(_, _) =>

@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.node.forge.{
 }
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
-import xyz.kd5ujc.scarab.storage.StorageEvent
+import xyz.kd5ujc.scarab.storage.{StorageEvent, VolatileStore}
 
 /** How an event of type `E` is logged: its [[Line]], that is its kind (and so its namespace), its
   * severity and its JSON fields. The node's `LogFormatting` and `MetaTrace` in one (hermod-tracing
@@ -242,6 +242,33 @@ object Traced:
         "truncatedBytes" -> r.truncatedBytes.asJson,
         "removedFiles" -> r.removedFiles.asJson
       )
+    case StorageEvent.ReceivedOpened(r) =>
+      EventKind.ReceivedOpened.line(
+        "blocks" -> r.blocks.asJson,
+        "files" -> r.files.asJson,
+        "truncatedBytes" -> r.truncatedBytes.asJson
+      )
+    case StorageEvent.ReceivedTruncated(cut) =>
+      val where = List(
+        "file" -> VolatileStore.fileName(cut.file).asJson,
+        "offset" -> cut.offset.asJson
+      )
+      val fields = cut.cause match
+        case VolatileStore.CutCause.Unreadable =>
+          where :+ ("cause" -> "unreadable".asJson)
+        case VolatileStore.CutCause.Refused(hash, error) =>
+          where ++ List(
+            "cause" -> "refused".asJson,
+            "hash" -> hash.hex.asJson,
+            "reason" -> error.message.asJson
+          )
+        case VolatileStore.CutCause.Repeated(hash, heldIn) =>
+          where ++ List(
+            "cause" -> "repeated".asJson,
+            "hash" -> hash.hex.asJson,
+            "heldIn" -> VolatileStore.fileName(heldIn).asJson
+          )
+      EventKind.ReceivedTruncated.line(fields*)
     case StorageEvent.VolatileResumed(resumed, dropped, millis) =>
       EventKind.VolatileResumed.line(
         "resumed" -> resumed.asJson,

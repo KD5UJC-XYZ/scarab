@@ -220,12 +220,12 @@ object ReceivedBlocks:
 
   private final case class Counters(reads: Long, unreadable: Long)
 
-  /** @param predecessorOf
-    *   The predecessor a block's header names, none when the header cannot be read: applied to each
-    *   body as it is logged, and to each record the open indexes.
-    * @param check
-    *   The start-up check of each record the open reads: the file is cut at the first one refused.
+  /** What opening the log found: its blocks and files, the bytes cut
+    * ([[VolatileStore.OpenReport]]), and each file cut, where and why ([[VolatileStore.Cut]]).
     */
+  final case class Recovery(report: VolatileStore.OpenReport, cuts: Vector[VolatileStore.Cut])
+
+  /** [[recovering]], without what the open found. */
   def open[F[_]: Async](
       dir: Path,
       blocksPerFile: Int = DefaultBlocksPerFile,
@@ -233,12 +233,29 @@ object ReceivedBlocks:
   )(predecessorOf: Bytes => Option[Predecessor], check: Check)(using
       Raise[F, StorageError]
   ): Resource[F, ReceivedBlocks[F]] =
+    recovering[F](dir, blocksPerFile, cacheBytes)(predecessorOf, check).map(_._1)
+
+  /** Open the log in `dir`, and what the open found.
+    *
+    * @param predecessorOf
+    *   The predecessor a block's header names, none when the header cannot be read: applied to each
+    *   body as it is logged, and to each record the open indexes.
+    * @param check
+    *   The start-up check of each record the open reads: the file is cut at the first one refused.
+    */
+  def recovering[F[_]: Async](
+      dir: Path,
+      blocksPerFile: Int = DefaultBlocksPerFile,
+      cacheBytes: Long = DefaultCacheBytes
+  )(predecessorOf: Bytes => Option[Predecessor], check: Check)(using
+      Raise[F, StorageError]
+  ): Resource[F, (ReceivedBlocks[F], Recovery)] =
     for
       // the open rebuilds the index and keeps no body, but the predecessor each header names; the
       // cache fills with the bodies received after it. The recovered chain is the index, a block
       // once.
       opened <- VolatileStore.openIndexWith[F, Option[Predecessor]](dir, blocksPerFile)(
-        (ref, raw) => check(ref, raw).toOption.map(_ => predecessorOf(raw))
+        (ref, raw) => check(ref, raw).map(_ => predecessorOf(raw))
       )
       (log, recovered) = opened
       index <- Resource.eval(
@@ -252,108 +269,110 @@ object ReceivedBlocks:
       counters <- Resource.eval(Ref.of[F, Counters](Counters(0L, 0L)))
       lock <- Resource.eval(Mutex[F])
       invalid <- Resource.eval(Ref.of[F, Set[Bytes]](Set.empty))
-    yield new ReceivedBlocks[F]:
-      private val F = Async[F]
+    yield
+      val store = new ReceivedBlocks[F]:
+        private val F = Async[F]
 
-      private def stored(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-        log
-          .append(ref, raw)
-          .flatMap(at =>
-            index.update(_.updated(ref.hash, Entry(ref, at, predecessorOf(raw)))) *>
-              cache.update(_.added(ref.hash, raw, cacheBytes))
+        private def stored(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          log
+            .append(ref, raw)
+            .flatMap(at =>
+              index.update(_.updated(ref.hash, Entry(ref, at, predecessorOf(raw)))) *>
+                cache.update(_.added(ref.hash, raw, cacheBytes))
+            )
+
+        /** The body of an indexed block, from the cache or the log; the caller holds `lock`, so the
+          * file cannot be collected under the read.
+          */
+        private def body(hash: Bytes)(using
+            Raise[F, StorageError]
+        ): F[Option[(BlockRef, Bytes)]] =
+          index.get.map(_.get(hash)).flatMap {
+            case None => F.pure(None)
+            case Some(Entry(ref, at, _)) =>
+              cache.get.map(_.bodies.get(hash)).flatMap {
+                case Some(raw) => F.pure(Some(ref -> raw))
+                case None =>
+                  log.read(at).flatMap {
+                    case Some((found, raw)) if found == ref =>
+                      counters.update(c => c.copy(reads = c.reads + 1)).as(Some(ref -> raw))
+                    case _ =>
+                      F.uncancelable(_ =>
+                        index.update(_ - hash) *>
+                          counters.update(c => c.copy(unreadable = c.unreadable + 1))
+                      ).as(None)
+                  }
+              }
+          }
+
+        /** `ref` logged unless the index holds it; the caller holds `lock`. */
+        private def added(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          index.get.flatMap(known => F.unlessA(known.contains(ref.hash))(stored(ref, raw)))
+
+        def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          lock.lock.surround(F.uncancelable(_ => added(ref, raw)))
+
+        def restoreSelected(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          lock.lock.surround(F.uncancelable(_ => added(ref, raw) *> invalid.update(_ - ref.hash)))
+
+        def get(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
+          invalid.get.flatMap(refused =>
+            if refused(hash) then F.pure(None) else lock.lock.surround(body(hash))
           )
 
-      /** The body of an indexed block, from the cache or the log; the caller holds `lock`, so the
-        * file cannot be collected under the read.
-        */
-      private def body(hash: Bytes)(using
-          Raise[F, StorageError]
-      ): F[Option[(BlockRef, Bytes)]] =
-        index.get.map(_.get(hash)).flatMap {
-          case None => F.pure(None)
-          case Some(Entry(ref, at, _)) =>
-            cache.get.map(_.bodies.get(hash)).flatMap {
-              case Some(raw) => F.pure(Some(ref -> raw))
-              case None =>
-                log.read(at).flatMap {
-                  case Some((found, raw)) if found == ref =>
-                    counters.update(c => c.copy(reads = c.reads + 1)).as(Some(ref -> raw))
-                  case _ =>
-                    F.uncancelable(_ =>
-                      index.update(_ - hash) *>
-                        counters.update(c => c.copy(unreadable = c.unreadable + 1))
-                    ).as(None)
-                }
-            }
-        }
+        def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
+          lock.lock.surround(body(hash))
 
-      /** `ref` logged unless the index holds it; the caller holds `lock`. */
-      private def added(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-        index.get.flatMap(known => F.unlessA(known.contains(ref.hash))(stored(ref, raw)))
-
-      def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-        lock.lock.surround(F.uncancelable(_ => added(ref, raw)))
-
-      def restoreSelected(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-        lock.lock.surround(F.uncancelable(_ => added(ref, raw) *> invalid.update(_ - ref.hash)))
-
-      def get(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
-        invalid.get.flatMap(refused =>
-          if refused(hash) then F.pure(None) else lock.lock.surround(body(hash))
-        )
-
-      def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
-        lock.lock.surround(body(hash))
-
-      def links: F[Bytes => Option[Linked]] =
-        index.get.map(known =>
-          hash => known.get(hash).flatMap(entry => entry.predecessor.map(Linked(entry.ref, _)))
-        )
-
-      def refs: F[Vector[BlockRef]] =
-        (index.get, invalid.get).mapN { (known, refused) =>
-          known.valuesIterator
-            .map(_.ref)
-            .filterNot(ref => refused(ref.hash))
-            .toVector
-            .sortBy(ref => (ref.slot, ref.hash.hex))
-        }
-
-      def hashes: F[Set[Bytes]] =
-        (index.get, invalid.get).mapN((known, refused) => known.keySet -- refused)
-
-      def holds: F[Bytes => Boolean] =
-        (index.get, invalid.get).mapN((known, refused) =>
-          hash => known.contains(hash) && !refused(hash)
-        )
-
-      def invalidate(hash: Bytes): F[Unit] = invalid.update(_ + hash)
-
-      def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit] =
-        lock.lock.surround {
-          F.uncancelable(_ =>
-            log
-              .collect(durableSlot)
-              .flatMap(gone =>
-                index
-                  .updateAndGet(_.filter((_, entry) => !gone(entry.at.seq)))
-                  .flatMap(remaining =>
-                    cache.update(_.without(hash => !remaining.contains(hash))) *>
-                      invalid.update(_ intersect remaining.keySet)
-                  )
-              )
+        def links: F[Bytes => Option[Linked]] =
+          index.get.map(known =>
+            hash => known.get(hash).flatMap(entry => entry.predecessor.map(Linked(entry.ref, _)))
           )
-        }
 
-      def residency: F[Residency] =
-        (index.get, cache.get, counters.get).mapN { (known, c, n) =>
-          Residency(
-            known.size,
-            c.bodies.size,
-            c.bytes,
-            cacheBytes,
-            c.evictions,
-            n.reads,
-            n.unreadable
+        def refs: F[Vector[BlockRef]] =
+          (index.get, invalid.get).mapN { (known, refused) =>
+            known.valuesIterator
+              .map(_.ref)
+              .filterNot(ref => refused(ref.hash))
+              .toVector
+              .sortBy(ref => (ref.slot, ref.hash.hex))
+          }
+
+        def hashes: F[Set[Bytes]] =
+          (index.get, invalid.get).mapN((known, refused) => known.keySet -- refused)
+
+        def holds: F[Bytes => Boolean] =
+          (index.get, invalid.get).mapN((known, refused) =>
+            hash => known.contains(hash) && !refused(hash)
           )
-        }
+
+        def invalidate(hash: Bytes): F[Unit] = invalid.update(_ + hash)
+
+        def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit] =
+          lock.lock.surround {
+            F.uncancelable(_ =>
+              log
+                .collect(durableSlot)
+                .flatMap(gone =>
+                  index
+                    .updateAndGet(_.filter((_, entry) => !gone(entry.at.seq)))
+                    .flatMap(remaining =>
+                      cache.update(_.without(hash => !remaining.contains(hash))) *>
+                        invalid.update(_ intersect remaining.keySet)
+                    )
+                )
+            )
+          }
+
+        def residency: F[Residency] =
+          (index.get, cache.get, counters.get).mapN { (known, c, n) =>
+            Residency(
+              known.size,
+              c.bodies.size,
+              c.bytes,
+              cacheBytes,
+              c.evictions,
+              n.reads,
+              n.unreadable
+            )
+          }
+      (store, Recovery(recovered.report, recovered.cuts))
