@@ -163,7 +163,10 @@ checked). Whatever selection makes of it, the block is kept as the reference's C
 (`ChainSel.hs:428-450`): unless it is in the processed forest already, known invalid or no younger than the immutable
 tip, it is written to the received log and joins the forest as a block of no session (`BlockPool.Source.Forged`,
 whose refusal blames nobody), an adopted one before the chain that holds it is published, a refused one recorded
-invalid. Rollback, LoE reconsideration, a delivery that makes its branch preferred and a restart's startup selection
+invalid. A kept block the direct selection did not take then goes to the worker's selection for it
+(`BlockSelection.Cause.Forged`, the candidates through it, nobody to blame), under the lock the submission holds, as
+the reference runs `chainSelectionForBlock` after `putBlock` (`ChainSel.hs:452`); the submission's outcome is what
+that selection decided. Rollback, LoE reconsideration, a delivery that makes its branch preferred and a restart's startup selection
 then see it with the other processed blocks. A failure to keep it, other than a storage failure, leaves it unkept and
 the forger's outcome as it was (`Follower.Retention`, logged `notKept`); a storage failure stops the node, as for a
 peer's block.

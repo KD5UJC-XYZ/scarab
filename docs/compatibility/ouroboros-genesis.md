@@ -79,8 +79,14 @@ the VolatileDB and recorded invalid (`addInvalidBlock`, `ChainSel.hs:1313-1316`)
 the received log, which a restart reads back: under the selection lock, before the chain that holds an adopted block
 is published, the block is admitted as the reference admits it, written to the received log and added to the forest
 as a block of no session (a refusal of it blames nobody, as the forging loop's `noPunishment`, `NodeKernel.hs:747`);
-a block the rules refused is recorded invalid there too. A rollback leaves the block in the forest, and a restart
-seeds the forest from the received log before startup selection. A block the node's own implementation has no verdict
+a block the rules refused is recorded invalid there too. A kept block the direct selection did not take goes to the
+worker's selection for it at once, its candidates going through the forest's blocks, as the reference runs
+`chainSelectionForBlock` right after `putBlock` (`ChainSel.hs:452`, 457 at 808e40054): a block forged on a kept block
+our chain no longer holds is adopted there when its branch is preferred, and the submission's outcome, which the
+forger traces, is what that selection decided, read as the reference's forging loop reads it (the block is the tip:
+adopted; recorded invalid: invalid; else not adopted, `NodeKernel.hs:758-769`). A block stored already is neither
+stored nor selected again (`IgnoreBlockAlreadyInVolatileDB`, `ChainSel.hs:431-433`). A rollback leaves the block in
+the forest, and a restart seeds the forest from the received log before startup selection. A block the node's own implementation has no verdict
 on is not kept: it is never judged again. The forger's trace is the one of the submission (`adoptedBlock`,
 `didntAdoptBlock` or `forgedInvalidBlock`); a later selection of the block is logged as the chain's (`extended`), as
 the reference traces it in the ChainDB (`switchTo`, `AddedToCurrentChain`, `ChainSel.hs:964`), not in the forging
@@ -99,11 +105,14 @@ forging loop with the worker and the real block rules) check these cases in simu
 - a longer chain a peer delivered meanwhile, held back too, is selected over it once the node is caught up;
 - a forged block that lost the tie to our tip is selected once a peer delivers a block on it, and one whose
   predecessor left our chain once that predecessor is delivered after it, neither delivered itself;
+- a block forged on a kept block our chain does not hold (one that lost the tie, or our adopted block a peer's chain
+  rolled back) is adopted at its submission when its branch is the longer, with no delivery or reselection after it,
+  and reported `Adopted`;
 - an adopted forged block that a peer's longer chain rolled back wins again when its branch grows, without being
   delivered, as a fetched block does; with a received log whose cache holds one body, from the log; and after the
   log is closed and opened again, through `Main.seedReceived` and startup selection;
 - a forged block no younger than the immutable tip is not kept, and the rule's epoch boundary exception holds; the
-  same block offered again, or delivered by a peer, is kept once;
+  same block offered again is neither stored nor selected again, and, delivered by a peer, not processed;
 - refused by the rules, at its submission or when selection reaches it, it is recorded invalid and never selected,
   no session is blamed, and offered again it is known invalid;
 - when keeping fails with a typed failure other than storage, or throws, no block is kept, the forger's outcomes are
@@ -112,7 +121,8 @@ forging loop with the worker and the real block rules) check these cases in simu
 
 With only a block the LoE holds back kept, as before this behaviour was built, every case that waits for a kept block
 to be selected does not end, and the cases of duplicates, refusals and the forest's contents fail; the longer chain's
-case, the fetched block's and the earlier cases pass.
+case, the fetched block's and the earlier cases pass. Without the selection at submission, a block forged on a kept
+block off our chain is `Lost(DetachedPredecessor)` and our chain stays where it was.
 
 Not shown: no run against a reference node, and no devnet scenario forges in Genesis mode. The reference also serves
 the blocks of its VolatileDB over BlockFetch, recent forks included; Scarab serves its selected chain and the
