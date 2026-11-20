@@ -681,6 +681,11 @@ enum StorageError extends NodeError:
   /** The UTxO store in `dir` has no open database, for the reason `why`. */
   case UtxoStoreClosed(dir: String, why: UtxoStoreClosure)
 
+  /** The Leios endorser-block store failed with `cause`, the storage module's typed error
+    * (`LeiosStoreError`): its open at start, or a call on it.
+    */
+  case LeiosStore[E <: DomainError](cause: E) extends StorageError
+
   def message: String = this match
     case Reconstruction(what, cause) => s"$what reconstruction failed: $cause"
     case DecoderDefect(what, cause)  => s"$what decoder defect: $cause"
@@ -722,6 +727,7 @@ enum StorageError extends NodeError:
     case UtxoCheckpoint(d, p) =>
       s"the UTxO checkpoint $d cannot be restored: ${p.render}; replay from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again)"
     case UtxoStoreClosed(d, why) => s"the UTxO store $d has no open database: ${why.message}"
+    case LeiosStore(cause)       => s"the Leios store failed: $cause"
 
 /** Why this node cannot (or did not) forge a block. [[NotLeader]] is the ordinary answer of most
   * slots; the others are real problems with the keys, the ledger view or the assembled block.
