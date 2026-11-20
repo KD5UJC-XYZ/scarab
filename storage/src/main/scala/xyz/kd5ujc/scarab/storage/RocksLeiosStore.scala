@@ -8,7 +8,6 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.channels.{FileChannel, FileLock}
-import java.util.concurrent.{ConcurrentHashMap, Semaphore as JSemaphore}
 import java.nio.charset.StandardCharsets.US_ASCII
 import java.nio.file.{Files, StandardCopyOption, StandardOpenOption}
 import java.util.Arrays
@@ -68,8 +67,9 @@ final case class StoredEb(
   * holds a permit of `gate` while it runs and the release takes all of them, so the database is
   * never closed under a call. A first open holds an exclusive lock of the operating system on
   * `<dir>.lock`, beside the store, while it makes, syncs, checks and opens the store
-  * ([[RocksLeiosStore.firstOpen]]); the lock file is not part of the store, as the reference's
-  * SQLite files have SQLite's own locking.
+  * ([[RocksLeiosStore.firstOpen]]), after the permit of that file among the process's opens
+  * ([[LeiosStoreLocks]], which the caller makes once for the process and gives every open); the
+  * lock file is not part of the store, as the reference's SQLite files have SQLite's own locking.
   *
   * One store holds what the reference splits between its volatile and immutable files. A hash the
   * reference's collection evicted from its volatile file has its points [[EbStatus.Evicted]]: its
@@ -897,24 +897,6 @@ object RocksLeiosStore:
       _.force(true)
     )
 
-  /** The first opens of this process in progress, one permit per lock file (by its real path): the
-    * operating system's record locks belong to the process, so they cannot keep two opens of one
-    * process apart, and closing one open's channel would drop the lock another holds. A kept site
-    * of process-wide state (EFF-4) and of a Java concurrent type (FUN-2 (b), the record locks'
-    * contract): it holds nothing but these permits, and only [[inProcess]] touches it.
-    */
-  private val opening = new ConcurrentHashMap[java.nio.file.Path, JSemaphore]()
-
-  /** This process's permit for the lock file at `path`, held for the resource's life. */
-  private def inProcess[F[_]: Async](path: java.nio.file.Path): Resource[F, java.nio.file.Path] =
-    Resource
-      .make(Async[F].interruptible {
-        val permit = opening.computeIfAbsent(path, _ => new JSemaphore(1))
-        permit.acquire()
-        permit
-      })(permit => Async[F].delay(permit.release()))
-      .as(path)
-
   /** The lock a first open of `dir` holds: a sibling of `dir` in its parent, not part of the store.
     */
   private[storage] def lockFile(dir: java.nio.file.Path): java.nio.file.Path =
@@ -949,15 +931,18 @@ object RocksLeiosStore:
     *
     * The operating system's record locks belong to the process: within one process a second lock is
     * refused, and closing any channel of the file drops the lock another channel holds. So the
-    * opens of one process are serialised first by [[opening]], from before the lock file is opened
-    * until after it is closed, and the operating-system lock only ever excludes other processes.
+    * opens of one process are serialised first by `locks` ([[LeiosStoreLocks]]), from before the
+    * lock file is opened until after it is closed, and the operating-system lock only ever excludes
+    * other processes.
     *
     * Ancestors of `dir` that do not exist are made, and each made directory's entry in its parent
     * synced with `sync`, walking up to the first that existed, so that the store's path is durable.
     */
-  private[storage] def firstOpen[F[_]: Async, A](dir: Path, sync: java.nio.file.Path => F[Unit])(
-      open: F[A]
-  )(using Raise[F, LeiosStoreError]): F[A] =
+  private[storage] def firstOpen[F[_]: Async, A](
+      dir: Path,
+      locks: LeiosStoreLocks[F],
+      sync: java.nio.file.Path => F[Unit]
+  )(open: F[A])(using Raise[F, LeiosStoreError]): F[A] =
     val F = Async[F]
     val nio = dir.toNioPath
     def fail[B](e: LeiosStoreError): F[B] = e.raise[F, B]
@@ -984,7 +969,7 @@ object RocksLeiosStore:
     val locked: Resource[F, FileLock] =
       Resource
         .eval(ancestors *> io(parent.toRealPath().resolve(lockFile(nio).getFileName)))
-        .flatMap(inProcess[F])
+        .flatTap(locks.held)
         .flatMap(path =>
           Resource.make(
             io(FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE))
@@ -1040,9 +1025,10 @@ object RocksLeiosStore:
 
   /** Open the store in `dir`, making it if `dir` is absent or an empty directory ([[firstOpen]]). A
     * database whose column families or format record are not this build's, and a directory that
-    * holds anything but a database, are refused.
+    * holds anything but a database, are refused. `locks` keeps the process's opens apart: the
+    * caller makes one for the process and gives it to every open.
     */
-  def resource[F[_]: Async](dir: Path)(using
+  def resource[F[_]: Async](dir: Path, locks: LeiosStoreLocks[F])(using
       Raise[F, LeiosStoreError]
   ): Resource[F, RocksLeiosStore[F]] =
     val F = Async[F]
@@ -1054,7 +1040,7 @@ object RocksLeiosStore:
     for
       natives <- Resource.make(F.delay(new Natives(create = false)))(n => F.blocking(n.close()))
       opened <- Resource.make(
-        firstOpen[F, Opened](dir, target => F.blocking(syncParent(target)))(
+        firstOpen[F, Opened](dir, locks, target => F.blocking(syncParent(target)))(
           io(openAt(nio, natives))
         )
       )(o => F.blocking(o.close()))

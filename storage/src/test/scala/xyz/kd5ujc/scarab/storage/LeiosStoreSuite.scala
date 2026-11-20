@@ -22,7 +22,9 @@ class LeiosStoreSuite extends CatsEffectSuite:
   import LeiosStoreSuite.*
 
   private def store(dir: Path): Resource[IO, RocksLeiosStore[IO]] =
-    allowing(RocksLeiosStore.resource[IO](dir))
+    LeiosStoreLocks
+      .resource[IO]
+      .flatMap(locks => allowing(RocksLeiosStore.resource[IO](dir, locks)))
 
   private val dirs = ResourceFunFixture(Files.forAsync[IO].tempDirectory)
 
@@ -502,10 +504,11 @@ class LeiosStoreSuite extends CatsEffectSuite:
       val leios = dir / "leios"
       val injected = new java.io.IOException("injected sync failure")
       for
-        failed <- attempt(firstOpen(leios, _ => IO.raiseError(injected)))
+        locks <- LeiosStoreLocks.make[IO]
+        failed <- attempt(firstOpen(leios, locks, _ => IO.raiseError(injected)))
         published <- IO.blocking(java.nio.file.Files.exists(leios.toNioPath.resolve("CURRENT")))
         synced <- IO.ref(Vector.empty[java.nio.file.Path])
-        again <- attempt(firstOpen(leios, target => synced.update(_ :+ target)))
+        again <- attempt(firstOpen(leios, locks, target => synced.update(_ :+ target)))
         syncs <- synced.get
       yield
         assertEquals(failed, Left(LeiosStoreError.Io(injected)))
@@ -519,8 +522,9 @@ class LeiosStoreSuite extends CatsEffectSuite:
     dir =>
       val leios = dir / "a" / "b" / "leios"
       for
+        locks <- LeiosStoreLocks.make[IO]
         synced <- IO.ref(Vector.empty[java.nio.file.Path])
-        opened <- attempt(firstOpen(leios, target => synced.update(_ :+ target)))
+        opened <- attempt(firstOpen(leios, locks, target => synced.update(_ :+ target)))
         syncs <- synced.get
       yield
         assertEquals(opened, Right(()))
@@ -625,9 +629,11 @@ class LeiosStoreSuite extends CatsEffectSuite:
     (0 until 25).toVector.traverse_ { i =>
       val leios = dir / s"leios-$i"
       for
+        // the two opens share the process's one instance, as the node's opens do
+        locks <- LeiosStoreLocks.make[IO]
         both <- (
-          attempt(firstOpen(leios, _ => IO.unit)),
-          attempt(firstOpen(leios, _ => IO.unit))
+          attempt(firstOpen(leios, locks, _ => IO.unit)),
+          attempt(firstOpen(leios, locks, _ => IO.unit))
         ).parTupled
         points <- store(leios).use(s =>
           ok(s.writeEbPoint(point(1, 1), word32(1)) *> s.scanEbPoints)
@@ -728,7 +734,9 @@ class LeiosStoreSuite extends CatsEffectSuite:
   }
 
   private def attemptOpen(dir: Path): IO[Either[LeiosStoreError, Unit]] =
-    attempt(RocksLeiosStore.resource[IO](dir).use_)
+    LeiosStoreLocks
+      .make[IO]
+      .flatMap(locks => attempt(RocksLeiosStore.resource[IO](dir, locks).use_))
 
 object LeiosStoreSuite:
   def slot(n: Long): Word64 =
@@ -786,10 +794,10 @@ object LeiosStoreSuite:
     }
 
   /** A first open of `dir` that opens nothing, its parent directory synced with `sync`. */
-  def firstOpen(dir: Path, sync: java.nio.file.Path => IO[Unit])(using
+  def firstOpen(dir: Path, locks: LeiosStoreLocks[IO], sync: java.nio.file.Path => IO[Unit])(using
       Handle[IO, LeiosStoreError]
   ): IO[Unit] =
-    RocksLeiosStore.firstOpen[IO, Unit](dir, sync)(IO.unit)
+    RocksLeiosStore.firstOpen[IO, Unit](dir, locks, sync)(IO.unit)
 
   /** Hash `i` of many: distinct for every `i` below 2^31. */
   def wide(i: Int): EbHash =

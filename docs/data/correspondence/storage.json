@@ -2042,6 +2042,16 @@
     "def storage.RocksLeiosStore.firstOpen",
     "def storage.RocksLeiosStore.lockFile"
    ]
+  },
+  {
+   "reason": "the permits that keep a process's first opens of one Leios store apart, one per lock file, before its operating-system lock is taken: that lock belongs to the process, so it cannot exclude another open of the same process; an instance the caller makes once for the process (EFF-4); the reference's SQLite files have SQLite's own locking, and it has no such permits",
+   "definitions": [
+    "class storage.LeiosStoreLocks",
+    "object storage.LeiosStoreLocks",
+    "def storage.LeiosStoreLocks#held",
+    "def storage.LeiosStoreLocks.make",
+    "def storage.LeiosStoreLocks.resource"
+   ]
   }
  ]
 }
