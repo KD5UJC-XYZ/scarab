@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import scala.collection.immutable.TreeMap
+import scala.collection.immutable.{SortedMap, TreeMap}
 import xyz.kd5ujc.scarab.ledger.{Address, DataSite, RewardAccount, TranslationError, TxIn}
 import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag}
 import xyz.kd5ujc.scarab.plutus.PlutusData
@@ -16,7 +16,8 @@ import xyz.kd5ujc.scarab.plutus.PlutusData
   * A time past the horizon carries the clock's typed failure, where the reference's carries its
   * `Text`; [[Undecodable]] is the node's own, as an output's inline datum is read from the bytes it
   * arrived as where the reference's `binaryDataToData` takes it as data (`Plutus/Data.hs:244-249`,
-  * an `error` otherwise).
+  * an `error` otherwise). An impossible failure carries its typed [[ImpossibleContext]], where the
+  * reference's carries a `Text` message.
   */
 enum AlonzoContextError[E <: EraTag]:
   case TranslationLogicMissingInput(txIn: TxIn)
@@ -28,6 +29,22 @@ enum AlonzoContextError[E <: EraTag]:
     * of an output an era's decoder read, which reads it as data.
     */
   case Undecodable(site: DataSite, cause: PlutusData.DecodeError)
+
+  /** `ImpossibleContextError` (`Alonzo/Plutus/TxInfo.hs:227-229`, cardano-ledger 9df9f98c): a
+    * failure the ledger's own construction rules out, which the reference reports rather than
+    * crash.
+    */
+  case ImpossibleContextError(reason: ImpossibleContext)
+
+/** Why a context is impossible: what the reference's `ImpossibleContextError` messages say, each a
+  * case of its own (ERR-3).
+  */
+enum ImpossibleContext:
+  /** `"Missing TxInfoResult for " <> txIdToHex txId`
+    * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:850-853`, cardano-ledger 9df9f98c):
+    * no memoised information of the sub-transaction `txId` among its top level's.
+    */
+  case MissingTxInfoResult(txId: Bytes)
 
 /** Alonzo's translations (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs`,
   * cardano-ledger f649f975; those that take the transaction's information at 9df9f98c) that the
@@ -72,10 +89,13 @@ object AlonzoTxInfo:
   def transTxWitsDatums[E <: EraTag](txWits: TxWits[E])(using
       w: AlonzoEraTxWits[E]
   ): Vector[(PV1.DatumHash, PV1.Datum)] =
-    w.datsTxWits(txWits)
-      .datums
-      .toVector
-      .map((hash, data) => transDataPair(hash, data.getPlutusData))
+    transDatums(w.datsTxWits(txWits).datums)
+
+  /** `transDatums` (`Alonzo/Plutus/TxInfo.hs:387-388`, cardano-ledger 9df9f98c), of the map a
+    * `TxDats` holds: each datum by its hash, in the hashes' order.
+    */
+  def transDatums(datums: SortedMap[Bytes, Data]): Vector[(PV1.DatumHash, PV1.Datum)] =
+    datums.toVector.map((hash, data) => transDataPair(hash, data.getPlutusData))
 
   /** `transPolicyID` (`Alonzo/Plutus/TxInfo.hs:323-324`, cardano-ledger f649f975). */
   def transPolicyID(policy: Bytes): PV1.CurrencySymbol = PV1.CurrencySymbol(policy)

@@ -19,8 +19,8 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
   * not reach (`leios-testnet-context-refusals`, 1): 49 in all, at both levels.
   *
   * This shows that the types hold every field of each recorded context in the reference's encoding.
-  * That the ledger builds these values is shown when Dijkstra's Plutus V4 translation is on the era
-  * types (#85); until then the translation's agreement is not established here (CNF-2).
+  * That the ledger's translation builds each of the 49, byte for byte, from the transaction it was
+  * recorded for is `DijkstraPlutusContextSuite` 's.
   */
 class PlutusLedgerApiV4Suite extends FunSuite:
   private def parse(path: String): Json =

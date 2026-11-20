@@ -753,11 +753,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     cases, a vote refused by Alonzo's purposes, the script hashes derived from the scripts used, and that a
     sub-transaction's information at Conway does not compile, its twin at Dijkstra compiling.
   - Three differ in structure from the reference: the derived script hashes, the sub-transaction's case of
-    Dijkstra alone, and the level read from the level's information. Dijkstra's Plutus V1 to V3 contexts read the
-    level at both levels against the reference (below); the differential evidence is incomplete (CNF-2) until the
-    34 Plutus V4 contexts recorded on the testnet's chain, 18 of them in sub-transactions, are compared too, and the
-    script hashes, which only V4's translation reads, with them (#85's item on Dijkstra's script contexts). The scripts used come from the scripts needed, one per purpose's index, so no two share an index
-    and `Map.fromList`'s choice of the last of a repeated one shows nowhere.
+    Dijkstra alone, and the level read from the level's information. Dijkstra's script contexts read the level at
+    both levels, and V4's translation the script hashes, against the reference (below): the 273 contexts recorded
+    on the testnet's chain, 18 of them in sub-transactions. The scripts used come from the scripts needed, one per
+    purpose's index, so no two share an index and `Map.fromList`'s choice of the last of a repeated one shows
+    nowhere.
 - **The Plutus V4 script context's types** (`era/PlutusLedgerApiV4.scala`; `plutus-ledger-api/src/PlutusLedgerApi/V4/`
   at plutus 261766ad, plutus-ledger-api 1.71.0.0, the version the Leios testnet's node links): `PV4`, the types the
   ledger's Plutus V4 translation builds (the transaction's information with its sub-transaction's index, direct
@@ -782,8 +782,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     chain, 14 of the hand-written cases, 1 of the refusals), at both levels, into the types, refusing any encoding
     it does not expect, and writes each back to the reference's bytes; every script purpose is among them, and a
     guard both with the whole transaction's information and without.
-  - That the ledger builds these values is shown with Dijkstra's Plutus V4 translation (#85's item on Dijkstra's
-    script contexts); until then it is not established (CNF-2).
+  - The ledger's translation builds each of the 49 from the transaction it was recorded for, its serialized
+    arguments compared byte for byte (Dijkstra's Plutus V4 script contexts, below).
 - **Dijkstra's Plutus V1 to V3 script contexts** (`era/dijkstra/DijkstraTxInfo.scala`;
   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-569`, cardano-ledger 9df9f98c): Dijkstra's
   instances of `EraPlutusTxInfo` for Plutus V1, V2 and V3 and of `ConwayEraPlutusTxInfo` for V3, on Conway's,
@@ -802,29 +802,49 @@ Conway's rules on the classes follow as the rest of stage 2.
     and Conway's errors, Conway's through Dijkstra's, Dijkstra's own unwrapped. A body's outputs are translated
     with their indices as the reference zips them with `[minBound ..] :: [TxIx]` (`:346-350, 406-410,
     450-454`), so none past index 65,535.
-  - `DijkstraPlutusContextSuite` annotates each transaction as `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`
-    do (`Dijkstra.hs:110-219`): each level's scripts needed resolved against the batch's scripts provided, each
-    sub-transaction's information at its index, and the top level's information holding the sub-transactions'
-    by id. A level that uses no Plutus V4 script is collected whole
-    (`scriptsWithContextFromLedgerTxInfoWithResult`, as those makers collect it); a level that also uses one is
-    compared script by script (`mkPlutusWithContext`), its V1 to V3 contexts alone. On the 200 transactions of
-    the chain context fixture, each of the 239 Plutus V1 to V3 contexts the reference collected (68, 54 and 117)
-    is the typed one: the language, the script, the arguments' bytes, the units and the cost model, 238 through
-    their level's collection and one script by script; none is at a sub-transaction's level. On the refusals
-    fixture (`leios-testnet-context-refusals`), every level of the 16 cases without a Plutus V4 refusal is
-    collected: 5 V1 to V3 contexts through their level's collection and 3 script by script, byte for byte, and
-    each of its 10 refusals (Dijkstra's guard of each of its four fields, Conway's guard of V1 and V2 on each of
-    its four, a DRep's registration under V1, a V3 script in a sub-transaction) as the typed `CollectError`s,
-    every constructor and field of which, the networks, credential kinds, votes, anchors and actions among them,
-    is what the reference's record (`Show`) reads as. A body of 65,537 outputs has 65,536 in each language's
-    information.
-  - Not here: Plutus V4 at Dijkstra, Dijkstra's `EraPlutusContext` and the annotated transaction's maker
-    ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123)). The suite stands in
-    for the era's `EraPlutusContext` with one of its own, whose Plutus V4 translation is a placeholder that fails
-    the test if asked for anything. The 34 Plutus V4 contexts of the chain, the V4 context of the refusals
-    fixture's minting case and its two refusals of a V4 context, on levels that run no V1 to V3 script, are not
-    compared: the gate is incomplete for them (CNF-2) until Dijkstra's Plutus V4 contexts, the next stage of
-    #85's item, compare them.
+  - Their evidence is `DijkstraPlutusContextSuite`'s, with Plutus V4's (below).
+- **Dijkstra's Plutus V4 script contexts, its `EraPlutusContext` and the annotated transaction's makers**
+  (`era/dijkstra/DijkstraTxInfo.scala`, `DijkstraStAnnTx.scala`; `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:299-331,
+  571-1058` and `Dijkstra.hs:111-219`, cardano-ledger 9df9f98c): Dijkstra's instances of `EraPlutusTxInfo` and
+  `ConwayEraPlutusTxInfo` for Plutus V4, with its translations of inputs, outputs (a pointer address refused as
+  `PointerPresentInOutput`), certificates by `AccountId`, purposes with the hash of the script used for them
+  (`ScriptHashNotFoundForPurpose` first), withdrawals, direct deposits, account balance intervals, guards,
+  required top-level guards, votes, proposals and governance actions; a guard's whole-transaction view at the top
+  level (`transGuardingTopTxInfo`: each sub-transaction's memoised V4 information, its failure wrapped as
+  `SubTxContextError`, and the batch, sub-transactions first and the top level last, combined by the reference's
+  semigroups); the production `EraPlutusContext[Dijkstra]` with its memoised `DijkstraTxInfoResult`; and
+  `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`, which annotate each sub-transaction at its index and hold its
+  memoised information in its top level's.
+  - A V4 context has no guard of the features a V1 to V3 context cannot show, and its information is the same at
+    both levels but for the sub-transaction's index. A missing memoised information of a sub-transaction, which the
+    makers rule out, is `ImpossibleContextError` with a typed reason (`ImpossibleContext.MissingTxInfoResult`)
+    where the reference's carries a `Text` message; Scarab encodes no context error of
+    the era types, so it has no wire form.
+  - `DijkstraPlutusContextSuite` annotates each transaction with the makers, at the fixture's protocol version,
+    clock and cost models, and compares each level's collection with the reference's record: its contexts in
+    order (each one's serialized arguments byte for byte, and the rest of its `PlutusWithContext` record, the
+    protocol version, language, script, units and cost model, field by field), or its failure as the
+    typed `CollectError`s, every constructor and field of which, the networks, credential kinds, votes, anchors,
+    actions, purposes and indices among them, is what the reference's record (`Show`) reads as. The chain context
+    fixture: all 273 contexts of its 200 transactions (68 Plutus V1, 54 V2, 117 V3 and 34 V4, 18 of the V4 ones in
+    sub-transactions). The refusals fixture: every level of its 18 cases, 9 contexts and 12 refusals (Dijkstra's
+    guard of each of its four fields, Conway's guard of V1 and V2 on each of its four, a DRep's registration under
+    V1, a V3 script in a sub-transaction, a guard whose sub-transaction fails and a guard's redeemer with no
+    script). The hand-written V4 cases (`leios-testnet-contexts`): every level of its 11 cases, 14 contexts and 7
+    refusals (a pointer and a Byron output, an unknown input, a reference input that is an input, a redeemer that
+    names nothing, a script without its redeemer, a key withdrawal's redeemer). These are the 49 Plutus V4
+    arguments `PlutusLedgerApiV4Suite` reads. No case is deferred. A body of 65,537 outputs has 65,536 in each
+    language's information, V4's included.
+  - The makers defer each level's collection until it is read and keep it (`Eval.later`), as the reference's
+    annotated transaction keeps its fields lazy (`Tx.hs:535-557`) and reads the batch's collections after phase 1,
+    the top level's first (`Dijkstra/UTxO.hs:258-276`): the suite shows that annotating the guarded case and reading
+    its other members runs no translation and reads no clock.
+  - Incomplete (CNF-2): no recorded case gives a guard's whole-transaction view votes or a treasury amount, so two
+    of the batch's combinations are not compared with the reference: votes on the same action at two levels (the
+    right-biased union of `VotingProcedures`) and a current treasury amount given by a sub-transaction (the first
+    present).
+  - Not yet: the node builds its contexts with the flat path; the rules on the era types (UTXOS, LEDGER and the
+    mempool) come with the rest of stage 2 (#85).
 - **The annotated transaction and its UTXOW predicates** (`era/StAnnTx.scala`, `era/EraTxAuxData.scala`,
   `era/rules/Utxow.scala`; `Core.hs:180-188`, `Alonzo/Tx.hs:556-565`, `Alonzo.hs:121-160`,
   `Alonzo/UTxO.hs:154-214`, `Alonzo/TxAuxData.hs:363-373,494-515`, `Shelley/Rules/Utxow.hs:427-443` and

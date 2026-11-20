@@ -97,6 +97,11 @@ of the reference to be compared, and fails on a PlutusV4 script collected withou
 evaluated, with the reference's verdicts, by
 [leios-testnet-chain-scripts](../leios-testnet-chain-scripts/README.md).
 
+`DijkstraPlutusContextSuite` builds every one of the 273 contexts on the era types, each transaction annotated by
+`mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`, and compares each level's collection with the reference's: each
+context's serialized arguments byte for byte, and the rest of its `PlutusWithContext` record (the protocol version,
+language, script, units and cost model) field by field, Plutus V1 to V3 included.
+
 ## Licence
 
 Public chain data of a test network, read from a node that followed the testnet as a client that
