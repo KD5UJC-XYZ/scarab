@@ -33,9 +33,15 @@ points to FMT-1 (docs/design-rules.md). The surface is:
   layouts and their conversion), the immutable store's index and `format` file (`FileImmutableStore`'s magic,
   sizes, entry codec and migrations), the volatile log's records (`VolatileRecord`, `VolatileStore`'s sizes,
   kinds, flags, codec and file names), the snapshot file's checksum and name (`FileLedgerSnapshots`) and the
-  checkpoint directory's name (`StateBacking.stem`), and the pool relays' encoding that the state codecs write
-  (`PoolRelays.encode` and its helpers, and the octets of a relay's addresses). A definition is its header line and
-  what follows while a bracket it opened is open or the lines are indented under it;
+  checkpoint directory's name (`StateBacking.stem`), and the definitions of other packages on the write and read
+  path of a V10 snapshot's Haskell state: the pool relays' reading and writing (`object PoolRelays`, the octets of
+  a relay's addresses, its port), the conversion of a pool's future parameters (`Convert.poolParamsBack`), the
+  keys and readers of a stored parameter update (`ConwayParam`, `ConwayParamUpdate.decodeStored`), the orders its
+  maps and sets are written in (`Sorted`, the hash, coin, credential, `DRep`, `WithOrigin`, `Word64`, `Ptr` and
+  `Voter` orders, `Bytes.compareTo`), the era indices (`enum Era`), the layout of each reference build
+  (`StateLayout.of`) and the CBOR decoder the body is read with (`Cbor`'s limits and decoder, the `Document` an
+  item's value is read from). A definition is its header line and what follows while a bracket it opened is open or
+  the lines are indented under it;
 - `frozen_schemas`: a code digest of each frozen schema (`SnapshotSidecarV<n>.scala`, `Frozen*.scala`);
 - `goldens`: for `CodecSuite`, `FormatGoldenSuite` and `SnapshotGoldenSuite`, every string literal (the golden
   bytes, fingerprints, magics and file hashes, and the test names) and a code digest;
@@ -55,11 +61,11 @@ The guard does not see a persisted byte that none of these pins: a layout writte
 reads in part (the immutable store's chunk and index file names in its `open` and preflight code, the RocksDB
 options in the store's class), or an encoding defined in a file not listed here. Of the Haskell state, it does not
 see the codecs no V10 snapshot reaches (`UtxoCodecs`, `DijkstraCodecs`, the tables, `meta` file and checksum of a
-Haskell node's snapshot directory, the ancillary manifest), the decoders of other packages the state codecs call (a
-certificate's, a proposal's, a block's, the pool relays'), the CBOR decoder (`codec`'s `Cbor`), the values they
-write as they hold them (an era's index, a script's tag, bytes kept as they were read), the ledger's conversions and
-orders they write in (`Convert`, `Sorted`, the orders of the ledger's types) and the choice of a layout by build
-(`StateLayout.of`). Its docstring is the list of what it sees.
+Haskell node's snapshot directory, the ancillary manifest), the definitions of other packages it does not list
+(the decoders the state codecs use for transactions and node-to-client answers, a script's kind and its tag, the
+ledger's types themselves) and the reference build's name in a V10 header (`ReferenceBuild`). The golden V10 bodies
+of `fixtures/snapshot-v10-bodies`, which `fixtures` pins and `V10BodyGoldenSuite` reads and writes again, catch a
+change of those bytes from code no definition here holds. Its docstring is the list of what it sees.
 
 The manifest holds the surface and the record of the approval that admitted it. Its `approval` entry holds
 `question`, `asked_at`, `decision` and `decided_at` (UTC ISO 8601 with seconds and `Z`, decided after asked, not
@@ -137,7 +143,12 @@ HASKELL_STATE_SOURCES = tuple(f'{HASKELL_STATE}/{name}.scala' for name in (
 # approval).
 MODELS_RUNTIME = 'models/src/main/scala/xyz/kd5ujc/scarab/models/runtime'
 RUNTIME_SOURCES = (f'{MODELS_RUNTIME}/Writer.scala', f'{MODELS_RUNTIME}/Codec.scala')
-POOL_RELAYS = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala'
+LEDGER_MAIN = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger'
+LEDGER_STATE = f'{LEDGER_MAIN}/state'
+PROTOCOL_MAIN = 'protocol/src/main/scala/xyz/kd5ujc/scarab/protocol'
+CODEC_MAIN = 'codec/src/main/scala/xyz/kd5ujc/scarab/codec'
+POOL_RELAYS = f'{LEDGER_MAIN}/PoolRelays.scala'
+CONWAY_PARAM_UPDATE = f'{LEDGER_MAIN}/ConwayParamUpdate.scala'
 # The persisted-format definitions in files that also hold other code: (name, file, enclosing definition or None,
 # the definition), each a header the code holds once; a definition is its header line and the lines indented under it.
 FORMAT_MEMBERS = (
@@ -172,17 +183,58 @@ FORMAT_MEMBERS = (
     ('StateBacking.stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def stem\('),
     ('StateBacking.Stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'private val Stem\b'),
     ('StateBacking.isStem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def isStem\('),
-    # the relays of a pool registration, which `ConwayCodecs.poolRelays` writes into the Haskell state (2026-11-20)
-    *(('PoolRelays.' + name, POOL_RELAYS, r'object PoolRelays:', header)
-      for name, header in (('encode', r'def encode\('), ('LengthThreshold', r'private inline val LengthThreshold\b'),
-                           ('optional', r'private def optional\['), ('octets', r'private def octets\('),
-                           ('text', r'private def text\('), ('head', r'private def head\('))),
-    ('Ipv4.octets', POOL_RELAYS, r'final case class Ipv4\b', r'def octets\b'),
-    ('Ipv6.octets', POOL_RELAYS, r'final case class Ipv6\b', r'def octets\b'),
-    ('Ipv6.wire', POOL_RELAYS, r'final case class Ipv6\b', r'def wire\b'),
-    ('Ipv6.swapWords', POOL_RELAYS, r'object Ipv6:', r'private\[ledger\] def swapWords\('),
+    # The definitions of other packages on the V10 body's write and read path (2026-11-20): what the Haskell state
+    # codecs call to write or read its bytes, and the orders its maps and sets are written in.
+    # The relays of a pool, which `ConwayCodecs.poolRelays` reads (`decodeState`) and writes again (`encode`).
+    ('object PoolRelays', POOL_RELAYS, None, r'object PoolRelays:'),
+    ('Ipv4', POOL_RELAYS, None, r'final case class Ipv4\b'),
+    ('Ipv6', POOL_RELAYS, None, r'final case class Ipv6\b'),
+    ('object Ipv6', POOL_RELAYS, None, r'object Ipv6:'),
     ('RelayIp.be', POOL_RELAYS, r'object RelayIp:', r'private\[ledger\] def be\('),
+    ('RelayIp.fromOctets', POOL_RELAYS, r'object RelayIp:', r'def fromOctets\('),
+    ('RelayPort', POOL_RELAYS, None, r'object RelayPort:'),
+    # the future parameters of a pool, written as the node's `PoolParams`
+    ('Convert.poolParamsBack', f'{LEDGER_MAIN}/rules/Convert.scala', r'object Convert:', r'def poolParamsBack\('),
+    ('Convert.rewardAccountBack', f'{LEDGER_MAIN}/rules/Convert.scala', r'object Convert:',
+     r'def rewardAccountBack\('),
+    # a stored parameter update: its keys, the reading of each value (indefinite `Prices` and `ExUnits` among them)
+    ('enum ConwayParam', CONWAY_PARAM_UPDATE, None, r'enum ConwayParam\('),
+    ('object ConwayParam', CONWAY_PARAM_UPDATE, None, r'object ConwayParam:'),
+    *(('ConwayParamUpdate.' + name, CONWAY_PARAM_UPDATE, r'object ConwayParamUpdate:', header)
+      for name, header in (('decodeStored', r'def decodeStored\('), ('read', r'private def read\('),
+                           ('fromEncoded', r'def fromEncoded\('), ('add', r'extension \(u: ConwayParamUpdate\)'))),
+    # the orders the maps and sets of the state are written in
+    *(('Sorted.' + name, f'{LEDGER_STATE}/Shared.scala', r'object Sorted:', header)
+      for name, header in (('orderingOf', r'private def orderingOf\['), ('map', r'def map\['), ('set', r'def set\['))),
+    ('SortOrder', f'{LEDGER_STATE}/Shared.scala', None, r'abstract class SortOrder\['),
+    ('Order[Ptr]', f'{LEDGER_STATE}/Shared.scala', None, r'given Order\[Ptr\]'),
+    ('hashOrder', f'{LEDGER_STATE}/Vocabulary.scala', None, r'private val hashOrder\b'),
+    ('bigOrder', f'{LEDGER_STATE}/Vocabulary.scala', None, r'private val bigOrder\b'),
+    ('Credential.CredentialOrder', f'{LEDGER_STATE}/Vocabulary.scala', r'object Credential:',
+     r'private final class CredentialOrder\['),
+    ('Order[DRep]', f'{LEDGER_STATE}/Vocabulary.scala', r'object DRep:', r'given Order\[DRep\]'),
+    ('Order[WithOrigin]', f'{LEDGER_STATE}/Vocabulary.scala', r'object WithOrigin:', r'given \[A: Order\]: Order\['),
+    ('Word64.order', f'{LEDGER_STATE}/Word64.scala', r'object Word64:', r'val order\b'),
+    ('Ordering[Ptr]', f'{LEDGER_MAIN}/Address.scala', r'object Ptr:', r'given Ordering\[Ptr\]'),
+    ('Ordering[Credential]', f'{LEDGER_MAIN}/Address.scala', r'object Credential:', r'given Ordering\[Credential\]'),
+    ('Voter.order', f'{LEDGER_MAIN}/Governance.scala', r'object Voter:', r'given order\b'),
+    ('Voter.credential', f'{LEDGER_MAIN}/Governance.scala', r'object Voter:', r'private def credential\('),
+    ('Bytes.compareTo', 'codec/src/main/scala/xyz/kd5ujc/scarab/codec/Bytes.scala', r'final class Bytes private\b',
+     r'def compareTo\('),
+    # the era indices of the telescope and the tip, and the layout each reference build writes
+    ('enum Era', f'{PROTOCOL_MAIN}/Era.scala', None, r'enum Era\('),
+    ('enum StateLayout', f'{PROTOCOL_MAIN}/StateLayout.scala', None, r'enum StateLayout\b'),
+    ('StateLayout.of', f'{PROTOCOL_MAIN}/StateLayout.scala', r'object StateLayout:', r'def of\('),
+    # the CBOR decoder the body is read with: its limits (floats, simple values) and what it accepts, indefinite
+    # lengths among them, and the reading of an item's value
+    *(('Cbor.' + name, f'{CODEC_MAIN}/Cbor.scala', r'object Cbor:', header)
+      for name, header in (('Limits', r'final case class Limits\('),
+                           ('decode', r'def decode\(bytes: Bytes, limits: Limits = '),
+                           ('decoded', r'private def decoded\('), ('Decoder', r'private final class Decoder\('))),
+    ('Document', f'{CODEC_MAIN}/Document.scala', None, r'private\[codec\] final class Document\('),
 )
+# The files outside the storage module that hold pinned definitions: a storage format change may touch them.
+MEMBER_FILES_ELSEWHERE = tuple(sorted({path for _, path, _, _ in FORMAT_MEMBERS if not path.startswith('storage/')}))
 FIXTURE_DIRS = ('fixtures/snapshot-*', 'fixtures/network-identity-*')
 MAGIC = re.compile(r'(?:SCRB|CSL)[A-Z0-9]{4,5}')
 DEPLOYED = 'V8'
@@ -202,7 +254,7 @@ OWNER_NAMED_PATHS = (
     f'{STORAGE_MAIN}/*.scala',
     *HASKELL_STATE_SOURCES,
     *RUNTIME_SOURCES,
-    POOL_RELAYS,
+    *MEMBER_FILES_ELSEWHERE,
     'storage/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/node/NativeSnapshots.scala',

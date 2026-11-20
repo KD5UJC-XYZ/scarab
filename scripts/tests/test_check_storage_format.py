@@ -162,14 +162,50 @@ class SurfaceTest(TreeTest):
         self.assertLoud(self.check(), 'format_sources.' + writer)
         self.setUp()
         self.edit(fmt.POOL_RELAYS, 'private inline val LengthThreshold = 23', 'private inline val LengthThreshold = 24')
-        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#PoolRelays.LengthThreshold')
+        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#object PoolRelays')
         self.setUp()
         self.edit(fmt.POOL_RELAYS, 'def wire: Bytes = Bytes.fromArray(Ipv6.swapWords(octets.toArray))',
                   'def wire: Bytes = octets')
-        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#Ipv6.wire')
-        # the relays' reading is not their encoding
+        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#Ipv6')
+        # how an address is shown is not how it is written
         self.setUp()
-        self.edit(fmt.POOL_RELAYS, 'val MaxDnsNameBytes: Int = 128', 'val MaxDnsNameBytes: Int = 64')
+        self.edit(fmt.POOL_RELAYS, 'case None => groups.map(_.toHexString).mkString(":")',
+                  'case None => groups.map(_.toHexString).mkString("-")')
+        self.assertEqual(self.check(), [])
+
+    def test_the_definitions_of_other_packages_on_the_v10_body_path_are_pinned(self):
+        # the edits an independent review made to show that the guard did not see them (#1241)
+        convert, shared = f'{fmt.LEDGER_MAIN}/rules/Convert.scala', f'{fmt.LEDGER_STATE}/Shared.scala'
+        era, layout = f'{fmt.PROTOCOL_MAIN}/Era.scala', f'{fmt.PROTOCOL_MAIN}/StateLayout.scala'
+        cbor = f'{fmt.CODEC_MAIN}/Cbor.scala'
+        for path, old, new, key in [
+            # the relay decoder strips the dot that ends an SRV name
+            (fmt.POOL_RELAYS, 'dns(f(1), index, reading).map(PoolRelay.MultiHostName(_))',
+             'dns(f(1), index, reading).map(n => PoolRelay.MultiHostName(n.stripSuffix(".")))', '#object PoolRelays'),
+            # a pool's future pledge is written from its cost
+            (convert, '      p.pledge.value,', '      p.cost.value,', '#Convert.poolParamsBack'),
+            # a set of two or more elements is written in reverse
+            (shared, 'SortedSet.from(keys)(using orderingOf(Order[K]))',
+             'SortedSet.from(keys)(using orderingOf(Order[K]).reverse)', '#Sorted.set'),
+            # Conway's era index
+            (era, 'case Conway extends Era(6, 7)', 'case Conway extends Era(9, 7)', '#enum Era'),
+            # the decoder reads a single-precision float only when simple values are allowed too
+            (cbor, 'case 26 if limits.allowFloats => floatBits(4)',
+             'case 26 if limits.allowFloats && limits.allowSimpleValues => floatBits(4)', '#Cbor.Decoder'),
+            # a stored update is read with the transaction's stricter readers
+            (fmt.CONWAY_PARAM_UPDATE, 'read(n, ConwayParam.stored)', 'read(n, ConwayParam.decoders)',
+             '#ConwayParamUpdate.decodeStored'),
+            # the 11.1 build is said to write the Leios layout
+            (layout, 'case ReferenceBuild.Release11_1   => Right(Node11_1)',
+             'case ReferenceBuild.Release11_1   => Right(Leios)', '#StateLayout.of'),
+        ]:
+            with self.subTest(key=key):
+                self.setUp()
+                self.edit(path, old, new)
+                self.assertLoud(self.check(), 'format_members.' + path + key)
+        # the rest of those files is not pinned: an era's block tag reading, an address's rendering
+        self.setUp()
+        self.edit(era, 'if tag == 0 then Some(Byron)', 'if tag == 0 then Option(Byron)')
         self.assertEqual(self.check(), [])
 
     def test_a_format_definition_in_a_mixed_file_is_pinned_and_the_rest_of_the_file_is_not(self):
