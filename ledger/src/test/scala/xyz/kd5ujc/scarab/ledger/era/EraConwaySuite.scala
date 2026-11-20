@@ -524,6 +524,47 @@ class EraConwaySuite extends munit.FunSuite:
     assert(EraTxBody.conway.scriptsOf eq EraTxBody.conway.outputsOf.scripts)
   }
 
+  test(
+    "Conway's spending, minting, certifying and withdrawing purposes build and read back, and only those"
+  ) {
+    // Alonzo's builders of Conway's instance (`Conway/Scripts.hs:119-137`, cardano-ledger f649f975)
+    import ConwayPlutusPurpose.*
+    val scripts = EraScript.conway
+    val ix = Unsigned.from[Unsigned.Width.W32](BigInt(2)).get
+    val all = Vector(
+      scripts.mkSpendingPurpose[AsIx](AsIx(ix)),
+      scripts.mkMintingPurpose[AsIx](AsIx(ix)),
+      scripts.mkCertifyingPurpose[AsIx](AsIx(ix)),
+      scripts.mkWithdrawingPurpose[AsIx](AsIx(ix)),
+      scripts.mkVotingPurpose[AsIx](AsIx(ix)),
+      scripts.mkProposingPurpose[AsIx](AsIx(ix))
+    )
+    assertEquals(
+      all,
+      Vector(
+        ConwaySpending[AsIx](AsIx(ix)),
+        ConwayMinting[AsIx](AsIx(ix)),
+        ConwayCertifying[AsIx](AsIx(ix)),
+        ConwayWithdrawing[AsIx](AsIx(ix)),
+        ConwayVoting[AsIx](AsIx(ix)),
+        ConwayProposing[AsIx](AsIx(ix))
+      )
+    )
+    all.foreach { purpose =>
+      val read = Vector(
+        scripts.toSpendingPurpose[AsIx](purpose),
+        scripts.toMintingPurpose[AsIx](purpose),
+        scripts.toCertifyingPurpose[AsIx](purpose),
+        scripts.toWithdrawingPurpose[AsIx](purpose)
+      )
+      assertEquals(read.indexWhere(_.isDefined), if purpose.tag < 4 then purpose.tag else -1)
+      assertEquals(read.flatten, if purpose.tag < 4 then Vector(AsIx(ix)) else Vector.empty)
+    }
+    val in = xyz.kd5ujc.scarab.ledger.TxIn(Bytes.fromHex("33" * 32).toOption.get, BigInt(1))
+    val spending = scripts.mkSpendingPurpose[AsItem](AsItem(in))
+    assertEquals(scripts.toSpendingPurpose[AsItem](spending), Some(AsItem(in)))
+  }
+
   test("a registration whose VRF key hash is 31 bytes is refused by the certificate's reader") {
     // `decodeStakePoolParamsFlat` reads `sppVrf` as a 32-byte hash (`State/StakePool.hs:578-589`,
     // cardano-ledger f649f975): the state's VRFVerKeyHash is never given another length

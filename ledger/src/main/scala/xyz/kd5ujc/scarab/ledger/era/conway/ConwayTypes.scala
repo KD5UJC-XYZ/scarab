@@ -194,6 +194,53 @@ object ConwayScript:
         purpose: ConwayPlutusPurpose[G]
     ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.hoistPlutusPurpose[G, F](f)(purpose)
 
+    // `mkSpendingPurpose` to `toWithdrawingPurpose`, `Conway/Scripts.hs:119-137`, cardano-ledger
+    // f649f975
+    override def mkSpendingPurpose[F[_, _]](
+        txIn: F[Unsigned[Unsigned.Width.W32], TxIn]
+    ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwaySpending(txIn)
+    override def toSpendingPurpose[F[_, _]](
+        purpose: ConwayPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], TxIn]] = purpose match
+      case ConwayPlutusPurpose.ConwaySpending(i) => Some(i)
+      case ConwayPlutusPurpose.ConwayMinting(_) | ConwayPlutusPurpose.ConwayCertifying(_) |
+          ConwayPlutusPurpose.ConwayWithdrawing(_) | ConwayPlutusPurpose.ConwayVoting(_) |
+          ConwayPlutusPurpose.ConwayProposing(_) =>
+        None
+    override def mkMintingPurpose[F[_, _]](
+        policy: F[Unsigned[Unsigned.Width.W32], Bytes]
+    ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayMinting(policy)
+    override def toMintingPurpose[F[_, _]](
+        purpose: ConwayPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], Bytes]] = purpose match
+      case ConwayPlutusPurpose.ConwayMinting(i) => Some(i)
+      case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayCertifying(_) |
+          ConwayPlutusPurpose.ConwayWithdrawing(_) | ConwayPlutusPurpose.ConwayVoting(_) |
+          ConwayPlutusPurpose.ConwayProposing(_) =>
+        None
+    override def mkCertifyingPurpose[F[_, _]](
+        txCert: F[Unsigned[Unsigned.Width.W32], ConwayTxCert]
+    ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayCertifying(txCert)
+    override def toCertifyingPurpose[F[_, _]](
+        purpose: ConwayPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], ConwayTxCert]] = purpose match
+      case ConwayPlutusPurpose.ConwayCertifying(i) => Some(i)
+      case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
+          ConwayPlutusPurpose.ConwayWithdrawing(_) | ConwayPlutusPurpose.ConwayVoting(_) |
+          ConwayPlutusPurpose.ConwayProposing(_) =>
+        None
+    override def mkWithdrawingPurpose[F[_, _]](
+        account: F[Unsigned[Unsigned.Width.W32], RewardAccount]
+    ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayWithdrawing(account)
+    override def toWithdrawingPurpose[F[_, _]](
+        purpose: ConwayPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], RewardAccount]] = purpose match
+      case ConwayPlutusPurpose.ConwayWithdrawing(i) => Some(i)
+      case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
+          ConwayPlutusPurpose.ConwayCertifying(_) | ConwayPlutusPurpose.ConwayVoting(_) |
+          ConwayPlutusPurpose.ConwayProposing(_) =>
+        None
+
     // `ConwayEraScript ConwayEra`, `Conway/Scripts.hs:145-154`, cardano-ledger f649f975
     override def mkVotingPurpose[F[_, _]](
         voter: F[Unsigned[Unsigned.Width.W32], Voter]

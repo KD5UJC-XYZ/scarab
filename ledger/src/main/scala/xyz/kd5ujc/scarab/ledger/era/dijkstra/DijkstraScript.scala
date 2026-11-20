@@ -3,7 +3,15 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, Unsigned, Voter}
+import xyz.kd5ujc.scarab.ledger.{
+  Credential,
+  DecodeField,
+  LedgerDecodeError,
+  RewardAccount,
+  TxIn,
+  Unsigned,
+  Voter
+}
 import xyz.kd5ujc.scarab.ledger.dijkstra.V12
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoScriptRep,
@@ -180,6 +188,52 @@ object DijkstraScript:
       case DijkstraPlutusPurpose.DijkstraProposing(x) =>
         DijkstraPlutusPurpose.DijkstraProposing(f(x))
       case DijkstraPlutusPurpose.DijkstraGuarding(x) => DijkstraPlutusPurpose.DijkstraGuarding(f(x))
+
+    // `mkSpendingPurpose` to `toWithdrawingPurpose`, `Scripts.hs:508-526`, cardano-ledger 9df9f98c
+    override def mkSpendingPurpose[F[_, _]](
+        txIn: F[Unsigned[Unsigned.Width.W32], TxIn]
+    ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraSpending(txIn)
+    override def toSpendingPurpose[F[_, _]](
+        purpose: DijkstraPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], TxIn]] = purpose match
+      case DijkstraPlutusPurpose.DijkstraSpending(i) => Some(i)
+      case DijkstraPlutusPurpose.DijkstraMinting(_) | DijkstraPlutusPurpose.DijkstraCertifying(_) |
+          DijkstraPlutusPurpose.DijkstraWithdrawing(_) | DijkstraPlutusPurpose.DijkstraVoting(_) |
+          DijkstraPlutusPurpose.DijkstraProposing(_) | DijkstraPlutusPurpose.DijkstraGuarding(_) =>
+        None
+    override def mkMintingPurpose[F[_, _]](
+        policy: F[Unsigned[Unsigned.Width.W32], Bytes]
+    ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraMinting(policy)
+    override def toMintingPurpose[F[_, _]](
+        purpose: DijkstraPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], Bytes]] = purpose match
+      case DijkstraPlutusPurpose.DijkstraMinting(i) => Some(i)
+      case DijkstraPlutusPurpose.DijkstraSpending(_) | DijkstraPlutusPurpose.DijkstraCertifying(_) |
+          DijkstraPlutusPurpose.DijkstraWithdrawing(_) | DijkstraPlutusPurpose.DijkstraVoting(_) |
+          DijkstraPlutusPurpose.DijkstraProposing(_) | DijkstraPlutusPurpose.DijkstraGuarding(_) =>
+        None
+    override def mkCertifyingPurpose[F[_, _]](
+        txCert: F[Unsigned[Unsigned.Width.W32], DijkstraTxCert]
+    ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraCertifying(txCert)
+    override def toCertifyingPurpose[F[_, _]](
+        purpose: DijkstraPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], DijkstraTxCert]] = purpose match
+      case DijkstraPlutusPurpose.DijkstraCertifying(i) => Some(i)
+      case DijkstraPlutusPurpose.DijkstraSpending(_) | DijkstraPlutusPurpose.DijkstraMinting(_) |
+          DijkstraPlutusPurpose.DijkstraWithdrawing(_) | DijkstraPlutusPurpose.DijkstraVoting(_) |
+          DijkstraPlutusPurpose.DijkstraProposing(_) | DijkstraPlutusPurpose.DijkstraGuarding(_) =>
+        None
+    override def mkWithdrawingPurpose[F[_, _]](
+        account: F[Unsigned[Unsigned.Width.W32], RewardAccount]
+    ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraWithdrawing(account)
+    override def toWithdrawingPurpose[F[_, _]](
+        purpose: DijkstraPlutusPurpose[F]
+    ): Option[F[Unsigned[Unsigned.Width.W32], RewardAccount]] = purpose match
+      case DijkstraPlutusPurpose.DijkstraWithdrawing(i) => Some(i)
+      case DijkstraPlutusPurpose.DijkstraSpending(_) | DijkstraPlutusPurpose.DijkstraMinting(_) |
+          DijkstraPlutusPurpose.DijkstraCertifying(_) | DijkstraPlutusPurpose.DijkstraVoting(_) |
+          DijkstraPlutusPurpose.DijkstraProposing(_) | DijkstraPlutusPurpose.DijkstraGuarding(_) =>
+        None
 
     // `ConwayEraScript DijkstraEra`, `Scripts.hs:556-565`, cardano-ledger 9df9f98c
     override def mkVotingPurpose[F[_, _]](

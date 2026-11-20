@@ -5725,6 +5725,16 @@
       445,
       458
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "alonzoMinFeeTx",
+     "lines": [
+      498,
+      508
+     ]
     }
    ],
    "class": "Mirror",
@@ -5732,7 +5742,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "digest": "fc8652dc45bd088e"
+   "digest": "9f7c5375c5b6395f",
+   "note": "the units are the class member getTotalExUnits, as at 9df9f98c; Conway's are the member's default, f649f975's totExUnits"
   },
   "def ledger.era.AlonzoTx.totExUnits": {
    "upstream": [
@@ -5745,6 +5756,16 @@
       460,
       464
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "totExUnits",
+     "lines": [
+      510,
+      514
+     ]
     }
    ],
    "class": "Mirror",
@@ -5752,8 +5773,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the units are the witness decoder's, which it reads as unsigned integers, so the sum is the reference's `ExUnits` of naturals",
-   "digest": "740632db8e8b6a25"
+   "note": "the class member getTotalExUnits, as at 9df9f98c, where totExUnits is its deprecated name; f649f975's function is the member's default",
+   "digest": "0618d984ed78cfc5"
   },
   "def ledger.era.AlonzoTx.txscriptfee": {
    "upstream": [
@@ -6191,7 +6212,7 @@
     "EraPlutusContextSuite"
    ],
    "note": "every member of the reference's EraUTxO instance, and of its AlonzoEraUTxO instance (getSupplementalDataHashes = getBabbageSupplementalDataHashes, getSpendingDatum = getBabbageSpendingDatum, and the annotated transaction's four as Alonzo's); ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, only the missing witness or only the datums failed",
-   "digest": "368229c9c40312aa"
+   "digest": "8c16ba26084a77ef"
   },
   "def ledger.era.UTxOs.txInsFilter": {
    "upstream": [
@@ -6427,7 +6448,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "digest": "430a91c90d5f90fe"
+   "digest": "f75086bb0b5ca56e",
+   "note": "generic in its era over EraTx and BabbageEraTxBody, as the reference's is; the same at 9df9f98c"
   },
   "def ledger.era.conway.ConwayUTxO.txNonDistinctRefScriptsSize": {
    "upstream": [
@@ -6447,7 +6469,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "digest": "d9ae2a078cebc6df"
+   "digest": "702c0b179b8a41ce",
+   "note": "generic in its era over EraTx and BabbageEraTxBody, as the reference's is, the two one instance whose levels both evidences name; the same at 9df9f98c"
   },
   "def ledger.era.rules.ShelleyUtxo.validateMaxTxSizeUTxO": {
    "upstream": [
@@ -6553,6 +6576,16 @@
       451,
       465
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "symbol": "validateExUnitsTooBigUTxO",
+     "lines": [
+      464,
+      476
+     ]
     }
    ],
    "class": "Mirror",
@@ -6560,8 +6593,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
-   "digest": "c63361548d976670"
+   "note": "the reference's predicate generic in its era over the reference's classes, its units the class member getTotalExUnits (9df9f98c; f649f975's totExUnits is the member's default); it reports the node's flat UtxoFailure, so its verdict is compared with the flat rule's",
+   "digest": "ca11083d1c29af21"
   },
   "def ledger.era.rules.BabbageUtxo.feesOK": {
    "upstream": [
@@ -10040,8 +10073,8 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference builds each purpose through AlonzoEraScript's builders, which are not members yet (#85), so this takes the evidence that the era's purpose is Conway's",
-   "digest": "f63d84473bc37218"
+   "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others), a member of ConwayEraScript here, as hoistPlutusPurpose is (#85's item on AlonzoEraScript's purposes); the same at 9df9f98c",
+   "digest": "f9570ccf9474f6d2"
   },
   "def ledger.era.AlonzoUTxO.getWithdrawingScriptsNeeded": {
    "upstream": [
@@ -10062,8 +10095,8 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference builds each purpose through AlonzoEraScript's builders, which are not members yet (#85), so this takes the evidence that the era's purpose is Conway's",
-   "digest": "b02d64796587f52e"
+   "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others), a member of ConwayEraScript here, as hoistPlutusPurpose is (#85's item on AlonzoEraScript's purposes); the same at 9df9f98c",
+   "digest": "db72324c6c48f383"
   },
   "def ledger.era.AlonzoUTxO.getMintingScriptsNeeded": {
    "upstream": [
@@ -10084,8 +10117,8 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference builds each purpose through AlonzoEraScript's builders, which are not members yet (#85), so this takes the evidence that the era's purpose is Conway's",
-   "digest": "6e8dcafa82d46bec"
+   "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others), a member of ConwayEraScript here, as hoistPlutusPurpose is (#85's item on AlonzoEraScript's purposes); the same at 9df9f98c",
+   "digest": "a6b42673d4df5d11"
   },
   "def ledger.era.AlonzoUTxO.getAlonzoScriptsHashesNeeded": {
    "upstream": [
@@ -10214,8 +10247,8 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "Conway's function written for Conway, as conwayProducedValue is; its purposes are Conway's own",
-   "digest": "7d946057f8cdbe43"
+   "note": "Conway's function generic in its era over ConwayEraTxBody and ConwayEraScript, as the reference's is; the same at 9df9f98c, where Dijkstra's instance calls it",
+   "digest": "2ddc4fd1577a3d15"
   },
   "def ledger.TxChecks.scriptsNeeded": {
    "upstream": [
@@ -10444,7 +10477,8 @@
    "evidence": [
     "ConwayUtxowChecksSuite"
    ],
-   "digest": "95d60b796759415a"
+   "digest": "3841d8eda2cdae3b",
+   "note": "Conway's function generic in its era over ConwayEraTxBody, as the reference's is; the same at 9df9f98c, where Dijkstra's instance calls it"
   },
   "def ledger.era.conway.ConwayUTxO.voterWitnesses": {
    "upstream": [
@@ -10464,7 +10498,8 @@
    "evidence": [
     "ConwayUtxowChecksSuite"
    ],
-   "digest": "3abd4ec1c567cae5"
+   "digest": "4c94c1cb948c3163",
+   "note": "generic in its era over ConwayEraTxBody, as the reference's is; the same at 9df9f98c"
   },
   "def ledger.era.rules.ShelleyUtxow.validateNeededWitnesses": {
    "upstream": [
@@ -14060,8 +14095,8 @@
     "EraPlutusContextSuite",
     "EraConwaySuite"
    ],
-   "note": "the spending purpose read through the evidence that the era's purpose is Conway's, as `toSpendingPurpose` is not a member of the script class yet (#85); the output's inline datum is read as data first, as the reference's `<|>` forces its strict `SJust`, and its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
-   "digest": "6e467ff68c431f5f"
+   "note": "the spending purpose read through the script class's `toSpendingPurpose`, a member of ConwayEraScript here (#85's item on AlonzoEraScript's purposes); the output's inline datum is read as data first, as the reference's `<|>` forces its strict `SJust`, and its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
+   "digest": "b953a80d417fe89e"
   },
   "def ledger.era.PlutusTxInfos.transKeyHash": {
    "upstream": [
@@ -22793,6 +22828,301 @@
    ],
    "note": "OutsideForecastRange with its three fields as the reference's; beside it the cases where the reference's forecast of a Dijkstra view cannot fail but the node's can (the translation into Dijkstra refused, a parameter that does not fit its word, a word of the vocabulary), each a defect of the node's own state that the header rules report as no verdict (HeaderDefect.DijkstraView). Moved from consensus so that a header defect can carry it (#54)",
    "digest": "0d6ab94ff3111254"
+  },
+  "def ledger.era.AlonzoEraTx#getTotalExUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "getTotalExUnits",
+     "lines": [
+      330,
+      331
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "totExUnits",
+     "lines": [
+      460,
+      464
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the 9df9f98c member with its default, the witnesses' redeemers' units added up, which is f649f975's totExUnits, so Conway's fee and unit check are unchanged on every Conway case of the refusal corpora (ConwayUtxoChecksSuite). The reference's Dijkstra instance overrides it to add the sub-transactions' units (`Dijkstra/Tx.hs:417-422`); the typed override comes with Dijkstra's transaction class instance",
+   "digest": "e7dee915967384d3"
+  },
+  "def ledger.era.ConwayEraScript#mkSpendingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkSpendingPurpose",
+     "lines": [
+      205,
+      205
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkSpendingPurpose",
+     "lines": [
+      207,
+      207
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
+   "digest": "7c3b6d98680a53d5"
+  },
+  "def ledger.era.ConwayEraScript#toSpendingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toSpendingPurpose",
+     "lines": [
+      207,
+      207
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toSpendingPurpose",
+     "lines": [
+      209,
+      209
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
+   "digest": "a194635483800660"
+  },
+  "def ledger.era.ConwayEraScript#mkMintingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkMintingPurpose",
+     "lines": [
+      209,
+      209
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkMintingPurpose",
+     "lines": [
+      211,
+      211
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the policy is its script hash's `Bytes` where the reference's is a `PolicyID`, as the minting purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
+   "digest": "a6e1d243eea75034"
+  },
+  "def ledger.era.ConwayEraScript#toMintingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toMintingPurpose",
+     "lines": [
+      211,
+      211
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toMintingPurpose",
+     "lines": [
+      213,
+      213
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the policy is its script hash's `Bytes` where the reference's is a `PolicyID`, as the minting purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
+   "digest": "efc1b3cfa2af2ffc"
+  },
+  "def ledger.era.ConwayEraScript#mkCertifyingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkCertifyingPurpose",
+     "lines": [
+      213,
+      213
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkCertifyingPurpose",
+     "lines": [
+      215,
+      215
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
+   "digest": "7815b889f7b40c16"
+  },
+  "def ledger.era.ConwayEraScript#toCertifyingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toCertifyingPurpose",
+     "lines": [
+      215,
+      215
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toCertifyingPurpose",
+     "lines": [
+      217,
+      217
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
+   "digest": "5cc70afb32f03680"
+  },
+  "def ledger.era.ConwayEraScript#mkWithdrawingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkWithdrawingPurpose",
+     "lines": [
+      217,
+      217
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkWithdrawingPurpose",
+     "lines": [
+      219,
+      219
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the account is the node's flat `RewardAccount` where the reference's is an `AccountAddress`, as the withdrawing purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
+   "digest": "f176dd7ad4f9b848"
+  },
+  "def ledger.era.ConwayEraScript#toWithdrawingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toWithdrawingPurpose",
+     "lines": [
+      219,
+      219
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toWithdrawingPurpose",
+     "lines": [
+      221,
+      221
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the account is the node's flat `RewardAccount` where the reference's is an `AccountAddress`, as the withdrawing purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
+   "digest": "9d52a885448f3fa3"
   }
  },
  "glue": [
