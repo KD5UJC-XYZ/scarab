@@ -789,33 +789,36 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
-  test("a cut is told as it is made, even when a later file then fails to open") {
-    // [1 ~] then a directory where the next log file would be: the first file is cut and the cut
-    // told before the open fails on the second, so it is not lost with the failed open
+  test("a cut is told before it is made, and before a later file fails to open") {
+    // [1 ~] [2]: the first file ends in bytes that are not a record. When its cut is told, the second
+    // file, already listed, is removed: the open fails on it after the first cut was told
     tempDir.use { dir =>
+      val second = dir.toNioPath.resolve("00000001.log")
       for
         told <- cats.effect.Ref.of[IO, Vector[VolatileStore.Cut]](Vector.empty)
         result <- attempt {
           for
             _ <- VolatileStore
-              .open[IO](dir, 5)
-              .use((log, _) => log.append(block(1)._1, block(1)._2))
-            _ <- IO {
+              .open[IO](dir, 1)
+              .use((log, _) => Vector(block(1), block(2)).traverse_((r, raw) => log.append(r, raw)))
+            _ <- IO(
               JFiles.write(logFiles(dir).head, Array.fill[Byte](10)(7), StandardOpenOption.APPEND)
-              JFiles.createDirectory(dir.toNioPath.resolve("00000001.log"))
-            }
+            )
             _ <- ReceivedBlocks
-              .recovering[IO](dir, 5)(unread, decodes, c => told.update(_ :+ c))
+              .recovering[IO](dir, 1)(
+                unread,
+                decodes,
+                c => told.update(_ :+ c) *> IO.blocking(JFiles.deleteIfExists(second)).void
+              )
               .use_
           yield ()
         }
         cuts <- told.get
       yield
         result match
-          // where it fails depends on the file system: reading the directory as a log file, or
-          // opening it as the file to append to
-          case Left(StorageError.Io(_, _: java.io.IOException)) => ()
-          case other => fail(s"the open fails on the directory, got $other")
+          case Left(StorageError.Io(what, _: java.nio.file.NoSuchFileException)) =>
+            assertEquals(what, second.toString, "the open fails on the second file")
+          case other => fail(s"the open fails on the removed file, got $other")
         assertEquals(
           cuts,
           Vector(
@@ -831,16 +834,19 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
   }
 
   test("a repeat names the file it was read from when two listed names share a number") {
-    // `1.log`, empty, and `00000001.log` holding [B B]: both are file number 1, and the repeat of
-    // B names the file B was read from, whichever of the two is listed first
+    // `1.log` holding A and `00000001.log` holding B are both file number 1; `00000002.log` repeats
+    // A and `00000003.log` repeats B. Each repeat names the file its block was read from, whichever
+    // of the two names is listed first
     tempDir.use { dir =>
       ok {
-        val b = block(2)
-        val record = VolatileStore.encode(VolatileRecord.Block(b._1, b._2))
+        val (a, b) = (block(1), block(2))
+        def record(x: (BlockRef, Bytes)) = VolatileStore.encode(VolatileRecord.Block(x._1, x._2))
         for
           _ <- IO {
-            JFiles.write(dir.toNioPath.resolve("1.log"), Array.emptyByteArray)
-            JFiles.write(dir.toNioPath.resolve("00000001.log"), record ++ record)
+            JFiles.write(dir.toNioPath.resolve("1.log"), record(a))
+            JFiles.write(dir.toNioPath.resolve("00000001.log"), record(b))
+            JFiles.write(dir.toNioPath.resolve("00000002.log"), record(a))
+            JFiles.write(dir.toNioPath.resolve("00000003.log"), record(b))
           }
           recovery <- ReceivedBlocks
             .recovering[IO](dir, 4)(unread, decodes, _ => IO.unit)
@@ -848,13 +854,15 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
         yield assertEquals(
           recovery.cuts,
           Vector(
+            VolatileStore
+              .Cut("00000002.log", 0L, VolatileStore.CutCause.Repeated(a._1.hash, "1.log")),
             VolatileStore.Cut(
-              "00000001.log",
-              record.length.toLong,
+              "00000003.log",
+              0L,
               VolatileStore.CutCause.Repeated(b._1.hash, "00000001.log")
             )
           ),
-          "the repeat names 00000001.log, the file B is held in"
+          "A is held in 1.log and B in 00000001.log"
         )
       }
     }

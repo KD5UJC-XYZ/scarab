@@ -2051,7 +2051,7 @@
     "ReceivedBlocksSuite",
     "ReceivedCollectionSuite"
    ],
-   "note": "the Truncate trace: why, which file (by the name it is listed under, as the reference's FsPath) and the offset the file is cut at, one per truncation, told just before it is made, two for a file cut at a parse error and then at an earlier repeat, as validateFile truncates and traces them; ChainStorage emits each as StorageEvent.ReceivedTruncated, at Debug as cardano-node 11.1.3 and ouroboros-consensus 808e40054's tracing give Truncate (#1247)",
+   "note": "the Truncate trace: why, which file (by the name it is listed under, as the reference's FsPath) and the offset the file is cut at, one per truncation, told just before it is attempted (a truncation that then fails fails the open), two for a file cut at a parse error and then at an earlier repeat, as validateFile truncates and traces them; ChainStorage emits each as StorageEvent.ReceivedTruncated, at Debug as cardano-node 11.1.3 and ouroboros-consensus 808e40054's tracing give Truncate (#1247)",
    "digest": "ba4152545ee4e417"
   },
   "def storage.ReceivedBlocks.recovering": {
