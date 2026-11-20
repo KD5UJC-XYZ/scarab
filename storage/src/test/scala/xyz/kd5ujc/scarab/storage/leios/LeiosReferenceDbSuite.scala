@@ -295,52 +295,8 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
   dirs.test("the four states of a reference database round-trip, row for row") { dir =>
     val source = dir / "source"
     val again = dir / "again"
-    val whole = body(2)
     for
-      _ <- IO.blocking(Using.resource(open(source / "leios.vol.db")) { c =>
-        referenceSchema(c, volatile = true)
-        def row(slot: Long, h: Int, status: Long) =
-          update(
-            c,
-            "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize, status) VALUES (?, ?, ?, ?)"
-          )(
-            slot,
-            hash(h).bytes.toArray,
-            100L,
-            status
-          )
-        // (1) copied, evicted, then announced and fetched again in part
-        row(10, 1, 0)
-        insertBody(c, 1, whole, Some(Vector(Some(tx(0)), None)))
-        // (2) a collection's mark committed, its sweep not run: one hash all marked, one in part
-        row(3, 2, 3)
-        row(4, 2, 3)
-        row(5, 3, 3)
-        row(12, 3, 0)
-        insertBody(c, 2, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
-        // (3) pinned, its closure allocated by a fill that filled nothing: zeroes
-        row(6, 4, 1)
-        insertBody(c, 4, whole, Some(Vector(None, None)))
-        // (4) copied twice: the rows of 20 and 21 at the first promotion, 30 at the second
-        row(20, 5, 2)
-        row(21, 5, 2)
-        row(30, 5, 2)
-        insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
-      })
-      _ <- IO.blocking(Using.resource(open(source / "leios.imm.db")) { c =>
-        referenceSchema(c, volatile = false)
-        def row(slot: Long, h: Int) =
-          update(c, "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize) VALUES (?, ?, ?)")(
-            slot,
-            hash(h).bytes.toArray,
-            100L
-          )
-        row(5, 1)
-        insertBody(c, 1, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
-        row(21, 5)
-        row(30, 5)
-        insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
-      })
+      _ <- IO.blocking(fourStates(source))
       // imported, then exported from another open: the pending pin and marks stay as they are
       _ <- store(dir / "store").use(imported(source, _))
       _ <- store(dir / "store").use(exported(_, again))
@@ -364,6 +320,94 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
         column(again / "leios.vol.db", SweepPickMarked),
         Vector(hash(2).bytes.hex.toUpperCase)
       )
+  }
+
+  dirs.test("an import again replaces the store, never merging into what an earlier one left") {
+    dir =>
+      val first = dir / "first"
+      val second = dir / "second"
+      val again = dir / "again"
+      val leios = dir / "db" / "leios"
+      def importing(from: Path) = LeiosStoreLocks
+        .make[IO]
+        .flatMap(locks =>
+          attemptRaise(
+            ok(
+              RocksLeiosStore.replacing[IO, LeiosReferenceDb.Counts](leios, locks)(
+                LeiosReferenceDb.importInto(from, _)
+              )
+            )
+          )
+        )
+      for
+        // a first source with what the second has not: other rows and hashes, a whole closure
+        _ <- store(dir / "a").use { s =>
+          ok(for
+            _ <- s.writeEbPoint(point(1, 1), word32(100))
+            _ <- s.writeEbPoint(point(99, 1), word32(100))
+            _ <- s.writeEbBody(point(1, 1), body(2), Vector.empty)
+            _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0), 1 -> tx(1)))
+            _ <- s.writeEbPoint(point(7, 7), word32(100))
+            _ <- s.writeEbBody(point(7, 7), body(1), Vector.empty)
+            _ <- s.writeTxs(point(7, 7), Vector(0 -> tx(0)))
+          yield ()) *> exported(s, first)
+        }
+        _ <- IO.blocking(fourStates(second))
+        once <- importing(first)
+        twice <- importing(second)
+        _ <- store(leios).use(exported(_, again))
+        staged <- IO.blocking(
+          java.nio.file.Files.exists(RocksLeiosStore.importStage(leios.toNioPath))
+        )
+      yield
+        assert(once.isRight && twice.isRight, s"$once $twice")
+        assert(!staged, "the stage was published")
+        Vector("leios.vol.db", "leios.imm.db").foreach { file =>
+          Vector("ebs", "ebBodies", "ebClosures").foreach(table =>
+            assertEquals(dump(again / file, table), dump(second / file, table), s"$file $table")
+          )
+        }
+  }
+
+  dirs.test("a file's scans read one snapshot of it, whatever a writer commits meanwhile") { dir =>
+    val path = dir / "reference" / "leios.vol.db"
+    def rows(c: Connection) =
+      Using.resource(c.createStatement())(s =>
+        Using.resource(s.executeQuery("SELECT count(*) FROM ebs")) { r =>
+          r.next()
+          r.getLong(1)
+        }
+      )
+    def written(c: Connection, slot: Long) =
+      update(c, "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize, status) VALUES (?, ?, ?, ?)")(
+        slot,
+        hash(1).bytes.toArray,
+        100L,
+        0L
+      )
+    val connections = Resource.make(IO.blocking {
+      val writer = open(path)
+      referenceSchema(writer, volatile = true)
+      written(writer, 1)
+      writer -> DriverManager.getConnection("jdbc:sqlite:" + path.toString)
+    })((w, r) => IO.blocking { r.close(); w.close() })
+    connections.use { (writer, reader) =>
+      for
+        inside <- attemptRaise(
+          LeiosReferenceDb.snapshot[IO, (Long, Long)](reader, LeiosReferenceDb.Partition.Volatile)(
+            for
+              before <- IO.blocking(rows(reader))
+              // a row committed between the point scan and the body scan of a running node
+              _ <- IO.blocking(written(writer, 2))
+              after <- IO.blocking(rows(reader))
+            yield (before, after)
+          )
+        )
+        outside <- IO.blocking(rows(reader))
+      yield
+        assertEquals(inside, Right((1L, 1L)))
+        assertEquals(outside, 2L)
+    }
   }
 
   dirs.test("an export writes the immutable rows the reference's copier writes, cycle by cycle") {
@@ -415,6 +459,57 @@ class LeiosReferenceDbSuite extends CatsEffectSuite:
   }
 
 object LeiosReferenceDbSuite:
+  /** A reference database of the four states the store records apart: (1) a closure per partition
+    * after a partial refetch, (2) marked rows, (3) an allocated closure of zeroes, (4) two copy
+    * cycles.
+    */
+  def fourStates(source: Path): Unit =
+    val whole = body(2)
+    Using.resource(open(source / "leios.vol.db")) { c =>
+      referenceSchema(c, volatile = true)
+      def row(slot: Long, h: Int, status: Long) =
+        update(
+          c,
+          "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize, status) VALUES (?, ?, ?, ?)"
+        )(
+          slot,
+          hash(h).bytes.toArray,
+          100L,
+          status
+        )
+      // (1) copied, evicted, then announced and fetched again in part
+      row(10, 1, 0)
+      insertBody(c, 1, whole, Some(Vector(Some(tx(0)), None)))
+      // (2) a collection's mark committed, its sweep not run: one hash all marked, one in part
+      row(3, 2, 3)
+      row(4, 2, 3)
+      row(5, 3, 3)
+      row(12, 3, 0)
+      insertBody(c, 2, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+      // (3) pinned, its closure allocated by a fill that filled nothing: zeroes
+      row(6, 4, 1)
+      insertBody(c, 4, whole, Some(Vector(None, None)))
+      // (4) copied twice: the rows of 20 and 21 at the first promotion, 30 at the second
+      row(20, 5, 2)
+      row(21, 5, 2)
+      row(30, 5, 2)
+      insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+    }
+    Using.resource(open(source / "leios.imm.db")) { c =>
+      referenceSchema(c, volatile = false)
+      def row(slot: Long, h: Int) =
+        update(c, "INSERT INTO ebs (ebSlot, ebHashBytes, ebBytesSize) VALUES (?, ?, ?)")(
+          slot,
+          hash(h).bytes.toArray,
+          100L
+        )
+      row(5, 1)
+      insertBody(c, 1, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+      row(21, 5)
+      row(30, 5)
+      insertBody(c, 5, whole, Some(Vector(Some(tx(0)), Some(tx(1)))))
+    }
+
   def attemptRaise[A](
       body: Handle[IO, LeiosReferenceDb.Error] ?=> IO[A]
   ): IO[Either[LeiosReferenceDb.Error, A]] =

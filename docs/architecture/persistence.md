@@ -250,9 +250,13 @@ and the store's typed cause.
 
 `import-haskell-db` reads a Leios node's `leios.imm.db` and `leios.vol.db`, when the database has
 them, into this store before it imports the blocks (`leiosPoints`, `leiosBodies` and
-`leiosTransactions` on its `done` line). The files are opened as immutable, so nothing is written
-beside them, unless a write-ahead log beside one holds frames, which are then read through SQLite's
-shared memory file. `LeiosReferenceDb.exportFrom` writes a store as new files with the reference's
+`leiosTransactions` on its `done` line), into a new store at `leios.import/` beside it that replaces
+the previous one, under its lock, only once both files are read, so an import again never merges into
+what an earlier one left. The files are opened as immutable, so nothing is written beside them,
+unless a write-ahead log beside one holds frames, which are then read through SQLite's shared memory
+file. Each file is read in one read transaction, so each partition is that file at one moment; the
+two are read one after the other, so of a running node a copy or sweep committed between them is in
+one and not the other, and a stopped node's files are read as one state. `LeiosReferenceDb.exportFrom` writes a store as new files with the reference's
 pragmas and schema, as the reference would hold it: each partition of the store in the file of that
 partition, its rows (with their status in `leios.vol.db`), bodies and allocated closures, a closure's
 unwritten transactions as zeroes. An import reads each file into the same partition, so an export

@@ -1781,7 +1781,7 @@
     "LeiosReferenceDbSuite",
     "HaskellImportSuite"
    ],
-   "digest": "f4a8e97f26594dfd"
+   "digest": "5d9bd88db4337927"
   },
   "def storage.leios.LeiosReferenceDb.exportFrom": {
    "upstream": [
@@ -2216,6 +2216,14 @@
     "def storage.leios.LeiosReferenceDb.Counts#+",
     "val storage.leios.LeiosReferenceDb.Counts.zero",
     "def storage.leios.LeiosReferenceDb.present"
+   ]
+  },
+  {
+   "reason": "how an import of the reference's SQLite files keeps them whole, which the reference, having no import, does not have: each file read inside one read transaction, so each partition is that file at one moment, and the store it fills built apart and published in place of the previous one once both files are read, so an import again never merges into what an earlier one left",
+   "definitions": [
+    "def storage.leios.LeiosReferenceDb.snapshot",
+    "def storage.RocksLeiosStore.importStage",
+    "def storage.RocksLeiosStore.replacing"
    ]
   },
   {

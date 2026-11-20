@@ -34,7 +34,13 @@ import xyz.kd5ujc.scarab.storage.{EbStatus, Held, LeiosEb, LeiosStoreError, Rock
   * transactions written in it, a closure of zeroes included. It writes neither file nor anything
   * beside them while neither has a write-ahead log with frames (see `Access`). Completion is what
   * the reference's `scanMissing` reads from the volatile closures
-  * (`Impl/SQLite/Completion.hs:53-72`).
+  * (`Impl/SQLite/Completion.hs:53-72`). Each file is read inside one read transaction
+  * ([[snapshot]]), so each partition is the file at one moment, a body never without its row, even
+  * from a running node. The two files are read one after the other, each at a moment of its own:
+  * from a running node, a copy or a sweep committed between the two reads is in one partition and
+  * not yet in the other, as the reference's own copier writes the immutable file before its mark in
+  * the volatile one. A stopped node's files are read as one state. The import fills a new store and
+  * replaces the previous one only once both files are read ([[RocksLeiosStore.replacing]]).
   *
   * Export writes two new files with the reference's pragmas and schema (`initialiseLeiosDbFiles`,
   * `Impl/SQLite/Connection.hs:62-73`), each with the rows, bodies and closures of the store's same
@@ -199,10 +205,31 @@ object LeiosReferenceDb:
         .exists(wal)
         .ifM(files.size(wal).map(_ > 0), Async[F].pure(false))
         .map(if _ then Access.ReadOnly else Access.Immutable)
-        .flatMap(access => connection[F](dir / partition.file, partition, access).use(use))
+        .flatMap(access =>
+          connection[F](dir / partition.file, partition, access)
+            .use(c => snapshot(c, partition)(use(c)))
+        )
     Partition.values.toVector.foldLeftM(Counts.zero) { (counts, partition) =>
       opened(partition)(importPartition(_, partition, store)).map(counts + _)
     }
+
+  /** `use` inside one read transaction of `c`, so that every scan it makes reads the file at one
+    * moment, as the reference reads inside one transaction (`dbWithTransaction`), whatever a
+    * running node writes meanwhile. A transaction spans one file: the two files are each read at a
+    * moment of their own.
+    */
+  private[leios] def snapshot[F[_]: Async, A](c: Connection, partition: Partition)(use: F[A])(using
+      Raise[F, Error]
+  ): F[A] =
+    Resource
+      .make(blocking(partition) {
+        c.setAutoCommit(false)
+        // a deferred transaction takes its snapshot at its first read: take it now
+        scala.util.Using.resource(c.createStatement())(
+          _.executeQuery("SELECT count(*) FROM sqlite_master").close()
+        )
+      })(_ => Async[F].blocking(c.rollback()).attempt.void)
+      .surround(use)
 
   private final case class PointRow(slot: Long, hash: Array[Byte], size: Long, status: Long)
   private final case class BodyRow(

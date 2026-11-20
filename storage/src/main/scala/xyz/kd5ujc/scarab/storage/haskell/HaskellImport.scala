@@ -203,11 +203,13 @@ object HaskellImport:
       LeiosReferenceDb.present[F](config.haskellDb).flatMap {
         case false => F.pure(None)
         case true  =>
-          // as stored: the reference's pending copies and sweeps are imported as they are, and the
-          // node's next open of the store resumes them
+          // a new store, as stored, in place of the previous one once both files are read: the
+          // reference's pending copies and sweeps are imported as they are, and the node's next
+          // open of the store resumes them
           RocksLeiosStore
-            .verbatim[F](config.db / "leios", leiosLocks)
-            .use(LeiosReferenceDb.importInto[F](config.haskellDb, _))
+            .replacing[F, LeiosReferenceDb.Counts](config.db / "leios", leiosLocks)(
+              LeiosReferenceDb.importInto[F](config.haskellDb, _)
+            )
             .map(Some(_))
       }
 

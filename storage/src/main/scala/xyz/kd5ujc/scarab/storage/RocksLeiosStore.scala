@@ -1199,6 +1199,47 @@ object RocksLeiosStore:
   ): Resource[F, RocksLeiosStore[F]] =
     opening(dir, locks, channel => Async[F].blocking(Option(channel.tryLock())))(_ => Async[F].unit)
 
+  /** Where an import of `dir` builds the store that replaces it. */
+  private[storage] def importStage(dir: java.nio.file.Path): java.nio.file.Path =
+    dir.resolveSibling(s"${dir.getFileName}.import")
+
+  /** A store that replaces the one in `dir` once `fill` succeeds: built from nothing at
+    * [[importStage]] ([[verbatim]], so it holds what `fill` writes as it writes it), then, under
+    * the lock of a first open of `dir` ([[firstOpen]]), published in place of the store there by a
+    * rename, the parent synced. What an interrupted import left at the stage is removed first; if
+    * `fill` fails, the store in `dir` stays as it was. An interruption between the removal of the
+    * old store and the rename leaves no store in `dir` and the whole new one at the stage, which
+    * the next import removes and builds again.
+    */
+  private[storage] def replacing[F[_]: Async, A](dir: Path, locks: LeiosStoreLocks[F])(
+      fill: RocksLeiosStore[F] => F[A]
+  )(using Raise[F, LeiosStoreError]): F[A] =
+    val F = Async[F]
+    val nio = dir.toNioPath
+    val stage = importStage(nio)
+    def io[B](body: => B): F[B] =
+      F.blocking(body).attempt.flatMap(_.fold(e => LeiosStoreError.Io(e).raise[F, B], F.pure))
+    def cleared(path: java.nio.file.Path): F[Unit] =
+      io(if Files.exists(path) then RocksUtxoStore.deleteTree(path))
+    for
+      _ <- cleared(stage)
+      filled <- verbatim[F](Path.fromNioPath(stage), locks).use(fill)
+      _ <- F.uncancelable(poll =>
+        firstOpen[F, Unit](
+          dir,
+          locks,
+          target => F.blocking(syncParent(target)),
+          channel => F.blocking(Option(channel.tryLock())),
+          poll
+        )(
+          cleared(nio) *> io(Files.move(stage, nio, StandardCopyOption.ATOMIC_MOVE)) *>
+            io(syncParent(nio))
+        )
+      )
+      // the stage's own lock file, once nothing holds it
+      _ <- F.blocking(Files.deleteIfExists(lockFile(stage))).attempt.void
+    yield filled
+
   /** [[resource]], attempting the first open's lock with `attemptLock`. */
   private[storage] def resourceWith[F[_]: Async](
       dir: Path,
