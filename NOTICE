@@ -107,6 +107,12 @@ in fixtures/reference/dijkstra-state-translation/README.md), and fixtures/refere
 to two node-to-client queries on the state files there (provenance in fixtures/reference/leios-ntc-queries/README.md).
 fixtures/reference/dijkstra-epoch holds the ledger states the same cardano-ledger reaches when it ticks two of those state files across
 Dijkstra's epoch boundaries (provenance in fixtures/reference/dijkstra-epoch/README.md).
+fixtures/reference/leios-testnet-context-refusals holds, under the project's licence (Apache-2.0), synthetic Dijkstra
+transactions Scarab generates and the results recorded for them. The transactions carry placeholder scripts and no
+chain data, and are set in the public Leios testnet's environment (its public protocol version, cost models, system
+start and slot length, as fixtures/reference/leios-testnet-chain-contexts records them); the results are the verdicts
+the unchanged cardano-ledger (Apache-2.0) of the pinned Leios testnet build gives on them, run in an image built from
+it that is not redistributed (provenance in fixtures/reference/leios-testnet-context-refusals/README.md).
 The files in fixtures/licenses and the licence files of the
 individual fixture directories cover the upstream-derived test vectors.
 
