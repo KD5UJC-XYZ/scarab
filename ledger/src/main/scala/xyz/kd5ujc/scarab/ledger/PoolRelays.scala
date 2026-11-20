@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.protocol.StateLayout
 
 /** A TCP port as a pool registers it: the reference's `Port`, a `Word16`
   * (`Cardano.Ledger.BaseTypes`, `newtype Port = Port {portToWord16 :: Word16}`,
@@ -292,6 +293,28 @@ object PoolRelays:
         DnsText.Definite,
         if version.atLeast(9) then MaxDnsNameBytes else 64
       )
+    )
+
+  /** The relays of a pool's parameters in a ledger state read at `version` in the build of
+    * `layout`, as the reference reads them there (`DecCBOR StakePoolRelay`, cardano-ledger 9df9f98c
+    * `State/StakePool.hs:458-473`, in `decodeStakePoolParamsFlat`, `:760`): a relay of tag 0, 1 or
+    * 2 of its length, a port in a word of 16 bits, an address in the form `version` reads
+    * ([[ByteStrings.of]]), and a DNS name of at most 64 bytes of UTF-8 below version 9 and 128 from
+    * it (`DecCBOR DnsName`, `BaseTypes.hs:692-698`), its text `decodeString`: definite, and in the
+    * Leios layout from version 12 also chunked (`Decoding/Decoder.hs:1564-1598`), as a metadata URL
+    * of the same parameters is read ([[PoolParams.metadataAt]]).
+    */
+  def fromState(
+      relays: Node,
+      version: DecoderVersion,
+      layout: StateLayout
+  ): Either[PoolRelayError, Vector[PoolRelay]] =
+    val dnsText = layout match
+      case StateLayout.Leios if version.atLeast(12) => DnsText.Chunked
+      case StateLayout.Leios | StateLayout.Node11_1 => DnsText.Definite
+    sequence(
+      relays,
+      Reading(ByteStrings.of(version), dnsText, if version.atLeast(9) then MaxDnsNameBytes else 64)
     )
 
   private def sequence(node: Node, reading: Reading): Either[PoolRelayError, Vector[PoolRelay]] =

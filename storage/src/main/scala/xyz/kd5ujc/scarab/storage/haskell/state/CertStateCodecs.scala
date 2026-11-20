@@ -6,7 +6,7 @@ import cats.syntax.traverse.*
 import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational, Value}
 import xyz.kd5ujc.scarab.crypto.bls.{BlsError, ProofOfPossession, VerificationKey}
-import xyz.kd5ujc.scarab.ledger.{DecoderVersion, LedgerDecodeError, PoolParams}
+import xyz.kd5ujc.scarab.ledger.{DecoderVersion, LedgerDecodeError, PoolParams, PoolRelays}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
@@ -251,8 +251,15 @@ trait CertStateCodecs extends NodeTypeCodecs:
     private val flat = poolParams
     private val keyed = poolParamsWithSlot(blsKey)
 
+    private def decoderVersion(n: Node): Decoded[DecoderVersion] =
+      DecoderVersion
+        .ofMajor(v.major.toBigInt)
+        .toRight(DecodeError.at(n, Kind.OutOfRange("a decoder version", v.major.toBigInt)))
+
     /** The parameters and their key, where `n` holds one: in the Leios layout from version 12, ten
-      * items whose third is a list (`decodeBlsKeyBackwardsCompatible`, `:764-771`).
+      * items whose third is a list (`decodeBlsKeyBackwardsCompatible`, `:764-771`). Their relays,
+      * the ninth item, are read as the reference reads them ([[PoolRelays.fromState]]), so that
+      * parameters it refuses are refused here.
       */
     private def withKey(n: Node): Option[Decoded[(PoolParams, PoolParamsBlsKey)]] =
       stateLayout match
@@ -261,7 +268,19 @@ trait CertStateCodecs extends NodeTypeCodecs:
           n.value match
             case Value.Arr(xs) if v.atLeast(12) && xs.sizeIs == 10 =>
               xs.lift(2).map(_.value).collect { case Value.Arr(_) =>
-                keyed.decode(n).map(p => (p.params, PoolParamsBlsKey.Leios(Some(p.blsKey))))
+                for
+                  p <- keyed.decode(n)
+                  version <- decoderVersion(n)
+                  _ <- xs
+                    .lift(8)
+                    .traverse(r =>
+                      PoolRelays
+                        .fromState(r, version, stateLayout)
+                        .leftMap(e =>
+                          DecodeError.at(r, Kind.Domain(LedgerDecodeError.PoolRelay(e)))
+                        )
+                    )
+                yield (p.params, PoolParamsBlsKey.Leios(Some(p.blsKey)))
               }
             case _ => None
 
@@ -269,9 +288,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
       withKey(n)
         .getOrElse(flat.decode(n).map((_, PoolParamsBlsKey.certified(stateLayout))))
         .flatMap { (p, key) =>
-          DecoderVersion
-            .ofMajor(v.major.toBigInt)
-            .toRight(DecodeError.at(n, Kind.OutOfRange("a decoder version", v.major.toBigInt)))
+          decoderVersion(n)
             .flatMap(version =>
               p.metadata
                 .traverse(PoolMetadata.read(_, version, stateLayout))

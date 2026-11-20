@@ -186,6 +186,46 @@ class FuturePoolParamsCodecSuite extends ScalaCheckSuite:
     }
   }
 
+  test("keyed parameters' relays are read as the reference reads them at version 12") {
+    val c = codecs(NativeLeiosStateCodecs, 12)
+    // ten items with the key third and `relays` ninth (`decodeStakePoolParamsFlat`, `:746-771`)
+    def keyedWith(relays: String): Bytes =
+      Bytes(
+        hex(s"8a 581c$key28 5820${"02" * 32}").value ++ keyItem.value ++
+          hex(s"00 00 d81e820102 581de0$key28 d9010280 $relays f6").value
+      )
+    val name = "6d" + "relay.example".getBytes("UTF-8").map(b => f"$b%02x").mkString
+    def read(relays: String) =
+      c.params.decodeBytes(keyedWith(relays), HaskellState.limits).left.map(_.kind)
+    // a relay of tag 3 is refused, as the reference refuses it (`invalidKey`,
+    // `State/StakePool.hs:473`, cardano-ledger 9df9f98c)
+    assertEquals(
+      read(s"81 82 03 $name"),
+      Left(
+        DecodeError.Kind.Domain(
+          node.LedgerDecodeError.PoolRelay(node.PoolRelayError.UnknownTag(0, BigInt(3)))
+        )
+      )
+    )
+    // a DNS name of 129 bytes is refused (`textDecCBOR 128`, `BaseTypes.hs:692-698`,
+    // cardano-ledger 9df9f98c)
+    val long = "7881" + "61" * 129
+    assertEquals(
+      read(s"81 82 02 $long"),
+      Left(
+        DecodeError.Kind.Domain(
+          node.LedgerDecodeError.PoolRelay(node.PoolRelayError.DnsNameTooLong(0, 129))
+        )
+      )
+    )
+    // a name read: definite, and chunked text in the Leios layout from version 12 (`decodeString`)
+    val definite = read(s"81 83 01 f6 $name").map(_.relays)
+    assertEquals(definite.map(_.isEmpty), Right(false))
+    val chunked = "7f 66" + "relay.".getBytes("UTF-8").map(b => f"$b%02x").mkString + " 67" +
+      "example".getBytes("UTF-8").map(b => f"$b%02x").mkString + " ff"
+    assert(read(s"81 83 01 f6 $chunked").isRight, "a chunked DNS name at version 12")
+  }
+
   test("a voting key below version 12 is not written, as the reference drops it; nor in 11.1") {
     val keyed = keyedParams.copy(blsKey = PoolParamsBlsKey.Leios(Some(key)))
     val c = codecs(LeiosStateCodecs, 9)
