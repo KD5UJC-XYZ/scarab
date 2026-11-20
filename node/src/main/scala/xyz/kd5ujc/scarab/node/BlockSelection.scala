@@ -7,7 +7,9 @@ import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.ChainSelection
+import cats.data.NonEmptyVector
+import xyz.kd5ujc.scarab.consensus.{ChainSelection, LeiosCertGate, LeiosForestBlock}
+import xyz.kd5ujc.scarab.protocol.EbHash
 import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError, ValidationError}
 import xyz.kd5ujc.scarab.network.Fibers
 import xyz.kd5ujc.scarab.node.BlockAdmissions.{AdmissionStage, WorkKind}
@@ -67,7 +69,8 @@ private[node] final class BlockSelection[F[_]: Async] private (
     */
   private def validation(cause: BlockSelection.Cause): Peer.Validation[F] = cause match
     case BlockSelection.Cause.Admitted(admission) => Peer.Validation.admission(pool, admission)
-    case BlockSelection.Cause.Reselection | BlockSelection.Cause.Forged(_) =>
+    case BlockSelection.Cause.Reselection | BlockSelection.Cause.Forged(_) |
+        BlockSelection.Cause.LeiosEbAcquired(_, _) =>
       Peer.Validation.none[F]
 
   private def selectLocked(
@@ -87,16 +90,22 @@ private[node] final class BlockSelection[F[_]: Async] private (
         case BlockSelection.Cause.Reselection =>
           pool.noVerdictBlocks
             .release(now, hash => bodies.get(hash).flatMap(_.delivered.header.prevHash))
-        case BlockSelection.Cause.Admitted(_) | BlockSelection.Cause.Forged(_) =>
+        case BlockSelection.Cause.Admitted(_) | BlockSelection.Cause.Forged(_) |
+            BlockSelection.Cause.LeiosEbAcquired(_, _) =>
           F.pure(None)
       known <- pool.invalidBlocks.snapshot
       // a block the node has no verdict on is not judged again before its time (issues 567, 693)
       withheld <- pool.noVerdictBlocks.excluded(released)
+      // a ranking block certifying an endorser block whose closure is not acquired is parked: hidden
+      // as a tip and as a successor until it is (`ignoreUnacquiredCertRB`,
+      // `ignoreUnacquiredCertRBSuc`, `ChainSel.hs:1046-1064` at ouroboros-consensus 2416493b)
+      acquired <- pool.leios.snapshot
+      parked = LeiosCertGate.hidden(acquired, BlockSelection.forest(bodies))
       original <- AvailableBlocks
         .candidates(
           if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
           bodies.view.mapValues(_.delivered.header).toMap,
-          known.entries.keySet ++ withheld,
+          known.entries.keySet ++ withheld ++ parked,
           cause.containing,
           originPredecessor
         )
@@ -179,7 +188,43 @@ private[node] final class BlockSelection[F[_]: Async] private (
             )
             .guarantee(done.complete(()).void)
         )
+      case BlockAdmissions.Work.ReprocessLeiosEb(eb) =>
+        pool.admissions.processing(
+          WorkKind.ReprocessLeiosEb,
+          AdmissionStage.WaitingForApplication
+        )(
+          application.locked(
+            pool.admissions.stage(AdmissionStage.Selecting) *> reprocessLeiosEb(eb)
+          )
+        )
     })
+
+  /** `chainSelReprocessLeiosEb` (ouroboros-consensus 2416493b `ChainSel.hs:636-685`): the ranking
+    * blocks parked on `eb`, whose closure is now acquired, are the certifying successors of the
+    * blocks that announce it; the candidates through any of them are considered together, and
+    * nothing is done when none is parked.
+    */
+  private def reprocessLeiosEb(eb: EbHash)(using Raise[F, NodeError]): F[Unit] =
+    (pool.processedSnapshot, pool.invalidBlocks.snapshot).flatMapN { (bodies, known) =>
+      NonEmptyVector
+        .fromVector(
+          LeiosCertGate
+            .parkedOn(eb, BlockSelection.forest(bodies), known.entries.contains)
+            .toVector
+        )
+        .traverse_(parked => selectLocked(BlockSelection.Cause.LeiosEbAcquired(eb, parked)))
+    }
+
+  /** `leiosAcquiredEbsRunner` (ouroboros-consensus 2416493b `ChainDB/Impl/Background.hs:170-200`):
+    * each completion of the store joins the acquired set, before the reprocessing is queued, and a
+    * novel one queues the reprocessing of the ranking blocks parked on it.
+    */
+  private def acquiring: F[Unit] =
+    F.foreverM(
+      pool.leios.next.flatMap(point =>
+        pool.leios.acquired(point).flatMap(pool.admissions.reprocessLeiosEb(point.hash).whenA)
+      )
+    )
 
   /** Judge again the withheld blocks whose cause can pass (issue 693): when one is due, a
     * reselection is queued behind the admissions already waiting, and the next only once it is
@@ -203,7 +248,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
         application
           .locked(selectLocked(BlockSelection.Cause.Reselection, Phase.Startup)) *>
           ready.complete(Right(())).void *>
-          F.both(consume, F.both(reselect, retries)).void
+          F.both(consume, F.both(reselect, F.both(retries, acquiring))).void
       }
       .guarantee(pool.admissions.close)
       .flatMap {
@@ -228,10 +273,25 @@ private[node] object BlockSelection:
     case Admitted(admission: BlockPool.Admission)
     case Forged(hash: Bytes)
 
-    def containing: Option[Bytes] = this match
-      case Reselection         => None
-      case Admitted(admission) => Some(admission.delivered.header.hash)
-      case Forged(hash)        => Some(hash)
+    /** The closure of `eb` is acquired: the candidates through the ranking blocks `parked` on it
+      * (`ChainSelReprocessLeiosEb`, ouroboros-consensus 2416493b `ChainSel.hs:405-412`).
+      */
+    case LeiosEbAcquired(eb: EbHash, parked: NonEmptyVector[Bytes])
+
+    /** The blocks a candidate goes through one of: none for a reselection, which takes them all. */
+    def containing: Option[Set[Bytes]] = this match
+      case Reselection             => None
+      case Admitted(admission)     => Some(Set(admission.delivered.header.hash))
+      case Forged(hash)            => Some(Set(hash))
+      case LeiosEbAcquired(_, set) => Some(set.toVector.toSet)
+
+  /** What the acquired-endorser-block gate reads of the processed forest: each block's predecessor
+    * and Leios fields, as the reference reads them from the VolatileDB's `BlockInfo`.
+    */
+  def forest(bodies: Map[Bytes, BlockPool.Processed]): Map[Bytes, LeiosForestBlock] =
+    bodies.view
+      .mapValues(p => LeiosForestBlock(p.delivered.header.prevHash, p.delivered.leios))
+      .toMap
 
   /** The worker's chain selection for a block this node forged, run by the follower under the
     * application lock it holds.

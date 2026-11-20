@@ -36,7 +36,7 @@ object SelectionReviewBenchmark extends IOApp.Simple:
   private def measureForest(size: Int, forks: Boolean, admission: Boolean): IO[Unit] =
     val headers = forest(size, forks)
     def decision = AvailableBlocks
-      .candidates(local, headers, Set.empty, Option.when(admission && size > 0)(hash(size)))
+      .candidates(local, headers, Set.empty, Option.when(admission && size > 0)(Set(hash(size))))
       .map(candidates => CandidateSelection.project(2160, local, candidates, None).size)
     for
       result <- IO.delay {

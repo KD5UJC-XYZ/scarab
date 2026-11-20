@@ -5,6 +5,7 @@ import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.{Mutex, Queue, Semaphore}
 import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
+import xyz.kd5ujc.scarab.protocol.EbHash
 
 /** The native ChainDB queue has ten waiting messages (Args.hs:122, ouroboros-consensus 82ecba32),
   * with a separate running message. Receipt owns only bounded enqueue; a node-owned worker owns
@@ -35,6 +36,7 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
             case None                       => F.pure(Right(()))
             case Some(Work.Add(_))          => capacity.release.as(Left(()))
             case Some(Work.Reprocess(done)) => capacity.release *> done.complete(()).as(Left(()))
+            case Some(Work.ReprocessLeiosEb(_)) => capacity.release.as(Left(()))
           }
         )
       )
@@ -75,6 +77,12 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
     Deferred[F, Unit].flatMap { complete =>
       enqueue(F.pure(Some(Work.Reprocess(complete)))) *> complete.get
     }
+
+  /** Queue the reprocessing of the ranking blocks parked on `eb`, whose closure is now acquired,
+    * behind the work already waiting, without waiting for it (`addReprocessLeiosEb`,
+    * ouroboros-consensus 2416493b `Storage/ChainDB/Impl/Background.hs:199-200`).
+    */
+  def reprocessLeiosEb(eb: EbHash): F[Unit] = enqueue(F.pure(Some(Work.ReprocessLeiosEb(eb))))
 
   /** Three non-blocking reads for a stall report: the permits taken (a submitter holds one from
     * reservation until the worker takes its work), the work waiting in the queue and the work the
@@ -165,14 +173,20 @@ object BlockAdmissions:
     case Add(taken: BlockPool.Admission)
     case Reprocess(complete: Deferred[F, Unit])
 
+    /** `ChainSelReprocessLeiosEb`: the closure of `eb` is acquired. */
+    case ReprocessLeiosEb(eb: EbHash)
+
     /** The case without its payload. */
     def kind: WorkKind = this match
-      case Add(_)       => WorkKind.Add
-      case Reprocess(_) => WorkKind.Reprocess
+      case Add(_)              => WorkKind.Add
+      case Reprocess(_)        => WorkKind.Reprocess
+      case ReprocessLeiosEb(_) => WorkKind.ReprocessLeiosEb
 
-  /** What the worker takes from the queue: a block to admit, or a reselection. */
+  /** What the worker takes from the queue: a block to admit, a reselection, or the reprocessing of
+    * the ranking blocks parked on an endorser block.
+    */
   private[node] enum WorkKind:
-    case Add, Reprocess
+    case Add, Reprocess, ReprocessLeiosEb
 
   /** Where the worker is in one work: waiting for the application lock, then applying the block or
     * selecting.

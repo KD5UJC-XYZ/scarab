@@ -44,7 +44,7 @@ class FetchedBlockIntegritySuite extends FunSuite:
     assert(originals.exists(_._1.header.isBoundary))
     originals.foreach { (block, raw) =>
       assertEquals(BlockTransport.check(block.header, raw), Right(block))
-      assertEquals(FetchedBlockIntegrity.check(block.header, raw), Right(()))
+      assertEquals(FetchedBlockIntegrity.check(block.header, raw).map(_ => ()), Right(()))
     }
   }
 

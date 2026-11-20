@@ -27,15 +27,16 @@ private[node] object AvailableBlocks:
         .find(_ != 0)
         .getOrElse(Integer.compare(a.size, b.size))
 
-  /** `containing` restricts a first-admission pass to paths involving that actual adding block;
-    * `None` is the unpunished LoE reprocessing pass. `available` must exclude later queued bodies.
-    * Byron's configured genesis predecessor can be supplied as an exact alias for Origin.
+  /** `containing` restricts a first-admission pass to paths involving that actual adding block (or
+    * one of the ranking blocks a reprocessing of an endorser block reconsiders); `None` is the
+    * unpunished LoE reprocessing pass. `available` must exclude later queued bodies. Byron's
+    * configured genesis predecessor can be supplied as an exact alias for Origin.
     */
   def candidates(
       local: ChainSelection.Local,
       available: Map[Bytes, Header],
       invalid: Set[Bytes],
-      containing: Option[Bytes] = None,
+      containing: Option[Set[Bytes]] = None,
       originPredecessor: Option[Bytes] = None
   ): Either[Error, Vector[ChainSelection.Candidate]] =
     val ordered = available.toVector.sortBy(_._1)(using hashOrder)
@@ -84,7 +85,7 @@ private[node] object AvailableBlocks:
       pending: List[Walk],
       successors: Map[Option[Bytes], Vector[Header]],
       selected: Set[Bytes],
-      containing: Option[Bytes],
+      containing: Option[Set[Bytes]],
       result: Vector[ChainSelection.Candidate]
   ): Vector[ChainSelection.Candidate] = pending match
     case Nil => result
@@ -102,7 +103,7 @@ private[node] object AvailableBlocks:
           result
         )
       else
-        val include = containing.forall(hash => reversed.exists(_.hash == hash))
+        val include = containing.forall(hashes => reversed.exists(h => hashes(h.hash)))
         val grown =
           if include then result :+ ChainSelection.Candidate(base, reversed.reverse.toVector)
           else result

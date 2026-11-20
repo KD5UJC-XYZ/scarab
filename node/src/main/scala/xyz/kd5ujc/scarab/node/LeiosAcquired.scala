@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.node
+
+import cats.effect.{Async, Ref}
+import cats.effect.std.Queue
+import cats.mtl.Raise
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.{AcquiredLeiosEbs, LeiosClosureOutcome}
+import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosTxHash}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
+import xyz.kd5ujc.scarab.storage.{BodyWritten, LeiosEb, LeiosStore, LeiosStoreError, LocalFill}
+
+/** The endorser blocks whose closure is acquired, which chain selection reads
+  * ([[xyz.kd5ujc.scarab.consensus.LeiosCertGate]]): the ChainDB's `cdbAcquiredLeiosEbs`
+  * (ouroboros-consensus 2416493b `Storage/ChainDB/Impl/Types.hs:405-445`), held by the block pool,
+  * the node's ChainDB. It is
+  *
+  *   - seeded when the chain database opens, from the store's complete closures announced no
+  *     earlier than the immutable tip ([[seeded]], `ChainDB/Impl.hs:236-247`);
+  *   - grown from the store's completions ([[acquired]]), which the selection worker takes one at a
+  *     time ([[next]]), as `leiosAcquiredEbsRunner` takes the store's `AcquiredEbTxs` notifications
+  *     (`ChainDB/Impl/Background.hs:170-200`);
+  *   - pruned when the collection is scheduled ([[pruned]]).
+  *
+  * The completions are the points each write of the store returns, which are the points the
+  * reference's writes notify `AcquiredEbTxs` for (`Storage/LeiosDB/Impl/SQLite/Insert.hs:105-111,
+  * 160-163, 318-322`). A writer offers them to an unbounded channel ([[notifying]]) rather than
+  * updating the set and queueing a reselection itself, as the reference's store notifies a channel
+  * its runner reads: so a write never waits for the chain-selection queue, whose capacity is
+  * bounded.
+  */
+private[node] final class LeiosAcquired[F[_]] private (
+    state: Ref[F, AcquiredLeiosEbs],
+    completions: Queue[F, EbPoint]
+)(using F: Async[F]):
+  def snapshot: F[AcquiredLeiosEbs] = state.get
+
+  /** The set at the open of the chain database: the store's complete closures announced at or after
+    * the immutable tip's slot (the origin's is 0), `scanCompleteEbClosuresNotOlderThanSlot`.
+    */
+  def seeded(store: LeiosStore[F], immutableTip: Option[BigInt])(using
+      Raise[F, StorageError]
+  ): F[Unit] =
+    // a slot past every Word64 has no point at or after it
+    Word64
+      .from(immutableTip.getOrElse(BigInt(0)))
+      .fold(
+        _ => F.pure(Vector.empty[EbPoint]),
+        slot => store.scanCompleteEbClosuresNotOlderThanSlot(slot)(using LeiosStorage.lifted[F])
+      )
+      .flatMap(points => state.set(AcquiredLeiosEbs.of(points)))
+
+  /** The next completion of the store, waiting for one. */
+  def next: F[EbPoint] = completions.take
+
+  /** `point`'s endorser block is acquired: true if it was not before (`insertAcquiredLeiosEb`). */
+  def acquired(point: EbPoint): F[Boolean] =
+    state.modify(held => held.inserted(point).fold((held, false))((novel, next) => (next, novel)))
+
+  /** `pruneAcquiredLeiosEbs` at the immutable tip's slot. */
+  def pruned(immutableSlot: BigInt): F[Unit] =
+    state.update(held => held.pruned(Some(immutableSlot)).getOrElse(held))
+
+  /** What the gate does with an application's finding on a closure ([[LeiosClosureOutcome]]). */
+  def closure(outcome: LeiosClosureOutcome): F[Unit] = outcome match
+    case LeiosClosureOutcome.Missing(hash) => state.update(_.without(hash))
+
+  /** `store`, its completions offered to [[next]]. Each write and the offer of what it completed
+    * are one uncancelable step, so that no completion is lost to a cancelled writer.
+    */
+  def notifying(store: LeiosStore[F]): LeiosStore[F] = new LeiosStore[F]:
+    private def offered(points: Vector[EbPoint]): F[Unit] = points.traverse_(completions.offer)
+
+    def writeEbPoint(point: EbPoint, announced: Word32)(using
+        Raise[F, LeiosStoreError]
+    ): F[Vector[EbPoint]] =
+      F.uncancelable(_ => store.writeEbPoint(point, announced).flatTap(offered))
+
+    def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
+        Raise[F, LeiosStoreError]
+    ): F[BodyWritten] =
+      F.uncancelable(_ => store.writeEbBody(point, body, fills).flatTap(w => offered(w.completed)))
+
+    def writeTxs(point: EbPoint, txs: Vector[(Int, Bytes)])(using
+        Raise[F, LeiosStoreError]
+    ): F[Vector[EbPoint]] =
+      F.uncancelable(_ => store.writeTxs(point, txs).flatTap(offered))
+
+    def lookupEbBody(hash: EbHash)(using Raise[F, LeiosStoreError]): F[Option[Bytes]] =
+      store.lookupEbBody(hash)
+
+    def lookupEbClosure(hash: EbHash)(using
+        Raise[F, LeiosStoreError]
+    ): F[Option[Vector[(LeiosTxHash, Bytes)]]] = store.lookupEbClosure(hash)
+
+    def batchRetrieveTxs(hash: EbHash, offsets: Vector[Int])(using
+        Raise[F, LeiosStoreError]
+    ): F[Vector[(Int, Bytes)]] = store.batchRetrieveTxs(hash, offsets)
+
+    def scanEbPoints(using Raise[F, LeiosStoreError]): F[Vector[EbPoint]] = store.scanEbPoints
+
+    def scanCompleteEbClosuresNotOlderThanSlot(slot: Word64)(using
+        Raise[F, LeiosStoreError]
+    ): F[Vector[EbPoint]] = store.scanCompleteEbClosuresNotOlderThanSlot(slot)
+
+    def garbageCollect(slot: Word64)(using Raise[F, LeiosStoreError]): F[Unit] =
+      store.garbageCollect(slot)
+
+    def promoteToImmutable(points: Vector[EbPoint])(using Raise[F, LeiosStoreError]): F[Unit] =
+      store.promoteToImmutable(points)
+
+private[node] object LeiosAcquired:
+  def create[F[_]: Async]: F[LeiosAcquired[F]] =
+    (Ref.of[F, AcquiredLeiosEbs](AcquiredLeiosEbs.empty), Queue.unbounded[F, EbPoint])
+      .mapN(new LeiosAcquired(_, _))
