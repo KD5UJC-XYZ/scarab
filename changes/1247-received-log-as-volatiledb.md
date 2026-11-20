@@ -29,6 +29,10 @@
   logged at Debug (`receivedInvalidFileNames`), and in either log a name that reads as a file number
   but is not the name the log writes for it (`1.log` for `00000001.log`) refuses the log before any
   file changes. The selected-chain log still recovers its files in order.
+- The start-up check runs at every open, where the reference checks a block's integrity only after an
+  unclean shutdown or on request, and it does not check a header's signature again: an approved
+  Deviation (decisions register, 2026-11-20). The start seeds the block pool from the log with each
+  block's header alone, where it ran the whole check a second time on every block the open had checked.
 - In either log, a record header whose length runs past the file's end or what an Int holds, or
   whose record fails its checksum, ends the file's readable part without the record being read
   whole, where a damaged length near the largest an Int holds failed the open or asked for an array

@@ -73,7 +73,11 @@ collection covers it (`cdbsGcDelay`, `cdbsGcInterval`, `Storage/ChainDB/Impl/Arg
 schedules a collection is not the reference's: Scarab copies, and schedules, for each persisted extension
 that ages blocks past `k`, where the reference's copy runner copies the whole prefix then eligible and
 schedules once, so under a backlog the two can schedule other cutoffs at other times, a Gap
-([#1262](https://github.com/KD5UJC-XYZ/scarab/issues/1262)). Each schedule and each collection is logged
+([#1262](https://github.com/KD5UJC-XYZ/scarab/issues/1262)). The same Gap covers when known-invalid
+blocks are forgotten: Scarab prunes them as the selected chain's anchor passes their slots
+(`InvalidBlocks.pruneBefore`), where the reference prunes them at each collection, below its slot
+(`garbageCollectBlocks`, `Background.hs` 446-447 at `82ecba329`, 456-457 at `808e40054`), 60 s or more
+later. Each schedule and each collection is logged
 (`scheduledGC`, `performedGC`), at Debug, as the reference traces `ScheduledGC` and `PerformedGC`
 (`Storage/ChainDB/Impl/Types.hs` 1049-1054 at `82ecba329`, 1082-1087 at `808e40054`; cardano-node 11.1.3
 `Cardano/Node/Tracing/Tracers/ChainDB.hs` 1183-1184). Collections run one
@@ -120,13 +124,18 @@ can be written again; the next open cuts the damaged record's file there, or, re
 the later record's. The selected-chain log keeps its in-order recovery, since it replays rollback
 records in order.
 
-The start-up check differs from the reference's validation policy. It decodes the block, checks that
-its header names the point the record stores and checks the body against the header, at every open.
-The reference only decodes by default (`NoValidation`, `Storage/VolatileDB/Impl.hs` 188) and checks a
-block's integrity, its header's own and its body against its header, only after an unclean shutdown
-or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB/Impl/Args.hs` 154-167;
-`Ouroboros/Consensus/Node.hs` 515-521 and 1118-1128 in ouroboros-consensus-diffusion). Scarab keeps no
-clean-shutdown marker, and its open does not check a header's own integrity.
+The start-up check is an approved Deviation from the reference's validation policy
+([decisions register](../decisions.md#genesis-storage-and-keys), 2026-11-20). It decodes the block,
+checks that its header names the point the record stores and checks the body against the header, at
+every open. The reference only decodes by default (`NoValidation`, `Storage/VolatileDB/Impl.hs` 188) and
+checks a block's integrity, its header's own and its body against its header, only after an unclean
+shutdown or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB/Impl/Args.hs` 154-167;
+`Ouroboros/Consensus/Node.hs` 515-521 and 1118-1128 in ouroboros-consensus-diffusion; `Args.hs` 162-175,
+`Node.hs` 517-523 and 1151-1161 at `808e40054`). Scarab keeps no clean-shutdown marker, so it checks at
+every open; it does not check a header's own integrity again, which was checked when the header
+arrived. The start seeds the block pool from the log with each block's header, read without checking
+its body a second time (`ProcessedBodiesSuite`: a block the open accepted is seeded though its body is
+not its header's, and a record whose header does not decode is logged and skipped).
 
 Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule and its traces, the storage's
 collections, a copy whose backing-store work moves the clock, a restart, under TestControl; the start-up

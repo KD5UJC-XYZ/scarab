@@ -2055,13 +2055,14 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Deviation",
    "structure": "differs",
+   "record": "docs/decisions.md#genesis-storage-and-keys",
    "evidence": [
     "ReceivedBlocksSuite",
     "FetchedBlockIntegritySuite"
    ],
-   "note": "the block decoder and integrity predicate the reference gives its VolatileDB (volCodecConfig, volCheckIntegrity, volValidationPolicy), as one function the node passes to the received log's open (ReceivedBlockRecovery.startUp), given the point the record stores as well: a record it refuses cannot be read and cuts its file, as parseBlockFile cuts at BlockReadErr or BlockCorruptedErr. Where it differs: the node's check decodes the block, checks the record's point and checks the body against the header at every open, where the reference only decodes by default (NoValidation) and checks integrity (the header's own and the body against the header) only with ValidateAll, after an unclean shutdown (ensureValidateAll, ChainDB/Impl/Args.hs 154-167); the header's own integrity is not checked here (#1247)",
+   "note": "the block decoder and integrity predicate the reference gives its VolatileDB (volCodecConfig, volCheckIntegrity, volValidationPolicy), as one function the node passes to the received log's open (ReceivedBlockRecovery.startUp), given the point the record stores as well: a record it refuses cannot be read and cuts its file, as parseBlockFile cuts at BlockReadErr or BlockCorruptedErr. Where it differs, by the approved Deviation of the decisions register's 2026-11-20 row (#1247): the node's check decodes the block, checks the record's point and checks the body against the header at every open, where the reference only decodes by default (NoValidation, VolatileDB/Impl.hs 188) and checks integrity (the header's own and the body against the header) only with ValidateAll, after an unclean shutdown or when the operator asks for it (ensureValidateAll, ChainDB/Impl/Args.hs 154-167); the header's own integrity is not checked here. ReceivedBlocksSuite and FetchedBlockIntegritySuite check the approved check; no suite compares it with the reference's validation policy, which it departs from by decision",
    "digest": "2474ddc71d47f1e6"
   },
   "enum storage.VolatileStore.CutCause": {
