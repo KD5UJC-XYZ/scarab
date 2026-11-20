@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, BlockTransport, BlockTransportError, Hea
 import xyz.kd5ujc.scarab.ledger.byron.ByronError
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 
 class FetchedBlockIntegritySuite extends FunSuite:
   private val epochSlots = BigInt(50)
@@ -93,7 +93,10 @@ class FetchedBlockIntegritySuite extends FunSuite:
       )
     }
     assert(ReceivedBlockRecovery.checked(ref, Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
-    assert(ReceivedBlockRecovery.seeded(Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
+    ReceivedBlockRecovery.seeded(Bytes(Vector(0xff.toByte)), epochSlots) match
+      case Left(StorageError.Corrupt(_, _: ChainError)) => ()
+      case other =>
+        fail(s"bytes that are no block are not refused as a block that does not decode: $other")
   }
 
   for era <- Era.values.filterNot(e => e == Era.Byron || e == Era.Dijkstra) do

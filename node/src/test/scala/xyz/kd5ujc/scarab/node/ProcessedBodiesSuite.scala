@@ -312,22 +312,31 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
     def functor = Applicative[IO]
     def tell(line: Line) = lines.update(_ :+ line)
 
+  private val epochSlots = ForgedChain.geometry.byron.epochSlots
+
+  /** A check that accepts every record: it stands in for the start-up check
+    * ([[ReceivedBlockRecovery.startUp]]), so that the log can hold what that check refuses.
+    */
+  private val acceptAll: ReceivedBlocks.Check = (_, _) => Right(())
+
+  private def opened(dir: Path, check: ReceivedBlocks.Check)(using
+      Raise[IO, StorageError]
+  ): Resource[IO, ReceivedBlocks[IO]] =
+    ReceivedBlocks.open[IO](dir)(ChainStorage.predecessorOf(epochSlots), check)
+
+  private def recovered(log: ReceivedBlocks[IO])(using Raise[IO, StorageError]) =
+    BlockPool.Recovered[IO](
+      log.holds,
+      hash => log.get(hash).map(_.map(_._2)),
+      hash => log.original(hash).map(_.map(_._2)),
+      log.invalidate
+    )
+
   test(
     "seeding from the received log decodes each block and does not check its body against its header again"
   ) {
-    val epochSlots = ForgedChain.geometry.byron.epochSlots
-    // an open whose check accepts every record stands in for the start-up check
-    // (ReceivedBlockRecovery.startUp), so that the log holds what that check refuses: a block whose
-    // body is not its header's, and bytes that are no block. Seeding checks neither body again.
-    def opened(dir: Path)(using Raise[IO, StorageError]): Resource[IO, ReceivedBlocks[IO]] =
-      ReceivedBlocks.open[IO](dir)(ChainStorage.predecessorOf(epochSlots), (_, _) => Right(()))
-    def recovered(log: ReceivedBlocks[IO])(using Raise[IO, StorageError]) =
-      BlockPool.Recovered[IO](
-        log.holds,
-        hash => log.get(hash).map(_.map(_._2)),
-        hash => log.original(hash).map(_.map(_._2)),
-        log.invalidate
-      )
+    // the log holds what the start-up check refuses (acceptAll): a block whose body is not its
+    // header's, and bytes that are no block. Seeding checks neither body again.
     Files.forAsync[IO].tempDirectory.use { dir =>
       Handle
         .allow[NodeError] {
@@ -349,12 +358,12 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
                   ) =>
                 ()
               case result => fail(s"the integrity check takes the changed body: $result"))
-            _ <- opened(dir).use(log =>
+            _ <- opened(dir, acceptAll).use(log =>
               log.put(ref(sound.header), sound.block) *> log.put(ref(other.header), wrong) *>
                 log.put(noBlock, Bytes(Vector(0xff.toByte)))
             )
             lines <- Ref.of[IO, Vector[Line]](Vector.empty)
-            seeded <- opened(dir).use { log =>
+            seeded <- opened(dir, acceptAll).use { log =>
               given Log[IO] = collecting(lines)
               for
                 pool <- BlockPool
@@ -379,6 +388,53 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
               logged.map(line => line.kind -> line.fields.toMap.get("hash").flatMap(_.asString)),
               Vector(EventKind.ReceivedBlockDiscarded -> Some(noBlock.hash.hex)),
               "only the record whose header does not decode is discarded, and logged"
+            )
+        }
+        .rescue(error => IO(fail(error.message)))
+    }
+  }
+
+  test(
+    "the start adds a block of the selected chain to the received log only once it passes the check"
+  ) {
+    // a resume does not check all of a block (a Byron boundary block's body is not decoded): a
+    // resumed block whose body is not its header's stands in for one, so that seeding, which does
+    // not check a body again, never meets a block the log's start-up check did not pass
+    Files.forAsync[IO].tempDirectory.use { dir =>
+      Handle
+        .allow[NodeError] {
+          for
+            delivered <- blocks(3)
+            (held, sound, other) = (delivered(0), delivered(1), delivered(2))
+            wrong = bodyNotItsHeaders(other.block)
+            _ <- opened(dir, acceptAll).use(_.put(ref(held.header), held.block))
+            lines <- Ref.of[IO, Vector[Line]](Vector.empty)
+            found <- opened(dir, ReceivedBlockRecovery.startUp(epochSlots)).use { log =>
+              given Log[IO] = collecting(lines)
+              val resumed = Vector(
+                ref(held.header) -> held.block,
+                ref(sound.header) -> sound.block,
+                ref(other.header) -> wrong
+              )
+              for
+                _ <- Main.restoreReceived(log, resumed, epochSlots)
+                pool <- BlockPool
+                  .create[IO](BlockPool.FetchPolicy(), IO.pure(local), recovered(log))
+                _ <- Main.seedReceived(pool, Some(log), epochSlots)
+                kept <- log.refs
+                processed <- pool.processedSnapshot
+              yield (kept.map(_.hash).toSet, processed.keySet)
+            }
+            (kept, seeded) = found
+            logged <- lines.get
+          yield
+            val accepted = Set(held.header.hash, sound.header.hash)
+            assertEquals(kept, accepted, "the block whose body is not its header's is not added")
+            assertEquals(seeded, accepted, "and the pool is not seeded with it")
+            assertEquals(
+              logged.map(line => line.kind -> line.fields.toMap.get("hash").flatMap(_.asString)),
+              Vector(EventKind.ReceivedBlockDiscarded -> Some(other.header.hash.hex)),
+              "its refusal is logged"
             )
         }
         .rescue(error => IO(fail(error.message)))

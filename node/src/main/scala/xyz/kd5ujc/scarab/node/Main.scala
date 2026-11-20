@@ -281,6 +281,33 @@ object Main extends IOApp:
             yield Some(Mempool.Target(ledger, tipSlot, adopted, tipHash))
         }
 
+  /** Each block of the selected chain that the start resumed, given to the received log
+    * ([[ReceivedBlocks.restoreSelected]]): a block the log lacks only if it passes the log's
+    * start-up check ([[ReceivedBlockRecovery.startUp]]), which every record the open indexed has
+    * passed, so that the pool is seeded from the log without checking a body again
+    * ([[seedReceived]]). A resume does not check all of a block (a Byron boundary block's body is
+    * not decoded). A block the check refuses is logged ([[NodeEvent.ReceivedBlockDiscarded]]) and
+    * not added.
+    */
+  private[node] def restoreReceived(
+      received: ReceivedBlocks[IO],
+      resumed: Vector[(BlockRef, xyz.kd5ujc.scarab.codec.Bytes)],
+      epochSlots: BigInt
+  )(using Raise[IO, NodeError], Log[IO]): IO[Unit] =
+    received.holds.flatMap(held =>
+      resumed.traverse_ { (ref, raw) =>
+        val restore = received.restoreSelected(ref, raw)
+        if held(ref.hash) then restore
+        else
+          ReceivedBlockRecovery
+            .checked(ref, raw, epochSlots)
+            .fold(
+              error => Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)),
+              _ => restore
+            )
+      }
+    )
+
   private[node] def seedReceived(
       pool: BlockPool[IO],
       received: Option[ReceivedBlocks[IO]],
@@ -292,9 +319,9 @@ object Main extends IOApp:
           .traverse { ref =>
             // each body is read and dropped at once: the forest keeps the metadata and reads the
             // body back from the log, so the start does not hold every recovered body. Each block
-            // has been checked: the open's start-up check (ReceivedBlockRecovery.startUp) of every
-            // record it indexed, and the resume of the blocks of the selected chain the start added
-            // after it, nothing else written since; so only its header is read here, and a
+            // has passed the log's start-up check (ReceivedBlockRecovery.startUp): the open ran it
+            // on every record it indexed, and the start on each block of the selected chain it
+            // added after it, nothing else written since; so only its header is read here, and a
             // refusal, not expected, is of a block the log keeps but the pool is not seeded with
             cache.get(ref.hash).flatMap {
               case None => IO.pure(None)
@@ -1797,7 +1824,11 @@ object Main extends IOApp:
       // Older databases have only the selected-chain log. Preserve those known originals
       // without inventing downloaded fork history that the old writer never recorded.
       _ <- opened.received.traverse_(received =>
-        resumed.traverse_(block => received.restoreSelected(block.ref, block.raw))
+        restoreReceived(
+          received,
+          resumed.map(block => block.ref -> block.raw),
+          genesis.geometry.byron.epochSlots
+        )
       )
       // the stores are open and the stored blocks applied
       _ <- measured.phase(PhaseLabel.Following)

@@ -769,11 +769,12 @@ object BlockPool:
   object DeliveredHeader:
     /** The metadata of a block the received log holds at the node's start, decoded as the
       * reference's VolatileDB decodes each block it opens, its body not checked against its header
-      * again: the log's open has checked each record it indexed ([[ReceivedBlockRecovery.startUp]]:
-      * the block decodes, its header names the record's point and its body is its header's, as
-      * [[Delivered.checked]] checks it), and the start adds a block to the log after it only once
-      * that check passes. The header's punishment view and the block's Leios fields are built again,
-      * as that check built them.
+      * again: each block has passed the log's start-up check ([[ReceivedBlockRecovery.startUp]]: the
+      * block decodes, its header names the record's point and its body is its header's, as
+      * [[Delivered.checked]] checks it), the open's of each record it indexed and the start's of
+      * each block of the selected chain it adds to the log after it
+      * ([[xyz.kd5ujc.scarab.storage.ReceivedBlocks.restoreSelected]]). The header's punishment view
+      * and the block's Leios fields are built again, as that check built them.
       */
     def checkedAtOpen(block: Block): Either[TentativeHeaderError, DeliveredHeader] =
       DiffusionPunishment
