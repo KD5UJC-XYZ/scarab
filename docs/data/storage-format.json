@@ -9,7 +9,7 @@
   "asked_at": "2026-11-20T04:10:51Z",
   "decision": "Approved in two steps. The first answer (03:23:56Z): the guard watches every codec file that writes the bytes of a V10 snapshot, in a pull request of its own at level 3. The second, after an independent review showed definitions outside those files that shape the same bytes: the guard also pins those definitions of the V10 write and read path as members, not whole ledger files, and golden V10 body fixtures are added whose exact bytes it pins (multi-owner pools, relays, single-precision floats, indefinite stored records, both layouts), the fixtures approved under FMT-2 by the same answer. The guard reads a comment as absent at the token boundary it stands on, so that an inline comment no longer fires it; no recorded digest moves with that. A one-off path exception for the BLS-key format pull request was approved separately (asked 04:04:50Z, answered 04:09:53Z). No persisted byte of an existing format changes.",
   "decided_at": "2026-11-20T04:57:18Z",
-  "surface_sha256": "a55de6b06a60612449e2c7d36465d9b039f43a2c758ca63f8edf7cb23b7e4244"
+  "surface_sha256": "fef767eb414ef80b979899e978b4e6b2a9ff75388b9b3c7661859660fbe77f76"
  },
  "surface": {
   "registry": {
@@ -588,6 +588,57 @@
      "the complete era conversion manifest pins every file and carried metadata"
     ],
     "code_sha256": "330027814b6a8891b5f6c00cd3ce0fe79dabddd163b79ec34e6cb27ebe36c271"
+   },
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyGoldenSuite.scala": {
+    "literals": [
+     "${V10BodyCases.IndefiniteFile} reads as the canonical body and writes it",
+     "${c.file} holds the values its case put in",
+     "${c.file} is what the current codecs write for its case",
+     "${c.file} reads back with the snapshot's reader and writes the same bytes",
+     "${c.file}: $e",
+     "${c.file}: not a Conway state",
+     "a pool",
+     "the future parameters",
+     "the proposal: $other"
+    ],
+    "code_sha256": "21a734936a3ee55507210e00144deb8b671555f76c67f6b01b23993b1dd04cf9"
+   },
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyCases.scala": {
+    "literals": [
+     "",
+     " ",
+     "$k%02x",
+     "${c.file}: $e",
+     "${c.source}: $e",
+     "${c.source}: not a Conway state",
+     "0b",
+     "0c",
+     "0d",
+     "0e",
+     "1a00f42400 1b00000002540be400",
+     "1a03b20b80 1b00000004a817c800",
+     "5d",
+     "82",
+     "9f",
+     "_cardano._tcp.example.org.",
+     "a state with a pool",
+     "a state with two pools",
+     "a3",
+     "d81e82190241192710 d81e821902d11a00989680",
+     "ff",
+     "fixtures/haskell-state/conway-4593/state",
+     "fixtures/leios/state/conway-195/state",
+     "fixtures/snapshot-v10-bodies",
+     "leios-conway.cbor",
+     "margin",
+     "node11_1-conway-indefinite-prices.cbor",
+     "node11_1-conway.cbor",
+     "port",
+     "relay.example.org",
+     "the body holds the update",
+     "the update occurs once"
+    ],
+    "code_sha256": "b21dc82b07d3135faf178847188bf05f3c230296dae28a5275923e9cf9816292"
    }
   },
   "previous_version_suites": {
@@ -599,6 +650,9 @@
   },
   "fixtures": {
    "fixtures/network-identity-v6/network-identity": "933037d584eefcb4357e1f1c3857c5854175b2e5636196d9152662dba89b9588",
+   "fixtures/snapshot-v10-bodies/leios-conway.cbor": "1a2d17c77bd580bf60aab499e1c9cf3232a53d3295744ff1bb8c4a966b0df4dd",
+   "fixtures/snapshot-v10-bodies/node11_1-conway-indefinite-prices.cbor": "7baf67d96ae98a5b60780edd6cf8ffc02468da01b7531b4920766c13baa7d70d",
+   "fixtures/snapshot-v10-bodies/node11_1-conway.cbor": "fe97da636da7cca7253d43df579892ff3b66094e5344e3c11583068a868261d8",
    "fixtures/snapshot-v10/SHA256SUMS": "e54e83261bb5bea3d01b40d67504d820c9026f6d2752c983fab4b8e3b4e352ca",
    "fixtures/snapshot-v10/conway-native-730.bin": "3f55eb9f3cfa35c576a9770283222eea7e6df3c382e66ba40ccb8bfb3b0e09e6",
    "fixtures/snapshot-v10/eras/allegra-151.bin": "9217fe33a479dfeffde89b054535012cff25437bebad6cef62c26dd1447b9f58",

@@ -43,12 +43,14 @@ points to FMT-1 (docs/design-rules.md). The surface is:
   item's value is read from). A definition is its header line and what follows while a bracket it opened is open or
   the lines are indented under it;
 - `frozen_schemas`: a code digest of each frozen schema (`SnapshotSidecarV<n>.scala`, `Frozen*.scala`);
-- `goldens`: for `CodecSuite`, `FormatGoldenSuite` and `SnapshotGoldenSuite`, every string literal (the golden
-  bytes, fingerprints, magics and file hashes, and the test names) and a code digest;
+- `goldens`: for `CodecSuite`, `FormatGoldenSuite`, `SnapshotGoldenSuite`, and `V10BodyGoldenSuite` with its cases
+  (`V10BodyCases`), every string literal (the golden bytes, fingerprints, magics and file hashes, and the test
+  names) and a code digest;
 - `previous_version_suites`: a code digest of each suite that reads a previous version (`*Migration*Suite`,
   `NetworkIdentity*Suite` in the storage test packages);
 - `fixtures`: the SHA-256 of every file under `fixtures/snapshot-*` and `fixtures/network-identity-*` but their
-  Markdown (the READMEs that record provenance).
+  Markdown (the READMEs that record provenance), the golden V10 bodies of `fixtures/snapshot-v10-bodies` among
+  them.
 
 A code digest is of the source without its comments, each removed at the token boundary it stands on (`lex`), with
 trailing white space and empty lines dropped outside string literals; literals, indentation and the separation of
@@ -112,6 +114,8 @@ GOLDEN_SUITES = (
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala',
     'storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala',
+    'storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyGoldenSuite.scala',
+    'storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyCases.scala',
 )
 STORAGE_TESTS = ('node/src/test/scala/xyz/kd5ujc/scarab/storage', 'storage/src/test/scala/xyz/kd5ujc/scarab/storage')
 PREVIOUS_VERSION_SUITE = re.compile(r'(?:\w*Migration\w*|NetworkIdentity\w*)Suite\.scala')
