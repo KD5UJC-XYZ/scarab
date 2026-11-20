@@ -68,4 +68,8 @@ its VolatileDB a delay after blocks are copied to its ImmutableDB (`cdbsGcDelay`
 `Storage/ChainDB/Impl/Args.hs` 123) and keeps 1,000 blocks to a file (`Storage/VolatileDB/Impl.hs`
 186); Scarab collects when its immutable store has made a batch of blocks durable
 (`volatileCollectBlocks`) and keeps 512 to a file, so a block below the immutable tip may stay readable
-for a different time.
+for a different time. Also #1247: how the received log recovers when it is opened after damage. Scarab keeps the
+valid prefix of the first damaged file and removes every file after it; the reference truncates each
+damaged file and keeps the others (`mkOpenStateHelper`, `Storage/VolatileDB/Impl/State.hs` 372-436), so
+after such a recovery a fork held only in the received log can be answered `NoBlocks` until it is fetched
+again.

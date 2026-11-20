@@ -940,13 +940,14 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1247",
    "structure": "differs",
    "evidence": [
     "ReceivedBlocksSuite",
     "VolatileStoreSuite"
    ],
-   "note": "as parseBlockFile and extractBlockInfo, each block is read in turn and its location kept with what is read from its body (here the predecessor). It differs in the recovery it shares with openIndex: the first damaged file is cut and every file after it removed, where the reference's open (mkOpenStateHelper) truncates each damaged file and keeps the others, and truncates a later file at a block already indexed. No differential suite covers this; its classification awaits the owner",
+   "note": "as parseBlockFile and extractBlockInfo, each block is read in turn and its location kept with what is read from its body (here the predecessor). It differs in the recovery it shares with openIndex: the first damaged file is cut and every file after it removed, where the reference's open (mkOpenStateHelper) truncates each damaged file and keeps the others, and truncates a later file at a block already indexed: a Gap (#1247), to be aligned for the received log; the selected-chain journal keeps its in-order recovery",
    "digest": "666577b18901c140"
   },
   "def storage.ChainStorage.predecessorOf": {
