@@ -80,7 +80,10 @@ all-era captures and the unchanged Genesis replay corpus remain separate control
   Selected-journal validation keeps its valid-prefix recovery policy; storage IO failures
   still propagate. Recovered bodies have their
   own source case, rather than borrowing a live session identity. Collection follows a durable
-  immutable boundary; an LoE stall can retain a growing forest. With a received log the forest
+  immutable boundary and deletes, as the VolatileDB does, every file but the current one whose
+  blocks are all below it, and only those files' blocks leave the index; the index also names each
+  block's predecessor, the path BlockFetch walks to serve a fork (#1237). An LoE stall can retain a
+  growing forest. With a received log the forest
   holds each block's metadata and reads its body back from the log (#416), the pool's cache holds
   a received body only until its admission is processed (#684), and opening the log keeps no body
   (#683); without a log the raw bodies stay in memory.

@@ -295,7 +295,7 @@ object ChainServer:
     case Older(point: Point.Block, store: S)
 
   /** The blocks BlockFetch serves beside the selected chain: the received log, which holds the
-    * blocks the node received and keeps, held invalid too, until their file is collected (the
+    * blocks the node received or forged, held invalid too, until their file is collected (the
     * reference's VolatileDB); and `origin`, the hash a Byron chain's first block names as its
     * predecessor (the genesis data's), which stands for Origin.
     */

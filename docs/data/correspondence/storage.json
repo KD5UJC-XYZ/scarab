@@ -813,6 +813,151 @@
    "note": "written by the node's parameters' codec (poolParams), so the bytes written are those written before (FuturePoolParamsCodecSuite, both layouts). Read by that codec, then as the reference reads the two fields it keeps unread: the metadata as DecCBOR PoolMetadata at the state's version (PoolMetadata.read: a [url, hash] record, the url bounded by the version and its text chunked only in the Leios layout from version 12, the hash chunked from 12 in both) and the account's network 0 or 1 (decodeAccountAddressT, Address.hs:930-948 at f649f975), each refused with a typed error; this narrows the earlier reader, which kept any metadata term and any network nibble: the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here. A Gap remains: keyed input of the Leios layout from version 12 is refused on reading (DijkstraNotYet.PoolParamsBlsKey) and parameters holding a key are not written, where the Leios build reads and writes them; the Leios session lifts the refusal (noBlsKey, #826)",
    "digest": "979818d37936dfbe",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826"
+  },
+  "def storage.VolatileStore#collect": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "garbageCollectImpl",
+     "lines": [
+      453,
+      516
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/FileInfo.hs",
+     "symbol": "canGC",
+     "lines": [
+      88,
+      97
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite"
+   ],
+   "digest": "1c3adae121f7d1a5"
+  },
+  "def storage.ReceivedBlocks#links": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "getBlockInfoImpl",
+     "lines": [
+      553,
+      559
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ChainServerSuite"
+   ],
+   "digest": "873fa035516e1be9"
+  },
+  "class storage.ReceivedBlocks.Linked": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/API.hs",
+     "symbol": "BlockInfo",
+     "lines": [
+      152,
+      160
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ReceivedBlocksSuite"
+   ],
+   "note": "the block's reference (hash, slot, number, boundary) and its predecessor; the header's offset and size, which the reference keeps to read a header alone, are not kept",
+   "digest": "adb426558b5074cb"
+  },
+  "enum storage.ReceivedBlocks.Predecessor": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+     "symbol": "ChainHash",
+     "lines": [
+      185,
+      185
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite"
+   ],
+   "digest": "ccf51ab3e81ba251"
+  },
+  "def storage.VolatileStore.openIndexWith": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "parseBlockFile",
+     "lines": [
+      52,
+      104
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "extractBlockInfo",
+     "lines": [
+      113,
+      128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "VolatileStoreSuite"
+   ],
+   "note": "the index is rebuilt a record at a time, keeping a note of each block read from its body, as the reference keeps each block's BlockInfo; the note is the caller's",
+   "digest": "666577b18901c140"
+  },
+  "def storage.ChainStorage.predecessorOf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "extractBlockInfo",
+     "lines": [
+      113,
+      128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ChainServerSuite"
+   ],
+   "digest": "2f5fd2f6a029cfb2"
   }
  },
  "glue": [

@@ -1092,6 +1092,71 @@
    "structure": "same",
    "note": "emptyState's matureDuplexPeers = Map.empty and freshDuplexPeers = OrdPSQ.empty",
    "digest": "6bd7c1567756c0df"
+  },
+  "enum protocol.NetworkError.RangeRefusal": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/Server.hs",
+     "symbol": "BlockFetchServerException",
+     "lines": [
+      42,
+      67
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Iterator.hs",
+     "symbol": "computePathVolatileDB",
+     "lines": [
+      494,
+      504
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Iterator.hs",
+     "symbol": "InvalidIteratorRangeError",
+     "lines": [
+      134,
+      159
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ServerSuite",
+    "ChainServerSuite",
+    "PeerDefectPolicySuite"
+   ],
+   "note": "one closed type for the exceptions the reference's server, ChainDB iterator and ImmutableDB raise for a range: NoGenesisBlock, InvalidIteratorRange and InvalidIteratorRangeError, BlockGCed; each ends the connection",
+   "digest": "8b797b4b946dde04"
+  },
+  "enum network.BlockFetchServer.Answer": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/Server.hs",
+     "symbol": "blockFetchServer'",
+     "lines": [
+      87,
+      146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ServerSuite",
+    "ChainServerSuite"
+   ],
+   "note": "the ChainDB stream's Either UnknownRange Iterator, and the exceptions its opening and its iterator raise, as one answer; IteratorBlockGCed is a refusal at the end of the batch's stream",
+   "digest": "f9f28ddee61ec2ca"
   }
  },
  "glue": [
@@ -1378,6 +1443,12 @@
    "definitions": [
     "def network.Connection#exempt",
     "def network.selection.GovernorState#dialOf"
+   ]
+  },
+  {
+   "reason": "the text of a BlockFetch range refusal, for presentation only; the reference shows its exceptions with derived Show instances",
+   "definitions": [
+    "def protocol.NetworkError.RangeRefusal#message"
    ]
   }
  ]
